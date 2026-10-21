@@ -294,30 +294,38 @@ void check_layers(const World& world, const std::unordered_map<entt::entity, ent
 
 } // namespace
 
-std::vector<TreeProblem> check_tree(const World& world) {
-    std::vector<TreeProblem> problems;
-    const auto& ecs = world.ecs();
-    if (!has_children(world)) {
-        check_layers(world, {}, problems);
-        return problems;
-    }
-    const std::vector<entt::entity> entities = made_order(world);
+namespace {
+
+// What a tree of T's children gets wrong, T being Transform2D or Transform3D, named name: null,
+// the entity itself or one without a T, a second parent, or a cycle. Returns each child's parent.
+template <typename T>
+std::unordered_map<entt::entity, entt::entity>
+check_children(const World& world, const std::string& name, std::vector<TreeProblem>& problems) {
     std::unordered_map<entt::entity, entt::entity> parents;
+    const auto& ecs = world.ecs();
+    const auto view = ecs.view<const T>();
+    if (std::ranges::none_of(view, [&](entt::entity entity) {
+            return !view.template get<const T>(entity).children.empty();
+        })) {
+        return parents;
+    }
+    std::vector<entt::entity> entities(view.begin(), view.end());
+    std::ranges::sort(entities, {}, [](entt::entity entity) { return entt::to_entity(entity); });
     const auto quoted = [&](entt::entity entity) {
         return "\"" + std::string(world.id_of(entity)) + "\"";
     };
     for (const entt::entity entity : entities) {
-        const auto& children = ecs.get<Transform2D>(entity).children;
+        const auto& children = ecs.get<T>(entity).children;
         for (std::size_t i = 0; i < children.size(); ++i) {
             const entt::entity child = children[i];
             const std::string path = "/entities/" + std::string(world.id_of(entity)) +
-                                     "/components/Transform2D/children/" + std::to_string(i);
+                                     "/components/" + name + "/children/" + std::to_string(i);
             if (child == entt::null || !world.valid(child)) {
                 problems.push_back({path, "children can't be null"});
             } else if (child == entity) {
                 problems.push_back({path, "an entity can't be its own child"});
-            } else if (!ecs.all_of<Transform2D>(child)) {
-                problems.push_back({path, quoted(child) + " has no Transform2D to place in " +
+            } else if (!ecs.all_of<T>(child)) {
+                problems.push_back({path, quoted(child) + " has no " + name + " to place in " +
                                               quoted(entity) + "'s space"});
             } else if (const auto [found, added] = parents.try_emplace(child, entity); !added) {
                 problems.push_back(
@@ -350,14 +358,23 @@ std::vector<TreeProblem> check_tree(const World& world) {
         }
         reported.insert(members.begin(), members.end());
         const entt::entity parent = parents.at(entity);
-        const auto& list = ecs.get<Transform2D>(parent).children;
+        const auto& list = ecs.get<T>(parent).children;
         const auto at = std::ranges::find(list, entity) - list.begin();
-        problems.push_back({"/entities/" + std::string(world.id_of(parent)) +
-                                "/components/Transform2D/children/" + std::to_string(at),
+        problems.push_back({"/entities/" + std::string(world.id_of(parent)) + "/components/" +
+                                name + "/children/" + std::to_string(at),
                             quoted(entity) + " is an ancestor of " + quoted(parent) +
                                 ", so it can't be its child"});
     }
+    return parents;
+}
+
+} // namespace
+
+std::vector<TreeProblem> check_tree(const World& world) {
+    std::vector<TreeProblem> problems;
+    const auto parents = check_children<Transform2D>(world, "Transform2D", problems);
     check_layers(world, parents, problems);
+    (void)check_children<Transform3D>(world, "Transform3D", problems);
     return problems;
 }
 

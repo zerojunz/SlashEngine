@@ -1258,6 +1258,209 @@ void register_audio_components(ComponentRegistry& registry) {
         .describe("current", {.doc = "Whether it is the listener."});
 }
 
+void register_3d_components(ComponentRegistry& registry) {
+    const FieldMeta flip_faces{.doc = "Turns its faces inside out, so its inside shows."};
+    const FieldMeta subdivide{.doc = "Extra cuts across each face along this axis.", .min = 0};
+    const FieldMeta radial{.doc = "Corners around its axis.", .min = 4};
+    const FieldMeta orientation{.doc = "The axis it faces.", .choices = {"x", "y", "z"}};
+    const FieldMeta offset{.doc = "Moves its corners from the entity, in meters, as [x, y, z]."};
+    const FieldMeta channel{.doc = "The texture's channel it reads.",
+                            .choices = {"red", "green", "blue", "alpha", "gray"}};
+    const FieldMeta texture{.doc = "Project path of a PNG, BMP or KTX2 file; \"\" for none."};
+    const FieldMeta color{.doc = "Color as [r, g, b, a] from 0 to 1, sRGB.", .min = 0, .max = 1};
+    const FieldMeta energy{.doc = "Multiplies its color.", .min = 0};
+    const FieldMeta light_specular{
+        .doc = "How bright its highlights on shiny surfaces are.", .min = 0, .max = 16};
+    const FieldMeta light_negative{.doc = "Takes light away instead of adding it."};
+    const FieldMeta light_cull_mask{.doc = "Lights meshes whose layers share a bit."};
+    const FieldMeta range{.doc = "How far it reaches, in meters.", .min = 0};
+    const FieldMeta attenuation{.doc = "How it fades with distance: 1 as light does, 0 not at all.",
+                                .min = -10};
+
+    registry.add<MeshInstance3D>()
+        .set_doc("Draws the entity's primitive mesh (BoxMesh, SphereMesh, ...) at its "
+                 "Transform3D, as Godot's MeshInstance3D, with its StandardMaterial3D if it has "
+                 "one.")
+        .describe("layers", {.doc = "Render layers: cameras whose cull_mask and lights whose "
+                                    "light_cull_mask share a bit see and light it."});
+    registry.add<BoxMesh>()
+        .set_doc("A box centered on the entity, as Godot's BoxMesh; MeshInstance3D draws it.")
+        .describe("size", {.doc = "Width, height and depth in meters, as [x, y, z].", .min = 0})
+        .describe("subdivide_width", subdivide)
+        .describe("subdivide_height", subdivide)
+        .describe("subdivide_depth", subdivide)
+        .describe("flip_faces", flip_faces);
+    registry.add<SphereMesh>()
+        .set_doc("A sphere, as Godot's SphereMesh; MeshInstance3D draws it.")
+        .describe("radius", {.doc = "Meters around y.", .min = 0.001})
+        .describe("height", {.doc = "Meters along y; twice radius is round.", .min = 0.001})
+        .describe("radial_segments", radial)
+        .describe("rings", {.doc = "Rows of corners from top to bottom.", .min = 1})
+        .describe("is_hemisphere", {.doc = "Only its top half, closed underneath."})
+        .describe("flip_faces", flip_faces);
+    registry.add<CylinderMesh>()
+        .set_doc("A cylinder or cone along y, as Godot's CylinderMesh; MeshInstance3D draws it.")
+        .describe("top_radius", {.doc = "Meters; 0 makes a cone.", .min = 0})
+        .describe("bottom_radius", {.doc = "Meters; 0 makes a cone.", .min = 0})
+        .describe("height", {.doc = "Meters along y.", .min = 0.001})
+        .describe("radial_segments", radial)
+        .describe("rings", {.doc = "Extra rows of corners along its side.", .min = 0})
+        .describe("cap_top", {.doc = "Closes its top."})
+        .describe("cap_bottom", {.doc = "Closes its bottom."})
+        .describe("flip_faces", flip_faces);
+    registry.add<CapsuleMesh>()
+        .set_doc("A capsule along y, as Godot's CapsuleMesh; MeshInstance3D draws it.")
+        .describe("radius", {.doc = "Meters.", .min = 0.001})
+        .describe("height", {.doc = "Meters end to end, at least twice radius.", .min = 0.001})
+        .describe("radial_segments", radial)
+        .describe("rings", {.doc = "Extra rows of corners along each part.", .min = 0})
+        .describe("flip_faces", flip_faces);
+    registry.add<PlaneMesh>()
+        .set_doc("A flat rectangle, as Godot's PlaneMesh; MeshInstance3D draws it.")
+        .describe("size", {.doc = "Meters across and deep, as [x, y].", .min = 0})
+        .describe("subdivide_width", subdivide)
+        .describe("subdivide_depth", subdivide)
+        .describe("center_offset", offset)
+        .describe("orientation", orientation)
+        .describe("flip_faces", flip_faces);
+    registry.add<QuadMesh>()
+        .set_doc("A flat rectangle facing z, as Godot's QuadMesh; MeshInstance3D draws it.")
+        .describe("size", {.doc = "Meters across and high, as [x, y].", .min = 0})
+        .describe("subdivide_width", subdivide)
+        .describe("subdivide_depth", subdivide)
+        .describe("center_offset", offset)
+        .describe("orientation", orientation)
+        .describe("flip_faces", flip_faces);
+    registry.add<PrismMesh>()
+        .set_doc("A wedge, as Godot's PrismMesh; MeshInstance3D draws it.")
+        .describe("left_to_right",
+                  {.doc = "Where its top edge is, from 0 (over the left) to 1 (over the right).",
+                   .min = -2,
+                   .max = 2})
+        .describe("size", {.doc = "Meters, as [x, y, z].", .min = 0})
+        .describe("subdivide_width", subdivide)
+        .describe("subdivide_height", subdivide)
+        .describe("subdivide_depth", subdivide)
+        .describe("flip_faces", flip_faces);
+    registry.add<TorusMesh>()
+        .set_doc("A ring around y, as Godot's TorusMesh; MeshInstance3D draws it.")
+        .describe("inner_radius", {.doc = "Meters to its inside edge.", .min = 0.001})
+        .describe("outer_radius", {.doc = "Meters to its outside edge.", .min = 0.001})
+        .describe("rings", {.doc = "Corners around y.", .min = 3})
+        .describe("ring_segments", {.doc = "Corners around its tube.", .min = 3})
+        .describe("flip_faces", flip_faces);
+
+    registry.add<StandardMaterial3D>()
+        .set_doc("What the entity's mesh is made of, as Godot's StandardMaterial3D: lit by "
+                 "Burley diffuse and GGX specular, as Godot's Compatibility renderer.")
+        .describe("transparency",
+                  {.doc = "\"alpha\" blends it, drawn after opaque meshes; \"alpha_scissor\" "
+                          "cuts away pixels below alpha_scissor_threshold.",
+                   .choices = {"disabled", "alpha", "alpha_scissor"}})
+        .describe("alpha_scissor_threshold", {.doc = "The alpha kept.", .min = 0, .max = 1})
+        .describe("blend_mode",
+                  {.doc = "How an alpha mesh blends.", .choices = {"mix", "add", "sub", "mul"}})
+        .describe("cull_mode", {.doc = "The faces it hides: those facing away (back), those "
+                                       "facing the camera (front), or none.",
+                                .choices = {"back", "front", "disabled"}})
+        .describe("shading_mode", {.doc = "\"unshaded\" shows its albedo as it is, unlit.",
+                                   .choices = {"per_pixel", "unshaded"}})
+        .describe("vertex_color_use_as_albedo", {.doc = "Times the mesh's corner colors."})
+        .describe("albedo_color", color)
+        .describe("albedo_texture", texture)
+        .describe("metallic",
+                  {.doc = "0 for plastic, wood or stone; 1 for metal.", .min = 0, .max = 1})
+        .describe("metallic_specular",
+                  {.doc = "How much a non-metal reflects; 0.5 is most things.", .min = 0, .max = 1})
+        .describe("metallic_texture", texture)
+        .describe("metallic_texture_channel", channel)
+        .describe("roughness", {.doc = "0 for a mirror finish, 1 for matte.", .min = 0, .max = 1})
+        .describe("roughness_texture", texture)
+        .describe("roughness_texture_channel", channel)
+        .describe("emission_enabled", {.doc = "Glows with emission, lit or not."})
+        .describe("emission", color)
+        .describe("emission_energy_multiplier", energy)
+        .describe("emission_texture", {.doc = "Added to emission. " + texture.doc})
+        .describe("normal_enabled", {.doc = "Bumps its lighting with normal_texture."})
+        .describe("normal_scale", {.doc = "How strong the bumps are.", .min = -16, .max = 16})
+        .describe("normal_texture",
+                  {.doc = "A normal map with green up, as OpenGL's. " + texture.doc})
+        .describe("uv1_scale", {.doc = "Repeats textures this many times, as [x, y, z]."})
+        .describe("uv1_offset", {.doc = "Moves textures by this much, as [x, y, z]."})
+        .describe(
+            "texture_filter",
+            {.doc = "How textures are sampled. Textures have no mipmaps yet, so the "
+                    "mipmap filters sample as the plain ones.",
+             .choices = {"nearest", "linear", "nearest_with_mipmaps", "linear_with_mipmaps"}});
+
+    registry.add<Camera3D>()
+        .set_doc("What the 3D world is seen through, as Godot's Camera3D, looking down the "
+                 "entity's -z. The current one is the first with current set, else the first.")
+        .describe("projection", {.doc = "\"orthogonal\" keeps sizes the same at any distance.",
+                                 .choices = {"perspective", "orthogonal"}})
+        .describe("keep_aspect", {.doc = "The axis fov or size spans; the other follows the "
+                                         "window's shape.",
+                                  .choices = {"height", "width"}})
+        .describe("fov", {.doc = "Degrees it sees across, for perspective.", .min = 1, .max = 179})
+        .describe("size", {.doc = "Meters it sees across, for orthogonal.", .min = 0.001})
+        .describe("near", {.doc = "Meters to the nearest it sees.", .min = 0.001})
+        .describe("far", {.doc = "Meters to the farthest it sees.", .min = 0.01})
+        .describe("h_offset", {.doc = "Moves the view right, in meters."})
+        .describe("v_offset", {.doc = "Moves the view up, in meters."})
+        .describe("current", {.doc = "Makes it the camera the world is seen through."})
+        .describe("cull_mask", {.doc = "Sees meshes whose layers share a bit."});
+
+    registry.add<DirectionalLight3D>()
+        .set_doc("Light from one direction everywhere, such as the sun, shining down the "
+                 "entity's -z, as Godot's DirectionalLight3D.")
+        .describe("light_color", color)
+        .describe("light_energy", energy)
+        .describe("light_specular", light_specular)
+        .describe("light_negative", light_negative)
+        .describe("light_cull_mask", light_cull_mask);
+    registry.add<OmniLight3D>()
+        .set_doc("Light from the entity in every direction, such as a lamp, as Godot's "
+                 "OmniLight3D.")
+        .describe("light_color", color)
+        .describe("light_energy", energy)
+        .describe("light_specular", light_specular)
+        .describe("light_negative", light_negative)
+        .describe("light_cull_mask", light_cull_mask)
+        .describe("omni_range", range)
+        .describe("omni_attenuation", attenuation);
+    registry.add<SpotLight3D>()
+        .set_doc("Light from the entity in a cone down its -z, such as a torch, as Godot's "
+                 "SpotLight3D.")
+        .describe("light_color", color)
+        .describe("light_energy", energy)
+        .describe("light_specular", light_specular)
+        .describe("light_negative", light_negative)
+        .describe("light_cull_mask", light_cull_mask)
+        .describe("spot_range", range)
+        .describe("spot_attenuation", attenuation)
+        .describe("spot_angle",
+                  {.doc = "Degrees from its axis to the cone's edge.", .min = 0, .max = 180})
+        .describe("spot_angle_attenuation",
+                  {.doc = "How it fades toward the cone's edge.", .min = 0});
+
+    registry.add<WorldEnvironment>()
+        .set_doc("The 3D world's background and ambient light, as Godot's WorldEnvironment. The "
+                 "first one applies; with none, the background is the clear color and there is "
+                 "no ambient light.")
+        .describe("background_mode", {.doc = "\"clear_color\" is the project's "
+                                             "rendering.clear_color; \"color\" is "
+                                             "background_color.",
+                                      .choices = {"clear_color", "color"}})
+        .describe("background_color", color)
+        .describe("background_energy_multiplier", energy)
+        .describe("ambient_light_source",
+                  {.doc = "Light every lit surface gets: the background's color, none, or "
+                          "ambient_light_color.",
+                   .choices = {"background", "disabled", "color"}})
+        .describe("ambient_light_color", color)
+        .describe("ambient_light_energy", energy);
+}
+
 void register_builtin_components(ComponentRegistry& registry) {
     // Fields lights, sprites and tile map layers share.
     const FieldMeta light_mask{
@@ -1314,13 +1517,17 @@ void register_builtin_components(ComponentRegistry& registry) {
                                       "drawing order. Each has one parent."});
 
     registry.add<Transform3D>()
-        .set_doc("Position, rotation and scale in 3D. Units are meters and y points up.")
-        .describe("position", {.doc = "Position in meters, as [x, y, z]."})
-        .describe("rotation", {.doc = "Rotation as a unit quaternion, as [x, y, z, w]. "
-                                      "[0, 0, 0, 1] is no rotation.",
-                               .min = -1.0,
-                               .max = 1.0})
-        .describe("scale", {.doc = "Scale factor on each axis, as [x, y, z]."});
+        .set_doc("Position, rotation and scale in 3D, as Godot's Node3D. Units are meters and y "
+                 "points up. The entities in children are placed in its space.")
+        .describe("position", {.doc = "Position in meters, as [x, y, z], in its parent's space."})
+        .describe("rotation", {.doc = "Radians about x, y and z, as [x, y, z], turned z first, "
+                                      "then x, then y, as Godot's default rotation order."})
+        .describe("scale", {.doc = "Scale factor on each axis, as [x, y, z]."})
+        .describe("visible", {.doc = "False hides it and every entity under it."})
+        .describe("top_level", {.doc = "Placed in the world rather than its parent's space. A "
+                                       "hidden parent still hides it."})
+        .describe("children", {.doc = "Entities with a Transform3D placed in its space. Each has "
+                                      "one parent."});
 
     registry.add<StoryRef>()
         .set_doc("The storyboard entries this entity stands for.")
@@ -1611,6 +1818,7 @@ void register_builtin_components(ComponentRegistry& registry) {
                   {.doc = "The view it scrolls for, set each tick from the current camera: the "
                           "middle of the screen in the world less half the screen."});
 
+    register_3d_components(registry);
     register_physics_components(registry);
     register_particle_components(registry);
     register_audio_components(registry);

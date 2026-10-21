@@ -3568,7 +3568,8 @@ Reply frame_capture(Session& session, const json::Value& params) {
     for (const auto& [name, count] :
          {std::pair{"sprites", capture.sprites}, std::pair{"tiles", capture.tiles},
           std::pair{"particles", capture.particles}, std::pair{"lights", capture.lights},
-          std::pair{"controls", capture.controls}, std::pair{"shapes", capture.shapes}}) {
+          std::pair{"controls", capture.controls}, std::pair{"shapes", capture.shapes},
+          std::pair{"meshes", capture.meshes}}) {
         if (count > 0) {
             drawn[name] = count;
         }
