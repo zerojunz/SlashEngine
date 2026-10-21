@@ -5,8 +5,11 @@
 #include "slash/core/text.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/soundtrack/midi.hpp"
+#include "slash/soundtrack/plan.hpp"
 #include "slash/soundtrack/render.hpp"
 #include "slash/soundtrack/score.hpp"
+#include "slash/storyboard/storyboard.hpp"
+#include "slash/world/scene.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -507,6 +510,78 @@ Reply soundtrack_render(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+Reply soundtrack_plan(Session& session, const json::Value& params) {
+    auto loaded = storyboard::load(
+        [&session](std::string_view path) { return session.read_project_file(path); });
+    if (!loaded) {
+        return Reply::failure(loaded.error());
+    }
+    if (const auto& errors = loaded.value().errors; !errors.empty()) {
+        const storyboard::FileError& first = errors.front();
+        std::string message = first.file;
+        if (!first.path.empty()) {
+            message += " at ";
+            message += first.path;
+        }
+        message += ": ";
+        message += first.message;
+        message += "; storyboard.check lists every problem";
+        return Reply::failure(command::code::kInvalidArgument, message);
+    }
+
+    // Every scene in the project except exports in build/, the open one as it is now.
+    auto files = platform::list_files(session.options().project_root,
+                                      [](std::string_view folder) { return folder != "build/"; });
+    if (!files) {
+        return Reply::failure(files.error());
+    }
+    const std::string& open = session.scene_path();
+    std::vector<PlanScene> scenes;
+    const auto add_scene = [&](const std::string& path, const json::Value& document) {
+        PlanScene scene{.path = path, .story_ids = {}};
+        for (storyboard::StoryRefId& ref : storyboard::story_refs(document)) {
+            scene.story_ids.push_back(std::move(ref.id));
+        }
+        scenes.push_back(std::move(scene));
+    };
+    for (const std::string& path : files.value()) {
+        if (!path.ends_with(world::kSceneSuffix) || path == open) {
+            continue;
+        }
+        auto read = session.read_project_file(path);
+        const std::optional<std::string> contents = read ? read.value() : std::nullopt;
+        if (!contents) {
+            continue;
+        }
+        // A scene that doesn't parse is scene validate's to report.
+        if (auto document = json::parse(*contents); document) {
+            add_scene(path, document.value());
+        }
+    }
+    if (!open.empty()) {
+        add_scene(open, session.save().scene);
+    }
+    std::ranges::sort(scenes, {}, &PlanScene::path);
+
+    std::vector<std::string> states;
+    if (const json::Value* named = params.find("states"); named != nullptr) {
+        for (const json::Value& state : named->as_array()) {
+            states.push_back(state.as_string());
+        }
+    }
+    Plan plan = plan_cues(loaded.value().entries, scenes, states);
+    json::Value result;
+    result["edits"] = std::move(plan.edits);
+    if (!plan.unthemed.empty()) {
+        json::Array unthemed;
+        for (std::string& id : plan.unthemed) {
+            unthemed.emplace_back(std::move(id));
+        }
+        result["unthemed"] = std::move(unthemed);
+    }
+    return Reply::success(std::move(result));
+}
+
 } // namespace
 
 void register_commands(command::Registry& registry) {
@@ -583,6 +658,22 @@ void register_commands(command::Registry& registry) {
             },
             {"path"}),
         .handler = soundtrack_render,
+    });
+
+    json::Value states = property("array", "Game states the music follows, e.g. [\"combat\"]; "
+                                           "each no cue names gets one.");
+    states["items"]["type"] = "string";
+    states["uniqueItems"] = true;
+    registry.add({
+        .name = "soundtrack.plan",
+        .description = "Drafts the storyboard's cue sheet: a cue for each scene, story beat and "
+                       "game state with no music, with the theme of its place, faction or "
+                       "character. Returns edits for storyboard.edit and the subjects that need "
+                       "a theme.",
+        .capabilities = {Capability::Read},
+        .effect = command::Effect::Read,
+        .params = params_schema({{"states", std::move(states)}}, {}),
+        .handler = soundtrack_plan,
     });
 }
 

@@ -68,7 +68,7 @@ as `entity.get`, reject it as an unknown param.
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.analyze`](#audioanalyze), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord), [`audio.input`](#audioinput) |
-| Soundtrack | [`score.import`](#scoreimport), [`score.export`](#scoreexport), [`soundtrack.render`](#soundtrackrender) |
+| Soundtrack | [`score.import`](#scoreimport), [`score.export`](#scoreexport), [`soundtrack.render`](#soundtrackrender), [`soundtrack.plan`](#soundtrackplan) |
 | Services | [`services.state`](#servicesstate), [`services.test`](#servicestest) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.review`](#storyboardreview), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
@@ -1747,8 +1747,10 @@ the input.
 
 ## Soundtrack
 
-Music written as [`.score.json` scores](scene-format.md#scores), moved to and from Standard
-MIDI Files so any music program can play or edit them, and played into stems a game plays. From
+Music planned in the [storyboard](storyboard-format.md#music), written as
+[`.score.json` scores](scene-format.md#scores), moved to and from Standard MIDI Files so any
+music program can play or edit them, and played into stems a game plays. From
+[examples/soundtrack-plan](../../examples/soundtrack-plan/),
 [examples/music-scores](../../examples/music-scores/) and
 [examples/soundtrack-render](../../examples/soundtrack-render/).
 
@@ -1867,6 +1869,39 @@ It writes `music/battle/bass.ogg` and `music/battle/bass.audio.json`, and so on 
 A track whose instrument the SoundFont lacks, a file that isn't a SoundFont 2 file (at
 `/soundfont`), a score that doesn't validate (at `/path`) and an unknown name in `tracks` (at
 its index, with the closest name) are errors.
+
+### soundtrack.plan
+
+Drafts the storyboard's cue sheet: a [`cue`](storyboard-format.md#music) for each scene no cue
+plays in, each story beat no cue plays during and each game state in `states` that no cue names,
+returned as `edits` that [`storyboard.edit`](#storyboardedit) takes as they are. Change what
+should differ before passing them on; nothing is written.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `states` | array of strings | | Game states the music follows, e.g. `["explore", "combat"]` |
+
+- A scene's cue plays the theme whose `links` name the scene; else the theme of the place it is
+  set in, else of a faction, else of a character. Where it is set and who is in it come from the
+  scene's `StoryRef` IDs and what those name: a beat's `place` and `characters`, a character's
+  `home` and `faction`, a place's `region`. A cue for a beat finds its theme the same way.
+- A scene's cue also plays during the beats its `StoryRef` IDs name, or whose `links` name it,
+  that no cue plays during yet.
+- Cue IDs come from the scene's file name, the beat's ID or the state, with `_2` and so on if
+  taken. A state's cue has no theme.
+- `unthemed` lists the places, factions and characters cues found no theme for, so an agent knows
+  which themes to write.
+
+Every `.scene.json` file in the project is read, except those in `build/`; the open scene as it
+is now. A storyboard that doesn't load fails with its first problem. Needs: `read`.
+
+```json
+{"states": ["combat"]}
+```
+
+```json
+{"edits":[{"id":"cue/harbor","set":{"name":"Harbor","scenes":["scenes/harbor.scene.json"],"summary":"Plays in scenes/harbor.scene.json.","theme":"theme/sea"},"version":null},{"id":"cue/lighthouse","set":{"beats":["beat/storm"],"name":"Lighthouse","scenes":["scenes/lighthouse.scene.json"],"summary":"Plays in scenes/lighthouse.scene.json.","theme":"theme/sea"},"version":null},{"id":"cue/wreck","set":{"beats":["beat/wreck"],"name":"The wreck","summary":"Plays during beat/wreck."},"version":null},{"id":"cue/combat","set":{"name":"Combat","states":["combat"],"summary":"Plays in the combat state."},"version":null}],"unthemed":["place/reef"]}
+```
 
 ## Services
 
@@ -2041,7 +2076,10 @@ Returns, each with every field:
   those entities;
 - entries whose `links` name those files, those scenes, the prefabs their entities extend, or a
   folder one of them is in;
-- rules, tones, palettes and budgets that apply everywhere (those with no `links` or `refs`);
+- rules, tones, palettes, budgets and loudness targets that apply everywhere (those with no
+  `links` or `refs`);
+- the theme of each cue among those, since its key, tempo, instruments and mood are what the
+  cue's music is made from;
 - open tasks and live decisions that link to those files or name those entries.
 
 `related` lists the other entries those name, with name and summary only. With `since`, `changed`
@@ -2087,8 +2125,9 @@ names no entry, and a texture (`.png` or `.bmp`) that breaks the style: larger o
 [storyboard format](storyboard-format.md#checks)). Every `.scene.json`, `.prefab.json` and
 texture file in the project is read, except those in `build/` and in folders whose names start
 with `.`; the open scene is checked as it is now. Warnings: a link to a file that does not exist,
-since open work can link files still to be made. `slash-cli project validate` runs the same
-check.
+since open work can link files still to be made, and, once the storyboard has a `cue`, each scene
+no cue plays in and each story beat no cue plays during (see
+[`soundtrack.plan`](#soundtrackplan)). `slash-cli project validate` runs the same check.
 
 Takes no params. Needs: `read`.
 

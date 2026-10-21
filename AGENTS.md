@@ -109,8 +109,8 @@ and `serve` poll between ticks. `asset.list` shows what is loaded and the bytes 
 
 ## Storyboard
 
-The storyboard is a game's facts that are not code (style, world, story, design rules, names,
-decisions, open work) as typed entries in `storyboard/*.json`, under IDs such as
+The storyboard is a game's facts that are not code (style, world, story, design rules, music,
+names, decisions, open work) as typed entries in `storyboard/*.json`, under IDs such as
 `character/mira`. Kinds and their fields are defined in `engine/storyboard`
 (`$cli schema storyboard`); `tests/data/game/storyboard` has an example. `storyboard.query` finds
 entries and returns their versions; `storyboard.edit` takes the version it read, refuses stale
@@ -963,7 +963,13 @@ by its spectrum and recorded, and `examples/interactive-music` a score that foll
 
 ## Soundtracks
 
-`engine/soundtrack` turns music into text agents read and write. A `.score.json` file
+`engine/soundtrack` turns music into text agents read and write. The storyboard's
+`music.json` plans it: `theme` entries (key, tempo, instruments and mood for characters, places
+or factions), `loudness` targets and the cue sheet, `cue` entries saying which theme plays in
+which scenes, story beats and game states. `soundtrack.plan` (`src/plan.cpp`) drafts the cues a
+game lacks as edits for `storyboard.edit`, each with the theme of the place, faction or character
+its scene or beat is about; `storyboard.check` warns about scenes and beats with no cue once
+there are cues, and `storyboard.brief` sends a cue's theme in full. A `.score.json` file
 (`$cli schema score`; `src/score.cpp`) holds a tempo, meter, key, named sections and tracks of
 General MIDI instruments or drums, each bar a line of notes such as `"D2:4 ; D3 F3 A3 D4@110"`;
 `decode_bar` reads a line and `encode_bars` writes notes back as the shortest line that plays
@@ -974,8 +980,9 @@ synchronized `.audio.json` file that plays them together; looping stems are the 
 length, with what rings past the end added onto the start. Its instruments are a SoundFont 2
 file or the engine's own (`src/sound_bank.cpp`: a voice per General MIDI family and a drum kit,
 synthesized without libm). TinySoundFont and libvorbis are fetched for the tools only. Scores
-are a game's source, not its data, so exports leave them out. `examples/music-scores` sends a
-piece through MIDI and back, and `examples/soundtrack-render` renders a loop and measures it.
+are a game's source, not its data, so exports leave them out. `examples/soundtrack-plan` plans
+a game's cues, `examples/music-scores` sends a piece through MIDI and back, and
+`examples/soundtrack-render` renders a loop and measures it.
 
 ## Ads, analytics, purchases and achievements
 
@@ -1105,7 +1112,7 @@ CI rejects unformatted code and any clang-tidy finding.
   animations and the system that plays them),
   `physics2d` (2D bodies, areas, joints and queries on Box2D), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
-  queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files and rendering stems),
+  queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems and drafting cue sheets),
   `command` (commands, sessions with undo, JSON-RPC and MCP),
   `debug` (the debug overlay over a running game), `server` (localhost HTTP over a session),
   `ai` (language model providers, their adapters, `providers.json`, replay and the `ai.*`

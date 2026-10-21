@@ -4122,9 +4122,13 @@ Reply storyboard_check(Session& session, const json::Value& /*params*/) {
         return Reply::failure(files.error());
     }
     std::vector<std::string> textures;
+    std::vector<std::string> scenes;
     for (const std::string& path : files.value()) {
         if (path.ends_with(".png") || path.ends_with(".bmp")) {
             textures.push_back(path);
+        }
+        if (path.ends_with(world::kSceneSuffix)) {
+            scenes.push_back(path);
         }
         if (path == open ||
             (!path.ends_with(world::kSceneSuffix) && !path.ends_with(world::kPrefabSuffix))) {
@@ -4159,6 +4163,11 @@ Reply storyboard_check(Session& session, const json::Value& /*params*/) {
                                        .pixels = std::move(image.value().pixels)};
         },
         errors);
+    // Scenes and story beats the cue sheet gives no music.
+    if (!open.empty() && std::ranges::find(scenes, open) == scenes.end()) {
+        scenes.push_back(open);
+    }
+    storyboard::check_music(entries, scenes, checked.warnings);
 
     json::Value result;
     result["valid"] = errors.empty();
@@ -6038,7 +6047,8 @@ void register_builtin_commands(Registry& registry) {
         .name = "storyboard.check",
         .description = "Call after a task: checks storyboard files, references, glossary words "
                        "to avoid, StoryRef IDs in scenes and prefabs, and textures against "
-                       "palettes and budgets; missing link targets are warnings.",
+                       "palettes and budgets; missing link targets, and scenes and beats with "
+                       "no cue once there are cues, are warnings.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(),

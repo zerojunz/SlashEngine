@@ -1,0 +1,16 @@
+{
+  "entries": {
+    "beat/storm": {
+      "characters": ["character/ada", "character/keeper"],
+      "name": "The storm",
+      "place": "place/lighthouse",
+      "summary": "Ada rides out the storm in the lighthouse."
+    },
+    "beat/wreck": {
+      "name": "The wreck",
+      "place": "place/reef",
+      "summary": "A ship breaks up on the reef."
+    }
+  },
+  "format": 1
+}

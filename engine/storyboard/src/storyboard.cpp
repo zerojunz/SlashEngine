@@ -111,6 +111,53 @@ std::vector<Kind> make_kinds() {
          .fields = {{.name = "action", .type = Text, .doc = "The action name, e.g. \"jump\"."},
                     {.name = "keys", .type = Texts, .doc = "Keyboard and mouse, e.g. [\"Space\"]."},
                     {.name = "gamepad", .type = Texts, .doc = "Gamepad, e.g. [\"A\"]."}}},
+        {.name = "theme",
+         .file = "music",
+         .doc = "A musical theme for characters, places or factions.",
+         .fields = {{.name = "subjects",
+                     .type = Refs,
+                     .doc = "The characters, places and factions it stands for."},
+                    {.name = "key", .type = Text, .doc = "e.g. \"D minor\"."},
+                    {.name = "tempo", .type = Number, .doc = "Beats per minute."},
+                    {.name = "bar_beats", .type = Integer, .doc = "Beats per bar; 4 if unset."},
+                    {.name = "instruments",
+                     .type = Texts,
+                     .doc =
+                         R"(General MIDI instruments, named as scores name them, e.g. "cello".)"},
+                    {.name = "mood", .type = Texts, .doc = R"(e.g. ["tense", "hopeful"].)"}}},
+        {.name = "cue",
+         .file = "music",
+         .doc = "A piece of music and when it plays: one line of the cue sheet.",
+         .fields =
+             {{.name = "theme", .type = Ref, .doc = "The theme it plays.", .ref_kind = "theme"},
+              {.name = "scenes", .type = Paths, .doc = "The scenes it plays in."},
+              {.name = "beats",
+               .type = Refs,
+               .doc = "The story beats it plays during.",
+               .ref_kind = "beat"},
+              {.name = "states",
+               .type = Texts,
+               .doc = "The game states it plays in, e.g. \"combat\"."},
+              {.name = "layers",
+               .type = Texts,
+               .doc = R"(Its intensity levels, lowest first, e.g. ["explore", "chase"].)"},
+              {.name = "plays",
+               .type = Choice,
+               .doc = "loop (if unset) or once, as a fanfare does.",
+               .choices = {"loop", "once"}},
+              {.name = "music",
+               .type = Paths,
+               .doc = "The .score.json and .audio.json files that play it."}}},
+        {.name = "loudness",
+         .file = "music",
+         .doc = "A loudness target for the sounds in its links, or for all music.",
+         .fields = {{.name = "lufs", .type = Number, .doc = "Integrated loudness, e.g. -16."},
+                    {.name = "true_peak",
+                     .type = Number,
+                     .doc = "The highest true peak, in dBTP, e.g. -1."},
+                    {.name = "tolerance",
+                     .type = Number,
+                     .doc = "How far loudness may be from lufs, in LU; 2 if unset."}}},
         {.name = "term",
          .file = "glossary",
          .doc = "A canonical name; name is the spelling to use.",
@@ -303,6 +350,20 @@ void for_each_link(const Kind& kind, const json::Value& entry, Visit&& visit) {
     });
 }
 
+// Each string in one of an entry's list fields.
+template <typename Visit>
+void for_each_string(const json::Value& entry, std::string_view field, Visit&& visit) {
+    const json::Value* list = entry.find(field);
+    if (list == nullptr || !list->is_array()) {
+        return;
+    }
+    for (const json::Value& item : list->as_array()) {
+        if (item.is_string()) {
+            visit(item.as_string());
+        }
+    }
+}
+
 bool is_word_char(char c) {
     const auto byte = static_cast<unsigned char>(c);
     return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || byte >= 0x80;
@@ -340,8 +401,8 @@ std::string pad(std::int64_t value, std::size_t width) {
 } // namespace
 
 const std::vector<std::string_view>& files() {
-    static const std::vector<std::string_view> kFiles = {"style",    "world",     "story", "design",
-                                                         "glossary", "decisions", "work"};
+    static const std::vector<std::string_view> kFiles = {"style", "world",    "story",     "design",
+                                                         "music", "glossary", "decisions", "work"};
     return kFiles;
 }
 
@@ -928,6 +989,39 @@ void check_story_refs(const json::Object& entries, std::string_view file,
     }
 }
 
+void check_music(const json::Object& entries, const std::vector<std::string>& scenes,
+                 std::vector<FileError>& warnings) {
+    std::vector<std::string> cue_scenes;
+    std::set<std::string> cue_beats;
+    bool any_cue = false;
+    for (const auto& [id, entry] : entries) {
+        if (const Kind* kind = kind_of(id); kind == nullptr || kind->name != "cue") {
+            continue;
+        }
+        any_cue = true;
+        for_each_string(entry, "scenes",
+                        [&](const std::string& scene) { cue_scenes.push_back(scene); });
+        for_each_string(entry, "beats", [&](const std::string& beat) { cue_beats.insert(beat); });
+    }
+    if (!any_cue) {
+        return;
+    }
+    for (const std::string& scene : scenes) {
+        if (std::ranges::none_of(cue_scenes,
+                                 [&](const std::string& link) { return covers(link, scene); })) {
+            warnings.push_back(
+                {scene, "", "no cue plays in this scene; soundtrack.plan drafts one"});
+        }
+    }
+    for (const auto& [id, entry] : entries) {
+        if (const Kind* kind = kind_of(id);
+            kind != nullptr && kind->name == "beat" && !cue_beats.contains(id)) {
+            warnings.push_back({file_path(kind->file), "/entries/" + json::pointer_escape(id),
+                                "no cue plays during " + id + "; soundtrack.plan drafts one"});
+        }
+    }
+}
+
 void check_textures(const json::Object& entries, const std::vector<std::string>& textures,
                     const std::function<std::optional<Texture>(std::string_view path)>& load,
                     std::vector<FileError>& errors) {
@@ -1134,7 +1228,8 @@ Brief brief(const json::Object& entries, const std::vector<std::string>& ids,
             chosen.insert(id);
         }
     }
-    constexpr std::array<std::string_view, 4> kEverywhere = {"rule", "tone", "palette", "budget"};
+    constexpr std::array<std::string_view, 5> kEverywhere = {"rule", "tone", "palette", "budget",
+                                                             "loudness"};
     const auto is_work = [](const Kind& kind) {
         return kind.name == "task" || kind.name == "decision";
     };
@@ -1147,6 +1242,14 @@ Brief brief(const json::Object& entries, const std::vector<std::string>& ids,
                             entry.find("links") == nullptr && entry.find("refs") == nullptr;
         if (global || links_any(*kind, entry)) {
             chosen.insert(id);
+        }
+    }
+    // A cue's theme in full: its key, tempo, instruments and mood are what its music is made from.
+    for (const auto& [id, entry] : entries) {
+        if (chosen.contains(id) && kind_of(id)->name == "cue") {
+            if (const std::string theme = text_of(entry, "theme"); entries.contains(theme)) {
+                chosen.insert(theme);
+            }
         }
     }
     // Open work and live decisions about the paths or any of those; finished ones are history.

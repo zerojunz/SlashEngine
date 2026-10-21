@@ -70,8 +70,8 @@ struct Kind {
     std::vector<Field> fields{}; // NOLINT(readability-redundant-member-init)
 };
 
-// The files a storyboard is made of, in order: style, world, story, design, glossary, decisions
-// and work.
+// The files a storyboard is made of, in order: style, world, story, design, music, glossary,
+// decisions and work.
 [[nodiscard]] const std::vector<std::string_view>& files();
 // "storyboard/world.json" for "world".
 [[nodiscard]] std::string file_path(std::string_view file);
@@ -195,10 +195,17 @@ void check_textures(const json::Object& entries, const std::vector<std::string>&
                     const std::function<std::optional<Texture>(std::string_view path)>& load,
                     std::vector<FileError>& errors);
 
+// Once the storyboard has a cue, a warning for each scene (by project path) no cue plays in and
+// each story beat no cue plays during: music the cue sheet has still to plan. A cue's scenes may
+// name folders, which cover every scene in them.
+void check_music(const json::Object& entries, const std::vector<std::string>& scenes,
+                 std::vector<FileError>& warnings);
+
 // The facts a task needs, so an agent reads a few entries rather than the whole storyboard:
-// - entries: the given IDs, entries linked to the given paths, the rules and style that apply
-//   everywhere (those with no links or refs), and the open tasks and live decisions that link to
-//   those paths or name those entries, each with every field;
+// - entries: the given IDs, entries linked to the given paths, the rules, style and loudness
+//   targets that apply everywhere (those with no links or refs), the themes of the cues among
+//   those, and the open tasks and live decisions that link to those paths or name those entries,
+//   each with every field;
 // - related: the entries those name, with name and summary only.
 struct Brief {
     json::Array entries;
