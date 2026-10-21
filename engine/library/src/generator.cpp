@@ -3,6 +3,7 @@
 #include "adapters.hpp"
 
 #include "slash/core/text.hpp"
+#include "slash/library/music.hpp"
 #include "slash/render/image.hpp"
 
 #include <algorithm>
@@ -25,6 +26,10 @@ constexpr std::string_view kTest = "test";
 constexpr int kDefaultImageSide = 64;
 constexpr int kSampleRate = 22050;
 constexpr double kDefaultSeconds = 0.5;
+// The test generator's music: 120 bpm, four beats to the bar and four bars unless asked.
+constexpr double kDefaultBpm = 120.0;
+constexpr int kDefaultBarBeats = 4;
+constexpr int kDefaultBars = 4;
 
 struct Rgb {
     int r = 0;
@@ -418,6 +423,172 @@ Result<std::string> refine_sound(const GenerateRequest& request, std::int64_t se
     return wav(samples);
 }
 
+// The frequency of each note from C4 to B4 in millihertz, equal tempered from A4 at 440 Hz.
+constexpr std::array<std::uint64_t, 12> kOctave4 = {261626, 277183, 293665, 311127, 329628, 349228,
+                                                    369994, 391995, 415305, 440000, 466164, 493883};
+
+// The note semitones above (or below) C4, in millihertz.
+std::uint64_t note_millihertz(int semitones) {
+    const int octave = (semitones >= 0 ? semitones : semitones - 11) / 12;
+    const std::uint64_t base = kOctave4.at(static_cast<std::size_t>(semitones - (octave * 12)));
+    return octave >= 0 ? base << static_cast<unsigned>(octave)
+                       : base >> static_cast<unsigned>(-octave);
+}
+
+// A triangle wave's sample, -32767 to 32767, at a 32-bit phase.
+std::int32_t triangle(std::uint32_t phase) {
+    const auto ramp = static_cast<std::int32_t>(phase >> 15U); // 0 to 131071
+    return ramp < 65536 ? ramp - 32768 : 98303 - ramp;
+}
+
+struct Chord {
+    int root = 0; // semitones above the tonic
+    bool minor = false;
+};
+
+// Chord progressions, one chord a bar: I V vi IV and I vi IV V in a major key, i VI III VII and
+// i iv VII III in a minor one.
+constexpr std::array<std::array<Chord, 4>, 2> kMajorProgressions = {{
+    {{{0, false}, {7, false}, {9, true}, {5, false}}},
+    {{{0, false}, {9, true}, {5, false}, {7, false}}},
+}};
+constexpr std::array<std::array<Chord, 4>, 2> kMinorProgressions = {{
+    {{{0, true}, {8, false}, {3, false}, {10, false}}},
+    {{{0, true}, {5, true}, {10, false}, {3, false}}},
+}};
+
+struct MusicPlan {
+    double bpm = kDefaultBpm;
+    int bar_beats = kDefaultBarBeats;
+    int bars = kDefaultBars;
+    Key key;
+    int progression = 0;
+};
+
+// Chords on every beat over a bass line, each beat rising from silence and falling back to it, so
+// every beat is heard and the music loops cleanly after any whole bar.
+std::vector<std::int16_t> make_music(const MusicPlan& plan) {
+    const auto millibpm = static_cast<std::uint64_t>(std::llround(plan.bpm * 1000.0));
+    const auto beats =
+        static_cast<std::uint64_t>(plan.bars) * static_cast<std::uint64_t>(plan.bar_beats);
+    // Beat b starts at frame b * 60 * rate / bpm, rounded down.
+    const auto beat_start = [millibpm](std::uint64_t beat) {
+        return beat * 60U * kSampleRate * 1000U / millibpm;
+    };
+    std::vector<std::int16_t> samples(beat_start(beats));
+    const auto& progression =
+        plan.key.minor ? kMinorProgressions.at(static_cast<std::size_t>(plan.progression))
+                       : kMajorProgressions.at(static_cast<std::size_t>(plan.progression));
+    constexpr std::uint64_t kAttack = kSampleRate / 200; // 5 ms
+    constexpr std::uint64_t kRelease = kSampleRate / 100;
+    std::array<std::uint32_t, 4> phases{};
+    for (std::uint64_t beat = 0; beat < beats; ++beat) {
+        const Chord chord = progression.at((beat / static_cast<std::uint64_t>(plan.bar_beats)) % 4);
+        const int root = plan.key.tonic + chord.root;
+        // The bass two octaves below the chord, the chord's root, third and fifth around C4.
+        const std::array<int, 4> notes = {root - 24, root, root + (chord.minor ? 3 : 4), root + 7};
+        constexpr std::array<std::int64_t, 4> kLevels = {300, 150, 150, 150}; // in thousandths
+        // The first beat of a bar is louder.
+        const std::int64_t accent =
+            beat % static_cast<std::uint64_t>(plan.bar_beats) == 0 ? 1000 : 800;
+        const std::uint64_t from = beat_start(beat);
+        const std::uint64_t length = beat_start(beat + 1) - from;
+        for (std::uint64_t i = 0; i < length; ++i) {
+            // Up to full over the attack, down to 30% over the beat, to silence over the release.
+            std::int64_t envelope = 1000 - static_cast<std::int64_t>(700 * i / length);
+            if (i < kAttack) {
+                envelope =
+                    envelope * static_cast<std::int64_t>(i) / static_cast<std::int64_t>(kAttack);
+            }
+            if (i + kRelease > length) {
+                envelope = envelope * static_cast<std::int64_t>(length - i) /
+                           static_cast<std::int64_t>(kRelease);
+            }
+            std::int64_t mixed = 0;
+            for (std::size_t v = 0; v < notes.size(); ++v) {
+                phases.at(v) += static_cast<std::uint32_t>((note_millihertz(notes.at(v)) << 32U) /
+                                                           (std::uint64_t{kSampleRate} * 1000U));
+                mixed += triangle(phases.at(v)) * kLevels.at(v);
+            }
+            samples[from + i] =
+                static_cast<std::int16_t>(mixed / 1000 * envelope / 1000 * accent / 1000);
+        }
+    }
+    return samples;
+}
+
+// What the request asks for: its tempo and beats per bar, its key (or one its prompt's mood
+// suggests), and as many whole bars as fill its seconds.
+MusicPlan plan_music(const GenerateRequest& request, std::int64_t seed) {
+    MusicPlan plan;
+    if (request.bpm > 0.0) {
+        plan.bpm = std::clamp(request.bpm, 30.0, 300.0);
+    }
+    if (request.bar_beats > 0) {
+        plan.bar_beats = std::clamp(request.bar_beats, 2, 32);
+    }
+    if (const std::optional<Key> key = parse_key(request.key); key) {
+        plan.key = *key;
+    } else if (has_any(words(request.prompt), {"boss", "dark", "eerie", "minor", "sad", "scary",
+                                               "sombre", "somber", "tense"})) {
+        plan.key = {.tonic = 9, .minor = true};
+    }
+    if (request.seconds > 0.0) {
+        plan.bars = std::max(
+            1, static_cast<int>(std::lround(request.seconds * plan.bpm / 60.0 / plan.bar_beats)));
+    }
+    plan.progression = static_cast<int>(static_cast<std::uint64_t>(seed) % 2U);
+    return plan;
+}
+
+// The parent's music made faster, slower, higher, lower, longer or shorter, as the prompt says;
+// a variation in another progression if it says none of those. The seed picks the progression,
+// so the refined music's seed is its parent's, or the next one for a variation.
+Result<MusicPlan> refine_music(const GenerateRequest& request, std::int64_t& seed) {
+    if (request.parent == nullptr || request.parent->generator != kTest ||
+        request.parent->bpm <= 0.0) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "the test generator refines only the music it makes");
+    }
+    const Record& parent = *request.parent;
+    MusicPlan plan;
+    plan.bpm = parent.bpm;
+    plan.bar_beats = parent.bar_beats > 0 ? parent.bar_beats : kDefaultBarBeats;
+    plan.bars = std::max(1, parent.beat_count / plan.bar_beats);
+    if (const std::optional<Key> key = parse_key(parent.key); key) {
+        plan.key = *key;
+    }
+    seed = parent.seed.value_or(0);
+    const std::vector<std::string> found = words(request.prompt);
+    bool known = false;
+    if (has_any(found, {"faster", "fast", "quicker"})) {
+        plan.bpm = plan.bpm * 5.0 / 4.0;
+        known = true;
+    } else if (has_any(found, {"slower", "slow"})) {
+        plan.bpm = plan.bpm * 4.0 / 5.0;
+        known = true;
+    }
+    if (has_any(found, {"higher", "high", "up"})) {
+        plan.key.tonic = (plan.key.tonic + 2) % 12;
+        known = true;
+    } else if (has_any(found, {"lower", "low", "down"})) {
+        plan.key.tonic = (plan.key.tonic + 10) % 12;
+        known = true;
+    }
+    if (has_any(found, {"longer", "long"})) {
+        plan.bars *= 2;
+        known = true;
+    } else if (has_any(found, {"shorter", "short"})) {
+        plan.bars = std::max(1, plan.bars / 2);
+        known = true;
+    }
+    if (!known) {
+        ++seed;
+    }
+    plan.progression = static_cast<int>(static_cast<std::uint64_t>(seed) % 2U);
+    return plan;
+}
+
 class TestGenerator final : public Generator {
 public:
     [[nodiscard]] const GeneratorCapabilities& capabilities() const override {
@@ -426,7 +597,7 @@ public:
 
     Result<Generated> generate(const GenerateRequest& request,
                                const ai::CancelFlag* /*cancel*/) override {
-        const std::int64_t seed = request.seed.value_or(0);
+        std::int64_t seed = request.seed.value_or(0);
         Generated out;
         out.model = std::string(kTest);
         out.seed = seed;
@@ -438,6 +609,19 @@ public:
             }
             out.data = std::move(made).value();
             out.format = "png";
+            return out;
+        }
+        if (request.type == "music") {
+            auto plan = request.parent != nullptr ? refine_music(request, seed)
+                                                  : Result<MusicPlan>(plan_music(request, seed));
+            if (!plan) {
+                return plan.error();
+            }
+            out.data = wav(make_music(plan.value()));
+            out.seed = seed;
+            out.format = "wav";
+            out.bpm = plan.value().bpm;
+            out.key = key_name(plan.value().key);
             return out;
         }
         if (request.parent != nullptr) {
@@ -454,12 +638,17 @@ public:
     }
 
 private:
-    GeneratorCapabilities capabilities_{
-        .images = true, .sounds = true, .refines_images = true, .refines_sounds = true};
+    GeneratorCapabilities capabilities_{.images = true,
+                                        .sounds = true,
+                                        .refines_images = true,
+                                        .refines_sounds = true,
+                                        .music = true,
+                                        .refines_music = true};
 };
 
-bool makes(const Generator& generator, std::string_view type) {
-    return type == "image" ? generator.capabilities().images : generator.capabilities().sounds;
+// "images", "sounds" or "music", for messages.
+std::string plural(std::string_view type) {
+    return type == "music" ? std::string(type) : std::string(type) + "s";
 }
 
 Result<std::shared_ptr<Generator>> make_generator(const ai::GeneratorConfig& config,
@@ -481,6 +670,20 @@ Result<std::shared_ptr<Generator>> make_generator(const ai::GeneratorConfig& con
 
 } // namespace
 
+bool makes(const GeneratorCapabilities& can, std::string_view type) noexcept {
+    if (type == "image") {
+        return can.images;
+    }
+    return type == "music" ? can.music : can.sounds;
+}
+
+bool refines(const GeneratorCapabilities& can, std::string_view type) noexcept {
+    if (type == "image") {
+        return can.refines_images;
+    }
+    return type == "music" ? can.refines_music : can.refines_sounds;
+}
+
 std::shared_ptr<Generator> test_generator() {
     return std::make_shared<TestGenerator>();
 }
@@ -492,14 +695,13 @@ Result<OpenedGenerator> open_generator(const ai::Config& config, std::string_vie
         std::vector<std::string> candidates;
         for (const auto& [generator_name, settings] : config.generators) {
             auto made = make_generator(settings, options);
-            if (made && makes(*made.value(), type)) {
+            if (made && makes(made.value()->capabilities(), type)) {
                 candidates.push_back(generator_name);
             }
         }
         if (candidates.empty()) {
             return make_error(ErrorCode::NotFound,
-                              "providers.json names no generator that makes " +
-                                  std::string(type == "image" ? "images" : "sounds") +
+                              "providers.json names no generator that makes " + plural(type) +
                                   "; add one under \"generators\", or pass generator \"test\" "
                                   "for placeholders");
         }
@@ -508,10 +710,9 @@ Result<OpenedGenerator> open_generator(const ai::Config& config, std::string_vie
             for (const std::string& candidate : candidates) {
                 list += (list.empty() ? "" : ", ") + candidate;
             }
-            return make_error(ErrorCode::InvalidArgument,
-                              "several generators make " +
-                                  std::string(type == "image" ? "images" : "sounds") + " (" + list +
-                                  "); name one");
+            return make_error(ErrorCode::InvalidArgument, "several generators make " +
+                                                              plural(type) + " (" + list +
+                                                              "); name one");
         }
         chosen = candidates.front();
     }
@@ -535,9 +736,9 @@ Result<OpenedGenerator> open_generator(const ai::Config& config, std::string_vie
     if (!made) {
         return made.error();
     }
-    if (!makes(*made.value(), type)) {
+    if (!makes(made.value()->capabilities(), type)) {
         return make_error(ErrorCode::InvalidArgument,
-                          "the generator \"" + chosen + "\" makes no " + std::string(type) + "s");
+                          "the generator \"" + chosen + "\" makes no " + plural(type));
     }
     OpenedGenerator opened;
     opened.generator = std::move(made).value();

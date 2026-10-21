@@ -234,6 +234,19 @@ class EffectInstance; // effects.hpp
 class GeneratorPlayback;
 class PolyphonicPlayback;
 class Server;
+
+// Music starting a clip: one of an interactive stream's clips, or the next of a playlist's
+// streams. The audio system emits each as a kClipChanged world event from the player.
+struct ClipChange {
+    std::string clip;       // the clip's name, or the playlist stream's path; "" once it stops
+    std::string from;       // what played before it, or "" as the music starts
+    int transition = -1;    // the index of the transitions entry it followed, or -1 for none
+    bool filler = false;    // a transition's filler clip, between two others
+    bool automatic = false; // auto advance or a playlist moving on, not a switch asked for
+    double waited = 0.0;    // seconds from the switch to the clip starting: its beat or bar
+};
+// The world event a player emits as its music starts a clip, with the ClipChange's fields.
+inline constexpr std::string_view kClipChanged = "clip_changed";
 class Stream;
 
 // A stream playing, as Godot's AudioStreamPlayback.
@@ -264,6 +277,8 @@ public:
     [[nodiscard]] virtual json::Value parameter(std::string_view /*name*/) const { return {}; }
     // The interactive music clip playing, or "".
     [[nodiscard]] virtual std::string_view clip() const { return {}; }
+    // Moves the clips music started since the last call to the end of changes, oldest first.
+    virtual void take_clip_changes(std::vector<ClipChange>& /*changes*/) {}
     // This playback as Godot's AudioStreamGeneratorPlayback or AudioStreamPlaybackPolyphonic, or
     // nullptr if it plays another kind of stream.
     [[nodiscard]] virtual GeneratorPlayback* generator() { return nullptr; }

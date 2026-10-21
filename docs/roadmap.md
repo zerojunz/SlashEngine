@@ -525,7 +525,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         a library server that `slash-cli` runs, so a teammate's request finds assets someone
         else already made
   - [x] A test generator, so agents and CI can use the library headless with no model or key
-- [ ] Soundtracks: agents plan, write, arrange and check a game's music, played by the
+- [x] Soundtracks: agents plan, write, arrange and check a game's music, played by the
       interactive music already built in milestone 5 ([design](design.md#soundtracks)). The
       parts that need no model (scores, analysis, arranging and checks) can come first
   - [x] Music in the storyboard: themes for characters, places and factions (key, tempo,
@@ -537,7 +537,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         exactly instead of making the whole piece again
   - [x] `soundtrack.render`: scores played through a SoundFont synth (TinySoundFont) into one
         `.ogg` stem per track, with `bpm`, `beat_count` and `bar_beats` filled in
-  - [ ] Generated and imported music: music models through the asset library's generator
+  - [x] Generated and imported music: music models through the asset library's generator
         adapters, and composers' tracks and stems imported as library assets, each with its
         generator or author and license recorded
   - [x] `soundtrack.arrange`: turns a cue sheet into `.audio.json` files the runtime already
@@ -549,7 +549,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] `soundtrack.check`: missing cues, beat counts that don't match a file's length, loops
         that click, transitions off the bar, keys that clash across a transition and
         loudness off target; run by the headless test command and CI
-  - [ ] A music timeline: `run.until` and `playtest.run` report which clip played when and
+  - [x] A music timeline: `run.until` and `playtest.run` report which clip played when and
         every transition, so agents can check the music follows the game
 
 ### Milestone 7: 3D feature set (Planned)
@@ -727,7 +727,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Planned |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Planned |
 | Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials are done; sub-emitters, trails, collision, turbulence, attractors and particle graphs in 5 |
-| Soundtracks | Music planned in the storyboard, written as scores or generated, arranged into interactive music and checked by analysis, all through commands | 6 | In part: storyboard music and `soundtrack.plan`, scores, MIDI import and export, `soundtrack.render`, `soundtrack.arrange`, `soundtrack.check` and `audio.analyze` are done |
+| Soundtracks | Music planned in the storyboard, written as scores or generated, arranged into interactive music and checked by analysis, all through commands | 6 | Done |
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | In part: 2D players, buses, effects, area bus overrides, interactive music, generated and polyphonic streams and microphone input are done; 3D audio in 7 |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Done |

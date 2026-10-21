@@ -140,7 +140,7 @@ Sessions that run tests (`test.run`) record nothing.
 
 ## Generators
 
-`generators` names the image and sound generators the [asset library](commands.md#asset-library)
+`generators` names the image, sound and music generators the [asset library](commands.md#asset-library)
 calls, as `providers` names language models: by name, each with a `type`, and a `model`, `url`,
 `api_key_env` and `headers` where the type takes them. `license` is the terms its outputs come
 under, recorded with every asset it makes; `options` are merged into every request's body, as the
@@ -156,7 +156,9 @@ service names them; and `timeout_seconds` and `max_retries` work as a provider's
               "options": {"steps": 25, "negative_prompt": "blurry, text"}},
     "voices": {"type": "openai-speech", "api_key_env": "OPENAI_API_KEY",
                "options": {"voice": "marin", "instructions": "A tired old innkeeper."}},
-    "sfx": {"type": "elevenlabs-sound", "api_key_env": "ELEVENLABS_API_KEY"}
+    "sfx": {"type": "elevenlabs-sound", "api_key_env": "ELEVENLABS_API_KEY"},
+    "score": {"type": "stability-audio", "api_key_env": "STABILITY_API_KEY",
+              "license": "Stability AI Community License", "options": {"output_format": "wav"}}
   }
 }
 ```
@@ -168,7 +170,9 @@ service names them; and `timeout_seconds` and `max_retries` work as a provider's
 | `automatic1111` | Images, through a Stable Diffusion web UI's API (`/sdapi/v1/txt2img`): AUTOMATIC1111 or a fork that keeps it, started with `--api` | Yes, through `/sdapi/v1/img2img` | The checkpoint it has loaded (`model` names another), `http://127.0.0.1:7860` |
 | `openai-speech` | Spoken lines, through OpenAI's text to speech; the prompt is the line spoken | No | `gpt-4o-mini-tts`, `https://api.openai.com/v1` |
 | `elevenlabs-sound` | Sound effects, through ElevenLabs' sound generation | No | `eleven_text_to_sound_v2`, `https://api.elevenlabs.io` |
-| `test` | Placeholder images and tones made on the machine, the same on every platform, for tests and CI. Always there as `test`, even with no `generators` | Yes | |
+| `elevenlabs-music` | Music, through ElevenLabs' music generation (`/v1/music`), instrumental | No | `music_v1`, `https://api.elevenlabs.io` |
+| `stability-audio` | Music, through Stability AI's Stable Audio 2 and 2.5 (`/v2beta/audio/stable-audio-2/text-to-audio`) | No | `stable-audio-2.5`, `https://api.stability.ai` |
+| `test` | Placeholder images, tones and music made on the machine, the same on every platform, for tests and CI. Always there as `test`, even with no `generators` | Yes | |
 
 Services make images at their own sizes, so the library fits each one to the `width` and `height`
 asked for (a refine's parent's when it asks for none): the middle of the image at that shape,
@@ -184,6 +188,19 @@ shape doubled until its short side is at least 512. Images are always kept as PN
 format (raw samples become a `.wav` file). `automatic1111` sends `api_key_env`'s value, as
 `user:password`, as basic authentication, for a web UI started with `--api-auth`, and records the
 seed it drew with.
+
+Music services take the tempo, meter, key and loop asked for in words, so the library adds them to
+the prompt ("Tempo: 140 BPM. Meter: 3/4. Key: D minor. It loops seamlessly: its end leads straight
+back into its start."), then measures what comes back with [`audio.analyze`](commands.md#audioanalyze)
+and keeps what it measures (see [music](commands.md#music)). `seconds` defaults to 30.
+`elevenlabs-music` sends it as `music_length_ms` (3 s to 10 minutes) with `force_instrumental`, and
+its `output_format` option in the URL as `elevenlabs-sound` does. `stability-audio` sends a form:
+the prompt, `model`, `duration` (1 to 190 s), the seed and its options (`steps`, `cfg_scale`,
+`output_format`: `mp3` by default, or `wav`). Stable Audio 3's asynchronous API isn't supported
+yet. The `test` generator's music is a chord progression in the key asked for (A minor for
+prompts with words such as "dark" or "boss", C major otherwise) at the tempo asked for (120 bpm by
+default), with whole bars that loop on the beat; refining its music with "faster", "slower",
+"higher", "lower", "longer" or "shorter" changes that, and anything else makes a variation.
 
 `asset.generate` uses the one generator that makes the type asked for, or the one its `generator`
 param names. [`ai.providers`](commands.md#aiproviders) lists them, with whether each one's key is
