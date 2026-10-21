@@ -1,0 +1,10 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"world.query","params":{"with":["MeshInstance3D"]}}
+{"jsonrpc":"2.0","id":3,"method":"frame.capture","params":{"points":[[57,35],[80,33],[97,34],[80,48],[80,10],[80,75]]}}
+{"jsonrpc":"2.0","id":4,"method":"component.set","params":{"id":"table","components":{"Transform3D":{"position":[1.5,0.25,0]}}}}
+{"jsonrpc":"2.0","id":5,"method":"frame.capture","params":{"points":[[57,35],[80,33],[97,34]]}}
+{"jsonrpc":"2.0","id":6,"method":"entity.create","params":{"id":"pillar","components":{"Transform3D":{"position":[-2,1,-1]},"MeshInstance3D":{},"CylinderMesh":{"top_radius":0.3,"bottom_radius":0.4},"StandardMaterial3D":{"albedo_color":[0.8,0.8,0.75,1]}}}}
+{"jsonrpc":"2.0","id":7,"method":"component.set","params":{"id":"environment","components":{"WorldEnvironment":{"background_color":[0.95,0.6,0.4,1]}}}}
+{"jsonrpc":"2.0","id":8,"method":"frame.capture","params":{"path":"shots/table.png"}}
+{"jsonrpc":"2.0","id":9,"method":"entity.create","params":{"id":"ghost","components":{"Transform3D":{},"MeshInstance3D":{}}}}
+{"jsonrpc":"2.0","id":10,"method":"frame.summary"}

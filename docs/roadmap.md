@@ -570,6 +570,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Meshes, a depth buffer and `StandardMaterial3D`'s PBR inputs lit by up to 64
         directional, omni and spot lights in every render device, as Godot's Compatibility
         renderer (the low-end path), with the software device's CPU twin
+  - [x] 3D nodes in scenes, as Godot's: `Transform3D` trees, `MeshInstance3D` with Godot's
+        eight primitive meshes, `StandardMaterial3D`, `Camera3D`, `DirectionalLight3D`,
+        `OmniLight3D`, `SpotLight3D` and `WorldEnvironment`, drawn under the canvas by every
+        game and by `frame.capture`
 - [ ] Cascaded, omni and spot shadows
 - [ ] Post-processing: tonemap, bloom, SSAO, SSR, depth of field, auto exposure, color grading
 - [ ] Baked lightmaps and probe-based global illumination

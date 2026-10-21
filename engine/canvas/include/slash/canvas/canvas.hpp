@@ -9,6 +9,7 @@
 #include "slash/core/result.hpp"
 #include "slash/render/device.hpp"
 #include "slash/render/upscaler.hpp"
+#include "slash/scene3d/scene3d.hpp"
 #include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/camera2d.hpp"
@@ -212,7 +213,8 @@ public:
     // from where they were to where they are.
     void before_tick(const world::World& world);
 
-    // Draws one frame: the target cleared, then each canvas in order (world::Canvases), then
+    // Draws one frame: the target cleared, the 3D world drawn through its current Camera3D
+    // (scene3d.hpp) when it has one, then each canvas in order (world::Canvases), then
     // the popup menus, tooltip and drag preview, then the overlay's controls. The world's
     // canvas is every visible sprite, tile map layer and particles not in a CanvasLayer, in
     // z_index order, then the order entities were made, seen through the current Camera2D,
@@ -254,6 +256,11 @@ public:
     [[nodiscard]] std::size_t boxes_drawn() const noexcept { return boxes_drawn_; }
     // Collision shapes the last frame drew.
     [[nodiscard]] std::size_t shapes_drawn() const noexcept { return shapes_drawn_; }
+    // 3D meshes the last frame drew, the 3D lights they were lit by, and the meshes kept on the
+    // device (meshes of equal settings share one).
+    [[nodiscard]] std::size_t meshes_drawn() const noexcept { return meshes_drawn_; }
+    [[nodiscard]] std::size_t lights_3d_drawn() const noexcept { return lights_3d_drawn_; }
+    [[nodiscard]] std::size_t meshes_kept() const noexcept { return scene3d_.meshes_kept(); }
     // The upscaler the last frame scaled the world with (render/upscaler.hpp), and its sizes;
     // an empty name when the world drew at full size.
     struct Scaled {
@@ -410,6 +417,10 @@ private:
     std::size_t glyphs_drawn_ = 0;
     std::size_t boxes_drawn_ = 0;
     std::size_t shapes_drawn_ = 0;
+    std::size_t meshes_drawn_ = 0;
+    std::size_t lights_3d_drawn_ = 0;
+    // The 3D world's meshes on the device; its textures are this renderer's.
+    scene3d::Renderer scene3d_;
     // The upscaler the settings choose, made for the device when they first ask for it, and
     // what it is called.
     std::unique_ptr<render::Upscaler> upscaler_;
@@ -456,6 +467,7 @@ struct Capture {
     std::size_t lights = 0;
     std::size_t controls = 0;
     std::size_t shapes = 0;
+    std::size_t meshes = 0; // 3D meshes (scene3d.hpp)
     // How the settings' render scale scaled the world, if they did.
     CanvasRenderer::Scaled scaled;
 };

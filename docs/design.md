@@ -432,6 +432,7 @@ SlashEngine/
     world/           # ECS, scenes, prefabs, serialization
     input/           # input events, rebindable action maps, the input state, SDL events
     canvas/          # 2D drawing like Godot's canvas: sprites, materials, tilemaps, lights, particles
+    scene3d/         # 3D nodes like Godot's: primitive meshes, materials, cameras, lights
     command/         # Command registry, undo, JSON-RPC and MCP
     server/          # localhost HTTP: REST mirror, OpenAPI, JSON-RPC and MCP
     runtime/         # project.json, the game loop and every game's main()

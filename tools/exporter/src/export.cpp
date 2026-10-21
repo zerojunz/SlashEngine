@@ -29,6 +29,7 @@
 #include "slash/render/shader.hpp"
 #include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/project.hpp"
+#include "slash/scene3d/scene3d.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
 #include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
@@ -269,8 +270,8 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         break;
     }
     // Each tile map layer's cells must name tiles in its tile set, each AnimationPlayer's
-    // animation and track targets must be in its library and targets, controls must lay out and
-    // each sub-emitter must take part in a chain.
+    // animation and track targets must be in its library and targets, controls must lay out,
+    // each sub-emitter must take part in a chain and each 3D mesh must draw.
     if (errors.empty()) {
         errors = canvas::check_tile_layers(parsed.value(), reader);
     }
@@ -282,6 +283,9 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     }
     if (errors.empty() && kind == DataFile::Scene) {
         errors = canvas::check_sub_emitters(components, parsed.value(), reader);
+    }
+    if (errors.empty() && kind == DataFile::Scene) {
+        errors = scene3d::check_meshes(components, parsed.value(), reader);
     }
     return errors;
 }

@@ -101,6 +101,7 @@ Result<Capture> capture(world::World& world, asset::Assets& assets, const Captur
                    .lights = renderer.lights_drawn(),
                    .controls = renderer.controls_drawn(),
                    .shapes = renderer.shapes_drawn(),
+                   .meshes = renderer.meshes_drawn(),
                    .scaled = renderer.scaled()};
 }
 
