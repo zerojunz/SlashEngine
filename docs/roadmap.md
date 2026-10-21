@@ -543,7 +543,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [ ] `soundtrack.arrange`: turns a cue sheet into `.audio.json` files the runtime already
         plays: cues become interactive clips, intensity levels become synchronized layers,
         and transitions land on the bar, with filler clips as stingers
-  - [ ] `audio.analyze`: tempo and beat grid, key, loudness (LUFS) and true peak, clipping,
+  - [x] `audio.analyze`: tempo and beat grid, key, loudness (LUFS) and true peak, clipping,
         silence, frequency balance and how cleanly a loop joins, so agents judge music without
         listening
   - [ ] `soundtrack.check`: missing cues, beat counts that don't match a file's length, loops
@@ -787,7 +787,7 @@ calls and tokens ([design section 6](design.md#6-cheap-for-agents-to-use)).
 | `build.check`: C++ compile errors as data from an incremental build | 6 | Done |
 | `api.search`: real signatures and examples instead of guessed function names | 6 | Done |
 | `playtest.run`: many headless bot runs and tuning sweeps in one call | 6 | Done |
-| `audio.analyze`: tempo, key, loudness and loop seams as data instead of listening | 6 | Planned |
+| `audio.analyze`: tempo, key, loudness and loop seams as data instead of listening | 6 | Done |
 | `project.map`: where things are in a large project, without reading the source | 6 | Done |
 | A scheduled benchmark of standard agent tasks counting calls and tokens | 6 | Done |
 | The asset library: search before generating, and read a text description instead of the file | 6 | Done |

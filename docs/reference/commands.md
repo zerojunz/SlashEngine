@@ -67,7 +67,7 @@ as `entity.get`, reject it as an unknown param.
 | Lights | [`light.sample`](#lightsample) |
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
-| Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord), [`audio.input`](#audioinput) |
+| Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.analyze`](#audioanalyze), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord), [`audio.input`](#audioinput) |
 | Services | [`services.state`](#servicesstate), [`services.test`](#servicestest) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.review`](#storyboardreview), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
@@ -1404,7 +1404,8 @@ project's [bus layout](scene-format.md#bus-layouts), each with its volume and
 [effects](scene-format.md#effects), and every bus sends to Master, which plays on the speakers.
 Sessions mix sound as they step but play it nowhere, so an agent hears a game by measuring it:
 `audio.state` shows the buses' levels and what each player is doing, and `audio.capture`
-measures what a bus played, or writes it to a `.wav` file. Levels are in dB to a tenth, with
+measures what a bus played, or writes it to a `.wav` file. `audio.analyze` judges a piece of
+music: its loudness, tempo, key and how cleanly it loops. Levels are in dB to a tenth, with
 `null` for silence. The examples here are from [examples/audio](../../examples/audio/).
 
 ### audio.state
@@ -1486,6 +1487,69 @@ second:
 Sessions keep the last 10 seconds of each bus; `seconds` in the reply is how much there was,
 which is less right after a scene opens. A name that is no bus is an error with the closest one,
 and so is a `path` that doesn't end in `.wav`. In a dry-run `batch`, `path` writes nothing.
+
+### audio.analyze
+
+Measures a sound so an agent can judge it without listening: loudness, peaks, clipping,
+silence, tempo, key, each octave band's share of the energy and, for a looping file, how cleanly
+the loop joins. It measures a sound file, a `.audio.json` sound as it loops, or what a bus
+played. From [examples/music-analysis](../../examples/music-analysis/).
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | A sound (`.wav`, `.ogg`, `.mp3`) or a `.audio.json` file with a `source` |
+| `bus` | string | | A bus to measure instead of a file |
+| `seconds` | number, 0 to 10 | `10` | With `bus`, how far back |
+| `loop` | boolean | the file's settings | Measure the loop's join; `true` loops a plain sound whole |
+
+Needs: `read`. A four-bar groove's `.audio.json` file, which loops it every 16 beats:
+
+```json
+{"path": "music/groove.audio.json"}
+```
+
+```json
+{"bands_db":[-7.5,-6.8,-6.4,-5,-12.2,-60.4,-56.1,-47.3,-38.4,-31.5],"beat_offset":0.006,"beats":16,"bpm":100,"clips":0,"key":"D minor","key_confidence":0.86,"loop":{"beats":16,"clicks":false,"level_change_db":0.1,"seconds":9.6,"step_db":null},"loudness_range":0.2,"lufs":-15.2,"max_short_term_lufs":-15,"peak_db":-1.7,"rms_db":-16,"seconds":9.6,"silence":{"end":0,"start":0},"tempo_confidence":0.91,"true_peak_db":-1.7}
+```
+
+- `lufs` is integrated loudness as EBU R 128 measures it (ITU-R BS.1770-4, with libebur128),
+  `loudness_range` is in LU and `max_short_term_lufs` is the loudest three seconds. Each is
+  `null` for a sound too quiet to gate (below -70 LUFS), and `max_short_term_lufs` for one
+  shorter than three seconds.
+- `true_peak_db` is the peak between samples, as a converter plays them (dBTP); `peak_db` and
+  `rms_db` are the sample peak and RMS in dBFS.
+- `clips` counts runs of three samples or more at full scale, and samples past it; `first_clip`
+  is when the first was, in seconds.
+- `silence` is the silence (below -60 dBFS) at the `start` and `end` in seconds, and `gaps` of
+  half a second or more between, as `[from, to]` (at most 8).
+- `bpm` is the tempo to a tenth, from where notes start, or `null` for a sound with no steady
+  beat or under three seconds long. `beat_offset` is the first beat in seconds, `beats` the
+  length in beats and `tempo_confidence` how sure the measure is, from 0 to 1. Compare them with
+  a `.audio.json` file's `bpm` and `beat_count`.
+- `key`, such as `"D minor"`, comes from the notes' pitch classes against Krumhansl and
+  Kessler's key profiles, or is `null` when no key stands out; `key_confidence` is the
+  correlation, from 0 to 1.
+- `bands_db` is each octave band's share of the energy, centred on 31.5, 63, 125, 250 and 500 Hz
+  and 1, 2, 4, 8 and 16 kHz, in dB: 0 is all of it, and `null` none.
+- `loop` describes the join: its `seconds` and `beats`, `step_db` the jump between the last
+  sample before it and the first after it (`null` for none), `level_change_db` the level over
+  the beat after it against the beat before it, and `clicks` when the jump is far bigger than
+  the sound's own changes from sample to sample. A WAV file loops from `loop_begin` to
+  `loop_end` when its `loop_mode` is `forward`; an Ogg or MP3 file with `loop` goes back to
+  `loop_offset` after `beat_count` beats, fading over 256 frames as it does when it plays, or
+  at its end.
+- `problems` lists what needs fixing: clipping, a true peak above the -1 dBTP that EBU R 128
+  allows, a loop that clicks, or a silent sound.
+
+The same groove with a loop that ends a tenth of a beat early, mid-note:
+
+```json
+{"loop":{"beats":15.9,"clicks":true,"level_change_db":0,"seconds":9.54,"step_db":-25.3},"problems":["the loop clicks where its end joins its start"]}
+```
+
+Exactly one of `path` and `bus` is needed. A `.audio.json` file with no `source` (a randomizer,
+playlist or interactive music) is an error: play it and measure its bus. `loop` with `bus` is
+an error too, since only a file loops.
 
 ### audio.play
 

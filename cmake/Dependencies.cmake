@@ -187,6 +187,10 @@ slash_add_dependency(roboto DOWNLOAD_ONLY TRUE)
 # threads or engine, since SDL plays the sound and the engine mixes it.
 slash_add_dependency(miniaudio DOWNLOAD_ONLY TRUE)
 
+# Loudness as EBU R 128 measures it, for audio.analyze: libebur128, which engine/audio builds from
+# its one source file with the BSD queue.h it carries, the same on every platform.
+slash_add_dependency(libebur128 DOWNLOAD_ONLY TRUE)
+
 # Reading exported games back into projects (tools/importer): libwebp decodes the WebP images
 # Godot stores imported textures as, zstd the compressed GDScript tokens and resources, and brotli
 # Unity's compressed web builds. Tools only, decoders only: games never link them. The tests link
