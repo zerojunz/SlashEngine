@@ -1,5 +1,9 @@
+#ifdef __EMSCRIPTEN__
+#define DOCTEST_CONFIG_IMPLEMENT
+#else
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "slash/shader_compiler/shader_compiler.hpp"
+#endif
 
 #include <doctest/doctest.h>
 
@@ -11,6 +15,8 @@
 #include <string>
 #include <thread>
 
+// The web build (tests/web) has only the drawing tests, and no threads.
+#ifndef __EMSCRIPTEN__
 namespace {
 
 // The tests compile a game's shaders, as the tools do.
@@ -109,3 +115,11 @@ private:
 REGISTER_LISTENER("watchdog", 1, Watchdog);
 
 } // namespace
+#else
+// Waiting for the GPU unwinds main with Asyncify, which loses what it returns, so the web build
+// exits with the tests' result itself.
+int main(int argc, char** argv) {
+    doctest::Context context(argc, argv);
+    std::exit(context.run());
+}
+#endif

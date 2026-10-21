@@ -18124,6 +18124,4545 @@ R"msl(                                    break;
 
 )msl"};
 
+inline constexpr const char* kParticlesProcessComputeWgsl[] = {
+R"wgsl(struct data {
+  m : array<vec4<u32>>,
+}
+
+@group(0u) @binding(0u) var<storage, read> data_1 : data;
+
+struct Params {
+  amount : u32,
+  material_offset : u32,
+  steps_offset : u32,
+  step_count : u32,
+  reset : u32,
+  chain : u32,
+  trail : u32,
+  history : u32,
+  phase_step : f32,
+  pad0 : u32,
+  pad1 : u32,
+  pad2 : u32,
+}
+
+@group(2u) @binding(0u) var<uniform> v : Params;
+
+var<private> graph_registers : array<vec4<f32>, 32u>;
+
+@group(0u) @binding(1u) var<storage, read> source : data;
+
+struct S {
+  m_1 : array<vec4<u32>>,
+}
+
+@group(1u) @binding(1u) var<storage, read_write> target_1 : S;
+
+struct Particle {
+  basis : vec4<f32>,
+  origin_velocity : vec4<f32>,
+  color : vec4<f32>,
+  custom : vec4<f32>,
+  userdata : vec4<f32>,
+  flags : vec4<u32>,
+}
+
+struct particles {
+  m_2 : array<Particle>,
+}
+
+@group(1u) @binding(0u) var<storage, read_write> particles_1 : particles;
+
+@compute @workgroup_size(64u, 1u, 1u)
+fn cs_main(@builtin(global_invocation_id) id : vec3<u32>) {
+  var v_1 : vec4<f32>;
+  var v_2 : vec4<f32>;
+  var v_3 : vec4<f32>;
+  var v_4 : vec4<f32>;
+  var v_5 : vec4<f32>;
+  var v_6 : vec4<f32>;
+  switch(0u) {
+    default: {
+      let v_7 = id.x;
+      if ((v_7 >= v.amount)) {
+        break;
+      }
+      let v_8 = particles_1.m_2[v_7];
+      let v_9 = (v.amount + (v_7 * (v.trail - 1u)));
+      let v_10 = (v.reset != 0u);
+      if (v_10) {
+        {
+          var v_11 : u32;
+          v_11 = 1u;
+          loop {
+            let v_12 = v_11;
+            if ((v_12 < v.trail)) {
+              continue;
+            } else {
+              break;
+            }
+
+            continuing {
+              let v_13 = &(particles_1.m_2[((v_9 + v_12) - 1u)]);
+              (*(v_13)).basis = vec4<f32>(1.0f, 0.0f, 0.0f, 1.0f);
+              (*(v_13)).origin_velocity = vec4<f32>();
+              (*(v_13)).color = vec4<f32>(1.0f);
+              (*(v_13)).custom = vec4<f32>();
+              (*(v_13)).userdata = vec4<f32>();
+              (*(v_13)).flags = vec4<u32>();
+              v_11 = (v_12 + bitcast<u32>(1i));
+            }
+          }
+        }
+      }
+      let v_14 = select(v_8.basis, vec4<f32>(1.0f, 0.0f, 0.0f, 1.0f), vec4<bool>(v_10, v_10, v_10, v_10));
+      let v_15 = select(v_8.origin_velocity, vec4<f32>(), vec4<bool>(v_10, v_10, v_10, v_10));
+      let v_16 = select(v_8.color, vec4<f32>(1.0f), vec4<bool>(v_10, v_10, v_10, v_10));
+      let v_17 = select(v_8.custom, vec4<f32>(), vec4<bool>(v_10, v_10, v_10, v_10));
+      let v_18 = select(v_8.userdata, vec4<f32>(), vec4<bool>(v_10, v_10, v_10, v_10));
+      let v_19 = select(v_8.flags, vec4<u32>(), vec4<bool>(v_10, v_10, v_10, v_10));
+      var v_20 : vec4<f32>;
+      var v_21 : vec4<f32>;
+      var v_22 : vec4<f32>;
+      var v_23 : vec4<f32>;
+      var v_24 : vec4<f32>;
+      var v_25 : vec4<u32>;
+      {
+        var v_26 : vec4<f32>;
+        v_26 = v_14;
+        var v_27 : vec4<f32>;
+        v_27 = v_15;
+        var v_28 : vec4<f32>;
+        v_28 = v_16;
+        var v_29 : vec4<f32>;
+        v_29 = v_17;
+        var v_30 : vec4<f32>;
+        v_30 = v_18;
+        var v_31 : vec4<u32>;
+        v_31 = v_19;
+        var v_32 : u32;
+        v_32 = 0u;
+        loop {
+          var v_33 : vec4<f32>;
+          var v_34 : vec4<f32>;
+          var v_35 : vec4<f32>;
+          var v_36 : vec4<f32>;
+          var v_37 : vec4<f32>;
+          var v_38 : vec4<u32>;
+          let v_39 = v_32;
+          let v_40 = v_31;
+          let v_41 = v_30;
+          let v_42 = v_29;
+          let v_43 = v_28;
+          let v_44 = v_27;
+          let v_45 = v_26;
+          if ((v_39 < v.step_count)) {
+            let v_46 = (v.history + v_39);
+            let v_47 = (v.steps_offset + (v_46 * 9u));
+            let v_48 = bitcast<vec4<f32>>(data_1.m[v_47]);
+            let v_49 = bitcast<vec4<f32>>(data_1.m[(v_47 + 1u)]);
+            let v_50 = v_49.zw;
+            let v_51 = bitcast<vec4<f32>>(data_1.m[(v_47 + 2u)]);
+            let v_52 = v_51.x;
+            let v_53 = v_51.y;
+            let v_54 = v_51.z;
+            let v_55 = v_51.w;
+            let v_56 = bitcast<vec4<f32>>(data_1.m[(v_47 + 3u)]);
+            let v_57 = v_56.y;
+            let v_58 = v_56.z;
+            let v_59 = bitcast<f32>(data_1.m[(v_47 + 4u)].w);
+            let v_60 = data_1.m[(v_47 + 4u)];
+            let v_61 = v_60.x;
+            let v_62 = v_60.y;
+            let v_63 = ((v_60.z & 2u) != 0u);
+            let v_64 = ((v_60.z & 4u) != 0u);
+            let v_65 = data_1.m[(v_47 + 5u)];
+            let v_66 = bitcast<f32>(v_65.z);
+            let v_67 = bitcast<vec4<f32>>(data_1.m[(v_47 + 6u)]);
+            let v_68 = bitcast<vec4<f32>>(data_1.m[(v_47 + 7u)]).xy;
+            let v_69 = bitcast<vec4<f32>>(data_1.m[(v_47 + 8u)]);
+            var v_70 : vec4<f32>;
+            var v_71 : vec4<f32>;
+            var v_72 : vec4<f32>;
+            var v_73 : vec4<f32>;
+            var v_74 : vec4<f32>;
+            var v_75 : vec4<u32>;
+            {
+              var v_76 : vec4<f32>;
+              v_76 = v_45;
+              var v_77 : vec4<f32>;
+              v_77 = v_44;
+              var v_78 : vec4<f32>;
+              v_78 = v_43;
+              var v_79 : vec4<f32>;
+              v_79 = v_42;
+              var v_80 : vec4<f32>;
+              v_80 = v_41;
+              var v_81 : vec4<u32>;
+              v_81 = v_40;
+              var v_82 : u32;
+              v_82 = 0u;
+              loop {
+                var v_83 : vec4<f32>;
+                var v_84 : vec4<f32>;
+                var v_85 : vec4<f32>;
+                var v_86 : vec4<f32>;
+                var v_87 : vec4<f32>;
+                var v_88 : vec4<u32>;
+                let v_89 = v_82;
+                let v_90 = v_81;
+                let v_91 = v_80;
+                let v_92 = v_79;
+                let v_93 = v_78;
+                let v_94 = v_77;
+                let v_95 = v_76;
+                if ((v_89 < v.trail)) {
+                  var v_96 : vec4<f32>;
+                  var v_97 : vec4<f32>;
+                  var v_98 : vec4<f32>;
+                  var v_99 : vec4<f32>;
+                  var v_100 : vec4<f32>;
+                  var v_101 : vec4<u32>;
+                  if ((v_89 > 0u)) {
+                    let v_102 = particles_1.m_2[((v_9 + v_89) - 1u)];
+                    v_96 = v_102.basis;
+                    v_97 = v_102.origin_velocity;
+                    v_98 = v_102.color;
+                    v_99 = v_102.custom;
+                    v_100 = v_102.userdata;
+                    v_101 = v_102.flags;
+                  } else {
+                    v_96 = v_95;
+                    v_97 = v_94;
+                    v_98 = v_93;
+                    v_99 = v_92;
+                    v_100 = v_91;
+                    v_101 = v_90;
+                  }
+                  let v_103 = v_101;
+                  let v_104 = v_100;
+                  let v_105 = v_99;
+                  let v_106 = v_98;
+                  let v_107 = v_97;
+                  let v_108 = v_96;
+                  var v_109 : vec4<f32>;
+                  var v_110 : vec4<f32>;
+                  var v_111 : vec4<f32>;
+                  var v_112 : vec4<f32>;
+                  var v_113 : vec4<f32>;
+                  var v_114 : vec4<u32>;
+                  switch(0u) {
+                    default: {
+                      var v_115 : vec4<u32>;
+                      if (v_64) {
+                        var v_116 : vec4<u32>;
+                        if ((v_89 == 0u)) {
+                          var v_117 : vec4<u32> = vec4<u32>();
+                          v_117.y = v_103.y;
+                          var v_118 : vec4<u32> = v_117;
+                          v_118.z = v_103.z;
+                          var v_119 : vec4<u32> = v_118;
+                          v_119.w = v_103.w;
+                          v_116 = v_119;
+                        } else {
+                          v_116 = vec4<u32>();
+                        }
+                        v_115 = v_116;
+                      } else {
+                        v_115 = v_103;
+                      }
+                      let v_120 = v_115;
+                      let v_121 = select(v_108, vec4<f32>(1.0f, 0.0f, 0.0f, 1.0f), vec4<bool>(v_64, v_64, v_64, v_64));
+                      let v_122 = select(v_107, vec4<f32>(), vec4<bool>(v_64, v_64, v_64, v_64));
+                      let v_123 = select(v_106, vec4<f32>(1.0f), vec4<bool>(v_64, v_64, v_64, v_64));
+                      let v_124 = select(v_105, vec4<f32>(), vec4<bool>(v_64, v_64, v_64, v_64));
+                      let v_125 = select(v_104, vec4<f32>(), vec4<bool>(v_64, v_64, v_64, v_64));
+                      var v_126 : f32;
+                      var v_127 : u32;
+                      var v_128 : vec4<f32>;
+                      var v_129 : vec2<f32>;
+                      var v_130 : vec2<f32>;
+                      var v_131 : f32;
+                      var v_132 : f32;
+                      var v_133 : f32;
+                      var v_134 : f32;
+                      var v_135 : u32;
+                      var v_136 : vec4<f32>;
+                      var v_137 : vec4<f32>;
+                      var v_138 : vec4<f32>;
+                      var v_139 : vec4<u32>;
+                      var v_140 : u32;
+                      var v_141 : vec4<f32>;
+                      var v_142 : vec2<f32>;
+                      var v_143 : vec4<f32>;
+                      var v_144 : vec4<f32>;
+                      var v_145 : bool;
+                      var v_146 : f32;
+                      var v_147 : vec4<f32>;
+                      var v_148 : u32;
+                      var v_149 : bool;
+                      if ((v_89 == 0u)) {
+                        var v_150 : vec4<u32> = v_120;
+                        v_150.x = (v_120.x & 4294967293u);
+                        let v_151 = v_150;
+                        var v_152 : f32;
+                        var v_153 : u32;
+                        var v_154 : bool;
+                        var v_155 : bool;
+                        var v_156 : vec4<u32>;
+                        if (((v.chain & 1u) != 0u)) {
+                          let v_157 = source.m[0i];
+                          let v_158 = (((select(v_7, ((v.amount - 1u) - v_7), (v_157.z != 0u)) + v.amount) - v_157.x) % v.amount);
+                          let v_159 = (v_158 < v_157.y);
+                          var v_160 : u32;
+                          var v_161 : vec4<u32>;
+                          if (v_159) {
+                            let v_162 = source.m[0i].w;
+                            var v_163 : u32;
+                            {
+                              var v_164 : u32;
+                              v_164 = 0u;
+                              var v_165 : u32;
+                              v_165 = v_162;
+                              loop {
+                                var v_166 : u32;
+                                var v_167 : u32;
+                                let v_168 = v_165;
+                                let v_169 = v_164;
+                                if (((v_168 - v_169) > 1u)) {
+                                  let v_170 = ((v_169 + v_168) / 2u);
+                                  let v_171 = (source.m[(1u + (v_170 * 3u))].y <= v_158);
+                                  let v_172 = select(v_169, v_170, v_171);
+                                  let v_173 = select(v_170, v_168, v_171);
+                                  v_166 = v_172;
+                                  v_167 = v_173;
+                                  continue;
+                                } else {
+                                  v_163 = v_169;
+                                  break;
+                                }
+
+                                continuing {
+                                  let v_174 = v_167;
+                                  v_164 = v_166;
+                                  v_165 = v_174;
+                                }
+                              }
+                            }
+)wgsl",
+R"wgsl(                            let v_175 = (1u + (v_163 * 3u));
+                            var v_176 : vec4<u32> = v_151;
+                            v_176.x = (3u | (v_61 << 16u));
+                            let v_177 = v_176;
+                            v_160 = v_175;
+                            v_161 = v_177;
+                          } else {
+                            v_160 = 0u;
+                            v_161 = v_151;
+                          }
+                          let v_178 = v_161;
+                          let v_179 = v_160;
+                          let v_180 = select(false, true, v_159);
+                          let v_181 = select(false, true, v_159);
+                          v_152 = v_54;
+                          v_153 = v_179;
+                          v_154 = v_180;
+                          v_155 = v_181;
+                          v_156 = v_178;
+                        } else {
+                          var v_182 : f32;
+                          var v_183 : bool;
+                          var v_184 : vec4<u32>;
+                          if (((v_60.z & 1u) != 0u)) {
+                            let v_185 = (f32(v_7) * v.phase_step);
+                            var v_186 : f32;
+                            if ((v_57 > 0.0f)) {
+                              var v_187 : u32;
+                              if ((v_185 >= v_52)) {
+                                v_187 = (v_61 - 1u);
+                              } else {
+                                v_187 = v_61;
+                              }
+                              let v_188 = ((v_187 * v.amount) + v_7);
+                              let v_189 = (((v_188 >> 16u) ^ v_188) * 73244475u);
+                              let v_190 = (((v_189 >> 16u) ^ v_189) * 73244475u);
+                              v_186 = (v_185 + ((v_57 * (f32((((v_190 >> 16u) ^ v_190) % 65536u)) * 0.0000152587890625f)) * v.phase_step));
+                            } else {
+                              v_186 = v_185;
+                            }
+                            let v_191 = (v_186 * (1.0f - v_56.x));
+                            var v_192 : f32;
+                            var v_193 : bool;
+                            if ((v_52 > v_53)) {
+                              let v_194 = ((v_191 >= v_53) & (v_191 < v_52));
+                              var v_195 : f32;
+                              if (v_194) {
+                                var v_196 : f32;
+                                if (v_63) {
+                                  v_196 = ((v_52 - v_191) * v_55);
+                                } else {
+                                  v_196 = v_54;
+                                }
+                                v_195 = v_196;
+                              } else {
+                                v_195 = v_54;
+                              }
+                              let v_197 = v_195;
+                              let v_198 = select(false, true, v_194);
+                              v_192 = v_197;
+                              v_193 = v_198;
+                            } else {
+                              var v_199 : f32;
+                              var v_200 : bool;
+                              if ((v_54 > 0.0f)) {
+                                var v_201 : f32;
+                                var v_202 : bool;
+                                if ((v_191 >= v_53)) {
+                                  var v_203 : f32;
+                                  if (v_63) {
+                                    v_203 = (((1.0f - v_191) + v_52) * v_55);
+                                  } else {
+                                    v_203 = v_54;
+                                  }
+                                  v_201 = v_203;
+                                  v_202 = true;
+                                } else {
+                                  let v_204 = (v_191 < v_52);
+                                  var v_205 : f32;
+                                  if (v_204) {
+                                    var v_206 : f32;
+                                    if (v_63) {
+                                      v_206 = ((v_52 - v_191) * v_55);
+                                    } else {
+                                      v_206 = v_54;
+                                    }
+                                    v_205 = v_206;
+                                  } else {
+                                    v_205 = v_54;
+                                  }
+                                  let v_207 = v_205;
+                                  let v_208 = select(false, true, v_204);
+                                  v_201 = v_207;
+                                  v_202 = v_208;
+                                }
+                                let v_209 = v_202;
+                                v_199 = v_201;
+                                v_200 = v_209;
+                              } else {
+                                v_199 = v_54;
+                                v_200 = false;
+                              }
+                              let v_210 = v_200;
+                              v_192 = v_199;
+                              v_193 = v_210;
+                            }
+                            let v_211 = v_193;
+                            let v_212 = v_192;
+                            var v_213 : vec4<u32>;
+                            if (v_211) {
+                              var v_214 : vec4<u32> = v_151;
+                              v_214.x = (3u | (v_61 << 16u));
+                              v_213 = v_214;
+                            } else {
+                              v_213 = v_151;
+                            }
+                            let v_215 = v_213;
+                            v_182 = v_212;
+                            v_183 = v_211;
+                            v_184 = v_215;
+                          } else {
+                            v_182 = v_54;
+                            v_183 = false;
+                            v_184 = v_151;
+                          }
+                          let v_216 = v_184;
+                          let v_217 = v_183;
+                          v_152 = v_182;
+                          v_153 = 0u;
+                          v_154 = false;
+                          v_155 = v_217;
+                          v_156 = v_216;
+                        }
+                        let v_218 = v_156;
+                        let v_219 = v_155;
+                        let v_220 = v_154;
+                        let v_221 = v_153;
+                        let v_222 = v_152;
+                        let v_223 = ((v_218.x & 1u) != 0u);
+                        let v_224 = (((v_218.x >> 16u) * v.amount) + v_7);
+                        var v_225 : vec4<f32>;
+                        var v_226 : vec4<f32>;
+                        var v_227 : vec4<f32>;
+                        var v_228 : vec4<f32>;
+                        var v_229 : vec4<f32>;
+                        var v_230 : bool;
+                        if ((v_219 & v_223)) {
+                          let v_231 = ((v_224 + 1u) + v_62);
+                          let v_232 = (((v_231 >> 16u) ^ v_231) * 73244475u);
+                          let v_233 = (((v_232 >> 16u) ^ v_232) * 73244475u);
+                          let v_234 = bitcast<i32>(((v_233 >> 16u) ^ v_233));
+                          let v_235 = select(v_234, 305420679i, (v_234 == 0i));
+                          let v_236 = (v_235 / 127773i);
+                          let v_237 = ((16807i * (v_235 - (v_236 * 127773i))) - (2836i * v_236));
+                          var v_238 : i32;
+                          if ((v_237 < 0i)) {
+                            v_238 = (v_237 + 2147483647i);
+                          } else {
+                            v_238 = v_237;
+                          }
+                          let v_239 = bitcast<u32>(v_238);
+                          let v_240 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 9u)]).y;
+                          let v_241 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 13u)]).y;
+                          let v_242 = bitcast<i32>(v_239);
+                          let v_243 = select(v_242, 305420679i, (v_242 == 0i));
+                          let v_244 = (v_243 / 127773i);
+                          let v_245 = ((16807i * (v_243 - (v_244 * 127773i))) - (2836i * v_244));
+                          var v_246 : i32;
+                          if ((v_245 < 0i)) {
+                            v_246 = (v_245 + 2147483647i);
+                          } else {
+                            v_246 = v_245;
+                          }
+                          let v_247 = bitcast<u32>(v_246);
+                          let v_248 = (f32((v_247 % 65536u)) * 0.00001525902189314365f);
+                          let v_249 = bitcast<i32>(v_247);
+                          let v_250 = select(v_249, 305420679i, (v_249 == 0i));
+                          let v_251 = (v_250 / 127773i);
+                          let v_252 = ((16807i * (v_250 - (v_251 * 127773i))) - (2836i * v_251));
+                          var v_253 : i32;
+                          if ((v_252 < 0i)) {
+                            v_253 = (v_252 + 2147483647i);
+                          } else {
+                            v_253 = v_252;
+                          }
+                          let v_254 = bitcast<i32>(bitcast<u32>(v_253));
+                          let v_255 = select(v_254, 305420679i, (v_254 == 0i));
+                          let v_256 = (v_255 / 127773i);
+                          let v_257 = ((16807i * (v_255 - (v_256 * 127773i))) - (2836i * v_256));
+                          var v_258 : i32;
+                          if ((v_257 < 0i)) {
+                            v_258 = (v_257 + 2147483647i);
+                          } else {
+                            v_258 = v_257;
+                          }
+                          let v_259 = bitcast<u32>(v_258);
+                          let v_260 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 6u)]).x;
+                          let v_261 = bitcast<i32>(v_259);
+                          let v_262 = select(v_261, 305420679i, (v_261 == 0i));
+                          let v_263 = (v_262 / 127773i);
+                          let v_264 = ((16807i * (v_262 - (v_263 * 127773i))) - (2836i * v_263));
+                          var v_265 : i32;
+                          if ((v_264 < 0i)) {
+                            v_265 = (v_264 + 2147483647i);
+                          } else {
+                            v_265 = v_264;
+                          }
+                          let v_266 = bitcast<u32>(v_265);
+                          let v_267 = (1.0f - (v_260 * (f32((v_266 % 65536u)) * 0.00001525902189314365f)));
+                          let v_268 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 5u)]);
+                          var v_269 : vec4<f32>;
+                          var v_270 : u32;
+                          if ((data_1.m[(v.material_offset + 20u)].y > 0u)) {
+                            let v_271 = bitcast<i32>(v_266);
+                            let v_272 = select(v_271, 305420679i, (v_271 == 0i));
+                            let v_273 = (v_272 / 127773i);
+                            let v_274 = ((16807i * (v_272 - (v_273 * 127773i))) - (2836i * v_273));
+                            var v_275 : i32;
+                            if ((v_274 < 0i)) {
+                              v_275 = (v_274 + 2147483647i);
+                            } else {
+                              v_275 = v_274;
+                            }
+                            let v_276 = bitcast<u32>(v_275);
+                            let v_277 = (f32((v_276 % 65536u)) * 0.00001525902189314365f);
+                            var v_278 : vec4<f32>;
+                            switch(0u) {
+                              default: {
+                                let v_279 = data_1.m[(v.material_offset + 20u)].y;
+)wgsl",
+R"wgsl(                                if ((v_279 == 0u)) {
+                                  v_278 = vec4<f32>(1.0f);
+                                  break;
+                                }
+                                var v_280 : u32;
+                                {
+                                  var v_281 : u32;
+                                  v_281 = v_279;
+                                  var v_282 : u32;
+                                  v_282 = (v_279 - 1u);
+                                  loop {
+                                    var v_283 : u32;
+                                    let v_284 = v_282;
+                                    let v_285 = v_281;
+                                    if ((v_284 > 0u)) {
+                                      let v_286 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (353u + (v_284 / 4u)))]);
+                                      let v_287 = (v_284 % 4u);
+                                      v_283 = select(v_285, v_284, (v_277 < select(select(select(v_286.w, v_286.z, (v_287 == 2u)), v_286.y, (v_287 == 1u)), v_286.x, (v_287 == 0u))));
+                                      continue;
+                                    } else {
+                                      v_280 = v_285;
+                                      break;
+                                    }
+
+                                    continuing {
+                                      let v_288 = v_283;
+                                      let v_289 = (v_284 - bitcast<u32>(1i));
+                                      v_281 = v_288;
+                                      v_282 = v_289;
+                                    }
+                                  }
+                                }
+                                let v_290 = v_280;
+                                let v_291 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (v_279 + 360u))]);
+                                var v_292 : vec4<f32>;
+                                if (!((v_277 > bitcast<vec4<f32>>(data_1.m[(v.material_offset + 353u)]).x))) {
+                                  v_292 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 361u)]);
+                                } else {
+                                  var v_293 : vec4<f32>;
+                                  if ((v_290 < v_279)) {
+                                    let v_294 = (v_290 - 1u);
+                                    let v_295 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (353u + (v_294 / 4u)))]);
+                                    let v_296 = (v_294 % 4u);
+                                    let v_297 = select(select(select(v_295.w, v_295.z, (v_296 == 2u)), v_295.y, (v_296 == 1u)), v_295.x, (v_296 == 0u));
+                                    let v_298 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (353u + (v_290 / 4u)))]);
+                                    let v_299 = (v_290 % 4u);
+                                    let v_300 = ((v_277 - v_297) / (select(select(select(v_298.w, v_298.z, (v_299 == 2u)), v_298.y, (v_299 == 1u)), v_298.x, (v_299 == 0u)) - v_297));
+                                    let v_301 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (v_290 + 360u))]);
+                                    v_293 = (v_301 + ((bitcast<vec4<f32>>(data_1.m[(v.material_offset + (361u + v_290))]) - v_301) * v_300));
+                                  } else {
+                                    v_293 = v_291;
+                                  }
+                                  v_292 = v_293;
+                                }
+                                v_278 = v_292;
+                              }
+                            }
+                            v_269 = (v_268 * v_278);
+                            v_270 = v_276;
+                          } else {
+                            v_269 = v_268;
+                            v_270 = v_266;
+                          }
+                          let v_302 = v_270;
+                          let v_303 = v_269;
+                          var v_304 : vec4<f32>;
+                          var v_305 : f32;
+                          var v_306 : u32;
+                          if (((data_1.m[v.material_offset].x == 4u) | (data_1.m[v.material_offset].x == 5u))) {
+                            let v_307 = bitcast<i32>(v_302);
+                            let v_308 = select(v_307, 305420679i, (v_307 == 0i));
+                            let v_309 = (v_308 / 127773i);
+                            let v_310 = ((16807i * (v_308 - (v_309 * 127773i))) - (2836i * v_309));
+                            var v_311 : i32;
+                            if ((v_310 < 0i)) {
+                              v_311 = (v_310 + 2147483647i);
+                            } else {
+                              v_311 = v_310;
+                            }
+                            let v_312 = bitcast<u32>(v_311);
+                            let v_313 = (f32((v_312 % 65536u)) * 0.00001525902189314365f);
+                            var v_314 : vec4<f32>;
+                            if ((((data_1.m[v.material_offset].x == 4u) | (data_1.m[v.material_offset].x == 5u)) & (data_1.m[(v.material_offset + 2u)].z > 0u))) {
+                              let v_315 = bitcast<i32>(data_1.m[(v.material_offset + 2u)].z);
+                              let v_316 = ((bitcast<u32>(max(min((v_315 - 1i), i32((v_313 * f32(v_315)))), 0i)) * 2u) + 394u);
+                              v_314 = (v_303 * bitcast<vec4<f32>>(data_1.m[(v.material_offset + v_316)]));
+                            } else {
+                              v_314 = v_303;
+                            }
+                            v_304 = v_314;
+                            v_305 = v_313;
+                            v_306 = v_312;
+                          } else {
+                            v_304 = v_303;
+                            v_305 = 0.0f;
+                            v_306 = v_302;
+                          }
+                          let v_317 = v_306;
+                          let v_318 = v_305;
+                          let v_319 = v_304;
+                          let v_320 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 8u)]).w;
+                          let v_321 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 12u)]).w;
+                          let v_322 = bitcast<i32>(v_317);
+                          let v_323 = select(v_322, 305420679i, (v_322 == 0i));
+                          let v_324 = (v_323 / 127773i);
+                          let v_325 = ((16807i * (v_323 - (v_324 * 127773i))) - (2836i * v_324));
+                          var v_326 : i32;
+                          if ((v_325 < 0i)) {
+                            v_326 = (v_325 + 2147483647i);
+                          } else {
+                            v_326 = v_325;
+                          }
+                          let v_327 = bitcast<u32>(v_326);
+                          let v_328 = (f32((v_327 % 65536u)) * 0.00001525902189314365f);
+                          let v_329 = bitcast<i32>(v_327);
+                          let v_330 = select(v_329, 305420679i, (v_329 == 0i));
+                          let v_331 = (v_330 / 127773i);
+                          let v_332 = ((16807i * (v_330 - (v_331 * 127773i))) - (2836i * v_331));
+                          var v_333 : i32;
+                          if ((v_332 < 0i)) {
+                            v_333 = (v_332 + 2147483647i);
+                          } else {
+                            v_333 = v_332;
+                          }
+                          let v_334 = bitcast<u32>(v_333);
+                          let v_335 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 7u)]).x;
+                          let v_336 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 11u)]).x;
+                          let v_337 = bitcast<i32>(v_334);
+                          let v_338 = select(v_337, 305420679i, (v_337 == 0i));
+                          let v_339 = (v_338 / 127773i);
+                          let v_340 = ((16807i * (v_338 - (v_339 * 127773i))) - (2836i * v_339));
+                          var v_341 : i32;
+                          if ((v_340 < 0i)) {
+                            v_341 = (v_340 + 2147483647i);
+                          } else {
+                            v_341 = v_340;
+                          }
+                          let v_342 = bitcast<u32>(v_341);
+                          let v_343 = (f32((v_342 % 65536u)) * 0.00001525902189314365f);
+                          let v_344 = bitcast<i32>(v_342);
+                          let v_345 = select(v_344, 305420679i, (v_344 == 0i));
+                          let v_346 = (v_345 / 127773i);
+                          let v_347 = ((16807i * (v_345 - (v_346 * 127773i))) - (2836i * v_346));
+                          var v_348 : i32;
+                          if ((v_347 < 0i)) {
+                            v_348 = (v_347 + 2147483647i);
+                          } else {
+                            v_348 = v_347;
+                          }
+                          let v_349 = bitcast<i32>(bitcast<u32>(v_348));
+                          let v_350 = select(v_349, 305420679i, (v_349 == 0i));
+                          let v_351 = (v_350 / 127773i);
+                          let v_352 = ((16807i * (v_350 - (v_351 * 127773i))) - (2836i * v_351));
+                          var v_353 : i32;
+                          if ((v_352 < 0i)) {
+                            v_353 = (v_352 + 2147483647i);
+                          } else {
+                            v_353 = v_352;
+                          }
+                          let v_354 = bitcast<i32>(bitcast<u32>(v_353));
+                          let v_355 = select(v_354, 305420679i, (v_354 == 0i));
+                          let v_356 = (v_355 / 127773i);
+                          let v_357 = ((16807i * (v_355 - (v_356 * 127773i))) - (2836i * v_356));
+                          var v_358 : i32;
+                          if ((v_357 < 0i)) {
+                            v_358 = (v_357 + 2147483647i);
+                          } else {
+                            v_358 = v_357;
+                          }
+                          let v_359 = bitcast<u32>(v_358);
+                          var v_360 : u32;
+                          if ((data_1.m[(v.material_offset + 21u)].w != 0u)) {
+                            let v_361 = bitcast<i32>(v_359);
+                            let v_362 = select(v_361, 305420679i, (v_361 == 0i));
+                            let v_363 = (v_362 / 127773i);
+                            let v_364 = ((16807i * (v_362 - (v_363 * 127773i))) - (2836i * v_363));
+                            var v_365 : i32;
+                            if ((v_364 < 0i)) {
+                              v_365 = (v_364 + 2147483647i);
+                            } else {
+                              v_365 = v_364;
+                            }
+                            v_360 = bitcast<u32>(v_365);
+                          } else {
+                            v_360 = v_359;
+                          }
+                          let v_366 = bitcast<i32>(v_360);
+                          let v_367 = select(v_366, 305420679i, (v_366 == 0i));
+                          let v_368 = (v_367 / 127773i);
+                          let v_369 = ((16807i * (v_367 - (v_368 * 127773i))) - (2836i * v_368));
+                          var v_370 : i32;
+                          if ((v_369 < 0i)) {
+                            v_370 = (v_369 + 2147483647i);
+                          } else {
+                            v_370 = v_369;
+                          }
+                          let v_371 = bitcast<i32>(bitcast<u32>(v_370));
+                          let v_372 = select(v_371, 305420679i, (v_371 == 0i));
+                          let v_373 = (v_372 / 127773i);
+                          let v_374 = ((16807i * (v_372 - (v_373 * 127773i))) - (2836i * v_373));
+                          var v_375 : i32;
+                          if ((v_374 < 0i)) {
+)wgsl",
+R"wgsl(                            v_375 = (v_374 + 2147483647i);
+                          } else {
+                            v_375 = v_374;
+                          }
+                          let v_376 = bitcast<i32>(bitcast<u32>(v_375));
+                          let v_377 = select(v_376, 305420679i, (v_376 == 0i));
+                          let v_378 = (v_377 / 127773i);
+                          let v_379 = ((16807i * (v_377 - (v_378 * 127773i))) - (2836i * v_378));
+                          var v_380 : i32;
+                          if ((v_379 < 0i)) {
+                            v_380 = (v_379 + 2147483647i);
+                          } else {
+                            v_380 = v_379;
+                          }
+                          let v_381 = bitcast<i32>(bitcast<u32>(v_380));
+                          let v_382 = select(v_381, 305420679i, (v_381 == 0i));
+                          let v_383 = (v_382 / 127773i);
+                          let v_384 = ((16807i * (v_382 - (v_383 * 127773i))) - (2836i * v_383));
+                          var v_385 : i32;
+                          if ((v_384 < 0i)) {
+                            v_385 = (v_384 + 2147483647i);
+                          } else {
+                            v_385 = v_384;
+                          }
+                          let v_386 = bitcast<u32>(v_385);
+                          var v_387 : f32;
+                          switch(0u) {
+                            default: {
+                              let v_388 = data_1.m[(v.material_offset + 17u)].y;
+                              if ((v_388 == 0u)) {
+                                v_387 = 1.0f;
+                                break;
+                              }
+                              let v_389 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 169u)]);
+                              var v_390 : u32;
+                              {
+                                var v_391 : u32;
+                                v_391 = v_388;
+                                var v_392 : u32;
+                                v_392 = (v_388 - 1u);
+                                loop {
+                                  var v_393 : u32;
+                                  let v_394 = v_392;
+                                  let v_395 = v_391;
+                                  if ((v_394 > 0u)) {
+                                    let v_396 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (169u + (v_394 / 2u)))]);
+                                    let v_397 = ((v_394 % 2u) == 0u);
+                                    v_393 = select(v_395, v_394, (0.0f < select(v_396.zw, v_396.xy, vec2<bool>(v_397, v_397)).x));
+                                    continue;
+                                  } else {
+                                    v_390 = v_395;
+                                    break;
+                                  }
+
+                                  continuing {
+                                    let v_398 = v_393;
+                                    let v_399 = (v_394 - bitcast<u32>(1i));
+                                    v_391 = v_398;
+                                    v_392 = v_399;
+                                  }
+                                }
+                              }
+                              let v_400 = v_390;
+                              let v_401 = (v_388 - 1u);
+                              let v_402 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (169u + (v_401 / 2u)))]);
+                              let v_403 = ((v_401 % 2u) == 0u);
+                              let v_404 = select(v_402.zw, v_402.xy, vec2<bool>(v_403, v_403)).y;
+                              var v_405 : f32;
+                              if (!((0.0f > v_389.x))) {
+                                v_405 = v_389.y;
+                              } else {
+                                var v_406 : f32;
+                                if ((v_400 < v_388)) {
+                                  let v_407 = (v_400 - 1u);
+                                  let v_408 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (169u + (v_407 / 2u)))]);
+                                  let v_409 = ((v_407 % 2u) == 0u);
+                                  let v_410 = select(v_408.zw, v_408.xy, vec2<bool>(v_409, v_409));
+                                  let v_411 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (169u + (v_400 / 2u)))]);
+                                  let v_412 = ((v_400 % 2u) == 0u);
+                                  let v_413 = select(v_411.zw, v_411.xy, vec2<bool>(v_412, v_412));
+                                  v_406 = (v_410.y + ((v_413.y - v_410.y) * (-(v_410.x) / (v_413.x - v_410.x))));
+                                } else {
+                                  v_406 = v_404;
+                                }
+                                v_405 = v_406;
+                              }
+                              v_387 = v_405;
+                            }
+                          }
+                          let v_414 = ((6.28318023681640625f * ((v_240 * (1.0f - v_248)) + (v_241 * v_248))) * v_387);
+                          var v_415 : vec4<f32>;
+                          if ((data_1.m[(v.material_offset + 20u)].x > 0u)) {
+                            var v_416 : vec4<f32>;
+                            switch(0u) {
+                              default: {
+                                let v_417 = data_1.m[(v.material_offset + 20u)].x;
+                                if ((v_417 == 0u)) {
+                                  v_416 = vec4<f32>(1.0f);
+                                  break;
+                                }
+                                var v_418 : u32;
+                                {
+                                  var v_419 : u32;
+                                  v_419 = v_417;
+                                  var v_420 : u32;
+                                  v_420 = (v_417 - 1u);
+                                  loop {
+                                    var v_421 : u32;
+                                    let v_422 = v_420;
+                                    let v_423 = v_419;
+                                    if ((v_422 > 0u)) {
+                                      let v_424 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (313u + (v_422 / 4u)))]);
+                                      let v_425 = (v_422 % 4u);
+                                      v_421 = select(v_423, v_422, (0.0f < select(select(select(v_424.w, v_424.z, (v_425 == 2u)), v_424.y, (v_425 == 1u)), v_424.x, (v_425 == 0u))));
+                                      continue;
+                                    } else {
+                                      v_418 = v_423;
+                                      break;
+                                    }
+
+                                    continuing {
+                                      let v_426 = v_421;
+                                      let v_427 = (v_422 - bitcast<u32>(1i));
+                                      v_419 = v_426;
+                                      v_420 = v_427;
+                                    }
+                                  }
+                                }
+                                let v_428 = v_418;
+                                let v_429 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (v_417 + 320u))]);
+                                var v_430 : vec4<f32>;
+                                if (!((0.0f > bitcast<vec4<f32>>(data_1.m[(v.material_offset + 313u)]).x))) {
+                                  v_430 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 321u)]);
+                                } else {
+                                  var v_431 : vec4<f32>;
+                                  if ((v_428 < v_417)) {
+                                    let v_432 = (v_428 - 1u);
+                                    let v_433 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (313u + (v_432 / 4u)))]);
+                                    let v_434 = (v_432 % 4u);
+                                    let v_435 = select(select(select(v_433.w, v_433.z, (v_434 == 2u)), v_433.y, (v_434 == 1u)), v_433.x, (v_434 == 0u));
+                                    let v_436 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (313u + (v_428 / 4u)))]);
+                                    let v_437 = (v_428 % 4u);
+                                    let v_438 = (-(v_435) / (select(select(select(v_436.w, v_436.z, (v_437 == 2u)), v_436.y, (v_437 == 1u)), v_436.x, (v_437 == 0u)) - v_435));
+                                    let v_439 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (v_428 + 320u))]);
+                                    v_431 = (v_439 + ((bitcast<vec4<f32>>(data_1.m[(v.material_offset + (321u + v_428))]) - v_439) * v_438));
+                                  } else {
+                                    v_431 = v_429;
+                                  }
+                                  v_430 = v_431;
+                                }
+                                v_416 = v_430;
+                              }
+                            }
+                            v_415 = (v_319 * v_416);
+                          } else {
+                            v_415 = v_319;
+                          }
+                          let v_440 = v_415;
+                          var v_441 : f32;
+                          switch(0u) {
+                            default: {
+                              let v_442 = data_1.m[(v.material_offset + 19u)].x;
+                              if ((v_442 == 0u)) {
+                                v_441 = 1.0f;
+                                break;
+                              }
+                              let v_443 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 281u)]);
+                              var v_444 : u32;
+                              {
+                                var v_445 : u32;
+                                v_445 = v_442;
+                                var v_446 : u32;
+                                v_446 = (v_442 - 1u);
+                                loop {
+                                  var v_447 : u32;
+                                  let v_448 = v_446;
+                                  let v_449 = v_445;
+                                  if ((v_448 > 0u)) {
+                                    let v_450 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (281u + (v_448 / 2u)))]);
+                                    let v_451 = ((v_448 % 2u) == 0u);
+                                    v_447 = select(v_449, v_448, (0.0f < select(v_450.zw, v_450.xy, vec2<bool>(v_451, v_451)).x));
+                                    continue;
+                                  } else {
+                                    v_444 = v_449;
+                                    break;
+                                  }
+
+                                  continuing {
+                                    let v_452 = v_447;
+                                    let v_453 = (v_448 - bitcast<u32>(1i));
+                                    v_445 = v_452;
+                                    v_446 = v_453;
+                                  }
+                                }
+                              }
+                              let v_454 = v_444;
+                              let v_455 = (v_442 - 1u);
+                              let v_456 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (281u + (v_455 / 2u)))]);
+                              let v_457 = ((v_455 % 2u) == 0u);
+                              let v_458 = select(v_456.zw, v_456.xy, vec2<bool>(v_457, v_457)).y;
+                              var v_459 : f32;
+                              if (!((0.0f > v_443.x))) {
+                                v_459 = v_443.y;
+                              } else {
+                                var v_460 : f32;
+                                if ((v_454 < v_442)) {
+                                  let v_461 = (v_454 - 1u);
+)wgsl",
+R"wgsl(                                  let v_462 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (281u + (v_461 / 2u)))]);
+                                  let v_463 = ((v_461 % 2u) == 0u);
+                                  let v_464 = select(v_462.zw, v_462.xy, vec2<bool>(v_463, v_463));
+                                  let v_465 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (281u + (v_454 / 2u)))]);
+                                  let v_466 = ((v_454 % 2u) == 0u);
+                                  let v_467 = select(v_465.zw, v_465.xy, vec2<bool>(v_466, v_466));
+                                  v_460 = (v_464.y + ((v_467.y - v_464.y) * (-(v_464.x) / (v_467.x - v_464.x))));
+                                } else {
+                                  v_460 = v_458;
+                                }
+                                v_459 = v_460;
+                              }
+                              v_441 = v_459;
+                            }
+                          }
+                          let v_468 = (v_440.w * v_441);
+                          let v_469 = cos(v_414);
+                          let v_470 = sin(v_414);
+                          let v_471 = (((((vec3<f32>(0.29899999499320983887f, 0.58700001239776611328f, 0.11400000005960464478f) + (vec3<f32>(0.70099997520446777344f, -0.58700001239776611328f, -0.11400000005960464478f) * v_469)) + (vec3<f32>(0.16799999773502349854f, 0.33000001311302185059f, -0.49700000882148742676f) * v_470)) * v_440.x) + (((vec3<f32>(0.29899999499320983887f, 0.58700001239776611328f, 0.11400000005960464478f) + (vec3<f32>(-0.29899999499320983887f, 0.41299998760223388672f, -0.11400000005960464478f) * v_469)) + (vec3<f32>(-0.32800000905990600586f, 0.03500000014901161194f, 0.29199999570846557617f) * v_470)) * v_440.y)) + (((vec3<f32>(0.29899999499320983887f, 0.58700001239776611328f, 0.11400000005960464478f) + (vec3<f32>(-0.30000001192092895508f, -0.5879999995231628418f, 0.88599997758865356445f) * v_469)) + (vec3<f32>(1.25f, -1.04999995231628417969f, -0.20299999415874481201f) * v_470)) * v_440.z));
+                          let v_472 = vec4<f32>(v_471.x, v_471.y, v_471.z, v_468);
+                          var v_473 : vec4<f32>;
+                          if ((data_1.m[(v.material_offset + 19u)].y > 0u)) {
+                            var v_474 : f32;
+                            switch(0u) {
+                              default: {
+                                let v_475 = data_1.m[(v.material_offset + 19u)].y;
+                                if ((v_475 == 0u)) {
+                                  v_474 = 0.0f;
+                                  break;
+                                }
+                                let v_476 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 297u)]);
+                                var v_477 : u32;
+                                {
+                                  var v_478 : u32;
+                                  v_478 = v_475;
+                                  var v_479 : u32;
+                                  v_479 = (v_475 - 1u);
+                                  loop {
+                                    var v_480 : u32;
+                                    let v_481 = v_479;
+                                    let v_482 = v_478;
+                                    if ((v_481 > 0u)) {
+                                      let v_483 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (297u + (v_481 / 2u)))]);
+                                      let v_484 = ((v_481 % 2u) == 0u);
+                                      v_480 = select(v_482, v_481, (0.0f < select(v_483.zw, v_483.xy, vec2<bool>(v_484, v_484)).x));
+                                      continue;
+                                    } else {
+                                      v_477 = v_482;
+                                      break;
+                                    }
+
+                                    continuing {
+                                      let v_485 = v_480;
+                                      let v_486 = (v_481 - bitcast<u32>(1i));
+                                      v_478 = v_485;
+                                      v_479 = v_486;
+                                    }
+                                  }
+                                }
+                                let v_487 = v_477;
+                                let v_488 = (v_475 - 1u);
+                                let v_489 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (297u + (v_488 / 2u)))]);
+                                let v_490 = ((v_488 % 2u) == 0u);
+                                let v_491 = select(v_489.zw, v_489.xy, vec2<bool>(v_490, v_490)).y;
+                                var v_492 : f32;
+                                if (!((0.0f > v_476.x))) {
+                                  v_492 = v_476.y;
+                                } else {
+                                  var v_493 : f32;
+                                  if ((v_487 < v_475)) {
+                                    let v_494 = (v_487 - 1u);
+                                    let v_495 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (297u + (v_494 / 2u)))]);
+                                    let v_496 = ((v_494 % 2u) == 0u);
+                                    let v_497 = select(v_495.zw, v_495.xy, vec2<bool>(v_496, v_496));
+                                    let v_498 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (297u + (v_487 / 2u)))]);
+                                    let v_499 = ((v_487 % 2u) == 0u);
+                                    let v_500 = select(v_498.zw, v_498.xy, vec2<bool>(v_499, v_499));
+                                    v_493 = (v_497.y + ((v_500.y - v_497.y) * (-(v_497.x) / (v_500.x - v_497.x))));
+                                  } else {
+                                    v_493 = v_491;
+                                  }
+                                  v_492 = v_493;
+                                }
+                                v_474 = v_492;
+                              }
+                            }
+                            let v_501 = (v_472.xyz * (1.0f + v_474));
+                            v_473 = vec4<f32>(v_501.x, v_501.y, v_501.z, v_468);
+                          } else {
+                            v_473 = v_472;
+                          }
+                          let v_502 = v_473;
+                          let v_503 = bitcast<i32>(v_386);
+                          let v_504 = select(v_503, 305420679i, (v_503 == 0i));
+                          let v_505 = (v_504 / 127773i);
+                          let v_506 = ((16807i * (v_504 - (v_505 * 127773i))) - (2836i * v_505));
+                          var v_507 : i32;
+                          if ((v_506 < 0i)) {
+                            v_507 = (v_506 + 2147483647i);
+                          } else {
+                            v_507 = v_506;
+                          }
+                          let v_508 = bitcast<u32>(v_507);
+                          let v_509 = select(v_223, false, ((f32((v_508 % 65536u)) * 0.00001525902189314365f) > v_58));
+                          var v_510 : vec4<f32>;
+                          var v_511 : vec2<f32>;
+                          var v_512 : u32;
+                          if (v_220) {
+                            let v_513 = bitcast<vec4<f32>>(source.m[(v_221 + 1u)]).xy;
+                            v_510 = bitcast<vec4<f32>>(source.m[(v_221 + 2u)]);
+                            v_511 = v_513;
+                            v_512 = v_508;
+                          } else {
+                            let v_514 = data_1.m[v.material_offset].x;
+                            var v_515 : u32;
+                            var v_516 : vec2<f32>;
+                            if (((v_514 == 1u) | (v_514 == 2u))) {
+                              let v_517 = bitcast<i32>(v_508);
+                              let v_518 = select(v_517, 305420679i, (v_517 == 0i));
+                              let v_519 = (v_518 / 127773i);
+                              let v_520 = ((16807i * (v_518 - (v_519 * 127773i))) - (2836i * v_519));
+                              var v_521 : i32;
+                              if ((v_520 < 0i)) {
+                                v_521 = (v_520 + 2147483647i);
+                              } else {
+                                v_521 = v_520;
+                              }
+                              let v_522 = bitcast<u32>(v_521);
+                              let v_523 = ((f32((v_522 % 65536u)) * 0.00003051804378628731f) - 1.0f);
+                              let v_524 = bitcast<i32>(v_522);
+                              let v_525 = select(v_524, 305420679i, (v_524 == 0i));
+                              let v_526 = (v_525 / 127773i);
+                              let v_527 = ((16807i * (v_525 - (v_526 * 127773i))) - (2836i * v_526));
+                              var v_528 : i32;
+                              if ((v_527 < 0i)) {
+                                v_528 = (v_527 + 2147483647i);
+                              } else {
+                                v_528 = v_527;
+                              }
+                              let v_529 = bitcast<u32>(v_528);
+                              let v_530 = (f32((v_529 % 65536u)) * 0.00009587518434273079f);
+                              let v_531 = (bitcast<vec4<f32>>(data_1.m[v.material_offset]).y * sqrt((1.0f - (v_523 * v_523))));
+                              let v_532 = (v_531 * cos(v_530));
+                              let v_533 = (v_531 * sin(v_530));
+                              var v_534 : u32;
+                              var v_535 : vec2<f32>;
+                              if ((v_514 == 1u)) {
+                                let v_536 = bitcast<i32>(v_529);
+                                let v_537 = select(v_536, 305420679i, (v_536 == 0i));
+                                let v_538 = (v_537 / 127773i);
+                                let v_539 = ((16807i * (v_537 - (v_538 * 127773i))) - (2836i * v_538));
+                                var v_540 : i32;
+                                if ((v_539 < 0i)) {
+                                  v_540 = (v_539 + 2147483647i);
+                                } else {
+                                  v_540 = v_539;
+                                }
+                                let v_541 = bitcast<u32>(v_540);
+                                let v_542 = (f32((v_541 % 65536u)) * 0.00001525902189314365f);
+                                v_534 = v_541;
+                                v_535 = vec2<f32>((v_532 * v_542), (v_533 * v_542));
+                              } else {
+                                v_534 = v_529;
+                                v_535 = vec2<f32>(v_532, v_533);
+                              }
+                              let v_543 = v_535;
+                              v_515 = v_534;
+                              v_516 = v_543;
+                            } else {
+                              var v_544 : u32;
+                              var v_545 : vec2<f32>;
+                              if ((v_514 == 3u)) {
+                                let v_546 = bitcast<i32>(v_508);
+                                let v_547 = select(v_546, 305420679i, (v_546 == 0i));
+                                let v_548 = (v_547 / 127773i);
+                                let v_549 = ((16807i * (v_547 - (v_548 * 127773i))) - (2836i * v_548));
+                                var v_550 : i32;
+                                if ((v_549 < 0i)) {
+                                  v_550 = (v_549 + 2147483647i);
+                                } else {
+                                  v_550 = v_549;
+                                }
+                                let v_551 = bitcast<u32>(v_550);
+                                let v_552 = bitcast<i32>(v_551);
+                                let v_553 = select(v_552, 305420679i, (v_552 == 0i));
+)wgsl",
+R"wgsl(                                let v_554 = (v_553 / 127773i);
+                                let v_555 = ((16807i * (v_553 - (v_554 * 127773i))) - (2836i * v_554));
+                                var v_556 : i32;
+                                if ((v_555 < 0i)) {
+                                  v_556 = (v_555 + 2147483647i);
+                                } else {
+                                  v_556 = v_555;
+                                }
+                                let v_557 = bitcast<u32>(v_556);
+                                let v_558 = bitcast<i32>(v_557);
+                                let v_559 = select(v_558, 305420679i, (v_558 == 0i));
+                                let v_560 = (v_559 / 127773i);
+                                let v_561 = ((16807i * (v_559 - (v_560 * 127773i))) - (2836i * v_560));
+                                var v_562 : i32;
+                                if ((v_561 < 0i)) {
+                                  v_562 = (v_561 + 2147483647i);
+                                } else {
+                                  v_562 = v_561;
+                                }
+                                let v_563 = bitcast<u32>(v_562);
+                                let v_564 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 2u)]);
+                                v_544 = v_563;
+                                v_545 = vec2<f32>((((f32((v_551 % 65536u)) * 0.00003051804378628731f) - 1.0f) * v_564.x), (((f32((v_557 % 65536u)) * 0.00003051804378628731f) - 1.0f) * v_564.y));
+                              } else {
+                                var v_565 : u32;
+                                var v_566 : vec2<f32>;
+                                if (((v_514 == 4u) | (v_514 == 5u))) {
+                                  var v_567 : vec2<f32>;
+                                  if ((((data_1.m[v.material_offset].x == 4u) | (data_1.m[v.material_offset].x == 5u)) & (data_1.m[(v.material_offset + 2u)].z > 0u))) {
+                                    let v_568 = bitcast<i32>(data_1.m[(v.material_offset + 2u)].z);
+                                    let v_569 = (393u + (bitcast<u32>(max(min((v_568 - 1i), i32((v_318 * f32(v_568)))), 0i)) * 2u));
+                                    v_567 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + v_569)]).xy;
+                                  } else {
+                                    v_567 = vec2<f32>();
+                                  }
+                                  let v_570 = v_567;
+                                  v_565 = v_508;
+                                  v_566 = v_570;
+                                } else {
+                                  var v_571 : u32;
+                                  var v_572 : vec2<f32>;
+                                  if ((v_514 == 6u)) {
+                                    let v_573 = max(0.00100000004749745131f, bitcast<vec4<f32>>(data_1.m[v.material_offset]).z);
+                                    let v_574 = bitcast<vec4<f32>>(data_1.m[v.material_offset]).w;
+                                    let v_575 = bitcast<i32>(v_508);
+                                    let v_576 = select(v_575, 305420679i, (v_575 == 0i));
+                                    let v_577 = (v_576 / 127773i);
+                                    let v_578 = ((16807i * (v_576 - (v_577 * 127773i))) - (2836i * v_577));
+                                    var v_579 : i32;
+                                    if ((v_578 < 0i)) {
+                                      v_579 = (v_578 + 2147483647i);
+                                    } else {
+                                      v_579 = v_578;
+                                    }
+                                    let v_580 = bitcast<i32>(bitcast<u32>(v_579));
+                                    let v_581 = select(v_580, 305420679i, (v_580 == 0i));
+                                    let v_582 = (v_581 / 127773i);
+                                    let v_583 = ((16807i * (v_581 - (v_582 * 127773i))) - (2836i * v_582));
+                                    var v_584 : i32;
+                                    if ((v_583 < 0i)) {
+                                      v_584 = (v_583 + 2147483647i);
+                                    } else {
+                                      v_584 = v_583;
+                                    }
+                                    let v_585 = bitcast<u32>(v_584);
+                                    let v_586 = (f32((v_585 % 65536u)) * 0.00009587518434273079f);
+                                    let v_587 = bitcast<i32>(v_585);
+                                    let v_588 = select(v_587, 305420679i, (v_587 == 0i));
+                                    let v_589 = (v_588 / 127773i);
+                                    let v_590 = ((16807i * (v_588 - (v_589 * 127773i))) - (2836i * v_589));
+                                    var v_591 : i32;
+                                    if ((v_590 < 0i)) {
+                                      v_591 = (v_590 + 2147483647i);
+                                    } else {
+                                      v_591 = v_590;
+                                    }
+                                    let v_592 = bitcast<u32>(v_591);
+                                    let v_593 = sqrt((((f32((v_592 % 65536u)) * 0.00001525902189314365f) * ((v_573 * v_573) - (v_574 * v_574))) + (v_574 * v_574)));
+                                    let v_594 = vec2<f32>((sin(v_586) * v_593), (cos(v_586) * v_593));
+                                    v_571 = v_592;
+                                    v_572 = v_594;
+                                  } else {
+                                    v_571 = v_508;
+                                    v_572 = vec2<f32>();
+                                  }
+                                  let v_595 = v_572;
+                                  v_565 = v_571;
+                                  v_566 = v_595;
+                                }
+                                let v_596 = v_566;
+                                v_544 = v_565;
+                                v_545 = v_596;
+                              }
+                              let v_597 = v_545;
+                              v_515 = v_544;
+                              v_516 = v_597;
+                            }
+                            let v_598 = v_516;
+                            let v_599 = v_515;
+                            let v_600 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 1u)]);
+                            let v_601 = ((v_598.x * v_600.z) + v_600.x);
+                            let v_602 = ((v_598.y * v_600.w) + v_600.y);
+                            let v_603 = vec2<f32>(v_601, v_602);
+                            var v_604 : u32;
+                            var v_605 : vec2<f32>;
+                            if ((data_1.m[(v.material_offset + 21u)].w != 0u)) {
+                              let v_606 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 10u)]).z;
+                              let v_607 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 14u)]).z;
+                              let v_608 = bitcast<i32>(v_599);
+                              let v_609 = select(v_608, 305420679i, (v_608 == 0i));
+                              let v_610 = (v_609 / 127773i);
+                              let v_611 = ((16807i * (v_609 - (v_610 * 127773i))) - (2836i * v_610));
+                              var v_612 : i32;
+                              if ((v_611 < 0i)) {
+                                v_612 = (v_611 + 2147483647i);
+                              } else {
+                                v_612 = v_611;
+                              }
+                              let v_613 = bitcast<u32>(v_612);
+                              let v_614 = (f32((v_613 % 65536u)) * 0.00001525902189314365f);
+                              let v_615 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 21u)]);
+                              let v_616 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 22u)]);
+                              let v_617 = vec4<f32>(((v_601 * v_615.y) + (v_59 * v_616.x)), ((v_602 * v_615.y) + (v_59 * v_616.y)), ((0.0f * v_615.y) + (v_59 * v_616.z)), (0.0f + (v_59 * v_615.z)));
+                              let v_618 = (0.00100000004749745131f + (max((v_615.x - 1.0f), 0.0f) * 70.0f));
+                              var v_619 : vec3<f32>;
+                              {
+                                var v_620 : vec3<f32>;
+                                v_620 = vec3<f32>();
+                                var v_621 : u32;
+                                v_621 = 0u;
+                                loop {
+                                  var v_622 : vec3<f32>;
+                                  let v_623 = v_621;
+                                  let v_624 = v_620;
+                                  if ((v_623 < 6u)) {
+                                    let v_625 = (v_623 / 2u);
+                                    let v_626 = (v_623 % 2u);
+                                    let v_627 = (((v_625 + 1u) + v_626) % 3u);
+                                    let v_628 = (((v_625 + 2u) - v_626) % 3u);
+                                    let v_629 = (vec4<f32>(select(0.0f, 1.0f, (v_627 == 0u)), select(0.0f, 1.0f, (v_627 == 1u)), select(0.0f, 1.0f, (v_627 == 2u)), 0.0f) * v_618);
+                                    let v_630 = (v_617 + v_629);
+                                    let v_631 = dot(v_630, vec4<f32>(-0.16666670143604278564f, -0.16666670143604278564f, -0.16666670143604278564f, -0.5f));
+                                    let v_632 = (v_630.xyz + vec3<f32>(v_631, v_631, v_631));
+                                    let v_633 = vec4<f32>(v_632.x, v_632.y, v_632.z, dot(v_630, vec4<f32>(0.5f)));
+                                    let v_634 = floor(v_633);
+                                    let v_635 = (v_633 - v_634);
+                                    let v_636 = (((v_635 * v_635) * v_635) * (vec4<f32>(10.0f) + (v_635 * (vec4<f32>(-15.0f) + (v_635 * 6.0f)))));
+                                    var v_637 : f32;
+                                    {
+                                      var v_638 : f32;
+                                      v_638 = 0.0f;
+                                      var v_639 : u32;
+                                      v_639 = 0u;
+                                      loop {
+                                        let v_640 = v_639;
+                                        let v_641 = v_638;
+                                        if ((v_640 < 16u)) {
+                                          continue;
+                                        } else {
+                                          v_637 = v_641;
+                                          break;
+                                        }
+
+                                        continuing {
+                                          let v_642 = vec4<f32>((vec4<u32>(v_640, (v_640 >> 1u), (v_640 >> 2u), (v_640 >> 3u)) & vec4<u32>(1u)));
+                                          let v_643 = (((vec4<f32>(1.0f) - v_642) * (vec4<f32>(1.0f) - v_636)) + (v_642 * v_636));
+                                          let v_644 = (vec4<i32>(v_634) + vec4<i32>(v_642));
+                                          let v_645 = ((bitcast<u32>(v_644.x) + (v_628 * 1663821211u)) + 2654435769u);
+                                          let v_646 = (((v_645 >> 16u) ^ v_645) * 73244475u);
+                                          let v_647 = (((v_646 >> 16u) ^ v_646) * 73244475u);
+                                          let v_648 = (((v_647 >> 16u) ^ v_647) + bitcast<u32>(v_644.y));
+                                          let v_649 = (((v_648 >> 16u) ^ v_648) * 73244475u);
+                                          let v_650 = (((v_649 >> 16u) ^ v_649) * 73244475u);
+                                          let v_651 = (((v_650 >> 16u) ^ v_650) + bitcast<u32>(v_644.z));
+)wgsl",
+R"wgsl(                                          let v_652 = (((v_651 >> 16u) ^ v_651) * 73244475u);
+                                          let v_653 = (((v_652 >> 16u) ^ v_652) * 73244475u);
+                                          let v_654 = (((v_653 >> 16u) ^ v_653) + bitcast<u32>(v_644.w));
+                                          let v_655 = (((v_654 >> 16u) ^ v_654) * 73244475u);
+                                          let v_656 = (((v_655 >> 16u) ^ v_655) * 73244475u);
+                                          let v_657 = ((v_656 >> 16u) ^ v_656);
+                                          let v_658 = (v_657 + 1u);
+                                          let v_659 = (((v_658 >> 16u) ^ v_658) * 73244475u);
+                                          let v_660 = (((v_659 >> 16u) ^ v_659) * 73244475u);
+                                          let v_661 = ((v_660 >> 16u) ^ v_660);
+                                          let v_662 = (v_641 + ((((v_643.x * v_643.y) * v_643.z) * v_643.w) * dot((v_635 - v_642), vec4<f32>(((f32((v_657 & 65535u)) * 0.000030517578125f) - 1.0f), ((f32(((v_657 >> 16u) & 65535u)) * 0.000030517578125f) - 1.0f), ((f32((v_661 & 65535u)) * 0.000030517578125f) - 1.0f), ((f32(((v_661 >> 16u) & 65535u)) * 0.000030517578125f) - 1.0f)))));
+                                          let v_663 = (v_640 + bitcast<u32>(1i));
+                                          v_638 = v_662;
+                                          v_639 = v_663;
+                                        }
+                                      }
+                                    }
+                                    let v_664 = v_637;
+                                    let v_665 = (v_617 - v_629);
+                                    let v_666 = dot(v_665, vec4<f32>(-0.16666670143604278564f, -0.16666670143604278564f, -0.16666670143604278564f, -0.5f));
+                                    let v_667 = (v_665.xyz + vec3<f32>(v_666, v_666, v_666));
+                                    let v_668 = vec4<f32>(v_667.x, v_667.y, v_667.z, dot(v_665, vec4<f32>(0.5f)));
+                                    let v_669 = floor(v_668);
+                                    let v_670 = (v_668 - v_669);
+                                    let v_671 = (((v_670 * v_670) * v_670) * (vec4<f32>(10.0f) + (v_670 * (vec4<f32>(-15.0f) + (v_670 * 6.0f)))));
+                                    var v_672 : f32;
+                                    {
+                                      var v_673 : f32;
+                                      v_673 = 0.0f;
+                                      var v_674 : u32;
+                                      v_674 = 0u;
+                                      loop {
+                                        let v_675 = v_674;
+                                        let v_676 = v_673;
+                                        if ((v_675 < 16u)) {
+                                          continue;
+                                        } else {
+                                          v_672 = v_676;
+                                          break;
+                                        }
+
+                                        continuing {
+                                          let v_677 = vec4<f32>((vec4<u32>(v_675, (v_675 >> 1u), (v_675 >> 2u), (v_675 >> 3u)) & vec4<u32>(1u)));
+                                          let v_678 = (((vec4<f32>(1.0f) - v_677) * (vec4<f32>(1.0f) - v_671)) + (v_677 * v_671));
+                                          let v_679 = (vec4<i32>(v_669) + vec4<i32>(v_677));
+                                          let v_680 = ((bitcast<u32>(v_679.x) + (v_628 * 1663821211u)) + 2654435769u);
+                                          let v_681 = (((v_680 >> 16u) ^ v_680) * 73244475u);
+                                          let v_682 = (((v_681 >> 16u) ^ v_681) * 73244475u);
+                                          let v_683 = (((v_682 >> 16u) ^ v_682) + bitcast<u32>(v_679.y));
+                                          let v_684 = (((v_683 >> 16u) ^ v_683) * 73244475u);
+                                          let v_685 = (((v_684 >> 16u) ^ v_684) * 73244475u);
+                                          let v_686 = (((v_685 >> 16u) ^ v_685) + bitcast<u32>(v_679.z));
+                                          let v_687 = (((v_686 >> 16u) ^ v_686) * 73244475u);
+                                          let v_688 = (((v_687 >> 16u) ^ v_687) * 73244475u);
+                                          let v_689 = (((v_688 >> 16u) ^ v_688) + bitcast<u32>(v_679.w));
+                                          let v_690 = (((v_689 >> 16u) ^ v_689) * 73244475u);
+                                          let v_691 = (((v_690 >> 16u) ^ v_690) * 73244475u);
+                                          let v_692 = ((v_691 >> 16u) ^ v_691);
+                                          let v_693 = (v_692 + 1u);
+                                          let v_694 = (((v_693 >> 16u) ^ v_693) * 73244475u);
+                                          let v_695 = (((v_694 >> 16u) ^ v_694) * 73244475u);
+                                          let v_696 = ((v_695 >> 16u) ^ v_695);
+                                          let v_697 = (v_676 + ((((v_678.x * v_678.y) * v_678.z) * v_678.w) * dot((v_670 - v_677), vec4<f32>(((f32((v_692 & 65535u)) * 0.000030517578125f) - 1.0f), ((f32(((v_692 >> 16u) & 65535u)) * 0.000030517578125f) - 1.0f), ((f32((v_696 & 65535u)) * 0.000030517578125f) - 1.0f), ((f32(((v_696 >> 16u) & 65535u)) * 0.000030517578125f) - 1.0f)))));
+                                          let v_698 = (v_675 + bitcast<u32>(1i));
+                                          v_673 = v_697;
+                                          v_674 = v_698;
+                                        }
+                                      }
+                                    }
+                                    let v_699 = (v_664 - v_672);
+                                    v_622 = (v_624 + (vec3<f32>(select(0.0f, 1.0f, (v_625 == 0u)), select(0.0f, 1.0f, (v_625 == 1u)), select(0.0f, 1.0f, (v_625 == 2u))) * select(v_699, -(v_699), (v_626 != 0u))));
+                                    continue;
+                                  } else {
+                                    v_619 = v_624;
+                                    break;
+                                  }
+
+                                  continuing {
+                                    let v_700 = v_622;
+                                    let v_701 = (v_623 + bitcast<u32>(1i));
+                                    v_620 = v_700;
+                                    v_621 = v_701;
+                                  }
+                                }
+                              }
+                              let v_702 = v_619;
+                              let v_703 = sqrt(dot(v_702, v_702));
+                              let v_704 = (v_703 > 0.0f);
+                              let v_705 = select(vec3<f32>(), (v_702 / vec3<f32>(v_703, v_703, v_703)), vec3<bool>(v_704, v_704, v_704));
+                              let v_706 = v_615.x;
+                              v_604 = v_613;
+                              v_605 = (v_603 + (((((v_705 * 0.89999997615814208984f) * (10.0f - v_706)) + (v_705 * (v_706 - 9.0f)))).xy * ((v_606 * (1.0f - v_614)) + (v_607 * v_614))));
+                            } else {
+                              v_604 = v_599;
+                              v_605 = v_603;
+                            }
+                            let v_707 = v_605;
+                            let v_708 = v_604;
+                            v_510 = v_48;
+                            v_511 = vec2<f32>((((v_48.x * v_707.x) + (v_48.z * v_707.y)) + v_49.x), (((v_48.y * v_707.x) + (v_48.w * v_707.y)) + v_49.y));
+                            v_512 = v_708;
+                          }
+                          let v_709 = v_512;
+                          let v_710 = v_511;
+                          let v_711 = v_510;
+                          var v_712 : vec2<f32>;
+                          if ((v_220 & (source.m[v_221].z != 0u))) {
+                            v_712 = bitcast<vec4<f32>>(source.m[(v_221 + 1u)]).zw;
+                          } else {
+                            let v_713 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 3u)]).z;
+                            let v_714 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 3u)]);
+                            let v_715 = bitcast<i32>(v_709);
+                            let v_716 = select(v_715, 305420679i, (v_715 == 0i));
+                            let v_717 = (v_716 / 127773i);
+                            let v_718 = ((16807i * (v_716 - (v_717 * 127773i))) - (2836i * v_717));
+                            var v_719 : i32;
+                            if ((v_718 < 0i)) {
+                              v_719 = (v_718 + 2147483647i);
+                            } else {
+                              v_719 = v_718;
+                            }
+                            let v_720 = (((f32((bitcast<u32>(v_719) % 65536u)) * 0.00003051804378628731f) - 1.0f) * (v_713 * 0.01745327748358249664f));
+                            let v_721 = atan2(v_714.y, v_714.x);
+                            let v_722 = (v_720 + select((sign(v_714.y) * 1.5707950592041015625f), v_721, !((v_714.x == 0.0f))));
+                            let v_723 = (vec2<f32>(cos(v_722), sin(v_722)) * ((v_335 * (1.0f - v_343)) + (v_336 * v_343)));
+                            var v_724 : vec2<f32>;
+                            if (((data_1.m[v.material_offset].x == 5u) & (((data_1.m[v.material_offset].x == 4u) | (data_1.m[v.material_offset].x == 5u)) & (data_1.m[(v.material_offset + 2u)].z > 0u)))) {
+                              let v_725 = bitcast<i32>(data_1.m[(v.material_offset + 2u)].z);
+                              let v_726 = (393u + (bitcast<u32>(max(min((v_725 - 1i), i32((v_318 * f32(v_725)))), 0i)) * 2u));
+                              let v_727 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + v_726)]);
+                              v_724 = vec2<f32>(((v_723.x * v_727.z) + (v_723.y * v_727.w)), ((v_723.x * v_727.w) - (v_723.y * v_727.z)));
+                            } else {
+                              v_724 = v_723;
+                            }
+                            v_712 = v_724;
+                          }
+                          let v_728 = v_712;
+                          let v_729 = (vec2<f32>(((v_48.x * v_728.x) + (v_48.z * v_728.y)), ((v_48.y * v_728.x) + (v_48.w * v_728.y))) + (v_50 * bitcast<vec4<f32>>(data_1.m[(v.material_offset + 3u)]).w));
+                          var v_730 : vec4<f32> = v_122;
+                          v_730.x = v_710.x;
+                          var v_731 : vec4<f32> = v_730;
+                          v_731.y = v_710.y;
+                          let v_732 = v_731;
+                          let v_733 = vec4<f32>(v_729.x, v_729.y, 0.0f, 0.0f);
+                          let v_734 = (data_1.m[(v.material_offset + 2u)].w == 0u);
+                          let v_735 = (data_1.m[(v.material_offset + 2u)].w + 1u);
+                          let v_736 = select(data_1.m[(v.material_offset + v_735)].x, 0u, v_734);
+                          var v_737 : bool;
+                          var v_738 : vec4<f32>;
+                          var v_739 : vec4<f32>;
+                          if ((v_736 != 0u)) {
+                            let v_740 = data_1.m[(v.material_offset + data_1.m[(v.material_offset + 2u)].w)];
+                            graph_registers[0i] = vec4<f32>(v_710.x, v_710.y, v_729.x, v_729.y);
+                            graph_registers[1i] = v_502;
+                            graph_registers[2i] = vec4<f32>(0.0f, 0.0f, 0.0f, 1.0f);
+                            graph_registers[3i] = vec4<f32>(0.0f, 0.0f, (v_267 * v_55), 0.0f);
+                            graph_registers[7i] = vec4<f32>();
+                            graph_registers[4i] = vec4<f32>(v_59, f32(v_7), f32(v_224), v_58);
+)wgsl",
+R"wgsl(                            let v_741 = ((v_224 + 1u) + v_62);
+                            let v_742 = (((v_741 >> 16u) ^ v_741) * 73244475u);
+                            let v_743 = (((v_742 >> 16u) ^ v_742) * 73244475u);
+                            let v_744 = (((v_743 >> 16u) ^ v_743) ^ 1759714724u);
+                            let v_745 = (((v_744 >> 16u) ^ v_744) * 73244475u);
+                            let v_746 = (((v_745 >> 16u) ^ v_745) * 73244475u);
+                            let v_747 = (v_744 + 1u);
+                            let v_748 = (((v_747 >> 16u) ^ v_747) * 73244475u);
+                            let v_749 = (((v_748 >> 16u) ^ v_748) * 73244475u);
+                            let v_750 = (v_744 + 2u);
+                            let v_751 = (((v_750 >> 16u) ^ v_750) * 73244475u);
+                            let v_752 = (((v_751 >> 16u) ^ v_751) * 73244475u);
+                            let v_753 = (v_744 + 3u);
+                            let v_754 = (((v_753 >> 16u) ^ v_753) * 73244475u);
+                            let v_755 = (((v_754 >> 16u) ^ v_754) * 73244475u);
+                            graph_registers[5i] = (vec4<f32>(f32((((v_746 >> 16u) ^ v_746) >> 8u)), f32((((v_749 >> 16u) ^ v_749) >> 8u)), f32((((v_752 >> 16u) ^ v_752) >> 8u)), f32((((v_755 >> 16u) ^ v_755) >> 8u))) * 0.00000005960464477539f);
+                            graph_registers[6i] = v_49;
+                            let v_756 = ((v.material_offset + data_1.m[(v.material_offset + 2u)].w) + 2u);
+                            let v_757 = v_740.x;
+                            graph_registers[8i] = graph_registers[0i];
+                            graph_registers[9i] = graph_registers[1i];
+                            graph_registers[10i] = graph_registers[2i];
+                            let v_758 = (v_756 + v_757);
+                            {
+                              var v_759 : u32;
+                              v_759 = 0u;
+                              loop {
+                                let v_760 = v_759;
+                                if ((v_760 < v_757)) {
+                                  let v_761 = data_1.m[(v_756 + v_760)];
+                                  let v_762 = ((v_761.x >> 16u) & 255u);
+                                  let v_763 = v_761.y;
+                                  let v_764 = (v_763 & 255u);
+                                  if ((v_764 < 32u)) {
+                                    v_6 = graph_registers[v_764];
+                                  } else {
+                                    v_6 = bitcast<vec4<f32>>(data_1.m[(v_758 + ((v_764 - 32u) & 31u))]);
+                                  }
+                                  let v_765 = (v_763 >> 8u);
+                                  let v_766 = v_6[(v_765 & 3u)];
+                                  let v_767 = v_6[((v_765 >> 2u) & 3u)];
+                                  let v_768 = v_6[((v_765 >> 4u) & 3u)];
+                                  let v_769 = v_6[((v_765 >> 6u) & 3u)];
+                                  let v_770 = vec4<f32>(v_766, v_767, v_768, v_769);
+                                  let v_771 = v_761.z;
+                                  let v_772 = (v_771 & 255u);
+                                  if ((v_772 < 32u)) {
+                                    v_5 = graph_registers[v_772];
+                                  } else {
+                                    v_5 = bitcast<vec4<f32>>(data_1.m[(v_758 + ((v_772 - 32u) & 31u))]);
+                                  }
+                                  let v_773 = (v_771 >> 8u);
+                                  let v_774 = v_5[(v_773 & 3u)];
+                                  let v_775 = v_5[((v_773 >> 2u) & 3u)];
+                                  let v_776 = v_5[((v_773 >> 4u) & 3u)];
+                                  let v_777 = v_5[((v_773 >> 6u) & 3u)];
+                                  let v_778 = vec4<f32>(v_774, v_775, v_776, v_777);
+                                  let v_779 = v_761.w;
+                                  let v_780 = (v_779 & 255u);
+                                  if ((v_780 < 32u)) {
+                                    v_4 = graph_registers[v_780];
+                                  } else {
+                                    v_4 = bitcast<vec4<f32>>(data_1.m[(v_758 + ((v_780 - 32u) & 31u))]);
+                                  }
+                                  let v_781 = (v_779 >> 8u);
+                                  let v_782 = vec4<f32>(v_4[(v_781 & 3u)], v_4[((v_781 >> 2u) & 3u)], v_4[((v_781 >> 4u) & 3u)], v_4[((v_781 >> 6u) & 3u)]);
+                                  let v_783 = vec4<f32>(select(0.0f, 1.0f, (v_762 > 0u)), select(0.0f, 1.0f, (v_762 > 1u)), select(0.0f, 1.0f, (v_762 > 2u)), select(0.0f, 1.0f, (v_762 > 3u)));
+                                  var v_784 : vec4<f32>;
+                                  switch((v_761.x & 255u)) {
+                                    default: {
+                                      v_784 = v_770;
+                                    }
+                                    case 1u: {
+                                      v_784 = (v_770 + v_778);
+                                    }
+                                    case 2u: {
+                                      v_784 = (v_770 - v_778);
+                                    }
+                                    case 3u: {
+                                      v_784 = (v_770 * v_778);
+                                    }
+                                    case 4u: {
+                                      v_784 = (v_770 / v_778);
+                                    }
+                                    case 5u: {
+                                      v_784 = (v_770 - (v_778 * floor((v_770 / v_778))));
+                                    }
+                                    case 6u: {
+                                      v_784 = pow(max(v_770, vec4<f32>()), v_778);
+                                    }
+                                    case 7u: {
+                                      v_784 = min(v_770, v_778);
+                                    }
+                                    case 8u: {
+                                      v_784 = max(v_770, v_778);
+                                    }
+                                    case 9u: {
+                                      v_784 = vec4<f32>(select(0.0f, 1.0f, (v_774 >= v_766)), select(0.0f, 1.0f, (v_775 >= v_767)), select(0.0f, 1.0f, (v_776 >= v_768)), select(0.0f, 1.0f, (v_777 >= v_769)));
+                                    }
+                                    case 10u: {
+                                      v_784 = atan2(v_770, v_778);
+                                    }
+                                    case 11u: {
+                                      v_784 = abs(v_770);
+                                    }
+                                    case 12u: {
+                                      v_784 = sign(v_770);
+                                    }
+                                    case 13u: {
+                                      v_784 = floor(v_770);
+                                    }
+                                    case 14u: {
+                                      v_784 = ceil(v_770);
+                                    }
+                                    case 15u: {
+                                      v_784 = floor((v_770 + vec4<f32>(0.5f)));
+                                    }
+                                    case 16u: {
+                                      v_784 = (v_770 - floor(v_770));
+                                    }
+                                    case 17u: {
+                                      v_784 = sqrt(v_770);
+                                    }
+                                    case 18u: {
+                                      v_784 = sin((v_770 - (floor(((v_770 * 0.15915493667125701904f) + vec4<f32>(0.5f))) * 6.28318548202514648438f)));
+                                    }
+                                    case 19u: {
+                                      v_784 = cos((v_770 - (floor(((v_770 * 0.15915493667125701904f) + vec4<f32>(0.5f))) * 6.28318548202514648438f)));
+                                    }
+                                    case 20u: {
+                                      v_784 = tan((v_770 - (floor(((v_770 * 0.15915493667125701904f) + vec4<f32>(0.5f))) * 6.28318548202514648438f)));
+                                    }
+                                    case 21u: {
+                                      v_784 = asin(v_770);
+                                    }
+                                    case 22u: {
+                                      v_784 = acos(v_770);
+                                    }
+                                    case 23u: {
+                                      v_784 = atan(v_770);
+                                    }
+                                    case 24u: {
+                                      v_784 = exp(v_770);
+                                    }
+                                    case 25u: {
+                                      v_784 = log(v_770);
+                                    }
+                                    case 26u: {
+                                      v_784 = clamp(v_770, vec4<f32>(), vec4<f32>(1.0f));
+                                    }
+                                    case 27u: {
+                                      v_784 = (vec4<f32>(1.0f) - v_770);
+                                    }
+                                    case 28u: {
+                                      v_784 = -(v_770);
+                                    }
+                                    case 29u: {
+                                      v_784 = (v_770 + ((v_778 - v_770) * v_782));
+                                    }
+                                    case 30u: {
+                                      v_784 = min(max(v_770, v_778), v_782);
+                                    }
+                                    case 31u: {
+                                      let v_785 = clamp(((v_782 - v_770) / (v_778 - v_770)), vec4<f32>(), vec4<f32>(1.0f));
+                                      v_784 = ((v_785 * v_785) * (vec4<f32>(3.0f) - (v_785 * 2.0f)));
+                                    }
+                                    case 32u: {
+                                      let v_786 = dot((v_770 * v_783), (v_778 * v_783));
+                                      v_784 = vec4<f32>(v_786, v_786, v_786, v_786);
+                                    }
+                                    case 33u: {
+                                      let v_787 = sqrt(dot((v_770 * v_783), (v_770 * v_783)));
+                                      v_784 = vec4<f32>(v_787, v_787, v_787, v_787);
+                                    }
+                                    case 34u: {
+                                      let v_788 = sqrt(dot(((v_770 - v_778) * v_783), ((v_770 - v_778) * v_783)));
+                                      v_784 = vec4<f32>(v_788, v_788, v_788, v_788);
+                                    }
+                                    case 35u: {
+                                      let v_789 = sqrt(dot((v_770 * v_783), (v_770 * v_783)));
+                                      let v_790 = (v_789 > 0.0f);
+                                      v_784 = select(vec4<f32>(), ((v_770 * v_783) / vec4<f32>(v_789, v_789, v_789, v_789)), vec4<bool>(v_790, v_790, v_790, v_790));
+                                    }
+                                    case 36u: {
+                                      v_784 = vec4<f32>(select(v_766, v_774, ((v_762 & 1u) != 0u)), select(v_767, v_775, ((v_762 & 2u) != 0u)), select(v_768, v_776, ((v_762 & 4u) != 0u)), select(v_769, v_777, ((v_762 & 8u) != 0u)));
+                                    }
+                                    case 38u: {
+                                      let v_791 = (v_767 < v_768);
+)wgsl",
+R"wgsl(                                      let v_792 = select(vec4<f32>(v_767, v_768, 0.0f, -0.3333333432674407959f), vec4<f32>(v_768, v_767, -1.0f, 0.6666666865348815918f), vec4<bool>(v_791, v_791, v_791, v_791));
+                                      let v_793 = (v_766 < v_792.x);
+                                      let v_794 = select(vec4<f32>(v_766, v_792.y, v_792.z, v_792.x), vec4<f32>(v_792.x, v_792.y, v_792.w, v_766), vec4<bool>(v_793, v_793, v_793, v_793));
+                                      let v_795 = (v_794.x - min(v_794.w, v_794.y));
+                                      v_784 = vec4<f32>(abs((v_794.z + ((v_794.w - v_794.y) / ((6.0f * v_795) + 0.00000000010000000134f)))), (v_795 / (v_794.x + 0.00000000010000000134f)), v_794.x, 0.0f);
+                                    }
+                                    case 39u: {
+                                      let v_796 = ((vec3<f32>(1.0f) + ((clamp((abs(((fract((vec3<f32>(v_766, v_766, v_766) + vec3<f32>(1.0f, 0.6666666865348815918f, 0.3333333432674407959f))) * 6.0f) - vec3<f32>(3.0f))) - vec3<f32>(1.0f)), vec3<f32>(), vec3<f32>(1.0f)) - vec3<f32>(1.0f)) * v_767)) * v_768);
+                                      v_784 = vec4<f32>(v_796.x, v_796.y, v_796.z, 0.0f);
+                                    }
+                                  }
+                                  graph_registers[((v_761.x >> 8u) & 31u)] = v_784;
+                                  continue;
+                                } else {
+                                  break;
+                                }
+
+                                continuing {
+                                  v_759 = (v_760 + bitcast<u32>(1i));
+                                }
+                              }
+                            }
+                            var v_797 : vec4<f32>;
+                            if (((v_736 & 1u) != 0u)) {
+                              let v_798 = graph_registers[8i];
+                              var v_799 : vec4<f32> = v_732;
+                              v_799.x = v_798.x;
+                              var v_800 : vec4<f32> = v_799;
+                              v_800.y = v_798.y;
+                              v_797 = v_800;
+                            } else {
+                              v_797 = v_732;
+                            }
+                            let v_801 = v_797;
+                            var v_802 : vec4<f32>;
+                            if (((v_736 & 2u) != 0u)) {
+                              let v_803 = graph_registers[8i];
+                              var v_804 : vec4<f32> = v_733;
+                              v_804.x = v_803.z;
+                              var v_805 : vec4<f32> = v_804;
+                              v_805.y = v_803.w;
+                              v_802 = v_805;
+                            } else {
+                              v_802 = v_733;
+                            }
+                            let v_806 = v_802;
+                            v_737 = select(v_509, false, (((v_736 & 64u) != 0u) & !((graph_registers[10i].w >= 0.5f))));
+                            v_738 = v_801;
+                            v_739 = v_806;
+                          } else {
+                            v_737 = v_509;
+                            v_738 = v_732;
+                            v_739 = v_733;
+                          }
+                          let v_807 = v_739;
+                          let v_808 = v_738;
+                          let v_809 = v_737;
+                          v_225 = v_502;
+                          v_226 = vec4<f32>(((v_320 * (1.0f - v_328)) + (v_321 * v_328)), 0.0f, 0.0f, v_267);
+                          v_227 = v_807;
+                          v_228 = v_808;
+                          v_229 = v_711;
+                          v_230 = v_809;
+                        } else {
+                          v_225 = v_123;
+                          v_226 = v_124;
+                          v_227 = v_125;
+                          v_228 = v_122;
+                          v_229 = v_121;
+                          v_230 = v_223;
+                        }
+                        let v_810 = v_230;
+                        let v_811 = v_229;
+                        let v_812 = v_228;
+                        let v_813 = v_227;
+                        let v_814 = v_226;
+                        let v_815 = v_225;
+                        v_126 = v_222;
+                        v_127 = v_224;
+                        v_128 = v_48;
+                        v_129 = v_49.xy;
+                        v_130 = v_50;
+                        v_131 = v_55;
+                        v_132 = v_58;
+                        v_133 = v_56.w;
+                        v_134 = v_59;
+                        v_135 = v_62;
+                        v_136 = v_815;
+                        v_137 = v_814;
+                        v_138 = v_813;
+                        v_139 = v_218;
+                        v_140 = v_65.x;
+                        v_141 = v_67;
+                        v_142 = v_68;
+                        v_143 = v_69;
+                        v_144 = v_812;
+                        v_145 = v_219;
+                        v_146 = v_66;
+                        v_147 = v_811;
+                        v_148 = v_65.y;
+                        v_149 = v_810;
+                      } else {
+                        let v_816 = ((v_89 * v_65.w) / v.trail);
+                        let v_817 = ((v_90.x & 2u) != 0u);
+                        var v_818 : vec4<u32>;
+                        if (v_817) {
+                          v_818 = vec4<u32>((4u | (v_90.x & 4294901760u)), v_816, 0u, 0u);
+                        } else {
+                          v_818 = v_120;
+                        }
+                        let v_819 = v_818;
+                        let v_820 = select(v_123, v_93, vec4<bool>(v_817, v_817, v_817, v_817));
+                        let v_821 = select(v_124, v_92, vec4<bool>(v_817, v_817, v_817, v_817));
+                        let v_822 = select(v_125, v_91, vec4<bool>(v_817, v_817, v_817, v_817));
+                        let v_823 = select(v_122, v_94, vec4<bool>(v_817, v_817, v_817, v_817));
+                        let v_824 = select(v_121, v_95, vec4<bool>(v_817, v_817, v_817, v_817));
+                        let v_825 = select(false, true, v_817);
+                        if (((v_819.x & 4u) != 0u)) {
+                          var v_826 : vec4<u32>;
+                          if ((!(v_825) & (v_819.y > 0u))) {
+                            var v_827 : vec4<u32> = v_819;
+                            v_827.y = (v_819.y - 1u);
+                            v_826 = v_827;
+                          } else {
+                            v_826 = v_819;
+                          }
+                          let v_828 = v_826;
+                          var v_829 : vec4<u32>;
+                          if ((v_828.y == 0u)) {
+                            var v_830 : vec4<u32> = v_828;
+                            v_830.x = (1u | (v_828.x & 4294901760u));
+                            v_829 = v_830;
+                          } else {
+                            v_829 = v_828;
+                          }
+                          let v_831 = v_829;
+                          v_109 = v_824;
+                          v_110 = v_823;
+                          v_111 = v_820;
+                          v_112 = v_821;
+                          v_113 = v_822;
+                          v_114 = v_831;
+                          break;
+                        }
+                        if ((((v_819.x & 1u) == 0u) | (v_816 > v_46))) {
+                          v_109 = v_824;
+                          v_110 = v_823;
+                          v_111 = v_820;
+                          v_112 = v_821;
+                          v_113 = v_822;
+                          v_114 = v_819;
+                          break;
+                        }
+                        let v_832 = (v.steps_offset + ((v_46 - v_816) * 9u));
+                        let v_833 = bitcast<vec4<f32>>(data_1.m[v_832]);
+                        let v_834 = bitcast<vec4<f32>>(data_1.m[(v_832 + 1u)]);
+                        let v_835 = bitcast<vec4<f32>>(data_1.m[(v_832 + 2u)]);
+                        let v_836 = bitcast<vec4<f32>>(data_1.m[(v_832 + 3u)]);
+                        let v_837 = bitcast<f32>(data_1.m[(v_832 + 4u)].w);
+                        let v_838 = data_1.m[(v_832 + 4u)].y;
+                        let v_839 = data_1.m[(v_832 + 5u)];
+                        let v_840 = bitcast<f32>(v_839.z);
+                        let v_841 = bitcast<vec4<f32>>(data_1.m[(v_832 + 6u)]);
+                        let v_842 = bitcast<vec4<f32>>(data_1.m[(v_832 + 7u)]).xy;
+                        let v_843 = bitcast<vec4<f32>>(data_1.m[(v_832 + 8u)]);
+                        let v_844 = (((v_819.x >> 16u) * v.amount) + v_7);
+                        v_126 = v_835.z;
+                        v_127 = v_844;
+                        v_128 = v_833;
+                        v_129 = v_834.xy;
+                        v_130 = v_834.zw;
+                        v_131 = v_835.w;
+                        v_132 = v_836.z;
+                        v_133 = v_836.w;
+                        v_134 = v_837;
+                        v_135 = v_838;
+                        v_136 = v_820;
+                        v_137 = v_821;
+                        v_138 = v_822;
+                        v_139 = v_819;
+                        v_140 = v_839.x;
+                        v_141 = v_841;
+                        v_142 = v_842;
+                        v_143 = v_843;
+                        v_144 = v_823;
+                        v_145 = false;
+                        v_146 = v_840;
+                        v_147 = v_824;
+                        v_148 = v_839.y;
+                        v_149 = true;
+                      }
+                      let v_845 = v_149;
+                      let v_846 = v_148;
+                      let v_847 = v_147;
+                      let v_848 = v_146;
+                      let v_849 = v_145;
+                      let v_850 = v_144;
+                      let v_851 = v_143;
+                      let v_852 = v_142;
+                      let v_853 = v_141;
+                      let v_854 = v_140;
+                      let v_855 = v_139;
+                      let v_856 = v_138;
+                      let v_857 = v_137;
+                      let v_858 = v_136;
+                      let v_859 = v_135;
+                      let v_860 = v_134;
+                      let v_861 = v_133;
+                      let v_862 = v_132;
+                      let v_863 = v_131;
+                      let v_864 = v_130;
+                      let v_865 = v_129;
+                      let v_866 = v_128;
+                      let v_867 = v_127;
+                      let v_868 = v_126;
+                      var v_869 : bool;
+                      var v_870 : vec2<f32>;
+                      var v_871 : f32;
+                      if (((v_845 & (data_1.m[(v.material_offset + 23u)].x != 0u)) & (v_846 > 0u))) {
+                        var v_872 : f32;
+                        switch(0u) {
+                          default: {
+                            if ((data_1.m[(v.material_offset + 23u)].w == 0u)) {
+                              v_872 = v_848;
+                              break;
+                            }
+                            let v_873 = length(v_847.xy);
+                            let v_874 = length(v_847.zw);
+                            v_872 = (v_848 * (((v_873 + v_874) + select(((v_873 + v_874) * 0.5f), 1.0f, v_849)) * 0.3333333432674407959f));
+                          }
+                        }
+                        let v_875 = (((v_853.x * v_850.x) + (v_853.z * v_850.y)) + v_852.x);
+                        let v_876 = (((v_853.y * v_850.x) + (v_853.w * v_850.y)) + v_852.y);
+                        let v_877 = vec2<f32>(v_875, v_876);
+                        let v_878 = (v_872 * length(v_853.zw));
+)wgsl",
+R"wgsl(                        var v_879 : f32;
+                        var v_880 : bool;
+                        var v_881 : vec2<f32>;
+                        var v_882 : vec2<f32>;
+                        {
+                          var v_883 : u32;
+                          v_883 = v_854;
+                          var v_884 : vec2<f32>;
+                          v_884 = vec2<f32>();
+                          var v_885 : vec2<f32>;
+                          v_885 = vec2<f32>();
+                          var v_886 : bool;
+                          v_886 = false;
+                          var v_887 : f32;
+                          v_887 = 340282346638528859811704183484516925440.0f;
+                          var v_888 : u32;
+                          v_888 = 0u;
+                          loop {
+                            var v_889 : u32;
+                            var v_890 : vec2<f32>;
+                            var v_891 : vec2<f32>;
+                            var v_892 : bool;
+                            var v_893 : f32;
+                            let v_894 = v_888;
+                            let v_895 = v_887;
+                            let v_896 = v_886;
+                            let v_897 = v_885;
+                            let v_898 = v_884;
+                            let v_899 = v_883;
+                            if ((v_894 < v_846)) {
+                              let v_900 = data_1.m[v_899];
+                              let v_901 = v_900.x;
+                              let v_902 = ((v_900.y != 0u) & (v_901 > 2u));
+                              let v_903 = select(select(0u, (v_901 - 1u), (v_901 > 0u)), v_901, v_902);
+                              var v_904 : bool;
+                              var v_905 : vec2<f32>;
+                              var v_906 : vec2<f32>;
+                              var v_907 : f32;
+                              {
+                                var v_908 : f32;
+                                v_908 = v_895;
+                                var v_909 : bool;
+                                v_909 = false;
+                                var v_910 : u32;
+                                v_910 = 0u;
+                                var v_911 : vec2<f32>;
+                                v_911 = v_898;
+                                var v_912 : vec2<f32>;
+                                v_912 = v_897;
+                                loop {
+                                  var v_913 : f32;
+                                  var v_914 : bool;
+                                  var v_915 : vec2<f32>;
+                                  var v_916 : vec2<f32>;
+                                  let v_917 = v_912;
+                                  let v_918 = v_911;
+                                  let v_919 = v_910;
+                                  let v_920 = v_909;
+                                  let v_921 = v_908;
+                                  if ((v_919 < v_903)) {
+                                    let v_922 = bitcast<vec4<f32>>(data_1.m[((v_899 + 1u) + (v_919 >> 1u))]);
+                                    let v_923 = ((v_919 & 1u) != 0u);
+                                    let v_924 = select(v_922.xy, v_922.zw, vec2<bool>(v_923, v_923));
+                                    let v_925 = ((v_919 + 1u) % v_901);
+                                    let v_926 = bitcast<vec4<f32>>(data_1.m[((v_899 + 1u) + (v_925 >> 1u))]);
+                                    let v_927 = ((v_925 & 1u) != 0u);
+                                    let v_928 = select(v_926.xy, v_926.zw, vec2<bool>(v_927, v_927));
+                                    let v_929 = (v_928 - v_924);
+                                    let v_930 = (v_877 - v_924);
+                                    let v_931 = dot(v_929, v_929);
+                                    let v_932 = select(0.0f, (dot(v_930, v_929) / v_931), (v_931 > 0.0f));
+                                    var v_933 : vec2<f32>;
+                                    if ((v_932 >= 1.0f)) {
+                                      v_933 = (v_877 - v_928);
+                                    } else {
+                                      var v_934 : vec2<f32>;
+                                      if ((v_932 > 0.0f)) {
+                                        v_934 = (vec2<f32>(-(v_929.y), v_929.x) * (((v_929.x * v_930.y) - (v_929.y * v_930.x)) / v_931));
+                                      } else {
+                                        v_934 = v_930;
+                                      }
+                                      v_933 = v_934;
+                                    }
+                                    let v_935 = v_933;
+                                    let v_936 = dot(v_935, v_935);
+                                    let v_937 = (v_936 < v_921);
+                                    let v_938 = select(v_921, v_936, v_937);
+                                    let v_939 = select(v_918, v_935, vec2<bool>(v_937, v_937));
+                                    let v_940 = select(v_917, v_929, vec2<bool>(v_937, v_937));
+                                    var v_941 : bool;
+                                    if (((v_902 & ((v_924.y > v_876) != (v_928.y > v_876))) & (v_875 < (v_924.x + (((v_876 - v_924.y) * (v_928.x - v_924.x)) / (v_928.y - v_924.y)))))) {
+                                      v_941 = !(v_920);
+                                    } else {
+                                      v_941 = v_920;
+                                    }
+                                    let v_942 = v_941;
+                                    v_913 = v_938;
+                                    v_914 = v_942;
+                                    v_915 = v_939;
+                                    v_916 = v_940;
+                                    continue;
+                                  } else {
+                                    v_904 = v_920;
+                                    v_905 = v_918;
+                                    v_906 = v_917;
+                                    v_907 = v_921;
+                                    break;
+                                  }
+
+                                  continuing {
+                                    let v_943 = v_916;
+                                    let v_944 = v_915;
+                                    let v_945 = v_914;
+                                    let v_946 = v_913;
+                                    let v_947 = (v_919 + bitcast<u32>(1i));
+                                    v_908 = v_946;
+                                    v_909 = v_945;
+                                    v_910 = v_947;
+                                    v_911 = v_944;
+                                    v_912 = v_943;
+                                  }
+                                }
+                              }
+                              let v_948 = v_907;
+                              let v_949 = v_906;
+                              let v_950 = v_905;
+                              let v_951 = (v_896 | v_904);
+                              v_889 = (v_899 + (1u + ((v_901 + 1u) / 2u)));
+                              v_890 = v_950;
+                              v_891 = v_949;
+                              v_892 = v_951;
+                              v_893 = v_948;
+                              continue;
+                            } else {
+                              v_879 = v_895;
+                              v_880 = v_896;
+                              v_881 = v_898;
+                              v_882 = v_897;
+                              break;
+                            }
+
+                            continuing {
+                              let v_952 = v_893;
+                              let v_953 = v_892;
+                              let v_954 = v_891;
+                              let v_955 = v_890;
+                              let v_956 = v_889;
+                              let v_957 = (v_894 + bitcast<u32>(1i));
+                              v_883 = v_956;
+                              v_884 = v_955;
+                              v_885 = v_954;
+                              v_886 = v_953;
+                              v_887 = v_952;
+                              v_888 = v_957;
+                            }
+                          }
+                        }
+                        let v_958 = v_882;
+                        let v_959 = v_881;
+                        let v_960 = v_880;
+                        let v_961 = v_879;
+                        let v_962 = sqrt(v_961);
+                        let v_963 = select(v_962, -(v_962), v_960);
+                        let v_964 = (!((v_961 == 340282346638528859811704183484516925440.0f)) & ((v_963 - v_878) < 0.0f));
+                        var v_965 : vec2<f32>;
+                        var v_966 : f32;
+                        if (v_964) {
+                          var v_967 : vec2<f32>;
+                          if ((v_962 > 0.0f)) {
+                            v_967 = (select(v_959, -(v_959), vec2<bool>(v_960, v_960)) / vec2<f32>(v_962, v_962));
+                          } else {
+                            let v_968 = (length(v_958) > 0.0f);
+                            let v_969 = vec2<f32>(v_958.y, -(v_958.x));
+                            let v_970 = sqrt(dot(v_969, v_969));
+                            let v_971 = (v_970 > 0.0f);
+                            v_967 = select(vec2<f32>(0.0f, -1.0f), select(vec2<f32>(), (v_969 / vec2<f32>(v_970, v_970)), vec2<bool>(v_971, v_971)), vec2<bool>(v_968, v_968));
+                          }
+                          v_965 = v_967;
+                          v_966 = (v_878 - v_963);
+                        } else {
+                          v_965 = vec2<f32>();
+                          v_966 = 0.0f;
+                        }
+                        let v_972 = v_966;
+                        let v_973 = v_965;
+                        let v_974 = select(false, true, v_964);
+                        var v_975 : vec2<f32>;
+                        var v_976 : f32;
+                        if (v_974) {
+                          let v_977 = (v_973 * v_972);
+                          let v_978 = vec2<f32>(((v_851.x * v_977.x) + (v_851.z * v_977.y)), ((v_851.y * v_977.x) + (v_851.w * v_977.y)));
+                          let v_979 = length(v_978);
+                          let v_980 = (v_979 > 0.0f);
+                          v_975 = select(vec2<f32>(0.0f, -1.0f), (v_978 / vec2<f32>(v_979, v_979)), vec2<bool>(v_980, v_980));
+                          v_976 = v_979;
+                        } else {
+                          v_975 = v_973;
+                          v_976 = v_972;
+                        }
+                        let v_981 = v_976;
+                        let v_982 = v_975;
+                        v_869 = v_974;
+                        v_870 = v_982;
+                        v_871 = v_981;
+                      } else {
+                        v_869 = false;
+                        v_870 = vec2<f32>();
+                        v_871 = 0.0f;
+                      }
+                      let v_983 = v_871;
+                      let v_984 = v_870;
+                      let v_985 = v_869;
+                      var v_986 : vec4<f32>;
+                      var v_987 : vec4<f32>;
+                      var v_988 : vec4<f32>;
+                      var v_989 : vec4<f32>;
+                      var v_990 : vec4<f32>;
+                      var v_991 : u32;
+                      var v_992 : bool;
+                      if (v_845) {
+                        let v_993 = ((v_867 + 1u) + v_859);
+                        let v_994 = (((v_993 >> 16u) ^ v_993) * 73244475u);
+                        let v_995 = (((v_994 >> 16u) ^ v_994) * 73244475u);
+                        let v_996 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 9u)]).x;
+                        let v_997 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 13u)]).x;
+)wgsl",
+R"wgsl(                        let v_998 = bitcast<i32>(((v_995 >> 16u) ^ v_995));
+                        let v_999 = select(v_998, 305420679i, (v_998 == 0i));
+                        let v_1000 = (v_999 / 127773i);
+                        let v_1001 = ((16807i * (v_999 - (v_1000 * 127773i))) - (2836i * v_1000));
+                        var v_1002 : i32;
+                        if ((v_1001 < 0i)) {
+                          v_1002 = (v_1001 + 2147483647i);
+                        } else {
+                          v_1002 = v_1001;
+                        }
+                        let v_1003 = bitcast<u32>(v_1002);
+                        let v_1004 = (f32((v_1003 % 65536u)) * 0.00001525902189314365f);
+                        let v_1005 = ((v_996 * (1.0f - v_1004)) + (v_997 * v_1004));
+                        let v_1006 = (sign(v_1005) * max(abs(v_1005), 0.00100000004749745131f));
+                        let v_1007 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 9u)]).y;
+                        let v_1008 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 13u)]).y;
+                        let v_1009 = bitcast<i32>(v_1003);
+                        let v_1010 = select(v_1009, 305420679i, (v_1009 == 0i));
+                        let v_1011 = (v_1010 / 127773i);
+                        let v_1012 = ((16807i * (v_1010 - (v_1011 * 127773i))) - (2836i * v_1011));
+                        var v_1013 : i32;
+                        if ((v_1012 < 0i)) {
+                          v_1013 = (v_1012 + 2147483647i);
+                        } else {
+                          v_1013 = v_1012;
+                        }
+                        let v_1014 = bitcast<u32>(v_1013);
+                        let v_1015 = (f32((v_1014 % 65536u)) * 0.00001525902189314365f);
+                        let v_1016 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 9u)]).z;
+                        let v_1017 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 13u)]).z;
+                        let v_1018 = bitcast<i32>(v_1014);
+                        let v_1019 = select(v_1018, 305420679i, (v_1018 == 0i));
+                        let v_1020 = (v_1019 / 127773i);
+                        let v_1021 = ((16807i * (v_1019 - (v_1020 * 127773i))) - (2836i * v_1020));
+                        var v_1022 : i32;
+                        if ((v_1021 < 0i)) {
+                          v_1022 = (v_1021 + 2147483647i);
+                        } else {
+                          v_1022 = v_1021;
+                        }
+                        let v_1023 = bitcast<u32>(v_1022);
+                        let v_1024 = (f32((v_1023 % 65536u)) * 0.00001525902189314365f);
+                        let v_1025 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 9u)]).w;
+                        let v_1026 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 13u)]).w;
+                        let v_1027 = bitcast<i32>(v_1023);
+                        let v_1028 = select(v_1027, 305420679i, (v_1027 == 0i));
+                        let v_1029 = (v_1028 / 127773i);
+                        let v_1030 = ((16807i * (v_1028 - (v_1029 * 127773i))) - (2836i * v_1029));
+                        var v_1031 : i32;
+                        if ((v_1030 < 0i)) {
+                          v_1031 = (v_1030 + 2147483647i);
+                        } else {
+                          v_1031 = v_1030;
+                        }
+                        let v_1032 = bitcast<u32>(v_1031);
+                        let v_1033 = (f32((v_1032 % 65536u)) * 0.00001525902189314365f);
+                        let v_1034 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 6u)]).x;
+                        let v_1035 = bitcast<i32>(v_1032);
+                        let v_1036 = select(v_1035, 305420679i, (v_1035 == 0i));
+                        let v_1037 = (v_1036 / 127773i);
+                        let v_1038 = ((16807i * (v_1036 - (v_1037 * 127773i))) - (2836i * v_1037));
+                        var v_1039 : i32;
+                        if ((v_1038 < 0i)) {
+                          v_1039 = (v_1038 + 2147483647i);
+                        } else {
+                          v_1039 = v_1038;
+                        }
+                        let v_1040 = bitcast<u32>(v_1039);
+                        let v_1041 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 5u)]);
+                        var v_1042 : vec4<f32>;
+                        var v_1043 : u32;
+                        if ((data_1.m[(v.material_offset + 20u)].y > 0u)) {
+                          let v_1044 = bitcast<i32>(v_1040);
+                          let v_1045 = select(v_1044, 305420679i, (v_1044 == 0i));
+                          let v_1046 = (v_1045 / 127773i);
+                          let v_1047 = ((16807i * (v_1045 - (v_1046 * 127773i))) - (2836i * v_1046));
+                          var v_1048 : i32;
+                          if ((v_1047 < 0i)) {
+                            v_1048 = (v_1047 + 2147483647i);
+                          } else {
+                            v_1048 = v_1047;
+                          }
+                          let v_1049 = bitcast<u32>(v_1048);
+                          let v_1050 = (f32((v_1049 % 65536u)) * 0.00001525902189314365f);
+                          var v_1051 : vec4<f32>;
+                          switch(0u) {
+                            default: {
+                              let v_1052 = data_1.m[(v.material_offset + 20u)].y;
+                              if ((v_1052 == 0u)) {
+                                v_1051 = vec4<f32>(1.0f);
+                                break;
+                              }
+                              var v_1053 : u32;
+                              {
+                                var v_1054 : u32;
+                                v_1054 = v_1052;
+                                var v_1055 : u32;
+                                v_1055 = (v_1052 - 1u);
+                                loop {
+                                  var v_1056 : u32;
+                                  let v_1057 = v_1055;
+                                  let v_1058 = v_1054;
+                                  if ((v_1057 > 0u)) {
+                                    let v_1059 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (353u + (v_1057 / 4u)))]);
+                                    let v_1060 = (v_1057 % 4u);
+                                    v_1056 = select(v_1058, v_1057, (v_1050 < select(select(select(v_1059.w, v_1059.z, (v_1060 == 2u)), v_1059.y, (v_1060 == 1u)), v_1059.x, (v_1060 == 0u))));
+                                    continue;
+                                  } else {
+                                    v_1053 = v_1058;
+                                    break;
+                                  }
+
+                                  continuing {
+                                    let v_1061 = v_1056;
+                                    let v_1062 = (v_1057 - bitcast<u32>(1i));
+                                    v_1054 = v_1061;
+                                    v_1055 = v_1062;
+                                  }
+                                }
+                              }
+                              let v_1063 = v_1053;
+                              let v_1064 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (v_1052 + 360u))]);
+                              var v_1065 : vec4<f32>;
+                              if (!((v_1050 > bitcast<vec4<f32>>(data_1.m[(v.material_offset + 353u)]).x))) {
+                                v_1065 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 361u)]);
+                              } else {
+                                var v_1066 : vec4<f32>;
+                                if ((v_1063 < v_1052)) {
+                                  let v_1067 = (v_1063 - 1u);
+                                  let v_1068 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (353u + (v_1067 / 4u)))]);
+                                  let v_1069 = (v_1067 % 4u);
+                                  let v_1070 = select(select(select(v_1068.w, v_1068.z, (v_1069 == 2u)), v_1068.y, (v_1069 == 1u)), v_1068.x, (v_1069 == 0u));
+                                  let v_1071 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (353u + (v_1063 / 4u)))]);
+                                  let v_1072 = (v_1063 % 4u);
+                                  let v_1073 = ((v_1050 - v_1070) / (select(select(select(v_1071.w, v_1071.z, (v_1072 == 2u)), v_1071.y, (v_1072 == 1u)), v_1071.x, (v_1072 == 0u)) - v_1070));
+                                  let v_1074 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (v_1063 + 360u))]);
+                                  v_1066 = (v_1074 + ((bitcast<vec4<f32>>(data_1.m[(v.material_offset + (361u + v_1063))]) - v_1074) * v_1073));
+                                } else {
+                                  v_1066 = v_1064;
+                                }
+                                v_1065 = v_1066;
+                              }
+                              v_1051 = v_1065;
+                            }
+                          }
+                          v_1042 = (v_1041 * v_1051);
+                          v_1043 = v_1049;
+                        } else {
+                          v_1042 = v_1041;
+                          v_1043 = v_1040;
+                        }
+                        let v_1075 = v_1043;
+                        let v_1076 = v_1042;
+                        var v_1077 : vec4<f32>;
+                        var v_1078 : u32;
+                        if (((data_1.m[v.material_offset].x == 4u) | (data_1.m[v.material_offset].x == 5u))) {
+                          let v_1079 = bitcast<i32>(v_1075);
+                          let v_1080 = select(v_1079, 305420679i, (v_1079 == 0i));
+                          let v_1081 = (v_1080 / 127773i);
+                          let v_1082 = ((16807i * (v_1080 - (v_1081 * 127773i))) - (2836i * v_1081));
+                          var v_1083 : i32;
+                          if ((v_1082 < 0i)) {
+                            v_1083 = (v_1082 + 2147483647i);
+                          } else {
+                            v_1083 = v_1082;
+                          }
+                          let v_1084 = bitcast<u32>(v_1083);
+                          var v_1085 : vec4<f32>;
+                          if ((((data_1.m[v.material_offset].x == 4u) | (data_1.m[v.material_offset].x == 5u)) & (data_1.m[(v.material_offset + 2u)].z > 0u))) {
+                            let v_1086 = bitcast<i32>(data_1.m[(v.material_offset + 2u)].z);
+                            let v_1087 = ((bitcast<u32>(max(min((v_1086 - 1i), i32(((f32((v_1084 % 65536u)) * 0.00001525902189314365f) * f32(v_1086)))), 0i)) * 2u) + 394u);
+                            v_1085 = (v_1076 * bitcast<vec4<f32>>(data_1.m[(v.material_offset + v_1087)]));
+                          } else {
+                            v_1085 = v_1076;
+                          }
+                          v_1077 = v_1085;
+                          v_1078 = v_1084;
+                        } else {
+                          v_1077 = v_1076;
+                          v_1078 = v_1075;
+                        }
+                        let v_1088 = v_1078;
+                        let v_1089 = v_1077;
+                        let v_1090 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 8u)]).w;
+                        let v_1091 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 12u)]).w;
+                        let v_1092 = bitcast<i32>(v_1088);
+                        let v_1093 = select(v_1092, 305420679i, (v_1092 == 0i));
+                        let v_1094 = (v_1093 / 127773i);
+                        let v_1095 = ((16807i * (v_1093 - (v_1094 * 127773i))) - (2836i * v_1094));
+                        var v_1096 : i32;
+                        if ((v_1095 < 0i)) {
+                          v_1096 = (v_1095 + 2147483647i);
+                        } else {
+                          v_1096 = v_1095;
+                        }
+)wgsl",
+R"wgsl(                        let v_1097 = bitcast<u32>(v_1096);
+                        let v_1098 = (f32((v_1097 % 65536u)) * 0.00001525902189314365f);
+                        let v_1099 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 7u)]).y;
+                        let v_1100 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 11u)]).y;
+                        let v_1101 = bitcast<i32>(v_1097);
+                        let v_1102 = select(v_1101, 305420679i, (v_1101 == 0i));
+                        let v_1103 = (v_1102 / 127773i);
+                        let v_1104 = ((16807i * (v_1102 - (v_1103 * 127773i))) - (2836i * v_1103));
+                        var v_1105 : i32;
+                        if ((v_1104 < 0i)) {
+                          v_1105 = (v_1104 + 2147483647i);
+                        } else {
+                          v_1105 = v_1104;
+                        }
+                        let v_1106 = bitcast<u32>(v_1105);
+                        let v_1107 = (f32((v_1106 % 65536u)) * 0.00001525902189314365f);
+                        let v_1108 = ((v_1099 * (1.0f - v_1107)) + (v_1100 * v_1107));
+                        let v_1109 = bitcast<i32>(v_1106);
+                        let v_1110 = select(v_1109, 305420679i, (v_1109 == 0i));
+                        let v_1111 = (v_1110 / 127773i);
+                        let v_1112 = ((16807i * (v_1110 - (v_1111 * 127773i))) - (2836i * v_1111));
+                        var v_1113 : i32;
+                        if ((v_1112 < 0i)) {
+                          v_1113 = (v_1112 + 2147483647i);
+                        } else {
+                          v_1113 = v_1112;
+                        }
+                        let v_1114 = bitcast<i32>(bitcast<u32>(v_1113));
+                        let v_1115 = select(v_1114, 305420679i, (v_1114 == 0i));
+                        let v_1116 = (v_1115 / 127773i);
+                        let v_1117 = ((16807i * (v_1115 - (v_1116 * 127773i))) - (2836i * v_1116));
+                        var v_1118 : i32;
+                        if ((v_1117 < 0i)) {
+                          v_1118 = (v_1117 + 2147483647i);
+                        } else {
+                          v_1118 = v_1117;
+                        }
+                        let v_1119 = bitcast<u32>(v_1118);
+                        let v_1120 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 10u)]).x;
+                        let v_1121 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 14u)]).x;
+                        let v_1122 = bitcast<i32>(v_1119);
+                        let v_1123 = select(v_1122, 305420679i, (v_1122 == 0i));
+                        let v_1124 = (v_1123 / 127773i);
+                        let v_1125 = ((16807i * (v_1123 - (v_1124 * 127773i))) - (2836i * v_1124));
+                        var v_1126 : i32;
+                        if ((v_1125 < 0i)) {
+                          v_1126 = (v_1125 + 2147483647i);
+                        } else {
+                          v_1126 = v_1125;
+                        }
+                        let v_1127 = bitcast<u32>(v_1126);
+                        let v_1128 = (f32((v_1127 % 65536u)) * 0.00001525902189314365f);
+                        let v_1129 = ((v_1120 * (1.0f - v_1128)) + (v_1121 * v_1128));
+                        let v_1130 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 7u)]).z;
+                        let v_1131 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 11u)]).z;
+                        let v_1132 = bitcast<i32>(v_1127);
+                        let v_1133 = select(v_1132, 305420679i, (v_1132 == 0i));
+                        let v_1134 = (v_1133 / 127773i);
+                        let v_1135 = ((16807i * (v_1133 - (v_1134 * 127773i))) - (2836i * v_1134));
+                        var v_1136 : i32;
+                        if ((v_1135 < 0i)) {
+                          v_1136 = (v_1135 + 2147483647i);
+                        } else {
+                          v_1136 = v_1135;
+                        }
+                        let v_1137 = bitcast<u32>(v_1136);
+                        let v_1138 = (f32((v_1137 % 65536u)) * 0.00001525902189314365f);
+                        let v_1139 = ((v_1130 * (1.0f - v_1138)) + (v_1131 * v_1138));
+                        var v_1140 : f32;
+                        var v_1141 : u32;
+                        if ((data_1.m[(v.material_offset + 21u)].w != 0u)) {
+                          let v_1142 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 10u)]).y;
+                          let v_1143 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 14u)]).y;
+                          let v_1144 = bitcast<i32>(v_1137);
+                          let v_1145 = select(v_1144, 305420679i, (v_1144 == 0i));
+                          let v_1146 = (v_1145 / 127773i);
+                          let v_1147 = ((16807i * (v_1145 - (v_1146 * 127773i))) - (2836i * v_1146));
+                          var v_1148 : i32;
+                          if ((v_1147 < 0i)) {
+                            v_1148 = (v_1147 + 2147483647i);
+                          } else {
+                            v_1148 = v_1147;
+                          }
+                          let v_1149 = bitcast<u32>(v_1148);
+                          let v_1150 = (f32((v_1149 % 65536u)) * 0.00001525902189314365f);
+                          v_1140 = ((v_1142 * (1.0f - v_1150)) + (v_1143 * v_1150));
+                          v_1141 = v_1149;
+                        } else {
+                          v_1140 = 0.0f;
+                          v_1141 = v_1137;
+                        }
+                        let v_1151 = v_1141;
+                        let v_1152 = v_1140;
+                        let v_1153 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 7u)]).w;
+                        let v_1154 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 11u)]).w;
+                        let v_1155 = bitcast<i32>(v_1151);
+                        let v_1156 = select(v_1155, 305420679i, (v_1155 == 0i));
+                        let v_1157 = (v_1156 / 127773i);
+                        let v_1158 = ((16807i * (v_1156 - (v_1157 * 127773i))) - (2836i * v_1157));
+                        var v_1159 : i32;
+                        if ((v_1158 < 0i)) {
+                          v_1159 = (v_1158 + 2147483647i);
+                        } else {
+                          v_1159 = v_1158;
+                        }
+                        let v_1160 = bitcast<u32>(v_1159);
+                        let v_1161 = (f32((v_1160 % 65536u)) * 0.00001525902189314365f);
+                        let v_1162 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 8u)]).x;
+                        let v_1163 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 12u)]).x;
+                        let v_1164 = bitcast<i32>(v_1160);
+                        let v_1165 = select(v_1164, 305420679i, (v_1164 == 0i));
+                        let v_1166 = (v_1165 / 127773i);
+                        let v_1167 = ((16807i * (v_1165 - (v_1166 * 127773i))) - (2836i * v_1166));
+                        var v_1168 : i32;
+                        if ((v_1167 < 0i)) {
+                          v_1168 = (v_1167 + 2147483647i);
+                        } else {
+                          v_1168 = v_1167;
+                        }
+                        let v_1169 = bitcast<u32>(v_1168);
+                        let v_1170 = (f32((v_1169 % 65536u)) * 0.00001525902189314365f);
+                        let v_1171 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 8u)]).y;
+                        let v_1172 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 12u)]).y;
+                        let v_1173 = bitcast<i32>(v_1169);
+                        let v_1174 = select(v_1173, 305420679i, (v_1173 == 0i));
+                        let v_1175 = (v_1174 / 127773i);
+                        let v_1176 = ((16807i * (v_1174 - (v_1175 * 127773i))) - (2836i * v_1175));
+                        var v_1177 : i32;
+                        if ((v_1176 < 0i)) {
+                          v_1177 = (v_1176 + 2147483647i);
+                        } else {
+                          v_1177 = v_1176;
+                        }
+                        let v_1178 = bitcast<u32>(v_1177);
+                        let v_1179 = (f32((v_1178 % 65536u)) * 0.00001525902189314365f);
+                        let v_1180 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 8u)]).z;
+                        let v_1181 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 12u)]).z;
+                        let v_1182 = bitcast<i32>(v_1178);
+                        let v_1183 = select(v_1182, 305420679i, (v_1182 == 0i));
+                        let v_1184 = (v_1183 / 127773i);
+                        let v_1185 = ((16807i * (v_1183 - (v_1184 * 127773i))) - (2836i * v_1184));
+                        var v_1186 : i32;
+                        if ((v_1185 < 0i)) {
+                          v_1186 = (v_1185 + 2147483647i);
+                        } else {
+                          v_1186 = v_1185;
+                        }
+                        let v_1187 = bitcast<u32>(v_1186);
+                        let v_1188 = (f32((v_1187 % 65536u)) * 0.00001525902189314365f);
+                        let v_1189 = v_857.y;
+                        let v_1190 = (((v_857.y + (v_868 / v_863)) * (1.0f - v_861)) + v_861);
+                        var v_1191 : vec4<f32> = v_857;
+                        v_1191.y = v_1190;
+                        let v_1192 = v_1191;
+                        let v_1193 = (v_1190 / (1.0f - (v_1034 * (f32((v_1040 % 65536u)) * 0.00001525902189314365f))));
+                        let v_1194 = select(v_845, false, (v_1190 > v_857.w));
+                        var v_1195 : vec2<f32>;
+                        switch(0u) {
+                          default: {
+                            if (((abs(v_1139) < 0.00999999977648258209f) | (v_868 < 0.00100000004749745131f))) {
+                              v_1195 = vec2<f32>();
+                              break;
+                            }
+                            var v_1196 : f32;
+                            switch(0u) {
+                              default: {
+                                let v_1197 = data_1.m[(v.material_offset + 15u)].z;
+                                if ((v_1197 == 0u)) {
+                                  v_1196 = 1.0f;
+                                  break;
+                                }
+                                let v_1198 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 57u)]);
+                                var v_1199 : u32;
+                                {
+                                  var v_1200 : u32;
+                                  v_1200 = v_1197;
+                                  var v_1201 : u32;
+                                  v_1201 = (v_1197 - 1u);
+                                  loop {
+                                    var v_1202 : u32;
+                                    let v_1203 = v_1201;
+                                    let v_1204 = v_1200;
+                                    if ((v_1203 > 0u)) {
+                                      let v_1205 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (57u + (v_1203 / 2u)))]);
+                                      let v_1206 = ((v_1203 % 2u) == 0u);
+                                      v_1202 = select(v_1204, v_1203, (v_1193 < select(v_1205.zw, v_1205.xy, vec2<bool>(v_1206, v_1206)).x));
+                                      continue;
+                                    } else {
+                                      v_1199 = v_1204;
+                                      break;
+                                    }
+
+                                    continuing {
+                                      let v_1207 = v_1202;
+                                      let v_1208 = (v_1203 - bitcast<u32>(1i));
+                                      v_1200 = v_1207;
+                                      v_1201 = v_1208;
+                                    }
+)wgsl",
+R"wgsl(                                  }
+                                }
+                                let v_1209 = v_1199;
+                                let v_1210 = (v_1197 - 1u);
+                                let v_1211 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (57u + (v_1210 / 2u)))]);
+                                let v_1212 = ((v_1210 % 2u) == 0u);
+                                let v_1213 = select(v_1211.zw, v_1211.xy, vec2<bool>(v_1212, v_1212)).y;
+                                var v_1214 : f32;
+                                if (!((v_1193 > v_1198.x))) {
+                                  v_1214 = v_1198.y;
+                                } else {
+                                  var v_1215 : f32;
+                                  if ((v_1209 < v_1197)) {
+                                    let v_1216 = (v_1209 - 1u);
+                                    let v_1217 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (57u + (v_1216 / 2u)))]);
+                                    let v_1218 = ((v_1216 % 2u) == 0u);
+                                    let v_1219 = select(v_1217.zw, v_1217.xy, vec2<bool>(v_1218, v_1218));
+                                    let v_1220 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (57u + (v_1209 / 2u)))]);
+                                    let v_1221 = ((v_1209 % 2u) == 0u);
+                                    let v_1222 = select(v_1220.zw, v_1220.xy, vec2<bool>(v_1221, v_1221));
+                                    v_1215 = (v_1219.y + ((v_1222.y - v_1219.y) * ((v_1193 - v_1219.x) / (v_1222.x - v_1219.x))));
+                                  } else {
+                                    v_1215 = v_1213;
+                                  }
+                                  v_1214 = v_1215;
+                                }
+                                v_1196 = v_1214;
+                              }
+                            }
+                            let v_1223 = (v_1139 * v_1196);
+                            var v_1224 : vec2<f32>;
+                            if (!((v_1223 == 0.0f))) {
+                              let v_1225 = (v_850.xy - v_865);
+                              let v_1226 = ((v_1223 * 6.28318023681640625f) * v_868);
+                              let v_1227 = cos(v_1226);
+                              let v_1228 = sin(v_1226);
+                              v_1224 = (vec2<f32>(((v_1227 * v_1225.x) + (v_1228 * v_1225.y)), ((-(v_1228) * v_1225.x) + (v_1227 * v_1225.y))) - v_1225);
+                            } else {
+                              v_1224 = vec2<f32>();
+                            }
+                            let v_1229 = (v_1224 / vec2<f32>(v_868, v_868));
+                            v_1195 = vec2<f32>(((v_866.x * v_1229.x) + (v_866.z * v_1229.y)), ((v_866.y * v_1229.x) + (v_866.w * v_1229.y)));
+                          }
+                        }
+                        let v_1230 = v_1195;
+                        var v_1231 : vec2<f32>;
+                        switch(0u) {
+                          default: {
+                            if ((v_868 < 0.00100000004749745131f)) {
+                              v_1231 = vec2<f32>();
+                              break;
+                            }
+                            var v_1232 : f32;
+                            switch(0u) {
+                              default: {
+                                let v_1233 = data_1.m[(v.material_offset + 18u)].x;
+                                if ((v_1233 == 0u)) {
+                                  v_1232 = 1.0f;
+                                  break;
+                                }
+                                let v_1234 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 217u)]);
+                                var v_1235 : u32;
+                                {
+                                  var v_1236 : u32;
+                                  v_1236 = v_1233;
+                                  var v_1237 : u32;
+                                  v_1237 = (v_1233 - 1u);
+                                  loop {
+                                    var v_1238 : u32;
+                                    let v_1239 = v_1237;
+                                    let v_1240 = v_1236;
+                                    if ((v_1239 > 0u)) {
+                                      let v_1241 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (217u + (v_1239 / 2u)))]);
+                                      let v_1242 = ((v_1239 % 2u) == 0u);
+                                      v_1238 = select(v_1240, v_1239, (v_1193 < select(v_1241.zw, v_1241.xy, vec2<bool>(v_1242, v_1242)).x));
+                                      continue;
+                                    } else {
+                                      v_1235 = v_1240;
+                                      break;
+                                    }
+
+                                    continuing {
+                                      let v_1243 = v_1238;
+                                      let v_1244 = (v_1239 - bitcast<u32>(1i));
+                                      v_1236 = v_1243;
+                                      v_1237 = v_1244;
+                                    }
+                                  }
+                                }
+                                let v_1245 = v_1235;
+                                let v_1246 = (v_1233 - 1u);
+                                let v_1247 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (217u + (v_1246 / 2u)))]);
+                                let v_1248 = ((v_1246 % 2u) == 0u);
+                                let v_1249 = select(v_1247.zw, v_1247.xy, vec2<bool>(v_1248, v_1248)).y;
+                                var v_1250 : f32;
+                                if (!((v_1193 > v_1234.x))) {
+                                  v_1250 = v_1234.y;
+                                } else {
+                                  var v_1251 : f32;
+                                  if ((v_1245 < v_1233)) {
+                                    let v_1252 = (v_1245 - 1u);
+                                    let v_1253 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (217u + (v_1252 / 2u)))]);
+                                    let v_1254 = ((v_1252 % 2u) == 0u);
+                                    let v_1255 = select(v_1253.zw, v_1253.xy, vec2<bool>(v_1254, v_1254));
+                                    let v_1256 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (217u + (v_1245 / 2u)))]);
+                                    let v_1257 = ((v_1245 % 2u) == 0u);
+                                    let v_1258 = select(v_1256.zw, v_1256.xy, vec2<bool>(v_1257, v_1257));
+                                    v_1251 = (v_1255.y + ((v_1258.y - v_1255.y) * ((v_1193 - v_1255.x) / (v_1258.x - v_1255.x))));
+                                  } else {
+                                    v_1251 = v_1249;
+                                  }
+                                  v_1250 = v_1251;
+                                }
+                                v_1232 = v_1250;
+                              }
+                            }
+                            let v_1259 = v_1232;
+                            let v_1260 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 4u)]);
+                            let v_1261 = (v_850.xy - vec2<f32>((((v_866.x * v_1260.x) + (v_866.z * v_1260.y)) + v_865.x), (((v_866.y * v_1260.x) + (v_866.w * v_1260.y)) + v_865.y)));
+                            var v_1262 : vec2<f32>;
+                            if ((length(v_1261) > 0.00999999977648258209f)) {
+                              let v_1263 = sqrt(dot(v_1261, v_1261));
+                              let v_1264 = (v_1263 > 0.0f);
+                              v_1262 = ((select(vec2<f32>(), (v_1261 / vec2<f32>(v_1263, v_1263)), vec2<bool>(v_1264, v_1264)) * v_1259) * v_1129);
+                            } else {
+                              let v_1265 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 3u)]);
+                              let v_1266 = bitcast<i32>(v_1187);
+                              let v_1267 = select(v_1266, 305420679i, (v_1266 == 0i));
+                              let v_1268 = (v_1267 / 127773i);
+                              let v_1269 = ((16807i * (v_1267 - (v_1268 * 127773i))) - (2836i * v_1268));
+                              var v_1270 : i32;
+                              if ((v_1269 < 0i)) {
+                                v_1270 = (v_1269 + 2147483647i);
+                              } else {
+                                v_1270 = v_1269;
+                              }
+                              let v_1271 = (((f32((bitcast<u32>(v_1270) % 65536u)) * 0.00003051804378628731f) - 1.0f) * 6.28317975997924804688f);
+                              let v_1272 = atan2(v_1265.y, v_1265.x);
+                              let v_1273 = (v_1271 + select((sign(v_1265.y) * 1.5707950592041015625f), v_1272, !((v_1265.x == 0.0f))));
+                              v_1262 = (vec2<f32>(cos(v_1273), sin(v_1273)) * v_1129);
+                            }
+                            let v_1274 = v_1262;
+                            var v_1275 : vec2<f32>;
+                            if (((v_1259 * v_1129) < 0.0f)) {
+                              let v_1276 = sqrt(dot(v_1274, v_1274));
+                              let v_1277 = (v_1276 > 0.0f);
+                              v_1275 = (select(vec2<f32>(), (v_1274 / vec2<f32>(v_1276, v_1276)), vec2<bool>(v_1277, v_1277)) * min(abs((v_1259 * v_1129)), (length(v_1261) / v_868)));
+                            } else {
+                              v_1275 = v_1274;
+                            }
+                            v_1231 = v_1275;
+                          }
+                        }
+                        let v_1278 = (v_1230 + v_1231);
+                        var v_1279 : f32;
+                        switch(0u) {
+                          default: {
+                            let v_1280 = data_1.m[(v.material_offset + 15u)].w;
+                            if ((v_1280 == 0u)) {
+                              v_1279 = 1.0f;
+                              break;
+                            }
+                            let v_1281 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 73u)]);
+                            var v_1282 : u32;
+                            {
+                              var v_1283 : u32;
+                              v_1283 = v_1280;
+                              var v_1284 : u32;
+                              v_1284 = (v_1280 - 1u);
+                              loop {
+                                var v_1285 : u32;
+                                let v_1286 = v_1284;
+                                let v_1287 = v_1283;
+                                if ((v_1286 > 0u)) {
+                                  let v_1288 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (73u + (v_1286 / 2u)))]);
+                                  let v_1289 = ((v_1286 % 2u) == 0u);
+                                  v_1285 = select(v_1287, v_1286, (v_1193 < select(v_1288.zw, v_1288.xy, vec2<bool>(v_1289, v_1289)).x));
+                                  continue;
+                                } else {
+                                  v_1282 = v_1287;
+                                  break;
+                                }
+
+                                continuing {
+                                  let v_1290 = v_1285;
+                                  let v_1291 = (v_1286 - bitcast<u32>(1i));
+                                  v_1283 = v_1290;
+                                  v_1284 = v_1291;
+                                }
+                              }
+                            }
+                            let v_1292 = v_1282;
+                            let v_1293 = (v_1280 - 1u);
+                            let v_1294 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (73u + (v_1293 / 2u)))]);
+)wgsl",
+R"wgsl(                            let v_1295 = ((v_1293 % 2u) == 0u);
+                            let v_1296 = select(v_1294.zw, v_1294.xy, vec2<bool>(v_1295, v_1295)).y;
+                            var v_1297 : f32;
+                            if (!((v_1193 > v_1281.x))) {
+                              v_1297 = v_1281.y;
+                            } else {
+                              var v_1298 : f32;
+                              if ((v_1292 < v_1280)) {
+                                let v_1299 = (v_1292 - 1u);
+                                let v_1300 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (73u + (v_1299 / 2u)))]);
+                                let v_1301 = ((v_1299 % 2u) == 0u);
+                                let v_1302 = select(v_1300.zw, v_1300.xy, vec2<bool>(v_1301, v_1301));
+                                let v_1303 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (73u + (v_1292 / 2u)))]);
+                                let v_1304 = ((v_1292 % 2u) == 0u);
+                                let v_1305 = select(v_1303.zw, v_1303.xy, vec2<bool>(v_1304, v_1304));
+                                v_1298 = (v_1302.y + ((v_1305.y - v_1302.y) * ((v_1193 - v_1302.x) / (v_1305.x - v_1302.x))));
+                              } else {
+                                v_1298 = v_1296;
+                              }
+                              v_1297 = v_1298;
+                            }
+                            v_1279 = v_1297;
+                          }
+                        }
+                        let v_1306 = (((v_1153 * (1.0f - v_1161)) + (v_1154 * v_1161)) * v_1279);
+                        var v_1307 : f32;
+                        switch(0u) {
+                          default: {
+                            let v_1308 = data_1.m[(v.material_offset + 16u)].x;
+                            if ((v_1308 == 0u)) {
+                              v_1307 = 1.0f;
+                              break;
+                            }
+                            let v_1309 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 89u)]);
+                            var v_1310 : u32;
+                            {
+                              var v_1311 : u32;
+                              v_1311 = v_1308;
+                              var v_1312 : u32;
+                              v_1312 = (v_1308 - 1u);
+                              loop {
+                                var v_1313 : u32;
+                                let v_1314 = v_1312;
+                                let v_1315 = v_1311;
+                                if ((v_1314 > 0u)) {
+                                  let v_1316 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (89u + (v_1314 / 2u)))]);
+                                  let v_1317 = ((v_1314 % 2u) == 0u);
+                                  v_1313 = select(v_1315, v_1314, (v_1193 < select(v_1316.zw, v_1316.xy, vec2<bool>(v_1317, v_1317)).x));
+                                  continue;
+                                } else {
+                                  v_1310 = v_1315;
+                                  break;
+                                }
+
+                                continuing {
+                                  let v_1318 = v_1313;
+                                  let v_1319 = (v_1314 - bitcast<u32>(1i));
+                                  v_1311 = v_1318;
+                                  v_1312 = v_1319;
+                                }
+                              }
+                            }
+                            let v_1320 = v_1310;
+                            let v_1321 = (v_1308 - 1u);
+                            let v_1322 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (89u + (v_1321 / 2u)))]);
+                            let v_1323 = ((v_1321 % 2u) == 0u);
+                            let v_1324 = select(v_1322.zw, v_1322.xy, vec2<bool>(v_1323, v_1323)).y;
+                            var v_1325 : f32;
+                            if (!((v_1193 > v_1309.x))) {
+                              v_1325 = v_1309.y;
+                            } else {
+                              var v_1326 : f32;
+                              if ((v_1320 < v_1308)) {
+                                let v_1327 = (v_1320 - 1u);
+                                let v_1328 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (89u + (v_1327 / 2u)))]);
+                                let v_1329 = ((v_1327 % 2u) == 0u);
+                                let v_1330 = select(v_1328.zw, v_1328.xy, vec2<bool>(v_1329, v_1329));
+                                let v_1331 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (89u + (v_1320 / 2u)))]);
+                                let v_1332 = ((v_1320 % 2u) == 0u);
+                                let v_1333 = select(v_1331.zw, v_1331.xy, vec2<bool>(v_1332, v_1332));
+                                v_1326 = (v_1330.y + ((v_1333.y - v_1330.y) * ((v_1193 - v_1330.x) / (v_1333.x - v_1330.x))));
+                              } else {
+                                v_1326 = v_1324;
+                              }
+                              v_1325 = v_1326;
+                            }
+                            v_1307 = v_1325;
+                          }
+                        }
+                        let v_1334 = (((v_1162 * (1.0f - v_1170)) + (v_1163 * v_1170)) * v_1307);
+                        var v_1335 : f32;
+                        switch(0u) {
+                          default: {
+                            let v_1336 = data_1.m[(v.material_offset + 16u)].y;
+                            if ((v_1336 == 0u)) {
+                              v_1335 = 1.0f;
+                              break;
+                            }
+                            let v_1337 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 105u)]);
+                            var v_1338 : u32;
+                            {
+                              var v_1339 : u32;
+                              v_1339 = v_1336;
+                              var v_1340 : u32;
+                              v_1340 = (v_1336 - 1u);
+                              loop {
+                                var v_1341 : u32;
+                                let v_1342 = v_1340;
+                                let v_1343 = v_1339;
+                                if ((v_1342 > 0u)) {
+                                  let v_1344 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (105u + (v_1342 / 2u)))]);
+                                  let v_1345 = ((v_1342 % 2u) == 0u);
+                                  v_1341 = select(v_1343, v_1342, (v_1193 < select(v_1344.zw, v_1344.xy, vec2<bool>(v_1345, v_1345)).x));
+                                  continue;
+                                } else {
+                                  v_1338 = v_1343;
+                                  break;
+                                }
+
+                                continuing {
+                                  let v_1346 = v_1341;
+                                  let v_1347 = (v_1342 - bitcast<u32>(1i));
+                                  v_1339 = v_1346;
+                                  v_1340 = v_1347;
+                                }
+                              }
+                            }
+                            let v_1348 = v_1338;
+                            let v_1349 = (v_1336 - 1u);
+                            let v_1350 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (105u + (v_1349 / 2u)))]);
+                            let v_1351 = ((v_1349 % 2u) == 0u);
+                            let v_1352 = select(v_1350.zw, v_1350.xy, vec2<bool>(v_1351, v_1351)).y;
+                            var v_1353 : f32;
+                            if (!((v_1193 > v_1337.x))) {
+                              v_1353 = v_1337.y;
+                            } else {
+                              var v_1354 : f32;
+                              if ((v_1348 < v_1336)) {
+                                let v_1355 = (v_1348 - 1u);
+                                let v_1356 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (105u + (v_1355 / 2u)))]);
+                                let v_1357 = ((v_1355 % 2u) == 0u);
+                                let v_1358 = select(v_1356.zw, v_1356.xy, vec2<bool>(v_1357, v_1357));
+                                let v_1359 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (105u + (v_1348 / 2u)))]);
+                                let v_1360 = ((v_1348 % 2u) == 0u);
+                                let v_1361 = select(v_1359.zw, v_1359.xy, vec2<bool>(v_1360, v_1360));
+                                v_1354 = (v_1358.y + ((v_1361.y - v_1358.y) * ((v_1193 - v_1358.x) / (v_1361.x - v_1358.x))));
+                              } else {
+                                v_1354 = v_1352;
+                              }
+                              v_1353 = v_1354;
+                            }
+                            v_1335 = v_1353;
+                          }
+                        }
+                        let v_1362 = (((v_1171 * (1.0f - v_1179)) + (v_1172 * v_1179)) * v_1335);
+                        var v_1363 : f32;
+                        switch(0u) {
+                          default: {
+                            let v_1364 = data_1.m[(v.material_offset + 16u)].z;
+                            if ((v_1364 == 0u)) {
+                              v_1363 = 1.0f;
+                              break;
+                            }
+                            let v_1365 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 121u)]);
+                            var v_1366 : u32;
+                            {
+                              var v_1367 : u32;
+                              v_1367 = v_1364;
+                              var v_1368 : u32;
+                              v_1368 = (v_1364 - 1u);
+                              loop {
+                                var v_1369 : u32;
+                                let v_1370 = v_1368;
+                                let v_1371 = v_1367;
+                                if ((v_1370 > 0u)) {
+                                  let v_1372 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (121u + (v_1370 / 2u)))]);
+                                  let v_1373 = ((v_1370 % 2u) == 0u);
+                                  v_1369 = select(v_1371, v_1370, (v_1193 < select(v_1372.zw, v_1372.xy, vec2<bool>(v_1373, v_1373)).x));
+                                  continue;
+                                } else {
+                                  v_1366 = v_1371;
+                                  break;
+                                }
+
+                                continuing {
+                                  let v_1374 = v_1369;
+                                  let v_1375 = (v_1370 - bitcast<u32>(1i));
+                                  v_1367 = v_1374;
+                                  v_1368 = v_1375;
+                                }
+                              }
+                            }
+                            let v_1376 = v_1366;
+                            let v_1377 = (v_1364 - 1u);
+                            let v_1378 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (121u + (v_1377 / 2u)))]);
+                            let v_1379 = ((v_1377 % 2u) == 0u);
+                            let v_1380 = select(v_1378.zw, v_1378.xy, vec2<bool>(v_1379, v_1379)).y;
+                            var v_1381 : f32;
+                            if (!((v_1193 > v_1365.x))) {
+                              v_1381 = v_1365.y;
+                            } else {
+                              var v_1382 : f32;
+                              if ((v_1376 < v_1364)) {
+                                let v_1383 = (v_1376 - 1u);
+                                let v_1384 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (121u + (v_1383 / 2u)))]);
+                                let v_1385 = ((v_1383 % 2u) == 0u);
+)wgsl",
+R"wgsl(                                let v_1386 = select(v_1384.zw, v_1384.xy, vec2<bool>(v_1385, v_1385));
+                                let v_1387 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (121u + (v_1376 / 2u)))]);
+                                let v_1388 = ((v_1376 % 2u) == 0u);
+                                let v_1389 = select(v_1387.zw, v_1387.xy, vec2<bool>(v_1388, v_1388));
+                                v_1382 = (v_1386.y + ((v_1389.y - v_1386.y) * ((v_1193 - v_1386.x) / (v_1389.x - v_1386.x))));
+                              } else {
+                                v_1382 = v_1380;
+                              }
+                              v_1381 = v_1382;
+                            }
+                            v_1363 = v_1381;
+                          }
+                        }
+                        let v_1390 = (((v_1180 * (1.0f - v_1188)) + (v_1181 * v_1188)) * v_1363);
+                        let v_1391 = v_856.xyz;
+                        let v_1392 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 4u)]).zw;
+                        var v_1393 : vec2<f32>;
+                        if ((length(v_1391) > 0.0f)) {
+                          let v_1394 = sqrt(dot(v_1391, v_1391));
+                          let v_1395 = (v_1394 > 0.0f);
+                          v_1393 = (v_1392 + (select(vec3<f32>(), (v_1391 / vec3<f32>(v_1394, v_1394, v_1394)), vec3<bool>(v_1395, v_1395, v_1395)).xy * v_1306));
+                        } else {
+                          v_1393 = v_1392;
+                        }
+                        let v_1396 = v_1393;
+                        let v_1397 = (v_850.xy - v_865);
+                        var v_1398 : vec2<f32>;
+                        if ((length(v_1397) > 0.0f)) {
+                          let v_1399 = sqrt(dot(v_1397, v_1397));
+                          let v_1400 = (v_1399 > 0.0f);
+                          v_1398 = (v_1396 + (select(vec2<f32>(), (v_1397 / vec2<f32>(v_1399, v_1399)), vec2<bool>(v_1400, v_1400)) * v_1334));
+                        } else {
+                          v_1398 = v_1396;
+                        }
+                        let v_1401 = v_1398;
+                        var v_1402 : vec2<f32>;
+                        if ((length(v_1397) > 0.0f)) {
+                          let v_1403 = vec2<f32>(-(v_1397.y), v_1397.x);
+                          let v_1404 = sqrt(dot(v_1403, v_1403));
+                          let v_1405 = (v_1404 > 0.0f);
+                          v_1402 = (v_1401 + (select(vec2<f32>(), (v_1403 / vec2<f32>(v_1404, v_1404)), vec2<bool>(v_1405, v_1405)) * v_1362));
+                        } else {
+                          v_1402 = v_1401;
+                        }
+                        let v_1406 = (v_1402 * v_868);
+                        let v_1407 = (v_1391 + vec3<f32>(v_1406.x, v_1406.y, 0.0f));
+                        var v_1408 : vec3<f32>;
+                        if ((v_1390 > 0.0f)) {
+                          let v_1409 = length(v_1407);
+                          var v_1410 : f32;
+                          if ((data_1.m[(v.material_offset + 6u)].z == 0u)) {
+                            v_1410 = (v_1409 - (v_1390 * v_868));
+                          } else {
+                            var v_1411 : f32;
+                            if ((v_1409 > 0.00100000004749745131f)) {
+                              v_1411 = (v_1409 - ((((v_1409 * v_1409) * v_1390) * 0.05000000074505805969f) * v_868));
+                            } else {
+                              v_1411 = v_1409;
+                            }
+                            v_1410 = v_1411;
+                          }
+                          let v_1412 = v_1410;
+                          let v_1413 = (v_1412 < 0.0f);
+                          let v_1414 = sqrt(dot(v_1407, v_1407));
+                          let v_1415 = (v_1414 > 0.0f);
+                          v_1408 = select((select(vec3<f32>(), (v_1407 / vec3<f32>(v_1414, v_1414, v_1414)), vec3<bool>(v_1415, v_1415, v_1415)) * v_1412), vec3<f32>(), vec3<bool>(v_1413, v_1413, v_1413));
+                        } else {
+                          v_1408 = v_1407;
+                        }
+                        let v_1416 = v_1408;
+                        let v_1417 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 23u)]);
+                        let v_1418 = (v_985 & (data_1.m[(v.material_offset + 23u)].x != 0u));
+                        var v_1419 : bool;
+                        var v_1420 : vec3<f32>;
+                        var v_1421 : vec4<f32>;
+                        if ((v_1418 & (data_1.m[(v.material_offset + 23u)].x == 1u))) {
+                          let v_1422 = vec3<f32>(v_984.x, v_984.y, 0.0f);
+                          let v_1423 = dot(v_1422, v_1416);
+                          let v_1424 = select(0.0f, 1.0f, (abs(v_1423) >= (2.0f / clamp((v_1417.z + 1.0f), 1.0f, 2.0f))));
+                          let v_1425 = (v_850.xy + (v_984 * v_983));
+                          var v_1426 : vec4<f32> = v_850;
+                          v_1426.x = v_1425.x;
+                          var v_1427 : vec4<f32> = v_1426;
+                          v_1427.y = v_1425.y;
+                          let v_1428 = v_1427;
+                          let v_1429 = (((v_1416 - (v_1422 * v_1423)) * (1.0f - clamp(v_1417.y, 0.0f, 1.0f))) - (v_1422 * (v_1423 * (v_1417.z * v_1424))));
+                          v_1419 = v_1194;
+                          v_1420 = v_1429;
+                          v_1421 = v_1428;
+                        } else {
+                          v_1419 = select(v_1194, false, (v_1418 & (data_1.m[(v.material_offset + 23u)].x == 2u)));
+                          v_1420 = v_1416;
+                          v_1421 = v_850;
+                        }
+                        let v_1430 = v_1421;
+                        let v_1431 = v_1420;
+                        let v_1432 = v_1419;
+                        let v_1433 = vec3<f32>(v_1278.x, v_1278.y, 0.0f);
+                        var v_1434 : vec3<f32>;
+                        var v_1435 : vec3<f32>;
+                        if (((data_1.m[(v.material_offset + 21u)].w != 0u) & !((v_1418 & (data_1.m[(v.material_offset + 23u)].x == 1u))))) {
+                          var v_1436 : f32;
+                          switch(0u) {
+                            default: {
+                              let v_1437 = data_1.m[(v.material_offset + 18u)].y;
+                              if ((v_1437 == 0u)) {
+                                v_1436 = 1.0f;
+                                break;
+                              }
+                              let v_1438 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 233u)]);
+                              var v_1439 : u32;
+                              {
+                                var v_1440 : u32;
+                                v_1440 = v_1437;
+                                var v_1441 : u32;
+                                v_1441 = (v_1437 - 1u);
+                                loop {
+                                  var v_1442 : u32;
+                                  let v_1443 = v_1441;
+                                  let v_1444 = v_1440;
+                                  if ((v_1443 > 0u)) {
+                                    let v_1445 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (233u + (v_1443 / 2u)))]);
+                                    let v_1446 = ((v_1443 % 2u) == 0u);
+                                    v_1442 = select(v_1444, v_1443, (v_1193 < select(v_1445.zw, v_1445.xy, vec2<bool>(v_1446, v_1446)).x));
+                                    continue;
+                                  } else {
+                                    v_1439 = v_1444;
+                                    break;
+                                  }
+
+                                  continuing {
+                                    let v_1447 = v_1442;
+                                    let v_1448 = (v_1443 - bitcast<u32>(1i));
+                                    v_1440 = v_1447;
+                                    v_1441 = v_1448;
+                                  }
+                                }
+                              }
+                              let v_1449 = v_1439;
+                              let v_1450 = (v_1437 - 1u);
+                              let v_1451 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (233u + (v_1450 / 2u)))]);
+                              let v_1452 = ((v_1450 % 2u) == 0u);
+                              let v_1453 = select(v_1451.zw, v_1451.xy, vec2<bool>(v_1452, v_1452)).y;
+                              var v_1454 : f32;
+                              if (!((v_1193 > v_1438.x))) {
+                                v_1454 = v_1438.y;
+                              } else {
+                                var v_1455 : f32;
+                                if ((v_1449 < v_1437)) {
+                                  let v_1456 = (v_1449 - 1u);
+                                  let v_1457 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (233u + (v_1456 / 2u)))]);
+                                  let v_1458 = ((v_1456 % 2u) == 0u);
+                                  let v_1459 = select(v_1457.zw, v_1457.xy, vec2<bool>(v_1458, v_1458));
+                                  let v_1460 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (233u + (v_1449 / 2u)))]);
+                                  let v_1461 = ((v_1449 % 2u) == 0u);
+                                  let v_1462 = select(v_1460.zw, v_1460.xy, vec2<bool>(v_1461, v_1461));
+                                  v_1455 = (v_1459.y + ((v_1462.y - v_1459.y) * ((v_1193 - v_1459.x) / (v_1462.x - v_1459.x))));
+                                } else {
+                                  v_1455 = v_1453;
+                                }
+                                v_1454 = v_1455;
+                              }
+                              v_1436 = v_1454;
+                            }
+                          }
+                          let v_1463 = v_1436;
+                          let v_1464 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 21u)]);
+                          let v_1465 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 22u)]);
+                          let v_1466 = vec4<f32>(((v_1430.x * v_1464.y) + (v_860 * v_1465.x)), ((v_1430.y * v_1464.y) + (v_860 * v_1465.y)), ((0.0f * v_1464.y) + (v_860 * v_1465.z)), (0.0f + (v_860 * v_1464.z)));
+                          let v_1467 = (0.00100000004749745131f + (max((v_1464.x - 1.0f), 0.0f) * 70.0f));
+                          var v_1468 : vec3<f32>;
+                          {
+                            var v_1469 : vec3<f32>;
+                            v_1469 = vec3<f32>();
+                            var v_1470 : u32;
+                            v_1470 = 0u;
+                            loop {
+                              var v_1471 : vec3<f32>;
+                              let v_1472 = v_1470;
+                              let v_1473 = v_1469;
+                              if ((v_1472 < 6u)) {
+                                let v_1474 = (v_1472 / 2u);
+                                let v_1475 = (v_1472 % 2u);
+                                let v_1476 = (((v_1474 + 1u) + v_1475) % 3u);
+                                let v_1477 = (((v_1474 + 2u) - v_1475) % 3u);
+                                let v_1478 = (vec4<f32>(select(0.0f, 1.0f, (v_1476 == 0u)), select(0.0f, 1.0f, (v_1476 == 1u)), select(0.0f, 1.0f, (v_1476 == 2u)), 0.0f) * v_1467);
+                                let v_1479 = (v_1466 + v_1478);
+                                let v_1480 = dot(v_1479, vec4<f32>(-0.16666670143604278564f, -0.16666670143604278564f, -0.16666670143604278564f, -0.5f));
+                                let v_1481 = (v_1479.xyz + vec3<f32>(v_1480, v_1480, v_1480));
+                                let v_1482 = vec4<f32>(v_1481.x, v_1481.y, v_1481.z, dot(v_1479, vec4<f32>(0.5f)));
+                                let v_1483 = floor(v_1482);
+)wgsl",
+R"wgsl(                                let v_1484 = (v_1482 - v_1483);
+                                let v_1485 = (((v_1484 * v_1484) * v_1484) * (vec4<f32>(10.0f) + (v_1484 * (vec4<f32>(-15.0f) + (v_1484 * 6.0f)))));
+                                var v_1486 : f32;
+                                {
+                                  var v_1487 : f32;
+                                  v_1487 = 0.0f;
+                                  var v_1488 : u32;
+                                  v_1488 = 0u;
+                                  loop {
+                                    let v_1489 = v_1488;
+                                    let v_1490 = v_1487;
+                                    if ((v_1489 < 16u)) {
+                                      continue;
+                                    } else {
+                                      v_1486 = v_1490;
+                                      break;
+                                    }
+
+                                    continuing {
+                                      let v_1491 = vec4<f32>((vec4<u32>(v_1489, (v_1489 >> 1u), (v_1489 >> 2u), (v_1489 >> 3u)) & vec4<u32>(1u)));
+                                      let v_1492 = (((vec4<f32>(1.0f) - v_1491) * (vec4<f32>(1.0f) - v_1485)) + (v_1491 * v_1485));
+                                      let v_1493 = (vec4<i32>(v_1483) + vec4<i32>(v_1491));
+                                      let v_1494 = ((bitcast<u32>(v_1493.x) + (v_1477 * 1663821211u)) + 2654435769u);
+                                      let v_1495 = (((v_1494 >> 16u) ^ v_1494) * 73244475u);
+                                      let v_1496 = (((v_1495 >> 16u) ^ v_1495) * 73244475u);
+                                      let v_1497 = (((v_1496 >> 16u) ^ v_1496) + bitcast<u32>(v_1493.y));
+                                      let v_1498 = (((v_1497 >> 16u) ^ v_1497) * 73244475u);
+                                      let v_1499 = (((v_1498 >> 16u) ^ v_1498) * 73244475u);
+                                      let v_1500 = (((v_1499 >> 16u) ^ v_1499) + bitcast<u32>(v_1493.z));
+                                      let v_1501 = (((v_1500 >> 16u) ^ v_1500) * 73244475u);
+                                      let v_1502 = (((v_1501 >> 16u) ^ v_1501) * 73244475u);
+                                      let v_1503 = (((v_1502 >> 16u) ^ v_1502) + bitcast<u32>(v_1493.w));
+                                      let v_1504 = (((v_1503 >> 16u) ^ v_1503) * 73244475u);
+                                      let v_1505 = (((v_1504 >> 16u) ^ v_1504) * 73244475u);
+                                      let v_1506 = ((v_1505 >> 16u) ^ v_1505);
+                                      let v_1507 = (v_1506 + 1u);
+                                      let v_1508 = (((v_1507 >> 16u) ^ v_1507) * 73244475u);
+                                      let v_1509 = (((v_1508 >> 16u) ^ v_1508) * 73244475u);
+                                      let v_1510 = ((v_1509 >> 16u) ^ v_1509);
+                                      let v_1511 = (v_1490 + ((((v_1492.x * v_1492.y) * v_1492.z) * v_1492.w) * dot((v_1484 - v_1491), vec4<f32>(((f32((v_1506 & 65535u)) * 0.000030517578125f) - 1.0f), ((f32(((v_1506 >> 16u) & 65535u)) * 0.000030517578125f) - 1.0f), ((f32((v_1510 & 65535u)) * 0.000030517578125f) - 1.0f), ((f32(((v_1510 >> 16u) & 65535u)) * 0.000030517578125f) - 1.0f)))));
+                                      let v_1512 = (v_1489 + bitcast<u32>(1i));
+                                      v_1487 = v_1511;
+                                      v_1488 = v_1512;
+                                    }
+                                  }
+                                }
+                                let v_1513 = v_1486;
+                                let v_1514 = (v_1466 - v_1478);
+                                let v_1515 = dot(v_1514, vec4<f32>(-0.16666670143604278564f, -0.16666670143604278564f, -0.16666670143604278564f, -0.5f));
+                                let v_1516 = (v_1514.xyz + vec3<f32>(v_1515, v_1515, v_1515));
+                                let v_1517 = vec4<f32>(v_1516.x, v_1516.y, v_1516.z, dot(v_1514, vec4<f32>(0.5f)));
+                                let v_1518 = floor(v_1517);
+                                let v_1519 = (v_1517 - v_1518);
+                                let v_1520 = (((v_1519 * v_1519) * v_1519) * (vec4<f32>(10.0f) + (v_1519 * (vec4<f32>(-15.0f) + (v_1519 * 6.0f)))));
+                                var v_1521 : f32;
+                                {
+                                  var v_1522 : f32;
+                                  v_1522 = 0.0f;
+                                  var v_1523 : u32;
+                                  v_1523 = 0u;
+                                  loop {
+                                    let v_1524 = v_1523;
+                                    let v_1525 = v_1522;
+                                    if ((v_1524 < 16u)) {
+                                      continue;
+                                    } else {
+                                      v_1521 = v_1525;
+                                      break;
+                                    }
+
+                                    continuing {
+                                      let v_1526 = vec4<f32>((vec4<u32>(v_1524, (v_1524 >> 1u), (v_1524 >> 2u), (v_1524 >> 3u)) & vec4<u32>(1u)));
+                                      let v_1527 = (((vec4<f32>(1.0f) - v_1526) * (vec4<f32>(1.0f) - v_1520)) + (v_1526 * v_1520));
+                                      let v_1528 = (vec4<i32>(v_1518) + vec4<i32>(v_1526));
+                                      let v_1529 = ((bitcast<u32>(v_1528.x) + (v_1477 * 1663821211u)) + 2654435769u);
+                                      let v_1530 = (((v_1529 >> 16u) ^ v_1529) * 73244475u);
+                                      let v_1531 = (((v_1530 >> 16u) ^ v_1530) * 73244475u);
+                                      let v_1532 = (((v_1531 >> 16u) ^ v_1531) + bitcast<u32>(v_1528.y));
+                                      let v_1533 = (((v_1532 >> 16u) ^ v_1532) * 73244475u);
+                                      let v_1534 = (((v_1533 >> 16u) ^ v_1533) * 73244475u);
+                                      let v_1535 = (((v_1534 >> 16u) ^ v_1534) + bitcast<u32>(v_1528.z));
+                                      let v_1536 = (((v_1535 >> 16u) ^ v_1535) * 73244475u);
+                                      let v_1537 = (((v_1536 >> 16u) ^ v_1536) * 73244475u);
+                                      let v_1538 = (((v_1537 >> 16u) ^ v_1537) + bitcast<u32>(v_1528.w));
+                                      let v_1539 = (((v_1538 >> 16u) ^ v_1538) * 73244475u);
+                                      let v_1540 = (((v_1539 >> 16u) ^ v_1539) * 73244475u);
+                                      let v_1541 = ((v_1540 >> 16u) ^ v_1540);
+                                      let v_1542 = (v_1541 + 1u);
+                                      let v_1543 = (((v_1542 >> 16u) ^ v_1542) * 73244475u);
+                                      let v_1544 = (((v_1543 >> 16u) ^ v_1543) * 73244475u);
+                                      let v_1545 = ((v_1544 >> 16u) ^ v_1544);
+                                      let v_1546 = (v_1525 + ((((v_1527.x * v_1527.y) * v_1527.z) * v_1527.w) * dot((v_1519 - v_1526), vec4<f32>(((f32((v_1541 & 65535u)) * 0.000030517578125f) - 1.0f), ((f32(((v_1541 >> 16u) & 65535u)) * 0.000030517578125f) - 1.0f), ((f32((v_1545 & 65535u)) * 0.000030517578125f) - 1.0f), ((f32(((v_1545 >> 16u) & 65535u)) * 0.000030517578125f) - 1.0f)))));
+                                      let v_1547 = (v_1524 + bitcast<u32>(1i));
+                                      v_1522 = v_1546;
+                                      v_1523 = v_1547;
+                                    }
+                                  }
+                                }
+                                let v_1548 = (v_1513 - v_1521);
+                                v_1471 = (v_1473 + (vec3<f32>(select(0.0f, 1.0f, (v_1474 == 0u)), select(0.0f, 1.0f, (v_1474 == 1u)), select(0.0f, 1.0f, (v_1474 == 2u))) * select(v_1548, -(v_1548), (v_1475 != 0u))));
+                                continue;
+                              } else {
+                                v_1468 = v_1473;
+                                break;
+                              }
+
+                              continuing {
+                                let v_1549 = v_1471;
+                                let v_1550 = (v_1472 + bitcast<u32>(1i));
+                                v_1469 = v_1549;
+                                v_1470 = v_1550;
+                              }
+                            }
+                          }
+                          let v_1551 = v_1468;
+                          let v_1552 = sqrt(dot(v_1551, v_1551));
+                          let v_1553 = (v_1552 > 0.0f);
+                          let v_1554 = select(vec3<f32>(), (v_1551 / vec3<f32>(v_1552, v_1552, v_1552)), vec3<bool>(v_1553, v_1553, v_1553));
+                          let v_1555 = v_1464.x;
+                          let v_1556 = (((v_1554 * 0.89999997615814208984f) * (10.0f - v_1555)) + (v_1554 * (v_1555 - 9.0f)));
+                          let v_1557 = sqrt(dot(v_1556, v_1556));
+                          let v_1558 = (v_1557 > 0.0f);
+                          let v_1559 = select(vec3<f32>(), (v_1556 / vec3<f32>(v_1557, v_1557, v_1557)), vec3<bool>(v_1558, v_1558, v_1558));
+                          let v_1560 = (clamp((v_1152 * v_1463), 0.0f, 1.0f) * select(1.0f, 0.0f, (v_868 <= 0.0f)));
+                          let v_1561 = (1.0f + ((1.0f - v_1560) * 0.20000000298023223877f));
+                          let v_1562 = ((v_1431 * (1.0f - v_1560)) + ((v_1559 * (length(v_1431) * v_1561)) * v_1560));
+                          v_1434 = ((v_1433 * (1.0f - v_1560)) + ((v_1559 * (length(v_1433) * v_1561)) * v_1560));
+                          v_1435 = v_1562;
+                        } else {
+                          v_1434 = v_1433;
+                          v_1435 = v_1431;
+                        }
+                        let v_1563 = v_1435;
+                        let v_1564 = v_1434;
+                        let v_1565 = v_1563.x;
+                        var v_1566 : vec4<f32> = v_856;
+                        v_1566.x = v_1565;
+                        let v_1567 = v_1563.y;
+                        var v_1568 : vec4<f32> = v_1566;
+                        v_1568.y = v_1567;
+                        let v_1569 = v_1563.z;
+                        var v_1570 : vec4<f32> = v_1568;
+                        v_1570.z = v_1569;
+                        let v_1571 = v_1570;
+                        let v_1572 = (v_1564 + v_1563);
+                        var v_1573 : vec3<f32>;
+                        if (((data_1.m[(v.material_offset + 18u)].w > 0u) & (length(v_1572) > 0.00100000004749745131f))) {
+                          var v_1574 : f32;
+                          switch(0u) {
+                            default: {
+                              let v_1575 = data_1.m[(v.material_offset + 18u)].w;
+                              if ((v_1575 == 0u)) {
+                                v_1574 = 0.0f;
+                                break;
+                              }
+                              let v_1576 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 265u)]);
+                              var v_1577 : u32;
+                              {
+                                var v_1578 : u32;
+                                v_1578 = v_1575;
+                                var v_1579 : u32;
+                                v_1579 = (v_1575 - 1u);
+                                loop {
+                                  var v_1580 : u32;
+                                  let v_1581 = v_1579;
+                                  let v_1582 = v_1578;
+                                  if ((v_1581 > 0u)) {
+                                    let v_1583 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (265u + (v_1581 / 2u)))]);
+)wgsl",
+R"wgsl(                                    let v_1584 = ((v_1581 % 2u) == 0u);
+                                    v_1580 = select(v_1582, v_1581, (v_1193 < select(v_1583.zw, v_1583.xy, vec2<bool>(v_1584, v_1584)).x));
+                                    continue;
+                                  } else {
+                                    v_1577 = v_1582;
+                                    break;
+                                  }
+
+                                  continuing {
+                                    let v_1585 = v_1580;
+                                    let v_1586 = (v_1581 - bitcast<u32>(1i));
+                                    v_1578 = v_1585;
+                                    v_1579 = v_1586;
+                                  }
+                                }
+                              }
+                              let v_1587 = v_1577;
+                              let v_1588 = (v_1575 - 1u);
+                              let v_1589 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (265u + (v_1588 / 2u)))]);
+                              let v_1590 = ((v_1588 % 2u) == 0u);
+                              let v_1591 = select(v_1589.zw, v_1589.xy, vec2<bool>(v_1590, v_1590)).y;
+                              var v_1592 : f32;
+                              if (!((v_1193 > v_1576.x))) {
+                                v_1592 = v_1576.y;
+                              } else {
+                                var v_1593 : f32;
+                                if ((v_1587 < v_1575)) {
+                                  let v_1594 = (v_1587 - 1u);
+                                  let v_1595 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (265u + (v_1594 / 2u)))]);
+                                  let v_1596 = ((v_1594 % 2u) == 0u);
+                                  let v_1597 = select(v_1595.zw, v_1595.xy, vec2<bool>(v_1596, v_1596));
+                                  let v_1598 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (265u + (v_1587 / 2u)))]);
+                                  let v_1599 = ((v_1587 % 2u) == 0u);
+                                  let v_1600 = select(v_1598.zw, v_1598.xy, vec2<bool>(v_1599, v_1599));
+                                  v_1593 = (v_1597.y + ((v_1600.y - v_1597.y) * ((v_1193 - v_1597.x) / (v_1600.x - v_1597.x))));
+                                } else {
+                                  v_1593 = v_1591;
+                                }
+                                v_1592 = v_1593;
+                              }
+                              v_1574 = v_1592;
+                            }
+                          }
+                          let v_1601 = abs(v_1574);
+                          let v_1602 = sqrt(dot(v_1572, v_1572));
+                          let v_1603 = (v_1602 > 0.0f);
+                          v_1573 = (select(vec3<f32>(), (v_1572 / vec3<f32>(v_1602, v_1602, v_1602)), vec3<bool>(v_1603, v_1603, v_1603)) * min(abs(length(v_1572)), v_1601));
+                        } else {
+                          v_1573 = v_1572;
+                        }
+                        let v_1604 = v_1573;
+                        let v_1605 = v_1604.xy;
+                        var v_1606 : f32;
+                        switch(0u) {
+                          default: {
+                            let v_1607 = data_1.m[(v.material_offset + 17u)].x;
+                            if ((v_1607 == 0u)) {
+                              v_1606 = 1.0f;
+                              break;
+                            }
+                            let v_1608 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 153u)]);
+                            var v_1609 : u32;
+                            {
+                              var v_1610 : u32;
+                              v_1610 = v_1607;
+                              var v_1611 : u32;
+                              v_1611 = (v_1607 - 1u);
+                              loop {
+                                var v_1612 : u32;
+                                let v_1613 = v_1611;
+                                let v_1614 = v_1610;
+                                if ((v_1613 > 0u)) {
+                                  let v_1615 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (153u + (v_1613 / 2u)))]);
+                                  let v_1616 = ((v_1613 % 2u) == 0u);
+                                  v_1612 = select(v_1614, v_1613, (v_1193 < select(v_1615.zw, v_1615.xy, vec2<bool>(v_1616, v_1616)).x));
+                                  continue;
+                                } else {
+                                  v_1609 = v_1614;
+                                  break;
+                                }
+
+                                continuing {
+                                  let v_1617 = v_1612;
+                                  let v_1618 = (v_1613 - bitcast<u32>(1i));
+                                  v_1610 = v_1617;
+                                  v_1611 = v_1618;
+                                }
+                              }
+                            }
+                            let v_1619 = v_1609;
+                            let v_1620 = (v_1607 - 1u);
+                            let v_1621 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (153u + (v_1620 / 2u)))]);
+                            let v_1622 = ((v_1620 % 2u) == 0u);
+                            let v_1623 = select(v_1621.zw, v_1621.xy, vec2<bool>(v_1622, v_1622)).y;
+                            var v_1624 : f32;
+                            if (!((v_1193 > v_1608.x))) {
+                              v_1624 = v_1608.y;
+                            } else {
+                              var v_1625 : f32;
+                              if ((v_1619 < v_1607)) {
+                                let v_1626 = (v_1619 - 1u);
+                                let v_1627 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (153u + (v_1626 / 2u)))]);
+                                let v_1628 = ((v_1626 % 2u) == 0u);
+                                let v_1629 = select(v_1627.zw, v_1627.xy, vec2<bool>(v_1628, v_1628));
+                                let v_1630 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (153u + (v_1619 / 2u)))]);
+                                let v_1631 = ((v_1619 % 2u) == 0u);
+                                let v_1632 = select(v_1630.zw, v_1630.xy, vec2<bool>(v_1631, v_1631));
+                                v_1625 = (v_1629.y + ((v_1632.y - v_1629.y) * ((v_1193 - v_1629.x) / (v_1632.x - v_1629.x))));
+                              } else {
+                                v_1625 = v_1623;
+                              }
+                              v_1624 = v_1625;
+                            }
+                            v_1606 = v_1624;
+                          }
+                        }
+                        let v_1633 = (v_1006 * v_1606);
+                        var v_1634 : f32;
+                        switch(0u) {
+                          default: {
+                            let v_1635 = data_1.m[(v.material_offset + 17u)].y;
+                            if ((v_1635 == 0u)) {
+                              v_1634 = 1.0f;
+                              break;
+                            }
+                            let v_1636 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 169u)]);
+                            var v_1637 : u32;
+                            {
+                              var v_1638 : u32;
+                              v_1638 = v_1635;
+                              var v_1639 : u32;
+                              v_1639 = (v_1635 - 1u);
+                              loop {
+                                var v_1640 : u32;
+                                let v_1641 = v_1639;
+                                let v_1642 = v_1638;
+                                if ((v_1641 > 0u)) {
+                                  let v_1643 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (169u + (v_1641 / 2u)))]);
+                                  let v_1644 = ((v_1641 % 2u) == 0u);
+                                  v_1640 = select(v_1642, v_1641, (v_1193 < select(v_1643.zw, v_1643.xy, vec2<bool>(v_1644, v_1644)).x));
+                                  continue;
+                                } else {
+                                  v_1637 = v_1642;
+                                  break;
+                                }
+
+                                continuing {
+                                  let v_1645 = v_1640;
+                                  let v_1646 = (v_1641 - bitcast<u32>(1i));
+                                  v_1638 = v_1645;
+                                  v_1639 = v_1646;
+                                }
+                              }
+                            }
+                            let v_1647 = v_1637;
+                            let v_1648 = (v_1635 - 1u);
+                            let v_1649 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (169u + (v_1648 / 2u)))]);
+                            let v_1650 = ((v_1648 % 2u) == 0u);
+                            let v_1651 = select(v_1649.zw, v_1649.xy, vec2<bool>(v_1650, v_1650)).y;
+                            var v_1652 : f32;
+                            if (!((v_1193 > v_1636.x))) {
+                              v_1652 = v_1636.y;
+                            } else {
+                              var v_1653 : f32;
+                              if ((v_1647 < v_1635)) {
+                                let v_1654 = (v_1647 - 1u);
+                                let v_1655 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (169u + (v_1654 / 2u)))]);
+                                let v_1656 = ((v_1654 % 2u) == 0u);
+                                let v_1657 = select(v_1655.zw, v_1655.xy, vec2<bool>(v_1656, v_1656));
+                                let v_1658 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (169u + (v_1647 / 2u)))]);
+                                let v_1659 = ((v_1647 % 2u) == 0u);
+                                let v_1660 = select(v_1658.zw, v_1658.xy, vec2<bool>(v_1659, v_1659));
+                                v_1653 = (v_1657.y + ((v_1660.y - v_1657.y) * ((v_1193 - v_1657.x) / (v_1660.x - v_1657.x))));
+                              } else {
+                                v_1653 = v_1651;
+                              }
+                              v_1652 = v_1653;
+                            }
+                            v_1634 = v_1652;
+                          }
+                        }
+                        let v_1661 = ((6.28318023681640625f * ((v_1007 * (1.0f - v_1015)) + (v_1008 * v_1015))) * v_1634);
+                        var v_1662 : f32;
+                        switch(0u) {
+                          default: {
+                            let v_1663 = data_1.m[(v.material_offset + 17u)].w;
+                            if ((v_1663 == 0u)) {
+                              v_1662 = 0.0f;
+                              break;
+                            }
+                            let v_1664 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 201u)]);
+                            var v_1665 : u32;
+                            {
+                              var v_1666 : u32;
+                              v_1666 = v_1663;
+                              var v_1667 : u32;
+                              v_1667 = (v_1663 - 1u);
+                              loop {
+                                var v_1668 : u32;
+                                let v_1669 = v_1667;
+                                let v_1670 = v_1666;
+                                if ((v_1669 > 0u)) {
+                                  let v_1671 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (201u + (v_1669 / 2u)))]);
+                                  let v_1672 = ((v_1669 % 2u) == 0u);
+                                  v_1668 = select(v_1670, v_1669, (v_1193 < select(v_1671.zw, v_1671.xy, vec2<bool>(v_1672, v_1672)).x));
+                                  continue;
+)wgsl",
+R"wgsl(                                } else {
+                                  v_1665 = v_1670;
+                                  break;
+                                }
+
+                                continuing {
+                                  let v_1673 = v_1668;
+                                  let v_1674 = (v_1669 - bitcast<u32>(1i));
+                                  v_1666 = v_1673;
+                                  v_1667 = v_1674;
+                                }
+                              }
+                            }
+                            let v_1675 = v_1665;
+                            let v_1676 = (v_1663 - 1u);
+                            let v_1677 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (201u + (v_1676 / 2u)))]);
+                            let v_1678 = ((v_1676 % 2u) == 0u);
+                            let v_1679 = select(v_1677.zw, v_1677.xy, vec2<bool>(v_1678, v_1678)).y;
+                            var v_1680 : f32;
+                            if (!((v_1193 > v_1664.x))) {
+                              v_1680 = v_1664.y;
+                            } else {
+                              var v_1681 : f32;
+                              if ((v_1675 < v_1663)) {
+                                let v_1682 = (v_1675 - 1u);
+                                let v_1683 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (201u + (v_1682 / 2u)))]);
+                                let v_1684 = ((v_1682 % 2u) == 0u);
+                                let v_1685 = select(v_1683.zw, v_1683.xy, vec2<bool>(v_1684, v_1684));
+                                let v_1686 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (201u + (v_1675 / 2u)))]);
+                                let v_1687 = ((v_1675 % 2u) == 0u);
+                                let v_1688 = select(v_1686.zw, v_1686.xy, vec2<bool>(v_1687, v_1687));
+                                v_1681 = (v_1685.y + ((v_1688.y - v_1685.y) * ((v_1193 - v_1685.x) / (v_1688.x - v_1685.x))));
+                              } else {
+                                v_1681 = v_1679;
+                              }
+                              v_1680 = v_1681;
+                            }
+                            v_1662 = v_1680;
+                          }
+                        }
+                        let v_1689 = (((v_1025 * (1.0f - v_1033)) + (v_1026 * v_1033)) + v_1662);
+                        var v_1690 : f32;
+                        switch(0u) {
+                          default: {
+                            let v_1691 = data_1.m[(v.material_offset + 17u)].z;
+                            if ((v_1691 == 0u)) {
+                              v_1690 = 1.0f;
+                              break;
+                            }
+                            let v_1692 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 185u)]);
+                            var v_1693 : u32;
+                            {
+                              var v_1694 : u32;
+                              v_1694 = v_1691;
+                              var v_1695 : u32;
+                              v_1695 = (v_1691 - 1u);
+                              loop {
+                                var v_1696 : u32;
+                                let v_1697 = v_1695;
+                                let v_1698 = v_1694;
+                                if ((v_1697 > 0u)) {
+                                  let v_1699 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (185u + (v_1697 / 2u)))]);
+                                  let v_1700 = ((v_1697 % 2u) == 0u);
+                                  v_1696 = select(v_1698, v_1697, (v_1193 < select(v_1699.zw, v_1699.xy, vec2<bool>(v_1700, v_1700)).x));
+                                  continue;
+                                } else {
+                                  v_1693 = v_1698;
+                                  break;
+                                }
+
+                                continuing {
+                                  let v_1701 = v_1696;
+                                  let v_1702 = (v_1697 - bitcast<u32>(1i));
+                                  v_1694 = v_1701;
+                                  v_1695 = v_1702;
+                                }
+                              }
+                            }
+                            let v_1703 = v_1693;
+                            let v_1704 = (v_1691 - 1u);
+                            let v_1705 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (185u + (v_1704 / 2u)))]);
+                            let v_1706 = ((v_1704 % 2u) == 0u);
+                            let v_1707 = select(v_1705.zw, v_1705.xy, vec2<bool>(v_1706, v_1706)).y;
+                            var v_1708 : f32;
+                            if (!((v_1193 > v_1692.x))) {
+                              v_1708 = v_1692.y;
+                            } else {
+                              var v_1709 : f32;
+                              if ((v_1703 < v_1691)) {
+                                let v_1710 = (v_1703 - 1u);
+                                let v_1711 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (185u + (v_1710 / 2u)))]);
+                                let v_1712 = ((v_1710 % 2u) == 0u);
+                                let v_1713 = select(v_1711.zw, v_1711.xy, vec2<bool>(v_1712, v_1712));
+                                let v_1714 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (185u + (v_1703 / 2u)))]);
+                                let v_1715 = ((v_1703 % 2u) == 0u);
+                                let v_1716 = select(v_1714.zw, v_1714.xy, vec2<bool>(v_1715, v_1715));
+                                v_1709 = (v_1713.y + ((v_1716.y - v_1713.y) * ((v_1193 - v_1713.x) / (v_1716.x - v_1713.x))));
+                              } else {
+                                v_1709 = v_1707;
+                              }
+                              v_1708 = v_1709;
+                            }
+                            v_1690 = v_1708;
+                          }
+                        }
+                        let v_1717 = (((v_1016 * (1.0f - v_1024)) + (v_1017 * v_1024)) * v_1690);
+                        var v_1718 : vec4<f32>;
+                        if ((data_1.m[(v.material_offset + 20u)].x > 0u)) {
+                          var v_1719 : vec4<f32>;
+                          switch(0u) {
+                            default: {
+                              let v_1720 = data_1.m[(v.material_offset + 20u)].x;
+                              if ((v_1720 == 0u)) {
+                                v_1719 = vec4<f32>(1.0f);
+                                break;
+                              }
+                              var v_1721 : u32;
+                              {
+                                var v_1722 : u32;
+                                v_1722 = v_1720;
+                                var v_1723 : u32;
+                                v_1723 = (v_1720 - 1u);
+                                loop {
+                                  var v_1724 : u32;
+                                  let v_1725 = v_1723;
+                                  let v_1726 = v_1722;
+                                  if ((v_1725 > 0u)) {
+                                    let v_1727 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (313u + (v_1725 / 4u)))]);
+                                    let v_1728 = (v_1725 % 4u);
+                                    v_1724 = select(v_1726, v_1725, (v_1193 < select(select(select(v_1727.w, v_1727.z, (v_1728 == 2u)), v_1727.y, (v_1728 == 1u)), v_1727.x, (v_1728 == 0u))));
+                                    continue;
+                                  } else {
+                                    v_1721 = v_1726;
+                                    break;
+                                  }
+
+                                  continuing {
+                                    let v_1729 = v_1724;
+                                    let v_1730 = (v_1725 - bitcast<u32>(1i));
+                                    v_1722 = v_1729;
+                                    v_1723 = v_1730;
+                                  }
+                                }
+                              }
+                              let v_1731 = v_1721;
+                              let v_1732 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (v_1720 + 320u))]);
+                              var v_1733 : vec4<f32>;
+                              if (!((v_1193 > bitcast<vec4<f32>>(data_1.m[(v.material_offset + 313u)]).x))) {
+                                v_1733 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 321u)]);
+                              } else {
+                                var v_1734 : vec4<f32>;
+                                if ((v_1731 < v_1720)) {
+                                  let v_1735 = (v_1731 - 1u);
+                                  let v_1736 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (313u + (v_1735 / 4u)))]);
+                                  let v_1737 = (v_1735 % 4u);
+                                  let v_1738 = select(select(select(v_1736.w, v_1736.z, (v_1737 == 2u)), v_1736.y, (v_1737 == 1u)), v_1736.x, (v_1737 == 0u));
+                                  let v_1739 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (313u + (v_1731 / 4u)))]);
+                                  let v_1740 = (v_1731 % 4u);
+                                  let v_1741 = ((v_1193 - v_1738) / (select(select(select(v_1739.w, v_1739.z, (v_1740 == 2u)), v_1739.y, (v_1740 == 1u)), v_1739.x, (v_1740 == 0u)) - v_1738));
+                                  let v_1742 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (v_1731 + 320u))]);
+                                  v_1734 = (v_1742 + ((bitcast<vec4<f32>>(data_1.m[(v.material_offset + (321u + v_1731))]) - v_1742) * v_1741));
+                                } else {
+                                  v_1734 = v_1732;
+                                }
+                                v_1733 = v_1734;
+                              }
+                              v_1719 = v_1733;
+                            }
+                          }
+                          v_1718 = (v_1089 * v_1719);
+                        } else {
+                          v_1718 = v_1089;
+                        }
+                        let v_1743 = v_1718;
+                        var v_1744 : f32;
+                        switch(0u) {
+                          default: {
+                            let v_1745 = data_1.m[(v.material_offset + 19u)].x;
+                            if ((v_1745 == 0u)) {
+                              v_1744 = 1.0f;
+                              break;
+                            }
+                            let v_1746 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 281u)]);
+                            var v_1747 : u32;
+                            {
+                              var v_1748 : u32;
+                              v_1748 = v_1745;
+                              var v_1749 : u32;
+                              v_1749 = (v_1745 - 1u);
+                              loop {
+                                var v_1750 : u32;
+                                let v_1751 = v_1749;
+                                let v_1752 = v_1748;
+                                if ((v_1751 > 0u)) {
+                                  let v_1753 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (281u + (v_1751 / 2u)))]);
+                                  let v_1754 = ((v_1751 % 2u) == 0u);
+                                  v_1750 = select(v_1752, v_1751, (v_1193 < select(v_1753.zw, v_1753.xy, vec2<bool>(v_1754, v_1754)).x));
+                                  continue;
+                                } else {
+                                  v_1747 = v_1752;
+                                  break;
+                                }
+
+                                continuing {
+                                  let v_1755 = v_1750;
+)wgsl",
+R"wgsl(                                  let v_1756 = (v_1751 - bitcast<u32>(1i));
+                                  v_1748 = v_1755;
+                                  v_1749 = v_1756;
+                                }
+                              }
+                            }
+                            let v_1757 = v_1747;
+                            let v_1758 = (v_1745 - 1u);
+                            let v_1759 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (281u + (v_1758 / 2u)))]);
+                            let v_1760 = ((v_1758 % 2u) == 0u);
+                            let v_1761 = select(v_1759.zw, v_1759.xy, vec2<bool>(v_1760, v_1760)).y;
+                            var v_1762 : f32;
+                            if (!((v_1193 > v_1746.x))) {
+                              v_1762 = v_1746.y;
+                            } else {
+                              var v_1763 : f32;
+                              if ((v_1757 < v_1745)) {
+                                let v_1764 = (v_1757 - 1u);
+                                let v_1765 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (281u + (v_1764 / 2u)))]);
+                                let v_1766 = ((v_1764 % 2u) == 0u);
+                                let v_1767 = select(v_1765.zw, v_1765.xy, vec2<bool>(v_1766, v_1766));
+                                let v_1768 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (281u + (v_1757 / 2u)))]);
+                                let v_1769 = ((v_1757 % 2u) == 0u);
+                                let v_1770 = select(v_1768.zw, v_1768.xy, vec2<bool>(v_1769, v_1769));
+                                v_1763 = (v_1767.y + ((v_1770.y - v_1767.y) * ((v_1193 - v_1767.x) / (v_1770.x - v_1767.x))));
+                              } else {
+                                v_1763 = v_1761;
+                              }
+                              v_1762 = v_1763;
+                            }
+                            v_1744 = v_1762;
+                          }
+                        }
+                        let v_1771 = (v_1743.w * v_1744);
+                        let v_1772 = cos(v_1661);
+                        let v_1773 = sin(v_1661);
+                        let v_1774 = (((((vec3<f32>(0.29899999499320983887f, 0.58700001239776611328f, 0.11400000005960464478f) + (vec3<f32>(0.70099997520446777344f, -0.58700001239776611328f, -0.11400000005960464478f) * v_1772)) + (vec3<f32>(0.16799999773502349854f, 0.33000001311302185059f, -0.49700000882148742676f) * v_1773)) * v_1743.x) + (((vec3<f32>(0.29899999499320983887f, 0.58700001239776611328f, 0.11400000005960464478f) + (vec3<f32>(-0.29899999499320983887f, 0.41299998760223388672f, -0.11400000005960464478f) * v_1772)) + (vec3<f32>(-0.32800000905990600586f, 0.03500000014901161194f, 0.29199999570846557617f) * v_1773)) * v_1743.y)) + (((vec3<f32>(0.29899999499320983887f, 0.58700001239776611328f, 0.11400000005960464478f) + (vec3<f32>(-0.30000001192092895508f, -0.5879999995231628418f, 0.88599997758865356445f) * v_1772)) + (vec3<f32>(1.25f, -1.04999995231628417969f, -0.20299999415874481201f) * v_1773)) * v_1743.z));
+                        let v_1775 = vec4<f32>(v_1774.x, v_1774.y, v_1774.z, v_1771);
+                        var v_1776 : vec4<f32>;
+                        if ((data_1.m[(v.material_offset + 19u)].y > 0u)) {
+                          var v_1777 : f32;
+                          switch(0u) {
+                            default: {
+                              let v_1778 = data_1.m[(v.material_offset + 19u)].y;
+                              if ((v_1778 == 0u)) {
+                                v_1777 = 0.0f;
+                                break;
+                              }
+                              let v_1779 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 297u)]);
+                              var v_1780 : u32;
+                              {
+                                var v_1781 : u32;
+                                v_1781 = v_1778;
+                                var v_1782 : u32;
+                                v_1782 = (v_1778 - 1u);
+                                loop {
+                                  var v_1783 : u32;
+                                  let v_1784 = v_1782;
+                                  let v_1785 = v_1781;
+                                  if ((v_1784 > 0u)) {
+                                    let v_1786 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (297u + (v_1784 / 2u)))]);
+                                    let v_1787 = ((v_1784 % 2u) == 0u);
+                                    v_1783 = select(v_1785, v_1784, (v_1193 < select(v_1786.zw, v_1786.xy, vec2<bool>(v_1787, v_1787)).x));
+                                    continue;
+                                  } else {
+                                    v_1780 = v_1785;
+                                    break;
+                                  }
+
+                                  continuing {
+                                    let v_1788 = v_1783;
+                                    let v_1789 = (v_1784 - bitcast<u32>(1i));
+                                    v_1781 = v_1788;
+                                    v_1782 = v_1789;
+                                  }
+                                }
+                              }
+                              let v_1790 = v_1780;
+                              let v_1791 = (v_1778 - 1u);
+                              let v_1792 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (297u + (v_1791 / 2u)))]);
+                              let v_1793 = ((v_1791 % 2u) == 0u);
+                              let v_1794 = select(v_1792.zw, v_1792.xy, vec2<bool>(v_1793, v_1793)).y;
+                              var v_1795 : f32;
+                              if (!((v_1193 > v_1779.x))) {
+                                v_1795 = v_1779.y;
+                              } else {
+                                var v_1796 : f32;
+                                if ((v_1790 < v_1778)) {
+                                  let v_1797 = (v_1790 - 1u);
+                                  let v_1798 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (297u + (v_1797 / 2u)))]);
+                                  let v_1799 = ((v_1797 % 2u) == 0u);
+                                  let v_1800 = select(v_1798.zw, v_1798.xy, vec2<bool>(v_1799, v_1799));
+                                  let v_1801 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (297u + (v_1790 / 2u)))]);
+                                  let v_1802 = ((v_1790 % 2u) == 0u);
+                                  let v_1803 = select(v_1801.zw, v_1801.xy, vec2<bool>(v_1802, v_1802));
+                                  v_1796 = (v_1800.y + ((v_1803.y - v_1800.y) * ((v_1193 - v_1800.x) / (v_1803.x - v_1800.x))));
+                                } else {
+                                  v_1796 = v_1794;
+                                }
+                                v_1795 = v_1796;
+                              }
+                              v_1777 = v_1795;
+                            }
+                          }
+                          let v_1804 = (v_1775.xyz * (1.0f + v_1777));
+                          v_1776 = vec4<f32>(v_1804.x, v_1804.y, v_1804.z, v_1771);
+                        } else {
+                          v_1776 = v_1775;
+                        }
+                        let v_1805 = v_1776;
+                        var v_1806 : f32;
+                        switch(0u) {
+                          default: {
+                            let v_1807 = data_1.m[(v.material_offset + 16u)].w;
+                            if ((v_1807 == 0u)) {
+                              v_1806 = 1.0f;
+                              break;
+                            }
+                            let v_1808 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 137u)]);
+                            var v_1809 : u32;
+                            {
+                              var v_1810 : u32;
+                              v_1810 = v_1807;
+                              var v_1811 : u32;
+                              v_1811 = (v_1807 - 1u);
+                              loop {
+                                var v_1812 : u32;
+                                let v_1813 = v_1811;
+                                let v_1814 = v_1810;
+                                if ((v_1813 > 0u)) {
+                                  let v_1815 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (137u + (v_1813 / 2u)))]);
+                                  let v_1816 = ((v_1813 % 2u) == 0u);
+                                  v_1812 = select(v_1814, v_1813, (v_1193 < select(v_1815.zw, v_1815.xy, vec2<bool>(v_1816, v_1816)).x));
+                                  continue;
+                                } else {
+                                  v_1809 = v_1814;
+                                  break;
+                                }
+
+                                continuing {
+                                  let v_1817 = v_1812;
+                                  let v_1818 = (v_1813 - bitcast<u32>(1i));
+                                  v_1810 = v_1817;
+                                  v_1811 = v_1818;
+                                }
+                              }
+                            }
+                            let v_1819 = v_1809;
+                            let v_1820 = (v_1807 - 1u);
+                            let v_1821 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (137u + (v_1820 / 2u)))]);
+                            let v_1822 = ((v_1820 % 2u) == 0u);
+                            let v_1823 = select(v_1821.zw, v_1821.xy, vec2<bool>(v_1822, v_1822)).y;
+                            var v_1824 : f32;
+                            if (!((v_1193 > v_1808.x))) {
+                              v_1824 = v_1808.y;
+                            } else {
+                              var v_1825 : f32;
+                              if ((v_1819 < v_1807)) {
+                                let v_1826 = (v_1819 - 1u);
+                                let v_1827 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (137u + (v_1826 / 2u)))]);
+                                let v_1828 = ((v_1826 % 2u) == 0u);
+                                let v_1829 = select(v_1827.zw, v_1827.xy, vec2<bool>(v_1828, v_1828));
+                                let v_1830 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (137u + (v_1819 / 2u)))]);
+                                let v_1831 = ((v_1819 % 2u) == 0u);
+                                let v_1832 = select(v_1830.zw, v_1830.xy, vec2<bool>(v_1831, v_1831));
+                                v_1825 = (v_1829.y + ((v_1832.y - v_1829.y) * ((v_1193 - v_1829.x) / (v_1832.x - v_1829.x))));
+                              } else {
+                                v_1825 = v_1823;
+                              }
+                              v_1824 = v_1825;
+                            }
+                            v_1806 = v_1824;
+                          }
+                        }
+                        let v_1833 = (((v_1090 * (1.0f - v_1098)) + (v_1091 * v_1098)) * v_1806);
+                        var v_1834 : vec4<f32>;
+                        var v_1835 : vec4<f32>;
+                        if ((data_1.m[(v.material_offset + 15u)].y > 0u)) {
+                          var v_1836 : f32;
+                          switch(0u) {
+                            default: {
+                              let v_1837 = data_1.m[(v.material_offset + 15u)].y;
+                              if ((v_1837 == 0u)) {
+                                v_1836 = 1.0f;
+                                break;
+                              }
+                              let v_1838 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + 41u)]);
+                              var v_1839 : u32;
+                              {
+                                var v_1840 : u32;
+                                v_1840 = v_1837;
+)wgsl",
+R"wgsl(                                var v_1841 : u32;
+                                v_1841 = (v_1837 - 1u);
+                                loop {
+                                  var v_1842 : u32;
+                                  let v_1843 = v_1841;
+                                  let v_1844 = v_1840;
+                                  if ((v_1843 > 0u)) {
+                                    let v_1845 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (41u + (v_1843 / 2u)))]);
+                                    let v_1846 = ((v_1843 % 2u) == 0u);
+                                    v_1842 = select(v_1844, v_1843, (v_1193 < select(v_1845.zw, v_1845.xy, vec2<bool>(v_1846, v_1846)).x));
+                                    continue;
+                                  } else {
+                                    v_1839 = v_1844;
+                                    break;
+                                  }
+
+                                  continuing {
+                                    let v_1847 = v_1842;
+                                    let v_1848 = (v_1843 - bitcast<u32>(1i));
+                                    v_1840 = v_1847;
+                                    v_1841 = v_1848;
+                                  }
+                                }
+                              }
+                              let v_1849 = v_1839;
+                              let v_1850 = (v_1837 - 1u);
+                              let v_1851 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (41u + (v_1850 / 2u)))]);
+                              let v_1852 = ((v_1850 % 2u) == 0u);
+                              let v_1853 = select(v_1851.zw, v_1851.xy, vec2<bool>(v_1852, v_1852)).y;
+                              var v_1854 : f32;
+                              if (!((v_1193 > v_1838.x))) {
+                                v_1854 = v_1838.y;
+                              } else {
+                                var v_1855 : f32;
+                                if ((v_1849 < v_1837)) {
+                                  let v_1856 = (v_1849 - 1u);
+                                  let v_1857 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (41u + (v_1856 / 2u)))]);
+                                  let v_1858 = ((v_1856 % 2u) == 0u);
+                                  let v_1859 = select(v_1857.zw, v_1857.xy, vec2<bool>(v_1858, v_1858));
+                                  let v_1860 = bitcast<vec4<f32>>(data_1.m[(v.material_offset + (41u + (v_1849 / 2u)))]);
+                                  let v_1861 = ((v_1849 % 2u) == 0u);
+                                  let v_1862 = select(v_1860.zw, v_1860.xy, vec2<bool>(v_1861, v_1861));
+                                  v_1855 = (v_1859.y + ((v_1862.y - v_1859.y) * ((v_1193 - v_1859.x) / (v_1862.x - v_1859.x))));
+                                } else {
+                                  v_1855 = v_1853;
+                                }
+                                v_1854 = v_1855;
+                              }
+                              v_1836 = v_1854;
+                            }
+                          }
+                          let v_1863 = (v_856.w + ((v_1836 * v_868) * v_1108));
+                          var v_1864 : vec4<f32> = v_1192;
+                          v_1864.x = ((v_1833 * 0.01745327748358249664f) + v_1863);
+                          let v_1865 = v_1864;
+                          v_1834 = vec4<f32>(v_1565, v_1567, v_1569, v_1863);
+                          v_1835 = v_1865;
+                        } else {
+                          var v_1866 : vec4<f32> = v_1192;
+                          v_1866.x = ((v_1833 + ((v_1190 * v_863) * v_1108)) * 0.01745327748358249664f);
+                          let v_1867 = v_1866;
+                          v_1834 = v_1571;
+                          v_1835 = v_1867;
+                        }
+                        let v_1868 = v_1835;
+                        let v_1869 = v_1834;
+                        let v_1870 = max(abs(v_1633), 0.00100000004749745131f);
+                        var v_1871 : f32;
+                        if (((v_1189 == 0.0f) & (v_1633 < 0.0f))) {
+                          v_1871 = -(v_1870);
+                        } else {
+                          v_1871 = v_1870;
+                        }
+                        let v_1872 = v_1871;
+                        let v_1873 = (v_1689 + (v_1193 * v_1717));
+                        var v_1874 : vec4<f32> = v_1868;
+                        v_1874.z = v_1873;
+                        let v_1875 = v_1874;
+                        let v_1876 = (data_1.m[(v.material_offset + 2u)].w == 0u);
+                        let v_1877 = (data_1.m[(v.material_offset + 2u)].w + 1u);
+                        let v_1878 = select(data_1.m[(v.material_offset + v_1877)].y, 0u, v_1876);
+                        var v_1879 : bool;
+                        var v_1880 : vec4<f32>;
+                        var v_1881 : vec4<f32>;
+                        var v_1882 : f32;
+                        var v_1883 : vec4<f32>;
+                        var v_1884 : bool;
+                        var v_1885 : vec4<f32>;
+                        var v_1886 : vec2<f32>;
+                        if ((v_1878 != 0u)) {
+                          let v_1887 = data_1.m[(v.material_offset + data_1.m[(v.material_offset + 2u)].w)];
+                          graph_registers[0i] = vec4<f32>(v_1430.x, v_1430.y, v_1604.x, v_1604.y);
+                          graph_registers[1i] = v_1805;
+                          graph_registers[2i] = vec4<f32>(v_1868.x, v_1872, v_1873, 1.0f);
+                          graph_registers[3i] = vec4<f32>((v_1868.y * v_863), v_1193, (v_1868.w * v_863), v_868);
+                          graph_registers[7i] = vec4<f32>(v_984.x, v_984.y, v_983, select(0.0f, 1.0f, v_1418));
+                          graph_registers[4i] = vec4<f32>(v_860, f32(v_7), f32(v_867), v_862);
+                          let v_1888 = ((v_867 + 1u) + v_859);
+                          let v_1889 = (((v_1888 >> 16u) ^ v_1888) * 73244475u);
+                          let v_1890 = (((v_1889 >> 16u) ^ v_1889) * 73244475u);
+                          let v_1891 = (((v_1890 >> 16u) ^ v_1890) ^ 1759714724u);
+                          let v_1892 = (((v_1891 >> 16u) ^ v_1891) * 73244475u);
+                          let v_1893 = (((v_1892 >> 16u) ^ v_1892) * 73244475u);
+                          let v_1894 = (v_1891 + 1u);
+                          let v_1895 = (((v_1894 >> 16u) ^ v_1894) * 73244475u);
+                          let v_1896 = (((v_1895 >> 16u) ^ v_1895) * 73244475u);
+                          let v_1897 = (v_1891 + 2u);
+                          let v_1898 = (((v_1897 >> 16u) ^ v_1897) * 73244475u);
+                          let v_1899 = (((v_1898 >> 16u) ^ v_1898) * 73244475u);
+                          let v_1900 = (v_1891 + 3u);
+                          let v_1901 = (((v_1900 >> 16u) ^ v_1900) * 73244475u);
+                          let v_1902 = (((v_1901 >> 16u) ^ v_1901) * 73244475u);
+                          graph_registers[5i] = (vec4<f32>(f32((((v_1893 >> 16u) ^ v_1893) >> 8u)), f32((((v_1896 >> 16u) ^ v_1896) >> 8u)), f32((((v_1899 >> 16u) ^ v_1899) >> 8u)), f32((((v_1902 >> 16u) ^ v_1902) >> 8u))) * 0.00000005960464477539f);
+                          graph_registers[6i] = vec4<f32>(v_865.x, v_865.y, v_864.x, v_864.y);
+                          let v_1903 = ((((v.material_offset + data_1.m[(v.material_offset + 2u)].w) + 2u) + v_1887.x) + v_1887.y);
+                          let v_1904 = v_1887.z;
+                          graph_registers[8i] = graph_registers[0i];
+                          graph_registers[9i] = graph_registers[1i];
+                          graph_registers[10i] = graph_registers[2i];
+                          let v_1905 = (v_1903 + v_1904);
+                          {
+                            var v_1906 : u32;
+                            v_1906 = 0u;
+                            loop {
+                              let v_1907 = v_1906;
+                              if ((v_1907 < v_1904)) {
+                                let v_1908 = data_1.m[(v_1903 + v_1907)];
+                                let v_1909 = ((v_1908.x >> 16u) & 255u);
+                                let v_1910 = v_1908.y;
+                                let v_1911 = (v_1910 & 255u);
+                                if ((v_1911 < 32u)) {
+                                  v_3 = graph_registers[v_1911];
+                                } else {
+                                  v_3 = bitcast<vec4<f32>>(data_1.m[(v_1905 + ((v_1911 - 32u) & 31u))]);
+                                }
+                                let v_1912 = (v_1910 >> 8u);
+                                let v_1913 = v_3[(v_1912 & 3u)];
+                                let v_1914 = v_3[((v_1912 >> 2u) & 3u)];
+                                let v_1915 = v_3[((v_1912 >> 4u) & 3u)];
+                                let v_1916 = v_3[((v_1912 >> 6u) & 3u)];
+                                let v_1917 = vec4<f32>(v_1913, v_1914, v_1915, v_1916);
+                                let v_1918 = v_1908.z;
+                                let v_1919 = (v_1918 & 255u);
+                                if ((v_1919 < 32u)) {
+                                  v_2 = graph_registers[v_1919];
+                                } else {
+                                  v_2 = bitcast<vec4<f32>>(data_1.m[(v_1905 + ((v_1919 - 32u) & 31u))]);
+                                }
+                                let v_1920 = (v_1918 >> 8u);
+                                let v_1921 = v_2[(v_1920 & 3u)];
+                                let v_1922 = v_2[((v_1920 >> 2u) & 3u)];
+                                let v_1923 = v_2[((v_1920 >> 4u) & 3u)];
+                                let v_1924 = v_2[((v_1920 >> 6u) & 3u)];
+                                let v_1925 = vec4<f32>(v_1921, v_1922, v_1923, v_1924);
+                                let v_1926 = v_1908.w;
+                                let v_1927 = (v_1926 & 255u);
+                                if ((v_1927 < 32u)) {
+                                  v_1 = graph_registers[v_1927];
+                                } else {
+                                  v_1 = bitcast<vec4<f32>>(data_1.m[(v_1905 + ((v_1927 - 32u) & 31u))]);
+                                }
+                                let v_1928 = (v_1926 >> 8u);
+                                let v_1929 = vec4<f32>(v_1[(v_1928 & 3u)], v_1[((v_1928 >> 2u) & 3u)], v_1[((v_1928 >> 4u) & 3u)], v_1[((v_1928 >> 6u) & 3u)]);
+                                let v_1930 = vec4<f32>(select(0.0f, 1.0f, (v_1909 > 0u)), select(0.0f, 1.0f, (v_1909 > 1u)), select(0.0f, 1.0f, (v_1909 > 2u)), select(0.0f, 1.0f, (v_1909 > 3u)));
+                                var v_1931 : vec4<f32>;
+                                switch((v_1908.x & 255u)) {
+                                  default: {
+                                    v_1931 = v_1917;
+                                  }
+                                  case 1u: {
+                                    v_1931 = (v_1917 + v_1925);
+                                  }
+                                  case 2u: {
+                                    v_1931 = (v_1917 - v_1925);
+                                  }
+                                  case 3u: {
+                                    v_1931 = (v_1917 * v_1925);
+                                  }
+                                  case 4u: {
+                                    v_1931 = (v_1917 / v_1925);
+                                  }
+                                  case 5u: {
+                                    v_1931 = (v_1917 - (v_1925 * floor((v_1917 / v_1925))));
+                                  }
+                                  case 6u: {
+                                    v_1931 = pow(max(v_1917, vec4<f32>()), v_1925);
+                                  }
+                                  case 7u: {
+)wgsl",
+R"wgsl(                                    v_1931 = min(v_1917, v_1925);
+                                  }
+                                  case 8u: {
+                                    v_1931 = max(v_1917, v_1925);
+                                  }
+                                  case 9u: {
+                                    v_1931 = vec4<f32>(select(0.0f, 1.0f, (v_1921 >= v_1913)), select(0.0f, 1.0f, (v_1922 >= v_1914)), select(0.0f, 1.0f, (v_1923 >= v_1915)), select(0.0f, 1.0f, (v_1924 >= v_1916)));
+                                  }
+                                  case 10u: {
+                                    v_1931 = atan2(v_1917, v_1925);
+                                  }
+                                  case 11u: {
+                                    v_1931 = abs(v_1917);
+                                  }
+                                  case 12u: {
+                                    v_1931 = sign(v_1917);
+                                  }
+                                  case 13u: {
+                                    v_1931 = floor(v_1917);
+                                  }
+                                  case 14u: {
+                                    v_1931 = ceil(v_1917);
+                                  }
+                                  case 15u: {
+                                    v_1931 = floor((v_1917 + vec4<f32>(0.5f)));
+                                  }
+                                  case 16u: {
+                                    v_1931 = (v_1917 - floor(v_1917));
+                                  }
+                                  case 17u: {
+                                    v_1931 = sqrt(v_1917);
+                                  }
+                                  case 18u: {
+                                    v_1931 = sin((v_1917 - (floor(((v_1917 * 0.15915493667125701904f) + vec4<f32>(0.5f))) * 6.28318548202514648438f)));
+                                  }
+                                  case 19u: {
+                                    v_1931 = cos((v_1917 - (floor(((v_1917 * 0.15915493667125701904f) + vec4<f32>(0.5f))) * 6.28318548202514648438f)));
+                                  }
+                                  case 20u: {
+                                    v_1931 = tan((v_1917 - (floor(((v_1917 * 0.15915493667125701904f) + vec4<f32>(0.5f))) * 6.28318548202514648438f)));
+                                  }
+                                  case 21u: {
+                                    v_1931 = asin(v_1917);
+                                  }
+                                  case 22u: {
+                                    v_1931 = acos(v_1917);
+                                  }
+                                  case 23u: {
+                                    v_1931 = atan(v_1917);
+                                  }
+                                  case 24u: {
+                                    v_1931 = exp(v_1917);
+                                  }
+                                  case 25u: {
+                                    v_1931 = log(v_1917);
+                                  }
+                                  case 26u: {
+                                    v_1931 = clamp(v_1917, vec4<f32>(), vec4<f32>(1.0f));
+                                  }
+                                  case 27u: {
+                                    v_1931 = (vec4<f32>(1.0f) - v_1917);
+                                  }
+                                  case 28u: {
+                                    v_1931 = -(v_1917);
+                                  }
+                                  case 29u: {
+                                    v_1931 = (v_1917 + ((v_1925 - v_1917) * v_1929));
+                                  }
+                                  case 30u: {
+                                    v_1931 = min(max(v_1917, v_1925), v_1929);
+                                  }
+                                  case 31u: {
+                                    let v_1932 = clamp(((v_1929 - v_1917) / (v_1925 - v_1917)), vec4<f32>(), vec4<f32>(1.0f));
+                                    v_1931 = ((v_1932 * v_1932) * (vec4<f32>(3.0f) - (v_1932 * 2.0f)));
+                                  }
+                                  case 32u: {
+                                    let v_1933 = dot((v_1917 * v_1930), (v_1925 * v_1930));
+                                    v_1931 = vec4<f32>(v_1933, v_1933, v_1933, v_1933);
+                                  }
+                                  case 33u: {
+                                    let v_1934 = sqrt(dot((v_1917 * v_1930), (v_1917 * v_1930)));
+                                    v_1931 = vec4<f32>(v_1934, v_1934, v_1934, v_1934);
+                                  }
+                                  case 34u: {
+                                    let v_1935 = sqrt(dot(((v_1917 - v_1925) * v_1930), ((v_1917 - v_1925) * v_1930)));
+                                    v_1931 = vec4<f32>(v_1935, v_1935, v_1935, v_1935);
+                                  }
+                                  case 35u: {
+                                    let v_1936 = sqrt(dot((v_1917 * v_1930), (v_1917 * v_1930)));
+                                    let v_1937 = (v_1936 > 0.0f);
+                                    v_1931 = select(vec4<f32>(), ((v_1917 * v_1930) / vec4<f32>(v_1936, v_1936, v_1936, v_1936)), vec4<bool>(v_1937, v_1937, v_1937, v_1937));
+                                  }
+                                  case 36u: {
+                                    v_1931 = vec4<f32>(select(v_1913, v_1921, ((v_1909 & 1u) != 0u)), select(v_1914, v_1922, ((v_1909 & 2u) != 0u)), select(v_1915, v_1923, ((v_1909 & 4u) != 0u)), select(v_1916, v_1924, ((v_1909 & 8u) != 0u)));
+                                  }
+                                  case 38u: {
+                                    let v_1938 = (v_1914 < v_1915);
+                                    let v_1939 = select(vec4<f32>(v_1914, v_1915, 0.0f, -0.3333333432674407959f), vec4<f32>(v_1915, v_1914, -1.0f, 0.6666666865348815918f), vec4<bool>(v_1938, v_1938, v_1938, v_1938));
+                                    let v_1940 = (v_1913 < v_1939.x);
+                                    let v_1941 = select(vec4<f32>(v_1913, v_1939.y, v_1939.z, v_1939.x), vec4<f32>(v_1939.x, v_1939.y, v_1939.w, v_1913), vec4<bool>(v_1940, v_1940, v_1940, v_1940));
+                                    let v_1942 = (v_1941.x - min(v_1941.w, v_1941.y));
+                                    v_1931 = vec4<f32>(abs((v_1941.z + ((v_1941.w - v_1941.y) / ((6.0f * v_1942) + 0.00000000010000000134f)))), (v_1942 / (v_1941.x + 0.00000000010000000134f)), v_1941.x, 0.0f);
+                                  }
+                                  case 39u: {
+                                    let v_1943 = ((vec3<f32>(1.0f) + ((clamp((abs(((fract((vec3<f32>(v_1913, v_1913, v_1913) + vec3<f32>(1.0f, 0.6666666865348815918f, 0.3333333432674407959f))) * 6.0f) - vec3<f32>(3.0f))) - vec3<f32>(1.0f)), vec3<f32>(), vec3<f32>(1.0f)) - vec3<f32>(1.0f)) * v_1914)) * v_1915);
+                                    v_1931 = vec4<f32>(v_1943.x, v_1943.y, v_1943.z, 0.0f);
+                                  }
+                                }
+                                graph_registers[((v_1908.x >> 8u) & 31u)] = v_1931;
+                                continue;
+                              } else {
+                                break;
+                              }
+
+                              continuing {
+                                v_1906 = (v_1907 + bitcast<u32>(1i));
+                              }
+                            }
+                          }
+                          let v_1944 = graph_registers[8i];
+                          let v_1945 = graph_registers[10i];
+                          var v_1946 : vec4<f32>;
+                          var v_1947 : vec2<f32>;
+                          if (((v_1878 & 2u) != 0u)) {
+                            let v_1948 = (v_1869.xy + (v_1944.zw - v_1605));
+                            var v_1949 : vec4<f32> = v_1869;
+                            v_1949.x = v_1948.x;
+                            var v_1950 : vec4<f32> = v_1949;
+                            v_1950.y = v_1948.y;
+                            v_1946 = v_1950;
+                            v_1947 = v_1944.zw;
+                          } else {
+                            v_1946 = v_1869;
+                            v_1947 = v_1605;
+                          }
+                          let v_1951 = v_1947;
+                          let v_1952 = v_1946;
+                          let v_1953 = ((v_1878 & 1u) != 0u);
+                          var v_1954 : vec4<f32>;
+                          if (v_1953) {
+                            var v_1955 : vec4<f32> = v_1430;
+                            v_1955.x = v_1944.x;
+                            var v_1956 : vec4<f32> = v_1955;
+                            v_1956.y = v_1944.y;
+                            v_1954 = v_1956;
+                          } else {
+                            v_1954 = v_1430;
+                          }
+                          let v_1957 = v_1954;
+                          let v_1958 = select(false, true, v_1953);
+                          var v_1959 : vec4<f32>;
+                          if (((v_1878 & 4u) != 0u)) {
+                            v_1959 = graph_registers[9i];
+                          } else {
+                            v_1959 = v_1805;
+                          }
+                          let v_1960 = v_1959;
+                          var v_1961 : vec4<f32>;
+                          if (((v_1878 & 8u) != 0u)) {
+                            var v_1962 : vec4<f32> = v_1875;
+                            v_1962.x = v_1945.x;
+                            v_1961 = v_1962;
+                          } else {
+                            v_1961 = v_1875;
+                          }
+                          let v_1963 = v_1961;
+                          var v_1964 : f32;
+                          if (((v_1878 & 16u) != 0u)) {
+                            let v_1965 = max(0.00100000004749745131f, abs(v_1945.y));
+                            v_1964 = select(v_1965, -(v_1965), (v_1945.y < 0.0f));
+                          } else {
+                            v_1964 = v_1872;
+                          }
+                          let v_1966 = v_1964;
+                          var v_1967 : vec4<f32>;
+                          if (((v_1878 & 32u) != 0u)) {
+                            var v_1968 : vec4<f32> = v_1963;
+                            v_1968.z = v_1945.z;
+                            v_1967 = v_1968;
+                          } else {
+                            v_1967 = v_1963;
+                          }
+                          let v_1969 = v_1967;
+                          v_1879 = select(v_1432, false, (((v_1878 & 64u) != 0u) & !((v_1945.w >= 0.5f))));
+                          v_1880 = v_1960;
+                          v_1881 = v_1952;
+                          v_1882 = v_1966;
+                          v_1883 = v_1969;
+                          v_1884 = v_1958;
+                          v_1885 = v_1957;
+                          v_1886 = v_1951;
+                        } else {
+                          v_1879 = v_1432;
+                          v_1880 = v_1805;
+                          v_1881 = v_1869;
+                          v_1882 = v_1872;
+                          v_1883 = v_1875;
+                          v_1884 = false;
+                          v_1885 = v_1430;
+                          v_1886 = v_1605;
+                        }
+                        let v_1970 = v_1886;
+                        let v_1971 = v_1885;
+                        let v_1972 = v_1884;
+                        let v_1973 = v_1883;
+                        let v_1974 = v_1882;
+                        let v_1975 = v_1881;
+                        let v_1976 = v_1880;
+                        let v_1977 = v_1879;
+)wgsl",
+R"wgsl(                        let v_1978 = v_1970.x;
+                        var v_1979 : vec4<f32> = v_1971;
+                        v_1979.z = v_1978;
+                        let v_1980 = v_1970.y;
+                        var v_1981 : vec4<f32> = v_1979;
+                        v_1981.w = v_1980;
+                        let v_1982 = v_1981;
+                        var v_1983 : vec4<f32>;
+                        if (!(v_1972)) {
+                          let v_1984 = (v_1982.xy + (v_1970 * v_868));
+                          v_1983 = vec4<f32>(v_1984.x, v_1984.y, v_1978, v_1980);
+                        } else {
+                          v_1983 = v_1982;
+                        }
+                        let v_1985 = v_1983;
+                        var v_1986 : vec2<f32>;
+                        var v_1987 : vec2<f32>;
+                        if (((data_1.m[(v.material_offset + 6u)].y != 0u) & ((v_1878 & 8u) == 0u))) {
+                          let v_1988 = (length(v_1970) > 0.0f);
+                          let v_1989 = sqrt(dot(v_1970, v_1970));
+                          let v_1990 = (v_1989 > 0.0f);
+                          let v_1991 = select(vec2<f32>(), (v_1970 / vec2<f32>(v_1989, v_1989)), vec2<bool>(v_1990, v_1990));
+                          let v_1992 = v_847.zw;
+                          let v_1993 = sqrt(dot(v_1992, v_1992));
+                          let v_1994 = (v_1993 > 0.0f);
+                          let v_1995 = select(select(vec2<f32>(), (v_1992 / vec2<f32>(v_1993, v_1993)), vec2<bool>(v_1994, v_1994)), v_1991, vec2<bool>(v_1988, v_1988));
+                          let v_1996 = vec2<f32>(v_1995.y, -(v_1995.x));
+                          let v_1997 = sqrt(dot(v_1996, v_1996));
+                          let v_1998 = (v_1997 > 0.0f);
+                          let v_1999 = select(vec2<f32>(), (v_1996 / vec2<f32>(v_1997, v_1997)), vec2<bool>(v_1998, v_1998));
+                          v_1986 = v_1995;
+                          v_1987 = v_1999;
+                        } else {
+                          let v_2000 = cos(v_1973.x);
+                          let v_2001 = sin(v_1973.x);
+                          v_1986 = vec2<f32>(v_2001, v_2000);
+                          v_1987 = vec2<f32>(v_2000, -(v_2001));
+                        }
+                        let v_2002 = v_1987;
+                        let v_2003 = (v_2002 * v_1974);
+                        let v_2004 = (v_1986 * v_1974);
+                        var v_2005 : u32;
+                        if (((v.chain & 2u) != 0u)) {
+                          var v_2006 : u32;
+                          switch(0u) {
+                            default: {
+                              let v_2007 = data_1.m[(v.material_offset + 24u)];
+                              if ((v_2007.x == 1u)) {
+                                let v_2008 = bitcast<f32>(v_2007.y);
+                                let v_2009 = select(((v_1973.y * v_863) - v_868), (v_1189 * v_863), (v_861 == 0.0f));
+                                v_2006 = select(0u, 1u, (v_868 >= (v_2008 - (v_2009 - (v_2008 * floor((v_2009 / v_2008)))))));
+                                break;
+                              }
+                              if ((v_2007.x == 2u)) {
+                                v_2006 = select(0u, v_2007.z, (((v_1973.y / v_1973.w) * v_863) > (v_863 - v_868)));
+                                break;
+                              }
+                              if ((v_2007.x == 3u)) {
+                                v_2006 = select(0u, v_2007.z, v_1418);
+                                break;
+                              }
+                              if ((v_2007.x == 4u)) {
+                                v_2006 = select(0u, v_2007.z, (v_1189 == 0.0f));
+                                break;
+                              }
+                              v_2006 = 0u;
+                            }
+                          }
+                          v_2005 = v_2006;
+                        } else {
+                          v_2005 = 0u;
+                        }
+                        let v_2010 = v_2005;
+                        let v_2011 = select(v_1977, false, (v_1973.y > v_1973.w));
+                        v_986 = v_1976;
+                        v_987 = v_1973;
+                        v_988 = v_1975;
+                        v_989 = vec4<f32>(v_2003.x, v_2003.y, v_2004.x, v_2004.y);
+                        v_990 = v_1985;
+                        v_991 = v_2010;
+                        v_992 = v_2011;
+                      } else {
+                        v_986 = v_858;
+                        v_987 = v_857;
+                        v_988 = v_856;
+                        v_989 = v_847;
+                        v_990 = v_850;
+                        v_991 = 0u;
+                        v_992 = v_845;
+                      }
+                      let v_2012 = v_992;
+                      let v_2013 = v_991;
+                      let v_2014 = v_990;
+                      let v_2015 = v_989;
+                      let v_2016 = v_988;
+                      let v_2017 = v_987;
+                      let v_2018 = v_986;
+                      let v_2019 = (v_855.x & 4294967294u);
+                      var v_2020 : vec4<u32> = v_855;
+                      v_2020.x = v_2019;
+                      let v_2021 = v_2020;
+                      var v_2022 : vec4<u32>;
+                      if (v_2012) {
+                        var v_2023 : vec4<u32> = v_2021;
+                        v_2023.x = (v_2019 | 1u);
+                        v_2022 = v_2023;
+                      } else {
+                        v_2022 = v_2021;
+                      }
+                      let v_2024 = v_2022;
+                      if (((v_89 == 0u) & ((v.chain & 2u) != 0u))) {
+                        let v_2025 = (v_7 * 3u);
+                        target_1.m_1[(1u + v_2025)] = vec4<u32>(v_2013, 0u, data_1.m[(v.material_offset + 24u)].w, 0u);
+                        target_1.m_1[(v_2025 + 2u)] = bitcast<vec4<u32>>(v_2014);
+                        target_1.m_1[(v_2025 + 3u)] = bitcast<vec4<u32>>(v_2015);
+                      }
+                      v_109 = v_2015;
+                      v_110 = v_2014;
+                      v_111 = v_2018;
+                      v_112 = v_2017;
+                      v_113 = v_2016;
+                      v_114 = v_2024;
+                    }
+                  }
+                  let v_2026 = v_114;
+                  let v_2027 = v_113;
+                  let v_2028 = v_112;
+                  let v_2029 = v_111;
+                  let v_2030 = v_110;
+                  let v_2031 = v_109;
+                  let v_2032 = (v_89 == 0u);
+                  if (v_2032) {
+                  } else {
+                    let v_2033 = &(particles_1.m_2[((v_9 + v_89) - 1u)]);
+                    (*(v_2033)).basis = v_2031;
+                    (*(v_2033)).origin_velocity = v_2030;
+                    (*(v_2033)).color = v_2029;
+                    (*(v_2033)).custom = v_2028;
+                    (*(v_2033)).userdata = v_2027;
+                    (*(v_2033)).flags = v_2026;
+                  }
+                  let v_2034 = select(v_95, v_2031, vec4<bool>(v_2032, v_2032, v_2032, v_2032));
+                  let v_2035 = select(v_94, v_2030, vec4<bool>(v_2032, v_2032, v_2032, v_2032));
+                  let v_2036 = select(v_93, v_2029, vec4<bool>(v_2032, v_2032, v_2032, v_2032));
+                  let v_2037 = select(v_92, v_2028, vec4<bool>(v_2032, v_2032, v_2032, v_2032));
+                  let v_2038 = select(v_91, v_2027, vec4<bool>(v_2032, v_2032, v_2032, v_2032));
+                  let v_2039 = select(v_90, v_2026, vec4<bool>(v_2032, v_2032, v_2032, v_2032));
+                  v_83 = v_2034;
+                  v_84 = v_2035;
+                  v_85 = v_2036;
+                  v_86 = v_2037;
+                  v_87 = v_2038;
+                  v_88 = v_2039;
+                  continue;
+                } else {
+                  v_70 = v_95;
+                  v_71 = v_94;
+                  v_72 = v_93;
+                  v_73 = v_92;
+                  v_74 = v_91;
+                  v_75 = v_90;
+                  break;
+                }
+
+                continuing {
+                  let v_2040 = v_88;
+                  let v_2041 = v_87;
+                  let v_2042 = v_86;
+                  let v_2043 = v_85;
+                  let v_2044 = v_84;
+                  let v_2045 = v_83;
+                  let v_2046 = (v_89 + bitcast<u32>(1i));
+                  v_76 = v_2045;
+                  v_77 = v_2044;
+                  v_78 = v_2043;
+                  v_79 = v_2042;
+                  v_80 = v_2041;
+                  v_81 = v_2040;
+                  v_82 = v_2046;
+                }
+              }
+            }
+            let v_2047 = v_75;
+            let v_2048 = v_74;
+            let v_2049 = v_73;
+            let v_2050 = v_72;
+            let v_2051 = v_71;
+            v_33 = v_70;
+            v_34 = v_2051;
+            v_35 = v_2050;
+            v_36 = v_2049;
+            v_37 = v_2048;
+            v_38 = v_2047;
+            continue;
+          } else {
+            v_20 = v_45;
+            v_21 = v_44;
+            v_22 = v_43;
+            v_23 = v_42;
+            v_24 = v_41;
+            v_25 = v_40;
+            break;
+          }
+
+          continuing {
+            let v_2052 = v_38;
+            let v_2053 = v_37;
+            let v_2054 = v_36;
+            let v_2055 = v_35;
+            let v_2056 = v_34;
+            let v_2057 = v_33;
+            let v_2058 = (v_39 + bitcast<u32>(1i));
+            v_26 = v_2057;
+            v_27 = v_2056;
+            v_28 = v_2055;
+            v_29 = v_2054;
+            v_30 = v_2053;
+            v_31 = v_2052;
+            v_32 = v_2058;
+          }
+        }
+      }
+      let v_2059 = v_25;
+      let v_2060 = v_24;
+      let v_2061 = v_23;
+      let v_2062 = v_22;
+      let v_2063 = v_21;
+      let v_2064 = &(particles_1.m_2[v_7]);
+      (*(v_2064)).basis = v_20;
+      (*(v_2064)).origin_velocity = v_2063;
+      (*(v_2064)).color = v_2062;
+      (*(v_2064)).custom = v_2061;
+      (*(v_2064)).userdata = v_2060;
+      (*(v_2064)).flags = v_2059;
+    }
+  }
+}
+)wgsl"};
+
 inline constexpr char kParticlesProcessHlsl[] = R"hlsl(// Runs steps on a particle system, a thread a particle: Godot's particles shader and the code
 // ParticleProcessMaterial generates for 2D. Its CPU twin is process_particle_chain in
 // src/particles.cpp, which this follows line for line; a change to one goes in the other. The

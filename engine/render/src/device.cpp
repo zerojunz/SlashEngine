@@ -3,6 +3,9 @@
 #include "checks.hpp"
 #include "gl_device.hpp"
 #include "gpu_device.hpp"
+#ifdef __EMSCRIPTEN__
+#include "webgpu_device.hpp"
+#endif
 
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
@@ -102,6 +105,9 @@ Result<void> check_compiled_shader(const CompiledShader& shader, Backend backend
     case Backend::OpenGl:
     case Backend::OpenGlEs:
         present = !shader.glsl_vertex.empty() && !shader.glsl_fragment.empty();
+        break;
+    case Backend::WebGpu:
+        // Games' shaders have no WGSL yet.
         break;
     case Backend::Software:
         present = !shader.cpu_fragment.empty();
@@ -651,6 +657,8 @@ std::string_view backend_name(Backend backend) {
         return "opengl";
     case Backend::OpenGlEs:
         return "opengl_es";
+    case Backend::WebGpu:
+        return "webgpu";
     }
     return "null";
 }
@@ -701,11 +709,12 @@ std::unique_ptr<RenderDevice> create_null_device() {
 }
 
 Result<std::unique_ptr<RenderDevice>> create_device(const DeviceOptions& options) {
-    static constexpr std::array<std::string_view, 7> kDrivers = {
-        "auto", "null", "vulkan", "metal", "d3d12", "opengl", "opengl_es"};
+    static constexpr std::array<std::string_view, 8> kDrivers = {
+        "auto", "null", "vulkan", "metal", "d3d12", "opengl", "opengl_es", "webgpu"};
     if (std::ranges::find(kDrivers, options.driver) == kDrivers.end()) {
-        std::string message = "no render driver \"" + options.driver +
-                              "\"; use auto, null, vulkan, metal, d3d12, opengl or opengl_es";
+        std::string message =
+            "no render driver \"" + options.driver +
+            "\"; use auto, null, vulkan, metal, d3d12, opengl, opengl_es or webgpu";
         if (const std::string_view hint = closest_match(options.driver, kDrivers); !hint.empty()) {
             message += "; did you mean \"" + std::string(hint) + "\"?";
         }
@@ -714,22 +723,28 @@ Result<std::unique_ptr<RenderDevice>> create_device(const DeviceOptions& options
     if (options.driver == "null") {
         return create_null_device();
     }
-#ifdef __EMSCRIPTEN__
-    // SDL's GPU API has no web backend, so browsers draw with WebGL 2.
-    const bool opengl = options.driver == "auto" || uses_opengl(options.driver);
-#else
-    const bool opengl = uses_opengl(options.driver);
-#endif
-    if (opengl) {
+    if (uses_opengl(options.driver)) {
         return detail::create_gl_device(options);
     }
+#ifdef __EMSCRIPTEN__
+    // SDL's GPU API has no web backend, so browsers draw with WebGPU, where they have it.
+    if (options.driver == "auto" || options.driver == "webgpu") {
+        return detail::create_webgpu_device(options);
+    }
+#else
+    if (options.driver == "webgpu") {
+        return make_error(ErrorCode::InvalidArgument,
+                          "the webgpu driver is the browser's, so only web builds have it");
+    }
+#endif
     return detail::create_gpu_device(options);
 }
 
 bool uses_opengl(std::string_view driver) {
 #ifdef __EMSCRIPTEN__
+    // WebGL 2 where the browser has no WebGPU.
     if (driver == "auto") {
-        return true;
+        return !detail::webgpu_available();
     }
 #endif
     return driver == "opengl" || driver == "opengl_es";
@@ -739,11 +754,18 @@ std::string choose_driver(const std::string& driver, bool fallback_to_opengl) {
     if (!fallback_to_opengl || uses_opengl(driver) || driver == "null") {
         return driver;
     }
-    // Where the video driver has no OpenGL either, the window stays as it was and the device
-    // falls back to the null one.
-    if (detail::gpu_backend_works(driver) || !detail::gl_library_loads()) {
+#ifdef __EMSCRIPTEN__
+    // auto is WebGPU here only where it works, and SDL's GPU backends never do.
+    if (driver == "auto" || (driver == "webgpu" && detail::webgpu_available())) {
         return driver;
     }
+#else
+    // Where the video driver has no OpenGL either, the window stays as it was and the device
+    // falls back to the null one.
+    if ((driver != "webgpu" && detail::gpu_backend_works(driver)) || !detail::gl_library_loads()) {
+        return driver;
+    }
+#endif
     log::warn("no GPU backend works here, so drawing with OpenGL instead",
               {{"driver", driver}, {"setting", "rendering.fallback_to_opengl"}});
     return "opengl";

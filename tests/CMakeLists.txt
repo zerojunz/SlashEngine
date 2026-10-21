@@ -1,3 +1,35 @@
+# A web build (emcmake) has only the drawing tests, run in Node on Dawn's WebGPU by
+# web/run.mjs, so the WebGPU device is held to the software device's pixels as the others are.
+if(EMSCRIPTEN)
+    add_executable(slash_web_tests
+        test_main.cpp
+        test_gpu_particles.cpp
+        test_light.cpp
+        test_render.cpp)
+    target_link_libraries(slash_web_tests PRIVATE slash::core slash::platform slash::render
+        doctest::doctest SDL3::SDL3-static)
+    target_compile_definitions(slash_web_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS
+        SLASH_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
+    slash_target_warnings(slash_web_tests)
+    # Reading pixels back waits for the GPU, which takes Asyncify; Node's own files stand in for
+    # Emscripten's, and web/run.mjs starts the module and exits with the tests' code.
+    target_link_options(slash_web_tests PRIVATE
+        "SHELL:-s MODULARIZE=1"
+        "SHELL:-s ASYNCIFY=1"
+        "SHELL:-s ASYNCIFY_STACK_SIZE=1048576"
+        "SHELL:-s ALLOW_MEMORY_GROWTH=1"
+        "SHELL:-s STACK_SIZE=4194304"
+        "SHELL:-s ENVIRONMENT=node"
+        "SHELL:-s NODERAWFS=1"
+        "SHELL:-s EXIT_RUNTIME=1"
+        "SHELL:-s EXPORTED_RUNTIME_METHODS=ENV"
+        "SHELL:-s MIN_WEBGL_VERSION=2"
+        "SHELL:-s MAX_WEBGL_VERSION=2")
+    add_test(NAME web COMMAND node ${CMAKE_CURRENT_SOURCE_DIR}/web/run.mjs
+        $<TARGET_FILE:slash_web_tests> WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+    return()
+endif()
+
 add_executable(slash_tests
     test_main.cpp
     test_ai.cpp
