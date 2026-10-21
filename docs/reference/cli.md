@@ -589,7 +589,8 @@ exports build with an activated emsdk's Emscripten (`EMSDK` set) or, without one
 Emscripten [toolchain](#toolchain) the first one downloads, on any host (Linux needs Python 3.10
 or newer as `python3` on `PATH`). Android exports need the Android SDK
 (build tools 35 or newer and the Android 36 platform), NDK r27 or newer and JDK 17 or newer on
-any host. An output folder that a previous export did not make is never replaced. Missing signing
+any host: those in `ANDROID_HOME` and `JAVA_HOME`, then the ones
+[`toolchain install android`](#toolchain) installed, then Android Studio's. An output folder that a previous export did not make is never replaced. Missing signing
 tools, identities, profiles or secrets are reported before anything is built; signing a Windows
 export needs signtool, so only a Windows machine does it.
 
@@ -663,7 +664,7 @@ slash-cli sdk add ~/Downloads/hello-sdk --project my-game
 
 ```bash
 slash-cli toolchain list
-slash-cli toolchain install [name|platform ...]
+slash-cli toolchain install [name|platform ...] [--accept-android-sdk-license]
 ```
 
 Exports to Windows and Linux from a Mac or a Linux machine, and web exports on any machine with
@@ -678,11 +679,24 @@ exact versions and SHA-256 hashes:
 | `node` | Node.js 22.16.0, which Emscripten runs on and web exports' `--test` runs games on | MIT |
 | `python` | Python 3.13.3, which runs Emscripten's tools; on macOS and Windows (Linux uses its `python3`, 3.10 or newer) | Python Software Foundation License |
 | `assetripper` | [AssetRipper](https://github.com/AssetRipper/AssetRipper) 2.0.0, which [import](#import) runs to turn a Unity build back into a project; on every machine, Windows included | GPL 3.0, run as a program of its own and never linked |
+| `jdk` | Eclipse Temurin's JDK 21.0.12, for Android exports; on macOS, x86_64 Linux and x86_64 Windows | GPL 2.0 with the Classpath Exception, run as a program of its own |
+| `android-cmdline-tools` | Google's Android command-line tools (build 15859902), whose `sdkmanager` installs the Android SDK | Google's [Android Software Development Kit License Agreement](https://developer.android.com/studio/terms) |
+| `android-sdk` | The SDK packages Android exports need, which `sdkmanager` installs into `android-sdk`: `platform-tools`, `build-tools;36.0.0`, `platforms;android-36`, `ndk;27.3.13750724` and `cmake;3.31.6` (for Ninja) | Google's Android Software Development Kit License Agreement |
 
 An export downloads what it needs the first time, so `toolchain install` is only needed to get
 them ahead of time, for example before going offline. With no names it installs every toolchain
-for this machine; a name can also be a platform (`windows`, `linux`, `web`), `linux-arm64` or
-`assetripper`, which `import` installs the first time it unpacks a Unity build. Each
+for this machine; a name can also be a platform (`windows`, `linux`, `web`, `android`),
+`linux-arm64`, `jdk` or `assetripper`, which `import` installs the first time it unpacks a Unity
+build.
+
+The Android SDK is the exception: Google's command-line tools and SDK packages are under its
+Android Software Development Kit License Agreement, so nothing installs them until the person who
+will use them has read it and passes `--accept-android-sdk-license` (an agent asks its person
+before passing it). `toolchain install android --accept-android-sdk-license` installs the `jdk`,
+the `android-cmdline-tools` and the `android-sdk` packages, answering yes to the licenses
+`sdkmanager` asks about; with the flag, installing everything includes them, and without it the
+result lists the Android SDK as `skipped`. Android exports then find them when `ANDROID_HOME` and
+`JAVA_HOME` name nothing. Each
 download is checked against its pinned hash and deleted if it differs. They are installed in
 `SLASH_TOOLCHAINS_DIR`, else `~/.slash/toolchains`; delete a folder there to remove one.
 
@@ -690,8 +704,9 @@ download is checked against its pinned hash and deleted if it differs. They are 
 {"dir":"/Users/me/.slash/toolchains","toolchains":[{"description":"Clang and LLD with mingw-w64, for Windows and Linux exports","installed":true,"name":"llvm-mingw","version":"20260922"},{"description":"Debian 11 sysroot (glibc 2.31) for x86_64 Linux exports","installed":false,"name":"linux-sysroot-x86_64","version":"bullseye"},{"description":"Debian 11 sysroot (glibc 2.31) for arm64 Linux exports","installed":false,"name":"linux-sysroot-arm64","version":"bullseye"}]}
 ```
 
-`install` returns the `installed` toolchains and those `already_installed`, each with its `path`.
-Windows machines install only the web toolchains and `assetripper`. A web export with the
+`install` returns the `installed` toolchains and those `already_installed`, each with its `path`
+(the Android SDK's entry also lists its `packages` and `license`). Windows machines install only
+the web toolchains, `assetripper` and the Android ones. A web export with the
 downloaded Emscripten writes its config, which `EM_CONFIG` names, into the export's work folder,
 and builds in a folder of its own, so it never mixes with an emsdk build.
 
@@ -818,6 +833,6 @@ drawn, but the sprites are still checked and counted, so a test can see that the
 | `SLASH_WINDOWS_CERTIFICATE_PATH`, `SLASH_WINDOWS_CERTIFICATE_PASSWORD` | A `.pfx` code-signing certificate and its password for signing Windows exports |
 | `SLASH_ANDROID_KEYSTORE_PATH`, `SLASH_ANDROID_KEYSTORE_PASSWORD`, `SLASH_ANDROID_KEY_ALIAS`, `SLASH_ANDROID_KEY_PASSWORD` | The keystore, its password, the key's alias and the key's password (default: the keystore's) for signing release Android exports |
 | `SLASH_IOS_PROVISIONING_PROFILE` | The `.mobileprovision` file iOS device exports embed (default: the newest installed one for the team and bundle ID) |
-| `ANDROID_HOME`, `ANDROID_NDK_HOME`, `JAVA_HOME` | Where Android exports find the SDK, the NDK and the JDK when they aren't in Android Studio's default places |
+| `ANDROID_HOME`, `ANDROID_NDK_HOME`, `JAVA_HOME` | Where Android exports find the SDK, the NDK and the JDK, before the ones [`toolchain install android`](#toolchain) installed and Android Studio's |
 | `ANDROID_USER_HOME` | The folder holding `debug.keystore` (default `~/.android`) |
 | `ANDROID_SERIAL` | The device or emulator `export --test` uses when several are connected |

@@ -144,6 +144,81 @@ void add_web_toolchains(std::vector<Toolchain>& toolchains) {
     }
 }
 
+// Eclipse Temurin's JDK and Google's Android command-line tools, whose sdkmanager installs the
+// SDK packages. The JDK's checksums are Adoptium's and the command-line tools' are Google's
+// (developer.android.com/studio).
+constexpr std::string_view kJdkVersion = "21.0.12.1+1";
+constexpr std::string_view kJdkRelease =
+    "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/";
+constexpr std::string_view kCommandLineToolsVersion = "15859902";
+constexpr std::string_view kAndroidRepository = "https://dl.google.com/android/repository/";
+
+// Written last into <dir>/android-sdk, naming the packages sdkmanager installed.
+constexpr std::string_view kAndroidMarker = ".slash-android-sdk.json";
+
+struct AndroidBuild {
+    std::string_view jdk;
+    std::string_view jdk_sha256;
+    std::string_view tools;
+    std::string_view tools_sha256;
+};
+
+constexpr AndroidBuild android_build() {
+#if defined(__APPLE__) && defined(__aarch64__)
+    return {"OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.12.1_1.tar.gz",
+            "3623232f33a9c3baadf304480b2535f9a3cba8a58d42ecbb438ba267315d9998",
+            "commandlinetools-mac_arm64-15859902_latest.zip",
+            "835b62a26162b229b441d1f6d4680383815a270809eb33522c0d480fa5002c4e"};
+#elif defined(__APPLE__) && defined(__x86_64__)
+    return {"OpenJDK21U-jdk_x64_mac_hotspot_21.0.12.1_1.tar.gz",
+            "44db0f08196daf19a47f90d13388b0c943b67663cb537f998fe29e836fa842ce",
+            "commandlinetools-mac_x86_64-15859902_latest.zip",
+            "c5a6378ab5cf7e0d5701921405115befff13e9ff7417fb588389338f8bd050f3"};
+#elif defined(__linux__) && defined(__x86_64__)
+    return {"OpenJDK21U-jdk_x64_linux_hotspot_21.0.12.1_1.tar.gz",
+            "ce79869e1307ed8ee1e2baa86a412b1eb5b75d10a01006d788a6f968bcfaee94",
+            "commandlinetools-linux-15859902_latest.zip",
+            "4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583"};
+#elif defined(_WIN32) && (defined(_M_X64) || defined(__x86_64__))
+    return {"OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip",
+            "f9d6e191ab098c0d416e7d588a24420a8621cd2f4720dab2459b8b7b2d2d8b4e",
+            "commandlinetools-win-15859902_latest.zip",
+            "90ae805d20434428bffcb699c290860f19bb5f66a67e6b330067e3de801fb04a"};
+#else
+    return {};
+#endif
+}
+
+// A JDK's home: its folder, or Contents/Home in a macOS one.
+fs::path jdk_home(const fs::path& folder) {
+#ifdef __APPLE__
+    return folder / "Contents" / "Home";
+#else
+    return folder;
+#endif
+}
+
+// Whether sdkmanager installed every one of packages into sdk.
+bool android_packages_installed(const fs::path& sdk, const std::vector<std::string>& packages) {
+    auto text = platform::read_file((sdk / kAndroidMarker).string());
+    if (!text) {
+        return false;
+    }
+    auto marker = json::parse(text.value());
+    if (!marker) {
+        return false;
+    }
+    const json::Value* installed = marker.value().find("packages");
+    if (installed == nullptr || !installed->is_array()) {
+        return false;
+    }
+    return std::ranges::all_of(packages, [installed](const std::string& package) {
+        return std::ranges::any_of(installed->as_array(), [&package](const json::Value& item) {
+            return item.is_string() && item.as_string() == package;
+        });
+    });
+}
+
 std::string sysroot_name(std::string_view arch) {
     return "linux-sysroot-" + std::string(arch);
 }
@@ -196,6 +271,119 @@ std::vector<Toolchain> host_toolchains() {
 #endif
     add_web_toolchains(toolchains);
     return toolchains;
+}
+
+std::optional<AndroidInstall> android_install() {
+    constexpr AndroidBuild kBuild = android_build();
+    if (kBuild.jdk.empty()) {
+        return std::nullopt;
+    }
+    AndroidInstall install;
+    install.jdk = {std::string(kJdk),
+                   std::string(kJdkVersion),
+                   "Eclipse Temurin's JDK, for Android exports (GPL 2.0 with the Classpath "
+                   "Exception, run as a separate program)",
+                   std::string(kJdkRelease) + std::string(kBuild.jdk),
+                   std::string(kBuild.jdk_sha256),
+                   "jdk-" + std::string(kJdkVersion)};
+    install.command_line_tools = {std::string(kAndroidCommandLineTools),
+                                  std::string(kCommandLineToolsVersion),
+                                  "Google's Android command-line tools, whose sdkmanager installs "
+                                  "the Android SDK",
+                                  std::string(kAndroidRepository) + std::string(kBuild.tools),
+                                  std::string(kBuild.tools_sha256),
+                                  "cmdline-tools"};
+    // What exports need: adb, the build tools, the platform they target, the NDK and the SDK's
+    // CMake, which brings Ninja.
+    install.packages = {"platform-tools", "build-tools;36.0.0", "platforms;android-36",
+                        "ndk;27.3.13750724", "cmake;3.31.6"};
+    return install;
+}
+
+AndroidFolders installed_android(const AndroidInstall& install, const fs::path& dir) {
+    AndroidFolders folders;
+    if (const auto jdk = installed_toolchain(install.jdk, dir)) {
+        folders.java_home = jdk_home(*jdk);
+    }
+    if (android_packages_installed(dir / kAndroidSdk, install.packages)) {
+        folders.sdk = dir / kAndroidSdk;
+    }
+    return folders;
+}
+
+Result<AndroidFolders> install_android(const AndroidInstall& install, const fs::path& dir,
+                                       bool accept_license, const std::string& log_path) {
+    if (!accept_license) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "the Android SDK is under Google's Android Software Development Kit "
+                          "License Agreement (" +
+                              std::string(kAndroidSdkLicense) +
+                              "), which must be accepted before it is installed");
+    }
+    auto jdk = install_toolchain(install.jdk, dir, log_path);
+    if (!jdk) {
+        return jdk.error();
+    }
+    auto tools = install_toolchain(install.command_line_tools, dir, log_path);
+    if (!tools) {
+        return tools.error();
+    }
+    std::error_code error;
+    AndroidFolders folders{fs::absolute(dir / kAndroidSdk, error), jdk_home(jdk.value())};
+    if (android_packages_installed(folders.sdk, install.packages)) {
+        return folders;
+    }
+    fs::create_directories(folders.sdk, error);
+    if (error) {
+        return make_error(ErrorCode::PlatformFailure, "could not create " +
+                                                          detail::display(folders.sdk) + ": " +
+                                                          error.message());
+    }
+    // One package per line, which keeps the ';' in their names away from cmd.exe on Windows.
+    const fs::path package_file = folders.sdk / ".slash-packages.txt";
+    std::string packages;
+    for (const std::string& package : install.packages) {
+        packages += package + "\n";
+    }
+    if (auto written = platform::write_file(package_file.string(), packages); !written) {
+        return written.error();
+    }
+#ifdef _WIN32
+    const fs::path sdkmanager = tools.value() / "bin" / "sdkmanager.bat";
+#else
+    const fs::path sdkmanager = tools.value() / "bin" / "sdkmanager";
+#endif
+    platform::ProcessOptions process;
+    process.log_path = log_path;
+    process.tail_lines = 10;
+    process.environment = {{"JAVA_HOME", folders.java_home.string()}};
+    // sdkmanager shows each license the packages are under that it has no record of accepting
+    // and asks; the caller has accepted them.
+    for (int i = 0; i < 16; ++i) {
+        process.input += "y\n";
+    }
+    auto installed =
+        platform::run_process({sdkmanager.string(), "--sdk_root=" + folders.sdk.string(),
+                               "--package_file=" + package_file.string()},
+                              process);
+    fs::remove(package_file, error);
+    if (!installed || installed.value().exit_code != 0) {
+        return make_error(ErrorCode::PlatformFailure,
+                          "sdkmanager could not install the Android SDK: " + tail_of(installed));
+    }
+    json::Value marker;
+    json::Array names;
+    for (const std::string& package : install.packages) {
+        names.emplace_back(package);
+    }
+    marker["packages"] = std::move(names);
+    marker["command_line_tools"] = install.command_line_tools.version;
+    if (auto written =
+            platform::write_file((folders.sdk / kAndroidMarker).string(), json::write(marker));
+        !written) {
+        return written.error();
+    }
+    return folders;
 }
 
 std::optional<Toolchain> assetripper() {
@@ -377,8 +565,20 @@ Result<fs::path> install_toolchain(const Toolchain& toolchain, const fs::path& d
                                                           sha256.value() + ", not the pinned " +
                                                           toolchain.sha256 + "; it was deleted");
     }
+#ifdef __linux__
+    // GNU tar can't unpack zip files; CMake's tar, which is libarchive, can.
+    const bool zip = toolchain.url.ends_with(".zip");
+#else
+    const bool zip = false; // macOS's and Windows' tar are bsdtar, which unpacks them
+#endif
+    platform::ProcessOptions unpack_process = process;
+    if (zip) {
+        unpack_process.working_directory = unpacked.string();
+    }
     auto unpack =
-        platform::run_process({"tar", "-xf", archive.string(), "-C", unpacked.string()}, process);
+        zip ? platform::run_process({"cmake", "-E", "tar", "xf", archive.string()}, unpack_process)
+            : platform::run_process({"tar", "-xf", archive.string(), "-C", unpacked.string()},
+                                    process);
     if (!unpack || unpack.value().exit_code != 0) {
         clean_up();
         return make_error(ErrorCode::PlatformFailure,

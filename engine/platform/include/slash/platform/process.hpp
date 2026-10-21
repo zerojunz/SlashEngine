@@ -20,6 +20,9 @@ struct ProcessOptions {
     std::string log_path;
     // How many trailing lines of output to keep in ProcessResult::tail.
     int tail_lines = 40;
+    // Written to the child's standard input, which is then closed, before its output is read;
+    // keep it short, such as answers to its prompts. Empty gives the child no input.
+    std::string input;
 };
 
 struct ProcessResult {
