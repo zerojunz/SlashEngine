@@ -31,6 +31,7 @@
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/light.hpp"
+#include "slash/soundtrack/score.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
@@ -432,6 +433,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "test") {
         return Reply::success(test_schema());
+    }
+    if (kind == "score") {
+        return Reply::success(soundtrack::score_schema());
     }
     if (name.empty()) {
         return param_error(code::kInvalidParams, "/name",
@@ -4990,21 +4994,21 @@ void register_builtin_commands(Registry& registry) {
                                           "(.tileset.json), \"font\" "
                                           "(.font.json), \"theme\" (.theme.json), \"audio\" "
                                           "(.audio.json), \"bus_layout\" (.bus_layout.json), "
-                                          "\"replay\" (.replay.json) or \"storyboard\" for "
-                                          "those files, \"component\" for "
+                                          "\"replay\" (.replay.json), \"score\" (.score.json) "
+                                          "or \"storyboard\" for those files, \"component\" for "
                                           "one component's fields, \"command\" for a command's "
                                           "params.");
     kind["enum"] = json::Array{
-        "scene",   "prefab",     "frames",    "material", "animation",  "process_material",
-        "tileset", "font",       "theme",     "audio",    "bus_layout", "replay",
-        "test",    "storyboard", "component", "command"};
+        "scene",   "prefab", "frames",     "material",  "animation",  "process_material",
+        "tileset", "font",   "theme",      "audio",     "bus_layout", "replay",
+        "test",    "score",  "storyboard", "component", "command"};
     registry.add({
         .name = "schema.get",
         .description = "Returns a JSON Schema: for scene, prefab, .frames.json, .material.json, "
                        ".anim.json, .process_material.json, .tileset.json, .font.json, "
                        ".theme.json, .audio.json, "
-                       ".bus_layout.json, .replay.json, .test.json or storyboard files, one "
-                       "component or one command.",
+                       ".bus_layout.json, .replay.json, .test.json, .score.json or storyboard "
+                       "files, one component or one command.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(
