@@ -1,0 +1,29 @@
+{
+  "entries": {
+    "cue/bell": {
+      "music": ["music/bell.score.json"],
+      "name": "Bell",
+      "plays": "once",
+      "summary": "Rings when the lighthouse is lit; then the music picks up where it was."
+    },
+    "cue/harbor": {
+      "layers": ["calm", "tense"],
+      "music": ["music/harbor/strings.audio.json", "music/harbor/drums.audio.json"],
+      "name": "Harbor",
+      "summary": "Plays in the harbor; the drums come in when a storm is near."
+    },
+    "cue/storm": {
+      "music": ["music/storm.score.json"],
+      "name": "Storm",
+      "summary": "Plays while the storm hits."
+    },
+    "cue/win": {
+      "after": ["cue/storm"],
+      "music": ["music/win.score.json"],
+      "name": "Win",
+      "plays": "once",
+      "summary": "Plays as the storm passes."
+    }
+  },
+  "format": 1
+}

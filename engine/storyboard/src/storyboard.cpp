@@ -145,6 +145,11 @@ std::vector<Kind> make_kinds() {
                .type = Choice,
                .doc = "loop (if unset) or once, as a fanfare does.",
                .choices = {"loop", "once"}},
+              {.name = "after",
+               .type = Refs,
+               .doc = "For a cue that plays once: the cues it plays after, as a sting, as the "
+                      "music leaves them.",
+               .ref_kind = "cue"},
               {.name = "music",
                .type = Paths,
                .doc = "The .score.json and .audio.json files that play it."}}},

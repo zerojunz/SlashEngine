@@ -93,7 +93,7 @@ the kind shown.
 | `tuning` | design | `value`, `min`, `max` (numbers), `unit` | A gameplay number and its limits |
 | `control` | design | `action`, `keys` (strings), `gamepad` (strings) | An input action and its bindings |
 | `theme` | music | `subjects` (any), `key`, `tempo` (number), `bar_beats` (integer), `instruments`, `mood` (strings) | A musical theme for characters, places or factions |
-| `cue` | music | `theme` (theme), `scenes` (paths), `beats` (beats), `states`, `layers` (strings), `plays` (`loop`, `once`), `music` (paths) | A piece of music and when it plays: one line of the cue sheet |
+| `cue` | music | `theme` (theme), `scenes` (paths), `beats` (beats), `states`, `layers` (strings), `plays` (`loop`, `once`), `after` (cues), `music` (paths) | A piece of music and when it plays: one line of the cue sheet |
 | `loudness` | music | `lufs`, `true_peak`, `tolerance` (numbers) | A loudness target for the sounds in its `links`, or for all music |
 | `term` | glossary | `aliases`, `avoid` (strings) | A canonical name; `name` is the spelling to use |
 | `decision` | decisions | `status` (`proposed`, `accepted`, `superseded`), `by`, `date`, `why`, `supersedes` (decision) | Something decided, by whom and why |
@@ -131,8 +131,10 @@ beats per minute, `bar_beats` (4 if unset), `instruments` named as
 [scores](scene-format.md#scores) name General MIDI instruments, and a `mood`. A `cue` is one line
 of the cue sheet: the `theme` it plays, and when it plays, in `scenes` (files or folders), during
 story `beats` and in game `states` such as `"combat"`. Its `layers` are intensity levels, lowest
-first, `plays` is `loop` (if unset) or `once`, and `music` names the `.score.json` and
-`.audio.json` files that play it once they exist. A `loudness` entry sets a target, in LUFS, and
+first, `plays` is `loop` (if unset) or `once`, `after` names the cues a cue that plays once
+follows, as a sting, as the music leaves them, and `music` names the `.score.json`,
+`.audio.json`, `.ogg`, `.wav` or `.mp3` files that play it once they exist, one per layer for a
+cue with layers. A `loudness` entry sets a target, in LUFS, and
 the highest true peak, in dBTP, for the sounds in its `links`, or with no `links` for all music.
 
 ```json
@@ -164,8 +166,10 @@ the highest true peak, in dBTP, for the sounds in its `links`, or with no `links
 
 [`soundtrack.plan`](commands.md#soundtrackplan) drafts the cues a game is missing from its scenes
 and story, and `storyboard.brief` with a scene returns its cue with the cue's theme in full, so
-whoever writes the music starts from the plan. [examples/soundtrack-plan](../../examples/soundtrack-plan/)
-plans a small game's music.
+whoever writes the music starts from the plan. [`soundtrack.arrange`](commands.md#soundtrackarrange)
+turns the cues into interactive music once they have music.
+[examples/soundtrack-plan](../../examples/soundtrack-plan/) plans a small game's music, and
+[examples/soundtrack-arrange](../../examples/soundtrack-arrange/) arranges and plays one.
 
 ## Checks
 
