@@ -102,10 +102,11 @@ int main() {
         session.call("scene.open", json::parse(R"({"path": "main.scene.json"})").value());
     std::printf("scene.open: %s\n", json::write(opened.value, json::Style::Compact).c_str());
 
-    // The opengl driver with no window draws into textures through a hidden window of its own.
+    // The opengl_es driver with no window draws into textures through a hidden window of its own.
     // A game's window must be made for OpenGL: platform::Config::opengl, which project.json's
-    // rendering.driver "opengl" sets, and which is always on in a web export.
-    auto created = render::create_device({.window = nullptr, .driver = "opengl", .debug = false});
+    // rendering.driver "opengl_es" sets, and which is always on in a web export.
+    auto created =
+        render::create_device({.window = nullptr, .driver = "opengl_es", .debug = false});
     const std::unique_ptr<render::RenderDevice> device =
         created ? std::move(created).value() : render::create_software_device();
 

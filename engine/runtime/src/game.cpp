@@ -77,7 +77,15 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
     config.width = project.value().window_width;
     config.height = project.value().window_height;
     config.headless = options.headless;
-    config.opengl = project.value().rendering_driver == "opengl";
+    // The window is made for the driver the game draws with, which falls back to OpenGL where its
+    // GPU backend doesn't work. Asking needs video started, so the platform calls back.
+    std::string driver = project.value().rendering_driver;
+    config.opengl = render::uses_opengl(driver);
+    config.opengl_es = driver == "opengl_es";
+    config.choose_opengl = [&driver, fallback = project.value().fallback_to_opengl] {
+        driver = render::choose_driver(driver, fallback);
+        return render::uses_opengl(driver);
+    };
 #if defined(__linux__) && !defined(__ANDROID__)
     // The project's display server first, then the other, as Godot's driver.linuxbsd.
     config.video_drivers =
@@ -121,9 +129,8 @@ Result<std::unique_ptr<Game>> Game::start(const GameOptions& options) {
     game->renderer_ =
         game->platform_.headless()
             ? render::create_null_device()
-            : render::create_device_or_null({.window = game->platform_.window(),
-                                             .driver = game->project_.rendering_driver,
-                                             .debug = false});
+            : render::create_device_or_null(
+                  {.window = game->platform_.window(), .driver = driver, .debug = false});
     // The schema only allows known names, so the mode always parses.
     game->renderer_->set_vsync(
         render::parse_vsync_mode(game->project_.vsync_mode).value_or(render::VsyncMode::Enabled));

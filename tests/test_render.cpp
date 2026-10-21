@@ -478,8 +478,8 @@ TEST_CASE("create_device knows its drivers") {
     auto device = create_device({.window = nullptr, .driver = "vulkn", .debug = false});
     REQUIRE_FALSE(device.ok());
     CHECK(device.error().message ==
-          "no render driver \"vulkn\"; use auto, null, vulkan, metal, d3d12 or opengl; did you "
-          "mean \"vulkan\"?");
+          "no render driver \"vulkn\"; use auto, null, vulkan, metal, d3d12, opengl or opengl_es; "
+          "did you mean \"vulkan\"?");
     CHECK(error_of(create_device({.window = nullptr, .driver = "gles", .debug = false}))
               .starts_with("no render driver \"gles\""));
 
@@ -786,19 +786,55 @@ TEST_CASE("the GPU device refuses the same mistakes as the null device") {
           "this device has no window; draw to a render-target texture");
 }
 
-TEST_CASE("the OpenGL ES device refuses the same mistakes as the null device") {
-    auto device = gl_device();
-    if (device == nullptr) {
-        return;
+TEST_CASE("the OpenGL devices refuse the same mistakes as the null device") {
+    for (const char* driver : {"opengl", "opengl_es"}) {
+        CAPTURE(driver);
+        auto device = gl_device(driver);
+        if (device == nullptr) {
+            continue;
+        }
+        check_refusals(*device);
+        CHECK(error_of(device->begin_frame({.target = TextureId::None, .clear = {}, .view = {}})) ==
+              "this device has no window; draw to a render-target texture");
+        CHECK(error_of(
+                  device->create_texture(
+                      {.width = 1, .height = 1, .filter = Filter::Linear, .render_target = false},
+                      std::vector<std::uint8_t>(3)))
+                  .starts_with("a 1x1 texture takes 4 bytes"));
     }
-    CHECK(slash::render::backend_name(device->backend()) == "opengl");
-    check_refusals(*device);
-    CHECK(error_of(device->begin_frame({.target = TextureId::None, .clear = {}, .view = {}})) ==
-          "this device has no window; draw to a render-target texture");
-    CHECK(error_of(device->create_texture(
-                       {.width = 1, .height = 1, .filter = Filter::Linear, .render_target = false},
-                       std::vector<std::uint8_t>(3)))
-              .starts_with("a 1x1 texture takes 4 bytes"));
+}
+
+// Linux has both: Mesa's OpenGL 4.5 and OpenGL ES 3.2. macOS has OpenGL 4.1 and no OpenGL ES.
+TEST_CASE("the opengl driver draws with OpenGL 3.3, and opengl_es with OpenGL ES 3.0") {
+    if (auto device = gl_device("opengl"); device != nullptr) {
+        CHECK(device->backend() == slash::render::Backend::OpenGl);
+        CHECK(slash::render::backend_name(device->backend()) == "opengl");
+    }
+    if (auto device = gl_device("opengl_es"); device != nullptr) {
+        CHECK(device->backend() == slash::render::Backend::OpenGlEs);
+        CHECK(slash::render::backend_name(device->backend()) == "opengl_es");
+    }
+}
+
+TEST_CASE("a GPU driver falls back to OpenGL where its backend doesn't work, as Godot's") {
+    using slash::render::choose_driver;
+    // A backend this system never has.
+#ifdef __APPLE__
+    const std::string missing = "d3d12";
+#else
+    const std::string missing = "metal";
+#endif
+    CHECK(choose_driver(missing, true) == "opengl");
+    CHECK(choose_driver(missing, false) == missing);
+    for (const std::string driver : {"opengl", "opengl_es", "null"}) {
+        CHECK(choose_driver(driver, true) == driver);
+    }
+    // auto stays where a GPU backend works.
+    if (gpu_device() != nullptr) {
+        CHECK(choose_driver("auto", true) == "auto");
+    }
+    CHECK(slash::render::uses_opengl("opengl_es"));
+    CHECK_FALSE(slash::render::uses_opengl("vulkan"));
 }
 
 TEST_CASE("the software device refuses the same mistakes as the null device") {
@@ -932,19 +968,27 @@ TEST_CASE("a window's V-Sync mode changes its present mode, falling back to enab
     CHECK(device->stats().frames == 2);
 }
 
-// A window made for OpenGL ES on SDL's offscreen video driver, which draws with EGL: Linux CI
-// runs this on Mesa. Frames draw into a texture and are copied to the window turned the right way
-// up, so a frame that reaches the window has gone through every step.
-TEST_CASE("an OpenGL ES window draws frames and changes its swap interval") {
+// A window made for OpenGL on SDL's offscreen video driver, which draws with EGL: Linux CI runs
+// this on Mesa, with OpenGL 3.3 and OpenGL ES 3.0. Frames draw into a texture and are copied to
+// the window turned the right way up, so a frame that reaches the window has gone through every
+// step.
+namespace {
+void check_gl_window(bool es) {
+    const char* driver = es ? "opengl_es" : "opengl";
+    CAPTURE(driver);
     SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
-    auto platform = slash::platform::Platform::create(
-        {.title = "opengl test", .width = 64, .height = 48, .headless = false, .opengl = true});
+    auto platform = slash::platform::Platform::create({.title = "opengl test",
+                                                       .width = 64,
+                                                       .height = 48,
+                                                       .headless = false,
+                                                       .opengl = true,
+                                                       .opengl_es = es});
     SDL_ResetHint(SDL_HINT_VIDEO_DRIVER);
     std::unique_ptr<RenderDevice> device;
     std::string error = "no window";
     if (platform.ok()) {
-        auto created = create_device(
-            {.window = platform.value().window(), .driver = "opengl", .debug = false});
+        auto created =
+            create_device({.window = platform.value().window(), .driver = driver, .debug = false});
         if (created.ok()) {
             device = std::move(created).value();
         } else {
@@ -954,13 +998,14 @@ TEST_CASE("an OpenGL ES window draws frames and changes its swap interval") {
     if (device == nullptr) {
 #ifdef __linux__
         if (!slash::platform::environment_variable("SLASH_EXPECT_GPU").empty()) {
-            FAIL("SLASH_EXPECT_GPU is set, but no OpenGL ES window works: " << error);
+            FAIL("SLASH_EXPECT_GPU is set, but no OpenGL window works: " << error);
         }
 #endif
-        MESSAGE("no OpenGL ES window here, so it is not checked: " << error);
+        MESSAGE("no OpenGL window here, so it is not checked: " << error);
         return;
     }
-    CHECK(device->backend() == slash::render::Backend::OpenGl);
+    CHECK(device->backend() ==
+          (es ? slash::render::Backend::OpenGlEs : slash::render::Backend::OpenGl));
     CHECK(device->vsync() == VsyncMode::Enabled);
     // GL has no mailbox mode; the others are used where the driver has them.
     CHECK(device->set_vsync(VsyncMode::Mailbox) == VsyncMode::Enabled);
@@ -979,7 +1024,14 @@ TEST_CASE("an OpenGL ES window draws frames and changes its swap interval") {
     CHECK(device->stats().draws == 1);
 }
 
-TEST_CASE("the OpenGL ES device needs a window made for OpenGL") {
+} // namespace
+
+TEST_CASE("an OpenGL window draws frames and changes its swap interval") {
+    check_gl_window(false);
+    check_gl_window(true);
+}
+
+TEST_CASE("the OpenGL device needs a window made for OpenGL") {
     SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
     auto platform = slash::platform::Platform::create(
         {.title = "not opengl", .width = 32, .height = 32, .headless = false, .opengl = false});

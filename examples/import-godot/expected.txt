@@ -496,6 +496,7 @@ project.import {"source":"godot"}
   },
   "rendering": {
     "clear_color": [0.1, 0.12, 0.2, 1.0],
+    "driver": "opengl",
     "texture_filter": "nearest"
   },
   "version": "0.1.0",

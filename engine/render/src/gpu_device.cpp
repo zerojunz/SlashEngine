@@ -1693,6 +1693,32 @@ Result<void> init_video() {
     return {};
 }
 
+namespace {
+
+// The shader formats the device has shaders in.
+constexpr SDL_GPUShaderFormat kShaderFormats =
+    SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_MSL | kHlslFormats;
+
+// SDL's name for a driver's backend, or null for "auto".
+const char* sdl_driver_name(const std::string& driver) {
+    if (driver == "d3d12") {
+        return "direct3d12";
+    }
+    return driver == "auto" ? nullptr : driver.c_str();
+}
+
+} // namespace
+
+bool gpu_backend_works(const std::string& driver) {
+    // SDL counts starts, so stopping after leaves video as it was.
+    if (auto started = init_video(); !started) {
+        return false;
+    }
+    const bool works = SDL_GPUSupportsShaderFormats(kShaderFormats, sdl_driver_name(driver));
+    SDL_QuitSubSystem(SDL_INIT_VIDEO);
+    return works;
+}
+
 Result<std::unique_ptr<RenderDevice>> create_gpu_device(const DeviceOptions& options) {
     const bool owns_video = options.window == nullptr;
     if (owns_video) {
@@ -1700,15 +1726,8 @@ Result<std::unique_ptr<RenderDevice>> create_gpu_device(const DeviceOptions& opt
             return started.error();
         }
     }
-    const SDL_GPUShaderFormat formats =
-        SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_MSL | kHlslFormats;
-    const char* name = nullptr;
-    if (options.driver == "d3d12") {
-        name = "direct3d12";
-    } else if (options.driver != "auto") {
-        name = options.driver.c_str();
-    }
-    SDL_GPUDevice* device = SDL_CreateGPUDevice(formats, options.debug, name);
+    SDL_GPUDevice* device =
+        SDL_CreateGPUDevice(kShaderFormats, options.debug, sdl_driver_name(options.driver));
     if (device == nullptr) {
         Error error = sdl_error(options.driver == "auto"
                                     ? std::string("no GPU backend works here")

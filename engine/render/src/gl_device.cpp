@@ -15,6 +15,9 @@
 #ifdef __EMSCRIPTEN__
 #include <GLES3/gl3.h>
 #endif
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -33,8 +36,8 @@
 namespace slash::render::detail {
 namespace {
 
-// OpenGL ES 3.0's types and the enums the device uses, so it needs no GL headers: the functions
-// come from SDL_GL_GetProcAddress.
+// OpenGL's types and the enums the device uses, so it needs no GL headers: the functions come
+// from SDL_GL_GetProcAddress.
 using GLenum = unsigned int;
 using GLuint = unsigned int;
 using GLint = int;
@@ -101,12 +104,13 @@ constexpr GLenum kDrawFramebuffer = 0x8CA9;
 constexpr GLenum kFramebufferComplete = 0x8CD5;
 constexpr GLenum kColorAttachment0 = 0x8CE0;
 constexpr GLenum kFramebuffer = 0x8D40;
-constexpr GLenum kCompressedRgbaBptcUnorm = 0x8E8C; // EXT_texture_compression_bptc
+constexpr GLenum kCompressedRgbaBptcUnorm = 0x8E8C; // ARB_ and EXT_texture_compression_bptc
 constexpr GLenum kCompressedRgbaAstc4x4 = 0x93B0;   // KHR_texture_compression_astc_ldr
 constexpr GLuint kInvalidIndex = 0xFFFFFFFF;
 } // namespace gl
 
-// Each OpenGL ES 3.0 function the device calls: X(name after "gl", member, result, parameters).
+// Each function the device calls, in both OpenGL 3.3 and OpenGL ES 3.0: X(name after "gl", member,
+// result, parameters).
 // NOLINTBEGIN(bugprone-macro-parentheses): the arguments are types and parameter lists
 #define SLASH_GL_FUNCTIONS(X)                                                                      \
     X(ActiveTexture, active_texture, void, (GLenum))                                               \
@@ -192,7 +196,7 @@ Result<Gl> load_gl() {
 #define SLASH_GL_LOAD(name, member, result, parameters)                                            \
     gl.member = reinterpret_cast<decltype(gl.member)>(SDL_GL_GetProcAddress("gl" #name));          \
     if (gl.member == nullptr) {                                                                    \
-        return make_error(ErrorCode::PlatformFailure, "OpenGL ES has no gl" #name);                \
+        return make_error(ErrorCode::PlatformFailure, "OpenGL has no gl" #name);                   \
     }
 #endif
     SLASH_GL_FUNCTIONS(SLASH_GL_LOAD)
@@ -238,22 +242,74 @@ std::string hex(GLenum value) {
     return out;
 }
 
-void request_gl_context() {
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+// The two APIs the device draws with: desktop OpenGL 3.3 (core profile), and OpenGL ES 3.0, which
+// is WebGL 2 on the web.
+enum class GlApi : std::uint8_t { Desktop, Es };
+
+std::string_view api_name(GlApi api) {
+    return api == GlApi::Desktop ? "OpenGL 3.3" : "OpenGL ES 3.0";
+}
+
+// The APIs a driver tries, in order: "opengl" is OpenGL 3.3, falling back to OpenGL ES 3.0 where
+// that doesn't start, as Godot's opengl3 driver falls back to GLES; "opengl_es" is only OpenGL
+// ES 3.0, which is all the web, Android and iOS have.
+std::vector<GlApi> gl_apis(std::string_view driver) {
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+    (void)driver;
+    return {GlApi::Es};
+#else
+    if (driver == "opengl_es") {
+        return {GlApi::Es};
+    }
+    return {GlApi::Desktop, GlApi::Es};
+#endif
+}
+
+void request_gl_context(GlApi api) {
+    if (api == GlApi::Desktop) {
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    } else {
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+    }
     SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
 }
 
+// Whether a context's GL_VERSION is the API asked for: "OpenGL ES 3.x ..." for OpenGL ES, and
+// "major.minor ..." of at least 3.3 for desktop OpenGL ("4.6.0 NVIDIA 560.35", "4.1 Metal - 89").
+bool version_matches(GlApi api, std::string_view version) {
+    if (api == GlApi::Es) {
+        return version.starts_with("OpenGL ES 3");
+    }
+    const auto digit = [&](std::size_t at) {
+        return at < version.size() && version[at] >= '0' && version[at] <= '9';
+    };
+    if (!digit(0) || version.size() < 3 || version[1] != '.' || !digit(2)) {
+        return false;
+    }
+    const int major = version[0] - '0';
+    const int minor = version[2] - '0';
+    return major > 3 || (major == 3 && minor >= 3);
+}
+
+// The shaders are GLSL ES 3.00. Desktop OpenGL compiles them as GLSL 3.30, which has everything
+// they use and takes their precision qualifiers.
+constexpr std::string_view kEsVersionLine = "#version 300 es";
+constexpr std::string_view kDesktopVersionLine = "#version 330 core";
+
 class GlDevice final : public RenderDevice {
 public:
     using RenderDevice::draw;
 
-    // window is the game's when presents is set, or else a hidden one the device owns.
-    GlDevice(SDL_Window* window, bool presents, bool owns_video)
-        : window_(window), presents_(presents), owns_video_(owns_video) {}
+    // window is the game's when presents is set, or else a hidden one the device owns. apis are
+    // the ones to try, in order.
+    GlDevice(SDL_Window* window, bool presents, bool owns_video, std::vector<GlApi> apis)
+        : window_(window), presents_(presents), owns_video_(owns_video), apis_(std::move(apis)) {}
 
     GlDevice(const GlDevice&) = delete;
     GlDevice& operator=(const GlDevice&) = delete;
@@ -294,21 +350,16 @@ public:
     // Makes the context, loads its functions, then the sprite program, samplers, buffers and
     // the white texture. The material program waits for the first material.
     Result<void> init() {
-        request_gl_context();
-        context_ = SDL_GL_CreateContext(window_);
+        std::string failures;
+        for (const GlApi api : apis_) {
+            auto started = start_context(api);
+            if (started) {
+                break;
+            }
+            failures += (failures.empty() ? "" : "; ") + started.error().message;
+        }
         if (context_ == nullptr) {
-            return sdl_error("OpenGL ES 3.0 didn't start");
-        }
-        auto loaded = load_gl();
-        if (!loaded) {
-            return loaded.error();
-        }
-        gl_ = loaded.value();
-        const auto* version = reinterpret_cast<const char*>(gl_.get_string(gl::kVersion));
-        if (version == nullptr || !std::string_view(version).starts_with("OpenGL ES 3")) {
-            return make_error(ErrorCode::PlatformFailure,
-                              std::string("the context is ") +
-                                  (version != nullptr ? version : "unknown") + ", not OpenGL ES 3");
+            return make_error(ErrorCode::PlatformFailure, failures);
         }
         const auto* renderer = reinterpret_cast<const char*>(gl_.get_string(gl::kRenderer));
         renderer_ = renderer != nullptr ? renderer : "";
@@ -368,11 +419,14 @@ public:
         if (presents_ && !SDL_GL_SetSwapInterval(1)) {
             log::warn("V-Sync is unavailable", {{"error", SDL_GetError()}});
         }
-        return check_errors("starting OpenGL ES");
+        return check_errors("starting " + std::string(api_name(api_)));
     }
 
-    [[nodiscard]] Backend backend() const override { return Backend::OpenGl; }
+    [[nodiscard]] Backend backend() const override {
+        return api_ == GlApi::Desktop ? Backend::OpenGl : Backend::OpenGlEs;
+    }
     [[nodiscard]] const std::string& renderer() const { return renderer_; }
+    [[nodiscard]] const std::string& version() const { return version_; }
 
     [[nodiscard]] bool supports(TextureFormat format) const override {
         return sampled_.at(static_cast<std::size_t>(format));
@@ -773,8 +827,8 @@ private:
                                             : gl::kCompressedRgbaAstc4x4;
     }
 
-    // Which compressed formats the context samples, by its extensions: OpenGL ES's names, or
-    // WebGL's, which Emscripten lists with and without "GL_" in front.
+    // Which compressed formats the context samples, by its extensions: OpenGL's and OpenGL ES's
+    // names, or WebGL's, which Emscripten lists with and without "GL_" in front.
     void find_compressed_formats() {
         GLint count = 0;
         gl_.get_integerv(gl::kNumExtensions, &count);
@@ -788,7 +842,8 @@ private:
             if (extension.starts_with("GL_")) {
                 extension.remove_prefix(3);
             }
-            if (extension == "EXT_texture_compression_bptc") {
+            if (extension == "EXT_texture_compression_bptc" ||
+                extension == "ARB_texture_compression_bptc") {
                 sampled_.at(static_cast<std::size_t>(TextureFormat::Bc7)) = true;
             }
             if (extension == "KHR_texture_compression_astc_ldr" ||
@@ -825,6 +880,33 @@ private:
     // A byte offset into the bound buffer, as GL takes one.
     static const void* offset(std::size_t bytes) {
         return reinterpret_cast<const void*>(bytes); // NOLINT(performance-no-int-to-ptr)
+    }
+
+    // A context of the API, with its functions, or an error naming the API. A context that
+    // starts but isn't the API asked for is let go.
+    Result<void> start_context(GlApi api) {
+        request_gl_context(api);
+        context_ = SDL_GL_CreateContext(window_);
+        if (context_ == nullptr) {
+            return sdl_error(std::string(api_name(api)) + " didn't start");
+        }
+        auto loaded = load_gl();
+        const auto* version =
+            loaded ? reinterpret_cast<const char*>(loaded.value().get_string(gl::kVersion))
+                   : nullptr;
+        if (!loaded || version == nullptr || !version_matches(api, version)) {
+            const std::string why = !loaded ? loaded.error().message
+                                            : std::string("the context is ") +
+                                                  (version != nullptr ? version : "unknown");
+            SDL_GL_DestroyContext(context_);
+            context_ = nullptr;
+            return make_error(ErrorCode::PlatformFailure,
+                              std::string(api_name(api)) + " didn't start: " + why);
+        }
+        gl_ = loaded.value();
+        api_ = api;
+        version_ = version;
+        return {};
     }
 
     void make_current() const {
@@ -922,7 +1004,7 @@ private:
         gl_.bind_framebuffer(gl::kFramebuffer, 0);
         if (status != gl::kFramebufferComplete) {
             return make_error(ErrorCode::PlatformFailure,
-                              "OpenGL ES can't draw into the texture: framebuffer status " +
+                              "OpenGL can't draw into the texture: framebuffer status " +
                                   hex(status));
         }
         return texture.framebuffer;
@@ -1011,6 +1093,12 @@ private:
     }
 
     Result<GLuint> compile(GLenum stage, std::string_view source) const {
+        std::string desktop;
+        if (api_ == GlApi::Desktop && source.starts_with(kEsVersionLine)) {
+            desktop = std::string(kDesktopVersionLine) +
+                      std::string(source.substr(kEsVersionLine.size()));
+            source = desktop;
+        }
         const GLuint shader = gl_.create_shader(stage);
         const GLchar* text = source.data();
         const auto length = static_cast<GLint>(source.size());
@@ -1197,9 +1285,12 @@ private:
     SDL_Window* window_;
     bool presents_;
     bool owns_video_;
+    std::vector<GlApi> apis_;
     SDL_GLContext context_ = nullptr;
+    GlApi api_ = GlApi::Es;
     Gl gl_;
     std::string renderer_;
+    std::string version_;
     GLint max_texture_size_ = 0;
     // Which formats the context samples, by TextureFormat.
     std::array<bool, 3> sampled_{true, false, false};
@@ -1236,6 +1327,19 @@ private:
 
 } // namespace
 
+bool gl_library_loads() {
+    if (auto started = init_video(); !started) {
+        return false;
+    }
+    // SDL counts loads, and a window made for OpenGL loads the library again.
+    const bool loads = SDL_GL_LoadLibrary(nullptr);
+    if (loads) {
+        SDL_GL_UnloadLibrary();
+    }
+    SDL_QuitSubSystem(SDL_INIT_VIDEO);
+    return loads;
+}
+
 Result<std::unique_ptr<RenderDevice>> create_gl_device(const DeviceOptions& options) {
     SDL_Window* window = options.window;
     const bool presents = window != nullptr;
@@ -1243,24 +1347,26 @@ Result<std::unique_ptr<RenderDevice>> create_gl_device(const DeviceOptions& opti
         return make_error(ErrorCode::InvalidArgument,
                           "the window wasn't made for OpenGL; create it with SDL_WINDOW_OPENGL");
     }
+    std::vector<GlApi> apis = gl_apis(options.driver);
     if (!presents) {
         if (auto started = init_video(); !started) {
             return started.error();
         }
-        request_gl_context();
+        request_gl_context(apis.front());
         window = SDL_CreateWindow("SlashEngine", 1, 1, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
         if (window == nullptr) {
-            Error error = sdl_error("OpenGL ES doesn't work here");
+            Error error = sdl_error("OpenGL doesn't work here");
             SDL_QuitSubSystem(SDL_INIT_VIDEO);
             return error;
         }
     }
-    auto device = std::make_unique<GlDevice>(window, presents, !presents);
+    auto device = std::make_unique<GlDevice>(window, presents, !presents, std::move(apis));
     if (auto ready = device->init(); !ready) {
         return ready.error();
     }
     log::info("render device created", {{"backend", backend_name(device->backend())},
                                         {"renderer", device->renderer()},
+                                        {"version", device->version()},
                                         {"window", presents}});
     return std::unique_ptr<RenderDevice>(std::move(device));
 }

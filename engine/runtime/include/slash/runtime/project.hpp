@@ -75,10 +75,14 @@ struct Project {
     std::array<float, 4> clear_color{0.3F, 0.3F, 0.3F, 1.0F};
     // How sprites that inherit their filter are sampled: "linear" or "nearest".
     std::string texture_filter = "linear";
+    // The GPU backend: "auto", "vulkan", "metal", "d3d12", "opengl", "opengl_es" or "null"
+    // (draws nothing).
+    std::string rendering_driver = "auto";
     // Draw sprites between fixed ticks, interpolated.
     bool interpolation = true;
-    // The GPU backend: "auto", "vulkan", "metal", "d3d12" or "null" (draws nothing).
-    std::string rendering_driver = "auto";
+    // Draw with OpenGL where the GPU backend doesn't work, as Godot's
+    // rendering_device/fallback_to_opengl3.
+    bool fallback_to_opengl = true;
     // The render scale and how the world scales to the screen, as Godot's scaling_3d.
     render::Scaling scaling;
     // How exports ship textures.
