@@ -22,6 +22,14 @@
 // are the same on every machine, and so are the particles they make on every device. Particles
 // are not part of the world's components, so scenes, snapshots and undo leave them as they are.
 //
+// A process material with a collision_mode collides with the LightOccluder2D outlines that have
+// sdf_collision, and tile occluders in occlusion layers that have it, in every visible canvas,
+// as Godot's particles collide with the signed distance field its viewport draws from them:
+// each step carries the shapes, in the world canvas's coordinates, the nearest first up to
+// render::kMaxParticleShapePoints points, and how near a particle comes before it touches
+// (collision_base_size, times half the texture's average side). Godot's field covers the
+// screen and a margin around it; these shapes count everywhere.
+//
 // .process_material.json files are Godot's ParticleProcessMaterial in 2D, with its property
 // names; fields left out keep Godot's defaults, and gravity is [0, 98] as a 2D one's:
 //
@@ -64,14 +72,17 @@ struct ParticleSteps {
     // to before it runs the steps kept from a new system, the first one clearing it.
     std::uint64_t first = 0;
     std::span<const render::ParticleStep> steps;
+    // The shapes the steps collide with, by render::ParticleStep::shape_first.
+    std::span<const render::ParticleShape> shapes;
     // Seconds of particle time not yet stepped, for drawing them between steps (fixed_fps).
     float remainder = 0.0F;
 };
 
 // Adds the "gpu_particles_2d" system, which steps every GPUParticles2D's emission each tick after
 // the CPU particles (priority 1110) and emits "finished" when a one_shot's cycle has had time to
-// end, as Godot's: lifetime times 2 - explosiveness after it started.
-void add_gpu_particles_system(world::World& world);
+// end, as Godot's: lifetime times 2 - explosiveness after it started. Emitters collide only with
+// assets to load their process materials, textures and tile sets from.
+void add_gpu_particles_system(world::World& world, asset::Assets* assets = nullptr);
 
 // The steps an entity's GPUParticles2D has kept; none if it has no GPUParticles2D, hasn't been
 // stepped or the world has no gpu_particles_2d system.
@@ -86,10 +97,12 @@ void add_gpu_particles_system(world::World& world);
 // How a GPUParticles2D's draw_order draws.
 [[nodiscard]] render::ParticleOrder particle_order(std::string_view draw_order);
 
-// Runs steps on a system of amount particles from the start on the CPU, as every device does.
-[[nodiscard]] std::vector<render::Particle> run_steps(std::uint32_t amount,
-                                                      const render::ParticleProcess& process,
-                                                      std::span<const render::ParticleStep> steps);
+// Runs steps on a system of amount particles from the start on the CPU, as every device does,
+// colliding with the shapes they name.
+[[nodiscard]] std::vector<render::Particle>
+run_steps(std::uint32_t amount, const render::ParticleProcess& process,
+          std::span<const render::ParticleStep> steps,
+          std::span<const render::ParticleShape> shapes = {});
 
 // The particles an entity's GPUParticles2D has after the last tick, run on the CPU from the
 // steps kept with its process material, in draw order, live ones only; none if it has none.

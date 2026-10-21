@@ -30,15 +30,16 @@ public:
     void destroy(ParticlesId particles) { systems_.erase(particles); }
 
     [[nodiscard]] Result<void> process(ParticlesId particles, const ParticleProcess& process,
-                                       std::span<const ParticleStep> steps) {
+                                       std::span<const ParticleStep> steps,
+                                       std::span<const ParticleShape> shapes) {
         const auto it = systems_.find(particles);
         if (it == systems_.end()) {
             return unknown_particles(particles);
         }
-        if (auto checked = check_particle_process(process, steps); !checked) {
+        if (auto checked = check_particle_process(process, steps, shapes); !checked) {
             return checked;
         }
-        process_particles(it->second, process, steps);
+        process_particles(it->second, process, steps, shapes);
         return {};
     }
 

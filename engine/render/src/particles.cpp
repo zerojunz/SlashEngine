@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 // Godot's particles shader (servers/rendering/renderer_rd/shaders/particles.glsl) and the code
 // ParticleProcessMaterial::_update_shader generates for 2D, step for step, on the CPU. The GPU
@@ -484,9 +485,9 @@ Vec2 radial_displacement(const ParticleProcess& p, const Dynamics& dynamics, flo
     return out;
 }
 
-// The generated process(): one step of a live particle's life.
+// The generated process(): one step of a live particle's life, after it touched a shape or not.
 void process(Particle& particle, const ParticleProcess& p, const ParticleStep& step,
-             std::uint32_t number, float delta, bool& active) {
+             std::uint32_t number, float delta, const ParticleContact& contact, bool& active) {
     std::uint32_t seed = hash(number + 1U + step.seed);
     Display display;
     Dynamics dynamics;
@@ -534,9 +535,26 @@ void process(Particle& particle, const ParticleProcess& p, const ParticleStep& s
         built = v < 0.0F ? Vec3{} : normalize(built) * v;
     }
 
-    // Turbulence before limiting.
+    // A rigid particle is pushed out of the shape, loses its speed into it and bounces back.
+    const bool collided = contact.collided && p.collision_mode != ParticleCollision::Disabled;
+    if (collided && p.collision_mode == ParticleCollision::Rigid) {
+        const Vec3 normal{contact.normal.x, contact.normal.y, 0.0F};
+        const float response = dot(normal, built);
+        const float bounces =
+            std::abs(response) >= 2.0F / std::clamp(p.collision_bounce + 1.0F, 1.0F, 2.0F) ? 1.0F
+                                                                                           : 0.0F;
+        particle.origin = particle.origin + (contact.normal * contact.depth);
+        built = built - (normal * response);
+        built = mix(built, Vec3{}, std::clamp(p.collision_friction, 0.0F, 1.0F));
+        built = built - (normal * (response * (p.collision_bounce * bounces)));
+    } else if (collided && p.collision_mode == ParticleCollision::HideOnContact) {
+        active = false;
+    }
+
+    // Turbulence before limiting, but not for a particle bouncing off a shape.
     Vec3 controlled3{controlled.x, controlled.y, 0.0F};
-    if (p.turbulence_enabled) {
+    const bool bounced = collided && p.collision_mode == ParticleCollision::Rigid;
+    if (p.turbulence_enabled && !bounced) {
         const float influence =
             sample_curve(curve(p, ParticleParam::TurbulenceInfluence), life, 1.0F);
         const Vec3 direction = normalize(noise_direction(p, step, particle.origin));
@@ -595,8 +613,42 @@ void process(Particle& particle, const ParticleProcess& p, const ParticleStep& s
     }
 }
 
+// How near a particle comes to a shape before it touches: collision_size, times the average of
+// its axes' lengths with collision_use_scale, as Godot's. Its z axis is 1 when it has just started
+// and as long as the others after.
+float collision_size(const Particle& particle, const ParticleProcess& p, const ParticleStep& step,
+                     bool started) {
+    if (!p.collision_use_scale) {
+        return step.collision_size;
+    }
+    const float x = length(Vec2{particle.basis.x, particle.basis.y});
+    const float y = length(Vec2{particle.basis.z, particle.basis.w});
+    const float z = started ? 1.0F : (x + y) * 0.5F;
+    return step.collision_size * ((x + y + z) * 0.33333333333F);
+}
+
+// Godot's 2D collision: the particle and its size taken to the shapes, and the way out and the
+// depth brought back.
+ParticleContact shape_contact(Vec2 origin, float size, const ParticleStep& step,
+                              std::span<const ParticleShape> shapes) {
+    const std::array<float, 6>& to = step.to_shapes;
+    const Vec2 at{(to[0] * origin.x) + (to[2] * origin.y) + to[4],
+                  (to[1] * origin.x) + (to[3] * origin.y) + to[5]};
+    ParticleContact contact = particle_contact(at, size * length(Vec2{to[2], to[3]}), shapes);
+    if (contact.collided) {
+        const std::array<float, 4>& from = step.from_shapes;
+        const Vec2 out = contact.normal * contact.depth;
+        const Vec2 back{(from[0] * out.x) + (from[2] * out.y),
+                        (from[1] * out.x) + (from[3] * out.y)};
+        contact.depth = length(back);
+        contact.normal = contact.depth > 0.0F ? back / contact.depth : Vec2{0.0F, -1.0F};
+    }
+    return contact;
+}
+
 void step_particle(Particle& particle, std::uint32_t index, std::uint32_t total,
-                   const ParticleProcess& p, const ParticleStep& step) {
+                   const ParticleProcess& p, const ParticleStep& step,
+                   std::span<const ParticleShape> shapes) {
     if (step.clear) {
         particle = Particle{};
     }
@@ -647,8 +699,16 @@ void step_particle(Particle& particle, std::uint32_t index, std::uint32_t total,
     if (restart && active) {
         start(particle, p, step, number, active);
     }
+    // Where it is against the step's shapes before it moves, as Godot's particles storage works
+    // out against its signed distance field.
+    ParticleContact contact;
+    if (active && p.collision_mode != ParticleCollision::Disabled && step.shape_count > 0 &&
+        static_cast<std::size_t>(step.shape_first) + step.shape_count <= shapes.size()) {
+        contact = shape_contact(particle.origin, collision_size(particle, p, step, restart), step,
+                                shapes.subspan(step.shape_first, step.shape_count));
+    }
     if (active) {
-        process(particle, p, step, number, delta, active);
+        process(particle, p, step, number, delta, contact, active);
     }
     particle.flags &= ~kParticleActive;
     if (active) {
@@ -713,13 +773,80 @@ Vec4 sample_gradient(const ParticleGradient& gradient, float offset) {
 }
 
 void process_particles(std::span<Particle> particles, const ParticleProcess& process,
-                       std::span<const ParticleStep> steps) {
+                       std::span<const ParticleStep> steps, std::span<const ParticleShape> shapes) {
     const auto total = static_cast<std::uint32_t>(particles.size());
     for (const ParticleStep& step : steps) {
         for (std::uint32_t index = 0; index < total; ++index) {
-            step_particle(particles[index], index, total, process, step);
+            step_particle(particles[index], index, total, process, step, shapes);
         }
     }
+}
+
+ParticleContact particle_contact(Vec2 point, float size, std::span<const ParticleShape> shapes) {
+    // The nearest point on any edge, and whether the point is inside a closed shape by the
+    // even-odd rule. Godot samples a distance field drawn from the shapes; this is the distance
+    // it approximates, worked out exactly so every device gets the same.
+    float nearest_squared = std::numeric_limits<float>::max();
+    Vec2 from_nearest; // the way from the nearest point on an edge to the point
+    Vec2 along;
+    bool inside = false;
+    for (const ParticleShape& shape : shapes) {
+        const std::size_t count = shape.points.size();
+        const bool solid = shape.closed && count > 2;
+        // A closed outline's last point joins its first; a line's doesn't.
+        std::size_t edges = count;
+        if (!solid) {
+            edges = count > 0 ? count - 1 : 0;
+        }
+        bool odd = false;
+        for (std::size_t i = 0; i < edges; ++i) {
+            const Vec2 a = shape.points[i];
+            const Vec2 b = shape.points[(i + 1) % count];
+            const Vec2 ab = b - a;
+            const Vec2 ap = point - a;
+            const float length_squared = dot(ab, ab);
+            const float t = length_squared > 0.0F ? dot(ap, ab) / length_squared : 0.0F;
+            // Past an end, the way from it; beside the edge, straight out from it, worked out
+            // from the cross product so a point a hair from a long edge still gets its normal.
+            Vec2 away = ap;
+            if (t >= 1.0F) {
+                away = point - b;
+            } else if (t > 0.0F) {
+                const float cross = (ab.x * ap.y) - (ab.y * ap.x);
+                away = Vec2{-ab.y, ab.x} * (cross / length_squared);
+            }
+            const float distance_squared = dot(away, away);
+            if (distance_squared < nearest_squared) {
+                nearest_squared = distance_squared;
+                from_nearest = away;
+                along = ab;
+            }
+            if (solid && ((a.y > point.y) != (b.y > point.y)) &&
+                point.x < a.x + ((point.y - a.y) * (b.x - a.x) / (b.y - a.y))) {
+                odd = !odd;
+            }
+        }
+        inside = inside || odd;
+    }
+    ParticleContact contact;
+    if (nearest_squared == std::numeric_limits<float>::max()) {
+        return contact;
+    }
+    const float distance = std::sqrt(nearest_squared);
+    const float signed_distance = inside ? -distance : distance;
+    if (signed_distance - size >= 0.0F) {
+        return contact;
+    }
+    contact.collided = true;
+    contact.depth = size - signed_distance;
+    if (distance > 0.0F) {
+        contact.normal = (inside ? from_nearest * -1.0F : from_nearest) / distance;
+    } else {
+        // On an edge: out across it, to the left of the way it runs.
+        contact.normal =
+            length(along) > 0.0F ? normalize(Vec2{along.y, -along.x}) : Vec2{0.0F, -1.0F};
+    }
+    return contact;
 }
 
 std::uint32_t particle_lifetime_split(std::uint32_t amount, double phase) {

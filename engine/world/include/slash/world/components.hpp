@@ -194,9 +194,10 @@ struct LightOccluder2D {
     std::vector<Vec2> polygon;          // points in pixels
     bool closed = true;                 // the last point joins the first
     std::string cull_mode = "disabled"; // "disabled", "clockwise" or "counter_clockwise"
+    bool sdf_collision = true;          // GPU particles collide with it
     int occluder_light_mask = 1;
 };
-SLASH_COMPONENT(LightOccluder2D, polygon, closed, cull_mode, occluder_light_mask)
+SLASH_COMPONENT(LightOccluder2D, polygon, closed, cull_mode, sdf_collision, occluder_light_mask)
 
 // Tints everything lit in its canvas, as Godot's CanvasModulate: the light the world, or a
 // CanvasLayer it is in, has where no light reaches. One per canvas.
@@ -640,6 +641,7 @@ struct GPUParticles2D {
     float speed_scale = 1.0F;
     float explosiveness = 0.0F;
     float randomness = 0.0F;
+    float collision_base_size = 1.0F;
     bool emitting = true;
     bool one_shot = false;
     bool use_fixed_seed = false;
@@ -653,9 +655,9 @@ struct GPUParticles2D {
 };
 SLASH_COMPONENT(GPUParticles2D, emitting, amount, amount_ratio, process_material, texture, lifetime,
                 interp_to_end, one_shot, preprocess, speed_scale, explosiveness, randomness,
-                use_fixed_seed, seed, fixed_fps, interpolate, fract_delta, local_coords, draw_order,
-                texture_filter, hframes, vframes, anim_loop, z_index, z_as_relative, visible,
-                material, material_params, light_mask)
+                use_fixed_seed, seed, fixed_fps, interpolate, fract_delta, collision_base_size,
+                local_coords, draw_order, texture_filter, hframes, vframes, anim_loop, z_index,
+                z_as_relative, visible, material, material_params, light_mask)
 
 // ---- Audio, as Godot's AudioStreamPlayer nodes.
 

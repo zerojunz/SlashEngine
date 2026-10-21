@@ -139,6 +139,7 @@ Float4 blend(BlendMode mode, const Float4& src, const Float4& dst) {
 class SoftwareDevice final : public RenderDevice {
 public:
     using RenderDevice::draw;
+    using RenderDevice::process_particles;
 
     [[nodiscard]] Backend backend() const override { return Backend::Software; }
 
@@ -242,8 +243,9 @@ public:
     void destroy_particles(ParticlesId particles) override { particles_.destroy(particles); }
 
     Result<void> process_particles(ParticlesId particles, const ParticleProcess& process,
-                                   std::span<const ParticleStep> steps) override {
-        return particles_.process(particles, process, steps);
+                                   std::span<const ParticleStep> steps,
+                                   std::span<const ParticleShape> shapes) override {
+        return particles_.process(particles, process, steps, shapes);
     }
 
     Result<void> draw_particles(ParticlesId particles, TextureId texture, const ParticleDraw& look,

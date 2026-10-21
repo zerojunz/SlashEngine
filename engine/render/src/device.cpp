@@ -131,7 +131,8 @@ Result<void> check_particle_amount(std::uint32_t amount) {
 }
 
 Result<void> check_particle_process(const ParticleProcess& process,
-                                    std::span<const ParticleStep> steps) {
+                                    std::span<const ParticleStep> steps,
+                                    std::span<const ParticleShape> shapes) {
     const auto finite = [](float value) { return std::isfinite(value); };
     const auto check_offsets = [&](std::string_view what, std::size_t count,
                                    const auto& offset_at) -> Result<void> {
@@ -186,6 +187,39 @@ Result<void> check_particle_process(const ParticleProcess& process,
             !finite(step.delta)) {
             return make_error(ErrorCode::InvalidArgument,
                               "a particle step's lifetime is more than 0 and its delta 0 or more");
+        }
+        if (!(step.collision_size >= 0.0F) || !finite(step.collision_size)) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a particle step's collision size is 0 or more");
+        }
+        if (step.shape_count == 0) {
+            continue;
+        }
+        if (!std::ranges::all_of(step.to_shapes, finite) ||
+            !std::ranges::all_of(step.from_shapes, finite)) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a particle step's shape transforms are numbers");
+        }
+        if (static_cast<std::size_t>(step.shape_first) + step.shape_count > shapes.size()) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a particle step names shapes " + std::to_string(step.shape_first) +
+                                  " to " + std::to_string(step.shape_first + step.shape_count - 1) +
+                                  " of " + std::to_string(shapes.size()));
+        }
+        std::size_t points = 0;
+        for (const ParticleShape& shape : shapes.subspan(step.shape_first, step.shape_count)) {
+            points += shape.points.size();
+            for (const Vec2& point : shape.points) {
+                if (!finite(point.x) || !finite(point.y)) {
+                    return make_error(ErrorCode::InvalidArgument,
+                                      "a particle shape's points are numbers");
+                }
+            }
+        }
+        if (points > kMaxParticleShapePoints) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a particle step's shapes have at most " +
+                                  std::to_string(kMaxParticleShapePoints) + " points");
         }
     }
     return {};
@@ -248,6 +282,7 @@ using detail::check_vertices;
 class NullDevice final : public RenderDevice {
 public:
     using RenderDevice::draw;
+    using RenderDevice::process_particles;
 
     [[nodiscard]] Backend backend() const override { return Backend::Null; }
 
@@ -297,11 +332,12 @@ public:
     void destroy_particles(ParticlesId particles) override { particles_.erase(particles); }
 
     Result<void> process_particles(ParticlesId particles, const ParticleProcess& process,
-                                   std::span<const ParticleStep> steps) override {
+                                   std::span<const ParticleStep> steps,
+                                   std::span<const ParticleShape> shapes) override {
         if (!particles_.contains(particles)) {
             return detail::unknown_particles(particles);
         }
-        return detail::check_particle_process(process, steps);
+        return detail::check_particle_process(process, steps, shapes);
     }
 
     Result<void> draw_particles(ParticlesId particles, TextureId texture, const ParticleDraw& look,
