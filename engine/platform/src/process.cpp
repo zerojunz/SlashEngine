@@ -1,5 +1,7 @@
 #include "slash/platform/process.hpp"
 
+#include "slash/core/log.hpp"
+
 #include <SDL3/SDL.h>
 
 #include <algorithm>
@@ -81,6 +83,9 @@ void write_input(SDL_Process* process, std::string_view input) {
         written += wrote;
         if (wrote == 0) {
             if (SDL_GetIOStatus(stream) != SDL_IO_STATUS_NOT_READY) {
+                log::warn(
+                    "could not write a process's input",
+                    {{"written", written}, {"size", input.size()}, {"error", SDL_GetError()}});
                 break;
             }
             SDL_Delay(1);
