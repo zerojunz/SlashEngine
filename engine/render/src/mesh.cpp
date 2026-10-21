@@ -8,10 +8,10 @@
 #include "slash/core/math.hpp"
 
 #include <algorithm>
-#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <numbers>
 #include <string>
@@ -21,6 +21,16 @@ namespace slash::render {
 namespace {
 
 constexpr float kPi = std::numbers::pi_v<float>;
+
+// A value's bits as another type of the same size. std::bit_cast would do, but the glibc 2.31
+// sysroot Linux exports build against has libstdc++ 10, which lacks it.
+template <typename To, typename From>
+To same_bits(From value) {
+    static_assert(sizeof(To) == sizeof(From));
+    To out{};
+    std::memcpy(&out, &value, sizeof(out));
+    return out;
+}
 
 using detail::Float3;
 using detail::Float4;
@@ -317,8 +327,7 @@ MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material, std::uint3
     if (material.transparency != Transparency::Disabled) {
         flags |= kMeshHasAlpha;
     }
-    out.options = {flags, std::bit_cast<std::uint32_t>(material.alpha_scissor_threshold), layers,
-                   0};
+    out.options = {flags, same_bits<std::uint32_t>(material.alpha_scissor_threshold), layers, 0};
     return out;
 }
 
@@ -361,7 +370,7 @@ MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
                         srgb_to_linear_exact(light.color[2]) * scaled, specular};
         const Vec2 cone = slash::cos_sin(light.spot_angle * (kPi / 180.0F));
         packed.params = {light.attenuation, cone.x, 1.0F / light.spot_attenuation,
-                         std::bit_cast<float>(light.cull_mask)};
+                         same_bits<float>(light.cull_mask)};
     }
     return out;
 }
@@ -500,7 +509,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     }
     float alpha = (flags & kMeshHasAlpha) != 0 ? color[3] : 1.0F;
     if ((flags & kMeshAlphaScissor) != 0) {
-        if (alpha < std::bit_cast<float>(surface.options[1])) {
+        if (alpha < same_bits<float>(surface.options[1])) {
             return std::nullopt;
         }
         alpha = 1.0F;
@@ -551,7 +560,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     const auto count = static_cast<std::size_t>(scene.camera[3]);
     for (std::size_t i = 0; i < count && i < kMaxLights3D; ++i) {
         const MeshLightUniforms& light = scene.lights.at(i);
-        if ((std::bit_cast<std::uint32_t>(light.params[3]) & surface.options[2]) == 0) {
+        if ((same_bits<std::uint32_t>(light.params[3]) & surface.options[2]) == 0) {
             continue;
         }
         const float type = light.direction[3];
