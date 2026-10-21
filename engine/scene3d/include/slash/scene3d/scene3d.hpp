@@ -48,12 +48,16 @@ struct CameraView {
 [[nodiscard]] CameraView camera_view(const world::Camera3D& camera, const world::Affine3D& global,
                                      float aspect);
 
-// The background a frame clears to and the light every lit pixel gets, from the first
-// WorldEnvironment made (WorldEnvironment's docs); clear is the project's clear color.
+// The background a frame clears to, the light every lit pixel gets and what happens to colors
+// after, from the first WorldEnvironment made (WorldEnvironment's docs); clear is the project's
+// clear color.
 struct Environment {
     render::Color background;
     std::array<float, 3> ambient{0.0F, 0.0F, 0.0F}; // sRGB
     float ambient_energy = 1.0F;
+    render::PostProcess post;         // with no color correction texture made yet
+    std::string color_correction;     // its project path, or ""
+    entt::entity entity = entt::null; // the WorldEnvironment, if there is one
 };
 [[nodiscard]] Environment environment(const world::World& world, render::Color clear);
 
@@ -63,9 +67,15 @@ struct Environment {
 lights(const world::World& world, const world::Tree3D& tree,
        const std::function<world::Affine3D(entt::entity)>& global);
 
-// Textures a material samples, made on the device by project path and filter.
+// A texture made on the device, and its size.
+struct SourceTexture {
+    render::TextureId id = render::TextureId::None;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+};
+// Textures a material or the environment samples, made on the device by project path and filter.
 using TextureSource =
-    std::function<Result<render::TextureId>(const std::string& path, render::Filter filter)>;
+    std::function<Result<SourceTexture>(const std::string& path, render::Filter filter)>;
 
 // Something that couldn't draw, such as a mesh whose texture is missing: path is the JSON
 // Pointer of the bad value in the entity, e.g. "/components/StandardMaterial3D/albedo_texture".

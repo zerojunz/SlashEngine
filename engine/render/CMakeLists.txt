@@ -42,6 +42,7 @@ add_library(slash_render
     src/mesh.cpp
     src/particle_layout.cpp
     src/particles.cpp
+    src/post.cpp
     src/resize.cpp
     src/shader.cpp
     src/shader_vm.cpp
@@ -80,7 +81,7 @@ endif()
 # every platform: no fused multiply-adds, which arm64 compilers would otherwise emit and x86-64
 # ones not.
 set_source_files_properties(src/device.cpp src/material.cpp src/mesh.cpp src/particles.cpp
-    src/resize.cpp src/shader_vm.cpp src/shadow.cpp src/software_device.cpp src/upscaler.cpp
+    src/post.cpp src/resize.cpp src/shader_vm.cpp src/shadow.cpp src/software_device.cpp src/upscaler.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
@@ -92,8 +93,8 @@ find_program(SLASH_TINT NAMES tint)
 set(slash_shader_headers "")
 # Each shader as file:Name, then compute for compute shaders, and 3d for the mesh shader and
 # depth for the shadow pass shader, whose varyings GLSL names apart from the canvas shaders' and
-# whose depth it maps to OpenGL's.
-set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d shadow:Shadow:depth
+# whose depth it maps to OpenGL's, and post for the post passes, which have no varyings.
+set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d shadow:Shadow:depth post:Post:post
     particles_process:ParticlesProcess:compute particles_emit:ParticlesEmit:compute
     particles_draw:ParticlesDraw:compute)
 foreach(entry IN LISTS slash_shaders)
@@ -114,6 +115,9 @@ foreach(entry IN LISTS slash_shaders)
             set(include shadow)
             set(interface v_uv,v_color)
             set(fixup ON)
+        elseif(kind STREQUAL "post")
+            set(include tonemap)
+            set(interface v_uv)
         else()
             set(include mesh)
             set(interface v_world,v_normal,v_tangent,v_binormal,v_uv,v_color)
@@ -132,6 +136,7 @@ foreach(entry IN LISTS slash_shaders)
             -P ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake
         COMMAND ${CMAKE_COMMAND} -E touch ${stamp}
         DEPENDS shaders/${shader}.hlsl shaders/${include}.hlsl shaders/material_ops.hlsl
+            shaders/tonemap.hlsl
             ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake
         COMMENT "Compiling ${shader}.hlsl"
         VERBATIM)

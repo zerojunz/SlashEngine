@@ -77,6 +77,7 @@ struct MeshLightUniforms {
 struct MeshSceneUniforms {
     Float4 camera{}; // the camera's place, then how many lights
     Float4 ambient{};
+    Float4 tonemap{}; // exposure, white, the tonemapper, 1 to tonemap (0 when post passes do)
     std::array<MeshLightUniforms, kMaxLights3D> lights{};
 };
 
@@ -113,7 +114,7 @@ struct MeshShadowPassUniforms {
 
 static_assert(sizeof(MeshInstanceUniforms) == 144);
 static_assert(sizeof(MeshSurfaceUniforms) == 96);
-static_assert(sizeof(MeshSceneUniforms) == 32 + (80 * kMaxLights3D));
+static_assert(sizeof(MeshSceneUniforms) == 48 + (80 * kMaxLights3D));
 static_assert(sizeof(MeshDirectionalShadowUniforms) == 320);
 static_assert(sizeof(MeshPositionalShadowUniforms) == 576);
 static_assert(sizeof(MeshShadowUniforms) ==
