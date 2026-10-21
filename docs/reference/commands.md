@@ -68,6 +68,7 @@ as `entity.get`, reject it as an unknown param.
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.analyze`](#audioanalyze), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord), [`audio.input`](#audioinput) |
+| Soundtrack | [`score.import`](#scoreimport), [`score.export`](#scoreexport) |
 | Services | [`services.state`](#servicesstate), [`services.test`](#servicestest) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.review`](#storyboardreview), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
@@ -1743,6 +1744,71 @@ Like `audio.play`, it waits for the next tick, so a failed `batch` or a dry run 
 It is an error when the project's `audio.enable_input` is off, and at `/stream` when the stream
 doesn't load or is itself a microphone. [`audio.state`](#audiostate)'s `input` shows what feeds
 the input.
+
+## Soundtrack
+
+Music written as [`.score.json` scores](scene-format.md#scores), moved to and from Standard
+MIDI Files so any music program can play or edit them. From
+[examples/music-scores](../../examples/music-scores/).
+
+### score.export
+
+Writes a score as a Standard MIDI File (format 1): a first track with the tempo, meter, key and
+a marker per section, then a track per score track with its name, instrument, volume and pan,
+drums on channel 10.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | The `.score.json` file |
+| `out` | string | `path` with `.mid` for `.score.json` | The `.mid` or `.midi` file to write |
+
+Needs: `read`, `filesystem`.
+
+```json
+{"path": "music/night_market.score.json"}
+```
+
+```json
+{"notes":119,"path":"music/night_market.mid","seconds":20.87,"tracks":4}
+```
+
+A score that doesn't validate is an error at `/path` naming the first problem, with its JSON
+Pointer in the file:
+
+```json
+{"code":-32002,"data":{"path":"/path"},"message":"/path: music/sketch.score.json /tracks/0/bars/0: \"B5:0.5\": starts at beat 4, after the bar's 4 beats"}
+```
+
+So is a score with more than 15 tracks that aren't drums, since MIDI has 15 channels for them.
+
+### score.import
+
+Reads a Standard MIDI File (format 0 or 1) into a score: a track per MIDI track and channel that
+plays notes, named by the track's name and playing the channel's first program change (channel
+10 is `"drums"`), with the first tempo, time signature and key signature, a section per marker,
+and each bar written as the shortest line of notes that plays it.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | The `.mid` or `.midi` file |
+| `out` | string | `path` with `.score.json` for its extension | The `.score.json` file to write |
+| `grid` | integer, 1 to 96 | `24` | Divisions of a beat notes snap to: thirty-second notes and sixteenth-note triplets |
+
+Needs: `read`, `filesystem`. The file `score.export` wrote above, read back:
+
+```json
+{"path": "music/night_market.mid", "out": "music/night_market_again.score.json"}
+```
+
+```json
+{"bars":8,"bpm":92,"key":"A minor","path":"music/night_market_again.score.json","sections":["intro","loop"],"tracks":[{"instrument":"flute","name":"melody","notes":15},{"instrument":"string_ensemble_1","name":"strings","notes":24},{"instrument":"acoustic_bass","name":"bass","notes":32},{"instrument":"drums","name":"drums","notes":48}]}
+```
+
+`meter` is there when it isn't 4/4, such as `"6/8"`. `problems` lists what the score can't
+hold and what moved to fit it: tempo, meter and key changes after the first (the score keeps
+the first), pitch bends, the sustain pedal, drum kits other than the standard one, notes moved
+to the grid and markers that aren't on a bar line. A file with no notes, a format 2 or SMPTE
+timed file, or one cut short is an error at `/path`.
 
 ## Services
 

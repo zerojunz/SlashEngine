@@ -130,8 +130,8 @@ file, a [`.process_material.json`](scene-format.md#process-materials) file, a [`
 file, a [`.theme.json`](scene-format.md#themes) file, an
 [`.audio.json`](scene-format.md#audio-streams) file, a
 [`.bus_layout.json`](scene-format.md#bus-layouts) file, a
-[`.replay.json`](scene-format.md#replays) file or a [`.test.json`](scene-format.md#tests) file
-and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
+[`.replay.json`](scene-format.md#replays) file, a [`.test.json`](scene-format.md#tests) file or
+a [`.score.json`](scene-format.md#scores) file and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
 [scenes](scene-format.md#instanced-scenes) a file extends, the tile sets its layers use, the animation libraries its players use and the project's window size and theme are read from its
 project: the nearest folder above it with a `project.json`, else the current folder.
 
@@ -146,7 +146,8 @@ slash-cli scene validate <file>
 For a prefab the result counts its `components` instead of `entities`, for a `.frames.json` or
 `.anim.json` file its `animations`, for a `.tileset.json` file its `tiles`, for a `.theme.json`
 file its `types`, for a `.bus_layout.json` file its `buses`, for a `.replay.json` file the
-`ticks` it covers, for a `.test.json` file its `tests`, for a `.font.json`, `.audio.json` or `.process_material.json` file nothing more, and for a `.material.json` file the
+`ticks` it covers, for a `.test.json` file its `tests`, for a `.score.json` file its `bars`,
+`tracks` and `notes`, for a `.font.json`, `.audio.json` or `.process_material.json` file nothing more, and for a `.material.json` file the
 `instructions` its graph compiles to, of the 64 a material can run. A material with a
 [shader](scene-format.md#shaders) has no graph: its shader is compiled, and each error in it is
 reported at `/shader` with the shader file and line.
@@ -207,7 +208,8 @@ When the project has a
 
 Rewrites a scene, prefab, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
-`.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json` or `.test.json` file in [canonical form](scene-format.md#canonical-form).
+`.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json` or
+`.score.json` file in [canonical form](scene-format.md#canonical-form).
 
 ```bash
 slash-cli scene format <file>
@@ -229,7 +231,7 @@ for [`.theme.json` files](scene-format.md#themes), for
 [`.audio.json` files](scene-format.md#audio-streams), for
 [`.bus_layout.json` files](scene-format.md#bus-layouts), for
 [`.replay.json` files](scene-format.md#replays), for [`.test.json` files](scene-format.md#tests),
-for [storyboard files](storyboard-format.md),
+for [`.score.json` files](scene-format.md#scores), for [storyboard files](storyboard-format.md),
 for [`project.json`](project-format.md), for [`export_presets.json`](project-format.md#export-presets),
 for [`sdk.json`](sdk-format.md), for [`providers.json`](providers.md) or for a
 [benchmark task's `task.json`](benchmark.md#tasks).
@@ -248,6 +250,7 @@ slash-cli schema audio
 slash-cli schema bus_layout
 slash-cli schema replay
 slash-cli schema test
+slash-cli schema score
 slash-cli schema storyboard
 slash-cli schema project
 slash-cli schema presets
