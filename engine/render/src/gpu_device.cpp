@@ -1296,7 +1296,8 @@ private:
                                                .reset = job.reset ? 1U : 0U,
                                                .chain = job.chain,
                                                .trail = job.trail,
-                                               .history = job.history};
+                                               .history = job.history,
+                                               .phase_step = particle_phase_step(job.amount)};
                 SDL_PushGPUComputeUniformData(commands, 0, &uniforms,
                                               static_cast<std::uint32_t>(sizeof(uniforms)));
             } else {

@@ -1,5 +1,7 @@
 #include "slash/render/particles.hpp"
 
+#include "particle_layout.hpp"
+
 #include "slash/render/device.hpp"
 
 #include <algorithm>
@@ -921,7 +923,8 @@ void step_particle(Particle& particle, std::uint32_t index, std::uint32_t total,
                 kParticleActive | kParticleStarted | (step.cycle << kParticleCycleShift);
         }
     } else if (step.emitting) {
-        float restart_phase = static_cast<float>(index) / static_cast<float>(total);
+        const float phase_step = detail::particle_phase_step(total);
+        float restart_phase = static_cast<float>(index) * phase_step;
         if (step.randomness > 0.0F) {
             std::uint32_t seed = step.cycle;
             if (restart_phase >= step.system_phase) {
@@ -930,7 +933,7 @@ void step_particle(Particle& particle, std::uint32_t index, std::uint32_t total,
             seed *= total;
             seed += index;
             const float random = static_cast<float>(hash(seed) % 65536U) / 65536.0F;
-            restart_phase += step.randomness * random * 1.0F / static_cast<float>(total);
+            restart_phase += step.randomness * random * phase_step;
         }
         restart_phase *= 1.0F - step.explosiveness;
         if (step.system_phase > step.prev_system_phase) {
