@@ -189,6 +189,34 @@ seed it drew with.
 param names. [`ai.providers`](commands.md#aiproviders) lists them, with whether each one's key is
 set. A key that isn't set fails only when a request would be sent.
 
+## Team library
+
+`library` names the library a team hosts, which every teammate's
+[asset library](commands.md#team-sharing) searches and adds to, so a teammate's request finds
+assets someone else already made. Nothing goes to a service the engine runs.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `team` | required | A folder every teammate reaches, such as a network share or a folder a sync service keeps the same (`~/` for the home folder, relative to the project otherwise), or the `http://` or `https://` URL of a library server |
+| `token_env` | `SLASH_LIBRARY_TOKEN` | The environment variable holding the library server's token |
+| `timeout_seconds` | `60` | How long to wait for the library server |
+
+```json
+{"library": {"team": "/Volumes/Studio/slash-library"}}
+```
+
+```json
+{"library": {"team": "https://library.studio.example", "token_env": "STUDIO_LIBRARY_TOKEN"}}
+```
+
+`SLASH_LIBRARY_TEAM` names the team's library on one machine, in place of `team`. A folder must
+exist, since a missing one is a share that isn't mounted; it holds a library laid out as the
+machine's. A library server is [`slash-cli library serve`](cli.md#library-serve) over such a
+folder; requests are `POST <url>/v1/library/<op>` with `Authorization: Bearer <token>` and a
+JSON body (`search`, `get`, `read`, `request`, `put`, `feedback` and `missing`, described in
+`engine/library/include/slash/library/team.hpp`), and files travel base64 encoded. Over the
+internet, put the server behind HTTPS.
+
 ## Gameplay
 
 Gameplay code asks a role's model and hears back through world events, as it hears input and

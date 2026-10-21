@@ -3,8 +3,10 @@
 #include "slash/ai/config.hpp"
 #include "slash/canvas/canvas.hpp"
 #include "slash/command/session.hpp"
+#include "slash/core/sha256.hpp"
 #include "slash/library/generator.hpp"
 #include "slash/library/library.hpp"
+#include "slash/library/team.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
 #include "slash/storyboard/storyboard.hpp"
@@ -15,6 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
 #include <ranges>
 #include <set>
@@ -140,6 +143,219 @@ Result<void> check_writes(const Session& session) {
                           "tests don't write files, so the library stays as it was");
     }
     return {};
+}
+
+// The machine's library and the team's, which a command opens when it first needs it.
+class Libraries {
+public:
+    Libraries(Session& session, Library local) : session_(&session), local_(std::move(local)) {}
+
+    [[nodiscard]] const Library& local() const noexcept { return local_; }
+
+    // The team's library SLASH_LIBRARY_TEAM or providers.json names; null if neither names one,
+    // or if it can't be opened or failed already, which the reply then says.
+    Team* team() {
+        if (!error_.empty()) {
+            return nullptr;
+        }
+        if (!opened_) {
+            opened_ = true;
+            auto config = ai::load_config(session_->options().project_root);
+            if (!config) {
+                fail(config.error());
+                return nullptr;
+            }
+            TeamOptions options;
+            options.project_root = session_->options().project_root;
+            options.network = session_->allowed(Capability::Network);
+            auto team = open_team(config.value(), options);
+            if (!team) {
+                fail(team.error());
+            } else {
+                team_ = std::move(team).value();
+            }
+        }
+        return team_.get();
+    }
+
+    // Keeps the first reason the team's library failed, for the reply, and leaves the team out of
+    // the rest of the command, so a server that is down costs one wait.
+    void fail(const Error& error) {
+        if (error_.empty()) {
+            error_ = error.message;
+        }
+    }
+
+    [[nodiscard]] const std::string& error() const noexcept { return error_; }
+
+    // The reply, with why the team's library failed if it did: the command did what it could
+    // with the machine's library alone.
+    [[nodiscard]] Reply noted(Reply reply) const {
+        if (reply.ok && !error_.empty()) {
+            reply.value["team_error"] = error_;
+        }
+        return reply;
+    }
+
+private:
+    Session* session_;
+    Library local_;
+    std::unique_ptr<Team> team_;
+    bool opened_ = false;
+    std::string error_;
+};
+
+Result<Libraries> open_libraries(Session& session) {
+    auto library = open_library(session);
+    if (!library) {
+        return library.error();
+    }
+    return Libraries(session, std::move(library).value());
+}
+
+// Copies an asset from the team's library into the machine's, with the request that made it.
+Result<Record> pull(const Libraries& libs, Team& team, const Record& shared,
+                    std::string_view request) {
+    auto data = team.read(shared);
+    if (!data) {
+        return data.error();
+    }
+    if (sha256_hex(data.value()) != shared.id) {
+        return make_error(ErrorCode::PlatformFailure, "the team's library sent other bytes for "
+                                                      "asset \"" +
+                                                          short_id(shared.id) + "\"");
+    }
+    auto stored = libs.local().put(data.value(), shared);
+    if (!stored) {
+        return stored.error();
+    }
+    if (!request.empty()) {
+        if (auto remembered = libs.local().remember_request(request, stored.value().id);
+            !remembered) {
+            return remembered.error();
+        }
+    }
+    return stored;
+}
+
+// The asset with this ID or ID prefix from the machine's library, or else from the team's,
+// copied into the machine's unless the session writes no files.
+Result<Record> find_asset(const Session& session, Libraries& libs, std::string_view id) {
+    auto record = libs.local().get(id);
+    if (record || record.error().code != ErrorCode::NotFound) {
+        return record;
+    }
+    Team* team = libs.team();
+    if (team == nullptr) {
+        if (!libs.error().empty()) {
+            return make_error(ErrorCode::NotFound,
+                              record.error().message +
+                                  ", and the team's library failed: " + libs.error());
+        }
+        return record;
+    }
+    auto shared = team->get(id);
+    if (!shared) {
+        libs.fail(shared.error());
+        return make_error(ErrorCode::NotFound,
+                          record.error().message +
+                              ", and the team's library failed: " + shared.error().message);
+    }
+    std::optional<Record> found = std::move(shared).value();
+    if (!found) {
+        return make_error(ErrorCode::NotFound, "no asset with ID \"" + std::string(id) +
+                                                   "\" in the library or the team's");
+    }
+    if (!session.options().write_files) {
+        return std::move(*found);
+    }
+    return pull(libs, *team, *found, {});
+}
+
+// The machine's records, with the team's that match the query beside them, or in place of the
+// same asset's: the team's copy carries every teammate's feedback.
+std::vector<Record> with_team(Libraries& libs, std::vector<Record> records, const Query& query) {
+    Team* team = libs.team();
+    if (team == nullptr) {
+        return records;
+    }
+    auto found = team->search(query);
+    if (!found) {
+        libs.fail(found.error());
+        return records;
+    }
+    for (Record& record : found.value()) {
+        if (auto same = std::ranges::find(records, record.id, &Record::id); same != records.end()) {
+            *same = std::move(record);
+        } else {
+            records.push_back(std::move(record));
+        }
+    }
+    return records;
+}
+
+// Puts the machine's assets with these IDs, and the versions they were refined from, in the
+// team's library where it lacks them, each with the requests that made it. Returns the IDs put.
+Result<std::vector<std::string>> share_missing(const Libraries& libs, Team& team,
+                                               const std::vector<std::string>& ids) {
+    std::vector<std::string> wanted;
+    for (const std::string& id : ids) {
+        std::string at = id;
+        for (int depth = 0; !at.empty() && depth < 100; ++depth) {
+            if (std::ranges::find(wanted, at) != wanted.end()) {
+                break;
+            }
+            wanted.push_back(at);
+            auto record = libs.local().get(at);
+            at = record ? record.value().parent : std::string();
+        }
+    }
+    std::vector<std::string> put;
+    if (wanted.empty()) {
+        return put;
+    }
+    auto missing = team.missing(wanted);
+    if (!missing) {
+        return missing.error();
+    }
+    for (const std::string& id : missing.value()) {
+        auto record = libs.local().get(id);
+        if (!record) {
+            continue; // named by library.json, but not in this machine's library
+        }
+        auto data = libs.local().read(record.value());
+        if (!data) {
+            return data.error();
+        }
+        auto stored = team.put(data.value(), record.value(), libs.local().requests_for(id));
+        if (!stored) {
+            return stored.error();
+        }
+        put.push_back(id);
+    }
+    return put;
+}
+
+// Puts a new asset in the team's library with the request that made it, and the versions it was
+// refined from where the team lacks them, so teammates' searches and exact repeats find it.
+void share(Libraries& libs, const Record& record, std::string_view data, std::string_view request) {
+    Team* team = libs.team();
+    if (team == nullptr) {
+        return;
+    }
+    std::vector<std::string> requests;
+    if (!request.empty()) {
+        requests.emplace_back(request);
+    }
+    if (auto stored = team->put(data, record, requests); !stored) {
+        libs.fail(stored.error());
+        return;
+    }
+    if (!record.parent.empty()) {
+        if (auto shared = share_missing(libs, *team, {record.parent}); !shared) {
+            libs.fail(shared.error());
+        }
+    }
 }
 
 // An asset as search results show it: enough to pick one without opening the file.
@@ -296,26 +512,25 @@ std::optional<std::vector<std::string>> style_problems(Session& session, const s
     return problems;
 }
 
-// Records what a check found as an asset's feedback, unless its last feedback from the same check
-// said the same; sessions that run tests write none.
-void record_check(const Session& session, const Library& library, Record record,
-                  Feedback feedback) {
-    if (!session.options().write_files) {
+// Records what a check found as an asset's feedback, here and in the team's library, unless its
+// last feedback from the same check said the same; sessions that run tests write none.
+void record_check(const Session& session, Libraries& libs, Record record,
+                  const Feedback& feedback) {
+    if (!session.options().write_files || repeats_last(record, feedback)) {
         return;
     }
-    const auto last = std::ranges::find(std::ranges::reverse_view(record.feedback), feedback.source,
-                                        &Feedback::source);
-    if (last != std::ranges::reverse_view(record.feedback).end() &&
-        last->verdict == feedback.verdict && last->reason == feedback.reason) {
-        return;
+    add_feedback(record, feedback);
+    (void)libs.local().update(record);
+    if (Team* team = libs.team(); team != nullptr) {
+        if (auto added = team->add_feedback(record.id, feedback, true); !added) {
+            libs.fail(added.error());
+        }
     }
-    add_feedback(record, std::move(feedback));
-    (void)library.update(record);
 }
 
 // Checks an image put in the project against the storyboard's style, as style_problems, and
 // records the result as the asset's feedback. Returns the problems found.
-json::Array check_style(Session& session, const Library& library, const Record& record,
+json::Array check_style(Session& session, Libraries& libs, const Record& record,
                         const std::string& path, std::string_view data) {
     json::Array problems;
     if (record.type != "image") {
@@ -326,7 +541,7 @@ json::Array check_style(Session& session, const Library& library, const Record& 
         return problems;
     }
     record_check(
-        session, library, record,
+        session, libs, record,
         {.verdict = found->empty() ? "accepted" : "rejected",
          .reason = found->empty() ? "fits the storyboard's palette and budget" : found->front(),
          .source = std::string(kStyleCheck)});
@@ -337,11 +552,11 @@ json::Array check_style(Session& session, const Library& library, const Record& 
 }
 
 Reply asset_search(Session& session, const json::Value& params) {
-    auto library = open_library(session);
-    if (!library) {
-        return Reply::failure(library.error());
+    auto libs = open_libraries(session);
+    if (!libs) {
+        return Reply::failure(libs.error());
     }
-    auto records = library.value().all();
+    auto records = libs.value().local().all();
     if (!records) {
         return Reply::failure(records.error());
     }
@@ -352,16 +567,17 @@ Reply asset_search(Session& session, const json::Value& params) {
     if (const json::Value* limit = params.find("limit"); limit != nullptr) {
         query.limit = static_cast<std::size_t>(limit->as_int());
     }
+    const std::vector<Record> known = with_team(libs.value(), std::move(records).value(), query);
     json::Value out;
     out["assets"] = json::Array{};
-    for (const Match& match : search(records.value(), query)) {
+    for (const Match& match : search(known, query)) {
         json::Value item = summary(*match.record);
         if (!query.text.empty()) {
             item["score"] = match.score;
         }
         out["assets"].push_back(std::move(item));
     }
-    return Reply::success(std::move(out));
+    return libs.value().noted(Reply::success(std::move(out)));
 }
 
 struct Asked {
@@ -372,7 +588,7 @@ struct Asked {
     std::string path;
 };
 
-Reply finish(Session& session, const Library& library, const Record& record, const Asked& asked,
+Reply finish(Session& session, Libraries& libs, const Record& record, const Asked& asked,
              bool reused) {
     json::Value out = summary(record);
     out.as_object().erase("description");
@@ -385,7 +601,7 @@ Reply finish(Session& session, const Library& library, const Record& record, con
         out["reused"] = true;
     }
     if (!asked.path.empty()) {
-        auto copied = copy_into_project(session, library, record, asked.path);
+        auto copied = copy_into_project(session, libs.local(), record, asked.path);
         if (!copied) {
             Reply reply = failure_at(copied.error(), "/path");
             // The asset is in the library all the same; asset.use puts it somewhere else.
@@ -393,13 +609,12 @@ Reply finish(Session& session, const Library& library, const Record& record, con
             return reply;
         }
         out["path"] = asked.path;
-        if (json::Array problems =
-                check_style(session, library, record, asked.path, copied.value());
+        if (json::Array problems = check_style(session, libs, record, asked.path, copied.value());
             !problems.empty()) {
             out["problems"] = std::move(problems);
         }
     }
-    return Reply::success(std::move(out));
+    return libs.noted(Reply::success(std::move(out)));
 }
 
 std::string field_text(const json::Value& value, std::string_view key) {
@@ -503,10 +718,11 @@ std::string prompt_context(Session& session, std::span<const Record> records, co
 
 Reply run_generator(Session& session, const json::Value& params, Asked asked,
                     const Record* parent) {
-    auto library = open_library(session);
-    if (!library) {
-        return Reply::failure(library.error());
+    auto opened_libs = open_libraries(session);
+    if (!opened_libs) {
+        return Reply::failure(opened_libs.error());
     }
+    Libraries& libs = opened_libs.value();
     if (auto writes = check_writes(session); !writes) {
         return Reply::failure(writes.error());
     }
@@ -533,23 +749,47 @@ Reply run_generator(Session& session, const json::Value& params, Asked asked,
     }
 
     const std::string key = request_key(generator.type, generator.model, asked.keyed);
-    if (const std::optional<std::string> made = library.value().find_request(key); made) {
-        auto record = library.value().get(*made);
+    if (const std::optional<std::string> made = libs.local().find_request(key); made) {
+        auto record = libs.local().get(*made);
         if (record) {
-            return finish(session, library.value(), record.value(), asked, true);
+            return finish(session, libs, record.value(), asked, true);
         }
     }
-    auto records = library.value().all();
-    if (!records) {
-        return Reply::failure(records.error());
+    // A teammate may have made it already.
+    if (Team* team = libs.team(); team != nullptr) {
+        auto shared = team->find_request(key);
+        std::optional<Record> made;
+        if (!shared) {
+            libs.fail(shared.error());
+        } else {
+            made = std::move(shared).value();
+        }
+        if (made) {
+            auto pulled = pull(libs, *team, *made, key);
+            if (pulled) {
+                Reply reply = finish(session, libs, pulled.value(), asked, true);
+                if (reply.ok) {
+                    reply.value["team"] = true;
+                }
+                return reply;
+            }
+            libs.fail(pulled.error());
+        }
     }
+    const Query similar_query{.text = asked.request.prompt,
+                              .tags = {},
+                              .type = asked.request.type,
+                              .limit = kMaxCandidates};
+    auto local_records = libs.local().all();
+    if (!local_records) {
+        return Reply::failure(local_records.error());
+    }
+    const std::vector<Record> records =
+        with_team(libs, std::move(local_records).value(), similar_query);
     const json::Value* similar = params.find("similar");
     if (parent == nullptr && (similar == nullptr || similar->as_bool())) {
         json::Array candidates;
-        for (const Match& match : search(records.value(), {.text = asked.request.prompt,
-                                                           .tags = {},
-                                                           .type = asked.request.type,
-                                                           .limit = kMaxCandidates})) {
+        for (const Match& match : search(records, similar_query)) {
             // One agents rejected more than accepted is what they didn't want.
             if (match.score >= kSimilar && net_feedback(*match.record) >= 0) {
                 json::Value item = summary(*match.record);
@@ -560,13 +800,13 @@ Reply run_generator(Session& session, const json::Value& params, Asked asked,
         if (!candidates.empty()) {
             json::Value out;
             out["candidates"] = std::move(candidates);
-            return Reply::success(std::move(out));
+            return libs.noted(Reply::success(std::move(out)));
         }
     }
 
     std::string context;
     if (const json::Value* with = params.find("context"); with == nullptr || with->as_bool()) {
-        context = prompt_context(session, records.value(), asked, parent);
+        context = prompt_context(session, records, asked, parent);
     }
     if (!context.empty()) {
         asked.request.prompt += "\n\n" + context;
@@ -597,14 +837,15 @@ Reply run_generator(Session& session, const json::Value& params, Asked asked,
             "the generator \"" + generator.name +
                 "\" returned a file the library can't read: " + described.error().message);
     }
-    auto stored = library.value().put(data, std::move(record));
+    auto stored = libs.local().put(data, std::move(record));
     if (!stored) {
         return Reply::failure(stored.error());
     }
-    if (auto remembered = library.value().remember_request(key, stored.value().id); !remembered) {
+    if (auto remembered = libs.local().remember_request(key, stored.value().id); !remembered) {
         return Reply::failure(remembered.error());
     }
-    return finish(session, library.value(), stored.value(), asked, false);
+    share(libs, stored.value(), data, key);
+    return finish(session, libs, stored.value(), asked, false);
 }
 
 // The params generate and refine share: size or length, seed, description, tags and path.
@@ -671,15 +912,18 @@ Reply asset_generate(Session& session, const json::Value& params) {
 }
 
 Reply asset_refine(Session& session, const json::Value& params) {
-    auto library = open_library(session);
-    if (!library) {
-        return Reply::failure(library.error());
+    auto libs = open_libraries(session);
+    if (!libs) {
+        return Reply::failure(libs.error());
     }
-    auto parent = library.value().get(text(params, "id"));
+    auto parent = find_asset(session, libs.value(), text(params, "id"));
     if (!parent) {
         return failure_at(parent.error(), "/id");
     }
-    auto data = library.value().read(parent.value());
+    if (auto writes = check_writes(session); !writes) {
+        return Reply::failure(writes.error());
+    }
+    auto data = libs.value().local().read(parent.value());
     if (!data) {
         return Reply::failure(data.error());
     }
@@ -706,13 +950,27 @@ Reply asset_refine(Session& session, const json::Value& params) {
 }
 
 Reply asset_info(Session& session, const json::Value& params) {
-    auto library = open_library(session);
-    if (!library) {
-        return Reply::failure(library.error());
+    auto libs = open_libraries(session);
+    if (!libs) {
+        return Reply::failure(libs.error());
     }
-    auto record = library.value().get(text(params, "id"));
+    const Library& library = libs.value().local();
+    auto record = find_asset(session, libs.value(), text(params, "id"));
     if (!record) {
         return failure_at(record.error(), "/id");
+    }
+    // The team's copy has every teammate's feedback.
+    std::optional<bool> shared;
+    if (Team* team = libs.value().team(); team != nullptr) {
+        if (auto copy = team->get(record.value().id); !copy) {
+            libs.value().fail(copy.error());
+        } else {
+            const std::optional<Record>& team_copy = copy.value();
+            shared = team_copy.has_value();
+            if (team_copy) {
+                record.value().feedback = team_copy->feedback;
+            }
+        }
     }
     json::Value out = to_json(record.value());
     out["id"] = short_id(record.value().id);
@@ -728,12 +986,12 @@ Reply asset_info(Session& session, const json::Value& params) {
         std::string at = record.value().parent;
         while (!at.empty() && versions.size() < 100) {
             versions.insert(versions.begin(), json::Value(short_id(at)));
-            auto earlier = library.value().get(at);
+            auto earlier = library.get(at);
             at = earlier ? earlier.value().parent : std::string();
         }
         out["versions"] = std::move(versions);
     }
-    auto records = library.value().all();
+    auto records = library.all();
     if (!records) {
         return Reply::failure(records.error());
     }
@@ -746,37 +1004,40 @@ Reply asset_info(Session& session, const json::Value& params) {
     if (!children.empty()) {
         out["children"] = std::move(children);
     }
-    return Reply::success(std::move(out));
+    if (shared) {
+        out["shared"] = *shared;
+    }
+    return libs.value().noted(Reply::success(std::move(out)));
 }
 
 Reply asset_use(Session& session, const json::Value& params) {
-    auto library = open_library(session);
-    if (!library) {
-        return Reply::failure(library.error());
+    auto libs = open_libraries(session);
+    if (!libs) {
+        return Reply::failure(libs.error());
     }
-    auto record = library.value().get(text(params, "id"));
+    auto record = find_asset(session, libs.value(), text(params, "id"));
     if (!record) {
         return failure_at(record.error(), "/id");
     }
     const std::string path = text(params, "path");
-    auto copied = copy_into_project(session, library.value(), record.value(), path);
+    auto copied = copy_into_project(session, libs.value().local(), record.value(), path);
     if (!copied) {
         return failure_at(copied.error(), "/path");
     }
     json::Value out;
     out["path"] = path;
     if (json::Array problems =
-            check_style(session, library.value(), record.value(), path, copied.value());
+            check_style(session, libs.value(), record.value(), path, copied.value());
         !problems.empty()) {
         out["problems"] = std::move(problems);
     }
-    return Reply::success(std::move(out));
+    return libs.value().noted(Reply::success(std::move(out)));
 }
 
 Reply asset_add(Session& session, const json::Value& params) {
-    auto library = open_library(session);
-    if (!library) {
-        return Reply::failure(library.error());
+    auto libs = open_libraries(session);
+    if (!libs) {
+        return Reply::failure(libs.error());
     }
     if (auto writes = check_writes(session); !writes) {
         return Reply::failure(writes.error());
@@ -794,44 +1055,55 @@ Reply asset_add(Session& session, const json::Value& params) {
     record.tags = strings(params, "tags");
     record.license = text(params, "license");
     record.author = text(params, "author");
-    auto stored = library.value().put(data.value(), std::move(record));
+    auto stored = libs.value().local().put(data.value(), std::move(record));
     if (!stored) {
         return Reply::failure(stored.error());
     }
-    if (auto copied = copy_into_project(session, library.value(), stored.value(), path); !copied) {
+    if (auto copied = copy_into_project(session, libs.value().local(), stored.value(), path);
+        !copied) {
         return failure_at(copied.error(), "/path");
     }
+    share(libs.value(), stored.value(), data.value(), {});
     json::Value out = summary(stored.value());
     out.as_object().erase("description");
     out.as_object().erase("tags");
-    return Reply::success(std::move(out));
+    return libs.value().noted(Reply::success(std::move(out)));
 }
 
 Reply asset_feedback(Session& session, const json::Value& params) {
-    auto library = open_library(session);
-    if (!library) {
-        return Reply::failure(library.error());
+    auto libs = open_libraries(session);
+    if (!libs) {
+        return Reply::failure(libs.error());
     }
     if (auto writes = check_writes(session); !writes) {
         return Reply::failure(writes.error());
     }
-    auto record = library.value().get(text(params, "id"));
+    auto record = find_asset(session, libs.value(), text(params, "id"));
     if (!record) {
         return failure_at(record.error(), "/id");
     }
     std::string source = text(params, "source");
-    add_feedback(record.value(), {.verdict = text(params, "verdict"),
-                                  .reason = trimmed(text(params, "reason")),
-                                  .source = source.empty() ? "agent" : std::move(source)});
-    if (auto updated = library.value().update(record.value()); !updated) {
+    const Feedback feedback{.verdict = text(params, "verdict"),
+                            .reason = trimmed(text(params, "reason")),
+                            .source = source.empty() ? "agent" : std::move(source)};
+    add_feedback(record.value(), feedback);
+    if (auto updated = libs.value().local().update(record.value()); !updated) {
         return Reply::failure(updated.error());
+    }
+    // The counts the reply gives are the team's, where it has the asset.
+    if (Team* team = libs.value().team(); team != nullptr) {
+        if (auto shared = team->add_feedback(record.value().id, feedback, false); !shared) {
+            libs.value().fail(shared.error());
+        } else if (std::optional<Record> team_copy = std::move(shared).value(); team_copy) {
+            record.value() = std::move(*team_copy);
+        }
     }
     json::Value out = summary(record.value());
     for (const std::string_view key :
          {"description", "tags", "type", "width", "height", "seconds"}) {
         out.as_object().erase(std::string(key));
     }
-    return Reply::success(std::move(out));
+    return libs.value().noted(Reply::success(std::move(out)));
 }
 
 // The files the project took from the library, by project path: library.json's assets and their
@@ -1069,12 +1341,12 @@ Reply asset_check(Session& session, const json::Value& params) {
         }
     }
 
-    auto library = open_library(session);
+    auto libs = open_libraries(session);
     json::Array problems;
     for (const auto& [path, id] : assets.value()) {
         std::optional<Record> record;
-        if (library) {
-            if (auto got = library.value().get(id); got) {
+        if (libs) {
+            if (auto got = find_asset(session, libs.value(), id); got) {
                 record = std::move(got).value();
             }
         }
@@ -1085,13 +1357,13 @@ Reply asset_check(Session& session, const json::Value& params) {
                         problems.push_back(problem_value(id, path, {"", "", message}));
                     }
                     if (record) {
-                        record_check(session, library.value(), *record,
+                        record_check(session, libs.value(), *record,
                                      {.verdict = style->empty() ? "accepted" : "rejected",
                                       .reason = style->empty()
                                                     ? "fits the storyboard's palette and budget"
                                                     : style->front(),
                                       .source = std::string(kStyleCheck)});
-                        if (auto again = library.value().get(id); again) {
+                        if (auto again = libs.value().local().get(id); again) {
                             record = std::move(again).value();
                         }
                     }
@@ -1110,14 +1382,14 @@ Reply asset_check(Session& session, const json::Value& params) {
         }
         if (!checked->second.problems.empty()) {
             const Found& first = checked->second.problems.front();
-            record_check(session, library.value(), *record,
+            record_check(session, libs.value(), *record,
                          {.verdict = "rejected",
                           .reason = first.message + " (" + first.scene + ")",
                           .source = std::string(kFrameCheck)});
         } else if (!checked->second.clear.empty()) {
             const std::vector<std::string>& clear = checked->second.clear;
             record_check(
-                session, library.value(), *record,
+                session, libs.value(), *record,
                 {.verdict = "accepted",
                  .reason = clear.size() == 1
                                ? "shows clearly in " + clear.front()
@@ -1132,6 +1404,58 @@ Reply asset_check(Session& session, const json::Value& params) {
     out["checked"] = static_cast<std::int64_t>(assets.value().size());
     out["scenes"] = static_cast<std::int64_t>(assets.value().empty() ? 0 : scenes.size());
     out["problems"] = std::move(problems);
+    return libs ? libs.value().noted(Reply::success(std::move(out)))
+                : Reply::success(std::move(out));
+}
+
+Reply asset_sync(Session& session, const json::Value& params) {
+    auto libs = open_libraries(session);
+    if (!libs) {
+        return Reply::failure(libs.error());
+    }
+    if (auto writes = check_writes(session); !writes) {
+        return Reply::failure(writes.error());
+    }
+    Team* team = libs.value().team();
+    if (team == nullptr) {
+        return Reply::failure(command::code::kNotFound,
+                              libs.value().error().empty()
+                                  ? "no team library: name a shared folder or a library server's "
+                                    "URL in providers.json's \"library\": {\"team\": ...}, or in "
+                                    "SLASH_LIBRARY_TEAM"
+                                  : libs.value().error());
+    }
+    std::vector<std::string> ids;
+    if (const json::Value* all = params.find("all"); all != nullptr && all->as_bool()) {
+        auto records = libs.value().local().all();
+        if (!records) {
+            return Reply::failure(records.error());
+        }
+        for (const Record& record : records.value()) {
+            ids.push_back(record.id);
+        }
+    } else {
+        auto assets = project_assets(session);
+        if (!assets) {
+            return Reply::failure(assets.error());
+        }
+        for (const auto& [path, id] : assets.value()) {
+            if (std::ranges::find(ids, id) == ids.end()) {
+                ids.push_back(id);
+            }
+        }
+    }
+    auto shared = share_missing(libs.value(), *team, ids);
+    if (!shared) {
+        return Reply::failure(shared.error());
+    }
+    json::Value out;
+    out["team"] = team->where();
+    json::Array put;
+    for (const std::string& id : shared.value()) {
+        put.emplace_back(short_id(id));
+    }
+    out["shared"] = std::move(put);
     return Reply::success(std::move(out));
 }
 
@@ -1269,6 +1593,18 @@ void register_commands(command::Registry& registry) {
         .effect = command::Effect::Read,
         .params = params_schema({{"scenes", std::move(scenes)}, {"ticks", std::move(ticks)}}),
         .handler = asset_check,
+    });
+
+    registry.add({
+        .name = "asset.sync",
+        .description = "Puts the assets this project uses (library.json), and the versions they "
+                       "came from, in the team's library where it lacks them, so teammates find "
+                       "them. Generated, refined and added assets go there by themselves.",
+        .capabilities = {Capability::Read, Capability::Filesystem},
+        .effect = command::Effect::Read,
+        .params = params_schema({{"all", property("boolean", "Every asset in this machine's "
+                                                             "library instead.")}}),
+        .handler = asset_sync,
     });
 
     registry.add({

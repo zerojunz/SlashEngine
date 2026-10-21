@@ -521,7 +521,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Automatic feedback from the headless test command and frame summaries: `asset.check`
         (run by `test.run`) looks at every scene that draws a library file and records what it
         finds, with `frame.summary`'s `contrast` for what is hard to see
-  - [ ] Team sharing: the library syncs with a store the team hosts, such as a shared folder or
+  - [x] Team sharing: the library syncs with a store the team hosts, such as a shared folder or
         a library server that `slash-cli` runs, so a teammate's request finds assets someone
         else already made
   - [x] A test generator, so agents and CI can use the library headless with no model or key
@@ -736,7 +736,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Planned |
 | Profiling | Tracy, plus `perf.stats` over the command API | 5, 6 | Done: Tracy, and `perf.stats` reports frame pacing, tick and system times and memory by part of the engine |
-| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | In progress: the library, search, refining and a test generator done; hosted generators next, 3D in 7 |
+| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | In progress: the library, search, refining, hosted and test generators, feedback and team sharing done; ready-to-use forms next, 3D in 7 |
 | Global illumination | Baked lightmaps and probe-based GI | 7 | Planned |
 | Ray tracing | Acceleration structures and ray queries in the render device on Vulkan, Direct3D 12 and Metal: ray-traced shadows, reflections, AO and GI, with raster and probe fallbacks | 7 | Planned |
 | Path tracing | A GPU path tracer for baked lightmaps and progressive reference stills | 7 | Planned |

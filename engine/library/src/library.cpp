@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -246,6 +247,13 @@ int net_feedback(const Record& record) noexcept {
     return net;
 }
 
+bool repeats_last(const Record& record, const Feedback& feedback) {
+    const auto last = std::ranges::find(std::ranges::reverse_view(record.feedback), feedback.source,
+                                        &Feedback::source);
+    return last != std::ranges::reverse_view(record.feedback).end() &&
+           last->verdict == feedback.verdict && last->reason == feedback.reason;
+}
+
 std::string_view type_of(std::string_view extension) {
     const std::string lower = lowercase(extension);
     if (lower == ".png" || lower == ".bmp") {
@@ -438,6 +446,29 @@ Result<void> Library::remember_request(std::string_view key, std::string_view id
     return write_whole(dir_ + "/" + std::string(kRequests) + "/" + std::string(key.substr(0, 2)) +
                            "/" + std::string(key),
                        id);
+}
+
+std::vector<std::string> Library::requests_for(std::string_view id) const {
+    std::vector<std::string> keys;
+    const std::string folder = dir_ + "/" + std::string(kRequests);
+    if (!platform::exists(folder)) {
+        return keys;
+    }
+    auto files = platform::list_files(folder);
+    if (!files) {
+        return keys;
+    }
+    for (const std::string& file : files.value()) {
+        std::string path = folder;
+        path += '/';
+        path += file;
+        auto text = platform::read_file(path);
+        if (text && text.value() == id) {
+            keys.push_back(file.substr(file.find_last_of('/') + 1));
+        }
+    }
+    std::ranges::sort(keys);
+    return keys;
 }
 
 std::string request_key(std::string_view generator, std::string_view model,

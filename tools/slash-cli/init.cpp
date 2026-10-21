@@ -149,7 +149,9 @@ carry the storyboard's tone and palette, and images put in the project are check
 After using an asset, `asset_feedback` records whether it worked and why: rejected assets stop
 coming back as candidates, and the reasons go into later prompts. `asset_check` (and every
 whole-project `test_run`) records what the game's scenes show of them: too dark or light to
-see, or drawn far smaller than their size.
+see, or drawn far smaller than their size. When `providers.json`'s `library` names the team's
+library, the same calls find, reuse and judge teammates' assets too; `asset_sync` shares ones
+made before.
 
 ## Run and export
 
