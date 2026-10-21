@@ -83,6 +83,10 @@ bool prepare_cross(const std::string& platform, const std::string& arch, const f
         const auto toolchain = std::ranges::find(available, name, &Toolchain::name);
         if (toolchain == available.end()) {
             failure = {"options", no_toolchain(platform, name), {}};
+            if (platform == "web") {
+                failure.message += "; install emsdk and activate it (source emsdk_env.sh) so "
+                                   "EMSDK is set";
+            }
             return false;
         }
         if (!installed_toolchain(*toolchain, dir)) {
@@ -97,6 +101,25 @@ bool prepare_cross(const std::string& platform, const std::string& arch, const f
         cross.build_name += (cross.build_name.empty() ? "" : "-") + toolchain->version;
     }
 
+    std::error_code error;
+    if (platform == "web") {
+        // Emscripten's own CMake toolchain file, and a config naming its tools.
+        const WebTools tools = web_tools(folders);
+        cross.toolchain_file = tools.toolchain_file;
+        cross.build_name = "emscripten-" + cross.build_name;
+        cross.node = tools.node;
+        cross.python = tools.python;
+        const fs::path config = fs::absolute(work / "emscripten.config", error);
+        if (auto written = platform::write_file(config.string(), tools.config); !written) {
+            failure = {"toolchain", written.error().message, {}};
+            return false;
+        }
+        cross.environment = {{"EM_CONFIG", config.string()}};
+        if (!tools.python.empty()) {
+            cross.environment.emplace_back("EMSDK_PYTHON", tools.python.string());
+        }
+        return true;
+    }
     std::string text;
     if (platform == "windows") {
         text = windows_toolchain(folders.at(0));
@@ -119,7 +142,6 @@ bool prepare_cross(const std::string& platform, const std::string& arch, const f
             {"PKG_CONFIG_PATH", ""},
         };
     }
-    std::error_code error;
     cross.toolchain_file = fs::absolute(work / (cross.build_name + ".cmake"), error);
     if (auto written = platform::write_file(cross.toolchain_file.string(), text); !written) {
         failure = {"toolchain", written.error().message, {}};

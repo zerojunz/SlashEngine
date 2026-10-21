@@ -224,9 +224,9 @@ Usage:
                                      install
   slash-cli toolchain install [name] Download the toolchains exports use to build other
                                      platforms (default: all); also takes a platform name
-                                     (windows, linux), linux-arm64 or assetripper (imports
-                                     Unity builds); folder: SLASH_TOOLCHAINS_DIR, else
-                                     ~/.slash/toolchains
+                                     (windows, linux, web), linux-arm64 or assetripper
+                                     (imports Unity builds); folder: SLASH_TOOLCHAINS_DIR,
+                                     else ~/.slash/toolchains
   slash-cli library serve            Serve a folder's asset library to the team over HTTP
                                      until stopped; teammates put its URL in providers.json's
                                      "library": {"team": ...} and its token in

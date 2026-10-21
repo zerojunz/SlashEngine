@@ -26,8 +26,26 @@ struct Toolchain {
     std::string folder; // the archive's top-level folder, or "" if its files sit at the root
 };
 
-// The toolchains this host can install. Empty on Windows, whose exports use MSVC.
+// The toolchains this host can install: Emscripten's for web exports, and on macOS and Linux
+// the cross toolchains for Windows and Linux exports (Windows builds its own with MSVC).
 [[nodiscard]] std::vector<Toolchain> host_toolchains();
+
+// Web exports build with Emscripten from an activated emsdk (EMSDK) or, without one, from these:
+// emsdk's release build of Emscripten (with its Clang and Binaryen), the Node.js it runs on and
+// web exports are tested with, and on macOS and Windows the Python that runs its tools (Linux
+// has python3).
+inline constexpr std::string_view kEmscripten = "emscripten";
+inline constexpr std::string_view kNode = "node";
+inline constexpr std::string_view kPython = "python";
+
+struct WebTools {
+    std::filesystem::path toolchain_file; // Emscripten.cmake, for CMAKE_TOOLCHAIN_FILE
+    std::filesystem::path node;
+    std::filesystem::path python; // empty where python3 on PATH runs Emscripten's tools
+    std::string config;           // an Emscripten config file naming them, for EM_CONFIG
+};
+// The tools in the folders that toolchains_for("web") names were installed into, in its order.
+[[nodiscard]] WebTools web_tools(const std::vector<std::filesystem::path>& folders);
 
 // AssetRipper, which turns a Unity build back into a Unity project for the Unity importer, for
 // this host, or nullopt where it has no build. It is GPL 3.0, so it only ever runs as a separate
@@ -38,7 +56,8 @@ inline constexpr std::string_view kAssetRipper = "assetripper";
 [[nodiscard]] std::string_view assetripper_program();
 
 // The names of the toolchains an export for platform needs on this host, or none when the
-// host's own compilers build it. arch matters only for Linux.
+// host's own compilers build it. arch matters only for Linux. Web exports need these only when no
+// emsdk is activated.
 [[nodiscard]] std::vector<std::string> toolchains_for(std::string_view platform,
                                                       std::string_view arch = kLinuxX86_64);
 
