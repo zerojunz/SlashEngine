@@ -13,6 +13,7 @@
 #include <memory>
 #include <numbers>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -411,6 +412,107 @@ CanvasRenderer::particle_job(GpuSystem& system, const ParticleSteps& kept,
     return job;
 }
 
+Result<void> CanvasRenderer::chain_jobs(std::span<const ParticleChainMember> chain,
+                                        std::span<const render::ParticleProcess* const> processes,
+                                        std::vector<ParticleJob>& jobs) {
+    const ParticleSteps& root = chain.front().steps;
+    const std::uint64_t end = root.first + root.steps.size();
+    std::vector<GpuSystem*> systems;
+    for (const ParticleChainMember& member : chain) {
+        systems.push_back(&gpu_systems_[member.entity]);
+    }
+    const std::uint64_t next = systems.front()->next;
+    const bool remake = std::ranges::any_of(chain, [&](const ParticleChainMember& member) {
+        const GpuSystem& system = gpu_systems_[member.entity];
+        return system.id == render::ParticlesId::None || system.serial != member.steps.serial ||
+               system.amount != member.steps.amount || system.next < root.first ||
+               system.next != next;
+    });
+    if (remake) {
+        for (std::size_t k = 0; k < chain.size(); ++k) {
+            GpuSystem& system = *systems[k];
+            if (system.id != render::ParticlesId::None) {
+                device_->destroy_particles(system.id);
+                system.id = render::ParticlesId::None;
+            }
+            auto made = device_->create_particles(chain[k].steps.amount);
+            if (!made) {
+                return made.error();
+            }
+            system.id = made.value();
+            system.serial = chain[k].steps.serial;
+            system.amount = chain[k].steps.amount;
+        }
+    }
+    if (remake || next < end) {
+        for (std::size_t k = 0; k < chain.size(); ++k) {
+            const ParticleSteps& kept = chain[k].steps;
+            ParticleJob job{.particles = systems[k]->id,
+                            .process = processes[k],
+                            .first = std::nullopt,
+                            .rest = {},
+                            .shapes = kept.shapes,
+                            .links = k == 0 ? chain.size() : 1};
+            if (remake) {
+                job.first = kept.steps.front();
+                job.first->clear = true;
+                job.rest = kept.steps.subspan(1);
+            } else {
+                job.rest = kept.steps.subspan(static_cast<std::size_t>(next - kept.first));
+            }
+            jobs.push_back(job);
+        }
+    }
+    for (GpuSystem* system : systems) {
+        system->next = end;
+    }
+    return {};
+}
+
+void CanvasRenderer::mirror_chain(std::span<const ParticleChainMember> chain,
+                                  std::span<const render::ParticleProcess* const> processes) {
+    const ParticleSteps& root = chain.front().steps;
+    const std::uint64_t end = root.first + root.steps.size();
+    std::vector<GpuSystem*> systems;
+    for (const ParticleChainMember& member : chain) {
+        systems.push_back(&gpu_systems_[member.entity]);
+    }
+    const std::uint64_t next = systems.front()->cpu_next;
+    const bool stale = std::ranges::any_of(chain, [&](const ParticleChainMember& member) {
+        const GpuSystem& system = gpu_systems_[member.entity];
+        return system.cpu.size() != member.steps.amount ||
+               system.cpu_serial != member.steps.serial || system.cpu_next < root.first ||
+               system.cpu_next != next;
+    });
+    if (stale) {
+        std::vector<ChainRun> runs;
+        for (std::size_t k = 0; k < chain.size(); ++k) {
+            runs.push_back({.amount = chain[k].steps.amount,
+                            .process = processes[k],
+                            .steps = chain[k].steps.steps,
+                            .shapes = chain[k].steps.shapes});
+        }
+        std::vector<std::vector<render::Particle>> all = run_chain(runs);
+        for (std::size_t k = 0; k < chain.size(); ++k) {
+            systems[k]->cpu = std::move(all[k]);
+        }
+    } else if (next < end) {
+        std::vector<render::ParticleChainLink> links;
+        for (std::size_t k = 0; k < chain.size(); ++k) {
+            const ParticleSteps& kept = chain[k].steps;
+            links.push_back({.particles = systems[k]->cpu,
+                             .process = processes[k],
+                             .steps = kept.steps.subspan(static_cast<std::size_t>(next - kept.first)),
+                             .shapes = kept.shapes});
+        }
+        render::process_particle_chain(links);
+    }
+    for (std::size_t k = 0; k < chain.size(); ++k) {
+        systems[k]->cpu_serial = chain[k].steps.serial;
+        systems[k]->cpu_next = end;
+    }
+}
+
 std::size_t CanvasRenderer::mirror(GpuSystem& system, const ParticleSteps& kept,
                                    const render::ParticleProcess& process) {
     const std::uint64_t end = kept.first + kept.steps.size();
@@ -430,14 +532,27 @@ std::size_t CanvasRenderer::mirror(GpuSystem& system, const ParticleSteps& kept,
 }
 
 Result<void> CanvasRenderer::run_particle_jobs(std::span<const ParticleJob> jobs) {
-    for (const ParticleJob& job : jobs) {
+    for (std::size_t i = 0, links = 1; i < jobs.size(); i += links) {
+        links = std::clamp<std::size_t>(jobs[i].links, 1,
+                                        std::min(jobs.size() - i, render::kMaxParticleChain));
+        std::array<render::ParticleRun, render::kMaxParticleChain> runs;
+        const auto run = [&](bool first) {
+            for (std::size_t k = 0; k < links; ++k) {
+                const ParticleJob& job = jobs[i + k];
+                runs.at(k) = {.particles = job.particles,
+                              .process = job.process,
+                              .steps = first ? std::span<const render::ParticleStep>{&*job.first, 1}
+                                             : job.rest,
+                              .shapes = job.shapes};
+            }
+            return device_->process_particle_chain({runs.data(), links});
+        };
         Result<void> ran;
-        if (job.first) {
-            ran = device_->process_particles(job.particles, *job.process, {&*job.first, 1},
-                                             job.shapes);
+        if (jobs[i].first) {
+            ran = run(true);
         }
-        if (ran && !job.rest.empty()) {
-            ran = device_->process_particles(job.particles, *job.process, job.rest, job.shapes);
+        if (ran && !jobs[i].rest.empty()) {
+            ran = run(false);
         }
         if (!ran) {
             for (auto& [entity, system] : gpu_systems_) {
@@ -1180,6 +1295,65 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     }
     static const render::ParticleProcess kStill{};
     const double tick_seconds = settings(world).tick_seconds;
+    constexpr std::string_view kParticlesEvent = "particles can't draw";
+    const auto shown = [&](entt::entity entity) {
+        return ecs.get<world::GPUParticles2D>(entity).visible &&
+               inherited(world, tree, entity).visible && canvas_list[canvases.of(entity)].visible;
+    };
+    std::set<entt::entity> unprocessed; // emitters whose process material didn't load
+    const auto process_of = [&](entt::entity entity) -> const render::ParticleProcess* {
+        const auto& emitter = ecs.get<world::GPUParticles2D>(entity);
+        if (emitter.process_material.empty()) {
+            return &kStill;
+        }
+        auto loaded = this->process_material(emitter.process_material);
+        if (!loaded) {
+            if (unprocessed.insert(entity).second) {
+                warn_once(emitter.process_material, loaded.error().message, "process_material",
+                          kParticlesEvent);
+                problem(entity, "/components/GPUParticles2D/process_material",
+                        loaded.error().message);
+            }
+            return nullptr;
+        }
+        return loaded.value();
+    };
+    // A chain of sub-emitters runs from its root, all of it while any of it shows, before any
+    // of it draws.
+    std::set<entt::entity> chained;
+    for (const auto [entity, emitter] : ecs.view<const world::GPUParticles2D>().each()) {
+        const std::optional<ParticleSteps> kept = particle_steps(world, entity);
+        if (!kept || kept->links < 2 || kept->link != 0) {
+            continue;
+        }
+        const std::vector<ParticleChainMember> chain = particle_chain(world, entity);
+        for (const ParticleChainMember& member : chain) {
+            chained.insert(member.entity);
+            gpu_systems_[member.entity].seen = true;
+        }
+        if (chain.empty() || kept->steps.empty() ||
+            std::ranges::none_of(chain, [&](const ParticleChainMember& member) {
+                return shown(member.entity);
+            })) {
+            continue;
+        }
+        std::vector<const render::ParticleProcess*> processes;
+        processes.reserve(chain.size());
+        for (const ParticleChainMember& member : chain) {
+            processes.push_back(process_of(member.entity));
+        }
+        if (std::ranges::find(processes, nullptr) != processes.end()) {
+            continue;
+        }
+        if (auto made = chain_jobs(chain, processes, particle_jobs); !made) {
+            warn_once(name_of(entity), made.error().message, "id", kParticlesEvent);
+            problem(entity, "/components/GPUParticles2D/amount", made.error().message);
+            continue;
+        }
+        if (contents != nullptr) {
+            mirror_chain(chain, processes);
+        }
+    }
     for (const auto [entity, emitter] : ecs.view<const world::GPUParticles2D>().each()) {
         const std::optional<ParticleSteps> kept = particle_steps(world, entity);
         if (!kept) {
@@ -1195,18 +1369,9 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             continue;
         }
         const int z = z_index(emitter.z_index, emitter.z_as_relative, from_parents);
-        constexpr std::string_view kEvent = "particles can't draw";
-        const render::ParticleProcess* process = &kStill;
-        if (!emitter.process_material.empty()) {
-            auto loaded = this->process_material(emitter.process_material);
-            if (!loaded) {
-                warn_once(emitter.process_material, loaded.error().message, "process_material",
-                          kEvent);
-                problem(entity, "/components/GPUParticles2D/process_material",
-                        loaded.error().message);
-                continue;
-            }
-            process = loaded.value();
+        const render::ParticleProcess* process = process_of(entity);
+        if (process == nullptr) {
+            continue;
         }
         const render::Filter filter =
             resolve_filter(emitter.texture_filter, options.texture_filter);
@@ -1220,7 +1385,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         if (!emitter.texture.empty()) {
             auto texture = this->texture(emitter.texture, filter);
             if (!texture) {
-                warn_once(emitter.texture, texture.error().message, "texture", kEvent);
+                warn_once(emitter.texture, texture.error().message, "texture", kParticlesEvent);
                 problem(entity, "/components/GPUParticles2D/texture", texture.error().message);
                 continue;
             }
@@ -1239,21 +1404,27 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             sprite.material_params = emitter.material_params;
             auto made = this->material(sprite, filter, options.time, &light_mode);
             if (!made) {
-                warn_once(emitter.material, made.error().message, "material", kEvent);
+                warn_once(emitter.material, made.error().message, "material", kParticlesEvent);
                 problem(entity, "/components/GPUParticles2D/material", made.error().message);
                 continue;
             }
             material = std::move(made).value();
         }
         material.shading = shading_for(light_mode, emitter.light_mask, z, canvas);
-        auto job = particle_job(cached, *kept, process);
-        if (!job) {
-            warn_once(name_of(entity), job.error().message, "id", kEvent);
-            problem(entity, "/components/GPUParticles2D/amount", job.error().message);
-            continue;
+        const bool in_chain = chained.contains(entity);
+        if (!in_chain) {
+            auto job = particle_job(cached, *kept, process);
+            if (!job) {
+                warn_once(name_of(entity), job.error().message, "id", kParticlesEvent);
+                problem(entity, "/components/GPUParticles2D/amount", job.error().message);
+                continue;
+            }
+            if (job.value()) {
+                particle_jobs.push_back(*job.value());
+            }
         }
-        if (job.value()) {
-            particle_jobs.push_back(*job.value());
+        if (cached.id == render::ParticlesId::None) {
+            continue;
         }
         look.order = particle_order(emitter.draw_order);
         if (look.order != render::ParticleOrder::Index) {
@@ -1275,7 +1446,12 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
             placed = world::affine(transform_of(entity, world::Transform2D{}));
         }
         // FrameContents gets the particles run on the CPU, as the device runs them.
-        const std::size_t live = contents != nullptr ? mirror(cached, *kept, *process) : 0;
+        std::size_t live = 0;
+        if (contents != nullptr) {
+            live = in_chain ? static_cast<std::size_t>(std::ranges::count_if(
+                                  cached.cpu, [](const render::Particle& p) { return p.active(); }))
+                            : mirror(cached, *kept, *process);
+        }
         // Again at each repeat of the Parallax2D it is under.
         const entt::entity source = repeat_source(entity);
         const std::vector<Vec2> unmoved{Vec2{}};

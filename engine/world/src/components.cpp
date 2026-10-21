@@ -1125,6 +1125,10 @@ void register_particle_components(ComponentRegistry& registry) {
                              .min = 1,
                              .max = 1000000})
         .describe("amount_ratio", {.doc = "The share of amount it emits.", .min = 0, .max = 1})
+        .describe("sub_emitter",
+                  {.doc = "ID of another GPUParticles2D its particles start particles in, as "
+                          "its process material's sub_emitter_mode says; that one then emits "
+                          "only those, stepping with this one. null for none."})
         .describe("process_material",
                   {.doc = "Project path of a .process_material.json file: how particles start "
                           "and move. \"\" emits still white pixels."})

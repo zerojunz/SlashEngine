@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
+#include <vector>
 
 // Godot's particles shader (servers/rendering/renderer_rd/shaders/particles.glsl) and the code
 // ParticleProcessMaterial::_update_shader generates for 2D, step for step, on the CPU. The GPU
@@ -68,6 +70,11 @@ float sign(float v) {
 
 Vec4 times(Vec4 a, Vec4 b) {
     return {a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w};
+}
+
+// GLSL's mod: x - y * floor(x / y).
+float mod(float x, float y) {
+    return x - (y * std::floor(x / y));
 }
 
 // A 2D affine transform as ParticleStep::emission holds one, applied to a point or a vector.
@@ -403,9 +410,71 @@ Vec2 initial_position(const ParticleProcess& p, const Display& display, std::uin
             (pos.y * p.emission_shape_scale.y) + p.emission_shape_offset.y};
 }
 
-// The generated start(): a particle's place, velocity, color and life at its restart.
+// What a particle starts in the next system of a chain in a step, as Godot's ParticleEmission:
+// count particles where it is, turned and scaled as it is, and moving as it moves when kept.
+struct Emitted {
+    std::uint32_t count = 0;
+    bool keep_velocity = false;
+    Vec2 origin;
+    Vec2 velocity;
+    Vec4 basis;
+};
+
+// What a sub-emitter takes in a step from the particles the link before started: count of them,
+// the first of each particle's at its offset, numbered on from base, where its emission cycle's
+// count stood. An even cycle takes its slots from the first and an odd one from the last.
+struct Intake {
+    std::span<const Emitted> emitted;
+    std::span<const std::uint32_t> offsets;
+    std::uint32_t count = 0;
+    std::uint32_t base = 0;
+    bool odd = false;
+
+    // The emission a slot of a system of total takes, if any: the one numbered as the slot is
+    // in the cycle's order, which is new particles' turn. A slot whose particle still lives
+    // takes it all the same, so a particle depends only on the steps since it started.
+    [[nodiscard]] const Emitted* take(std::uint32_t index, std::uint32_t total) const {
+        const std::uint32_t turn = odd ? total - 1U - index : index;
+        const std::uint32_t rank = (turn + total - base) % total;
+        if (rank >= count) {
+            return nullptr;
+        }
+        // The last particle whose first emission is at or before it.
+        const auto found = std::upper_bound(offsets.begin(), offsets.end(), rank);
+        return &emitted[static_cast<std::size_t>(found - offsets.begin()) - 1];
+    }
+};
+
+// The particles a sub-emitter takes in a step, as particles_emit.hlsl works them out: each
+// particle's first emission's place, adding at most the system's size each and stopping there,
+// and the count its first particle keeps of those its emission cycle took, which starts over
+// with each cycle.
+Intake take_emissions(std::span<const Emitted> emitted, std::vector<std::uint32_t>& offsets,
+                      std::span<Particle> particles, const ParticleStep& step) {
+    const auto size = static_cast<std::uint32_t>(particles.size());
+    offsets.resize(emitted.size());
+    std::uint32_t sum = 0;
+    for (std::size_t i = 0; i < emitted.size(); ++i) {
+        offsets[i] = sum;
+        sum = std::min(sum + std::min(emitted[i].count, size), size);
+    }
+    Particle& first = particles.front();
+    const std::uint32_t tag = step.cycle + 1U;
+    const std::uint32_t base = step.clear || first.spare[1] != tag ? 0U : first.spare[0];
+    first.spare[0] = (base + sum) % size;
+    first.spare[1] = tag;
+    return {.emitted = emitted,
+            .offsets = offsets,
+            .count = sum,
+            .base = base,
+            .odd = (step.cycle % 2U) != 0U};
+}
+
+// The generated start(): a particle's place, velocity, color and life at its restart; for a
+// sub-emitter's, where the particle that started it is, as Godot's does without RESTART_POSITION
+// and RESTART_ROT_SCALE, and moving as it moves without RESTART_VELOCITY.
 void start(Particle& particle, const ParticleProcess& p, const ParticleStep& step,
-           std::uint32_t number, bool& active) {
+           std::uint32_t number, const Emitted* from, bool& active) {
     std::uint32_t seed = hash(number + 1U + step.seed);
     Display display;
     Dynamics dynamics;
@@ -418,22 +487,34 @@ void start(Particle& particle, const ParticleProcess& p, const ParticleStep& ste
     particle.custom = {dynamics.angle, 0.0F, 0.0F, display.lifetime};
     particle.userdata.w = 0.0F;
     particle.color = display.color;
-    particle.origin = initial_position(p, display, seed);
-    if (p.turbulence_enabled) {
-        const float displacement = random_param(p, ParticleParam::TurbulenceDisplacement, seed);
-        const Vec3 direction = noise_direction(p, step, particle.origin);
-        particle.origin = particle.origin + (Vec2{direction.x, direction.y} * displacement);
+    if (from != nullptr) {
+        particle.origin = from->origin;
+        particle.basis = from->basis;
+    } else {
+        particle.origin = initial_position(p, display, seed);
+        if (p.turbulence_enabled) {
+            const float displacement =
+                random_param(p, ParticleParam::TurbulenceDisplacement, seed);
+            const Vec3 direction = noise_direction(p, step, particle.origin);
+            particle.origin = particle.origin + (Vec2{direction.x, direction.y} * displacement);
+        }
+        // TRANSFORM = EMISSION_TRANSFORM * TRANSFORM, from an identity basis.
+        particle.basis = {step.emission[0], step.emission[1], step.emission[2], step.emission[3]};
+        particle.origin = transform_point(step.emission, particle.origin);
     }
-    // TRANSFORM = EMISSION_TRANSFORM * TRANSFORM, from an identity basis.
-    particle.basis = {step.emission[0], step.emission[1], step.emission[2], step.emission[3]};
-    particle.origin = transform_point(step.emission, particle.origin);
-    Vec2 velocity = random_direction(p, seed, p.spread) * dynamics.initial_velocity;
-    if (p.emission_shape == EmissionShape::DirectedPoints && from_points(p)) {
-        const std::size_t point = emission_point(p, display);
-        // As Godot's black default texture, a point with no normal doesn't move.
-        const Vec2 normal = point < p.emission_normals.size() ? p.emission_normals[point] : Vec2{};
-        velocity = {(velocity.x * normal.x) + (velocity.y * normal.y),
-                    (velocity.x * normal.y) - (velocity.y * normal.x)};
+    Vec2 velocity;
+    if (from != nullptr && from->keep_velocity) {
+        velocity = from->velocity;
+    } else {
+        velocity = random_direction(p, seed, p.spread) * dynamics.initial_velocity;
+        if (p.emission_shape == EmissionShape::DirectedPoints && from_points(p)) {
+            const std::size_t point = emission_point(p, display);
+            // As Godot's black default texture, a point with no normal doesn't move.
+            const Vec2 normal =
+                point < p.emission_normals.size() ? p.emission_normals[point] : Vec2{};
+            velocity = {(velocity.x * normal.x) + (velocity.y * normal.y),
+                        (velocity.x * normal.y) - (velocity.y * normal.x)};
+        }
     }
     velocity = transform_vector(step.emission, velocity);
     velocity = velocity + (step.emitter_velocity * p.inherit_velocity_ratio);
@@ -485,16 +566,53 @@ Vec2 radial_displacement(const ParticleProcess& p, const Dynamics& dynamics, flo
     return out;
 }
 
-// The generated process(): one step of a live particle's life, after it touched a shape or not.
+// The seconds between a Constant sub-emitter's emissions, as Godot passes its shader.
+float sub_emitter_interval(const ParticleProcess& p) {
+    return static_cast<float>(1.0 / static_cast<double>(p.sub_emitter_frequency));
+}
+
+// How many particles a particle starts in the next system of a chain in a step, as the code
+// Godot generates for each sub_emitter_mode, with its age (CUSTOM.y) before the step and after.
+std::uint32_t emission_count(const ParticleProcess& p, const ParticleStep& step, float delta,
+                             float before, const Particle& particle, bool collided) {
+    switch (p.sub_emitter_mode) {
+    case SubEmitterMode::Disabled:
+        break;
+    case SubEmitterMode::Constant: {
+        // Godot's CUSTOM.y * LIFETIME - DELTA, its age before the step in seconds, taken from
+        // the age kept when nothing ends the step early: the same in exact arithmetic, and
+        // exactly 0 in a particle's first step, where Godot's rounds either way.
+        const float interval = sub_emitter_interval(p);
+        const float from = step.interp_to_end == 0.0F ? before * step.lifetime
+                                                      : (particle.custom.y * step.lifetime) - delta;
+        const float rem = interval - mod(from, interval);
+        return delta >= rem ? 1U : 0U;
+    }
+    case SubEmitterMode::AtEnd:
+        return (particle.custom.y / particle.custom.w * step.lifetime) > step.lifetime - delta
+                   ? p.sub_emitter_amount_at_end
+                   : 0U;
+    case SubEmitterMode::AtCollision:
+        return collided ? p.sub_emitter_amount_at_collision : 0U;
+    case SubEmitterMode::AtStart:
+        return before == 0.0F ? p.sub_emitter_amount_at_start : 0U;
+    }
+    return 0U;
+}
+
+// The generated process(): one step of a live particle's life, after it touched a shape or not,
+// noting in out what it starts in the next system of a chain.
 void process(Particle& particle, const ParticleProcess& p, const ParticleStep& step,
-             std::uint32_t number, float delta, const ParticleContact& contact, bool& active) {
+             std::uint32_t number, float delta, const ParticleContact& contact, Emitted* out,
+             bool& active) {
     std::uint32_t seed = hash(number + 1U + step.seed);
     Display display;
     Dynamics dynamics;
     Physical physical;
     initial_params(p, seed, display, dynamics, physical);
 
-    const bool first_frame = particle.custom.y == 0.0F;
+    const float before = particle.custom.y;
+    const bool first_frame = before == 0.0F;
     particle.custom.y += delta / step.lifetime;
     particle.custom.y = mix(particle.custom.y, 1.0F, step.interp_to_end);
     const float life = particle.custom.y / display.lifetime;
@@ -608,6 +726,14 @@ void process(Particle& particle, const ParticleProcess& p, const ParticleStep& s
     }
     particle.basis = {x_axis.x * scale, x_axis.y * scale, y_axis.x * scale, y_axis.y * scale};
     particle.custom.z = display.animation_offset + (life * display.animation_speed);
+    if (out != nullptr) {
+        // emit_subparticle(TRANSFORM, VELOCITY, ...) with Godot's emission flags.
+        out->count = emission_count(p, step, delta, before, particle, collided);
+        out->keep_velocity = p.sub_emitter_keep_velocity;
+        out->origin = particle.origin;
+        out->velocity = velocity;
+        out->basis = particle.basis;
+    }
     if (particle.custom.y > particle.custom.w) {
         active = false;
     }
@@ -646,16 +772,33 @@ ParticleContact shape_contact(Vec2 origin, float size, const ParticleStep& step,
     return contact;
 }
 
+// One step of a particle: a sub-emitter's takes what intake gives its slot, others restart in
+// their turn while emitting; out notes what it starts in the next system of a chain.
 void step_particle(Particle& particle, std::uint32_t index, std::uint32_t total,
                    const ParticleProcess& p, const ParticleStep& step,
-                   std::span<const ParticleShape> shapes) {
+                   std::span<const ParticleShape> shapes, const Intake* intake, Emitted* out) {
     if (step.clear) {
+        // The count a sub-emitter keeps in its spare words stays: it was set for this step.
+        const std::array<std::uint32_t, 3> spare = particle.spare;
         particle = Particle{};
+        particle.spare = spare;
+    }
+    if (out != nullptr) {
+        out->count = 0;
     }
     particle.flags &= ~kParticleStarted;
     float delta = step.delta;
     bool restart = false;
-    if (step.emitting) {
+    const Emitted* from = nullptr;
+    if (intake != nullptr) {
+        // Godot's sub_emitter_mode, which takes the place of emitting; no fractional delta.
+        from = intake->take(index, total);
+        if (from != nullptr) {
+            restart = true;
+            particle.flags =
+                kParticleActive | kParticleStarted | (step.cycle << kParticleCycleShift);
+        }
+    } else if (step.emitting) {
         float restart_phase = static_cast<float>(index) / static_cast<float>(total);
         if (step.randomness > 0.0F) {
             std::uint32_t seed = step.cycle;
@@ -697,7 +840,7 @@ void step_particle(Particle& particle, std::uint32_t index, std::uint32_t total,
     bool active = particle.active();
     const std::uint32_t number = ((particle.flags >> kParticleCycleShift) * total) + index;
     if (restart && active) {
-        start(particle, p, step, number, active);
+        start(particle, p, step, number, from, active);
     }
     // Where it is against the step's shapes before it moves, as Godot's particles storage works
     // out against its signed distance field.
@@ -708,7 +851,7 @@ void step_particle(Particle& particle, std::uint32_t index, std::uint32_t total,
                                 shapes.subspan(step.shape_first, step.shape_count));
     }
     if (active) {
-        process(particle, p, step, number, delta, contact, active);
+        process(particle, p, step, number, delta, contact, out, active);
     }
     particle.flags &= ~kParticleActive;
     if (active) {
@@ -718,11 +861,6 @@ void step_particle(Particle& particle, std::uint32_t index, std::uint32_t total,
 
 std::uint8_t to_byte(float channel) {
     return static_cast<std::uint8_t>(std::floor((std::clamp(channel, 0.0F, 1.0F) * 255.0F) + 0.5F));
-}
-
-// GLSL's mod: x - y * floor(x / y).
-float mod(float x, float y) {
-    return x - (y * std::floor(x / y));
 }
 
 } // namespace
@@ -774,10 +912,42 @@ Vec4 sample_gradient(const ParticleGradient& gradient, float offset) {
 
 void process_particles(std::span<Particle> particles, const ParticleProcess& process,
                        std::span<const ParticleStep> steps, std::span<const ParticleShape> shapes) {
-    const auto total = static_cast<std::uint32_t>(particles.size());
-    for (const ParticleStep& step : steps) {
-        for (std::uint32_t index = 0; index < total; ++index) {
-            step_particle(particles[index], index, total, process, step, shapes);
+    const ParticleChainLink link{
+        .particles = particles, .process = &process, .steps = steps, .shapes = shapes};
+    process_particle_chain({&link, 1});
+}
+
+void process_particle_chain(std::span<const ParticleChainLink> links) {
+    if (links.empty()) {
+        return;
+    }
+    std::size_t steps = links.front().steps.size();
+    for (const ParticleChainLink& link : links) {
+        steps = std::min(steps, link.steps.size());
+    }
+    // What each link's particles start in the next, one record a particle, as the GPU keeps it
+    // in the link's emission buffer.
+    std::vector<std::vector<Emitted>> emitted(links.size() - 1);
+    for (std::size_t k = 0; k + 1 < links.size(); ++k) {
+        emitted[k].resize(links[k].particles.size());
+    }
+    const ParticleProcess still;
+    std::vector<std::uint32_t> offsets;
+    for (std::size_t i = 0; i < steps; ++i) {
+        for (std::size_t k = 0; k < links.size(); ++k) {
+            const ParticleChainLink& link = links[k];
+            const ParticleStep& step = link.steps[i];
+            const auto total = static_cast<std::uint32_t>(link.particles.size());
+            std::optional<Intake> intake;
+            if (k > 0 && total > 0) {
+                intake = take_emissions(emitted[k - 1], offsets, link.particles, step);
+            }
+            Emitted* out = k + 1 < links.size() ? emitted[k].data() : nullptr;
+            const ParticleProcess& process = link.process != nullptr ? *link.process : still;
+            for (std::uint32_t index = 0; index < total; ++index) {
+                step_particle(link.particles[index], index, total, process, step, link.shapes,
+                              intake ? &*intake : nullptr, out != nullptr ? out + index : nullptr);
+            }
         }
     }
 }

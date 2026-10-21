@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <string>
 
@@ -34,6 +35,10 @@ inline constexpr std::size_t kMaxFrameVertices = std::size_t{1} << 22;
 [[nodiscard]] Result<void> check_particle_process(const ParticleProcess& process,
                                                   std::span<const ParticleStep> steps,
                                                   std::span<const ParticleShape> shapes);
+// That a chain names known and different systems (known says which are), from 1 to
+// kMaxParticleChain of them with as many steps each, and each run is sound.
+[[nodiscard]] Result<void> check_particle_chain(std::span<const ParticleRun> chain,
+                                                const std::function<bool(ParticlesId)>& known);
 // Each particle draws six vertices, which count towards the frame's; in_frame is how many vertices
 // the frame has drawn so far.
 [[nodiscard]] Result<void> check_particle_draw(const ParticleDraw& look, std::uint32_t amount,

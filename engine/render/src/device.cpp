@@ -176,6 +176,10 @@ Result<void> check_particle_process(const ParticleProcess& process,
             return checked;
         }
     }
+    if (process.sub_emitter_mode == SubEmitterMode::Constant &&
+        (!(process.sub_emitter_frequency > 0.0F) || !finite(process.sub_emitter_frequency))) {
+        return make_error(ErrorCode::InvalidArgument, "sub_emitter_frequency is more than 0");
+    }
     constexpr std::size_t kMaxPoints = 65536;
     if (process.emission_points.size() > kMaxPoints) {
         return make_error(ErrorCode::InvalidArgument, "a process material has at most " +
@@ -220,6 +224,40 @@ Result<void> check_particle_process(const ParticleProcess& process,
             return make_error(ErrorCode::InvalidArgument,
                               "a particle step's shapes have at most " +
                                   std::to_string(kMaxParticleShapePoints) + " points");
+        }
+    }
+    return {};
+}
+
+Result<void> check_particle_chain(std::span<const ParticleRun> chain,
+                                  const std::function<bool(ParticlesId)>& known) {
+    if (chain.empty() || chain.size() > kMaxParticleChain) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a particle chain has from 1 to " + std::to_string(kMaxParticleChain) +
+                              " systems, not " + std::to_string(chain.size()));
+    }
+    for (std::size_t i = 0; i < chain.size(); ++i) {
+        const ParticleRun& run = chain[i];
+        if (!known(run.particles)) {
+            return unknown_particles(run.particles);
+        }
+        for (std::size_t j = 0; j < i; ++j) {
+            if (chain[j].particles == run.particles) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "a particle chain names system " +
+                                      std::to_string(static_cast<std::uint32_t>(run.particles)) +
+                                      " twice");
+            }
+        }
+        if (run.steps.size() != chain.front().steps.size()) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a particle chain's systems run as many steps each");
+        }
+        if (run.process == nullptr) {
+            return make_error(ErrorCode::InvalidArgument, "a particle run has a process material");
+        }
+        if (auto checked = check_particle_process(*run.process, run.steps, run.shapes); !checked) {
+            return checked;
         }
     }
     return {};
@@ -282,7 +320,6 @@ using detail::check_vertices;
 class NullDevice final : public RenderDevice {
 public:
     using RenderDevice::draw;
-    using RenderDevice::process_particles;
 
     [[nodiscard]] Backend backend() const override { return Backend::Null; }
 
@@ -331,13 +368,9 @@ public:
 
     void destroy_particles(ParticlesId particles) override { particles_.erase(particles); }
 
-    Result<void> process_particles(ParticlesId particles, const ParticleProcess& process,
-                                   std::span<const ParticleStep> steps,
-                                   std::span<const ParticleShape> shapes) override {
-        if (!particles_.contains(particles)) {
-            return detail::unknown_particles(particles);
-        }
-        return detail::check_particle_process(process, steps, shapes);
+    Result<void> process_particle_chain(std::span<const ParticleRun> chain) override {
+        return detail::check_particle_chain(
+            chain, [this](ParticlesId particles) { return particles_.contains(particles); });
     }
 
     Result<void> draw_particles(ParticlesId particles, TextureId texture, const ParticleDraw& look,

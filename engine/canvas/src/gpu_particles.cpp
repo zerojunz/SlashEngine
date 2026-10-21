@@ -4,6 +4,7 @@
 #include "slash/canvas/tilemap.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/canvas_layer.hpp"
+#include "slash/world/scene.hpp"
 #include "slash/world/tree2d.hpp"
 
 #include <algorithm>
@@ -79,6 +80,14 @@ struct Emitter {
     std::vector<render::ParticleShape> shapes;
     std::size_t last_shapes = 0;
     std::size_t last_count = 0;
+    // The chain of sub-emitters it steps in, by its emitters' keys and amounts ("" on its own),
+    // the root's key, its place there and, for the root, the chain's entities when last stepped.
+    std::string chain;
+    std::string root;
+    std::uint32_t link = 0;
+    std::uint32_t links = 1;
+    std::vector<std::string> member_keys;
+    std::vector<entt::entity> members;
 
     [[nodiscard]] std::span<const render::ParticleStep> kept() const {
         return {steps.data() + start, steps.size() - start};
@@ -158,6 +167,11 @@ struct Emitter {
             }
             drop_front();
         }
+        compact();
+    }
+
+    // Lets go of the room the steps dropped took.
+    void compact() {
         if (start > 64 && start * 2 > steps.size()) {
             steps.erase(steps.begin(), steps.begin() + static_cast<std::ptrdiff_t>(start));
             start = 0;
@@ -165,6 +179,55 @@ struct Emitter {
         drop_unused_shapes();
     }
 };
+
+// Keeps a step of each emitter in a chain of sub-emitters, the root's first, and as many before
+// them as can still matter. A sub-emitter's live particles started within its lifetime, and
+// it takes particles in turn through its slots from where its emission cycle started, so its
+// steps go back two of its lifetimes (with a hundredth to spare), to the start of the cycle
+// before; the system before it must be right from there, and so on to the root, which goes
+// back one lifetime as an emitter on its own does. The emitters keep as many steps each.
+void keep_chain(std::span<Emitter* const> links, std::span<const render::ParticleStep> steps) {
+    const Emitter& root = *links.front();
+    if (steps.front().delta <= 0.0F && !steps.front().clear) {
+        return;
+    }
+    for (std::size_t k = 0; k < links.size(); ++k) {
+        if (steps[k].clear) {
+            links[k]->drop_all();
+        }
+        links[k]->steps.push_back(steps[k]);
+    }
+    // Walk back from the newest step, through each link's lifetimes from the last link's.
+    std::size_t from = root.steps.size();
+    std::size_t link = links.size() - 1;
+    double need = 2.02;
+    double covered = 0.0;
+    bool met = false;
+    while (from > root.start) {
+        --from;
+        const render::ParticleStep& step = links[link]->steps[from];
+        covered += step.delta / step.lifetime;
+        if (covered >= need) {
+            if (link == 0) {
+                met = true;
+                break;
+            }
+            --link;
+            covered = 0.0;
+            need = link == 0 ? 1.01 : 2.02;
+        }
+    }
+    // One step more, as an emitter on its own keeps, since the first step kept clears.
+    std::size_t keep_from = met && from > root.start ? from - 1 : root.start;
+    keep_from =
+        std::max(keep_from, root.steps.size() - std::min(root.steps.size(), kMaxParticleSteps));
+    for (Emitter* emitter : links) {
+        while (emitter->start < keep_from) {
+            emitter->drop_front();
+        }
+        emitter->compact();
+    }
+}
 
 std::uint32_t amount_of(const GPUParticles2D& settings) {
     return static_cast<std::uint32_t>(
@@ -204,12 +267,38 @@ void set_emitting(Emitter& e, const GPUParticles2D& settings, bool emitting, boo
     e.storage_emitting = emitting;
 }
 
+// A sub-emitter in a chain, stepped with its root (Stepper): what it emits only its parent's
+// particles start, so its own emitting, one_shot, fixed_fps and preprocess go unused.
+struct SubLink {
+    Emitter* emitter = nullptr;
+    const GPUParticles2D* settings = nullptr;
+    std::array<float, 6> emission{1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F};
+    Vec2 velocity;
+    std::uint32_t seed = 0;
+    std::optional<Collision> collision;
+};
+
+// How long an emitter stays active once it stops emitting, in its own seconds: until its last
+// particles have had time to die, and those its sub-emitters started from them.
+double idle_limit(const GPUParticles2D& settings, std::span<const SubLink> subs) {
+    double limit = lifetime_of(settings) * 1.2;
+    for (const SubLink& sub : subs) {
+        double lifetime = lifetime_of(*sub.settings);
+        if (sub.settings->speed_scale > 0.0F) {
+            lifetime *= static_cast<double>(std::max(settings.speed_scale, 0.0F)) /
+                        static_cast<double>(sub.settings->speed_scale);
+        }
+        limit += lifetime * 1.2;
+    }
+    return limit;
+}
+
 class Stepper {
 public:
     Stepper(const GPUParticles2D& settings, const world::Transform2D& transform, Vec2 velocity,
-            std::uint32_t seed, const Collision* collision)
+            std::uint32_t seed, const Collision* collision, std::span<SubLink> subs = {})
         : s_(settings), transform_(transform), velocity_(velocity), seed_(seed),
-          collision_(collision) {}
+          collision_(collision), subs_(subs), idle_(idle_limit(settings, subs)) {}
 
     // ParticlesStorage::_particles_process.
     void process(Emitter& e, double delta) const {
@@ -252,7 +341,69 @@ public:
         }
         step.clear = e.clear;
         e.clear = false;
-        e.keep(step);
+        if (subs_.empty()) {
+            e.keep(step);
+            return;
+        }
+        std::array<render::ParticleStep, render::kMaxParticleChain> steps;
+        std::array<Emitter*, render::kMaxParticleChain> links{};
+        steps[0] = step;
+        links[0] = &e;
+        for (std::size_t i = 0; i < subs_.size(); ++i) {
+            steps[i + 1] = sub_step(subs_[i], delta, step.clear);
+            links[i + 1] = subs_[i].emitter;
+        }
+        keep_chain({links.data(), subs_.size() + 1}, {steps.data(), subs_.size() + 1});
+    }
+
+    // A sub-emitter's step for its root's step of delta: as many of its own seconds as its
+    // speed_scale makes them, emitting nothing of its own.
+    [[nodiscard]] render::ParticleStep sub_step(SubLink& sub, double delta, bool clear) const {
+        const GPUParticles2D& settings = *sub.settings;
+        Emitter& e = *sub.emitter;
+        double own = 0.0;
+        if (s_.speed_scale > 0.0F) {
+            own = delta * static_cast<double>(std::max(settings.speed_scale, 0.0F)) /
+                  static_cast<double>(s_.speed_scale);
+        }
+        if (clear) {
+            e.phase = 0.0;
+            e.cycle = 0;
+            e.particle_time = 0.0;
+        }
+        const double new_phase = std::fmod(e.phase + (own / lifetime_of(settings)), 1.0);
+        if (!clear && new_phase < e.phase) {
+            ++e.cycle;
+        }
+        render::ParticleStep step;
+        if (!settings.local_coords) {
+            step.emission = sub.emission;
+        }
+        step.emitter_velocity = sub.velocity;
+        step.emitting = false;
+        step.system_phase = static_cast<float>(new_phase);
+        step.prev_system_phase = static_cast<float>(e.phase);
+        e.phase = new_phase;
+        step.delta = static_cast<float>(own);
+        step.lifetime = static_cast<float>(lifetime_of(settings));
+        step.explosiveness = std::clamp(settings.explosiveness, 0.0F, 1.0F);
+        step.randomness = std::clamp(settings.randomness, 0.0F, 1.0F);
+        step.amount_ratio = std::clamp(settings.amount_ratio, 0.0F, 1.0F);
+        step.interp_to_end = std::clamp(settings.interp_to_end, 0.0F, 1.0F);
+        e.particle_time = std::fmod(e.particle_time + own, 3600.0);
+        step.time = static_cast<float>(e.particle_time);
+        step.cycle = e.cycle;
+        step.seed = sub.seed;
+        step.fractional_delta = settings.fract_delta;
+        if (sub.collision && !sub.collision->shapes.empty()) {
+            step.shape_first = e.add_shapes(sub.collision->shapes);
+            step.shape_count = static_cast<std::uint32_t>(sub.collision->shapes.size());
+            step.collision_size = sub.collision->size;
+            step.to_shapes = sub.collision->to_shapes;
+            step.from_shapes = sub.collision->from_shapes;
+        }
+        step.clear = clear;
+        return step;
     }
 
     // ParticlesStorage::update_particles, for a tick of seconds.
@@ -276,7 +427,7 @@ public:
             e.inactive_time = 0.0F;
         } else {
             e.inactive_time += s_.speed_scale * static_cast<float>(seconds);
-            if (e.inactive_time > lifetime_of(s_) * 1.2) {
+            if (e.inactive_time > idle_) {
                 e.inactive = true;
                 return;
             }
@@ -305,6 +456,12 @@ public:
             process(e, seconds * time_scale);
             e.remainder = 0.0F;
         }
+        for (const SubLink& sub : subs_) {
+            sub.emitter->remainder =
+                time_scale > 0.0F
+                    ? e.remainder * std::max(sub.settings->speed_scale, 0.0F) / time_scale
+                    : 0.0F;
+        }
     }
 
 private:
@@ -313,12 +470,15 @@ private:
     Vec2 velocity_;
     std::uint32_t seed_;
     const Collision* collision_;
+    std::span<SubLink> subs_;
+    double idle_;
 };
 
 // One tick of an emitter: the node's part, which may set the component's emitting, then the
 // storage's. Returns whether a one_shot finished.
 bool tick(Emitter& e, GPUParticles2D& settings, const world::Transform2D& transform,
-          std::string_view id, double seconds, const Collision* collision = nullptr) {
+          std::string_view id, double seconds, const Collision* collision = nullptr,
+          std::span<SubLink> subs = {}) {
     const std::uint32_t amount = amount_of(settings);
     if (!e.seen) {
         // As a node made with these properties: emitting set last.
@@ -367,7 +527,8 @@ bool tick(Emitter& e, GPUParticles2D& settings, const world::Transform2D& transf
         velocity = (transform.position - e.previous_position) * per_second;
     }
     e.previous_position = transform.position;
-    Stepper(settings, transform, velocity, gpu_particle_seed(settings, id, e.restarts), collision)
+    Stepper(settings, transform, velocity, gpu_particle_seed(settings, id, e.restarts), collision,
+            subs)
         .update(e, seconds);
     return finished;
 }
@@ -559,30 +720,194 @@ private:
     std::size_t points_ = 0;
 };
 
+// The chains of sub-emitters in a world, the root first: each GPUParticles2D's sub_emitter, in
+// the order of their keys, where it names another GPUParticles2D that no other has claimed, that
+// isn't one before it in its chain and that keeps the chain to render::kMaxParticleChain. Those
+// left out go in left_out, with why.
+std::vector<std::vector<entt::entity>>
+particle_chains(const world::World& world,
+                const std::map<std::string, entt::entity, std::less<>>& by_key,
+                std::vector<SubEmitterProblem>* left_out = nullptr) {
+    const auto& ecs = world.ecs();
+    std::map<entt::entity, entt::entity> sub_of;
+    std::map<entt::entity, entt::entity> parent_of;
+    const auto leave_out = [&](const std::string& key, std::string message) {
+        if (left_out != nullptr) {
+            left_out->push_back({.id = key, .message = std::move(message)});
+        }
+    };
+    for (const auto& [key, entity] : by_key) {
+        const entt::entity sub = ecs.get<GPUParticles2D>(entity).sub_emitter;
+        if (sub == entt::null) {
+            continue;
+        }
+        if (sub == entity) {
+            leave_out(key, "an emitter can't be its own sub-emitter");
+            continue;
+        }
+        if (!ecs.valid(sub)) {
+            leave_out(key, "its sub-emitter no longer exists");
+            continue;
+        }
+        if (!ecs.all_of<GPUParticles2D>(sub)) {
+            leave_out(key, "\"" + key_of(world, sub) + "\" has no GPUParticles2D");
+            continue;
+        }
+        if (const auto claimed = parent_of.find(sub); claimed != parent_of.end()) {
+            leave_out(key, "\"" + key_of(world, sub) + "\" is already the sub-emitter of \"" +
+                               key_of(world, claimed->second) + "\"");
+            continue;
+        }
+        // Not a loop, and not too long: the links above this one and from the sub down.
+        std::size_t length = 1;
+        bool loop = false;
+        for (entt::entity at = sub;; ++length) {
+            if (at == entity) {
+                loop = true;
+                break;
+            }
+            const auto next = sub_of.find(at);
+            if (next == sub_of.end()) {
+                break;
+            }
+            at = next->second;
+        }
+        for (auto up = parent_of.find(entity); up != parent_of.end();
+             up = parent_of.find(up->second)) {
+            ++length;
+        }
+        if (loop) {
+            leave_out(key, "\"" + key_of(world, sub) +
+                               "\" leads back to this emitter through its sub-emitters");
+            continue;
+        }
+        if (length + 1 > render::kMaxParticleChain) {
+            leave_out(key, "a chain of sub-emitters has at most " +
+                               std::to_string(render::kMaxParticleChain) + " emitters");
+            continue;
+        }
+        sub_of[entity] = sub;
+        parent_of[sub] = entity;
+    }
+    std::vector<std::vector<entt::entity>> chains;
+    for (const auto& [key, entity] : by_key) {
+        if (!sub_of.contains(entity) || parent_of.contains(entity)) {
+            continue;
+        }
+        std::vector<entt::entity>& chain = chains.emplace_back();
+        for (entt::entity at = entity;;) {
+            chain.push_back(at);
+            const auto next = sub_of.find(at);
+            if (next == sub_of.end()) {
+                break;
+            }
+            at = next->second;
+        }
+    }
+    return chains;
+}
+
+// Every GPUParticles2D in a world by its key.
+std::map<std::string, entt::entity, std::less<>> emitters_by_key(const world::World& world) {
+    std::map<std::string, entt::entity, std::less<>> by_key;
+    for (const entt::entity entity : world.ecs().view<GPUParticles2D>()) {
+        by_key.emplace(key_of(world, entity), entity);
+    }
+    return by_key;
+}
+
 struct GpuParticleSystem {
     std::map<std::string, Emitter, std::less<>> emitters;
     asset::Assets* assets = nullptr;
 
+    // The emitter kept under a key, made anew when the chain it steps in changes.
+    Emitter& emitter(const std::string& key, const std::string& chain) {
+        Emitter& e = emitters[key];
+        if (e.chain != chain) {
+            e = Emitter{};
+            e.chain = chain;
+        }
+        return e;
+    }
+
     void run_all(world::World& world, double tick_seconds) {
         auto& ecs = world.ecs();
-        std::set<std::string, std::less<>> seen;
+        const std::map<std::string, entt::entity, std::less<>> by_key = emitters_by_key(world);
+        std::erase_if(emitters, [&](const auto& entry) { return !by_key.contains(entry.first); });
+        if (tick_seconds <= 0.0) {
+            return;
+        }
         const world::Tree2D tree(world);
         Colliders colliders(world, tree, assets);
+        const std::vector<std::vector<entt::entity>> chains = particle_chains(world, by_key);
+        std::set<entt::entity> in_chain;
+        for (const auto& chain : chains) {
+            in_chain.insert(chain.begin(), chain.end());
+        }
         for (const entt::entity entity : ecs.view<GPUParticles2D>()) {
-            auto& component = ecs.get<GPUParticles2D>(entity);
-            const std::string key = key_of(world, entity);
-            seen.insert(key);
-            if (tick_seconds <= 0.0) {
+            if (in_chain.contains(entity)) {
                 continue;
             }
+            auto& component = ecs.get<GPUParticles2D>(entity);
             const world::Transform2D global = tree.global(entity);
             const std::optional<Collision> collision = colliders.of(entity, component, global);
-            if (tick(emitters[key], component, global, world.id_of(entity), tick_seconds,
-                     collision ? &*collision : nullptr)) {
+            if (tick(emitter(key_of(world, entity), ""), component, global, world.id_of(entity),
+                     tick_seconds, collision ? &*collision : nullptr)) {
                 world.emit("finished", world.id_of(entity), {});
             }
         }
-        std::erase_if(emitters, [&](const auto& entry) { return !seen.contains(entry.first); });
+        for (const auto& chain : chains) {
+            run_chain(world, tree, colliders, chain, tick_seconds);
+        }
+    }
+
+    // A tick of a chain of sub-emitters: the root's, stepping the rest with it. The chain starts
+    // over when its emitters or their amounts change.
+    void run_chain(world::World& world, const world::Tree2D& tree, Colliders& colliders,
+                   std::span<const entt::entity> chain, double tick_seconds) {
+        auto& ecs = world.ecs();
+        std::vector<std::string> keys;
+        std::string signature;
+        for (const entt::entity entity : chain) {
+            keys.push_back(key_of(world, entity));
+            signature += (signature.empty() ? "" : ">") + keys.back() + ":" +
+                         std::to_string(amount_of(ecs.get<GPUParticles2D>(entity)));
+        }
+        std::vector<SubLink> subs(chain.size() - 1);
+        for (std::size_t k = 0; k < chain.size(); ++k) {
+            Emitter& e = emitter(keys[k], signature);
+            e.root = keys.front();
+            e.link = static_cast<std::uint32_t>(k);
+            e.links = static_cast<std::uint32_t>(chain.size());
+            if (k == 0) {
+                e.member_keys = keys;
+                e.members.assign(chain.begin(), chain.end());
+                continue;
+            }
+            const auto& settings = ecs.get<GPUParticles2D>(chain[k]);
+            const world::Transform2D global = tree.global(chain[k]);
+            SubLink& sub = subs[k - 1];
+            sub.emitter = &e;
+            sub.settings = &settings;
+            sub.emission = matrix_of(global);
+            if (!e.seen) {
+                e.seen = true;
+                e.amount = amount_of(settings);
+                e.previous_position = global.position;
+            }
+            sub.velocity =
+                (global.position - e.previous_position) * static_cast<float>(1.0 / tick_seconds);
+            e.previous_position = global.position;
+            sub.seed = gpu_particle_seed(settings, world.id_of(chain[k]), 0);
+            sub.collision = colliders.of(chain[k], settings, global);
+        }
+        auto& root = ecs.get<GPUParticles2D>(chain.front());
+        const world::Transform2D global = tree.global(chain.front());
+        const std::optional<Collision> collision = colliders.of(chain.front(), root, global);
+        if (tick(emitter(keys.front(), signature), root, global, world.id_of(chain.front()),
+                 tick_seconds, collision ? &*collision : nullptr, subs)) {
+            world.emit("finished", world.id_of(chain.front()), {});
+        }
     }
 
     // The steps kept to replay; the particles themselves are on the GPU.
@@ -659,7 +984,43 @@ std::optional<ParticleSteps> particle_steps(const world::World& world, entt::ent
                          .first = e.first,
                          .steps = e.kept(),
                          .shapes = e.shapes,
-                         .remainder = e.remainder};
+                         .remainder = e.remainder,
+                         .link = e.link,
+                         .links = e.links};
+}
+
+std::vector<ParticleChainMember> particle_chain(const world::World& world, entt::entity entity) {
+    const auto* system = world.ecs().ctx().find<std::shared_ptr<GpuParticleSystem>>();
+    const std::optional<ParticleSteps> kept = particle_steps(world, entity);
+    if (system == nullptr || !kept || kept->links < 2) {
+        return {};
+    }
+    const std::map<std::string, Emitter, std::less<>>& emitters = (*system)->emitters;
+    const Emitter& member = emitters.find(key_of(world, entity))->second;
+    const auto root = emitters.find(member.root);
+    if (root == emitters.end() || root->second.chain != member.chain) {
+        return {};
+    }
+    std::vector<ParticleChainMember> out;
+    const auto& ecs = world.ecs();
+    for (std::size_t k = 0; k < root->second.member_keys.size(); ++k) {
+        const std::string& key = root->second.member_keys[k];
+        // The entity stepped, or the one with its ID after the world was put back.
+        entt::entity at = root->second.members[k];
+        if (!ecs.valid(at) || key_of(world, at) != key) {
+            at = world.find(key);
+        }
+        if (at == entt::null || !ecs.all_of<GPUParticles2D>(at)) {
+            return {};
+        }
+        std::optional<ParticleSteps> steps = particle_steps(world, at);
+        if (!steps || steps->link != k || steps->first != kept->first ||
+            steps->steps.size() != kept->steps.size()) {
+            return {};
+        }
+        out.push_back({.entity = at, .steps = *steps});
+    }
+    return out;
 }
 
 std::vector<render::Particle> run_steps(std::uint32_t amount,
@@ -675,6 +1036,60 @@ std::vector<render::Particle> run_steps(std::uint32_t amount,
         render::process_particles(particles, process, steps.subspan(1), shapes);
     }
     return particles;
+}
+
+std::vector<std::vector<render::Particle>> run_chain(std::span<const ChainRun> chain) {
+    std::vector<std::vector<render::Particle>> particles;
+    particles.reserve(chain.size());
+    std::array<render::ParticleStep, render::kMaxParticleChain> firsts;
+    std::array<render::ParticleChainLink, render::kMaxParticleChain> links;
+    const std::size_t count = std::min(chain.size(), render::kMaxParticleChain);
+    bool empty = false;
+    for (std::size_t k = 0; k < count; ++k) {
+        particles.emplace_back(chain[k].amount);
+        empty = empty || chain[k].steps.empty();
+    }
+    if (empty) {
+        return particles;
+    }
+    // The first step kept starts from nothing, as it would after a gap.
+    for (std::size_t k = 0; k < count; ++k) {
+        firsts[k] = chain[k].steps.front();
+        firsts[k].clear = true;
+        links[k] = {.particles = particles[k],
+                    .process = chain[k].process,
+                    .steps = {&firsts[k], 1},
+                    .shapes = chain[k].shapes};
+    }
+    render::process_particle_chain({links.data(), count});
+    for (std::size_t k = 0; k < count; ++k) {
+        links[k].steps = chain[k].steps.subspan(1);
+    }
+    render::process_particle_chain({links.data(), count});
+    return particles;
+}
+
+std::vector<SubEmitterProblem> check_sub_emitters(const world::World& world) {
+    std::vector<SubEmitterProblem> problems;
+    (void)particle_chains(world, emitters_by_key(world), &problems);
+    return problems;
+}
+
+std::vector<json::ValidationError> check_sub_emitters(const world::ComponentRegistry& components,
+                                                      const json::Value& scene,
+                                                      const world::FileReader& reader) {
+    std::vector<json::ValidationError> errors;
+    world::World world(components);
+    world.set_file_reader(reader);
+    if (!world::load_scene(world, scene)) {
+        return errors;
+    }
+    for (SubEmitterProblem& problem : check_sub_emitters(world)) {
+        errors.push_back({"/entities/" + json::pointer_escape(problem.id) +
+                              "/components/GPUParticles2D/sub_emitter",
+                          std::move(problem.message)});
+    }
+    return errors;
 }
 
 std::vector<render::Particle> live_particles(std::span<const render::Particle> particles,
@@ -707,16 +1122,42 @@ Result<std::vector<render::Particle>> gpu_particles(const world::World& world, e
         return std::vector<render::Particle>{};
     }
     const auto& settings = world.ecs().get<GPUParticles2D>(entity);
-    render::ParticleProcess process;
-    if (!settings.process_material.empty()) {
-        auto loaded = assets.load<render::ParticleProcess>(settings.process_material);
+    const auto process_of = [&](const GPUParticles2D& emitter)
+        -> Result<std::shared_ptr<const render::ParticleProcess>> {
+        if (emitter.process_material.empty()) {
+            return std::make_shared<const render::ParticleProcess>();
+        }
+        auto loaded = assets.load<render::ParticleProcess>(emitter.process_material);
         if (!loaded) {
             return loaded.error();
         }
-        process = *loaded.value();
+        return loaded.value().share();
+    };
+    const std::vector<ParticleChainMember> chain = particle_chain(world, entity);
+    if (!chain.empty()) {
+        std::vector<std::shared_ptr<const render::ParticleProcess>> processes;
+        std::vector<ChainRun> runs;
+        for (const ParticleChainMember& member : chain) {
+            auto process = process_of(world.ecs().get<GPUParticles2D>(member.entity));
+            if (!process) {
+                return process.error();
+            }
+            processes.push_back(std::move(process).value());
+            runs.push_back({.amount = member.steps.amount,
+                            .process = processes.back().get(),
+                            .steps = member.steps.steps,
+                            .shapes = member.steps.shapes});
+        }
+        const std::vector<std::vector<render::Particle>> all = run_chain(runs);
+        return live_particles(all[kept->link], particle_order(settings.draw_order),
+                              kept->steps.back().system_phase);
+    }
+    auto process = process_of(settings);
+    if (!process) {
+        return process.error();
     }
     const std::vector<render::Particle> all =
-        run_steps(kept->amount, process, kept->steps, kept->shapes);
+        run_steps(kept->amount, *process.value(), kept->steps, kept->shapes);
     return live_particles(all, particle_order(settings.draw_order),
                           kept->steps.back().system_phase);
 }

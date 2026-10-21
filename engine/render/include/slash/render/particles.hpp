@@ -60,6 +60,16 @@ enum class ParticleParam : std::uint8_t {
 };
 inline constexpr std::size_t kParticleParams = static_cast<std::size_t>(ParticleParam::Count);
 
+// When a particle starts particles in the next system of a chain (process_particle_chain), as
+// Godot's ParticleProcessMaterial::SubEmitterMode.
+enum class SubEmitterMode : std::uint8_t {
+    Disabled,
+    Constant,    // sub_emitter_frequency times a second of its life
+    AtEnd,       // sub_emitter_amount_at_end in the step it dies of age
+    AtCollision, // sub_emitter_amount_at_collision in each step it touches a shape
+    AtStart,     // sub_emitter_amount_at_start in its first step
+};
+
 // What a particle does when it touches a shape, as Godot's ParticleProcessMaterial::CollisionMode.
 enum class ParticleCollision : std::uint8_t {
     Disabled,
@@ -125,6 +135,14 @@ struct ParticleProcess {
     float collision_friction = 0.0F;  // of the speed along the surface lost, 0 to 1
     float collision_bounce = 0.0F;    // of the speed into the surface sent back, 0 to 1
     bool collision_use_scale = false; // the particle's scale multiplies its collision size
+    // Sub-emitters, as Godot's: a particle starts particles in the next system of a chain where
+    // it is, turned and scaled as it is, and with sub_emitter_keep_velocity moving as it moves.
+    SubEmitterMode sub_emitter_mode = SubEmitterMode::Disabled;
+    float sub_emitter_frequency = 4.0F; // Constant: emissions a second, more than 0
+    std::uint32_t sub_emitter_amount_at_end = 1;
+    std::uint32_t sub_emitter_amount_at_collision = 1;
+    std::uint32_t sub_emitter_amount_at_start = 1;
+    bool sub_emitter_keep_velocity = false;
 
     bool operator==(const ParticleProcess&) const = default;
 };
@@ -184,7 +202,8 @@ inline constexpr std::uint32_t kParticleStarted = 2U;
 // The emission cycle it started in is in the flags' top 16 bits.
 inline constexpr std::uint32_t kParticleCycleShift = 16U;
 
-// One particle, laid out as the GPU keeps it (96 bytes).
+// One particle, laid out as the GPU keeps it (96 bytes). A sub-emitter's first particle keeps in
+// its spare words how many particles its emission cycle has taken so far, and the cycle.
 struct Particle {
     Vec4 basis{1.0F, 0.0F, 0.0F, 1.0F}; // its x axis [x, y] then its y axis [z, w], scaled
     Vec2 origin;                        // pixels
@@ -198,7 +217,7 @@ struct Particle {
     // velocity built up.
     Vec4 userdata;
     std::uint32_t flags = 0;
-    std::array<std::uint32_t, 3> padding{};
+    std::array<std::uint32_t, 3> spare{};
 
     [[nodiscard]] bool active() const { return (flags & kParticleActive) != 0; }
 };
@@ -236,6 +255,26 @@ struct ParticleDraw {
 void process_particles(std::span<Particle> particles, const ParticleProcess& process,
                        std::span<const ParticleStep> steps,
                        std::span<const ParticleShape> shapes = {});
+
+// One system of a chain of sub-emitters: its particles, its process material and the steps it
+// runs, which name the shapes they collide with by their place in shapes.
+struct ParticleChainLink {
+    std::span<Particle> particles;
+    const ParticleProcess* process = nullptr;
+    std::span<const ParticleStep> steps;
+    std::span<const ParticleShape> shapes;
+};
+// The most systems a chain has.
+inline constexpr std::size_t kMaxParticleChain = 8;
+
+// Runs a chain of systems, each a sub-emitter of the one before, as the GPU does. The links' steps
+// run in lockstep, each link's step i after the link before's, as many as the link with the
+// fewest has. A link's particles start particles in the next link (its process material's
+// sub_emitter_mode); the next link takes them in turn through its slots, from the first in even
+// emission cycles and from the last in odd ones, so they rarely land on particles still live, and
+// when there are more than its slots the newest take the place of live ones. Only the first
+// link emits as its steps say; the others start only the particles they take.
+void process_particle_chain(std::span<const ParticleChainLink> links);
 
 // Where a point is against shapes, as particles collide, all in the shapes' coordinates: the
 // depth it is inside them by, less size, and the way out, along which moving it by depth leaves
