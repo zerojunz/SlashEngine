@@ -35,6 +35,20 @@
       "repository": "https://github.com/schellingb/TinySoundFont.git",
       "tag": "853a0a171759f1ddba0de1442133a75912bbeffa"
     },
+    "astc-encoder": {
+      "license": "Apache-2.0",
+      "license_file": "LICENSE.txt",
+      "license_sha256": "494accc32e50eb523a0e384d0ae6d4b702db867a89d6971216760e92b240ee12",
+      "repository": "https://github.com/ARM-software/astc-encoder.git",
+      "tag": "5.7.0"
+    },
+    "bc7enc_rdo": {
+      "license": "MIT OR Unlicense",
+      "license_file": "LICENSE",
+      "license_sha256": "b3e843763e8d3bdeb0f469ecd4107fc32b5fa27ebee1af10d2066bc339292800",
+      "repository": "https://github.com/richgel999/bc7enc_rdo.git",
+      "tag": "b9438627eef73a1157e84201b6fa6eb2ffd6d9f0"
+    },
     "box2d": {
       "license": "MIT",
       "license_file": "LICENSE",

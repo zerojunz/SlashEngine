@@ -189,7 +189,7 @@ DataFile data_file(std::string_view name) {
     if (name.ends_with(canvas::kTileSetSuffix)) {
         return DataFile::TileSet;
     }
-    if (name.ends_with(".png") || name.ends_with(".bmp")) {
+    if (name.ends_with(".png") || name.ends_with(".bmp") || name.ends_with(".ktx2")) {
         return DataFile::Texture;
     }
     if (name.ends_with(text::kFontSuffix)) {

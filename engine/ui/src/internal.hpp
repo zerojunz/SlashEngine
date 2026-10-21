@@ -18,8 +18,8 @@ namespace slash::ui {
 // Button's hover_pressed style; their values mean nothing.
 [[nodiscard]] const ThemeItems& optional_items(std::string_view type);
 
-// Why an icon's path is wrong, or "": not a .png or .bmp file in the project, a built-in icon or
-// "" (theme.cpp).
+// Why an icon's path is wrong, or "": not a .png, .bmp or .ktx2 file in the project, a built-in
+// icon or "" (theme.cpp).
 [[nodiscard]] std::string icon_path_error(const std::string& path);
 
 // The control types an entity's components make it, as Godot's classes: "Label",

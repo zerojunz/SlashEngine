@@ -142,35 +142,49 @@ public:
 
     [[nodiscard]] Backend backend() const override { return Backend::Software; }
 
+    // It samples RGBA8 and decodes compressed texels as a GPU would.
+    [[nodiscard]] bool supports(TextureFormat format) const override {
+        return format == TextureFormat::Rgba8;
+    }
+
     Result<TextureId> create_texture(const TextureDesc& desc,
-                                     std::span<const std::uint8_t> rgba) override {
+                                     std::span<const std::uint8_t> texels) override {
         if (auto checked = check_texture_desc(desc); !checked) {
             return checked.error();
         }
-        if (auto checked = check_pixels(desc, rgba, true); !checked) {
+        if (auto checked = check_pixels(desc, texels, true); !checked) {
             return checked.error();
         }
-        const auto id = static_cast<TextureId>(next_texture_++);
         Texture texture{.desc = desc,
                         .image = {.width = desc.width, .height = desc.height, .pixels = {}}};
-        if (rgba.empty()) {
+        if (texels.empty()) {
             texture.image.pixels.assign(std::size_t{desc.width} * desc.height * 4, 0);
         } else {
-            texture.image.pixels.assign(rgba.begin(), rgba.end());
+            auto pixels = decode_texels(desc.format, desc.width, desc.height, texels);
+            if (!pixels) {
+                return pixels.error();
+            }
+            texture.image.pixels = std::move(pixels.value());
         }
+        const auto id = static_cast<TextureId>(next_texture_++);
         textures_[id] = std::move(texture);
         return id;
     }
 
-    Result<void> update_texture(TextureId texture, std::span<const std::uint8_t> rgba) override {
+    Result<void> update_texture(TextureId texture, std::span<const std::uint8_t> texels) override {
         const auto it = textures_.find(texture);
         if (it == textures_.end()) {
             return detail::unknown_texture(texture);
         }
-        if (auto checked = check_pixels(it->second.desc, rgba, false); !checked) {
+        const TextureDesc& desc = it->second.desc;
+        if (auto checked = check_pixels(desc, texels, false); !checked) {
             return checked;
         }
-        it->second.image.pixels.assign(rgba.begin(), rgba.end());
+        auto pixels = decode_texels(desc.format, desc.width, desc.height, texels);
+        if (!pixels) {
+            return pixels.error();
+        }
+        it->second.image.pixels = std::move(pixels.value());
         return {};
     }
 
@@ -376,7 +390,8 @@ public:
         Stats stats = stats_;
         stats.textures = static_cast<std::uint32_t>(textures_.size());
         for (const auto& [id, texture] : textures_) {
-            stats.texture_bytes += texture_bytes(texture.desc);
+            // Compressed texels are kept decoded.
+            stats.texture_bytes += texture.image.pixels.size();
         }
         return stats;
     }

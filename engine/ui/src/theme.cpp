@@ -510,7 +510,7 @@ Vec4 vec4(const json::Value& value) {
 
 } // namespace
 
-// Why an icon's path is wrong: not a PNG or BMP file in the project, nor a built-in icon.
+// Why an icon's path is wrong: not a PNG, BMP or KTX2 file in the project, nor a built-in icon.
 std::string icon_path_error(const std::string& path) {
     if (path.empty()) {
         return "";
@@ -526,8 +526,8 @@ std::string icon_path_error(const std::string& path) {
         return "expected a path inside the project folder, separated by '/', with no \".\" or "
                "\"..\" parts, or a built-in icon such as \"builtin:checked\"";
     }
-    if (!path.ends_with(".png") && !path.ends_with(".bmp")) {
-        return "expected a .png or .bmp file";
+    if (!path.ends_with(".png") && !path.ends_with(".bmp") && !path.ends_with(".ktx2")) {
+        return "expected a .png, .bmp or .ktx2 file";
     }
     return "";
 }
@@ -609,8 +609,9 @@ json::Value theme_schema() {
     items["fonts"] = object_of(font, "Fonts by name: a .ttf, .otf or .font.json file; \"\" is "
                                      "the built-in font.");
     items["font_sizes"] = object_of(font_size, "Font sizes by name, in pixels.");
-    items["icons"] = object_of(icon, "Icons by name: a .png or .bmp file, a built-in icon such as "
-                                     "\"builtin:radio_checked\", or \"\" for none.");
+    items["icons"] =
+        object_of(icon, "Icons by name: a .png, .bmp or .ktx2 file, a built-in icon such as "
+                        "\"builtin:radio_checked\", or \"\" for none.");
     items["styles"] = object_of(style_box_schema(), "Style boxes by name.");
 
     json::Value schema;
@@ -798,7 +799,7 @@ Result<Theme> parse_theme(const json::Value& doc) {
 
 void add_asset_types(asset::Assets& assets) {
     text::add_asset_types(assets);
-    assets.add_type<render::Image>("texture", {".png", ".bmp"},
+    assets.add_type<render::Image>("texture", {".png", ".bmp", ".ktx2"},
                                    [](std::string_view bytes, std::string_view /*path*/) {
                                        return render::decode_image(bytes);
                                    });

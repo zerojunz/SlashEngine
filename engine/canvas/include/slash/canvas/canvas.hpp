@@ -260,6 +260,7 @@ private:
         std::uint64_t version = 0;
         std::uint32_t width = 0;
         std::uint32_t height = 0;
+        render::TextureFormat format = render::TextureFormat::Rgba8; // as made on the device
 
         [[nodiscard]] const render::Image& pixels() const {
             return builtin != nullptr ? *builtin : *image;

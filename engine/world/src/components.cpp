@@ -328,7 +328,7 @@ void register_ui_components(ComponentRegistry& registry) {
             "theme_override_font_sizes",
             {.doc = "Theme font sizes by name, e.g. {\"font_size\": 32}.", .min = 1, .max = 1024})
         .describe("theme_override_icons",
-                  {.doc = "Theme icons by name: a PNG or BMP file, a built-in icon such as "
+                  {.doc = "Theme icons by name: a PNG, BMP or KTX2 file, a built-in icon such as "
                           "\"builtin:radio_checked\", or \"\" for none, e.g. "
                           "{\"checked\": \"ui/tick.png\"}."})
         .describe("theme_override_styles",
@@ -448,7 +448,8 @@ void register_ui_components(ComponentRegistry& registry) {
 
     registry.add<TextureRect>()
         .set_doc("Draws a texture in the control's rect, as Godot's TextureRect.")
-        .describe("texture", {.doc = "Project path of a PNG or BMP file; \"\" draws nothing."})
+        .describe("texture",
+                  {.doc = "Project path of a PNG, BMP or KTX2 file; \"\" draws nothing."})
         .describe("expand_mode",
                   {.doc = "Its minimum size: the texture's size, none, or the rect's height as "
                           "its width (fit_width) or its width as its height (fit_height), "
@@ -470,7 +471,8 @@ void register_ui_components(ComponentRegistry& registry) {
         .set_doc("Draws a texture cut into nine parts in the control's rect, as Godot's "
                  "NinePatchRect: the corners keep their size, the sides stretch along and the "
                  "middle both ways. Its minimum size is its margins.")
-        .describe("texture", {.doc = "Project path of a PNG or BMP file; \"\" draws nothing."})
+        .describe("texture",
+                  {.doc = "Project path of a PNG, BMP or KTX2 file; \"\" draws nothing."})
         .describe("region_rect",
                   {.doc = "The part of the texture to use, [x, y, width, height] in pixels; a "
                           "zero size uses the whole texture.",
@@ -625,8 +627,9 @@ void register_ui_components(ComponentRegistry& registry) {
     const auto describe_button = [&](ComponentType& type) -> ComponentType& {
         return describe_button_look(type)
             .describe("text", {.doc = R"(Lines break at "\n".)"})
-            .describe("icon", {.doc = "Project path of a PNG or BMP file drawn beside the text; "
-                                      "\"\" for none."});
+            .describe("icon",
+                      {.doc = "Project path of a PNG, BMP or KTX2 file drawn beside the text; "
+                              "\"\" for none."});
     };
     describe_button(button);
     describe_button(registry.add<CheckBox>().set_doc(
@@ -699,7 +702,8 @@ void register_ui_components(ComponentRegistry& registry) {
                   {.doc = "While another MenuButton's menu is open, moving onto this one opens "
                           "its menu instead, as in a menu bar."});
 
-    const FieldMeta button_texture{.doc = "Project path of a PNG or BMP file; \"\" for none."};
+    const FieldMeta button_texture{.doc =
+                                       "Project path of a PNG, BMP or KTX2 file; \"\" for none."};
     auto& texture_button = registry.add<TextureButton>().set_doc(
         "A button drawn with a texture per state, as Godot's TextureButton: texture_normal, "
         "then texture_pressed, texture_hover and texture_disabled when they are set, and "
@@ -765,7 +769,7 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("drag_and_drop_selection_enabled",
                   {.doc = "The selected text can be dragged into another text field, or moved "
                           "within this one."})
-        .describe("right_icon", {.doc = "Project path of a PNG or BMP file drawn at the end; "
+        .describe("right_icon", {.doc = "Project path of a PNG, BMP or KTX2 file drawn at the end; "
                                         "\"\" for none."})
         .describe("icon_expand_mode",
                   {.doc = "The right icon's size: its own, the font's height, or the field's "
@@ -1038,8 +1042,9 @@ void register_particle_components(ComponentRegistry& registry) {
             .describe("draw_order", {.doc = "\"index\" draws in emission slots' order; "
                                             "\"lifetime\" draws the youngest on top.",
                                      .choices = {"index", "lifetime"}})
-            .describe("texture", {.doc = "Project path of a PNG or BMP file each particle draws; "
-                                         "\"\" draws a white pixel."})
+            .describe("texture",
+                      {.doc = "Project path of a PNG, BMP or KTX2 file each particle draws; "
+                              "\"\" draws a white pixel."})
             .describe("texture_filter",
                       {.doc = "As Sprite2D's.", .choices = {"inherit", "linear", "nearest"}})
             .describe("hframes",
@@ -1118,7 +1123,7 @@ void register_particle_components(ComponentRegistry& registry) {
         .describe("process_material",
                   {.doc = "Project path of a .process_material.json file: how particles start "
                           "and move. \"\" emits still white pixels."})
-        .describe("texture", {.doc = "Project path of a PNG or BMP file each particle draws; "
+        .describe("texture", {.doc = "Project path of a PNG, BMP or KTX2 file each particle draws; "
                                      "\"\" draws a white pixel."})
         .describe("lifetime",
                   {.doc = "Seconds each particle lives and each cycle lasts.", .min = 0.001})
@@ -1301,7 +1306,8 @@ void register_builtin_components(ComponentRegistry& registry) {
     registry.add<Sprite2D>()
         .set_doc("A texture drawn at the entity's Transform2D. Sprites draw in order of z_index, "
                  "then in the order their entities were made.")
-        .describe("texture", {.doc = "Project path of a PNG or BMP file; \"\" draws nothing."})
+        .describe("texture",
+                  {.doc = "Project path of a PNG, BMP or KTX2 file; \"\" draws nothing."})
         .describe("centered", {.doc = "Center the texture on the position; false puts its top "
                                       "left corner there."})
         .describe("offset", {.doc = "Moves the texture from the position, in pixels."})
@@ -1414,9 +1420,10 @@ void register_builtin_components(ComponentRegistry& registry) {
                  "range_item_cull_mask, in canvases its layer range holds; with shadow_enabled, "
                  "LightOccluder2D polygons and tiles' occluders cast shadows from it.")
         .describe("enabled", {.doc = "Shine."})
-        .describe("texture", {.doc = "Project path of a PNG or BMP file whose color and alpha "
-                                     "shape the light; \"\" is a soft round light 256 pixels "
-                                     "across."})
+        .describe("texture",
+                  {.doc = "Project path of a PNG, BMP or KTX2 file whose color and alpha "
+                          "shape the light; \"\" is a soft round light 256 pixels "
+                          "across."})
         .describe("texture_scale", {.doc = "Scales the texture.", .min = 0})
         .describe("offset", {.doc = "Moves the texture from the light, in pixels."})
         .describe("color", light_color)
