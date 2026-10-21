@@ -753,9 +753,10 @@ project's `rendering.lights_and_shadows` ([project-format.md](project-format.md#
 
 ### WorldEnvironment
 
-The first `WorldEnvironment` made sets the background a 3D frame clears to and the ambient light
-every lit surface gets, as Godot's `Environment`. Without one, the background is the project's
-`rendering.clear_color` and there is no ambient light.
+The first `WorldEnvironment` made sets the background a 3D frame clears to, the ambient light
+every lit surface gets and what happens to colors after, as Godot's `Environment` in its
+Compatibility renderer. Without one, the background is the project's `rendering.clear_color`,
+there is no ambient light and colors stay as they are.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
@@ -764,6 +765,31 @@ every lit surface gets, as Godot's `Environment`. Without one, the background is
 | `background_energy_multiplier` | `1` | Brightens the background |
 | `ambient_light_source` | `"background"` | `"background"` (its color and energy), `"color"` or `"disabled"` |
 | `ambient_light_color`, `ambient_light_energy` | `[0, 0, 0, 1]`, `1` | The ambient light for `"color"` |
+| `tonemap_mode` | `"linear"` | `"linear"`, `"reinhard"`, `"filmic"`, `"aces"` or `"agx"` |
+| `tonemap_exposure` | `1` | Multiplies lit colors before they are tonemapped |
+| `tonemap_white` | `1` | The color tonemapped to white (`"agx"` ignores it) |
+| `glow_enabled` | `false` | Bright colors bleed into what is around them |
+| `glow_intensity` | `0.8` | How strong the glow is |
+| `glow_bloom` | `0` | How much of every color glows, from 0 to 1 |
+| `glow_hdr_threshold`, `glow_hdr_scale` | `1`, `2` | Colors glow from the threshold, fully at the threshold plus the scale |
+| `glow_hdr_luminance_cap` | `12` | The brightest glow |
+| `adjustment_enabled` | `false` | Brightness, contrast, saturation and color correction apply |
+| `adjustment_brightness`, `adjustment_contrast`, `adjustment_saturation` | `1`, `1`, `1` | Multiply colors; contrast 0 is flat gray, saturation 0 gray |
+| `adjustment_color_correction` | `""` | A lookup texture colors pass through: 1 pixel tall, or as wide as its height squared |
+
+Without glow or adjustments, meshes are exposed and tonemapped as they draw, and the background
+is left alone. With either, the meshes draw exposed but not tonemapped into a texture of the
+frame's size, and a pass over the frame blends glow in, tonemaps, adjusts and corrects every
+pixel, the background's too, before the 2D draws go over it. Glow blurs the texture's bright
+parts through four textures each half the size of the last. The textures hold 8 bits a channel,
+as the Compatibility renderer's do, so drawn colors reach 1 at most: glow needs
+`glow_hdr_threshold` below 1, or `glow_bloom`.
+
+A color correction texture one pixel tall maps each channel by its value along x, as Godot's 1D
+LUTs (a `GradientTexture1D`) do. One as wide as its height squared is a 3D LUT: height slices of
+height by height pixels side by side, blue choosing the slice and red and green the pixel in it,
+as Godot imports a `Texture3D` from horizontal slices. A texture of another shape, or one that
+can't load, is reported and left out.
 
 ### Checks
 

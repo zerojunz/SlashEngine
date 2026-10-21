@@ -296,14 +296,17 @@ double material_time(std::uint64_t tick, double tick_seconds, double interpolati
 
 CanvasRenderer::CanvasRenderer(render::RenderDevice& device, asset::Assets& assets)
     : device_(&device), assets_(&assets),
-      scene3d_(device,
-               [this](const std::string& path, render::Filter filter) -> Result<render::TextureId> {
-                   auto made = texture(path, filter);
-                   if (!made) {
-                       return made.error();
-                   }
-                   return made.value()->id;
-               }) {}
+      scene3d_(
+          device,
+          [this](const std::string& path, render::Filter filter) -> Result<scene3d::SourceTexture> {
+              auto made = texture(path, filter);
+              if (!made) {
+                  return made.error();
+              }
+              return scene3d::SourceTexture{.id = made.value()->id,
+                                            .width = made.value()->width,
+                                            .height = made.value()->height};
+          }) {}
 
 CanvasRenderer::~CanvasRenderer() {
     for (const auto& [key, texture] : textures_) {
@@ -1085,7 +1088,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                          settings(world).shadows);
     for (const scene3d::Problem& unseen : scene3d_.problems()) {
         problem(unseen.entity, unseen.path, unseen.message);
-        warn_once(name_of(unseen.entity), unseen.message, "id", "a mesh can't draw");
+        warn_once(name_of(unseen.entity), unseen.message, "id", "a 3D node can't draw");
     }
     // What the world is seen through: the current camera's view, part of the way from the one
     // before the last tick, as Godot interpolates its canvas transform.
