@@ -96,7 +96,7 @@ set, each `AnimationPlayer` against its library and that its controls lay out as
 
 `engine/asset` loads files by project path into shared, reference-counted handles
 (`assets.load<json::Value>("data/tuning.json")`); `.json`, `.txt` and `.csv` load out of the box,
-`canvas::add_asset_types` adds textures (`.png`, `.bmp`), `.frames.json`, `.material.json`,
+`canvas::add_asset_types` adds textures (`.png`, `.bmp`, `.ktx2`), `.frames.json`, `.material.json`,
 `.process_material.json` and `.tileset.json` files, `animation::add_asset_types` adds `.anim.json` files,
 `text::add_asset_types` adds fonts (`.ttf`, `.otf`, `.font.json`), `audio::add_asset_types`
 adds sounds (`.wav`, `.ogg`, `.mp3`), `.audio.json` and `.bus_layout.json` files, and games add types
@@ -564,6 +564,13 @@ The `parallax_2d` system (priority 1060) sets each `Parallax2D`'s position from 
 Godot's `_update_scroll`, and the renderer draws a repeating one's children again at each
 repeat. `canvas::to_world` and `to_screen` (and `canvas.convert`) turn points between the screen
 and a canvas. `examples/canvas-layers` scrolls hills behind a level under a HUD.
+
+Textures are RGBA8, or BC7 and ASTC 4x4 blocks from `.ktx2` files (`render::TextureFormat`,
+`src/texture_codec.cpp`). A device samples the formats `supports()` names and decodes the rest
+with `decode_texels` (bc7enc_rdo's and astc-encoder's decoders, exact on every machine), so the
+software device and GPUs draw the same pixels. `render::Image` keeps the decoded `pixels` for the
+CPU and the file's `blocks`, which `CanvasRenderer` uploads where the device samples them.
+`encode_texels` (`slash::texture_encoder`, tools and tests only) compresses texels.
 
 Materials are `.material.json` node graphs (`$cli schema material`) that `Sprite2D`'s `material`
 names and `material_params` sets. `engine/canvas/src/material.cpp` compiles a graph on load into

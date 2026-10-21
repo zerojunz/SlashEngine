@@ -28,19 +28,36 @@ Result<void> check_texture_desc(const TextureDesc& desc) {
                               " pixels wide and high, not " + std::to_string(desc.width) + "x" +
                               std::to_string(desc.height));
     }
+    if (is_compressed(desc.format)) {
+        const std::string name(texture_format_name(desc.format));
+        if (desc.width % 4 != 0 || desc.height % 4 != 0) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a " + name + " texture is whole 4x4 blocks, so its sides are " +
+                                  "multiples of 4, not " + std::to_string(desc.width) + "x" +
+                                  std::to_string(desc.height));
+        }
+        if (desc.render_target) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "only RGBA8 textures are render targets, not " + name + " ones");
+        }
+    }
     return {};
 }
 
-Result<void> check_pixels(const TextureDesc& desc, std::span<const std::uint8_t> rgba,
+Result<void> check_pixels(const TextureDesc& desc, std::span<const std::uint8_t> texels,
                           bool allow_empty) {
-    const std::size_t expected = std::size_t{desc.width} * desc.height * 4;
-    if ((allow_empty && rgba.empty()) || rgba.size() == expected) {
+    const std::uint64_t expected = texture_bytes(desc);
+    if ((allow_empty && texels.empty() && !is_compressed(desc.format)) ||
+        texels.size() == expected) {
         return {};
     }
+    const std::string what = is_compressed(desc.format)
+                                 ? std::string(texture_format_name(desc.format)) + " blocks"
+                                 : "RGBA";
     return make_error(ErrorCode::InvalidArgument,
                       "a " + std::to_string(desc.width) + "x" + std::to_string(desc.height) +
-                          " texture takes " + std::to_string(expected) + " bytes of RGBA, not " +
-                          std::to_string(rgba.size()));
+                          " texture takes " + std::to_string(expected) + " bytes of " + what +
+                          ", not " + std::to_string(texels.size()));
 }
 
 Result<void> check_vertices(std::span<const Vertex2D> vertices, std::size_t in_frame) {
@@ -234,12 +251,15 @@ public:
 
     [[nodiscard]] Backend backend() const override { return Backend::Null; }
 
+    // The null device stands in for any GPU, so it takes every format.
+    [[nodiscard]] bool supports(TextureFormat /*format*/) const override { return true; }
+
     Result<TextureId> create_texture(const TextureDesc& desc,
-                                     std::span<const std::uint8_t> rgba) override {
+                                     std::span<const std::uint8_t> texels) override {
         if (auto checked = check_texture_desc(desc); !checked) {
             return checked.error();
         }
-        if (auto checked = check_pixels(desc, rgba, true); !checked) {
+        if (auto checked = check_pixels(desc, texels, true); !checked) {
             return checked.error();
         }
         const auto id = static_cast<TextureId>(next_texture_++);
@@ -247,12 +267,12 @@ public:
         return id;
     }
 
-    Result<void> update_texture(TextureId texture, std::span<const std::uint8_t> rgba) override {
+    Result<void> update_texture(TextureId texture, std::span<const std::uint8_t> texels) override {
         const auto it = textures_.find(texture);
         if (it == textures_.end()) {
             return detail::unknown_texture(texture);
         }
-        return check_pixels(it->second.desc, rgba, false);
+        return check_pixels(it->second.desc, texels, false);
     }
 
     void destroy_texture(TextureId texture) override { textures_.erase(texture); }

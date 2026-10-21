@@ -694,7 +694,7 @@ TEST_CASE("exports ship textures, frames, material, animation and tile set files
           "\"color\"?");
     CHECK(problems[4] == "sprites/bad.tileset.json /sources/ground/tiles/0,0/terrain no terrain "
                          "set has a terrain named \"grass\"");
-    CHECK(contains(problems[5], "sprites/broken.png  not a PNG or BMP image"));
+    CHECK(contains(problems[5], "sprites/broken.png  not a PNG, BMP or KTX2 image"));
 
     // The good files were staged with the scenes; files a game never loads were not.
     const std::filesystem::path data = folder / ".slash" / "export" / host / "data";

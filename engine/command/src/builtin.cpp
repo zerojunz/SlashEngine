@@ -4095,7 +4095,7 @@ Reply storyboard_check(Session& session, const json::Value& /*params*/) {
     std::vector<std::string> textures;
     std::vector<std::string> scenes;
     for (const std::string& path : files.value()) {
-        if (path.ends_with(".png") || path.ends_with(".bmp")) {
+        if (path.ends_with(".png") || path.ends_with(".bmp") || path.ends_with(".ktx2")) {
             textures.push_back(path);
         }
         if (path.ends_with(world::kSceneSuffix)) {

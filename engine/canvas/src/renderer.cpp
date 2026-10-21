@@ -632,10 +632,14 @@ Result<const CanvasRenderer::Texture*> CanvasRenderer::texture(const std::string
     if (entry.id != render::TextureId::None && entry.version == entry.image_version()) {
         return &entry;
     }
-    // New, or its file changed since it was made.
+    // New, or its file changed since it was made. A file's compressed blocks go to a device that
+    // samples them as they are, its pixels to any other.
     const render::Image& image = entry.pixels();
+    const bool blocks = !image.blocks.empty() && device_->supports(image.block_format);
+    const render::TextureFormat format = blocks ? image.block_format : render::TextureFormat::Rgba8;
+    const std::span<const std::uint8_t> texels = blocks ? image.blocks : image.pixels;
     if (entry.id != render::TextureId::None &&
-        (entry.width != image.width || entry.height != image.height)) {
+        (entry.width != image.width || entry.height != image.height || entry.format != format)) {
         device_->destroy_texture(entry.id);
         entry.id = render::TextureId::None;
     }
@@ -643,18 +647,20 @@ Result<const CanvasRenderer::Texture*> CanvasRenderer::texture(const std::string
         auto made = device_->create_texture({.width = image.width,
                                              .height = image.height,
                                              .filter = filter,
-                                             .render_target = false},
-                                            image.pixels);
+                                             .render_target = false,
+                                             .format = format},
+                                            texels);
         if (!made) {
             return made.error();
         }
         entry.id = made.value();
-    } else if (auto updated = device_->update_texture(entry.id, image.pixels); !updated) {
+    } else if (auto updated = device_->update_texture(entry.id, texels); !updated) {
         return updated.error();
     }
     entry.version = entry.image_version();
     entry.width = image.width;
     entry.height = image.height;
+    entry.format = format;
     return &entry;
 }
 
