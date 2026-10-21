@@ -2,6 +2,7 @@
 
 #include "slash/audio/audio.hpp"
 #include "slash/core/sha256.hpp"
+#include "slash/library/music.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/render/image.hpp"
@@ -166,6 +167,31 @@ json::Value to_json(const Record& record) {
         }
         out["feedback"] = std::move(feedback);
     }
+    if (record.bpm > 0.0) {
+        out["bpm"] = bpm_json(record.bpm);
+    }
+    if (record.beat_count > 0) {
+        out["beat_count"] = record.beat_count;
+    }
+    if (record.bar_beats > 0) {
+        out["bar_beats"] = record.bar_beats;
+    }
+    if (!record.key.empty()) {
+        out["key"] = record.key;
+    }
+    if (!record.stems.empty()) {
+        json::Array stems;
+        for (const Stem& stem : record.stems) {
+            json::Value entry;
+            entry["name"] = stem.name;
+            entry["id"] = stem.id;
+            stems.push_back(std::move(entry));
+        }
+        out["stems"] = std::move(stems);
+    }
+    if (!record.track.empty()) {
+        out["track"] = record.track;
+    }
     return out;
 }
 
@@ -224,6 +250,21 @@ Result<Record> record_from_json(const json::Value& value) {
             }
         }
     }
+    if (const json::Value* bpm = value.find("bpm"); bpm != nullptr && bpm->is_number()) {
+        record.bpm = bpm->as_double();
+    }
+    record.beat_count = static_cast<int>(integer("beat_count"));
+    record.bar_beats = static_cast<int>(integer("bar_beats"));
+    record.key = text_of(value, "key");
+    if (const json::Value* stems = value.find("stems"); stems != nullptr && stems->is_array()) {
+        for (const json::Value& item : stems->as_array()) {
+            const std::string id = text_of(item, "id");
+            if (id.size() == kHashLength && is_hex(id)) {
+                record.stems.push_back({.name = text_of(item, "name"), .id = id});
+            }
+        }
+    }
+    record.track = text_of(value, "track");
     return record;
 }
 
@@ -263,6 +304,11 @@ std::string_view type_of(std::string_view extension) {
         return "sound";
     }
     return {};
+}
+
+bool holds(std::string_view type, std::string_view extension) {
+    const std::string_view kept = type_of(extension);
+    return !kept.empty() && (kept == type || (type == "music" && kept == "sound"));
 }
 
 Result<void> describe_file(std::string_view data, std::string_view path, Record& record) {
@@ -322,6 +368,23 @@ Result<Record> Library::put(std::string_view data, Record record) const {
                 kept.tags.push_back(std::move(tag));
                 changed = true;
             }
+        }
+        // A sound added again as music, or a track again with its stems, learns what it lacked.
+        if (record.type == "music" && kept.type != "music") {
+            kept.type = record.type;
+            kept.bpm = record.bpm;
+            kept.beat_count = record.beat_count;
+            kept.bar_beats = record.bar_beats;
+            kept.key = record.key;
+            changed = true;
+        }
+        if (kept.stems.empty() && !record.stems.empty()) {
+            kept.stems = std::move(record.stems);
+            changed = true;
+        }
+        if (kept.track.empty() && !record.track.empty()) {
+            kept.track = std::move(record.track);
+            changed = true;
         }
         if (changed) {
             if (auto updated = update(kept); !updated) {

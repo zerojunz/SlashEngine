@@ -3,6 +3,7 @@
 #include "selection.hpp"
 
 #include "slash/animation/animation.hpp"
+#include "slash/audio/audio.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/jobs.hpp"
 #include "slash/core/json.hpp"
@@ -544,6 +545,14 @@ struct Run {
     std::string ended; // the end condition it met, or "" if its ticks ran out
     std::map<std::string, std::int64_t, std::less<>> events;
     std::vector<std::optional<json::Value>> measured;
+    // Clips music started, from the players' clip_changed events.
+    struct Clip {
+        std::string player;
+        std::string clip;
+        std::string from;
+        std::int64_t tick = 0; // ticks into the run
+    };
+    std::vector<Clip> music;
 };
 
 // What a run's session may do: what the playtest's may, but write files, export or call
@@ -675,9 +684,20 @@ std::optional<Reply> set_up(Session& host, const Plan& plan, const Session::Save
             return failed;
         }
     }
-    world.set_event_listener([&run, &plan](const world::Event& event) {
+    const std::uint64_t start = world.tick();
+    world.set_event_listener([&run, &plan, start](const world::Event& event) {
         if (plan.counts(event.kind)) {
             ++run.events[event.kind];
+        }
+        if (event.kind == audio::kClipChanged) {
+            const json::Value* clip = event.data.find("clip");
+            const json::Value* from = event.data.find("from");
+            run.music.push_back({
+                .player = event.id,
+                .clip = clip != nullptr ? clip->as_string() : std::string(),
+                .from = from != nullptr ? from->as_string() : std::string(),
+                .tick = static_cast<std::int64_t>(event.tick - start),
+            });
         }
     });
     return std::nullopt;
@@ -744,6 +764,46 @@ json::Value summarize_measure(const std::vector<const std::optional<json::Value>
     return out;
 }
 
+// The music the runs heard, by player: how many runs each clip started in and how many ticks in
+// it first did, and how often music went from one clip to another, per run.
+json::Value summarize_music(const std::vector<const Run*>& runs) {
+    struct Heard {
+        std::int64_t runs = 0;
+        std::vector<double> first;
+    };
+    std::map<std::string, std::map<std::string, Heard>> clips;
+    std::map<std::string, std::map<std::string, std::int64_t>> transitions;
+    for (const Run* run : runs) {
+        std::map<std::pair<std::string, std::string>, std::int64_t> first;
+        for (const Run::Clip& change : run->music) {
+            if (change.clip.empty()) {
+                continue; // the music stopped
+            }
+            first.try_emplace({change.player, change.clip}, change.tick);
+            if (!change.from.empty()) {
+                ++transitions[change.player][change.from + " -> " + change.clip];
+            }
+        }
+        for (const auto& [key, tick] : first) {
+            Heard& heard = clips[key.first][key.second];
+            ++heard.runs;
+            heard.first.push_back(static_cast<double>(tick));
+        }
+    }
+    json::Value out = json::Object{};
+    for (const auto& [player, heard] : clips) {
+        json::Value& item = out[player];
+        for (const auto& [clip, each] : heard) {
+            item["clips"][clip]["runs"] = each.runs;
+            item["clips"][clip]["first_tick"] = spread(each.first);
+        }
+        for (const auto& [names, count] : transitions[player]) {
+            item["transitions"][names] = mean_value(static_cast<double>(count), runs.size());
+        }
+    }
+    return out;
+}
+
 json::Value summarize(const Plan& plan, std::size_t combination,
                       const std::vector<const Run*>& runs, const std::vector<std::string>& kinds) {
     json::Value out;
@@ -791,6 +851,9 @@ json::Value summarize(const Plan& plan, std::size_t combination,
             }
             measure[plan.measure[m].first] = summarize_measure(values);
         }
+    }
+    if (std::ranges::any_of(runs, [](const Run* run) { return !run->music.empty(); })) {
+        out["music"] = summarize_music(runs);
     }
     return out;
 }
@@ -959,7 +1022,7 @@ void register_playtest_commands(Registry& registry) {
             "Plays many headless copies of the game at once to tune values (jump height, enemy "
             "speed): each from the open world with one combination of vary set and a bot pressing "
             "input actions, until an end condition or ticks run out. Returns per combination how "
-            "runs ended, ticks, event counts and measured values.",
+            "runs ended, ticks, event counts, measured values and the music clips heard.",
         .capabilities = {Capability::Run},
         .effect = Effect::Read,
         .params = params_schema(),

@@ -54,6 +54,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -4599,16 +4600,69 @@ Reply world_query(Session& session, const json::Value& params) {
 
 // ---- Simulation and history ----
 
+// The clips music started while a command steps the world, from the players' clip_changed
+// events: which clip played from which tick, and how each switch came.
+class MusicTimeline {
+public:
+    static constexpr std::size_t kMaxEntries = 100;
+
+    explicit MusicTimeline(const world::World& world) : first_(world.tick()) {}
+
+    // After each tick, whose events() are the tick's before.
+    void after_tick(const world::World& world) { add(world.events()); }
+
+    // After the last tick: its events, then the timeline into result if music changed.
+    void finish(const world::World& world, json::Value& result) {
+        add(world.event_queues().next);
+        if (entries_.empty()) {
+            return;
+        }
+        result["music"] = std::move(entries_);
+        if (truncated_) {
+            result["music_truncated"] = true;
+        }
+    }
+
+private:
+    void add(std::span<const world::Event> events) {
+        for (const world::Event& event : events) {
+            if (event.kind != audio::kClipChanged || event.tick < first_) {
+                continue;
+            }
+            if (entries_.size() >= kMaxEntries) {
+                truncated_ = true;
+                continue;
+            }
+            json::Value entry;
+            entry["tick"] = event.tick;
+            entry["id"] = event.id;
+            for (const auto& [key, value] : event.data.as_object()) {
+                if (key != "component") {
+                    entry[key] = value;
+                }
+            }
+            entries_.push_back(std::move(entry));
+        }
+    }
+
+    std::uint64_t first_;
+    json::Array entries_;
+    bool truncated_ = false;
+};
+
 Reply step(Session& session, const json::Value& params) {
     const std::int64_t ticks = integer(params, "ticks", 1);
     const json::Value* seconds = params.find("tick_seconds");
     const double tick_seconds = seconds != nullptr ? seconds->as_double() : kDefaultTickSeconds;
+    MusicTimeline music(session.world());
     for (std::int64_t i = 0; i < ticks; ++i) {
         session.world().step(tick_seconds);
+        music.after_tick(session.world());
     }
     json::Value result;
     result["ticks"] = ticks;
     result["tick"] = session.world().tick();
+    music.finish(session.world(), result);
     return Reply::success(std::move(result));
 }
 
@@ -4631,10 +4685,12 @@ Reply run_until(Session& session, const json::Value& params) {
     const double tick_seconds = seconds != nullptr ? seconds->as_double() : kDefaultTickSeconds;
     world::World& world = session.world();
     const auto holds = [&] { return detail::any_selected(world, selection) != until_none; };
+    MusicTimeline music(world);
     std::int64_t ticks = 0;
     bool matched = holds();
     while (!matched && ticks < max_ticks) {
         world.step(tick_seconds);
+        music.after_tick(world);
         ++ticks;
         matched = holds();
     }
@@ -4642,6 +4698,7 @@ Reply run_until(Session& session, const json::Value& params) {
     result["matched"] = matched;
     result["ticks"] = ticks;
     result["tick"] = world.tick();
+    music.finish(world, result);
     return Reply::success(std::move(result));
 }
 
@@ -6107,8 +6164,9 @@ void register_builtin_commands(Registry& registry) {
     tick_seconds["default"] = kDefaultTickSeconds;
     registry.add({
         .name = "step",
-        .description = "Advances the simulation by running every system once per tick. Undo "
-                       "reverts the entities to how they were before.",
+        .description = "Advances the simulation by running every system once per tick, and "
+                       "lists the music clips that started. Undo reverts the entities to how "
+                       "they were before.",
         .capabilities = {Run},
         .effect = Effect::Edit,
         .params = params_schema({
@@ -6134,7 +6192,8 @@ void register_builtin_commands(Registry& registry) {
         .name = "run.until",
         .description = "Steps the simulation until an entity matches with/without/where (e.g. "
                        "the player's position.y > 600), or none does, or ticks run out. Returns "
-                       "whether it matched, the tick and the matching entities.",
+                       "whether it matched, the tick, the matching entities and the music clips "
+                       "that started.",
         .capabilities = {Run},
         .effect = Effect::Edit,
         .params = params_schema(std::move(until_params)),

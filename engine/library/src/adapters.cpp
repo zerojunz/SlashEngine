@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -32,6 +33,12 @@ constexpr double kDenoisingStrength = 0.6;
 // ElevenLabs makes sound effects from half a second to thirty.
 constexpr double kMinSoundSeconds = 0.5;
 constexpr double kMaxSoundSeconds = 30.0;
+// ElevenLabs makes music from 3 seconds to 10 minutes, Stable Audio 2 from 1 second to 190; it
+// makes 190 unless asked, so music services are asked for 30 when the request says nothing.
+constexpr double kMinMusicSeconds = 3.0;
+constexpr double kMaxElevenLabsMusicSeconds = 600.0;
+constexpr double kMaxStableAudioSeconds = 190.0;
+constexpr double kDefaultMusicSeconds = 30.0;
 
 std::string_view default_url(std::string_view type) noexcept {
     if (type == "openai-image" || type == "openai-speech") {
@@ -40,8 +47,11 @@ std::string_view default_url(std::string_view type) noexcept {
     if (type == "gemini-image") {
         return "https://generativelanguage.googleapis.com/v1beta";
     }
-    if (type == "elevenlabs-sound") {
+    if (type == "elevenlabs-sound" || type == "elevenlabs-music") {
         return "https://api.elevenlabs.io";
+    }
+    if (type == "stability-audio") {
+        return "https://api.stability.ai";
     }
     return "http://127.0.0.1:7860"; // automatic1111
 }
@@ -309,9 +319,12 @@ private:
 class OpenAiImage final : public HttpGenerator {
 public:
     explicit OpenAiImage(Service service)
-        : HttpGenerator(
-              std::move(service),
-              {.images = true, .sounds = false, .refines_images = true, .refines_sounds = false}) {}
+        : HttpGenerator(std::move(service), {.images = true,
+                                             .sounds = false,
+                                             .refines_images = true,
+                                             .refines_sounds = false,
+                                             .music = false,
+                                             .refines_music = false}) {}
 
 protected:
     [[nodiscard]] Result<ai::HttpRequest> build(const GenerateRequest& request) const override {
@@ -423,9 +436,12 @@ private:
 class GeminiImage final : public HttpGenerator {
 public:
     explicit GeminiImage(Service service)
-        : HttpGenerator(
-              std::move(service),
-              {.images = true, .sounds = false, .refines_images = true, .refines_sounds = false}) {}
+        : HttpGenerator(std::move(service), {.images = true,
+                                             .sounds = false,
+                                             .refines_images = true,
+                                             .refines_sounds = false,
+                                             .music = false,
+                                             .refines_music = false}) {}
 
 protected:
     [[nodiscard]] Result<ai::HttpRequest> build(const GenerateRequest& request) const override {
@@ -556,9 +572,12 @@ private:
 class Automatic1111 final : public HttpGenerator {
 public:
     explicit Automatic1111(Service service)
-        : HttpGenerator(
-              std::move(service),
-              {.images = true, .sounds = false, .refines_images = true, .refines_sounds = false}) {}
+        : HttpGenerator(std::move(service), {.images = true,
+                                             .sounds = false,
+                                             .refines_images = true,
+                                             .refines_sounds = false,
+                                             .music = false,
+                                             .refines_music = false}) {}
 
 protected:
     [[nodiscard]] Result<ai::HttpRequest> build(const GenerateRequest& request) const override {
@@ -658,10 +677,12 @@ private:
 class OpenAiSpeech final : public HttpGenerator {
 public:
     explicit OpenAiSpeech(Service service)
-        : HttpGenerator(
-              std::move(service),
-              {.images = false, .sounds = true, .refines_images = false, .refines_sounds = false}) {
-    }
+        : HttpGenerator(std::move(service), {.images = false,
+                                             .sounds = true,
+                                             .refines_images = false,
+                                             .refines_sounds = false,
+                                             .music = false,
+                                             .refines_music = false}) {}
 
 protected:
     [[nodiscard]] Result<ai::HttpRequest> build(const GenerateRequest& request) const override {
@@ -697,15 +718,82 @@ protected:
     }
 };
 
+// The output_format options name for ElevenLabs, which goes in the URL: mp3_44100_128 if none.
+std::string elevenlabs_format(const json::Value& options) {
+    const json::Value* format = options.is_object() ? options.find("output_format") : nullptr;
+    return format != nullptr && format->is_string() ? format->as_string() : "mp3_44100_128";
+}
+
+// The audio an ElevenLabs reply holds: raw pcm_ samples at the format's rate made a .wav file,
+// anything else kept as the file it is.
+Result<Generated> elevenlabs_audio(const ai::HttpResponse& reply, const std::string& format,
+                                   int channels, const std::string& model, const std::string& who) {
+    Generated out{.data = {}, .format = {}, .model = model, .seed = std::nullopt};
+    if (format.starts_with("pcm_")) {
+        int rate = 0;
+        const std::string_view digits = std::string_view(format).substr(4);
+        const auto [end, error] =
+            std::from_chars(digits.data(), digits.data() + digits.size(), rate);
+        if (error != std::errc() || end != digits.data() + digits.size() || rate <= 0) {
+            return make_error(ErrorCode::InvalidArgument,
+                              who + "'s output_format \"" + format + "\" names no rate");
+        }
+        out.data = wav_file(reply.body, rate, channels);
+        out.format = "wav";
+        return out;
+    }
+    const std::string_view sniffed = sound_format(reply.body);
+    if (sniffed.empty()) {
+        return make_error(ErrorCode::PlatformFailure,
+                          who + " returned audio the library can't read; use an mp3_, wav_ or "
+                                "pcm_ output_format");
+    }
+    out.data = reply.body;
+    out.format = std::string(sniffed);
+    return out;
+}
+
+// What a music request asks for beyond its prompt, said in words for services that take only a
+// prompt: its tempo, meter and key, and that it loops.
+std::string music_prompt(const GenerateRequest& request) {
+    std::string prompt = request.prompt;
+    std::string details;
+    if (request.bpm > 0.0) {
+        std::string bpm = std::to_string(request.bpm);
+        while (bpm.back() == '0') {
+            bpm.pop_back();
+        }
+        if (bpm.back() == '.') {
+            bpm.pop_back();
+        }
+        details += " Tempo: " + bpm + " BPM.";
+    }
+    if (request.bar_beats > 0) {
+        details += " Meter: " + std::to_string(request.bar_beats) + "/4.";
+    }
+    if (!request.key.empty()) {
+        details += " Key: " + request.key + ".";
+    }
+    if (request.loop) {
+        details += " It loops seamlessly: its end leads straight back into its start.";
+    }
+    if (!details.empty()) {
+        prompt += prompt.empty() ? details.substr(1) : "\n\n" + details.substr(1);
+    }
+    return prompt;
+}
+
 // ElevenLabs' sound effects. options' output_format (mp3_, wav_ or pcm_ formats) goes in the
 // URL; the rest in the body.
 class ElevenLabsSound final : public HttpGenerator {
 public:
     explicit ElevenLabsSound(Service service)
-        : HttpGenerator(
-              std::move(service),
-              {.images = false, .sounds = true, .refines_images = false, .refines_sounds = false}) {
-    }
+        : HttpGenerator(std::move(service), {.images = false,
+                                             .sounds = true,
+                                             .refines_images = false,
+                                             .refines_sounds = false,
+                                             .music = false,
+                                             .refines_music = false}) {}
 
 protected:
     [[nodiscard]] Result<ai::HttpRequest> build(const GenerateRequest& request) const override {
@@ -719,7 +807,8 @@ protected:
         body = with_options(std::move(body));
         body.as_object().erase("output_format");
         ai::HttpRequest http;
-        http.url = url("/v1/sound-generation?output_format=" + output_format());
+        http.url =
+            url("/v1/sound-generation?output_format=" + elevenlabs_format(service().options));
         http.body = json::write(body, json::Style::Compact);
         if (!service().api_key.empty()) {
             http.headers.emplace_back("xi-api-key", service().api_key);
@@ -729,37 +818,107 @@ protected:
 
     [[nodiscard]] Result<Generated> read(const GenerateRequest& /*request*/,
                                          const ai::HttpResponse& reply) const override {
-        Generated out{.data = {}, .format = {}, .model = service().model, .seed = std::nullopt};
-        const std::string format = output_format();
-        if (format.starts_with("pcm_")) {
-            int rate = 0;
-            const std::string_view digits = std::string_view(format).substr(4);
-            const auto [end, error] =
-                std::from_chars(digits.data(), digits.data() + digits.size(), rate);
-            if (error != std::errc() || end != digits.data() + digits.size() || rate <= 0) {
-                return make_error(ErrorCode::InvalidArgument,
-                                  who() + "'s output_format \"" + format + "\" names no rate");
-            }
-            out.data = wav_file(reply.body, rate, 1);
-            out.format = "wav";
-            return out;
+        return elevenlabs_audio(reply, elevenlabs_format(service().options), 1, service().model,
+                                who());
+    }
+};
+
+// ElevenLabs' music: the prompt with the tempo, key and loop asked for in words, instrumental
+// unless options say force_instrumental false. output_format goes in the URL, as for sounds.
+class ElevenLabsMusic final : public HttpGenerator {
+public:
+    explicit ElevenLabsMusic(Service service)
+        : HttpGenerator(std::move(service), {.images = false,
+                                             .sounds = false,
+                                             .refines_images = false,
+                                             .refines_sounds = false,
+                                             .music = true,
+                                             .refines_music = false}) {}
+
+protected:
+    [[nodiscard]] Result<ai::HttpRequest> build(const GenerateRequest& request) const override {
+        json::Value body = json::Object{};
+        body["prompt"] = music_prompt(request);
+        body["model_id"] = service().model;
+        body["force_instrumental"] = true;
+        const double seconds = request.seconds > 0.0 ? request.seconds : kDefaultMusicSeconds;
+        body["music_length_ms"] = static_cast<std::int64_t>(std::lround(
+            std::clamp(seconds, kMinMusicSeconds, kMaxElevenLabsMusicSeconds) * 1000.0));
+        body = with_options(std::move(body));
+        body.as_object().erase("output_format");
+        ai::HttpRequest http;
+        http.url = url("/v1/music?output_format=" + elevenlabs_format(service().options));
+        http.body = json::write(body, json::Style::Compact);
+        if (!service().api_key.empty()) {
+            http.headers.emplace_back("xi-api-key", service().api_key);
         }
-        const std::string_view sniffed = sound_format(reply.body);
-        if (sniffed.empty()) {
-            return make_error(ErrorCode::PlatformFailure,
-                              who() + " returned audio the library can't read; use an mp3_, "
-                                      "wav_ or pcm_ output_format");
-        }
-        out.data = reply.body;
-        out.format = std::string(sniffed);
-        return out;
+        return http;
     }
 
-private:
-    [[nodiscard]] std::string output_format() const {
-        const json::Value* format =
-            service().options.is_object() ? service().options.find("output_format") : nullptr;
-        return format != nullptr && format->is_string() ? format->as_string() : "mp3_44100_128";
+    [[nodiscard]] Result<Generated> read(const GenerateRequest& /*request*/,
+                                         const ai::HttpResponse& reply) const override {
+        return elevenlabs_audio(reply, elevenlabs_format(service().options), 2, service().model,
+                                who());
+    }
+};
+
+// Stability AI's Stable Audio 2 and 2.5, which take a form and return the audio: the prompt with
+// the tempo, key and loop in words, the length and the seed. options (steps, cfg_scale,
+// output_format: mp3 or wav) go in the form too.
+class StabilityAudio final : public HttpGenerator {
+public:
+    explicit StabilityAudio(Service service)
+        : HttpGenerator(std::move(service), {.images = false,
+                                             .sounds = false,
+                                             .refines_images = false,
+                                             .refines_sounds = false,
+                                             .music = true,
+                                             .refines_music = false}) {}
+
+protected:
+    [[nodiscard]] Result<ai::HttpRequest> build(const GenerateRequest& request) const override {
+        const std::string prompt = music_prompt(request);
+        Multipart form(prompt);
+        form.field("prompt", prompt);
+        form.field("model", service().model);
+        const double seconds = request.seconds > 0.0 ? request.seconds : kDefaultMusicSeconds;
+        form.field("duration", std::to_string(static_cast<int>(
+                                   std::lround(std::clamp(seconds, 1.0, kMaxStableAudioSeconds)))));
+        if (request.seed) {
+            form.field("seed", std::to_string(*request.seed));
+        }
+        bool format_given = false;
+        if (service().options.is_object()) {
+            for (const auto& [name, value] : service().options.as_object()) {
+                format_given = format_given || name == "output_format";
+                form.field(name, value.is_string() ? value.as_string()
+                                                   : json::write(value, json::Style::Compact));
+            }
+        }
+        if (!format_given) {
+            form.field("output_format", "mp3");
+        }
+        ai::HttpRequest http;
+        http.url = url("/v2beta/audio/stable-audio-2/text-to-audio");
+        http.content_type = form.content_type();
+        http.headers.emplace_back("Accept", "audio/*");
+        bearer(http);
+        http.body = form.finish();
+        return http;
+    }
+
+    [[nodiscard]] Result<Generated> read(const GenerateRequest& request,
+                                         const ai::HttpResponse& reply) const override {
+        const std::string_view format = sound_format(reply.body);
+        if (format.empty()) {
+            return make_error(ErrorCode::PlatformFailure,
+                              who() + " returned audio the library can't read; set output_format "
+                                      "to mp3 or wav");
+        }
+        return Generated{.data = reply.body,
+                         .format = std::string(format),
+                         .model = service().model,
+                         .seed = request.seed};
     }
 };
 
@@ -795,6 +954,12 @@ std::string_view default_model(std::string_view type) noexcept {
     }
     if (type == "elevenlabs-sound") {
         return "eleven_text_to_sound_v2";
+    }
+    if (type == "elevenlabs-music") {
+        return "music_v1";
+    }
+    if (type == "stability-audio") {
+        return "stable-audio-2.5";
     }
     return ""; // automatic1111 draws with the checkpoint it has loaded
 }
@@ -887,6 +1052,12 @@ Result<std::shared_ptr<Generator>> make_http_generator(const ai::GeneratorConfig
     }
     if (config.type == "elevenlabs-sound") {
         return std::shared_ptr<Generator>(std::make_shared<ElevenLabsSound>(std::move(service)));
+    }
+    if (config.type == "elevenlabs-music") {
+        return std::shared_ptr<Generator>(std::make_shared<ElevenLabsMusic>(std::move(service)));
+    }
+    if (config.type == "stability-audio") {
+        return std::shared_ptr<Generator>(std::make_shared<StabilityAudio>(std::move(service)));
     }
     return make_error(ErrorCode::InvalidArgument, "no generator of type \"" + config.type + "\"");
 }

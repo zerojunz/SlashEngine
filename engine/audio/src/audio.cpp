@@ -17,8 +17,10 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <string>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 namespace slash::audio {
 
@@ -44,6 +46,7 @@ struct PlayerState {
     Frame volume{};
     std::uint32_t plays = 0;
     std::map<std::string, json::Value> parameters; // as last given to its voices
+    std::string clip; // the music clip it last said started, until its music stops
 };
 
 using Request = Snapshot::Request;
@@ -555,6 +558,31 @@ void follow_clip(State& state, world::World& world, PlayerState& player) {
     }
 }
 
+// A clip a player's music started, as a kClipChanged world event.
+void emit_clip_change(world::World& world, const PlayerState& player, ClipChange change) {
+    constexpr double kMilliseconds = 1000.0;
+    json::Value data;
+    data["component"] = player.kind;
+    data["clip"] = std::move(change.clip);
+    if (!change.from.empty()) {
+        data["from"] = std::move(change.from);
+    }
+    if (change.transition >= 0) {
+        data["transition"] = change.transition;
+    }
+    if (change.filler) {
+        data["filler"] = true;
+    }
+    if (change.automatic) {
+        data["automatic"] = true;
+    }
+    if (const double waited = std::round(change.waited * kMilliseconds) / kMilliseconds;
+        waited > 0.0) {
+        data["waited"] = waited;
+    }
+    world.emit(std::string(kClipChanged), player.id, std::move(data));
+}
+
 // The tick's microphone input, pushed before the tick is mixed: the stream agents play into it,
 // else what the device recorded, else silence. Input records only while it is on.
 void feed_input(State& state, std::size_t frames) {
@@ -665,6 +693,19 @@ void run(State& state, world::World& world, double tick_seconds) {
             follow_clip<world::AudioStreamPlayer2D>(state, world, player);
         }
     }
+    std::vector<ClipChange> changes;
+    for (auto& [key, player] : state.players) {
+        for (const Server::PlaybackId id : player.voices) {
+            if (Playback* playback = state.server->playback(id); playback != nullptr) {
+                playback->take_clip_changes(changes);
+            }
+        }
+        for (ClipChange& change : changes) {
+            player.clip = change.clip;
+            emit_clip_change(world, player, std::move(change));
+        }
+        changes.clear();
+    }
 
     // Voices that ended are dropped, as Godot's AudioStreamPlayerInternal::process.
     for (auto& [key, player] : state.players) {
@@ -689,6 +730,14 @@ void run(State& state, world::World& world, double tick_seconds) {
         json::Value data;
         data["component"] = player.kind;
         world.emit("finished", player.id, std::move(data));
+    }
+    // Music that stopped, at its end or asked to, says so with no clip.
+    for (auto& [key, player] : state.players) {
+        if (player.voices.empty() && !player.clip.empty()) {
+            ClipChange stopped;
+            stopped.from = std::exchange(player.clip, {});
+            emit_clip_change(world, player, std::move(stopped));
+        }
     }
 
     // Streams no player names are let go, and those played on polyphonic players once none

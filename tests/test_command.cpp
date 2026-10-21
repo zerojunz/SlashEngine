@@ -2565,6 +2565,56 @@ TEST_CASE("audio.play plays streams on a polyphonic player, and audio.state repo
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("step, run.until and playtest.run report the music's clips: a music timeline") {
+    const std::string root = "command_music_timeline_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    // An intro of a quarter of a second, then a loop that plays on.
+    const auto write_wav = [&](const std::string& path, int frames, float level) {
+        const std::vector<slash::audio::Frame> sound(static_cast<std::size_t>(frames),
+                                                     slash::audio::Frame{level, level});
+        REQUIRE(
+            slash::platform::write_file(root + "/" + path, slash::audio::encode_wav(sound, 44100))
+                .ok());
+    };
+    write_wav("intro.wav", 11025, 0.5F);
+    write_wav("loop.wav", 44100, 0.25F);
+    REQUIRE(slash::platform::write_file(root + "/loop.audio.json", R"({"format": 1,
+        "source": "loop.wav", "loop_mode": "forward"})")
+                .ok());
+    REQUIRE(slash::platform::write_file(root + "/score.audio.json", R"({"format": 1, "clips": [
+        {"name": "intro", "stream": "intro.wav", "auto_advance": "enabled", "next_clip": "loop"},
+        {"name": "loop", "stream": "loop.audio.json"}],
+        "transitions": [{"fade_mode": "disabled"}]})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create", R"({"id": "music", "components": {"AudioStreamPlayer":
+        {"stream": "score.audio.json", "autoplay": true}}})");
+
+    // The intro starts with the music, and the loop follows at its end by itself.
+    CHECK(engine.ok("step", R"({"ticks": 30})") == parse(R"({"ticks": 30, "tick": 30, "music": [
+        {"tick": 0, "id": "music", "clip": "intro"},
+        {"tick": 13, "id": "music", "clip": "loop", "from": "intro", "transition": 0,
+         "automatic": true, "waited": 0.235}]})"));
+    // Ticks with no change say nothing about the music.
+    CHECK(engine.ok("run.until", R"({"with": ["Health"], "ticks": 30})").find("music") == nullptr);
+    // Music that stops says so.
+    engine.ok("audio.stop", R"({"id": "music"})");
+    CHECK(*engine.ok("run.until", R"({"with": ["Health"], "ticks": 1})").find("music") ==
+          parse(R"([{"tick": 60, "id": "music", "clip": "", "from": "loop"}])"));
+
+    // A playtest sums it up over runs: how many heard each clip and how soon, and how often
+    // each transition came.
+    const json::Value summary = engine.ok("playtest.run", R"({"runs": 2, "ticks": 30})");
+    CHECK(*summary.find("results")->as_array()[0].find("music") == parse(R"({"music": {
+        "clips": {"intro": {"runs": 2, "first_tick": {"min": 0, "mean": 0, "max": 0}},
+                  "loop": {"runs": 2, "first_tick": {"min": 13, "mean": 13, "max": 13}}},
+        "transitions": {"intro -> loop": 1}}})"));
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("audio.input plays a sound into the microphone input, and audio.state reports it") {
     const std::string root = "command_microphone_project";
     REQUIRE(slash::platform::create_directories(root).ok());

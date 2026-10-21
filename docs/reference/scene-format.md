@@ -2760,7 +2760,8 @@ from the current `AudioListener2D`. Each plays through a bus of the project's
   polyphonic streams and microphones are monophonic, as in Godot: playing again always starts
   them over. A new `stream` stops the old one.
 - When a player's last sound ends, it sets `playing` to false and emits a `finished` event with
-  `{"component": "AudioStreamPlayer"}` (or `AudioStreamPlayer2D`) as its data.
+  `{"component": "AudioStreamPlayer"}` (or `AudioStreamPlayer2D`) as its data. Music also emits
+  a [`clip_changed`](#clip-changes) event for each clip it starts.
 - An `AudioStreamPlayer2D` fades and pans as Godot's `_update_panning`: its volume is times
   (1 - distance / `max_distance`) ^ `attenuation`, and it pans by its offset from the listener
   over the viewport's width, times `panning_strength` and half of `audio.panning_strength_2d`.
@@ -2992,6 +2993,33 @@ They reach each new playback before it starts, and every playback when they chan
 - Asking for the clip the music plays, or is heading to, changes nothing; Godot would start it
   over.
 - [`audio.state`](commands.md#audiostate) names the clip each player's music is playing.
+
+### Clip changes
+
+Each time a player's music starts a clip, the player emits a `clip_changed` event (Godot has no
+such signal), so gameplay code can follow the music and agents can check it follows the game.
+Interactive music emits one for each clip it starts, its first and a transition's filler
+included, and a playlist for each of its streams. [`step`](commands.md#step) and
+[`run.until`](commands.md#rununtil) list the events of the ticks they ran as `music`, and
+[`playtest.run`](commands.md#playtestrun) sums them up over its runs.
+
+| Field | Meaning |
+| --- | --- |
+| `component` | `AudioStreamPlayer` or `AudioStreamPlayer2D` |
+| `clip` | The clip's name, or the playlist stream's path; `""` once the music stops |
+| `from` | The clip before it; left out as the music starts |
+| `transition` | The index of the `transitions` entry the switch followed; left out with none |
+| `filler` | `true` for a transition's `filler_clip` |
+| `automatic` | `true` when it came by itself (`auto_advance`, a playlist moving on), not a switch asked for |
+| `waited` | Seconds from the switch to the clip starting: the wait for its beat or bar, plus any filler; left out when it started at once |
+
+```json
+{"automatic":true,"clip":"explore","component":"AudioStreamPlayer","from":"victory","transition":2,"waited":1.003}
+```
+
+Waits are measured in mixed frames, rounded to milliseconds. They can be a few milliseconds off
+the beat, since a sound's position counts the frames it has read ahead and the mixer works in
+steps of 512 frames, as Godot's does; the same ticks always give the same waits.
 
 ### Generators and polyphonic streams
 
