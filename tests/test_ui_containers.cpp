@@ -845,3 +845,51 @@ TEST_CASE("labels and buttons with a language that isn't a BCP 47 tag are report
           std::vector<std::string>{"label/components/Label/language: \"english\" isn't a BCP 47 "
                                    "language tag, such as \"ar\" or \"zh-Hant\""});
 }
+
+TEST_CASE("a top-level control is placed in the viewport and left out by its container") {
+    Scene scene;
+    scene.block("a", 50, 20);
+    scene.create("tip", R"({"Control": {"top_level": true, "offset_left": 10, "offset_top": 10,
+                                        "offset_right": 60, "offset_bottom": 40},
+                            "ColorRect": {}})");
+    scene.block("b", 60, 30);
+    scene.create("box", R"({"Control": {"offset_left": 100, "offset_top": 50,
+                                        "offset_right": 300, "offset_bottom": 250,
+                                        "clip_contents": true, "modulate": [1, 1, 1, 0.5],
+                                        "z_index": 3, "children": ["a", "tip", "b"]},
+                            "BoxContainer": {"vertical": true}})");
+    scene.create("after", R"({"Control": {"offset_right": 400, "offset_bottom": 300},
+                              "ColorRect": {}})");
+    // The box lines up a and b as if tip weren't there; tip keeps its own offsets, in the
+    // viewport rather than the box, as Godot's top_level.
+    ui::Layout layout = scene.layout();
+    CHECK(rect_of(scene, layout, "a") == Rect{100, 50, 200, 20});
+    CHECK(rect_of(scene, layout, "b") == Rect{100, 74, 200, 30});
+    CHECK(rect_of(scene, layout, "tip") == Rect{10, 10, 50, 30});
+
+    // It takes none of the box's modulate, z_index or clip, and isn't its child on screen.
+    const ui::Placed& tip = *layout.find(scene.world.find("tip"));
+    CHECK((tip.parent == entt::null));
+    CHECK(tip.modulate == Vec4{1, 1, 1, 1});
+    CHECK(tip.z == 0);
+    CHECK_FALSE(tip.clip.has_value());
+    CHECK(layout.find(scene.world.find("b"))->modulate == Vec4{1, 1, 1, 0.5F});
+
+    // It draws by its own z_index, so under the box's tree, and before after, a root made after
+    // the box. At the box's z_index, it draws after the rest of the box's tree, as Godot orders
+    // a canvas's top-level items in tree order.
+    const auto drawing_order = [&] {
+        std::vector<std::string> order;
+        for (const ui::Placed& placed : scene.layout().controls) {
+            order.emplace_back(scene.world.id_of(placed.entity));
+        }
+        return order;
+    };
+    CHECK(drawing_order() == std::vector<std::string>{"tip", "after", "box", "a", "b"});
+    scene.set("box", R"({"Control": {"z_index": 0}})");
+    CHECK(drawing_order() == std::vector<std::string>{"box", "a", "b", "tip", "after"});
+
+    // Hiding the box still hides it, as hiding a node hides its top-level children.
+    scene.set("box", R"({"Control": {"visible": false}})");
+    CHECK_FALSE(scene.layout().find(scene.world.find("tip"))->visible);
+}

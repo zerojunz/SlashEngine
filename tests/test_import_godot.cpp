@@ -1724,6 +1724,9 @@ z_as_relative = false
 
 [node name="Hud" type="Label" parent="."]
 z_as_relative = false
+
+[node name="Tip" type="Label" parent="Hud"]
+top_level = true
 )");
     const importer::ImportPlan plan = plan_inside(project);
     const auto files = files_of(plan);
@@ -1733,7 +1736,9 @@ z_as_relative = false
           parse(R"({"position": [40.0, 10.0], "top_level": true})"));
     CHECK(*entity(files, level, "wake").find("Sprite2D") ==
           parse(R"({"z_index": -1, "z_as_relative": false})"));
-    CHECK(*entity(files, level, "hud").find("Control") == parse(R"({"z_as_relative": false})"));
+    CHECK(*entity(files, level, "hud").find("Control") ==
+          parse(R"({"children": ["tip"], "z_as_relative": false})"));
+    CHECK(*entity(files, level, "tip").find("Control") == parse(R"({"top_level": true})"));
     for (const json::Value& item : plan.report.find("unsupported")->as_array()) {
         const std::string& what = item.find("what")->as_string();
         CHECK_MESSAGE(what.find("top_level") == std::string::npos, what);
