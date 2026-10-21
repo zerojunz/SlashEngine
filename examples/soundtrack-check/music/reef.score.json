@@ -1,0 +1,13 @@
+{
+  "bpm": 96,
+  "format": 1,
+  "key": "Bb major",
+  "tracks": [
+    {
+      "bars": ["Bb3+D4+F4:4", "Eb3+G3+Bb3:2 F3+A3+C4"],
+      "instrument": "pad_warm",
+      "name": "pad",
+      "velocity": 30
+    }
+  ]
+}

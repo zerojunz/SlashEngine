@@ -178,6 +178,12 @@ struct StreamFile {
 [[nodiscard]] std::string_view loop_mode_name(LoopMode mode);
 [[nodiscard]] std::string_view playback_mode_name(PlaybackMode mode);
 
+// The index of the transition interactive music takes from clip from to clip to, as Godot's
+// transition_map lookup: from and to named, from named, to named, then neither; -1 for none,
+// when it takes a transition with Godot's defaults.
+[[nodiscard]] int transition_index(std::span<const StreamFile::Transition> transitions, int from,
+                                   int to);
+
 // JSON Schema for .audio.json files.
 [[nodiscard]] json::Value stream_file_schema();
 // Every error in a .audio.json document, each with the JSON Pointer of the bad value.

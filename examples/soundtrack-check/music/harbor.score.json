@@ -1,0 +1,19 @@
+{
+  "bpm": 96,
+  "format": 1,
+  "key": "E minor",
+  "tracks": [
+    {
+      "bars": ["E3+G3+B3:4", "C3+E3+G3:2 D3+F#3+A3"],
+      "instrument": "string_ensemble_1",
+      "name": "strings",
+      "velocity": 70
+    },
+    {
+      "bars": ["kick:1 closed_hat snare closed_hat", "kick:1 closed_hat snare kick:0.5 kick"],
+      "instrument": "drums",
+      "name": "drums",
+      "velocity": 80
+    }
+  ]
+}

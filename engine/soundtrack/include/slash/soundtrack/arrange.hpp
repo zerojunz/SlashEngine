@@ -23,13 +23,22 @@ struct ArrangeOptions {
     std::string initial{}; // NOLINT(readability-redundant-member-init)
 };
 
+// Something wrong with a cue: missing is a music file the cue names that can't play (it doesn't
+// exist, isn't rendered or isn't music) or a layer with no file, rather than music not written
+// yet or a sting that has nothing to follow.
+struct ArrangeProblem {
+    std::string cue;
+    std::string message;
+    bool missing = false;
+};
+
 struct Arranged {
     json::Value music; // the interactive stream
     // The synchronized streams the clips of cues with several files or layers play, by path.
     std::vector<std::pair<std::string, json::Value>> files;
     // What each clip is: {"name", "cue", "layer"?, "stream"}.
     json::Array clips;
-    std::vector<std::string> problems;
+    std::vector<ArrangeProblem> problems;
 };
 
 // Turns cues into the clips of an interactive stream. A cue plays its music: the .audio.json,
