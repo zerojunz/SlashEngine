@@ -104,6 +104,17 @@ constexpr std::string_view kSchema = R"({
         }
       }
     },
+    "library": {
+      "description": "The asset library's team store, so a teammate's request finds assets someone else made.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["team"],
+      "properties": {
+        "team": {"description": "A folder every teammate reaches, such as a network share or a synced folder (~/ for the home folder, relative to the project otherwise), or the http:// or https:// URL of a library server that slash-cli library serve runs. SLASH_LIBRARY_TEAM overrides it.", "type": "string", "minLength": 1},
+        "token_env": {"description": "The environment variable holding the library server's token. Default: SLASH_LIBRARY_TOKEN.", "type": "string", "minLength": 1},
+        "timeout_seconds": {"description": "How long to wait for the library server. Default: 60.", "type": "integer", "minimum": 1}
+      }
+    },
     "replay": {
       "description": "Recorded replies, so tests run offline. SLASH_AI_REPLAY (replay, record, auto or off) overrides the mode.",
       "type": "object",
@@ -346,6 +357,17 @@ Result<Config> parse_config(const json::Value& document) {
             }
             config.generators.emplace(name, std::move(generator));
         }
+    }
+    if (const json::Value* library = document.find("library"); library != nullptr) {
+        LibraryConfig out;
+        out.team = library->find("team")->as_string();
+        if (const json::Value* token = library->find("token_env"); token != nullptr) {
+            out.token_env = token->as_string();
+        }
+        if (const json::Value* timeout = library->find("timeout_seconds"); timeout != nullptr) {
+            out.timeout_seconds = static_cast<int>(timeout->as_int());
+        }
+        config.library = std::move(out);
     }
     if (const json::Value* replay = document.find("replay"); replay != nullptr) {
         ReplayConfig out;
