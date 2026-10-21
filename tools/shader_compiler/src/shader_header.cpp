@@ -180,6 +180,8 @@ std::string header(const std::vector<Entry>& entries, const std::vector<Compiled
         text("msl_fragment", shader.msl_fragment);
         text("glsl_vertex", shader.glsl_vertex);
         text("glsl_fragment", shader.glsl_fragment);
+        text("wgsl_vertex", shader.wgsl_vertex);
+        text("wgsl_fragment", shader.wgsl_fragment);
         text("hlsl", shader.hlsl);
         words("cpu_vertex", shader.cpu_vertex);
         words("cpu_fragment", shader.cpu_fragment);

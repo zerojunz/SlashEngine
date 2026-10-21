@@ -551,7 +551,8 @@ json::Value schema(bool list_ops) {
     for (const char* key : {"spirv_vertex", "spirv_fragment", "cpu_vertex", "cpu_fragment"}) {
         compiled["properties"][key] = text_schema("SPIR-V, in base64.");
     }
-    for (const char* key : {"msl_vertex", "msl_fragment", "glsl_vertex", "glsl_fragment", "hlsl"}) {
+    for (const char* key : {"msl_vertex", "msl_fragment", "glsl_vertex", "glsl_fragment",
+                            "wgsl_vertex", "wgsl_fragment", "hlsl"}) {
         compiled["properties"][key] = text_schema("Source code.");
     }
     for (const char* key : {"normal_map_used", "specular_used"}) {
@@ -861,6 +862,8 @@ private:
         text("msl_fragment", shader->msl_fragment);
         text("glsl_vertex", shader->glsl_vertex);
         text("glsl_fragment", shader->glsl_fragment);
+        text("wgsl_vertex", shader->wgsl_vertex);
+        text("wgsl_fragment", shader->wgsl_fragment);
         text("hlsl", shader->hlsl);
         shader->normal_map_used = flag("normal_map_used");
         shader->specular_used = flag("specular_used");
@@ -1667,6 +1670,10 @@ json::Value compiled_shader_json(const render::CompiledShader& shader,
     if (targets.glsl) {
         text("glsl_vertex", shader.glsl_vertex);
         text("glsl_fragment", shader.glsl_fragment);
+    }
+    if (targets.wgsl) {
+        text("wgsl_vertex", shader.wgsl_vertex);
+        text("wgsl_fragment", shader.wgsl_fragment);
     }
     if (targets.hlsl) {
         text("hlsl", shader.hlsl);

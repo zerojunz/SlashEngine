@@ -25,7 +25,7 @@ enum class ShaderId : std::uint32_t { None = 0 };
 
 // A game's shader compiled for every backend: the material shader's vs_main and fs_main with the
 // game's code in them, as SPIR-V for Vulkan, MSL for Metal, GLSL ES 3.00 for OpenGL ES and WebGL
-// 2, and HLSL, which Direct3D 12 compiles when the shader is made.
+// 2, WGSL for WebGPU, and HLSL, which Direct3D 12 compiles when the shader is made.
 struct CompiledShader {
     std::vector<std::uint32_t> spirv_vertex;
     std::vector<std::uint32_t> spirv_fragment;
@@ -33,6 +33,8 @@ struct CompiledShader {
     std::string msl_fragment;
     std::string glsl_vertex;
     std::string glsl_fragment;
+    std::string wgsl_vertex;
+    std::string wgsl_fragment;
     std::string hlsl;
     // SPIR-V the CPU runs with ShaderVm: the game's vertex(), if it has one, and its fragment().
     // See shaders/canvas.hlsl for what each reads and writes.

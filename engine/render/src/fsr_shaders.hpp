@@ -2400,6 +2400,1169 @@ void main()
 )slash",
 };
 
+inline constexpr const char* kFsrEasuWgslVertex[] = {
+R"slash(var<private> TIME : f32;
+
+struct VertexProgram {
+  vertex_constants : array<vec4<f32>, 32u>,
+  vertex_texel : vec4<f32>,
+}
+
+@group(1u) @binding(1u) var<uniform> v : VertexProgram;
+
+var<private> TEXTURE_PIXEL_SIZE : vec2<f32>;
+
+var<private> VERTEX : vec2<f32>;
+
+var<private> UV : vec2<f32>;
+
+var<private> COLOR : vec4<f32>;
+
+struct View_1_1 {
+  view_projection : mat4x4<f32>,
+}
+
+@group(1u) @binding(0u) var<uniform> v_1 : View_1_1;
+
+var<private> v_2 : vec2<f32>;
+
+var<private> v_3 : vec4<f32>;
+
+var<private> v_4 : vec2<f32>;
+
+var<private> v_5 : vec4<f32>;
+
+@group(2u) @binding(4u) var normal_map : texture_2d<f32>;
+
+@group(2u) @binding(5u) var specular_map : texture_2d<f32>;
+
+@group(2u) @binding(6u) var light_atlas : texture_2d<f32>;
+
+@group(2u) @binding(7u) var shadow_map : texture_2d<f32>;
+
+@group(2u) @binding(12u) var normal_sampler : sampler;
+
+@group(2u) @binding(13u) var specular_sampler : sampler;
+
+@group(2u) @binding(14u) var atlas_sampler : sampler;
+
+@group(2u) @binding(15u) var shadow_sampler : sampler;
+
+struct Program {
+  code : array<vec4<u32>, 64u>,
+  constants : array<vec4<f32>, 32u>,
+  texel : vec4<f32>,
+  counts : vec4<u32>,
+  shading : vec4<i32>,
+  specular : vec4<f32>,
+  field : vec4<f32>,
+  layer : vec4<i32>,
+  ambient : vec4<f32>,
+  to_lights_x : vec4<f32>,
+  to_lights_y : vec4<f32>,
+}
+
+@group(3u) @binding(0u) var<uniform> v_6 : Program;
+
+struct Light {
+  color : vec4<f32>,
+  position : vec4<f32>,
+  texture_u : vec4<f32>,
+  texture_v : vec4<f32>,
+  atlas : vec4<f32>,
+  shadow : vec4<f32>,
+  shadow_origin : vec4<f32>,
+  shadow_color : vec4<f32>,
+  flags : vec4<u32>,
+  range : vec4<i32>,
+}
+
+struct Lights {
+  light_count : vec4<u32>,
+  lights : array<Light, 64u>,
+}
+
+@group(3u) @binding(1u) var<uniform> v_7 : Lights;
+
+@group(2u) @binding(0u) var TEXTURE : texture_2d<f32>;
+
+@group(2u) @binding(8u) var TEXTURE_sampler : sampler;
+
+struct VertexInput {
+  position : vec2<f32>,
+  uv : vec2<f32>,
+  color : vec4<f32>,
+}
+
+struct VertexOutput {
+  uv : vec2<f32>,
+  color : vec4<f32>,
+  world : vec2<f32>,
+  position : vec4<f32>,
+}
+
+fn vs_main_inner(v_8 : vec2<f32>, v_9 : vec2<f32>, v_10 : vec4<f32>) {
+  var input : VertexInput;
+  var flattenTemp : VertexOutput;
+  var param : VertexInput;
+  input.position = v_8;
+  input.uv = v_9;
+  input.color = v_10;
+  param = input;
+  flattenTemp = v_11(&(param));
+  v_2 = flattenTemp.uv;
+  v_3 = flattenTemp.color;
+  v_4 = flattenTemp.world;
+  v_5 = flattenTemp.position;
+}
+
+fn v_11(input : ptr<function, VertexInput>) -> VertexOutput {
+  var output : VertexOutput;
+  TIME = v.vertex_constants[31i].x;
+  TEXTURE_PIXEL_SIZE = v.vertex_texel.xy;
+  VERTEX = (*(input)).position;
+  UV = (*(input)).uv;
+  COLOR = (*(input)).color;
+  let v_12 = VERTEX;
+  output.position = (vec4<f32>(v_12.x, v_12.y, 0.0f, 1.0f) * v_1.view_projection);
+  output.uv = UV;
+  output.color = COLOR;
+  output.world = VERTEX;
+  return output;
+}
+
+struct tint_symbol {
+  @location(0u)
+  m : vec2<f32>,
+  @location(1u)
+  m_1 : vec4<f32>,
+  @location(2u)
+  m_2 : vec2<f32>,
+  @builtin(position)
+  m_3 : vec4<f32>,
+}
+
+@vertex
+fn vs_main(@location(0u) v_13 : vec2<f32>, @location(1u) v_14 : vec2<f32>, @location(2u) v_15 : vec4<f32>) -> tint_symbol {
+  vs_main_inner(v_13, v_14, v_15);
+  return tint_symbol(v_2, v_3, v_4, v_5);
+}
+)slash",
+};
+
+inline constexpr const char* kFsrEasuWgslFragment[] = {
+R"slash(@group(2u) @binding(7u) var shadow_map : texture_2d<f32>;
+
+struct Program {
+  code : array<vec4<u32>, 64u>,
+  constants : array<vec4<f32>, 32u>,
+  texel : vec4<f32>,
+  counts : vec4<u32>,
+  shading : vec4<i32>,
+  specular : vec4<f32>,
+  field : vec4<f32>,
+  layer : vec4<i32>,
+  ambient : vec4<f32>,
+  to_lights_x : vec4<f32>,
+  to_lights_y : vec4<f32>,
+}
+
+@group(3u) @binding(0u) var<uniform> v_1 : Program;
+
+struct Light {
+  color : vec4<f32>,
+  position : vec4<f32>,
+  texture_u : vec4<f32>,
+  texture_v : vec4<f32>,
+  atlas : vec4<f32>,
+  shadow : vec4<f32>,
+  shadow_origin : vec4<f32>,
+  shadow_color : vec4<f32>,
+  flags : vec4<u32>,
+  range : vec4<i32>,
+}
+
+struct Lights {
+  light_count : vec4<u32>,
+  lights : array<Light, 64u>,
+}
+
+@group(3u) @binding(1u) var<uniform> v_2 : Lights;
+
+@group(2u) @binding(6u) var light_atlas : texture_2d<f32>;
+
+@group(2u) @binding(14u) var atlas_sampler : sampler;
+
+@group(2u) @binding(0u) var TEXTURE : texture_2d<f32>;
+
+@group(2u) @binding(8u) var TEXTURE_sampler : sampler;
+
+var<private> TEXTURE_PIXEL_SIZE : vec2<f32>;
+
+var<private> UV : vec2<f32>;
+
+var<private> COLOR : vec4<f32>;
+
+var<private> TIME : f32;
+
+var<private> FRAGCOORD : vec4<f32>;
+
+var<private> NORMAL_MAP : vec3<f32>;
+
+@group(2u) @binding(4u) var normal_map : texture_2d<f32>;
+
+@group(2u) @binding(12u) var normal_sampler : sampler;
+
+var<private> SPECULAR_SHININESS : vec4<f32>;
+
+@group(2u) @binding(5u) var specular_map : texture_2d<f32>;
+
+@group(2u) @binding(13u) var specular_sampler : sampler;
+
+var<private> v_3 : vec4<f32>;
+
+struct View_1_1 {
+  view_projection : mat4x4<f32>,
+}
+
+@group(1u) @binding(0u) var<uniform> v_4 : View_1_1;
+
+@group(2u) @binding(15u) var shadow_sampler : sampler;
+
+struct VertexProgram {
+  vertex_constants : array<vec4<f32>, 32u>,
+  vertex_texel : vec4<f32>,
+}
+
+@group(1u) @binding(1u) var<uniform> v_5 : VertexProgram;
+
+struct VertexOutput {
+  uv : vec2<f32>,
+  color : vec4<f32>,
+  world : vec2<f32>,
+  position : vec4<f32>,
+}
+
+fn fs_main_inner(v_6 : vec2<f32>, v_7 : vec4<f32>, v_8 : vec2<f32>, v_9 : vec4<f32>) {
+  var input : VertexOutput;
+  var param : VertexOutput;
+  input.uv = v_6;
+  input.color = v_7;
+  input.world = v_8;
+  input.position = v_9;
+  param = input;
+  v_3 = v_10(&(param));
+}
+
+fn v_11(column : ptr<function, i32>, row : ptr<function, i32>) -> f32 {
+  var texel : vec4<f32>;
+  var bytes : vec3<f32>;
+  texel = textureLoad(shadow_map, vec3<i32>(*(column), *(row), 0i).xy, vec3<i32>(*(column), *(row), 0i).z);
+  if ((texel.w < 0.5f)) {
+    return 2.0f;
+  }
+  bytes = round((texel.xyz * 255.0f));
+  return ((((bytes.x * 65536.0f) + (bytes.y * 256.0f)) + bytes.z) / 16777216.0f);
+}
+
+struct Light_1 {
+  color : vec4<f32>,
+  position : vec4<f32>,
+  texture_u : vec4<f32>,
+  texture_v : vec4<f32>,
+  atlas : vec4<f32>,
+  shadow : vec4<f32>,
+  shadow_origin : vec4<f32>,
+  shadow_color : vec4<f32>,
+  flags : vec4<u32>,
+  range : vec4<i32>,
+}
+
+fn v_12(light : ptr<function, Light_1>, position : ptr<function, vec2<f32>>) -> f32 {
+  var wrap : bool;
+  var d : vec2<f32>;
+  var column : f32;
+  var depth : f32;
+  var across : f32;
+  var along : f32;
+  var taps : i32;
+  var row : i32;
+  var bias : f32;
+  var hidden : f32;
+  var k : i32;
+  var at : i32;
+  var stored : f32;
+  var param : i32;
+  var param_1 : i32;
+  wrap = ((*(light)).position.w < 0.5f);
+  if (wrap) {
+    d = (*(position) - (*(light)).position.xy);
+    column = (((atan2(d.y, d.x) / 6.28318548202514648438f) + 0.5f) * 2048.0f);
+    depth = (sqrt(((d.x * d.x) + (d.y * d.y))) / (*(light)).shadow.y);
+  } else {
+    across = (((*(position)).x * -((*(light)).position.y)) + ((*(position)).y * (*(light)).position.x));
+    along = (((*(position)).x * (*(light)).position.x) + ((*(position)).y * (*(light)).position.y));
+    column = (((across - (*(light)).shadow_origin.x) / (*(light)).shadow_origin.z) * 2048.0f);
+    depth = ((along - (*(light)).shadow_origin.y) / (*(light)).shadow.y);
+  }
+  taps = bitcast<i32>((*(light)).flags.y);
+  row = i32((*(light)).shadow.x);
+  bias = (0.5f / (*(light)).shadow.y);
+  hidden = 0.0f;
+  k = -(taps);
+  loop {
+    if ((k <= taps)) {
+      at = i32(floor((column + (f32(k) * (*(light)).shadow.z))));
+      if (wrap) {
+        at = (((at % 2048i) + 2048i) % 2048i);
+      } else if (((at < 0i) | (at >= 2048i))) {
+        continue;
+      }
+      param = at;
+      param_1 = row;
+      stored = v_11(&(param), &(param_1));
+      if ((((stored <= 1.0f) & (depth > (stored + bias))) & (wrap | ((depth - stored) < (*(light)).shadow.w)))) {
+        hidden = (hidden + 1.0f);
+      }
+      continue;
+    } else {
+      break;
+    }
+
+    continuing {
+      k = (k + 1i);
+    }
+  }
+  return (hidden / f32(((2i * taps) + 1i)));
+}
+
+fn v_13(light_vec : ptr<function, vec3<f32>>, normal : ptr<function, vec3<f32>>, base : ptr<function, vec3<f32>>, light_color : ptr<function, vec3<f32>>, shine : ptr<function, vec4<f32>>, shine_used : ptr<function, bool>) -> vec3<f32> {
+  var n_dot_l : f32;
+  var lit : vec3<f32>;
+  var view : vec3<f32>;
+  var half_vec : vec3<f32>;
+  var n_dot_v : f32;
+  var n_dot_h : f32;
+  var shininess : f32;
+  var blinn : f32;
+  var s : f32;
+  n_dot_l = max(0.0f, dot(*(normal), *(light_vec)));
+  lit = ((*(light_color) * *(base)) * n_dot_l);
+  if (!(*(shine_used))) {
+    return lit;
+  }
+  view = vec3<f32>(0.0f, 0.0f, 1.0f);
+  half_vec = normalize((view + *(light_vec)));
+  n_dot_v = max(dot(*(normal), view), 0.0f);
+  n_dot_h = max(dot(*(normal), half_vec), 0.0f);
+  shininess = (exp2(((15.0f * (*(shine)).w) + 1.0f)) * 0.25f);
+  blinn = pow(n_dot_h, shininess);
+  let v_14 = ((shininess + 8.0f) * 0.03978873416781425476f);
+  blinn = (blinn * v_14);
+  s = (blinn / max(((4.0f * n_dot_v) * n_dot_l), 0.75f));
+  return (lit + (((*(shine)).xyz * *(light_color)) * s));
+}
+
+fn v_15(base : ptr<function, vec4<f32>>, position : ptr<function, vec2<f32>>, normal : ptr<function, vec3<f32>>, normal_used : ptr<function, bool>, shine : ptr<function, vec4<f32>>, shine_used : ptr<function, bool>) -> vec4<f32> {
+  var color : vec4<f32>;
+  var light_only_alpha : f32;
+  var count : u32;
+  var i : u32;
+  var light : Light_1;
+  var light_color : vec4<f32>;
+  var at : vec3<f32>;
+  var luv : vec2<f32>;
+  var light_vec : vec3<f32>;
+  var h : f32;
+  var param : vec3<f32>;
+  var param_2 : vec3<f32>;
+  var param_3 : vec3<f32>;
+  var param_4 : vec3<f32>;
+  var param_5 : vec4<f32>;
+  var param_6 : bool;
+  var hidden : f32;
+  var param_7 : Light_1;
+  var param_8 : vec2<f32>;
+  var shadow_color : vec4<f32>;
+  color = *(base);
+  if ((v_1.shading.x == 1i)) {
+    let v_16 = v_1.ambient;
+    color = (color * v_16);
+  }
+  light_only_alpha = 0.0f;
+  count = min(v_2.light_count.x, 64u);
+  i = 0u;
+  loop {
+    if ((i < count)) {
+      let v_17 = v_2.lights[i];
+      light.color = v_17.color;
+      light.position = v_17.position;
+      light.texture_u = v_17.texture_u;
+      light.texture_v = v_17.texture_v;
+      light.atlas = v_17.atlas;
+      light.shadow = v_17.shadow;
+      light.shadow_origin = v_17.shadow_origin;
+      light.shadow_color = v_17.shadow_color;
+      light.flags = v_17.flags;
+      light.range = v_17.range;
+      if (((((((light.flags.z & bitcast<u32>(v_1.shading.y)) == 0u) | (v_1.shading.z < light.range.x)) | (v_1.shading.z > light.range.y)) | (v_1.layer.x < light.range.z)) | (v_1.layer.x > light.range.w))) {
+        continue;
+      }
+      light_color = light.color;
+      if ((light.position.w < 0.5f)) {
+        let v_18 = *(position);
+        at = vec3<f32>(v_18.x, v_18.y, 1.0f);
+        luv = vec2<f32>(dot(light.texture_u.xyz, at), dot(light.texture_v.xyz, at));
+        if (((((luv.x < 0.0f) | (luv.y < 0.0f)) | (luv.x >= 1.0f)) | (luv.y >= 1.0f))) {
+          continue;
+        }
+        let v_19 = textureSampleLevel(light_atlas, atlas_sampler, (light.atlas.xy + (luv * light.atlas.zw)), 0.0f);
+        light_color = (light_color * v_19);
+        let v_20 = (light.position.xy - *(position));
+        light_vec = normalize(vec3<f32>(v_20.x, v_20.y, light.position.z));
+      } else {
+        h = light.position.z;
+        let v_21 = (-(light.position.xy) * (1.0f - h));
+        light_vec = normalize(vec3<f32>(v_21.x, v_21.y, h));
+      }
+      if (*(normal_used)) {
+        param = light_vec;
+        param_2 = *(normal);
+        param_3 = (*(base)).xyz;
+        param_4 = light_color.xyz;
+        param_5 = *(shine);
+        param_6 = *(shine_used);
+        let v_22 = v_13(&(param), &(param_2), &(param_3), &(param_4), &(param_5), &(param_6));
+        light_color.x = v_22.x;
+        light_color.y = v_22.y;
+        light_color.z = v_22.z;
+      } else {
+        let v_23 = (*(base)).xyz;
+        let v_24 = (light_color.xyz * v_23);
+        light_color.x = v_24.x;
+        light_color.y = v_24.y;
+        light_color.z = v_24.z;
+      }
+      if ((light.shadow.x >= 0.0f)) {
+        param_7 = light;
+        param_8 = *(position);
+        hidden = v_12(&(param_7), &(param_8));
+        shadow_color = light.shadow_color;
+        let v_25 = light_color.w;
+        shadow_color.w = (shadow_color.w * v_25);
+        let v_26 = ((shadow_color - light_color) * hidden);
+        light_color = (light_color + v_26);
+      }
+      let v_27 = light_color.w;
+      light_only_alpha = (light_only_alpha + v_27);
+      if ((light.flags.x == 2u)) {
+        let v_28 = (light_color.xyz * light_color.w);
+        let v_29 = (color.xyz - v_28);
+        color.x = v_29.x;
+        color.y = v_29.y;
+        color.z = v_29.z;
+      } else if ((light.flags.x == 0u)) {
+        let v_30 = ((light_color.xyz - color.xyz) * light_color.w);
+        let v_31 = (color.xyz + v_30);
+        color.x = v_31.x;
+        color.y = v_31.y;
+        color.z = v_31.z;
+      } else {
+        let v_32 = (light_color.xyz * light_color.w);
+        let v_33 = (color.xyz + v_32);
+        color.x = v_33.x;
+        color.y = v_33.y;
+        color.z = v_33.z;
+      }
+      continue;
+    } else {
+      break;
+    }
+
+    continuing {
+      i = (i + bitcast<u32>(1i));
+    }
+  }
+  if ((v_1.shading.x == 2i)) {
+    let v_34 = light_only_alpha;
+    color.w = (color.w * v_34);
+  }
+  return color;
+}
+
+struct CanvasPixel {
+  world : vec2<f32>,
+  world_dx : vec2<f32>,
+  world_dy : vec2<f32>,
+  uv_dx : vec2<f32>,
+  uv_dy : vec2<f32>,
+}
+
+fn v_35(input : ptr<function, VertexOutput>) -> CanvasPixel {
+  var at : vec3<f32>;
+  var pixel : CanvasPixel;
+  let v_36 = (*(input)).world;
+  at = vec3<f32>(v_36.x, v_36.y, 1.0f);
+  pixel.world = vec2<f32>(dot(v_1.to_lights_x.xyz, at), dot(v_1.to_lights_y.xyz, at));
+  pixel.world_dx = dpdx(pixel.world);
+  pixel.world_dy = dpdy(pixel.world);
+  pixel.uv_dx = dpdx((*(input)).uv);
+  pixel.uv_dy = dpdy((*(input)).uv);
+  return pixel;
+}
+
+fn v_37(pixel : ptr<function, CanvasPixel>, base : ptr<function, vec4<f32>>, normal_texel : ptr<function, vec3<f32>>, normal_used : ptr<function, bool>, shine : ptr<function, vec4<f32>>, shine_used : ptr<function, bool>) -> vec4<f32> {
+  var normal : vec3<f32>;
+  var u_axis : vec2<f32>;
+  var v_axis : vec2<f32>;
+  var det : f32;
+  var along_u : vec2<f32>;
+  var along_v : vec2<f32>;
+  var nx : f32;
+  var ny : f32;
+  var nz : f32;
+  var param : vec4<f32>;
+  var param_9 : vec2<f32>;
+  var param_10 : vec3<f32>;
+  var param_11 : bool;
+  var param_12 : vec4<f32>;
+  var param_13 : bool;
+  if ((v_1.shading.x == 0i)) {
+    return *(base);
+  }
+  normal = vec3<f32>(0.0f, 0.0f, 1.0f);
+  if (*(normal_used)) {
+    u_axis = vec2<f32>(1.0f, 0.0f);
+    v_axis = vec2<f32>(0.0f, 1.0f);
+    det = (((*(pixel)).uv_dx.x * (*(pixel)).uv_dy.y) - ((*(pixel)).uv_dy.x * (*(pixel)).uv_dx.y));
+    if ((abs(det) > 0.000000000001f)) {
+      let v_38 = (((*(pixel)).world_dx * (*(pixel)).uv_dy.y) - ((*(pixel)).world_dy * (*(pixel)).uv_dx.y));
+      let v_39 = det;
+      along_u = (v_38 / vec2<f32>(v_39, v_39));
+      let v_40 = (((*(pixel)).world_dy * (*(pixel)).uv_dx.x) - ((*(pixel)).world_dx * (*(pixel)).uv_dy.x));
+      let v_41 = det;
+      along_v = (v_40 / vec2<f32>(v_41, v_41));
+      if (((dot(along_u, along_u) > 0.0f) & (dot(along_v, along_v) > 0.0f))) {
+)slash",
+R"slash(        u_axis = normalize(along_u);
+        v_axis = normalize(along_v);
+      }
+    }
+    nx = (((*(normal_texel)).x * 2.0f) - 1.0f);
+    ny = (1.0f - ((*(normal_texel)).y * 2.0f));
+    nz = sqrt(max(0.0f, (1.0f - ((nx * nx) + (ny * ny)))));
+    let v_42 = ((u_axis * nx) + (v_axis * ny));
+    normal = normalize(vec3<f32>(v_42.x, v_42.y, nz));
+  }
+  param = *(base);
+  param_9 = (*(pixel)).world;
+  param_10 = normal;
+  param_11 = *(normal_used);
+  param_12 = *(shine);
+  param_13 = *(shine_used);
+  return v_15(&(param), &(param_9), &(param_10), &(param_11), &(param_12), &(param_13));
+}
+
+fn v_43(a : ptr<function, f32>) -> f32 {
+  return bitcast<f32>((2129690299u - bitcast<u32>(*(a))));
+}
+
+fn v_44(a : ptr<function, f32>) -> f32 {
+  return bitcast<f32>((1597275508u - (bitcast<u32>(*(a)) >> 1u)));
+}
+
+fn v_45(at : ptr<function, vec2<f32>>) -> vec4<f32> {
+  return textureSampleLevel(TEXTURE, TEXTURE_sampler, ((*(at) + vec2<f32>(0.5f, 0.5f)) * TEXTURE_PIXEL_SIZE), 0.0f);
+}
+
+fn v_46(c : ptr<function, vec3<f32>>) -> f32 {
+  return (((*(c)).z * 0.5f) + (((*(c)).x * 0.5f) + (*(c)).y));
+}
+
+fn v_47(dir : ptr<function, vec2<f32>>, len : ptr<function, f32>, w : ptr<function, f32>, la : ptr<function, f32>, lb : ptr<function, f32>, lc : ptr<function, f32>, ld : ptr<function, f32>, le : ptr<function, f32>) {
+  var dc : f32;
+  var cb : f32;
+  var len_x : f32;
+  var param : f32;
+  var dir_x : f32;
+  var ec : f32;
+  var ca : f32;
+  var len_y : f32;
+  var param_14 : f32;
+  var dir_y : f32;
+  dc = (*(ld) - *(lc));
+  cb = (*(lc) - *(lb));
+  len_x = max(abs(dc), abs(cb));
+  param = len_x;
+  len_x = v_43(&(param));
+  dir_x = (*(ld) - *(lb));
+  let v_48 = (dir_x * *(w));
+  (*(dir)).x = ((*(dir)).x + v_48);
+  len_x = clamp((abs(dir_x) * len_x), 0.0f, 1.0f);
+  let v_49 = len_x;
+  len_x = (len_x * v_49);
+  let v_50 = (len_x * *(w));
+  *(len) = (*(len) + v_50);
+  ec = (*(le) - *(lc));
+  ca = (*(lc) - *(la));
+  len_y = max(abs(ec), abs(ca));
+  param_14 = len_y;
+  len_y = v_43(&(param_14));
+  dir_y = (*(le) - *(la));
+  let v_51 = (dir_y * *(w));
+  (*(dir)).y = ((*(dir)).y + v_51);
+  len_y = clamp((abs(dir_y) * len_y), 0.0f, 1.0f);
+  let v_52 = len_y;
+  len_y = (len_y * v_52);
+  let v_53 = (len_y * *(w));
+  *(len) = (*(len) + v_53);
+}
+
+fn v_54(color : ptr<function, vec3<f32>>, weight : ptr<function, f32>, off : ptr<function, vec2<f32>>, dir : ptr<function, vec2<f32>>, len : ptr<function, vec2<f32>>, lob : ptr<function, f32>, clp : ptr<function, f32>, c : ptr<function, vec3<f32>>) {
+  var v : vec2<f32>;
+  var d2 : f32;
+  var wb : f32;
+  var wa : f32;
+  var w : f32;
+  v.x = (((*(off)).x * (*(dir)).x) + ((*(off)).y * (*(dir)).y));
+  v.y = (((*(off)).x * -((*(dir)).y)) + ((*(off)).y * (*(dir)).x));
+  let v_55 = *(len);
+  v = (v * v_55);
+  d2 = ((v.x * v.x) + (v.y * v.y));
+  d2 = min(d2, *(clp));
+  wb = ((0.40000000596046447754f * d2) + -1.0f);
+  wa = ((*(lob) * d2) + -1.0f);
+  let v_56 = wb;
+  wb = (wb * v_56);
+  let v_57 = wa;
+  wa = (wa * v_57);
+  wb = ((1.5625f * wb) + -0.5625f);
+  w = (wb * wa);
+  let v_58 = (*(c) * w);
+  *(color) = (*(color) + v_58);
+  let v_59 = w;
+  *(weight) = (*(weight) + v_59);
+}
+
+fn v_60() {
+  var size : vec2<f32>;
+  var pp : vec2<f32>;
+  var fp : vec2<f32>;
+  var b : vec3<f32>;
+  var param : vec2<f32>;
+  var c : vec3<f32>;
+  var param_15 : vec2<f32>;
+  var e : vec3<f32>;
+  var param_16 : vec2<f32>;
+  var f4 : vec4<f32>;
+  var param_17 : vec2<f32>;
+  var f : vec3<f32>;
+  var g : vec3<f32>;
+  var param_18 : vec2<f32>;
+  var h : vec3<f32>;
+  var param_19 : vec2<f32>;
+  var i : vec3<f32>;
+  var param_20 : vec2<f32>;
+  var j : vec3<f32>;
+  var param_21 : vec2<f32>;
+  var k : vec3<f32>;
+  var param_22 : vec2<f32>;
+  var l : vec3<f32>;
+  var param_23 : vec2<f32>;
+  var n : vec3<f32>;
+  var param_24 : vec2<f32>;
+  var o : vec3<f32>;
+  var param_25 : vec2<f32>;
+  var bl : f32;
+  var param_26 : vec3<f32>;
+  var cl : f32;
+  var param_27 : vec3<f32>;
+  var el : f32;
+  var param_28 : vec3<f32>;
+  var fl : f32;
+  var param_29 : vec3<f32>;
+  var gl : f32;
+  var param_30 : vec3<f32>;
+  var hl : f32;
+  var param_31 : vec3<f32>;
+  var il : f32;
+  var param_32 : vec3<f32>;
+  var jl : f32;
+  var param_33 : vec3<f32>;
+  var kl : f32;
+  var param_34 : vec3<f32>;
+  var ll : f32;
+  var param_35 : vec3<f32>;
+  var nl : f32;
+  var param_36 : vec3<f32>;
+  var ol : f32;
+  var param_37 : vec3<f32>;
+  var dir : vec2<f32>;
+  var len : f32;
+  var param_38 : vec2<f32>;
+  var param_39 : f32;
+  var param_40 : f32;
+  var param_41 : f32;
+  var param_42 : f32;
+  var param_43 : f32;
+  var param_44 : f32;
+  var param_45 : f32;
+  var param_46 : vec2<f32>;
+  var param_47 : f32;
+  var param_48 : f32;
+  var param_49 : f32;
+  var param_50 : f32;
+  var param_51 : f32;
+  var param_52 : f32;
+  var param_53 : f32;
+  var param_54 : vec2<f32>;
+  var param_55 : f32;
+  var param_56 : f32;
+  var param_57 : f32;
+  var param_58 : f32;
+  var param_59 : f32;
+  var param_60 : f32;
+  var param_61 : f32;
+  var param_62 : vec2<f32>;
+  var param_63 : f32;
+  var param_64 : f32;
+  var param_65 : f32;
+  var param_66 : f32;
+  var param_67 : f32;
+  var param_68 : f32;
+  var param_69 : f32;
+  var dir2 : vec2<f32>;
+  var dir_r : f32;
+  var zero : bool;
+  var param_70 : f32;
+  var stretch : f32;
+  var param_71 : f32;
+  var len2 : vec2<f32>;
+  var lob : f32;
+  var clp : f32;
+  var param_72 : f32;
+  var min4 : vec3<f32>;
+  var max4 : vec3<f32>;
+  var color : vec3<f32>;
+  var weight : f32;
+  var param_73 : vec3<f32>;
+  var param_74 : f32;
+  var param_75 : vec2<f32>;
+  var param_76 : vec2<f32>;
+  var param_77 : vec2<f32>;
+  var param_78 : f32;
+  var param_79 : f32;
+  var param_80 : vec3<f32>;
+  var param_81 : vec3<f32>;
+  var param_82 : f32;
+  var param_83 : vec2<f32>;
+  var param_84 : vec2<f32>;
+  var param_85 : vec2<f32>;
+  var param_86 : f32;
+  var param_87 : f32;
+  var param_88 : vec3<f32>;
+  var param_89 : vec3<f32>;
+  var param_90 : f32;
+  var param_91 : vec2<f32>;
+  var param_92 : vec2<f32>;
+  var param_93 : vec2<f32>;
+  var param_94 : f32;
+  var param_95 : f32;
+  var param_96 : vec3<f32>;
+  var param_97 : vec3<f32>;
+  var param_98 : f32;
+  var param_99 : vec2<f32>;
+  var param_100 : vec2<f32>;
+  var param_101 : vec2<f32>;
+  var param_102 : f32;
+  var param_103 : f32;
+  var param_104 : vec3<f32>;
+  var param_105 : vec3<f32>;
+  var param_106 : f32;
+  var param_107 : vec2<f32>;
+  var param_108 : vec2<f32>;
+  var param_109 : vec2<f32>;
+  var param_110 : f32;
+  var param_111 : f32;
+  var param_112 : vec3<f32>;
+  var param_113 : vec3<f32>;
+  var param_114 : f32;
+  var param_115 : vec2<f32>;
+  var param_116 : vec2<f32>;
+  var param_117 : vec2<f32>;
+  var param_118 : f32;
+  var param_119 : f32;
+  var param_120 : vec3<f32>;
+  var param_121 : vec3<f32>;
+  var param_122 : f32;
+  var param_123 : vec2<f32>;
+  var param_124 : vec2<f32>;
+  var param_125 : vec2<f32>;
+  var param_126 : f32;
+  var param_127 : f32;
+  var param_128 : vec3<f32>;
+  var param_129 : vec3<f32>;
+  var param_130 : f32;
+  var param_131 : vec2<f32>;
+  var param_132 : vec2<f32>;
+  var param_133 : vec2<f32>;
+  var param_134 : f32;
+  var param_135 : f32;
+  var param_136 : vec3<f32>;
+  var param_137 : vec3<f32>;
+  var param_138 : f32;
+  var param_139 : vec2<f32>;
+  var param_140 : vec2<f32>;
+  var param_141 : vec2<f32>;
+  var param_142 : f32;
+  var param_143 : f32;
+  var param_144 : vec3<f32>;
+  var param_145 : vec3<f32>;
+  var param_146 : f32;
+  var param_147 : vec2<f32>;
+  var param_148 : vec2<f32>;
+  var param_149 : vec2<f32>;
+  var param_150 : f32;
+  var param_151 : f32;
+  var param_152 : vec3<f32>;
+  var param_153 : vec3<f32>;
+  var param_154 : f32;
+  var param_155 : vec2<f32>;
+  var param_156 : vec2<f32>;
+  var param_157 : vec2<f32>;
+  var param_158 : f32;
+  var param_159 : f32;
+  var param_160 : vec3<f32>;
+  var param_161 : vec3<f32>;
+  var param_162 : f32;
+  var param_163 : vec2<f32>;
+  var param_164 : vec2<f32>;
+  var param_165 : vec2<f32>;
+  var param_166 : f32;
+  var param_167 : f32;
+  var param_168 : vec3<f32>;
+  size = round((vec2<f32>(1.0f, 1.0f) / TEXTURE_PIXEL_SIZE));
+  pp = ((UV * size) - vec2<f32>(0.5f, 0.5f));
+  fp = floor(pp);
+  let v_61 = fp;
+  pp = (pp - v_61);
+  param = (fp + vec2<f32>(0.0f, -1.0f));
+  b = v_45(&(param)).xyz;
+  param_15 = (fp + vec2<f32>(1.0f, -1.0f));
+  c = v_45(&(param_15)).xyz;
+  param_16 = (fp + vec2<f32>(-1.0f, 0.0f));
+  e = v_45(&(param_16)).xyz;
+  param_17 = fp;
+  f4 = v_45(&(param_17));
+  f = f4.xyz;
+  param_18 = (fp + vec2<f32>(1.0f, 0.0f));
+  g = v_45(&(param_18)).xyz;
+  param_19 = (fp + vec2<f32>(2.0f, 0.0f));
+  h = v_45(&(param_19)).xyz;
+  param_20 = (fp + vec2<f32>(-1.0f, 1.0f));
+  i = v_45(&(param_20)).xyz;
+  param_21 = (fp + vec2<f32>(0.0f, 1.0f));
+  j = v_45(&(param_21)).xyz;
+  param_22 = (fp + vec2<f32>(1.0f));
+  k = v_45(&(param_22)).xyz;
+  param_23 = (fp + vec2<f32>(2.0f, 1.0f));
+  l = v_45(&(param_23)).xyz;
+  param_24 = (fp + vec2<f32>(0.0f, 2.0f));
+  n = v_45(&(param_24)).xyz;
+  param_25 = (fp + vec2<f32>(1.0f, 2.0f));
+  o = v_45(&(param_25)).xyz;
+  param_26 = b;
+  bl = v_46(&(param_26));
+  param_27 = c;
+  cl = v_46(&(param_27));
+  param_28 = e;
+  el = v_46(&(param_28));
+  param_29 = f;
+  fl = v_46(&(param_29));
+  param_30 = g;
+  gl = v_46(&(param_30));
+  param_31 = h;
+  hl = v_46(&(param_31));
+  param_32 = i;
+  il = v_46(&(param_32));
+  param_33 = j;
+  jl = v_46(&(param_33));
+  param_34 = k;
+  kl = v_46(&(param_34));
+  param_35 = l;
+  ll = v_46(&(param_35));
+  param_36 = n;
+  nl = v_46(&(param_36));
+  param_37 = o;
+  ol = v_46(&(param_37));
+  dir = vec2<f32>();
+  len = 0.0f;
+  let v_62 = ((1.0f - pp.x) * (1.0f - pp.y));
+  param_38 = dir;
+  param_39 = len;
+  param_40 = v_62;
+  param_41 = bl;
+  param_42 = el;
+  param_43 = fl;
+  param_44 = gl;
+  param_45 = jl;
+  v_47(&(param_38), &(param_39), &(param_40), &(param_41), &(param_42), &(param_43), &(param_44), &(param_45));
+  dir = param_38;
+  len = param_39;
+  let v_63 = (pp.x * (1.0f - pp.y));
+  param_46 = dir;
+  param_47 = len;
+  param_48 = v_63;
+  param_49 = cl;
+  param_50 = fl;
+  param_51 = gl;
+  param_52 = hl;
+  param_53 = kl;
+  v_47(&(param_46), &(param_47), &(param_48), &(param_49), &(param_50), &(param_51), &(param_52), &(param_53));
+  dir = param_46;
+  len = param_47;
+  let v_64 = ((1.0f - pp.x) * pp.y);
+  param_54 = dir;
+  param_55 = len;
+  param_56 = v_64;
+  param_57 = fl;
+  param_58 = il;
+  param_59 = jl;
+  param_60 = kl;
+  param_61 = nl;
+  v_47(&(param_54), &(param_55), &(param_56), &(param_57), &(param_58), &(param_59), &(param_60), &(param_61));
+  dir = param_54;
+  len = param_55;
+  let v_65 = (pp.x * pp.y);
+  param_62 = dir;
+  param_63 = len;
+  param_64 = v_65;
+  param_65 = gl;
+  param_66 = jl;
+  param_67 = kl;
+  param_68 = ll;
+  param_69 = ol;
+  v_47(&(param_62), &(param_63), &(param_64), &(param_65), &(param_66), &(param_67), &(param_68), &(param_69));
+  dir = param_62;
+  len = param_63;
+  dir2 = (dir * dir);
+  dir_r = (dir2.x + dir2.y);
+  zero = (dir_r < 0.000030517578125f);
+  param_70 = dir_r;
+  dir_r = v_44(&(param_70));
+  let v_66 = zero;
+  dir_r = select(dir_r, 1.0f, v_66);
+  let v_67 = zero;
+  dir.x = select(dir.x, 1.0f, v_67);
+  let v_68 = dir_r;
+  dir = (dir * v_68);
+  len = (len * 0.5f);
+  let v_69 = len;
+  len = (len * v_69);
+  let v_70 = ((dir.x * dir.x) + (dir.y * dir.y));
+  param_71 = max(abs(dir.x), abs(dir.y));
+  stretch = (v_70 * v_43(&(param_71)));
+  len2 = vec2<f32>((1.0f + ((stretch - 1.0f) * len)), (1.0f + (-0.5f * len)));
+  lob = (0.5f + (-0.28999999165534973145f * len));
+  param_72 = lob;
+  clp = v_43(&(param_72));
+  min4 = min(min(f, g), min(j, k));
+  max4 = max(max(f, g), max(j, k));
+  color = vec3<f32>();
+  weight = 0.0f;
+  let v_71 = (vec2<f32>(0.0f, -1.0f) - pp);
+  param_73 = color;
+  param_74 = weight;
+  param_75 = v_71;
+  param_76 = dir;
+  param_77 = len2;
+  param_78 = lob;
+  param_79 = clp;
+  param_80 = b;
+  v_54(&(param_73), &(param_74), &(param_75), &(param_76), &(param_77), &(param_78), &(param_79), &(param_80));
+  color = param_73;
+  weight = param_74;
+  let v_72 = (vec2<f32>(1.0f, -1.0f) - pp);
+  param_81 = color;
+  param_82 = weight;
+)slash",
+R"slash(  param_83 = v_72;
+  param_84 = dir;
+  param_85 = len2;
+  param_86 = lob;
+  param_87 = clp;
+  param_88 = c;
+  v_54(&(param_81), &(param_82), &(param_83), &(param_84), &(param_85), &(param_86), &(param_87), &(param_88));
+  color = param_81;
+  weight = param_82;
+  let v_73 = (vec2<f32>(-1.0f, 1.0f) - pp);
+  param_89 = color;
+  param_90 = weight;
+  param_91 = v_73;
+  param_92 = dir;
+  param_93 = len2;
+  param_94 = lob;
+  param_95 = clp;
+  param_96 = i;
+  v_54(&(param_89), &(param_90), &(param_91), &(param_92), &(param_93), &(param_94), &(param_95), &(param_96));
+  color = param_89;
+  weight = param_90;
+  let v_74 = (vec2<f32>(0.0f, 1.0f) - pp);
+  param_97 = color;
+  param_98 = weight;
+  param_99 = v_74;
+  param_100 = dir;
+  param_101 = len2;
+  param_102 = lob;
+  param_103 = clp;
+  param_104 = j;
+  v_54(&(param_97), &(param_98), &(param_99), &(param_100), &(param_101), &(param_102), &(param_103), &(param_104));
+  color = param_97;
+  weight = param_98;
+  let v_75 = (vec2<f32>() - pp);
+  param_105 = color;
+  param_106 = weight;
+  param_107 = v_75;
+  param_108 = dir;
+  param_109 = len2;
+  param_110 = lob;
+  param_111 = clp;
+  param_112 = f;
+  v_54(&(param_105), &(param_106), &(param_107), &(param_108), &(param_109), &(param_110), &(param_111), &(param_112));
+  color = param_105;
+  weight = param_106;
+  let v_76 = (vec2<f32>(-1.0f, 0.0f) - pp);
+  param_113 = color;
+  param_114 = weight;
+  param_115 = v_76;
+  param_116 = dir;
+  param_117 = len2;
+  param_118 = lob;
+  param_119 = clp;
+  param_120 = e;
+  v_54(&(param_113), &(param_114), &(param_115), &(param_116), &(param_117), &(param_118), &(param_119), &(param_120));
+  color = param_113;
+  weight = param_114;
+  let v_77 = (vec2<f32>(1.0f) - pp);
+  param_121 = color;
+  param_122 = weight;
+  param_123 = v_77;
+  param_124 = dir;
+  param_125 = len2;
+  param_126 = lob;
+  param_127 = clp;
+  param_128 = k;
+  v_54(&(param_121), &(param_122), &(param_123), &(param_124), &(param_125), &(param_126), &(param_127), &(param_128));
+  color = param_121;
+  weight = param_122;
+  let v_78 = (vec2<f32>(2.0f, 1.0f) - pp);
+  param_129 = color;
+  param_130 = weight;
+  param_131 = v_78;
+  param_132 = dir;
+  param_133 = len2;
+  param_134 = lob;
+  param_135 = clp;
+  param_136 = l;
+  v_54(&(param_129), &(param_130), &(param_131), &(param_132), &(param_133), &(param_134), &(param_135), &(param_136));
+  color = param_129;
+  weight = param_130;
+  let v_79 = (vec2<f32>(2.0f, 0.0f) - pp);
+  param_137 = color;
+  param_138 = weight;
+  param_139 = v_79;
+  param_140 = dir;
+  param_141 = len2;
+  param_142 = lob;
+  param_143 = clp;
+  param_144 = h;
+  v_54(&(param_137), &(param_138), &(param_139), &(param_140), &(param_141), &(param_142), &(param_143), &(param_144));
+  color = param_137;
+  weight = param_138;
+  let v_80 = (vec2<f32>(1.0f, 0.0f) - pp);
+  param_145 = color;
+  param_146 = weight;
+  param_147 = v_80;
+  param_148 = dir;
+  param_149 = len2;
+  param_150 = lob;
+  param_151 = clp;
+  param_152 = g;
+  v_54(&(param_145), &(param_146), &(param_147), &(param_148), &(param_149), &(param_150), &(param_151), &(param_152));
+  color = param_145;
+  weight = param_146;
+  let v_81 = (vec2<f32>(1.0f, 2.0f) - pp);
+  param_153 = color;
+  param_154 = weight;
+  param_155 = v_81;
+  param_156 = dir;
+  param_157 = len2;
+  param_158 = lob;
+  param_159 = clp;
+  param_160 = o;
+  v_54(&(param_153), &(param_154), &(param_155), &(param_156), &(param_157), &(param_158), &(param_159), &(param_160));
+  color = param_153;
+  weight = param_154;
+  let v_82 = (vec2<f32>(0.0f, 2.0f) - pp);
+  param_161 = color;
+  param_162 = weight;
+  param_163 = v_82;
+  param_164 = dir;
+  param_165 = len2;
+  param_166 = lob;
+  param_167 = clp;
+  param_168 = n;
+  v_54(&(param_161), &(param_162), &(param_163), &(param_164), &(param_165), &(param_166), &(param_167), &(param_168));
+  color = param_161;
+  weight = param_162;
+  let v_83 = min(max4, max(min4, (color * (1.0f / weight))));
+  COLOR = vec4<f32>(v_83.x, v_83.y, v_83.z, f4.w);
+}
+
+fn v_10(input : ptr<function, VertexOutput>) -> vec4<f32> {
+  var pixel : CanvasPixel;
+  var param : VertexOutput;
+  var normal_used : bool;
+  var shine_used : bool;
+  var param_169 : CanvasPixel;
+  var param_170 : vec4<f32>;
+  var param_171 : vec3<f32>;
+  var param_172 : bool;
+  var param_173 : vec4<f32>;
+  var param_174 : bool;
+  param = *(input);
+  pixel = v_35(&(param));
+  TIME = v_1.constants[31i].x;
+  TEXTURE_PIXEL_SIZE = v_1.texel.xy;
+  UV = (*(input)).uv;
+  let v_84 = (*(input)).position.xy;
+  FRAGCOORD = vec4<f32>(v_84.x, v_84.y, 0.0f, 1.0f);
+  COLOR = (textureSampleLevel(TEXTURE, TEXTURE_sampler, UV, 0.0f) * (*(input)).color);
+  normal_used = ((v_1.shading.w & 1i) != 0i);
+  NORMAL_MAP = vec3<f32>(0.5f, 0.5f, 1.0f);
+  if (normal_used) {
+    NORMAL_MAP = textureSampleLevel(normal_map, normal_sampler, UV, 0.0f).xyz;
+  }
+  shine_used = ((v_1.shading.w & 2i) != 0i);
+  SPECULAR_SHININESS = (textureSampleLevel(specular_map, specular_sampler, UV, 0.0f) * v_1.specular);
+  v_60();
+  param_169 = pixel;
+  param_170 = COLOR;
+  param_171 = NORMAL_MAP;
+  param_172 = normal_used;
+  param_173 = SPECULAR_SHININESS;
+  param_174 = shine_used;
+  return v_37(&(param_169), &(param_170), &(param_171), &(param_172), &(param_173), &(param_174));
+}
+
+@fragment
+fn fs_main(@location(0u) v_85 : vec2<f32>, @location(1u) v_86 : vec4<f32>, @location(2u) v_87 : vec2<f32>, @builtin(position) v_88 : vec4<f32>) -> @location(0u) vec4<f32> {
+  fs_main_inner(v_85, v_86, v_87, v_88);
+  return v_3;
+}
+)slash",
+};
+
 inline constexpr const char* kFsrEasuHlsl[] = {
 R"slash(// What every canvas shader shares: the vertex layout, the uniform buffers and the 2D lighting
 // (light.hpp). The material shader (material.hlsl) includes it, and so does each of a game's own
@@ -3266,6 +4429,12 @@ inline slash::render::CompiledShader fsr_easu() {
     }
     for (const char* piece : kFsrEasuGlslFragment) {
         shader.glsl_fragment += piece;
+    }
+    for (const char* piece : kFsrEasuWgslVertex) {
+        shader.wgsl_vertex += piece;
+    }
+    for (const char* piece : kFsrEasuWgslFragment) {
+        shader.wgsl_fragment += piece;
     }
     for (const char* piece : kFsrEasuHlsl) {
         shader.hlsl += piece;
@@ -4910,6 +6079,711 @@ void main()
 )slash",
 };
 
+inline constexpr const char* kFsrRcasWgslVertex[] = {
+R"slash(var<private> sharpness : f32;
+
+struct VertexProgram {
+  vertex_constants : array<vec4<f32>, 32u>,
+  vertex_texel : vec4<f32>,
+}
+
+@group(1u) @binding(1u) var<uniform> v : VertexProgram;
+
+var<private> TIME : f32;
+
+var<private> TEXTURE_PIXEL_SIZE : vec2<f32>;
+
+var<private> VERTEX : vec2<f32>;
+
+var<private> UV : vec2<f32>;
+
+var<private> COLOR : vec4<f32>;
+
+struct View_1_1 {
+  view_projection : mat4x4<f32>,
+}
+
+@group(1u) @binding(0u) var<uniform> v_1 : View_1_1;
+
+var<private> v_2 : vec2<f32>;
+
+var<private> v_3 : vec4<f32>;
+
+var<private> v_4 : vec2<f32>;
+
+var<private> v_5 : vec4<f32>;
+
+@group(2u) @binding(4u) var normal_map : texture_2d<f32>;
+
+@group(2u) @binding(5u) var specular_map : texture_2d<f32>;
+
+@group(2u) @binding(6u) var light_atlas : texture_2d<f32>;
+
+@group(2u) @binding(7u) var shadow_map : texture_2d<f32>;
+
+@group(2u) @binding(12u) var normal_sampler : sampler;
+
+@group(2u) @binding(13u) var specular_sampler : sampler;
+
+@group(2u) @binding(14u) var atlas_sampler : sampler;
+
+@group(2u) @binding(15u) var shadow_sampler : sampler;
+
+struct Program {
+  code : array<vec4<u32>, 64u>,
+  constants : array<vec4<f32>, 32u>,
+  texel : vec4<f32>,
+  counts : vec4<u32>,
+  shading : vec4<i32>,
+  specular : vec4<f32>,
+  field : vec4<f32>,
+  layer : vec4<i32>,
+  ambient : vec4<f32>,
+  to_lights_x : vec4<f32>,
+  to_lights_y : vec4<f32>,
+}
+
+@group(3u) @binding(0u) var<uniform> v_6 : Program;
+
+struct Light {
+  color : vec4<f32>,
+  position : vec4<f32>,
+  texture_u : vec4<f32>,
+  texture_v : vec4<f32>,
+  atlas : vec4<f32>,
+  shadow : vec4<f32>,
+  shadow_origin : vec4<f32>,
+  shadow_color : vec4<f32>,
+  flags : vec4<u32>,
+  range : vec4<i32>,
+}
+
+struct Lights {
+  light_count : vec4<u32>,
+  lights : array<Light, 64u>,
+}
+
+@group(3u) @binding(1u) var<uniform> v_7 : Lights;
+
+@group(2u) @binding(0u) var TEXTURE : texture_2d<f32>;
+
+@group(2u) @binding(8u) var TEXTURE_sampler : sampler;
+
+struct VertexInput {
+  position : vec2<f32>,
+  uv : vec2<f32>,
+  color : vec4<f32>,
+}
+
+struct VertexOutput {
+  uv : vec2<f32>,
+  color : vec4<f32>,
+  world : vec2<f32>,
+  position : vec4<f32>,
+}
+
+fn vs_main_inner(v_8 : vec2<f32>, v_9 : vec2<f32>, v_10 : vec4<f32>) {
+  var input : VertexInput;
+  var flattenTemp : VertexOutput;
+  var param : VertexInput;
+  input.position = v_8;
+  input.uv = v_9;
+  input.color = v_10;
+  param = input;
+  flattenTemp = v_11(&(param));
+  v_2 = flattenTemp.uv;
+  v_3 = flattenTemp.color;
+  v_4 = flattenTemp.world;
+  v_5 = flattenTemp.position;
+}
+
+fn v_11(input : ptr<function, VertexInput>) -> VertexOutput {
+  var output : VertexOutput;
+  sharpness = v.vertex_constants[0i].x;
+  TIME = v.vertex_constants[31i].x;
+  TEXTURE_PIXEL_SIZE = v.vertex_texel.xy;
+  VERTEX = (*(input)).position;
+  UV = (*(input)).uv;
+  COLOR = (*(input)).color;
+  let v_12 = VERTEX;
+  output.position = (vec4<f32>(v_12.x, v_12.y, 0.0f, 1.0f) * v_1.view_projection);
+  output.uv = UV;
+  output.color = COLOR;
+  output.world = VERTEX;
+  return output;
+}
+
+struct tint_symbol {
+  @location(0u)
+  m : vec2<f32>,
+  @location(1u)
+  m_1 : vec4<f32>,
+  @location(2u)
+  m_2 : vec2<f32>,
+  @builtin(position)
+  m_3 : vec4<f32>,
+}
+
+@vertex
+fn vs_main(@location(0u) v_13 : vec2<f32>, @location(1u) v_14 : vec2<f32>, @location(2u) v_15 : vec4<f32>) -> tint_symbol {
+  vs_main_inner(v_13, v_14, v_15);
+  return tint_symbol(v_2, v_3, v_4, v_5);
+}
+)slash",
+};
+
+inline constexpr const char* kFsrRcasWgslFragment[] = {
+R"slash(@group(2u) @binding(7u) var shadow_map : texture_2d<f32>;
+
+struct Program {
+  code : array<vec4<u32>, 64u>,
+  constants : array<vec4<f32>, 32u>,
+  texel : vec4<f32>,
+  counts : vec4<u32>,
+  shading : vec4<i32>,
+  specular : vec4<f32>,
+  field : vec4<f32>,
+  layer : vec4<i32>,
+  ambient : vec4<f32>,
+  to_lights_x : vec4<f32>,
+  to_lights_y : vec4<f32>,
+}
+
+@group(3u) @binding(0u) var<uniform> v : Program;
+
+struct Light {
+  color : vec4<f32>,
+  position : vec4<f32>,
+  texture_u : vec4<f32>,
+  texture_v : vec4<f32>,
+  atlas : vec4<f32>,
+  shadow : vec4<f32>,
+  shadow_origin : vec4<f32>,
+  shadow_color : vec4<f32>,
+  flags : vec4<u32>,
+  range : vec4<i32>,
+}
+
+struct Lights {
+  light_count : vec4<u32>,
+  lights : array<Light, 64u>,
+}
+
+@group(3u) @binding(1u) var<uniform> v_1 : Lights;
+
+@group(2u) @binding(6u) var light_atlas : texture_2d<f32>;
+
+@group(2u) @binding(14u) var atlas_sampler : sampler;
+
+@group(2u) @binding(0u) var TEXTURE : texture_2d<f32>;
+
+@group(2u) @binding(8u) var TEXTURE_sampler : sampler;
+
+var<private> UV : vec2<f32>;
+
+var<private> TEXTURE_PIXEL_SIZE : vec2<f32>;
+
+var<private> sharpness : f32;
+
+var<private> COLOR : vec4<f32>;
+
+var<private> TIME : f32;
+
+var<private> FRAGCOORD : vec4<f32>;
+
+var<private> NORMAL_MAP : vec3<f32>;
+
+@group(2u) @binding(4u) var normal_map : texture_2d<f32>;
+
+@group(2u) @binding(12u) var normal_sampler : sampler;
+
+var<private> SPECULAR_SHININESS : vec4<f32>;
+
+@group(2u) @binding(5u) var specular_map : texture_2d<f32>;
+
+@group(2u) @binding(13u) var specular_sampler : sampler;
+
+var<private> v_2 : vec4<f32>;
+
+struct View_1_1 {
+  view_projection : mat4x4<f32>,
+}
+
+@group(1u) @binding(0u) var<uniform> v_3 : View_1_1;
+
+@group(2u) @binding(15u) var shadow_sampler : sampler;
+
+struct VertexProgram {
+  vertex_constants : array<vec4<f32>, 32u>,
+  vertex_texel : vec4<f32>,
+}
+
+@group(1u) @binding(1u) var<uniform> v_4 : VertexProgram;
+
+struct VertexOutput {
+  uv : vec2<f32>,
+  color : vec4<f32>,
+  world : vec2<f32>,
+  position : vec4<f32>,
+}
+
+fn fs_main_inner(v_5 : vec2<f32>, v_6 : vec4<f32>, v_7 : vec2<f32>, v_8 : vec4<f32>) {
+  var input : VertexOutput;
+  var param : VertexOutput;
+  input.uv = v_5;
+  input.color = v_6;
+  input.world = v_7;
+  input.position = v_8;
+  param = input;
+  v_2 = v_9(&(param));
+}
+
+fn v_10(column : ptr<function, i32>, row : ptr<function, i32>) -> f32 {
+  var texel : vec4<f32>;
+  var bytes : vec3<f32>;
+  texel = textureLoad(shadow_map, vec3<i32>(*(column), *(row), 0i).xy, vec3<i32>(*(column), *(row), 0i).z);
+  if ((texel.w < 0.5f)) {
+    return 2.0f;
+  }
+  bytes = round((texel.xyz * 255.0f));
+  return ((((bytes.x * 65536.0f) + (bytes.y * 256.0f)) + bytes.z) / 16777216.0f);
+}
+
+struct Light_1 {
+  color : vec4<f32>,
+  position : vec4<f32>,
+  texture_u : vec4<f32>,
+  texture_v : vec4<f32>,
+  atlas : vec4<f32>,
+  shadow : vec4<f32>,
+  shadow_origin : vec4<f32>,
+  shadow_color : vec4<f32>,
+  flags : vec4<u32>,
+  range : vec4<i32>,
+}
+
+fn v_11(light : ptr<function, Light_1>, position : ptr<function, vec2<f32>>) -> f32 {
+  var wrap : bool;
+  var d : vec2<f32>;
+  var column : f32;
+  var depth : f32;
+  var across : f32;
+  var along : f32;
+  var taps : i32;
+  var row : i32;
+  var bias : f32;
+  var hidden : f32;
+  var k : i32;
+  var at : i32;
+  var stored : f32;
+  var param : i32;
+  var param_1 : i32;
+  wrap = ((*(light)).position.w < 0.5f);
+  if (wrap) {
+    d = (*(position) - (*(light)).position.xy);
+    column = (((atan2(d.y, d.x) / 6.28318548202514648438f) + 0.5f) * 2048.0f);
+    depth = (sqrt(((d.x * d.x) + (d.y * d.y))) / (*(light)).shadow.y);
+  } else {
+    across = (((*(position)).x * -((*(light)).position.y)) + ((*(position)).y * (*(light)).position.x));
+    along = (((*(position)).x * (*(light)).position.x) + ((*(position)).y * (*(light)).position.y));
+    column = (((across - (*(light)).shadow_origin.x) / (*(light)).shadow_origin.z) * 2048.0f);
+    depth = ((along - (*(light)).shadow_origin.y) / (*(light)).shadow.y);
+  }
+  taps = bitcast<i32>((*(light)).flags.y);
+  row = i32((*(light)).shadow.x);
+  bias = (0.5f / (*(light)).shadow.y);
+  hidden = 0.0f;
+  k = -(taps);
+  loop {
+    if ((k <= taps)) {
+      at = i32(floor((column + (f32(k) * (*(light)).shadow.z))));
+      if (wrap) {
+        at = (((at % 2048i) + 2048i) % 2048i);
+      } else if (((at < 0i) | (at >= 2048i))) {
+        continue;
+      }
+      param = at;
+      param_1 = row;
+      stored = v_10(&(param), &(param_1));
+      if ((((stored <= 1.0f) & (depth > (stored + bias))) & (wrap | ((depth - stored) < (*(light)).shadow.w)))) {
+        hidden = (hidden + 1.0f);
+      }
+      continue;
+    } else {
+      break;
+    }
+
+    continuing {
+      k = (k + 1i);
+    }
+  }
+  return (hidden / f32(((2i * taps) + 1i)));
+}
+
+fn v_12(light_vec : ptr<function, vec3<f32>>, normal : ptr<function, vec3<f32>>, base : ptr<function, vec3<f32>>, light_color : ptr<function, vec3<f32>>, shine : ptr<function, vec4<f32>>, shine_used : ptr<function, bool>) -> vec3<f32> {
+  var n_dot_l : f32;
+  var lit : vec3<f32>;
+  var view : vec3<f32>;
+  var half_vec : vec3<f32>;
+  var n_dot_v : f32;
+  var n_dot_h : f32;
+  var shininess : f32;
+  var blinn : f32;
+  var s : f32;
+  n_dot_l = max(0.0f, dot(*(normal), *(light_vec)));
+  lit = ((*(light_color) * *(base)) * n_dot_l);
+  if (!(*(shine_used))) {
+    return lit;
+  }
+  view = vec3<f32>(0.0f, 0.0f, 1.0f);
+  half_vec = normalize((view + *(light_vec)));
+  n_dot_v = max(dot(*(normal), view), 0.0f);
+  n_dot_h = max(dot(*(normal), half_vec), 0.0f);
+  shininess = (exp2(((15.0f * (*(shine)).w) + 1.0f)) * 0.25f);
+  blinn = pow(n_dot_h, shininess);
+  let v_13 = ((shininess + 8.0f) * 0.03978873416781425476f);
+  blinn = (blinn * v_13);
+  s = (blinn / max(((4.0f * n_dot_v) * n_dot_l), 0.75f));
+  return (lit + (((*(shine)).xyz * *(light_color)) * s));
+}
+
+fn v_14(base : ptr<function, vec4<f32>>, position : ptr<function, vec2<f32>>, normal : ptr<function, vec3<f32>>, normal_used : ptr<function, bool>, shine : ptr<function, vec4<f32>>, shine_used : ptr<function, bool>) -> vec4<f32> {
+  var color : vec4<f32>;
+  var light_only_alpha : f32;
+  var count : u32;
+  var i : u32;
+  var light : Light_1;
+  var light_color : vec4<f32>;
+  var at : vec3<f32>;
+  var luv : vec2<f32>;
+  var light_vec : vec3<f32>;
+  var h : f32;
+  var param : vec3<f32>;
+  var param_2 : vec3<f32>;
+  var param_3 : vec3<f32>;
+  var param_4 : vec3<f32>;
+  var param_5 : vec4<f32>;
+  var param_6 : bool;
+  var hidden : f32;
+  var param_7 : Light_1;
+  var param_8 : vec2<f32>;
+  var shadow_color : vec4<f32>;
+  color = *(base);
+  if ((v.shading.x == 1i)) {
+    let v_15 = v.ambient;
+    color = (color * v_15);
+  }
+  light_only_alpha = 0.0f;
+  count = min(v_1.light_count.x, 64u);
+  i = 0u;
+  loop {
+    if ((i < count)) {
+      let v_16 = v_1.lights[i];
+      light.color = v_16.color;
+      light.position = v_16.position;
+      light.texture_u = v_16.texture_u;
+      light.texture_v = v_16.texture_v;
+      light.atlas = v_16.atlas;
+      light.shadow = v_16.shadow;
+      light.shadow_origin = v_16.shadow_origin;
+      light.shadow_color = v_16.shadow_color;
+      light.flags = v_16.flags;
+      light.range = v_16.range;
+      if (((((((light.flags.z & bitcast<u32>(v.shading.y)) == 0u) | (v.shading.z < light.range.x)) | (v.shading.z > light.range.y)) | (v.layer.x < light.range.z)) | (v.layer.x > light.range.w))) {
+        continue;
+      }
+      light_color = light.color;
+      if ((light.position.w < 0.5f)) {
+        let v_17 = *(position);
+        at = vec3<f32>(v_17.x, v_17.y, 1.0f);
+        luv = vec2<f32>(dot(light.texture_u.xyz, at), dot(light.texture_v.xyz, at));
+        if (((((luv.x < 0.0f) | (luv.y < 0.0f)) | (luv.x >= 1.0f)) | (luv.y >= 1.0f))) {
+          continue;
+        }
+        let v_18 = textureSampleLevel(light_atlas, atlas_sampler, (light.atlas.xy + (luv * light.atlas.zw)), 0.0f);
+        light_color = (light_color * v_18);
+        let v_19 = (light.position.xy - *(position));
+        light_vec = normalize(vec3<f32>(v_19.x, v_19.y, light.position.z));
+      } else {
+        h = light.position.z;
+        let v_20 = (-(light.position.xy) * (1.0f - h));
+        light_vec = normalize(vec3<f32>(v_20.x, v_20.y, h));
+      }
+      if (*(normal_used)) {
+        param = light_vec;
+        param_2 = *(normal);
+        param_3 = (*(base)).xyz;
+        param_4 = light_color.xyz;
+        param_5 = *(shine);
+        param_6 = *(shine_used);
+        let v_21 = v_12(&(param), &(param_2), &(param_3), &(param_4), &(param_5), &(param_6));
+        light_color.x = v_21.x;
+        light_color.y = v_21.y;
+        light_color.z = v_21.z;
+      } else {
+        let v_22 = (*(base)).xyz;
+        let v_23 = (light_color.xyz * v_22);
+        light_color.x = v_23.x;
+        light_color.y = v_23.y;
+        light_color.z = v_23.z;
+      }
+      if ((light.shadow.x >= 0.0f)) {
+        param_7 = light;
+        param_8 = *(position);
+        hidden = v_11(&(param_7), &(param_8));
+        shadow_color = light.shadow_color;
+        let v_24 = light_color.w;
+        shadow_color.w = (shadow_color.w * v_24);
+        let v_25 = ((shadow_color - light_color) * hidden);
+        light_color = (light_color + v_25);
+      }
+      let v_26 = light_color.w;
+      light_only_alpha = (light_only_alpha + v_26);
+      if ((light.flags.x == 2u)) {
+        let v_27 = (light_color.xyz * light_color.w);
+        let v_28 = (color.xyz - v_27);
+        color.x = v_28.x;
+        color.y = v_28.y;
+        color.z = v_28.z;
+      } else if ((light.flags.x == 0u)) {
+        let v_29 = ((light_color.xyz - color.xyz) * light_color.w);
+        let v_30 = (color.xyz + v_29);
+        color.x = v_30.x;
+        color.y = v_30.y;
+        color.z = v_30.z;
+      } else {
+        let v_31 = (light_color.xyz * light_color.w);
+        let v_32 = (color.xyz + v_31);
+        color.x = v_32.x;
+        color.y = v_32.y;
+        color.z = v_32.z;
+      }
+      continue;
+    } else {
+      break;
+    }
+
+    continuing {
+      i = (i + bitcast<u32>(1i));
+    }
+  }
+  if ((v.shading.x == 2i)) {
+    let v_33 = light_only_alpha;
+    color.w = (color.w * v_33);
+  }
+  return color;
+}
+
+struct CanvasPixel {
+  world : vec2<f32>,
+  world_dx : vec2<f32>,
+  world_dy : vec2<f32>,
+  uv_dx : vec2<f32>,
+  uv_dy : vec2<f32>,
+}
+
+fn v_34(input : ptr<function, VertexOutput>) -> CanvasPixel {
+  var at : vec3<f32>;
+  var pixel : CanvasPixel;
+  let v_35 = (*(input)).world;
+  at = vec3<f32>(v_35.x, v_35.y, 1.0f);
+  pixel.world = vec2<f32>(dot(v.to_lights_x.xyz, at), dot(v.to_lights_y.xyz, at));
+  pixel.world_dx = dpdx(pixel.world);
+  pixel.world_dy = dpdy(pixel.world);
+  pixel.uv_dx = dpdx((*(input)).uv);
+  pixel.uv_dy = dpdy((*(input)).uv);
+  return pixel;
+}
+
+fn v_36(pixel : ptr<function, CanvasPixel>, base : ptr<function, vec4<f32>>, normal_texel : ptr<function, vec3<f32>>, normal_used : ptr<function, bool>, shine : ptr<function, vec4<f32>>, shine_used : ptr<function, bool>) -> vec4<f32> {
+  var normal : vec3<f32>;
+  var u_axis : vec2<f32>;
+  var v_axis : vec2<f32>;
+  var det : f32;
+  var along_u : vec2<f32>;
+  var along_v : vec2<f32>;
+  var nx : f32;
+  var ny : f32;
+  var nz : f32;
+  var param : vec4<f32>;
+  var param_9 : vec2<f32>;
+  var param_10 : vec3<f32>;
+  var param_11 : bool;
+  var param_12 : vec4<f32>;
+  var param_13 : bool;
+  if ((v.shading.x == 0i)) {
+    return *(base);
+  }
+  normal = vec3<f32>(0.0f, 0.0f, 1.0f);
+  if (*(normal_used)) {
+    u_axis = vec2<f32>(1.0f, 0.0f);
+    v_axis = vec2<f32>(0.0f, 1.0f);
+    det = (((*(pixel)).uv_dx.x * (*(pixel)).uv_dy.y) - ((*(pixel)).uv_dy.x * (*(pixel)).uv_dx.y));
+    if ((abs(det) > 0.000000000001f)) {
+      let v_37 = (((*(pixel)).world_dx * (*(pixel)).uv_dy.y) - ((*(pixel)).world_dy * (*(pixel)).uv_dx.y));
+      let v_38 = det;
+      along_u = (v_37 / vec2<f32>(v_38, v_38));
+      let v_39 = (((*(pixel)).world_dy * (*(pixel)).uv_dx.x) - ((*(pixel)).world_dx * (*(pixel)).uv_dy.x));
+      let v_40 = det;
+      along_v = (v_39 / vec2<f32>(v_40, v_40));
+      if (((dot(along_u, along_u) > 0.0f) & (dot(along_v, along_v) > 0.0f))) {
+)slash",
+R"slash(        u_axis = normalize(along_u);
+        v_axis = normalize(along_v);
+      }
+    }
+    nx = (((*(normal_texel)).x * 2.0f) - 1.0f);
+    ny = (1.0f - ((*(normal_texel)).y * 2.0f));
+    nz = sqrt(max(0.0f, (1.0f - ((nx * nx) + (ny * ny)))));
+    let v_41 = ((u_axis * nx) + (v_axis * ny));
+    normal = normalize(vec3<f32>(v_41.x, v_41.y, nz));
+  }
+  param = *(base);
+  param_9 = (*(pixel)).world;
+  param_10 = normal;
+  param_11 = *(normal_used);
+  param_12 = *(shine);
+  param_13 = *(shine_used);
+  return v_14(&(param), &(param_9), &(param_10), &(param_11), &(param_12), &(param_13));
+}
+
+fn v_42(a : ptr<function, f32>) -> f32 {
+  var b : f32;
+  b = bitcast<f32>((2129764351u - bitcast<u32>(*(a))));
+  return (b * ((-(b) * *(a)) + 2.0f));
+}
+
+fn v_43(offset : ptr<function, vec2<f32>>) -> vec3<f32> {
+  return textureSampleLevel(TEXTURE, TEXTURE_sampler, (UV + (*(offset) * TEXTURE_PIXEL_SIZE)), 0.0f).xyz;
+}
+
+fn v_44(mn4 : ptr<function, f32>, mx4 : ptr<function, f32>, e : ptr<function, f32>) -> f32 {
+  var hit_max_den : f32;
+  var hit_min : f32;
+  var hit_max : f32;
+  hit_max_den = ((4.0f * *(mn4)) - 4.0f);
+  if ((*(mx4) <= 0.0f)) {
+    return ((1.0f - max(*(mx4), *(e))) / hit_max_den);
+  }
+  hit_min = (min(*(mn4), *(e)) / (4.0f * *(mx4)));
+  if ((hit_max_den >= 0.0f)) {
+    return -(hit_min);
+  }
+  hit_max = ((1.0f - max(*(mx4), *(e))) / hit_max_den);
+  return max(-(hit_min), hit_max);
+}
+
+fn v_45() {
+  var b : vec3<f32>;
+  var param : vec2<f32>;
+  var d : vec3<f32>;
+  var param_14 : vec2<f32>;
+  var ee : vec4<f32>;
+  var e : vec3<f32>;
+  var f : vec3<f32>;
+  var param_15 : vec2<f32>;
+  var h : vec3<f32>;
+  var param_16 : vec2<f32>;
+  var mn4 : vec3<f32>;
+  var mx4 : vec3<f32>;
+  var lobe_r : f32;
+  var param_17 : f32;
+  var param_18 : f32;
+  var param_19 : f32;
+  var lobe_g : f32;
+  var param_20 : f32;
+  var param_21 : f32;
+  var param_22 : f32;
+  var lobe_b : f32;
+  var param_23 : f32;
+  var param_24 : f32;
+  var param_25 : f32;
+  var lobe : f32;
+  var rcp_l : f32;
+  var param_26 : f32;
+  param = vec2<f32>(0.0f, -1.0f);
+  b = v_43(&(param));
+  param_14 = vec2<f32>(-1.0f, 0.0f);
+  d = v_43(&(param_14));
+  ee = textureSampleLevel(TEXTURE, TEXTURE_sampler, UV, 0.0f);
+  e = ee.xyz;
+  param_15 = vec2<f32>(1.0f, 0.0f);
+  f = v_43(&(param_15));
+  param_16 = vec2<f32>(0.0f, 1.0f);
+  h = v_43(&(param_16));
+  mn4 = min(min(b, d), min(f, h));
+  mx4 = max(max(b, d), max(f, h));
+  param_17 = mn4.x;
+  param_18 = mx4.x;
+  param_19 = e.x;
+  lobe_r = v_44(&(param_17), &(param_18), &(param_19));
+  param_20 = mn4.y;
+  param_21 = mx4.y;
+  param_22 = e.y;
+  lobe_g = v_44(&(param_20), &(param_21), &(param_22));
+  param_23 = mn4.z;
+  param_24 = mx4.z;
+  param_25 = e.z;
+  lobe_b = v_44(&(param_23), &(param_24), &(param_25));
+  lobe = (max(-0.1875f, min(max(max(lobe_r, lobe_g), lobe_b), 0.0f)) * sharpness);
+  param_26 = ((4.0f * lobe) + 1.0f);
+  rcp_l = v_42(&(param_26));
+  let v_46 = lobe;
+  let v_47 = (b * v_46);
+  let v_48 = lobe;
+  let v_49 = (v_47 + (d * v_48));
+  let v_50 = lobe;
+  let v_51 = (v_49 + (h * v_50));
+  let v_52 = lobe;
+  let v_53 = (((v_51 + (f * v_52)) + e) * rcp_l);
+  COLOR = vec4<f32>(v_53.x, v_53.y, v_53.z, ee.w);
+}
+
+fn v_9(input : ptr<function, VertexOutput>) -> vec4<f32> {
+  var pixel : CanvasPixel;
+  var param : VertexOutput;
+  var normal_used : bool;
+  var shine_used : bool;
+  var param_27 : CanvasPixel;
+  var param_28 : vec4<f32>;
+  var param_29 : vec3<f32>;
+  var param_30 : bool;
+  var param_31 : vec4<f32>;
+  var param_32 : bool;
+  param = *(input);
+  pixel = v_34(&(param));
+  sharpness = v.constants[0i].x;
+  TIME = v.constants[31i].x;
+  TEXTURE_PIXEL_SIZE = v.texel.xy;
+  UV = (*(input)).uv;
+  let v_54 = (*(input)).position.xy;
+  FRAGCOORD = vec4<f32>(v_54.x, v_54.y, 0.0f, 1.0f);
+  COLOR = (textureSampleLevel(TEXTURE, TEXTURE_sampler, UV, 0.0f) * (*(input)).color);
+  normal_used = ((v.shading.w & 1i) != 0i);
+  NORMAL_MAP = vec3<f32>(0.5f, 0.5f, 1.0f);
+  if (normal_used) {
+    NORMAL_MAP = textureSampleLevel(normal_map, normal_sampler, UV, 0.0f).xyz;
+  }
+  shine_used = ((v.shading.w & 2i) != 0i);
+  SPECULAR_SHININESS = (textureSampleLevel(specular_map, specular_sampler, UV, 0.0f) * v.specular);
+  v_45();
+  param_27 = pixel;
+  param_28 = COLOR;
+  param_29 = NORMAL_MAP;
+  param_30 = normal_used;
+  param_31 = SPECULAR_SHININESS;
+  param_32 = shine_used;
+  return v_36(&(param_27), &(param_28), &(param_29), &(param_30), &(param_31), &(param_32));
+}
+
+@fragment
+fn fs_main(@location(0u) v_55 : vec2<f32>, @location(1u) v_56 : vec4<f32>, @location(2u) v_57 : vec2<f32>, @builtin(position) v_58 : vec4<f32>) -> @location(0u) vec4<f32> {
+  fs_main_inner(v_55, v_56, v_57, v_58);
+  return v_2;
+}
+)slash",
+};
+
 inline constexpr const char* kFsrRcasHlsl[] = {
 R"slash(// What every canvas shader shares: the vertex layout, the uniform buffers and the 2D lighting
 // (light.hpp). The material shader (material.hlsl) includes it, and so does each of a game's own
@@ -5444,6 +7318,12 @@ inline slash::render::CompiledShader fsr_rcas() {
     }
     for (const char* piece : kFsrRcasGlslFragment) {
         shader.glsl_fragment += piece;
+    }
+    for (const char* piece : kFsrRcasWgslVertex) {
+        shader.wgsl_vertex += piece;
+    }
+    for (const char* piece : kFsrRcasWgslFragment) {
+        shader.wgsl_fragment += piece;
     }
     for (const char* piece : kFsrRcasHlsl) {
         shader.hlsl += piece;

@@ -4,7 +4,9 @@
 #include "slash/platform/file.hpp"
 #include "slash/render/device.hpp"
 #include "slash/render/upscaler.hpp"
+#ifndef __EMSCRIPTEN__
 #include "slash/shader_compiler/shader_compiler.hpp"
+#endif
 
 #include <doctest/doctest.h>
 
@@ -389,9 +391,12 @@ TEST_CASE("upscalers are built in or added by name, and temporal ones are refuse
           "bilinear or fsr");
 }
 
+// The web build of the tests (tests/web) has no shader tools.
+#ifndef __EMSCRIPTEN__
 TEST_CASE("the FSR shaders committed in engine/render/src match their HLSL") {
     // Run "cmake --build --preset dev --target shaders" to make them again. MSL and GLSL ES are
-    // left out: SPIRV-Cross writes the same SPIR-V's numbers differently on some platforms.
+    // left out: SPIRV-Cross writes the same SPIR-V's numbers differently on some platforms. Tint
+    // writes WGSL the same everywhere.
     const std::string root = std::string(SLASH_TEST_DATA_DIR) + "/../..";
     const auto compile = [&](const std::string& path,
                              std::vector<slash::render::ShaderSource::Param> params) {
@@ -408,6 +413,8 @@ TEST_CASE("the FSR shaders committed in engine/render/src match their HLSL") {
         CHECK(made.spirv_fragment == committed.spirv_fragment);
         CHECK(made.cpu_vertex == committed.cpu_vertex);
         CHECK(made.cpu_fragment == committed.cpu_fragment);
+        CHECK(made.wgsl_vertex == committed.wgsl_vertex);
+        CHECK(made.wgsl_fragment == committed.wgsl_fragment);
         CHECK(made.hlsl == committed.hlsl);
         CHECK(made.normal_map_used == committed.normal_map_used);
         CHECK(made.specular_used == committed.specular_used);
@@ -419,6 +426,7 @@ TEST_CASE("the FSR shaders committed in engine/render/src match their HLSL") {
                  {{.name = "sharpness", .components = 1, .slot = 0}}),
          slash::render::shaders::fsr_rcas());
 }
+#endif
 
 TEST_CASE("FSR scales up as AMD's EASU and RCAS do, on the software and GPU devices") {
     for (const float stops : {0.2F, 0.0F, 2.0F}) {

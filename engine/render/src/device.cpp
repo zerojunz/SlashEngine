@@ -107,7 +107,7 @@ Result<void> check_compiled_shader(const CompiledShader& shader, Backend backend
         present = !shader.glsl_vertex.empty() && !shader.glsl_fragment.empty();
         break;
     case Backend::WebGpu:
-        // Games' shaders have no WGSL yet.
+        present = !shader.wgsl_vertex.empty() && !shader.wgsl_fragment.empty();
         break;
     case Backend::Software:
         present = !shader.cpu_fragment.empty();

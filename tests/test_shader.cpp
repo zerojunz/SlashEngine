@@ -203,6 +203,12 @@ void fragment() {
     // The GL device binds textures and varyings by these names.
     CHECK(shader.glsl_fragment.find("texture1") != std::string::npos);
     CHECK(shader.glsl_vertex.find("v_uv") != std::string::npos);
+    // WebGPU's WGSL keeps SDL's bind groups, with each sampler 8 bindings after its texture.
+    CHECK(shader.wgsl_vertex.find("@vertex") != std::string::npos);
+    CHECK(shader.wgsl_vertex.find("@group(1u) @binding(1u)") != std::string::npos);
+    CHECK(shader.wgsl_fragment.find("@fragment") != std::string::npos);
+    CHECK(shader.wgsl_fragment.find("@group(2u) @binding(1u) var") != std::string::npos);
+    CHECK(shader.wgsl_fragment.find("@group(2u) @binding(9u) var") != std::string::npos);
     // Direct3D 12's HLSL names the game's file in its line directives.
     CHECK(shader.hlsl.find("#line 1 \"shaders/sway.hlsl\"") != std::string::npos);
     CHECK_FALSE(shader.cpu_vertex.empty());

@@ -11,6 +11,10 @@
 #include <mutex>
 #include <spirv_glsl.hpp>
 #include <spirv_msl.hpp>
+#include <src/tint/api/tint.h>
+#include <src/tint/lang/core/ir/module.h>
+#include <src/tint/lang/spirv/reader/reader.h>
+#include <src/tint/lang/wgsl/writer/writer.h>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -315,10 +319,16 @@ void initialize_glslang() {
     std::call_once(once, [] { glslang::InitializeProcess(); });
 }
 
+// How a stage's SPIR-V binds textures: combined with their samplers, as Vulkan, Metal and OpenGL
+// ES take them, or apart, as WGSL has them, with each sampler 8 bindings after its texture (SDL's
+// bind groups, as the WebGPU device lays them out).
+enum class Samplers : std::uint8_t { Combined, Apart };
+
 // The code between parts compiled to SPIR-V for a stage, or nothing with errors added.
 std::vector<std::uint32_t> to_spirv(const Parts& parts, const render::ShaderSource& source,
                                     EShLanguage stage, const char* entry,
-                                    std::vector<std::string>& errors) {
+                                    std::vector<std::string>& errors,
+                                    Samplers samplers = Samplers::Combined) {
     initialize_glslang();
     glslang::TShader shader(stage);
     const std::array<const char*, 3> strings{parts.before.c_str(), source.code.c_str(),
@@ -333,7 +343,11 @@ std::vector<std::uint32_t> to_spirv(const Parts& parts, const render::ShaderSour
     shader.setEnvInput(glslang::EShSourceHlsl, stage, glslang::EShClientVulkan, 100);
     shader.setEnvClient(glslang::EShClientVulkan, glslang::EShTargetVulkan_1_0);
     shader.setEnvTarget(glslang::EShTargetSpv, glslang::EShTargetSpv_1_0);
-    shader.setTextureSamplerTransformMode(EShTexSampTransUpgradeTextureRemoveSampler);
+    if (samplers == Samplers::Combined) {
+        shader.setTextureSamplerTransformMode(EShTexSampTransUpgradeTextureRemoveSampler);
+    } else {
+        shader.setShiftBinding(glslang::EResSampler, 8);
+    }
     const auto messages =
         // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange): glslang's flags combine.
         static_cast<EShMessages>(EShMsgSpvRules | EShMsgVulkanRules | EShMsgReadHlsl);
@@ -344,6 +358,11 @@ std::vector<std::uint32_t> to_spirv(const Parts& parts, const render::ShaderSour
     glslang::TProgram program;
     program.addShader(&shader);
     if (!program.link(messages)) {
+        read_log(program.getInfoLog(), source.path, errors);
+        return {};
+    }
+    // Moves the samplers to their own bindings, as glslangValidator's --shift-sampler-binding.
+    if (samplers == Samplers::Apart && !program.mapIO()) {
         read_log(program.getInfoLog(), source.path, errors);
         return {};
     }
@@ -398,6 +417,28 @@ std::string to_glsl(const std::vector<std::uint32_t>& spirv, bool vertex) {
     return compiler.compile();
 }
 
+void initialize_tint() {
+    static std::once_flag once;
+    std::call_once(once, [] { tint::Initialize(); });
+}
+
+// SPIR-V with its samplers apart as WGSL, through Tint, or nothing with an error added.
+std::string to_wgsl(const std::vector<std::uint32_t>& spirv, const std::string& path,
+                    std::vector<std::string>& errors) {
+    initialize_tint();
+    auto module = tint::spirv::reader::ReadIR(spirv);
+    if (module != tint::Success) {
+        errors.push_back(path + ": Tint can't read it: " + module.Failure().reason);
+        return {};
+    }
+    auto wgsl = tint::wgsl::writer::WgslFromIR(module.Get(), {});
+    if (wgsl != tint::Success) {
+        errors.push_back(path + ": Tint can't write it as WGSL: " + wgsl.Failure().reason);
+        return {};
+    }
+    return wgsl->wgsl;
+}
+
 } // namespace
 
 Wrapped wrap(const render::ShaderSource& source) {
@@ -425,6 +466,21 @@ Result<render::CompiledShader> compile(const render::ShaderSource& source) {
     out.spirv_vertex = to_spirv(gpu, source, EShLangVertex, "vs_main", errors);
     if (errors.empty()) {
         out.spirv_fragment = to_spirv(gpu, source, EShLangFragment, "fs_main", errors);
+    }
+    // WebGPU's: the same stages with their samplers apart.
+    std::vector<std::uint32_t> wgsl_vertex;
+    std::vector<std::uint32_t> wgsl_fragment;
+    if (errors.empty()) {
+        wgsl_vertex = to_spirv(gpu, source, EShLangVertex, "vs_main", errors, Samplers::Apart);
+    }
+    if (errors.empty()) {
+        wgsl_fragment = to_spirv(gpu, source, EShLangFragment, "fs_main", errors, Samplers::Apart);
+    }
+    if (errors.empty()) {
+        out.wgsl_vertex = to_wgsl(wgsl_vertex, source.path, errors);
+    }
+    if (errors.empty()) {
+        out.wgsl_fragment = to_wgsl(wgsl_fragment, source.path, errors);
     }
     if (errors.empty() && found.vertex) {
         out.cpu_vertex =
