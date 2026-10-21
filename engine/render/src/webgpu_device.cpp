@@ -290,6 +290,9 @@ public:
                 wgpuShaderModuleRelease(module);
             }
         }
+        for (const auto& [id, shader] : game_shaders_) {
+            release_game_shader(shader);
+        }
         for (const auto& [id, system] : particle_systems_) {
             destroy_buffer(system.buffer);
             destroy_buffer(system.emissions);
@@ -455,11 +458,40 @@ public:
         if (auto checked = check_compiled_shader(shader, Backend::WebGpu); !checked) {
             return checked.error();
         }
-        return make_error(ErrorCode::InvalidArgument,
-                          "the shader has no code for the webgpu backend");
+        const GameShader made{.vertex = create_module(shader.wgsl_vertex),
+                              .fragment = create_module(shader.wgsl_fragment)};
+        // Where the device can wait, WGSL the browser refuses fails here, not at the first draw.
+        if (can_wait_) {
+            if (auto errors = scoped_errors(); !errors) {
+                release_game_shader(made);
+                return errors.error();
+            }
+        }
+        const auto id = static_cast<ShaderId>(next_shader_++);
+        game_shaders_[id] = made;
+        return id;
     }
 
-    void destroy_shader(ShaderId /*shader*/) override {}
+    void destroy_shader(ShaderId shader) override {
+        const auto it = game_shaders_.find(shader);
+        if (it == game_shaders_.end()) {
+            return;
+        }
+        // Its pipelines go with it, once the frame being built, which may draw with them, is sent.
+        std::erase_if(pipelines_, [&](const Pipeline& made) {
+            if (made.shader != shader) {
+                return false;
+            }
+            if (in_frame_) {
+                pending_pipelines_.push_back(made.pipeline);
+            } else {
+                wgpuRenderPipelineRelease(made.pipeline);
+            }
+            return true;
+        });
+        release_game_shader(it->second);
+        game_shaders_.erase(it);
+    }
 
     Result<ParticlesId> create_particles(std::uint32_t amount, std::uint32_t trail) override {
         if (auto checked = check_particle_amount(amount, trail); !checked) {
@@ -787,6 +819,7 @@ public:
         }
         struct BatchUniforms {
             std::uint32_t view = 0;
+            std::uint32_t vertex_program = 0; // a game shader's
             std::uint32_t program = 0;
         };
         std::vector<BatchUniforms> batch_uniforms;
@@ -799,9 +832,13 @@ public:
             if (!pushed || pushed->first != matrix) {
                 pushed.emplace(matrix, uniforms_.add(transposed(matrix)));
             }
-            BatchUniforms at{.view = pushed->second, .program = 0};
+            BatchUniforms at{.view = pushed->second, .vertex_program = 0, .program = 0};
             if (batch.kind == ShaderKind::Material) {
                 at.program = uniforms_.add(program_uniforms(batch.material, batch.texel));
+            }
+            if (batch.material.shader != ShaderId::None) {
+                at.vertex_program =
+                    uniforms_.add(vertex_program_uniforms(batch.material, batch.texel));
             }
             batch_uniforms.push_back(at);
         }
@@ -829,7 +866,8 @@ public:
                     wgpuRenderPassEncoderSetPipeline(pass, batch.pipeline);
                     bound = batch.pipeline;
                 }
-                const std::array<std::uint32_t, 2> vertex_offsets{batch_uniforms[i].view, 0};
+                const std::array<std::uint32_t, 2> vertex_offsets{batch_uniforms[i].view,
+                                                                  batch_uniforms[i].vertex_program};
                 wgpuRenderPassEncoderSetBindGroup(pass, 1, vertex_uniforms_group_,
                                                   vertex_offsets.size(), vertex_offsets.data());
                 wgpuRenderPassEncoderSetBindGroup(pass, 2, texture_group(batch), 0, nullptr);
@@ -965,7 +1003,14 @@ private:
         WGPUTextureFormat format = WGPUTextureFormat_Undefined;
         ShaderKind kind = ShaderKind::Sprite;
         BlendMode blend = BlendMode::Mix;
+        ShaderId shader = ShaderId::None; // a game's, which takes the material shader's place
         WGPURenderPipeline pipeline = nullptr;
+    };
+
+    // A game's shader: the material shader's stages with the game's code in them.
+    struct GameShader {
+        WGPUShaderModule vertex = nullptr;
+        WGPUShaderModule fragment = nullptr;
     };
 
     struct ParticleSystem {
@@ -1019,7 +1064,7 @@ private:
         }
         if (auto checked = check_material(
                 material, frame_.target, [&](TextureId id) { return textures_.contains(id); },
-                [](ShaderId /*id*/) { return false; });
+                [&](ShaderId id) { return game_shaders_.contains(id); });
             !checked) {
             return checked;
         }
@@ -1029,9 +1074,10 @@ private:
 
     // A batch drawing with a texture and a material from a first vertex, with no vertices yet.
     Result<Batch> make_batch(TextureId texture, const Material& material, std::uint32_t first) {
-        const ShaderKind kind =
-            uses_material_shader(material) ? ShaderKind::Material : ShaderKind::Sprite;
-        auto pipeline = pipeline_for(frame_format_, kind, material.blend);
+        const ShaderKind kind = material.shader != ShaderId::None || uses_material_shader(material)
+                                    ? ShaderKind::Material
+                                    : ShaderKind::Sprite;
+        auto pipeline = pipeline_for(frame_format_, kind, material.blend, material.shader);
         if (!pipeline) {
             return pipeline.error();
         }
@@ -1254,15 +1300,24 @@ private:
             pipeline_layout({empty_layout_, emit_outputs_layout_, compute_uniforms_layout_});
     }
 
+    WGPUShaderModule create_module(std::string_view wgsl) {
+        WGPUShaderSourceWGSL source = WGPU_SHADER_SOURCE_WGSL_INIT;
+        source.code = text_view(wgsl);
+        WGPUShaderModuleDescriptor info = WGPU_SHADER_MODULE_DESCRIPTOR_INIT;
+        info.nextInChain = &source.chain;
+        return wgpuDeviceCreateShaderModule(device_, &info);
+    }
+
+    static void release_game_shader(const GameShader& shader) {
+        wgpuShaderModuleRelease(shader.vertex);
+        wgpuShaderModuleRelease(shader.fragment);
+    }
+
     // A shader module, made the first time it is needed.
     WGPUShaderModule module(std::size_t index, std::string_view wgsl) {
         WGPUShaderModule& slot = modules_.at(index);
         if (slot == nullptr) {
-            WGPUShaderSourceWGSL source = WGPU_SHADER_SOURCE_WGSL_INIT;
-            source.code = text_view(wgsl);
-            WGPUShaderModuleDescriptor info = WGPU_SHADER_MODULE_DESCRIPTOR_INIT;
-            info.nextInChain = &source.chain;
-            slot = wgpuDeviceCreateShaderModule(device_, &info);
+            slot = create_module(wgsl);
         }
         return slot;
     }
@@ -1518,11 +1573,12 @@ private:
     }
 
     // The 2D pipeline for a target format, shader and blend mode, made the first time a frame
-    // needs it.
+    // needs it; with a game's shader, its stages take the material shader's place.
     Result<WGPURenderPipeline> pipeline_for(WGPUTextureFormat format, ShaderKind kind,
-                                            BlendMode blend) {
+                                            BlendMode blend, ShaderId shader = ShaderId::None) {
         for (const Pipeline& made : pipelines_) {
-            if (made.format == format && made.kind == kind && made.blend == blend) {
+            if (made.format == format && made.kind == kind && made.blend == blend &&
+                made.shader == shader) {
                 return made.pipeline;
             }
         }
@@ -1533,6 +1589,11 @@ private:
         WGPUShaderModule fragment_module =
             material ? module(kMaterialFragmentModule, shaders::kMaterialFragmentWgsl)
                      : module(kSpriteFragmentModule, shaders::kSpriteFragmentWgsl);
+        if (shader != ShaderId::None) {
+            const GameShader& game = game_shaders_.at(shader);
+            vertex_module = game.vertex;
+            fragment_module = game.fragment;
+        }
         std::array<WGPUVertexAttribute, 3> attributes{};
         attributes[0] = {.nextInChain = nullptr,
                          .format = WGPUVertexFormat_Float32x2,
@@ -1572,8 +1633,11 @@ private:
         info.primitive.cullMode = WGPUCullMode_None;
         info.fragment = &fragment;
         WGPURenderPipeline pipeline = wgpuDeviceCreateRenderPipeline(device_, &info);
-        pipelines_.push_back(
-            {.format = format, .kind = kind, .blend = blend, .pipeline = pipeline});
+        pipelines_.push_back({.format = format,
+                              .kind = kind,
+                              .blend = blend,
+                              .shader = shader,
+                              .pipeline = pipeline});
         return pipeline;
     }
 
@@ -1732,6 +1796,10 @@ private:
             destroy_gpu_texture(texture);
         }
         pending_textures_.clear();
+        for (WGPURenderPipeline pipeline : pending_pipelines_) {
+            wgpuRenderPipelineRelease(pipeline);
+        }
+        pending_pipelines_.clear();
         release_pending_buffers();
     }
 
@@ -1762,6 +1830,8 @@ private:
     std::array<bool, 3> sampled_{true, false, false};
     std::array<WGPUShaderModule, 7> modules_{};
     std::vector<Pipeline> pipelines_;
+    std::unordered_map<ShaderId, GameShader> game_shaders_;
+    std::uint32_t next_shader_ = 1;
     std::array<WGPUComputePipeline, 3> compute_pipelines_{}; // by ComputeKind
     WGPUBindGroupLayout empty_layout_ = nullptr;
     WGPUBindGroupLayout vertex_uniforms_layout_ = nullptr;
@@ -1780,6 +1850,7 @@ private:
     std::unordered_map<TextureId, Texture> textures_;
     std::uint32_t next_texture_ = 1;
     std::vector<GpuTexture> pending_textures_;
+    std::vector<WGPURenderPipeline> pending_pipelines_;
     std::unordered_map<TextureBindings, WGPUBindGroup, BindingsHash> texture_groups_;
     WGPUBuffer vertex_buffer_ = nullptr;
     std::uint64_t vertex_capacity_ = 0;

@@ -5,7 +5,8 @@ if(EMSCRIPTEN)
         test_main.cpp
         test_gpu_particles.cpp
         test_light.cpp
-        test_render.cpp)
+        test_render.cpp
+        test_upscaler.cpp)
     target_link_libraries(slash_web_tests PRIVATE slash::core slash::platform slash::render
         doctest::doctest SDL3::SDL3-static)
     target_compile_definitions(slash_web_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS
