@@ -29,6 +29,12 @@ float4 hsv_to_rgb(float4 c) {
     return float4(rgb * c.z, 0.0);
 }
 
+// An angle moved into -pi to pi, where every GPU's sin, cos and tan are close to the CPU twin's:
+// Metal's fast ones, which SDL compiles with, drift far from it.
+float4 wrap_angle(float4 a) {
+    return a - 6.28318530718 * floor(a * 0.159154943092 + splat(0.5));
+}
+
 // One instruction's result from its operands, for every op but Sample (37), which reads textures
 // and is the caller's: a stays as it is for that one and for unknown ops.
 float4 material_op(uint op, uint aux, float4 a, float4 b, float4 c) {
@@ -53,9 +59,9 @@ float4 material_op(uint op, uint aux, float4 a, float4 b, float4 c) {
     case 15u: o = floor(a + splat(0.5)); break;
     case 16u: o = a - floor(a); break;
     case 17u: o = sqrt(a); break;
-    case 18u: o = sin(a); break;
-    case 19u: o = cos(a); break;
-    case 20u: o = tan(a); break;
+    case 18u: o = sin(wrap_angle(a)); break;
+    case 19u: o = cos(wrap_angle(a)); break;
+    case 20u: o = tan(wrap_angle(a)); break;
     case 21u: o = asin(a); break;
     case 22u: o = acos(a); break;
     case 23u: o = atan(a); break;
