@@ -318,7 +318,7 @@ public:
         } else if (desc.render_target) {
             filled = clear(gpu.value());
         } else {
-            const std::vector<std::uint8_t> zeros(texture_bytes(stored));
+            const std::vector<std::uint8_t> zeros(static_cast<std::size_t>(texture_bytes(stored)));
             filled = upload(gpu.value(), stored, zeros);
         }
         if (!filled) {

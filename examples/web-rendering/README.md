@@ -1,8 +1,9 @@
 # Web rendering
 
 How a game draws in a browser. SDL3's GPU API has no web backend, so web exports draw with
-SlashEngine's OpenGL ES 3.0 device, which browsers call WebGL 2: `rendering.driver` `auto` picks
-it on the web. Elsewhere the `opengl_es` driver picks the same device where the system has OpenGL
+SlashEngine's WebGPU device where the browser has WebGPU, and with its OpenGL ES 3.0 device,
+which browsers call WebGL 2, everywhere else: `rendering.driver` `auto` picks between them on
+the web. This example draws on the OpenGL ES device. Elsewhere the `opengl_es` driver picks the same device where the system has OpenGL
 ES (Android, iOS, Linux), as Godot's `opengl3_es`; macOS has none, so there `auto` keeps Metal.
 
 [main.cpp](main.cpp) writes the textures, opens [main.scene.json](main.scene.json) and draws it
@@ -19,8 +20,8 @@ OpenGL ES and on macOS and Windows on the CPU.
 ```
 
 - The hero's material (`flash.material.json`, half flashed to white) runs the same program on
-  WebGL as on the other backends: the material shader's GLSL ES is compiled from the same HLSL
-  ahead of time and committed.
+  WebGL and WebGPU as on the other backends: the material shader's GLSL ES and WGSL are compiled
+  from the same HLSL ahead of time and committed.
 - To see it in a browser, export it and serve the folder (browsers won't load WebAssembly from
   a `file://` page):
 

@@ -355,7 +355,8 @@ TEST_CASE("the software and GPU devices light pixels as shade does") {
         // directional light's covers the left half of the target at depth 0.25.
         std::vector<std::uint8_t> shadows(std::size_t{kColumns} * 2 * 4, 0);
         const auto put = [&](std::uint32_t column, std::uint32_t row, Rgba texel) {
-            std::ranges::copy(texel, shadows.begin() + ((row * kColumns) + column) * 4);
+            std::ranges::copy(texel, shadows.begin() + static_cast<std::ptrdiff_t>(
+                                                           ((row * kColumns) + column) * 4));
         };
         for (std::uint32_t column = kColumns * 3 / 8; column < kColumns * 5 / 8; ++column) {
             put(column, 0, slash::render::encode_shadow_depth(0.4F));
@@ -462,7 +463,9 @@ TEST_CASE("the software and GPU devices light pixels as shade does") {
         const slash::render::ShadowTexel shadow_texel = [&](std::uint32_t column,
                                                             std::uint32_t row) {
             Rgba texel{};
-            std::copy_n(shadows.begin() + ((row * kColumns) + column) * 4, 4, texel.begin());
+            std::copy_n(shadows.begin() +
+                            static_cast<std::ptrdiff_t>(((row * kColumns) + column) * 4),
+                        4, texel.begin());
             return texel;
         };
         int compared = 0;

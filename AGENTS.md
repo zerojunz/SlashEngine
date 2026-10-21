@@ -538,7 +538,7 @@ where no backend starts. `examples/draw-offscreen` draws into a texture and read
 `src/gl_device.cpp` is the same device over OpenGL (Godot's compatibility tier): the `opengl`
 driver is OpenGL 3.3's core profile on Windows, macOS and Linux, falling back to OpenGL ES 3.0
 where that doesn't start, and `opengl_es` is OpenGL ES 3.0, which is all the web (WebGL 2, where
-`auto` picks it, since SDL3's GPU API has no web backend), Android and iOS have. Desktop OpenGL
+`auto` picks it when the browser has no WebGPU), Android and iOS have. Desktop OpenGL
 compiles the committed GLSL ES 3.00 as GLSL 3.30, so one set of shaders serves both. It loads
 its GL functions through SDL (links WebGL's on the web), needs a window made with
 `platform::Config::opengl`, and draws every frame upside down into a texture so rows and
@@ -548,6 +548,18 @@ its GL functions through SDL (links WebGL's on the web), needs a window made wit
 backend doesn't work (`rendering.fallback_to_opengl`).
 `uniforms.hpp` fills the material shader's uniforms for both hardware devices; a change to how
 the GPU device draws goes in this one too.
+
+`src/webgpu_device.cpp` is the device over the browser's WebGPU, through Emscripten's
+emdawnwebgpu port, which `auto` picks on the web where the browser has it (the `webgpu`
+driver; web builds only). `web/webgpu.js` asks for the device before `main` runs, and the
+device reports WebGPU's errors through error scopes when a read waits on the GPU. It draws
+with the committed WGSL, which Tint compiles from the HLSL's SPIR-V; Tint drops SPIR-V's row
+major matrices, so the view matrix is uploaded turned. Game shaders and FSR have no WGSL yet,
+so web exports that use them keep to WebGL 2 under `auto` (`exporter::web_driver`). A change to
+how the GPU device draws goes in this one too. `tests/CMakeLists.txt` builds the drawing tests
+for the web as `slash_web_tests`, which `tests/web/run.mjs` runs in Node.js on Dawn's WebGPU
+(the `webgpu` npm package, `npm ci --prefix tests/web`) over Mesa's software Vulkan; CI's web
+export job runs them.
 
 `create_software_device` (`src/software_device.cpp`) draws on the CPU, into render targets
 only: it batches as the GPU device does, rasterizes with the GPU's fill rules and shades with
@@ -666,10 +678,11 @@ in canvas layers into the world's canvas and gives each canvas its `CanvasLighti
 `shadows_drawn()`). `examples/lights-2d` has a torch, the moon and a shadowed crate, and
 `examples/lit-tiles-and-layers` a tile set's normal map and a HUD with its own light.
 
-Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V, MSL and GLSL ES are committed in
-`engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang and
+Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V, MSL, GLSL ES and WGSL are committed
+in `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang,
 SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`
-in Homebrew; games' own shaders compile with the copies built as libraries from
+in Homebrew) and Tint (Dawn's `tint` tool, built with `TINT_BUILD_CMD_TOOLS` and passed as
+`-DSLASH_TINT=<path>`; games' own shaders compile with the copies built as libraries from
 `cmake/dependencies.json`). The FSR shaders are written as games' shaders are, and
 `slash-shader-header` (`tools/shader_compiler`) compiles them into `fsr_shaders.hpp`. After
 editing one, regenerate and commit the header; the `shaders_up_to_date_*` tests and the FSR

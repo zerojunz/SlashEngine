@@ -952,7 +952,7 @@ private:
         // New GPU memory holds whatever was there before, so it starts as transparent black.
         std::vector<std::uint8_t> zeros;
         if (texels.empty()) {
-            zeros.resize(texture_bytes(desc));
+            zeros.resize(static_cast<std::size_t>(texture_bytes(desc)));
             texels = zeros;
         }
         GLuint texture = 0;

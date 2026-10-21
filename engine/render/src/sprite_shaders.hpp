@@ -165,6 +165,41 @@ void main()
 
 )glsl";
 
+inline constexpr char kSpriteVertexWgsl[] = R"wgsl(struct View_1_1 {
+  view_projection : mat4x4<f32>,
+}
+
+@group(1u) @binding(0u) var<uniform> v : View_1_1;
+
+var<private> v_1 : vec2<f32>;
+
+var<private> v_2 : vec4<f32>;
+
+var<private> v_3 : vec4<f32>;
+
+fn vs_main_inner(v_4 : vec2<f32>, v_5 : vec2<f32>, v_6 : vec4<f32>) {
+  let v_7 = (vec4<f32>(v_4.x, v_4.y, 0.0f, 1.0f) * v.view_projection);
+  v_1 = v_5;
+  v_2 = v_6;
+  v_3 = v_7;
+}
+
+struct tint_symbol {
+  @location(0u)
+  m : vec2<f32>,
+  @location(1u)
+  m_1 : vec4<f32>,
+  @builtin(position)
+  m_2 : vec4<f32>,
+}
+
+@vertex
+fn vs_main(@location(0u) v_8 : vec2<f32>, @location(1u) v_9 : vec2<f32>, @location(2u) v_10 : vec4<f32>) -> tint_symbol {
+  vs_main_inner(v_8, v_9, v_10);
+  return tint_symbol(v_1, v_2, v_3);
+}
+)wgsl";
+
 alignas(4) inline constexpr unsigned char kSpriteFragmentSpirv[] = {
     0x03, 0x02, 0x23, 0x07, 0x00, 0x00, 0x01, 0x00, 0x0b, 0x00, 0x08, 0x00,
     0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11, 0x00, 0x02, 0x00,
@@ -266,6 +301,23 @@ void main()
 }
 
 )glsl";
+
+inline constexpr char kSpriteFragmentWgsl[] = R"wgsl(@group(2u) @binding(0u) var sprite_texture : texture_2d<f32>;
+
+@group(2u) @binding(8u) var sprite_sampler : sampler;
+
+var<private> v : vec4<f32>;
+
+fn fs_main_inner(v_1 : vec2<f32>, v_2 : vec4<f32>) {
+  v = (textureSample(sprite_texture, sprite_sampler, v_1) * v_2);
+}
+
+@fragment
+fn fs_main(@location(0u) v_3 : vec2<f32>, @location(1u) v_4 : vec4<f32>) -> @location(0u) vec4<f32> {
+  fs_main_inner(v_3, v_4);
+  return v;
+}
+)wgsl";
 
 inline constexpr char kSpriteHlsl[] = R"hlsl(// The 2D shader: triangles with a position in pixels, a texture coordinate and a color that
 // multiplies the texture. Registers follow SDL's GPU conventions: vertex uniforms in space1,

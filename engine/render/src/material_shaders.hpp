@@ -176,6 +176,46 @@ void main()
 
 )glsl";
 
+inline constexpr char kMaterialVertexWgsl[] = R"wgsl(struct View_1_1 {
+  view_projection : mat4x4<f32>,
+}
+
+@group(1u) @binding(0u) var<uniform> v : View_1_1;
+
+var<private> v_1 : vec2<f32>;
+
+var<private> v_2 : vec4<f32>;
+
+var<private> v_3 : vec2<f32>;
+
+var<private> v_4 : vec4<f32>;
+
+fn vs_main_inner(v_5 : vec2<f32>, v_6 : vec2<f32>, v_7 : vec4<f32>) {
+  let v_8 = (vec4<f32>(v_5.x, v_5.y, 0.0f, 1.0f) * v.view_projection);
+  v_1 = v_6;
+  v_2 = v_7;
+  v_3 = v_5;
+  v_4 = v_8;
+}
+
+struct tint_symbol {
+  @location(0u)
+  m : vec2<f32>,
+  @location(1u)
+  m_1 : vec4<f32>,
+  @location(2u)
+  m_2 : vec2<f32>,
+  @builtin(position)
+  m_3 : vec4<f32>,
+}
+
+@vertex
+fn vs_main(@location(0u) v_9 : vec2<f32>, @location(1u) v_10 : vec2<f32>, @location(2u) v_11 : vec4<f32>) -> tint_symbol {
+  vs_main_inner(v_9, v_10, v_11);
+  return tint_symbol(v_1, v_2, v_3, v_4);
+}
+)wgsl";
+
 alignas(4) inline constexpr unsigned char kMaterialFragmentSpirv[] = {
     0x03, 0x02, 0x23, 0x07, 0x00, 0x00, 0x01, 0x00, 0x0b, 0x00, 0x08, 0x00,
     0x0f, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x11, 0x00, 0x02, 0x00,
@@ -3550,6 +3590,643 @@ R"glsl(            }
 }
 
 )glsl";
+
+inline constexpr char kMaterialFragmentWgsl[] = R"wgsl(@group(2u) @binding(7u) var shadow_map : texture_2d<f32>;
+
+struct Program {
+  code : array<vec4<u32>, 64u>,
+  constants : array<vec4<f32>, 32u>,
+  texel : vec4<f32>,
+  counts : vec4<u32>,
+  shading : vec4<i32>,
+  specular : vec4<f32>,
+  field : vec4<f32>,
+  layer : vec4<i32>,
+  ambient : vec4<f32>,
+  to_lights_x : vec4<f32>,
+  to_lights_y : vec4<f32>,
+}
+
+@group(3u) @binding(0u) var<uniform> v : Program;
+
+struct Light {
+  color : vec4<f32>,
+  position : vec4<f32>,
+  texture_u : vec4<f32>,
+  texture_v : vec4<f32>,
+  atlas : vec4<f32>,
+  shadow : vec4<f32>,
+  shadow_origin : vec4<f32>,
+  shadow_color : vec4<f32>,
+  flags : vec4<u32>,
+  range : vec4<i32>,
+}
+
+struct Lights {
+  light_count : vec4<u32>,
+  lights : array<Light, 64u>,
+}
+
+@group(3u) @binding(1u) var<uniform> v_1 : Lights;
+
+@group(2u) @binding(6u) var light_atlas : texture_2d<f32>;
+
+@group(2u) @binding(14u) var atlas_sampler : sampler;
+
+var<private> registers : array<vec4<f32>, 32u>;
+
+@group(2u) @binding(0u) var texture0 : texture_2d<f32>;
+
+@group(2u) @binding(8u) var sampler0 : sampler;
+
+@group(2u) @binding(1u) var texture1 : texture_2d<f32>;
+
+@group(2u) @binding(9u) var sampler1 : sampler;
+
+@group(2u) @binding(2u) var texture2 : texture_2d<f32>;
+
+@group(2u) @binding(10u) var sampler2 : sampler;
+
+@group(2u) @binding(3u) var texture3 : texture_2d<f32>;
+
+@group(2u) @binding(11u) var sampler3 : sampler;
+
+@group(2u) @binding(4u) var normal_map : texture_2d<f32>;
+
+@group(2u) @binding(12u) var normal_sampler : sampler;
+
+@group(2u) @binding(5u) var specular_map : texture_2d<f32>;
+
+@group(2u) @binding(13u) var specular_sampler : sampler;
+
+var<private> v_2 : vec4<f32>;
+
+fn fs_main_inner(v_3 : vec2<f32>, v_4 : vec4<f32>, v_5 : vec2<f32>, v_6 : vec4<f32>) {
+  var v_7 : vec4<f32>;
+  var v_8 : vec4<f32>;
+  var v_9 : vec4<f32>;
+  let v_10 = vec3<f32>(v_5.x, v_5.y, 1.0f);
+  let v_11 = dot(v.to_lights_x.xyz, v_10);
+  let v_12 = dot(v.to_lights_y.xyz, v_10);
+  let v_13 = vec2<f32>(v_11, v_12);
+  let v_14 = dpdx(v_13);
+  let v_15 = dpdy(v_13);
+  let v_16 = dpdx(v_3);
+  let v_17 = dpdy(v_3);
+  registers[0i] = vec4<f32>(v_3.x, v_3.y, 0.0f, 0.0f);
+  registers[1i] = v_4;
+  registers[2i] = vec4<f32>(v_6.x, v_6.y, 0.0f, 0.0f);
+  registers[3i] = v.texel;
+  let v_18 = min(v.counts.x, 64u);
+  {
+    var v_19 : u32;
+    v_19 = 0u;
+    loop {
+      let v_20 = v_19;
+      if ((v_20 < v_18)) {
+        let v_21 = v.code[v_20];
+        let v_22 = (v_21.x & 255u);
+        let v_23 = ((v_21.x >> 16u) & 255u);
+        let v_24 = v_21.y;
+        let v_25 = (v_24 & 255u);
+        if ((v_25 < 32u)) {
+          v_9 = registers[v_25];
+        } else {
+          v_9 = v.constants[((v_25 - 32u) & 31u)];
+        }
+        let v_26 = (v_24 >> 8u);
+        let v_27 = v_9[(v_26 & 3u)];
+        let v_28 = v_9[((v_26 >> 2u) & 3u)];
+        let v_29 = v_9[((v_26 >> 4u) & 3u)];
+        let v_30 = v_9[((v_26 >> 6u) & 3u)];
+        let v_31 = vec4<f32>(v_27, v_28, v_29, v_30);
+        let v_32 = v_21.z;
+        let v_33 = (v_32 & 255u);
+        if ((v_33 < 32u)) {
+          v_8 = registers[v_33];
+        } else {
+          v_8 = v.constants[((v_33 - 32u) & 31u)];
+        }
+        let v_34 = (v_32 >> 8u);
+        let v_35 = v_8[(v_34 & 3u)];
+        let v_36 = v_8[((v_34 >> 2u) & 3u)];
+        let v_37 = v_8[((v_34 >> 4u) & 3u)];
+        let v_38 = v_8[((v_34 >> 6u) & 3u)];
+        let v_39 = vec4<f32>(v_35, v_36, v_37, v_38);
+        let v_40 = v_21.w;
+        let v_41 = (v_40 & 255u);
+        if ((v_41 < 32u)) {
+          v_7 = registers[v_41];
+        } else {
+          v_7 = v.constants[((v_41 - 32u) & 31u)];
+        }
+        let v_42 = (v_40 >> 8u);
+        let v_43 = vec4<f32>(v_7[(v_42 & 3u)], v_7[((v_42 >> 2u) & 3u)], v_7[((v_42 >> 4u) & 3u)], v_7[((v_42 >> 6u) & 3u)]);
+        var v_44 : vec4<f32>;
+        if ((v_22 == 37u)) {
+          let v_45 = v_31.xy;
+          var v_46 : vec4<f32>;
+          switch(0u) {
+            default: {
+              if ((v_23 == 0u)) {
+                v_46 = textureSampleLevel(texture0, sampler0, v_45, 0.0f);
+                break;
+              }
+              if ((v_23 == 1u)) {
+                v_46 = textureSampleLevel(texture1, sampler1, v_45, 0.0f);
+                break;
+              }
+              if ((v_23 == 2u)) {
+                v_46 = textureSampleLevel(texture2, sampler2, v_45, 0.0f);
+                break;
+              }
+              v_46 = textureSampleLevel(texture3, sampler3, v_45, 0.0f);
+            }
+          }
+          v_44 = v_46;
+        } else {
+          let v_47 = vec4<f32>(select(0.0f, 1.0f, (v_23 > 0u)), select(0.0f, 1.0f, (v_23 > 1u)), select(0.0f, 1.0f, (v_23 > 2u)), select(0.0f, 1.0f, (v_23 > 3u)));
+          var v_48 : vec4<f32>;
+          switch(v_22) {
+            default: {
+              v_48 = v_31;
+            }
+            case 1u: {
+              v_48 = (v_31 + v_39);
+            }
+            case 2u: {
+              v_48 = (v_31 - v_39);
+            }
+            case 3u: {
+              v_48 = (v_31 * v_39);
+            }
+            case 4u: {
+              v_48 = (v_31 / v_39);
+            }
+            case 5u: {
+              v_48 = (v_31 - (v_39 * floor((v_31 / v_39))));
+            }
+            case 6u: {
+              v_48 = pow(max(v_31, vec4<f32>()), v_39);
+            }
+            case 7u: {
+              v_48 = min(v_31, v_39);
+            }
+            case 8u: {
+              v_48 = max(v_31, v_39);
+            }
+            case 9u: {
+              v_48 = vec4<f32>(select(0.0f, 1.0f, (v_35 >= v_27)), select(0.0f, 1.0f, (v_36 >= v_28)), select(0.0f, 1.0f, (v_37 >= v_29)), select(0.0f, 1.0f, (v_38 >= v_30)));
+            }
+            case 10u: {
+              v_48 = atan2(v_31, v_39);
+            }
+            case 11u: {
+              v_48 = abs(v_31);
+            }
+            case 12u: {
+              v_48 = sign(v_31);
+            }
+            case 13u: {
+              v_48 = floor(v_31);
+            }
+            case 14u: {
+              v_48 = ceil(v_31);
+            }
+            case 15u: {
+              v_48 = floor((v_31 + vec4<f32>(0.5f)));
+            }
+            case 16u: {
+              v_48 = (v_31 - floor(v_31));
+            }
+            case 17u: {
+              v_48 = sqrt(v_31);
+            }
+            case 18u: {
+              v_48 = sin((v_31 - (floor(((v_31 * 0.15915493667125701904f) + vec4<f32>(0.5f))) * 6.28318548202514648438f)));
+            }
+            case 19u: {
+              v_48 = cos((v_31 - (floor(((v_31 * 0.15915493667125701904f) + vec4<f32>(0.5f))) * 6.28318548202514648438f)));
+            }
+            case 20u: {
+              v_48 = tan((v_31 - (floor(((v_31 * 0.15915493667125701904f) + vec4<f32>(0.5f))) * 6.28318548202514648438f)));
+            }
+            case 21u: {
+              v_48 = asin(v_31);
+            }
+            case 22u: {
+              v_48 = acos(v_31);
+            }
+            case 23u: {
+              v_48 = atan(v_31);
+            }
+            case 24u: {
+              v_48 = exp(v_31);
+            }
+            case 25u: {
+              v_48 = log(v_31);
+            }
+            case 26u: {
+              v_48 = clamp(v_31, vec4<f32>(), vec4<f32>(1.0f));
+            }
+            case 27u: {
+              v_48 = (vec4<f32>(1.0f) - v_31);
+            }
+            case 28u: {
+              v_48 = -(v_31);
+            }
+            case 29u: {
+              v_48 = (v_31 + ((v_39 - v_31) * v_43));
+            }
+            case 30u: {
+              v_48 = min(max(v_31, v_39), v_43);
+            }
+            case 31u: {
+              let v_49 = clamp(((v_43 - v_31) / (v_39 - v_31)), vec4<f32>(), vec4<f32>(1.0f));
+              v_48 = ((v_49 * v_49) * (vec4<f32>(3.0f) - (v_49 * 2.0f)));
+            }
+            case 32u: {
+              let v_50 = dot((v_31 * v_47), (v_39 * v_47));
+              v_48 = vec4<f32>(v_50, v_50, v_50, v_50);
+            }
+            case 33u: {
+              let v_51 = sqrt(dot((v_31 * v_47), (v_31 * v_47)));
+              v_48 = vec4<f32>(v_51, v_51, v_51, v_51);
+            }
+            case 34u: {
+              let v_52 = sqrt(dot(((v_31 - v_39) * v_47), ((v_31 - v_39) * v_47)));
+              v_48 = vec4<f32>(v_52, v_52, v_52, v_52);
+            }
+            case 35u: {
+              let v_53 = sqrt(dot((v_31 * v_47), (v_31 * v_47)));
+              let v_54 = (v_53 > 0.0f);
+              v_48 = select(vec4<f32>(), ((v_31 * v_47) / vec4<f32>(v_53, v_53, v_53, v_53)), vec4<bool>(v_54, v_54, v_54, v_54));
+            }
+            case 36u: {
+              v_48 = vec4<f32>(select(v_27, v_35, ((v_23 & 1u) != 0u)), select(v_28, v_36, ((v_23 & 2u) != 0u)), select(v_29, v_37, ((v_23 & 4u) != 0u)), select(v_30, v_38, ((v_23 & 8u) != 0u)));
+            }
+            case 38u: {
+              let v_55 = (v_28 < v_29);
+              let v_56 = select(vec4<f32>(v_28, v_29, 0.0f, -0.3333333432674407959f), vec4<f32>(v_29, v_28, -1.0f, 0.6666666865348815918f), vec4<bool>(v_55, v_55, v_55, v_55));
+              let v_57 = (v_27 < v_56.x);
+              let v_58 = select(vec4<f32>(v_27, v_56.y, v_56.z, v_56.x), vec4<f32>(v_56.x, v_56.y, v_56.w, v_27), vec4<bool>(v_57, v_57, v_57, v_57));
+              let v_59 = (v_58.x - min(v_58.w, v_58.y));
+              v_48 = vec4<f32>(abs((v_58.z + ((v_58.w - v_58.y) / ((6.0f * v_59) + 0.00000000010000000134f)))), (v_59 / (v_58.x + 0.00000000010000000134f)), v_58.x, 0.0f);
+            }
+            case 39u: {
+              let v_60 = ((vec3<f32>(1.0f) + ((clamp((abs(((fract((vec3<f32>(v_27, v_27, v_27) + vec3<f32>(1.0f, 0.6666666865348815918f, 0.3333333432674407959f))) * 6.0f) - vec3<f32>(3.0f))) - vec3<f32>(1.0f)), vec3<f32>(), vec3<f32>(1.0f)) - vec3<f32>(1.0f)) * v_28)) * v_29);
+              v_48 = vec4<f32>(v_60.x, v_60.y, v_60.z, 0.0f);
+            }
+          }
+          v_44 = v_48;
+        }
+        registers[((v_21.x >> 8u) & 31u)] = v_44;
+        continue;
+      } else {
+        break;
+      }
+
+      continuing {
+        v_19 = (v_20 + bitcast<u32>(1i));
+      }
+    }
+  }
+  if ((v.counts.x == 0u)) {
+    let v_61 = textureSampleLevel(texture0, sampler0, v_3, 0.0f);
+    if ((v.field.x > 0.0f)) {
+      var v_62 : f32;
+      switch(0u) {
+        default: {
+          let v_63 = (vec2<f32>(1.0f) / max((abs(v_16) + abs(v_17)), vec2<f32>(0.00000000999999993923f)));
+          let v_64 = v.field.x;
+          let v_65 = max((0.5f * dot((v.texel.xy * v_64), v_63)), 1.0f);
+          let v_66 = max(min(v_61.x, v_61.y), min(max(v_61.x, v_61.y), v_61.z));
+          if ((v.field.y > 0.0f)) {
+            let v_67 = (clamp(v.field.y, 0.0f, ((v.field.x * 0.5f) - 1.0f)) / v.field.x);
+            v_62 = clamp((((min(v_66, v_61.w) - 0.5f) + v_67) * v_65), 0.0f, 1.0f);
+            break;
+          }
+          v_62 = clamp((((v_66 - 0.5f) * v_65) + 0.5f), 0.0f, 1.0f);
+        }
+      }
+      registers[0i] = vec4<f32>(v_4.x, v_4.y, v_4.z, (v_4.w * v_62));
+    } else {
+      registers[0i] = (v_61 * v_4);
+    }
+  }
+  let v_68 = ((v.shading.w & 1i) != 0i);
+  let v_69 = ((v.shading.w & 2i) != 0i);
+  var v_70 : vec3<f32>;
+  if (v_68) {
+    v_70 = textureSampleLevel(normal_map, normal_sampler, v_3, 0.0f).xyz;
+  } else {
+    v_70 = vec3<f32>(0.5f, 0.5f, 1.0f);
+  }
+  let v_71 = v_70;
+  var v_72 : vec4<f32>;
+  if (v_69) {
+    v_72 = (textureSampleLevel(specular_map, specular_sampler, v_3, 0.0f) * v.specular);
+  } else {
+    v_72 = vec4<f32>();
+  }
+  let v_73 = v_72;
+  let v_74 = registers[0i];
+  var v_75 : vec4<f32>;
+  switch(0u) {
+    default: {
+      if ((v.shading.x == 0i)) {
+        v_75 = v_74;
+        break;
+      }
+      var v_76 : vec3<f32>;
+      if (v_68) {
+        let v_77 = ((v_16.x * v_17.y) - (v_17.x * v_16.y));
+        var v_78 : vec2<f32>;
+        var v_79 : vec2<f32>;
+        if ((abs(v_77) > 0.000000000001f)) {
+          let v_80 = (((v_14 * v_17.y) - (v_15 * v_16.y)) / vec2<f32>(v_77, v_77));
+          let v_81 = (((v_15 * v_16.x) - (v_14 * v_17.x)) / vec2<f32>(v_77, v_77));
+          var v_82 : vec2<f32>;
+          var v_83 : vec2<f32>;
+)wgsl"
+R"wgsl(          if (((dot(v_80, v_80) > 0.0f) & (dot(v_81, v_81) > 0.0f))) {
+            let v_84 = normalize(v_80);
+            v_82 = normalize(v_81);
+            v_83 = v_84;
+          } else {
+            v_82 = vec2<f32>(0.0f, 1.0f);
+            v_83 = vec2<f32>(1.0f, 0.0f);
+          }
+          let v_85 = v_83;
+          v_78 = v_82;
+          v_79 = v_85;
+        } else {
+          v_78 = vec2<f32>(0.0f, 1.0f);
+          v_79 = vec2<f32>(1.0f, 0.0f);
+        }
+        let v_86 = v_79;
+        let v_87 = v_78;
+        let v_88 = ((v_71.x * 2.0f) - 1.0f);
+        let v_89 = (1.0f - (v_71.y * 2.0f));
+        let v_90 = ((v_86 * v_88) + (v_87 * v_89));
+        v_76 = normalize(vec3<f32>(v_90.x, v_90.y, sqrt(max(0.0f, (1.0f - ((v_88 * v_88) + (v_89 * v_89)))))));
+      } else {
+        v_76 = vec3<f32>(0.0f, 0.0f, 1.0f);
+      }
+      let v_91 = v_76;
+      var v_92 : vec4<f32>;
+      if ((v.shading.x == 1i)) {
+        v_92 = (v_74 * v.ambient);
+      } else {
+        v_92 = v_74;
+      }
+      let v_93 = v_92;
+      let v_94 = min(v_1.light_count.x, 64u);
+      var v_95 : vec4<f32>;
+      var v_96 : f32;
+      {
+        var v_97 : vec4<f32>;
+        v_97 = v_93;
+        var v_98 : f32;
+        v_98 = 0.0f;
+        var v_99 : u32;
+        v_99 = 0u;
+        loop {
+          var v_100 : vec4<f32>;
+          var v_101 : f32;
+          let v_102 = v_99;
+          let v_103 = v_98;
+          let v_104 = v_97;
+          if ((v_102 < v_94)) {
+            let v_105 = v_1.lights[v_102];
+            let v_106 = v_105.color;
+            let v_107 = v_105.position;
+            let v_108 = v_105.atlas;
+            let v_109 = v_105.shadow;
+            let v_110 = v_105.shadow_origin;
+            let v_111 = v_105.shadow_color;
+            let v_112 = v_105.flags;
+            let v_113 = v_105.range;
+            if (((((((v_112.z & bitcast<u32>(v.shading.y)) == 0u) | (v.shading.z < v_113.x)) | (v.shading.z > v_113.y)) | (v.layer.x < v_113.z)) | (v.layer.x > v_113.w))) {
+              v_100 = v_104;
+              v_101 = v_103;
+              continue;
+            }
+            var v_114 : vec3<f32>;
+            var v_115 : vec4<f32>;
+            if ((v_107.w < 0.5f)) {
+              let v_116 = vec3<f32>(v_11, v_12, 1.0f);
+              let v_117 = dot(v_105.texture_u.xyz, v_116);
+              let v_118 = dot(v_105.texture_v.xyz, v_116);
+              if (((((v_117 < 0.0f) | (v_118 < 0.0f)) | (v_117 >= 1.0f)) | (v_118 >= 1.0f))) {
+                v_100 = v_104;
+                v_101 = v_103;
+                continue;
+              }
+              let v_119 = (v_106 * textureSampleLevel(light_atlas, atlas_sampler, (v_108.xy + (vec2<f32>(v_117, v_118) * v_108.zw)), 0.0f));
+              let v_120 = (v_107.xy - v_13);
+              v_114 = normalize(vec3<f32>(v_120.x, v_120.y, v_107.z));
+              v_115 = v_119;
+            } else {
+              let v_121 = v_107.z;
+              let v_122 = (-(v_107.xy) * (1.0f - v_121));
+              v_114 = normalize(vec3<f32>(v_122.x, v_122.y, v_121));
+              v_115 = v_106;
+            }
+            let v_123 = v_115;
+            let v_124 = v_114;
+            var v_125 : vec4<f32>;
+            if (v_68) {
+              let v_126 = v_123.xyz;
+              var v_127 : vec3<f32>;
+              switch(0u) {
+                default: {
+                  let v_128 = max(0.0f, dot(v_91, v_124));
+                  let v_129 = ((v_126 * v_74.xyz) * v_128);
+                  if (!(v_69)) {
+                    v_127 = v_129;
+                    break;
+                  }
+                  let v_130 = normalize((vec3<f32>(0.0f, 0.0f, 1.0f) + v_124));
+                  let v_131 = max(v_91.z, 0.0f);
+                  let v_132 = max(dot(v_91, v_130), 0.0f);
+                  let v_133 = (exp2(((15.0f * v_73.w) + 1.0f)) * 0.25f);
+                  v_127 = (v_129 + ((v_73.xyz * v_126) * ((pow(v_132, v_133) * ((v_133 + 8.0f) * 0.03978873416781425476f)) / max(((4.0f * v_131) * v_128), 0.75f))));
+                }
+              }
+              let v_134 = v_127;
+              var v_135 : vec4<f32> = v_123;
+              v_135.x = v_134.x;
+              var v_136 : vec4<f32> = v_135;
+              v_136.y = v_134.y;
+              var v_137 : vec4<f32> = v_136;
+              v_137.z = v_134.z;
+              v_125 = v_137;
+            } else {
+              let v_138 = (v_123.xyz * v_74.xyz);
+              var v_139 : vec4<f32> = v_123;
+              v_139.x = v_138.x;
+              var v_140 : vec4<f32> = v_139;
+              v_140.y = v_138.y;
+              var v_141 : vec4<f32> = v_140;
+              v_141.z = v_138.z;
+              v_125 = v_141;
+            }
+            let v_142 = v_125;
+            var v_143 : vec4<f32>;
+            if ((v_109.x >= 0.0f)) {
+              let v_144 = (v_107.w < 0.5f);
+              var v_145 : f32;
+              var v_146 : f32;
+              if (v_144) {
+                let v_147 = (v_13 - v_107.xy);
+                let v_148 = (((atan2(v_147.y, v_147.x) * 0.15915493667125701904f) + 0.5f) * 2048.0f);
+                v_145 = (sqrt(((v_147.x * v_147.x) + (v_147.y * v_147.y))) / v_109.y);
+                v_146 = v_148;
+              } else {
+                v_145 = ((((v_11 * v_107.x) + (v_12 * v_107.y)) - v_110.y) / v_109.y);
+                v_146 = (((((v_11 * -(v_107.y)) + (v_12 * v_107.x)) - v_110.x) / v_110.z) * 2048.0f);
+              }
+              let v_149 = v_146;
+              let v_150 = v_145;
+              let v_151 = bitcast<i32>(v_112.y);
+              var v_152 : f32;
+              {
+                var v_153 : f32;
+                v_153 = 0.0f;
+                var v_154 : i32;
+                v_154 = -(v_151);
+                loop {
+                  var v_155 : f32;
+                  let v_156 = v_154;
+                  let v_157 = v_153;
+                  if ((v_156 <= v_151)) {
+                    let v_158 = i32(floor((v_149 + (f32(v_156) * v_109.z))));
+                    var v_159 : i32;
+                    if (v_144) {
+                      v_159 = (((v_158 % 2048i) + 2048i) % 2048i);
+                    } else {
+                      if (((v_158 < 0i) | (v_158 >= 2048i))) {
+                        v_155 = v_157;
+                        continue;
+                      }
+                      v_159 = v_158;
+                    }
+                    let v_160 = v_159;
+                    var v_161 : f32;
+                    switch(0u) {
+                      default: {
+                        let v_162 = textureLoad(shadow_map, vec3<i32>(v_160, i32(v_109.x), 0i).xy, 0i);
+                        if ((v_162.w < 0.5f)) {
+                          v_161 = 2.0f;
+                          break;
+                        }
+                        let v_163 = round((v_162.xyz * 255.0f));
+                        v_161 = ((((v_163.x * 65536.0f) + (v_163.y * 256.0f)) + v_163.z) * 0.00000005960464477539f);
+                      }
+                    }
+                    let v_164 = v_161;
+                    var v_165 : f32;
+                    if ((((v_164 <= 1.0f) & (v_150 > (v_164 + (0.5f / v_109.y)))) & (v_144 | ((v_150 - v_164) < v_109.w)))) {
+                      v_165 = (v_157 + 1.0f);
+                    } else {
+                      v_165 = v_157;
+                    }
+                    v_155 = v_165;
+                    continue;
+                  } else {
+                    v_152 = v_157;
+                    break;
+                  }
+
+                  continuing {
+                    v_153 = v_155;
+                    v_154 = (v_156 + 1i);
+                  }
+                }
+              }
+              let v_166 = (v_152 / f32(((2i * v_151) + 1i)));
+              var v_167 : vec4<f32> = v_111;
+              v_167.w = (v_111.w * v_142.w);
+              v_143 = (v_142 + ((v_167 - v_142) * v_166));
+            } else {
+              v_143 = v_142;
+            }
+            let v_168 = v_143;
+            var v_169 : vec4<f32>;
+            if ((v_112.x == 2u)) {
+              let v_170 = (v_104.xyz - (v_168.xyz * v_168.w));
+              var v_171 : vec4<f32> = v_104;
+              v_171.x = v_170.x;
+              var v_172 : vec4<f32> = v_171;
+              v_172.y = v_170.y;
+              var v_173 : vec4<f32> = v_172;
+              v_173.z = v_170.z;
+              v_169 = v_173;
+            } else {
+              var v_174 : vec4<f32>;
+              if ((v_112.x == 0u)) {
+                let v_175 = (v_104.xyz + ((v_168.xyz - v_104.xyz) * v_168.w));
+                var v_176 : vec4<f32> = v_104;
+                v_176.x = v_175.x;
+                var v_177 : vec4<f32> = v_176;
+                v_177.y = v_175.y;
+                var v_178 : vec4<f32> = v_177;
+                v_178.z = v_175.z;
+                v_174 = v_178;
+              } else {
+                let v_179 = (v_104.xyz + (v_168.xyz * v_168.w));
+                var v_180 : vec4<f32> = v_104;
+                v_180.x = v_179.x;
+                var v_181 : vec4<f32> = v_180;
+                v_181.y = v_179.y;
+                var v_182 : vec4<f32> = v_181;
+                v_182.z = v_179.z;
+                v_174 = v_182;
+              }
+              v_169 = v_174;
+            }
+            v_100 = v_169;
+            v_101 = (v_103 + v_168.w);
+            continue;
+          } else {
+            v_95 = v_104;
+            v_96 = v_103;
+            break;
+          }
+
+          continuing {
+            let v_183 = v_101;
+            let v_184 = v_100;
+            let v_185 = (v_102 + bitcast<u32>(1i));
+            v_97 = v_184;
+            v_98 = v_183;
+            v_99 = v_185;
+          }
+        }
+      }
+      let v_186 = v_96;
+      let v_187 = v_95;
+      var v_188 : vec4<f32>;
+      if ((v.shading.x == 2i)) {
+        var v_189 : vec4<f32> = v_187;
+        v_189.w = (v_187.w * v_186);
+        v_188 = v_189;
+      } else {
+        v_188 = v_187;
+      }
+      v_75 = v_188;
+    }
+  }
+  v_2 = v_75;
+}
+
+@fragment
+fn fs_main(@location(0u) v_190 : vec2<f32>, @location(1u) v_191 : vec4<f32>, @location(2u) v_192 : vec2<f32>, @builtin(position) v_193 : vec4<f32>) -> @location(0u) vec4<f32> {
+  fs_main_inner(v_190, v_191, v_192, v_193);
+  return v_2;
+}
+)wgsl";
 
 inline constexpr char kMaterialHlsl[] = R"hlsl(// The material shader: runs a material program (engine/render/include/slash/render/material.hpp)
 // for each pixel, then shades it with the frame's 2D lights (canvas.hlsl). Canvas materials

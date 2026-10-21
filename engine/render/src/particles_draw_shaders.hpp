@@ -1662,6 +1662,285 @@ kernel void cs_main(constant Draw& _102 [[buffer(0)]], const device particles& p
 
 )msl"};
 
+inline constexpr const char* kParticlesDrawComputeWgsl[] = {
+R"wgsl(struct Draw {
+  transform_a : vec4<f32>,
+  transform_b : vec4<f32>,
+  modulate : vec4<f32>,
+  look : vec4<f32>,
+  counts : vec4<u32>,
+  trails : vec4<u32>,
+}
+
+@group(2u) @binding(0u) var<uniform> v : Draw;
+
+struct vertices {
+  m : array<u32>,
+}
+
+@group(1u) @binding(0u) var<storage, read_write> vertices_1 : vertices;
+
+struct Particle {
+  basis : vec4<f32>,
+  origin_velocity : vec4<f32>,
+  color : vec4<f32>,
+  custom : vec4<f32>,
+  userdata : vec4<f32>,
+  flags : vec4<u32>,
+}
+
+struct particles {
+  m_1 : array<Particle>,
+}
+
+@group(0u) @binding(0u) var<storage, read> particles_1 : particles;
+
+@compute @workgroup_size(64u, 1u, 1u)
+fn cs_main(@builtin(global_invocation_id) id : vec3<u32>) {
+  switch(0u) {
+    default: {
+      let v_1 = v.counts.x;
+      let v_2 = (v.trails.x > 1u);
+      let v_3 = select(1u, ((v.trails.x - 1u) * v.trails.y), v_2);
+      let v_4 = (id.x / v_3);
+      let v_5 = (id.x % v_3);
+      if ((v_4 >= v_1)) {
+        break;
+      }
+      var v_6 : u32;
+      if ((v.counts.y != 0u)) {
+        let v_7 = (v_1 - min(v.counts.z, v_1));
+        var v_8 : u32;
+        if ((v.counts.y == 2u)) {
+          v_8 = ((v_1 - v_4) - 1u);
+        } else {
+          v_8 = v_4;
+        }
+        let v_9 = v_8;
+        v_6 = select((v_9 - v_7), (v.counts.z + v_9), (v_9 < v_7));
+      } else {
+        v_6 = v_4;
+      }
+      let v_10 = v_6;
+      let v_11 = particles_1.m_1[v_10];
+      let v_12 = v_11.basis;
+      let v_13 = v_11.origin_velocity;
+      let v_14 = ((v.counts.w + (id.x * 6u)) * 20u);
+      if (((v.trails.x <= 1u) & ((v_11.flags.x & 1u) == 0u))) {
+        {
+          var v_15 : u32;
+          v_15 = 0u;
+          loop {
+            let v_16 = v_15;
+            if ((v_16 < 6u)) {
+              continue;
+            } else {
+              break;
+            }
+
+            continuing {
+              let v_17 = (v_14 + (v_16 * 20u));
+              let v_18 = bitcast<i32>((v_17 >> bitcast<u32>(2i)));
+              vertices_1.m[v_18] = 0u;
+              vertices_1.m[(v_18 + 1i)] = 0u;
+              vertices_1.m[(v_18 + 2i)] = 0u;
+              vertices_1.m[(v_18 + 3i)] = 0u;
+              vertices_1.m[bitcast<i32>(((v_17 + 16u) >> bitcast<u32>(2i)))] = 0u;
+              v_15 = (v_16 + bitcast<u32>(1i));
+            }
+          }
+        }
+        break;
+      }
+      let v_19 = max(v.look.y, 1.0f);
+      let v_20 = max(v.look.z, 1.0f);
+      let v_21 = (v_19 * v_20);
+      let v_22 = floor((v_11.custom.z * v_21));
+      let v_23 = !((v.look.w == 0.0f));
+      let v_24 = (v_22 - (v_21 * floor((v_22 / v_21))));
+      let v_25 = select(clamp(v_22, 0.0f, (v_21 - 1.0f)), v_24, v_23);
+      let v_26 = ((v_25 - (v_19 * floor((v_25 / v_19)))) / v_19);
+      let v_27 = (floor(((v_25 + 0.5f) / v_19)) / v_20);
+      let v_28 = (v_26 + (1.0f / v_19));
+      let v_29 = (v_27 + (1.0f / v_20));
+      let v_30 = (v.transform_b.zw * 0.5f);
+      if ((v.trails.x > 1u)) {
+        let v_31 = (v_5 + 1u);
+        let v_32 = (v.trails.x - 1u);
+        let v_33 = (v_31 / v.trails.y);
+        let v_34 = ((v_31 % v.trails.y) != 0u);
+        let v_35 = select(v_33, min(v_32, (v_33 + 1u)), v_34);
+        let v_36 = (v_5 / v.trails.y);
+        var v_37 : bool;
+        {
+          var v_38 : u32;
+          v_38 = v_36;
+          loop {
+            let v_39 = v_38;
+            if ((v_39 <= v_35)) {
+              let v_40 = (v.trails.x - 1u);
+              if (((particles_1.m_1[select((((v.counts.x + (v_10 * v_40)) + v_39) - 1u), v_10, (v_39 == 0u))].flags.x & 5u) == 0u)) {
+                {
+                  var v_41 : u32;
+                  v_41 = 0u;
+                  loop {
+                    let v_42 = v_41;
+                    if ((v_42 < 6u)) {
+                      continue;
+                    } else {
+                      break;
+                    }
+
+                    continuing {
+                      let v_43 = (v_14 + (v_42 * 20u));
+                      let v_44 = bitcast<i32>((v_43 >> bitcast<u32>(2i)));
+                      vertices_1.m[v_44] = 0u;
+                      vertices_1.m[(v_44 + 1i)] = 0u;
+                      vertices_1.m[(v_44 + 2i)] = 0u;
+                      vertices_1.m[(v_44 + 3i)] = 0u;
+                      vertices_1.m[bitcast<i32>(((v_43 + 16u) >> bitcast<u32>(2i)))] = 0u;
+                      v_41 = (v_42 + bitcast<u32>(1i));
+                    }
+                  }
+                }
+                v_37 = true;
+                break;
+              }
+              continue;
+            } else {
+              v_37 = false;
+              break;
+            }
+
+            continuing {
+              v_38 = (v_39 + bitcast<u32>(1i));
+            }
+          }
+        }
+        if (v_37) {
+          break;
+        }
+        {
+          var v_45 : u32;
+          v_45 = 0u;
+          loop {
+            let v_46 = v_45;
+            if ((v_46 < 6u)) {
+              let v_47 = (((26u >> v_46) & 1u) != 0u);
+              let v_48 = (v_14 + (v_46 * 20u));
+              let v_49 = (v_5 + ((52u >> v_46) & 1u));
+              let v_50 = select(-1.0f, 1.0f, v_47);
+              let v_51 = select(v_26, v_28, v_47);
+              let v_52 = v_30.x;
+              let v_53 = (v.trails.x - 1u);
+              let v_54 = (v_49 / v.trails.y);
+              let v_55 = ((v_49 % v.trails.y) != 0u);
+              let v_56 = select(v_54, min(v_53, (v_54 + 1u)), v_55);
+              let v_57 = (f32((v_49 % v.trails.y)) / f32(v.trails.y));
+              let v_58 = (1.0f - v_57);
+              let v_59 = (v.trails.x - 1u);
+              let v_60 = particles_1.m_1[select((((v.counts.x + (v_10 * v_59)) + v_54) - 1u), v_10, (v_54 == 0u))];
+              let v_61 = v_60.origin_velocity;
+              let v_62 = ((((v_61.xy - (v_61.zw * ((f32(((v_54 * v.trails.z) % v.trails.x)) / f32(v.trails.x)) * bitcast<f32>(v.trails.w)))) + (v_61.zw * v.look.x)) + (v_60.basis.xy * (v_50 * v_52))) * v_58);
+              let v_63 = (v.trails.x - 1u);
+              let v_64 = (particles_1.m_1[select((((v.counts.x + (v_10 * v_63)) + v_54) - 1u), v_10, (v_54 == 0u))].color * v_58);
+              var v_65 : vec4<f32>;
+              var v_66 : vec2<f32>;
+              if ((v_54 != v_56)) {
+                let v_67 = (v.trails.x - 1u);
+                let v_68 = particles_1.m_1[select((((v.counts.x + (v_10 * v_67)) + v_56) - 1u), v_10, (v_56 == 0u))];
+                let v_69 = v_68.origin_velocity;
+                let v_70 = (v_62 + ((((v_69.xy - (v_69.zw * ((f32(((v_56 * v.trails.z) % v.trails.x)) / f32(v.trails.x)) * bitcast<f32>(v.trails.w)))) + (v_69.zw * v.look.x)) + (v_68.basis.xy * (v_50 * v_52))) * v_57));
+                let v_71 = (v.trails.x - 1u);
+                v_65 = (v_64 + (particles_1.m_1[select((((v.counts.x + (v_10 * v_71)) + v_56) - 1u), v_10, (v_56 == 0u))].color * v_57));
+                v_66 = v_70;
+              } else {
+                v_65 = v_64;
+                v_66 = v_62;
+              }
+              let v_72 = v_66;
+              let v_73 = v_65;
+              let v_74 = (v_27 + ((f32(v_49) / f32(((v.trails.x - 1u) * v.trails.y))) / v_20));
+              let v_75 = (((v.transform_a.x * v_72.x) + (v.transform_a.z * v_72.y)) + v.transform_b.x);
+              let v_76 = (((v.transform_a.y * v_72.x) + (v.transform_a.w * v_72.y)) + v.transform_b.y);
+              let v_77 = (v_73 * v.modulate);
+              let v_78 = (((u32(floor(((clamp(v_77.x, 0.0f, 1.0f) * 255.0f) + 0.5f))) | (u32(floor(((clamp(v_77.y, 0.0f, 1.0f) * 255.0f) + 0.5f))) << 8u)) | (u32(floor(((clamp(v_77.z, 0.0f, 1.0f) * 255.0f) + 0.5f))) << 16u)) | (u32(floor(((clamp(v_77.w, 0.0f, 1.0f) * 255.0f) + 0.5f))) << 24u));
+              let v_79 = bitcast<i32>((v_48 >> bitcast<u32>(2i)));
+              vertices_1.m[v_79] = bitcast<u32>(v_75);
+              vertices_1.m[(v_79 + 1i)] = bitcast<u32>(v_76);
+              vertices_1.m[(v_79 + 2i)] = bitcast<u32>(v_51);
+              vertices_1.m[(v_79 + 3i)] = bitcast<u32>(v_74);
+              vertices_1.m[bitcast<i32>(((v_48 + 16u) >> bitcast<u32>(2i)))] = v_78;
+              continue;
+            } else {
+              break;
+            }
+
+            continuing {
+              v_45 = (v_46 + bitcast<u32>(1i));
+            }
+          }
+        }
+        break;
+      }
+      let v_80 = (v_11.color * v.modulate);
+      let v_81 = (((u32(floor(((clamp(v_80.x, 0.0f, 1.0f) * 255.0f) + 0.5f))) | (u32(floor(((clamp(v_80.y, 0.0f, 1.0f) * 255.0f) + 0.5f))) << 8u)) | (u32(floor(((clamp(v_80.z, 0.0f, 1.0f) * 255.0f) + 0.5f))) << 16u)) | (u32(floor(((clamp(v_80.w, 0.0f, 1.0f) * 255.0f) + 0.5f))) << 24u));
+      let v_82 = (v_13.xy + (v_13.zw * v.look.x));
+      let v_83 = v_12.xy;
+      let v_84 = v_12.zw;
+      let v_85 = ((v_82 + (v_83 * (-1.0f * v_30.x))) + (v_84 * (-1.0f * v_30.y)));
+      let v_86 = (((v.transform_a.x * v_85.x) + (v.transform_a.z * v_85.y)) + v.transform_b.x);
+      let v_87 = (((v.transform_a.y * v_85.x) + (v.transform_a.w * v_85.y)) + v.transform_b.y);
+      let v_88 = ((v_82 + (v_83 * v_30.x)) + (v_84 * (-1.0f * v_30.y)));
+      let v_89 = (((v.transform_a.x * v_88.x) + (v.transform_a.z * v_88.y)) + v.transform_b.x);
+      let v_90 = (((v.transform_a.y * v_88.x) + (v.transform_a.w * v_88.y)) + v.transform_b.y);
+      let v_91 = ((v_82 + (v_83 * (-1.0f * v_30.x))) + (v_84 * v_30.y));
+      let v_92 = (((v.transform_a.x * v_91.x) + (v.transform_a.z * v_91.y)) + v.transform_b.x);
+      let v_93 = (((v.transform_a.y * v_91.x) + (v.transform_a.w * v_91.y)) + v.transform_b.y);
+      let v_94 = ((v_82 + (v_83 * v_30.x)) + (v_84 * v_30.y));
+      let v_95 = (((v.transform_a.x * v_94.x) + (v.transform_a.z * v_94.y)) + v.transform_b.x);
+      let v_96 = (((v.transform_a.y * v_94.x) + (v.transform_a.w * v_94.y)) + v.transform_b.y);
+      let v_97 = bitcast<i32>((v_14 >> bitcast<u32>(2i)));
+      vertices_1.m[v_97] = bitcast<u32>(v_86);
+      vertices_1.m[(v_97 + 1i)] = bitcast<u32>(v_87);
+      vertices_1.m[(v_97 + 2i)] = bitcast<u32>(v_26);
+      vertices_1.m[(v_97 + 3i)] = bitcast<u32>(v_27);
+      vertices_1.m[bitcast<i32>(((v_14 + 16u) >> bitcast<u32>(2i)))] = v_81;
+      let v_98 = bitcast<i32>(((v_14 + 20u) >> bitcast<u32>(2i)));
+      vertices_1.m[v_98] = bitcast<u32>(v_89);
+      vertices_1.m[(v_98 + 1i)] = bitcast<u32>(v_90);
+      vertices_1.m[(v_98 + 2i)] = bitcast<u32>(v_28);
+      vertices_1.m[(v_98 + 3i)] = bitcast<u32>(v_27);
+      vertices_1.m[bitcast<i32>(((v_14 + 36u) >> bitcast<u32>(2i)))] = v_81;
+      let v_99 = bitcast<i32>(((v_14 + 40u) >> bitcast<u32>(2i)));
+      vertices_1.m[v_99] = bitcast<u32>(v_92);
+      vertices_1.m[(v_99 + 1i)] = bitcast<u32>(v_93);
+      vertices_1.m[(v_99 + 2i)] = bitcast<u32>(v_26);
+      vertices_1.m[(v_99 + 3i)] = bitcast<u32>(v_29);
+      vertices_1.m[bitcast<i32>(((v_14 + 56u) >> bitcast<u32>(2i)))] = v_81;
+      let v_100 = bitcast<i32>(((v_14 + 60u) >> bitcast<u32>(2i)));
+      vertices_1.m[v_100] = bitcast<u32>(v_89);
+      vertices_1.m[(v_100 + 1i)] = bitcast<u32>(v_90);
+      vertices_1.m[(v_100 + 2i)] = bitcast<u32>(v_28);
+      vertices_1.m[(v_100 + 3i)] = bitcast<u32>(v_27);
+      vertices_1.m[bitcast<i32>(((v_14 + 76u) >> bitcast<u32>(2i)))] = v_81;
+      let v_101 = bitcast<i32>(((v_14 + 80u) >> bitcast<u32>(2i)));
+      vertices_1.m[v_101] = bitcast<u32>(v_95);
+      vertices_1.m[(v_101 + 1i)] = bitcast<u32>(v_96);
+      vertices_1.m[(v_101 + 2i)] = bitcast<u32>(v_28);
+      vertices_1.m[(v_101 + 3i)] = bitcast<u32>(v_29);
+      vertices_1.m[bitcast<i32>(((v_14 + 96u) >> bitcast<u32>(2i)))] = v_81;
+      let v_102 = bitcast<i32>(((v_14 + 100u) >> bitcast<u32>(2i)));
+      vertices_1.m[v_102] = bitcast<u32>(v_92);
+      vertices_1.m[(v_102 + 1i)] = bitcast<u32>(v_93);
+      vertices_1.m[(v_102 + 2i)] = bitcast<u32>(v_26);
+      vertices_1.m[(v_102 + 3i)] = bitcast<u32>(v_29);
+      vertices_1.m[bitcast<i32>(((v_14 + 116u) >> bitcast<u32>(2i)))] = v_81;
+    }
+  }
+}
+)wgsl"};
+
 inline constexpr char kParticlesDrawHlsl[] = R"hlsl(// Turns a particle system into quads in the frame's vertex buffer, a thread a quad, six vertices
 // each as slash::render::Vertex2D lays them out (20 bytes): a particle's, or a segment of its
 // trail's ribbon. Its CPU twin is particle_vertices in src/particles.cpp; a change to one goes in
