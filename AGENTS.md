@@ -296,7 +296,7 @@ with `SessionOptions::write_files` off (commands write files only through `Sessi
 which refuses then) and no `build` capability. A test fails at a step whose command fails, a
 reply that doesn't hold what it expects, or a warning or error logged while it runs, which it
 sees by wrapping the log sink (`log::sink`). Run with no `paths` or `tests`, it also runs
-`storyboard.check`. Games made by `$cli init` start with `tests/main.test.json`, and their
+`storyboard.check`, and `soundtrack.check` where it is registered. Games made by `$cli init` start with `tests/main.test.json`, and their
 workflow runs `$cli test`. `examples/headless-tests` breaks a scene and reads the failures.
 
 ## Game projects and exports
@@ -985,9 +985,14 @@ are a game's source, not its data, so exports leave them out. `soundtrack.arrang
 per layer as synchronized streams of that layer's file and those below it, switching on the
 bar, between layers on the beat at the same place, and cues that play once as stings (a filler
 clip on the way out of the cues in their `after`, else a clip that returns to the one it
-interrupted). `examples/soundtrack-plan` plans a game's cues, `examples/music-scores` sends a
-piece through MIDI and back, `examples/soundtrack-render` renders a loop and measures it, and
-`examples/soundtrack-arrange` arranges cues and steers them.
+interrupted). `soundtrack.check` (`src/check.cpp`) reads every music file and plays each piece
+to measure it: cue music that can't play, beats longer than a sound, loops that click, clips
+with no beats to switch on and loudness off the storyboard's targets are errors, which
+`test.run` fails on; switches off the bar, keys that clash and tempos other than `bpm` are
+warnings. `examples/soundtrack-plan` plans a game's cues, `examples/music-scores` sends a piece
+through MIDI and back, `examples/soundtrack-render` renders a loop and measures it,
+`examples/soundtrack-arrange` arranges cues and steers them, and `examples/soundtrack-check`
+checks a game's music.
 
 ## Ads, analytics, purchases and achievements
 

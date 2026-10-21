@@ -1,0 +1,23 @@
+{
+  "bpm": 132,
+  "format": 1,
+  "key": "E minor",
+  "tracks": [
+    {
+      "bars": ["E2:0.5 E2 E3 E2 E2 E3 D3 B2", "C2:0.5 C2 C3 C2 D2 D2 D3 F#2"],
+      "instrument": "electric_bass_finger",
+      "name": "bass"
+    },
+    {
+      "bars": ["r:2 E4+G4+B4:2", "r:2 D4+F#4+A4:1 r"],
+      "instrument": "brass_section",
+      "name": "brass"
+    },
+    {
+      "bars": ["kick+crash:0.5 closed_hat snare closed_hat kick kick snare closed_hat", "kick:0.5 closed_hat snare closed_hat kick snare snare snare"],
+      "instrument": "drums",
+      "name": "drums",
+      "velocity": 90
+    }
+  ]
+}
