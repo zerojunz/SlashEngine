@@ -27,9 +27,20 @@ Result<Platform> Platform::create(const Config& config) {
         return make_error(ErrorCode::InvalidArgument, "window width and height must be positive");
     }
 
+    // The drivers apply while SDL starts its video, unless SDL_VIDEO_DRIVER (the environment
+    // variable, or a hint set before) names others.
+    const bool drivers_hint =
+        !config.video_drivers.empty() && SDL_GetHint(SDL_HINT_VIDEO_DRIVER) == nullptr;
+    if (drivers_hint) {
+        SDL_SetHint(SDL_HINT_VIDEO_DRIVER, config.video_drivers.c_str());
+    }
     const SDL_InitFlags flags =
         config.headless ? SDL_INIT_EVENTS : SDL_INIT_VIDEO | SDL_INIT_EVENTS;
-    if (!SDL_Init(flags)) {
+    const bool started = SDL_Init(flags);
+    if (drivers_hint) {
+        SDL_ResetHint(SDL_HINT_VIDEO_DRIVER);
+    }
+    if (!started) {
         return make_error(ErrorCode::PlatformFailure,
                           std::string("SDL_Init failed: ") + SDL_GetError());
     }

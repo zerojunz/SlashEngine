@@ -28,7 +28,8 @@
 //   }
 //
 // Optional fields: "id" (reverse-DNS identifier for bundles and stores), "version"
-// ("major.minor.patch"), "window" ({"width", "height", "vsync_mode"}), "tick_hz", "max_fps",
+// ("major.minor.patch"), "window" ({"width", "height", "vsync_mode",
+// "linux_display_driver"}), "tick_hz", "max_fps",
 // "rendering" ({"clear_color", "driver", "texture_filter", "interpolation", "scaling",
 // "textures"}),
 // "physics_2d",
@@ -65,6 +66,8 @@ struct Project {
     int window_height = 720;
     // "disabled", "enabled", "adaptive" or "mailbox", as in Godot.
     std::string vsync_mode = "enabled";
+    // The display server Linux games try first, "x11" or "wayland", falling back to the other.
+    std::string linux_display_driver = "x11";
     double tick_hz = 60.0;
     // Frames per second at most; 0 means no cap.
     int max_fps = 0;

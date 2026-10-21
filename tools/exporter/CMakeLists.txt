@@ -27,6 +27,11 @@ target_link_libraries(slash_exporter
             slash::texture_encoder slash::ui slash::world)
 # Where exports find the engine sources when SLASH_ENGINE_DIR and an installed copy are absent.
 target_compile_definitions(slash_exporter PRIVATE SLASH_ENGINE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+# Wayland 1.18's wayland-scanner, which Linux exports run through slash-cli (cmake/Dependencies.cmake).
+if(TARGET slash_wayland_scanner)
+    target_link_libraries(slash_exporter PRIVATE slash_wayland_scanner)
+    target_compile_definitions(slash_exporter PRIVATE SLASH_WAYLAND_SCANNER)
+endif()
 slash_target_warnings(slash_exporter)
 
 # What building a game's own code against this engine build takes, for gameplay.build: the

@@ -3,6 +3,7 @@
 #include "steps.hpp"
 
 #include "slash/core/json.hpp"
+#include "slash/core/log.hpp"
 #include "slash/core/sha256.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
@@ -19,6 +20,11 @@
 #include <system_error>
 #include <utility>
 #include <vector>
+
+#ifdef SLASH_WAYLAND_SCANNER
+// Wayland's scanner.c, its main() renamed (cmake/Dependencies.cmake).
+extern "C" int slash_wayland_scanner_main(int argc, char** argv);
+#endif
 
 namespace slash::exporter {
 namespace {
@@ -630,6 +636,25 @@ Result<std::string> sha256_file(const fs::path& file) {
         return make_error(ErrorCode::PlatformFailure, "could not read " + detail::display(file));
     }
     return hash.hex();
+}
+
+bool has_wayland_scanner() {
+#ifdef SLASH_WAYLAND_SCANNER
+    return true;
+#else
+    return false;
+#endif
+}
+
+int run_wayland_scanner(int argc, char** argv) {
+#ifdef SLASH_WAYLAND_SCANNER
+    return slash_wayland_scanner_main(argc, argv);
+#else
+    (void)argc;
+    (void)argv;
+    log::error("this build of the engine's tools has no wayland-scanner");
+    return 1;
+#endif
 }
 
 } // namespace slash::exporter

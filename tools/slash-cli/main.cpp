@@ -2117,6 +2117,10 @@ int cmd_init(const std::vector<std::string>& args) {
 } // namespace
 
 int main(int argc, char** argv) {
+    // Linux exports run this program as their wayland-scanner (tools/exporter).
+    if (argc > 1 && std::string_view(argv[1]) == slash::exporter::kWaylandScanner) {
+        return slash::exporter::run_wayland_scanner(argc - 1, argv + 1);
+    }
     // Materials with a game's own shader compile when they first draw or validate.
     slash::shader_compiler::install();
     std::vector<std::string> args(argv + 1, argv + argc);

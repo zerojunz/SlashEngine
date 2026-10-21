@@ -17,13 +17,13 @@ order is the plan, and each item carries a status instead. It is drawn from the 
 
 ## Where things stand
 
-Milestones 1 to 3 and the first half of milestone 4 are done. The engine builds on macOS, Linux and Windows, runs an EnTT world on
+Milestones 1 to 4 and 6 are done, and milestone 5 is nearly done. The engine builds on macOS, Linux and Windows, runs an EnTT world on
 a fixed-timestep loop headless or in an SDL3 window, loads and saves JSON scenes checked against a
 schema it generates from its own components, and serves every engine action as a command over
 MCP, JSON-RPC, a localhost REST API and the command line, including while a game runs. A game is
 a folder with a `project.json`, and `slash-cli export` builds it for macOS, Windows, Linux, the
-web, Android or iOS, signs it and can test the result headless. The rest of milestone 4, now in
-progress, builds every platform from one Mac. Games draw sprites and flipbook animations through
+web, Android or iOS, from one Mac with toolchains it downloads, signs it and can test the result
+headless. Games draw sprites and flipbook animations through
 a GPU render device, smoothly between fixed ticks and with Godot's V-Sync modes and frame cap,
 color them with material graphs, animate any component field with keyframes and draw tile maps
 that autotile terrain; the rest of the 2D renderer follows in milestone 5.
@@ -64,7 +64,7 @@ work.
 - [ ] Exit check: Claude Code, Codex and Cursor each open, edit and save a scene over MCP. The
       tools are built and tested; a recorded run with each agent is still to do.
 
-### Milestone 4: Export pipeline (In progress)
+### Milestone 4: Export pipeline (Done)
 
 Built in two halves.
 
@@ -79,7 +79,7 @@ Built in two halves.
 - [x] A CI job that exports an empty game for macOS, Windows, Linux and web and runs each one,
       with Emscripten pinned
 
-**4b: mobile, signing and one-Mac builds (In progress)**
+**4b: mobile, signing and one-Mac builds (Done)**
 
 - [x] Android exports: APKs for arm64-v8a and x86_64 with no Gradle, tested on an Android 11
       emulator in CI
@@ -95,8 +95,9 @@ Built in two halves.
       nothing installed by hand either
 - [x] `slash-cli toolchain install` for the Android SDK, NDK and JDK, so Android exports need
       nothing installed by hand either (once the person accepts Google's Android SDK license)
-- [ ] Wayland in Linux exports (they use X11, which Wayland desktops run through XWayland,
-      because the glibc 2.31 sysroot's Wayland is too old for SDL's generated protocol code)
+- [x] Wayland in Linux exports, with Wayland 1.18's scanner built into `slash-cli` for the
+      glibc 2.31 sysroot's Wayland; games try X11 first and fall back to Wayland, as Godot's do,
+      unless `window.linux_display_driver` asks for Wayland first
 - [x] `export_presets.json`, with signing secrets read from environment variables: macOS
       codesigning (ad hoc by default) and notarization, Windows signtool
 - [x] A throwaway Android debug keystore, and release keystores from environment variables

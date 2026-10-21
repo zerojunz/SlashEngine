@@ -62,6 +62,29 @@ std::string linux_toolchain(const fs::path& llvm, const fs::path& sysroot,
            std::string(kFindModes);
 }
 
+// A script that runs this program as wayland-scanner, or empty where it has none.
+fs::path wayland_scanner_script(const fs::path& work) {
+    const std::string program = platform::executable_path();
+    if (!has_wayland_scanner() || program.empty()) {
+        return {};
+    }
+    std::string quoted = "'";
+    for (const char c : program) {
+        quoted += c == '\'' ? std::string("'\\''") : std::string(1, c);
+    }
+    quoted += "'";
+    std::error_code error;
+    const fs::path script = fs::absolute(work / kWaylandScanner, error);
+    const std::string text =
+        "#!/bin/sh\nexec " + quoted + " " + std::string(kWaylandScanner) + " \"$@\"\n";
+    if (!platform::write_file(script.string(), text)) {
+        return {};
+    }
+    fs::permissions(script, fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec,
+                    error);
+    return error ? fs::path() : script;
+}
+
 std::string no_toolchain(const std::string& platform, const std::string& name) {
     return platform + " games can't be built on this machine yet: there is no " + name +
            " toolchain for it";
@@ -130,6 +153,22 @@ bool prepare_cross(const std::string& platform, const std::string& arch, const f
         const fs::path& sysroot = folders.at(1);
         text = linux_toolchain(folders.at(0), sysroot, triple, arm64 ? "aarch64" : "x86_64");
         cross.build_name = "linux-" + arch + "-" + cross.build_name;
+        // SDL's Wayland code is written by the scanner built into this program, Wayland 1.18's
+        // like the sysroot's headers. Without it, or without pkg-config to find the sysroot's
+        // Wayland, games get X11 only.
+        const fs::path scanner = wayland_scanner_script(work);
+        if (!scanner.empty()) {
+            text += "set(WAYLAND_SCANNER " + cmake_path(scanner) +
+                    " CACHE FILEPATH \"Wayland 1.18's wayland-scanner\" FORCE)\n";
+        }
+        if (scanner.empty()) {
+            log::warn("this build of the tools has no wayland-scanner, so Linux games built "
+                      "with it run on X11 only");
+        }
+        if (find_on_path("pkg-config").empty()) {
+            log::warn("Linux games built without pkg-config run on X11 only, with no Wayland, "
+                      "PulseAudio or PipeWire: install it (brew install pkgconf on macOS)");
+        }
         // pkg-config must read the sysroot's packages, never the host's. Chromium's sysroots
         // keep most of them in usr/lib/pkgconfig.
         const std::string separator = ":";

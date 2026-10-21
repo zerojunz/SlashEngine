@@ -1280,6 +1280,11 @@ private:
                 project["window"]["vsync_mode"] = kModes.at(static_cast<std::size_t>(mode));
             }
         }
+        // Godot's "default" and "x11" try X11 first, as SlashEngine does unless told otherwise.
+        if (const Value* driver = setting("display", "display_server/driver.linuxbsd");
+            driver != nullptr && driver->is_string() && driver->text == "wayland") {
+            project["window"]["linux_display_driver"] = "wayland";
+        }
         if (const Value* fps = number("application", "run/max_fps")) {
             project["max_fps"] = static_cast<std::int64_t>(fps->number());
         }

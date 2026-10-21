@@ -598,7 +598,7 @@ export needs signtool, so only a Windows machine does it.
 | --- | --- |
 | `macos` | A universal app bundle (Apple silicon and Intel), always signed: ad hoc unless the preset names a `codesign_identity` |
 | `windows` | An executable plus a `data` folder, with the C++ runtime linked in |
-| `linux` | An executable plus a `data` folder, for x86_64 or arm64 (`linux.arch`). Built against glibc 2.31 and GCC 10's libstdc++, so it runs on Ubuntu 20.04, Debian 11 and newer. It uses X11, which Wayland desktops run through XWayland |
+| `linux` | An executable plus a `data` folder, for x86_64 or arm64 (`linux.arch`). Built against glibc 2.31 and GCC 10's libstdc++, so it runs on Ubuntu 20.04, Debian 11 and newer. It runs on X11 or Wayland: it tries X11 first (XWayland on a Wayland desktop) and then Wayland, as Godot's games do, unless the project's [`window.linux_display_driver`](project-format.md) asks for Wayland first; `SDL_VIDEO_DRIVER` overrides both. On Wayland the compositor draws the window's title bar, which GNOME doesn't do. Building one needs `pkg-config` (`brew install pkgconf` on a Mac): without it the game has X11 only, with no Wayland, PulseAudio or PipeWire |
 | `web` | `index.html` plus the script, WebAssembly and data files |
 | `android` | `<binary>.apk` for arm64-v8a and x86_64, signed with the release keystore from the environment or else the debug keystore |
 | `ios` | For the Simulator, `<binary>.app` (Apple silicon and Intel), signed ad hoc. For devices, `<binary>.ipa` (arm64), signed with the team's identity and provisioning profile |
@@ -674,7 +674,7 @@ exact versions and SHA-256 hashes:
 | Toolchain | Used for | License |
 | --- | --- | --- |
 | `llvm-mingw` | Clang and LLD; mingw-w64 for Windows exports | Apache 2.0 with LLVM exception, ZPL, MIT and public domain |
-| `linux-sysroot-x86_64`, `linux-sysroot-arm64` | Debian 11's glibc 2.31, GCC 10's libstdc++ and the X11, ALSA and PulseAudio headers that Linux exports build against | Debian's: glibc under the LGPL and libstdc++ under the GPL with the GCC Runtime Library Exception, both used from the player's system; X11 under MIT |
+| `linux-sysroot-x86_64`, `linux-sysroot-arm64` | Debian 11's glibc 2.31, GCC 10's libstdc++ and the X11, Wayland, ALSA, PulseAudio and PipeWire headers that Linux exports build against. SDL's Wayland code for them is written by Wayland 1.18's `wayland-scanner`, which is built into `slash-cli` and `slash-mcp` and runs as `slash-cli wayland-scanner`, since a newer one writes code those headers can't compile | Debian's: glibc under the LGPL and libstdc++ under the GPL with the GCC Runtime Library Exception, both used from the player's system; X11 under MIT |
 | `emscripten` | emsdk's release build of Emscripten 6.0.10, with its Clang and Binaryen, for web exports; on macOS, Linux and x86_64 Windows | MIT and University of Illinois/NCSA; Apache 2.0 with LLVM exception; Apache 2.0 |
 | `node` | Node.js 22.16.0, which Emscripten runs on and web exports' `--test` runs games on | MIT |
 | `python` | Python 3.13.3, which runs Emscripten's tools; on macOS and Windows (Linux uses its `python3`, 3.10 or newer) | Python Software Foundation License |

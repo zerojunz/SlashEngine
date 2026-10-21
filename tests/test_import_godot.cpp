@@ -202,6 +202,7 @@ general/2d_panning_strength=0.8
 
 [display]
 
+display_server/driver.linuxbsd="wayland"
 window/size/viewport_width=640
 window/size/viewport_height=360
 window/vsync/vsync_mode=2
@@ -754,6 +755,7 @@ TEST_CASE("importing a Godot project converts its settings and input map") {
     CHECK(settings.find("window")->find("width")->as_int() == 640);
     CHECK(settings.find("window")->find("height")->as_int() == 360);
     CHECK(settings.find("window")->find("vsync_mode")->as_string() == "adaptive");
+    CHECK(settings.find("window")->find("linux_display_driver")->as_string() == "wayland");
     CHECK(settings.find("max_fps")->as_int() == 120);
     CHECK(settings.find("tick_hz")->as_double() == 30.0);
     CHECK(settings.find("rendering")->find("texture_filter")->as_string() == "linear");

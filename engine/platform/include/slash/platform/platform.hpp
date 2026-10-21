@@ -22,6 +22,9 @@ struct Config {
     // Make the window for OpenGL ES, for the opengl render driver. Always on the web, where
     // games draw with WebGL 2.
     bool opengl = false;
+    // The SDL video drivers to try in order, such as "x11,wayland"; empty for SDL's own order.
+    // The SDL_VIDEO_DRIVER environment variable, or that hint when already set, overrides it.
+    std::string video_drivers{}; // NOLINT(readability-redundant-member-init): designated init
 };
 
 struct Events {

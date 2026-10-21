@@ -72,16 +72,19 @@ TEST_CASE("a minimal project gets the defaults") {
     CHECK(project.value().clear_color == std::array<float, 4>{0.3F, 0.3F, 0.3F, 1.0F});
     CHECK(project.value().rendering_driver == "auto");
     CHECK(project.value().vsync_mode == "enabled");
+    CHECK(project.value().linux_display_driver == "x11");
     CHECK(project.value().max_fps == 0);
     CHECK(project.value().gui_theme.empty());
 
     project = runtime::parse_project(parse(R"({"format": 1, "name": "?!", "id": "org.me.game",
-        "main_scene": "a.scene.json", "window": {"width": 320, "vsync_mode": "mailbox"},
+        "main_scene": "a.scene.json", "window": {"width": 320, "vsync_mode": "mailbox",
+        "linux_display_driver": "wayland"},
         "tick_hz": 30, "max_fps": 120, "rendering": {"clear_color": [0, 0.5, 1, 1],
         "driver": "null"}, "gui": {"theme": "ui/game.theme.json"}})"));
     REQUIRE(project.ok());
     CHECK(project.value().gui_theme == "ui/game.theme.json");
     CHECK(project.value().vsync_mode == "mailbox");
+    CHECK(project.value().linux_display_driver == "wayland");
     CHECK(project.value().max_fps == 120);
     CHECK(project.value().clear_color == std::array<float, 4>{0.0F, 0.5F, 1.0F, 1.0F});
     CHECK(project.value().rendering_driver == "null");
@@ -107,6 +110,8 @@ TEST_CASE("project files are checked field by field") {
     CHECK(error_paths("{" + base + R"(, "tick_hz": 0})") == std::vector<std::string>{"/tick_hz"});
     CHECK(error_paths("{" + base + R"(, "window": {"vsync_mode": "on"}})") ==
           std::vector<std::string>{"/window/vsync_mode"});
+    CHECK(error_paths("{" + base + R"(, "window": {"linux_display_driver": "xorg"}})") ==
+          std::vector<std::string>{"/window/linux_display_driver"});
     CHECK(error_paths("{" + base + R"(, "max_fps": 1001})") ==
           std::vector<std::string>{"/max_fps"});
     CHECK(error_paths("{" + base + R"(, "max_fps": -1})") == std::vector<std::string>{"/max_fps"});
