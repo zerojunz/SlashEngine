@@ -10,6 +10,10 @@
 #         -P compile_shaders.cmake
 #   cmake -DSOURCE=<shader.hlsl> -DOUTPUT=<header> -DCHECK=ON -P compile_shaders.cmake
 #
+# GLSL ES 3.00 links stages by the names of their varyings, which INTERFACE gives in location
+# order, separated by commas (v_uv,v_color,v_world by default). With FIXUP_CLIPSPACE, the GLSL
+# maps depth from 0 to 1 to OpenGL's -1 to 1, for shaders that draw with depth.
+#
 # With COMPUTE, the shader is a compute shader with a cs_main entry point instead, and there is no
 # GLSL ES (OpenGL ES runs particles on the CPU). Its MSL comes from SPIR-V compiled with
 # SLASH_MSL defined, since Metal numbers buffers in one list where the others use three; it and
@@ -159,6 +163,10 @@ if(COMPUTE)
         "inline constexpr const char* k${NAME}ComputeWgsl[] = {\n${wgsl_literals}};\n\n")
 else()
     set(stages vert frag)
+    if(NOT INTERFACE)
+        set(INTERFACE "v_uv,v_color,v_world")
+    endif()
+    string(REPLACE "," ";" varyings "${INTERFACE}")
 endif()
 foreach(stage IN LISTS stages)
     if(stage STREQUAL "vert")
@@ -183,9 +191,18 @@ foreach(stage IN LISTS stages)
     else()
         set(io in)
     endif()
+    set(renames "")
+    set(location 0)
+    foreach(varying IN LISTS varyings)
+        list(APPEND renames --rename-interface-variable ${io} ${location} ${varying})
+        math(EXPR location "${location} + 1")
+    endforeach()
+    set(fixup "")
+    if(FIXUP_CLIPSPACE AND stage STREQUAL "vert")
+        set(fixup --fixup-clipspace)
+    endif()
     run(spirv-cross "${SPIRV_CROSS}" --es --version 300 --stage ${stage} --entry ${entry}
-        --rename-interface-variable ${io} 0 v_uv --rename-interface-variable ${io} 1 v_color
-        --rename-interface-variable ${io} 2 v_world "${spirv}" --output "${glsl}")
+        ${renames} ${fixup} "${spirv}" --output "${glsl}")
     set(wgsl_spirv "${WORKDIR}/${base}.${stage}.wgsl.spv")
     set(wgsl "${WORKDIR}/${base}.${stage}.wgsl")
     run(glslang "${GLSLANG}" -D -V -S ${stage} -e ${entry} --shift-sampler-binding 8

@@ -678,6 +678,20 @@ in canvas layers into the world's canvas and gives each canvas its `CanvasLighti
 `shadows_drawn()`). `examples/lights-2d` has a torch, the moon and a shadowed crate, and
 `examples/lit-tiles-and-layers` a tile set's normal map and a HUD with its own light.
 
+Meshes are the render device's 3D, as Godot's Compatibility renderer draws them
+(`slash/render/mesh.hpp`): `create_mesh` takes `Vertex3D` corners (position, normal, tangent,
+texture coordinate, color) and indices, a frame's `scene` (`render::Scene3D`: a camera, a
+projection from `render::perspective` or `orthogonal`, the ambient light and up to 64 `Light3D`s,
+Godot's directional, omni and spot lights) sees and lights them, and `draw_mesh` draws one with a
+transform and a `Material3D`, Godot's `StandardMaterial3D`. Space is Godot's (Y up, a camera looks
+down its -Z, front faces wind clockwise on the target) and depth is reversed. Meshes draw in a
+pass of their own over a depth buffer, before the frame's 2D draws: opaque ones nearest first,
+`Alpha` ones after them farthest first (`mesh_draw_order`). `shaders/mesh.hlsl` lights them with
+Godot's formulas, and `src/mesh_shading.hpp` fills its uniforms for every device and holds the
+CPU twins of its two stages (`mesh_vertex`, `shade_mesh`), which the software device draws with;
+`tests/test_mesh.cpp` holds every device to the software device's pixels, so a change to the 3D
+shading goes in both. `examples/meshes-3d` draws a lit scene.
+
 Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V, MSL, GLSL ES and WGSL are committed
 in `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang,
 SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`
@@ -1202,7 +1216,7 @@ CI rejects unformatted code and any clang-tidy finding.
 - Headers live in `engine/<module>/include/slash/<module>/`, sources in `engine/<module>/src/`.
   Modules: `core` (Result, logging, JSON, reflection, math, the job system), `platform` (SDL3 window, run loop,
   files and folder listings, child processes), `render` (the render device over SDL3's GPU API and OpenGL 3.3 / OpenGL ES 3.0 / WebGL 2,
-  the software and null devices, HLSL shaders, material programs, 2D light shading and particles), `asset` (asset handles, loaders, hot reload),
+  the software and null devices, HLSL shaders, material programs, 2D light shading, particles and 3D meshes), `asset` (asset handles, loaders, hot reload),
   `world` (EnTT world, components, scenes and prefabs), `input` (input events, action maps,
   the input state and reading SDL's events), `audio` (sound files and streams, the mixer, buses
   and effects, players and SDL's audio output), `services` (ads, analytics, in-app

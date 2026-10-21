@@ -3,6 +3,7 @@
 #include "slash/core/result.hpp"
 #include "slash/render/light.hpp"
 #include "slash/render/material.hpp"
+#include "slash/render/mesh.hpp"
 #include "slash/render/particles.hpp"
 #include "slash/render/shader.hpp"
 
@@ -28,7 +29,8 @@ struct SDL_Window;
 //   device->end_frame();                               // submits and presents
 //
 // A frame can carry lights (light.hpp); draws whose material's shading isn't unshaded are lit by
-// them. Particle systems (particles.hpp) run and draw on the device itself.
+// them. Particle systems (particles.hpp) run and draw on the device itself. A frame with a scene
+// draws 3D meshes (mesh.hpp) under its 2D draws.
 namespace slash::render {
 
 // OpenGl is desktop OpenGL 3.3, and OpenGlEs is OpenGL ES 3.0, which is WebGL 2 on the web.
@@ -196,6 +198,40 @@ struct Material {
     bool operator==(const Material&) const = default;
 };
 
+// A StandardMaterial3D: what each pixel of a mesh is, with Godot's parameters and defaults.
+// Colors are sRGB; textures are sampled at the mesh's texture coordinate times uv1_scale plus
+// uv1_offset, and None samples white.
+struct Material3D {
+    std::array<float, 4> albedo{1.0F, 1.0F, 1.0F, 1.0F};
+    // Each texture may be left out. NOLINTBEGIN(readability-redundant-member-init)
+    MaterialTexture albedo_texture{}; // times albedo
+    bool vertex_color_use_as_albedo = false;
+    float metallic = 0.0F;
+    MaterialTexture metallic_texture{}; // its metallic_channel, times metallic
+    TextureChannel metallic_channel = TextureChannel::Red;
+    float roughness = 1.0F;
+    MaterialTexture roughness_texture{}; // its roughness_channel, times roughness
+    TextureChannel roughness_channel = TextureChannel::Red;
+    float specular = 0.5F;
+    std::array<float, 3> emission{0.0F, 0.0F, 0.0F};
+    float emission_energy = 1.0F;
+    // Added to emission when it is a texture: None adds nothing.
+    MaterialTexture emission_texture{};
+    // A normal map, OpenGL style (green up), mixed in by normal_scale: None has none.
+    MaterialTexture normal_texture{};
+    // NOLINTEND(readability-redundant-member-init)
+    float normal_scale = 1.0F;
+    bool unshaded = false; // albedo as it is, unlit
+    Transparency transparency = Transparency::Disabled;
+    float alpha_scissor_threshold = 0.5F;
+    BlendMode blend = BlendMode::Mix; // how an Alpha mesh blends
+    CullMode cull = CullMode::Back;
+    std::array<float, 2> uv1_scale{1.0F, 1.0F};
+    std::array<float, 2> uv1_offset{0.0F, 0.0F};
+
+    bool operator==(const Material3D&) const = default;
+};
+
 // A frame's lights: what lit draws are shaded by, each by those its Shading takes.
 struct Lighting {
     std::vector<Light> lights; // up to kMaxLights
@@ -225,8 +261,11 @@ struct Frame {
     TextureId target = TextureId::None; // None draws to the window
     Color clear;
     // Maps vertex positions to clip space. Left out, positions are pixels of the target.
-    std::optional<Mat4> view;
-    Lighting lighting{}; // NOLINT(readability-redundant-member-init): may be left out
+    std::optional<Mat4> view{}; // NOLINT(readability-redundant-member-init): may be left out
+    Lighting lighting{};        // NOLINT(readability-redundant-member-init): may be left out
+    // What the frame's meshes are seen from and lit by. A frame with one has a depth buffer and
+    // draws its meshes before its 2D draws, which go over them.
+    std::optional<Scene3D> scene{}; // NOLINT(readability-redundant-member-init): may be left out
 };
 
 // RGBA pixels, 4 bytes each, in rows from the top.
@@ -327,6 +366,13 @@ public:
     // during a frame. The null device's are none live.
     [[nodiscard]] virtual Result<std::vector<Particle>> read_particles(ParticlesId particles) = 0;
 
+    // A mesh of vertices, every three indices a triangle, each index below the vertex count, or
+    // every three vertices a triangle when there are no indices. At most kMaxMeshVertices.
+    [[nodiscard]] virtual Result<MeshId> create_mesh(std::span<const Vertex3D> vertices,
+                                                     std::span<const std::uint32_t> indices) = 0;
+    // A mesh in use by the frame being built goes once the frame is sent.
+    virtual void destroy_mesh(MeshId mesh) = 0;
+
     // Starts a frame and clears its target. Returns false when there is nothing to draw to,
     // such as a minimized window: draws are still checked but dropped, and end_frame ends it.
     [[nodiscard]] virtual Result<bool> begin_frame(const Frame& frame) = 0;
@@ -339,6 +385,13 @@ public:
     [[nodiscard]] Result<void> draw(TextureId texture, std::span<const Vertex2D> vertices) {
         return draw(texture, vertices, Material{});
     }
+    // Draws a mesh in the frame's scene, moved into the world by transform and colored by
+    // material, if one of layers' bits is in a light's cull_mask, lit by that light. Opaque and
+    // alpha scissor meshes are drawn first, nearest first, then alpha meshes, farthest first,
+    // as Godot sorts them; all before the frame's 2D draws.
+    [[nodiscard]] virtual Result<void> draw_mesh(MeshId mesh, const Mat4& transform,
+                                                 const Material3D& material,
+                                                 std::uint32_t layers = 1) = 0;
     // Sends the frame to the GPU, and to the window when it is the target.
     [[nodiscard]] virtual Result<void> end_frame() = 0;
 

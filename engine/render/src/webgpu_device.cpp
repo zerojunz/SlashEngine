@@ -6,6 +6,8 @@
 
 #include "checks.hpp"
 #include "material_shaders.hpp"
+#include "mesh_shaders.hpp"
+#include "mesh_shading.hpp"
 #include "particle_layout.hpp"
 #include "particles_draw_shaders.hpp"
 #include "particles_emit_shaders.hpp"
@@ -28,6 +30,7 @@
 #include <functional>
 #include <initializer_list>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <span>
 #include <string>
@@ -67,6 +70,8 @@ namespace {
 
 // Textures are 8-bit RGBA, or the compressed formats the GPU samples.
 constexpr WGPUTextureFormat kTextureFormat = WGPUTextureFormat_RGBA8Unorm;
+// Meshes draw over 32-bit float depth, which every WebGPU device has and suits reversed depth.
+constexpr WGPUTextureFormat kDepthFormat = WGPUTextureFormat_Depth32Float;
 
 constexpr WGPUTextureFormat gpu_format(TextureFormat format) {
     switch (format) {
@@ -92,13 +97,15 @@ constexpr std::uint32_t kParticleThreads = 64;
 constexpr std::uint64_t kComputeUniformBytes =
     std::max({sizeof(ProcessUniforms), sizeof(EmitUniforms), sizeof(DrawUniforms)});
 // The most bytes any binding of the uniform buffer reads.
-constexpr std::uint64_t kLargestUniforms =
-    std::max<std::uint64_t>({sizeof(Mat4), sizeof(VertexProgramUniforms), sizeof(ProgramUniforms),
-                             sizeof(LightsUniforms), kComputeUniformBytes});
+constexpr std::uint64_t kLargestUniforms = std::max<std::uint64_t>(
+    {sizeof(Mat4), sizeof(VertexProgramUniforms), sizeof(ProgramUniforms), sizeof(LightsUniforms),
+     kComputeUniformBytes, sizeof(MeshInstanceUniforms), sizeof(MeshSurfaceUniforms),
+     sizeof(MeshSceneUniforms)});
 // The bind groups are SDL's GPU API's, which the HLSL's registers name and the WGSL keeps
 // (cmake/compile_shaders.cmake): a vertex stage's uniforms in group 1, a fragment stage's
 // textures in group 2 (samplers kSamplerBinding after their textures) and its uniforms in group
-// 3; a compute shader's read-only buffers in group 0, read-write ones in 1 and uniforms in 2.
+// 3; a compute shader's read-only buffers in group 0, read-write ones in 1 and uniforms in 2. The
+// mesh shader's are the same: its camera and instance, its five textures, its surface and scene.
 constexpr std::uint32_t kSamplerBinding = 8;
 
 // The two shaders: plain sprites, and materials that run a program.
@@ -280,6 +287,14 @@ public:
         for (const Pipeline& pipeline : pipelines_) {
             wgpuRenderPipelineRelease(pipeline.pipeline);
         }
+        for (const MeshPipeline& pipeline : mesh_pipelines_) {
+            wgpuRenderPipelineRelease(pipeline.pipeline);
+        }
+        for (const auto& [id, mesh] : meshes_) {
+            destroy_buffer(mesh.vertices);
+            destroy_buffer(mesh.indices);
+        }
+        destroy_gpu_texture(depth_);
         for (WGPUComputePipeline pipeline : compute_pipelines_) {
             if (pipeline != nullptr) {
                 wgpuComputePipelineRelease(pipeline);
@@ -306,7 +321,8 @@ public:
              {empty_layout_, vertex_uniforms_layout_, sprite_textures_layout_,
               material_textures_layout_, fragment_uniforms_layout_, process_inputs_layout_,
               process_outputs_layout_, draw_inputs_layout_, draw_outputs_layout_,
-              emit_outputs_layout_, compute_uniforms_layout_}) {
+              emit_outputs_layout_, compute_uniforms_layout_, mesh_vertex_layout_,
+              mesh_textures_layout_, mesh_fragment_layout_}) {
             if (layout != nullptr) {
                 wgpuBindGroupLayoutRelease(layout);
             }
@@ -678,12 +694,59 @@ public:
         return out;
     }
 
+    Result<MeshId> create_mesh(std::span<const Vertex3D> vertices,
+                               std::span<const std::uint32_t> indices) override {
+        if (auto checked = check_mesh(vertices, indices); !checked) {
+            return checked.error();
+        }
+        std::vector<std::uint32_t> implicit;
+        if (indices.empty()) {
+            implicit.resize(vertices.size());
+            std::iota(implicit.begin(), implicit.end(), 0U);
+            indices = implicit;
+        }
+        // Queue writes run ahead of the command buffers sent after them, so the next frame
+        // draws the mesh.
+        const Mesh mesh{.vertices = create_buffer(WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst,
+                                                  vertices.size_bytes()),
+                        .indices = create_buffer(WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst,
+                                                 indices.size_bytes()),
+                        .index_count = static_cast<std::uint32_t>(indices.size()),
+                        .bounds = mesh_bounds(vertices)};
+        wgpuQueueWriteBuffer(queue_, mesh.vertices, 0, vertices.data(), vertices.size_bytes());
+        wgpuQueueWriteBuffer(queue_, mesh.indices, 0, indices.data(), indices.size_bytes());
+        const auto id = static_cast<MeshId>(next_mesh_++);
+        meshes_[id] = mesh;
+        return id;
+    }
+
+    void destroy_mesh(MeshId mesh) override {
+        const auto it = meshes_.find(mesh);
+        if (it == meshes_.end()) {
+            return;
+        }
+        for (WGPUBuffer buffer : {it->second.vertices, it->second.indices}) {
+            // The frame being built may still draw it, so it goes once the frame is sent.
+            if (in_frame_) {
+                pending_buffers_.push_back(buffer);
+            } else {
+                destroy_buffer(buffer);
+            }
+        }
+        meshes_.erase(it);
+    }
+
     Result<bool> begin_frame(const Frame& frame) override {
         if (in_frame_) {
             return frame_in_progress("begin_frame");
         }
         if (auto errors = reported_errors(); !errors) {
             return errors.error();
+        }
+        if (frame.scene) {
+            if (auto checked = check_scene(*frame.scene); !checked) {
+                return checked.error();
+            }
         }
         WGPUTexture target = nullptr;
         WGPUTextureView view = nullptr;
@@ -794,6 +857,42 @@ public:
         return {};
     }
 
+    Result<void> draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
+                           std::uint32_t layers) override {
+        if (!in_frame_) {
+            return no_frame("draw_mesh");
+        }
+        const auto it = meshes_.find(mesh);
+        if (auto checked = check_mesh_draw(frame_.scene.has_value(), it != meshes_.end(), mesh,
+                                           transform, material, frame_.target,
+                                           [&](TextureId id) { return textures_.contains(id); });
+            !checked) {
+            return checked;
+        }
+        if (!frame_drawn_) {
+            return {}; // a skipped frame
+        }
+        make_depth_target(frame_width_, frame_height_);
+        MeshBatch batch{.vertices = it->second.vertices,
+                        .indices = it->second.indices,
+                        .index_count = it->second.index_count,
+                        .bounds = it->second.bounds,
+                        .pipeline = mesh_pipeline_for(frame_format_, material),
+                        .bindings = {}};
+        const std::array<const MaterialTexture*, kMeshTextures> slots{
+            &material.albedo_texture, &material.metallic_texture, &material.roughness_texture,
+            &material.emission_texture, &material.normal_texture};
+        for (std::size_t slot = 0; slot < kMeshTextures; ++slot) {
+            batch.bindings.at(slot) = binding(slots.at(slot)->texture, slots.at(slot)->repeat);
+        }
+        mesh_draws_.push_back(
+            {.mesh = mesh, .transform = transform, .material = material, .layers = layers});
+        mesh_batches_.push_back(batch);
+        ++stats_.draws;
+        stats_.triangles += it->second.index_count / 3;
+        return {};
+    }
+
     Result<void> end_frame() override {
         if (!in_frame_) {
             return no_frame("end_frame");
@@ -842,14 +941,19 @@ public:
             }
             batch_uniforms.push_back(at);
         }
+        const MeshUniforms mesh_uniforms = add_mesh_uniforms();
         upload_frame();
 
         WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
         // Particles run and write their quads ahead of the render pass that draws them.
         encode_particle_jobs(encoder, job_uniforms);
+        // Meshes draw first, in a pass of their own, and the 2D draws go over them.
+        if (!mesh_draws_.empty()) {
+            encode_meshes(encoder, mesh_uniforms);
+        }
         WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
         color.view = frame_view_;
-        color.loadOp = WGPULoadOp_Clear;
+        color.loadOp = mesh_draws_.empty() ? WGPULoadOp_Clear : WGPULoadOp_Load;
         color.storeOp = WGPUStoreOp_Store;
         color.clearValue = {
             .r = frame_.clear.r, .g = frame_.clear.g, .b = frame_.clear.b, .a = frame_.clear.a};
@@ -997,6 +1101,46 @@ private:
         std::uint32_t first = 0;
         std::uint32_t count = 0;
         bool particles = false; // a draw of particles, which is never batched with others
+    };
+
+    // A mesh draw's textures and samplers, in mesh.hlsl's order.
+    using MeshBindings = std::array<std::pair<WGPUTextureView, WGPUSampler>, kMeshTextures>;
+    // They share texture_groups_ with batches: a mesh's key leaves the slots after them empty,
+    // which a material batch's never does.
+    static_assert(kMeshTextures < kMaterialSamplers);
+
+    // A mesh's buffers; one without indices is given them in order.
+    struct Mesh {
+        WGPUBuffer vertices = nullptr;
+        WGPUBuffer indices = nullptr;
+        std::uint32_t index_count = 0;
+        Bounds bounds;
+    };
+
+    // What a mesh draw binds, found when it is made: its mesh may be destroyed before end_frame.
+    struct MeshBatch {
+        WGPUBuffer vertices = nullptr;
+        WGPUBuffer indices = nullptr;
+        std::uint32_t index_count = 0;
+        Bounds bounds;
+        WGPURenderPipeline pipeline = nullptr;
+        MeshBindings bindings{};
+    };
+
+    struct MeshPipeline {
+        WGPUTextureFormat format = WGPUTextureFormat_Undefined;
+        CullMode cull = CullMode::Back;
+        bool blended = false;             // an Alpha material's, which writes no depth
+        BlendMode blend = BlendMode::Mix; // when blended
+        WGPURenderPipeline pipeline = nullptr;
+    };
+
+    // Where the frame's mesh uniforms are: the camera's and the scene's, then each draw's
+    // instance and surface.
+    struct MeshUniforms {
+        std::uint32_t camera = 0;
+        std::uint32_t scene = 0;
+        std::vector<std::pair<std::uint32_t, std::uint32_t>> draws;
     };
 
     struct Pipeline {
@@ -1279,6 +1423,20 @@ private:
         emit_outputs_layout_ = layout(process_outputs);
         const std::array compute{uniform_entry(0, WGPUShaderStage_Compute, kComputeUniformBytes)};
         compute_uniforms_layout_ = layout(compute);
+        const std::array mesh_vertex{
+            uniform_entry(0, WGPUShaderStage_Vertex, sizeof(MeshCameraUniforms)),
+            uniform_entry(1, WGPUShaderStage_Vertex, sizeof(MeshInstanceUniforms))};
+        mesh_vertex_layout_ = layout(mesh_vertex);
+        std::array<WGPUBindGroupLayoutEntry, kMeshTextures * 2> mesh_textures{};
+        for (std::uint32_t slot = 0; slot < kMeshTextures; ++slot) {
+            mesh_textures.at(slot) = texture_entry(slot);
+            mesh_textures.at(kMeshTextures + slot) = sampler_entry(kSamplerBinding + slot);
+        }
+        mesh_textures_layout_ = layout(mesh_textures);
+        const std::array mesh_fragment{
+            uniform_entry(0, WGPUShaderStage_Fragment, sizeof(MeshSurfaceUniforms)),
+            uniform_entry(1, WGPUShaderStage_Fragment, sizeof(MeshSceneUniforms))};
+        mesh_fragment_layout_ = layout(mesh_fragment);
 
         const auto pipeline_layout = [&](std::initializer_list<WGPUBindGroupLayout> groups) {
             const std::vector<WGPUBindGroupLayout> list(groups);
@@ -1298,6 +1456,8 @@ private:
             pipeline_layout({draw_inputs_layout_, draw_outputs_layout_, compute_uniforms_layout_});
         pipeline_layouts_.at(kEmitLayout) =
             pipeline_layout({empty_layout_, emit_outputs_layout_, compute_uniforms_layout_});
+        pipeline_layouts_.at(kMeshLayout) = pipeline_layout(
+            {empty_layout_, mesh_vertex_layout_, mesh_textures_layout_, mesh_fragment_layout_});
     }
 
     WGPUShaderModule create_module(std::string_view wgsl) {
@@ -1493,11 +1653,20 @@ private:
         fragment_uniforms_group_ = bind_group(fragment_uniforms_layout_, fragment);
         const std::array compute{buffer_entry(0, uniform_buffer_, kComputeUniformBytes)};
         compute_uniforms_group_ = bind_group(compute_uniforms_layout_, compute);
+        const std::array mesh_vertex{
+            buffer_entry(0, uniform_buffer_, sizeof(MeshCameraUniforms)),
+            buffer_entry(1, uniform_buffer_, sizeof(MeshInstanceUniforms))};
+        mesh_vertex_group_ = bind_group(mesh_vertex_layout_, mesh_vertex);
+        const std::array mesh_fragment{
+            buffer_entry(0, uniform_buffer_, sizeof(MeshSurfaceUniforms)),
+            buffer_entry(1, uniform_buffer_, sizeof(MeshSceneUniforms))};
+        mesh_fragment_group_ = bind_group(mesh_fragment_layout_, mesh_fragment);
     }
 
     void release_uniform_groups() {
         for (WGPUBindGroup* group :
-             {&vertex_uniforms_group_, &fragment_uniforms_group_, &compute_uniforms_group_}) {
+             {&vertex_uniforms_group_, &fragment_uniforms_group_, &compute_uniforms_group_,
+              &mesh_vertex_group_, &mesh_fragment_group_}) {
             if (*group != nullptr) {
                 wgpuBindGroupRelease(*group);
                 *group = nullptr;
@@ -1641,6 +1810,194 @@ private:
         return pipeline;
     }
 
+    // The pipeline drawing a material's meshes into a target format, made the first time a frame
+    // needs it: it culls as the material says, and an Alpha material's blends and writes no
+    // depth.
+    WGPURenderPipeline mesh_pipeline_for(WGPUTextureFormat format, const Material3D& material) {
+        const bool blended = material.transparency == Transparency::Alpha;
+        const BlendMode blend = blended ? material.blend : BlendMode::Mix;
+        for (const MeshPipeline& made : mesh_pipelines_) {
+            if (made.format == format && made.cull == material.cull && made.blended == blended &&
+                made.blend == blend) {
+                return made.pipeline;
+            }
+        }
+        const auto attribute = [](WGPUVertexFormat format, std::size_t offset,
+                                  std::uint32_t location) {
+            return WGPUVertexAttribute{.nextInChain = nullptr,
+                                       .format = format,
+                                       .offset = offset,
+                                       .shaderLocation = location};
+        };
+        const std::array attributes{
+            attribute(WGPUVertexFormat_Float32x3, offsetof(Vertex3D, position), 0),
+            attribute(WGPUVertexFormat_Float32x3, offsetof(Vertex3D, normal), 1),
+            attribute(WGPUVertexFormat_Float32x4, offsetof(Vertex3D, tangent), 2),
+            attribute(WGPUVertexFormat_Float32x2, offsetof(Vertex3D, uv), 3),
+            attribute(WGPUVertexFormat_Unorm8x4, offsetof(Vertex3D, rgba), 4)};
+        WGPUVertexBufferLayout buffer = WGPU_VERTEX_BUFFER_LAYOUT_INIT;
+        buffer.stepMode = WGPUVertexStepMode_Vertex;
+        buffer.arrayStride = sizeof(Vertex3D);
+        buffer.attributeCount = attributes.size();
+        buffer.attributes = attributes.data();
+
+        const WGPUBlendState blending = blend_state(blend);
+        WGPUColorTargetState color = WGPU_COLOR_TARGET_STATE_INIT;
+        color.format = format;
+        color.blend = blended ? &blending : nullptr;
+        WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
+        fragment.module = module(kMeshFragmentModule, shaders::kMeshFragmentWgsl);
+        fragment.entryPoint = text_view("fs_main");
+        fragment.targetCount = 1;
+        fragment.targets = &color;
+        // Reversed depth: nearer is greater.
+        WGPUDepthStencilState depth = WGPU_DEPTH_STENCIL_STATE_INIT;
+        depth.format = kDepthFormat;
+        depth.depthWriteEnabled = blended ? WGPUOptionalBool_False : WGPUOptionalBool_True;
+        depth.depthCompare = WGPUCompareFunction_Greater;
+
+        WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
+        info.layout = pipeline_layouts_.at(kMeshLayout);
+        info.vertex.module = module(kMeshVertexModule, shaders::kMeshVertexWgsl);
+        info.vertex.entryPoint = text_view("vs_main");
+        info.vertex.bufferCount = 1;
+        info.vertex.buffers = &buffer;
+        info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        // Front faces wind clockwise on the target, whose y goes down.
+        info.primitive.frontFace = WGPUFrontFace_CW;
+        switch (material.cull) {
+        case CullMode::Back:
+            info.primitive.cullMode = WGPUCullMode_Back;
+            break;
+        case CullMode::Front:
+            info.primitive.cullMode = WGPUCullMode_Front;
+            break;
+        case CullMode::Disabled:
+            info.primitive.cullMode = WGPUCullMode_None;
+            break;
+        }
+        info.depthStencil = &depth;
+        info.fragment = &fragment;
+        WGPURenderPipeline pipeline = wgpuDeviceCreateRenderPipeline(device_, &info);
+        mesh_pipelines_.push_back({.format = format,
+                                   .cull = material.cull,
+                                   .blended = blended,
+                                   .blend = blend,
+                                   .pipeline = pipeline});
+        return pipeline;
+    }
+
+    // The depth buffer the frame's meshes draw over, made again when the target's size changes.
+    void make_depth_target(std::uint32_t width, std::uint32_t height) {
+        if (depth_.texture != nullptr && depth_width_ == width && depth_height_ == height) {
+            return;
+        }
+        if (depth_.texture != nullptr) {
+            pending_textures_.push_back(std::exchange(depth_, {}));
+        }
+        WGPUTextureDescriptor info = WGPU_TEXTURE_DESCRIPTOR_INIT;
+        info.usage = WGPUTextureUsage_RenderAttachment;
+        info.size = {.width = width, .height = height, .depthOrArrayLayers = 1};
+        info.format = kDepthFormat;
+        WGPUTexture texture = wgpuDeviceCreateTexture(device_, &info);
+        depth_ = {.texture = texture,
+                  .view = wgpuTextureCreateView(texture, nullptr),
+                  .filter = Filter::Nearest};
+        depth_width_ = width;
+        depth_height_ = height;
+    }
+
+    // A mesh draw's textures and samplers, bound as a group made the first time it is needed.
+    WGPUBindGroup mesh_texture_group(const MeshBindings& bindings) {
+        TextureBindings key{};
+        std::ranges::copy(bindings, key.begin());
+        if (const auto it = texture_groups_.find(key); it != texture_groups_.end()) {
+            return it->second;
+        }
+        std::array<WGPUBindGroupEntry, kMeshTextures * 2> entries{};
+        for (std::uint32_t slot = 0; slot < kMeshTextures; ++slot) {
+            WGPUBindGroupEntry& texture = entries.at(slot);
+            texture = WGPU_BIND_GROUP_ENTRY_INIT;
+            texture.binding = slot;
+            texture.textureView = bindings.at(slot).first;
+            WGPUBindGroupEntry& sampler = entries.at(kMeshTextures + slot);
+            sampler = WGPU_BIND_GROUP_ENTRY_INIT;
+            sampler.binding = kSamplerBinding + slot;
+            sampler.sampler = bindings.at(slot).second;
+        }
+        WGPUBindGroup group = bind_group(mesh_textures_layout_, entries);
+        texture_groups_.emplace(key, group);
+        return group;
+    }
+
+    // Adds the frame's mesh uniforms. The matrices go in turned, as transposed says.
+    MeshUniforms add_mesh_uniforms() {
+        MeshUniforms at;
+        if (mesh_draws_.empty()) {
+            return at;
+        }
+        const Scene3D& scene = *frame_.scene;
+        MeshCameraUniforms camera = mesh_camera_uniforms(scene);
+        camera.view_projection = transposed(camera.view_projection);
+        at.camera = uniforms_.add(camera);
+        const auto lights = std::make_unique<MeshSceneUniforms>(mesh_scene_uniforms(scene));
+        at.scene = uniforms_.add(*lights);
+        at.draws.reserve(mesh_draws_.size());
+        for (const MeshDraw& draw : mesh_draws_) {
+            MeshInstanceUniforms instance = mesh_instance_uniforms(draw.transform, draw.material);
+            instance.model = transposed(instance.model);
+            instance.normal_model = transposed(instance.normal_model);
+            at.draws.emplace_back(uniforms_.add(instance),
+                                  uniforms_.add(mesh_surface_uniforms(draw.material, draw.layers)));
+        }
+        return at;
+    }
+
+    // Records the frame's meshes, in the order mesh_draw_order gives, in a pass that clears the
+    // target and the depth buffer to the far plane.
+    void encode_meshes(WGPUCommandEncoder encoder, const MeshUniforms& at) {
+        WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+        color.view = frame_view_;
+        color.loadOp = WGPULoadOp_Clear;
+        color.storeOp = WGPUStoreOp_Store;
+        color.clearValue = {
+            .r = frame_.clear.r, .g = frame_.clear.g, .b = frame_.clear.b, .a = frame_.clear.a};
+        WGPURenderPassDepthStencilAttachment depth = WGPU_RENDER_PASS_DEPTH_STENCIL_ATTACHMENT_INIT;
+        depth.view = depth_.view;
+        depth.depthLoadOp = WGPULoadOp_Clear;
+        depth.depthStoreOp = WGPUStoreOp_Discard;
+        depth.depthClearValue = 0.0F;
+        WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+        descriptor.colorAttachmentCount = 1;
+        descriptor.colorAttachments = &color;
+        descriptor.depthStencilAttachment = &depth;
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+        WGPURenderPipeline bound = nullptr;
+        for (const std::size_t i :
+             mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), *frame_.scene,
+                             [&](std::size_t draw) { return mesh_batches_[draw].bounds; })) {
+            const MeshBatch& batch = mesh_batches_[i];
+            if (batch.pipeline != bound) {
+                wgpuRenderPassEncoderSetPipeline(pass, batch.pipeline);
+                bound = batch.pipeline;
+            }
+            const std::array<std::uint32_t, 2> vertex_offsets{at.camera, at.draws[i].first};
+            wgpuRenderPassEncoderSetBindGroup(pass, 1, mesh_vertex_group_, vertex_offsets.size(),
+                                              vertex_offsets.data());
+            wgpuRenderPassEncoderSetBindGroup(pass, 2, mesh_texture_group(batch.bindings), 0,
+                                              nullptr);
+            const std::array<std::uint32_t, 2> fragment_offsets{at.draws[i].second, at.scene};
+            wgpuRenderPassEncoderSetBindGroup(pass, 3, mesh_fragment_group_,
+                                              fragment_offsets.size(), fragment_offsets.data());
+            wgpuRenderPassEncoderSetVertexBuffer(pass, 0, batch.vertices, 0, WGPU_WHOLE_SIZE);
+            wgpuRenderPassEncoderSetIndexBuffer(pass, batch.indices, WGPUIndexFormat_Uint32, 0,
+                                                WGPU_WHOLE_SIZE);
+            wgpuRenderPassEncoderDrawIndexed(pass, batch.index_count, 1, 0, 0, 0);
+        }
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+    }
+
     GpuTexture create_gpu_texture(const TextureDesc& desc, TextureFormat stored) {
         WGPUTextureDescriptor info = WGPU_TEXTURE_DESCRIPTOR_INIT;
         info.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
@@ -1773,6 +2130,8 @@ private:
         frame_drawn_ = drawn;
         vertices_.clear();
         batches_.clear();
+        mesh_draws_.clear();
+        mesh_batches_.clear();
         particle_vertices_ = 0;
     }
 
@@ -1786,6 +2145,8 @@ private:
         frame_drawn_ = false;
         vertices_.clear();
         batches_.clear();
+        mesh_draws_.clear();
+        mesh_batches_.clear();
         particle_vertices_ = 0;
         clear_particle_jobs();
         release_pending();
@@ -1811,11 +2172,14 @@ private:
     static constexpr std::size_t kProcessModule = 4;
     static constexpr std::size_t kDrawModule = 5;
     static constexpr std::size_t kEmitModule = 6;
+    static constexpr std::size_t kMeshVertexModule = 7;
+    static constexpr std::size_t kMeshFragmentModule = 8;
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
     static constexpr std::size_t kDrawLayout = 3;
     static constexpr std::size_t kEmitLayout = 4;
+    static constexpr std::size_t kMeshLayout = 5;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -1828,7 +2192,7 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 3> sampled_{true, false, false};
-    std::array<WGPUShaderModule, 7> modules_{};
+    std::array<WGPUShaderModule, 9> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -1844,7 +2208,10 @@ private:
     WGPUBindGroupLayout draw_outputs_layout_ = nullptr;
     WGPUBindGroupLayout emit_outputs_layout_ = nullptr;
     WGPUBindGroupLayout compute_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, 5> pipeline_layouts_{};
+    WGPUBindGroupLayout mesh_vertex_layout_ = nullptr;
+    WGPUBindGroupLayout mesh_textures_layout_ = nullptr;
+    WGPUBindGroupLayout mesh_fragment_layout_ = nullptr;
+    std::array<WGPUPipelineLayout, 6> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -1861,6 +2228,8 @@ private:
     WGPUBindGroup vertex_uniforms_group_ = nullptr;
     WGPUBindGroup fragment_uniforms_group_ = nullptr;
     WGPUBindGroup compute_uniforms_group_ = nullptr;
+    WGPUBindGroup mesh_vertex_group_ = nullptr;
+    WGPUBindGroup mesh_fragment_group_ = nullptr;
     std::unordered_map<ParticlesId, ParticleSystem> particle_systems_;
     std::uint32_t next_particles_ = 1;
     std::vector<WGPUBuffer> pending_buffers_;
@@ -1873,6 +2242,12 @@ private:
     // Bound where a process pass takes or writes no emissions.
     WGPUBuffer no_source_ = nullptr;
     WGPUBuffer no_target_ = nullptr;
+    std::unordered_map<MeshId, Mesh> meshes_;
+    std::uint32_t next_mesh_ = 1;
+    std::vector<MeshPipeline> mesh_pipelines_;
+    GpuTexture depth_;
+    std::uint32_t depth_width_ = 0;
+    std::uint32_t depth_height_ = 0;
 
     // The frame being built. A skipped frame draws nothing.
     bool in_frame_ = false;
@@ -1886,6 +2261,9 @@ private:
     std::vector<Vertex2D> vertices_;
     std::vector<Batch> batches_;
     std::uint32_t particle_vertices_ = 0; // the particles' quads, after vertices_
+    // The frame's mesh draws, and what each binds.
+    std::vector<MeshDraw> mesh_draws_;
+    std::vector<MeshBatch> mesh_batches_;
     VsyncMode vsync_ = VsyncMode::Enabled;
     Stats stats_;
 };

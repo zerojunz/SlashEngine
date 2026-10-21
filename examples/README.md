@@ -34,6 +34,7 @@ engine. Copy from them.
 | [import-unity-scripts](import-unity-scripts/) | A Unity script imported as a C++ skeleton (its serialized fields a component with the scene's values, its UnityEvent a world event, its methods stubs a system calls when Unity would: Start, Update, OnTriggerEnter2D and OnCollisionEnter2D), filled in, built with `gameplay.build` and run |
 | [import-unity-isometric](import-unity-isometric/) | `project.import` of Unity's isometric and hexagonal tile maps: each Grid becomes a tile set of Godot's shape and layout, each layer moves so its cells stay where Unity draws them, and tile anchors and sprite pivots become `texture_origin`, checked with `frame.capture` |
 | [draw-offscreen](draw-offscreen/) | The renderer's device: drawing into a texture and reading the pixels back |
+| [meshes-3d](meshes-3d/) | Meshes lit as Godot's Compatibility renderer lights them: a camera, a sun, a lamp and the ambient light, `StandardMaterial3D`'s albedo, roughness and transparency, and the depth buffer, drawn by the render device into a texture |
 | [web-rendering](web-rendering/) | How web exports draw: the OpenGL ES 3.0 device (WebGL 2 in browsers, the `opengl` driver elsewhere) drawing a scene with a material into a texture, the same pixels as the software device |
 | [frame-pacing](frame-pacing/) | V-Sync, the frame cap and frame pacing: `display.list`, `display.set` and `perf.stats` |
 | [profiling](profiling/) | Finding the slowest system with `perf.stats`' tick and system times, and checking that a faster version of it is faster; Tracy builds |
