@@ -69,6 +69,12 @@ void pack_particle_process(const ParticleProcess& process, std::vector<Word>& ou
 void pack_particle_steps(std::span<const ParticleStep> steps,
                          std::span<const std::uint32_t> shape_at, std::vector<Word>& out);
 
+// The restart phase from one particle to the next, 1 / amount: the CPU divides it for the shader
+// too, since Metal's fast division rounds it otherwise.
+[[nodiscard]] inline float particle_phase_step(std::uint32_t amount) {
+    return 1.0F / static_cast<float>(amount);
+}
+
 // particles_process.hlsl's uniforms: offsets are in words.
 struct ProcessUniforms {
     std::uint32_t amount = 0;
@@ -79,6 +85,10 @@ struct ProcessUniforms {
     std::uint32_t chain = 0;   // kChainTakes and kChainEmits
     std::uint32_t trail = 1;   // particles a trail
     std::uint32_t history = 0; // steps before the first to run, which only copies run
+    float phase_step = 0.0F;   // particle_phase_step(amount)
+    std::uint32_t pad0 = 0;
+    std::uint32_t pad1 = 0;
+    std::uint32_t pad2 = 0;
 };
 
 // particles_emit.hlsl's uniforms.

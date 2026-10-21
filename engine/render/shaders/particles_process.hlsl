@@ -39,6 +39,10 @@ cbuffer Params : UNIFORMS {
     uint chain;   // kChainTakes and kChainEmits
     uint trail;   // particles a trail
     uint history; // steps before the first to run
+    float phase_step; // 1 / amount, divided on the CPU: Metal's fast division rounds otherwise
+    uint pad0;
+    uint pad1;
+    uint pad2;
 };
 
 StructuredBuffer<uint4> data : READ_ONLY_DATA;
@@ -1105,7 +1109,9 @@ void step_unit(inout Particle unit, Particle head, uint j, uint index, uint at, 
                     kParticleActive | kParticleStarted | (step.cycle << kParticleCycleShift);
             }
         } else if (step.emitting) {
-            float restart_phase = float(index) / float(amount);
+            // A product, and precise: Metal's fast math divides and fuses operations off the
+            // CPU twin's rounding, which moves a particle that starts at a step's edge.
+            precise float restart_phase = float(index) * phase_step;
             if (step.randomness > 0.0) {
                 uint seed = step.cycle;
                 if (restart_phase >= step.system_phase) {
@@ -1113,8 +1119,8 @@ void step_unit(inout Particle unit, Particle head, uint j, uint index, uint at, 
                 }
                 seed *= amount;
                 seed += index;
-                float random = float(hash(seed) % 65536u) / 65536.0;
-                restart_phase += step.randomness * random * 1.0 / float(amount);
+                float random = float(hash(seed) % 65536u) * (1.0 / 65536.0);
+                restart_phase += step.randomness * random * phase_step;
             }
             restart_phase *= 1.0 - step.explosiveness;
             if (step.system_phase > step.prev_system_phase) {
