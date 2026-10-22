@@ -127,14 +127,14 @@ the flags change nothing there.
 
 Checks a scene, a `.prefab.json` file, a [`.frames.json`](scene-format.md#sprite-frames) file, a
 [`.material.json`](scene-format.md#materials) file, a [`.anim.json`](scene-format.md#animations)
-file, a [`.process_material.json`](scene-format.md#process-materials) file, a [`.tileset.json`](scene-format.md#tile-sets) file, a [`.font.json`](scene-format.md#fonts)
+file, a [`.animtree.json`](scene-format.md#animation-trees) file, a [`.process_material.json`](scene-format.md#process-materials) file, a [`.tileset.json`](scene-format.md#tile-sets) file, a [`.font.json`](scene-format.md#fonts)
 file, a [`.theme.json`](scene-format.md#themes) file, an
 [`.audio.json`](scene-format.md#audio-streams) file, a
 [`.bus_layout.json`](scene-format.md#bus-layouts) file, a
 [`.replay.json`](scene-format.md#replays) file, a [`.test.json`](scene-format.md#tests) file or
 a [`.score.json`](scene-format.md#scores) file, or a [model](scene-format.md#models)
 (`.gltf`, `.glb`, `.obj`, `.fbx` or `.blend`), and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
-[scenes](scene-format.md#instanced-scenes) a file extends, the tile sets its layers use, the animation libraries its players use and the project's window size and theme are read from its
+[scenes](scene-format.md#instanced-scenes) a file extends, the tile sets its layers use, the animation libraries and trees its players and trees use and the project's window size and theme are read from its
 project: the nearest folder above it with a `project.json`, else the current folder. A `.blend`
 file, and one a scene's `MeshInstance3D` names, is converted with the artist's own Blender first
 if it hasn't been (`SLASH_BLENDER_PATH`; see [Blender models](scene-format.md#blender-models)).
@@ -148,7 +148,8 @@ slash-cli scene validate <file>
 ```
 
 For a prefab the result counts its `components` instead of `entities`, for a `.frames.json` or
-`.anim.json` file its `animations`, for a `.tileset.json` file its `tiles`, for a `.theme.json`
+`.anim.json` file its `animations`, for a `.animtree.json` file its `nodes` (each blend tree's
+output node among them), for a `.tileset.json` file its `tiles`, for a `.theme.json`
 file its `types`, for a `.bus_layout.json` file its `buses`, for a `.replay.json` file the
 `ticks` it covers, for a `.test.json` file its `tests`, for a `.score.json` file its `bars`,
 `tracks` and `notes`, for a model its `meshes`, `materials`, `images` and `bounds` (the corners
@@ -173,6 +174,15 @@ animation it names, and its `targets` must name every target the library's track
 
 ```json
 {"errors":[{"message":"no entity for target \"sword\", which hero.anim.json's tracks name; add it to targets; did you mean \"swrd\"?","path":"/entities/hero/components/AnimationPlayer/targets"}],"valid":false}
+```
+
+Each [`AnimationTree`](scene-format.md#animation-trees) must use a tree and libraries that load,
+with every animation and filter track the tree names, a `root_motion_track` some animation
+moves, `parameters` the tree has with values they take and `targets` for every target the
+tracks use, and a deterministic tree needs a `RESET` key for each value track:
+
+```json
+{"errors":[{"message":"hero.animtree.json has no parameter \"speed/blend_amout\"; did you mean \"speed/blend_amount\"?","path":"/entities/hero/components/AnimationTree/parameters/speed~1blend_amout"}],"valid":false}
 ```
 
 A scene's [controls](scene-format.md#ui-and-text) must lay out as written: each `children`
@@ -227,7 +237,7 @@ When the project has a
 
 ### scene format
 
-Rewrites a scene, prefab, `.frames.json`, `.material.json`, `.anim.json`,
+Rewrites a scene, prefab, `.frames.json`, `.material.json`, `.anim.json`, `.animtree.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json` or
 `.score.json` file in [canonical form](scene-format.md#canonical-form).
@@ -249,6 +259,7 @@ Prints a JSON Schema: for scene or prefab files (generated from the registered c
 [`.frames.json` files](scene-format.md#sprite-frames), for
 [`.material.json` files](scene-format.md#materials), for
 [`.anim.json` files](scene-format.md#animations), for
+[`.animtree.json` files](scene-format.md#animation-trees), for
 [`.process_material.json` files](scene-format.md#process-materials), for
 [`.tileset.json` files](scene-format.md#tile-sets), for [`.font.json` files](scene-format.md#fonts),
 for [`.theme.json` files](scene-format.md#themes), for
@@ -266,6 +277,7 @@ slash-cli schema prefab
 slash-cli schema frames
 slash-cli schema material
 slash-cli schema animation
+slash-cli schema animtree
 slash-cli schema process_material
 slash-cli schema tileset
 slash-cli schema font

@@ -121,6 +121,19 @@ A reference must name an entity that exists in the same scene.
 | | `time` | `double` | `0` | Seconds into the animation, from 0 to its length |
 | | `backwards` | `bool` | `false` | Play toward the start, as Godot's `play_backwards`; pingpong loops flip it at each end |
 | | `targets` | `std::map<std::string, entt::entity>` | `{}` | The entity each track [`target`](#animations) names, by name; `null` leaves that target's tracks unplayed |
+| `AnimationTree` | `tree_root` | `std::string` | `""` | Project path of a [`.animtree.json`](#animation-trees) file |
+| | `libraries` | `std::map<std::string, std::string>` | `{}` | Its animation libraries by name: `.anim.json` files or models. The tree names the animations of the library `""` by themselves, others' as `"library/animation"` |
+| | `targets` | `std::map<std::string, entt::entity>` | `{}` | The entity each track `target` names, by name |
+| | `active` | `bool` | `true` | Play the tree each tick; turning it off clears `state`, so it starts over |
+| | `deterministic` | `bool` | `true` | Tracks no animation plays go back to their `RESET` values; off, each track's weights are scaled to add up to 1 and unplayed tracks stay |
+| | `root_motion_track` | `std::string` | `""` | A model node whose motion is reported in `root_motion_*` instead of posed |
+| | `root_motion_local` | `bool` | `false` | Report `root_motion_position` in the node's own frame |
+| | `parameters` | `json::Object` | `{}` | Values for the tree's parameters, as `"speed/blend_amount"` or `"shot/request"`; requests go back to their defaults once the tree acts on them |
+| | `state` | `json::Object` | `{}` | What the tree keeps as it plays (times, fades, the current input); set by the tree, and empty starts it over |
+| | `playing` | `std::vector<TreeAnimation>` | `[]` | The animations the last tick played: `animation`, `time`, `weight` and `node_weights` (filtered model nodes). Set by the tree |
+| | `invalid` | `std::string` | `""` | Why the last tick played nothing; `""` when it played |
+| | `root_motion_position`, `root_motion_rotation`, `root_motion_scale` | `Vec3`, `Quat`, `Vec3` | zero, identity, zero | How the root motion track moved, turned and scaled in the last tick |
+| | `root_motion_position_accumulator`, `root_motion_rotation_accumulator`, `root_motion_scale_accumulator` | `Vec3`, `Quat`, `Vec3` | zero, identity, one | Where the animations put the root motion track |
 | `TileMapLayer` | `tile_set` | `std::string` | `""` | Project path of a [`.tileset.json`](#tile-sets) file |
 | | `origin` | `Vec2i` | `[0, 0]` | The cell the first key of the first row stands for, as [column, row] |
 | | `legend` | `std::map<std::string, std::string>` | `{}` | The tile each key in `rows` stands for, by name or as `"source:column,row"`, then `:<alternative>` and `:<turns>` if any ([turned cells](#alternative-tiles-and-turned-cells)) |
@@ -1615,6 +1628,93 @@ entity, so animate `Sprite2D/offset` to move a sprite around its entity instead.
   its tracks use. A player whose file, animation or track can't
   be used logs one warning and plays what it can.
 - Animation files reload when they change, like every asset, and exports check and ship them.
+
+## Animation trees
+
+A `.animtree.json` file is a tree of animation nodes, as Godot's `AnimationNodeBlendTree` and the
+nodes it holds: animations blended, added, faded in and out and switched between. An entity's
+[`AnimationTree`](#built-in-components) names the file in `tree_root` and the libraries its animations
+come from in `libraries` (`.anim.json` files or models). Each tick the `animation_tree` system,
+after `animation_player`, processes the tree with the entity's `parameters`, keeps what the nodes
+need in `state`, and mixes the animations they play as Godot's `AnimationMixer` does: value
+tracks blend by weight into the entity's (or a target's) components, event tracks emit their
+events, and a model's animations pose the skeleton of the model its `MeshInstance3D` draws in
+place of its `AnimationPlayer`'s. `slash-cli schema animtree` prints the schema,
+`slash-cli scene validate` and `scene format` accept `.animtree.json` files, and the
+[`animation.tree`](commands.md#animationtree) and
+[`animation.set_parameters`](commands.md#animationset_parameters) commands list and set
+parameters. [examples/animation-tree](../../examples/animation-tree/) points a waving arm.
+
+```json
+{
+  "format": 1,
+  "root": {
+    "type": "BlendTree",
+    "nodes": {
+      "wave": {"type": "Animation", "animation": "Wave-loop"},
+      "point": {"type": "Animation", "animation": "Point"},
+      "speed": {"type": "TimeScale", "inputs": {"in": "wave"}},
+      "shot": {"type": "OneShot", "inputs": {"in": "speed", "shot": "point"},
+               "fadein_time": 0.2, "fadeout_time": 0.2,
+               "filter_enabled": true, "filters": ["Shoulder"]}
+    },
+    "output": "shot"
+  }
+}
+```
+
+`root` is an `Animation`, a `BlendTree` or a blend space. A `BlendTree` holds nodes by name and connects them by the names in each
+node's `inputs`; `output` names the node whose result it gives. The node types are Godot's, with
+its field names:
+
+| Type | Inputs | Fields | Parameters |
+| --- | --- | --- | --- |
+| `Animation` | | `animation` (its name in the library `""`, or `"library/name"`), `play_mode`, `advance_on_start`, `use_custom_timeline` with `timeline_length`, `start_offset`, `loop_mode` and `stretch_time_scale` | |
+| `BlendTree` | | `nodes`, `output` | its nodes' |
+| `Blend2`, `Blend3` | `in`, `blend` / `in`, `-blend`, `+blend` | `sync`; filters on `Blend2` | `blend_amount` |
+| `Add2`, `Add3` | `in`, `add` / `in`, `-add`, `+add` | `sync`, filters | `add_amount` |
+| `Sub2` | `in`, `sub` | `sync`, filters | `sub_amount` |
+| `OneShot` | `in`, `shot` | `fadein_time`, `fadeout_time`, their `_curve`s, `mix_mode` (`blend`, `add`), `break_loop_at_end`, `autorestart` with its delays, `sync`, filters | `request`: `"fire"`, `"abort"`, `"fade_out"` |
+| `TimeScale` | `in` | | `scale` |
+| `TimeSeek` | `in` | `explicit_elapse` | `seek_request`: seconds |
+| `Transition` | a list of `{name, node, auto_advance, break_loop_at_end, reset}` | `xfade_time`, `xfade_curve`, `allow_transition_to_self`, `sync` | `transition_request`: an input's name |
+| `BlendSpace1D`, `BlendSpace2D` | | `points` (`{position, node}`, each node an `Animation`, a `BlendTree` or a blend space), `blend_mode` (`interpolated`, `discrete`, `discrete_carry`), `min_space`, `max_space`, `sync`; 2D: `auto_triangles` (Delaunay, as Godot's) or `triangles` | `blend_position`: a number, or `[x, y]` |
+
+Filters (`filter_enabled` and `filters`) name the tracks a node blends: a model node's name for
+the tracks that move it, a value track's path, `@` and an event track's event, each after its
+target and `:` if it has one (`"sword:Transform2D/rotation"`). The rest pass through, as Godot's
+filters.
+
+- A parameter's name is its node's path in the tree and its own: `"shot/request"`,
+  `"locomotion/walk/blend_amount"` for a node inside a blend tree inside the root's, and
+  `"blend_position"` for a root blend space. Games set them in `parameters`; requests go back to
+  their defaults once the tree acts on them. Everything else the nodes keep (times, fades, the
+  current input, `shot/active`) is in `state`. A blend space's points' nodes are named by their
+  index: `"space/0/..."`.
+- The first tick after the tree starts (or `state` is emptied) seeks every node to its start, as
+  Godot's tree does: nothing moves until the second tick. Animations at zero weight don't move on
+  unless a node's `sync` keeps them playing.
+- With `deterministic` (the default), every track any animation in the tree has is set each
+  tick: tracks no playing animation moves blend back toward their rest values, the first key of
+  the `RESET` animation in the library `""` (model nodes' rest poses for model animations). Off,
+  only played tracks are set and their weights are scaled to add up to 1.
+- Root motion: `root_motion_track` names a model node whose motion is taken out of the pose and
+  reported each tick in `root_motion_position`, `root_motion_rotation` and `root_motion_scale`
+  (the change) and the `_accumulator`s (where the animations put it), as Godot's, for gameplay
+  code to move the entity by. `root_motion_local` turns the position into the node's own frame.
+- An `Animation` node whose animation doesn't loop emits `animation_started` when it starts and
+  `animation_finished` when it reaches its end, with `{"animation": "<name>"}`, as Godot's tree
+  signals, before the events of event tracks.
+- A tree that can't play, such as an animation the libraries lack or an input connected to
+  nothing, plays nothing and says why in `invalid`, as Godot's `invalid_reasons`. A file that
+  doesn't load logs one warning.
+- `slash-cli scene validate` and exports check, in a scene or prefab, that each tree and library
+  loads, that the tree's animations and filters' tracks are in its libraries (with "did you
+  mean"), that `root_motion_track` is a node some animation moves, that `parameters` names
+  parameters the tree has with values they take, that `targets` has every target the tracks
+  name, and, for a deterministic tree, that every value track has a key in a `RESET`
+  animation. Tree files reload when they change, and exports check and ship them.
+- Not yet: state machines (`AnimationNodeStateMachine`), which come next.
 
 ## Tile sets
 

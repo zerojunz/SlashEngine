@@ -7,6 +7,7 @@
 
 #include "slash/ai/config.hpp"
 #include "slash/animation/animation.hpp"
+#include "slash/animation/tree.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/canvas/gpu_particles.hpp"
 #include "slash/canvas/material.hpp"
@@ -146,8 +147,8 @@ std::optional<fs::path> find_emscripten_toolchain() {
     return std::nullopt;
 }
 
-// The files a game reads at run time: scenes, prefabs, the assets sprites draw, animations, tile
-// sets, particle process materials, fonts and sounds.
+// The files a game reads at run time: scenes, prefabs, the assets sprites draw, animations and
+// animation trees, tile sets, particle process materials, fonts and sounds.
 enum class DataFile : std::uint8_t {
     None,
     Scene,
@@ -156,6 +157,7 @@ enum class DataFile : std::uint8_t {
     Material,
     ProcessMaterial,
     Animation,
+    AnimationTree,
     TileSet,
     Texture,
     FontSettings,
@@ -186,6 +188,9 @@ DataFile data_file(std::string_view name) {
     }
     if (name.ends_with(animation::kAnimationSuffix)) {
         return DataFile::Animation;
+    }
+    if (name.ends_with(animation::kTreeSuffix)) {
+        return DataFile::AnimationTree;
     }
     if (name.ends_with(canvas::kTileSetSuffix)) {
         return DataFile::TileSet;
@@ -268,6 +273,8 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return canvas::validate_process_material(parsed.value());
     case DataFile::Animation:
         return animation::validate_animation_library(parsed.value(), &components);
+    case DataFile::AnimationTree:
+        return animation::validate_tree(parsed.value());
     case DataFile::TileSet:
         return canvas::validate_tileset(parsed.value());
     case DataFile::FontSettings:
@@ -286,13 +293,17 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         break;
     }
     // Each tile map layer's cells must name tiles in its tile set, each AnimationPlayer's
-    // animation and track targets must be in its library and targets, controls must lay out,
-    // each sub-emitter must take part in a chain and each 3D mesh must draw.
+    // animation and track targets must be in its library and targets, each AnimationTree's tree
+    // must play from its libraries, controls must lay out, each sub-emitter must take part in a
+    // chain and each 3D mesh must draw.
     if (errors.empty()) {
         errors = canvas::check_tile_layers(parsed.value(), reader);
     }
     if (errors.empty()) {
         errors = animation::check_players(parsed.value(), reader);
+    }
+    if (errors.empty()) {
+        errors = animation::check_trees(parsed.value(), reader);
     }
     if (errors.empty() && kind == DataFile::Scene) {
         errors = ui::check_scene(components, parsed.value(), reader);
@@ -388,10 +399,10 @@ Result<bool> stage_texture_forms(std::string_view file, std::string_view bytes,
 }
 
 // Copies project.json, providers.json and every scene, prefab, texture, .frames.json,
-// .material.json, .anim.json, .tileset.json, font, .theme.json, sound, .audio.json and
-// .bus_layout.json file into data, checking each on the way. Materials take their shaders compiled
-// for the platform, and textures ship in the forms project.json's rendering.textures asks for,
-// kept in library_dir's cache.
+// .material.json, .anim.json, .animtree.json, .tileset.json, font, .theme.json, sound, .audio.json
+// and .bus_layout.json file into data, checking each on the way. Materials take their shaders
+// compiled for the platform, and textures ship in the forms project.json's rendering.textures asks
+// for, kept in library_dir's cache.
 bool stage_data(const fs::path& project_dir, const runtime::Project& project, const fs::path& data,
                 std::string_view target, const std::string& library_dir, Failure& failure) {
     std::error_code error;

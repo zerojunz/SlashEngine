@@ -2134,6 +2134,53 @@ void register_builtin_components(ComponentRegistry& registry) {
         .describe("targets", {.doc = "The entity each track target names, by name; tracks with "
                                      "no target animate this entity."});
 
+    registry.add<AnimationTree>()
+        .set_doc("Blends the animations of its libraries as a .animtree.json tree says (blend "
+                 "trees, blend spaces, one-shots, transitions), as Godot's AnimationTree, into "
+                 "the entity's components, its targets' and the skeleton of the model its "
+                 "MeshInstance3D draws. Emits animation_started and animation_finished, and the "
+                 "events of event tracks.")
+        .describe("tree_root", {.doc = "Project path of a .animtree.json file."})
+        .describe("libraries",
+                  {.doc = "Animation libraries by name: .anim.json files or models. The tree names "
+                          "animations of the library \"\" by themselves, others' as "
+                          "\"library/animation\". A RESET animation in \"\" gives tracks' rest "
+                          "values."})
+        .describe("targets", {.doc = "The entity each track target names, by name; tracks with "
+                                     "no target animate this entity."})
+        .describe("active", {.doc = "Play the tree each tick; turning it off clears state, so "
+                                    "it starts over."})
+        .describe("deterministic",
+                  {.doc = "Tracks no animation plays go back to their RESET values. Off, each "
+                          "track's weights are scaled to add up to 1 and unplayed tracks stay."})
+        .describe("root_motion_track",
+                  {.doc = "A model node whose motion is reported in root_motion_* instead of "
+                          "posed, for gameplay code to move the entity by."})
+        .describe("root_motion_local", {.doc = "Report root_motion_position in the node's own "
+                                               "frame, turned by its rotation."})
+        .describe("parameters",
+                  {.doc = "Values for the tree's parameters by name, as \"speed/blend_amount\", "
+                          "\"shot/request\" or \"state/transition_request\". Requests go back to "
+                          "their defaults once the tree acts on them."})
+        .describe("state", {.doc = "What the tree keeps as it plays: times, fades, the current "
+                                   "input. Set by the tree; empty starts it over."})
+        .describe("playing", {.doc = "The animations the last tick played, with their times and "
+                                     "weights. Set by the tree."})
+        .describe("invalid", {.doc = "Why the last tick played nothing, as a missing animation or "
+                                     "an input connected to nothing; \"\" when it played."})
+        .describe("root_motion_position", {.doc = "How far the root motion track moved in the "
+                                                  "last tick."})
+        .describe("root_motion_rotation", {.doc = "How the root motion track turned in the last "
+                                                  "tick, as a quaternion."})
+        .describe("root_motion_scale", {.doc = "How the root motion track's scale changed in "
+                                               "the last tick."})
+        .describe("root_motion_position_accumulator",
+                  {.doc = "Where the animations put the root motion track."})
+        .describe("root_motion_rotation_accumulator",
+                  {.doc = "How the animations turn the root motion track."})
+        .describe("root_motion_scale_accumulator",
+                  {.doc = "The scale the animations give the root motion track."});
+
     registry.add<TileMapLayer>()
         .set_doc("A grid of tiles from a .tileset.json file, drawn at the entity's Transform2D "
                  "if it has one. Cells are text: rows of legend keys, \".\" for empty. Edit them "
