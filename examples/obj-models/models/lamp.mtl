@@ -1,0 +1,9 @@
+# Materials for lamp.obj, as Blender writes them.
+newmtl Iron
+Ns 400.000000
+Kd 0.180000 0.190000 0.210000
+Ks 0.600000 0.600000 0.600000
+
+newmtl Glass
+Kd 1.000000 0.850000 0.450000
+d 0.700000

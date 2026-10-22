@@ -41,6 +41,11 @@ void append_utf8(std::string& out, char32_t character);
 // ".." segments, and no backslash or ':'. Such a path names the same file on every platform.
 [[nodiscard]] bool is_project_path(std::string_view path);
 
+// The number decimal text such as "-1.5e3" stands for, correctly rounded and read the same in
+// every locale; nullopt if text isn't one. It takes JSON's numbers, and also a leading '+',
+// leading zeros and a '.' with digits on one side only, as other text formats write them.
+[[nodiscard]] std::optional<double> parse_decimal(std::string_view text);
+
 // Bytes as base64 text (RFC 4648, with padding), as JSON carries images.
 [[nodiscard]] std::string base64_encode(std::string_view bytes);
 // The bytes base64 text stands for, padded or not; nullopt if it isn't base64.

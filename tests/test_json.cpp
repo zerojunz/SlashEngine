@@ -101,6 +101,27 @@ TEST_CASE("pointer_escape escapes tilde and slash") {
     CHECK(json::pointer_escape("a/b~c") == "a~1b~0c");
 }
 
+TEST_CASE("parse_decimal reads numbers as other text formats write them") {
+    CHECK(slash::parse_decimal("1.5").value() == 1.5);
+    CHECK(slash::parse_decimal("-0.125").value() == -0.125);
+    CHECK(slash::parse_decimal("+2").value() == 2.0);
+    CHECK(slash::parse_decimal("007").value() == 7.0);
+    CHECK(slash::parse_decimal(".5").value() == 0.5);
+    CHECK(slash::parse_decimal("-.25").value() == -0.25);
+    CHECK(slash::parse_decimal("3.").value() == 3.0);
+    CHECK(slash::parse_decimal("1e-3").value() == 0.001);
+    CHECK(slash::parse_decimal("2.5E+2").value() == 250.0);
+    CHECK(slash::parse_decimal("0.1").value() == 0.1);
+    CHECK(slash::parse_decimal("123456789012345678901234567890").value() == 1.2345678901234568e29);
+    CHECK_FALSE(slash::parse_decimal("").has_value());
+    CHECK_FALSE(slash::parse_decimal(".").has_value());
+    CHECK_FALSE(slash::parse_decimal("-").has_value());
+    CHECK_FALSE(slash::parse_decimal("1e").has_value());
+    CHECK_FALSE(slash::parse_decimal("1,5").has_value());
+    CHECK_FALSE(slash::parse_decimal("nan").has_value());
+    CHECK_FALSE(slash::parse_decimal("1 ").has_value());
+}
+
 TEST_CASE("base64_decode reads RFC 4648's test vectors, padded or not") {
     CHECK(slash::base64_decode("").value().empty());
     CHECK(slash::base64_decode("Zg==").value() == "f");

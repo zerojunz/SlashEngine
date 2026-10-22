@@ -609,9 +609,11 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [ ] Heightmap terrain; CSG and grid-based tile placement
 - [x] glTF 2.0 models (`.gltf` and `.glb`: meshes, materials and textures) on `MeshInstance3D`,
       and JPEG textures, as Godot's importer reads them
-- [ ] Import of FBX and OBJ, plus Blender `.blend` files the way Godot does it: the engine runs
-      the artist's own Blender in the background to convert them to glTF, so no Blender code is
-      linked or shipped
+- [x] OBJ models (`.obj` with their `.mtl` libraries) on `MeshInstance3D`, as Godot's OBJ importer
+      reads them
+- [ ] FBX models through ufbx, as Godot 4.3's importer reads them
+- [ ] Blender `.blend` files the way Godot does it: the engine runs the artist's own Blender in
+      the background to convert them to glTF, so no Blender code is linked or shipped
 - [ ] 3D scenes in `project.import` from Godot and Unity projects, and Unreal Engine projects
       imported through the user's own Unreal Editor: its project files are a closed binary
       format, so the editor exports the levels and assets and the importer converts what it
