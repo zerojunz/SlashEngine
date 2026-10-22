@@ -373,14 +373,27 @@ public:
             destroy_buffer(buffer);
         }
         release_uniform_groups();
-        for (WGPUBindGroupLayout layout :
-             {empty_layout_, vertex_uniforms_layout_, sprite_textures_layout_,
-              material_textures_layout_, fragment_uniforms_layout_, process_inputs_layout_,
-              process_outputs_layout_, draw_inputs_layout_, draw_outputs_layout_,
-              emit_outputs_layout_, compute_uniforms_layout_, mesh_vertex_layout_,
-              mesh_textures_layout_, mesh_fragment_layout_, shadow_vertex_layout_,
-              shadow_fragment_layout_, post_textures_layout_, post_uniforms_layout_,
-              sky_uniforms_layout_, cube_texture_layout_, filter_uniforms_layout_}) {
+        for (WGPUBindGroupLayout layout : {empty_layout_,
+                                           vertex_uniforms_layout_,
+                                           sprite_textures_layout_,
+                                           material_textures_layout_,
+                                           fragment_uniforms_layout_,
+                                           process_inputs_layout_,
+                                           process_outputs_layout_,
+                                           draw_inputs_layout_,
+                                           draw_outputs_layout_,
+                                           emit_outputs_layout_,
+                                           compute_uniforms_layout_,
+                                           mesh_vertex_layout_,
+                                           mesh_textures_layout_,
+                                           mesh_fragment_layout_,
+                                           shadow_vertex_layout_,
+                                           shadow_fragment_layout_,
+                                           post_textures_layout_,
+                                           post_uniforms_layout_,
+                                           sky_uniforms_layout_,
+                                           cube_texture_layout_,
+                                           filter_uniforms_layout_}) {
             if (layout != nullptr) {
                 wgpuBindGroupLayoutRelease(layout);
             }
