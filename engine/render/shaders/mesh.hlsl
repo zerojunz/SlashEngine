@@ -183,7 +183,7 @@ float4 finish(float3 color, float alpha, float3 world) {
         color = lerp(color, fogged.rgb, fogged.a);
     }
     color *= tonemap.x;
-    if (tonemap.w != 0.0) {
+    [branch] if (tonemap.w != 0.0) {
         color = apply_tonemapping(color, tonemap.y, (uint)tonemap.z);
     }
     return float4(linear_to_srgb(color), alpha);
@@ -390,33 +390,10 @@ float light_shadow(bool directional, uint slot, float3 world, float3 normal, flo
     return lerp(1.0, shadow, params.z);
 }
 
-float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
-    // Every texture is sampled first, while control flow is uniform, as WGSL requires.
-    float4 texel = albedo_texture.Sample(albedo_sampler, input.uv);
-    float4 metallic_texel = metallic_texture.Sample(metallic_sampler, input.uv);
-    float4 roughness_texel = roughness_texture.Sample(roughness_sampler, input.uv);
-    float3 emission_texel = emission_texture.Sample(emission_sampler, input.uv).rgb;
-    float3 mapped = normal_texture.Sample(normal_sampler, input.uv).rgb;
-
-    uint flags = options.x;
-    float4 color = albedo * texel;
-    if ((flags & kVertexColorAlbedo) != 0u) {
-        color *= input.color;
-    }
-    // Opaque materials leave alpha alone, as Godot's StandardMaterial3D only sets ALPHA when
-    // it is transparent.
-    float alpha = (flags & kHasAlpha) != 0u ? color.a : 1.0;
-    if ((flags & kAlphaScissor) != 0u) {
-        if (alpha < asfloat(options.y)) {
-            discard;
-        }
-        alpha = 1.0;
-    }
-    float3 base = srgb_to_linear(color.rgb);
-    if ((flags & kUnshaded) != 0u) {
-        return finish(base, alpha, input.world);
-    }
-
+// A lit pixel's color, linear: its lights, reflections, emission and ambient light on base, the
+// albedo.
+float3 lit_color(VertexOutput input, bool front, uint flags, float3 base, float4 metallic_texel,
+                 float4 roughness_texel, float3 emission_texel, float3 mapped) {
     float metallic = surface.x * dot(metallic_texel, metallic_channel);
     float roughness = surface.y * dot(roughness_texel, roughness_channel);
     float specular = surface.z;
@@ -510,6 +487,37 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
 
     ambient_light *= base * (1.0 - metallic);
     diffuse_light *= base * (1.0 - metallic);
-    float3 lit = diffuse_light + specular_light + reflected + emitted + ambient_light;
+    return diffuse_light + specular_light + reflected + emitted + ambient_light;
+}
+
+float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
+    // Every texture is sampled first, while control flow is uniform, as WGSL requires.
+    float4 texel = albedo_texture.Sample(albedo_sampler, input.uv);
+    float4 metallic_texel = metallic_texture.Sample(metallic_sampler, input.uv);
+    float4 roughness_texel = roughness_texture.Sample(roughness_sampler, input.uv);
+    float3 emission_texel = emission_texture.Sample(emission_sampler, input.uv).rgb;
+    float3 mapped = normal_texture.Sample(normal_sampler, input.uv).rgb;
+
+    uint flags = options.x;
+    float4 color = albedo * texel;
+    if ((flags & kVertexColorAlbedo) != 0u) {
+        color *= input.color;
+    }
+    // Opaque materials leave alpha alone, as Godot's StandardMaterial3D only sets ALPHA when
+    // it is transparent.
+    float alpha = (flags & kHasAlpha) != 0u ? color.a : 1.0;
+    if ((flags & kAlphaScissor) != 0u) {
+        if (alpha < asfloat(options.y)) {
+            discard;
+        }
+        alpha = 1.0;
+    }
+    float3 base = srgb_to_linear(color.rgb);
+    float3 lit = base;
+    if ((flags & kUnshaded) == 0u) {
+        lit = lit_color(input, front, flags, base, metallic_texel, roughness_texel, emission_texel,
+                        mapped);
+    }
+    // One call, so the tonemappers are inlined once and the shader stays small.
     return finish(lit, alpha, input.world);
 }
