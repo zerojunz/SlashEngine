@@ -32,7 +32,7 @@ Rules that apply to every command (see [concepts.md](../concepts.md#sessions)):
 
 Add `"dry_run": true` to the params of any command that changes the world (`scene.new`,
 `scene.open`, `entity.create`, `entity.destroy`, `component.set`, `component.remove`, `step`,
-`run.until`, `world.restore`, `storyboard.edit`, `replay.run`, `replay.seek` and `batch`) to see what it would do. The command runs, then
+`run.until`, `world.restore`, `storyboard.edit`, `navigation.bake`, `replay.run`, `replay.seek` and `batch`) to see what it would do. The command runs, then
 the world, the scene's path, the next generated ID and the tick counter are put back, and no undo
 step is recorded. An error is returned as usual. The result holds the command's own result and the
 changes, in the same form as [`world.diff`](#worlddiff):
@@ -47,7 +47,7 @@ changes, in the same form as [`world.diff`](#worlddiff):
 
 A batch takes `dry_run` itself; the commands inside it cannot. In a dry-run batch, `scene.save`
 and `prefab.save` check everything and return their usual result but write no file, and
-`storyboard.edit` returns the versions it would write. Commands that change nothing, such
+`storyboard.edit` returns the versions it would write and `navigation.bake` what it would bake. Commands that change nothing, such
 as `entity.get`, reject it as an unknown param.
 
 ## Contents
@@ -64,7 +64,7 @@ as `entity.get`, reject it as an unknown param.
 | Models | [`model.inspect`](#modelinspect), [`skeleton.get`](#skeletonget) |
 | Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity) |
-| Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent) |
+| Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
 | Particles | [`particles.eval`](#particleseval) |
 | Lights | [`light.sample`](#lightsample) |
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
@@ -1068,6 +1068,38 @@ Needs: `read`. The guard, before it sets off:
 ```
 
 An unknown ID fails at `/id` with a "did you mean", and an entity with no agent fails there too.
+
+### navigation.bake
+
+Bakes a [region's](scene-format.md#regions) `.navmesh.json` or `.navpoly.json` file from the
+geometry under it, as Godot's `bake_navigation_mesh` and `bake_navigation_polygon`, with the
+[settings](scene-format.md#baking) in the file (Godot's defaults for a file that isn't there
+yet). It replaces the file's `vertices` and `polygons`, keeping everything else as written, and
+returns how many it wrote, how many obstructions a 2D bake cut out, and `warnings` when there
+are any: settings that don't fit whole cells, meshes that didn't load and a region with nothing
+under it to bake. A bake that comes out the same reports `"unchanged": true` and records no undo
+step. Undo puts the file back as it was, removing it if the bake made it, and redo writes the
+bake again; both fail if the file changed since. The map takes the new file at the next command
+or tick.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with a `NavigationRegion3D` or `NavigationRegion2D` |
+
+Needs: `edit` and `filesystem`. A courtyard in
+[examples/navigation-baking](../../examples/navigation-baking/):
+
+```json
+{"id": "courtyard"}
+```
+
+```json
+{"file":"nav/courtyard.navmesh.json","polygons":36,"vertices":34}
+```
+
+An unknown ID fails at `/id` with a "did you mean"; so do an entity with no region, a region
+with no file named and a file of the other kind. A file that doesn't validate fails with its
+first error's JSON Pointer.
 
 ## Particles
 

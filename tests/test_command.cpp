@@ -1899,6 +1899,99 @@ TEST_CASE("navigation commands find paths, points and agents' progress") {
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("navigation.bake bakes a region's file from what is under it, and undo puts it back") {
+    const std::string root = "navigation_bake_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root + "/nav").ok());
+    const std::string yard_file = R"({"format": 1, "agent_radius": 5,
+        "outlines": [[[0, 0], [100, 0], [100, 100], [0, 100]]]})";
+    REQUIRE(slash::platform::write_file(root + "/nav/yard.navpoly.json", yard_file).ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "floor", "components": {
+            "Transform3D": {"position": [0, -0.5, 0]}, "StaticBody3D": {},
+            "CollisionShape3D": {"size": [10, 1, 10]}}}},
+        {"command": "entity.create", "params": {"id": "level", "components": {
+            "Transform3D": {"children": ["floor"]},
+            "NavigationRegion3D": {"navigation_mesh": "nav/level.navmesh.json"}}}},
+        {"command": "entity.create", "params": {"id": "rock", "components": {
+            "Transform2D": {"position": [50, 50]}, "StaticBody2D": {},
+            "CollisionShape2D": {"shape": "rectangle", "size": [20, 20]}}}},
+        {"command": "entity.create", "params": {"id": "yard", "components": {
+            "Transform2D": {"children": ["rock"]},
+            "NavigationRegion2D": {"navigation_polygon": "nav/yard.navpoly.json"}}}}]})");
+    const auto read = [&](const std::string& path) -> std::optional<std::string> {
+        if (!std::filesystem::exists(root + "/" + path)) {
+            return std::nullopt;
+        }
+        return slash::platform::read_file(root + "/" + path).value();
+    };
+
+    // A dry run says what it would bake and writes nothing.
+    CHECK(engine.ok("navigation.bake", R"({"id": "level", "dry_run": true})") ==
+          parse(R"({"dry_run": true, "changes": {}, "result": {
+              "file": "nav/level.navmesh.json", "vertices": 4, "polygons": 2}})"));
+    CHECK_FALSE(read("nav/level.navmesh.json"));
+
+    // A file it makes has the format and the polygons; the map takes it at the next command.
+    CHECK(engine.ok("navigation.bake", R"({"id": "level"})") ==
+          parse(R"({"file": "nav/level.navmesh.json", "vertices": 4, "polygons": 2})"));
+    const std::optional<std::string> level = read("nav/level.navmesh.json");
+    REQUIRE(level);
+    // Clockwise seen from above, as Godot's bakes are, so their normals point down.
+    CHECK(parse(*level) == parse(R"({"format": 1,
+        "vertices": [[-4.5, 0.5, -4.5], [-4.5, 0.5, 4.5], [4.5, 0.5, 4.5], [4.5, 0.5, -4.5]],
+        "polygons": [[3, 2, 0], [0, 2, 1]]})"));
+    CHECK(engine.ok("navigation.closest", R"({"point": [0, 3, 0]})") ==
+          parse(R"({"point": [0, 0.5, 0], "normal": [0, -81, 0], "owner": "level"})"));
+    // Baking again changes nothing.
+    CHECK(*engine.ok("navigation.bake", R"({"id": "level"})").find("unchanged") == true);
+
+    // A 2D bake keeps the file's settings and outlines, and paths go round the rock.
+    CHECK(engine.ok("navigation.bake", R"({"id": "yard"})") ==
+          parse(R"({"file": "nav/yard.navpoly.json", "vertices": 8, "polygons": 4,
+                    "obstructions": 1})"));
+    const json::Value yard = parse(*read("nav/yard.navpoly.json"));
+    CHECK(*yard.find("agent_radius") == 5);
+    CHECK(yard.find("outlines")->size() == 1);
+    const json::Value path = engine.ok("navigation.path", R"({"from": [10, 50], "to": [90, 50]})");
+    CHECK(*path.find("points") == parse("[[10, 50], [35, 65], [65, 65], [90, 50]]"));
+
+    // Undo puts each file back as it was, removing one the bake made, and redo bakes again.
+    engine.ok("undo");
+    CHECK(read("nav/yard.navpoly.json") == yard_file);
+    engine.ok("undo");
+    CHECK_FALSE(read("nav/level.navmesh.json"));
+    engine.ok("redo");
+    CHECK(read("nav/level.navmesh.json") == level);
+    // Neither runs over a file someone changed since.
+    REQUIRE(slash::platform::write_file(root + "/nav/level.navmesh.json", "{}").ok());
+    auto reply = engine.fails("undo", "{}", command::code::kConflict);
+    CHECK(reply.message == "could not undo \"navigation.bake\": \"nav/level.navmesh.json\" "
+                           "changed since; nothing was changed");
+    CHECK(read("nav/level.navmesh.json") == "{}");
+
+    reply = engine.fails("navigation.bake", R"({"id": "levle"})", command::code::kNotFound);
+    CHECK(reply.message == "/id: no entity has the id \"levle\"; did you mean \"level\"?");
+    reply = engine.fails("navigation.bake", R"({"id": "floor"})", command::code::kInvalidParams);
+    CHECK(reply.message == "/id: \"floor\" has no NavigationRegion2D or NavigationRegion3D");
+    reply = engine.fails("navigation.bake", R"({"id": "level"})", command::code::kInvalidArgument);
+    CHECK(reply.message == "nav/level.navmesh.json: missing required property \"format\"");
+    engine.ok("component.set", R"({"id": "level", "components": {
+        "NavigationRegion3D": {"navigation_mesh": ""}}})");
+    reply = engine.fails("navigation.bake", R"({"id": "level"})", command::code::kInvalidArgument);
+    CHECK(reply.message == "/id: \"level\" names no navigation_mesh file to bake into, such as "
+                           "\"navigation/level.navmesh.json\"");
+    engine.ok("component.set", R"({"id": "level", "components": {
+        "NavigationRegion3D": {"navigation_mesh": "nav/yard.navpoly.json"}}})");
+    reply = engine.fails("navigation.bake", R"({"id": "level"})", command::code::kInvalidArgument);
+    CHECK(reply.message == "/id: its navigation_mesh \"nav/yard.navpoly.json\" is not a "
+                           ".navmesh.json file");
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("physics commands find bodies by ray, point and shape, and what touches them") {
     Engine engine;
     engine.ok("batch", R"({"commands": [

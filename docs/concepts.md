@@ -395,6 +395,11 @@ to its target and follows the entity's progress along it, emitting events at eac
 moves nothing: gameplay code moves it toward its next path position. `navigation.path`,
 `navigation.closest` and `navigation.random` ask where the maps go, and `navigation.agent` how an
 agent is doing. The [navigation example](../examples/navigation/) sends a guard through a hatch.
+**Baking** makes a region's polygons from the scene, as Godot bakes them: `navigation.bake`
+takes the meshes and static bodies under the region (in 2D, the outlines in its file less the
+static bodies in the way), keeps agents their radius from walls and writes the walkable area
+into the region's file. The [baking example](../examples/navigation-baking/) bakes a courtyard
+and a garden.
 
 **Tile maps** follow Godot's TileSet and TileMapLayer. A `.tileset.json` file cuts atlas
 textures into **tiles** and groups **terrains** (grass, water) into terrain sets; each terrain
