@@ -104,7 +104,7 @@ inline constexpr std::uint32_t kRadianceSamples = 128;
 // The filter pass's uniforms: b0 in space3 of shaders/radiance.hlsl.
 struct RadianceUniforms {
     // The face, one over the level's size, the samples' weight, and how many samples (0 copies
-    // the level the source view starts at).
+    // the source's level params[2], counted from the level its view starts at).
     Float4 params{};
     // GGX importance samples around +z: a direction, then the source level it is sampled at.
     std::array<Float4, kRadianceSamples> samples{};
