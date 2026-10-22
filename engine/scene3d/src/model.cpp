@@ -6,15 +6,18 @@
 #include "slash/core/text.hpp"
 #include "slash/render/image.hpp"
 #include "slash/scene3d/blend.hpp"
+#include "slash/scene3d/skeleton.hpp"
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cgltf.h>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -138,8 +141,9 @@ Result<render::Image> embedded_image(const cgltf_options& options, const cgltf_i
         }
         const std::string_view base64 = uri.substr(comma + 1);
         std::size_t size = base64.size() / 4 * 3;
-        size -= static_cast<std::size_t>(
-            std::count(base64.end() - std::min<std::size_t>(base64.size(), 2), base64.end(), '='));
+        const std::string_view padding =
+            base64.substr(base64.size() - std::min<std::size_t>(base64.size(), 2));
+        size -= static_cast<std::size_t>(std::ranges::count(padding, '='));
         void* out = nullptr;
         if (cgltf_load_buffer_base64(&options, size, base64.data(), &out) != cgltf_result_success) {
             return make_error(ErrorCode::InvalidArgument, "its base64 doesn't decode");
@@ -255,10 +259,11 @@ ModelMaterial material_of(const cgltf_data& data, std::size_t index) {
     return out;
 }
 
-const cgltf_accessor* attribute(const cgltf_primitive& primitive, cgltf_attribute_type type) {
+const cgltf_accessor* attribute(const cgltf_primitive& primitive, cgltf_attribute_type type,
+                                int index = 0) {
     for (cgltf_size i = 0; i < primitive.attributes_count; ++i) {
         const cgltf_attribute& a = primitive.attributes[i];
-        if (a.type == type && a.index == 0) {
+        if (a.type == type && a.index == index) {
             return a.data;
         }
     }
@@ -332,6 +337,46 @@ surface_of(const cgltf_data& data, const cgltf_primitive& primitive, const std::
         }
     }
 
+    // Joints and weights, four a vertex or eight with a second set, normalized to add up to 1,
+    // as Godot's GLTFDocument::_parse_meshes reads them.
+    const cgltf_accessor* joints = attribute(primitive, cgltf_attribute_type_joints);
+    const cgltf_accessor* weights = attribute(primitive, cgltf_attribute_type_weights);
+    if (joints != nullptr && weights != nullptr) {
+        const cgltf_accessor* joints_1 = attribute(primitive, cgltf_attribute_type_joints, 1);
+        const cgltf_accessor* weights_1 = attribute(primitive, cgltf_attribute_type_weights, 1);
+        const bool eight = joints_1 != nullptr && weights_1 != nullptr;
+        triangles.weights.resize(count);
+        const auto read = [&](const cgltf_accessor& j, const cgltf_accessor& w, std::size_t first) {
+            for (std::size_t i = 0; i < count && i < j.count && i < w.count; ++i) {
+                std::array<cgltf_uint, 4> ids{};
+                std::array<float, 4> amounts{};
+                cgltf_accessor_read_uint(&j, i, ids.data(), 4);
+                cgltf_accessor_read_float(&w, i, amounts.data(), 4);
+                VertexWeights& out = triangles.weights[i];
+                for (std::size_t k = 0; k < 4; ++k) {
+                    out.joints.at(first + k) =
+                        static_cast<std::uint16_t>(std::min<cgltf_uint>(ids.at(k), 0xFFFFU));
+                    out.weights.at(first + k) = std::max(amounts.at(k), 0.0F);
+                }
+            }
+        };
+        read(*joints, *weights, 0);
+        if (eight) {
+            read(*joints_1, *weights_1, 4);
+        }
+        for (VertexWeights& w : triangles.weights) {
+            float total = 0.0F;
+            for (const float weight : w.weights) {
+                total += weight;
+            }
+            if (total > 0.0F) {
+                for (float& weight : w.weights) {
+                    weight /= total;
+                }
+            }
+        }
+    }
+
     // The corners in order, then as a list of triangles.
     std::vector<std::uint32_t> order;
     if (primitive.indices != nullptr) {
@@ -392,6 +437,7 @@ surface_of(const cgltf_data& data, const cgltf_primitive& primitive, const std::
     ModelSurface surface;
     surface.vertices = std::move(triangles.vertices);
     surface.indices = std::move(triangles.indices);
+    surface.weights = std::move(triangles.weights);
     surface.material =
         primitive.material == nullptr ? -1 : static_cast<int>(primitive.material - data.materials);
     return std::optional<ModelSurface>(std::move(surface));
@@ -406,16 +452,276 @@ world::Affine3D affine_of(const std::array<float, 16>& m) {
     return out;
 }
 
-void add_parts(const cgltf_data& data, const cgltf_node& node, Model& model) {
-    if (node.mesh != nullptr) {
-        std::array<float, 16> matrix{};
-        cgltf_node_transform_world(&node, matrix.data());
-        model.parts.push_back({.node = node.name != nullptr ? node.name : "",
-                               .mesh = static_cast<std::size_t>(node.mesh - data.meshes),
-                               .transform = affine_of(matrix)});
+// Godot's String::validate_node_name, with AnimationLibrary::validate_library_name's characters
+// for animations: those a name can't have become underscores.
+std::string valid_name(std::string_view name, bool animation) {
+    std::string out(name);
+    for (char& c : out) {
+        if (c == '.' || c == ':' || c == '@' || c == '/' || c == '"' || c == '%' ||
+            (animation && (c == ',' || c == '['))) {
+            c = '_';
+        }
     }
-    for (cgltf_size i = 0; i < node.children_count; ++i) {
-        add_parts(data, *node.children[i], model);
+    return out;
+}
+
+// Godot's GLTFDocument::_gen_unique_name: a valid name, numbered from 2 when it is taken.
+std::string unique_name(std::set<std::string, std::less<>>& taken, std::string_view name,
+                        bool animation = false) {
+    const std::string base = valid_name(name, animation);
+    std::string out = base;
+    for (int index = 2; taken.contains(out); ++index) {
+        out = base + std::to_string(index);
+    }
+    taken.insert(out);
+    return out;
+}
+
+// The scene's nodes in tree order, parents first, and the meshes they place, as Godot's
+// GLTFDocument::_parse_nodes and _assign_node_names make them.
+struct SceneReader {
+    const cgltf_data& data;
+    Model& model;
+    std::unordered_map<const cgltf_node*, std::size_t> indices;
+    std::set<std::string, std::less<>> names;
+    std::vector<const cgltf_node*> part_nodes; // the node of each part
+
+    void add(const cgltf_node& node, int parent) {
+        const std::size_t index = model.nodes.size();
+        if (!indices.emplace(&node, index).second) {
+            return; // a node listed twice keeps its first place
+        }
+        ModelNode out;
+        const bool named = node.name != nullptr && *node.name != '\0';
+        const char* unnamed = node.mesh != nullptr ? "Mesh" : "Node";
+        out.name = unique_name(names, named ? node.name : unnamed);
+        out.parent = parent;
+        if (node.has_matrix != 0) {
+            std::array<float, 16> matrix{};
+            std::copy(std::begin(node.matrix), std::end(node.matrix), matrix.begin());
+            const NodePose pose = decompose(affine_of(matrix));
+            out.position = pose.position;
+            out.rotation = pose.rotation;
+            out.scale = pose.scale;
+        } else {
+            if (node.has_translation != 0) {
+                out.position = {node.translation[0], node.translation[1], node.translation[2]};
+            }
+            if (node.has_rotation != 0) {
+                const Quat q{node.rotation[0], node.rotation[1], node.rotation[2],
+                             node.rotation[3]};
+                const float length =
+                    std::sqrt((q.x * q.x) + (q.y * q.y) + (q.z * q.z) + (q.w * q.w));
+                out.rotation = length > 0.0F
+                                   ? Quat{q.x / length, q.y / length, q.z / length, q.w / length}
+                                   : Quat{};
+            }
+            if (node.has_scale != 0) {
+                out.scale = {node.scale[0], node.scale[1], node.scale[2]};
+            }
+        }
+        const std::string name = out.name;
+        model.nodes.push_back(std::move(out));
+        if (node.mesh != nullptr) {
+            std::array<float, 16> matrix{};
+            cgltf_node_transform_world(&node, matrix.data());
+            model.parts.push_back({.node = name,
+                                   .mesh = static_cast<std::size_t>(node.mesh - data.meshes),
+                                   .transform = affine_of(matrix),
+                                   .node_index = static_cast<int>(index)});
+            part_nodes.push_back(&node);
+        }
+        for (cgltf_size i = 0; i < node.children_count; ++i) {
+            add(*node.children[i], static_cast<int>(index));
+        }
+    }
+};
+
+// The skins whose joints are all in the scene, as Godot's GLTFDocument::_parse_skins reads
+// them; a part whose skin is left out draws where its node puts it.
+void read_skins(const cgltf_data& data, const SceneReader& scene, Model& model) {
+    std::vector<int> made(data.skins_count, -1);
+    for (cgltf_size i = 0; i < data.skins_count; ++i) {
+        const cgltf_skin& in = data.skins[i];
+        ModelSkin skin;
+        skin.name = in.name != nullptr ? in.name : "";
+        bool whole = in.joints_count > 0;
+        for (cgltf_size j = 0; j < in.joints_count && whole; ++j) {
+            const auto found = scene.indices.find(in.joints[j]);
+            whole = found != scene.indices.end();
+            if (whole) {
+                skin.joints.push_back(found->second);
+            }
+        }
+        if (!whole) {
+            continue;
+        }
+        skin.inverse_binds.resize(skin.joints.size());
+        if (in.inverse_bind_matrices != nullptr) {
+            for (cgltf_size j = 0; j < skin.joints.size() && j < in.inverse_bind_matrices->count;
+                 ++j) {
+                std::array<float, 16> matrix{};
+                cgltf_accessor_read_float(in.inverse_bind_matrices, j, matrix.data(), 16);
+                skin.inverse_binds[j] = affine_of(matrix);
+            }
+        }
+        made[i] = static_cast<int>(model.skins.size());
+        model.skins.push_back(std::move(skin));
+    }
+    for (std::size_t p = 0; p < model.parts.size(); ++p) {
+        const cgltf_node* node = scene.part_nodes[p];
+        if (node->skin != nullptr) {
+            model.parts[p].skin = made[static_cast<std::size_t>(node->skin - data.skins)];
+        }
+    }
+}
+
+// Hermite interpolation between two keys of a CUBICSPLINE sampler, as the glTF specification
+// gives it: from and to with from's out-tangent and to's in-tangent, over span seconds.
+std::array<float, 4> hermite(const std::array<float, 4>& from, const std::array<float, 4>& out,
+                             const std::array<float, 4>& in, const std::array<float, 4>& to,
+                             float t, float span) {
+    const float t2 = t * t;
+    const float t3 = t2 * t;
+    const float a = (2.0F * t3) - (3.0F * t2) + 1.0F;
+    const float b = (t3 - (2.0F * t2) + t) * span;
+    const float c = (-2.0F * t3) + (3.0F * t2);
+    const float d = (t3 - t2) * span;
+    std::array<float, 4> v{};
+    for (std::size_t k = 0; k < 4; ++k) {
+        v.at(k) = (a * from.at(k)) + (b * out.at(k)) + (c * to.at(k)) + (d * in.at(k));
+    }
+    return v;
+}
+
+std::array<float, 4> normalized_rotation(std::array<float, 4> q) {
+    const float length = std::sqrt((q[0] * q[0]) + (q[1] * q[1]) + (q[2] * q[2]) + (q[3] * q[3]));
+    if (length == 0.0F) {
+        return {0.0F, 0.0F, 0.0F, 1.0F};
+    }
+    for (float& v : q) {
+        v /= length;
+    }
+    return q;
+}
+
+// The model's animations, as Godot's GLTFDocument::_parse_animations and _import_animation make
+// them: a track per channel that moves a node of the scene (morph target weights are left out),
+// cubic splines baked into linear keys at 30 a second, Godot's default bake rate.
+void read_animations(const cgltf_data& data, const SceneReader& scene, Model& model) {
+    std::set<std::string, std::less<>> taken;
+    for (cgltf_size i = 0; i < data.animations_count; ++i) {
+        const cgltf_animation& in = data.animations[i];
+        ModelAnimation out;
+        const bool named = in.name != nullptr && *in.name != '\0';
+        out.name = unique_name(taken, named ? in.name : "Animation", true);
+        std::string lower = named ? in.name : "";
+        std::ranges::transform(lower, lower.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        out.loop = lower.starts_with("loop") || lower.ends_with("loop") ||
+                   lower.starts_with("cycle") || lower.ends_with("cycle");
+        struct Channel {
+            NodeTrack track;
+            bool cubic = false;
+            std::vector<std::array<float, 4>> spline; // in-tangent, value, out-tangent per key
+        };
+        std::vector<Channel> channels;
+        float end = 0.0F;
+        for (cgltf_size c = 0; c < in.channels_count; ++c) {
+            const cgltf_animation_channel& channel = in.channels[c];
+            const cgltf_animation_sampler* sampler = channel.sampler;
+            if (channel.target_node == nullptr || sampler == nullptr || sampler->input == nullptr ||
+                sampler->output == nullptr) {
+                continue;
+            }
+            const auto node = scene.indices.find(channel.target_node);
+            if (node == scene.indices.end()) {
+                continue;
+            }
+            Channel made;
+            made.track.node = node->second;
+            switch (channel.target_path) {
+            case cgltf_animation_path_type_translation:
+                made.track.property = NodeProperty::Position;
+                break;
+            case cgltf_animation_path_type_rotation:
+                made.track.property = NodeProperty::Rotation;
+                break;
+            case cgltf_animation_path_type_scale:
+                made.track.property = NodeProperty::Scale;
+                break;
+            default:
+                continue;
+            }
+            made.cubic = sampler->interpolation == cgltf_interpolation_type_cubic_spline;
+            made.track.step = sampler->interpolation == cgltf_interpolation_type_step;
+            made.track.times = floats(*sampler->input);
+            const bool rotation = made.track.property == NodeProperty::Rotation;
+            const std::size_t size = rotation ? 4 : 3;
+            const std::size_t per_key = made.cubic ? 3 : 1;
+            const std::size_t keys =
+                std::min<std::size_t>(made.track.times.size(), sampler->output->count / per_key);
+            made.track.times.resize(keys);
+            std::vector<std::array<float, 4>> values(keys * per_key);
+            for (std::size_t k = 0; k < values.size(); ++k) {
+                std::array<float, 4> v{0.0F, 0.0F, 0.0F, 0.0F};
+                cgltf_accessor_read_float(sampler->output, k, v.data(), size);
+                values[k] = v;
+            }
+            if (made.cubic) {
+                made.spline = std::move(values);
+            } else {
+                if (rotation) {
+                    for (std::array<float, 4>& v : values) {
+                        v = normalized_rotation(v);
+                    }
+                }
+                made.track.values = std::move(values);
+            }
+            if (!made.track.times.empty()) {
+                end = std::max(end, made.track.times.back());
+                channels.push_back(std::move(made));
+            }
+        }
+        for (Channel& channel : channels) {
+            if (channel.cubic) {
+                const std::vector<float> times = std::move(channel.track.times);
+                const std::size_t count = times.size();
+                const auto value_at = [&](float t) {
+                    const auto after = static_cast<std::size_t>(std::ranges::upper_bound(times, t) -
+                                                                times.begin());
+                    if (after == 0) {
+                        return channel.spline[1];
+                    }
+                    if (after >= count) {
+                        return channel.spline[((count - 1) * 3) + 1];
+                    }
+                    const std::size_t k = after - 1;
+                    const float span = times[k + 1] - times[k];
+                    const float weight = span > 0.0F ? (t - times[k]) / span : 0.0F;
+                    return hermite(channel.spline[(k * 3) + 1], channel.spline[(k * 3) + 2],
+                                   channel.spline[((k + 1) * 3)], channel.spline[((k + 1) * 3) + 1],
+                                   weight, span);
+                };
+                channel.track.times.clear();
+                for (int frame = 0;; ++frame) {
+                    const float t = std::min(static_cast<float>(frame) / 30.0F, end);
+                    std::array<float, 4> v = value_at(t);
+                    if (channel.track.property == NodeProperty::Rotation) {
+                        v = normalized_rotation(v);
+                    }
+                    channel.track.times.push_back(t);
+                    channel.track.values.push_back(v);
+                    if (t >= end) {
+                        break;
+                    }
+                }
+            }
+            out.tracks.push_back(std::move(channel.track));
+        }
+        // Godot's shortest animation length.
+        out.length = std::max(static_cast<double>(end), 0.001);
+        model.animations.push_back(std::move(out));
     }
 }
 
@@ -540,17 +846,20 @@ Result<Model> load_model(std::string_view bytes, std::string_view path, const Mo
     if (scene == nullptr && data->scenes_count > 0) {
         scene = &data->scenes[0];
     }
+    SceneReader reader{.data = *data, .model = model, .indices = {}, .names = {}, .part_nodes = {}};
     if (scene != nullptr) {
         for (cgltf_size i = 0; i < scene->nodes_count; ++i) {
-            add_parts(*data, *scene->nodes[i], model);
+            reader.add(*scene->nodes[i], -1);
         }
     } else {
         for (cgltf_size i = 0; i < data->nodes_count; ++i) {
             if (data->nodes[i].parent == nullptr) {
-                add_parts(*data, data->nodes[i], model);
+                reader.add(data->nodes[i], -1);
             }
         }
     }
+    read_skins(*data, reader, model);
+    read_animations(*data, reader, model);
     return model;
 }
 
@@ -588,10 +897,22 @@ std::vector<json::ValidationError> check_model(std::string_view bytes, std::stri
 
 Bounds bounds(const Model& model) {
     std::optional<Bounds> out;
+    const std::vector<world::Affine3D> globals = node_globals(model, rest_pose(model));
+    std::vector<render::Vertex3D> skinned;
     for (const ModelPart& part : model.parts) {
+        std::vector<world::Affine3D> joints;
+        if (part.skin >= 0) {
+            joints = joint_transforms(model.skins[static_cast<std::size_t>(part.skin)], globals);
+        }
         for (const ModelSurface& surface : model.meshes[part.mesh].surfaces) {
-            for (const render::Vertex3D& vertex : surface.vertices) {
-                const Vec3 p = part.transform.apply(position_of(vertex));
+            // A skinned surface is where its joints put it at rest.
+            const bool skin = part.skin >= 0 && !surface.weights.empty();
+            if (skin) {
+                skin_vertices(surface, joints, skinned);
+            }
+            for (const render::Vertex3D& vertex : skin ? skinned : surface.vertices) {
+                const Vec3 p =
+                    skin ? position_of(vertex) : part.transform.apply(position_of(vertex));
                 if (!out) {
                     out = Bounds{p, p};
                 }
@@ -610,7 +931,20 @@ std::size_t model_bytes(const Model& model) {
     for (const ModelMesh& mesh : model.meshes) {
         for (const ModelSurface& surface : mesh.surfaces) {
             bytes += (surface.vertices.capacity() * sizeof(render::Vertex3D)) +
-                     (surface.indices.capacity() * sizeof(std::uint32_t));
+                     (surface.indices.capacity() * sizeof(std::uint32_t)) +
+                     (surface.weights.capacity() * sizeof(VertexWeights));
+        }
+    }
+    bytes += model.nodes.capacity() * sizeof(ModelNode);
+    for (const ModelSkin& skin : model.skins) {
+        bytes += sizeof(ModelSkin) + (skin.joints.capacity() * sizeof(std::size_t)) +
+                 (skin.inverse_binds.capacity() * sizeof(world::Affine3D));
+    }
+    for (const ModelAnimation& animation : model.animations) {
+        bytes += sizeof(ModelAnimation);
+        for (const NodeTrack& track : animation.tracks) {
+            bytes += sizeof(NodeTrack) + (track.times.capacity() * sizeof(float)) +
+                     (track.values.capacity() * sizeof(std::array<float, 4>));
         }
     }
     for (const ModelImage& image : model.images) {

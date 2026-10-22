@@ -1,0 +1,30 @@
+{
+  "animations": {
+    "wave": {
+      "from": {
+        "animation": "Wave-loop",
+        "model": "models/arm.gltf"
+      },
+      "tracks": [
+        {
+          "event": "wave_out",
+          "keys": [
+            {
+              "data": {
+                "side": "left"
+              },
+              "time": 0.0
+            },
+            {
+              "data": {
+                "side": "right"
+              },
+              "time": 0.5
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "format": 1
+}

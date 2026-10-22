@@ -47,11 +47,16 @@ struct Gltf {
         return static_cast<std::int64_t>(document["accessors"].size()) - 1;
     }
 
-    // An accessor of floats, as many to an element as type says ("VEC2", "VEC3" or "VEC4").
+    // An accessor of floats, as many to an element as type says ("SCALAR", "VEC2", "VEC3",
+    // "VEC4" or "MAT4").
     std::int64_t floats(const std::vector<float>& values, std::string_view type) {
         std::string bytes(values.size() * sizeof(float), '\0');
         std::memcpy(bytes.data(), values.data(), bytes.size());
-        const std::size_t size = type == "VEC2" ? 2 : type == "VEC3" ? 3 : 4;
+        const std::size_t size = type == "SCALAR" ? 1
+                                 : type == "VEC2" ? 2
+                                 : type == "VEC3" ? 3
+                                 : type == "MAT4" ? 16
+                                                  : 4;
         json::Value out;
         out["bufferView"] = view(bytes);
         out["componentType"] = 5126;
@@ -69,6 +74,18 @@ struct Gltf {
             out["min"] = std::move(low);
             out["max"] = std::move(high);
         }
+        return accessor(std::move(out));
+    }
+
+    // A skinned vertex's four joints, as JOINTS_0 gives them.
+    std::int64_t joints(const std::vector<std::uint16_t>& values) {
+        std::string bytes(values.size() * sizeof(std::uint16_t), '\0');
+        std::memcpy(bytes.data(), values.data(), bytes.size());
+        json::Value out;
+        out["bufferView"] = view(bytes);
+        out["componentType"] = 5123;
+        out["count"] = values.size() / 4;
+        out["type"] = "VEC4";
         return accessor(std::move(out));
     }
 
@@ -158,6 +175,72 @@ inline Gltf quad(std::int64_t material = -1, bool normals = true, bool uvs = tru
     mesh["primitives"].push_back(std::move(primitive));
     out.document["meshes"].push_back(std::move(mesh));
     out.document["nodes"] = gltf_json(R"([{"name": "Quad", "mesh": 0}])");
+    out.document["scenes"] = gltf_json(R"([{"nodes": [0]}])");
+    out.document["scene"] = 0;
+    return out;
+}
+
+// An arm of two bones, as a skinned glTF model: a strip from y 0 to 2, half a unit either side of
+// x 0, whose bottom row follows the bone "Upper" (at the origin), its top row the bone "Lower" (at
+// y 1) and its middle row both, half each. Its animations are "Bend", which turns Lower a quarter
+// turn about z over a second, and "Idle-loop", which raises Upper by 0.25 and back.
+inline Gltf arm() {
+    Gltf out;
+    json::Value attributes;
+    attributes["POSITION"] = out.floats({-0.5F, 0.0F, 0.0F, 0.5F, 0.0F, 0.0F, -0.5F, 1.0F, 0.0F,
+                                         0.5F, 1.0F, 0.0F, -0.5F, 2.0F, 0.0F, 0.5F, 2.0F, 0.0F},
+                                        "VEC3");
+    attributes["NORMAL"] = out.floats({0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F, 0.0F,
+                                       0.0F, 1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F},
+                                      "VEC3");
+    attributes["JOINTS_0"] =
+        out.joints({0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0});
+    attributes["WEIGHTS_0"] =
+        out.floats({1.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.5F, 0.5F, 0.0F, 0.0F,
+                    0.5F, 0.5F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F},
+                   "VEC4");
+    json::Value primitive;
+    primitive["attributes"] = std::move(attributes);
+    primitive["indices"] = out.indices({0, 1, 3, 0, 3, 2, 2, 3, 5, 2, 5, 4});
+    json::Value mesh;
+    mesh["name"] = "Arm";
+    mesh["primitives"].push_back(std::move(primitive));
+    out.document["meshes"].push_back(std::move(mesh));
+    // Upper is at the origin and Lower one up, so their inverse bind matrices undo that.
+    json::Value skin;
+    skin["name"] = "ArmSkin";
+    skin["joints"] = gltf_json("[1, 2]");
+    skin["inverseBindMatrices"] = out.floats({1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0,  0, 1,
+                                              1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, -1, 0, 1},
+                                             "MAT4");
+    out.document["skins"].push_back(std::move(skin));
+    out.document["nodes"] = gltf_json(R"([
+        {"name": "Armature", "children": [1, 3]},
+        {"name": "Upper", "children": [2]},
+        {"name": "Lower", "translation": [0, 1, 0]},
+        {"name": "Arm", "mesh": 0, "skin": 0}
+    ])");
+    const auto channel = [&](std::string_view name, int node, std::string_view path,
+                             const std::vector<float>& times, const std::vector<float>& values,
+                             std::string_view type) {
+        json::Value sampler;
+        sampler["input"] = out.floats(times, "SCALAR");
+        sampler["output"] = out.floats(values, type);
+        json::Value animation;
+        animation["name"] = name;
+        animation["samplers"].push_back(std::move(sampler));
+        json::Value target;
+        target["sampler"] = 0;
+        target["target"]["node"] = node;
+        target["target"]["path"] = path;
+        animation["channels"].push_back(std::move(target));
+        out.document["animations"].push_back(std::move(animation));
+    };
+    constexpr float kHalfRoot2 = 0.70710678F;
+    channel("Bend", 2, "rotation", {0.0F, 1.0F},
+            {0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, kHalfRoot2, kHalfRoot2}, "VEC4");
+    channel("Idle-loop", 1, "translation", {0.0F, 0.5F, 1.0F},
+            {0.0F, 0.0F, 0.0F, 0.0F, 0.25F, 0.0F, 0.0F, 0.0F, 0.0F}, "VEC3");
     out.document["scenes"] = gltf_json(R"([{"nodes": [0]}])");
     out.document["scene"] = 0;
     return out;

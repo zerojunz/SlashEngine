@@ -554,6 +554,23 @@ float mesh_draw_depth(const MeshDraw& draw, const Bounds& bounds, const Scene3D&
     return -seen[2];
 }
 
+namespace {
+
+Result<void> check_vertices(std::span<const Vertex3D> vertices) {
+    for (std::size_t i = 0; i < vertices.size(); ++i) {
+        const Vertex3D& v = vertices[i];
+        if (!finite({v.position[0], v.position[1], v.position[2], v.normal[0], v.normal[1],
+                     v.normal[2], v.tangent[0], v.tangent[1], v.tangent[2], v.tangent[3], v.uv[0],
+                     v.uv[1]})) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "vertex " + std::to_string(i) + "'s numbers are finite");
+        }
+    }
+    return {};
+}
+
+} // namespace
+
 Result<void> check_mesh(std::span<const Vertex3D> vertices,
                         std::span<const std::uint32_t> indices) {
     if (vertices.size() > kMaxMeshVertices) {
@@ -583,16 +600,16 @@ Result<void> check_mesh(std::span<const Vertex3D> vertices,
                                   " vertices");
         }
     }
-    for (std::size_t i = 0; i < vertices.size(); ++i) {
-        const Vertex3D& v = vertices[i];
-        if (!finite({v.position[0], v.position[1], v.position[2], v.normal[0], v.normal[1],
-                     v.normal[2], v.tangent[0], v.tangent[1], v.tangent[2], v.tangent[3], v.uv[0],
-                     v.uv[1]})) {
-            return make_error(ErrorCode::InvalidArgument,
-                              "vertex " + std::to_string(i) + "'s numbers are finite");
-        }
+    return check_vertices(vertices);
+}
+
+Result<void> check_mesh_update(std::span<const Vertex3D> vertices, std::size_t count) {
+    if (vertices.size() != count) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a mesh's new vertices are as many as it has, " + std::to_string(count) +
+                              ", not " + std::to_string(vertices.size()));
     }
-    return {};
+    return check_vertices(vertices);
 }
 
 Result<void> check_scene(const Scene3D& scene) {

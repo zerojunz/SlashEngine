@@ -483,8 +483,20 @@ public:
             return checked.error();
         }
         const auto id = static_cast<MeshId>(next_mesh_++);
-        meshes_[id] = (indices.empty() ? vertices.size() : indices.size()) / 3;
+        meshes_[id] = {.vertices = vertices.size(),
+                       .triangles = (indices.empty() ? vertices.size() : indices.size()) / 3};
         return id;
+    }
+
+    Result<void> update_mesh(MeshId mesh, std::span<const Vertex3D> vertices) override {
+        if (in_frame_) {
+            return detail::frame_in_progress("update_mesh");
+        }
+        const auto it = meshes_.find(mesh);
+        if (it == meshes_.end()) {
+            return detail::unknown_mesh(mesh);
+        }
+        return detail::check_mesh_update(vertices, it->second.vertices);
     }
 
     void destroy_mesh(MeshId mesh) override { meshes_.erase(mesh); }
@@ -578,7 +590,7 @@ public:
         }
         // Each mesh is a draw of its own, as on the GPU device.
         ++stats_.draws;
-        stats_.triangles += it->second;
+        stats_.triangles += it->second.triangles;
         return {};
     }
 
@@ -666,8 +678,11 @@ private:
     };
     std::unordered_map<ParticlesId, Shape> particles_;
     std::uint32_t next_particles_ = 1;
-    // A mesh's triangle count.
-    std::unordered_map<MeshId, std::size_t> meshes_;
+    struct Counts {
+        std::size_t vertices = 0;
+        std::size_t triangles = 0;
+    };
+    std::unordered_map<MeshId, Counts> meshes_;
     std::uint32_t next_mesh_ = 1;
     bool in_frame_ = false;
     bool has_scene_ = false;

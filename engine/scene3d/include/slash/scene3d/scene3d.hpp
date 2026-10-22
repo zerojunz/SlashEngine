@@ -7,6 +7,7 @@
 #include "slash/render/mesh.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/primitive.hpp"
+#include "slash/scene3d/skeleton.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
@@ -153,8 +154,9 @@ public:
     Renderer(Renderer&&) = delete;
     Renderer& operator=(Renderer&&) = delete;
 
-    // Remembers every Transform3D, so frames between ticks can place entities part of the way
-    // from where they were to where they are. Call it just before each tick.
+    // Remembers every Transform3D, and the animations each model plays, so frames between ticks
+    // can place entities and pose models part of the way from where they were to where they are.
+    // Call it just before each tick.
     void before_tick(const world::World& world);
 
     // Works out the frame for a target of width by height pixels, interpolation of the way from
@@ -200,6 +202,19 @@ private:
         render::TextureId id = render::TextureId::None;
         std::uint64_t used = 0;
     };
+    // What poses a model: its clips and its Skeleton3D.
+    struct PoseKey {
+        std::vector<ClipSample> clips;
+        std::optional<world::Skeleton3D> skeleton;
+
+        friend bool operator==(const PoseKey&, const PoseKey&) = default;
+    };
+    // A skinned surface of one entity's model, moved by its joints into a mesh of its own.
+    struct Skinned {
+        render::MeshId id = render::MeshId::None;
+        std::uint64_t used = 0;
+        std::vector<world::Affine3D> joints; // what moved its vertices last
+    };
 
     Result<render::MeshId> mesh_for(const world::World& world, entt::entity entity,
                                     const Primitive& primitive);
@@ -211,13 +226,19 @@ private:
                                           entt::entity entity);
     void add_model(const world::World& world, entt::entity entity,
                    const world::MeshInstance3D& instance, const world::Affine3D& place,
-                   render::ShadowCasting casting);
+                   render::ShadowCasting casting, float interpolation);
+    // A skinned surface's vertices moved by joints, in its entity's mesh on the device.
+    Result<render::MeshId> skinned_mesh(const std::string& key, const ModelSurface& surface,
+                                        const std::vector<world::Affine3D>& joints);
 
     render::RenderDevice* device_;
     TextureSource textures_;
     ModelSource models_;
     std::unordered_map<std::string, Embedded> embedded_;
     std::unordered_map<entt::entity, Local> before_;
+    std::unordered_map<entt::entity, PoseKey> before_poses_;
+    std::unordered_map<std::string, Skinned> skinned_;
+    std::vector<render::Vertex3D> skinned_vertices_;
     std::unordered_map<entt::entity, Cached> cached_;
     std::unordered_map<std::string, Shared> shared_;
     std::vector<Draw> draws_;

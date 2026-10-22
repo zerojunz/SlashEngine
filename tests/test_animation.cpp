@@ -173,7 +173,18 @@ TEST_CASE("animation files are checked, with every error at its JSON Pointer") {
                                {"event": "footstep", "keys": [{"time": 0.5, "data": "left"}]})")) ==
           "(valid)");
     CHECK(errors_of(R"({"format": 1, "animations": {"a": {"tracks": []}}})") ==
-          "/animations/a: missing required property \"length\"");
+          "/animations/a: an animation needs a \"length\", unless it comes \"from\" a model's "
+          "animation");
+    CHECK(errors_of(R"({"format": 1, "animations": {"a": {}}})") ==
+          "/animations/a: an animation needs a \"length\" and \"tracks\", unless it comes "
+          "\"from\" a model's animation");
+    // One from a model needs neither; its keys can't be checked against a length it hasn't yet.
+    CHECK(errors_of(R"({"format": 1, "animations": {"a": {
+        "from": {"model": "hero.glb", "animation": "Walk"},
+        "tracks": [{"event": "step", "keys": [{"time": 5}]}]}}})") == "(valid)");
+    CHECK(errors_of(R"({"format": 1, "animations": {"a": {
+        "from": {"model": "hero.obj", "animation": "Walk"}}}})") ==
+          "/animations/a/from/model: expected a .gltf, .glb, .fbx or .blend file");
 
     // Keys in time order, within the length.
     CHECK(errors_of(library(R"({"path": "Transform2D/rotation",
@@ -578,7 +589,7 @@ TEST_CASE("AnimationPlayers in a scene are checked against their libraries") {
     CHECK(errors ==
           std::vector<std::string>{
               "/entities/bad/components/AnimationPlayer/library: animation libraries are "
-              ".anim.json files, as \"anim/hero.anim.json\"",
+              ".anim.json files or models, as \"anim/hero.anim.json\" or \"models/hero.glb\"",
               "/entities/ghost/components/AnimationPlayer/library: gone.anim.json: no such file",
               "/entities/hero/components/AnimationPlayer/animation: swing.anim.json has no "
               "animation \"swng\"; did you mean \"swing\"?",

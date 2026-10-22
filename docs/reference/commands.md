@@ -61,7 +61,7 @@ as `entity.get`, reject it as an unknown param.
 | Assets | [`asset.list`](#assetlist) |
 | Materials | [`material.eval`](#materialeval) |
 | Animations | [`animation.eval`](#animationeval) |
-| Models | [`model.inspect`](#modelinspect) |
+| Models | [`model.inspect`](#modelinspect), [`skeleton.get`](#skeletonget) |
 | Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity) |
 | Particles | [`particles.eval`](#particleseval) |
@@ -529,7 +529,8 @@ the cells as `cells`, a list of `[column, row]` (up to 4096), or `rect`,
 ### model.inspect
 
 Returns what a [model](scene-format.md#models) holds, as a `MeshInstance3D` draws it, without
-drawing it: its meshes, materials, images, the nodes that place its meshes and its bounds.
+drawing it: its meshes, materials, images, the nodes that place its meshes, its skins and
+animations, and its bounds.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -553,11 +554,47 @@ Give one of them. Needs: `read`.
   `normal` and `emission` textures sample (a glTF model's metallic and roughness are one image).
 - Each image is the `path` of a file beside the model, or the `size` of one inside it.
 - `parts` are the meshes the model draws: each with the scene node that places it, in tree order
-  (an OBJ model's objects, in the file's order).
-- `bounds` are the corners of the box the parts fill, in the model's own meters.
+  (an OBJ model's objects, in the file's order), and the index into `skins` of the skin that
+  deforms it, if one does.
+- `skins` and `animations` are there only for a model that has them: each skin's name and how
+  many joints it has, and each [animation](scene-format.md#skeletons-and-model-animations)'s
+  name, length in seconds, `loop` if it loops and how many tracks it has.
+  [`skeleton.get`](#skeletonget) lists the bones.
+- `bounds` are the corners of the box the parts fill at rest, in the model's own meters.
 
 A model that doesn't load is an error at `/path` (or `/id`) saying why, as
 [`scene validate`](cli.md#scene-validate) reports it.
+
+### skeleton.get
+
+Returns the bones of the model an entity's `MeshInstance3D` draws, and the
+[animations posing them](scene-format.md#skeletons-and-model-animations): its `AnimationPlayer`'s
+animation from a model, then its `Skeleton3D`. Bones named get their pose as it is drawn.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity whose `MeshInstance3D` draws a model |
+| `bones` | array of strings | the tree | Bones to pose |
+
+Needs: `read`.
+
+```json
+{"id": "arm", "bones": ["Lower"]}
+```
+
+```json
+{"bones":[{"name":"Lower","parent":"Upper","position":[0,1,0],"rotation":[0,0,1.5708],"scale":[1,1,1],"world_position":[2,1,0]}],"clips":[{"animation":"Bend","time":1}],"model":"models/arm.gltf"}
+```
+
+- Without `bones`, `bones` is every bone with its `parent` (left out for a root), parents first,
+  and no poses: the names `Skeleton3D` and animations use.
+- A posed bone's `position`, `rotation` (radians, as `Transform3D`'s and `Skeleton3D`'s) and
+  `scale` are in its parent's space; `world_position` is where it is in the world.
+- `clips` are the animations posing the model, each with its `time` and, when it comes from
+  another model, that `model`.
+
+A bone the model hasn't fails at `/bones/<n>` with "did you mean", and an entity that draws no
+model, or a model with no nodes (an OBJ model), at `/id`.
 
 ### tilemap.paint
 
