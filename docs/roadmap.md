@@ -613,7 +613,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         `from` a `.anim.json` animation) and `Skeleton3D` bone poses, as Godot's importer,
         skeleton and `AnimationMixer`; `skeleton.get`
   - [x] FBX skins and animation stacks, as Godot's FBX importer
-  - [ ] Blend trees and state machines (`AnimationTree`), root motion
+  - [x] Blend trees, one-shots, transitions and blend spaces with root motion (`AnimationTree`
+        and `.animtree.json`), as Godot's `AnimationTree` and `AnimationMixer`;
+        `animation.tree` and `animation.set_parameters`
+  - [ ] State machines (`AnimationNodeStateMachine`)
   - [ ] Two-bone and FABRIK IK
 - [ ] Navigation on Recast and Detour, in 2D and 3D, with avoidance
 - [ ] 3D audio, as Godot's `AudioStreamPlayer3D` and `AudioListener3D`: attenuation models,

@@ -1,0 +1,34 @@
+{
+  "format": 1,
+  "root": {
+    "nodes": {
+      "point": {
+        "animation": "Point",
+        "type": "Animation"
+      },
+      "shot": {
+        "fadein_time": 0.2,
+        "fadeout_time": 0.2,
+        "filter_enabled": true,
+        "filters": ["Shoulder"],
+        "inputs": {
+          "in": "speed",
+          "shot": "point"
+        },
+        "type": "OneShot"
+      },
+      "speed": {
+        "inputs": {
+          "in": "wave"
+        },
+        "type": "TimeScale"
+      },
+      "wave": {
+        "animation": "Wave-loop",
+        "type": "Animation"
+      }
+    },
+    "output": "shot",
+    "type": "BlendTree"
+  }
+}

@@ -1,0 +1,16 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"animation.tree","params":{"path":"arm.animtree.json"}}
+{"jsonrpc":"2.0","id":3,"method":"step","params":{"ticks":30}}
+{"jsonrpc":"2.0","id":4,"method":"skeleton.get","params":{"id":"arm","bones":["Shoulder","Hand"]}}
+{"jsonrpc":"2.0","id":5,"method":"events.subscribe","params":{"kinds":["animation_started","animation_finished"]}}
+{"jsonrpc":"2.0","id":6,"method":"animation.set_parameters","params":{"id":"arm","parameters":{"shot/request":"fire"}}}
+{"jsonrpc":"2.0","id":7,"method":"step","params":{"ticks":6}}
+{"jsonrpc":"2.0","id":8,"method":"animation.tree","params":{"id":"arm"}}
+{"jsonrpc":"2.0","id":9,"method":"skeleton.get","params":{"id":"arm","bones":["Shoulder","Hand"]}}
+{"jsonrpc":"2.0","id":10,"method":"frame.capture","params":{"points":[[67,27],[92,26],[127,52],[52,30],[80,67]]}}
+{"jsonrpc":"2.0","id":11,"method":"step","params":{"ticks":60}}
+{"jsonrpc":"2.0","id":12,"method":"events.read","params":{"subscription":"events_1"}}
+{"jsonrpc":"2.0","id":13,"method":"animation.set_parameters","params":{"id":"arm","parameters":{"speed/scal":2}}}
+{"jsonrpc":"2.0","id":14,"method":"animation.set_parameters","params":{"id":"arm","parameters":{"speed/scale":2}}}
+{"jsonrpc":"2.0","id":15,"method":"step","params":{"ticks":15}}
+{"jsonrpc":"2.0","id":16,"method":"animation.tree","params":{"id":"arm"}}
