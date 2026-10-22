@@ -2593,8 +2593,9 @@ Navigation follows Godot 4.6's `NavigationServer2D` and `NavigationServer3D`. Ea
 on them. Paths are found with Godot's own A* over the regions' polygons and pulled tight with its
 funnel, so they come out as Godot's do, and the same on every machine. Each tick, after physics,
 the `navigation` system (priority 960) rebuilds the maps whose regions or links changed, then
-updates each agent's path and progress. [examples/navigation](../../examples/navigation/) sends a
-guard through a hatch and a cat round the corner of a yard.
+updates each agent's path and progress, then gives agents that avoid each other their safe
+velocities. [examples/navigation](../../examples/navigation/) sends a guard through a hatch and
+a cat round the corner of a yard.
 
 ### Navigation meshes and polygons
 
@@ -2643,6 +2644,12 @@ keeps agents `agent_radius` from walls and returns the walkable area; its detail
 the polygons, wound clockwise seen from above, as Godot's are. A bake warns when a setting
 doesn't fit whole cells, as Godot does, and fails past 30 million cells.
 
+A `NavigationObstacle3D` under the region with `affect_navigation_mesh` is cut out too, as
+Godot's projected obstructions: its `vertices` (turned only about y with the entity, and scaled)
+from its elevation up by `height`, and a circle of 12 sides of its `radius`. Its cells are marked
+unwalkable before the walkable area shrinks by `agent_radius`, so the hole grows by it like any
+wall's; with `carve_navigation_mesh` they are marked after, so it cuts only its own shape.
+
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `sample_partition_type` | `"watershed"` | How Recast splits the walkable area: `"watershed"`, `"monotone"` or `"layers"` |
@@ -2669,9 +2676,11 @@ In 2D, a `.navpoly.json` file's `outlines` say where agents may walk: closed out
 `[x, y]` points, merged where they overlap. The shapes of each `StaticBody2D` and
 `AnimatableBody2D` under the region are cut out of them, as Godot's parser takes them: a
 rectangle, a circle of 12 sides, a capsule of 14 corners, a polygon's convex hull, or a
-`CollisionPolygon2D` as written. Clipper2 merges the outlines and the obstructions, takes one
-from the other and shrinks the rest by `agent_radius`, then PolyPartition splits it into convex
-polygons or triangles.
+`CollisionPolygon2D` as written. So is each `NavigationObstacle2D` with
+`affect_navigation_mesh`: its `vertices` and a circle of 12 sides of its `radius`. Clipper2
+merges the outlines and the obstructions, takes one from the other and shrinks the rest by
+`agent_radius`, then PolyPartition splits it into convex polygons or triangles. An obstacle with
+`carve_navigation_mesh` is taken out after the shrink, so it cuts only its own shape.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
@@ -2753,7 +2762,8 @@ entity toward `navigation::next_path_position_3d` (or `_2d`), as a Godot script 
   `path_desired_distance` of the one it is going to, and has reached its target within
   `target_desired_distance` of `target_position`. For a target it can't reach, navigation
   finishes at the end of the path, the closest point it can reach.
-- `path_height_offset` is how far the entity's origin is above the navigation mesh.
+- `path_height_offset` is how far the navigation mesh is above the entity's origin: it is taken
+  off each path point's y, as Godot's.
 - `path_postprocessing` shapes the path, as Godot's: `"corridorfunnel"` pulls it tight round
   corners, `"edgecentered"` goes through the middle of each edge it crosses, and `"none"` keeps
   the points where the search entered each polygon. `simplify_path` then drops the points within
@@ -2768,14 +2778,62 @@ entity toward `navigation::next_path_position_3d` (or `_2d`), as a Godot script 
 - Paths and progress live beside the components, kept by entity ID, so saving, snapshots and
   undo leave them alone; a failed command or a dry run puts them back.
 
+### Avoidance
+
+Agents with `avoidance_enabled` steer round each other and round obstacles, as Godot's, with
+the optimal reciprocal collision avoidance of RVO2. Gameplay code sets the agent's `velocity` to
+where it wants to go, and the `navigation` system, after updating paths, gives back a safe
+velocity that keeps it `radius` from the others for `time_horizon_agents` seconds (and from
+obstacles' outlines for `time_horizon_obstacles`), emitted as a `velocity_computed` event with
+its `safe_velocity` and returned by `navigation::safe_velocity_2d` (or `_3d`). Gameplay code then
+moves the entity at that velocity: in a system above priority 960, or the next tick.
+[examples/navigation-avoidance](../../examples/navigation-avoidance/) has walkers weaving past
+each other in a plaza.
+
+```json
+"walker": {"components": {
+  "Transform2D": {"position": [20, 280]},
+  "NavigationAgent2D": {"target_position": [380, 280], "avoidance_enabled": true,
+                        "radius": 10, "max_speed": 100}
+}}
+```
+
+- An agent asks for its `velocity` only while it follows a path: once it finishes, it asks for
+  nothing until it has a new target, though others still steer round it. Without
+  `avoidance_enabled`, its safe velocity is its `velocity`.
+- It looks at the `max_neighbors` closest agents within `neighbor_distance`, and the safe
+  velocity is no faster than `max_speed`.
+- `avoidance_mask` picks whom an agent makes way for: those on an `avoidance_layers` bit it
+  shares. It makes way for none of lower `avoidance_priority` (0 to 1), who make way for it
+  fully.
+- On the 3D map agents avoid on the ground, by default: those whose spans of `height` up from
+  their origins overlap. The velocity's y is left out, and kept and put back after
+  (`keep_y_velocity`) or dropped. With `use_3d_avoidance` they avoid as spheres in every
+  direction, among the others that do.
+- `navigation::set_velocity_forced` replaces the velocity avoidance starts the next step from,
+  as Godot's `set_velocity_forced`, for an agent moved to a new place.
+
+A `NavigationObstacle2D` or `NavigationObstacle3D` is in agents' way, as Godot's. Its `radius`
+is a circle agents keep out of, which moves at its `velocity` (gameplay code moves the entity);
+its `vertices` are an outline, in the entity's space, that agents don't cross. Listed
+counterclockwise in x and y (in 2D, clockwise on screen, since y points down), an outline keeps
+agents out; the other way round, it keeps them in. Avoidance finds no way round an outline,
+though: an agent heading straight at one stops at its edge, so give obstacles
+`affect_navigation_mesh` for paths to go round them ([Baking](#baking)). A 3D obstacle's outline
+spans `height` up from its origin, and agents on the ground avoid it only where their heights
+overlap; with `use_3d_avoidance` its circle is a sphere among agents that avoid in 3D. Agents
+avoid an obstacle when their `avoidance_mask` shares a bit with its `avoidance_layers`.
+
 | Component | Fields (defaults) |
 | --- | --- |
 | `NavigationRegion2D` | `navigation_polygon` `""` (a `.navpoly.json` file), `enabled` `true`, `use_edge_connections` `true`, `navigation_layers` `1`, `enter_cost` `0`, `travel_cost` `1` |
 | `NavigationRegion3D` | `navigation_mesh` `""` (a `.navmesh.json` file), and the rest as `NavigationRegion2D`'s |
 | `NavigationLink2D` | `enabled` `true`, `bidirectional` `true`, `navigation_layers` `1`, `start_position` and `end_position` `[0, 0]`, `enter_cost` `0`, `travel_cost` `1` |
 | `NavigationLink3D` | The same, with `start_position` and `end_position` `[0, 0, 0]` |
-| `NavigationAgent2D` | `target_position` `[0, 0]`, `path_desired_distance` `20`, `target_desired_distance` `10`, `path_max_distance` `100`, `navigation_layers` `1`, `path_postprocessing` `"corridorfunnel"`, `simplify_path` `false`, `simplify_epsilon` `0`, `path_return_max_length` `0`, `path_return_max_radius` `0`, `path_search_max_polygons` `4096`, `path_search_max_distance` `0` |
-| `NavigationAgent3D` | `target_position` `[0, 0, 0]`, `path_desired_distance` `1`, `target_desired_distance` `1`, `path_height_offset` `0`, `path_max_distance` `5`, and the rest as `NavigationAgent2D`'s |
+| `NavigationAgent2D` | `target_position` `[0, 0]`, `path_desired_distance` `20`, `target_desired_distance` `10`, `path_max_distance` `100`, `navigation_layers` `1`, `path_postprocessing` `"corridorfunnel"`, `simplify_path` `false`, `simplify_epsilon` `0`, `path_return_max_length` `0`, `path_return_max_radius` `0`, `path_search_max_polygons` `4096`, `path_search_max_distance` `0`; avoidance: `avoidance_enabled` `false`, `velocity` `[0, 0]`, `radius` `10`, `neighbor_distance` `500`, `max_neighbors` `10`, `time_horizon_agents` `1`, `time_horizon_obstacles` `0`, `max_speed` `100`, `avoidance_layers` `1`, `avoidance_mask` `1`, `avoidance_priority` `1` |
+| `NavigationAgent3D` | `target_position` `[0, 0, 0]`, `path_desired_distance` `1`, `target_desired_distance` `1`, `path_height_offset` `0`, `path_max_distance` `5`, and the rest as `NavigationAgent2D`'s; avoidance as `NavigationAgent2D`'s but `velocity` `[0, 0, 0]`, `height` `1`, `radius` `0.5`, `neighbor_distance` `50`, `max_speed` `10`, `use_3d_avoidance` `false`, `keep_y_velocity` `true` |
+| `NavigationObstacle2D` | `radius` `0`, `vertices` `[]`, `avoidance_enabled` `true`, `velocity` `[0, 0]`, `avoidance_layers` `1`, `affect_navigation_mesh` `false`, `carve_navigation_mesh` `false` |
+| `NavigationObstacle3D` | `radius` `0`, `height` `1`, `vertices` `[]` (`[x, y, z]` points; y is ignored), `velocity` `[0, 0, 0]`, `use_3d_avoidance` `false`, and the rest as `NavigationObstacle2D`'s |
 
 The maps' settings are `project.json`'s [`navigation_2d` and `navigation_3d`](project-format.md).
 `scene validate` and exports check each region's file and report one that doesn't exist or

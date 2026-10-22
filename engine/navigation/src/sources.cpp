@@ -1,7 +1,8 @@
 // The geometry a bake works from, as Godot 4.6's source geometry parsers: the region entity and
 // those under it, each giving what Godot's node of the same kind gives
-// (MeshInstance3D::navmesh_parse_source_geometry, StaticBody3D's and StaticBody2D's), placed in
-// the region's space as Godot's root_node_transform places it.
+// (MeshInstance3D::navmesh_parse_source_geometry, StaticBody3D's and StaticBody2D's,
+// NavigationObstacle3D's and 2D's), placed in the region's space as Godot's root_node_transform
+// places it.
 
 #include "slash/navigation/navigation.hpp"
 #include "slash/physics3d/physics3d.hpp"
@@ -11,6 +12,7 @@
 #include "slash/world/tree3d.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <numbers>
@@ -25,6 +27,8 @@ using world::Affine2D;
 using world::Affine3D;
 
 constexpr float kTau = 2.0F * std::numbers::pi_v<float>;
+// The points of the circle an obstacle's radius projects, as Godot's: no excessive detail.
+constexpr int kObstacleCirclePoints = 12;
 
 // ---- 3D, as Godot's NavigationMeshSourceGeometryData3D.
 
@@ -143,10 +147,67 @@ bool has_own_object_2d(const entt::registry& registry, entt::entity entity) {
                            world::CharacterBody2D, world::Area2D>(entity);
 }
 
+// NavigationObstacle3D::navmesh_parse_source_geometry: its circle, then its outline, on the
+// ground. Only its turn about y counts.
+void add_obstacle(SourceGeometry3D& out, const world::NavigationObstacle3D& obstacle,
+                  const Affine3D& root, const Affine3D& global) {
+    if (!obstacle.affect_navigation_mesh) {
+        return;
+    }
+    const float elevation = global.origin.y + root.origin.y;
+    const auto safe = [](Vec3 axis) {
+        return std::max(std::sqrt((axis.x * axis.x) + (axis.y * axis.y) + (axis.z * axis.z)),
+                        0.001F);
+    };
+    const Vec3 scale{safe(global.x), safe(global.y), safe(global.z)};
+    if (obstacle.radius > 0.0F) {
+        const float max_scale = std::max({scale.x, scale.y, scale.z});
+        const Affine3D circle = root * Affine3D{.x = {max_scale, 0.0F, 0.0F},
+                                                .y = {0.0F, max_scale, 0.0F},
+                                                .z = {0.0F, 0.0F, max_scale},
+                                                .origin = global.origin};
+        SourceGeometry3D::Obstruction obstruction;
+        for (int i = 0; i < kObstacleCirclePoints; ++i) {
+            const Vec2 cs = cos_sin(static_cast<float>(i) * (kTau / kObstacleCirclePoints));
+            obstruction.vertices.push_back(
+                circle.apply({cs.x * obstacle.radius, 0.0F, cs.y * obstacle.radius}));
+        }
+        // Godot lowers it by the radius as written, unscaled.
+        obstruction.elevation = elevation - obstacle.radius;
+        obstruction.height = max_scale * obstacle.radius;
+        obstruction.carve = obstacle.carve_navigation_mesh;
+        out.projected_obstructions.push_back(std::move(obstruction));
+    }
+    if (obstacle.vertices.empty()) {
+        return;
+    }
+    // Basis().scaled(scale).rotated(up, rotation.y), at the obstacle.
+    const Vec2 cs = cos_sin(world::euler(global).y);
+    const Affine3D node = root * Affine3D{.x = {cs.x * scale.x, 0.0F, -cs.y * scale.x},
+                                          .y = {0.0F, scale.y, 0.0F},
+                                          .z = {cs.y * scale.z, 0.0F, cs.x * scale.z},
+                                          .origin = global.origin};
+    SourceGeometry3D::Obstruction obstruction;
+    obstruction.vertices.reserve(obstacle.vertices.size());
+    for (const Vec3 vertex : obstacle.vertices) {
+        Vec3 placed = node.apply(vertex);
+        placed.y = 0.0F;
+        obstruction.vertices.push_back(placed);
+    }
+    obstruction.elevation = elevation;
+    obstruction.height = scale.y * obstacle.height;
+    obstruction.carve = obstacle.carve_navigation_mesh;
+    out.projected_obstructions.push_back(std::move(obstruction));
+}
+
 void parse_3d(const world::World& world, asset::Assets& assets, const world::Tree3D& tree,
               const Affine3D& root, entt::entity entity, const NavigationMesh& settings,
               SourceGeometry3D& out, std::vector<std::string>* warnings) {
     const entt::registry& registry = world.ecs();
+    if (const auto* obstacle = registry.try_get<world::NavigationObstacle3D>(entity);
+        obstacle != nullptr) {
+        add_obstacle(out, *obstacle, root, tree.global(entity));
+    }
     const auto warn = [&](const std::string& message) {
         if (warnings != nullptr) {
             warnings->push_back(std::string(world.id_of(entity)) + ": " + message);
@@ -307,9 +368,45 @@ std::vector<Vec2> outline_of(const world::CollisionShape2D& shape) {
     return {};
 }
 
+// NavigationObstacle2D::navmesh_parse_source_geometry: its circle, then its outline.
+void add_obstacle(SourceGeometry2D& out, const world::NavigationObstacle2D& obstacle,
+                  const Affine2D& root, const world::Tree2D& tree, entt::entity entity) {
+    if (!obstacle.affect_navigation_mesh) {
+        return;
+    }
+    const Affine2D global = tree.global_affine(entity);
+    if (obstacle.radius > 0.0F) {
+        const auto safe = [](Vec2 axis) {
+            return std::max(std::sqrt((axis.x * axis.x) + (axis.y * axis.y)), 0.001F);
+        };
+        const float max_scale = std::max(safe(global.x), safe(global.y));
+        world::Transform2D parts = tree.global(entity);
+        parts.scale = {max_scale, max_scale};
+        parts.skew = 0.0F;
+        const Affine2D circle = root * world::affine(parts);
+        SourceGeometry2D::Obstruction obstruction;
+        for (int i = 0; i < kObstacleCirclePoints; ++i) {
+            const Vec2 cs = cos_sin(static_cast<float>(i) * (kTau / kObstacleCirclePoints));
+            obstruction.vertices.push_back(
+                circle.apply({cs.x * obstacle.radius, cs.y * obstacle.radius}));
+        }
+        obstruction.carve = obstacle.carve_navigation_mesh;
+        out.projected_obstructions.push_back(std::move(obstruction));
+    }
+    if (obstacle.vertices.empty()) {
+        return;
+    }
+    out.projected_obstructions.push_back({.vertices = placed(obstacle.vertices, root * global),
+                                          .carve = obstacle.carve_navigation_mesh});
+}
+
 void parse_2d(const world::World& world, const world::Tree2D& tree, const Affine2D& root,
               entt::entity entity, const NavigationPolygon& settings, SourceGeometry2D& out) {
     const entt::registry& registry = world.ecs();
+    if (const auto* obstacle = registry.try_get<world::NavigationObstacle2D>(entity);
+        obstacle != nullptr) {
+        add_obstacle(out, *obstacle, root, tree, entity);
+    }
     const auto add = [&](std::vector<Vec2> outline) {
         if (outline.size() >= 3) {
             out.obstruction_outlines.push_back(std::move(outline));

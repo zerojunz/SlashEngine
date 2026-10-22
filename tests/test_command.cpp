@@ -1316,7 +1316,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "doc": "Steps 3D physics: moves rigid and character bodies and reports contacts.",
          "priority": 950},
         {"name": "navigation",
-         "doc": "Rebuilds changed navigation maps and moves agents along their paths.",
+         "doc": "Rebuilds changed navigation maps, moves agents along their paths and gives avoiding agents safe velocities.",
          "priority": 960},
         {"name": "animated_sprite_2d",
          "doc": "Plays each AnimatedSprite2D's animation on its Sprite2D.", "priority": 1000},
@@ -1878,6 +1878,17 @@ TEST_CASE("navigation commands find paths, points and agents' progress") {
         "target_reached": false, "target_reachable": true, "distance_to_target": 7.8102,
         "path": [[1, 0, 1], [4, 0, 4], [6, 0, 7]], "path_index": 1})"));
 
+    // An agent that avoids others also gets the safe velocity avoidance gave it last tick.
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "runner", "components": {
+            "Transform2D": {"position": [110, 60]}, "NavigationAgent2D": {
+            "target_position": [150, 100], "avoidance_enabled": true, "velocity": [30, 40]}}}},
+        {"command": "step", "params": {"ticks": 1}}]})");
+    CHECK(engine.ok("navigation.agent", R"({"id": "runner"})") == parse(R"({
+        "next_position": [150, 100], "navigation_finished": false, "target_reached": false,
+        "target_reachable": true, "distance_to_target": 56.5685, "path": [[110, 60], [150, 100]],
+        "path_index": 1, "safe_velocity": [30, 40]})"));
+
     auto reply = engine.fails("navigation.path", R"({"from": [0, 0], "to": [1, 0, 1]})",
                               command::code::kInvalidParams);
     CHECK(reply.message == "/to: from and to need the same number of coordinates");
@@ -1972,6 +1983,17 @@ TEST_CASE("navigation.bake bakes a region's file from what is under it, and undo
     CHECK(reply.message == "could not undo \"navigation.bake\": \"nav/level.navmesh.json\" "
                            "changed since; nothing was changed");
     CHECK(read("nav/level.navmesh.json") == "{}");
+
+    // Obstacles that affect the navigation mesh are cut out too, and counted apart.
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "cart", "components": {
+            "Transform2D": {"position": [20, 80]}, "NavigationObstacle2D": {"radius": 5,
+            "affect_navigation_mesh": true}}}},
+        {"command": "component.set", "params": {"id": "yard", "components": {
+            "Transform2D": {"children": ["rock", "cart"]}}}}]})");
+    CHECK(engine.ok("navigation.bake", R"({"id": "yard"})") ==
+          parse(R"({"file": "nav/yard.navpoly.json", "vertices": 20, "polygons": 14,
+                    "obstructions": 1, "obstacle_outlines": 1})"));
 
     reply = engine.fails("navigation.bake", R"({"id": "levle"})", command::code::kNotFound);
     CHECK(reply.message == "/id: no entity has the id \"levle\"; did you mean \"level\"?");
