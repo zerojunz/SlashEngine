@@ -200,39 +200,11 @@ void set_settings(world::World& world, const Settings& settings) {
 }
 
 std::optional<RayHit> raycast(world::World& world, Vec3 from, Vec3 to, const QueryFilter& filter) {
-    Space* space = synced(world);
-    if (space == nullptr || from == to) {
+    const Space* space = synced(world);
+    if (space == nullptr) {
         return std::nullopt;
     }
-    // Godot's JoltPhysicsDirectSpaceState3D::intersect_ray, neither hitting from inside nor
-    // hitting back faces.
-    const QueryFilters filters(*space, filter);
-    const JPH::RRayCast ray(to_jolt(from), to_jolt(to - from));
-    JPH::RayCastSettings settings;
-    settings.mTreatConvexAsSolid = false;
-    settings.mBackFaceModeTriangles = JPH::EBackFaceMode::IgnoreBackFaces;
-    JPH::ClosestHitCollisionCollector<JPH::CastRayCollector> collector;
-    space->system()->GetNarrowPhaseQueryNoLock().CastRay(ray, settings, collector, filters, filters,
-                                                         filters);
-    if (!collector.HadHit()) {
-        return std::nullopt;
-    }
-    const JPH::RayCastResult& hit = collector.mHit;
-    const JPH::Body* body = space->system()->GetBodyLockInterfaceNoLock().TryGetBody(hit.mBodyID);
-    const detail::Body* found = body != nullptr ? Space::body_of(*body) : nullptr;
-    if (found == nullptr) {
-        return std::nullopt;
-    }
-    const JPH::RVec3 position = ray.GetPointOnRay(hit.mFraction);
-    JPH::Vec3 normal = body->GetWorldSpaceSurfaceNormal(hit.mSubShapeID2, position);
-    // If we got a back-face normal we need to flip it.
-    if (normal.Dot(ray.mDirection) > 0.0F) {
-        normal = -normal;
-    }
-    return RayHit{.entity = found->entity,
-                  .point = from_jolt(JPH::Vec3(position)),
-                  .normal = from_jolt(normal),
-                  .fraction = hit.mFraction};
+    return space->cast_ray(from, to, filter, false);
 }
 
 std::vector<entt::entity> overlap_point(world::World& world, Vec3 point, const QueryFilter& filter,
@@ -341,5 +313,45 @@ void apply_torque_impulse(world::World& world, entt::entity entity, Vec3 impulse
         space->queue({.entity = entity, .impulse = {}, .offset = {}, .torque = impulse});
     }
 }
+
+namespace detail {
+
+std::optional<RayHit> Space::cast_ray(Vec3 from, Vec3 to, const QueryFilter& filter,
+                                      bool hit_back_faces) const {
+    if (system_ == nullptr || from == to) {
+        return std::nullopt;
+    }
+    // Godot's JoltPhysicsDirectSpaceState3D::intersect_ray, not hitting from inside.
+    const QueryFilters filters(*this, filter);
+    const JPH::RRayCast ray(to_jolt(from), to_jolt(to - from));
+    JPH::RayCastSettings settings;
+    settings.mTreatConvexAsSolid = false;
+    settings.mBackFaceModeTriangles = hit_back_faces ? JPH::EBackFaceMode::CollideWithBackFaces
+                                                     : JPH::EBackFaceMode::IgnoreBackFaces;
+    JPH::ClosestHitCollisionCollector<JPH::CastRayCollector> collector;
+    system_->GetNarrowPhaseQueryNoLock().CastRay(ray, settings, collector, filters, filters,
+                                                 filters);
+    if (!collector.HadHit()) {
+        return std::nullopt;
+    }
+    const JPH::RayCastResult& hit = collector.mHit;
+    const JPH::Body* body = system_->GetBodyLockInterfaceNoLock().TryGetBody(hit.mBodyID);
+    const Body* found = body != nullptr ? body_of(*body) : nullptr;
+    if (found == nullptr) {
+        return std::nullopt;
+    }
+    const JPH::RVec3 position = ray.GetPointOnRay(hit.mFraction);
+    JPH::Vec3 normal = body->GetWorldSpaceSurfaceNormal(hit.mSubShapeID2, position);
+    // If we got a back-face normal we need to flip it.
+    if (normal.Dot(ray.mDirection) > 0.0F) {
+        normal = -normal;
+    }
+    return RayHit{.entity = found->entity,
+                  .point = from_jolt(JPH::Vec3(position)),
+                  .normal = from_jolt(normal),
+                  .fraction = hit.mFraction};
+}
+
+} // namespace detail
 
 } // namespace slash::physics3d

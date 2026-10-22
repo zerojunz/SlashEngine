@@ -885,6 +885,17 @@ three-number points, a 3D shape or a 3D body. Jolt is built with
 `CROSS_PLATFORM_DETERMINISTIC` and the space adds and changes bodies in entity order, so results
 are the same on every platform. `examples/physics-3d` has every kind of body.
 
+Joints are Godot's `PinJoint3D`, `HingeJoint3D`, `SliderJoint3D`, `ConeTwistJoint3D` and
+`Generic6DOFJoint3D` as components on an entity of their own, built into Jolt constraints as
+Godot's `JoltJoint3D` subclasses build them (`src/joints.cpp`): made at the entity's
+`Transform3D` between `node_a` and `node_b` (a missing one is the world), made again when that
+transform or the bodies change and rebuilt in place for other changes. `VehicleBody3D` on a
+rigid body rolls it on the `VehicleWheel3D` entities among its children, with Godot's
+`VehicleBody3D` code ported line for line in `src/vehicle.cpp`: its inputs go to the wheels
+before the step, each wheel's ray cast, suspension and friction push the body after it, and the
+wheels' `Transform3D` and contact fields are written back. `examples/joints-and-vehicles` has a
+lamp, a bell, a door, a drawer and a car.
+
 ## Particles
 
 `CPUParticles2D` is Godot's, with Godot's field names and angles in degrees. The

@@ -2173,6 +2173,65 @@ from `physics_3d` in [`project.json`](project-format.md).
   ask 3D physics when given three-number points, a 3D shape or a 3D body; C++ code calls
   `physics3d::raycast`, `overlap_point`, `overlap_shape`, `contacts` and `gravity`.
 
+### 3D joints
+
+A joint is an entity with a joint component and a `Transform3D`, as Godot's `Joint3D` nodes on
+its Jolt module. `node_a` and `node_b` name the bodies it holds (any body but an area); a missing
+one is the world, and with only one named the joint holds it to the world. The joint is made
+where its `Transform3D` puts it, after its parents', in its own axes, once both bodies exist.
+[examples/joints-and-vehicles](../../examples/joints-and-vehicles/) has one of each but the
+6DOF joint.
+
+```json
+"door_hinge": {
+  "components": {
+    "HingeJoint3D": {"angular_limit_enabled": true, "angular_limit_lower": 0.0,
+                     "angular_limit_upper": 1.5707964, "node_a": "door"},
+    "Transform3D": {"position": [-0.5, 1.05, 4.0], "rotation": [-1.5707964, 0.0, 0.0]}
+  }
+}
+```
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `PinJoint3D` | `node_a`, `node_b`, `exclude_nodes_from_collision` `true`; the bodies turn every way about the joint's point |
+| `HingeJoint3D` | as `PinJoint3D`, turning about the joint's z axis; `angular_limit_enabled` `false`, `angular_limit_upper` `1.5708`, `angular_limit_lower` `-1.5708` (radians), `motor_enabled` `false`, `motor_target_velocity` `1` (radians per second), `motor_max_impulse` `1` (per tick) |
+| `SliderJoint3D` | as `PinJoint3D`, sliding along the joint's x axis without turning; `linear_limit_upper` `1`, `linear_limit_lower` `-1` (meters; limits that cross leave it free) |
+| `ConeTwistJoint3D` | as `PinJoint3D`, swinging in a cone around the joint's x axis and twisting about it; `swing_span` `0.785398`, `twist_span` `3.14159` (radians; out of range leaves that way free) |
+| `Generic6DOFJoint3D` | as `PinJoint3D`; `linear_x`, `linear_y`, `linear_z` and `angular_x`, `angular_y`, `angular_z`, each with `limit_enabled` `true`, `limit_upper` and `limit_lower` `0`, `motor_enabled` `false`, `motor_target_velocity` `0`, `motor_force_limit` (`0` linear, `300` angular), `spring_enabled` `false`, `spring_stiffness`, `spring_damping`, `spring_equilibrium_point`; every axis is locked by default |
+
+- Limits and motors keep Godot's signs and are centered as its Jolt module centers them. A
+  slider's position is how far `node_b` has moved along the joint's x axis from `node_a`, so a
+  drawer that is its cabinet's `node_b` opens toward its upper limit.
+- While `exclude_nodes_from_collision` is on, the two bodies don't collide with each other.
+- Changing a joint's own `Transform3D` or bodies makes it again where it now is; a parent
+  carrying it away leaves it where it was made. Changing a limit, motor or spring rebuilds it in
+  place. Either way, and when the joint goes, its bodies wake.
+- Parameters Godot's Jolt module ignores (bias, softness, relaxation and the like) are left out.
+
+### Vehicles
+
+A `VehicleBody3D` on an entity with a `RigidBody3D` makes it a car, as Godot's: it rolls on the
+`VehicleWheel3D` entities among its `Transform3D` [children](#parent-transforms). Godot's
+`VehicleBody3D` is a rigid body of 40 kilograms; give the `RigidBody3D` that `mass` for Godot's
+feel.
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `VehicleBody3D` | `engine_force` `0` (newtons, to the wheels `use_as_traction`), `brake` `0` (to every wheel), `steering` `0` (radians, to the wheels `use_as_steering`; positive turns left) |
+| `VehicleWheel3D` | `engine_force`, `brake`, `steering` `0`, `use_as_traction` and `use_as_steering` `false`, `wheel_roll_influence` `0.1`, `wheel_radius` `0.5`, `wheel_rest_length` `0.15`, `wheel_friction_slip` `10.5`, `suspension_travel` `0.2`, `suspension_stiffness` `5.88`, `suspension_max_force` `6000`, `damping_compression` `0.83`, `damping_relaxation` `0.88`; written by each step: `in_contact`, `contact_point`, `contact_normal`, `contact_body`, `suspension_length`, `rotation`, `rpm`, `skid_info` |
+
+- Each step runs Godot's `VehicleBody3D` code, ported line for line: a wheel casts a ray down
+  its y axis from where it is mounted, its spring and dampers push the body up, and friction
+  along and across its axle (its x axis, turned by `steering`) drives, brakes and steers it.
+  Positive `engine_force` drives toward +z.
+- The car's `engine_force`, `brake` and `steering` go to its wheels when they change, so a
+  wheel's own can be set between changes. A change of input wakes a car that has fallen asleep.
+- The step moves each wheel's `Transform3D` with its suspension, steering and roll. Setting a
+  wheel's `Transform3D` by hand mounts it there.
+- Godot's suspension defaults are soft for a car of four wheels resting on them; stiffer springs
+  (`suspension_stiffness` around 30) hold it up.
+
 ## Particles
 
 Particles follow Godot's `CPUParticles2D`. Each tick, after physics, the `cpu_particles_2d`
