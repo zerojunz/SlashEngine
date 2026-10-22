@@ -1339,7 +1339,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "doc": "Hands each finished reply from a language model to the game as an ai_reply or ai_failed event.",
          "priority": 1150},
         {"name": "audio",
-         "doc": "Plays each AudioStreamPlayer and AudioStreamPlayer2D and mixes the tick's sound through the bus layout.",
+         "doc": "Plays each AudioStreamPlayer, AudioStreamPlayer2D and AudioStreamPlayer3D and mixes the tick's sound through the bus layout.",
          "priority": 1200}
     ])"));
 }
@@ -3243,8 +3243,26 @@ TEST_CASE("audio commands play players, report buses and capture what was heard"
     CHECK(engine.ok("audio.state").find("players")->as_array().at(0).find("voices")->as_int() == 0);
     const auto rock =
         engine.fails("audio.play", R"({"id": "rock"})", command::code::kInvalidParams);
-    CHECK(contains(rock.message, "has no AudioStreamPlayer or AudioStreamPlayer2D"));
+    CHECK(contains(rock.message,
+                   "has no AudioStreamPlayer, AudioStreamPlayer2D or AudioStreamPlayer3D"));
     engine.fails("audio.play", R"({"id": "musik"})", command::code::kNotFound);
+
+    // A 3D player says how high it plays and how much its highs are cut.
+    engine.ok("entity.create", R"({"id": "ears", "components": {"AudioListener3D": {},
+        "Transform3D": {}}})");
+    engine.ok("entity.create", R"({"id": "buzz", "components": {"AudioStreamPlayer3D":
+        {"stream": "hum.wav", "max_distance": 40}, "Transform3D": {"position": [0, 0, -20]}}})");
+    CHECK(engine.ok("audio.play", R"({"id": "buzz"})").find("tick") != nullptr);
+    engine.ok("step");
+    const json::Value buzz =
+        engine.ok("audio.state", R"({"ids": ["buzz"]})").find("players")->as_array().at(0);
+    CHECK(buzz.find("kind")->as_string() == "AudioStreamPlayer3D");
+    CHECK(buzz.find("voices")->as_int() == 1);
+    CHECK(buzz.find("pitch_scale")->as_double() == 1.0);
+    // Half way to max_distance and at twice unit_size: a quarter as loud, so three quarters of
+    // attenuation_filter_db's -24.
+    CHECK(buzz.find("filter_db")->as_double() == -18.0);
+    CHECK(buzz.find("sends") == nullptr);
 
     CHECK(engine.ok("schema.get", R"({"kind": "bus_layout"})").find("title")->as_string() ==
           "SlashEngine bus layout");

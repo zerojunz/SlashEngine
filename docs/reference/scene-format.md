@@ -995,6 +995,7 @@ sorts them. A texture that can't load is left out, with a warning and a problem 
 | `h_offset`, `v_offset` | `0`, `0` | Moves the view along the camera's x and y, in meters |
 | `current` | `false` | The world is seen through this camera |
 | `cull_mask` | `1048575` | The render layers it sees (layers 1 to 20) |
+| `doppler_tracking` | `"disabled"` | `idle_step` or `physics_step`: measure how fast it moves, for [3D sound](#3d-sound) heard through it |
 
 The camera's scale is ignored, as Godot's is. Depth is reversed, so far scenes keep their
 precision.
@@ -2487,7 +2488,7 @@ from `physics_3d` in [`project.json`](project-format.md).
 | `AnimatableBody3D` | as `StaticBody3D`, and `sync_to_physics` `true` |
 | `RigidBody3D` | `collision_layer`, `collision_mask`, `friction`, `bounce` as `StaticBody3D`; `mass` `1`, `inertia` `[0, 0, 0]` (0 computes that axis's), `gravity_scale` `1`, `linear_velocity` and `angular_velocity` `[0, 0, 0]`, `linear_damp_mode` and `angular_damp_mode` `"combine"`, `linear_damp` and `angular_damp` `0`, `constant_force` and `constant_torque` `[0, 0, 0]`, `lock_rotation` `false`, `axis_lock_linear_x/y/z` and `axis_lock_angular_x/y/z` `false`, `freeze` `false`, `freeze_mode` `"static"`, `continuous_cd` `false`, `can_sleep` `true`, `sleeping` `false`, `contact_monitor` `false` |
 | `CharacterBody3D` | `collision_layer`, `collision_mask`; `motion_mode` `"grounded"` (or `floating`), `up_direction` `[0, 1, 0]`, `velocity` `[0, 0, 0]`, `max_slides` `6`, `slide_on_ceiling` `true`, `wall_min_slide_angle` `0.261799`, `floor_stop_on_slope` `true`, `floor_constant_speed` `false`, `floor_block_on_wall` `true`, `floor_max_angle` `0.785398`, `floor_snap_length` `0.1`, `platform_on_leave` `"add_velocity"`, `platform_floor_layers` all, `platform_wall_layers` `0`, `safe_margin` `0.001`; written by each move: `on_floor`, `on_wall`, `on_ceiling`, `floor_normal`, `wall_normal`, `platform_velocity` |
-| `Area3D` | `collision_layer`, `collision_mask`, `monitoring` `true`, `monitorable` `true`, `priority` `0`, `gravity_space_override` `"disabled"`, `gravity_point` `false`, `gravity_point_unit_distance` `0`, `gravity_point_center` `[0, -1, 0]`, `gravity_direction` `[0, -1, 0]`, `gravity` `9.8`, `linear_damp_space_override` and `angular_damp_space_override` `"disabled"`, `linear_damp` and `angular_damp` `0.1` |
+| `Area3D` | `collision_layer`, `collision_mask`, `monitoring` `true`, `monitorable` `true`, `priority` `0`, `gravity_space_override` `"disabled"`, `gravity_point` `false`, `gravity_point_unit_distance` `0`, `gravity_point_center` `[0, -1, 0]`, `gravity_direction` `[0, -1, 0]`, `gravity` `9.8`, `linear_damp_space_override` and `angular_damp_space_override` `"disabled"`, `linear_damp` and `angular_damp` `0.1`; for [3D sound](#3d-sound): `audio_bus_override` `false`, `audio_bus_name` `"Master"`, `reverb_bus_enabled` `false`, `reverb_bus_name` `"Master"`, `reverb_bus_amount` `0`, `reverb_bus_uniformity` `0` |
 
 - Bodies act as their 2D namesakes do ([2D physics](#2d-physics)): a static body stays put and
   jumps where its `Transform3D` is set, an animatable body moves there during the step and
@@ -4148,9 +4149,11 @@ names one and says how it draws, as Godot's font import options (`slash-cli sche
 
 Sound follows Godot's `AudioServer` and its players. An `AudioStreamPlayer` plays a sound the
 same wherever its entity is; an `AudioStreamPlayer2D` plays at its entity's `Transform2D`, heard
-from the current `AudioListener2D`. Each plays through a bus of the project's
-[bus layout](#bus-layouts), and every bus mixes into Master, which is what plays.
-[examples/audio](../../examples/audio/) has music, footsteps and both kinds of bus change.
+from the current `AudioListener2D`, and an [`AudioStreamPlayer3D`](#3d-sound) at its
+`Transform3D`, heard from the current `AudioListener3D` or camera. Each plays through a bus of
+the project's [bus layout](#bus-layouts), and every bus mixes into Master, which is what plays.
+[examples/audio](../../examples/audio/) has music, footsteps and both kinds of bus change, and
+[examples/audio-3d](../../examples/audio-3d/) a car passing a listener and a cave's reverb.
 
 ```json
 "music": {
@@ -4175,7 +4178,8 @@ from the current `AudioListener2D`. Each plays through a bus of the project's
   polyphonic streams and microphones are monophonic, as in Godot: playing again always starts
   them over. A new `stream` stops the old one.
 - When a player's last sound ends, it sets `playing` to false and emits a `finished` event with
-  `{"component": "AudioStreamPlayer"}` (or `AudioStreamPlayer2D`) as its data. Music also emits
+  `{"component": "AudioStreamPlayer"}` (or `AudioStreamPlayer2D`, `AudioStreamPlayer3D`) as its
+  data. Music also emits
   a [`clip_changed`](#clip-changes) event for each clip it starts.
 - An `AudioStreamPlayer2D` fades and pans as Godot's `_update_panning`: its volume is times
   (1 - distance / `max_distance`) ^ `attenuation`, and it pans by its offset from the listener
@@ -4194,7 +4198,7 @@ the area's `collision_layer` shares a bit with the player's `area_mask`. The aud
 each tick, after physics, at the player's position, so a sound moves to the cave's reverb bus as
 it walks in and back as it walks out, fading out of the bus it left over one mix step. With several such areas, the
 first by ID wins (Godot takes the physics server's order). `audio.state` shows the bus each
-player plays through. Godot's reverb bus overrides belong to 3D areas.
+player plays through. Godot's reverb bus overrides belong to [3D areas](#3d-sound).
 
 ```json
 "cave": {
@@ -4202,6 +4206,84 @@ player plays through. Godot's reverb bus overrides belong to 3D areas.
     "Area2D": {"audio_bus_name": "Cave", "audio_bus_override": true},
     "CollisionShape2D": {"size": [200, 120]},
     "Transform2D": {"position": [400, 180]}
+  }
+}
+```
+
+### 3D sound
+
+An `AudioStreamPlayer3D` plays at its entity's `Transform3D`, heard from the current
+`AudioListener3D`, as Godot's `AudioStreamPlayer3D` hears it, in stereo. Distances are meters.
+
+```json
+"engine": {
+  "components": {
+    "AudioStreamPlayer3D": {"autoplay": true, "bus": "Sfx", "doppler_tracking": "physics_step", "max_distance": 60, "stream": "audio/engine.wav", "unit_size": 4},
+    "Transform3D": {"position": [0, 0.5, -20]}
+  }
+}
+```
+
+| Component | Field | Type | Default | Meaning |
+| --- | --- | --- | --- | --- |
+| `AudioStreamPlayer3D` | `stream`, `volume_db`, `pitch_scale`, `playing`, `autoplay`, `stream_paused`, `max_polyphony`, `bus`, `parameters` | | | As `AudioStreamPlayer`'s |
+| | `attenuation_model` | `std::string` | `"inverse_distance"` | How it fades with distance: `inverse_distance` (as 1 / distance), `inverse_square_distance`, `logarithmic` (20 dB each time the distance is multiplied by e) or `disabled` |
+| | `unit_size` | `float` | `10` | Meters from the listener at which it plays at `volume_db`; larger carries farther |
+| | `max_db` | `float` | `3` | The loudest it gets close up, -24 to 6 dB |
+| | `max_distance` | `float` | `0` | Meters from the listener beyond which it is silent, fading to it linearly; 0 for no limit |
+| | `panning_strength` | `float` | `1` | Times the project's `audio.panning_strength_3d`; 0 for no panning |
+| | `area_mask` | `int` | `1` | `Area3D` layers, as bits, whose bus and reverb bus take it while it is inside one; 0 ignores areas |
+| | `emission_angle_enabled` | `bool` | `false` | Muffle it for a listener outside a cone down the entity's -z |
+| | `emission_angle_degrees` | `float` | `45` | The cone's half angle, 0.1 to 90 |
+| | `emission_angle_filter_attenuation_db` | `float` | `-12` | How much the high shelf takes off outside the cone, -80 to 0 dB |
+| | `attenuation_filter_cutoff_hz` | `float` | `5000` | Where the high shelf that muffles it starts, 1 to 20500 Hz |
+| | `attenuation_filter_db` | `float` | `-24` | How much the high shelf takes off as distance silences it, -80 to 0 dB |
+| | `doppler_tracking` | `std::string` | `"disabled"` | `idle_step` or `physics_step`: measure how fast it moves, for the Doppler effect |
+| `AudioListener3D` | `current` | `bool` | `false` | Hear 3D sounds from this entity's `Transform3D`, facing its -z |
+| | `doppler_tracking` | `std::string` | `"disabled"` | As the player's, for the listener's own speed |
+
+- The listener is the first `AudioListener3D` by ID with `current` set, else the first one by
+  ID (Godot makes the first listener in a viewport current), else the current `Camera3D`, whose
+  `doppler_tracking` counts as a listener's. With neither, 3D sounds are silent; Godot always
+  has a viewport's camera to hear through.
+- Each tick, after physics, the audio system places every 3D player, as Godot's
+  `_update_panning` does each frame. Its volume is `volume_db` faded by the attenuation model at
+  its distance, at most `max_db`, then times (1 - distance / `max_distance`) when that is set.
+  Each side gets the square root of (1 -+ *s* cos *a*) / 2 of that, where *a* is the angle from
+  the listener's right to the sound, height left out, and *s* grows with `panning_strength`
+  times `audio.panning_strength_3d`, as Godot's `_calc_output_vol_stereo`.
+- As distance fades it, a high shelf above `attenuation_filter_cutoff_hz` takes off the faded
+  share of `attenuation_filter_db`, so far sounds are muffled, and with an emission angle
+  `emission_angle_filter_attenuation_db` more while the listener is outside the cone. That is the
+  shelf's gain; as in Godot, whose filter squares it, the highest frequencies lose twice as many
+  decibels.
+- Past `max_distance` it keeps playing, unheard, and its filter and pitch stay as they were, as
+  Godot's do.
+- With `doppler_tracking`, the player's speed is measured over its last four moves within a
+  fifth of a second, as Godot's `VelocityTracker3D` (counting ticks in both modes), less the
+  listener's when it tracks too. The pitch is `pitch_scale` times 343 / (343 + *v*), where *v* is
+  that speed along the line from the listener, positive going away, so it rises as the sound
+  comes and falls as it goes, within 1/8 and 8.
+- `audio.state` shows a 3D player's `pitch_scale` with Doppler, its `filter_db` and any `sends`.
+
+As Godot's `_get_overriding_area`, a 3D player inside an `Area3D` that overrides the bus or has
+a reverb bus, and whose `collision_layer` shares a bit with its `area_mask`, follows the first
+such area by ID:
+
+- With `audio_bus_override`, it plays through the area's `audio_bus_name`.
+- With `reverb_bus_enabled`, it also sends `reverb_bus_amount` of itself to `reverb_bus_name`.
+  `reverb_bus_uniformity` blends that send from the sound's direction toward the area's nearest
+  point to the listener, so a room's echo surrounds a listener inside it.
+- As in Godot, an area with a reverb bus and no bus override plays the sound on the reverb bus
+  alone, and an area with uniformity whose nearest point is farther from the listener than a
+  player's `max_distance` silences it. A bus the layout doesn't have is Master.
+
+```json
+"cave": {
+  "components": {
+    "Area3D": {"audio_bus_name": "Cave", "audio_bus_override": true, "reverb_bus_amount": 0.6, "reverb_bus_enabled": true, "reverb_bus_name": "Echo"},
+    "CollisionShape3D": {"size": [12, 6, 12]},
+    "Transform3D": {"position": [0, 3, -30]}
   }
 }
 ```
@@ -4420,7 +4502,7 @@ included, and a playlist for each of its streams. [`step`](commands.md#step) and
 
 | Field | Meaning |
 | --- | --- |
-| `component` | `AudioStreamPlayer` or `AudioStreamPlayer2D` |
+| `component` | `AudioStreamPlayer`, `AudioStreamPlayer2D` or `AudioStreamPlayer3D` |
 | `clip` | The clip's name, or the playlist stream's path; `""` once the music stops |
 | `from` | The clip before it; left out as the music starts |
 | `transition` | The index of the `transitions` entry the switch followed; left out with none |

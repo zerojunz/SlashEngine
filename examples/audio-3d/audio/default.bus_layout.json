@@ -1,0 +1,37 @@
+{
+  "buses": [
+    {
+      "name": "Master"
+    },
+    {
+      "effects": [
+        {
+          "ceiling_db": -1,
+          "type": "hard_limiter"
+        }
+      ],
+      "name": "Sfx"
+    },
+    {
+      "effects": [
+        {
+          "cutoff_hz": 1200,
+          "type": "low_pass_filter"
+        }
+      ],
+      "name": "Cave"
+    },
+    {
+      "effects": [
+        {
+          "dry": 0,
+          "room_size": 0.9,
+          "type": "reverb",
+          "wet": 1
+        }
+      ],
+      "name": "Echo"
+    }
+  ],
+  "format": 1
+}
