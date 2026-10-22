@@ -597,7 +597,8 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [ ] Path tracing: a GPU path tracer that bakes the lightmaps above, as Godot's LightmapGI
       does, and renders progressive reference stills that `frame.capture` can return, so agents
       compare the real-time frame with ground truth
-- [x] Procedural, physical and panorama skies and fog, as Godot's Compatibility renderer
+- [x] Procedural, physical and panorama skies and fog, and the sky's light on meshes (ambient
+      light and reflections), as Godot's Compatibility renderer
 - [ ] Volumetric fog; clustered decals
 - [ ] Generated LODs with meshoptimizer and occlusion culling
 - [ ] 3D physics on Jolt: rigid bodies, joints, character controller, vehicles
@@ -764,7 +765,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Ray tracing | Acceleration structures and ray queries in the render device on Vulkan, Direct3D 12 and Metal: ray-traced shadows, reflections, AO and GI, with raster and probe fallbacks | 7 | Planned |
 | Path tracing | A GPU path tracer for baked lightmaps and progressive reference stills | 7 | Planned |
 | Upscaling and frame generation | Render scale with FSR 1, FSR 2/3 and MetalFX built in, FSR 3 frame generation, DLSS, XeSS and FSR 4 as adapters outside the repo | 7 | Planned |
-| Sky and volumetrics | Physical sky, volumetric fog | 7 | In progress: procedural, physical and panorama skies and exponential, depth and height fog done; volumetric fog planned |
+| Sky and volumetrics | Physical sky, volumetric fog | 7 | In progress: procedural, physical and panorama skies, their light on meshes, and exponential, depth and height fog done; volumetric fog planned |
 | Decals | Clustered decals | 7 | Planned |
 | Networking | ENet transport, replication driven by reflection, WebSocket for web | 8 | Planned |
 | Terrain | Heightmap terrain with splat materials and LOD | 7 | Planned |

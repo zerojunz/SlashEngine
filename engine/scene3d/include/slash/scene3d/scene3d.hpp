@@ -56,12 +56,16 @@ struct Problem {
     std::string message;
 };
 
-// The background a frame clears to, the sky and fog, the light every lit pixel gets and what
-// happens to colors after, from the first WorldEnvironment made (WorldEnvironment's docs); clear
-// is the project's clear color.
+// The background a frame clears to, the sky and fog, the light every lit pixel gets and
+// reflects and what happens to colors after, from the first WorldEnvironment made
+// (WorldEnvironment's docs); clear is the project's clear color.
 struct Environment {
     render::Color background;
     render::Sky3D sky; // with no texture made yet and no lights
+    // The sky's light for ambient light and reflections, from the material sky_material names.
+    render::Radiance3D radiance;
+    // The entity's sky material, read when the background or the sky's light uses it.
+    render::SkyKind sky_material = render::SkyKind::None;
     render::Fog3D fog;
     std::array<float, 3> ambient{0.0F, 0.0F, 0.0F}; // sRGB
     float ambient_energy = 1.0F;

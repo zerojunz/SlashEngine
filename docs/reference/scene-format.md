@@ -768,8 +768,11 @@ project's `rendering.clear_color`, there is no ambient light and colors stay as 
 | `background_energy_multiplier` | `1` | Brightens the background or sky |
 | `sky_custom_fov` | `0` | Degrees across the target's height the sky is seen with; `0` for the camera's |
 | `sky_rotation` | `[0, 0, 0]` | Turns the sky, in radians about x, y and z, as `Transform3D`'s rotation |
-| `ambient_light_source` | `"background"` | `"background"` (its color and energy; with a sky, `ambient_light_color` for now), `"color"` or `"disabled"` |
-| `ambient_light_color`, `ambient_light_energy` | `[0, 0, 0, 1]`, `1` | The ambient light for `"color"` |
+| `sky_radiance_size` | `256` | Texels across each face of the cube the [sky's light](#sky-light) is drawn into: 32, 64, 128, 256, 512, 1024 or 2048 |
+| `ambient_light_source` | `"background"` | `"background"` (a color background's color and energy, or a sky's light), `"color"`, `"sky"` (the sky's light) or `"disabled"` |
+| `ambient_light_color`, `ambient_light_energy` | `[0, 0, 0, 1]`, `1` | The ambient light for `"color"`, and what the sky's light mixes with |
+| `ambient_light_sky_contribution` | `1` | How much of the ambient light is the sky's, over `ambient_light_color`, from 0 to 1 |
+| `reflected_light_source` | `"background"` | What lit surfaces reflect: `"background"` (the sky, if it is the background), `"sky"` or `"disabled"` |
 | `tonemap_mode` | `"linear"` | `"linear"`, `"reinhard"`, `"filmic"`, `"aces"` or `"agx"` |
 | `tonemap_exposure` | `1` | Multiplies lit colors before they are tonemapped |
 | `tonemap_white` | `1` | The color tonemapped to white (`"agx"` ignores it) |
@@ -786,7 +789,7 @@ project's `rendering.clear_color`, there is no ambient light and colors stay as 
 | `fog_light_color`, `fog_light_energy` | `[0.518, 0.553, 0.608, 1]`, `1` | The fog's color, sRGB, and how bright it is |
 | `fog_sun_scatter` | `0` | How much directional lights brighten the fog looked through toward them |
 | `fog_density` | `0.01` | How thick exponential fog is |
-| `fog_aerial_perspective` | `0` | How much the sky colors the fog in front of it, from 0 to 1 (over the sky only, for now) |
+| `fog_aerial_perspective` | `0` | How much the sky colors the fog in front of it, from 0 to 1 (over the sky only, as Godot's Compatibility renderer) |
 | `fog_sky_affect` | `1` | How much fog covers the sky or background, from 0 to 1 |
 | `fog_height`, `fog_height_density` | `0`, `0` | Fog thickens below this height, by this much; `0` for none |
 | `fog_depth_curve`, `fog_depth_begin`, `fog_depth_end` | `1`, `10`, `100` | How depth fog grows, where it begins and where it is thickest; an end of `0` or less is the camera's `far` |
@@ -817,7 +820,7 @@ the sky.
 The sky shows the sun of each `DirectionalLight3D` whose `sky_mode` isn't `"light_only"`, up to
 four in tree order, where the light shines from, in its `light_color` and `light_energy`, sized
 by its `light_angular_distance`. `sky_rotation` turns the sky and `sky_custom_fov` sees it
-through another field of view. The sky's own light doesn't reach meshes yet.
+through another field of view. The sky also lights the meshes, as its [light](#sky-light).
 
 `ProceduralSkyMaterial` is a gradient from the horizon up to the sky's top and down to the
 ground's bottom, with each sun on it:
@@ -855,6 +858,23 @@ from straight up to straight down, as Godot's:
 | `panorama` | `""` | The texture; with none the sky is black |
 | `filter` | `true` | Samples it smoothly; `false` takes its nearest texel |
 | `energy_multiplier` | `1` | Brightens it |
+
+### Sky light
+
+The sky lights meshes and shines in them, as Godot's sky radiance. The sky material on the
+`WorldEnvironment`'s entity (or the default procedural sky) is drawn into a cube of
+`sky_radiance_size` texels a side, with its suns but without fog, and blurred into smaller
+levels for rougher surfaces: Godot's `RADIANCE_SIZE` levels, down to four texels a side, each
+filtered by GGX samples. It is drawn again only when the sky changes.
+
+Ambient light comes from it when `ambient_light_source` is `"sky"`, or `"background"` with a sky
+background: each surface gets the blurriest level's light from where its normal faces, times
+`background_energy_multiplier`, mixed with `ambient_light_color` times `ambient_light_energy` by
+`ambient_light_sky_contribution`. Reflections come from it when `reflected_light_source` is
+`"sky"`, or `"background"` with a sky background: a smooth surface reflects the sharp level and a
+rough one a blurrier level, as Godot's `StandardMaterial3D` does, and dark ambient light dims
+them, as Godot's specular occlusion does. Either can use the sky while the background is a
+color: the sky then lights the meshes without being drawn behind them.
 
 ### Fog
 

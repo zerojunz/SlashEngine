@@ -82,6 +82,10 @@ struct MeshSceneUniforms {
     Float4 fog_color{}; // linear, times its energy; then 0 for no fog, 1 exponential, 2 depth
     Float4 fog{};       // density, sun scatter, height, height density
     Float4 fog_depth{}; // depth fog's begin, end and curve
+    // 1 for ambient light from the radiance, 1 for reflections of it, the background's energy,
+    // ambient light's sky contribution.
+    Float4 sky{};
+    std::array<Float4, 3> sky_rows{}; // the world to the sky's space, a row each
     std::array<MeshLightUniforms, kMaxLights3D> lights{};
 };
 
@@ -118,7 +122,7 @@ struct MeshShadowPassUniforms {
 
 static_assert(sizeof(MeshInstanceUniforms) == 144);
 static_assert(sizeof(MeshSurfaceUniforms) == 96);
-static_assert(sizeof(MeshSceneUniforms) == 96 + (80 * kMaxLights3D));
+static_assert(sizeof(MeshSceneUniforms) == 160 + (80 * kMaxLights3D));
 static_assert(sizeof(MeshDirectionalShadowUniforms) == 320);
 static_assert(sizeof(MeshPositionalShadowUniforms) == 576);
 static_assert(sizeof(MeshShadowUniforms) ==
@@ -267,17 +271,21 @@ struct ShadowAtlas {
     // edge: how much of the four texels around (u, v) reference is at least.
     [[nodiscard]] float compare(float u, float v, float reference) const;
 };
-// What the fragment stage samples shadows from.
-struct MeshShadows {
+struct CubeImage; // in sky_shading.hpp
+
+// The maps the fragment stage samples besides the material's textures: the shadow atlases, and
+// the radiance (none when the scene's meshes aren't lit by it).
+struct MeshMaps {
     const MeshShadowUniforms* uniforms = nullptr;
     ShadowAtlas directional;
     ShadowAtlas positional;
+    const CubeImage* radiance = nullptr;
 };
 
 // The pixel's color, as fs_main gives it, or nullopt where it discards the pixel.
 [[nodiscard]] std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface,
                                                const MeshSceneUniforms& scene,
-                                               const MeshShadows& shadows, const MeshPixel& pixel);
+                                               const MeshMaps& maps, const MeshPixel& pixel);
 // fs_main in shaders/shadow.hlsl: whether a shadow pass keeps a pixel, as the alpha scissor does.
 [[nodiscard]] bool shadow_keeps(const MeshSurfaceUniforms& surface, const Float4& albedo_texel,
                                 const Float4& color);

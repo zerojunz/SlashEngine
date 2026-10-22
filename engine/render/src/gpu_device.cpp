@@ -11,6 +11,7 @@
 #include "particles_process_shaders.hpp"
 #include "post_shaders.hpp"
 #include "post_shading.hpp"
+#include "radiance_shaders.hpp"
 #include "shader_code.hpp"
 #include "shadow_shaders.hpp"
 #include "sky_shaders.hpp"
@@ -43,6 +44,8 @@ namespace {
 // Textures are 8-bit RGBA, the one color format every backend can sample, draw into and read,
 // or the compressed formats the GPU samples.
 constexpr SDL_GPUTextureFormat kTextureFormat = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+// The radiance's cubes are RGB10A2, as Godot's.
+constexpr SDL_GPUTextureFormat kRadianceFormat = SDL_GPU_TEXTUREFORMAT_R10G10B10A2_UNORM;
 
 constexpr SDL_GPUTextureFormat gpu_format(TextureFormat format) {
     switch (format) {
@@ -291,6 +294,24 @@ public:
         for (const auto& [format, pipeline] : sky_pipelines_) {
             SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
         }
+        for (SDL_GPUShader* shader : radiance_shaders_) {
+            if (shader != nullptr) {
+                SDL_ReleaseGPUShader(device_, shader);
+            }
+        }
+        for (SDL_GPUGraphicsPipeline* pipeline : radiance_pipelines_) {
+            if (pipeline != nullptr) {
+                SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+            }
+        }
+        for (SDL_GPUTexture* cube : {radiance_.raw, radiance_.filtered, no_radiance_}) {
+            if (cube != nullptr) {
+                SDL_ReleaseGPUTexture(device_, cube);
+            }
+        }
+        if (radiance_sampler_ != nullptr) {
+            SDL_ReleaseGPUSampler(device_, radiance_sampler_);
+        }
         for (const auto& [id, game] : game_shaders_) {
             SDL_ReleaseGPUShader(device_, game.vertex);
             SDL_ReleaseGPUShader(device_, game.fragment);
@@ -400,6 +421,9 @@ public:
         }
         TextureDesc stored = desc;
         stored.format = it->second.stored;
+        if (radiance_.key && radiance_.key->texture == texture) {
+            radiance_.key.reset(); // drawn from the old texels
+        }
         return upload_texels(it->second.gpu, desc, stored, texels);
     }
 
@@ -914,6 +938,9 @@ public:
             return depth.error();
         }
         if (auto ready = prepare_shadows(*frame_.scene); !ready) {
+            return ready;
+        }
+        if (auto ready = prepare_radiance(*frame_.scene); !ready) {
             return ready;
         }
         // With post-processing, meshes draw into the post passes' texture instead of the target.
@@ -1634,7 +1661,7 @@ private:
             return vertex.error();
         }
         auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code,
-                                        static_cast<std::uint32_t>(kMeshTextures) + 2, 3);
+                                        static_cast<std::uint32_t>(kMeshTextures) + 3, 3);
         if (!fragment) {
             SDL_ReleaseGPUShader(device_, vertex.value());
             return fragment.error();
@@ -1964,6 +1991,9 @@ private:
         if (plan != nullptr) {
             draw_shadows(commands, *plan);
         }
+        if (radiance_draws_) {
+            draw_radiance(commands, scene);
+        }
         SDL_GPUColorTargetInfo color{};
         color.texture = post_processes(scene.post) ? post_targets_.world : frame_texture_;
         color.clear_color = {frame_.clear.r, frame_.clear.g, frame_.clear.b, frame_.clear.a};
@@ -2001,13 +2031,16 @@ private:
                                        static_cast<std::uint32_t>(sizeof(MeshSceneUniforms)));
         SDL_PushGPUFragmentUniformData(commands, 2, plan->uniforms.get(),
                                        static_cast<std::uint32_t>(sizeof(MeshShadowUniforms)));
-        std::array<SDL_GPUTextureSamplerBinding, kMeshTextures + 2> samplers{};
+        std::array<SDL_GPUTextureSamplerBinding, kMeshTextures + 3> samplers{};
         for (std::size_t atlas = 0; atlas < 2; ++atlas) {
             const ShadowAtlasTexture& made = shadow_atlases_.at(atlas);
             const bool drawn = (atlas == 0 ? plan->directional_size : plan->positional_size) != 0;
             samplers.at(kMeshTextures + atlas) = {.texture = drawn ? made.texture : no_shadows_,
                                                   .sampler = shadow_sampler_};
         }
+        samplers.at(kMeshTextures + 2) = {
+            .texture = radiance_used(scene) ? radiance_.filtered : no_radiance_,
+            .sampler = radiance_sampler_};
         SDL_GPUGraphicsPipeline* bound = nullptr;
         for (const std::size_t i :
              mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), scene,
@@ -2038,6 +2071,192 @@ private:
             SDL_DrawGPUIndexedPrimitives(pass, batch.index_count, 1, 0, 0, 0);
         }
         SDL_EndGPURenderPass(pass);
+    }
+
+    // A cube texture of the radiance's format, size texels across with levels levels, that can be
+    // drawn into.
+    Result<SDL_GPUTexture*> make_cube(std::uint32_t size, std::uint32_t levels) {
+        SDL_GPUTextureCreateInfo info{};
+        info.type = SDL_GPU_TEXTURETYPE_CUBE;
+        info.format = kRadianceFormat;
+        info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+        info.width = size;
+        info.height = size;
+        info.layer_count_or_depth = kCubeFaces;
+        info.num_levels = levels;
+        SDL_GPUTexture* texture = SDL_CreateGPUTexture(device_, &info);
+        if (texture == nullptr) {
+            return sdl_error("creating a radiance cube " + std::to_string(size) +
+                             " texels across failed");
+        }
+        return texture;
+    }
+
+    // A pass drawing into a level of one face of a cube.
+    static SDL_GPURenderPass* begin_cube_pass(SDL_GPUCommandBuffer* commands,
+                                              SDL_GPUTexture* cube, std::uint32_t face,
+                                              std::uint32_t level) {
+        SDL_GPUColorTargetInfo color{};
+        color.texture = cube;
+        color.mip_level = level;
+        color.layer_or_depth_plane = face;
+        color.load_op = SDL_GPU_LOADOP_CLEAR;
+        color.clear_color = {0.0F, 0.0F, 0.0F, 1.0F};
+        color.store_op = SDL_GPU_STOREOP_STORE;
+        return SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
+    }
+
+    // A pipeline drawing one triangle over an RGB10A2 target with no depth, with shaders.
+    Result<SDL_GPUGraphicsPipeline*> cube_pipeline(SDL_GPUShader* vertex,
+                                                   SDL_GPUShader* fragment) {
+        SDL_GPUColorTargetDescription color{};
+        color.format = kRadianceFormat;
+        SDL_GPUGraphicsPipelineCreateInfo info{};
+        info.vertex_shader = vertex;
+        info.fragment_shader = fragment;
+        info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+        info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+        info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+        info.target_info.color_target_descriptions = &color;
+        info.target_info.num_color_targets = 1;
+        SDL_GPUGraphicsPipeline* pipeline = SDL_CreateGPUGraphicsPipeline(device_, &info);
+        if (pipeline == nullptr) {
+            return sdl_error("creating a radiance pipeline failed");
+        }
+        return pipeline;
+    }
+
+    // What the frame's meshes take the radiance from, made at its first mesh draw: the sampler
+    // and a black cube for meshes with none, and for a scene with radiance, its shaders,
+    // pipelines and cubes, drawn again at end_frame when what they are drawn from changed.
+    Result<void> prepare_radiance(const Scene3D& scene) {
+        if (radiance_prepared_) {
+            return {};
+        }
+        if (radiance_sampler_ == nullptr) {
+            SDL_GPUSamplerCreateInfo info{};
+            info.min_filter = SDL_GPU_FILTER_LINEAR;
+            info.mag_filter = SDL_GPU_FILTER_LINEAR;
+            info.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR;
+            info.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+            info.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+            info.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+            info.max_lod = 1000.0F;
+            radiance_sampler_ = SDL_CreateGPUSampler(device_, &info);
+            if (radiance_sampler_ == nullptr) {
+                return sdl_error("creating the radiance sampler failed");
+            }
+        }
+        if (no_radiance_ == nullptr) {
+            auto made = make_cube(1, 1);
+            if (!made) {
+                return made.error();
+            }
+            no_radiance_ = made.value();
+            // Cleared once, so that it is never read uninitialized.
+            SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+            if (commands == nullptr) {
+                return sdl_error("acquiring a command buffer failed");
+            }
+            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+                SDL_EndGPURenderPass(begin_cube_pass(commands, no_radiance_, face, 0));
+            }
+            SDL_SubmitGPUCommandBuffer(commands);
+        }
+        if (radiance_used(scene)) {
+            if (radiance_shaders_[0] == nullptr) {
+                const ShaderCode code{.vertex_spirv = shaders::kRadianceVertexSpirv,
+                                      .fragment_spirv = shaders::kRadianceFragmentSpirv,
+                                      .vertex_msl = shaders::kRadianceVertexMsl,
+                                      .fragment_msl = shaders::kRadianceFragmentMsl,
+                                      .hlsl = shaders::kRadianceHlsl};
+                auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 0);
+                if (!vertex) {
+                    return vertex.error();
+                }
+                auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, 1, 1);
+                if (!fragment) {
+                    SDL_ReleaseGPUShader(device_, vertex.value());
+                    return fragment.error();
+                }
+                radiance_shaders_ = {vertex.value(), fragment.value()};
+            }
+            // The sky draws into the raw cube with the sky pass's shaders.
+            if (auto made = make_sky_shaders(); !made) {
+                return made;
+            }
+            const std::array<std::array<SDL_GPUShader*, 2>, 2> stages{sky_shaders_,
+                                                                       radiance_shaders_};
+            for (std::size_t i = 0; i < 2; ++i) {
+                if (radiance_pipelines_.at(i) == nullptr) {
+                    auto pipeline = cube_pipeline(stages.at(i)[0], stages.at(i)[1]);
+                    if (!pipeline) {
+                        return pipeline.error();
+                    }
+                    radiance_pipelines_.at(i) = pipeline.value();
+                }
+            }
+            const std::uint32_t size = scene.radiance.size;
+            if (radiance_.size != size) {
+                for (SDL_GPUTexture** cube : {&radiance_.raw, &radiance_.filtered}) {
+                    if (*cube != nullptr) {
+                        pending_release_.push_back(std::exchange(*cube, nullptr));
+                    }
+                }
+                radiance_.size = 0;
+                radiance_.key.reset();
+                auto raw = make_cube(size, radiance_levels(size));
+                if (!raw) {
+                    return raw.error();
+                }
+                radiance_.raw = raw.value();
+                auto filtered = make_cube(size, radiance_levels(size));
+                if (!filtered) {
+                    return filtered.error();
+                }
+                radiance_.filtered = filtered.value();
+                radiance_.size = size;
+            }
+            const RadianceKey key = radiance_key(scene);
+            radiance_draws_ = !radiance_.key || !(*radiance_.key == key);
+            radiance_.key = key;
+        }
+        radiance_prepared_ = true;
+        return {};
+    }
+
+    // The scene's radiance, as Godot's Compatibility renderer draws its radiance map: the sky into
+    // each face of the raw cube, its mipmaps, then each level of each face filtered from it.
+    void draw_radiance(SDL_GPUCommandBuffer* commands, const Scene3D& scene) {
+        const SDL_GPUTextureSamplerBinding texture = binding(radiance_texture(scene), true);
+        for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+            const SkyUniforms sky = radiance_face_uniforms(scene, face);
+            SDL_PushGPUFragmentUniformData(commands, 0, &sky,
+                                           static_cast<std::uint32_t>(sizeof(sky)));
+            SDL_GPURenderPass* pass = begin_cube_pass(commands, radiance_.raw, face, 0);
+            SDL_BindGPUGraphicsPipeline(pass, radiance_pipelines_[0]);
+            SDL_BindGPUFragmentSamplers(pass, 0, &texture, 1);
+            SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
+            SDL_EndGPURenderPass(pass);
+        }
+        SDL_GenerateMipmapsForGPUTexture(commands, radiance_.raw);
+        const std::uint32_t levels = radiance_levels(radiance_.size);
+        const SDL_GPUTextureSamplerBinding source{.texture = radiance_.raw,
+                                                  .sampler = radiance_sampler_};
+        for (std::uint32_t level = 0; level < levels; ++level) {
+            const auto uniforms = std::make_unique<RadianceUniforms>(
+                radiance_uniforms(radiance_.size, levels, level));
+            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+                uniforms->params[0] = static_cast<float>(face);
+                SDL_PushGPUFragmentUniformData(
+                    commands, 0, uniforms.get(), static_cast<std::uint32_t>(sizeof(RadianceUniforms)));
+                SDL_GPURenderPass* pass = begin_cube_pass(commands, radiance_.filtered, face, level);
+                SDL_BindGPUGraphicsPipeline(pass, radiance_pipelines_[1]);
+                SDL_BindGPUFragmentSamplers(pass, 0, &source, 1);
+                SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
+                SDL_EndGPURenderPass(pass);
+            }
+        }
     }
 
     // The post passes' shaders, their pipeline for a target format, and their textures at the
@@ -2101,22 +2320,8 @@ private:
         if (auto depth = depth_target(width, height); !depth) {
             return depth.error();
         }
-        if (sky_shaders_[0] == nullptr) {
-            const ShaderCode code{.vertex_spirv = shaders::kSkyVertexSpirv,
-                                  .fragment_spirv = shaders::kSkyFragmentSpirv,
-                                  .vertex_msl = shaders::kSkyVertexMsl,
-                                  .fragment_msl = shaders::kSkyFragmentMsl,
-                                  .hlsl = shaders::kSkyHlsl};
-            auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 0);
-            if (!vertex) {
-                return vertex.error();
-            }
-            auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, 1, 1);
-            if (!fragment) {
-                SDL_ReleaseGPUShader(device_, vertex.value());
-                return fragment.error();
-            }
-            sky_shaders_ = {vertex.value(), fragment.value()};
+        if (auto made = make_sky_shaders(); !made) {
+            return made;
         }
         if (sky_pipeline(format) != nullptr) {
             return {};
@@ -2139,6 +2344,29 @@ private:
             return sdl_error("creating the sky pipeline failed");
         }
         sky_pipelines_.emplace_back(format, pipeline);
+        return {};
+    }
+
+    // The sky's shaders, unless they are made already.
+    Result<void> make_sky_shaders() {
+        if (sky_shaders_[0] != nullptr) {
+            return {};
+        }
+        const ShaderCode code{.vertex_spirv = shaders::kSkyVertexSpirv,
+                              .fragment_spirv = shaders::kSkyFragmentSpirv,
+                              .vertex_msl = shaders::kSkyVertexMsl,
+                              .fragment_msl = shaders::kSkyFragmentMsl,
+                              .hlsl = shaders::kSkyHlsl};
+        auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 0);
+        if (!vertex) {
+            return vertex.error();
+        }
+        auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, 1, 1);
+        if (!fragment) {
+            SDL_ReleaseGPUShader(device_, vertex.value());
+            return fragment.error();
+        }
+        sky_shaders_ = {vertex.value(), fragment.value()};
         return {};
     }
 
@@ -2541,6 +2769,8 @@ private:
         mesh_draws_.clear();
         mesh_batches_.clear();
         shadow_plan_.reset();
+        radiance_prepared_ = false;
+        radiance_draws_ = false;
         particle_vertices_ = 0;
     }
 
@@ -2552,6 +2782,8 @@ private:
         mesh_draws_.clear();
         mesh_batches_.clear();
         shadow_plan_.reset();
+        radiance_prepared_ = false;
+        radiance_draws_ = false;
         particle_vertices_ = 0;
         clear_particle_jobs();
         release_pending();
@@ -2631,6 +2863,22 @@ private:
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> post_pipelines_;
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> sky_pipelines_;
     PostTargets post_targets_;
+    // The radiance meshes are lit by: the raw cube the sky draws into and the one filtered from
+    // it, and what they hold (nullopt to draw them again).
+    struct RadianceCubes {
+        SDL_GPUTexture* raw = nullptr;
+        SDL_GPUTexture* filtered = nullptr;
+        std::uint32_t size = 0;
+        std::optional<RadianceKey> key;
+    };
+    RadianceCubes radiance_;
+    std::array<SDL_GPUShader*, 2> radiance_shaders_{}; // vertex, then fragment
+    // Drawing the sky into the raw cube, then filtering it.
+    std::array<SDL_GPUGraphicsPipeline*, 2> radiance_pipelines_{};
+    SDL_GPUSampler* radiance_sampler_ = nullptr;
+    SDL_GPUTexture* no_radiance_ = nullptr; // bound when the frame's meshes have none
+    bool radiance_prepared_ = false;        // at the frame's first mesh draw
+    bool radiance_draws_ = false;           // whether end_frame draws the radiance again
 
     // The frame being built. A skipped frame has no command buffer.
     bool in_frame_ = false;
