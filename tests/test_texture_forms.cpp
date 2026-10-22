@@ -307,7 +307,7 @@ TEST_CASE("texture.forms makes each texture's forms and reports their sizes and 
     const json::Array& textures = reply.value.find("textures")->as_array();
     REQUIRE(textures.size() == 4);
     CHECK(textures[0].find("path")->as_string() == "broken.png");
-    CHECK(contains(textures[0].find("error")->as_string(), "not a PNG, BMP or KTX2 image"));
+    CHECK(contains(textures[0].find("error")->as_string(), "not a PNG, BMP, JPEG or KTX2 image"));
     const json::Value& hero = textures[1];
     CHECK(hero.find("path")->as_string() == "hero.png");
     CHECK(hero.find("mode")->as_string() == "vram_compressed");

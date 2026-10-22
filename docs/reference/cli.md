@@ -132,7 +132,8 @@ file, a [`.theme.json`](scene-format.md#themes) file, an
 [`.audio.json`](scene-format.md#audio-streams) file, a
 [`.bus_layout.json`](scene-format.md#bus-layouts) file, a
 [`.replay.json`](scene-format.md#replays) file, a [`.test.json`](scene-format.md#tests) file or
-a [`.score.json`](scene-format.md#scores) file and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
+a [`.score.json`](scene-format.md#scores) file, or a [glTF model](scene-format.md#models)
+(`.gltf` or `.glb`), and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
 [scenes](scene-format.md#instanced-scenes) a file extends, the tile sets its layers use, the animation libraries its players use and the project's window size and theme are read from its
 project: the nearest folder above it with a `project.json`, else the current folder.
 
@@ -148,7 +149,8 @@ For a prefab the result counts its `components` instead of `entities`, for a `.f
 `.anim.json` file its `animations`, for a `.tileset.json` file its `tiles`, for a `.theme.json`
 file its `types`, for a `.bus_layout.json` file its `buses`, for a `.replay.json` file the
 `ticks` it covers, for a `.test.json` file its `tests`, for a `.score.json` file its `bars`,
-`tracks` and `notes`, for a `.font.json`, `.audio.json` or `.process_material.json` file nothing more, and for a `.material.json` file the
+`tracks` and `notes`, for a model its `meshes`, `materials`, `images` and `bounds` (the corners
+of the box its parts fill, in meters), for a `.font.json`, `.audio.json` or `.process_material.json` file nothing more, and for a `.material.json` file the
 `instructions` its graph compiles to, of the 64 a material can run. A material with a
 [shader](scene-format.md#shaders) has no graph: its shader is compiled, and each error in it is
 reported at `/shader` with the shader file and line.
@@ -195,6 +197,14 @@ have:
 {"errors":[{"message":"Label has no colors item \"font_colour\"; did you mean \"font_color\"?","path":"/types/Label/colors/font_colour"}],"valid":false}
 ```
 
+A model is checked as `MeshInstance3D` loads it: a file that doesn't load is one error at `""`
+saying why, and an image beside it that can't be read or decoded is one at its
+`/images/<index>/uri`:
+
+```json
+{"errors":[{"message":"it requires the extension KHR_draco_mesh_compression, which isn't read; export it without that extension","path":""}],"valid":false}
+```
+
 A bus layout's effects must be [types the engine has](scene-format.md#effects), with their
 fields, and each bus must send to a bus before it:
 
@@ -227,6 +237,9 @@ slash-cli scene format --check <file>    # change nothing; exit 1 if not canonic
 
 Formatting a scene or prefab with components of the game's own code needs that code
 [built](#build), since it loads the file into a world.
+
+glTF models are left as the tools that made them wrote them: formatting one is a usage error
+(exit code 2).
 
 ### schema
 

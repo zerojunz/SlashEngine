@@ -61,6 +61,7 @@ as `entity.get`, reject it as an unknown param.
 | Assets | [`asset.list`](#assetlist) |
 | Materials | [`material.eval`](#materialeval) |
 | Animations | [`animation.eval`](#animationeval) |
+| Models | [`model.inspect`](#modelinspect) |
 | Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity) |
 | Particles | [`particles.eval`](#particleseval) |
@@ -524,6 +525,38 @@ the cells as `cells`, a list of `[column, row]` (up to 4096), or `rect`,
 `[column, row, width, height]` (up to 65536 cells); give one. Columns and rows are from -32768 to
 32767. A layer whose tile set doesn't load, or whose legend or rows are wrong, fails with `path`
 `/id` and the message names the bad value, as `"map"'s TileMapLayer/rows/2: ...`.
+
+### model.inspect
+
+Returns what a [glTF model](scene-format.md#models) holds, as a `MeshInstance3D` draws it, without
+drawing it: its meshes, materials, images, the nodes that place its meshes and its bounds.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | A `.gltf` or `.glb` file |
+| `id` | string | | Or an entity whose `MeshInstance3D` draws a model |
+
+Give one of them. Needs: `read`.
+
+```json
+{"path": "models/house.gltf"}
+```
+
+```json
+{"bounds":{"max":[1.15,2.2,0.95],"min":[-1.15,0,-0.95]},"images":[],"materials":[{"name":"Plaster","standard":{"albedo_color":[0.9261,0.8756,0.7736,1],"roughness":0.9}},{"name":"Tiles","standard":{"albedo_color":[0.7977,0.3656,0.2717,1],"roughness":0.7,"vertex_color_use_as_albedo":true}},{"name":"Wood","standard":{"albedo_color":[0.4845,0.3318,0.206,1],"cull_mode":"disabled","roughness":0.8}}],"meshes":[{"materials":[0],"name":"Walls","triangles":8,"vertices":16},{"materials":[1],"name":"Roof","triangles":6,"vertices":18},{"materials":[2],"name":"Door","triangles":2,"vertices":4}],"parts":[{"mesh":0,"node":"Walls"},{"mesh":1,"node":"Roof"},{"mesh":2,"node":"Door"}]}
+```
+
+- Each mesh lists the material of each of its surfaces, by index into `materials`, or `-1` for
+  Godot's default material, and counts their vertices and triangles.
+- Each material has the `StandardMaterial3D` fields that differ from the defaults, as the import
+  sets them, and `textures`: the index into `images` its `albedo`, `metallic_roughness`,
+  `normal` and `emission` textures sample.
+- Each image is the `path` of a file beside the model, or the `size` of one inside it.
+- `parts` are the meshes the model draws: each with the scene node that places it, in tree order.
+- `bounds` are the corners of the box the parts fill, in the model's own meters.
+
+A model that doesn't load is an error at `/path` (or `/id`) saying why, as
+[`scene validate`](cli.md#scene-validate) reports it.
 
 ### tilemap.paint
 

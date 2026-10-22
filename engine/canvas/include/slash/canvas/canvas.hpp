@@ -393,6 +393,7 @@ private:
     std::unordered_map<entt::entity, GpuSystem> gpu_systems_;
     std::unordered_map<entt::entity, LayerCells> layer_cells_;
     std::map<std::string, asset::Handle<render::Image>, std::less<>> light_images_;
+    std::map<std::string, asset::Handle<scene3d::Model>, std::less<>> models_;
     ShadowCache shadow_cache_;
     // The light atlas, and the textures and versions it was packed from.
     render::TextureId atlas_ = render::TextureId::None;
@@ -419,7 +420,7 @@ private:
     std::size_t shapes_drawn_ = 0;
     std::size_t meshes_drawn_ = 0;
     std::size_t lights_3d_drawn_ = 0;
-    // The 3D world's meshes on the device; its textures are this renderer's.
+    // The 3D world's meshes on the device; its textures and models are this renderer's.
     scene3d::Renderer scene3d_;
     // The upscaler the settings choose, made for the device when they first ask for it, and
     // what it is called.

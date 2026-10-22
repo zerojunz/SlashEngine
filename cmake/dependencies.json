@@ -84,6 +84,13 @@
       "repository": "https://github.com/google/brotli.git",
       "tag": "v1.1.0"
     },
+    "cgltf": {
+      "license": "MIT",
+      "license_file": "LICENSE",
+      "license_sha256": "f619925f80ef862497aaf8e8155ef218fa6a2190055129523ca3df9119a9ba95",
+      "repository": "https://github.com/jkuhlmann/cgltf.git",
+      "tag": "v1.15"
+    },
     "dawn": {
       "license": "BSD-3-Clause",
       "license_file": "LICENSE",
@@ -168,6 +175,13 @@
       "repository": "https://github.com/Mbed-TLS/mbedtls.git",
       "tag": "v3.6.7"
     },
+    "mikktspace": {
+      "license": "Zlib",
+      "license_file": "mikktspace.h",
+      "license_sha256": "17fc433894f24c73753d548086cc4d8c5c0379f4a6edfb98b5da243e4f0bc3d0",
+      "repository": "https://github.com/mmikk/MikkTSpace.git",
+      "tag": "3e895b49d05ea07e4c2133156cfa94369e19e409"
+    },
     "miniaudio": {
       "license": "MIT-0 OR Unlicense",
       "license_file": "LICENSE",
@@ -188,6 +202,13 @@
       "license_sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
       "repository": "https://github.com/googlefonts/roboto.git",
       "tag": "v2.138"
+    },
+    "stb": {
+      "license": "MIT OR Unlicense",
+      "license_file": "LICENSE",
+      "license_sha256": "bebfe904b14301657e4e5d655c811d51fd31b97c455b9cc2d8600d6bac6cff63",
+      "repository": "https://github.com/nothings/stb.git",
+      "tag": "a7d4c2175630e1ea5b6f8dd00ab96fed0b97b96d"
     },
     "tracy": {
       "license": "BSD-3-Clause",

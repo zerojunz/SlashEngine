@@ -1,3 +1,5 @@
+#include "gltf.hpp"
+
 #include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
@@ -1678,6 +1680,54 @@ TEST_CASE("material.eval returns the colors a material draws, for a file or a sp
     CHECK(contains(reply.message, "gone.png"));
     engine.fails("material.eval", R"({"path": "flash.material.json", "uv": []})",
                  command::code::kInvalidParams);
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("model.inspect returns a glTF model's meshes, materials, images and parts") {
+    const std::string root = "model_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root + "/models").ok());
+    render::Image red;
+    red.width = 1;
+    red.height = 1;
+    red.pixels = {255, 0, 0, 255};
+    REQUIRE(slash::platform::write_file(root + "/models/paint.png", render::encode_png(red).value())
+                .ok());
+    slash::test::Gltf model = slash::test::quad(0);
+    model.document["images"] = parse(R"([{"uri": "paint.png"}])");
+    model.document["textures"] = parse(R"([{"source": 0}])");
+    model.document["materials"] = parse(R"([{"name": "Paint", "doubleSided": true,
+        "pbrMetallicRoughness": {"baseColorTexture": {"index": 0}, "metallicFactor": 0}}])");
+    REQUIRE(slash::platform::write_file(root + "/models/sign.gltf", model.gltf()).ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+
+    // Only the material's fields that differ from StandardMaterial3D's defaults.
+    const json::Value expected = parse(R"({
+        "bounds": {"max": [1, 1, 0], "min": [-1, -1, 0]},
+        "images": [{"path": "models/paint.png"}],
+        "materials": [{"name": "Paint", "standard": {"cull_mode": "disabled"},
+                       "textures": {"albedo": 0}}],
+        "meshes": [{"materials": [0], "name": "Quad", "triangles": 2, "vertices": 4}],
+        "parts": [{"mesh": 0, "node": "Quad"}]})");
+    CHECK(engine.ok("model.inspect", R"({"path": "models/sign.gltf"})") == expected);
+    engine.ok("entity.create", R"({"id": "sign", "components": {"Transform3D": {},
+        "MeshInstance3D": {"mesh": "models/sign.gltf"}}})");
+    CHECK(engine.ok("model.inspect", R"({"id": "sign"})") == expected);
+
+    auto reply = engine.fails("model.inspect", "{}", command::code::kInvalidParams);
+    CHECK(contains(reply.message, "give id"));
+    reply = engine.fails("model.inspect", R"({"path": "models/sign.obj"})",
+                         command::code::kInvalidParams);
+    CHECK(contains(reply.message, "isn't a model"));
+    engine.ok("entity.create", R"({"id": "box", "components": {"Transform3D": {},
+        "MeshInstance3D": {}, "BoxMesh": {}}})");
+    reply = engine.fails("model.inspect", R"({"id": "box"})", command::code::kInvalidParams);
+    CHECK(contains(reply.message, "draws no model"));
+    reply = engine.call("model.inspect", R"({"path": "models/gone.glb"})");
+    REQUIRE_FALSE(reply.ok);
+    CHECK(contains(reply.message, "could not be read"));
     std::filesystem::remove_all(root);
 }
 
