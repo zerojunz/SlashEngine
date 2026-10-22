@@ -269,4 +269,47 @@ bool Tree3D::visible(entt::entity entity) const {
     return true;
 }
 
+Affine3D orthonormalized(Affine3D transform) {
+    const auto normalized = [](Vec3 v) {
+        const float length = std::sqrt(dot(v, v));
+        return length == 0.0F ? v : scaled(v, 1.0F / length);
+    };
+    transform.x = normalized(transform.x);
+    transform.y = normalized(transform.y - scaled(transform.x, dot(transform.x, transform.y)));
+    transform.z = normalized(transform.z - scaled(transform.x, dot(transform.x, transform.z)) -
+                             scaled(transform.y, dot(transform.y, transform.z)));
+    return transform;
+}
+
+entt::entity current_camera(const World& world, const Tree3D& tree) {
+    const auto& ecs = world.ecs();
+    entt::entity first = entt::null;
+    for (const entt::entity entity : tree.order()) {
+        if (const auto* camera = ecs.try_get<Camera3D>(entity); camera != nullptr) {
+            if (camera->current) {
+                return entity;
+            }
+            if (first == entt::null) {
+                first = entity;
+            }
+        }
+    }
+    std::vector<entt::entity> loose;
+    for (const entt::entity entity : ecs.view<const Camera3D>()) {
+        if (!ecs.all_of<Transform3D>(entity)) {
+            loose.push_back(entity);
+        }
+    }
+    std::ranges::sort(loose, {}, [](entt::entity entity) { return entt::to_entity(entity); });
+    for (const entt::entity entity : loose) {
+        if (ecs.get<const Camera3D>(entity).current) {
+            return entity;
+        }
+        if (first == entt::null) {
+            first = entity;
+        }
+    }
+    return first;
+}
+
 } // namespace slash::world

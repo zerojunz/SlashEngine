@@ -632,8 +632,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Navigation layers on tile sets: each cell a region of its tile's navigation polygons,
         and tiles' outlines and collision polygons in 2D bakes, as Godot's `TileMapLayer`;
         imported from Godot
-- [ ] 3D audio, as Godot's `AudioStreamPlayer3D` and `AudioListener3D`: attenuation models,
-      Doppler, emission angles, `Area3D` reverb and up to 7.1 speakers
+- [ ] 3D audio, as Godot's `AudioStreamPlayer3D` and `AudioListener3D`
+  - [x] Attenuation models, panning, the high shelf that muffles distant sounds, emission
+        angles, Doppler and `Area3D` bus and reverb overrides, as Godot 4.6's, in stereo
+  - [ ] Up to 7.1 speakers
 - [ ] Heightmap terrain; CSG and grid-based tile placement
 - [x] glTF 2.0 models (`.gltf` and `.glb`: meshes, materials and textures) on `MeshInstance3D`,
       and JPEG textures, as Godot's importer reads them
@@ -784,7 +786,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Done |
 | Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials, particle graphs, turbulence, collision, sub-emitters and trails are done; attractors with 3D in 7 |
 | Soundtracks | Music planned in the storyboard, written as scores or generated, arranged into interactive music and checked by analysis, all through commands | 6 | Done |
-| Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | In part: 2D players, buses, effects, area bus overrides, interactive music, generated and polyphonic streams and microphone input are done; 3D audio in 7 |
+| Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | In part: 2D and 3D players, buses, effects, area bus and reverb overrides, interactive music, generated and polyphonic streams and microphone input are done; surround speakers in 7 |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Done |
 | UI | Retained UI with flexbox layout and themes, defined in text | 5 | Done |
