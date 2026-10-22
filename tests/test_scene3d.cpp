@@ -429,7 +429,7 @@ TEST_CASE("meshes that can't draw are reported, in the world and in scene files"
     const auto problems = scene3d::check_meshes(scene.world);
     REQUIRE(problems.size() == 4);
     CHECK(problems[0].path == "/components/MeshInstance3D");
-    CHECK(problems[0].message.starts_with("has no mesh: set mesh to a .gltf or .glb file"));
+    CHECK(problems[0].message.starts_with("has no mesh: set mesh to a .gltf, .glb or .obj file"));
     CHECK(problems[1].path == "/components");
     CHECK(problems[1].message == "an entity draws one mesh, but it has BoxMesh and SphereMesh");
     CHECK(problems[2].path == "/components/TorusMesh");

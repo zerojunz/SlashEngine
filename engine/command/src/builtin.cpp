@@ -2208,7 +2208,7 @@ Reply model_inspect(Session& session, const json::Value& params) {
     if (id.empty() == path.empty()) {
         return param_error(code::kInvalidParams, "",
                            "give id (an entity whose MeshInstance3D draws a model) or path (a "
-                           ".gltf or .glb file)");
+                           ".gltf, .glb or .obj file)");
     }
     const world::World& world = session.world();
     if (!id.empty()) {
@@ -2226,7 +2226,7 @@ Reply model_inspect(Session& session, const json::Value& params) {
         path = instance->mesh;
     } else if (!scene3d::is_model_path(path)) {
         return param_error(code::kInvalidParams, "/path",
-                           quoted(path) + " isn't a model: give a .gltf or .glb file");
+                           quoted(path) + " isn't a model: give a .gltf, .glb or .obj file");
     }
     auto loaded = session.assets().load<scene3d::Model>(path);
     if (!loaded) {
@@ -2272,7 +2272,8 @@ Reply model_inspect(Session& session, const json::Value& params) {
             }
         };
         texture("albedo", material.albedo_image);
-        texture("metallic_roughness", material.metallic_roughness_image);
+        texture("metallic", material.metallic_image);
+        texture("roughness", material.roughness_image);
         texture("normal", material.normal_image);
         texture("emission", material.emission_image);
         result["materials"].push_back(std::move(out));
@@ -5956,13 +5957,13 @@ void register_builtin_commands(Registry& registry) {
 
     registry.add({
         .name = "model.inspect",
-        .description = "Returns a glTF model's meshes, materials, images, parts and bounds, as a "
+        .description = "Returns a model's meshes, materials, images, parts and bounds, as a "
                        "MeshInstance3D draws them.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
             {"id", id_property("An entity whose MeshInstance3D draws a model. Or give path.")},
-            {"path", property("string", "A .gltf or .glb file. Or give id.")},
+            {"path", property("string", "A .gltf, .glb or .obj file. Or give id.")},
         }),
         .handler = model_inspect,
     });

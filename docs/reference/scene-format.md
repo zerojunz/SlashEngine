@@ -642,8 +642,8 @@ they were to where they are, as sprites are. `frame.capture`'s `drawn` counts `m
 
 [examples/scene-3d](../../examples/scene-3d/) is a lit table with a crate, a ball and a ring,
 [examples/shadows-3d](../../examples/shadows-3d/) a courtyard where the sun, a lamp and a
-flashlight cast shadows, and [examples/models-3d](../../examples/models-3d/) a house loaded from a
-glTF file.
+flashlight cast shadows, [examples/models-3d](../../examples/models-3d/) a house loaded from a
+glTF file, and [examples/obj-models](../../examples/obj-models/) a lamp post from an OBJ file.
 
 ### Meshes
 
@@ -677,10 +677,10 @@ Every primitive also has `flip_faces` (`false`), which turns it inside out, as f
 
 ### Models
 
-`MeshInstance3D`'s `mesh` (default `""`) names a glTF 2.0 model by project path: a `.gltf` file,
-with its buffers and images in files beside it or in data URIs, or a `.glb` file holding
-everything. The entity draws the model's meshes in place of a primitive mesh, read as Godot's
-glTF importer reads them:
+`MeshInstance3D`'s `mesh` (default `""`) names a model by project path: a glTF 2.0 `.gltf` file,
+with its buffers and images in files beside it or in data URIs, a `.glb` file holding
+everything, or a Wavefront [`.obj` file](#obj-models). The entity draws the model's meshes in
+place of a primitive mesh, read as Godot's importers read them:
 
 ```json
 "house": {"components": {
@@ -713,8 +713,35 @@ glTF importer reads them:
 Images are PNG, JPEG, BMP or KTX2 files, as [textures](#textures) are. Entities drawing one model
 share its meshes and textures on the device, and the model reloads when its file changes.
 [`model.inspect`](commands.md#modelinspect) lists what a model holds without drawing it, and
-`slash-cli scene validate` takes a `.gltf` or `.glb` file and checks it as `MeshInstance3D` loads
-it.
+`slash-cli scene validate` takes a `.gltf`, `.glb` or `.obj` file and checks it as
+`MeshInstance3D` loads it.
+
+#### OBJ models
+
+An `.obj` file is read as Godot's OBJ importer reads one as a scene, with its `.mtl` material
+libraries beside it:
+
+- Each `o` object is a mesh, named by its `o` line (`"Mesh"` before the first), and each run of
+  faces between `usemtl` lines is a surface of it. `g` groups are left alone, as in Godot.
+- Faces are fans of triangles from their first corner, and corners may count back from the
+  latest vertex with negative indices. A vertex's color after its position (`v x y z r g b`) is
+  kept, though Godot's material doesn't show it.
+- A surface without normals gets smooth ones by its smoothing groups: corners at the same
+  position in a group share the sum of their faces' normals. Faces are smooth until `s off`,
+  which makes them flat; any other `s` line after it starts a new group. A surface with texture
+  coordinates gets MikkTSpace's tangents; one without, Godot's stand-in tangents.
+- `mtllib` names a library relative to the model, and `usemtl` a material in the latest one;
+  faces before any `usemtl` in an object get Godot's default material. Each material becomes a
+  `StandardMaterial3D` as Godot's importer makes it: `Kd` is the albedo color; `Ks`'s brightest
+  channel, or `Ns` after it as `(1000 - Ns) / 1000`, is the `metallic` (Godot's importer sets no
+  roughness); `d`, or `1 - Tr`, is the albedo's alpha, with `transparency` `"alpha"` below 0.99;
+  `map_Kd` is the albedo texture, `map_Ks` the metallic one, `map_Ns` the roughness one and
+  `map_bump` the normal map. Ambient colors and other keywords are left out. Texture paths are
+  relative to the library, with backslashes read as slashes.
+- A library that can't be read, or that Godot's importer would refuse (a color before any
+  `newmtl`, or one with too few numbers), leaves its materials out, and a texture outside the
+  project folder or not a texture file is left out of its material. The model still loads, and
+  `scene validate` reports each of them with its line.
 
 ### StandardMaterial3D
 
@@ -932,10 +959,10 @@ energy multiplies twice, as Godot's does. A material's `disable_fog` leaves it c
 
 `scene validate` and exports report an entity with two primitive meshes (at
 `/entities/<id>/components`), a `MeshInstance3D` with none (at its `MeshInstance3D`), a
-`TorusMesh` whose radii are equal, and a `mesh` that isn't a `.gltf` or `.glb` file in the
+`TorusMesh` whose radii are equal, and a `mesh` that isn't a `.gltf`, `.glb` or `.obj` file in the
 project, doesn't load, or sits beside a primitive mesh (at its `mesh`), as drawing would. Exports
-check every `.gltf` and `.glb` file as `scene validate` does, and ship them with their `.bin`
-buffers and images. `frame.summary` doesn't describe 3D meshes
+check every `.gltf`, `.glb` and `.obj` file as `scene validate` does, and ship them with their
+`.bin` buffers, `.mtl` libraries and images. `frame.summary` doesn't describe 3D meshes
 yet.
 
 ## Canonical form

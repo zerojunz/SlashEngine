@@ -1,0 +1,7 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"model.inspect","params":{"path":"models/lamp.obj"}}
+{"jsonrpc":"2.0","id":3,"method":"frame.capture","params":{"points":[[67,14],[67,7],[67,40],[67,77],[20,20],[100,80],[150,55]]}}
+{"jsonrpc":"2.0","id":4,"method":"entity.create","params":{"id":"far_lamp","components":{"Transform3D":{"position":[2.4,0,-2.5]},"MeshInstance3D":{"mesh":"models/lamp.obj"}}}}
+{"jsonrpc":"2.0","id":5,"method":"frame.capture","params":{"points":[[106,25],[106,45]],"path":"shots/street.png"}}
+{"jsonrpc":"2.0","id":6,"method":"entity.create","params":{"id":"bench","components":{"Transform3D":{"position":[-1.5,0,-0.5]},"MeshInstance3D":{"mesh":"models/bench.obj"}}}}
+{"jsonrpc":"2.0","id":7,"method":"frame.summary"}

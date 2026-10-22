@@ -3,5 +3,5 @@
 {"jsonrpc":"2.0","id":3,"method":"frame.capture","params":{"points":[[75,25],[55,50],[75,55],[88,57],[80,5],[80,80]]}}
 {"jsonrpc":"2.0","id":4,"method":"entity.create","params":{"id":"shed","components":{"Transform3D":{"position":[2.3,0,-0.2],"rotation":[0,-0.7,0],"scale":[0.6,0.6,0.6]},"MeshInstance3D":{"mesh":"models/house.gltf"},"StandardMaterial3D":{"albedo_color":[0.55,0.42,0.3,1],"roughness":0.9}}}}
 {"jsonrpc":"2.0","id":5,"method":"frame.capture","params":{"points":[[75,55],[124,38],[124,52]],"path":"shots/village.png"}}
-{"jsonrpc":"2.0","id":6,"method":"entity.create","params":{"id":"barn","components":{"Transform3D":{"position":[-2.5,0,-1]},"MeshInstance3D":{"mesh":"models/barn.obj"}}}}
+{"jsonrpc":"2.0","id":6,"method":"entity.create","params":{"id":"barn","components":{"Transform3D":{"position":[-2.5,0,-1]},"MeshInstance3D":{"mesh":"models/barn.dae"}}}}
 {"jsonrpc":"2.0","id":7,"method":"frame.summary"}
