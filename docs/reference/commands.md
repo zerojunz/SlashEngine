@@ -523,8 +523,9 @@ length fails with its `path`, `/times/<n>`. Event tracks are left out; read them
 Returns an [animation tree](scene-format.md#animation-trees)'s parameters: those games set,
 each with its `default` and `doc`. Given an entity, each also has the `value` its
 `AnimationTree` plays with, and the reply adds `state`, what the tree's nodes keep as they play
-(each node's timings left out), `playing`, the animations its last tick played with their times
-and weights, and `invalid` when it played nothing.
+(each node's timings left out; a state machine's `playback` has its `current` state), `playing`,
+the animations its last tick played with their times and weights, and `invalid` when it played
+nothing.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -549,8 +550,9 @@ empty or doesn't load, fails at `/id`.
 Sets parameters of an entity's `AnimationTree`, as Godot's `set("parameters/...")`, and returns
 those that changed. Each value is checked against its node first, so a bad one changes nothing:
 a number for an amount or a scale, a OneShot `request` of `"none"`, `"fire"`, `"abort"` or
-`"fade_out"`, a Transition `transition_request` naming one of its inputs, a 2D blend position of
-`[x, y]`. `null` resets a parameter to its default.
+`"fade_out"`, a Transition `transition_request` naming one of its inputs, a state machine's
+`travel` or `start` naming one of its states (`"group/state"` in a grouped one), a 2D blend
+position of `[x, y]`. `null` resets a parameter to its default.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |

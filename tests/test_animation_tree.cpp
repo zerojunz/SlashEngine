@@ -598,3 +598,355 @@ TEST_CASE("AnimationTrees in a scene are checked against their trees and librari
               "hero.animtree.json has no parameter \"speed/scael\"; did you mean "
               "\"speed/scale\"?"});
 }
+
+// Animations for state machines: each holds Transform2D/position/x at one value, idle, walk and
+// run looping over a second, jump once over half a second; RESET puts it at 0.
+constexpr std::string_view kMoves = R"({"format": 1, "animations": {
+    "RESET": {"length": 1, "tracks": [{"path": "Transform2D/position/x", "keys": [{"time": 0, "value": 0}]}]},
+    "idle": {"length": 1, "loop": "linear", "tracks": [{"path": "Transform2D/position/x",
+        "keys": [{"time": 0, "value": 10}]}]},
+    "walk": {"length": 1, "loop": "linear", "tracks": [{"path": "Transform2D/position/x",
+        "keys": [{"time": 0, "value": 20}]}]},
+    "run": {"length": 1, "loop": "linear", "tracks": [{"path": "Transform2D/position/x",
+        "keys": [{"time": 0, "value": 30}]}]},
+    "jump": {"length": 0.5, "tracks": [{"path": "Transform2D/position/x",
+        "keys": [{"time": 0, "value": 40}]}]}
+}})";
+
+TEST_CASE("a state machine starts at the state after Start and travels the cheapest way through "
+          "its transitions, cross-fading, as Godot's") {
+    Scene scene;
+    scene.files.write("hero.anim.json", std::string(kMoves));
+    // Walking is the shorter way to run, unless leaving idle for walk costs more.
+    const std::string machine = R"({"format": 1, "root": {"type": "StateMachine",
+        "states": {"idle": {"node": {"type": "Animation", "animation": "idle"}, "position": [0, 0]},
+                   "walk": {"node": {"type": "Animation", "animation": "walk"}, "position": [100, 0]},
+                   "sneak": {"node": {"type": "Animation", "animation": "jump"}, "position": [100, 300]},
+                   "run": {"node": {"type": "Animation", "animation": "run"}, "position": [200, 0]},
+                   "hurt": {"node": {"type": "Animation", "animation": "walk"}, "position": [300, 0]}},
+        "transitions": [{"from": "Start", "to": "idle", "advance_mode": "auto"},
+                        {"from": "idle", "to": "walk", "xfade_time": 0.2, "priority": PRIORITY},
+                        {"from": "walk", "to": "run", "xfade_time": 0.2},
+                        {"from": "idle", "to": "sneak"},
+                        {"from": "sneak", "to": "run"},
+                        {"from": "run", "to": "idle"}]}})";
+    const auto write = [&](std::string_view priority) {
+        std::string text = machine;
+        text.replace(text.find("PRIORITY"), 8, priority);
+        scene.files.write("hero.animtree.json", text);
+    };
+    write("1");
+    const entt::entity hero = scene.create("hero", kTreeComponent);
+    const auto x = [&] { return static_cast<double>(scene.transform(hero).position.x); };
+    const auto playback = [&] {
+        return json::write(scene.tree(hero).state.at("playback"), json::Style::Compact);
+    };
+
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(10.0));
+    CHECK(playback() == R"({"current":"idle","playing":true})");
+    scene.world.step(0.1);
+    CHECK(scene.playing(hero) == "idle@0.1*1");
+
+    // A travel finds its path, then takes the first transition at the end of the tick.
+    scene.set(hero, "travel", "run");
+    scene.world.step(0.1);
+    CHECK(scene.tree(hero).parameters.empty());
+    CHECK(scene.playing(hero) == "idle@0.2*1");
+    CHECK(
+        playback() ==
+        R"({"current":"walk","fading_from":"idle","fading_time":0.2,"path":["run"],"playing":true,"reset_request":true})");
+    // Walk starts over and cross-fades in; the next transition waits for the cross-fade.
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(15.0));
+    CHECK(scene.playing(hero) == "walk@0*0.5 idle@0.3*0.5");
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(20.0).epsilon(1e-4));
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(25.0));
+    scene.world.step(0.1);
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(30.0));
+    CHECK(playback() == R"({"current":"run","playing":true})");
+
+    // Back at idle, a costly first step sends the travel the other way.
+    write("6");
+    scene.assets.poll();
+    scene.set(hero, "start", "idle");
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(10.0));
+    scene.set(hero, "travel", "run");
+    scene.world.step(0.1);
+    // Without cross-fades, every step is taken at the end of the tick: sneak counts for nothing
+    // and run starts over on the next tick.
+    CHECK(x() == doctest::Approx(10.0));
+    CHECK(scene.playing(hero) == "idle@0.1*1 jump@0*0");
+    CHECK(
+        playback() ==
+        R"({"current":"run","playing":true,"reset_request":true,"reset_request_for_fading_from":true})");
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(30.0));
+    CHECK(scene.playing(hero) == "run@0*1");
+
+    // A travel to the state playing does nothing; to one with no way there, it jumps there.
+    scene.set(hero, "travel", "run");
+    scene.world.step(0.1);
+    CHECK(scene.playing(hero) == "run@0.1*1");
+    scene.set(hero, "travel", "hurt");
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(20.0));
+    CHECK(scene.playing(hero) == "walk@0*1");
+}
+
+TEST_CASE("auto transitions wait for their conditions or the end of the state, and reach End") {
+    Scene scene;
+    scene.files.write("hero.anim.json", std::string(kMoves));
+    scene.files.write("hero.animtree.json", R"({"format": 1, "root": {"type": "StateMachine",
+        "states": {"idle": {"node": {"type": "Animation", "animation": "idle"}},
+                   "jump": {"node": {"type": "Animation", "animation": "jump"}}},
+        "transitions": [{"from": "Start", "to": "idle", "advance_mode": "auto"},
+                        {"from": "idle", "to": "jump", "advance_mode": "auto",
+                         "advance_condition": "jumping"},
+                        {"from": "jump", "to": "idle", "advance_mode": "auto",
+                         "switch_mode": "at_end", "xfade_time": 0.2},
+                        {"from": "idle", "to": "End", "advance_mode": "auto",
+                         "advance_condition": "done"}]}})");
+    const entt::entity hero = scene.create("hero", kTreeComponent);
+    const auto x = [&] { return static_cast<double>(scene.transform(hero).position.x); };
+
+    scene.world.step(0.1);
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(10.0));
+    scene.take_events();
+
+    // The condition lets the transition go at the end of the tick; jump starts on the next.
+    scene.set(hero, "conditions/jumping", true);
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(10.0));
+    scene.set(hero, "conditions/jumping", false);
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(40.0));
+    CHECK(scene.take_events() ==
+          std::vector<std::string>{R"(animation_started {"animation":"jump"})"});
+    // At its end less the cross-fade, it goes back to idle, cross-fading.
+    scene.world.step(0.1);
+    scene.world.step(0.1);
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(40.0));
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(25.0));
+    CHECK(scene.playing(hero) == "idle@0*0.5 jump@0.4*0.5");
+    scene.world.step(0.1);
+    CHECK(scene.take_events() ==
+          std::vector<std::string>{R"(animation_finished {"animation":"jump"})"});
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(10.0));
+    CHECK(scene.playing(hero) == "idle@0.2*1");
+
+    // End plays nothing, as the tree's RESET values show.
+    scene.set(hero, "conditions/done", true);
+    scene.world.step(0.1);
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(0.0));
+    CHECK(scene.playing(hero).empty());
+    CHECK(json::write(scene.tree(hero).state.at("playback"), json::Style::Compact) ==
+          R"({"current":"End","playing":true})");
+    // A start plays it again, and a stop plays nothing, keeping where it was.
+    scene.set(hero, "conditions/done", false);
+    scene.set(hero, "start", "jump");
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(40.0));
+    // next takes the transition now, without waiting for jump's end.
+    scene.set(hero, "next", true);
+    scene.world.step(0.1);
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(25.0));
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(10.0).epsilon(1e-4));
+    // A stop plays nothing for a tick, then the state machine goes on, stopped: a travel then
+    // starts over from Start.
+    scene.set(hero, "stop", true);
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(0.0));
+    CHECK(json::write(scene.tree(hero).state.at("playback"), json::Style::Compact) ==
+          R"({"current":"idle"})");
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(10.0));
+    scene.set(hero, "travel", "jump");
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(40.0));
+    CHECK(json::write(scene.tree(hero).state.at("playback"), json::Style::Compact) ==
+          R"({"current":"jump","playing":true})");
+}
+
+TEST_CASE("a travel into a grouped state machine goes on through its Start, and one out of it "
+          "finds the way to its End") {
+    Scene scene;
+    scene.files.write("hero.anim.json", std::string(kMoves));
+    scene.files.write("hero.animtree.json", R"({"format": 1, "root": {"type": "StateMachine",
+        "states": {
+            "idle": {"node": {"type": "Animation", "animation": "idle"}, "position": [0, 0]},
+            "combat": {"position": [100, 0], "node": {"type": "StateMachine",
+                "state_machine_type": "grouped",
+                "states": {"aim": {"node": {"type": "Animation", "animation": "jump"}},
+                           "shoot": {"node": {"type": "Animation", "animation": "run"}}},
+                "transitions": [{"from": "Start", "to": "aim"},
+                                {"from": "aim", "to": "shoot", "switch_mode": "at_end"},
+                                {"from": "shoot", "to": "End"}]}}},
+        "transitions": [{"from": "Start", "to": "idle", "advance_mode": "auto"},
+                        {"from": "idle", "to": "combat"},
+                        {"from": "combat", "to": "idle"}]}})");
+    const entt::entity hero = scene.create("hero", kTreeComponent);
+    const auto x = [&] { return static_cast<double>(scene.transform(hero).position.x); };
+    const auto playback = [&](const std::string& key) {
+        return json::write(scene.tree(hero).state.at(key), json::Style::Compact);
+    };
+
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(10.0));
+
+    // A travel to a state in the group finds the way inside it too: Start, aim, then shoot.
+    scene.set(hero, "travel", "combat/shoot");
+    scene.world.step(0.1);
+    CHECK(playback("playback") == R"({"current":"combat","playing":true,"reset_request":true})");
+    CHECK(
+        playback("combat/playback") ==
+        R"({"current":"Start","path":["aim","shoot"],"playing":true,"reset_request_on_teleport":true,"teleport_request":true})");
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(40.0));
+    CHECK(playback("combat/playback") == R"({"current":"aim","path":["shoot"],"playing":true})");
+    // aim goes on to shoot at its end.
+    for (int i = 0; i < 6; ++i) {
+        scene.world.step(0.1);
+    }
+    CHECK(x() == doctest::Approx(30.0));
+    CHECK(playback("combat/playback") == R"({"current":"shoot","playing":true})");
+
+    // A travel out of the group goes on to its End and leaves it.
+    scene.set(hero, "travel", "idle");
+    scene.world.step(0.1);
+    CHECK(playback("combat/playback") == R"({"current":"End","playing":true})");
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(10.0));
+    CHECK(playback("playback") == R"({"current":"idle","playing":true})");
+}
+
+TEST_CASE("a nested state machine carries on when its parent seeks to its start, until it ends") {
+    Scene scene;
+    scene.files.write("hero.anim.json", std::string(kMoves));
+    scene.files.write("hero.animtree.json", R"({"format": 1, "root": {"type": "BlendTree",
+        "nodes": {
+            "legs": {"type": "StateMachine", "state_machine_type": "nested",
+                "states": {"walk": {"node": {"type": "Animation", "animation": "walk"}},
+                           "run": {"node": {"type": "Animation", "animation": "run"}}},
+                "transitions": [{"from": "Start", "to": "walk", "advance_mode": "auto"},
+                                {"from": "walk", "to": "run"}]},
+            "wave": {"type": "Animation", "animation": "jump"},
+            "pick": {"type": "Transition", "inputs": [{"name": "legs", "node": "legs"},
+                                                      {"name": "wave", "node": "wave"}]}},
+        "output": "pick"}})");
+    const entt::entity hero = scene.create("hero", kTreeComponent);
+    const auto x = [&] { return static_cast<double>(scene.transform(hero).position.x); };
+
+    scene.world.step(0.1);
+    scene.set(hero, "legs/travel", "run");
+    scene.world.step(0.1);
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(30.0));
+    // Switched away and back, the Transition starts it over: a nested machine keeps its state.
+    scene.set(hero, "pick/transition_request", "wave");
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(40.0));
+    scene.set(hero, "pick/transition_request", "legs");
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(30.0));
+    // The Transition fades wave out over no time, as Godot's.
+    CHECK(scene.playing(hero) == "run@0*1 jump@0.1*0");
+}
+
+TEST_CASE("state machine files and travel requests are checked") {
+    CHECK(errors_of(parse(R"({"format": 1, "root": {"type": "StateMachine",
+        "states": {"idle": {"node": {"type": "Animation", "animation": "idle"}},
+                   "a/b": {"node": {"type": "Animation", "animation": "idle"}},
+                   "empty": {},
+                   "End": {"node": {"type": "Animation", "animation": "idle"}},
+                   "group": {"node": {"type": "StateMachine", "state_machine_type": "grouped",
+                       "states": {"x": {"node": {"type": "Animation", "animation": "idle"}}},
+                       "transitions": [{"from": "Start", "to": "x"}, {"from": "Start", "to": "End"}]}}},
+        "transitions": [{"from": "End", "to": "idle"},
+                        {"from": "Start", "to": "Start"},
+                        {"from": "idel", "to": "idle"},
+                        {"from": "idle", "to": "idle"},
+                        {"from": "idle", "to": "group", "advance_condition": "a/b"},
+                        {"from": "idle", "to": "group"}]}})")) ==
+          "/root/states/End/node: \"End\" is the state machine's own and plays nothing; it takes "
+          "only a position\n"
+          "/root/states/a~1b: state names can't have \"/\", which goes between a grouped state "
+          "machine's name and its states'\n"
+          "/root/states/empty: a state needs a node, as {\"node\": {\"type\": \"Animation\", "
+          "\"animation\": \"Idle\"}}\n"
+          "/root/transitions/0/from: nothing leaves End\n"
+          "/root/transitions/1/to: nothing goes to Start; the state machine's \"start\" "
+          "parameter starts it over\n"
+          "/root/transitions/2/from: the state machine has no state \"idel\"; did you mean "
+          "\"idle\"?\n"
+          "/root/transitions/3: a transition goes from one state to another; with "
+          "allow_transition_to_self, a travel to the current state starts it over\n"
+          "/root/transitions/4/advance_condition: condition names can't have \"/\" or \":\"\n"
+          "/root/transitions/5: another transition goes from \"idle\" to \"group\"\n"
+          "/root/states/group: the transitions to a grouped state machine's End go on through "
+          "those out of it, so there are as many of each; \"group\" has 1 to its End and 0 out "
+          "of it");
+    CHECK(errors_of(parse(R"({"format": 1, "root": {"type": "StateMachine",
+        "state_machine_type": "grouped"}})")) ==
+          "/root/state_machine_type: a grouped state machine is a state of another state "
+          "machine, which plays it as part of itself");
+
+    const auto tree = animation::parse_tree(parse(R"({"format": 1, "root": {"type": "StateMachine",
+        "states": {"idle": {"node": {"type": "Animation", "animation": "idle"}},
+                   "fight": {"node": {"type": "StateMachine", "state_machine_type": "grouped",
+                       "states": {"punch": {"node": {"type": "Animation", "animation": "idle"}}},
+                       "transitions": [{"from": "Start", "to": "punch"}]}}},
+        "transitions": [{"from": "idle", "to": "fight", "advance_mode": "auto",
+                         "advance_condition": "angry"}]}})"));
+    REQUIRE(tree.ok());
+    const auto parameters = animation::tree_parameters(tree.value());
+    std::vector<std::string> keys;
+    for (const auto& parameter : parameters) {
+        keys.push_back(parameter.key + (parameter.input ? " (input)" : ""));
+    }
+    CHECK(keys == std::vector<std::string>{"current_length",
+                                           "current_position",
+                                           "current_delta",
+                                           "playback",
+                                           "travel (input)",
+                                           "start (input)",
+                                           "next (input)",
+                                           "stop (input)",
+                                           "conditions/angry (input)",
+                                           "fight/current_length",
+                                           "fight/current_position",
+                                           "fight/current_delta",
+                                           "fight/playback",
+                                           "fight/punch/current_length",
+                                           "fight/punch/current_position",
+                                           "fight/punch/current_delta",
+                                           "fight/punch/backward",
+                                           "idle/current_length",
+                                           "idle/current_position",
+                                           "idle/current_delta",
+                                           "idle/backward"});
+    const auto travel = std::ranges::find(parameters, "travel", &animation::TreeParameter::key);
+    const auto check = [&](const json::Value& value) {
+        return animation::check_parameter(tree.value(), *travel, value);
+    };
+    CHECK(check("fight/punch").empty());
+    CHECK(check("").empty());
+    CHECK(check("idel") == "the state machine has no state \"idel\"; did you mean \"idle\"?");
+    CHECK(check("fight/punsh") == "\"fight\" has no state \"punsh\"; did you mean \"punch\"?");
+    CHECK(check("idle/x") == "\"idle\" isn't a grouped state machine, so a path can't go into it");
+    CHECK(check("fight/End") ==
+          "a grouped state machine's End isn't played on its own; play the state before or "
+          "after the group");
+    CHECK(check(3) == "expected the name of one of the state machine's states");
+}

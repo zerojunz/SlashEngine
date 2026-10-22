@@ -1,0 +1,121 @@
+{
+  "format": 1,
+  "root": {
+    "states": {
+      "Start": {
+        "position": [0, 100]
+      },
+      "attack": {
+        "node": {
+          "state_machine_type": "grouped",
+          "states": {
+            "strike": {
+              "node": {
+                "animation": "strike",
+                "type": "Animation"
+              },
+              "position": [200, 0]
+            },
+            "windup": {
+              "node": {
+                "animation": "windup",
+                "type": "Animation"
+              },
+              "position": [100, 0]
+            }
+          },
+          "transitions": [
+            {
+              "from": "Start",
+              "to": "windup"
+            },
+            {
+              "advance_mode": "auto",
+              "from": "windup",
+              "switch_mode": "at_end",
+              "to": "strike"
+            },
+            {
+              "from": "strike",
+              "to": "End"
+            }
+          ],
+          "type": "StateMachine"
+        },
+        "position": [400, 100]
+      },
+      "jump": {
+        "node": {
+          "animation": "jump",
+          "type": "Animation"
+        },
+        "position": [200, 0]
+      },
+      "move": {
+        "node": {
+          "max_space": 2,
+          "min_space": 0,
+          "points": [
+            {
+              "node": {
+                "animation": "idle",
+                "type": "Animation"
+              },
+              "position": 0
+            },
+            {
+              "node": {
+                "animation": "walk",
+                "type": "Animation"
+              },
+              "position": 1
+            },
+            {
+              "node": {
+                "animation": "run",
+                "type": "Animation"
+              },
+              "position": 2
+            }
+          ],
+          "type": "BlendSpace1D"
+        },
+        "position": [200, 100]
+      }
+    },
+    "transitions": [
+      {
+        "advance_mode": "auto",
+        "from": "Start",
+        "to": "move"
+      },
+      {
+        "advance_condition": "jumping",
+        "advance_mode": "auto",
+        "from": "move",
+        "to": "jump",
+        "xfade_time": 0.1
+      },
+      {
+        "advance_mode": "auto",
+        "from": "jump",
+        "switch_mode": "at_end",
+        "to": "move",
+        "xfade_time": 0.1
+      },
+      {
+        "from": "move",
+        "to": "attack",
+        "xfade_time": 0.1
+      },
+      {
+        "advance_mode": "auto",
+        "from": "attack",
+        "switch_mode": "at_end",
+        "to": "move",
+        "xfade_time": 0.1
+      }
+    ],
+    "type": "StateMachine"
+  }
+}

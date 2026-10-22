@@ -17,17 +17,23 @@
 namespace slash::animation {
 namespace {
 
-constexpr std::array<std::string_view, 13> kTypes = {
-    "Animation", "BlendTree", "BlendSpace1D", "BlendSpace2D", "OneShot",  "Add2",      "Add3",
-    "Blend2",    "Blend3",    "Sub2",         "TimeScale",    "TimeSeek", "Transition"};
-constexpr std::array<std::string_view, 4> kRootTypes = {"Animation", "BlendTree", "BlendSpace1D",
-                                                        "BlendSpace2D"};
+constexpr std::array<std::string_view, 14> kTypes = {
+    "Animation", "BlendTree", "BlendSpace1D", "BlendSpace2D", "OneShot",
+    "Add2",      "Add3",      "Blend2",       "Blend3",       "Sub2",
+    "TimeScale", "TimeSeek",  "Transition",   "StateMachine"};
+constexpr std::array<std::string_view, 5> kRootTypes = {"Animation", "BlendTree", "BlendSpace1D",
+                                                        "BlendSpace2D", "StateMachine"};
 constexpr std::array<std::string_view, 3> kLoopModes = {"none", "linear", "pingpong"};
 constexpr std::array<std::string_view, 2> kPlayModes = {"forward", "backward"};
 constexpr std::array<std::string_view, 3> kBlendModes = {"interpolated", "discrete",
                                                          "discrete_carry"};
 constexpr std::array<std::string_view, 2> kMixModes = {"blend", "add"};
 constexpr std::array<std::string_view, 4> kRequests = {"none", "fire", "abort", "fade_out"};
+constexpr std::array<std::string_view, 3> kMachineTypes = {"root", "nested", "grouped"};
+constexpr std::array<std::string_view, 3> kSwitchModes = {"immediate", "sync", "at_end"};
+constexpr std::array<std::string_view, 3> kAdvanceModes = {"disabled", "enabled", "auto"};
+constexpr std::string_view kStart = "Start";
+constexpr std::string_view kEnd = "End";
 // As Godot's AnimationNodeBlendSpace1D and 2D.
 constexpr std::size_t kMaxBlendPoints = 64;
 
@@ -302,6 +308,62 @@ json::Value node_schema(TreeNodeType type) {
             boolean("A request for the current input starts it over.", false);
         break;
     }
+    case TreeNodeType::StateMachine: {
+        properties["state_machine_type"] =
+            choice("A root state machine starts over when the tree does; a nested one carries on "
+                   "until it ends; a grouped one is a state of another, which plays it as part of "
+                   "itself.",
+                   kMachineTypes);
+        properties["allow_transition_to_self"] =
+            boolean("A travel to the current state starts it over.", false);
+        properties["reset_ends"] =
+            boolean("Cross-fades from Start and to End blend with nothing playing; false leaves "
+                    "them to the parent's own cross-fade.",
+                    false);
+        json::Value state;
+        state["type"] = "object";
+        state["additionalProperties"] = false;
+        state["properties"]["node"]["$ref"] = "#/$defs/root_node";
+        state["properties"]["position"] =
+            pair("Where it is, [x, y]; travel goes the shortest way between positions.", 0, 0);
+        properties["states"]["type"] = "object";
+        properties["states"]["additionalProperties"] = std::move(state);
+        properties["states"]["description"] =
+            "Its states by name, each with a node. \"Start\" and \"End\" are its own and play "
+            "nothing; they take only a position.";
+        json::Value transition;
+        transition["type"] = "object";
+        transition["additionalProperties"] = false;
+        transition["required"] = json::Array{"from", "to"};
+        json::Value& fields = transition["properties"];
+        fields["from"] = property("string", "The state it leaves, or \"Start\".");
+        fields["to"] = property("string", "The state it goes to, or \"End\".");
+        fields["switch_mode"] =
+            choice("When it happens: at once, at once with the next state going on from where "
+                   "the last one was, or when the current state ends.",
+                   kSwitchModes);
+        fields["advance_mode"] = choice(
+            "Never taken, taken by travel, or also taken on its own when it can.", kAdvanceModes);
+        fields["advance_mode"]["default"] = "enabled";
+        fields["advance_condition"] =
+            property("string", "With auto, the parameter \"conditions/<it>\" must be true for it "
+                               "to be taken on its own.");
+        fields["advance_condition"]["default"] = "";
+        fields["xfade_time"] = number("Seconds the two states cross-fade over.", 0.0);
+        fields["xfade_time"]["minimum"] = 0;
+        fields["xfade_curve"] = curve("The cross-fade's shape, [offset, value] points.");
+        fields["break_loop_at_end"] =
+            boolean("With at_end, end a looping state at the end of its loop.", false);
+        fields["reset"] = boolean("Start the next state over.", true);
+        fields["priority"] = property("integer", "Lower goes first when several can be taken on "
+                                                 "their own; travel counts it as cost.");
+        fields["priority"]["minimum"] = 0;
+        fields["priority"]["default"] = 1;
+        properties["transitions"]["type"] = "array";
+        properties["transitions"]["items"] = std::move(transition);
+        properties["transitions"]["description"] = "The ways from one state to another.";
+        break;
+    }
     default:
         break;
     }
@@ -320,7 +382,8 @@ json::Value schema() {
     }
     node["description"] = "A node of a blend tree.";
     root_node["description"] =
-        "A tree's root or a blend space's point: an Animation, BlendTree or blend space.";
+        "A tree's root, a blend space's point or a state machine's state: an "
+        "Animation, BlendTree, blend space or StateMachine.";
 
     json::Value out;
     out["$schema"] = "https://json-schema.org/draft/2020-12/schema";
@@ -378,7 +441,7 @@ public:
     explicit Checker(const json::Value& doc) : doc_(doc) {}
 
     std::vector<json::ValidationError> run() {
-        check_node(*doc_.find("root"), "/root");
+        check_node(*doc_.find("root"), "/root", false);
         return std::move(errors_);
     }
 
@@ -404,7 +467,8 @@ private:
         }
     }
 
-    void check_node(const json::Value& node, const std::string& at) {
+    // in_machine: the node is a state machine's state.
+    void check_node(const json::Value& node, const std::string& at, bool in_machine) {
         const TreeNodeType type = type_of(node.find("type")->as_string());
         check_curve(node, "fadein_curve", at);
         check_curve(node, "fadeout_curve", at);
@@ -416,6 +480,9 @@ private:
         case TreeNodeType::BlendSpace1D:
         case TreeNodeType::BlendSpace2D:
             check_blend_space(node, at, type == TreeNodeType::BlendSpace2D);
+            break;
+        case TreeNodeType::StateMachine:
+            check_state_machine(node, at, in_machine);
             break;
         case TreeNodeType::Animation:
             if (!bool_of(node, "use_custom_timeline", false)) {
@@ -498,7 +565,7 @@ private:
                     connect(list[i].find("node")->as_string(), name, input_at + "/node");
                 }
             }
-            check_node(node, node_at);
+            check_node(node, node_at, false);
         }
         const std::string& output = tree.find("output")->as_string();
         if (!nodes.contains(output)) {
@@ -576,7 +643,8 @@ private:
         if (points != nullptr) {
             const json::Array& list = points->as_array();
             for (std::size_t i = 0; i < list.size(); ++i) {
-                check_node(*list[i].find("node"), at + "/points/" + std::to_string(i) + "/node");
+                check_node(*list[i].find("node"), at + "/points/" + std::to_string(i) + "/node",
+                           false);
             }
         }
         const json::Value* triangles = space.find("triangles");
@@ -611,6 +679,128 @@ private:
         }
     }
 
+    void check_state_machine(const json::Value& machine, const std::string& at, bool in_machine) {
+        if (string_of(machine, "state_machine_type", "root") == "grouped" && !in_machine) {
+            fail(at + "/state_machine_type", "a grouped state machine is a state of another state "
+                                             "machine, which plays it as part of itself");
+        }
+        static const json::Object kEmpty;
+        const json::Value* found = machine.find("states");
+        const json::Object& states = found != nullptr ? found->as_object() : kEmpty;
+        std::vector<std::string_view> names = {kStart, kEnd};
+        for (const auto& [name, state] : states) {
+            if (name != kStart && name != kEnd) {
+                names.emplace_back(name);
+            }
+        }
+        const auto has = [&](const std::string& name) {
+            return std::ranges::find(names, name) != names.end();
+        };
+        const auto unknown = [&](const std::string& name) {
+            std::string message = "the state machine has no state \"" + name + "\"";
+            if (const std::string_view hint = closest_match(name, names); !hint.empty()) {
+                message += "; did you mean \"" + std::string(hint) + "\"?";
+            }
+            return message;
+        };
+        for (const auto& [name, state] : states) {
+            const std::string state_at = at + "/states/" + json::pointer_escape(name);
+            const json::Value* node = state.find("node");
+            if (name == kStart || name == kEnd) {
+                if (node != nullptr) {
+                    fail(state_at + "/node", "\"" + name +
+                                                 "\" is the state machine's own and "
+                                                 "plays nothing; it takes only a position");
+                }
+                continue;
+            }
+            if (name.find('/') != std::string::npos) {
+                fail(state_at, "state names can't have \"/\", which goes between a grouped state "
+                               "machine's name and its states'");
+            }
+            if (node == nullptr) {
+                fail(state_at, "a state needs a node, as {\"node\": {\"type\": \"Animation\", "
+                               "\"animation\": \"Idle\"}}");
+                continue;
+            }
+            check_node(*node, state_at + "/node", true);
+        }
+        // How many transitions go into and out of each state.
+        std::map<std::string, int, std::less<>> into;
+        std::map<std::string, int, std::less<>> out_of;
+        std::set<std::pair<std::string, std::string>> seen;
+        if (const json::Value* transitions = machine.find("transitions"); transitions != nullptr) {
+            const json::Array& list = transitions->as_array();
+            for (std::size_t i = 0; i < list.size(); ++i) {
+                const std::string transition_at = at + "/transitions/" + std::to_string(i);
+                const std::string& from = list[i].find("from")->as_string();
+                const std::string& to = list[i].find("to")->as_string();
+                bool ok = true;
+                if (from == kEnd) {
+                    fail(transition_at + "/from", "nothing leaves End");
+                    ok = false;
+                } else if (!has(from)) {
+                    fail(transition_at + "/from", unknown(from));
+                    ok = false;
+                }
+                if (to == kStart) {
+                    fail(transition_at + "/to", "nothing goes to Start; the state machine's "
+                                                "\"start\" parameter starts it over");
+                    ok = false;
+                } else if (!has(to)) {
+                    fail(transition_at + "/to", unknown(to));
+                    ok = false;
+                }
+                if (ok && from == to) {
+                    fail(transition_at, "a transition goes from one state to another; with "
+                                        "allow_transition_to_self, a travel to the current state "
+                                        "starts it over");
+                } else if (ok && !seen.emplace(from, to).second) {
+                    fail(transition_at,
+                         "another transition goes from \"" + from + "\" to \"" + to + "\"");
+                }
+                if (string_of(list[i], "advance_condition", "").find_first_of("/:") !=
+                    std::string::npos) {
+                    fail(transition_at + "/advance_condition",
+                         "condition names can't have \"/\" or \":\"");
+                }
+                check_curve(list[i], "xfade_curve", transition_at);
+                ++into[to];
+                ++out_of[from];
+            }
+        }
+        // A grouped state machine's transitions from its Start and to its End stand for those
+        // into and out of it, one for one, as Godot's.
+        for (const auto& [name, state] : states) {
+            const json::Value* node = state.find("node");
+            if (node == nullptr || node->find("type")->as_string() != "StateMachine" ||
+                string_of(*node, "state_machine_type", "root") != "grouped") {
+                continue;
+            }
+            int from_start = 0;
+            int to_end = 0;
+            if (const json::Value* inner = node->find("transitions"); inner != nullptr) {
+                for (const json::Value& transition : inner->as_array()) {
+                    from_start += transition.find("from")->as_string() == kStart ? 1 : 0;
+                    to_end += transition.find("to")->as_string() == kEnd ? 1 : 0;
+                }
+            }
+            const std::string state_at = at + "/states/" + json::pointer_escape(name);
+            if (from_start != into[name]) {
+                fail(state_at, "the transitions into a grouped state machine go on through those "
+                               "from its Start, so there are as many of each; \"" +
+                                   name + "\" has " + std::to_string(into[name]) + " into it and " +
+                                   std::to_string(from_start) + " from its Start");
+            }
+            if (to_end != out_of[name]) {
+                fail(state_at, "the transitions to a grouped state machine's End go on through "
+                               "those out of it, so there are as many of each; \"" +
+                                   name + "\" has " + std::to_string(to_end) + " to its End and " +
+                                   std::to_string(out_of[name]) + " out of it");
+            }
+        }
+    }
+
     const json::Value& doc_;
     std::vector<json::ValidationError> errors_;
 };
@@ -636,6 +826,8 @@ public:
             add_blend_tree(index, node);
         } else if (type == TreeNodeType::BlendSpace1D || type == TreeNodeType::BlendSpace2D) {
             add_blend_space(index, node, type == TreeNodeType::BlendSpace2D);
+        } else if (type == TreeNodeType::StateMachine) {
+            add_state_machine(index, node);
         }
         return index;
     }
@@ -696,6 +888,27 @@ private:
             made.max_space.x = static_cast<float>(number_of(node, "max_space", 1.0));
             made.snap.x = static_cast<float>(number_of(node, "snap", 0.1));
             made.x_label = string_of(node, "value_label", "value");
+        }
+        made.state_machine_type = static_cast<StateMachineType>(
+            index_of(kMachineTypes, string_of(node, "state_machine_type", kMachineTypes[0])));
+        made.reset_ends = bool_of(node, "reset_ends", false);
+        if (const json::Value* transitions = node.find("transitions");
+            transitions != nullptr && made.type == TreeNodeType::StateMachine) {
+            for (const json::Value& t : transitions->as_array()) {
+                made.machine_transitions.push_back(
+                    {.from = t.find("from")->as_string(),
+                     .to = t.find("to")->as_string(),
+                     .advance_condition = string_of(t, "advance_condition", ""),
+                     .xfade_time = number_of(t, "xfade_time", 0.0),
+                     .xfade_curve = curve_of(t, "xfade_curve"),
+                     .priority = static_cast<int>(number_of(t, "priority", 1.0)),
+                     .switch_mode = static_cast<SwitchMode>(
+                         index_of(kSwitchModes, string_of(t, "switch_mode", kSwitchModes[0]))),
+                     .advance_mode = static_cast<AdvanceMode>(
+                         index_of(kAdvanceModes, string_of(t, "advance_mode", "enabled"))),
+                     .break_loop_at_end = bool_of(t, "break_loop_at_end", false),
+                     .reset = bool_of(t, "reset", true)});
+            }
         }
     }
 
@@ -772,6 +985,31 @@ private:
         }
     }
 
+    // Its states by name, Start and End among them at Godot's positions, and their nodes.
+    void add_state_machine(int index, const json::Value& node) {
+        const std::string base = out_.nodes[static_cast<std::size_t>(index)].path;
+        std::map<std::string, MachineState, std::less<>> states;
+        states.emplace(kStart, MachineState{.name = std::string(kStart), .position = {200, 100}});
+        states.emplace(kEnd, MachineState{.name = std::string(kEnd), .position = {900, 100}});
+        if (const json::Value* list = node.find("states"); list != nullptr) {
+            for (const auto& [name, state] : list->as_object()) {
+                MachineState& made = states[name];
+                made.name = name;
+                made.position = pair_of(state, "position", made.position);
+                if (const json::Value* child = state.find("node"); child != nullptr) {
+                    made.node = add(*child, name, base + name + "/", index);
+                }
+            }
+        }
+        TreeNode& machine = out_.nodes[static_cast<std::size_t>(index)];
+        for (auto& [name, state] : states) {
+            if (state.node >= 0) {
+                machine.children.push_back(state.node);
+            }
+            machine.states.push_back(std::move(state));
+        }
+    }
+
     AnimationTreeResource& out_;
 };
 
@@ -841,11 +1079,88 @@ void add_parameters(const AnimationTreeResource& tree, int index, std::vector<Tr
         add("blend_position", zero_pair(), true, "Where in the space to blend, [x, y].");
         add("closest", -1, false, "The point playing in a discrete blend mode.");
         break;
+    case TreeNodeType::StateMachine: {
+        add("playback", json::Object{}, false,
+            "The state playing, the one fading out and the travel path, as Godot's playback.");
+        if (node.state_machine_type != StateMachineType::Grouped) {
+            add("travel", "", true,
+                "A state to go to by the cheapest way through transitions, or to jump to if "
+                "there is none; \"group/state\" goes into a grouped state machine. The tree sets "
+                "it back to \"\".");
+            add("start", "", true,
+                "A state to jump to and start over; the tree sets it back to \"\".");
+            add("next", false, true,
+                "true takes the next transition now, without waiting for at_end; the tree sets "
+                "it back to false.");
+            add("stop", false, true,
+                "true plays nothing for a tick and leaves the state machine stopped, so the next "
+                "travel sets out from Start; the tree sets it back to false.");
+        }
+        std::set<std::string, std::less<>> conditions;
+        for (const MachineTransition& transition : node.machine_transitions) {
+            if (!transition.advance_condition.empty()) {
+                conditions.insert(transition.advance_condition);
+            }
+        }
+        for (const std::string& condition : conditions) {
+            add("conditions/" + condition, false, true,
+                "Whether the auto transitions with advance_condition \"" + condition +
+                    "\" can be taken.");
+        }
+        break;
+    }
     default:
         break;
     }
     for (const int child : node.children) {
         add_parameters(tree, child, out);
+    }
+}
+
+// The error in a path of states from a state machine, or "": its states, then those of the grouped
+// state machines it goes into.
+std::string check_state_path(const AnimationTreeResource& tree, int machine,
+                             const std::string& path) {
+    std::string walked;
+    std::size_t begin = 0;
+    while (true) {
+        const std::size_t slash = path.find('/', begin);
+        const std::string name =
+            path.substr(begin, slash == std::string::npos ? std::string::npos : slash - begin);
+        const TreeNode& node = tree.nodes[static_cast<std::size_t>(machine)];
+        std::vector<std::string_view> names;
+        const MachineState* found = nullptr;
+        for (const MachineState& state : node.states) {
+            names.emplace_back(state.name);
+            if (state.name == name) {
+                found = &state;
+            }
+        }
+        if (found == nullptr) {
+            std::string message =
+                (walked.empty() ? std::string("the state machine") : "\"" + walked + "\"") +
+                " has no state \"" + name + "\"";
+            if (const std::string_view hint = closest_match(name, names); !hint.empty()) {
+                message += "; did you mean \"" + std::string(hint) + "\"?";
+            }
+            return message;
+        }
+        if (!walked.empty() && (name == kStart || name == kEnd)) {
+            return "a grouped state machine's " + name +
+                   " isn't played on its own; play the state before or after the group";
+        }
+        if (slash == std::string::npos) {
+            return {};
+        }
+        walked += (walked.empty() ? "" : "/") + name;
+        const TreeNode* child =
+            found->node >= 0 ? &tree.nodes[static_cast<std::size_t>(found->node)] : nullptr;
+        if (child == nullptr || child->type != TreeNodeType::StateMachine ||
+            child->state_machine_type != StateMachineType::Grouped) {
+            return "\"" + walked + "\" isn't a grouped state machine, so a path can't go into it";
+        }
+        machine = found->node;
+        begin = slash + 1;
     }
 }
 
@@ -932,6 +1247,15 @@ std::string check_parameter(const AnimationTreeResource& tree, const TreeParamet
             return message;
         }
         return {};
+    }
+    if (node.type == TreeNodeType::StateMachine &&
+        (parameter.name == "travel" || parameter.name == "start")) {
+        if (!value.is_string()) {
+            return "expected the name of one of the state machine's states";
+        }
+        return value.as_string().empty()
+                   ? std::string()
+                   : check_state_path(tree, parameter.node, value.as_string());
     }
     if (parameter.name == "transition_request") {
         if (!value.is_string()) {
@@ -1129,6 +1453,10 @@ std::vector<json::ValidationError> check_trees(const json::Value& doc,
             const TreeNode& parent = resource.nodes[static_cast<std::size_t>(node.parent)];
             if (parent.type == TreeNodeType::BlendTree) {
                 return pointer_of(node.parent) + "/nodes/" + json::pointer_escape(node.name);
+            }
+            if (parent.type == TreeNodeType::StateMachine) {
+                return pointer_of(node.parent) + "/states/" + json::pointer_escape(node.name) +
+                       "/node";
             }
             return pointer_of(node.parent) + "/points/" + node.name + "/node";
         };
