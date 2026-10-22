@@ -2237,10 +2237,45 @@ private:
             SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
             SDL_EndGPURenderPass(pass);
         }
-        SDL_GenerateMipmapsForGPUTexture(commands, radiance_.raw);
         const std::uint32_t levels = radiance_levels(radiance_.size);
         const SDL_GPUTextureSamplerBinding source{.texture = radiance_.raw,
                                                   .sampler = radiance_sampler_};
+        // The raw cube's mipmaps, each texel the mean of the four under it, as the WebGPU device
+        // makes them: SDL_GenerateMipmapsForGPUTexture turns the up and down faces' mipmaps
+        // upside down on Direct3D 12, whose blit shader takes +y and -y the other way round.
+        // Each level is drawn into the filtered cube, which the filter passes draw over next, and
+        // copied into the raw one, so no pass reads the texture it draws into.
+        for (std::uint32_t level = 1; level < levels; ++level) {
+            const std::uint32_t n = std::max(radiance_.size >> level, 1U);
+            const auto mipmap = std::make_unique<RadianceUniforms>();
+            mipmap->params = {0.0F, 1.0F / static_cast<float>(n), static_cast<float>(level - 1),
+                              0.0F};
+            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+                mipmap->params[0] = static_cast<float>(face);
+                SDL_PushGPUFragmentUniformData(
+                    commands, 0, mipmap.get(),
+                    static_cast<std::uint32_t>(sizeof(RadianceUniforms)));
+                SDL_GPURenderPass* pass =
+                    begin_cube_pass(commands, radiance_.filtered, face, level);
+                SDL_BindGPUGraphicsPipeline(pass, radiance_pipelines_[1]);
+                SDL_BindGPUFragmentSamplers(pass, 0, &source, 1);
+                SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
+                SDL_EndGPURenderPass(pass);
+            }
+            SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+                const SDL_GPUTextureLocation from{.texture = radiance_.filtered,
+                                                  .mip_level = level,
+                                                  .layer = face,
+                                                  .x = 0,
+                                                  .y = 0,
+                                                  .z = 0};
+                SDL_GPUTextureLocation to = from;
+                to.texture = radiance_.raw;
+                SDL_CopyGPUTextureToTexture(copy, &from, &to, n, n, 1, false);
+            }
+            SDL_EndGPUCopyPass(copy);
+        }
         for (std::uint32_t level = 0; level < levels; ++level) {
             const auto uniforms = std::make_unique<RadianceUniforms>(
                 radiance_uniforms(radiance_.size, levels, level));

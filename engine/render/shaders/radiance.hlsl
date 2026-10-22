@@ -16,7 +16,7 @@ SamplerState source_sampler : register(s0, space2);
 
 cbuffer Filter : register(b0, space3) {
     // The face, one over the level's size, the samples' weight, and how many samples (0 copies
-    // the level the source starts at).
+    // the source's level z, counted from the level its view starts at).
     float4 params;
     float4 samples[128]; // around +z: a direction, then the source level it is sampled at
 };
@@ -47,7 +47,7 @@ float4 fs_main(float4 position : SV_Position) : SV_Target0 {
     float3 n = normalize(face_direction((uint)params.x, st));
     uint count = (uint)params.w;
     if (count == 0u) {
-        return float4(source_cube.SampleLevel(source_sampler, n, 0.0).rgb, 1.0);
+        return float4(source_cube.SampleLevel(source_sampler, n, params.z).rgb, 1.0);
     }
     float3 up = abs(n.z) < 0.999 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
     float3 tangent = normalize(cross(up, n));
