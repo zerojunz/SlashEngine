@@ -29,6 +29,12 @@ using Float3 = std::array<float, 3>;
 
 namespace {
 
+// The error a call failed with, or "(succeeded)", so a failed check says why.
+template <typename T>
+std::string error_of(const slash::Result<T>& result) {
+    return result.ok() ? "(succeeded)" : result.error().message;
+}
+
 Float3 scaled(const Float3& v, float s) {
     return {v[0] * s, v[1] * s, v[2] * s};
 }
@@ -135,14 +141,17 @@ Image draw_shadow(RenderDevice& device, const render::Scene3D& scene, const Cast
     REQUIRE(box.ok());
     auto floor = device.create_mesh(quad({0, 0, 0}, {1, 0, 0}, {0, 0, -1}, {0, 1, 0}, 8.0F), {});
     REQUIRE(floor.ok());
-    REQUIRE(device.begin_frame({.target = target.value(), .clear = {}, .scene = scene}).ok());
-    REQUIRE(
-        device.draw_mesh(floor.value(), moved(0, 0, 0), {.albedo = {0.8F, 0.8F, 0.8F, 1.0F}}).ok());
-    REQUIRE(device
-                .draw_mesh(box.value(), moved(0, 1.0F, 0), {.albedo = {0.9F, 0.2F, 0.2F, 1.0F}},
-                           caster.layers, caster.shadows)
-                .ok());
-    REQUIRE(device.end_frame().ok());
+    const auto begun = device.begin_frame({.target = target.value(), .clear = {}, .scene = scene});
+    REQUIRE_MESSAGE(begun.ok(), error_of(begun));
+    const auto floor_drawn =
+        device.draw_mesh(floor.value(), moved(0, 0, 0), {.albedo = {0.8F, 0.8F, 0.8F, 1.0F}});
+    REQUIRE_MESSAGE(floor_drawn.ok(), error_of(floor_drawn));
+    const auto box_drawn =
+        device.draw_mesh(box.value(), moved(0, 1.0F, 0), {.albedo = {0.9F, 0.2F, 0.2F, 1.0F}},
+                         caster.layers, caster.shadows);
+    REQUIRE_MESSAGE(box_drawn.ok(), error_of(box_drawn));
+    const auto ended = device.end_frame();
+    REQUIRE_MESSAGE(ended.ok(), error_of(ended));
     auto image = device.read_texture(target.value());
     REQUIRE(image.ok());
     device.destroy_mesh(box.value());
