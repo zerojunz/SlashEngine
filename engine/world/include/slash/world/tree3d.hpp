@@ -44,6 +44,9 @@ struct Affine3D {
 [[nodiscard]] Quat quaternion(Vec3 rotation);
 // The basis of a unit quaternion, as Godot's Basis(Quaternion).
 [[nodiscard]] Affine3D rotation_basis(const Quat& q);
+// The Euler angles (Transform3D::rotation) of a rotation basis, as Godot's Basis::get_euler in
+// its default YXZ order. The basis must be orthonormal. The same bits on every platform.
+[[nodiscard]] Vec3 euler(const Affine3D& rotation);
 // weight of the way from rotation a to b, the shorter way round: their blend normalized, which
 // is near Godot's slerp for the small turns between ticks.
 [[nodiscard]] Quat nlerp(const Quat& a, const Quat& b, float weight);

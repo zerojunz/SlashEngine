@@ -250,6 +250,202 @@ void register_physics_components(ComponentRegistry& registry) {
                   {.doc = "Where node_b starts along the groove, in pixels.", .min = 0});
 }
 
+// The 3D physics components, as Godot's on its Jolt module.
+void register_physics_3d_components(ComponentRegistry& registry) {
+    const FieldMeta layer{.doc = "The physics layers it is in, as bits: layer 1 is 1, layer 2 is "
+                                 "2, layer 3 is 4."};
+    const FieldMeta mask{.doc = "The layers it collides with or detects, as bits."};
+    const FieldMeta friction{.doc = "How much it resists sliding: 0 is ice. Two bodies use the "
+                                    "smaller friction.",
+                             .min = 0};
+    const FieldMeta bounce{
+        .doc = "How much it bounces: 0 not at all, 1 fully. Two bodies add theirs, up to 1.",
+        .min = 0,
+        .max = 1};
+    const FieldMeta constant_linear{.doc = "Carries what touches it as if it moved at this many "
+                                           "meters per second, as [x, y, z], as a conveyor "
+                                           "belt."};
+    const FieldMeta constant_angular{.doc = "Carries what touches it as if it turned at this many "
+                                            "radians per second about each axis, as [x, y, z]."};
+    const FieldMeta axis_lock{.doc = "Never move or turn along this axis."};
+
+    registry.add<CollisionShape3D>()
+        .set_doc("A shape of the entity's 3D physics body or area, moved by position and "
+                 "rotation and scaled by its Transform3D. On an entity with no body or area, a "
+                 "shape of its parent's.")
+        .describe("shape", {.doc = "Which shape; the fields after it size it.",
+                            .choices = {"box", "sphere", "capsule", "cylinder", "convex_polygon",
+                                        "concave_polygon", "world_boundary"}})
+        .describe("size", {.doc = "Box width, height and depth, in meters.", .min = 0})
+        .describe("radius", {.doc = "Sphere, capsule and cylinder radius, in meters.", .min = 0})
+        .describe("height", {.doc = "Capsule height end to end, and cylinder height, along y, in "
+                                    "meters.",
+                             .min = 0})
+        .describe("points", {.doc = "convex_polygon points as [x, y, z]; the shape is their "
+                                    "convex hull."})
+        .describe("faces", {.doc = "concave_polygon triangles, three [x, y, z] points each, "
+                                   "counterclockwise seen from the solid side. Static bodies "
+                                   "and areas only."})
+        .describe("backface_collision", {.doc = "concave_polygon faces are solid from behind "
+                                                "too."})
+        .describe("plane", {.doc = "world_boundary plane [x, y, z, d]: its normal and how far "
+                                   "along it from the entity. Everything below is solid. Static "
+                                   "bodies only."})
+        .describe("margin", {.doc = "How much of a box, cylinder or convex polygon is rounded, "
+                                    "in meters, at most 8% of its smallest size.",
+                             .min = 0})
+        .describe("position", {.doc = "Moves the shape from the entity, in meters."})
+        .describe("rotation", {.doc = "Turns the shape, in radians about x, y and z, as "
+                                      "Transform3D's."})
+        .describe("disabled", {.doc = "Leave the shape out."});
+
+    registry.add<StaticBody3D>()
+        .set_doc("A 3D physics body that doesn't move on its own, such as a wall. Changing its "
+                 "Transform3D moves it at once.")
+        .describe("collision_layer", layer)
+        .describe("collision_mask", mask)
+        .describe("friction", friction)
+        .describe("bounce", bounce)
+        .describe("constant_linear_velocity", constant_linear)
+        .describe("constant_angular_velocity", constant_angular);
+
+    registry.add<AnimatableBody3D>()
+        .set_doc("A 3D physics body that goes where its Transform3D says, such as a moving "
+                 "platform, pushing rigid bodies in its way.")
+        .describe("collision_layer", layer)
+        .describe("collision_mask", mask)
+        .describe("friction", friction)
+        .describe("bounce", bounce)
+        .describe("constant_linear_velocity", constant_linear)
+        .describe("constant_angular_velocity", constant_angular)
+        .describe("sync_to_physics", {.doc = "Move during the physics step, pushing and carrying "
+                                             "bodies; false jumps there."});
+
+    registry.add<RigidBody3D>()
+        .set_doc("A 3D physics body moved by gravity, collisions and forces. The physics step "
+                 "writes its Transform3D, velocities and sleeping.")
+        .describe("collision_layer", layer)
+        .describe("collision_mask", mask)
+        .describe("friction", friction)
+        .describe("bounce", bounce)
+        .describe("mass", {.doc = "In kilograms.", .min = 0.001})
+        .describe("inertia", {.doc = "Resistance to turning about x, y and z; an axis left 0 is "
+                                     "computed from the shapes and the mass.",
+                              .min = 0})
+        .describe("gravity_scale", {.doc = "Multiplies gravity; 0 floats."})
+        .describe("linear_velocity", {.doc = "In meters per second, as [x, y, z]."})
+        .describe("angular_velocity", {.doc = "In radians per second about each axis."})
+        .describe("linear_damp_mode",
+                  {.doc = "\"combine\" adds linear_damp to the project's; \"replace\" uses "
+                          "only it.",
+                   .choices = {"combine", "replace"}})
+        .describe("linear_damp", {.doc = "Slows movement, per second.", .min = 0})
+        .describe("angular_damp_mode",
+                  {.doc = "\"combine\" adds angular_damp to the project's; \"replace\" uses "
+                          "only it.",
+                   .choices = {"combine", "replace"}})
+        .describe("angular_damp", {.doc = "Slows turning, per second.", .min = 0})
+        .describe("constant_force", {.doc = "A force applied every tick, as [x, y, z]."})
+        .describe("constant_torque", {.doc = "A torque applied every tick, as [x, y, z]."})
+        .describe("lock_rotation", {.doc = "Never turn."})
+        .describe("axis_lock_linear_x", axis_lock)
+        .describe("axis_lock_linear_y", axis_lock)
+        .describe("axis_lock_linear_z", axis_lock)
+        .describe("axis_lock_angular_x", axis_lock)
+        .describe("axis_lock_angular_y", axis_lock)
+        .describe("axis_lock_angular_z", axis_lock)
+        .describe("freeze", {.doc = "Stop simulating it; it acts as freeze_mode says."})
+        .describe("freeze_mode", {.doc = "What a frozen body acts as: \"static\" or "
+                                         "\"kinematic\" (moved by its Transform3D).",
+                                  .choices = {"static", "kinematic"}})
+        .describe("continuous_cd", {.doc = "Sweep it as it moves so it can't pass through "
+                                           "thin things when fast."})
+        .describe("can_sleep", {.doc = "Stop simulating it while it rests."})
+        .describe("sleeping", {.doc = "Resting and not simulated; set false to wake it."})
+        .describe("contact_monitor", {.doc = "Emit body_entered and body_exited events as "
+                                             "bodies start and stop touching it."});
+
+    registry.add<CharacterBody3D>()
+        .set_doc("A 3D physics body moved by setting its velocity: each tick it slides along "
+                 "what it hits, as Godot's move_and_slide, and reports floors, walls and "
+                 "ceilings.")
+        .describe("collision_layer", layer)
+        .describe("collision_mask", mask)
+        .describe("motion_mode", {.doc = "\"grounded\" has floors, walls and ceilings; "
+                                         "\"floating\" has only walls, as in space.",
+                                  .choices = {"grounded", "floating"}})
+        .describe("up_direction", {.doc = "Which way is up, as a unit [x, y, z]."})
+        .describe("velocity", {.doc = "In meters per second, as [x, y, z]. Gameplay code sets "
+                                      "it; each move slides it along what it hits."})
+        .describe("max_slides", {.doc = "Slides per move at most.", .min = 1, .max = 16})
+        .describe("slide_on_ceiling", {.doc = "Slide along ceilings; false stops and falls."})
+        .describe("wall_min_slide_angle", {.doc = "A wall hit more head-on than this, in "
+                                                  "radians, stops it instead of sliding.",
+                                           .min = 0,
+                                           .max = std::numbers::pi})
+        .describe("floor_stop_on_slope", {.doc = "Don't slide down slopes while standing."})
+        .describe("floor_constant_speed", {.doc = "Walk up and down slopes at the speed it walks "
+                                                  "on flat floors."})
+        .describe("floor_block_on_wall", {.doc = "Walls too steep to be floors stop it instead "
+                                                 "of letting it climb them."})
+        .describe("floor_max_angle", {.doc = "Steepest floor, in radians from up_direction.",
+                                      .min = 0,
+                                      .max = std::numbers::pi})
+        .describe("floor_snap_length", {.doc = "How far down it keeps to a floor while walking "
+                                               "off steps and slopes, in meters.",
+                                        .min = 0})
+        .describe("platform_on_leave",
+                  {.doc = "What it keeps of a moving floor's velocity on leaving it.",
+                   .choices = {"add_velocity", "add_upward_velocity", "do_nothing"}})
+        .describe("platform_floor_layers", {.doc = "Floors in these layers carry it as they "
+                                                   "move, as bits."})
+        .describe("platform_wall_layers", {.doc = "Walls in these layers carry it as they move, "
+                                                  "as bits."})
+        .describe("safe_margin", {.doc = "What is this close, in meters, counts as touching.",
+                                  .min = 0.0001})
+        .describe("on_floor", {.doc = "Touched a floor in the last move."})
+        .describe("on_wall", {.doc = "Touched a wall in the last move."})
+        .describe("on_ceiling", {.doc = "Touched a ceiling in the last move."})
+        .describe("floor_normal", {.doc = "The floor's normal in the last move."})
+        .describe("wall_normal", {.doc = "The wall's normal in the last move."})
+        .describe("platform_velocity", {.doc = "The velocity of the floor it stands on."});
+
+    const FieldMeta override_mode{
+        .doc = "How it changes the rigid bodies in it, by priority: \"combine\" adds its own to "
+               "higher areas' and lets lower areas and the project add theirs, \"replace\" uses "
+               "only its own, \"combine_replace\" adds and stops lower ones, "
+               "\"replace_combine\" drops higher ones' and lets lower ones add.",
+        .choices = {"disabled", "combine", "combine_replace", "replace", "replace_combine"}};
+
+    registry.add<Area3D>()
+        .set_doc("A 3D region that emits body_entered, body_exited, area_entered and "
+                 "area_exited events, and can change the gravity and damping of rigid bodies in "
+                 "it. It goes where its Transform3D says. It detects static bodies only when "
+                 "the project's physics_3d.areas_detect_static_bodies is on, as Godot's Jolt "
+                 "module.")
+        .describe("collision_layer", layer)
+        .describe("collision_mask", {.doc = "The layers of bodies and areas it detects, as "
+                                            "bits."})
+        .describe("monitoring", {.doc = "Report bodies and areas entering it."})
+        .describe("monitorable", {.doc = "Other areas detect it."})
+        .describe("priority", {.doc = "Areas of higher priority override first."})
+        .describe("gravity_space_override", override_mode)
+        .describe("gravity_point", {.doc = "Pull toward gravity_point_center instead of along "
+                                           "gravity_direction."})
+        .describe("gravity_point_unit_distance",
+                  {.doc = "Above 0, the pull is gravity this many meters from the center and "
+                          "falls off with distance squared; 0 pulls the same everywhere.",
+                   .min = 0})
+        .describe("gravity_point_center", {.doc = "Where a point pulls toward, in the area's "
+                                                  "space."})
+        .describe("gravity_direction", {.doc = "Which way gravity pulls, as a unit [x, y, z]."})
+        .describe("gravity", {.doc = "How hard, in meters per second squared."})
+        .describe("linear_damp_space_override", override_mode)
+        .describe("linear_damp", {.doc = "Slows movement in it, per second.", .min = 0})
+        .describe("angular_damp_space_override", override_mode)
+        .describe("angular_damp", {.doc = "Slows turning in it, per second.", .min = 0});
+}
+
 } // namespace
 
 // The particles component: Godot's CPUParticles2D.
@@ -2014,6 +2210,7 @@ void register_builtin_components(ComponentRegistry& registry) {
 
     register_3d_components(registry);
     register_physics_components(registry);
+    register_physics_3d_components(registry);
     register_particle_components(registry);
     register_audio_components(registry);
     register_ui_components(registry);

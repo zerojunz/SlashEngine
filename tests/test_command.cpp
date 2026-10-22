@@ -1282,13 +1282,13 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     world.add_system("movement", [](world::World& /*w*/, double /*dt*/) {},
                      {.doc = "Moves things by their velocity."});
     world.add_system("controls", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
-    // Every session applies input and service events first and plays animations, steps 2D
-    // physics, moves the camera and parallax, runs particles, hands over models' replies and
+    // Every session applies input and service events first and plays animations, steps 2D and
+    // 3D physics, moves the camera and parallax, runs particles, hands over models' replies and
     // plays sound with built-in systems that run late. The two particle systems are threaded and
     // run at the same time.
     CHECK(*engine.ok("engine.describe").find("systems") ==
           parse(R"(["input", "gui", "services", "controls", "movement", "animation_player",
-                    "physics2d", "animated_sprite_2d", "camera_2d", "parallax_2d",
+                    "physics2d", "physics3d", "animated_sprite_2d", "camera_2d", "parallax_2d",
                     "cpu_particles_2d", "gpu_particles_2d", "ai", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
@@ -1306,6 +1306,9 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         {"name": "physics2d",
          "doc": "Steps 2D physics: moves rigid and character bodies and reports contacts.",
          "priority": 950},
+        {"name": "physics3d",
+         "doc": "Steps 3D physics: moves rigid and character bodies and reports contacts.",
+         "priority": 950},
         {"name": "animated_sprite_2d",
          "doc": "Plays each AnimatedSprite2D's animation on its Sprite2D.", "priority": 1000},
         {"name": "camera_2d",
@@ -1316,10 +1319,10 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "priority": 1060},
         {"name": "cpu_particles_2d",
          "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100,
-         "threaded": true, "stage": 10, "reads": ["Transform2D"], "writes": ["CPUParticles2D"]},
+         "threaded": true, "stage": 11, "reads": ["Transform2D"], "writes": ["CPUParticles2D"]},
         {"name": "gpu_particles_2d",
          "doc": "Steps each GPUParticles2D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 10,
+         "threaded": true, "stage": 11,
          "reads": ["Transform2D", "LightOccluder2D", "TileMapLayer", "CanvasLayer", "Control",
                    "Camera2D"],
          "writes": ["GPUParticles2D", "assets"]},
@@ -1875,6 +1878,57 @@ TEST_CASE("physics.gravity reports the gravity and damping areas give bodies") {
             .fails("physics.gravity", R"({"ids": ["low_gravity"]})", command::code::kInvalidParams)
             .message == "/ids/0: \"low_gravity\" is no physics body");
     engine.fails("physics.gravity", R"({"ids": []})", command::code::kInvalidParams);
+}
+
+TEST_CASE("physics commands ask 3D physics for 3D points, shapes and bodies") {
+    Engine engine;
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "floor", "components": {
+            "Transform3D": {"position": [0, -0.5, 0]}, "StaticBody3D": {},
+            "CollisionShape3D": {"size": [20, 1, 20]}}}},
+        {"command": "entity.create", "params": {"id": "crate", "components": {
+            "Transform3D": {"position": [0, 2, 0]}, "RigidBody3D": {"contact_monitor": true},
+            "CollisionShape3D": {}}}},
+        {"command": "entity.create", "params": {"id": "zone", "components": {
+            "Transform3D": {"position": [5, 1, 0]},
+            "Area3D": {"gravity_space_override": "replace", "gravity": 2},
+            "CollisionShape3D": {"shape": "sphere", "radius": 1}}}}]})");
+
+    // Before any step, queries see the bodies where the components put them.
+    CHECK(engine.ok("physics.raycast", R"({"from": [0, 2, 5], "to": [0, 2, -5]})") ==
+          parse(R"({"hit": {"id": "crate", "point": [0, 2, 0.5], "normal": [0, 0, 1],
+                            "fraction": 0.45}})"));
+    CHECK(engine.ok("physics.raycast", R"({"from": [5, 5, 0], "to": [5, -5, 0],
+                                           "collide_with_areas": true})") ==
+          parse(R"({"hit": {"id": "zone", "point": [5, 2, 0], "normal": [0, 1, 0],
+                            "fraction": 0.3}})"));
+    engine.ok("step", R"({"ticks": 90})");
+    CHECK(engine.ok("physics.contacts", R"({"id": "crate"})") ==
+          parse(R"({"bodies": ["floor"], "areas": []})"));
+    CHECK(engine.ok("physics.overlap", R"({"point": [0, 0.5, 0]})") ==
+          parse(R"({"ids": ["crate"]})"));
+    CHECK(engine.ok("physics.overlap", R"({"shape": {"shape": "sphere", "radius": 0.8},
+                                           "position": [0, 0, 0]})") ==
+          parse(R"({"ids": ["crate", "floor"]})"));
+    CHECK(engine.ok("physics.overlap", R"({"shape": {"size": [0.2, 4, 0.2]},
+                                           "position": [0, 2.8, 0], "rotation": [0, 0, 0]})") ==
+          parse(R"({"ids": ["crate"]})"));
+    CHECK(engine.ok("physics.gravity", R"({"ids": ["crate"]})") == parse(R"({"bodies": {
+        "crate": {"gravity": [0, -9.8, 0], "linear_damp": 0.1, "angular_damp": 0.1}}})"));
+
+    CHECK(engine
+              .fails("physics.raycast", R"({"from": [0, 0, 0], "to": [1, 0]})",
+                     command::code::kInvalidParams)
+              .message == "/to: from and to need the same number of coordinates");
+    CHECK(engine
+              .fails("physics.overlap", R"({"shape": {"shape": "sphear"}, "position": [0, 0, 0]})",
+                     command::code::kInvalidParams)
+              .message == "/shape/shape: unknown shape \"sphear\"; did you mean \"sphere\"?");
+    engine.fails("physics.overlap", R"({"shape": {"shape": "box"}, "position": [0, 0]})",
+                 command::code::kInvalidParams);
+    engine.fails("physics.overlap", R"({"shape": {"size": [1, 1]}, "rotation": [0, 0, 0],
+                                        "position": [0, 0]})",
+                 command::code::kInvalidParams);
 }
 
 TEST_CASE("particles.eval counts and lists particles, as they are or after a time") {

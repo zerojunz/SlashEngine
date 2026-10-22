@@ -602,6 +602,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [ ] Volumetric fog; clustered decals
 - [ ] Generated LODs with meshoptimizer and occlusion culling
 - [ ] 3D physics on Jolt: rigid bodies, joints, character controller, vehicles
+  - [x] Static, animatable, rigid and character bodies, areas with gravity and damping
+        overrides, every Godot shape, `move_and_slide` and the queries, as Godot 4.4's Jolt
+        module
+  - [ ] Joints, ragdolls and vehicles
 - [ ] Skinned meshes, animation blending, state machines, root motion, two-bone and FABRIK IK
 - [ ] Navigation on Recast and Detour, in 2D and 3D, with avoidance
 - [ ] 3D audio, as Godot's `AudioStreamPlayer3D` and `AudioListener3D`: attenuation models,
@@ -746,7 +750,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Tilemaps | Tilemap layers with terrain autotiling, stored as text | 5 | In part: square, isometric and hexagonal tiles, alternatives, turned cells and collision are done; animated and multi-cell tiles in 5 |
 | 2D lighting | 2D lights, occluders, normal-mapped sprites | 5 | Done |
 | 2D physics | Box2D v3: bodies, areas, joints, character movement and queries | 5 | In part: tile collision is done; area overrides in 5 |
-| 3D physics | Jolt: rigid bodies, joints, character controller, vehicles | 7 | Planned |
+| 3D physics | Jolt: rigid bodies, joints, character controller, vehicles | 7 | In part: bodies, areas, shapes, character movement and queries are done; joints and vehicles in 7 |
 | 3D renderer | Clustered forward+ with PBR, plus a low-end path for web and mobile | 7 | In part: meshes, depth and PBR lighting in every render device, as Godot's Compatibility renderer, are done |
 | Shadows | Cascaded, omni and spot shadow maps | 7 | Done |
 | Post-processing | Tonemap, bloom, SSAO, SSR, DoF, auto exposure, color grading | 7 | Planned |

@@ -7,7 +7,7 @@ add_library(slash::runtime ALIAS slash_runtime)
 
 target_include_directories(slash_runtime PUBLIC include)
 target_link_libraries(slash_runtime
-    PUBLIC slash::animation slash::asset slash::audio slash::canvas slash::core slash::gameplay slash::input slash::physics2d slash::platform slash::render
+    PUBLIC slash::animation slash::asset slash::audio slash::canvas slash::core slash::gameplay slash::input slash::physics2d slash::physics3d slash::platform slash::render
            slash::services slash::ui slash::world
     PRIVATE SDL3::SDL3-static)
 slash_engine_target(slash_runtime)

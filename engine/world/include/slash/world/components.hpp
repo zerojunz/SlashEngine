@@ -921,6 +921,163 @@ struct GrooveJoint2D {
 };
 SLASH_COMPONENT(GrooveJoint2D, node_a, node_b, disable_collision, length, initial_offset)
 
+// ---- 3D physics, as Godot's (engine/physics3d, on Jolt Physics as Godot 4.4's Jolt module): a
+// body component makes its entity a physics body, placed by its Transform3D, and the entity's
+// CollisionShape3D gives it a shape, as do those of the entities under it that are no body or
+// area themselves. Units are meters, seconds, radians and kilograms; layers and masks are as in
+// 2D.
+
+// A shape of the entity's body or area, as Godot's CollisionShape3D with its Shape3D, moved and
+// turned from the entity by position and rotation and scaled by its Transform3D's scale.
+struct CollisionShape3D {
+    // "box", "sphere", "capsule", "cylinder", "convex_polygon", "concave_polygon" or
+    // "world_boundary".
+    std::string shape = "box";
+    Vec3 size{1.0F, 1.0F, 1.0F}; // box
+    float radius = 0.5F;         // sphere, capsule and cylinder
+    float height = 2.0F;         // capsule (end to end) and cylinder, along y
+    std::vector<Vec3> points;    // convex_polygon: its convex hull is the shape
+    std::vector<Vec3> faces;     // concave_polygon: triangles, three points each
+    bool backface_collision = false; // concave_polygon: its faces are solid from behind too
+    // world_boundary: the plane [x, y, z, d], its normal and how far along it from the entity;
+    // everything below it is solid. Static bodies only.
+    Vec4 plane{0.0F, 1.0F, 0.0F, 0.0F};
+    float margin = 0.04F; // how much of a box, cylinder or convex polygon is rounded
+    Vec3 position;
+    Vec3 rotation; // radians, as Transform3D's
+    bool disabled = false;
+
+    friend bool operator==(const CollisionShape3D&, const CollisionShape3D&) = default;
+};
+SLASH_COMPONENT(CollisionShape3D, shape, size, radius, height, points, faces, backface_collision,
+                plane, margin, position, rotation, disabled)
+
+// A body that doesn't move on its own, as Godot's StaticBody3D. Changing its Transform3D moves it
+// there at once. Its constant velocities don't move it but carry what touches it as if it moved.
+struct StaticBody3D {
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    float friction = 1.0F;
+    float bounce = 0.0F;
+    Vec3 constant_linear_velocity;  // meters per second
+    Vec3 constant_angular_velocity; // radians per second, about each axis
+};
+SLASH_COMPONENT(StaticBody3D, collision_layer, collision_mask, friction, bounce,
+                constant_linear_velocity, constant_angular_velocity)
+
+// A body that goes where its Transform3D says, as Godot's AnimatableBody3D. With sync_to_physics
+// it moves there during the physics step, pushing rigid bodies in its way and carrying those on
+// it.
+struct AnimatableBody3D {
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    float friction = 1.0F;
+    float bounce = 0.0F;
+    Vec3 constant_linear_velocity; // carries what touches it, as StaticBody3D's
+    Vec3 constant_angular_velocity;
+    bool sync_to_physics = true;
+};
+SLASH_COMPONENT(AnimatableBody3D, collision_layer, collision_mask, friction, bounce,
+                constant_linear_velocity, constant_angular_velocity, sync_to_physics)
+
+// A body that gravity, collisions and forces move, as Godot's RigidBody3D. The physics step
+// writes its Transform3D, velocities and sleeping back each tick.
+struct RigidBody3D {
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    float friction = 1.0F;
+    float bounce = 0.0F;
+    float mass = 1.0F;
+    Vec3 inertia; // about each axis; 0 computes that axis's from the shapes and the mass
+    float gravity_scale = 1.0F;
+    Vec3 linear_velocity;
+    Vec3 angular_velocity;
+    std::string linear_damp_mode = "combine"; // "combine" adds to the project's; "replace"
+    float linear_damp = 0.0F;
+    std::string angular_damp_mode = "combine";
+    float angular_damp = 0.0F;
+    Vec3 constant_force;
+    Vec3 constant_torque;
+    bool lock_rotation = false;
+    bool axis_lock_linear_x = false;
+    bool axis_lock_linear_y = false;
+    bool axis_lock_linear_z = false;
+    bool axis_lock_angular_x = false;
+    bool axis_lock_angular_y = false;
+    bool axis_lock_angular_z = false;
+    bool freeze = false;
+    std::string freeze_mode = "static"; // "static" or "kinematic"
+    bool continuous_cd = false;
+    bool can_sleep = true;
+    bool sleeping = false;
+    bool contact_monitor = false; // emit body_entered and body_exited
+};
+SLASH_COMPONENT(RigidBody3D, collision_layer, collision_mask, friction, bounce, mass, inertia,
+                gravity_scale, linear_velocity, angular_velocity, linear_damp_mode, linear_damp,
+                angular_damp_mode, angular_damp, constant_force, constant_torque, lock_rotation,
+                axis_lock_linear_x, axis_lock_linear_y, axis_lock_linear_z, axis_lock_angular_x,
+                axis_lock_angular_y, axis_lock_angular_z, freeze, freeze_mode, continuous_cd,
+                can_sleep, sleeping, contact_monitor)
+
+// A body that gameplay code moves by setting its velocity, as Godot's CharacterBody3D: each tick
+// the physics step runs move_and_slide, sliding it along what it hits, then writes its
+// Transform3D, velocity and what it touches.
+struct CharacterBody3D {
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    std::string motion_mode = "grounded"; // "grounded" (floors, walls, ceilings) or "floating"
+    Vec3 up_direction{0.0F, 1.0F, 0.0F};
+    Vec3 velocity;
+    int max_slides = 6;
+    bool slide_on_ceiling = true;
+    float wall_min_slide_angle = 0.261799F; // radians
+    bool floor_stop_on_slope = true;
+    bool floor_constant_speed = false;
+    bool floor_block_on_wall = true;
+    float floor_max_angle = 0.785398F; // radians from up_direction
+    float floor_snap_length = 0.1F;
+    std::string platform_on_leave = "add_velocity"; // or "add_upward_velocity", "do_nothing"
+    std::uint32_t platform_floor_layers = 0xFFFFFFFFU;
+    std::uint32_t platform_wall_layers = 0;
+    float safe_margin = 0.001F; // meters
+    // What the last move found.
+    bool on_floor = false;
+    bool on_wall = false;
+    bool on_ceiling = false;
+    Vec3 floor_normal;
+    Vec3 wall_normal;
+    Vec3 platform_velocity; // of the moving body it stands on
+};
+SLASH_COMPONENT(CharacterBody3D, collision_layer, collision_mask, motion_mode, up_direction,
+                velocity, max_slides, slide_on_ceiling, wall_min_slide_angle, floor_stop_on_slope,
+                floor_constant_speed, floor_block_on_wall, floor_max_angle, floor_snap_length,
+                platform_on_leave, platform_floor_layers, platform_wall_layers, safe_margin,
+                on_floor, on_wall, on_ceiling, floor_normal, wall_normal, platform_velocity)
+
+// A region that reports bodies and areas entering and leaving its shapes, as Godot's Area3D, and
+// whose space overrides change the gravity and damping of rigid bodies in it, as Area2D's.
+struct Area3D {
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    bool monitoring = true;  // report what enters
+    bool monitorable = true; // other areas see it
+    int priority = 0;        // higher overrides first
+    std::string gravity_space_override = "disabled";
+    bool gravity_point = false;               // pull toward gravity_point_center
+    float gravity_point_unit_distance = 0.0F; // meters; above 0, weakens with distance squared
+    Vec3 gravity_point_center{0.0F, -1.0F, 0.0F}; // in the area's space
+    Vec3 gravity_direction{0.0F, -1.0F, 0.0F};
+    float gravity = 9.8F; // meters per second squared
+    std::string linear_damp_space_override = "disabled";
+    float linear_damp = 0.1F;
+    std::string angular_damp_space_override = "disabled";
+    float angular_damp = 0.1F;
+};
+SLASH_COMPONENT(Area3D, collision_layer, collision_mask, monitoring, monitorable, priority,
+                gravity_space_override, gravity_point, gravity_point_unit_distance,
+                gravity_point_center, gravity_direction, gravity, linear_damp_space_override,
+                linear_damp, angular_damp_space_override, angular_damp)
+
 // ---- Particles, as Godot's CPUParticles2D.
 
 // A color at a point of a gradient, as one stop of Godot's Gradient.

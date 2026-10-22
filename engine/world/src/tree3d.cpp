@@ -135,6 +135,28 @@ Affine3D rotation_basis(const Quat& q) {
             .origin = {}};
 }
 
+Vec3 euler(const Affine3D& rotation) {
+    // Godot's Basis::get_euler for EulerOrder::YXZ, where rows[r][c] is column c's row r. asin
+    // goes through atan2, which is the same everywhere.
+    constexpr float kEpsilon = 0.00001F; // Godot's CMP_EPSILON
+    constexpr float kHalfPi = 1.57079632679489661923F;
+    const auto asin = [](float v) { return slash::atan2(v, std::sqrt(std::max(0.0F, 1.0F - (v * v)))); };
+    const float m12 = rotation.z.y;
+    if (m12 >= 1.0F - kEpsilon) {
+        return {-kHalfPi, -slash::atan2(rotation.y.x, rotation.x.x), 0.0F};
+    }
+    if (m12 <= -(1.0F - kEpsilon)) {
+        return {kHalfPi, slash::atan2(rotation.y.x, rotation.x.x), 0.0F};
+    }
+    // A turn about x alone comes back in its simplest form.
+    if (rotation.x.y == 0.0F && rotation.y.x == 0.0F && rotation.z.x == 0.0F &&
+        rotation.x.z == 0.0F && rotation.x.x == 1.0F) {
+        return {slash::atan2(-m12, rotation.y.y), 0.0F, 0.0F};
+    }
+    return {asin(-m12), slash::atan2(rotation.z.x, rotation.z.z),
+            slash::atan2(rotation.x.y, rotation.y.y)};
+}
+
 Quat nlerp(const Quat& a, const Quat& b, float weight) {
     const float d = (a.x * b.x) + (a.y * b.y) + (a.z * b.z) + (a.w * b.w);
     const float sign = d < 0.0F ? -1.0F : 1.0F;

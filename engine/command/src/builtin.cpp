@@ -28,6 +28,7 @@
 #include "slash/gameplay/host.hpp"
 #include "slash/input/input.hpp"
 #include "slash/physics2d/physics2d.hpp"
+#include "slash/physics3d/physics3d.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/light.hpp"
@@ -1410,6 +1411,15 @@ json::Value point_value(Vec2 point) {
     return rounded(json::Array{point.x, point.y});
 }
 
+json::Value point_value(Vec3 point) {
+    return rounded(json::Array{point.x, point.y, point.z});
+}
+
+Vec3 vec3_of(const json::Value& value) {
+    const auto xyz = floats<3>(value);
+    return {xyz[0], xyz[1], xyz[2]};
+}
+
 json::Value id_array(const world::World& world, const std::vector<entt::entity>& entities) {
     json::Array ids;
     for (const entt::entity entity : entities) {
@@ -1419,8 +1429,9 @@ json::Value id_array(const world::World& world, const std::vector<entt::entity>&
 }
 
 // The filter a physics query's params describe, or the error for an unknown excluded ID.
+template <typename Filter>
 std::optional<Reply> query_filter(const world::World& world, const json::Value& params,
-                                  physics2d::QueryFilter& filter) {
+                                  Filter& filter) {
     if (const json::Value* mask = params.find("collision_mask"); mask != nullptr) {
         filter.collision_mask = static_cast<std::uint32_t>(mask->as_int());
     }
@@ -1443,8 +1454,38 @@ std::optional<Reply> query_filter(const world::World& world, const json::Value& 
     return std::nullopt;
 }
 
+// physics.raycast with [x, y, z] points, in 3D physics.
+Reply physics_raycast_3d(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    physics3d::QueryFilter filter;
+    if (auto failed = query_filter(world, params, filter)) {
+        return std::move(*failed);
+    }
+    const auto hit = physics3d::raycast(world, vec3_of(*params.find("from")),
+                                        vec3_of(*params.find("to")), filter);
+    json::Value result;
+    if (!hit) {
+        result["hit"] = nullptr;
+        return Reply::success(std::move(result));
+    }
+    json::Value& found = result["hit"];
+    found["id"] = world.id_of(hit->entity);
+    found["point"] = point_value(hit->point);
+    found["normal"] = point_value(hit->normal);
+    found["fraction"] = rounded(hit->fraction);
+    return Reply::success(std::move(result));
+}
+
 Reply physics_raycast(Session& session, const json::Value& params) {
     world::World& world = session.world();
+    const std::size_t dimensions = params.find("from")->size();
+    if (params.find("to")->size() != dimensions) {
+        return param_error(code::kInvalidParams, "/to",
+                           "from and to need the same number of coordinates");
+    }
+    if (dimensions == 3) {
+        return physics_raycast_3d(session, params);
+    }
     physics2d::QueryFilter filter;
     if (auto failed = query_filter(world, params, filter)) {
         return std::move(*failed);
@@ -1468,13 +1509,81 @@ Reply physics_raycast(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+constexpr std::array<std::string_view, 7> kShapes3D{
+    "box", "sphere", "capsule", "cylinder", "convex_polygon", "concave_polygon", "world_boundary"};
+
+// Whether physics.overlap's params ask about 3D physics: a point or position of three
+// coordinates, a rotation of three angles or a shape only 3D physics has.
+bool overlap_in_3d(const json::Value& params) {
+    if (const json::Value* point = params.find("point"); point != nullptr) {
+        return point->size() == 3;
+    }
+    if (const json::Value* position = params.find("position"); position != nullptr) {
+        return position->size() == 3;
+    }
+    if (const json::Value* rotation = params.find("rotation"); rotation != nullptr) {
+        return rotation->is_array();
+    }
+    const json::Value* shape = params.find("shape")->find("shape");
+    const std::string name = shape != nullptr && shape->is_string() ? shape->as_string() : "";
+    return name != "capsule" && std::ranges::find(kShapes3D, name) != kShapes3D.end();
+}
+
+// physics.overlap in 3D physics.
+Reply physics_overlap_3d(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    physics3d::QueryFilter filter;
+    if (auto failed = query_filter(world, params, filter)) {
+        return std::move(*failed);
+    }
+    const auto max_results = static_cast<std::size_t>(integer(params, "max_results", 32));
+    json::Value result;
+    if (const json::Value* point = params.find("point"); point != nullptr) {
+        result["ids"] =
+            id_array(world, physics3d::overlap_point(world, vec3_of(*point), filter, max_results));
+        return Reply::success(std::move(result));
+    }
+    world::CollisionShape3D shape;
+    std::string path = "/shape";
+    if (auto read = world::from_json(world, *params.find("shape"), shape, path); !read) {
+        return param_error(code::kInvalidParams, path, read.error().message);
+    }
+    if (std::ranges::find(kShapes3D, shape.shape) == kShapes3D.end()) {
+        std::string message = "unknown shape " + quoted(shape.shape);
+        add_hint(message, shape.shape, kShapes3D);
+        return param_error(code::kInvalidParams, "/shape/shape", message);
+    }
+    Vec3 position;
+    if (const json::Value* at = params.find("position"); at != nullptr) {
+        if (at->size() != 3) {
+            return param_error(code::kInvalidParams, "/position", "3D shapes need [x, y, z]");
+        }
+        position = vec3_of(*at);
+    }
+    Vec3 rotation;
+    if (const json::Value* turn = params.find("rotation"); turn != nullptr) {
+        if (!turn->is_array() || turn->size() != 3) {
+            return param_error(code::kInvalidParams, "/rotation",
+                               "3D shapes turn by [x, y, z] radians");
+        }
+        rotation = vec3_of(*turn);
+    }
+    result["ids"] = id_array(
+        world, physics3d::overlap_shape(world, shape, position, rotation, filter, max_results));
+    return Reply::success(std::move(result));
+}
+
 Reply physics_overlap(Session& session, const json::Value& params) {
     world::World& world = session.world();
     const json::Value* point = params.find("point");
     const json::Value* shape_fields = params.find("shape");
     if ((point == nullptr) == (shape_fields == nullptr)) {
         return param_error(code::kInvalidParams, "",
-                           "give point, or shape (a CollisionShape2D) with position and rotation");
+                           "give point, or shape (a CollisionShape2D or CollisionShape3D) with "
+                           "position and rotation");
+    }
+    if (overlap_in_3d(params)) {
+        return physics_overlap_3d(session, params);
     }
     physics2d::QueryFilter filter;
     if (auto failed = query_filter(world, params, filter)) {
@@ -1483,6 +1592,9 @@ Reply physics_overlap(Session& session, const json::Value& params) {
     const auto max_results = static_cast<std::size_t>(integer(params, "max_results", 32));
     json::Value result;
     if (point != nullptr) {
+        if (point->size() != 2) {
+            return param_error(code::kInvalidParams, "/point", "give [x, y] or [x, y, z]");
+        }
         const auto at = floats<2>(*point);
         result["ids"] =
             id_array(world, physics2d::overlap_point(world, {at[0], at[1]}, filter, max_results));
@@ -1505,6 +1617,9 @@ Reply physics_overlap(Session& session, const json::Value& params) {
         position = floats<2>(*at);
     }
     const json::Value* rotation = params.find("rotation");
+    if (rotation != nullptr && !rotation->is_number()) {
+        return param_error(code::kInvalidParams, "/rotation", "2D shapes turn by one angle");
+    }
     result["ids"] =
         id_array(world, physics2d::overlap_shape(
                             world, shape, {position[0], position[1]},
@@ -1520,8 +1635,14 @@ Reply physics_contacts(Session& session, const json::Value& params) {
     if (entity == entt::null) {
         return unknown_entity(world, id, "/id");
     }
-    const physics2d::Contacts contacts = physics2d::contacts(world, entity);
     json::Value result;
+    if (physics3d::has_body(world, entity)) {
+        const physics3d::Contacts contacts = physics3d::contacts(world, entity);
+        result["bodies"] = id_array(world, contacts.bodies);
+        result["areas"] = id_array(world, contacts.areas);
+        return Reply::success(std::move(result));
+    }
+    const physics2d::Contacts contacts = physics2d::contacts(world, entity);
     result["bodies"] = id_array(world, contacts.bodies);
     result["areas"] = id_array(world, contacts.areas);
     return Reply::success(std::move(result));
@@ -1536,6 +1657,22 @@ Reply physics_gravity(Session& session, const json::Value& params) {
         const entt::entity entity = world.find(id);
         if (entity == entt::null) {
             return unknown_entity(world, id, item_path("/ids", i));
+        }
+        if (physics3d::has_body(world, entity)) {
+            const std::optional<physics3d::Gravity> found = physics3d::gravity(world, entity);
+            if (!found) {
+                return param_error(code::kInvalidParams, item_path("/ids", i),
+                                   quoted(id) + " is no physics body");
+            }
+            json::Value body;
+            body["gravity"] = point_value(found->gravity);
+            body["linear_damp"] = rounded(found->linear_damp);
+            body["angular_damp"] = rounded(found->angular_damp);
+            if (!found->areas.empty()) {
+                body["areas"] = id_array(world, found->areas);
+            }
+            bodies[id] = std::move(body);
+            continue;
         }
         const std::optional<physics2d::Gravity> found = physics2d::gravity(world, entity);
         if (!found) {
@@ -5648,10 +5785,10 @@ void register_builtin_commands(Registry& registry) {
         .handler = canvas_convert,
     });
 
-    json::Value physics_point = property("array", "[x, y]");
+    json::Value physics_point = property("array", "[x, y], or [x, y, z] in 3D");
     physics_point["items"]["type"] = "number";
     physics_point["minItems"] = 2;
-    physics_point["maxItems"] = 2;
+    physics_point["maxItems"] = 3;
     const auto with_filter = [&](json::Object properties) {
         properties["collision_mask"] =
             integer_property("Layers to look in, as bits; default all.", 0, 0xFFFFFFFF, 0xFFFFFFFF);
@@ -5663,9 +5800,9 @@ void register_builtin_commands(Registry& registry) {
         return properties;
     };
     json::Value ray_from = physics_point;
-    ray_from["description"] = "Where the ray starts, [x, y].";
+    ray_from["description"] = "Where the ray starts, [x, y], or [x, y, z] in 3D.";
     json::Value ray_to = physics_point;
-    ray_to["description"] = "Where it ends, [x, y].";
+    ray_to["description"] = "Where it ends.";
     registry.add({
         .name = "physics.raycast",
         .description = "Returns the first body (or area) a ray from from to to hits: its id, the "
@@ -5679,9 +5816,16 @@ void register_builtin_commands(Registry& registry) {
         .handler = physics_raycast,
     });
     json::Value overlap_point = physics_point;
-    overlap_point["description"] = "Find shapes containing this point, [x, y]. Or give shape.";
+    overlap_point["description"] =
+        "Find shapes containing this point, [x, y] or [x, y, z]. Or give shape.";
     json::Value overlap_position = physics_point;
-    overlap_position["description"] = "Where the shape goes, [x, y].";
+    overlap_position["description"] = "Where the shape goes, [x, y] or [x, y, z].";
+    json::Value overlap_rotation =
+        property("number", "The shape's rotation: radians, or [x, y, z] radians in 3D.");
+    overlap_rotation["type"] = json::Array{"number", "array"};
+    overlap_rotation["items"]["type"] = "number";
+    overlap_rotation["minItems"] = 3;
+    overlap_rotation["maxItems"] = 3;
     registry.add({
         .name = "physics.overlap",
         .description = "Returns the IDs of bodies (or areas) whose shapes contain a point or "
@@ -5690,10 +5834,11 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema(with_filter({
             {"point", std::move(overlap_point)},
-            {"shape", property("object", "CollisionShape2D fields, e.g. {\"shape\": "
-                                         "\"circle\", \"radius\": 8}. Or give point.")},
+            {"shape", property("object", "CollisionShape2D or CollisionShape3D fields, e.g. "
+                                         "{\"shape\": \"circle\", \"radius\": 8}. Or give "
+                                         "point.")},
             {"position", std::move(overlap_position)},
-            {"rotation", property("number", "The shape's rotation, radians.")},
+            {"rotation", std::move(overlap_rotation)},
             {"max_results", integer_property("At most this many IDs.", 1, 256, 32)},
         })),
         .handler = physics_overlap,
@@ -5713,9 +5858,10 @@ void register_builtin_commands(Registry& registry) {
     gravity_ids["maxItems"] = 256;
     registry.add({
         .name = "physics.gravity",
-        .description = "Returns each body's gravity after the last step, [x, y] in pixels per "
-                       "second squared, its damping per second and the areas that changed them "
-                       "(Area2D space overrides), highest priority first.",
+        .description = "Returns each body's gravity after the last step ([x, y] in pixels per "
+                       "second squared, or [x, y, z] in meters for a 3D body), its damping per "
+                       "second and the areas that changed them (space overrides), highest "
+                       "priority first.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({{"ids", std::move(gravity_ids)}}, {"ids"}),

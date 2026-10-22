@@ -82,6 +82,47 @@ slash_add_dependency(box2d
         "BOX2D_AVX2 OFF"
         ${_slash_box2d_simd})
 
+# 3D physics, as Godot 4.4's Jolt module. It builds deterministic on every platform, with
+# floating-point contraction off, and with no x86 instruction sets past SSE2 (as Box2D above),
+# since games run on machines from 2020 on. Its debug renderer, profiler, object streams, GPU
+# compute and floating-point exceptions stay out, and it takes this project's compiler flags and
+# runtime library rather than its own.
+slash_add_dependency(JoltPhysics
+    SYSTEM TRUE
+    SOURCE_SUBDIR Build
+    OPTIONS
+        "CROSS_PLATFORM_DETERMINISTIC ON"
+        "OVERRIDE_CXX_FLAGS OFF"
+        "USE_STATIC_MSVC_RUNTIME_LIBRARY OFF"
+        "INTERPROCEDURAL_OPTIMIZATION OFF"
+        "GENERATE_DEBUG_SYMBOLS OFF"
+        "ENABLE_ALL_WARNINGS OFF"
+        "ENABLE_INSTALL OFF"
+        "ENABLE_OBJECT_STREAM OFF"
+        "FLOATING_POINT_EXCEPTIONS_ENABLED OFF"
+        "DEBUG_RENDERER_IN_DEBUG_AND_RELEASE OFF"
+        "PROFILER_IN_DEBUG_AND_RELEASE OFF"
+        "CPP_EXCEPTIONS_ENABLED OFF"
+        "CPP_RTTI_ENABLED OFF"
+        "USE_SSE4_1 OFF"
+        "USE_SSE4_2 OFF"
+        "USE_AVX OFF"
+        "USE_AVX2 OFF"
+        "USE_AVX512 OFF"
+        "USE_LZCNT OFF"
+        "USE_TZCNT OFF"
+        "USE_F16C OFF"
+        "USE_FMADD OFF"
+        "JPH_USE_DX12 OFF"
+        "JPH_USE_VK OFF"
+        "JPH_USE_MTL OFF"
+        "JPH_USE_CPU_COMPUTE OFF"
+        "TARGET_UNIT_TESTS OFF"
+        "TARGET_HELLO_WORLD OFF"
+        "TARGET_PERFORMANCE_TEST OFF"
+        "TARGET_SAMPLES OFF"
+        "TARGET_VIEWER OFF")
+
 # The Tracy profiler's client, in builds configured with SLASH_PROFILER=tracy (see
 # slash/core/profile.hpp). It collects only while a profiler is connected, listens on the loopback
 # interface only and doesn't announce itself on the network.
