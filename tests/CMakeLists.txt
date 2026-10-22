@@ -86,6 +86,7 @@ add_executable(slash_tests
     test_rpc.cpp
     test_runtime.cpp
     test_scene.cpp
+    test_scene3d.cpp
     test_score.cpp
     test_soundtrack_arrange.cpp
     test_soundtrack_check.cpp
@@ -115,7 +116,7 @@ add_executable(slash_tests
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
     slash::ai slash::ai_commands slash::animation slash::asset slash::audio slash::bench slash::canvas slash::command slash::core slash::debug slash::exporter slash::importer slash::input slash::library slash::library_commands slash::physics2d
-    slash::platform slash::render slash::runtime slash::server slash::services slash::shader_compiler slash::soundtrack slash::soundtrack_commands slash::storyboard slash::text slash::texture_encoder slash::ui slash::world doctest::doctest SDL3::SDL3-static
+    slash::platform slash::render slash::runtime slash::scene3d slash::server slash::services slash::shader_compiler slash::soundtrack slash::soundtrack_commands slash::storyboard slash::text slash::texture_encoder slash::ui slash::world doctest::doctest SDL3::SDL3-static
     slash_httplib # a stand-in model server for the AI provider tests
     webp) # WebP textures for the Godot unpacking tests
 # doctest forward-declares std::ostream by default, which breaks string_view checks on recent
@@ -157,7 +158,24 @@ if(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
         SLASH_TEST_GAMEPLAY_DIR="${CMAKE_CURRENT_BINARY_DIR}/gameplay_modules")
 endif()
 
-add_test(NAME unit COMMAND slash_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+# The unit tests run as five ctest tests, by the first letter of the file after "test_", so each
+# has its own time limit: on Windows runners, which have no GPU, they take many times longer than
+# on Linux and macOS. The last takes every file the others don't, so a new test file always runs.
+set(unit_shards "a b c d e f g" "h i j k l m n o" "p q r" "s")
+set(unit_others "")
+set(unit_index 0)
+foreach(letters IN LISTS unit_shards)
+    string(REPLACE " " "*,*tests?test_" letters "${letters}")
+    set(filters "*tests?test_${letters}*")
+    math(EXPR unit_index "${unit_index} + 1")
+    add_test(NAME unit_${unit_index} COMMAND slash_tests --source-file=${filters}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+    list(APPEND unit_others "${filters}")
+endforeach()
+string(REPLACE ";" "," unit_others "${unit_others}")
+math(EXPR unit_index "${unit_index} + 1")
+add_test(NAME unit_${unit_index} COMMAND slash_tests --source-file-exclude=${unit_others}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
 # The compiled shaders committed in engine/render/src match their HLSL; see
 # cmake/compile_shaders.cmake.

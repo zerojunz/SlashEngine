@@ -3028,9 +3028,10 @@ only the lines logged while it is open, so a fresh one returns `{"lines":[]}`.
 
 ### frame.capture
 
-Draws the frame the window shows now, on the CPU: the world's sprites, tile maps, particles and
+Draws the frame the window shows now, on the CPU: the 3D world through its current `Camera3D`
+([scene-format.md](scene-format.md#3d-nodes)), then the world's sprites, tile maps, particles and
 lights, then the collision shapes if asked, then the controls, over the project's
-`rendering.clear_color`, at the window size
+`rendering.clear_color` (or a `WorldEnvironment`'s background), at the window size
 (`window.width` and `height` in `project.json`). The software device that draws it shades with
 the same code as the GPU device's shaders, so the pixels are the same on every machine and with
 no GPU. Nothing changes. [examples/frame-capture](../../examples/frame-capture/) calls it.
@@ -3056,7 +3057,8 @@ Needs: `read`, and `filesystem` with `path`. A HUD with a health bar at 75%:
 ```
 
 `width` and `height` are the image's, after `region` and `scale`. `drawn` counts what was drawn
-(`sprites`, `tiles`, `particles`, `lights`, `controls` and `shapes`), leaving out zeros. When the
+(`sprites`, `tiles`, `particles`, `lights`, `controls`, `shapes` and 3D `meshes`), leaving out
+zeros. When the
 project's `rendering.scaling` ([project-format.md](project-format.md#render-scale)) draws the
 world at another size, `upscaler` names what scaled it and `render_size` is the world's size in
 pixels, `[width, height]`. `colors` are

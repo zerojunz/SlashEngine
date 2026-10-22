@@ -82,9 +82,12 @@ A reference must name an entity that exists in the same scene.
 | | `skew` | `float` | `0` | Radians its y axis leans from square to its x axis, -1.569 to 1.569 (under 89.9 degrees), as Godot's `skew` |
 | | `top_level` | `bool` | `false` | Placed in the world rather than its parent's space, and drawn after the rest without its parent's tint or `z_index`, as Godot's `top_level` ([parent transforms](#parent-transforms)) |
 | | `children` | Array of entity references | `[]` | Entities with a `Transform2D` placed in its space, in drawing order; each has one parent ([parent transforms](#parent-transforms)) |
-| `Transform3D` | `position` | `Vec3` | `[0, 0, 0]` | Position in meters, as [x, y, z]; y points up |
-| | `rotation` | `Quat` | `[0, 0, 0, 1]` | Unit quaternion [x, y, z, w]; each element from -1 to 1 |
+| `Transform3D` | `position` | `Vec3` | `[0, 0, 0]` | Position in meters, as [x, y, z], in its parent's space; y points up ([3D nodes](#3d-nodes)) |
+| | `rotation` | `Vec3` | `[0, 0, 0]` | Radians about x, y and z, turned z first, then x, then y, as Godot's default rotation order |
 | | `scale` | `Vec3` | `[1, 1, 1]` | Scale factor on each axis |
+| | `visible` | `bool` | `true` | `false` hides it and every entity under it |
+| | `top_level` | `bool` | `false` | Placed in the world rather than its parent's space; a hidden parent still hides it |
+| | `children` | Array of entity references | `[]` | Entities with a `Transform3D` placed in its space; each has one parent |
 | `StoryRef` | `ids` | `std::vector<std::string>` | `[]` | The [storyboard](storyboard-format.md) entries this entity stands for, e.g. `["character/mira"]` |
 | `Sprite2D` | `texture` | `std::string` | `""` | Project path of a PNG, BMP or KTX2 file; `""` draws nothing |
 | | `centered` | `bool` | `true` | Center the texture on the position; `false` puts its top left corner there |
@@ -614,6 +617,136 @@ cannon and a deck.
   `Control` children with it, as Godot frees a node's children, and takes destroyed entities out
   of the lists of parents that stay.
 - **Not yet.** Node2D and Control entities in one tree.
+
+## 3D nodes
+
+The 3D world is Godot's 3D nodes as components. Units are meters, y points up, and a camera or
+light looks down its entity's -z. A `Transform3D` with `children` places them in its space, as a
+`Node3D` places its child nodes: they move, turn, scale and hide with it. A cycle is broken at
+the entity made first, and `scene validate` reports it.
+
+Games, `slash-cli run` and [`frame.capture`](commands.md#framecapture) draw the 3D world through
+its current `Camera3D` (the first with `current` set, else the first one, in tree order), under
+every canvas, so sprites and controls draw over it, as they do over Godot's 3D viewport. A world
+with no `Camera3D` draws no 3D. Between ticks, entities are drawn part of the way from where
+they were to where they are, as sprites are. `frame.capture`'s `drawn` counts `meshes`.
+
+```json
+"crate": {"components": {
+  "Transform3D": {"position": [0, 0.5, 0], "rotation": [0, 0.5, 0]},
+  "MeshInstance3D": {},
+  "BoxMesh": {"size": [1, 1, 1]},
+  "StandardMaterial3D": {"albedo_color": [0.85, 0.2, 0.15, 1], "roughness": 0.6}
+}}
+```
+
+[examples/scene-3d](../../examples/scene-3d/) is a lit table with a crate, a ball and a ring.
+
+### Meshes
+
+`MeshInstance3D` draws its entity's primitive mesh, colored by its `StandardMaterial3D` or, with
+none, Godot's default material (white, rough and lit). Its `layers` (default `1`) are render
+layers: a camera whose `cull_mask` and a light whose `light_cull_mask` share a bit with them see
+it and light it.
+
+The primitive meshes are Godot's, made as Godot makes them: the same corners, normals, tangents
+and texture coordinates, so a texture wraps them as it does in Godot. An entity has at most one.
+Meshes of equal settings share one mesh on the GPU.
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `BoxMesh` | `size` `[1, 1, 1]`; `subdivide_width`, `subdivide_height`, `subdivide_depth` `0` |
+| `SphereMesh` | `radius` `0.5`, `height` `1`, `radial_segments` `64`, `rings` `32`, `is_hemisphere` `false` |
+| `CylinderMesh` | `top_radius` `0.5`, `bottom_radius` `0.5` (`0` for a cone), `height` `2`, `radial_segments` `64`, `rings` `4`, `cap_top` and `cap_bottom` `true` |
+| `CapsuleMesh` | `radius` `0.5`, `height` `2` (end to end), `radial_segments` `64`, `rings` `8` |
+| `PlaneMesh` | `size` `[2, 2]`, `subdivide_width` and `subdivide_depth` `0`, `center_offset` `[0, 0, 0]`, `orientation` `"y"` (the axis it faces: `"x"`, `"y"` or `"z"`) |
+| `QuadMesh` | as `PlaneMesh`, with `size` `[1, 1]` and `orientation` `"z"` |
+| `PrismMesh` | `left_to_right` `0.5` (where the top edge sits across), `size` `[1, 1, 1]`, subdivisions as `BoxMesh` |
+| `TorusMesh` | `inner_radius` `0.5`, `outer_radius` `1` (they can't be equal), `rings` `64`, `ring_segments` `32` |
+
+Every primitive also has `flip_faces` (`false`), which turns it inside out, as for a skybox.
+
+### StandardMaterial3D
+
+Godot's `StandardMaterial3D`, as the mesh's material override. Colors are sRGB; textures are
+project paths of PNG, BMP or KTX2 files, and `""` leaves one out. Textures repeat, as Godot's
+do in 3D.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `albedo_color`, `albedo_texture` | `[1, 1, 1, 1]`, `""` | The surface's color, times the texture |
+| `vertex_color_use_as_albedo` | `false` | Multiply by the mesh's vertex colors |
+| `metallic`, `metallic_texture`, `metallic_texture_channel` | `0`, `""`, `"red"` | How metallic, times a channel of the texture (`"red"`, `"green"`, `"blue"`, `"alpha"` or `"gray"`) |
+| `metallic_specular` | `0.5` | Specular strength of the non-metallic part |
+| `roughness`, `roughness_texture`, `roughness_texture_channel` | `1`, `""`, `"red"` | How rough, as `metallic` |
+| `emission_enabled`, `emission`, `emission_energy_multiplier`, `emission_texture` | `false`, `[0, 0, 0, 1]`, `1`, `""` | Light the surface gives off, unlit |
+| `normal_enabled`, `normal_scale`, `normal_texture` | `false`, `1`, `""` | A tangent-space normal map |
+| `shading_mode` | `"per_pixel"` | `"unshaded"` draws the albedo with no lighting |
+| `transparency`, `alpha_scissor_threshold` | `"disabled"`, `0.5` | `"alpha"` blends; `"alpha_scissor"` drops pixels under the threshold |
+| `blend_mode` | `"mix"` | How alpha meshes blend: `"mix"`, `"add"`, `"sub"`, `"mul"` or `"premul_alpha"` |
+| `cull_mode` | `"back"` | Faces not drawn: `"back"`, `"front"` or `"disabled"` (both sides drawn) |
+| `uv1_scale`, `uv1_offset` | `[1, 1, 1]`, `[0, 0, 0]` | Texture coordinates are scaled, then moved (x and y are used) |
+| `texture_filter` | `"linear_with_mipmaps"` | `"nearest"` and `"nearest_with_mipmaps"` keep texels sharp |
+
+Opaque and alpha scissor meshes draw nearest first, then alpha meshes farthest first, as Godot
+sorts them. A texture that can't load is left out, with a warning and a problem in
+`frame.summary`.
+
+### Camera3D
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `projection` | `"perspective"` | Or `"orthogonal"` |
+| `keep_aspect` | `"height"` | The axis `fov` or `size` spans: `"height"` or `"width"` |
+| `fov` | `75` | Degrees across that axis, for a perspective camera |
+| `size` | `1` | Meters across that axis, for an orthogonal camera |
+| `near`, `far` | `0.05`, `4000` | The nearest and farthest it sees, in meters |
+| `h_offset`, `v_offset` | `0`, `0` | Moves the view along the camera's x and y, in meters |
+| `current` | `false` | The world is seen through this camera |
+| `cull_mask` | `1048575` | The render layers it sees (layers 1 to 20) |
+
+The camera's scale is ignored, as Godot's is. Depth is reversed, so far scenes keep their
+precision.
+
+### Lights
+
+`DirectionalLight3D` shines down its entity's -z everywhere, as the sun; `OmniLight3D` shines
+from its entity in every direction; `SpotLight3D` shines from its entity in a cone down its -z.
+Up to 64 lights shine at once, in tree order, and hidden ones don't. Their fields are Godot's:
+
+| Field | Default | Lights | Meaning |
+| --- | --- | --- | --- |
+| `light_color` | `[1, 1, 1, 1]` | all | sRGB |
+| `light_energy` | `1` | all | Brightness |
+| `light_specular` | `0.5` | all | How strong its highlights are |
+| `light_negative` | `false` | all | Takes light away instead |
+| `light_cull_mask` | `4294967295` | all | The render layers it lights |
+| `omni_range`, `omni_attenuation` | `5`, `1` | omni | How far it reaches, in meters, and how it falls off |
+| `spot_range`, `spot_attenuation` | `5`, `1` | spot | The same for a spot light |
+| `spot_angle`, `spot_angle_attenuation` | `45`, `1` | spot | Degrees from its axis to the cone's edge, and how it fades to it |
+
+Shadows come later in milestone 7.
+
+### WorldEnvironment
+
+The first `WorldEnvironment` made sets the background a 3D frame clears to and the ambient light
+every lit surface gets, as Godot's `Environment`. Without one, the background is the project's
+`rendering.clear_color` and there is no ambient light.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `background_mode` | `"clear_color"` | `"clear_color"` (the project's) or `"color"` |
+| `background_color` | `[0, 0, 0, 1]` | The background for `"color"` |
+| `background_energy_multiplier` | `1` | Brightens the background |
+| `ambient_light_source` | `"background"` | `"background"` (its color and energy), `"color"` or `"disabled"` |
+| `ambient_light_color`, `ambient_light_energy` | `[0, 0, 0, 1]`, `1` | The ambient light for `"color"` |
+
+### Checks
+
+`scene validate` and exports report an entity with two primitive meshes (at
+`/entities/<id>/components`), a `MeshInstance3D` with none (at its `MeshInstance3D`) and a
+`TorusMesh` whose radii are equal, as drawing would. `frame.summary` doesn't describe 3D meshes
+yet.
 
 ## Canonical form
 

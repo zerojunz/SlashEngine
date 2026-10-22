@@ -6,6 +6,7 @@ add_library(slash_world
     src/game_module.cpp
     src/scene.cpp
     src/tree2d.cpp
+    src/tree3d.cpp
     src/world.cpp)
 add_library(slash::world ALIAS slash_world)
 
@@ -16,6 +17,7 @@ target_link_libraries(slash_world PUBLIC slash::core EnTT::EnTT)
 target_compile_definitions(slash_world PUBLIC ENTT_NOEXCEPTION)
 # Global transforms feed physics, and camera views and canvas layers drawing and sound, so they
 # give the same bits everywhere: no fused multiply-adds.
-set_source_files_properties(src/camera2d.cpp src/canvas_layer.cpp src/tree2d.cpp PROPERTIES
+set_source_files_properties(src/camera2d.cpp src/canvas_layer.cpp src/tree2d.cpp src/tree3d.cpp
+    PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 slash_engine_target(slash_world)

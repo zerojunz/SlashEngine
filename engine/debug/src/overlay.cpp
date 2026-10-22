@@ -211,7 +211,8 @@ void Overlay::update(command::Session& session, const FrameStats& frames,
           std::tuple{canvas.particles_drawn(), "particle", "particles"},
           std::tuple{canvas.lights_drawn(), "light", "lights"},
           std::tuple{canvas.controls_drawn(), "control", "controls"},
-          std::tuple{canvas.shapes_drawn(), "shape", "shapes"}}) {
+          std::tuple{canvas.shapes_drawn(), "shape", "shapes"},
+          std::tuple{canvas.meshes_drawn(), "mesh", "meshes"}}) {
         if (drawn > 0) {
             counts += " · " + count(drawn, one, many);
         }

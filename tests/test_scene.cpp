@@ -127,7 +127,7 @@ TEST_CASE("a saved scene loads back into an identical world") {
         "format": 1,
         "entities": {
             "leader": {"components": {"Transform3D": {"position": [1, 2, 3],
-                                                      "rotation": [0, 0.7071068, 0, 0.7071068]}}},
+                                                      "rotation": [0, 1.5707964, 0]}}},
             "pet": {"components": {
                 "Follow": {"target": "leader", "distance": 2.5},
                 "Loadout": {"items": ["bone", "ball"], "level": 4,
@@ -246,7 +246,7 @@ TEST_CASE("the scene schema carries docs, defaults and ranges") {
 
     const json::Value& rotation =
         *definitions.find("Transform3D")->find("properties")->find("rotation");
-    CHECK(*rotation.find("items")->find("minimum") == json::Value(-1.0));
+    CHECK(*rotation.find("maxItems") == json::Value(3));
 }
 
 TEST_CASE("validation lists every schema error with its path") {
