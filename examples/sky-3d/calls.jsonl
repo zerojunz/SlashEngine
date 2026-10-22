@@ -1,0 +1,11 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[160,4],[20,76],[228,17],[150,92],[160,172]],"path":"shots/day.png"}}
+{"jsonrpc":"2.0","id":3,"method":"component.set","params":{"id":"environment","components":{"WorldEnvironment":{"fog_height":0.6,"fog_height_density":0.8}}}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"points":[[150,92],[160,172],[100,150]]}}
+{"jsonrpc":"2.0","id":5,"method":"component.remove","params":{"id":"environment","components":["ProceduralSkyMaterial"]}}
+{"jsonrpc":"2.0","id":6,"method":"component.set","params":{"id":"environment","components":{"PhysicalSkyMaterial":{"energy_multiplier":6},"WorldEnvironment":{"fog_height_density":0}}}}
+{"jsonrpc":"2.0","id":7,"method":"component.set","params":{"id":"sun","components":{"Transform3D":{"rotation":[-0.12,2.74,0]}}}}
+{"jsonrpc":"2.0","id":8,"method":"frame.capture","params":{"points":[[160,4],[262,40],[20,76]]}}
+{"jsonrpc":"2.0","id":9,"method":"component.remove","params":{"id":"environment","components":["PhysicalSkyMaterial"]}}
+{"jsonrpc":"2.0","id":10,"method":"component.set","params":{"id":"environment","components":{"PanoramaSkyMaterial":{"panorama":"shots/day.png"},"WorldEnvironment":{"fog_enabled":false}}}}
+{"jsonrpc":"2.0","id":11,"method":"frame.capture","params":{"points":[[160,4],[20,60]]}}
