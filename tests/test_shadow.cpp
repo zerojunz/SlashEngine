@@ -153,7 +153,7 @@ Image draw_shadow(RenderDevice& device, const render::Scene3D& scene, const Cast
     const auto ended = device.end_frame();
     REQUIRE_MESSAGE(ended.ok(), error_of(ended));
     auto image = device.read_texture(target.value());
-    REQUIRE(image.ok());
+    REQUIRE_MESSAGE(image.ok(), error_of(image));
     device.destroy_mesh(box.value());
     device.destroy_mesh(floor.value());
     device.destroy_texture(target.value());

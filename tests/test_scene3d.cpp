@@ -491,7 +491,7 @@ TEST_CASE("the 3D world draws under the canvas, on the software device and every
         CHECK(renderer.meshes_drawn() == 2);
         CHECK(renderer.lights_3d_drawn() == 1);
         const auto drawn = device->read_texture(target.value());
-        REQUIRE(drawn.ok());
+        REQUIRE_MESSAGE(drawn.ok(), (drawn.ok() ? std::string() : drawn.error().message));
         for (const auto& [x, y] :
              {std::pair{32U, 32U}, std::pair{32U, 4U}, std::pair{4U, 4U}, std::pair{50U, 32U}}) {
             CAPTURE(x);
