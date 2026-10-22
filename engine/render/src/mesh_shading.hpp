@@ -284,8 +284,8 @@ struct MeshMaps {
 
 // The pixel's color, as fs_main gives it, or nullopt where it discards the pixel.
 [[nodiscard]] std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface,
-                                               const MeshSceneUniforms& scene,
-                                               const MeshMaps& maps, const MeshPixel& pixel);
+                                               const MeshSceneUniforms& scene, const MeshMaps& maps,
+                                               const MeshPixel& pixel);
 // fs_main in shaders/shadow.hlsl: whether a shadow pass keeps a pixel, as the alpha scissor does.
 [[nodiscard]] bool shadow_keeps(const MeshSurfaceUniforms& surface, const Float4& albedo_texel,
                                 const Float4& color);

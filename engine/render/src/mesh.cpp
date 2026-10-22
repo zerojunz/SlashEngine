@@ -331,8 +331,8 @@ float positional_shadow(const detail::MeshMaps& maps, std::size_t slot, const Fl
         }
         taps = 1.0F; // Godot samples an omni light's cube once
     }
-    const float shadow = sample_shadow(maps.positional, s.faces.at(face), point, s.params[2],
-                                       taps, &s.rects.at(face));
+    const float shadow = sample_shadow(maps.positional, s.faces.at(face), point, s.params[2], taps,
+                                       &s.rects.at(face));
     return lerp(1.0F, shadow, s.params[1]);
 }
 
@@ -804,8 +804,8 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         }
         if (scene.sky[0] != 0.0F) {
             const Float4 texel = maps.radiance->sample(to_sky(normal), kRadianceMaxLevel);
-            ambient_light = lerp3(ambient_light, scale(srgb_to_linear(xyz(texel)), scene.sky[2]),
-                                  scene.sky[3]);
+            ambient_light =
+                lerp3(ambient_light, scale(srgb_to_linear(xyz(texel)), scene.sky[2]), scene.sky[3]);
         }
     }
     float occlusion =
@@ -829,8 +829,8 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
 
     ambient_light = scale(mul(ambient_light, base), 1.0F - metallic);
     const Float3 diffuse_light = mul(light_sum.diffuse, scale(base, 1.0F - metallic));
-    const Float3 lit = add(add(add(add(diffuse_light, light_sum.specular), reflected), emitted),
-                           ambient_light);
+    const Float3 lit =
+        add(add(add(add(diffuse_light, light_sum.specular), reflected), emitted), ambient_light);
     return finish(lit);
 }
 

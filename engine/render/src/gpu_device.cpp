@@ -2038,9 +2038,9 @@ private:
             samplers.at(kMeshTextures + atlas) = {.texture = drawn ? made.texture : no_shadows_,
                                                   .sampler = shadow_sampler_};
         }
-        samplers.at(kMeshTextures + 2) = {
-            .texture = radiance_used(scene) ? radiance_.filtered : no_radiance_,
-            .sampler = radiance_sampler_};
+        samplers.at(kMeshTextures + 2) = {.texture = radiance_used(scene) ? radiance_.filtered
+                                                                          : no_radiance_,
+                                          .sampler = radiance_sampler_};
         SDL_GPUGraphicsPipeline* bound = nullptr;
         for (const std::size_t i :
              mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), scene,
@@ -2093,9 +2093,8 @@ private:
     }
 
     // A pass drawing into a level of one face of a cube.
-    static SDL_GPURenderPass* begin_cube_pass(SDL_GPUCommandBuffer* commands,
-                                              SDL_GPUTexture* cube, std::uint32_t face,
-                                              std::uint32_t level) {
+    static SDL_GPURenderPass* begin_cube_pass(SDL_GPUCommandBuffer* commands, SDL_GPUTexture* cube,
+                                              std::uint32_t face, std::uint32_t level) {
         SDL_GPUColorTargetInfo color{};
         color.texture = cube;
         color.mip_level = level;
@@ -2107,8 +2106,7 @@ private:
     }
 
     // A pipeline drawing one triangle over an RGB10A2 target with no depth, with shaders.
-    Result<SDL_GPUGraphicsPipeline*> cube_pipeline(SDL_GPUShader* vertex,
-                                                   SDL_GPUShader* fragment) {
+    Result<SDL_GPUGraphicsPipeline*> cube_pipeline(SDL_GPUShader* vertex, SDL_GPUShader* fragment) {
         SDL_GPUColorTargetDescription color{};
         color.format = kRadianceFormat;
         SDL_GPUGraphicsPipelineCreateInfo info{};
@@ -2186,7 +2184,7 @@ private:
                 return made;
             }
             const std::array<std::array<SDL_GPUShader*, 2>, 2> stages{sky_shaders_,
-                                                                       radiance_shaders_};
+                                                                      radiance_shaders_};
             for (std::size_t i = 0; i < 2; ++i) {
                 if (radiance_pipelines_.at(i) == nullptr) {
                     auto pipeline = cube_pipeline(stages.at(i)[0], stages.at(i)[1]);
@@ -2249,8 +2247,10 @@ private:
             for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
                 uniforms->params[0] = static_cast<float>(face);
                 SDL_PushGPUFragmentUniformData(
-                    commands, 0, uniforms.get(), static_cast<std::uint32_t>(sizeof(RadianceUniforms)));
-                SDL_GPURenderPass* pass = begin_cube_pass(commands, radiance_.filtered, face, level);
+                    commands, 0, uniforms.get(),
+                    static_cast<std::uint32_t>(sizeof(RadianceUniforms)));
+                SDL_GPURenderPass* pass =
+                    begin_cube_pass(commands, radiance_.filtered, face, level);
                 SDL_BindGPUGraphicsPipeline(pass, radiance_pipelines_[1]);
                 SDL_BindGPUFragmentSamplers(pass, 0, &source, 1);
                 SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);

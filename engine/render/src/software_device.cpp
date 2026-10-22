@@ -1181,8 +1181,8 @@ private:
             const Texture* texture = key.texture != TextureId::None ? find(key.texture) : nullptr;
             radiance_ = detail::make_radiance(scene, [&](const std::array<float, 2>& coords) {
                 return texture == nullptr ? Float4{1.0F, 1.0F, 1.0F, 1.0F}
-                                          : sample_image(texture->image, texture->desc.filter,
-                                                         true, coords[0], coords[1]);
+                                          : sample_image(texture->image, texture->desc.filter, true,
+                                                         coords[0], coords[1]);
             });
             radiance_key_ = key;
         }
