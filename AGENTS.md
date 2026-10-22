@@ -692,6 +692,21 @@ CPU twins of its two stages (`mesh_vertex`, `shade_mesh`), which the software de
 `tests/test_mesh.cpp` holds every device to the software device's pixels, so a change to the 3D
 shading goes in both. `examples/meshes-3d` draws a lit scene.
 
+`engine/scene3d` puts Godot's 3D nodes in scenes. `Transform3D` (position, Euler rotation in
+radians in Godot's YXZ order, scale, `visible`, `top_level`, `children`) makes trees that
+`world::Tree3D` (`slash/world/tree3d.hpp`) walks, as `Tree2D` walks 2D ones. `MeshInstance3D`
+draws its entity's primitive mesh component (`BoxMesh`, `SphereMesh`, `CylinderMesh`,
+`CapsuleMesh`, `PlaneMesh`, `QuadMesh`, `PrismMesh`, `TorusMesh`, made as Godot's
+`primitive_meshes.cpp` makes them, in `src/primitive.cpp`) with its `StandardMaterial3D`, seen
+through the current `Camera3D` and lit by `DirectionalLight3D`, `OmniLight3D` and `SpotLight3D`,
+over a `WorldEnvironment`'s background and ambient light. `scene3d::Renderer` turns a world into
+a frame's `Scene3D` and mesh draws, keeping one device mesh per set of primitive settings and
+interpolating transforms between ticks; `CanvasRenderer` owns one and draws the 3D world under
+every canvas, so games, `slash-cli run` and `frame.capture` draw it. `check_meshes` backs
+`scene validate` and exports. Mesh building and cameras use `slash::cos_sin` and build with
+`-ffp-contract=off`, so meshes are the same bits everywhere. `examples/scene-3d` is a lit
+table.
+
 Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V, MSL, GLSL ES and WGSL are committed
 in `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang,
 SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`
@@ -1217,7 +1232,7 @@ CI rejects unformatted code and any clang-tidy finding.
   Modules: `core` (Result, logging, JSON, reflection, math, the job system), `platform` (SDL3 window, run loop,
   files and folder listings, child processes), `render` (the render device over SDL3's GPU API and OpenGL 3.3 / OpenGL ES 3.0 / WebGL 2,
   the software and null devices, HLSL shaders, material programs, 2D light shading, particles and 3D meshes), `asset` (asset handles, loaders, hot reload),
-  `world` (EnTT world, components, scenes and prefabs), `input` (input events, action maps,
+  `world` (EnTT world, components, scenes and prefabs, 2D and 3D trees), `input` (input events, action maps,
   the input state and reading SDL's events), `audio` (sound files and streams, the mixer, buses
   and effects, players and SDL's audio output), `services` (ads, analytics, in-app
   purchases, achievements and leaderboards, their backends and the test backend), `canvas` (sprites, `.frames.json`
@@ -1225,7 +1240,8 @@ CI rejects unformatted code and any clang-tidy finding.
   particles, GPU particles' steps and drawing them), `text` (fonts, shaping, line breaking, carets and selections, and glyph atlases), `ui`
   (controls, containers and themes: layout, draw calls, buttons, focus and text fields), `animation` (`.anim.json` keyframe
   animations and the system that plays them),
-  `physics2d` (2D bodies, areas, joints and queries on Box2D), `library` (the asset library, its
+  `scene3d` (3D nodes: primitive meshes, materials, cameras, lights and environments, and drawing
+  them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems, drafting cue sheets and arranging them),
   `command` (commands, sessions with undo, JSON-RPC and MCP),

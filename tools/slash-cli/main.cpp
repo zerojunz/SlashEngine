@@ -45,6 +45,7 @@
 #include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/icon.hpp"
 #include "slash/runtime/project.hpp"
+#include "slash/scene3d/scene3d.hpp"
 #include "slash/server/server.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
 #include "slash/soundtrack/commands.hpp"
@@ -896,6 +897,9 @@ int cmd_scene_validate(const std::string& path) {
         if (errors.empty() && !prefab) {
             errors =
                 slash::canvas::check_sub_emitters(registry, parsed.value(), prefab_reader(path));
+        }
+        if (errors.empty() && !prefab) {
+            errors = slash::scene3d::check_meshes(registry, parsed.value(), prefab_reader(path));
         }
     }
     if (parsed && !frames && !material && !process && !animation && !tileset && !font && !theme &&

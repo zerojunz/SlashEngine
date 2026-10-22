@@ -295,7 +295,15 @@ double material_time(std::uint64_t tick, double tick_seconds, double interpolati
 }
 
 CanvasRenderer::CanvasRenderer(render::RenderDevice& device, asset::Assets& assets)
-    : device_(&device), assets_(&assets) {}
+    : device_(&device), assets_(&assets),
+      scene3d_(device,
+               [this](const std::string& path, render::Filter filter) -> Result<render::TextureId> {
+                   auto made = texture(path, filter);
+                   if (!made) {
+                       return made.error();
+                   }
+                   return made.value()->id;
+               }) {}
 
 CanvasRenderer::~CanvasRenderer() {
     for (const auto& [key, texture] : textures_) {
@@ -325,6 +333,7 @@ CanvasRenderer::~CanvasRenderer() {
 }
 
 void CanvasRenderer::before_tick(const world::World& world) {
+    scene3d_.before_tick(world);
     previous_.clear();
     const auto& ecs = world.ecs();
     const world::Tree2D tree(world);
@@ -981,6 +990,7 @@ struct CanvasRenderer::Submission {
     const std::vector<std::optional<render::Mat4>>& control_matrices;
     std::span<const ParticleJob> particle_jobs;
     text::Fonts& fonts;
+    const std::optional<scene3d::Frame3D>& scene; // the 3D world's, under every canvas
     // What the frame draws, counted when it draws.
     std::size_t sprites = 0;
     std::size_t tiles = 0;
@@ -1069,6 +1079,13 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     const Vec2 viewport = options.width > 0.0F && options.height > 0.0F
                               ? Vec2{options.width, options.height}
                               : ui::settings(world).viewport;
+    // The 3D world, seen through its current Camera3D, which fills the viewport.
+    const std::optional<scene3d::Frame3D> scene =
+        scene3d_.prepare(world, viewport.x, viewport.y, options.interpolation, options.clear);
+    for (const scene3d::Problem& unseen : scene3d_.problems()) {
+        problem(unseen.entity, unseen.path, unseen.message);
+        warn_once(name_of(unseen.entity), unseen.message, "id", "a mesh can't draw");
+    }
     // What the world is seen through: the current camera's view, part of the way from the one
     // before the last tick, as Godot interpolates its canvas transform.
     world::CameraView view = world::camera_view(world, tree, viewport);
@@ -1983,6 +2000,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         glyphs_drawn_ = controls.glyphs;
         boxes_drawn_ = controls.boxes;
         shapes_drawn_ = shapes.shapes;
+        meshes_drawn_ = scene3d_.meshes();
+        lights_3d_drawn_ = scene ? scene3d_.lights() : 0;
         return {};
     }
     return submit({.options = options,
@@ -2001,6 +2020,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                    .control_matrices = control_matrices,
                    .particle_jobs = particle_jobs,
                    .fonts = *fonts,
+                   .scene = scene,
                    .sprites = sprites,
                    .tiles = tiles,
                    .particles = particles,
@@ -2057,6 +2077,16 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
     frame.target = options.target;
     frame.clear = options.clear;
     frame.lighting = lights;
+    // The 3D world draws under the world's canvas, in whichever frame draws that.
+    const auto with_scene = [&](render::Frame& world_frame) {
+        if (submission.scene) {
+            world_frame.scene = submission.scene->scene;
+            world_frame.clear = submission.scene->clear;
+        }
+    };
+    const auto draw_scene = [&]() -> Result<void> {
+        return submission.scene ? scene3d_.draw() : Result<void>{};
+    };
     if (options.width > 0.0F && options.height > 0.0F) {
         frame.view = render::pixel_projection(options.width, options.height);
     }
@@ -2145,8 +2175,12 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
         render::Frame world_frame = frame;
         world_frame.target = input.value();
         world_frame.view = render::pixel_projection(view_width, view_height);
+        with_scene(world_frame);
         if (auto began = device_->begin_frame(world_frame); !began) {
             return not_begun(began.error());
+        }
+        if (auto drawn = draw_scene(); !drawn) {
+            return end_after(drawn.error());
         }
         if (auto ran = run_particle_jobs(particle_jobs); !ran) {
             return end_after(ran.error());
@@ -2174,9 +2208,17 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
         first_canvas = world_canvas;
         scaled_ = {.upscaler = upscaler_name_, .size = size};
     }
+    if (!upscaled) {
+        with_scene(frame);
+    }
     auto began = device_->begin_frame(frame);
     if (!began) {
         return upscaled ? Result<void>(began.error()) : not_begun(began.error());
+    }
+    if (!upscaled) {
+        if (auto drawn = draw_scene(); !drawn) {
+            return end_after(drawn.error());
+        }
     }
     if (upscaled) {
         const std::array<render::Vertex2D, 6> screen{
@@ -2220,6 +2262,8 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
     lights_drawn_ = began.value() ? lights.lights.size() : 0;
     shadows_drawn_ = began.value() ? submission.shadows : 0;
     shapes_drawn_ = began.value() ? shapes.shapes : 0;
+    meshes_drawn_ = began.value() ? scene3d_.meshes() : 0;
+    lights_3d_drawn_ = began.value() && submission.scene ? scene3d_.lights() : 0;
     return device_->end_frame();
 }
 

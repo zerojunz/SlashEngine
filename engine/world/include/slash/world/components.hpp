@@ -31,13 +31,266 @@ struct Transform2D {
 };
 SLASH_COMPONENT(Transform2D, position, rotation, scale, skew, top_level, children)
 
-// Position, rotation and scale in 3D. Units are meters, and y points up, as in Godot.
+// Position, rotation and scale in 3D, as Godot's Node3D. Units are meters, and y points up. An
+// entity listed in another's children is placed in its parent's space (see tree3d.hpp).
 struct Transform3D {
     Vec3 position;
-    Quat rotation;
+    // Radians about each axis, applied in Godot's default rotation_order (YXZ): z, then x, then y.
+    Vec3 rotation;
     Vec3 scale{1.0F, 1.0F, 1.0F};
+    bool visible = true; // false hides it and the entities under it
+    // Placed in the world, not its parent's space, as Godot's top_level; a hidden parent still
+    // hides it.
+    bool top_level = false;
+    std::vector<entt::entity> children; // entities placed in its space
+
+    friend bool operator==(const Transform3D&, const Transform3D&) = default;
 };
-SLASH_COMPONENT(Transform3D, position, rotation, scale)
+SLASH_COMPONENT(Transform3D, position, rotation, scale, visible, top_level, children)
+
+// ---- 3D drawing, as Godot's 3D nodes (engine/scene3d) ----
+
+// Draws the entity's mesh at its Transform3D, as Godot's MeshInstance3D: its primitive mesh
+// component (BoxMesh, SphereMesh and the rest), colored by its StandardMaterial3D, or Godot's
+// default material without one.
+struct MeshInstance3D {
+    // The render layers it is on: cameras whose cull_mask and lights whose light_cull_mask share
+    // a bit with them see it and light it.
+    std::uint32_t layers = 1;
+
+    friend bool operator==(const MeshInstance3D&, const MeshInstance3D&) = default;
+};
+SLASH_COMPONENT(MeshInstance3D, layers)
+
+// Godot's BoxMesh: a box of size centered on the entity, each face cut into subdivisions + 1
+// strips along each axis.
+struct BoxMesh {
+    Vec3 size{1.0F, 1.0F, 1.0F};
+    int subdivide_width = 0;
+    int subdivide_height = 0;
+    int subdivide_depth = 0;
+    bool flip_faces = false; // its inside shows, as Godot's PrimitiveMesh.flip_faces
+
+    friend bool operator==(const BoxMesh&, const BoxMesh&) = default;
+};
+SLASH_COMPONENT(BoxMesh, size, subdivide_width, subdivide_height, subdivide_depth, flip_faces)
+
+// Godot's SphereMesh: an ellipsoid of radius around y and height along it, or its top half.
+struct SphereMesh {
+    float radius = 0.5F;
+    float height = 1.0F;
+    int radial_segments = 64;
+    int rings = 32;
+    bool is_hemisphere = false;
+    bool flip_faces = false;
+
+    friend bool operator==(const SphereMesh&, const SphereMesh&) = default;
+};
+SLASH_COMPONENT(SphereMesh, radius, height, radial_segments, rings, is_hemisphere, flip_faces)
+
+// Godot's CylinderMesh: a cylinder or cone along y, with caps.
+struct CylinderMesh {
+    float top_radius = 0.5F;
+    float bottom_radius = 0.5F;
+    float height = 2.0F;
+    int radial_segments = 64;
+    int rings = 4;
+    bool cap_top = true;
+    bool cap_bottom = true;
+    bool flip_faces = false;
+
+    friend bool operator==(const CylinderMesh&, const CylinderMesh&) = default;
+};
+SLASH_COMPONENT(CylinderMesh, top_radius, bottom_radius, height, radial_segments, rings, cap_top,
+                cap_bottom, flip_faces)
+
+// Godot's CapsuleMesh: a cylinder along y with half spheres on its ends, height end to end.
+struct CapsuleMesh {
+    float radius = 0.5F;
+    float height = 2.0F;
+    int radial_segments = 64;
+    int rings = 8;
+    bool flip_faces = false;
+
+    friend bool operator==(const CapsuleMesh&, const CapsuleMesh&) = default;
+};
+SLASH_COMPONENT(CapsuleMesh, radius, height, radial_segments, rings, flip_faces)
+
+// Godot's PlaneMesh: a flat rectangle facing up y (or x or z, by orientation).
+struct PlaneMesh {
+    Vec2 size{2.0F, 2.0F};
+    int subdivide_width = 0;
+    int subdivide_depth = 0;
+    Vec3 center_offset;
+    std::string orientation = "y"; // the axis it faces: "x", "y" or "z"
+    bool flip_faces = false;
+
+    friend bool operator==(const PlaneMesh&, const PlaneMesh&) = default;
+};
+SLASH_COMPONENT(PlaneMesh, size, subdivide_width, subdivide_depth, center_offset, orientation,
+                flip_faces)
+
+// Godot's QuadMesh: a PlaneMesh that faces z and is 1 by 1.
+struct QuadMesh {
+    Vec2 size{1.0F, 1.0F};
+    int subdivide_width = 0;
+    int subdivide_depth = 0;
+    Vec3 center_offset;
+    std::string orientation = "z";
+    bool flip_faces = false;
+
+    friend bool operator==(const QuadMesh&, const QuadMesh&) = default;
+};
+SLASH_COMPONENT(QuadMesh, size, subdivide_width, subdivide_depth, center_offset, orientation,
+                flip_faces)
+
+// Godot's PrismMesh: a wedge of size whose top edge sits left_to_right of the way across.
+struct PrismMesh {
+    float left_to_right = 0.5F;
+    Vec3 size{1.0F, 1.0F, 1.0F};
+    int subdivide_width = 0;
+    int subdivide_height = 0;
+    int subdivide_depth = 0;
+    bool flip_faces = false;
+
+    friend bool operator==(const PrismMesh&, const PrismMesh&) = default;
+};
+SLASH_COMPONENT(PrismMesh, left_to_right, size, subdivide_width, subdivide_height, subdivide_depth,
+                flip_faces)
+
+// Godot's TorusMesh: a ring around y between inner_radius and outer_radius.
+struct TorusMesh {
+    float inner_radius = 0.5F;
+    float outer_radius = 1.0F;
+    int rings = 64;
+    int ring_segments = 32;
+    bool flip_faces = false;
+
+    friend bool operator==(const TorusMesh&, const TorusMesh&) = default;
+};
+SLASH_COMPONENT(TorusMesh, inner_radius, outer_radius, rings, ring_segments, flip_faces)
+
+// What the entity's mesh is made of, as Godot's StandardMaterial3D set as its material_override.
+// Colors are sRGB. Textures are project paths of PNG, BMP or KTX2 files; "" leaves one out.
+struct StandardMaterial3D {
+    std::string transparency = "disabled"; // "disabled", "alpha" or "alpha_scissor"
+    float alpha_scissor_threshold = 0.5F;
+    std::string blend_mode = "mix"; // how an alpha mesh blends: "mix", "add", "sub" or "mul"
+    std::string cull_mode = "back"; // "back", "front" or "disabled"
+    std::string shading_mode = "per_pixel"; // "per_pixel" or "unshaded"
+    bool vertex_color_use_as_albedo = false;
+    Vec4 albedo_color{1.0F, 1.0F, 1.0F, 1.0F};
+    std::string albedo_texture;
+    float metallic = 0.0F;
+    float metallic_specular = 0.5F;
+    std::string metallic_texture;
+    std::string metallic_texture_channel = "red"; // "red", "green", "blue", "alpha" or "gray"
+    float roughness = 1.0F;
+    std::string roughness_texture;
+    std::string roughness_texture_channel = "red";
+    bool emission_enabled = false;
+    Vec4 emission{0.0F, 0.0F, 0.0F, 1.0F};
+    float emission_energy_multiplier = 1.0F;
+    std::string emission_texture;
+    bool normal_enabled = false;
+    float normal_scale = 1.0F;
+    std::string normal_texture;
+    Vec3 uv1_scale{1.0F, 1.0F, 1.0F};
+    Vec3 uv1_offset;
+    // "nearest", "linear", "nearest_with_mipmaps" or "linear_with_mipmaps"
+    std::string texture_filter = "linear_with_mipmaps";
+
+    friend bool operator==(const StandardMaterial3D&, const StandardMaterial3D&) = default;
+};
+SLASH_COMPONENT(StandardMaterial3D, transparency, alpha_scissor_threshold, blend_mode, cull_mode,
+                shading_mode, vertex_color_use_as_albedo, albedo_color, albedo_texture, metallic,
+                metallic_specular, metallic_texture, metallic_texture_channel, roughness,
+                roughness_texture, roughness_texture_channel, emission_enabled, emission,
+                emission_energy_multiplier, emission_texture, normal_enabled, normal_scale,
+                normal_texture, uv1_scale, uv1_offset, texture_filter)
+
+// What the 3D world is seen through, as Godot's Camera3D: it looks down its entity's -z. The
+// world is seen through the current camera: the first with current set, else the first one,
+// in tree order (tree3d.hpp).
+struct Camera3D {
+    std::string projection = "perspective"; // "perspective" or "orthogonal"
+    std::string keep_aspect = "height";     // the axis fov or size spans: "height" or "width"
+    float fov = 75.0F;                      // degrees, perspective
+    float size = 1.0F;                      // meters, orthogonal
+    float near = 0.05F;
+    float far = 4000.0F;
+    float h_offset = 0.0F; // moves the view along its x, in meters
+    float v_offset = 0.0F; // and its y
+    bool current = false;
+    std::uint32_t cull_mask = 0xFFFFFU; // the render layers it sees
+
+    friend bool operator==(const Camera3D&, const Camera3D&) = default;
+};
+SLASH_COMPONENT(Camera3D, projection, keep_aspect, fov, size, near, far, h_offset, v_offset,
+                current, cull_mask)
+
+// Light from one direction over the whole world, as Godot's DirectionalLight3D, such as the sun:
+// it shines down its entity's -z.
+struct DirectionalLight3D {
+    Vec4 light_color{1.0F, 1.0F, 1.0F, 1.0F};
+    float light_energy = 1.0F;
+    float light_specular = 0.5F;
+    bool light_negative = false;                 // takes light away instead
+    std::uint32_t light_cull_mask = 0xFFFFFFFFU; // the render layers it lights
+
+    friend bool operator==(const DirectionalLight3D&, const DirectionalLight3D&) = default;
+};
+SLASH_COMPONENT(DirectionalLight3D, light_color, light_energy, light_specular, light_negative,
+                light_cull_mask)
+
+// Light from a point in every direction, as Godot's OmniLight3D, such as a lamp.
+struct OmniLight3D {
+    Vec4 light_color{1.0F, 1.0F, 1.0F, 1.0F};
+    float light_energy = 1.0F;
+    float light_specular = 0.5F;
+    bool light_negative = false;
+    std::uint32_t light_cull_mask = 0xFFFFFFFFU;
+    float omni_range = 5.0F;       // meters
+    float omni_attenuation = 1.0F; // how it falls off with distance
+
+    friend bool operator==(const OmniLight3D&, const OmniLight3D&) = default;
+};
+SLASH_COMPONENT(OmniLight3D, light_color, light_energy, light_specular, light_negative,
+                light_cull_mask, omni_range, omni_attenuation)
+
+// Light from a point in a cone down its entity's -z, as Godot's SpotLight3D, such as a torch.
+struct SpotLight3D {
+    Vec4 light_color{1.0F, 1.0F, 1.0F, 1.0F};
+    float light_energy = 1.0F;
+    float light_specular = 0.5F;
+    bool light_negative = false;
+    std::uint32_t light_cull_mask = 0xFFFFFFFFU;
+    float spot_range = 5.0F;
+    float spot_attenuation = 1.0F;
+    float spot_angle = 45.0F; // degrees from its axis to the cone's edge
+    float spot_angle_attenuation = 1.0F;
+
+    friend bool operator==(const SpotLight3D&, const SpotLight3D&) = default;
+};
+SLASH_COMPONENT(SpotLight3D, light_color, light_energy, light_specular, light_negative,
+                light_cull_mask, spot_range, spot_attenuation, spot_angle, spot_angle_attenuation)
+
+// The 3D world's background and ambient light, as Godot's WorldEnvironment and its Environment.
+// The first one made applies; without one the background is the project's clear color and there
+// is no ambient light.
+struct WorldEnvironment {
+    std::string background_mode = "clear_color"; // "clear_color" or "color"
+    Vec4 background_color{0.0F, 0.0F, 0.0F, 1.0F};
+    float background_energy_multiplier = 1.0F;
+    // "background" (the background's color), "disabled" or "color" (ambient_light_color)
+    std::string ambient_light_source = "background";
+    Vec4 ambient_light_color{0.0F, 0.0F, 0.0F, 1.0F};
+    float ambient_light_energy = 1.0F;
+
+    friend bool operator==(const WorldEnvironment&, const WorldEnvironment&) = default;
+};
+SLASH_COMPONENT(WorldEnvironment, background_mode, background_color, background_energy_multiplier,
+                ambient_light_source, ambient_light_color, ambient_light_energy)
 
 // Ties an entity to the storyboard entries it stands for, such as the character it plays or the
 // place it is, so a brief for the scene includes them and checks catch a misspelled ID.
