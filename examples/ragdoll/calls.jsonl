@@ -1,0 +1,14 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"step","params":{"ticks":30}}
+{"jsonrpc":"2.0","id":3,"method":"skeleton.get","params":{"id":"arm","bones":["Elbow","Hand"]}}
+{"jsonrpc":"2.0","id":4,"method":"entity.get","params":{"id":"forearm","components":["Transform3D"]}}
+{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"ragdoll","components":{"PhysicalBoneSimulator3D":{"simulating":true,"simulated_bones":["Elbow"]}}}}
+{"jsonrpc":"2.0","id":6,"method":"step","params":{"ticks":90}}
+{"jsonrpc":"2.0","id":7,"method":"skeleton.get","params":{"id":"arm","bones":["Elbow","Hand"]}}
+{"jsonrpc":"2.0","id":8,"method":"component.set","params":{"id":"ragdoll","components":{"PhysicalBoneSimulator3D":{"simulated_bones":[]}}}}
+{"jsonrpc":"2.0","id":9,"method":"step","params":{"ticks":120}}
+{"jsonrpc":"2.0","id":10,"method":"skeleton.get","params":{"id":"arm","bones":["Shoulder","Elbow","Hand"]}}
+{"jsonrpc":"2.0","id":11,"method":"frame.capture","params":{"points":[[80,67],[100,75],[117,76],[20,20]]}}
+{"jsonrpc":"2.0","id":12,"method":"component.set","params":{"id":"ragdoll","components":{"PhysicalBoneSimulator3D":{"simulating":false}}}}
+{"jsonrpc":"2.0","id":13,"method":"step","params":{"ticks":1}}
+{"jsonrpc":"2.0","id":14,"method":"skeleton.get","params":{"id":"arm","bones":["Elbow","Hand"]}}
