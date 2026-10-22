@@ -28,6 +28,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -577,7 +578,7 @@ TEST_CASE("the WorldEnvironment's sky and fog, and the suns its sky shows") {
     Scene scene;
     const render::Color clear{.r = 0.1F, .g = 0.2F, .b = 0.3F, .a = 1.0F};
     // A sky background with no sky material is Godot's default procedural sky. Ambient light from
-    // the background is ambient_light_color for now.
+    // it is ambient_light_color, mixed with the sky's light.
     const entt::entity env = scene.create("env", R"({"WorldEnvironment": {
         "background_mode": "sky", "background_energy_multiplier": 2, "sky_custom_fov": 50,
         "sky_rotation": [0, 1.5707964, 0], "ambient_light_color": [0.2, 0.2, 0.2, 1],
@@ -693,6 +694,102 @@ TEST_CASE("the WorldEnvironment's sky and fog, and the suns its sky shows") {
     const auto lit = scene3d::lights(suns.world, tree, global);
     REQUIRE(lit.size() == 5);
     CHECK(lit[0].direction == std::array<float, 3>{0.0F, 0.0F, -1.0F});
+}
+
+TEST_CASE("the sky lights and is reflected in meshes by the WorldEnvironment's sources") {
+    Scene scene;
+    const render::Color clear{.r = 0.1F, .g = 0.2F, .b = 0.3F, .a = 1.0F};
+    // A sky background lights and is reflected, as Godot's "background" sources.
+    const entt::entity env =
+        scene.create("env", R"({"WorldEnvironment": {"background_mode": "sky"}})");
+    scene3d::Environment read = scene3d::environment(scene.world, clear);
+    CHECK(read.radiance == render::Radiance3D{.kind = render::SkyKind::Procedural,
+                                              .ambient = true,
+                                              .reflections = true});
+    CHECK(read.sky_material == render::SkyKind::Procedural);
+    auto& settings = scene.world.ecs().get<world::WorldEnvironment>(env);
+    settings.ambient_light_source = "color";
+    read = scene3d::environment(scene.world, clear);
+    CHECK(read.radiance ==
+          render::Radiance3D{.kind = render::SkyKind::Procedural, .reflections = true});
+    settings.ambient_light_source = "disabled";
+    settings.reflected_light_source = "disabled";
+    read = scene3d::environment(scene.world, clear);
+    CHECK(read.radiance == render::Radiance3D{});
+    CHECK(read.ambient == std::array<float, 3>{0.0F, 0.0F, 0.0F});
+    CHECK(read.sky.kind == render::SkyKind::Procedural);
+
+    // The sky's light from the entity's material when the background isn't the sky, which then
+    // draws nothing behind the meshes.
+    settings.background_mode = "color";
+    settings.ambient_light_source = "sky";
+    settings.ambient_light_color = {1.0F, 0.0F, 0.0F, 1.0F};
+    settings.ambient_light_sky_contribution = 0.25F;
+    settings.sky_radiance_size = 64;
+    scene.world.ecs().emplace<world::PhysicalSkyMaterial>(
+        env, world::PhysicalSkyMaterial{.night_sky = "stars.png"});
+    read = scene3d::environment(scene.world, clear);
+    CHECK(read.sky.kind == render::SkyKind::None);
+    CHECK(read.sky_material == render::SkyKind::Physical);
+    CHECK(read.radiance == render::Radiance3D{.kind = render::SkyKind::Physical,
+                                              .size = 64,
+                                              .ambient = true,
+                                              .ambient_mix = 0.25F});
+    CHECK(read.ambient == std::array<float, 3>{1.0F, 0.0F, 0.0F});
+    CHECK(read.sky_texture == "stars.png");
+    CHECK(read.problems.empty());
+    settings.fog_enabled = true;
+    settings.reflected_light_source = "sky";
+    read = scene3d::environment(scene.world, clear);
+    CHECK(read.sky.kind == render::SkyKind::Color);
+    CHECK(read.radiance.reflections);
+
+    // A size that isn't one of Godot's is reported, and drawn at 256.
+    settings.sky_radiance_size = 100;
+    read = scene3d::environment(scene.world, clear);
+    REQUIRE(read.problems.size() == 1);
+    CHECK(read.problems[0].path == "/components/WorldEnvironment/sky_radiance_size");
+    CHECK(read.radiance.size == 256);
+}
+
+TEST_CASE("a sky behind nothing lights the meshes it surrounds, its texture by path") {
+    Scene scene;
+    scene.create("camera", R"({"Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}})");
+    scene.create("box", R"({"Transform3D": {}, "MeshInstance3D": {}, "BoxMesh": {}})");
+    scene.create("env", R"({"WorldEnvironment": {"background_mode": "color",
+        "ambient_light_source": "sky"}, "PanoramaSkyMaterial": {"panorama": "view.png"}})");
+    const auto device = render::create_software_device();
+    const auto draw = [&](canvas::FrameContents& contents) {
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        auto target = device->create_texture({.width = 64, .height = 64, .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.width = 64.0F;
+        options.height = 64.0F;
+        options.contents = &contents;
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        device->destroy_texture(target.value());
+        return std::pair{pixel(image.value(), 32, 32), pixel(image.value(), 2, 2)};
+    };
+    // A missing panorama is reported, and its light is black.
+    canvas::FrameContents contents;
+    auto [box, background] = draw(contents);
+    CHECK(box == Rgba{0, 0, 0, 255});
+    REQUIRE(contents.problems.size() == 1);
+    CHECK(contents.problems[0].path == "/components/PanoramaSkyMaterial/panorama");
+    // A green one lights the box green, behind a black background.
+    const render::Image green{.width = 2, .height = 1, .pixels = {0, 255, 0, 255, 0, 255, 0, 255}};
+    scene.files.files["view.png"] = render::encode_png(green).value();
+    contents = {};
+    std::tie(box, background) = draw(contents);
+    CHECK(contents.problems.empty());
+    CHECK(box[0] == 0);
+    CHECK(box[1] > 200);
+    CHECK(box[2] == 0);
+    CHECK(background == Rgba{0, 0, 0, 255});
 }
 
 TEST_CASE("skies and fog draw behind and over the 3D world, their textures by path") {

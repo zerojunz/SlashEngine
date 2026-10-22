@@ -396,17 +396,26 @@ SLASH_COMPONENT(PanoramaSkyMaterial, panorama, filter, energy_multiplier)
 // without one the background is the project's clear color, there is no ambient light and colors
 // are left as they are. A "sky" background is the sky material on the same entity: a
 // ProceduralSkyMaterial, PhysicalSkyMaterial or PanoramaSkyMaterial, or Godot's default
-// procedural sky with none.
+// procedural sky with none. That sky also lights and is reflected in lit surfaces, by
+// ambient_light_source and reflected_light_source, whatever the background.
 struct WorldEnvironment {
     std::string background_mode = "clear_color"; // "clear_color", "color" or "sky"
     Vec4 background_color{0.0F, 0.0F, 0.0F, 1.0F};
     float background_energy_multiplier = 1.0F;
     float sky_custom_fov = 0.0F; // degrees the sky is seen across; 0 for the camera's
     Vec3 sky_rotation;           // radians about x, y and z, turned as Transform3D's rotation
-    // "background" (the background's color), "disabled" or "color" (ambient_light_color)
+    // Texels across each face of the cube the sky's light is drawn into, as Sky.radiance_size:
+    // 32, 64, 128, 256, 512, 1024 or 2048.
+    std::uint32_t sky_radiance_size = 256;
+    // "background" (the background's color, or the sky's light), "disabled", "color"
+    // (ambient_light_color) or "sky" (the sky's light, mixed with ambient_light_color)
     std::string ambient_light_source = "background";
     Vec4 ambient_light_color{0.0F, 0.0F, 0.0F, 1.0F};
+    float ambient_light_sky_contribution = 1.0F; // how much of the sky's light, over the color
     float ambient_light_energy = 1.0F;
+    // What lit surfaces reflect: "background" (the sky, if it is the background), "disabled" or
+    // "sky"
+    std::string reflected_light_source = "background";
     std::string tonemap_mode = "linear"; // "linear", "reinhard", "filmic", "aces" or "agx"
     float tonemap_exposure = 1.0F;
     float tonemap_white = 1.0F;
@@ -438,8 +447,9 @@ struct WorldEnvironment {
     friend bool operator==(const WorldEnvironment&, const WorldEnvironment&) = default;
 };
 SLASH_COMPONENT(WorldEnvironment, background_mode, background_color, background_energy_multiplier,
-                sky_custom_fov, sky_rotation, ambient_light_source, ambient_light_color,
-                ambient_light_energy, tonemap_mode, tonemap_exposure, tonemap_white, glow_enabled,
+                sky_custom_fov, sky_rotation, sky_radiance_size, ambient_light_source,
+                ambient_light_color, ambient_light_sky_contribution, ambient_light_energy,
+                reflected_light_source, tonemap_mode, tonemap_exposure, tonemap_white, glow_enabled,
                 glow_intensity, glow_bloom, glow_hdr_threshold, glow_hdr_scale,
                 glow_hdr_luminance_cap, fog_enabled, fog_mode, fog_light_color, fog_light_energy,
                 fog_sun_scatter, fog_density, fog_aerial_perspective, fog_sky_affect, fog_height,

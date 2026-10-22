@@ -8,6 +8,7 @@
 #include "mesh_shading.hpp"
 #include "post_shaders.hpp"
 #include "post_shading.hpp"
+#include "radiance_shaders.hpp"
 #include "shader_code.hpp"
 #include "shadow_shaders.hpp"
 #include "sky_shaders.hpp"
@@ -107,6 +108,15 @@ constexpr GLenum kTextureWrapT = 0x2803;
 constexpr GLenum kRepeat = 0x2901;
 constexpr GLbitfield kColorBufferBit = 0x4000;
 constexpr GLenum kRgba8 = 0x8058;
+constexpr GLenum kRgb10A2 = 0x8059;
+constexpr GLenum kTextureWrapR = 0x8072;
+constexpr GLenum kTextureBaseLevel = 0x813C;
+constexpr GLenum kTextureMaxLevel = 0x813D;
+constexpr GLenum kLinearMipmapLinear = 0x2703;
+constexpr GLenum kUnsignedInt2101010Rev = 0x8368;
+constexpr GLenum kTextureCubeMap = 0x8513;
+constexpr GLenum kTextureCubeMapPositiveX = 0x8515;
+constexpr GLenum kTextureCubeMapSeamless = 0x884F;
 constexpr GLenum kClampToEdge = 0x812F;
 constexpr GLenum kNumExtensions = 0x821D;
 constexpr GLenum kTexture0 = 0x84C0;
@@ -188,6 +198,7 @@ constexpr GLuint kInvalidIndex = 0xFFFFFFFF;
     X(FrontFace, front_face, void, (GLenum))                                                       \
     X(GenBuffers, gen_buffers, void, (GLsizei, GLuint*))                                           \
     X(GenFramebuffers, gen_framebuffers, void, (GLsizei, GLuint*))                                 \
+    X(GenerateMipmap, generate_mipmap, void, (GLenum))                                             \
     X(GenRenderbuffers, gen_renderbuffers, void, (GLsizei, GLuint*))                               \
     X(GenSamplers, gen_samplers, void, (GLsizei, GLuint*))                                         \
     X(GenTextures, gen_textures, void, (GLsizei, GLuint*))                                         \
@@ -263,6 +274,7 @@ constexpr GLuint kShadowsBinding = 9;
 // The post-processing shader's, and the sky's.
 constexpr GLuint kPostBinding = 10;
 constexpr GLuint kSkyBinding = 11;
+constexpr GLuint kFilterBinding = 12; // the radiance filter's
 
 // The two shaders: plain sprites, and materials that run a program.
 enum class ShaderKind : std::uint8_t { Sprite, Material };
@@ -273,11 +285,12 @@ constexpr std::array<std::string_view, 1> kSpriteSamplers{"sprite_texture"};
 constexpr std::array<std::string_view, kMaterialSamplers> kMaterialSamplerNames{
     "texture0",   "texture1",     "texture2",    "texture3",
     "normal_map", "specular_map", "light_atlas", "shadow_map"};
-constexpr std::array<std::string_view, kMeshTextures + 2> kMeshSamplerNames{
+constexpr std::array<std::string_view, kMeshTextures + 3> kMeshSamplerNames{
     "albedo_texture", "metallic_texture",  "roughness_texture", "emission_texture",
-    "normal_texture", "directional_atlas", "positional_atlas"};
+    "normal_texture", "directional_atlas", "positional_atlas",  "radiance_map"};
 constexpr std::array<std::string_view, 3> kPostSamplerNames{"source", "glow_texture", "lut"};
 constexpr std::array<std::string_view, 1> kSkySamplerNames{"sky_texture"};
+constexpr std::array<std::string_view, 1> kRadianceSamplerNames{"source_cube"};
 
 // Turns clip space upside down. GL puts clip space's top at a framebuffer's last row, where the
 // other backends put it at the first, so frames draw upside down into textures, which leaves
@@ -515,6 +528,18 @@ public:
                     gl_.delete_program(sky_program_);
                     gl_.delete_vertex_arrays(1, &sky_vertex_array_);
                 }
+                if (radiance_program_ != 0) {
+                    gl_.delete_program(radiance_program_);
+                }
+                for (const GLuint cube : {radiance_.raw, radiance_.filtered, no_radiance_}) {
+                    if (cube != 0) {
+                        gl_.delete_textures(1, &cube);
+                    }
+                }
+                if (radiance_sampler_ != 0) {
+                    gl_.delete_samplers(1, &radiance_sampler_);
+                    gl_.delete_framebuffers(1, &radiance_framebuffer_);
+                }
                 gl_.delete_buffers(1, &vertex_buffer_);
                 gl_.delete_buffers(1, &uniform_buffer_);
                 gl_.delete_vertex_arrays(1, &vertex_array_);
@@ -551,6 +576,10 @@ public:
         uniform_alignment_ = std::max(uniform_alignment_, 16);
 
         gl_.disable(gl::kDither);
+        if (api_ == GlApi::Desktop) {
+            // Cube textures filter across their faces' edges, as they always do in OpenGL ES.
+            gl_.enable(gl::kTextureCubeMapSeamless);
+        }
         gl_.disable(gl::kDepthTest);
         gl_.disable(gl::kCullFace);
         gl_.disable(gl::kScissorTest);
@@ -662,6 +691,9 @@ public:
             }
             decoded = std::move(pixels.value());
             texels = decoded;
+        }
+        if (radiance_.key && radiance_.key->texture == texture) {
+            radiance_.key.reset(); // drawn from the old texels
         }
         make_current();
         // Draws are sent at end_frame, so every draw of the frame being built sees the new pixels.
@@ -847,6 +879,9 @@ public:
         if (auto ready = prepare_shadows(*frame_.scene); !ready) {
             return ready;
         }
+        if (auto ready = prepare_radiance(*frame_.scene); !ready) {
+            return ready;
+        }
         MeshBatch batch{.mesh = it->second, .units = {}};
         const std::array<const MaterialTexture*, kMeshTextures> slots{
             &material.albedo_texture, &material.metallic_texture, &material.roughness_texture,
@@ -955,6 +990,8 @@ public:
         mesh_draws_.clear();
         mesh_batches_.clear();
         shadow_plan_.reset();
+        radiance_prepared_ = false;
+        radiance_draws_ = false;
         // Minimized or hidden: there is nothing to draw to this time.
         return width != 0;
     }
@@ -1047,6 +1084,9 @@ public:
             return {};
         }
         make_current();
+        if (radiance_draws_ && frame_.scene) {
+            draw_radiance(*frame_.scene);
+        }
         // A scene that post-processes draws its meshes into a texture first, which the post
         // passes draw over the frame's framebuffer.
         const bool post = frame_.scene && post_processes(frame_.scene->post);
@@ -1437,7 +1477,8 @@ private:
               std::pair{"Camera", kCameraBinding}, std::pair{"Instance", kInstanceBinding},
               std::pair{"Surface", kSurfaceBinding}, std::pair{"Scene", kSceneBinding},
               std::pair{"LightView", kShadowPassBinding}, std::pair{"Shadows", kShadowsBinding},
-              std::pair{"Post", kPostBinding}, std::pair{"Sky", kSkyBinding}}) {
+              std::pair{"Post", kPostBinding}, std::pair{"Sky", kSkyBinding},
+              std::pair{"Filter", kFilterBinding}}) {
             const GLuint index = gl_.get_uniform_block_index(program, name);
             if (index != gl::kInvalidIndex) {
                 gl_.uniform_block_binding(program, index, binding);
@@ -1891,6 +1932,10 @@ private:
                              drawn ? shadow_atlases_.at(atlas).texture : no_shadows_.texture);
             gl_.bind_sampler(static_cast<GLuint>(kMeshTextures + atlas), shadow_sampler_);
         }
+        gl_.active_texture(gl::kTexture0 + static_cast<GLenum>(kMeshTextures + 2));
+        gl_.bind_texture(gl::kTextureCubeMap,
+                         radiance_used(scene) ? radiance_.filtered : no_radiance_);
+        gl_.bind_sampler(static_cast<GLuint>(kMeshTextures + 2), radiance_sampler_);
         for (const std::size_t i : order) {
             if (mesh_draws_[i].shadows == ShadowCasting::ShadowsOnly) {
                 continue;
@@ -1926,6 +1971,9 @@ private:
             gl_.bind_texture(gl::kTexture2D, 0);
             gl_.bind_sampler(static_cast<GLuint>(kMeshTextures + atlas), 0);
         }
+        gl_.active_texture(gl::kTexture0 + static_cast<GLenum>(kMeshTextures + 2));
+        gl_.bind_texture(gl::kTextureCubeMap, 0);
+        gl_.bind_sampler(static_cast<GLuint>(kMeshTextures + 2), 0);
         gl_.active_texture(gl::kTexture0);
         gl_.bind_vertex_array(0);
         gl_.use_program(0);
@@ -1934,6 +1982,183 @@ private:
         gl_.disable(gl::kCullFace);
         gl_.enable(gl::kBlend);
         gl_.framebuffer_renderbuffer(gl::kFramebuffer, gl::kDepthAttachment, gl::kRenderbuffer, 0);
+    }
+
+    // An RGB10A2 cube texture size texels across, with levels levels.
+    Result<GLuint> make_cube(std::uint32_t size, std::uint32_t levels) {
+        GLuint texture = 0;
+        gl_.gen_textures(1, &texture);
+        gl_.bind_texture(gl::kTextureCubeMap, texture);
+        for (std::uint32_t level = 0; level < levels; ++level) {
+            const auto n = static_cast<GLsizei>(std::max(size >> level, 1U));
+            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+                gl_.tex_image_2d(gl::kTextureCubeMapPositiveX + face, static_cast<GLint>(level),
+                                 static_cast<GLint>(gl::kRgb10A2), n, n, 0, gl::kRgba,
+                                 gl::kUnsignedInt2101010Rev, nullptr);
+            }
+        }
+        gl_.tex_parameteri(gl::kTextureCubeMap, gl::kTextureBaseLevel, 0);
+        gl_.tex_parameteri(gl::kTextureCubeMap, gl::kTextureMaxLevel,
+                           static_cast<GLint>(levels - 1));
+        gl_.bind_texture(gl::kTextureCubeMap, 0);
+        if (auto checked = check_errors("creating a radiance cube"); !checked) {
+            gl_.delete_textures(1, &texture);
+            return checked.error();
+        }
+        return texture;
+    }
+
+    // Points the radiance framebuffer at a level of one face of a cube, and the viewport at it.
+    void target_cube(GLuint cube, std::uint32_t face, std::uint32_t level,
+                     std::uint32_t size) const {
+        gl_.framebuffer_texture_2d(gl::kFramebuffer, gl::kColorAttachment0,
+                                   gl::kTextureCubeMapPositiveX + face, cube,
+                                   static_cast<GLint>(level));
+        const auto n = static_cast<GLsizei>(std::max(size >> level, 1U));
+        gl_.viewport(0, 0, n, n);
+    }
+
+    // What the frame's meshes take the radiance from, made at its first mesh draw: the sampler,
+    // framebuffer and a black cube for meshes with none, and for a scene with radiance, the
+    // programs and cubes, drawn again at end_frame when what they are drawn from changed.
+    Result<void> prepare_radiance(const Scene3D& scene) {
+        if (radiance_prepared_) {
+            return {};
+        }
+        if (radiance_sampler_ == 0) {
+            gl_.gen_samplers(1, &radiance_sampler_);
+            for (const auto& [name, value] :
+                 {std::pair{gl::kTextureMinFilter, gl::kLinearMipmapLinear},
+                  std::pair{gl::kTextureMagFilter, gl::kLinear},
+                  std::pair{gl::kTextureWrapS, gl::kClampToEdge},
+                  std::pair{gl::kTextureWrapT, gl::kClampToEdge},
+                  std::pair{gl::kTextureWrapR, gl::kClampToEdge}}) {
+                gl_.sampler_parameteri(radiance_sampler_, name, static_cast<GLint>(value));
+            }
+            gl_.gen_framebuffers(1, &radiance_framebuffer_);
+        }
+        if (no_radiance_ == 0) {
+            auto made = make_cube(1, 1);
+            if (!made) {
+                return made.error();
+            }
+            no_radiance_ = made.value();
+            // Cleared once, so that it is never read undefined.
+            gl_.bind_framebuffer(gl::kFramebuffer, radiance_framebuffer_);
+            gl_.clear_color(0.0F, 0.0F, 0.0F, 1.0F);
+            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+                target_cube(no_radiance_, face, 0, 1);
+                gl_.clear(gl::kColorBufferBit);
+            }
+            gl_.framebuffer_texture_2d(gl::kFramebuffer, gl::kColorAttachment0, gl::kTexture2D, 0,
+                                       0);
+            gl_.bind_framebuffer(gl::kFramebuffer, frame_framebuffer_);
+        }
+        if (radiance_used(scene)) {
+            if (auto prepared = prepare_sky(); !prepared) {
+                return prepared;
+            }
+            if (radiance_program_ == 0) {
+                auto program = link(shaders::kRadianceVertexGlsl, shaders::kRadianceFragmentGlsl,
+                                    kRadianceSamplerNames, "the radiance filter");
+                if (!program) {
+                    return program.error();
+                }
+                radiance_program_ = program.value();
+            }
+            const std::uint32_t size = scene.radiance.size;
+            if (radiance_.size != size) {
+                for (GLuint* cube : {&radiance_.raw, &radiance_.filtered}) {
+                    if (*cube != 0) {
+                        gl_.delete_textures(1, cube);
+                        *cube = 0;
+                    }
+                }
+                radiance_.size = 0;
+                radiance_.key.reset();
+                auto raw = make_cube(size, radiance_levels(size));
+                if (!raw) {
+                    return raw.error();
+                }
+                radiance_.raw = raw.value();
+                auto filtered = make_cube(size, radiance_levels(size));
+                if (!filtered) {
+                    return filtered.error();
+                }
+                radiance_.filtered = filtered.value();
+                radiance_.size = size;
+            }
+            const RadianceKey key = radiance_key(scene);
+            radiance_draws_ = !radiance_.key || !(*radiance_.key == key);
+            radiance_.key = key;
+        }
+        radiance_prepared_ = true;
+        return {};
+    }
+
+    // The scene's radiance, as Godot's Compatibility renderer draws its radiance map: the sky into
+    // each face of the raw cube, its mipmaps, then each level of each face filtered from it.
+    void draw_radiance(const Scene3D& scene) {
+        const std::uint32_t size = radiance_.size;
+        const std::uint32_t levels = radiance_levels(size);
+        uniform_bytes_.clear();
+        std::array<std::size_t, kCubeFaces> faces{};
+        for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+            const SkyUniforms sky = radiance_face_uniforms(scene, face);
+            faces.at(face) = place_uniforms(&sky, sizeof(sky));
+        }
+        std::vector<std::size_t> filters;
+        for (std::uint32_t level = 0; level < levels; ++level) {
+            const auto uniforms =
+                std::make_unique<RadianceUniforms>(radiance_uniforms(size, levels, level));
+            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+                uniforms->params[0] = static_cast<float>(face);
+                filters.push_back(place_uniforms(uniforms.get(), sizeof(RadianceUniforms)));
+            }
+        }
+        gl_.bind_buffer(gl::kUniformBuffer, uniform_buffer_);
+        gl_.buffer_data(gl::kUniformBuffer, static_cast<GLsizeiptr>(uniform_bytes_.size()),
+                        uniform_bytes_.data(), gl::kStreamDraw);
+        gl_.bind_framebuffer(gl::kFramebuffer, radiance_framebuffer_);
+        gl_.disable(gl::kBlend);
+        gl_.bind_vertex_array(sky_vertex_array_);
+
+        gl_.use_program(sky_program_);
+        const Unit texture = binding(radiance_texture(scene), true);
+        gl_.active_texture(gl::kTexture0);
+        gl_.bind_texture(gl::kTexture2D, texture.texture);
+        gl_.bind_sampler(0, texture.sampler);
+        for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+            target_cube(radiance_.raw, face, 0, size);
+            gl_.bind_buffer_range(gl::kUniformBuffer, kSkyBinding, uniform_buffer_,
+                                  static_cast<GLintptr>(faces.at(face)),
+                                  static_cast<GLsizeiptr>(sizeof(SkyUniforms)));
+            gl_.draw_arrays(gl::kTriangles, 0, 3);
+        }
+        gl_.bind_texture(gl::kTexture2D, 0);
+        gl_.bind_texture(gl::kTextureCubeMap, radiance_.raw);
+        gl_.generate_mipmap(gl::kTextureCubeMap);
+
+        gl_.use_program(radiance_program_);
+        gl_.bind_sampler(0, radiance_sampler_);
+        for (std::uint32_t level = 0; level < levels; ++level) {
+            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+                target_cube(radiance_.filtered, face, level, size);
+                gl_.bind_buffer_range(
+                    gl::kUniformBuffer, kFilterBinding, uniform_buffer_,
+                    static_cast<GLintptr>(filters.at((level * kCubeFaces) + face)),
+                    static_cast<GLsizeiptr>(sizeof(RadianceUniforms)));
+                gl_.draw_arrays(gl::kTriangles, 0, 3);
+            }
+        }
+        // Back to the 2D state the rest of the device draws with.
+        gl_.bind_texture(gl::kTextureCubeMap, 0);
+        gl_.bind_sampler(0, 0);
+        gl_.framebuffer_texture_2d(gl::kFramebuffer, gl::kColorAttachment0, gl::kTexture2D, 0, 0);
+        gl_.bind_framebuffer(gl::kFramebuffer, frame_framebuffer_);
+        gl_.bind_vertex_array(0);
+        gl_.use_program(0);
+        gl_.enable(gl::kBlend);
     }
 
     // The sky's program, made at the start of the first frame with a sky so a failure shows
@@ -2124,6 +2349,8 @@ private:
         mesh_draws_.clear();
         mesh_batches_.clear();
         shadow_plan_.reset();
+        radiance_prepared_ = false;
+        radiance_draws_ = false;
         if (!pending_release_.empty() || !pending_programs_.empty() || !pending_meshes_.empty()) {
             make_current();
             release_pending();
@@ -2197,6 +2424,21 @@ private:
     GLuint post_vertex_array_ = 0;
     GLuint sky_program_ = 0;
     GLuint sky_vertex_array_ = 0;
+    // The radiance meshes are lit by: the raw cube the sky draws into and the one filtered from
+    // it, and what they hold (nullopt to draw them again).
+    struct RadianceCubes {
+        GLuint raw = 0;
+        GLuint filtered = 0;
+        std::uint32_t size = 0;
+        std::optional<RadianceKey> key;
+    };
+    RadianceCubes radiance_;
+    GLuint radiance_program_ = 0;
+    GLuint radiance_sampler_ = 0;
+    GLuint radiance_framebuffer_ = 0;
+    GLuint no_radiance_ = 0;         // bound when the frame's meshes have none
+    bool radiance_prepared_ = false; // at the frame's first mesh draw
+    bool radiance_draws_ = false;    // whether end_frame draws the radiance again
 
     // The frame being built. A skipped frame is 0 wide.
     bool in_frame_ = false;
