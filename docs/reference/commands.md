@@ -528,12 +528,12 @@ the cells as `cells`, a list of `[column, row]` (up to 4096), or `rect`,
 
 ### model.inspect
 
-Returns what a [glTF model](scene-format.md#models) holds, as a `MeshInstance3D` draws it, without
+Returns what a [model](scene-format.md#models) holds, as a `MeshInstance3D` draws it, without
 drawing it: its meshes, materials, images, the nodes that place its meshes and its bounds.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `path` | string | | A `.gltf` or `.glb` file |
+| `path` | string | | A `.gltf`, `.glb` or `.obj` file |
 | `id` | string | | Or an entity whose `MeshInstance3D` draws a model |
 
 Give one of them. Needs: `read`.
@@ -549,10 +549,11 @@ Give one of them. Needs: `read`.
 - Each mesh lists the material of each of its surfaces, by index into `materials`, or `-1` for
   Godot's default material, and counts their vertices and triangles.
 - Each material has the `StandardMaterial3D` fields that differ from the defaults, as the import
-  sets them, and `textures`: the index into `images` its `albedo`, `metallic_roughness`,
-  `normal` and `emission` textures sample.
+  sets them, and `textures`: the index into `images` its `albedo`, `metallic`, `roughness`,
+  `normal` and `emission` textures sample (a glTF model's metallic and roughness are one image).
 - Each image is the `path` of a file beside the model, or the `size` of one inside it.
-- `parts` are the meshes the model draws: each with the scene node that places it, in tree order.
+- `parts` are the meshes the model draws: each with the scene node that places it, in tree order
+  (an OBJ model's objects, in the file's order).
 - `bounds` are the corners of the box the parts fill, in the model's own meters.
 
 A model that doesn't load is an error at `/path` (or `/id`) saying why, as
