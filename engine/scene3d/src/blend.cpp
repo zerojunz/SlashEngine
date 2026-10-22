@@ -117,9 +117,13 @@ Result<Blender> blender_at(const std::string& program) {
         read = number(blender.minor);
     }
     if (!read) {
+        // The line as printed, without the carriage return Windows ends it with.
+        std::string line = output.substr(at, output.find('\n', at) - at);
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
         return make_error(ErrorCode::InvalidArgument,
-                          "its version isn't one Blender prints: \"" +
-                              output.substr(at, output.find('\n', at) - at) + "\"");
+                          "its version isn't one Blender prints: \"" + line + "\"");
     }
     if (blender.major < 3) {
         return make_error(ErrorCode::InvalidArgument,
