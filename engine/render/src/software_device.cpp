@@ -208,6 +208,9 @@ public:
             return pixels.error();
         }
         it->second.image.pixels = std::move(pixels.value());
+        if (radiance_key_ && radiance_key_->texture == texture) {
+            radiance_key_.reset(); // drawn from the old texels
+        }
         return {};
     }
 
@@ -1058,7 +1061,7 @@ private:
         const Material3D* material = nullptr;
         detail::MeshSurfaceUniforms surface;
         const detail::MeshSceneUniforms* scene = nullptr;
-        const detail::MeshShadows* shadows = nullptr;
+        const detail::MeshMaps* maps = nullptr;
         Bound albedo;
         Bound metallic;
         Bound roughness;
@@ -1167,6 +1170,25 @@ private:
         }
     }
 
+    // The scene's radiance, drawn again only when what it is drawn from changed, or nullptr when
+    // its meshes aren't lit by it.
+    const detail::CubeImage* radiance(const Scene3D& scene) {
+        if (!detail::radiance_used(scene)) {
+            return nullptr;
+        }
+        const detail::RadianceKey key = detail::radiance_key(scene);
+        if (!radiance_key_.has_value() || !(*radiance_key_ == key)) {
+            const Texture* texture = key.texture != TextureId::None ? find(key.texture) : nullptr;
+            radiance_ = detail::make_radiance(scene, [&](const std::array<float, 2>& coords) {
+                return texture == nullptr ? Float4{1.0F, 1.0F, 1.0F, 1.0F}
+                                          : sample_image(texture->image, texture->desc.filter,
+                                                         true, coords[0], coords[1]);
+            });
+            radiance_key_ = key;
+        }
+        return &radiance_;
+    }
+
     void draw_meshes(const Scene3D& scene, Image& target) {
         const detail::ShadowPlan plan = detail::plan_shadows(scene, kMaxTextureSize);
         std::vector<float> directional(std::size_t{plan.directional_size} * plan.directional_size,
@@ -1177,10 +1199,11 @@ private:
             draw_shadow_pass(pass, pass.positional ? positional : directional,
                              pass.positional ? plan.positional_size : plan.directional_size);
         }
-        const detail::MeshShadows shadows{
+        const detail::MeshMaps maps{
             .uniforms = plan.uniforms.get(),
             .directional = {.depths = directional, .size = plan.directional_size},
-            .positional = {.depths = positional, .size = plan.positional_size}};
+            .positional = {.depths = positional, .size = plan.positional_size},
+            .radiance = radiance(scene)};
 
         std::vector<float> depth(std::size_t{target.width} * target.height, 0.0F);
         const detail::MeshCameraUniforms camera = detail::mesh_camera_uniforms(scene);
@@ -1201,7 +1224,7 @@ private:
                 .material = &material,
                 .surface = detail::mesh_surface_uniforms(material, draw.layers),
                 .scene = lights.get(),
-                .shadows = &shadows,
+                .maps = &maps,
                 .albedo = bound(material.albedo_texture.texture, material.albedo_texture.repeat),
                 .metallic =
                     bound(material.metallic_texture.texture, material.metallic_texture.repeat),
@@ -1471,7 +1494,7 @@ private:
                                       .roughness_texel = shader.roughness.sample(u, v),
                                       .emission_texel = rgb(shader.emission.sample(u, v)),
                                       .normal_texel = rgb(shader.normal.sample(u, v))};
-        return detail::shade_mesh(shader.surface, *shader.scene, *shader.shadows, pixel);
+        return detail::shade_mesh(shader.surface, *shader.scene, *shader.maps, pixel);
     }
 
     // Writes a mesh pixel as the GPU device's mesh pipelines do: opaque ones replace the pixel,
@@ -1500,6 +1523,8 @@ private:
     std::unordered_map<MeshId, SoftwareMesh> retired_meshes_;
     std::uint32_t next_mesh_ = 1;
     std::vector<detail::MeshDraw> mesh_draws_;
+    std::optional<detail::RadianceKey> radiance_key_;
+    detail::CubeImage radiance_;
     std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> shaders_;
     std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> retired_shaders_;
     std::uint32_t next_shader_ = 1;

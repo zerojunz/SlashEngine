@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <functional>
 #include <numbers>
@@ -331,11 +332,16 @@ Environment environment(const world::World& world, render::Color clear) {
                       .a = background.a};
     out.entity = environments.front();
     const bool sky = env.background_mode == "sky";
+    // Godot's RasterizerSceneGLES3::_setup_environment: a sky's light (its radiance) lights
+    // surfaces through ambient_light_color, by ambient_light_sky_contribution.
+    const bool sky_ambient =
+        env.ambient_light_source == "sky" || (env.ambient_light_source == "background" && sky);
+    const bool sky_reflections =
+        env.reflected_light_source == "sky" || (env.reflected_light_source == "background" && sky);
     if (env.ambient_light_source == "background" && !sky) {
         out.ambient = {background.r, background.g, background.b};
         out.ambient_energy = energy;
-    } else if (env.ambient_light_source == "color" ||
-               (env.ambient_light_source == "background" && sky)) {
+    } else if (env.ambient_light_source == "color" || sky_ambient) {
         out.ambient = rgb(env.ambient_light_color);
         out.ambient_energy = env.ambient_light_energy;
     }
@@ -356,8 +362,9 @@ Environment environment(const world::World& world, render::Color clear) {
         fog.depth_end = env.fog_depth_end;
     }
     out.sky.energy = energy;
-    if (sky) {
+    if (sky || sky_ambient || sky_reflections) {
         add_sky(world, out.entity, out);
+        out.sky_material = out.sky.kind;
         out.sky.custom_fov = env.sky_custom_fov;
         // The world to the sky's space: the inverse, so the transpose, of the sky's turn.
         const world::Affine3D turn = world::rotation_basis(world::quaternion(env.sky_rotation));
@@ -367,11 +374,30 @@ Environment environment(const world::World& world, render::Color clear) {
             out.sky.orientation.at(4 + row) = columns.at(row).y;
             out.sky.orientation.at(8 + row) = columns.at(row).z;
         }
-    } else if (env.fog_enabled) {
-        // Fog over the background, as Godot draws it: a sky of the background's color, which its
-        // energy multiplies twice, as Godot's fog sky material does.
-        out.sky.kind = render::SkyKind::Color;
-        out.sky.color = {out.background.r, out.background.g, out.background.b};
+    }
+    if (sky_ambient || sky_reflections) {
+        render::Radiance3D& radiance = out.radiance;
+        radiance.kind = out.sky_material;
+        radiance.ambient = sky_ambient;
+        radiance.ambient_mix = env.ambient_light_sky_contribution;
+        radiance.reflections = sky_reflections;
+        const std::uint32_t size = env.sky_radiance_size;
+        if (size >= 32 && size <= 2048 && std::has_single_bit(size)) {
+            radiance.size = size;
+        } else {
+            out.problems.push_back({out.entity, "/components/WorldEnvironment/sky_radiance_size",
+                                    "is 32, 64, 128, 256, 512, 1024 or 2048, not " +
+                                        std::to_string(size) + "; drawing it at 256"});
+        }
+    }
+    if (!sky) {
+        out.sky.kind = render::SkyKind::None;
+        if (env.fog_enabled) {
+            // Fog over the background, as Godot draws it: a sky of the background's color,
+            // which its energy multiplies twice, as Godot's fog sky material does.
+            out.sky.kind = render::SkyKind::Color;
+            out.sky.color = {out.background.r, out.background.g, out.background.b};
+        }
     }
     for (std::size_t i = 0; i < render::kTonemapperNames.size(); ++i) {
         if (render::kTonemapperNames[i] == env.tonemap_mode) {
@@ -676,17 +702,18 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
     }
     frame.scene.sky = env.sky;
     frame.scene.fog = env.fog;
+    frame.scene.radiance = env.radiance;
     problems_.insert(problems_.end(), env.problems.begin(), env.problems.end());
-    if (env.sky.kind != render::SkyKind::None) {
+    if (env.sky.kind != render::SkyKind::None || env.radiance.kind != render::SkyKind::None) {
         frame.scene.sky.lights = sky_lights(world, tree, global);
     }
     if (!env.sky_texture.empty()) {
         auto texture = textures_(env.sky_texture, env.sky_filter);
         if (!texture) {
             problems_.push_back({env.entity, env.sky_texture_field, texture.error().message});
-        } else if (env.sky.kind == render::SkyKind::Procedural) {
+        } else if (env.sky_material == render::SkyKind::Procedural) {
             frame.scene.sky.procedural.sky_cover = texture.value().id;
-        } else if (env.sky.kind == render::SkyKind::Physical) {
+        } else if (env.sky_material == render::SkyKind::Physical) {
             frame.scene.sky.physical.night_sky = texture.value().id;
         } else {
             frame.scene.sky.panorama.panorama = texture.value().id;

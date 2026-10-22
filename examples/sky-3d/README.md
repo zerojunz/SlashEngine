@@ -12,13 +12,16 @@ sun, seen through a `Camera3D` in a 320x180 window. Its `environment` entity has
   to 60 units away, so the hills fade toward the fog's light blue. `fog_sky_affect` 0 leaves the
   sky clear of it.
 
+The sky lights the meshes too, as the `WorldEnvironment`'s default `ambient_light_source` and
+`reflected_light_source` say; [sky-light-3d](../sky-light-3d/) shows how.
+
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:
 
 ```text
 frame.capture {"points":[[160,4],[20,76],[228,17],[150,92],[160,172]],"path":"shots/day.png"}
-{"colors":[[0.267,0.463,0.788,1],[0.667,0.761,0.886,1],[1,1,1,1],[0.325,0.427,0.31,1],
- [0.259,0.404,0.224,1]],"drawn":{"meshes":6},"height":180,"path":"shots/day.png","width":320}
+{"colors":[[0.267,0.463,0.788,1],[0.667,0.761,0.886,1],[1,1,1,1],[0.318,0.431,0.353,1],
+ [0.247,0.404,0.282,1]],"drawn":{"meshes":6},"height":180,"path":"shots/day.png","width":320}
 ```
 
 - `frame.capture` draws the frame on the CPU, sky and fog included, so it needs no GPU and gives

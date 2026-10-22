@@ -320,6 +320,26 @@ struct Fog3D {
     bool operator==(const Fog3D&) const = default;
 };
 
+// Light a frame's sky gives its meshes, as Godot's radiance map in its Compatibility renderer: one
+// of the sky's materials drawn into a cube map size texels across, then blurred more for each
+// smaller level, which lit meshes take ambient light from (by their normal, the blurriest level)
+// and reflect (by roughness, sharper for smoother surfaces). It is drawn again only when what it
+// is drawn from changes.
+struct Radiance3D {
+    // Which of the sky's materials (Sky3D's, with its energy, orientation and lights) it is drawn
+    // from, or None for no radiance. Usually the sky's own kind; it can differ from it when the
+    // background isn't the sky.
+    SkyKind kind = SkyKind::None;
+    std::uint32_t size = 256; // a power of two from 32 to 2048, as Sky.radiance_size
+    // Ambient light from it, mixed into Scene3D's ambient light by ambient_mix, as
+    // Environment.ambient_light_sky_contribution.
+    bool ambient = false;
+    float ambient_mix = 1.0F;
+    bool reflections = false; // lit meshes reflect it
+
+    bool operator==(const Radiance3D&) const = default;
+};
+
 // What a frame's meshes are seen from and lit by. Matrices are column-major, as Mat4.
 struct Scene3D {
     // The world to the camera's space: the inverse of the camera's transform.
@@ -335,6 +355,7 @@ struct Scene3D {
     PostProcess post;
     Sky3D sky; // drawn behind the meshes, over the clear color
     Fog3D fog;
+    Radiance3D radiance;
 
     // Godot's default Camera3D: 75 degrees across a square target, from 0.05 to 4000.
     static std::array<float, 16> perspective_default();

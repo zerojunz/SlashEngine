@@ -20,8 +20,6 @@
           "sun_angle_max": 20.0
         },
         "WorldEnvironment": {
-          "ambient_light_color": [0.55, 0.62, 0.75, 1.0],
-          "ambient_light_energy": 0.5,
           "background_mode": "sky",
           "fog_depth_begin": 8.0,
           "fog_depth_end": 60.0,
