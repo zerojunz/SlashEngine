@@ -1,0 +1,5 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"model.inspect","params":{"path":"models/toadstool.blend"}}
+{"jsonrpc":"2.0","id":3,"method":"frame.capture","params":{"points":[[72,30],[88,30],[70,36],[80,50],[10,10],[10,80]]}}
+{"jsonrpc":"2.0","id":4,"method":"entity.create","params":{"id":"small","components":{"Transform3D":{"position":[-1.1,0,-0.8],"scale":[0.6,0.6,0.6]},"MeshInstance3D":{"mesh":"models/toadstool.blend"}}}}
+{"jsonrpc":"2.0","id":5,"method":"frame.capture","params":{"points":[[51,44],[51,54]],"path":"shots/ring.png"}}

@@ -1209,6 +1209,52 @@ TEST_CASE("exports ship glTF models with their buffers and images, and check the
     std::filesystem::remove_all(folder);
 }
 
+TEST_CASE("exports ship .blend models as the glTF Blender makes of them, and check them first") {
+    const std::filesystem::path folder = "exporter_blend_project";
+    std::filesystem::remove_all(folder);
+    std::filesystem::create_directories(folder / "models");
+    const auto write = [&](const std::string& path, std::string_view text) {
+        REQUIRE(slash::platform::write_file((folder / path).string(), text).ok());
+    };
+    write("project.json", R"({"format": 1, "name": "Models", "main_scene": "main.scene.json"})");
+    write("main.scene.json", R"({"format": 1, "entities": {"house": {"components": {
+        "Transform3D": {}, "MeshInstance3D": {"mesh": "models/house.blend"}}}}})");
+    // Stand-ins for .blend files, which Blender's stand-in exports as the glTF after the first
+    // line; it can't read the broken one.
+    write("models/house.blend", "BLENDER-fake\n" + slash::test::quad().gltf());
+    write("models/broken.blend", "not a blend file");
+    REQUIRE(SDL_setenv_unsafe("SLASH_BLENDER_PATH", SLASH_FAKE_BLENDER, 1) == 0);
+
+#if defined(__APPLE__)
+    const std::string host = "macos";
+#elif defined(_WIN32)
+    const std::string host = "windows";
+#else
+    const std::string host = "linux";
+#endif
+    exporter::ExportOptions options;
+    options.target = host;
+    options.project = folder.string();
+    const exporter::ExportResult result = exporter::export_game(options);
+    SDL_unsetenv_unsafe("SLASH_BLENDER_PATH");
+    CHECK_FALSE(result.ok);
+    const json::Value* error = result.json.find("error");
+    REQUIRE(error != nullptr);
+    CHECK(error->find("step")->as_string() == "validate");
+    REQUIRE(error->find("errors") != nullptr);
+    const json::Array& problems = error->find("errors")->as_array();
+    REQUIRE(problems.size() == 1);
+    CHECK(problems[0].find("file")->as_string() == "models/broken.blend");
+    CHECK(problems[0].find("message")->as_string().starts_with(
+        "Blender couldn't convert it (exit code 1): "));
+    // The game gets the glTF in the .blend file's place, so it never needs Blender.
+    const std::filesystem::path data = folder / ".slash" / "export" / host / "data";
+    auto shipped = slash::platform::read_file((data / "models" / "house.blend").string());
+    REQUIRE(shipped.ok());
+    CHECK(shipped.value().starts_with("glTF"));
+    std::filesystem::remove_all(folder);
+}
+
 TEST_CASE("exports ship providers.json without its replay settings, and check it first") {
     const std::filesystem::path folder = "exporter_ai_project";
     std::filesystem::remove_all(folder);

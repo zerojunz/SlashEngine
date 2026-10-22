@@ -5,6 +5,7 @@
 #include "slash/asset/assets.hpp"
 #include "slash/core/text.hpp"
 #include "slash/render/image.hpp"
+#include "slash/scene3d/blend.hpp"
 
 #include <algorithm>
 #include <array>
@@ -422,7 +423,7 @@ void add_parts(const cgltf_data& data, const cgltf_node& node, Model& model) {
 
 bool is_model_path(std::string_view path) {
     return path.ends_with(".gltf") || path.ends_with(".glb") || path.ends_with(".obj") ||
-           path.ends_with(".fbx");
+           path.ends_with(".fbx") || path.ends_with(kBlendSuffix);
 }
 
 Result<Model> load_model(std::string_view bytes, std::string_view path, const ModelReader& read) {
@@ -431,6 +432,12 @@ Result<Model> load_model(std::string_view bytes, std::string_view path, const Mo
     }
     if (path.ends_with(".fbx")) {
         return load_fbx(bytes, path, read, nullptr);
+    }
+    // A .blend file is read as the glTF Blender made of it (blend.hpp).
+    if (path.ends_with(kBlendSuffix) && !is_converted_blend(bytes)) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "it is a Blender file that hasn't been converted to glTF: it converts "
+                          "where a session can run Blender, and exports ship it converted");
     }
     Files files{.read = &read, .error = {}};
     cgltf_options options{};
@@ -615,7 +622,7 @@ std::size_t model_bytes(const Model& model) {
 
 void add_asset_types(asset::Assets& assets) {
     assets.add_type<Model>(
-        "model", {".gltf", ".glb", ".obj", ".fbx"},
+        "model", {".gltf", ".glb", ".obj", ".fbx", std::string(kBlendSuffix)},
         [&assets](std::string_view bytes, std::string_view path) {
             return load_model(bytes, path, [&assets](std::string_view file) {
                 return assets.read(file, "model_file");

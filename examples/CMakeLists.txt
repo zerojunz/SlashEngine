@@ -9,7 +9,8 @@
 #   src/            the project's gameplay sources; the example runs on macOS and Linux only, as
 #                   does one whose main.cpp calls gameplay.build
 #
-# Each runs in a copy of its folder, with AssetRipper's stand-in from tests/ as SLASH_ASSETRIPPER.
+# Each runs in a copy of its folder, with AssetRipper's and Blender's stand-ins from tests/ as
+# SLASH_ASSETRIPPER and SLASH_BLENDER_PATH.
 # SLASH_UPDATE_EXAMPLES=1 in the environment writes the output to expected.txt or results.jsonl
 # instead of comparing; review the diff before committing it.
 
@@ -57,6 +58,7 @@ foreach(name IN LISTS examples)
     add_test(NAME example_${name}
         COMMAND ${CMAKE_COMMAND} -DEXAMPLE=${dir} -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/${name}
             -DCLI=$<TARGET_FILE:slash-cli> -DASSETRIPPER=$<TARGET_FILE:fake-assetripper>
+            -DBLENDER=$<TARGET_FILE:fake-blender>
             ${program} -P ${run_example})
 endforeach()
 

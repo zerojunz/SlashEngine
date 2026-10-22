@@ -1,0 +1,5 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":5,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"bounds":{"max":[0.65,1.23,0.65],"min":[-0.65,0,-0.65]},"images":[],"materials":[{"name":"Stem","standard":{"albedo_color":[0.9063,0.865,0.7674,1],"roughness":0.8}},{"name":"Cap","standard":{"albedo_color":[0.7977,0.1897,0.1517,1],"roughness":0.5}},{"name":"Gills","standard":{"albedo_color":[0.8808,0.7977,0.7014,1]}}],"meshes":[{"materials":[0],"name":"Stem","triangles":16,"vertices":16},{"materials":[1,2],"name":"Cap","triangles":16,"vertices":33}],"parts":[{"mesh":0,"node":"Stem"},{"mesh":1,"node":"Cap"}]}}
+{"id":3,"jsonrpc":"2.0","result":{"colors":[[0.792,0.188,0.149,1],[0.851,0.208,0.165,1],[0.38,0.4,0.459,1],[0.914,0.859,0.765,1],[0.451,0.651,0.902,1],[0.306,0.443,0.204,1]],"drawn":{"meshes":4},"height":90,"width":160}}
+{"id":4,"jsonrpc":"2.0","result":{"id":"small"}}
+{"id":5,"jsonrpc":"2.0","result":{"colors":[[0.847,0.208,0.165,1],[0.941,0.882,0.78,1]],"drawn":{"meshes":7},"height":90,"path":"shots/ring.png","width":160}}
