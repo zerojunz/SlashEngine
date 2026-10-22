@@ -1770,6 +1770,56 @@ TEST_CASE("model.inspect returns a model's meshes, materials, images and parts")
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("skeleton.get returns a model's bones, posed as its entity draws them") {
+    const std::string root = "skeleton_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root + "/models").ok());
+    REQUIRE(slash::platform::write_file(root + "/models/arm.gltf", slash::test::arm().gltf()).ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+
+    // model.inspect lists a model's skins and animations, and which parts they deform.
+    const json::Value inspected = engine.ok("model.inspect", R"({"path": "models/arm.gltf"})");
+    CHECK(*inspected.find("parts") == parse(R"([{"mesh": 0, "node": "Arm", "skin": 0}])"));
+    CHECK(*inspected.find("skins") == parse(R"([{"joints": 2, "name": "ArmSkin"}])"));
+    CHECK(*inspected.find("animations") == parse(R"([{"length": 1, "name": "Bend", "tracks": 1},
+                    {"length": 1, "loop": true, "name": "Idle-loop", "tracks": 1}])"));
+
+    engine.ok("entity.create", R"({"id": "arm", "components": {
+        "Transform3D": {"position": [2, 0, 0]}, "MeshInstance3D": {"mesh": "models/arm.gltf"},
+        "AnimationPlayer": {"library": "models/arm.gltf", "animation": "Bend", "time": 1}}})");
+    CHECK(engine.ok("skeleton.get", R"({"id": "arm"})") == parse(R"({
+        "model": "models/arm.gltf",
+        "clips": [{"animation": "Bend", "time": 1}],
+        "bones": [{"name": "Armature"}, {"name": "Upper", "parent": "Armature"},
+                  {"name": "Lower", "parent": "Upper"}, {"name": "Arm", "parent": "Armature"}]})"));
+    // Bones named get their pose: Lower bent a quarter turn, one up from where the arm stands.
+    CHECK(engine.ok("skeleton.get", R"({"id": "arm", "bones": ["Lower"]})") == parse(R"({
+        "model": "models/arm.gltf",
+        "clips": [{"animation": "Bend", "time": 1}],
+        "bones": [{"name": "Lower", "parent": "Upper", "position": [0, 1, 0],
+                   "rotation": [0, 0, 1.5708], "scale": [1, 1, 1],
+                   "world_position": [2, 1, 0]}]})"));
+    // A Skeleton3D's bones win over the animation.
+    engine.ok("component.set", R"({"id": "arm", "components": {"Skeleton3D": {
+        "bone_rotations": {"Lower": [0, 0, 0]}, "bone_positions": {"Upper": [0, 0.5, 0]}}}})");
+    const json::Value posed = engine.ok("skeleton.get", R"({"id": "arm", "bones": ["Lower"]})");
+    CHECK(*posed.find("bones") == parse(R"([{"name": "Lower", "parent": "Upper",
+        "position": [0, 1, 0], "rotation": [0, 0, 0], "scale": [1, 1, 1],
+        "world_position": [2, 1.5, 0]}])"));
+
+    auto reply = engine.fails("skeleton.get", R"({"id": "arm", "bones": ["Lowr"]})",
+                              command::code::kInvalidParams);
+    CHECK(reply.message ==
+          "/bones/0: \"models/arm.gltf\" has no bone \"Lowr\"; did you mean \"Lower\"?");
+    engine.ok("entity.create", R"({"id": "box", "components": {"Transform3D": {},
+        "MeshInstance3D": {}, "BoxMesh": {}}})");
+    reply = engine.fails("skeleton.get", R"({"id": "box"})", command::code::kInvalidParams);
+    CHECK(reply.message == "/id: \"box\"'s MeshInstance3D draws no model");
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("physics commands find bodies by ray, point and shape, and what touches them") {
     Engine engine;
     engine.ok("batch", R"({"commands": [

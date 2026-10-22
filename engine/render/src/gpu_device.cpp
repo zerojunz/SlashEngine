@@ -731,6 +731,7 @@ public:
         const auto vertex_bytes = static_cast<std::uint32_t>(vertices.size_bytes());
         const auto index_bytes = static_cast<std::uint32_t>(indices.size_bytes());
         Mesh mesh{.index_count = static_cast<std::uint32_t>(indices.size()),
+                  .vertex_count = vertices.size(),
                   .bounds = mesh_bounds(vertices)};
         SDL_GPUBufferCreateInfo info{};
         info.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
@@ -773,6 +774,45 @@ public:
         const auto id = static_cast<MeshId>(next_mesh_++);
         meshes_[id] = mesh;
         return id;
+    }
+
+    Result<void> update_mesh(MeshId mesh, std::span<const Vertex3D> vertices) override {
+        if (in_frame_) {
+            return frame_in_progress("update_mesh");
+        }
+        const auto it = meshes_.find(mesh);
+        if (it == meshes_.end()) {
+            return unknown_mesh(mesh);
+        }
+        if (auto checked = check_mesh_update(vertices, it->second.vertex_count); !checked) {
+            return checked;
+        }
+        const auto bytes = static_cast<std::uint32_t>(vertices.size_bytes());
+        const TransferBuffer transfer(device_, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, bytes);
+        void* mapped = transfer.get() == nullptr
+                           ? nullptr
+                           : SDL_MapGPUTransferBuffer(device_, transfer.get(), false);
+        if (mapped == nullptr) {
+            return sdl_error("making room for a mesh's vertices failed");
+        }
+        std::memcpy(mapped, vertices.data(), bytes);
+        SDL_UnmapGPUTransferBuffer(device_, transfer.get());
+        SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+        if (commands == nullptr) {
+            return sdl_error("uploading a mesh's vertices failed");
+        }
+        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+        const SDL_GPUTransferBufferLocation source{.transfer_buffer = transfer.get(), .offset = 0};
+        const SDL_GPUBufferRegion destination{
+            .buffer = it->second.vertices, .offset = 0, .size = bytes};
+        // Cycling gives the buffer new memory if a frame sent before still reads it.
+        SDL_UploadToGPUBuffer(copy, &source, &destination, true);
+        SDL_EndGPUCopyPass(copy);
+        if (!SDL_SubmitGPUCommandBuffer(commands)) {
+            return sdl_error("uploading a mesh's vertices failed");
+        }
+        it->second.bounds = mesh_bounds(vertices);
+        return {};
     }
 
     void destroy_mesh(MeshId mesh) override {
@@ -1192,6 +1232,7 @@ private:
         SDL_GPUBuffer* vertices = nullptr;
         SDL_GPUBuffer* indices = nullptr;
         std::uint32_t index_count = 0;
+        std::size_t vertex_count = 0;
         Bounds bounds;
     };
 
@@ -2038,9 +2079,9 @@ private:
             samplers.at(kMeshTextures + atlas) = {.texture = drawn ? made.texture : no_shadows_,
                                                   .sampler = shadow_sampler_};
         }
-        samplers.at(kMeshTextures + 2) = {
-            .texture = radiance_used(scene) ? radiance_.filtered : no_radiance_,
-            .sampler = radiance_sampler_};
+        samplers.at(kMeshTextures + 2) = {.texture = radiance_used(scene) ? radiance_.filtered
+                                                                          : no_radiance_,
+                                          .sampler = radiance_sampler_};
         SDL_GPUGraphicsPipeline* bound = nullptr;
         for (const std::size_t i :
              mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), scene,
@@ -2093,9 +2134,8 @@ private:
     }
 
     // A pass drawing into a level of one face of a cube.
-    static SDL_GPURenderPass* begin_cube_pass(SDL_GPUCommandBuffer* commands,
-                                              SDL_GPUTexture* cube, std::uint32_t face,
-                                              std::uint32_t level) {
+    static SDL_GPURenderPass* begin_cube_pass(SDL_GPUCommandBuffer* commands, SDL_GPUTexture* cube,
+                                              std::uint32_t face, std::uint32_t level) {
         SDL_GPUColorTargetInfo color{};
         color.texture = cube;
         color.mip_level = level;
@@ -2107,8 +2147,7 @@ private:
     }
 
     // A pipeline drawing one triangle over an RGB10A2 target with no depth, with shaders.
-    Result<SDL_GPUGraphicsPipeline*> cube_pipeline(SDL_GPUShader* vertex,
-                                                   SDL_GPUShader* fragment) {
+    Result<SDL_GPUGraphicsPipeline*> cube_pipeline(SDL_GPUShader* vertex, SDL_GPUShader* fragment) {
         SDL_GPUColorTargetDescription color{};
         color.format = kRadianceFormat;
         SDL_GPUGraphicsPipelineCreateInfo info{};
@@ -2186,7 +2225,7 @@ private:
                 return made;
             }
             const std::array<std::array<SDL_GPUShader*, 2>, 2> stages{sky_shaders_,
-                                                                       radiance_shaders_};
+                                                                      radiance_shaders_};
             for (std::size_t i = 0; i < 2; ++i) {
                 if (radiance_pipelines_.at(i) == nullptr) {
                     auto pipeline = cube_pipeline(stages.at(i)[0], stages.at(i)[1]);
@@ -2249,8 +2288,10 @@ private:
             for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
                 uniforms->params[0] = static_cast<float>(face);
                 SDL_PushGPUFragmentUniformData(
-                    commands, 0, uniforms.get(), static_cast<std::uint32_t>(sizeof(RadianceUniforms)));
-                SDL_GPURenderPass* pass = begin_cube_pass(commands, radiance_.filtered, face, level);
+                    commands, 0, uniforms.get(),
+                    static_cast<std::uint32_t>(sizeof(RadianceUniforms)));
+                SDL_GPURenderPass* pass =
+                    begin_cube_pass(commands, radiance_.filtered, face, level);
                 SDL_BindGPUGraphicsPipeline(pass, radiance_pipelines_[1]);
                 SDL_BindGPUFragmentSamplers(pass, 0, &source, 1);
                 SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);

@@ -786,6 +786,19 @@ files read as their glTF: sessions run Blender only with the `build` capability,
 `slash-cli scene validate` always may; exports ship the glTF under the `.blend` file's name.
 `tests/fake_blender.cpp` is Blender's stand-in for tests and `examples/blend-models`.
 
+Skinned meshes and model animations follow Godot's glTF importer, `Skeleton3D` and
+`AnimationMixer` (`engine/scene3d/src/skeleton.cpp`). A glTF model keeps its nodes (named as
+Godot's `validate_node_name` and made unique), skins (joints and inverse bind matrices),
+vertices' joints and weights, and animations (node tracks; `-loop` and `-cycle` names loop).
+`pose_of` poses a model from its rest, then by its clips (`blend_animation`, Godot's blend of 3D
+tracks with its deterministic slerp), then by the entity's `Skeleton3D`; poses are worked out
+from components every time, never kept. The animation module tells scene3d what an entity's
+`AnimationPlayer` plays through `scene3d::set_clip_source`: a library can be a model file, and a
+`.anim.json` animation can come `from` a model's and add its own tracks. The renderer skins on
+the CPU as Godot's skeleton shader does (`skin_vertices`) into a mesh per entity that
+`RenderDevice::update_mesh` refills, and blends poses between ticks. `skeleton.get` lists and
+poses bones; `examples/skinned-meshes` waves an arm.
+
 Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V, MSL, GLSL ES and WGSL are committed
 in `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang,
 SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`
@@ -835,7 +848,9 @@ interpolation and easing; an event track emits a world event at each key. The
 `AnimationPlayer` on its own components, through `ComponentType::assign`, so any reflected field
 animates, a game's own included; a track with a `target` acts on the entity the player's
 `targets` maps it to, as a Godot track's node path does, and `animation::check_players` (run by
-`scene validate` and exports) catches targets missing from `targets`. Keys are passed as Godot passes them: after where playback was,
+`scene validate` and exports) catches targets missing from `targets`. A library can also be a
+model file, and an animation can come `from` a model's animation, posing the entity's model
+(see Rendering's skinned meshes). Keys are passed as Godot passes them: after where playback was,
 up to and including where it got to. `animation.eval` returns a track's values at given times;
 `examples/keyframe-animation` plays a walk cycle and a hit.
 

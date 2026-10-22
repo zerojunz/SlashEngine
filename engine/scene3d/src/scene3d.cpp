@@ -502,10 +502,22 @@ sky_lights(const world::World& world, const world::Tree3D& tree,
 
 std::vector<Problem> check_meshes(const world::World& world) {
     std::vector<Problem> problems;
+    // A Skeleton3D's bone names, checked against the model its entity draws, if it loads.
+    const auto check_bones = [&](entt::entity entity, const Model* model) {
+        const auto* skeleton = world.ecs().try_get<const world::Skeleton3D>(entity);
+        if (skeleton == nullptr) {
+            return;
+        }
+        for (SkeletonProblem& problem : check_skeleton(*skeleton, model)) {
+            problems.push_back(
+                {entity, "/components/Skeleton3D" + problem.path, std::move(problem.message)});
+        }
+    };
     for (const entt::entity entity : made<world::MeshInstance3D>(world)) {
         const std::string& path = world.ecs().get<const world::MeshInstance3D>(entity).mesh;
         if (path.empty()) {
             (void)drawable(world, entity, problems);
+            check_bones(entity, nullptr);
             continue;
         }
         if (std::string problem = mesh_path_problem(world, entity, path); !problem.empty()) {
@@ -522,11 +534,22 @@ std::vector<Problem> check_meshes(const world::World& world) {
                                 "\"" + path + "\" could not be read: " + bytes.error().message});
             continue;
         }
-        for (const json::ValidationError& error : check_model(bytes.value(), path, reader)) {
+        const std::vector<json::ValidationError> errors = check_model(bytes.value(), path, reader);
+        for (const json::ValidationError& error : errors) {
             problems.push_back({entity, std::string(kMeshField),
                                 "\"" + path + "\"" +
                                     (error.path.empty() ? "" : " at " + error.path) + ": " +
                                     error.message});
+        }
+        if (errors.empty() && world.ecs().all_of<world::Skeleton3D>(entity)) {
+            if (auto model = load_model(bytes.value(), path, reader); model) {
+                check_bones(entity, &model.value());
+            }
+        }
+    }
+    for (const entt::entity entity : made<world::Skeleton3D>(world)) {
+        if (!world.ecs().all_of<world::MeshInstance3D>(entity)) {
+            check_bones(entity, nullptr);
         }
     }
     // A primitive mesh draws only on an entity with a MeshInstance3D, but two are always wrong.
@@ -629,6 +652,9 @@ Renderer::~Renderer() {
     for (const auto& [key, shared] : shared_) {
         device_->destroy_mesh(shared.id);
     }
+    for (const auto& [key, skinned] : skinned_) {
+        device_->destroy_mesh(skinned.id);
+    }
     for (const auto& [key, texture] : embedded_) {
         device_->destroy_texture(texture.id);
     }
@@ -642,6 +668,20 @@ void Renderer::before_tick(const world::World& world) {
         before_.emplace(entity, Local{.position = transform.position,
                                       .rotation = world::quaternion(transform.rotation),
                                       .scale = transform.scale});
+    }
+    before_poses_.clear();
+    for (const entt::entity entity : world.ecs().view<const world::MeshInstance3D>()) {
+        if (world.ecs().get<const world::MeshInstance3D>(entity).mesh.empty()) {
+            continue;
+        }
+        PoseKey key{.clips = clips(world, entity), .skeleton = std::nullopt};
+        if (const auto* skeleton = world.ecs().try_get<const world::Skeleton3D>(entity);
+            skeleton != nullptr) {
+            key.skeleton = *skeleton;
+        }
+        if (!key.clips.empty() || key.skeleton) {
+            before_poses_.emplace(entity, std::move(key));
+        }
     }
 }
 
@@ -691,6 +731,28 @@ Result<render::MeshId> Renderer::model_mesh(const std::string& key, const ModelS
     return shared.id;
 }
 
+Result<render::MeshId> Renderer::skinned_mesh(const std::string& key, const ModelSurface& surface,
+                                              const std::vector<world::Affine3D>& joints) {
+    Skinned& skinned = skinned_[key];
+    skinned.used = frame_;
+    if (skinned.id != render::MeshId::None && skinned.joints == joints) {
+        return skinned.id;
+    }
+    skin_vertices(surface, joints, skinned_vertices_);
+    if (skinned.id == render::MeshId::None) {
+        auto made = device_->create_mesh(skinned_vertices_, surface.indices);
+        if (!made) {
+            skinned_.erase(key);
+            return made.error();
+        }
+        skinned.id = made.value();
+    } else if (auto updated = device_->update_mesh(skinned.id, skinned_vertices_); !updated) {
+        return updated.error();
+    }
+    skinned.joints = joints;
+    return skinned.id;
+}
+
 render::MaterialTexture Renderer::model_texture(const std::string& path, const SourceModel& source,
                                                 int image,
                                                 const world::StandardMaterial3D& standard,
@@ -735,7 +797,7 @@ render::MaterialTexture Renderer::model_texture(const std::string& path, const S
 
 void Renderer::add_model(const world::World& world, entt::entity entity,
                          const world::MeshInstance3D& instance, const world::Affine3D& place,
-                         render::ShadowCasting casting) {
+                         render::ShadowCasting casting, float interpolation) {
     if (std::string problem = mesh_path_problem(world, entity, instance.mesh); !problem.empty()) {
         problems_.push_back({entity, std::string(kMeshField), std::move(problem)});
         return;
@@ -760,20 +822,67 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
     std::vector<std::optional<render::Material3D>> materials(model.materials.size());
     const std::string prefix =
         "model:" + instance.mesh + "@" + std::to_string(source.value().version) + "#";
-    for (const ModelPart& part : model.parts) {
-        const std::array<float, 16> transform = (place * part.transform).matrix();
+
+    // A model with a skin, an animation playing or a Skeleton3D is posed: its parts go where its
+    // nodes are posed, and its skins move their surfaces' vertices.
+    PoseKey now{.clips = clips(world, entity), .skeleton = std::nullopt};
+    if (const auto* skeleton = world.ecs().try_get<const world::Skeleton3D>(entity);
+        skeleton != nullptr) {
+        now.skeleton = *skeleton;
+    }
+    std::vector<world::Affine3D> globals;
+    if (!model.nodes.empty() && (!model.skins.empty() || !now.clips.empty() || now.skeleton)) {
+        const ModelLoader load =
+            [this](const std::string& path) -> Result<std::shared_ptr<const Model>> {
+            auto loaded = models_(path);
+            if (!loaded) {
+                return loaded.error();
+            }
+            return loaded.value().model;
+        };
+        const auto skeleton_of = [](const std::optional<world::Skeleton3D>& skeleton) {
+            return skeleton.has_value() ? &skeleton.value() : nullptr;
+        };
+        std::vector<NodePose> pose = pose_of(model, now.clips, skeleton_of(now.skeleton), load);
+        // Part of the way from the pose before the last tick, as Transform3Ds are.
+        if (const auto was = before_poses_.find(entity);
+            interpolation < 1.0F && was != before_poses_.end() && !(was->second == now)) {
+            const std::vector<NodePose> before =
+                pose_of(model, was->second.clips, skeleton_of(was->second.skeleton), load);
+            pose = blend_poses(before, pose, interpolation);
+        }
+        globals = node_globals(model, pose);
+    }
+    const std::string skin_prefix =
+        "skin:" + std::to_string(entt::to_integral(entity)) + ":" + prefix;
+    for (std::size_t p = 0; p < model.parts.size(); ++p) {
+        const ModelPart& part = model.parts[p];
+        const bool posed = !globals.empty() && part.node_index >= 0 &&
+                           static_cast<std::size_t>(part.node_index) < globals.size();
+        const std::array<float, 16> transform =
+            (place * (posed ? globals[static_cast<std::size_t>(part.node_index)] : part.transform))
+                .matrix();
+        std::vector<world::Affine3D> joints;
+        if (!globals.empty() && part.skin >= 0) {
+            joints = joint_transforms(model.skins[static_cast<std::size_t>(part.skin)], globals);
+        }
         const ModelMesh& mesh = model.meshes[part.mesh];
         for (std::size_t i = 0; i < mesh.surfaces.size(); ++i) {
             const ModelSurface& surface = mesh.surfaces[i];
+            // A skin places its surfaces by its joints, leaving out its part's node.
+            const bool skinned = !joints.empty() && !surface.weights.empty();
             auto made =
-                model_mesh(prefix + std::to_string(part.mesh) + "/" + std::to_string(i), surface);
+                skinned ? skinned_mesh(skin_prefix + std::to_string(p) + "/" + std::to_string(i),
+                                       surface, joints)
+                        : model_mesh(prefix + std::to_string(part.mesh) + "/" + std::to_string(i),
+                                     surface);
             if (!made) {
                 problems_.push_back({entity, std::string(kMeshField), made.error().message});
                 continue;
             }
             Draw draw;
             draw.mesh = made.value();
-            draw.transform = transform;
+            draw.transform = skinned ? place.matrix() : transform;
             if (override) {
                 draw.material = *override;
             } else if (surface.material >= 0) {
@@ -829,6 +938,10 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
         }
         embedded_.clear();
         cached_.clear();
+        for (const auto& [key, skinned] : skinned_) {
+            device_->destroy_mesh(skinned.id);
+        }
+        skinned_.clear();
         return std::nullopt;
     }
 
@@ -924,7 +1037,7 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
             casting = render::ShadowCasting::ShadowsOnly;
         }
         if (!instance.mesh.empty()) {
-            add_model(world, entity, instance, global(entity), casting);
+            add_model(world, entity, instance, global(entity), casting, t);
             continue;
         }
         const std::optional<Primitive> primitive = drawable(world, entity, problems_);
@@ -958,6 +1071,14 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
         }
     }
     std::erase_if(cached_, [&](const auto& entry) { return !shared_.contains(entry.second.key); });
+    for (auto it = skinned_.begin(); it != skinned_.end();) {
+        if (it->second.used != frame_) {
+            device_->destroy_mesh(it->second.id);
+            it = skinned_.erase(it);
+        } else {
+            ++it;
+        }
+    }
     for (auto it = embedded_.begin(); it != embedded_.end();) {
         if (it->second.used != frame_) {
             device_->destroy_texture(it->second.id);

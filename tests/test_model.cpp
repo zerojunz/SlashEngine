@@ -3,6 +3,7 @@
 #include "gltf.hpp"
 #include "jpeg.hpp"
 
+#include "slash/animation/animation.hpp"
 #include "slash/asset/assets.hpp"
 #include "slash/canvas/canvas.hpp"
 #include "slash/core/json.hpp"
@@ -12,6 +13,7 @@
 #include "slash/render/image.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/scene3d.hpp"
+#include "slash/scene3d/skeleton.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -287,9 +289,10 @@ TEST_CASE("glTF primitives without normals get flat ones, and corner colors colo
     REQUIRE(m.materials.size() == 1);
     CHECK(surface.material == 0);
     CHECK(m.materials[0].standard.vertex_color_use_as_albedo);
-    // With no scene, the nodes without parents are drawn.
+    // With no scene, the nodes without parents are drawn; one without a name is named for its
+    // mesh, as Godot's importer names it.
     REQUIRE(m.parts.size() == 1);
-    CHECK(m.parts[0].node.empty());
+    CHECK(m.parts[0].node == "Mesh");
 }
 
 TEST_CASE("glTF files name buffers and images beside them, or carry them inside") {
@@ -1192,4 +1195,336 @@ TEST_CASE("MeshInstance3D draws an FBX model as it draws the same OBJ one") {
     const render::Image& b = obj.value().image;
     REQUIRE(a.pixels.size() == b.pixels.size());
     CHECK(a.pixels == b.pixels);
+}
+
+TEST_CASE("glTF skins, bones and animations load as Godot's importer reads them") {
+    MemoryFiles files;
+    files.files["arm.gltf"] = slash::test::arm().gltf();
+    const auto loaded = load(files, "arm.gltf");
+    REQUIRE_MESSAGE(loaded.ok(), error_of(loaded));
+    const scene3d::Model& model = loaded.value();
+
+    // Every node, parents first, as Godot's bones are.
+    REQUIRE(model.nodes.size() == 4);
+    std::vector<std::string> names;
+    std::vector<int> parents;
+    for (const scene3d::ModelNode& node : model.nodes) {
+        names.push_back(node.name);
+        parents.push_back(node.parent);
+    }
+    CHECK(names == std::vector<std::string>{"Armature", "Upper", "Lower", "Arm"});
+    CHECK(parents == std::vector<int>{-1, 0, 1, 0});
+    CHECK(near(model.nodes[2].position, {0.0F, 1.0F, 0.0F}));
+    CHECK(scene3d::find_node(model, "Lower") == 2);
+    CHECK(scene3d::find_node(model, "Hand") == -1);
+
+    REQUIRE(model.skins.size() == 1);
+    CHECK(model.skins[0].name == "ArmSkin");
+    CHECK(model.skins[0].joints == std::vector<std::size_t>{1, 2});
+    CHECK(near(model.skins[0].inverse_binds[1].origin, {0.0F, -1.0F, 0.0F}));
+    REQUIRE(model.parts.size() == 1);
+    CHECK(model.parts[0].skin == 0);
+    CHECK(model.parts[0].node_index == 3);
+
+    // Each vertex's joints and weights; the middle row is half each bone's.
+    const scene3d::ModelSurface& surface = model.meshes[0].surfaces[0];
+    REQUIRE(surface.weights.size() == surface.vertices.size());
+    for (std::size_t i = 0; i < surface.vertices.size(); ++i) {
+        CAPTURE(i);
+        const float y = surface.vertices[i].position[1];
+        const scene3d::VertexWeights& weights = surface.weights[i];
+        if (y < 0.5F) {
+            CHECK(weights.weights[0] == 1.0F);
+            CHECK(weights.joints[0] == 0);
+        } else if (y < 1.5F) {
+            CHECK(weights.weights[0] == 0.5F);
+            CHECK(weights.weights[1] == 0.5F);
+        } else {
+            CHECK(weights.weights[0] == 1.0F);
+            CHECK(weights.joints[0] == 1);
+        }
+    }
+
+    // Animations as long as their last key; a "-loop" name loops, as Godot's import hint.
+    REQUIRE(model.animations.size() == 2);
+    CHECK(model.animations[0].name == "Bend");
+    CHECK(model.animations[0].length == doctest::Approx(1.0));
+    CHECK_FALSE(model.animations[0].loop);
+    REQUIRE(model.animations[0].tracks.size() == 1);
+    CHECK(model.animations[0].tracks[0].node == 2);
+    CHECK(model.animations[0].tracks[0].property == scene3d::NodeProperty::Rotation);
+    CHECK(model.animations[1].name == "Idle-loop");
+    CHECK(model.animations[1].loop);
+    // The skinned mesh's bounds are where its vertices are at rest.
+    const scene3d::Bounds box = scene3d::bounds(model);
+    CHECK(near(box.min, {-0.5F, 0.0F, 0.0F}));
+    CHECK(near(box.max, {0.5F, 2.0F, 0.0F}));
+
+    // Names Godot can't take in a node path are changed as its importer changes them, and names
+    // made unique; nodes without names are named for what they are.
+    slash::test::Gltf named = quad();
+    named.document["nodes"] = parse(R"([{"name": "a.b:c", "children": [1, 2, 3]},
+        {"name": "Arm"}, {"name": "Arm"}, {"mesh": 0}, {}])");
+    named.document["scenes"] = parse(R"([{"nodes": [0, 4]}])");
+    files.files["named.gltf"] = named.gltf();
+    const auto renamed = load(files, "named.gltf");
+    REQUIRE_MESSAGE(renamed.ok(), error_of(renamed));
+    names.clear();
+    for (const scene3d::ModelNode& node : renamed.value().nodes) {
+        names.push_back(node.name);
+    }
+    CHECK(names == std::vector<std::string>{"a_b_c", "Arm", "Arm2", "Mesh", "Node"});
+}
+
+TEST_CASE("skins move vertices as Godot's skeleton shader, posed by animations and bones") {
+    MemoryFiles files;
+    files.files["arm.gltf"] = slash::test::arm().gltf();
+    const auto loaded = load(files, "arm.gltf");
+    REQUIRE(loaded.ok());
+    const scene3d::Model& model = loaded.value();
+    const scene3d::ModelSurface& surface = model.meshes[0].surfaces[0];
+    const scene3d::ModelAnimation& bend = model.animations[0];
+
+    // Where each vertex goes in a pose, by its position at rest.
+    const auto skinned = [&](const std::vector<scene3d::NodePose>& pose) {
+        const auto joints =
+            scene3d::joint_transforms(model.skins[0], scene3d::node_globals(model, pose));
+        std::vector<render::Vertex3D> out;
+        scene3d::skin_vertices(surface, joints, out);
+        REQUIRE(out.size() == surface.vertices.size());
+        std::map<std::pair<float, float>, Vec3> by_rest;
+        for (std::size_t i = 0; i < out.size(); ++i) {
+            by_rest[{surface.vertices[i].position[0], surface.vertices[i].position[1]}] =
+                vec(out[i].position);
+        }
+        return by_rest;
+    };
+
+    // At rest, nothing moves.
+    std::vector<scene3d::NodePose> pose = scene3d::rest_pose(model);
+    for (const auto& [rest, at] : skinned(pose)) {
+        CHECK(near(at, {rest.first, rest.second, 0.0F}));
+    }
+
+    // Bent a quarter turn: the top row turns round Lower, and the middle row goes half way.
+    scene3d::blend_animation(model, model, bend, 1.0, 1.0F, {}, pose);
+    auto bent = skinned(pose);
+    CHECK(near(bent[{0.5F, 2.0F}], {-1.0F, 1.5F, 0.0F}));
+    CHECK(near(bent[{-0.5F, 2.0F}], {-1.0F, 0.5F, 0.0F}));
+    CHECK(near(bent[{0.5F, 1.0F}], {0.25F, 1.25F, 0.0F}));
+    CHECK(near(bent[{-0.5F, 1.0F}], {-0.25F, 0.75F, 0.0F}));
+    CHECK(near(bent[{0.5F, 0.0F}], {0.5F, 0.0F, 0.0F}));
+    // Normals turn with their vertices: the strip still faces +z.
+    {
+        const auto joints =
+            scene3d::joint_transforms(model.skins[0], scene3d::node_globals(model, pose));
+        std::vector<render::Vertex3D> out;
+        scene3d::skin_vertices(surface, joints, out);
+        for (const render::Vertex3D& vertex : out) {
+            CHECK(near(vec(vertex.normal), {0.0F, 0.0F, 1.0F}));
+        }
+    }
+
+    // Half way through, an eighth of a turn, by Godot's slerp.
+    pose = scene3d::rest_pose(model);
+    scene3d::blend_animation(model, model, bend, 0.5, 1.0F, {}, pose);
+    const float eighth = std::sqrt(0.5F);
+    bent = skinned(pose);
+    CHECK(near(bent[{0.5F, 2.0F}], {-0.5F * eighth, 1.0F + (1.5F * eighth), 0.0F}));
+    // The whole animation at half its weight turns as far.
+    std::vector<scene3d::NodePose> half = scene3d::rest_pose(model);
+    scene3d::blend_animation(model, model, bend, 1.0, 0.5F, {}, half);
+    CHECK(near(half[2].rotation.z, pose[2].rotation.z));
+    CHECK(near(half[2].rotation.w, pose[2].rotation.w));
+
+    // A Skeleton3D's bone rotation, in radians as Node3D's, poses the bone the same way.
+    world::Skeleton3D skeleton;
+    skeleton.bone_rotations["Lower"] = {0.0F, 0.0F, 1.5707963F};
+    const auto posed = scene3d::pose_of(model, {}, &skeleton, {});
+    bent = skinned(posed);
+    CHECK(near(bent[{0.5F, 2.0F}], {-1.0F, 1.5F, 0.0F}));
+    // It wins over an animation, and show_rest_only shows the rest pose whatever plays.
+    const scene3d::ModelLoader loader =
+        [&](const std::string& path) -> slash::Result<std::shared_ptr<const scene3d::Model>> {
+        auto found = load(files, path);
+        if (!found) {
+            return found.error();
+        }
+        return std::make_shared<const scene3d::Model>(std::move(found).value());
+    };
+    const std::vector<scene3d::ClipSample> idle{
+        {.model = "arm.gltf", .animation = "Idle-loop", .time = 0.5, .weight = 1.0F}};
+    const auto raised = scene3d::pose_of(model, idle, &skeleton, loader);
+    CHECK(near(raised[1].position, {0.0F, 0.25F, 0.0F}));
+    bent = skinned(raised);
+    CHECK(near(bent[{0.5F, 2.0F}], {-1.0F, 1.75F, 0.0F}));
+    skeleton.show_rest_only = true;
+    for (const auto& [rest, at] : skinned(scene3d::pose_of(model, idle, &skeleton, loader))) {
+        CHECK(near(at, {rest.first, rest.second, 0.0F}));
+    }
+
+    // A looping track goes round from its last key to its first; another holds its ends.
+    const scene3d::NodeTrack& rise = model.animations[1].tracks[0];
+    CHECK(near(scene3d::sample_track(rise, 0.25, 1.0, true)[1], 0.125F));
+    CHECK(near(scene3d::sample_track(rise, 2.0, 1.0, false)[1], 0.0F));
+    // Two poses blend part of the way, as frames between ticks do.
+    const auto between = scene3d::blend_poses(scene3d::rest_pose(model), raised, 0.5F);
+    CHECK(near(between[1].position, {0.0F, 0.125F, 0.0F}));
+
+    // An animation from another model moves the nodes of the same names.
+    slash::test::Gltf other = slash::test::arm();
+    other.document["nodes"] = parse(R"([{"name": "Rig", "children": [1, 3]},
+        {"name": "Upper", "children": [2]}, {"name": "Lower", "translation": [0, 1, 0]},
+        {"name": "Arm", "mesh": 0, "skin": 0}])");
+    files.files["other.gltf"] = other.gltf();
+    const auto source = load(files, "other.gltf");
+    REQUIRE(source.ok());
+    const std::vector<int> map = scene3d::node_map(model, source.value());
+    CHECK(map == std::vector<int>{-1, 1, 2, 3});
+    pose = scene3d::rest_pose(model);
+    scene3d::blend_animation(model, source.value(), source.value().animations[0], 1.0, 1.0F, map,
+                             pose);
+    CHECK(near(skinned(pose)[{0.5F, 2.0F}], {-1.0F, 1.5F, 0.0F}));
+}
+
+TEST_CASE("AnimationPlayer plays a model's animations on the skinned mesh its entity draws") {
+    Scene scene;
+    slash::animation::install(scene.world, scene.assets);
+    scene.files.files["models/arm.gltf"] = slash::test::arm().gltf();
+    // Unlit white, so pixels say where the arm is.
+    world::StandardMaterial3D white;
+    white.shading_mode = "unshaded";
+    const entt::entity arm = scene.create("arm", R"({"Transform3D": {"position": [0, -1, 0]},
+                   "MeshInstance3D": {"mesh": "models/arm.gltf"},
+                   "AnimationPlayer": {"library": "models/arm.gltf", "animation": "Bend"}})");
+    scene.world.ecs().emplace<world::StandardMaterial3D>(arm, white);
+    CHECK(scene3d::check_meshes(scene.world).empty());
+
+    // Paused at the start, the arm stands straight up from the middle of the view; bent, its top
+    // lies to the left.
+    constexpr std::array<std::uint8_t, 4> kBackground{0, 0, 255, 255};
+    const auto at = [&](std::uint32_t x, std::uint32_t y) {
+        const auto captured = canvas::capture(scene.world, scene.assets);
+        REQUIRE_MESSAGE(captured.ok(), error_of(captured));
+        return pixel(captured.value().image, x, y);
+    };
+    CHECK(at(32, 21) != kBackground);
+    CHECK(at(22, 32) == kBackground);
+    CHECK(scene3d::clips(scene.world, arm) ==
+          std::vector<scene3d::ClipSample>{
+              {.model = "models/arm.gltf", .animation = "Bend", .time = 0.0, .weight = 1.0F}});
+
+    scene.world.ecs().get<world::AnimationPlayer>(arm).playing = true;
+    for (int tick = 0; tick < 60; ++tick) {
+        scene.world.step(1.0 / 60.0);
+    }
+    const auto& player = scene.world.ecs().get<world::AnimationPlayer>(arm);
+    CHECK(player.time == doctest::Approx(1.0));
+    CHECK_FALSE(player.playing); // Bend doesn't loop
+    CHECK(scene3d::clips(scene.world, arm).at(0).time == doctest::Approx(1.0));
+    CHECK(at(32, 21) == kBackground);
+    CHECK(at(22, 32) != kBackground);
+
+    // Every device draws the skinned arm where the software device does, as its pose changes.
+    const auto drawn_by = [&](render::RenderDevice& device, canvas::CanvasRenderer& renderer) {
+        auto target = device.create_texture(
+            {.width = 64, .height = 64, .filter = render::Filter::Linear, .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.width = 64.0F;
+        options.height = 64.0F;
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        auto drawn = device.read_texture(target.value());
+        REQUIRE(drawn.ok());
+        device.destroy_texture(target.value());
+        return std::move(drawn).value();
+    };
+    for (const auto& device : drawing_devices()) {
+        CAPTURE(render::backend_name(device->backend()));
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        scene.world.ecs().get<world::AnimationPlayer>(arm).time = 1.0;
+        const render::Image bent = drawn_by(*device, renderer);
+        CHECK(pixel(bent, 22, 32) != kBackground);
+        CHECK(pixel(bent, 32, 21) == kBackground);
+        // The same mesh, its vertices replaced.
+        scene.world.ecs().get<world::AnimationPlayer>(arm).time = 0.0;
+        const render::Image straight = drawn_by(*device, renderer);
+        CHECK(pixel(straight, 22, 32) == kBackground);
+        CHECK(pixel(straight, 32, 21) != kBackground);
+    }
+
+    // A Skeleton3D poses bones by name over the animation, and names the model hasn't are
+    // reported with the closest one.
+    world::Skeleton3D skeleton;
+    skeleton.bone_rotations["Lower"] = {0.0F, 0.0F, 0.0F};
+    skeleton.bone_positions["Lowr"] = {0.0F, 2.0F, 0.0F};
+    scene.world.ecs().emplace<world::Skeleton3D>(arm, skeleton);
+    scene.world.ecs().get<world::AnimationPlayer>(arm).time = 1.0;
+    CHECK(at(32, 21) != kBackground);
+    const auto problems = scene3d::check_meshes(scene.world);
+    REQUIRE(problems.size() == 1);
+    CHECK(problems[0].path == "/components/Skeleton3D/bone_positions/Lowr");
+    CHECK(problems[0].message ==
+          "the model has no bone or node named \"Lowr\"; did you mean \"Lower\"?");
+    const entt::entity stray = scene.create("stray", R"({"Skeleton3D": {}})");
+    const auto more = scene3d::check_meshes(scene.world);
+    REQUIRE(more.size() == 2);
+    CHECK(more[1].entity == stray);
+    CHECK(more[1].path == "/components/Skeleton3D");
+}
+
+TEST_CASE("animation files play a model's animations with tracks of their own") {
+    Scene scene;
+    slash::animation::install(scene.world, scene.assets);
+    std::vector<std::string> events;
+    scene.world.set_event_listener([&events](const world::Event& event) {
+        if (!event.kind.starts_with("entity.")) {
+            events.push_back(event.kind);
+        }
+    });
+    scene.files.files["models/arm.gltf"] = slash::test::arm().gltf();
+    // Its length and loop come from the model's animation; its event is its own.
+    scene.files.files["anim/arm.anim.json"] = R"({"format": 1, "animations": {
+        "idle": {"from": {"model": "models/arm.gltf", "animation": "Idle-loop"},
+                 "tracks": [{"event": "breath", "keys": [{"time": 0.5}]}]},
+        "slow": {"from": {"model": "models/arm.gltf", "animation": "Bend"}, "length": 2}}})";
+    const entt::entity arm =
+        scene.create("arm", R"({"Transform3D": {}, "MeshInstance3D": {"mesh": "models/arm.gltf"},
+                   "AnimationPlayer": {"library": "anim/arm.anim.json", "animation": "idle",
+                                       "playing": true}})");
+    for (int tick = 0; tick < 90; ++tick) {
+        scene.world.step(1.0 / 60.0);
+    }
+    const auto& player = scene.world.ecs().get<world::AnimationPlayer>(arm);
+    CHECK(player.playing); // it loops, as Idle-loop does
+    CHECK(player.time == doctest::Approx(0.5));
+    CHECK(events == std::vector<std::string>{"breath", "breath"});
+    const auto playing = scene3d::clips(scene.world, arm);
+    REQUIRE(playing.size() == 1);
+    CHECK(playing[0].model == "models/arm.gltf");
+    CHECK(playing[0].animation == "Idle-loop");
+    CHECK(playing[0].time == doctest::Approx(0.5));
+
+    // Scenes are checked against the model's animations.
+    const json::Value doc = parse(R"({"format": 1, "entities": {
+        "a": {"components": {"AnimationPlayer": {"library": "models/arm.gltf",
+                                                 "animation": "Bnd"}}},
+        "b": {"components": {"AnimationPlayer": {"library": "anim/bad.anim.json"}}},
+        "c": {"components": {"AnimationPlayer": {"library": "anim/arm.anim.json",
+                                                 "animation": "slow"}}}}})");
+    scene.files.files["anim/bad.anim.json"] = R"({"format": 1, "animations": {
+        "x": {"from": {"model": "models/arm.gltf", "animation": "Idel-loop"}}}})";
+    std::vector<std::string> errors;
+    for (const json::ValidationError& error :
+         slash::animation::check_players(doc, scene.files.reader())) {
+        errors.push_back(error.path + ": " + error.message);
+    }
+    CHECK(errors == std::vector<std::string>{
+                        "/entities/a/components/AnimationPlayer/animation: models/arm.gltf has "
+                        "no animation \"Bnd\"; did you mean \"Bend\"?",
+                        "/entities/b/components/AnimationPlayer/library: anim/bad.anim.json: "
+                        "/animations/x/from/animation: models/arm.gltf has no animation "
+                        "\"Idel-loop\"; did you mean \"Idle-loop\"?",
+                    });
 }

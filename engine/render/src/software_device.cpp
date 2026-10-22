@@ -311,6 +311,23 @@ public:
         return id;
     }
 
+    Result<void> update_mesh(MeshId mesh, std::span<const Vertex3D> vertices) override {
+        if (in_frame_) {
+            return detail::frame_in_progress("update_mesh");
+        }
+        const auto it = meshes_.find(mesh);
+        if (it == meshes_.end()) {
+            return detail::unknown_mesh(mesh);
+        }
+        if (auto checked = detail::check_mesh_update(vertices, it->second.vertices.size());
+            !checked) {
+            return checked;
+        }
+        it->second.vertices.assign(vertices.begin(), vertices.end());
+        it->second.bounds = detail::mesh_bounds(vertices);
+        return {};
+    }
+
     void destroy_mesh(MeshId mesh) override {
         const auto it = meshes_.find(mesh);
         if (it == meshes_.end()) {
@@ -1181,8 +1198,8 @@ private:
             const Texture* texture = key.texture != TextureId::None ? find(key.texture) : nullptr;
             radiance_ = detail::make_radiance(scene, [&](const std::array<float, 2>& coords) {
                 return texture == nullptr ? Float4{1.0F, 1.0F, 1.0F, 1.0F}
-                                          : sample_image(texture->image, texture->desc.filter,
-                                                         true, coords[0], coords[1]);
+                                          : sample_image(texture->image, texture->desc.filter, true,
+                                                         coords[0], coords[1]);
             });
             radiance_key_ = key;
         }

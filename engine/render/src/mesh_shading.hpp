@@ -218,6 +218,8 @@ mesh_draw_order(std::span<const MeshDraw> draws, const Scene3D& scene, const Bou
 // The checks every device makes on a mesh's vertices and indices.
 [[nodiscard]] Result<void> check_mesh(std::span<const Vertex3D> vertices,
                                       std::span<const std::uint32_t> indices);
+// The checks every device makes on new vertices for a mesh of count vertices (update_mesh).
+[[nodiscard]] Result<void> check_mesh_update(std::span<const Vertex3D> vertices, std::size_t count);
 // That a scene's numbers are usable and it has at most kMaxLights3D lights.
 [[nodiscard]] Result<void> check_scene(const Scene3D& scene);
 // That a material's numbers are usable, and its textures exist (known) and aren't the target.
@@ -284,8 +286,8 @@ struct MeshMaps {
 
 // The pixel's color, as fs_main gives it, or nullopt where it discards the pixel.
 [[nodiscard]] std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface,
-                                               const MeshSceneUniforms& scene,
-                                               const MeshMaps& maps, const MeshPixel& pixel);
+                                               const MeshSceneUniforms& scene, const MeshMaps& maps,
+                                               const MeshPixel& pixel);
 // fs_main in shaders/shadow.hlsl: whether a shadow pass keeps a pixel, as the alpha scissor does.
 [[nodiscard]] bool shadow_keeps(const MeshSurfaceUniforms& surface, const Float4& albedo_texel,
                                 const Float4& color);

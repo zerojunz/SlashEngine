@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <numbers>
 #include <optional>
@@ -90,14 +91,29 @@ json::Value schema() {
     track["properties"]["keys"]["items"]["$ref"] = "#/$defs/key";
     track["properties"]["keys"]["description"] = "Keys in time order.";
 
+    json::Value from;
+    from["type"] = "object";
+    from["additionalProperties"] = false;
+    from["required"] = json::Array{"model", "animation"};
+    from["description"] = "A model file's animation it plays on the nodes of the entity's model, "
+                          "as Godot imports a glTF file's animations.";
+    from["properties"]["model"] =
+        property("string", "The model file: .gltf, .glb, .fbx or .blend.");
+    from["properties"]["model"]["minLength"] = 1;
+    from["properties"]["animation"] = property("string", "Its name in the model.");
+    from["properties"]["animation"]["minLength"] = 1;
+
     json::Value animation;
     animation["type"] = "object";
     animation["additionalProperties"] = false;
-    animation["required"] = json::Array{"length", "tracks"};
-    animation["properties"]["length"] = property("number", "Seconds.");
+    animation["description"] = "Needs a length and tracks, unless it comes from a model.";
+    animation["properties"]["from"] = std::move(from);
+    animation["properties"]["length"] =
+        property("number", "Seconds. Left out, the model animation's it comes from.");
     animation["properties"]["length"]["exclusiveMinimum"] = 0;
-    animation["properties"]["loop"] = property("string", "What happens at the end, as Godot's "
-                                                         "loop modes.");
+    animation["properties"]["loop"] =
+        property("string", "What happens at the end, as Godot's loop modes. Left out, the model "
+                           "animation's it comes from, or none.");
     animation["properties"]["loop"]["enum"] = names(kLoopModes);
     animation["properties"]["loop"]["default"] = "none";
     animation["properties"]["tracks"]["type"] = "array";
@@ -266,11 +282,34 @@ private:
     }
 
     void check_animation(const json::Value& animation, const std::string& at) {
-        const double length = animation.find("length")->as_double();
+        const json::Value* from = animation.find("from");
+        const json::Value* length = animation.find("length");
+        const json::Value* tracks = animation.find("tracks");
+        if (from == nullptr && (length == nullptr || tracks == nullptr)) {
+            std::string missing = R"("tracks")";
+            if (length == nullptr) {
+                missing = tracks == nullptr ? R"(a "length" and "tracks")" : R"(a "length")";
+            }
+            fail(at, "an animation needs " + missing +
+                         ", unless it comes \"from\" a model's animation");
+        }
+        if (from != nullptr) {
+            const std::string& model = from->find("model")->as_string();
+            if (!scene3d::is_model_path(model) || model.ends_with(".obj")) {
+                fail(at + "/from/model", "expected a .gltf, .glb, .fbx or .blend file");
+            }
+        }
+        if (tracks == nullptr) {
+            return;
+        }
+        // Keys past an animation's length are wrong, but a model animation's length isn't known
+        // until its file is read.
+        const double end =
+            length != nullptr ? length->as_double() : std::numeric_limits<double>::infinity();
         std::set<std::string, std::less<>> paths;
-        const json::Array& tracks = animation.find("tracks")->as_array();
-        for (std::size_t i = 0; i < tracks.size(); ++i) {
-            check_track(tracks[i], at + "/tracks/" + std::to_string(i), length, paths);
+        const json::Array& list = tracks->as_array();
+        for (std::size_t i = 0; i < list.size(); ++i) {
+            check_track(list[i], at + "/tracks/" + std::to_string(i), end, paths);
         }
     }
 
@@ -442,6 +481,50 @@ validate_animation_library(const json::Value& doc, const world::ComponentRegistr
     return Checker(doc, components).run();
 }
 
+bool is_model_library(std::string_view path) {
+    return scene3d::is_model_path(path);
+}
+
+AnimationLibrary model_library(const scene3d::Model& model, std::string_view path) {
+    AnimationLibrary library;
+    for (const scene3d::ModelAnimation& clip : model.animations) {
+        Animation animation;
+        animation.length = clip.length;
+        animation.loop = clip.loop ? LoopMode::Linear : LoopMode::None;
+        animation.from = {std::string(path), clip.name};
+        library.animations.emplace(clip.name, std::move(animation));
+    }
+    return library;
+}
+
+Result<void> resolve_clip(Animation& animation, const scene3d::Model& model) {
+    const auto found = std::ranges::find(model.animations, animation.from.animation,
+                                         &scene3d::ModelAnimation::name);
+    if (found == model.animations.end()) {
+        std::vector<std::string_view> names;
+        names.reserve(model.animations.size());
+        for (const scene3d::ModelAnimation& clip : model.animations) {
+            names.emplace_back(clip.name);
+        }
+        std::string message =
+            animation.from.model + " has no animation \"" + animation.from.animation + "\"";
+        if (const std::string_view hint = closest_match(animation.from.animation, names);
+            !hint.empty()) {
+            message += "; did you mean \"" + std::string(hint) + "\"?";
+        } else if (names.empty()) {
+            message += "; it has none";
+        }
+        return make_error(ErrorCode::NotFound, std::move(message));
+    }
+    if (!animation.own_length) {
+        animation.length = found->length;
+    }
+    if (!animation.own_loop) {
+        animation.loop = found->loop ? LoopMode::Linear : LoopMode::None;
+    }
+    return {};
+}
+
 Result<AnimationLibrary> parse_animation_library(const json::Value& doc) {
     const std::vector<json::ValidationError> errors = validate_animation_library(doc);
     if (!errors.empty()) {
@@ -453,11 +536,24 @@ Result<AnimationLibrary> parse_animation_library(const json::Value& doc) {
     AnimationLibrary library;
     for (const auto& [name, json_animation] : doc.find("animations")->as_object()) {
         Animation animation;
-        animation.length = json_animation.find("length")->as_double();
+        if (const json::Value* length = json_animation.find("length"); length != nullptr) {
+            animation.length = length->as_double();
+        } else {
+            animation.own_length = false;
+        }
         if (const json::Value* loop = json_animation.find("loop"); loop != nullptr) {
             animation.loop = static_cast<LoopMode>(index_of(kLoopModes, loop->as_string()));
+        } else {
+            animation.own_loop = false;
         }
-        for (const json::Value& json_track : json_animation.find("tracks")->as_array()) {
+        if (const json::Value* from = json_animation.find("from"); from != nullptr) {
+            animation.from.model = from->find("model")->as_string();
+            animation.from.animation = from->find("animation")->as_string();
+        }
+        static const json::Array kNoTracks;
+        const json::Value* json_tracks = json_animation.find("tracks");
+        for (const json::Value& json_track :
+             json_tracks != nullptr ? json_tracks->as_array() : kNoTracks) {
             Track track;
             if (const json::Value* path = json_track.find("path"); path != nullptr) {
                 track.path = path->as_string();
@@ -502,12 +598,33 @@ std::vector<json::ValidationError> check_players(const json::Value& doc,
     if (!reader) {
         return errors;
     }
+    std::map<std::string, Result<scene3d::Model>, std::less<>> models;
+    const auto model = [&](const std::string& path) -> const Result<scene3d::Model>& {
+        if (const auto it = models.find(path); it != models.end()) {
+            return it->second;
+        }
+        const auto read = [&]() -> Result<scene3d::Model> {
+            auto bytes = reader(path);
+            if (!bytes) {
+                return bytes.error();
+            }
+            return scene3d::load_model(bytes.value(), path, reader);
+        };
+        return models.emplace(path, read()).first->second;
+    };
     std::map<std::string, Result<AnimationLibrary>, std::less<>> loaded;
     const auto load = [&](const std::string& path) -> const Result<AnimationLibrary>& {
         if (const auto it = loaded.find(path); it != loaded.end()) {
             return it->second;
         }
         const auto parse = [&]() -> Result<AnimationLibrary> {
+            if (is_model_library(path)) {
+                const Result<scene3d::Model>& found = model(path);
+                if (!found) {
+                    return found.error();
+                }
+                return model_library(found.value(), path);
+            }
             auto text = reader(path);
             if (!text) {
                 return text.error();
@@ -516,7 +633,27 @@ std::vector<json::ValidationError> check_players(const json::Value& doc,
             if (!parsed) {
                 return parsed.error();
             }
-            return parse_animation_library(parsed.value());
+            auto library = parse_animation_library(parsed.value());
+            if (!library) {
+                return library;
+            }
+            // Animations from models take their lengths and loops from them.
+            for (auto& [name, animation] : library.value().animations) {
+                if (animation.from.model.empty()) {
+                    continue;
+                }
+                const std::string at = "/animations/" + json::pointer_escape(name) + "/from";
+                const Result<scene3d::Model>& found = model(animation.from.model);
+                if (!found) {
+                    return make_error(found.error().code, at + "/model: " + animation.from.model +
+                                                              ": " + found.error().message);
+                }
+                if (auto resolved = resolve_clip(animation, found.value()); !resolved) {
+                    return make_error(resolved.error().code,
+                                      at + "/animation: " + resolved.error().message);
+                }
+            }
+            return library;
         };
         return loaded.emplace(path, parse()).first->second;
     };
@@ -532,9 +669,10 @@ std::vector<json::ValidationError> check_players(const json::Value& doc,
             return;
         }
         const std::string& path = library_path->as_string();
-        if (!path.ends_with(kAnimationSuffix)) {
-            errors.push_back({at + "/library", "animation libraries are .anim.json files, as "
-                                               "\"anim/hero.anim.json\""});
+        if (!path.ends_with(kAnimationSuffix) && !is_model_library(path)) {
+            errors.push_back({at + "/library", "animation libraries are .anim.json files or "
+                                               "models, as \"anim/hero.anim.json\" or "
+                                               "\"models/hero.glb\""});
             return;
         }
         const Result<AnimationLibrary>& library = load(path);

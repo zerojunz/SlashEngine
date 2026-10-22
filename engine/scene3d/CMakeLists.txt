@@ -18,7 +18,8 @@ add_library(slash_scene3d
     src/model_tools.cpp
     src/obj.cpp
     src/primitive.cpp
-    src/scene3d.cpp)
+    src/scene3d.cpp
+    src/skeleton.cpp)
 add_library(slash::scene3d ALIAS slash_scene3d)
 
 target_include_directories(slash_scene3d PUBLIC include)

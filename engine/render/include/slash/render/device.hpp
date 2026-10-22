@@ -371,6 +371,10 @@ public:
     // every three vertices a triangle when there are no indices. At most kMaxMeshVertices.
     [[nodiscard]] virtual Result<MeshId> create_mesh(std::span<const Vertex3D> vertices,
                                                      std::span<const std::uint32_t> indices) = 0;
+    // Replaces a mesh's vertices with as many new ones, keeping its triangles, as a skinned
+    // mesh's are replaced each frame; not during a frame.
+    [[nodiscard]] virtual Result<void> update_mesh(MeshId mesh,
+                                                   std::span<const Vertex3D> vertices) = 0;
     // A mesh in use by the frame being built goes once the frame is sent.
     virtual void destroy_mesh(MeshId mesh) = 0;
 

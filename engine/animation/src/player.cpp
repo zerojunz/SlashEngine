@@ -2,6 +2,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
+#include "slash/scene3d/skeleton.hpp"
 #include "slash/world/components.hpp"
 
 #include <algorithm>
@@ -151,9 +152,9 @@ Step advance(world::AnimationPlayer& player, const Animation& animation, double 
     return step;
 }
 
-// Plays AnimationPlayer components. Its state is only a cache of loaded .anim.json files, the
-// targets their tracks resolve to and the warnings already logged, so a world's snapshot, undo or
-// dry run is never out of step with it.
+// Plays AnimationPlayer components. Its state is only a cache of loaded .anim.json files and
+// models, the targets their tracks resolve to and the warnings already logged, so a world's
+// snapshot, undo or dry run is never out of step with it.
 struct PlayerState {
     asset::Assets* assets = nullptr;
 
@@ -163,9 +164,17 @@ struct PlayerState {
         std::string error;
     };
     struct Cached {
-        asset::Handle<AnimationLibrary> library;
-        std::uint64_t version = 0;
-        std::uint64_t types = 0; // the component registry's revision when targets resolved
+        asset::Handle<AnimationLibrary> file; // a .anim.json library
+        asset::Handle<scene3d::Model> model;  // or a model's animations
+        // The models its animations come from, by path.
+        std::map<std::string, asset::Handle<scene3d::Model>, std::less<>> models;
+        // The library, its animations from models given their lengths and loops, as of the
+        // versions of its files in versions.
+        AnimationLibrary library;
+        std::vector<std::uint64_t> versions;
+        std::uint64_t version = 0;  // counts rebuilds of the library
+        std::uint64_t resolved = 0; // the version targets were resolved for
+        std::uint64_t types = 0;    // the component registry's revision when targets resolved
         // By animation name, one per track.
         std::map<std::string, std::vector<Resolved>, std::less<>> targets;
         bool used = false;
@@ -180,29 +189,89 @@ struct PlayerState {
     }
 
     Cached* library(const std::string& path, std::string_view id) {
-        if (auto it = cache.find(path); it != cache.end()) {
-            it->second.used = true;
-            return &it->second;
+        auto it = cache.find(path);
+        if (it == cache.end()) {
+            Cached cached;
+            if (is_model_library(path)) {
+                auto loaded = assets->load<scene3d::Model>(path);
+                if (!loaded) {
+                    warn_once(id, path + ": " + loaded.error().message);
+                    return nullptr;
+                }
+                cached.model = std::move(loaded).value();
+            } else {
+                auto loaded = assets->load<AnimationLibrary>(path);
+                if (!loaded) {
+                    warn_once(id, path + ": " + loaded.error().message);
+                    return nullptr;
+                }
+                cached.file = std::move(loaded).value();
+            }
+            it = cache.emplace(path, std::move(cached)).first;
         }
-        auto loaded = assets->load<AnimationLibrary>(path);
-        if (!loaded) {
-            warn_once(id, path + ": " + loaded.error().message);
-            return nullptr;
-        }
-        Cached& cached = cache[path];
-        cached.library = std::move(loaded).value();
+        Cached& cached = it->second;
         cached.used = true;
+        refresh(cached, path, id);
         return &cached;
     }
 
-    // The targets of an animation's tracks, resolved once per version of its file and of the
+    // The versions of a library's files: its own, then the models its animations come from.
+    static std::vector<std::uint64_t> versions_of(const Cached& cached) {
+        std::vector<std::uint64_t> out;
+        out.reserve(cached.models.size() + 1);
+        out.push_back(cached.file ? cached.file.version() : cached.model.version());
+        for (const auto& [path, model] : cached.models) {
+            out.push_back(model ? model.version() : 0);
+        }
+        return out;
+    }
+
+    // Rebuilds a library when one of its files changed: a model's animations, or a .anim.json
+    // file's with those from models given their lengths and loops.
+    void refresh(Cached& cached, const std::string& path, std::string_view id) {
+        if (!cached.versions.empty() && cached.versions == versions_of(cached)) {
+            return;
+        }
+        if (cached.model) {
+            cached.library = model_library(*cached.model, path);
+        } else {
+            cached.library = *cached.file;
+            for (auto& [name, animation] : cached.library.animations) {
+                if (animation.from.model.empty()) {
+                    continue;
+                }
+                auto found = cached.models.find(animation.from.model);
+                if (found == cached.models.end()) {
+                    auto loaded = assets->load<scene3d::Model>(animation.from.model);
+                    if (!loaded) {
+                        warn_once(id, animation.from.model + ": " + loaded.error().message);
+                    }
+                    found =
+                        cached.models
+                            .emplace(animation.from.model, loaded ? std::move(loaded).value()
+                                                                  : asset::Handle<scene3d::Model>())
+                            .first;
+                }
+                if (!found->second) {
+                    continue;
+                }
+                if (auto resolved = resolve_clip(animation, *found->second); !resolved) {
+                    warn_once(id, path + ": " + resolved.error().message);
+                }
+            }
+        }
+        cached.versions = versions_of(cached);
+        ++cached.version;
+    }
+
+    // The targets of an animation's tracks, resolved once per version of its library and of the
     // component types, which change when a game's code is reloaded.
     static const std::vector<Resolved>& targets(Cached& cached, const std::string& name,
                                                 const Animation& animation,
                                                 const world::ComponentRegistry& components) {
-        if (cached.version != cached.library.version() || cached.types != components.revision()) {
+        if (cached.version != cached.resolved || cached.types != components.revision()) {
             cached.targets.clear();
-            cached.version = cached.library.version();
+            cached.resolved = cached.version;
             cached.types = components.revision();
         }
         auto [it, added] = cached.targets.try_emplace(name);
@@ -244,15 +313,16 @@ struct PlayerState {
         auto& ecs = world.ecs();
         // A copy, since a track may set the player's own fields.
         world::AnimationPlayer player = ecs.get<world::AnimationPlayer>(entity);
-        if (!player.playing || player.library.empty() || player.animation.empty()) {
+        if (player.library.empty() || player.animation.empty()) {
             return;
         }
         const std::string id(world.id_of(entity));
+        // Loaded while paused too, since a paused player still poses its entity's model.
         Cached* cached = library(player.library, id);
-        if (cached == nullptr) {
+        if (cached == nullptr || !player.playing) {
             return;
         }
-        const AnimationLibrary& library = *cached->library;
+        const AnimationLibrary& library = cached->library;
         const auto found = library.animations.find(player.animation);
         if (found == library.animations.end()) {
             std::vector<std::string_view> names;
@@ -411,6 +481,32 @@ void add_asset_types(asset::Assets& assets) {
 void add_systems(world::World& world, asset::Assets& assets) {
     auto state = std::make_shared<PlayerState>();
     state->assets = &assets;
+    // A player's animation from a model poses the nodes of the model its entity draws, playing
+    // or paused, as Godot's AnimationPlayer drives a Skeleton3D's bones.
+    scene3d::set_clip_source(world, [state](const world::World& w, entt::entity entity) {
+        std::vector<scene3d::ClipSample> out;
+        const auto* player = w.ecs().try_get<const world::AnimationPlayer>(entity);
+        if (player == nullptr || player->library.empty() || player->animation.empty()) {
+            return out;
+        }
+        const std::string id(w.id_of(entity));
+        PlayerState::Cached* cached = state->library(player->library, id);
+        if (cached == nullptr) {
+            return out;
+        }
+        const auto found = cached->library.animations.find(player->animation);
+        if (found == cached->library.animations.end() || found->second.from.model.empty()) {
+            return out;
+        }
+        const Animation& animation = found->second;
+        out.push_back({.model = animation.from.model,
+                       .animation = animation.from.animation,
+                       .time = std::isfinite(player->time)
+                                   ? std::clamp(player->time, 0.0, animation.length)
+                                   : 0.0,
+                       .weight = 1.0F});
+        return out;
+    });
     world.add_system("animation_player",
                      [state](world::World& w, double tick_seconds) { state->run(w, tick_seconds); },
                      {.doc = "Plays each AnimationPlayer's animation on its entity's components.",
