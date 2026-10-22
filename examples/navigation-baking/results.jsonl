@@ -1,0 +1,13 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":9,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"file":"nav/courtyard.navmesh.json","polygons":36,"vertices":34}}
+{"id":3,"jsonrpc":"2.0","result":{"length":16.0457,"points":[[-5,0.5,1],[-2.75,0.5,-3.25],[-2.25,0.5,-3.5],[-1,0.5,-3.25],[1.5,0.5,-0.5],[1.5,0.5,-0.5],[2,0.75,-0.5],[2.5,0.75,-0.5],[2.734,1.3245,-2.6064],[2.8056,1.5,-3.25],[2.8151,1.5,-3.3356],[2.8333,1.5,-3.5],[2.9483,1.5,-4.5345],[3,1.5,-5]]}}
+{"id":4,"jsonrpc":"2.0","result":{"normal":[0,-3.875,0],"owner":"courtyard","point":[1.3514,0.5,2.1081]}}
+{"id":5,"jsonrpc":"2.0","result":{"file":"nav/garden.navpoly.json","obstructions":2,"polygons":16,"vertices":20}}
+{"id":6,"jsonrpc":"2.0","result":{"length":300.3867,"points":[[20,90],[47.2207,74.8786],[57.8594,68.9688],[69.6049,65.351],[108.4609,53.3828],[205.5234,41.25],[300,90]]}}
+{"id":7,"jsonrpc":"2.0","result":{"changed":{"Transform2D":{"position":[260.0,90.0]}},"id":"tree"}}
+{"id":8,"jsonrpc":"2.0","result":{"changes":{},"dry_run":true,"result":{"file":"nav/garden.navpoly.json","obstructions":2,"polygons":15,"vertices":20}}}
+{"id":9,"jsonrpc":"2.0","result":{"file":"nav/garden.navpoly.json","obstructions":2,"polygons":15,"vertices":20}}
+{"id":10,"jsonrpc":"2.0","result":{"length":300.6182,"points":[[20,90],[108.4609,53.3828],[205.5234,41.25],[272.1406,68.9688],[281.755,76.2267],[300,90]]}}
+{"id":11,"jsonrpc":"2.0","result":{"can_redo":1,"can_undo":3,"undone":"navigation.bake"}}
+{"id":12,"jsonrpc":"2.0","result":{"can_redo":2,"can_undo":2,"undone":"component.set"}}
+{"id":13,"jsonrpc":"2.0","result":{"file":"nav/garden.navpoly.json","obstructions":2,"polygons":16,"unchanged":true,"vertices":20}}

@@ -343,6 +343,149 @@ Reply navigation_agent(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+// The region's file read and checked: its document (null when there is no file yet) and text.
+struct RegionFile {
+    std::string path;
+    json::Value doc;
+    std::optional<std::string> text;
+};
+
+std::optional<Reply> read_region_file(Session& session, const std::string& path,
+                                      std::string_view suffix, RegionFile& out) {
+    const bool three_d = suffix == navigation::kMeshSuffix;
+    if (!path.ends_with(suffix)) {
+        return param_error(code::kInvalidArgument, "/id",
+                           "its " +
+                               std::string(three_d ? "navigation_mesh" : "navigation_polygon") +
+                               " " + quoted(path) + " is not a " + std::string(suffix) + " file");
+    }
+    auto text = session.read_project_file(path);
+    if (!text) {
+        return Reply::failure(text.error());
+    }
+    out.path = path;
+    out.text = std::move(text).value();
+    if (!out.text) {
+        return std::nullopt;
+    }
+    auto doc = json::parse(*out.text);
+    if (!doc) {
+        return Reply::failure(code::kInvalidArgument, path + ": " + doc.error().message);
+    }
+    const auto errors = three_d ? navigation::validate_mesh(doc.value())
+                                : navigation::validate_polygon(doc.value());
+    if (!errors.empty()) {
+        json::Value data;
+        data["file"] = path;
+        data["path"] = errors.front().path;
+        return Reply::failure(code::kInvalidArgument,
+                              path + errors.front().path + ": " + errors.front().message,
+                              std::move(data));
+    }
+    out.doc = std::move(doc).value();
+    return std::nullopt;
+}
+
+Reply navigation_bake(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    const std::string& id = params.find("id")->as_string();
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        return unknown_entity(world, id, "/id");
+    }
+    const auto* region_3d = world.ecs().try_get<world::NavigationRegion3D>(entity);
+    const auto* region_2d = world.ecs().try_get<world::NavigationRegion2D>(entity);
+    if (region_3d == nullptr && region_2d == nullptr) {
+        return param_error(code::kInvalidParams, "/id",
+                           quoted(id) + " has no NavigationRegion2D or NavigationRegion3D");
+    }
+    const std::string& path =
+        region_3d != nullptr ? region_3d->navigation_mesh : region_2d->navigation_polygon;
+    if (path.empty()) {
+        return param_error(code::kInvalidArgument, "/id",
+                           region_3d != nullptr
+                               ? quoted(id) + " names no navigation_mesh file to bake into, "
+                                              "such as \"navigation/level.navmesh.json\""
+                               : quoted(id) + " names no navigation_polygon file to bake into, "
+                                              "such as \"navigation/level.navpoly.json\"");
+    }
+    RegionFile file;
+    if (auto failed = read_region_file(
+            session, path,
+            region_3d != nullptr ? navigation::kMeshSuffix : navigation::kPolygonSuffix, file)) {
+        return std::move(*failed);
+    }
+
+    json::Value result;
+    result["file"] = path;
+    std::vector<std::string> warnings;
+    std::string after;
+    if (region_3d != nullptr) {
+        navigation::NavigationMesh settings;
+        if (file.text) {
+            auto parsed = navigation::parse_mesh(file.doc);
+            if (!parsed) {
+                return Reply::failure(code::kInvalidArgument, path + ": " + parsed.error().message);
+            }
+            settings = std::move(parsed).value();
+        }
+        const navigation::SourceGeometry3D geometry =
+            navigation::parse_source_geometry(world, session.assets(), entity, settings, &warnings);
+        if (geometry.indices.empty()) {
+            warnings.emplace_back("no geometry to bake: put MeshInstance3D entities, or "
+                                  "StaticBody3D entities on geometry_collision_mask, under the "
+                                  "region in Transform3D children");
+        }
+        auto baked = navigation::bake(settings, geometry, &warnings);
+        if (!baked) {
+            return Reply::failure(baked.error());
+        }
+        after = json::write(navigation::with_polygons(std::move(file.doc), baked.value())) + "\n";
+        result["vertices"] = baked.value().vertices.size();
+        result["polygons"] = baked.value().polygons.size();
+    } else {
+        navigation::NavigationPolygon settings;
+        if (file.text) {
+            auto parsed = navigation::parse_polygon(file.doc);
+            if (!parsed) {
+                return Reply::failure(code::kInvalidArgument, path + ": " + parsed.error().message);
+            }
+            settings = std::move(parsed).value();
+        }
+        const navigation::SourceGeometry2D geometry =
+            navigation::parse_source_geometry(world, entity, settings);
+        if (settings.outlines.empty() && geometry.traversable_outlines.empty()) {
+            warnings.emplace_back("nothing to bake: give the file outlines of where agents can "
+                                  "go");
+        }
+        auto baked = navigation::bake(settings, geometry);
+        if (!baked) {
+            return Reply::failure(baked.error());
+        }
+        after = json::write(navigation::with_polygons(std::move(file.doc), baked.value())) + "\n";
+        result["vertices"] = baked.value().vertices.size();
+        result["polygons"] = baked.value().polygons.size();
+        result["obstructions"] = geometry.obstruction_outlines.size();
+    }
+    if (!warnings.empty()) {
+        json::Array list;
+        for (std::string& warning : warnings) {
+            list.emplace_back(std::move(warning));
+        }
+        result["warnings"] = std::move(list);
+    }
+    if (after == file.text) {
+        session.mark_unchanged();
+        result["unchanged"] = true;
+        return Reply::success(std::move(result));
+    }
+    if (auto staged = session.stage_file(path, after); !staged) {
+        return Reply::failure(staged.error());
+    }
+    session.add_undo_file(path, std::move(file.text), std::move(after));
+    return Reply::success(std::move(result));
+}
+
 } // namespace
 
 void register_navigation_commands(Registry& registry) {
@@ -433,6 +576,20 @@ void register_navigation_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema({{"id", std::move(agent_id)}}, {"id"}),
         .handler = navigation_agent,
+    });
+    json::Value region_id =
+        property("string", "An entity with a NavigationRegion3D or NavigationRegion2D.");
+    region_id["minLength"] = 1;
+    registry.add({
+        .name = "navigation.bake",
+        .description = "Bakes a region's navigation_mesh or navigation_polygon file from the "
+                       "geometry under it, as Godot's bake_navigation_mesh and "
+                       "bake_navigation_polygon, keeping the file's settings. Returns the "
+                       "polygon count and warnings.",
+        .capabilities = {Edit, Filesystem},
+        .effect = Effect::Edit,
+        .params = params_schema({{"id", std::move(region_id)}}, {"id"}),
+        .handler = navigation_bake,
     });
 }
 

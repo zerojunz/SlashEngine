@@ -1,0 +1,13 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"navigation.bake","params":{"id":"courtyard"}}
+{"jsonrpc":"2.0","id":3,"method":"navigation.path","params":{"from":[-5,0,1],"to":[3,1,-5]}}
+{"jsonrpc":"2.0","id":4,"method":"navigation.closest","params":{"point":[1.5,2,3]}}
+{"jsonrpc":"2.0","id":5,"method":"navigation.bake","params":{"id":"garden"}}
+{"jsonrpc":"2.0","id":6,"method":"navigation.path","params":{"from":[20,90],"to":[300,90]}}
+{"jsonrpc":"2.0","id":7,"method":"component.set","params":{"id":"tree","components":{"Transform2D":{"position":[260,90]}}}}
+{"jsonrpc":"2.0","id":8,"method":"navigation.bake","params":{"id":"garden","dry_run":true}}
+{"jsonrpc":"2.0","id":9,"method":"navigation.bake","params":{"id":"garden"}}
+{"jsonrpc":"2.0","id":10,"method":"navigation.path","params":{"from":[20,90],"to":[300,90]}}
+{"jsonrpc":"2.0","id":11,"method":"undo"}
+{"jsonrpc":"2.0","id":12,"method":"undo"}
+{"jsonrpc":"2.0","id":13,"method":"navigation.bake","params":{"id":"garden"}}

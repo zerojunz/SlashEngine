@@ -1,5 +1,12 @@
 {
   "dependencies": {
+    "Clipper2": {
+      "license": "BSL-1.0",
+      "license_file": "LICENSE",
+      "license_sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566",
+      "repository": "https://github.com/AngusJohnson/Clipper2.git",
+      "tag": "Clipper2_1.5.4"
+    },
     "EnTT": {
       "license": "MIT",
       "license_file": "LICENSE",
@@ -202,6 +209,20 @@
       "license_sha256": "32a94b25ad7072a78457d35019b32d73d2c265c806b0b76e9638fe800330bbe4",
       "repository": "https://github.com/Chlumsky/msdfgen.git",
       "tag": "v1.13"
+    },
+    "polypartition": {
+      "license": "MIT",
+      "license_file": "LICENSE.md",
+      "license_sha256": "26ea8ed3bb684350af324ebad3fad346d409b9e5cb053522df31c1366ae99069",
+      "repository": "https://github.com/ivanfratric/polypartition.git",
+      "tag": "7bdffb428b2b19ad1c43aa44c714dcc104177e84"
+    },
+    "recastnavigation": {
+      "license": "Zlib",
+      "license_file": "License.txt",
+      "license_sha256": "5881db2682bc4871837e36b5af4460f59905a7944848221406f841eaa3fda8c4",
+      "repository": "https://github.com/recastnavigation/recastnavigation.git",
+      "tag": "v1.6.0"
     },
     "roboto": {
       "license": "Apache-2.0",

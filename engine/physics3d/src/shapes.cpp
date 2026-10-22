@@ -1,5 +1,6 @@
 #include "space.hpp"
 
+#include <Jolt/Geometry/ConvexHullBuilder.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
@@ -264,3 +265,48 @@ JPH::MassProperties mass_properties(const JPH::Shape& shape, float mass, Vec3 in
 }
 
 } // namespace slash::physics3d::detail
+
+namespace slash::physics3d {
+
+std::vector<Vec3> convex_hull_triangles(std::span<const Vec3> points) {
+    detail::set_up_jolt();
+    JPH::Array<JPH::Vec3> positions;
+    positions.reserve(points.size());
+    for (const Vec3 point : points) {
+        positions.emplace_back(point.x, point.y, point.z);
+    }
+    // As ConvexHullShapeSettings builds its hull, with no cap on its corners.
+    JPH::ConvexHullBuilder builder(positions);
+    const char* error = nullptr;
+    const JPH::ConvexHullBuilder::EResult result =
+        builder.Initialize(std::numeric_limits<int>::max(), 1.0e-3F, error);
+    if (result != JPH::ConvexHullBuilder::EResult::Success) {
+        return {};
+    }
+    std::vector<Vec3> out;
+    for (const JPH::ConvexHullBuilder::Face* face : builder.GetFaces()) {
+        if (face->mRemoved) {
+            continue;
+        }
+        // Jolt winds faces counterclockwise from outside; Godot's go the other way.
+        std::vector<int> corners;
+        const JPH::ConvexHullBuilder::Edge* edge = face->mFirstEdge;
+        do {
+            corners.push_back(edge->mStartIdx);
+            edge = edge->mNextEdge;
+        } while (edge != face->mFirstEdge);
+        std::reverse(corners.begin(), corners.end());
+        const auto at = [&](int index) {
+            const JPH::Vec3 p = positions[static_cast<std::size_t>(index)];
+            return Vec3{p.GetX(), p.GetY(), p.GetZ()};
+        };
+        for (std::size_t k = 2; k < corners.size(); ++k) {
+            out.push_back(at(corners[0]));
+            out.push_back(at(corners[k - 1]));
+            out.push_back(at(corners[k]));
+        }
+    }
+    return out;
+}
+
+} // namespace slash::physics3d
