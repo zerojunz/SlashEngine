@@ -337,6 +337,162 @@ TEST_CASE("GPUs draw skies and fog as the software device does") {
     }
 }
 
+TEST_CASE("a radiance cube has Godot's levels and every API's faces") {
+    // Down to faces 4 texels across.
+    CHECK(detail::radiance_levels(32) == 4);
+    CHECK(detail::radiance_levels(256) == 7);
+    CHECK(detail::radiance_levels(2048) == 10);
+    // Each face's middle looks along its axis; +y's first row is toward -z and +z's first texel
+    // up and to -x, as every API lays cube faces out.
+    CHECK(detail::cube_direction(0, 0.0F, 0.0F) == Float3{1.0F, 0.0F, 0.0F});
+    CHECK(detail::cube_direction(2, 0.0F, -1.0F) == Float3{0.0F, 1.0F, -1.0F});
+    CHECK(detail::cube_direction(4, -1.0F, -1.0F) == Float3{-1.0F, 1.0F, 1.0F});
+    CHECK(detail::cube_direction(5, -1.0F, -1.0F) == Float3{1.0F, 1.0F, -1.0F});
+}
+
+TEST_CASE("a radiance is the sky drawn into a cube, blurred more each level") {
+    Scene3D scene;
+    scene.sky.panorama.panorama = render::TextureId{1}; // its texels are the function's below
+    scene.radiance = {.kind = SkyKind::Panorama, .size = 32, .reflections = true};
+    // Red to the east (+X) and blue to the west, as the two-texel panorama above.
+    const detail::CubeImage cube =
+        detail::make_radiance(scene, [](const std::array<float, 2>& coords) {
+            return coords[0] < 0.5F ? detail::Float4{1.0F, 0.0F, 0.0F, 1.0F}
+                                    : detail::Float4{0.0F, 0.0F, 1.0F, 1.0F};
+        });
+    REQUIRE(cube.levels.size() == 4);
+    // The first level is sharp.
+    CHECK(cube.sample({1.0F, 0.0F, 0.0F}, 0.0F) == detail::Float4{1.0F, 0.0F, 0.0F, 1.0F});
+    CHECK(cube.sample({-1.0F, 0.0F, 0.0F}, 0.0F) == detail::Float4{0.0F, 0.0F, 1.0F, 1.0F});
+    // Each next one blurs the west further into the east, and overhead, at the last, both mix.
+    float west = 0.0F;
+    for (std::uint32_t level = 1; level < 4; ++level) {
+        CAPTURE(level);
+        const float blue = cube.sample({1.0F, 0.0F, 0.0F}, static_cast<float>(level))[2];
+        CHECK(blue >= west);
+        west = blue;
+    }
+    CHECK(west > 0.0F);
+    const detail::Float4 up = cube.sample({0.0F, 1.0F, 0.0F}, 3.0F);
+    CHECK(up[0] > 0.3F);
+    CHECK(up[2] > 0.3F);
+}
+
+TEST_CASE("every device lights meshes with the sky's radiance") {
+    const render::Material3D lit{.albedo = {0.8F, 0.6F, 0.4F, 1.0F}, .roughness = 1.0F};
+    for (auto& device : slash::test::drawing_devices()) {
+        CAPTURE(render::backend_name(device->backend()));
+        // A sky of one color lights a rough surface as an ambient light of that color does.
+        Scene3D ambient = facing();
+        ambient.ambient = {0.3F, 0.5F, 0.7F};
+        const Image expected = draw(*device, ambient, &lit);
+        Scene3D sky = facing();
+        sky.sky.color = {0.3F, 0.5F, 0.7F};
+        sky.radiance = {.kind = SkyKind::Color, .size = 32, .ambient = true};
+        const Image got = draw(*device, sky, &lit);
+        for (std::size_t i = 0; i < 3; ++i) {
+            CAPTURE(i);
+            CHECK(std::abs(pixel(got, 8, 8).at(i) - pixel(expected, 8, 8).at(i)) <= 2);
+        }
+        // Half of it, mixed with a black ambient light, is dimmer.
+        sky.radiance.ambient_mix = 0.5F;
+        const int half = pixel(draw(*device, sky, &lit), 8, 8)[2];
+        CHECK(half > 0);
+        CHECK(half < pixel(got, 8, 8)[2] - 20);
+        // Neither ambient light nor reflections: the radiance lights nothing.
+        sky.radiance.ambient = false;
+        CHECK(pixel(draw(*device, sky, &lit), 8, 8) == std::array<int, 4>{0, 0, 0, 255});
+    }
+}
+
+TEST_CASE("every device reflects the sky's radiance in smooth metal") {
+    const render::Material3D mirror{.albedo = {1, 1, 1, 1}, .metallic = 1.0F, .roughness = 0.0F};
+    for (auto& device : slash::test::drawing_devices()) {
+        CAPTURE(render::backend_name(device->backend()));
+        auto panorama =
+            device->create_texture({.width = 2, .height = 1, .filter = render::Filter::Nearest},
+                                   std::vector<std::uint8_t>{255, 0, 0, 255, 0, 0, 255, 255});
+        REQUIRE(panorama.ok());
+        // The mirror faces the camera, so it reflects what is behind it, toward +Z: the sky turned
+        // so that +Z is its east, red, then its west, blue. Its ambient light is the sky's too,
+        // since Godot occludes reflections where there is no ambient light.
+        Scene3D scene = facing();
+        scene.sky.panorama.panorama = panorama.value();
+        scene.sky.orientation = {0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1};
+        scene.radiance = {
+            .kind = SkyKind::Panorama, .size = 32, .ambient = true, .reflections = true};
+        const std::array<int, 4> east = pixel(draw(*device, scene, &mirror), 8, 8);
+        CHECK(east[0] >= 250);
+        CHECK(east[2] <= 5);
+        scene.sky.orientation = {0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 0, 1};
+        const std::array<int, 4> west = pixel(draw(*device, scene, &mirror), 8, 8);
+        CHECK(west[0] <= 5);
+        CHECK(west[2] >= 250);
+        // The roughest metal reflects the blurriest level, so both colors.
+        render::Material3D rough = mirror;
+        rough.roughness = 1.0F;
+        const std::array<int, 4> blurred = pixel(draw(*device, scene, &rough), 8, 8);
+        CHECK(blurred[0] > 20);
+        CHECK(blurred[2] > blurred[0]);
+        device->destroy_texture(panorama.value());
+    }
+}
+
+TEST_CASE("GPUs light meshes with radiance as the software device does") {
+    const auto texels = [] {
+        std::vector<std::uint8_t> out;
+        for (int y = 0; y < 8; ++y) {
+            for (int x = 0; x < 16; ++x) {
+                for (const int value : {x * 16, y * 32, 255 - (x * 16), 255}) {
+                    out.push_back(static_cast<std::uint8_t>(value));
+                }
+            }
+        }
+        return out;
+    }();
+    for (const SkyKind kind : {SkyKind::Procedural, SkyKind::Physical, SkyKind::Panorama}) {
+        CAPTURE(static_cast<int>(kind));
+        const auto scene_for = [&](render::TextureId texture) {
+            Scene3D scene;
+            scene.camera =
+                render::look_at({0.4F, 0.6F, 1.2F}, {0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F});
+            scene.projection = render::perspective(70.0F, 1.0F, 0.05F, 50.0F);
+            scene.ambient = {0.1F, 0.1F, 0.1F};
+            scene.sky = {
+                .kind = kind,
+                .procedural = {.sky_cover = texture},
+                .physical = {.energy_multiplier = 4.0F, .night_sky = texture},
+                .panorama = {.panorama = texture},
+                .energy = 1.2F,
+                .lights = {
+                    {.direction = {0.3F, 0.5F, 0.8F}, .energy = 1.0F, .angular_distance = 5.0F}}};
+            scene.radiance = {.kind = kind,
+                              .size = 64,
+                              .ambient = true,
+                              .ambient_mix = 0.8F,
+                              .reflections = true};
+            return scene;
+        };
+        auto software = render::create_software_device();
+        auto made = software->create_texture({.width = 16, .height = 8}, texels);
+        REQUIRE(made.ok());
+        for (const float roughness : {0.1F, 0.5F, 0.9F}) {
+            CAPTURE(roughness);
+            const render::Material3D material{
+                .albedo = {0.7F, 0.7F, 0.7F, 1.0F}, .metallic = 0.6F, .roughness = roughness};
+            const Image expected = draw(*software, scene_for(made.value()), &material, 48);
+            for (auto& device : slash::test::hardware_devices()) {
+                CAPTURE(render::backend_name(device->backend()));
+                auto texture = device->create_texture({.width = 16, .height = 8}, texels);
+                REQUIRE(texture.ok());
+                const Image image = draw(*device, scene_for(texture.value()), &material, 48);
+                CHECK(difference(image, expected) <= 3);
+                device->destroy_texture(texture.value());
+            }
+        }
+    }
+}
+
 TEST_CASE("devices check sky and fog settings") {
     for (auto& device : slash::test::drawing_devices()) {
         CAPTURE(render::backend_name(device->backend()));
@@ -360,6 +516,17 @@ TEST_CASE("devices check sky and fog settings") {
         scene.fog.density = 0.01F;
         scene.sky.procedural.sky_cover = render::TextureId{77};
         CHECK(refused(scene).find("77") != std::string::npos);
+        scene.sky.procedural.sky_cover = render::TextureId::None;
+        scene.radiance.kind = static_cast<SkyKind>(9);
+        CHECK(refused(scene).find("radiance kind") != std::string::npos);
+        scene.radiance.kind = SkyKind::Physical;
+        scene.radiance.size = 100;
+        CHECK(refused(scene).find("power of two") != std::string::npos);
+        scene.radiance.size = 16;
+        CHECK(refused(scene).find("not 16") != std::string::npos);
+        scene.radiance.size = 64;
+        scene.sky.physical.night_sky = render::TextureId{78};
+        CHECK(refused(scene).find("78") != std::string::npos);
         device->destroy_texture(target.value());
     }
 }

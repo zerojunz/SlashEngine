@@ -14,6 +14,7 @@
 #include "particles_process_shaders.hpp"
 #include "post_shaders.hpp"
 #include "post_shading.hpp"
+#include "radiance_shaders.hpp"
 #include "shader_code.hpp"
 #include "shadow_shaders.hpp"
 #include "sky_shaders.hpp"
@@ -76,6 +77,8 @@ namespace {
 
 // Textures are 8-bit RGBA, or the compressed formats the GPU samples.
 constexpr WGPUTextureFormat kTextureFormat = WGPUTextureFormat_RGBA8Unorm;
+// The radiance's cubes are RGB10A2, as Godot's.
+constexpr WGPUTextureFormat kRadianceFormat = WGPUTextureFormat_RGB10A2Unorm;
 // Meshes draw over 32-bit float depth, which every WebGPU device has and suits reversed depth.
 constexpr WGPUTextureFormat kDepthFormat = WGPUTextureFormat_Depth32Float;
 // The largest shadow atlas: WebGPU's default maxTextureDimension2D.
@@ -109,7 +112,7 @@ constexpr std::uint64_t kLargestUniforms = std::max<std::uint64_t>(
     {sizeof(Mat4), sizeof(VertexProgramUniforms), sizeof(ProgramUniforms), sizeof(LightsUniforms),
      kComputeUniformBytes, sizeof(MeshInstanceUniforms), sizeof(MeshSurfaceUniforms),
      sizeof(MeshSceneUniforms), sizeof(MeshShadowUniforms), sizeof(MeshShadowPassUniforms),
-     sizeof(PostUniforms)});
+     sizeof(PostUniforms), sizeof(SkyUniforms), sizeof(RadianceUniforms)});
 // The bind groups are SDL's GPU API's, which the HLSL's registers name and the WGSL keeps
 // (cmake/compile_shaders.cmake): a vertex stage's uniforms in group 1, a fragment stage's
 // textures in group 2 (samplers kSamplerBinding after their textures) and its uniforms in group
@@ -225,6 +228,13 @@ WGPUBindGroupLayoutEntry sampler_entry(std::uint32_t binding) {
     return entry;
 }
 
+// A cube texture, as the radiance.
+WGPUBindGroupLayoutEntry cube_entry(std::uint32_t binding) {
+    WGPUBindGroupLayoutEntry entry = texture_entry(binding);
+    entry.texture.viewDimension = WGPUTextureViewDimension_Cube;
+    return entry;
+}
+
 // A shadow atlas, and the comparison sampler it is read through.
 WGPUBindGroupLayoutEntry depth_entry(std::uint32_t binding) {
     WGPUBindGroupLayoutEntry entry = texture_entry(binding);
@@ -316,6 +326,17 @@ public:
         for (const auto& [format, pipeline] : sky_pipelines_) {
             wgpuRenderPipelineRelease(pipeline);
         }
+        for (WGPURenderPipeline pipeline : radiance_pipelines_) {
+            if (pipeline != nullptr) {
+                wgpuRenderPipelineRelease(pipeline);
+            }
+        }
+        for (const CubeTexture& cube : {radiance_.raw, radiance_.filtered, no_radiance_}) {
+            destroy_cube(cube);
+        }
+        if (radiance_sampler_ != nullptr) {
+            wgpuSamplerRelease(radiance_sampler_);
+        }
         release_post_targets();
         release_pending();
         for (const GpuTexture& atlas :
@@ -352,14 +373,27 @@ public:
             destroy_buffer(buffer);
         }
         release_uniform_groups();
-        for (WGPUBindGroupLayout layout :
-             {empty_layout_, vertex_uniforms_layout_, sprite_textures_layout_,
-              material_textures_layout_, fragment_uniforms_layout_, process_inputs_layout_,
-              process_outputs_layout_, draw_inputs_layout_, draw_outputs_layout_,
-              emit_outputs_layout_, compute_uniforms_layout_, mesh_vertex_layout_,
-              mesh_textures_layout_, mesh_fragment_layout_, shadow_vertex_layout_,
-              shadow_fragment_layout_, post_textures_layout_, post_uniforms_layout_,
-              sky_uniforms_layout_}) {
+        for (WGPUBindGroupLayout layout : {empty_layout_,
+                                           vertex_uniforms_layout_,
+                                           sprite_textures_layout_,
+                                           material_textures_layout_,
+                                           fragment_uniforms_layout_,
+                                           process_inputs_layout_,
+                                           process_outputs_layout_,
+                                           draw_inputs_layout_,
+                                           draw_outputs_layout_,
+                                           emit_outputs_layout_,
+                                           compute_uniforms_layout_,
+                                           mesh_vertex_layout_,
+                                           mesh_textures_layout_,
+                                           mesh_fragment_layout_,
+                                           shadow_vertex_layout_,
+                                           shadow_fragment_layout_,
+                                           post_textures_layout_,
+                                           post_uniforms_layout_,
+                                           sky_uniforms_layout_,
+                                           cube_texture_layout_,
+                                           filter_uniforms_layout_}) {
             if (layout != nullptr) {
                 wgpuBindGroupLayoutRelease(layout);
             }
@@ -486,6 +520,9 @@ public:
         const TextureDesc& desc = it->second.desc;
         if (auto checked = check_pixels(desc, texels, false); !checked) {
             return checked;
+        }
+        if (radiance_.key && radiance_.key->texture == texture) {
+            radiance_.key.reset(); // drawn from the old texels
         }
         // Queue writes run ahead of the command buffers sent after them, so every draw of the
         // frame being built sees the new texels.
@@ -928,6 +965,7 @@ public:
         }
         make_depth_target(frame_width_, frame_height_);
         prepare_shadows(*frame_.scene);
+        prepare_radiance(*frame_.scene);
         MeshBatch batch{
             .vertices = it->second.vertices,
             .indices = it->second.indices,
@@ -1013,6 +1051,8 @@ public:
         }
         const std::vector<PostDraw> post_draws =
             post ? post_draws_for(frame_.scene->post) : std::vector<PostDraw>{};
+        const RadianceOffsets radiance_offsets =
+            radiance_draws_ ? add_radiance_uniforms(*frame_.scene) : RadianceOffsets{};
         upload_frame();
 
         WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
@@ -1021,6 +1061,9 @@ public:
         // The sky and meshes draw first, in a pass of their own, and the 2D draws go over them.
         if (!mesh_draws_.empty()) {
             encode_shadows(encoder, mesh_uniforms);
+        }
+        if (radiance_draws_) {
+            encode_radiance(encoder, *frame_.scene, radiance_offsets);
         }
         if (!mesh_draws_.empty() || sky) {
             encode_meshes(encoder, mesh_uniforms, sky_uniforms_at);
@@ -1197,11 +1240,29 @@ private:
         std::uint32_t height = 0;
     };
 
-    // A mesh draw's textures and samplers, in mesh.hlsl's order, then the shadow atlases.
-    using MeshBindings = std::array<std::pair<WGPUTextureView, WGPUSampler>, kMeshTextures + 2>;
-    // They share texture_groups_ with batches: a mesh's key leaves the slots after them empty,
+    // A mesh draw's textures and samplers, in mesh.hlsl's order, then the shadow atlases and the
+    // radiance.
+    using MeshBindings = std::array<std::pair<WGPUTextureView, WGPUSampler>, kMeshTextures + 3>;
+    // They share texture_groups_ with batches: a mesh's key binds a cube texture in its last slot,
     // which a material batch's never does.
-    static_assert(kMeshTextures + 2 < kMaterialSamplers);
+    static_assert(kMeshTextures + 3 == kMaterialSamplers);
+
+    // A cube texture of the radiance's format: a view of every level, which meshes and the
+    // filter sample, a view of each level alone, which each next level's mipmaps are drawn from,
+    // and a view of each face of each level to draw into (level * kCubeFaces + face).
+    struct CubeTexture {
+        WGPUTexture texture = nullptr;
+        WGPUTextureView view = nullptr;
+        std::vector<WGPUTextureView> levels;
+        std::vector<WGPUTextureView> faces;
+    };
+    // Where the radiance passes' uniforms are: the sky's for each face, then for each level and
+    // face, the mipmap's and the filter's.
+    struct RadianceOffsets {
+        std::array<std::uint32_t, kCubeFaces> faces{};
+        std::vector<std::uint32_t> mipmaps;
+        std::vector<std::uint32_t> filters;
+    };
 
     // A mesh's buffers; one without indices is given them in order.
     struct Mesh {
@@ -1529,14 +1590,17 @@ private:
             uniform_entry(0, WGPUShaderStage_Vertex, sizeof(MeshCameraUniforms)),
             uniform_entry(1, WGPUShaderStage_Vertex, sizeof(MeshInstanceUniforms))};
         mesh_vertex_layout_ = layout(mesh_vertex);
-        std::array<WGPUBindGroupLayoutEntry, (kMeshTextures + 2) * 2> mesh_textures{};
+        std::array<WGPUBindGroupLayoutEntry, (kMeshTextures + 3) * 2> mesh_textures{};
         for (std::uint32_t slot = 0; slot < kMeshTextures + 2; ++slot) {
             const bool atlas = slot >= kMeshTextures;
             mesh_textures.at(slot) = atlas ? depth_entry(slot) : texture_entry(slot);
-            mesh_textures.at(kMeshTextures + 2 + slot) =
+            mesh_textures.at(kMeshTextures + 3 + slot) =
                 atlas ? comparison_entry(kSamplerBinding + slot)
                       : sampler_entry(kSamplerBinding + slot);
         }
+        mesh_textures.at(kMeshTextures + 2) = cube_entry(kMeshTextures + 2);
+        mesh_textures.at(((kMeshTextures + 3) * 2) - 1) =
+            sampler_entry(kSamplerBinding + kMeshTextures + 2);
         mesh_textures_layout_ = layout(mesh_textures);
         const std::array mesh_fragment{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(MeshSurfaceUniforms)),
@@ -1562,6 +1626,11 @@ private:
         const std::array sky_entries{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(SkyUniforms))};
         sky_uniforms_layout_ = layout(sky_entries);
+        const std::array cube{cube_entry(0), sampler_entry(kSamplerBinding)};
+        cube_texture_layout_ = layout(cube);
+        const std::array filter{
+            uniform_entry(0, WGPUShaderStage_Fragment, sizeof(RadianceUniforms))};
+        filter_uniforms_layout_ = layout(filter);
 
         const auto pipeline_layout = [&](std::initializer_list<WGPUBindGroupLayout> groups) {
             const std::vector<WGPUBindGroupLayout> list(groups);
@@ -1590,6 +1659,8 @@ private:
             {empty_layout_, empty_layout_, post_textures_layout_, post_uniforms_layout_});
         pipeline_layouts_.at(kSkyLayout) = pipeline_layout(
             {empty_layout_, empty_layout_, sprite_textures_layout_, sky_uniforms_layout_});
+        pipeline_layouts_.at(kRadianceLayout) = pipeline_layout(
+            {empty_layout_, empty_layout_, cube_texture_layout_, filter_uniforms_layout_});
     }
 
     WGPUShaderModule create_module(std::string_view wgsl) {
@@ -1805,13 +1876,16 @@ private:
         post_uniforms_group_ = bind_group(post_uniforms_layout_, post);
         const std::array sky{buffer_entry(0, uniform_buffer_, sizeof(SkyUniforms))};
         sky_uniforms_group_ = bind_group(sky_uniforms_layout_, sky);
+        const std::array filter{buffer_entry(0, uniform_buffer_, sizeof(RadianceUniforms))};
+        filter_uniforms_group_ = bind_group(filter_uniforms_layout_, filter);
     }
 
     void release_uniform_groups() {
         for (WGPUBindGroup* group :
              {&vertex_uniforms_group_, &fragment_uniforms_group_, &compute_uniforms_group_,
               &mesh_vertex_group_, &mesh_fragment_group_, &shadow_vertex_group_,
-              &shadow_fragment_group_, &post_uniforms_group_, &sky_uniforms_group_}) {
+              &shadow_fragment_group_, &post_uniforms_group_, &sky_uniforms_group_,
+              &filter_uniforms_group_}) {
             if (*group != nullptr) {
                 wgpuBindGroupRelease(*group);
                 *group = nullptr;
@@ -2029,6 +2103,216 @@ private:
                 .filter = Filter::Linear};
     }
 
+    // A cube texture of the radiance's format, size texels across with levels levels.
+    CubeTexture make_cube(std::uint32_t size, std::uint32_t levels) {
+        WGPUTextureDescriptor info = WGPU_TEXTURE_DESCRIPTOR_INIT;
+        info.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
+        info.size = {.width = size, .height = size, .depthOrArrayLayers = kCubeFaces};
+        info.format = kRadianceFormat;
+        info.mipLevelCount = levels;
+        CubeTexture cube;
+        cube.texture = wgpuDeviceCreateTexture(device_, &info);
+        const auto view = [&](WGPUTextureViewDimension dimension, std::uint32_t level,
+                              std::uint32_t level_count, std::uint32_t layer,
+                              std::uint32_t layer_count) {
+            WGPUTextureViewDescriptor descriptor = WGPU_TEXTURE_VIEW_DESCRIPTOR_INIT;
+            descriptor.dimension = dimension;
+            descriptor.baseMipLevel = level;
+            descriptor.mipLevelCount = level_count;
+            descriptor.baseArrayLayer = layer;
+            descriptor.arrayLayerCount = layer_count;
+            return wgpuTextureCreateView(cube.texture, &descriptor);
+        };
+        cube.view = view(WGPUTextureViewDimension_Cube, 0, levels, 0, kCubeFaces);
+        for (std::uint32_t level = 0; level < levels; ++level) {
+            cube.levels.push_back(view(WGPUTextureViewDimension_Cube, level, 1, 0, kCubeFaces));
+            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+                cube.faces.push_back(view(WGPUTextureViewDimension_2D, level, 1, face, 1));
+            }
+        }
+        return cube;
+    }
+
+    void destroy_cube(const CubeTexture& cube) {
+        if (cube.texture == nullptr) {
+            return;
+        }
+        forget_texture_groups(cube.view);
+        wgpuTextureViewRelease(cube.view);
+        for (WGPUTextureView view : cube.levels) {
+            wgpuTextureViewRelease(view);
+        }
+        for (WGPUTextureView view : cube.faces) {
+            wgpuTextureViewRelease(view);
+        }
+        wgpuTextureDestroy(cube.texture);
+        wgpuTextureRelease(cube.texture);
+    }
+
+    // The pipelines that draw into the radiance's cubes: one triangle over the target, the sky's
+    // (0) or the filter's (1), made the first time a frame needs them.
+    WGPURenderPipeline radiance_pipeline(std::size_t index) {
+        WGPURenderPipeline& made = radiance_pipelines_.at(index);
+        if (made != nullptr) {
+            return made;
+        }
+        const bool sky = index == 0;
+        WGPUColorTargetState color = WGPU_COLOR_TARGET_STATE_INIT;
+        color.format = kRadianceFormat;
+        WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
+        fragment.module = sky ? module(kSkyFragmentModule, shaders::kSkyFragmentWgsl)
+                              : module(kRadianceFragmentModule, shaders::kRadianceFragmentWgsl);
+        fragment.entryPoint = text_view("fs_main");
+        fragment.targetCount = 1;
+        fragment.targets = &color;
+        WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
+        info.layout = pipeline_layouts_.at(sky ? kSkyLayout : kRadianceLayout);
+        info.vertex.module = sky ? module(kSkyVertexModule, shaders::kSkyVertexWgsl)
+                                 : module(kRadianceVertexModule, shaders::kRadianceVertexWgsl);
+        info.vertex.entryPoint = text_view("vs_main");
+        info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        info.primitive.cullMode = WGPUCullMode_None;
+        info.fragment = &fragment;
+        made = wgpuDeviceCreateRenderPipeline(device_, &info);
+        return made;
+    }
+
+    // What the frame's meshes take the radiance from, made at its first mesh draw: the sampler
+    // and a black cube for meshes with none, and for a scene with radiance, its cubes, drawn
+    // again at end_frame when what they are drawn from changed.
+    void prepare_radiance(const Scene3D& scene) {
+        if (radiance_prepared_) {
+            return;
+        }
+        radiance_prepared_ = true;
+        if (radiance_sampler_ == nullptr) {
+            WGPUSamplerDescriptor info = WGPU_SAMPLER_DESCRIPTOR_INIT;
+            info.minFilter = WGPUFilterMode_Linear;
+            info.magFilter = WGPUFilterMode_Linear;
+            info.mipmapFilter = WGPUMipmapFilterMode_Linear;
+            info.addressModeU = WGPUAddressMode_ClampToEdge;
+            info.addressModeV = WGPUAddressMode_ClampToEdge;
+            info.addressModeW = WGPUAddressMode_ClampToEdge;
+            radiance_sampler_ = wgpuDeviceCreateSampler(device_, &info);
+            // WebGPU clears new textures, so this one is never read uninitialized.
+            no_radiance_ = make_cube(1, 1);
+        }
+        if (!radiance_used(scene)) {
+            return;
+        }
+        const std::uint32_t size = scene.radiance.size;
+        if (radiance_.size != size) {
+            for (CubeTexture* cube : {&radiance_.raw, &radiance_.filtered}) {
+                if (cube->texture != nullptr) {
+                    forget_texture_groups(cube->view);
+                    pending_cubes_.push_back(std::exchange(*cube, {}));
+                }
+            }
+            radiance_.raw = make_cube(size, radiance_levels(size));
+            radiance_.filtered = make_cube(size, radiance_levels(size));
+            radiance_.size = size;
+            radiance_.key.reset();
+        }
+        const RadianceKey key = radiance_key(scene);
+        radiance_draws_ = !radiance_.key || !(*radiance_.key == key);
+        radiance_.key = key;
+    }
+
+    // Adds the radiance passes' uniforms. The sky's matrix goes in turned, as transposed says.
+    RadianceOffsets add_radiance_uniforms(const Scene3D& scene) {
+        RadianceOffsets at;
+        const std::uint32_t size = radiance_.size;
+        const std::uint32_t levels = radiance_levels(size);
+        for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+            SkyUniforms sky = radiance_face_uniforms(scene, face);
+            sky.orientation = transposed(sky.orientation);
+            at.faces.at(face) = uniforms_.add(sky);
+        }
+        for (std::uint32_t level = 0; level < levels; ++level) {
+            auto mipmap = std::make_unique<RadianceUniforms>();
+            mipmap->params[1] = 1.0F / static_cast<float>(std::max(size >> level, 1U));
+            const auto filter =
+                std::make_unique<RadianceUniforms>(radiance_uniforms(size, levels, level));
+            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+                mipmap->params[0] = static_cast<float>(face);
+                filter->params[0] = static_cast<float>(face);
+                at.mipmaps.push_back(uniforms_.add(*mipmap));
+                at.filters.push_back(uniforms_.add(*filter));
+            }
+        }
+        return at;
+    }
+
+    // Records a pass drawing one triangle into a face of a cube with pipeline, its textures
+    // bound by textures and its uniforms at offset in uniforms.
+    static void encode_cube_pass(WGPUCommandEncoder encoder, WGPUTextureView target,
+                                 WGPURenderPipeline pipeline, WGPUBindGroup textures,
+                                 WGPUBindGroup uniforms, std::uint32_t offset) {
+        WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+        color.view = target;
+        color.loadOp = WGPULoadOp_Clear;
+        color.storeOp = WGPUStoreOp_Store;
+        color.clearValue = {.r = 0.0, .g = 0.0, .b = 0.0, .a = 1.0};
+        WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+        descriptor.colorAttachmentCount = 1;
+        descriptor.colorAttachments = &color;
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+        wgpuRenderPassEncoderSetPipeline(pass, pipeline);
+        wgpuRenderPassEncoderSetBindGroup(pass, 2, textures, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(pass, 3, uniforms, 1, &offset);
+        wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+    }
+
+    // A texture and its sampler bound for a pass, as group 2 of layout.
+    WGPUBindGroup pass_textures(WGPUBindGroupLayout layout, WGPUTextureView view,
+                                WGPUSampler sampler) {
+        std::array<WGPUBindGroupEntry, 2> entries{};
+        entries[0] = WGPU_BIND_GROUP_ENTRY_INIT;
+        entries[0].binding = 0;
+        entries[0].textureView = view;
+        entries[1] = WGPU_BIND_GROUP_ENTRY_INIT;
+        entries[1].binding = kSamplerBinding;
+        entries[1].sampler = sampler;
+        return bind_group(layout, entries);
+    }
+
+    // Records the scene's radiance, as Godot's Compatibility renderer draws its radiance map: the
+    // sky into each face of the raw cube, its mipmaps, each texel the mean of the four under it
+    // (WebGPU makes none itself), then each level of each face filtered from it.
+    void encode_radiance(WGPUCommandEncoder encoder, const Scene3D& scene,
+                         const RadianceOffsets& at) {
+        const std::uint32_t levels = radiance_levels(radiance_.size);
+        const auto [view, sampler] = binding(radiance_texture(scene), true);
+        WGPUBindGroup sky = pass_textures(sprite_textures_layout_, view, sampler);
+        for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+            encode_cube_pass(encoder, radiance_.raw.faces.at(face), radiance_pipeline(0), sky,
+                             sky_uniforms_group_, at.faces.at(face));
+        }
+        wgpuBindGroupRelease(sky);
+        for (std::uint32_t level = 1; level < levels; ++level) {
+            WGPUBindGroup source = pass_textures(
+                cube_texture_layout_, radiance_.raw.levels.at(level - 1), radiance_sampler_);
+            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+                const std::size_t i = (std::size_t{level} * kCubeFaces) + face;
+                encode_cube_pass(encoder, radiance_.raw.faces.at(i), radiance_pipeline(1), source,
+                                 filter_uniforms_group_, at.mipmaps.at(i));
+            }
+            wgpuBindGroupRelease(source);
+        }
+        WGPUBindGroup source =
+            pass_textures(cube_texture_layout_, radiance_.raw.view, radiance_sampler_);
+        for (std::uint32_t level = 0; level < levels; ++level) {
+            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+                const std::size_t i = (std::size_t{level} * kCubeFaces) + face;
+                encode_cube_pass(encoder, radiance_.filtered.faces.at(i), radiance_pipeline(1),
+                                 source, filter_uniforms_group_, at.filters.at(i));
+            }
+        }
+        wgpuBindGroupRelease(source);
+    }
+
     // The shadow passes' pipeline for a cull mode: shaders/shadow.hlsl, depth only.
     WGPURenderPipeline shadow_pipeline(CullMode cull) {
         WGPURenderPipeline& made = shadow_pipelines_.at(static_cast<std::size_t>(cull));
@@ -2228,13 +2512,13 @@ private:
         if (const auto it = texture_groups_.find(key); it != texture_groups_.end()) {
             return it->second;
         }
-        std::array<WGPUBindGroupEntry, (kMeshTextures + 2) * 2> entries{};
-        for (std::uint32_t slot = 0; slot < kMeshTextures + 2; ++slot) {
+        std::array<WGPUBindGroupEntry, (kMeshTextures + 3) * 2> entries{};
+        for (std::uint32_t slot = 0; slot < kMeshTextures + 3; ++slot) {
             WGPUBindGroupEntry& texture = entries.at(slot);
             texture = WGPU_BIND_GROUP_ENTRY_INIT;
             texture.binding = slot;
             texture.textureView = bindings.at(slot).first;
-            WGPUBindGroupEntry& sampler = entries.at(kMeshTextures + 2 + slot);
+            WGPUBindGroupEntry& sampler = entries.at(kMeshTextures + 3 + slot);
             sampler = WGPU_BIND_GROUP_ENTRY_INIT;
             sampler.binding = kSamplerBinding + slot;
             sampler.sampler = bindings.at(slot).second;
@@ -2349,6 +2633,9 @@ private:
                 bindings.at(kMeshTextures + atlas) = {
                     drawn ? shadow_atlases_.at(atlas).gpu.view : no_shadows_.view, shadow_sampler_};
             }
+            bindings.at(kMeshTextures + 2) = {radiance_used(*frame_.scene) ? radiance_.filtered.view
+                                                                           : no_radiance_.view,
+                                              radiance_sampler_};
             wgpuRenderPassEncoderSetBindGroup(pass, 2, mesh_texture_group(bindings), 0, nullptr);
             const std::array<std::uint32_t, 3> fragment_offsets{at.draws[i].second, at.scene,
                                                                 at.shadows};
@@ -2678,6 +2965,8 @@ private:
         mesh_draws_.clear();
         mesh_batches_.clear();
         shadow_plan_.reset();
+        radiance_prepared_ = false;
+        radiance_draws_ = false;
         particle_vertices_ = 0;
     }
 
@@ -2694,6 +2983,8 @@ private:
         mesh_draws_.clear();
         mesh_batches_.clear();
         shadow_plan_.reset();
+        radiance_prepared_ = false;
+        radiance_draws_ = false;
         particle_vertices_ = 0;
         clear_particle_jobs();
         release_pending();
@@ -2704,6 +2995,10 @@ private:
             destroy_gpu_texture(texture);
         }
         pending_textures_.clear();
+        for (const CubeTexture& cube : pending_cubes_) {
+            destroy_cube(cube);
+        }
+        pending_cubes_.clear();
         for (WGPURenderPipeline pipeline : pending_pipelines_) {
             wgpuRenderPipelineRelease(pipeline);
         }
@@ -2727,6 +3022,8 @@ private:
     static constexpr std::size_t kPostFragmentModule = 12;
     static constexpr std::size_t kSkyVertexModule = 13;
     static constexpr std::size_t kSkyFragmentModule = 14;
+    static constexpr std::size_t kRadianceVertexModule = 15;
+    static constexpr std::size_t kRadianceFragmentModule = 16;
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
@@ -2736,6 +3033,7 @@ private:
     static constexpr std::size_t kShadowLayout = 6;
     static constexpr std::size_t kPostLayout = 7;
     static constexpr std::size_t kSkyLayout = 8;
+    static constexpr std::size_t kRadianceLayout = 9;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -2748,7 +3046,7 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 3> sampled_{true, false, false};
-    std::array<WGPUShaderModule, 15> modules_{};
+    std::array<WGPUShaderModule, 17> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -2772,7 +3070,9 @@ private:
     WGPUBindGroupLayout post_textures_layout_ = nullptr;
     WGPUBindGroupLayout post_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout sky_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, 9> pipeline_layouts_{};
+    WGPUBindGroupLayout cube_texture_layout_ = nullptr;
+    WGPUBindGroupLayout filter_uniforms_layout_ = nullptr;
+    std::array<WGPUPipelineLayout, 10> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -2795,6 +3095,7 @@ private:
     WGPUBindGroup shadow_fragment_group_ = nullptr;
     WGPUBindGroup post_uniforms_group_ = nullptr;
     WGPUBindGroup sky_uniforms_group_ = nullptr;
+    WGPUBindGroup filter_uniforms_group_ = nullptr;
     std::unordered_map<ParticlesId, ParticleSystem> particle_systems_;
     std::uint32_t next_particles_ = 1;
     std::vector<WGPUBuffer> pending_buffers_;
@@ -2822,6 +3123,21 @@ private:
     std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> post_pipelines_;
     std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> sky_pipelines_;
     PostTargets post_targets_;
+    // The radiance meshes are lit by: the raw cube the sky draws into and the one filtered from
+    // it, and what they hold (nullopt to draw them again).
+    struct RadianceCubes {
+        CubeTexture raw;
+        CubeTexture filtered;
+        std::uint32_t size = 0;
+        std::optional<RadianceKey> key;
+    };
+    RadianceCubes radiance_;
+    std::vector<CubeTexture> pending_cubes_;
+    std::array<WGPURenderPipeline, 2> radiance_pipelines_{}; // the sky's, then the filter's
+    WGPUSampler radiance_sampler_ = nullptr;
+    CubeTexture no_radiance_;        // bound when the frame's meshes have none
+    bool radiance_prepared_ = false; // at the frame's first mesh draw
+    bool radiance_draws_ = false;    // whether end_frame draws the radiance again
 
     // The frame being built. A skipped frame draws nothing.
     bool in_frame_ = false;

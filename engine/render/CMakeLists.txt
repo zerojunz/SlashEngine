@@ -95,11 +95,11 @@ find_program(SLASH_TINT NAMES tint)
 set(slash_shader_headers "")
 # Each shader as file:Name, then compute for compute shaders, and 3d for the mesh shader and
 # depth for the shadow pass shader, whose varyings GLSL names apart from the canvas shaders' and
-# whose depth it maps to OpenGL's, and post for the post passes and the sky, which have no
-# varyings. The mesh shader's code is long enough to come in pieces.
+# whose depth it maps to OpenGL's, and post for the post passes, the sky and the radiance filter,
+# which have no varyings. The mesh shader's code is long enough to come in pieces.
 set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d shadow:Shadow:depth post:Post:post
-    sky:Sky:post particles_process:ParticlesProcess:compute particles_emit:ParticlesEmit:compute
-    particles_draw:ParticlesDraw:compute)
+    sky:Sky:post radiance:Radiance:post particles_process:ParticlesProcess:compute
+    particles_emit:ParticlesEmit:compute particles_draw:ParticlesDraw:compute)
 foreach(entry IN LISTS slash_shaders)
     string(REPLACE ":" ";" parts ${entry})
     list(GET parts 0 shader)

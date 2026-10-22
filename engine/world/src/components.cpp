@@ -1559,8 +1559,9 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("energy_multiplier", energy);
 
     registry.add<WorldEnvironment>()
-        .set_doc("The 3D world's background, ambient light, tonemap, glow, fog and adjustments, "
-                 "as Godot's WorldEnvironment. The first one applies; with none, the background "
+        .set_doc("The 3D world's background, ambient and reflected light, tonemap, glow, fog and "
+                 "adjustments, as Godot's WorldEnvironment. The first one applies; with none, the "
+                 "background "
                  "is the clear color, there is no ambient light and colors stay as they are.")
         .describe("background_mode",
                   {.doc = "\"clear_color\" is the project's rendering.clear_color; \"color\" is "
@@ -1574,12 +1575,26 @@ void register_3d_components(ComponentRegistry& registry) {
             {.doc = "Degrees the sky is seen across; 0 for the camera's.", .min = 0, .max = 180})
         .describe("sky_rotation",
                   {.doc = "Turns the sky, in radians about x, y and z, as Transform3D's rotation."})
+        .describe("sky_radiance_size",
+                  {.doc = "Texels across each face of the cube the sky's light is drawn into: "
+                          "32, 64, 128, 256, 512, 1024 or 2048.",
+                   .min = 32,
+                   .max = 2048})
         .describe("ambient_light_source",
-                  {.doc = "Light every lit surface gets: the background's color, none, or "
-                          "ambient_light_color.",
-                   .choices = {"background", "disabled", "color"}})
+                  {.doc = "Light every lit surface gets: the background's (its color, or a sky's "
+                          "light), none, ambient_light_color, or the sky's light.",
+                   .choices = {"background", "disabled", "color", "sky"}})
         .describe("ambient_light_color", color)
+        .describe("ambient_light_sky_contribution",
+                  {.doc = "How much of the sky's light makes the ambient light, over "
+                          "ambient_light_color.",
+                   .min = 0,
+                   .max = 1})
         .describe("ambient_light_energy", energy)
+        .describe("reflected_light_source",
+                  {.doc = "What lit surfaces reflect: the sky if it is the background, nothing, "
+                          "or the sky.",
+                   .choices = {"background", "disabled", "sky"}})
         .describe("tonemap_mode", {.doc = "How lit colors map to the screen's range.",
                                    .choices = {"linear", "reinhard", "filmic", "aces", "agx"}})
         .describe("tonemap_exposure",

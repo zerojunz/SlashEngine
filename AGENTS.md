@@ -742,6 +742,14 @@ uniforms, the checks and the CPU twins (`sky_ray`, `shade_sky`) the software dev
 `tests/test_sky.cpp` holds every device to its pixels. `examples/sky-3d` is a valley under three
 skies.
 
+The sky's light is Godot's sky radiance. `Scene3D::radiance` (`render::Radiance3D`, from
+`WorldEnvironment`'s `ambient_light_source`, `reflected_light_source` and `sky_radiance_size`)
+names the sky material to light with; each device draws it with `sky.hlsl` into an RGB10A2 cube,
+mipmaps it and filters each level with `shaders/radiance.hlsl`'s GGX samples, only when the sky
+changes, and `mesh.hlsl` reads it for ambient light and reflections. Cube faces follow one table
+on every API (`cube_direction`); `make_radiance` in `src/sky.cpp` is the CPU twin the software
+device lights with, and `tests/test_sky.cpp` holds every device to its pixels.
+
 Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V, MSL, GLSL ES and WGSL are committed
 in `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang,
 SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`
