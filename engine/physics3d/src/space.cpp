@@ -33,6 +33,7 @@ using world::AnimatableBody3D;
 using world::Area3D;
 using world::CharacterBody3D;
 using world::CollisionShape3D;
+using world::PhysicalBone3D;
 using world::RigidBody3D;
 using world::StaticBody3D;
 using world::Transform3D;
@@ -150,6 +151,9 @@ std::optional<Kind> kind_of(const entt::registry& registry, entt::entity entity)
     if (registry.all_of<Area3D>(entity)) {
         return Kind::Area;
     }
+    if (registry.all_of<PhysicalBone3D>(entity)) {
+        return Kind::Bone;
+    }
     return std::nullopt;
 }
 
@@ -192,6 +196,10 @@ Fields fields_of(const entt::registry& registry, entt::entity entity, Kind kind)
     case Kind::Area: {
         const auto& area = registry.get<Area3D>(entity);
         return {area.collision_layer, area.collision_mask, 0.0F, 0.0F, {}, {}};
+    }
+    case Kind::Bone: {
+        const auto& bone = registry.get<PhysicalBone3D>(entity);
+        return {bone.collision_layer, bone.collision_mask, bone.friction, bone.bounce, {}, {}};
     }
     }
     return {};
@@ -288,9 +296,27 @@ RigidKey rigid_key_of(const RigidBody3D& rigid) {
             .can_sleep = rigid.can_sleep};
 }
 
+// A physical bone's body as Godot's PhysicalBone3D sets it up: rigid while it simulates,
+// kinematic while it follows its bone and static otherwise, with no inertia of its own.
+RigidKey bone_key_of(const PhysicalBone3D& bone, world::PhysicalBoneMode mode) {
+    JPH::EMotionType motion = JPH::EMotionType::Static;
+    if (mode == world::PhysicalBoneMode::Simulate) {
+        motion = JPH::EMotionType::Dynamic;
+    } else if (mode == world::PhysicalBoneMode::Follow) {
+        motion = JPH::EMotionType::Kinematic;
+    }
+    return {.motion = motion,
+            .mass = bone.mass,
+            .inertia = {},
+            .dofs = JPH::EAllowedDOFs::All,
+            .ccd = false,
+            .can_sleep = bone.can_sleep};
+}
+
 JPH::EMotionType motion_of(Kind kind, const RigidKey& rigid) {
     switch (kind) {
     case Kind::Rigid:
+    case Kind::Bone:
         return rigid.motion;
     case Kind::Character:
     case Kind::Animatable:
@@ -335,10 +361,6 @@ bool integrate(T& value, const std::string& mode, Get get) {
         return false;
     }
     return false; // disabled
-}
-
-float with_own(float total, const std::string& mode, float own) {
-    return mode == "replace" ? own : total + own;
 }
 
 // What an area's query looks in: moving bodies, other areas and, when the project says so,
@@ -391,6 +413,35 @@ private:
 };
 
 } // namespace
+
+float with_own(float total, std::string_view mode, float own) {
+    return mode == "replace" ? own : total + own;
+}
+
+std::optional<OwnForces> own_forces(const entt::registry& registry, entt::entity entity,
+                                    Kind kind) {
+    if (kind == Kind::Rigid) {
+        const auto& rigid = registry.get<RigidBody3D>(entity);
+        return OwnForces{.gravity_scale = rigid.gravity_scale,
+                         .linear_damp_mode = rigid.linear_damp_mode,
+                         .linear_damp = rigid.linear_damp,
+                         .angular_damp_mode = rigid.angular_damp_mode,
+                         .angular_damp = rigid.angular_damp,
+                         .constant_force = rigid.constant_force,
+                         .constant_torque = rigid.constant_torque};
+    }
+    if (kind == Kind::Bone) {
+        const auto& bone = registry.get<PhysicalBone3D>(entity);
+        return OwnForces{.gravity_scale = bone.gravity_scale,
+                         .linear_damp_mode = bone.linear_damp_mode,
+                         .linear_damp = bone.linear_damp,
+                         .angular_damp_mode = bone.angular_damp_mode,
+                         .angular_damp = bone.angular_damp,
+                         .constant_force = {},
+                         .constant_torque = {}};
+    }
+    return std::nullopt;
+}
 
 // ---- Layers
 
@@ -579,7 +630,11 @@ Space::~Space() {
     for (auto& [entity, joint] : joints_) {
         remove_joint(joint);
     }
+    for (auto& [entity, bone] : bone_joints_) {
+        remove_joint(bone.joint);
+    }
     joints_.clear();
+    bone_joints_.clear();
     bodies_.clear();
     system_.reset();
 }
@@ -588,7 +643,12 @@ void Space::reset() {
     for (auto& [entity, joint] : joints_) {
         remove_joint(joint);
     }
+    for (auto& [entity, bone] : bone_joints_) {
+        remove_joint(bone.joint);
+    }
     joints_.clear();
+    bone_joints_.clear();
+    bone_links_.clear();
     exceptions_.clear();
     wheels_.clear();
     vehicles_.clear();
@@ -609,7 +669,8 @@ void Space::set_settings(const Settings& settings) {
     if (gravity_changed && system_ != nullptr) {
         JPH::BodyInterface& interface = system_->GetBodyInterfaceNoLock();
         for (auto& [entity, body] : bodies_) {
-            if (body->kind == Kind::Rigid && !body->id.IsInvalid() && !body->sleeping) {
+            if ((body->kind == Kind::Rigid || body->kind == Kind::Bone) && !body->id.IsInvalid() &&
+                !body->sleeping) {
                 interface.ActivateBody(body->id);
             }
         }
@@ -778,6 +839,13 @@ void Space::create_body(Body& body, const world::Affine3D& global, const world::
             settings.mLinearVelocity = to_jolt(rigid.linear_velocity);
             settings.mAngularVelocity = to_jolt(rigid.angular_velocity);
             awake = motion == JPH::EMotionType::Dynamic && !rigid.sleeping;
+        } else if (body.kind == Kind::Bone) {
+            const auto& bone = registry.get<PhysicalBone3D>(body.entity);
+            mass = bone.mass;
+            settings.mAllowSleeping = body.rigid_key.can_sleep;
+            settings.mLinearVelocity = to_jolt(bone.linear_velocity);
+            settings.mAngularVelocity = to_jolt(bone.angular_velocity);
+            awake = motion == JPH::EMotionType::Dynamic;
         }
         settings.mMassPropertiesOverride = mass_properties(*body.shape, mass, inertia);
     }
@@ -797,7 +865,18 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
                       Kind kind) {
     entt::registry& registry = world.ecs();
     const world::Affine3D global = tree.global(entity);
-    const Fields fields = fields_of(registry, entity, kind);
+    Fields fields = fields_of(registry, entity, kind);
+    auto bone_mode = world::PhysicalBoneMode::Static;
+    if (kind == Kind::Bone) {
+        const auto link = bone_links_.find(entity);
+        bone_mode = link != bone_links_.end() ? link->second.mode : world::PhysicalBoneMode::Static;
+        // Godot's PhysicalBone3D::_stop_physics_simulation: a bone its simulator leaves out is
+        // in no layer and sees none.
+        if (bone_mode == world::PhysicalBoneMode::Off) {
+            fields.layer = 0;
+            fields.mask = 0;
+        }
+    }
     const ShapeKey shape_key = shape_key_of(registry, tree, entity);
     JPH::BodyInterface& interface = system_->GetBodyInterfaceNoLock();
     const JPH::BodyLockInterfaceNoLock& locks = system_->GetBodyLockInterfaceNoLock();
@@ -815,12 +894,18 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
         made->constant_linear_velocity = fields.constant_linear_velocity;
         made->constant_angular_velocity = fields.constant_angular_velocity;
         made->placed = global;
+        made->bone_mode = bone_mode;
         if (kind == Kind::Rigid) {
             const auto& rigid = registry.get<RigidBody3D>(entity);
             made->rigid_key = rigid_key_of(rigid);
             made->linear_velocity = rigid.linear_velocity;
             made->angular_velocity = rigid.angular_velocity;
             made->sleeping = rigid.sleeping;
+        } else if (kind == Kind::Bone) {
+            const auto& bone = registry.get<PhysicalBone3D>(entity);
+            made->rigid_key = bone_key_of(bone, bone_mode);
+            made->linear_velocity = bone.linear_velocity;
+            made->angular_velocity = bone.angular_velocity;
         }
         found = &bodies_.emplace(entity, std::move(made));
         build_shape(world, **found, shape_key);
@@ -869,9 +954,10 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
     body.constant_linear_velocity = fields.constant_linear_velocity;
     body.constant_angular_velocity = fields.constant_angular_velocity;
 
-    if (kind == Kind::Rigid) {
-        const auto& rigid = registry.get<RigidBody3D>(entity);
-        const RigidKey key = rigid_key_of(rigid);
+    // Rigid bodies and physical bones: how Jolt moves them, and the velocities and sleep an
+    // edit gives them.
+    const auto update_motion = [&](const RigidKey& key, Vec3 linear_velocity, Vec3 angular_velocity,
+                                   bool asleep) {
         if (key != body.rigid_key) {
             if (key.motion != jolt->GetMotionType()) {
                 interface.SetMotionType(body.id, key.motion, JPH::EActivation::DontActivate);
@@ -884,27 +970,33 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
             interface.SetMotionQuality(body.id, key.ccd ? JPH::EMotionQuality::LinearCast
                                                         : JPH::EMotionQuality::Discrete);
             jolt->SetAllowSleeping(key.can_sleep);
-            if (key.motion == JPH::EMotionType::Dynamic && !rigid.sleeping) {
+            if (key.motion == JPH::EMotionType::Dynamic && !asleep) {
                 interface.ActivateBody(body.id);
             }
             body.rigid_key = key;
         }
+        const bool dynamic = jolt->IsDynamic();
+        if (linear_velocity != body.linear_velocity) {
+            if (dynamic) {
+                interface.SetLinearVelocity(body.id, to_jolt(linear_velocity));
+            }
+            body.linear_velocity = linear_velocity;
+        }
+        if (angular_velocity != body.angular_velocity) {
+            if (dynamic) {
+                interface.SetAngularVelocity(body.id, to_jolt(angular_velocity));
+            }
+            body.angular_velocity = angular_velocity;
+        }
+    };
+    if (kind == Kind::Rigid) {
+        const auto& rigid = registry.get<RigidBody3D>(entity);
+        update_motion(rigid_key_of(rigid), rigid.linear_velocity, rigid.angular_velocity,
+                      rigid.sleeping);
         if (jolt->GetUseManifoldReduction() == rigid.contact_monitor) {
             jolt->SetUseManifoldReduction(!rigid.contact_monitor);
         }
         const bool dynamic = jolt->IsDynamic();
-        if (rigid.linear_velocity != body.linear_velocity) {
-            if (dynamic) {
-                interface.SetLinearVelocity(body.id, to_jolt(rigid.linear_velocity));
-            }
-            body.linear_velocity = rigid.linear_velocity;
-        }
-        if (rigid.angular_velocity != body.angular_velocity) {
-            if (dynamic) {
-                interface.SetAngularVelocity(body.id, to_jolt(rigid.angular_velocity));
-            }
-            body.angular_velocity = rigid.angular_velocity;
-        }
         if (rigid.sleeping != body.sleeping) {
             if (dynamic && rigid.sleeping) {
                 interface.DeactivateBody(body.id);
@@ -913,6 +1005,14 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
             }
             body.sleeping = rigid.sleeping;
         }
+    } else if (kind == Kind::Bone) {
+        const auto& bone = registry.get<PhysicalBone3D>(entity);
+        body.bone_mode = bone_mode;
+        update_motion(bone_key_of(bone, bone_mode), bone.linear_velocity, bone.angular_velocity,
+                      false);
+        if (bone_mode != world::PhysicalBoneMode::Follow) {
+            body.target.reset();
+        }
     }
 
     if (global == body.placed) {
@@ -920,7 +1020,8 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
     }
     const Unscaled placed = unscale(global);
     body.placed = global;
-    if (kind == Kind::Animatable && registry.get<AnimatableBody3D>(entity).sync_to_physics) {
+    if ((kind == Kind::Animatable && registry.get<AnimatableBody3D>(entity).sync_to_physics) ||
+        (kind == Kind::Bone && bone_mode == world::PhysicalBoneMode::Follow)) {
         // Moved during the step, so it pushes what is in its way.
         body.target = placed.transform;
         return;
@@ -947,11 +1048,17 @@ void Space::sync(world::World& world) {
 void Space::sync(world::World& world, const world::Tree3D& tree) {
     entt::registry& registry = world.ecs();
     if (system_ == nullptr) {
-        if (!has_any<RigidBody3D, CharacterBody3D, AnimatableBody3D, StaticBody3D, Area3D>(
-                registry)) {
+        if (!has_any<RigidBody3D, CharacterBody3D, AnimatableBody3D, StaticBody3D, Area3D,
+                     PhysicalBone3D>(registry)) {
             return;
         }
         create_system();
+    }
+    bone_links_.clear();
+    if (!registry.view<PhysicalBone3D>().empty()) {
+        for (auto& [entity, link] : world::physical_bone_links(world)) {
+            bone_links_.insert_or_assign(entity, std::move(link));
+        }
     }
     remove_stale(world);
     // New bodies are made in the same order on every machine: by kind, then in each
@@ -968,6 +1075,7 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
     each.template operator()<AnimatableBody3D>(Kind::Animatable);
     each.template operator()<StaticBody3D>(Kind::Static);
     each.template operator()<Area3D>(Kind::Area);
+    each.template operator()<PhysicalBone3D>(Kind::Bone);
     sync_joints(world, tree);
     if (added_ >= kOptimizeAfter) {
         system_->OptimizeBroadPhase();
@@ -1055,7 +1163,8 @@ void Space::pre_step(const world::World& world, float seconds) {
     for (const Impulse& impulse : impulses_) {
         const Body* target = body(impulse.entity);
         const JPH::Body* jolt =
-            target != nullptr && target->kind == Kind::Rigid && !target->id.IsInvalid()
+            target != nullptr && (target->kind == Kind::Rigid || target->kind == Kind::Bone) &&
+                    !target->id.IsInvalid()
                 ? locks.TryGetBody(target->id)
                 : nullptr;
         if (jolt == nullptr || !jolt->IsDynamic()) {
@@ -1097,16 +1206,16 @@ void Space::pre_step(const world::World& world, float seconds) {
             }
             continue;
         }
-        if (body->kind != Kind::Rigid) {
+        const std::optional<OwnForces> own = own_forces(registry, entity, body->kind);
+        if (!own) {
             continue;
         }
         if (!jolt->IsDynamic()) {
             body->contacts.clear();
             continue;
         }
-        const auto& rigid = registry.get<RigidBody3D>(entity);
         if (!jolt->IsActive()) {
-            if (rigid.constant_force == Vec3{} && rigid.constant_torque == Vec3{}) {
+            if (own->constant_force == Vec3{} && own->constant_torque == Vec3{}) {
                 continue; // asleep: it keeps its contacts, as Jolt reports none for it
             }
             interface.ActivateBody(body->id);
@@ -1115,11 +1224,11 @@ void Space::pre_step(const world::World& world, float seconds) {
         // Godot's JoltBody3D::_integrate_forces: damping first, then gravity, then the
         // constant forces.
         const AreaForces forces = this->forces(world, *body, from_jolt(jolt->GetPosition()));
-        body->gravity = forces.gravity * rigid.gravity_scale;
+        body->gravity = forces.gravity * own->gravity_scale;
         body->total_linear_damp =
-            with_own(forces.linear_damp, rigid.linear_damp_mode, rigid.linear_damp);
+            with_own(forces.linear_damp, own->linear_damp_mode, own->linear_damp);
         body->total_angular_damp =
-            with_own(forces.angular_damp, rigid.angular_damp_mode, rigid.angular_damp);
+            with_own(forces.angular_damp, own->angular_damp_mode, own->angular_damp);
         JPH::MotionProperties& motion = *jolt->GetMotionProperties();
         JPH::Vec3 linear = motion.GetLinearVelocity();
         JPH::Vec3 angular = motion.GetAngularVelocity();
@@ -1128,8 +1237,8 @@ void Space::pre_step(const world::World& world, float seconds) {
         linear += to_jolt(body->gravity) * seconds;
         motion.SetLinearVelocityClamped(linear);
         motion.SetAngularVelocityClamped(angular);
-        jolt->AddForce(to_jolt(rigid.constant_force));
-        jolt->AddTorque(to_jolt(rigid.constant_torque));
+        jolt->AddForce(to_jolt(own->constant_force));
+        jolt->AddTorque(to_jolt(own->constant_torque));
     }
 }
 
@@ -1138,7 +1247,8 @@ void Space::read_back(world::World& world, const world::Tree3D& tree) {
     const JPH::BodyLockInterfaceNoLock& locks = system_->GetBodyLockInterfaceNoLock();
     std::vector<Body*> moved;
     for (auto& [entity, body] : bodies_) {
-        if (body->kind != Kind::Rigid || body->id.IsInvalid() || !world.valid(entity)) {
+        if ((body->kind != Kind::Rigid && body->kind != Kind::Bone) || body->id.IsInvalid() ||
+            !world.valid(entity)) {
             continue;
         }
         const JPH::Body* jolt = locks.TryGetBody(body->id);
@@ -1176,16 +1286,22 @@ void Space::read_back(world::World& world, const world::Tree3D& tree) {
             transform.position = local.origin;
             transform.rotation = world::euler(unscale(local).transform);
         }
-        auto& rigid = registry.get<RigidBody3D>(body->entity);
-        rigid.linear_velocity = from_jolt(jolt.GetLinearVelocity());
-        rigid.angular_velocity = from_jolt(jolt.GetAngularVelocity());
-        rigid.sleeping = !jolt.IsActive();
+        body->linear_velocity = from_jolt(jolt.GetLinearVelocity());
+        body->angular_velocity = from_jolt(jolt.GetAngularVelocity());
+        body->sleeping = !jolt.IsActive();
+        if (body->kind == Kind::Rigid) {
+            auto& rigid = registry.get<RigidBody3D>(body->entity);
+            rigid.linear_velocity = body->linear_velocity;
+            rigid.angular_velocity = body->angular_velocity;
+            rigid.sleeping = body->sleeping;
+        } else {
+            auto& bone = registry.get<PhysicalBone3D>(body->entity);
+            bone.linear_velocity = body->linear_velocity;
+            bone.angular_velocity = body->angular_velocity;
+        }
         // The body keeps the transform the components give, rounding and all, so the next sync
         // doesn't take the rounding for a move.
         body->placed = tree.global(body->entity);
-        body->linear_velocity = rigid.linear_velocity;
-        body->angular_velocity = rigid.angular_velocity;
-        body->sleeping = rigid.sleeping;
     }
 }
 

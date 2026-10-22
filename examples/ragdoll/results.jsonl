@@ -1,0 +1,14 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":9,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"tick":30,"ticks":30}}
+{"id":3,"jsonrpc":"2.0","result":{"bones":[{"name":"Elbow","parent":"Shoulder","position":[0,0.8,0],"rotation":[0,0,-0.6],"scale":[1,1,1],"world_position":[0,1.4,0]},{"name":"Hand","parent":"Elbow","position":[0,0.5,0],"rotation":[0,0,0.35],"scale":[1,1,1],"world_position":[0.2823,1.8127,0]}],"clips":[{"animation":"Wave-loop","time":0.5}],"model":"models/arm.gltf"}}
+{"id":4,"jsonrpc":"2.0","result":{"components":{"Transform3D":{"children":[],"position":[0.1411606,1.006334,0.0],"rotation":[0.0,0.0,-0.59999996],"scale":[1.0,1.0,1.0],"top_level":false,"visible":true}},"id":"forearm"}}
+{"id":5,"jsonrpc":"2.0","result":{"changed":{"PhysicalBoneSimulator3D":{"simulated_bones":["Elbow"],"simulating":true}},"id":"ragdoll"}}
+{"id":6,"jsonrpc":"2.0","result":{"tick":120,"ticks":90}}
+{"id":7,"jsonrpc":"2.0","result":{"bones":[{"name":"Elbow","parent":"Shoulder","position":[-0.0005,0.7981,0],"rotation":[0,0,-1.8493],"scale":[1,1,1],"world_position":[-0.0005,1.3981,0]},{"name":"Hand","parent":"Elbow","position":[0,0.5,0],"rotation":[0,0,-0.35],"scale":[1,1,1],"world_position":[0.4802,1.2607,0]}],"clips":[{"animation":"Wave-loop","time":1}],"model":"models/arm.gltf"}}
+{"id":8,"jsonrpc":"2.0","result":{"changed":{"PhysicalBoneSimulator3D":{"simulated_bones":[]}},"id":"ragdoll"}}
+{"id":9,"jsonrpc":"2.0","result":{"tick":240,"ticks":120}}
+{"id":10,"jsonrpc":"2.0","result":{"bones":[{"name":"Shoulder","parent":"Rig","position":[0.148,-0.5522,-0.495],"rotation":[-1.1028,2.0025,1.528],"scale":[1,1,1],"world_position":[0.148,0.0478,-0.495]},{"name":"Elbow","parent":"Shoulder","position":[0,0.8,0],"rotation":[0.5033,0.1217,1.012],"scale":[1,1,1],"world_position":[0.4547,0.0632,0.2437]},{"name":"Hand","parent":"Elbow","position":[0,0.5,0],"rotation":[0,0,-0.35],"scale":[1,1,1],"world_position":[0.9523,0.0443,0.2891]}],"clips":[{"animation":"Wave-loop","time":1}],"model":"models/arm.gltf"}}
+{"id":11,"jsonrpc":"2.0","result":{"colors":[[0.529,0.541,0.616,1],[0.42,0.584,0.882,1],[1,0.953,0.573,1],[0.549,0.722,0.922,1]],"drawn":{"meshes":4},"height":90,"width":160}}
+{"id":12,"jsonrpc":"2.0","result":{"changed":{"PhysicalBoneSimulator3D":{"simulating":false}},"id":"ragdoll"}}
+{"id":13,"jsonrpc":"2.0","result":{"tick":241,"ticks":1}}
+{"id":14,"jsonrpc":"2.0","result":{"bones":[{"name":"Elbow","parent":"Shoulder","position":[0,0.8,0],"rotation":[0,0,0.56],"scale":[1,1,1],"world_position":[0,1.4,0]},{"name":"Hand","parent":"Elbow","position":[0,0.5,0],"rotation":[0,0,-0.3267],"scale":[1,1,1],"world_position":[-0.2656,1.8236,0]}],"clips":[{"animation":"Wave-loop","time":0.0167}],"model":"models/arm.gltf"}}

@@ -601,13 +601,14 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
       light and reflections), as Godot's Compatibility renderer
 - [ ] Volumetric fog; clustered decals
 - [ ] Generated LODs with meshoptimizer and occlusion culling
-- [ ] 3D physics on Jolt: rigid bodies, joints, character controller, vehicles
+- [x] 3D physics on Jolt: rigid bodies, joints, character controller, vehicles
   - [x] Static, animatable, rigid and character bodies, areas with gravity and damping
         overrides, every Godot shape, `move_and_slide` and the queries, as Godot 4.4's Jolt
         module
   - [x] Pin, hinge, slider, cone twist and 6DOF joints, and `VehicleBody3D` with
         `VehicleWheel3D`, as Godot 4.4's
-  - [ ] Ragdolls (physical bones, after skinned meshes)
+  - [x] Ragdolls: `PhysicalBone3D` bodies and joints that follow a model's bones or move them,
+        as Godot 4.6's `PhysicalBoneSimulator3D`
 - [x] Skinned meshes, animation blending, state machines, root motion, two-bone and FABRIK IK
   - [x] glTF skins skinning meshes, model animations played by `AnimationPlayer` (alone or
         `from` a `.anim.json` animation) and `Skeleton3D` bone poses, as Godot's importer,

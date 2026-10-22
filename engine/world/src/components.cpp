@@ -566,6 +566,82 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("rotation", {.doc = "How far it has rolled, in radians."})
         .describe("rpm", {.doc = "How fast it rolls, in turns per minute."})
         .describe("skid_info", {.doc = "1 while it grips, toward 0 as it skids."});
+
+    registry.add<PhysicalBoneSimulator3D>()
+        .set_doc("The ragdoll of the model the entity (or its Transform3D parent) draws, as "
+                 "Godot's PhysicalBoneSimulator3D: its PhysicalBone3D children are bodies for "
+                 "the model's bones. While simulating, physics moves the bones it names and they "
+                 "pose the model; the rest follow the pose as kinematic bodies while it is "
+                 "active.")
+        .describe("active", {.doc = "Whether it poses the model and its bodies follow the pose; "
+                                    "inactive, the bodies that don't simulate collide with "
+                                    "nothing."})
+        .describe("influence", {.doc = "How far simulated bones replace the pose: 0 not at all, "
+                                       "1 fully.",
+                                .min = 0,
+                                .max = 1})
+        .describe("simulating", {.doc = "Physics moves simulated_bones; set false to give the "
+                                        "model back to its animations."})
+        .describe("simulated_bones", {.doc = "Bone names that simulate, with the bones under "
+                                             "them; empty for every bone."})
+        .describe("collision_exceptions",
+                  {.doc = "Bodies its bones never collide with, such as the character's own."});
+
+    registry.add<PhysicalBone3D>()
+        .set_doc("A body for one bone of a model, as Godot's PhysicalBone3D: a Transform3D child "
+                 "of a PhysicalBoneSimulator3D's entity, shaped by CollisionShape3D, at the "
+                 "bone times body_offset. Its joint holds it, at its bone's origin, to the body "
+                 "of the nearest bone above its own that has one. The physics step writes its "
+                 "Transform3D (top_level while it simulates) and velocities.")
+        .describe("bone_name", {.doc = "The model's bone it moves."})
+        .describe("body_offset_position", {.doc = "Where the body is in the bone's space, as "
+                                                  "[x, y, z] meters."})
+        .describe("body_offset_rotation",
+                  {.doc = "How the body is turned in the bone's space, as Transform3D's "
+                          "rotation."})
+        .describe("joint_type",
+                  {.doc = "How it joins the body above: \"pin\" turns every way, \"cone\" "
+                          "swings in a cone about the joint's x axis and twists about it, "
+                          "\"hinge\" turns about its z axis, \"slider\" slides along its x "
+                          "axis, and \"6dof\" limits or springs each axis; \"none\" leaves it "
+                          "free.",
+                   .choices = {"none", "pin", "cone", "hinge", "slider", "6dof"}})
+        .describe("joint_rotation", {.doc = "How the joint's axes are turned in the body's "
+                                            "space, as Transform3D's rotation."})
+        .describe("swing_span", {.doc = "cone: how far it swings, in radians."})
+        .describe("twist_span", {.doc = "cone: how far it twists each way, in radians."})
+        .describe("angular_limit_enabled", {.doc = "hinge: holds it between the limits."})
+        .describe("angular_limit_upper", {.doc = "hinge: in radians."})
+        .describe("angular_limit_lower", {.doc = "hinge: in radians."})
+        .describe("linear_limit_upper", {.doc = "slider: in meters."})
+        .describe("linear_limit_lower", {.doc = "slider: in meters."})
+        .describe("x", {.doc = "6dof: along and about the joint's x axis. Each limit, when "
+                               "enabled, holds the axis between lower and upper (meters or "
+                               "radians; equal limits lock it); each spring pulls it toward "
+                               "its equilibrium point."})
+        .describe("y", {.doc = "6dof: along and about the joint's y axis."})
+        .describe("z", {.doc = "6dof: along and about the joint's z axis."})
+        .describe("collision_layer", layer)
+        .describe("collision_mask", mask)
+        .describe("mass", {.doc = "In kilograms.", .min = 0.001})
+        .describe("friction", friction)
+        .describe("bounce", bounce)
+        .describe("gravity_scale", {.doc = "Multiplies gravity while it simulates; 0 floats."})
+        .describe("linear_damp_mode",
+                  {.doc = "\"combine\" adds linear_damp to the project's; \"replace\" uses "
+                          "only it.",
+                   .choices = {"combine", "replace"}})
+        .describe("linear_damp", {.doc = "Slows movement, per second.", .min = 0})
+        .describe("angular_damp_mode",
+                  {.doc = "\"combine\" adds angular_damp to the project's; \"replace\" uses "
+                          "only it.",
+                   .choices = {"combine", "replace"}})
+        .describe("angular_damp", {.doc = "Slows turning, per second.", .min = 0})
+        .describe("linear_velocity", {.doc = "In meters per second, as [x, y, z], while it "
+                                             "simulates."})
+        .describe("angular_velocity", {.doc = "In radians per second about each axis, while it "
+                                              "simulates."})
+        .describe("can_sleep", {.doc = "Stop simulating it while it rests."});
 }
 
 // The skeleton modifiers: Godot 4.6's TwoBoneIK3D, FABRIK3D, CCDIK3D and JacobianIK3D.
