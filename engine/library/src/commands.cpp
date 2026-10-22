@@ -1777,7 +1777,8 @@ Reply asset_check(Session& session, const json::Value& params) {
                 record = std::move(got).value();
             }
         }
-        if (path.ends_with(".png") || path.ends_with(".bmp")) {
+        if (path.ends_with(".png") || path.ends_with(".bmp") || path.ends_with(".jpg") ||
+            path.ends_with(".jpeg")) {
             if (auto data = session.read_project_file(path); data && data.value()) {
                 if (const auto style = style_problems(session, path, *data.value()); style) {
                     for (const std::string& message : *style) {

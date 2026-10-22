@@ -89,14 +89,15 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json` and
-`.score.json` files too; validating a scene also checks each tile map layer against its tile
-set, each `AnimationPlayer` against its library and that its controls lay out as written.
+`.score.json` files too, and `scene validate` takes glTF models (`.gltf`, `.glb`); validating a
+scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
+library and that its controls lay out as written.
 
 ## Assets and hot reload
 
 `engine/asset` loads files by project path into shared, reference-counted handles
 (`assets.load<json::Value>("data/tuning.json")`); `.json`, `.txt` and `.csv` load out of the box,
-`canvas::add_asset_types` adds textures (`.png`, `.bmp`, `.ktx2`), `.frames.json`, `.material.json`,
+`canvas::add_asset_types` adds textures (`.png`, `.jpg`, `.bmp`, `.ktx2`), `.frames.json`, `.material.json`,
 `.process_material.json` and `.tileset.json` files, `animation::add_asset_types` adds `.anim.json` files,
 `text::add_asset_types` adds fonts (`.ttf`, `.otf`, `.font.json`), `audio::add_asset_types`
 adds sounds (`.wav`, `.ogg`, `.mp3`), `.audio.json` and `.bus_layout.json` files, and games add types
@@ -750,6 +751,16 @@ changes, and `mesh.hlsl` reads it for ambient light and reflections. Cube faces 
 on every API (`cube_direction`); `make_radiance` in `src/sky.cpp` is the CPU twin the software
 device lights with, and `tests/test_sky.cpp` holds every device to its pixels.
 
+Models are glTF 2.0 files that `MeshInstance3D.mesh` names, read with cgltf as Godot's glTF
+importer reads them (`engine/scene3d/src/model.cpp`): `load_model` turns a `.gltf` or `.glb`
+file into a `scene3d::Model` of meshes in Godot's winding, with MikkTSpace tangents where the
+file has none, materials made `StandardMaterial3D`s as Godot's importer makes them, images and
+the parts its scene's nodes place. `scene3d::add_asset_types` loads them as assets, so they
+reload, and `check_model` backs `scene validate`, exports and `model.inspect`; a
+`StandardMaterial3D` on the entity is Godot's `material_override`. JPEG textures decode with
+stb_image's integer decoder (`engine/render/src/jpeg.c`). `tests/gltf.hpp` writes test models
+in code, so none is committed; `examples/models-3d` is a house from a `.gltf` file.
+
 Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V, MSL, GLSL ES and WGSL are committed
 in `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang,
 SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`
@@ -1283,8 +1294,8 @@ CI rejects unformatted code and any clang-tidy finding.
   particles, GPU particles' steps and drawing them), `text` (fonts, shaping, line breaking, carets and selections, and glyph atlases), `ui`
   (controls, containers and themes: layout, draw calls, buttons, focus and text fields), `animation` (`.anim.json` keyframe
   animations and the system that plays them),
-  `scene3d` (3D nodes: primitive meshes, materials, cameras, lights and environments, and drawing
-  them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `library` (the asset library, its
+  `scene3d` (3D nodes: primitive meshes, glTF models, materials, cameras, lights and environments,
+  and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems, drafting cue sheets and arranging them),
   `command` (commands, sessions with undo, JSON-RPC and MCP),

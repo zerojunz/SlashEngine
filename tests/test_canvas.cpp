@@ -146,7 +146,7 @@ TEST_CASE("images round-trip through PNG, and other bytes are refused") {
 
     auto bad = render::decode_image("GIF89a not really");
     REQUIRE_FALSE(bad.ok());
-    CHECK(bad.error().message.find("not a PNG, BMP or KTX2 image") != std::string::npos);
+    CHECK(bad.error().message.find("not a PNG, BMP, JPEG or KTX2 image") != std::string::npos);
     CHECK_FALSE(render::encode_png(render::Image{}).ok());
 }
 
