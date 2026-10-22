@@ -195,8 +195,8 @@ DataFile data_file(std::string_view name) {
     if (scene3d::is_model_path(name)) {
         return DataFile::Model;
     }
-    // A .gltf model's buffers, checked with the model.
-    if (name.ends_with(".bin")) {
+    // A .gltf model's buffers and an .obj model's material libraries, checked with the model.
+    if (name.ends_with(".bin") || name.ends_with(".mtl")) {
         return DataFile::Buffer;
     }
     if (name.ends_with(text::kFontSuffix)) {

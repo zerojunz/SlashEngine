@@ -89,7 +89,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json` and
-`.score.json` files too, and `scene validate` takes glTF models (`.gltf`, `.glb`); validating a
+`.score.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -761,6 +761,14 @@ reload, and `check_model` backs `scene validate`, exports and `model.inspect`; a
 stb_image's integer decoder (`engine/render/src/jpeg.c`). `tests/gltf.hpp` writes test models
 in code, so none is committed; `examples/models-3d` is a house from a `.gltf` file.
 
+OBJ models are read as Godot's OBJ importer reads them as a scene (`src/obj.cpp`, which ports
+`_parse_obj` and `_parse_material_library`, Godot's quirks included: `Ns` sets the metallic and
+only `s off` turns smoothing off). It shares the mesh tools in `src/model_tools.cpp` with the
+glTF reader: winding, merging equal corners as `SurfaceTool::index` does, MikkTSpace and
+Godot's stand-in tangents. Numbers are read with `slash::parse_decimal`, the same in every
+locale. Problems that leave an OBJ model drawing, such as a library it can't read, are
+`check_model` errors, not load failures. `examples/obj-models` is a lamp post from an `.obj` file.
+
 Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V, MSL, GLSL ES and WGSL are committed
 in `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang,
 SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`
@@ -1294,7 +1302,7 @@ CI rejects unformatted code and any clang-tidy finding.
   particles, GPU particles' steps and drawing them), `text` (fonts, shaping, line breaking, carets and selections, and glyph atlases), `ui`
   (controls, containers and themes: layout, draw calls, buttons, focus and text fields), `animation` (`.anim.json` keyframe
   animations and the system that plays them),
-  `scene3d` (3D nodes: primitive meshes, glTF models, materials, cameras, lights and environments,
+  `scene3d` (3D nodes: primitive meshes, glTF and OBJ models, materials, cameras, lights and environments,
   and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems, drafting cue sheets and arranging them),

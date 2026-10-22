@@ -1683,7 +1683,7 @@ TEST_CASE("material.eval returns the colors a material draws, for a file or a sp
     std::filesystem::remove_all(root);
 }
 
-TEST_CASE("model.inspect returns a glTF model's meshes, materials, images and parts") {
+TEST_CASE("model.inspect returns a model's meshes, materials, images and parts") {
     const std::string root = "model_test_project";
     std::filesystem::remove_all(root);
     REQUIRE(slash::platform::create_directories(root + "/models").ok());
@@ -1715,10 +1715,25 @@ TEST_CASE("model.inspect returns a glTF model's meshes, materials, images and pa
     engine.ok("entity.create", R"({"id": "sign", "components": {"Transform3D": {},
         "MeshInstance3D": {"mesh": "models/sign.gltf"}}})");
     CHECK(engine.ok("model.inspect", R"({"id": "sign"})") == expected);
+    // The same sign as an OBJ file, its material in a library beside it.
+    REQUIRE(slash::platform::write_file(root + "/models/sign.mtl",
+                                        "newmtl Paint\nKd 1 1 1\nmap_Kd paint.png\n")
+                .ok());
+    REQUIRE(slash::platform::write_file(root + "/models/sign.obj",
+                                        "mtllib sign.mtl\no Quad\nv -1 -1 0\nv 1 -1 0\n"
+                                        "v 1 1 0\nv -1 1 0\nvt 0 0\nvt 1 0\nvt 1 1\n"
+                                        "vt 0 1\nusemtl Paint\nf 1/1 2/2 3/3 4/4\n")
+                .ok());
+    CHECK(engine.ok("model.inspect", R"({"path": "models/sign.obj"})") == parse(R"({
+        "bounds": {"max": [1, 1, 0], "min": [-1, -1, 0]},
+        "images": [{"path": "models/paint.png"}],
+        "materials": [{"name": "Paint", "standard": {}, "textures": {"albedo": 0}}],
+        "meshes": [{"materials": [0], "name": "Quad", "triangles": 2, "vertices": 4}],
+        "parts": [{"mesh": 0, "node": "Quad"}]})"));
 
     auto reply = engine.fails("model.inspect", "{}", command::code::kInvalidParams);
     CHECK(contains(reply.message, "give id"));
-    reply = engine.fails("model.inspect", R"({"path": "models/sign.obj"})",
+    reply = engine.fails("model.inspect", R"({"path": "models/sign.dae"})",
                          command::code::kInvalidParams);
     CHECK(contains(reply.message, "isn't a model"));
     engine.ok("entity.create", R"({"id": "box", "components": {"Transform3D": {},

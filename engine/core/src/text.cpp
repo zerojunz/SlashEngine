@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <string>
 #include <vector>
+#include <yyjson.h>
 
 namespace slash {
 
@@ -103,6 +105,63 @@ bool is_project_path(std::string_view path) {
         start = end + 1;
     }
     return true;
+}
+
+std::optional<double> parse_decimal(std::string_view text) {
+    // Rewritten in JSON's grammar, which yyjson reads correctly rounded whatever the locale.
+    std::string json;
+    json.reserve(text.size() + 1);
+    std::size_t i = 0;
+    const auto digits = [&] {
+        const std::size_t start = i;
+        while (i < text.size() && text[i] >= '0' && text[i] <= '9') {
+            ++i;
+        }
+        return text.substr(start, i - start);
+    };
+    if (i < text.size() && (text[i] == '+' || text[i] == '-')) {
+        if (text[i] == '-') {
+            json.push_back('-');
+        }
+        ++i;
+    }
+    std::string_view whole = digits();
+    std::string_view fraction;
+    if (i < text.size() && text[i] == '.') {
+        ++i;
+        fraction = digits();
+    }
+    if (whole.empty() && fraction.empty()) {
+        return std::nullopt;
+    }
+    while (whole.size() > 1 && whole.front() == '0') {
+        whole.remove_prefix(1);
+    }
+    json.append(whole.empty() ? "0" : whole);
+    if (!fraction.empty()) {
+        json.append(".").append(fraction);
+    }
+    if (i < text.size() && (text[i] == 'e' || text[i] == 'E')) {
+        json.push_back('e');
+        ++i;
+        if (i < text.size() && (text[i] == '+' || text[i] == '-')) {
+            json.push_back(text[i]);
+            ++i;
+        }
+        const std::string_view exponent = digits();
+        if (exponent.empty()) {
+            return std::nullopt;
+        }
+        json.append(exponent);
+    }
+    if (i != text.size()) {
+        return std::nullopt;
+    }
+    yyjson_val value{};
+    if (yyjson_read_number(json.c_str(), &value, YYJSON_READ_NOFLAG, nullptr, nullptr) == nullptr) {
+        return std::nullopt;
+    }
+    return yyjson_get_num(&value);
 }
 
 std::string base64_encode(std::string_view bytes) {

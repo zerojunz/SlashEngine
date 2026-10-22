@@ -236,7 +236,8 @@ void add_sky(const world::World& world, entt::entity entity, Environment& out) {
 }
 
 constexpr std::string_view kNoMesh =
-    "has no mesh: set mesh to a .gltf or .glb file, or add a BoxMesh, SphereMesh, CylinderMesh, "
+    "has no mesh: set mesh to a .gltf, .glb or .obj file, or add a BoxMesh, SphereMesh, "
+    "CylinderMesh, "
     "CapsuleMesh, PlaneMesh, QuadMesh, PrismMesh or TorusMesh";
 constexpr std::string_view kMeshField = "/components/MeshInstance3D/mesh";
 
@@ -248,7 +249,7 @@ std::string mesh_path_problem(const world::World& world, entt::entity entity,
                "\"..\" parts";
     }
     if (!is_model_path(path)) {
-        return "expected a .gltf or .glb file";
+        return "expected a .gltf, .glb or .obj file";
     }
     auto primitive = primitive_of(world, entity);
     if (!primitive) {
@@ -786,8 +787,10 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
                                              entity);
                     };
                     out.albedo_texture = texture(from.albedo_image);
-                    out.metallic_texture = texture(from.metallic_roughness_image);
-                    out.roughness_texture = out.metallic_texture;
+                    out.metallic_texture = texture(from.metallic_image);
+                    out.roughness_texture = from.roughness_image == from.metallic_image
+                                                ? out.metallic_texture
+                                                : texture(from.roughness_image);
                     if (from.standard.normal_enabled) {
                         out.normal_texture = texture(from.normal_image);
                     }
