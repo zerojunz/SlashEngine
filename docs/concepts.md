@@ -372,6 +372,13 @@ it by its **parameters** (`"shot/request": "fire"`, `"move/travel": "run"`, a bl
 parameters and what plays, and `animation.set_parameters` sets them, checked against their
 nodes. The [animation tree example](../examples/animation-tree/) points a waving arm.
 
+**IK** (inverse kinematics) follows Godot 4.6's IK modifiers: instead of saying how each bone
+turns, a game says where a hand or foot should be, and a `TwoBoneIK3D` bends an arm or leg to
+reach a **target** entity with its elbow or knee toward a **pole**, while a `FABRIK3D`,
+`CCDIK3D` or `JacobianIK3D` turns a whole chain of bones, a tail or a spine, toward one. They
+turn the bones after the animations, so a character can walk and reach at once, and joints can
+be limited to an axis or a **cone**. The [IK example](../examples/ik/) reaches with an arm.
+
 **Tile maps** follow Godot's TileSet and TileMapLayer. A `.tileset.json` file cuts atlas
 textures into **tiles** and groups **terrains** (grass, water) into terrain sets; each terrain
 tile's **peering** says which terrain its sides and corners must touch. A `TileMapLayer` keeps
