@@ -1291,8 +1291,8 @@ void register_3d_components(ComponentRegistry& registry) {
     registry.add<MeshInstance3D>()
         .set_doc("Draws the entity's primitive mesh (BoxMesh, SphereMesh, ...) at its "
                  "Transform3D, as Godot's MeshInstance3D, with its StandardMaterial3D if it has "
-                 "one; or a glTF model's meshes.")
-        .describe("mesh", {.doc = "Project path of a .gltf or .glb model drawn in place of a "
+                 "one; or a model's meshes.")
+        .describe("mesh", {.doc = "Project path of a .gltf, .glb or .obj model drawn in place of a "
                                   "primitive mesh, with its materials unless the entity has a "
                                   "StandardMaterial3D; \"\" for none."})
         .describe("layers", {.doc = "Render layers: cameras whose cull_mask and lights whose "

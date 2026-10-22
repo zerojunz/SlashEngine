@@ -31,7 +31,7 @@ texture coordinates leaves out.
 - A second house, the shed, is smaller and turned the other way. Its `StandardMaterial3D` takes
   the place of the file's materials, as Godot's `material_override`, so it is all brown. Both
   houses share the model's meshes on the device.
-- A `MeshInstance3D` naming `models/barn.obj` draws nothing, and `frame.summary` says why.
+- A `MeshInstance3D` naming `models/barn.dae` draws nothing, and `frame.summary` says why.
 
 `slash-cli scene validate models/house.gltf` checks a model as `MeshInstance3D` loads it and
 counts what it holds.

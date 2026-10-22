@@ -132,8 +132,8 @@ file, a [`.theme.json`](scene-format.md#themes) file, an
 [`.audio.json`](scene-format.md#audio-streams) file, a
 [`.bus_layout.json`](scene-format.md#bus-layouts) file, a
 [`.replay.json`](scene-format.md#replays) file, a [`.test.json`](scene-format.md#tests) file or
-a [`.score.json`](scene-format.md#scores) file, or a [glTF model](scene-format.md#models)
-(`.gltf` or `.glb`), and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
+a [`.score.json`](scene-format.md#scores) file, or a [model](scene-format.md#models)
+(`.gltf`, `.glb` or `.obj`), and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
 [scenes](scene-format.md#instanced-scenes) a file extends, the tile sets its layers use, the animation libraries its players use and the project's window size and theme are read from its
 project: the nearest folder above it with a `project.json`, else the current folder.
 
@@ -238,8 +238,8 @@ slash-cli scene format --check <file>    # change nothing; exit 1 if not canonic
 Formatting a scene or prefab with components of the game's own code needs that code
 [built](#build), since it loads the file into a world.
 
-glTF models are left as the tools that made them wrote them: formatting one is a usage error
-(exit code 2).
+Models are left as the tools that made them wrote them: formatting one is a usage error (exit
+code 2).
 
 ### schema
 

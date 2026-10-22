@@ -839,7 +839,7 @@ std::string project_path(const std::string& file) {
     return relative.empty() ? file : relative.generic_string();
 }
 
-// Checks a .gltf or .glb model as MeshInstance3D's mesh loads it, and counts what it holds.
+// Checks a model as MeshInstance3D's mesh loads it, and counts what it holds.
 int validate_model(const std::string& path, std::string_view bytes) {
     const std::string in_project = project_path(path);
     const auto read = prefab_reader(path);
@@ -1134,8 +1134,7 @@ int cmd_scene(const std::vector<std::string>& args) {
         return usage_error("scene " + action + " needs a file path");
     }
     if (action == "format" && slash::scene3d::is_model_path(path)) {
-        return usage_error(
-            "scene format leaves glTF models as the tools that made them wrote them");
+        return usage_error("scene format leaves models as the tools that made them wrote them");
     }
     return action == "validate" ? cmd_scene_validate(path) : cmd_scene_format(path, check);
 }

@@ -1,0 +1,71 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 60.0
+        },
+        "Transform3D": {
+          "position": [0.5, 1.5, 3.2],
+          "rotation": [-0.05, 0.0, 0.0]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.3, 0.35, 0.5, 1.0],
+          "ambient_light_energy": 0.4,
+          "ambient_light_source": "color",
+          "background_color": [0.12, 0.14, 0.25, 1.0],
+          "background_mode": "color"
+        }
+      }
+    },
+    "glow": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.8, 0.45, 1.0],
+          "light_energy": 2.0,
+          "omni_range": 4.0
+        },
+        "Transform3D": {
+          "position": [0.0, 2.57, 0.0]
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [20.0, 20.0]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.4, 0.4, 0.42, 1.0]
+        },
+        "Transform3D": {}
+      }
+    },
+    "lamp": {
+      "components": {
+        "MeshInstance3D": {
+          "mesh": "models/lamp.obj"
+        },
+        "Transform3D": {}
+      }
+    },
+    "moon": {
+      "components": {
+        "DirectionalLight3D": {
+          "light_color": [0.6, 0.65, 0.9, 1.0],
+          "light_energy": 0.5
+        },
+        "Transform3D": {
+          "rotation": [-0.8, -0.5, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}
