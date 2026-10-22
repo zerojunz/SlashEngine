@@ -3,6 +3,7 @@
 #include "core.hpp"
 #include "rvo2.hpp"
 
+#include "slash/canvas/tilemap.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/tree3d.hpp"
@@ -178,6 +179,53 @@ struct AgentState {
     Vec3 velocity_forced;
 };
 
+// A tile's navigation polygon in one navigation layer, by its tile, how a cell turns it and the
+// layer.
+struct TileBakeKey {
+    std::string source;
+    Vec2i atlas;
+    int alternative = 0;
+    int turns = 0; // flip_h, flip_v and transpose as bits 0, 1 and 2, as Godot keys them
+    std::size_t layer = 0;
+
+    friend auto operator<=>(const TileBakeKey& a, const TileBakeKey& b) {
+        return std::tie(a.source, a.atlas.x, a.atlas.y, a.alternative, a.turns, a.layer) <=>
+               std::tie(b.source, b.atlas.x, b.atlas.y, b.alternative, b.turns, b.layer);
+    }
+};
+
+// One tile set's tiles' navigation polygons, baked when a cell first needs them and kept while
+// a layer uses the set, as Godot's TileData keeps its navigation polygons and their turned
+// copies.
+struct TileBakes {
+    std::map<TileBakeKey, std::shared_ptr<const NavigationPolygon>> polygons;
+};
+
+// A tile map layer's regions as last gathered, and what they were gathered from, so a layer that
+// is as it was isn't read again each tick.
+struct TileLayerRegions {
+    std::string id;
+    std::string tile_set;
+    Vec2i origin;
+    std::map<std::string, std::string> legend;
+    std::vector<std::string> rows;
+    asset::Handle<canvas::TileSet> handle; // keeps the tile set loaded while the layer uses it
+    std::shared_ptr<const void> loaded;    // the tile set file, so a reload gathers anew
+    std::array<float, 12> transform{};     // the layer's
+    std::vector<RegionInput> regions;
+    std::vector<MapError> errors;
+    bool used = false;
+
+    [[nodiscard]] bool same(const std::string& layer_id, const world::TileMapLayer& layer,
+                            const std::shared_ptr<const void>& file,
+                            const std::array<float, 12>& key) const {
+        return id == layer_id && tile_set == layer.tile_set && origin == layer.origin &&
+               legend == layer.legend && rows == layer.rows && loaded == file &&
+               std::ranges::equal(transform, key,
+                                  [](float a, float b) { return bits_of(a) == bits_of(b); });
+    }
+};
+
 // What avoidance keeps of an obstacle between ticks: its RVO agent's velocity.
 struct ObstacleState {
     Vec3 rvo_velocity;
@@ -243,6 +291,8 @@ struct State {
     std::map<entt::entity, AgentState> agents_3d;
     std::map<entt::entity, ObstacleState> obstacles_2d;
     std::map<entt::entity, ObstacleState> obstacles_3d;
+    std::map<const void*, TileBakes> tile_bakes; // by loaded tile set
+    std::map<entt::entity, TileLayerRegions> tile_layers;
 
     MapState& map(Map kind) { return kind == Map::TwoD ? map_2d : map_3d; }
     std::map<entt::entity, AgentState>& agents(Map kind) {
@@ -260,6 +310,8 @@ struct State {
         agents_3d.clear();
         obstacles_2d.clear();
         obstacles_3d.clear();
+        tile_bakes.clear();
+        tile_layers.clear();
     }
 };
 
@@ -366,6 +418,166 @@ void gather_regions(const world::World& world, const State& state, const Trees& 
     }
 }
 
+// A tile's navigation polygon in one layer: its outlines there baked as
+// TileDataNavigationEditor::_get_painted_value bakes them (each an outline of the polygon and a
+// traversable outline, with no agent radius), then turned as TileData::get_navigation_polygon
+// turns it: the vertices turned and, when the turn mirrors them, each polygon reversed. Null
+// when the tile has no outlines there.
+Result<std::shared_ptr<const NavigationPolygon>> tile_polygon(const canvas::TileSet& set,
+                                                              const canvas::TileRef& tile,
+                                                              std::size_t layer, TileBakes& bakes) {
+    const int turns = static_cast<int>(tile.flip_h) | (static_cast<int>(tile.flip_v) << 1) |
+                      (static_cast<int>(tile.transpose) << 2);
+    TileBakeKey key{.source = tile.source,
+                    .atlas = tile.atlas,
+                    .alternative = tile.alternative,
+                    .turns = turns,
+                    .layer = layer};
+    if (const auto found = bakes.polygons.find(key); found != bakes.polygons.end()) {
+        return found->second;
+    }
+    std::shared_ptr<const NavigationPolygon> out;
+    if (turns == 0) {
+        NavigationPolygon settings;
+        settings.agent_radius = 0.0F;
+        SourceGeometry2D geometry;
+        for (canvas::TileNavigation& outline : canvas::tile_navigation(set, tile)) {
+            if (static_cast<std::size_t>(outline.layer) == layer) {
+                settings.outlines.push_back(outline.points);
+                geometry.traversable_outlines.push_back(std::move(outline.points));
+            }
+        }
+        if (!settings.outlines.empty()) {
+            auto baked = bake(settings, geometry);
+            if (!baked) {
+                return baked.error();
+            }
+            out = std::make_shared<const NavigationPolygon>(std::move(baked).value());
+        }
+    } else {
+        canvas::TileRef unturned = tile;
+        unturned.flip_h = false;
+        unturned.flip_v = false;
+        unturned.transpose = false;
+        auto base = tile_polygon(set, unturned, layer, bakes);
+        if (!base) {
+            return base.error();
+        }
+        if (base.value() != nullptr) {
+            NavigationPolygon turned = *base.value();
+            for (Vec2& vertex : turned.vertices) {
+                if (tile.transpose) {
+                    vertex = {vertex.y, vertex.x};
+                }
+                if (tile.flip_h) {
+                    vertex.x = -vertex.x;
+                }
+                if (tile.flip_v) {
+                    vertex.y = -vertex.y;
+                }
+            }
+            if ((tile.flip_h != tile.flip_v) != tile.transpose) {
+                for (std::vector<int>& polygon : turned.polygons) {
+                    std::ranges::reverse(polygon);
+                }
+            }
+            turned.outlines.clear(); // regions use only the polygons
+            out = std::make_shared<const NavigationPolygon>(std::move(turned));
+        }
+    }
+    bakes.polygons.emplace(std::move(key), out);
+    return out;
+}
+
+// TileMapLayer::_navigation_update_cell: for each cell of each layer with navigation_enabled, a
+// region in each navigation layer its tile has polygons in, at the layer's global transform
+// moved to the cell's center, in the tile set's navigation layer's layers.
+void gather_tile_regions(const world::World& world, State& state, const Trees& trees,
+                         std::vector<RegionInput>& out, std::vector<MapError>& errors) {
+    for (auto& [entity, cached] : state.tile_layers) {
+        cached.used = false;
+    }
+    for (const Order& order : ordered<world::TileMapLayer>(world)) {
+        const auto& layer = world.ecs().get<const world::TileMapLayer>(order.entity);
+        if (!layer.navigation_enabled || layer.tile_set.empty()) {
+            continue;
+        }
+        auto loaded = state.assets->load<canvas::TileSet>(layer.tile_set);
+        if (!loaded) {
+            errors.push_back({order.id, layer.tile_set + ": " + loaded.error().message});
+            continue;
+        }
+        const canvas::TileSet& set = *loaded.value();
+        if (set.navigation_layers.empty()) {
+            continue;
+        }
+        const std::shared_ptr<const void> file = loaded.value().share();
+        const world::Affine2D global = trees.tree_2d.global_affine(order.entity);
+        Placement layer_placement;
+        layer_placement.three_d = false;
+        layer_placement.affine_2d = global;
+        const std::array<float, 12> key = layer_placement.key();
+        TileLayerRegions& cached = state.tile_layers[order.entity];
+        cached.used = true;
+        if (!cached.same(order.id, layer, file, key)) {
+            cached = TileLayerRegions{.id = order.id,
+                                      .tile_set = layer.tile_set,
+                                      .origin = layer.origin,
+                                      .legend = layer.legend,
+                                      .rows = layer.rows,
+                                      .handle = loaded.value(),
+                                      .loaded = file,
+                                      .transform = key,
+                                      .regions = {},
+                                      .errors = {},
+                                      .used = true};
+            auto cells = canvas::decode_cells(layer, set);
+            if (!cells) {
+                cached.errors.push_back({order.id, cells.error().message});
+            } else {
+                TileBakes& bakes = state.tile_bakes[file.get()];
+                for (const auto& [cell, tile] : cells.value()) {
+                    for (std::size_t i = 0; i < set.navigation_layers.size(); ++i) {
+                        auto polygon = tile_polygon(set, tile, i, bakes);
+                        if (!polygon) {
+                            cached.errors.push_back({order.id, canvas::tile_text(set, tile) + ": " +
+                                                                   polygon.error().message});
+                            continue;
+                        }
+                        if (polygon.value() == nullptr || polygon.value()->polygons.empty()) {
+                            continue;
+                        }
+                        Placement placement = layer_placement;
+                        placement.affine_2d.origin = global.apply(canvas::map_to_local(set, cell));
+                        cached.regions.push_back(
+                            {.id = order.id,
+                             .entity = order.entity,
+                             .path = {}, // the polygon stands for the file
+                             .enabled = true,
+                             .use_edge_connections = true,
+                             .navigation_layers = set.navigation_layers[i].layers,
+                             .enter_cost = 0.0F,
+                             .travel_cost = 1.0F,
+                             .transform = placement.key(),
+                             .file = polygon.value(),
+                             .mesh = {},
+                             .polygon = {}});
+                    }
+                }
+            }
+        }
+        out.insert(out.end(), cached.regions.begin(), cached.regions.end());
+        errors.insert(errors.end(), cached.errors.begin(), cached.errors.end());
+    }
+    std::erase_if(state.tile_layers, [](const auto& entry) { return !entry.second.used; });
+    // Bakes go with the last layer that uses their set.
+    std::erase_if(state.tile_bakes, [&](const auto& entry) {
+        return std::ranges::none_of(state.tile_layers, [&](const auto& layer) {
+            return layer.second.loaded.get() == entry.first;
+        });
+    });
+}
+
 template <typename Component>
 void gather_links(const world::World& world, const Trees& trees, Map kind,
                   std::vector<LinkInput>& out) {
@@ -439,6 +651,7 @@ void sync_map(const world::World& world, State& state, const Trees& trees, MapSt
     } else {
         gather_regions<NavigationRegion2D, NavigationPolygon>(world, state, trees, m.kind, regions,
                                                               errors);
+        gather_tile_regions(world, state, trees, regions, errors);
         gather_links<NavigationLink2D>(world, trees, m.kind, links);
     }
     m.errors = std::move(errors);
@@ -458,18 +671,31 @@ void sync_map(const world::World& world, State& state, const Trees& trees, MapSt
         return;
     }
 
-    // Regions that are as they were keep their polygons.
+    // Regions that are as they were keep their polygons. They are looked up by entity, file and
+    // transform, since a tile map layer has a region for each cell.
+    using ReuseKey = std::tuple<std::uint64_t, const void*, std::array<std::uint32_t, 12>>;
+    const auto reuse_key = [](const RegionInput& input) {
+        std::array<std::uint32_t, 12> bits{};
+        std::ranges::transform(input.transform, bits.begin(),
+                               [](float value) { return bits_of(value); });
+        return ReuseKey{entt::to_integral(input.entity), input.file.get(), bits};
+    };
+    std::multimap<ReuseKey, const BuiltRegion*> old_regions;
+    const bool same_settings = m.built && settings == m.settings;
+    if (same_settings) {
+        for (const BuiltRegion& each : m.regions) {
+            old_regions.emplace(reuse_key(each.input), &each);
+        }
+    }
     std::vector<BuiltRegion> built;
     built.reserve(regions.size());
-    const bool same_settings = m.built && settings == m.settings;
     for (RegionInput& input : regions) {
         std::shared_ptr<const detail::Region> region;
-        if (same_settings) {
-            const auto old = std::ranges::find_if(m.regions, [&](const BuiltRegion& each) {
-                return each.input.entity == input.entity && each.input.same_content(input);
-            });
-            if (old != m.regions.end()) {
-                region = old->region;
+        const auto [first, last] = old_regions.equal_range(reuse_key(input));
+        for (auto old = first; old != last; ++old) {
+            if (old->second->input.same_content(input)) {
+                region = old->second->region;
+                break;
             }
         }
         if (region == nullptr) {

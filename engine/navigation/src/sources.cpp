@@ -1,9 +1,10 @@
 // The geometry a bake works from, as Godot 4.6's source geometry parsers: the region entity and
 // those under it, each giving what Godot's node of the same kind gives
 // (MeshInstance3D::navmesh_parse_source_geometry, StaticBody3D's and StaticBody2D's,
-// NavigationObstacle3D's and 2D's), placed in the region's space as Godot's root_node_transform
-// places it.
+// NavigationObstacle3D's and 2D's, TileMapLayer's), placed in the region's space as Godot's
+// root_node_transform places it.
 
+#include "slash/canvas/tilemap.hpp"
 #include "slash/navigation/navigation.hpp"
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/scene3d/model.hpp"
@@ -18,6 +19,7 @@
 #include <numbers>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace slash::navigation {
@@ -400,12 +402,77 @@ void add_obstacle(SourceGeometry2D& out, const world::NavigationObstacle2D& obst
                                           .carve = obstacle.carve_navigation_mesh});
 }
 
-void parse_2d(const world::World& world, const world::Tree2D& tree, const Affine2D& root,
-              entt::entity entity, const NavigationPolygon& settings, SourceGeometry2D& out) {
+// TileMapLayer::navmesh_parse_source_geometry: each cell's navigation outlines, layer by layer,
+// as traversable outlines, and with static_colliders or both, its collision polygons in physics
+// layers whose collision_layer shares a bit with parsed_collision_mask, as obstructions.
+void add_tiles(SourceGeometry2D& out, const world::World& world, asset::Assets& assets,
+               const Affine2D& root, const world::Tree2D& tree, entt::entity entity,
+               const NavigationPolygon& settings, std::vector<std::string>* warnings) {
+    const auto& layer = world.ecs().get<const world::TileMapLayer>(entity);
+    if (layer.tile_set.empty()) {
+        return;
+    }
+    const auto warn = [&](const std::string& message) {
+        if (warnings != nullptr) {
+            const std::string_view id = world.id_of(entity);
+            warnings->push_back((id.empty() ? std::string("a tile map layer") : std::string(id)) +
+                                ": " + message);
+        }
+    };
+    auto loaded = assets.load<canvas::TileSet>(layer.tile_set);
+    if (!loaded) {
+        warn(layer.tile_set + ": " + loaded.error().message);
+        return;
+    }
+    const canvas::TileSet& set = *loaded.value();
+    const bool colliders = parses_colliders(settings.parsed_geometry_type);
+    if (set.navigation_layers.empty() && (set.physics_layers.empty() || !colliders)) {
+        return;
+    }
+    auto cells = canvas::decode_cells(layer, set);
+    if (!cells) {
+        warn(cells.error().message);
+        return;
+    }
+    const Affine2D tilemap = root * tree.global_affine(entity);
+    for (const auto& [cell, tile] : cells.value()) {
+        Affine2D placement = tilemap;
+        placement.origin = tilemap.apply(canvas::map_to_local(set, cell));
+        const std::vector<canvas::TileNavigation> outlines = canvas::tile_navigation(set, tile);
+        for (std::size_t i = 0; i < set.navigation_layers.size(); ++i) {
+            for (const canvas::TileNavigation& outline : outlines) {
+                if (static_cast<std::size_t>(outline.layer) == i && !outline.points.empty()) {
+                    out.traversable_outlines.push_back(placed(outline.points, placement));
+                }
+            }
+        }
+        if (!colliders) {
+            continue;
+        }
+        const std::vector<canvas::TilePolygon> polygons = canvas::tile_collision(set, tile);
+        for (std::size_t i = 0; i < set.physics_layers.size(); ++i) {
+            if ((set.physics_layers[i].collision_layer & settings.parsed_collision_mask) == 0U) {
+                continue;
+            }
+            for (const canvas::TilePolygon& polygon : polygons) {
+                if (static_cast<std::size_t>(polygon.layer) == i && !polygon.points.empty()) {
+                    out.obstruction_outlines.push_back(placed(polygon.points, placement));
+                }
+            }
+        }
+    }
+}
+
+void parse_2d(const world::World& world, asset::Assets& assets, const world::Tree2D& tree,
+              const Affine2D& root, entt::entity entity, const NavigationPolygon& settings,
+              SourceGeometry2D& out, std::vector<std::string>* warnings) {
     const entt::registry& registry = world.ecs();
     if (const auto* obstacle = registry.try_get<world::NavigationObstacle2D>(entity);
         obstacle != nullptr) {
         add_obstacle(out, *obstacle, root, tree, entity);
+    }
+    if (registry.all_of<world::TileMapLayer>(entity)) {
+        add_tiles(out, world, assets, root, tree, entity, settings, warnings);
     }
     const auto add = [&](std::vector<Vec2> outline) {
         if (outline.size() >= 3) {
@@ -444,7 +511,7 @@ void parse_2d(const world::World& world, const world::Tree2D& tree, const Affine
         transform != nullptr) {
         for (const entt::entity child : transform->children) {
             if (registry.valid(child) && tree.parent(child) == entity) {
-                parse_2d(world, tree, root, child, settings, out);
+                parse_2d(world, assets, tree, root, child, settings, out, warnings);
             }
         }
     }
@@ -461,11 +528,13 @@ SourceGeometry3D parse_source_geometry(const world::World& world, asset::Assets&
     return out;
 }
 
-SourceGeometry2D parse_source_geometry(const world::World& world, entt::entity root,
-                                       const NavigationPolygon& settings) {
+SourceGeometry2D parse_source_geometry(const world::World& world, asset::Assets& assets,
+                                       entt::entity root, const NavigationPolygon& settings,
+                                       std::vector<std::string>* warnings) {
     SourceGeometry2D out;
     const world::Tree2D tree(world);
-    parse_2d(world, tree, tree.global_affine(root).inverse(), root, settings, out);
+    parse_2d(world, assets, tree, tree.global_affine(root).inverse(), root, settings, out,
+             warnings);
     return out;
 }
 

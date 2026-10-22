@@ -1,4 +1,5 @@
 #include "slash/asset/assets.hpp"
+#include "slash/canvas/canvas.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/json_schema.hpp"
 #include "slash/core/math.hpp"
@@ -714,8 +715,8 @@ TEST_CASE("what a 3D bake takes follows the parsed geometry type and the collisi
                              "StaticBody3D": {}})");
     const entt::entity yard = scene.create("yard", R"({"Transform3D": {
         "position": [0, 10, 0], "children": ["crate", "wall"]}, "NavigationRegion3D": {}})");
-    const navigation::SourceGeometry3D geometry =
-        navigation::parse_source_geometry(scene.world, scene.assets, yard, {});
+    const navigation::SourceGeometry3D geometry = navigation::parse_source_geometry(
+        scene.world, scene.assets, yard, navigation::NavigationMesh{});
     const auto sphere = slash::scene3d::make_mesh(world::SphereMesh{});
     REQUIRE(sphere.ok());
     CHECK(triangles(geometry) == sphere.value().indices.size() / 3);
@@ -725,8 +726,8 @@ TEST_CASE("what a 3D bake takes follows the parsed geometry type and the collisi
         "StaticBody3D": {}, "CollisionShape3D": {"size": [2, 2, 2]}})");
     const entt::entity high = scene.create("high", R"({"Transform3D": {
         "position": [0, 10, 0], "children": ["ground"]}, "NavigationRegion3D": {}})");
-    const navigation::SourceGeometry3D placed =
-        navigation::parse_source_geometry(scene.world, scene.assets, high, {});
+    const navigation::SourceGeometry3D placed = navigation::parse_source_geometry(
+        scene.world, scene.assets, high, navigation::NavigationMesh{});
     float low = placed.vertices[1];
     float top = placed.vertices[1];
     for (std::size_t i = 1; i < placed.vertices.size(); i += 3) {
@@ -780,7 +781,7 @@ TEST_CASE("a 2D bake merges outlines, cuts out obstructions and shrinks by the a
         "yard", R"({"Transform2D": {"children": ["rock"]}, "NavigationRegion2D": {}})");
     const navigation::NavigationPolygon settings = square_outline(200.0F);
     const navigation::SourceGeometry2D geometry =
-        navigation::parse_source_geometry(scene.world, yard, settings);
+        navigation::parse_source_geometry(scene.world, scene.assets, yard, settings);
     REQUIRE(geometry.obstruction_outlines.size() == 1);
     CHECK(geometry.obstruction_outlines[0].size() == 12); // Godot's circle has 12 sides
 
@@ -832,11 +833,11 @@ TEST_CASE("a 2D bake merges outlines, cuts out obstructions and shrinks by the a
         "CollisionPolygon2D": {"polygon": [[0, 0], [10, 0], [10, 10]]}})");
     const entt::entity park = scene.create("park", R"({"Transform2D": {
         "children": ["ball", "wall"]}, "NavigationRegion2D": {}})");
-    CHECK(navigation::parse_source_geometry(scene.world, park, settings)
+    CHECK(navigation::parse_source_geometry(scene.world, scene.assets, park, settings)
               .obstruction_outlines.size() == 1);
     navigation::NavigationPolygon layer_one = settings;
     layer_one.parsed_collision_mask = 1;
-    CHECK(navigation::parse_source_geometry(scene.world, park, layer_one)
+    CHECK(navigation::parse_source_geometry(scene.world, scene.assets, park, layer_one)
               .obstruction_outlines.empty());
 }
 
@@ -1211,13 +1212,13 @@ TEST_CASE("obstacles that affect the navigation mesh are cut out of 2D bakes") {
     const navigation::NavigationPolygon settings = square_outline(200.0F);
     const auto baked_area = [&] {
         const navigation::SourceGeometry2D geometry =
-            navigation::parse_source_geometry(scene.world, yard, settings);
+            navigation::parse_source_geometry(scene.world, scene.assets, yard, settings);
         auto baked = navigation::bake(settings, geometry);
         REQUIRE(baked.ok());
         return area(baked.value());
     };
     const navigation::SourceGeometry2D geometry =
-        navigation::parse_source_geometry(scene.world, yard, settings);
+        navigation::parse_source_geometry(scene.world, scene.assets, yard, settings);
     REQUIRE(geometry.projected_obstructions.size() == 1);
     CHECK(text_of(geometry.projected_obstructions[0].vertices) ==
           "(80, 80) (120, 80) (120, 120) (80, 120)");
@@ -1233,14 +1234,14 @@ TEST_CASE("obstacles that affect the navigation mesh are cut out of 2D bakes") {
     obstacle.radius = 10.0F;
     scene.world.ecs().get<world::Transform2D>(crate).scale = {2.0F, 1.0F};
     const navigation::SourceGeometry2D round =
-        navigation::parse_source_geometry(scene.world, yard, settings);
+        navigation::parse_source_geometry(scene.world, scene.assets, yard, settings);
     REQUIRE(round.projected_obstructions.size() == 1);
     CHECK(round.projected_obstructions[0].vertices.size() == 12);
     CHECK(text_of(round.projected_obstructions[0].vertices[0]) == "(120, 100)");
     CHECK(text_of(round.projected_obstructions[0].vertices[3]) == "(100, 120)");
     // Not affecting the mesh, it is left out.
     obstacle.affect_navigation_mesh = false;
-    CHECK(navigation::parse_source_geometry(scene.world, yard, settings)
+    CHECK(navigation::parse_source_geometry(scene.world, scene.assets, yard, settings)
               .projected_obstructions.empty());
     CHECK(baked_area() == doctest::Approx(32400.0));
 }
@@ -1291,4 +1292,151 @@ TEST_CASE("obstacles that affect the navigation mesh are cut out of 3D bakes") {
     const navigation::NavigationMesh plain = bake();
     CHECK(plain.polygons.size() == 2);
     CHECK(text_of(above.vertices) == text_of(plain.vertices));
+}
+
+namespace {
+
+// Tiles of 32 pixels: floor walks everywhere, a wall is solid, a ledge walks on its top half and
+// water is in the second navigation layer, whose regions are in navigation layer 2.
+constexpr std::string_view kTiles = R"({"format": 1, "tile_size": [32, 32],
+    "navigation_layers": [{}, {"layers": 2}], "physics_layers": [{}, {"collision_layer": 4}],
+    "sources": {"t": {"texture": "t.png", "tiles": {
+        "0,0": {"name": "floor",
+                "navigation": [{"points": [[-16, -16], [16, -16], [16, 16], [-16, 16]]}]},
+        "1,0": {"name": "wall", "collision": [{"points": [[-16, -16], [16, -16], [16, 16],
+                                                          [-16, 16]]},
+                                              {"layer": 1, "points": [[-8, -8], [8, -8], [8, 8]]}]},
+        "2,0": {"name": "ledge",
+                "navigation": [{"points": [[-16, -16], [16, -16], [16, 0], [-16, 0]]}]},
+        "3,0": {"name": "water", "navigation": [{"layer": 1,
+                "points": [[-16, -16], [16, -16], [16, 16], [-16, 16]]}]}}}}})";
+
+} // namespace
+
+TEST_CASE("a tile map layer's cells are regions of their tiles' navigation polygons") {
+    Scene scene;
+    slash::canvas::add_asset_types(scene.assets);
+    scene.files.write("tiles.tileset.json", std::string(kTiles));
+    const entt::entity ground = scene.create("ground", R"({"Transform2D": {"position": [100, 0]},
+        "TileMapLayer": {"tile_set": "tiles.tileset.json",
+            "legend": {"f": "floor", "w": "wall", "l": "ledge", "a": "water"},
+            "rows": ["fff", "fwa", "fla"]}})");
+    auto info = navigation::map_info(scene.world, navigation::Map::TwoD);
+    CHECK(info.errors.empty());
+    CHECK(info.regions == 8); // five floors and a ledge in layer 1, two waters in layer 2
+    const std::uint64_t first = info.iteration_id;
+
+    // Round the wall to the ledge's top half, cell to cell. Godot's funnel gives the corner where
+    // the path turns into the next cell twice.
+    const auto around = navigation::query_path(scene.world, Vec2{148, 16}, Vec2{148, 90});
+    CHECK(text_of(around.points) == "(148, 16) (132, 32) (132, 32) (132, 64) (148, 80)");
+    CHECK(around.owners.front() == ground);
+    CHECK(text_of(navigation::closest_point(scene.world, Vec2{148, 48}).point) == "(148, 32)");
+
+    // Water is only on paths that ask for navigation layer 2.
+    navigation::PathOptions swim;
+    swim.navigation_layers = 2;
+    const auto water = navigation::query_path(scene.world, Vec2{180, 40}, Vec2{180, 90}, swim);
+    CHECK(text_of(water.points) == "(180, 40) (180, 64) (180, 90)"); // crossing a cell's edge
+    const auto walk = navigation::query_path(scene.world, Vec2{180, 40}, Vec2{180, 90});
+    CHECK(text_of(walk.points.front()) == "(180, 32)");
+    CHECK(text_of(walk.points.back()) == "(164, 80)");
+
+    // A turned tile turns its polygon: the ledge flipped upside down walks on its bottom half.
+    auto& layer = scene.world.ecs().get<world::TileMapLayer>(ground);
+    layer.legend["l"] = "ledge:v";
+    scene.world.step(kTick);
+    CHECK(navigation::map_info(scene.world, navigation::Map::TwoD).iteration_id == first + 1);
+    CHECK(text_of(navigation::closest_point(scene.world, Vec2{148, 70}).point) == "(148, 80)");
+
+    // Nothing changes, nothing is rebuilt; moving the layer moves its regions.
+    scene.world.step(kTick);
+    CHECK(navigation::map_info(scene.world, navigation::Map::TwoD).iteration_id == first + 1);
+    scene.world.ecs().get<world::Transform2D>(ground).position = {0, 0};
+    scene.world.step(kTick);
+    CHECK(text_of(navigation::closest_point(scene.world, Vec2{-50, 16}).point) == "(0, 16)");
+
+    // Editing the tile set rebuilds the map once it reloads: floors in navigation layer 4 are off
+    // the paths that don't ask for it.
+    const std::uint64_t moved =
+        navigation::map_info(scene.world, navigation::Map::TwoD).iteration_id;
+    std::string four(kTiles);
+    four.replace(four.find("[{}, "), 5, R"([{"layers": 4}, )");
+    scene.files.write("tiles.tileset.json", four);
+    scene.assets.poll();
+    CHECK(navigation::map_info(scene.world, navigation::Map::TwoD).iteration_id == moved + 1);
+    CHECK(navigation::query_path(scene.world, Vec2{10, 16}, Vec2{40, 80}).points.empty());
+
+    // A tile set with no navigation layers makes no regions.
+    scene.files.write("plain.tileset.json", R"({"format": 1, "tile_size": [32, 32],
+        "sources": {"t": {"texture": "t.png", "tiles": {"0,0": {"name": "floor"},
+            "1,0": {"name": "wall"}, "2,0": {"name": "ledge"}, "3,0": {"name": "water"}}}}})");
+    auto& layer_now = scene.world.ecs().get<world::TileMapLayer>(ground);
+    layer_now.tile_set = "plain.tileset.json";
+    CHECK(navigation::map_info(scene.world, navigation::Map::TwoD).regions == 0);
+    layer_now.tile_set = "tiles.tileset.json";
+
+    // navigation_enabled off leaves a layer out; a tile set that doesn't load is reported.
+    scene.files.write("tiles.tileset.json", std::string(kTiles));
+    scene.assets.poll();
+    CHECK(navigation::map_info(scene.world, navigation::Map::TwoD).regions == 8);
+    layer.navigation_enabled = false;
+    CHECK(navigation::map_info(scene.world, navigation::Map::TwoD).regions == 0);
+    layer.navigation_enabled = true;
+    layer.tile_set = "missing.tileset.json";
+    info = navigation::map_info(scene.world, navigation::Map::TwoD);
+    CHECK(info.regions == 0);
+    REQUIRE(info.errors.size() == 1);
+    CHECK(info.errors[0].id == "ground");
+    CHECK(info.errors[0].message.starts_with("missing.tileset.json: "));
+}
+
+TEST_CASE("2D bakes take tile map layers' navigation outlines and collision polygons") {
+    Scene scene;
+    slash::canvas::add_asset_types(scene.assets);
+    scene.files.write("tiles.tileset.json", std::string(kTiles));
+    scene.create("ground", R"({"Transform2D": {"position": [32, 0]},
+        "TileMapLayer": {"tile_set": "tiles.tileset.json",
+            "legend": {"f": "floor", "w": "wall", "l": "ledge", "a": "water"},
+            "rows": ["ffff", "fwfa", "ffl."]}})");
+    const entt::entity yard =
+        scene.create("yard", R"({"Transform2D": {"position": [-32, 0], "children": ["ground"]},
+                    "NavigationRegion2D": {}})");
+    navigation::NavigationPolygon settings;
+    settings.agent_radius = 0.0F;
+    std::vector<std::string> warnings;
+    const navigation::SourceGeometry2D geometry =
+        navigation::parse_source_geometry(scene.world, scene.assets, yard, settings, &warnings);
+    CHECK(warnings.empty());
+    // Eight floors, a ledge and a water; the wall's two polygons in both physics layers.
+    CHECK(geometry.traversable_outlines.size() == 10);
+    CHECK(geometry.obstruction_outlines.size() == 2);
+    // In the region's space, where the layer is 32 to the right.
+    CHECK(text_of(geometry.traversable_outlines[0]) == "(32, 0) (64, 0) (64, 32) (32, 32)");
+
+    auto baked = navigation::bake(settings, geometry);
+    REQUIRE(baked.ok());
+    // 4 by 3 cells less the wall, the empty cell and half the ledge.
+    CHECK(area(baked.value()) == doctest::Approx(32.0 * 32.0 * 9.5));
+
+    // parsed_collision_mask picks physics layers; meshes alone take no collision polygons.
+    navigation::NavigationPolygon second = settings;
+    second.parsed_collision_mask = 4;
+    CHECK(navigation::parse_source_geometry(scene.world, scene.assets, yard, second)
+              .obstruction_outlines.size() == 1);
+    navigation::NavigationPolygon meshes = settings;
+    meshes.parsed_geometry_type = navigation::ParsedGeometry::MeshInstances;
+    const auto outlines_only =
+        navigation::parse_source_geometry(scene.world, scene.assets, yard, meshes);
+    CHECK(outlines_only.traversable_outlines.size() == 10);
+    CHECK(outlines_only.obstruction_outlines.empty());
+
+    // A tile set that doesn't load is a warning.
+    scene.world.ecs().get<world::TileMapLayer>(scene.world.find("ground")).tile_set =
+        "gone.tileset.json";
+    warnings.clear();
+    CHECK(navigation::parse_source_geometry(scene.world, scene.assets, yard, settings, &warnings)
+              .traversable_outlines.empty());
+    REQUIRE(warnings.size() == 1);
+    CHECK(warnings[0].starts_with("ground: gone.tileset.json: "));
 }
