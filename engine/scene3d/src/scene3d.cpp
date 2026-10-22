@@ -264,10 +264,10 @@ Environment environment(const world::World& world, render::Color clear) {
         out.ambient_energy = env.ambient_light_energy;
     }
     out.entity = environments.front();
-    const auto* mode = std::ranges::find(render::kTonemapperNames, env.tonemap_mode);
-    if (mode != render::kTonemapperNames.end()) {
-        out.post.tonemapper =
-            static_cast<render::Tonemapper>(std::distance(render::kTonemapperNames.begin(), mode));
+    for (std::size_t i = 0; i < render::kTonemapperNames.size(); ++i) {
+        if (render::kTonemapperNames[i] == env.tonemap_mode) {
+            out.post.tonemapper = static_cast<render::Tonemapper>(i);
+        }
     }
     out.post.exposure = env.tonemap_exposure;
     out.post.white = env.tonemap_white;
