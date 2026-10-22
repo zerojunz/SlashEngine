@@ -89,7 +89,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json` and
-`.score.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`); validating a
+`.score.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -769,6 +769,13 @@ Godot's stand-in tangents. Numbers are read with `slash::parse_decimal`, the sam
 locale. Problems that leave an OBJ model drawing, such as a library it can't read, are
 `check_model` errors, not load failures. `examples/obj-models` is a lamp post from an `.obj` file.
 
+FBX models are read with ufbx as Godot 4.3's FBX importer reads them (`src/fbx.cpp`, which ports
+`FBXDocument`'s load options, meshes and materials): meters and y up, geometric transforms and
+pivots applied to the meshes, `vertex_color_use_as_albedo` on every material, and textures
+found where `_get_texture_path` looks. ufbx builds with `-ffp-contract=off`; it calls libm only
+for nodes turned by Euler angles, so examples keep their nodes unturned. `tests/fbx.hpp` writes
+binary and ASCII FBX files in code; `examples/fbx-models` is a windmill from an `.fbx` file.
+
 Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V, MSL, GLSL ES and WGSL are committed
 in `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang,
 SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`
@@ -1302,7 +1309,7 @@ CI rejects unformatted code and any clang-tidy finding.
   particles, GPU particles' steps and drawing them), `text` (fonts, shaping, line breaking, carets and selections, and glyph atlases), `ui`
   (controls, containers and themes: layout, draw calls, buttons, focus and text fields), `animation` (`.anim.json` keyframe
   animations and the system that plays them),
-  `scene3d` (3D nodes: primitive meshes, glTF and OBJ models, materials, cameras, lights and environments,
+  `scene3d` (3D nodes: primitive meshes, glTF, OBJ and FBX models, materials, cameras, lights and environments,
   and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems, drafting cue sheets and arranging them),

@@ -1,3 +1,4 @@
+#include "fbx.hpp"
 #include "gltf.hpp"
 
 #include "slash/audio/audio.hpp"
@@ -1728,6 +1729,26 @@ TEST_CASE("model.inspect returns a model's meshes, materials, images and parts")
         "bounds": {"max": [1, 1, 0], "min": [-1, -1, 0]},
         "images": [{"path": "models/paint.png"}],
         "materials": [{"name": "Paint", "standard": {}, "textures": {"albedo": 0}}],
+        "meshes": [{"materials": [0], "name": "Quad", "triangles": 2, "vertices": 4}],
+        "parts": [{"mesh": 0, "node": "Quad"}]})"));
+    // And as an FBX file, whose materials always show vertex colors, as Godot's importer makes
+    // them.
+    slash::test::Fbx fbx;
+    fbx.geometry(10, "Quad", {-1.0, -1.0, 0.0, 1.0, -1.0, 0.0, 1.0, 1.0, 0.0, -1.0, 1.0, 0.0},
+                 {0, 1, 2, -4}, {}, {0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0}, {}, {0});
+    fbx.model(20, "Quad");
+    fbx.material(30, "Paint");
+    fbx.texture(40, "Paint", "C:/art/paint.png", "paint.png");
+    fbx.connect(20, 0);
+    fbx.connect(10, 20);
+    fbx.connect(30, 20);
+    fbx.connect(40, 30, "DiffuseColor");
+    REQUIRE(slash::platform::write_file(root + "/models/sign.fbx", fbx.binary()).ok());
+    CHECK(engine.ok("model.inspect", R"({"path": "models/sign.fbx"})") == parse(R"({
+        "bounds": {"max": [1, 1, 0], "min": [-1, -1, 0]},
+        "images": [{"path": "models/paint.png"}],
+        "materials": [{"name": "Paint", "standard": {"vertex_color_use_as_albedo": true},
+                       "textures": {"albedo": 0}}],
         "meshes": [{"materials": [0], "name": "Quad", "triangles": 2, "vertices": 4}],
         "parts": [{"mesh": 0, "node": "Quad"}]})"));
 

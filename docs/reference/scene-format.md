@@ -643,7 +643,8 @@ they were to where they are, as sprites are. `frame.capture`'s `drawn` counts `m
 [examples/scene-3d](../../examples/scene-3d/) is a lit table with a crate, a ball and a ring,
 [examples/shadows-3d](../../examples/shadows-3d/) a courtyard where the sun, a lamp and a
 flashlight cast shadows, [examples/models-3d](../../examples/models-3d/) a house loaded from a
-glTF file, and [examples/obj-models](../../examples/obj-models/) a lamp post from an OBJ file.
+glTF file, [examples/obj-models](../../examples/obj-models/) a lamp post from an OBJ file and
+[examples/fbx-models](../../examples/fbx-models/) a windmill from an FBX file.
 
 ### Meshes
 
@@ -679,7 +680,7 @@ Every primitive also has `flip_faces` (`false`), which turns it inside out, as f
 
 `MeshInstance3D`'s `mesh` (default `""`) names a model by project path: a glTF 2.0 `.gltf` file,
 with its buffers and images in files beside it or in data URIs, a `.glb` file holding
-everything, or a Wavefront [`.obj` file](#obj-models). The entity draws the model's meshes in
+everything, a Wavefront [`.obj` file](#obj-models) or an [`.fbx` file](#fbx-models). The entity draws the model's meshes in
 place of a primitive mesh, read as Godot's importers read them:
 
 ```json
@@ -713,7 +714,7 @@ place of a primitive mesh, read as Godot's importers read them:
 Images are PNG, JPEG, BMP or KTX2 files, as [textures](#textures) are. Entities drawing one model
 share its meshes and textures on the device, and the model reloads when its file changes.
 [`model.inspect`](commands.md#modelinspect) lists what a model holds without drawing it, and
-`slash-cli scene validate` takes a `.gltf`, `.glb` or `.obj` file and checks it as
+`slash-cli scene validate` takes a `.gltf`, `.glb`, `.obj` or `.fbx` file and checks it as
 `MeshInstance3D` loads it.
 
 #### OBJ models
@@ -742,6 +743,35 @@ libraries beside it:
   `newmtl`, or one with too few numbers), leaves its materials out, and a texture outside the
   project folder or not a texture file is left out of its material. The model still loads, and
   `scene validate` reports each of them with its line.
+
+#### FBX models
+
+An `.fbx` file, binary or ASCII, is read with ufbx as Godot 4.3's FBX importer reads one:
+
+- Lengths become meters and axes y up, whatever units and axes the file was written in, and each
+  node's geometric transform and pivots are applied to its mesh, as Godot's importer does.
+- Each node with a mesh draws it where the node's transforms place it, in tree order. Polygons
+  become triangles, and each material on a mesh is a surface of it. A mesh without normals gets
+  smooth ones; one with texture coordinates but no tangents gets MikkTSpace's, one without,
+  Godot's stand-in tangents.
+- Vertex colors multiply into the albedo, since Godot's importer sets
+  `vertex_color_use_as_albedo` on every material, and a surface with vertex colors and no
+  material gets one that shows them.
+- Each material becomes a `StandardMaterial3D` as Godot's importer makes it: the base color
+  times its factor as the albedo color, turned to sRGB; the base color texture, its UV
+  transform as `uv1_offset` and `uv1_scale`, `texture_repeat` only if it wraps both ways, and
+  `transparency` from its alpha (`"alpha"` if some of it is partly clear, `"alpha_scissor"` if
+  it is only clear or opaque); the PBR metalness and roughness (1 under a texture, which is read
+  from its red channel); the normal map and its scale; and the emission color, with the emission
+  factor as its energy, or the emission texture. Ambient occlusion and separate transparency
+  textures are left out.
+- Textures carried in the file are used as they are. Others are looked for as named, relative to
+  the model, then by file name in the model's folder and the folders Godot looks in under it
+  (`textures`, `Textures`, `images`, `Images`, `materials`, `Materials`, `maps`, `Maps`, `tex`,
+  `Tex`), then in each folder above it up to the project's. A texture that isn't found, isn't a
+  PNG, JPEG, BMP or KTX2 file, or doesn't decode is left out of its materials; the model still
+  loads, and `scene validate` reports it, with the warnings ufbx gives about the file.
+- Cameras, lights, skins, blend shapes and animations are left out.
 
 ### StandardMaterial3D
 
@@ -959,9 +989,9 @@ energy multiplies twice, as Godot's does. A material's `disable_fog` leaves it c
 
 `scene validate` and exports report an entity with two primitive meshes (at
 `/entities/<id>/components`), a `MeshInstance3D` with none (at its `MeshInstance3D`), a
-`TorusMesh` whose radii are equal, and a `mesh` that isn't a `.gltf`, `.glb` or `.obj` file in the
+`TorusMesh` whose radii are equal, and a `mesh` that isn't a `.gltf`, `.glb`, `.obj` or `.fbx` file in the
 project, doesn't load, or sits beside a primitive mesh (at its `mesh`), as drawing would. Exports
-check every `.gltf`, `.glb` and `.obj` file as `scene validate` does, and ship them with their
+check every `.gltf`, `.glb`, `.obj` and `.fbx` file as `scene validate` does, and ship them with their
 `.bin` buffers, `.mtl` libraries and images. `frame.summary` doesn't describe 3D meshes
 yet.
 

@@ -1,0 +1,5 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"model.inspect","params":{"path":"models/windmill.fbx"}}
+{"jsonrpc":"2.0","id":3,"method":"frame.capture","params":{"points":[[72,49],[72,75],[66,60],[72,20],[71,29],[80,35],[54,12],[20,20],[20,80]]}}
+{"jsonrpc":"2.0","id":4,"method":"entity.create","params":{"id":"far_mill","components":{"Transform3D":{"position":[-4,0,-6]},"MeshInstance3D":{"mesh":"models/windmill.fbx"}}}}
+{"jsonrpc":"2.0","id":5,"method":"frame.capture","params":{"points":[[44,46],[44,55],[50,52]],"path":"shots/fields.png"}}

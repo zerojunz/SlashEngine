@@ -2208,7 +2208,7 @@ Reply model_inspect(Session& session, const json::Value& params) {
     if (id.empty() == path.empty()) {
         return param_error(code::kInvalidParams, "",
                            "give id (an entity whose MeshInstance3D draws a model) or path (a "
-                           ".gltf, .glb or .obj file)");
+                           ".gltf, .glb, .obj or .fbx file)");
     }
     const world::World& world = session.world();
     if (!id.empty()) {
@@ -2226,7 +2226,7 @@ Reply model_inspect(Session& session, const json::Value& params) {
         path = instance->mesh;
     } else if (!scene3d::is_model_path(path)) {
         return param_error(code::kInvalidParams, "/path",
-                           quoted(path) + " isn't a model: give a .gltf, .glb or .obj file");
+                           quoted(path) + " isn't a model: give a .gltf, .glb, .obj or .fbx file");
     }
     auto loaded = session.assets().load<scene3d::Model>(path);
     if (!loaded) {
@@ -5963,7 +5963,7 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema({
             {"id", id_property("An entity whose MeshInstance3D draws a model. Or give path.")},
-            {"path", property("string", "A .gltf, .glb or .obj file. Or give id.")},
+            {"path", property("string", "A .gltf, .glb, .obj or .fbx file. Or give id.")},
         }),
         .handler = model_inspect,
     });

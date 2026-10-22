@@ -46,6 +46,12 @@ std::string quoted(std::string_view text) {
     return "\"" + std::string(text) + "\"";
 }
 
+float linear_to_srgb(float c) {
+    return c < 0.0031308F
+               ? 12.92F * c
+               : static_cast<float>((1.055 * std::pow(static_cast<double>(c), 1.0 / 2.4)) - 0.055);
+}
+
 std::optional<std::string> normalized(std::string_view path) {
     std::vector<std::string_view> parts;
     std::size_t start = 0;
