@@ -775,7 +775,16 @@ An `.fbx` file, binary or ASCII, is read with ufbx as Godot 4.3's FBX importer r
   `Tex`), then in each folder above it up to the project's. A texture that isn't found, isn't a
   PNG, JPEG, BMP or KTX2 file, or doesn't decode is left out of its materials; the model still
   loads, and `scene validate` reports it, with the warnings ufbx gives about the file.
-- Cameras, lights, skins, blend shapes and animations are left out.
+- The file's nodes are the model's, named as glTF nodes are (a node with no name is `Mesh` if it
+  has a mesh, `Camera3D` if it has a camera, else `Node`). A mesh's first skin deformer is its
+  skin: each cluster's bone is a joint, with the cluster's geometry-to-bone matrix as its inverse
+  bind, and each vertex takes its four largest weights, or eight when a vertex of the skin has more
+  than four, normalized.
+- Each animation stack is an animation, baked into linear keys 30 times a second as Godot's
+  importer bakes it (any curve interpolation, Euler rotations in any order), as long as the
+  stack's end and named and looping as glTF animations are. Tracks that only hold a node where it
+  is, and tracks on a skinned mesh's own node, are left out, as Godot leaves them out.
+- Cameras, lights and blend shapes are left out.
 
 #### Blender models
 
@@ -805,9 +814,10 @@ with a game.
 
 #### Skeletons and model animations
 
-A glTF model's nodes are its bones, as Godot's importer makes a `Skeleton3D` of them: its skins
-deform their meshes, its animations move its nodes, and an entity's `AnimationPlayer` and
-`Skeleton3D` pose them. A `.blend` file's armatures and actions come through its glTF.
+A glTF or FBX model's nodes are its bones, as Godot's importers make a `Skeleton3D` of them: its
+skins deform their meshes, its animations move its nodes, and an entity's `AnimationPlayer` and
+`Skeleton3D` pose them. A `.blend` file's armatures and actions come through its glTF, and an FBX
+file's skin deformers and animation stacks are read as [FBX models](#fbx-models) says.
 
 ```json
 "hero": {"components": {
@@ -850,8 +860,8 @@ deform their meshes, its animations move its nodes, and an entity's `AnimationPl
 [`skeleton.get`](commands.md#skeletonget) lists a model's bones and where each is posed, and
 [`model.inspect`](commands.md#modelinspect) its skins and animations. `scene validate` reports a
 `Skeleton3D` bone the model hasn't (with "did you mean") and one on an entity that draws no
-model. FBX skins and animations are left out for now.
-[examples/skinned-meshes](../../examples/skinned-meshes/) waves a skinned arm.
+model. [examples/skinned-meshes](../../examples/skinned-meshes/) waves a skinned arm, from a
+glTF file and from the same arm as an FBX file.
 
 ### StandardMaterial3D
 

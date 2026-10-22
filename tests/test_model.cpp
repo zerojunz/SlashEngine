@@ -1387,6 +1387,113 @@ TEST_CASE("skins move vertices as Godot's skeleton shader, posed by animations a
     CHECK(near(skinned(pose)[{0.5F, 2.0F}], {-1.0F, 1.5F, 0.0F}));
 }
 
+TEST_CASE("FBX skins and animation stacks load as Godot's importer reads them") {
+    MemoryFiles files;
+    files.files["arm.gltf"] = slash::test::arm().gltf();
+    const auto gltf = load(files, "arm.gltf");
+    REQUIRE(gltf.ok());
+    // In meters and in centimeters, ASCII and binary.
+    for (const auto& [units, binary] : {std::pair{1.0, false}, std::pair{1.0, true},
+                                        std::pair{100.0, false}, std::pair{100.0, true}}) {
+        CAPTURE(units);
+        CAPTURE(binary);
+        const Fbx file = slash::test::fbx_arm(units);
+        files.files["arm.fbx"] = binary ? file.binary() : file.ascii();
+        const auto loaded = load(files, "arm.fbx");
+        REQUIRE_MESSAGE(loaded.ok(), error_of(loaded));
+        const scene3d::Model& model = loaded.value();
+
+        // The file's tree, parents first, with each node where it is in its parent.
+        REQUIRE(model.nodes.size() == 4);
+        CHECK(model.nodes[0].name == "Armature");
+        CHECK(model.nodes[0].parent == -1);
+        CHECK(model.nodes[1].name == "Upper");
+        CHECK(model.nodes[1].parent == 0);
+        CHECK(model.nodes[2].name == "Lower");
+        CHECK(model.nodes[2].parent == 1);
+        CHECK(near(model.nodes[2].position, {0.0F, 1.0F, 0.0F}));
+        CHECK(model.nodes[3].name == "Arm");
+        CHECK(model.nodes[3].parent == 0);
+
+        // The skin deformer: its clusters' bones and where they were bound.
+        REQUIRE(model.skins.size() == 1);
+        const scene3d::ModelSkin& skin = model.skins[0];
+        CHECK(skin.name == "ArmSkin");
+        CHECK(skin.joints == std::vector<std::size_t>{1, 2});
+        CHECK(near(skin.inverse_binds[0].origin, {0.0F, 0.0F, 0.0F}));
+        CHECK(near(skin.inverse_binds[1].origin, {0.0F, -1.0F, 0.0F}));
+        REQUIRE(model.parts.size() == 1);
+        CHECK(model.parts[0].skin == 0);
+        CHECK(model.parts[0].node_index == 3);
+
+        // Each vertex's weights, in four places as no vertex has more.
+        const scene3d::ModelSurface& surface = model.meshes[0].surfaces.at(0);
+        REQUIRE(surface.weights.size() == surface.vertices.size());
+        for (std::size_t i = 0; i < surface.vertices.size(); ++i) {
+            const float y = surface.vertices[i].position[1];
+            std::array<float, 2> by_joint{};
+            for (std::size_t k = 0; k < 8; ++k) {
+                if (surface.weights[i].weights.at(k) > 0.0F) {
+                    REQUIRE(surface.weights[i].joints.at(k) < 2);
+                    by_joint.at(surface.weights[i].joints.at(k)) +=
+                        surface.weights[i].weights.at(k);
+                }
+            }
+            const float lower = y > 1.5F ? 1.0F : (y > 0.5F ? 0.5F : 0.0F);
+            CHECK(near(by_joint[0], 1.0F - lower));
+            CHECK(near(by_joint[1], lower));
+        }
+
+        // The stacks, as long as they are, with only the tracks that move something: Bend turns
+        // Lower, and Idle-loop, which loops by its name, raises Upper.
+        REQUIRE(model.animations.size() == 2);
+        const scene3d::ModelAnimation& bend = model.animations[0];
+        CHECK(bend.name == "Bend");
+        CHECK_FALSE(bend.loop);
+        CHECK(bend.length == doctest::Approx(1.0));
+        REQUIRE(bend.tracks.size() == 1);
+        CHECK(bend.tracks[0].node == 2);
+        CHECK(bend.tracks[0].property == scene3d::NodeProperty::Rotation);
+        const scene3d::ModelAnimation& idle = model.animations[1];
+        CHECK(idle.name == "Idle-loop");
+        CHECK(idle.loop);
+        REQUIRE(idle.tracks.size() == 1);
+        CHECK(idle.tracks[0].node == 1);
+        CHECK(idle.tracks[0].property == scene3d::NodeProperty::Position);
+
+        // Posed by either animation at any time, it moves as the same arm made as glTF does.
+        const auto skinned = [](const scene3d::Model& m, const scene3d::ModelAnimation& clip,
+                                double time) {
+            std::vector<scene3d::NodePose> pose = scene3d::rest_pose(m);
+            scene3d::blend_animation(m, m, clip, time, 1.0F, {}, pose);
+            const auto joints =
+                scene3d::joint_transforms(m.skins[0], scene3d::node_globals(m, pose));
+            std::vector<render::Vertex3D> out;
+            scene3d::skin_vertices(m.meshes[0].surfaces[0], joints, out);
+            std::map<std::pair<float, float>, Vec3> by_rest;
+            for (std::size_t i = 0; i < out.size(); ++i) {
+                const render::Vertex3D& rest = m.meshes[0].surfaces[0].vertices[i];
+                by_rest[{rest.position[0], rest.position[1]}] = vec(out[i].position);
+            }
+            return by_rest;
+        };
+        for (std::size_t a = 0; a < 2; ++a) {
+            for (const double time : {0.0, 0.25, 0.5, 0.8, 1.0}) {
+                CAPTURE(a);
+                CAPTURE(time);
+                const auto want = skinned(gltf.value(), gltf.value().animations[a], time);
+                const auto got = skinned(model, model.animations[a], time);
+                REQUIRE(got.size() == want.size());
+                for (const auto& [rest, at] : want) {
+                    CAPTURE(rest.second);
+                    CHECK(near(got.at(rest), at));
+                }
+            }
+        }
+        CHECK(scene3d::check_model(files.files["arm.fbx"], "arm.fbx", files.reader()).empty());
+    }
+}
+
 TEST_CASE("AnimationPlayer plays a model's animations on the skinned mesh its entity draws") {
     Scene scene;
     slash::animation::install(scene.world, scene.assets);

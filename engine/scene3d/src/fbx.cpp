@@ -18,10 +18,11 @@
 #include <vector>
 
 // FBX models, binary and ASCII, read with ufbx as Godot's FBX importer reads them
-// (modules/fbx/fbx_document.cpp: _parse, _parse_nodes, _parse_meshes, _parse_images and
-// _parse_materials): in meters with y up, each node with a mesh a part where the file's tree puts
-// it, and each of a mesh's materials a surface. Skins, blend shapes, animations, cameras and
-// lights are left out, as they are of glTF models.
+// (modules/fbx/fbx_document.cpp: _parse, _parse_nodes, _parse_skins, _parse_meshes,
+// _parse_images, _parse_materials, _parse_animations and _import_animation): in meters with y up,
+// the file's tree as the model's nodes, each node with a mesh a part where the tree puts it, each
+// of a mesh's materials a surface, skin deformers as skins and animation stacks as animations.
+// Blend shapes, cameras and lights are left out, as they are of glTF models.
 namespace slash::scene3d {
 namespace {
 
@@ -29,6 +30,14 @@ struct SceneDeleter {
     void operator()(ufbx_scene* scene) const { ufbx_free_scene(scene); }
 };
 using ScenePtr = std::unique_ptr<ufbx_scene, SceneDeleter>;
+
+struct BakedDeleter {
+    void operator()(ufbx_baked_anim* baked) const { ufbx_free_baked_anim(baked); }
+};
+using BakedPtr = std::unique_ptr<ufbx_baked_anim, BakedDeleter>;
+
+// The rate Godot's importer bakes FBX animations at, its default animation/fps.
+constexpr double kBakeRate = 30.0;
 
 // The folders Godot's _get_texture_path looks in for a texture, in each folder from the model's
 // up to the project's.
@@ -115,6 +124,54 @@ world::Affine3D affine_of(const ufbx_matrix& m) {
             .origin = vec3_of(m.cols[3])};
 }
 
+// Godot's _parse_meshes: a vertex's first weights in its skin, the largest as ufbx sorts them,
+// scaled to add up to one.
+VertexWeights weights_of(const ufbx_skin_deformer& skin, std::uint32_t vertex,
+                         std::uint32_t places) {
+    VertexWeights out;
+    if (vertex >= skin.vertices.count) {
+        return out;
+    }
+    const ufbx_skin_vertex& in = skin.vertices.data[vertex];
+    const std::uint32_t count = std::min(in.num_weights, places);
+    float total = 0.0F;
+    for (std::uint32_t i = 0; i < count; ++i) {
+        const ufbx_skin_weight& weight = skin.weights.data[in.weight_begin + i];
+        out.joints.at(i) = static_cast<std::uint16_t>(weight.cluster_index);
+        out.weights.at(i) = static_cast<float>(weight.weight);
+        total += out.weights.at(i);
+    }
+    if (total > 0.0F) {
+        for (std::uint32_t i = 0; i < count; ++i) {
+            out.weights.at(i) /= total;
+        }
+    }
+    return out;
+}
+
+std::array<float, 4> value_of(ufbx_vec3 v) {
+    return {static_cast<float>(v.x), static_cast<float>(v.y), static_cast<float>(v.z), 0.0F};
+}
+
+std::array<float, 4> value_of(ufbx_quat q) {
+    // Normalized, as Godot's importer compares them.
+    const double length = std::sqrt((q.x * q.x) + (q.y * q.y) + (q.z * q.z) + (q.w * q.w));
+    const double scale = length > 0.0 ? 1.0 / length : 0.0;
+    return {static_cast<float>(q.x * scale), static_cast<float>(q.y * scale),
+            static_cast<float>(q.z * scale), static_cast<float>(q.w * scale)};
+}
+
+// Godot's Math::is_equal_approx, for each part.
+bool equal_approx(const std::array<float, 4>& a, const std::array<float, 4>& b) {
+    for (std::size_t i = 0; i < 4; ++i) {
+        const float tolerance = std::max(0.00001F * std::abs(a.at(i)), 0.00001F);
+        if (a.at(i) != b.at(i) && std::abs(a.at(i) - b.at(i)) >= tolerance) {
+            return false;
+        }
+    }
+    return true;
+}
+
 class FbxReader {
 public:
     FbxReader(std::string_view path, const ModelReader& read, Problems problems)
@@ -133,7 +190,9 @@ private:
     int image(const ufbx_texture* texture) const;
     AlphaMode alpha_of(int image);
     Result<ModelMesh> mesh(const ufbx_mesh& in);
-    void add_parts(const ufbx_node& node, const ufbx_matrix& to_model);
+    void add_nodes(const ufbx_node& node, int parent, const ufbx_matrix& to_model);
+    void skins();
+    void animations();
 
     std::string path_;
     std::string folder_; // the model's folder, without its trailing '/'
@@ -144,6 +203,10 @@ private:
     std::vector<int> images_; // the model's image for each of the file's texture files, or -1
     std::map<int, AlphaMode> alpha_;
     std::optional<int> colored_default_;
+    NameSet names_ = node_names();
+    std::vector<int> nodes_;      // the model's node for each of the file's nodes, or -1
+    std::vector<int> skins_;      // the model's skin for each of the file's skin deformers, or -1
+    std::vector<int> mesh_skins_; // the skin that deforms each of the file's meshes, or -1
 };
 
 Result<Model> FbxReader::run(std::string_view bytes) {
@@ -159,6 +222,7 @@ Result<Model> FbxReader::run(std::string_view bytes) {
     options.pivot_handling = UFBX_PIVOT_HANDLING_ADJUST_TO_PIVOT;
     options.node_depth_limit = 512;
     options.generate_missing_normals = true;
+    options.clean_skin_weights = true;
     options.file_format = UFBX_FILE_FORMAT_FBX;
     options.path_separator = '/';
     ufbx_error error{};
@@ -175,6 +239,13 @@ Result<Model> FbxReader::run(std::string_view bytes) {
     for (std::size_t i = 0; i < scene_->materials.count; ++i) {
         model_.materials.push_back(material(*scene_->materials.data[i], i));
     }
+    // Godot's scene starts at the root's children, whose transforms carry the axis conversion.
+    nodes_.assign(scene_->nodes.count, -1);
+    for (const ufbx_node* child : scene_->root_node->children) {
+        add_nodes(*child, -1, child->node_to_parent);
+    }
+    skins();
+    mesh_skins_.assign(scene_->meshes.count, -1);
     for (const ufbx_mesh* in : scene_->meshes) {
         auto out = mesh(*in);
         if (!out) {
@@ -182,10 +253,10 @@ Result<Model> FbxReader::run(std::string_view bytes) {
         }
         model_.meshes.push_back(std::move(out).value());
     }
-    // Godot's scene starts at the root's children, whose transforms carry the axis conversion.
-    for (const ufbx_node* child : scene_->root_node->children) {
-        add_parts(*child, child->node_to_parent);
+    for (ModelPart& part : model_.parts) {
+        part.skin = mesh_skins_[part.mesh];
     }
+    animations();
     return std::move(model_);
 }
 
@@ -401,6 +472,17 @@ Result<ModelMesh> FbxReader::mesh(const ufbx_mesh& in) {
     if (out.name.empty()) {
         out.name = "mesh";
     }
+    // Godot's importer skins a mesh with the first of its skin deformers it keeps, with four
+    // weights a vertex, or eight when a vertex of the skin has more than four.
+    const ufbx_skin_deformer* skin = nullptr;
+    for (const ufbx_skin_deformer* deformer : in.skin_deformers) {
+        if (skins_[deformer->typed_id] >= 0) {
+            skin = deformer;
+            mesh_skins_[in.typed_id] = skins_[deformer->typed_id];
+            break;
+        }
+    }
+    const std::uint32_t places = skin != nullptr && skin->max_weights_per_vertex > 4 ? 8 : 4;
     std::vector<std::uint32_t> corners(in.max_face_triangles * 3);
     for (const ufbx_mesh_part& part : in.material_parts) {
         if (part.num_triangles == 0) {
@@ -456,6 +538,10 @@ Result<ModelMesh> FbxReader::mesh(const ufbx_mesh& in) {
                 }
                 triangles.indices.push_back(static_cast<std::uint32_t>(triangles.vertices.size()));
                 triangles.vertices.push_back(v);
+                if (skin != nullptr) {
+                    triangles.weights.push_back(
+                        weights_of(*skin, in.vertex_indices[corner], places));
+                }
             }
         }
         // Equal corners merged, as Godot's SurfaceTool::index, with MikkTSpace's tangents where
@@ -482,6 +568,7 @@ Result<ModelMesh> FbxReader::mesh(const ufbx_mesh& in) {
         ModelSurface surface;
         surface.vertices = std::move(triangles.vertices);
         surface.indices = std::move(triangles.indices);
+        surface.weights = std::move(triangles.weights);
         if (part.index < in.materials.count && in.materials.data[part.index] != nullptr) {
             surface.material = static_cast<int>(in.materials.data[part.index]->typed_id);
         } else if (in.vertex_color.exists) {
@@ -500,15 +587,137 @@ Result<ModelMesh> FbxReader::mesh(const ufbx_mesh& in) {
     return out;
 }
 
-// The parts under a node, in tree order, each where the nodes above it put it.
-void FbxReader::add_parts(const ufbx_node& node, const ufbx_matrix& to_model) {
-    if (node.mesh != nullptr) {
-        model_.parts.push_back({.node = node.name.length > 0 ? text_of(node.name) : "Mesh",
-                                .mesh = node.mesh->typed_id,
-                                .transform = affine_of(to_model)});
+// A node and those under it, in tree order, as Godot's _parse_nodes and _assign_node_names make
+// them, and the parts among them, each where the nodes above it put it.
+void FbxReader::add_nodes(const ufbx_node& node, int parent, const ufbx_matrix& to_model) {
+    const auto index = static_cast<int>(model_.nodes.size());
+    std::string name = text_of(node.name);
+    if (name.empty() && node.mesh != nullptr) {
+        name = "Mesh";
+    } else if (name.empty()) {
+        name = node.camera != nullptr ? "Camera3D" : "Node";
     }
+    const ufbx_transform& local = node.local_transform;
+    ModelNode out;
+    out.name = unique_name(names_, name);
+    out.parent = parent;
+    out.position = vec3_of(local.translation);
+    out.rotation = {static_cast<float>(local.rotation.x), static_cast<float>(local.rotation.y),
+                    static_cast<float>(local.rotation.z), static_cast<float>(local.rotation.w)};
+    out.scale = vec3_of(local.scale);
+    nodes_[node.typed_id] = index;
+    if (node.mesh != nullptr) {
+        model_.parts.push_back({.node = out.name,
+                                .mesh = node.mesh->typed_id,
+                                .transform = affine_of(to_model),
+                                .node_index = index});
+    }
+    model_.nodes.push_back(std::move(out));
     for (const ufbx_node* child : node.children) {
-        add_parts(*child, ufbx_matrix_mul(&to_model, &child->node_to_parent));
+        add_nodes(*child, index, ufbx_matrix_mul(&to_model, &child->node_to_parent));
+    }
+}
+
+// Godot's _parse_skins: each skin deformer with bones and weights a skin, its clusters' bones its
+// joints and their geometry-to-bone matrices its inverse binds.
+void FbxReader::skins() {
+    skins_.assign(scene_->skin_deformers.count, -1);
+    for (const ufbx_skin_deformer* in : scene_->skin_deformers) {
+        if (in->clusters.count == 0 || in->weights.count == 0) {
+            continue;
+        }
+        ModelSkin skin;
+        skin.name =
+            in->name.length > 0 ? text_of(in->name) : "skin_" + std::to_string(in->typed_id);
+        bool whole = true;
+        for (const ufbx_skin_cluster* cluster : in->clusters) {
+            const int joint =
+                cluster->bone_node == nullptr ? -1 : nodes_[cluster->bone_node->typed_id];
+            if (joint < 0) {
+                whole = false;
+                break;
+            }
+            skin.joints.push_back(static_cast<std::size_t>(joint));
+            skin.inverse_binds.push_back(affine_of(cluster->geometry_to_bone));
+        }
+        if (!whole) {
+            problems_.add("skin " + quoted(skin.name) +
+                          " has a bone that isn't in the scene; the meshes it deforms draw where "
+                          "their nodes put them");
+            continue;
+        }
+        skins_[in->typed_id] = static_cast<int>(model_.skins.size());
+        model_.skins.push_back(std::move(skin));
+    }
+}
+
+// Godot's _parse_animations and _import_animation: each animation stack baked into linear keys
+// at 30 a second, a track for each part of a node it moves, as long as the stack. Tracks that
+// only hold the node where it is, and tracks on a skinned mesh's own node, which doesn't move it,
+// are left out.
+void FbxReader::animations() {
+    std::vector<bool> joints(model_.nodes.size(), false);
+    for (const ModelSkin& skin : model_.skins) {
+        for (const std::size_t joint : skin.joints) {
+            joints[joint] = true;
+        }
+    }
+    std::vector<bool> skinned(model_.nodes.size(), false);
+    for (const ModelPart& part : model_.parts) {
+        if (part.skin >= 0 && !joints[static_cast<std::size_t>(part.node_index)]) {
+            skinned[static_cast<std::size_t>(part.node_index)] = true;
+        }
+    }
+    NameSet taken;
+    for (const ufbx_anim_stack* stack : scene_->anim_stacks) {
+        ModelAnimation out;
+        const std::string named = text_of(stack->name);
+        out.name = unique_name(taken, named.empty() ? "Animation" : named, true);
+        out.loop = loops_by_name(named);
+        ufbx_bake_opts options{};
+        options.resample_rate = kBakeRate;
+        options.minimum_sample_rate = kBakeRate;
+        options.max_keyframe_segments = 1024;
+        ufbx_error error{};
+        const BakedPtr baked(ufbx_bake_anim(scene_.get(), stack->anim, &options, &error));
+        if (baked == nullptr) {
+            problems_.add("animation " + quoted(out.name) +
+                          " doesn't bake: " + text_of(error.description) + "; it is left out");
+            continue;
+        }
+        for (const ufbx_baked_node& in : baked->nodes) {
+            const int index = in.typed_id < nodes_.size() ? nodes_[in.typed_id] : -1;
+            if (index < 0 || skinned[static_cast<std::size_t>(index)]) {
+                continue;
+            }
+            const ModelNode& node = model_.nodes[static_cast<std::size_t>(index)];
+            const auto add = [&](NodeProperty property, auto keys, std::array<float, 4> rest) {
+                NodeTrack track{.node = static_cast<std::size_t>(index),
+                                .property = property,
+                                .step = false,
+                                .times = {},
+                                .values = {}};
+                bool moves = false;
+                for (const auto& key : keys) {
+                    const std::array<float, 4> value = value_of(key.value);
+                    moves = moves || !equal_approx(value, rest);
+                    track.times.push_back(static_cast<float>(key.time));
+                    track.values.push_back(value);
+                }
+                if (moves) {
+                    out.tracks.push_back(std::move(track));
+                }
+            };
+            add(NodeProperty::Position, in.translation_keys,
+                {node.position.x, node.position.y, node.position.z, 0.0F});
+            add(NodeProperty::Rotation, in.rotation_keys,
+                {node.rotation.x, node.rotation.y, node.rotation.z, node.rotation.w});
+            add(NodeProperty::Scale, in.scale_keys,
+                {node.scale.x, node.scale.y, node.scale.z, 0.0F});
+        }
+        // Godot's shortest animation length.
+        out.length = std::max(stack->time_end, 0.001);
+        model_.animations.push_back(std::move(out));
     }
 }
 
