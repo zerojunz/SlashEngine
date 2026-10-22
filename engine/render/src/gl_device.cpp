@@ -6,6 +6,7 @@
 #include "material_shaders.hpp"
 #include "mesh_shaders.hpp"
 #include "mesh_shading.hpp"
+#include "shadow_shaders.hpp"
 #include "sprite_shaders.hpp"
 #include "uniforms.hpp"
 
@@ -60,7 +61,9 @@ constexpr GLenum kNoError = 0;
 constexpr GLboolean kFalse = 0;
 constexpr GLboolean kTrue = 1;
 constexpr GLenum kTriangles = 0x0004;
+constexpr GLenum kNone = 0;
 constexpr GLenum kGreater = 0x0204;
+constexpr GLenum kGequal = 0x0206;
 constexpr GLenum kFront = 0x0404;
 constexpr GLenum kBack = 0x0405;
 constexpr GLenum kCcw = 0x0901;
@@ -85,6 +88,7 @@ constexpr GLenum kUnsignedByte = 0x1401;
 constexpr GLenum kUnsignedInt = 0x1405;
 constexpr GLenum kFloat = 0x1406;
 constexpr GLenum kDepth = 0x1801;
+constexpr GLenum kDepthComponent = 0x1902;
 constexpr GLenum kRgba = 0x1908;
 constexpr GLenum kRenderer = 0x1F01;
 constexpr GLenum kVersion = 0x1F02;
@@ -103,6 +107,9 @@ constexpr GLenum kNumExtensions = 0x821D;
 constexpr GLenum kTexture0 = 0x84C0;
 constexpr GLenum kArrayBuffer = 0x8892;
 constexpr GLenum kElementArrayBuffer = 0x8893;
+constexpr GLenum kTextureCompareMode = 0x884C;
+constexpr GLenum kTextureCompareFunc = 0x884D;
+constexpr GLenum kCompareRefToTexture = 0x884E;
 constexpr GLenum kStreamDraw = 0x88E0;
 constexpr GLenum kStaticDraw = 0x88E4;
 constexpr GLenum kUniformBuffer = 0x8A11;
@@ -167,6 +174,7 @@ constexpr GLuint kInvalidIndex = 0xFFFFFFFF;
     X(DepthMask, depth_mask, void, (GLboolean))                                                    \
     X(Disable, disable, void, (GLenum))                                                            \
     X(DrawArrays, draw_arrays, void, (GLenum, GLint, GLsizei))                                     \
+    X(DrawBuffers, draw_buffers, void, (GLsizei, const GLenum*))                                   \
     X(DrawElements, draw_elements, void, (GLenum, GLsizei, GLenum, const void*))                   \
     X(Enable, enable, void, (GLenum))                                                              \
     X(EnableVertexAttribArray, enable_vertex_attrib_array, void, (GLuint))                         \
@@ -191,9 +199,11 @@ constexpr GLuint kInvalidIndex = 0xFFFFFFFF;
     X(GetUniformLocation, get_uniform_location, GLint, (GLuint, const GLchar*))                    \
     X(LinkProgram, link_program, void, (GLuint))                                                   \
     X(PixelStorei, pixel_storei, void, (GLenum, GLint))                                            \
+    X(ReadBuffer, read_buffer, void, (GLenum))                                                     \
     X(ReadPixels, read_pixels, void, (GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void*))      \
     X(RenderbufferStorage, renderbuffer_storage, void, (GLenum, GLenum, GLsizei, GLsizei))         \
     X(SamplerParameteri, sampler_parameteri, void, (GLuint, GLenum, GLint))                        \
+    X(Scissor, scissor, void, (GLint, GLint, GLsizei, GLsizei))                                    \
     X(ShaderSource, shader_source, void, (GLuint, GLsizei, const GLchar* const*, const GLint*))    \
     X(TexImage2D, tex_image_2d, void,                                                              \
       (GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*))                \
@@ -243,6 +253,8 @@ constexpr GLuint kCameraBinding = 4;
 constexpr GLuint kInstanceBinding = 5;
 constexpr GLuint kSurfaceBinding = 6;
 constexpr GLuint kSceneBinding = 7;
+constexpr GLuint kShadowPassBinding = 8;
+constexpr GLuint kShadowsBinding = 9;
 
 // The two shaders: plain sprites, and materials that run a program.
 enum class ShaderKind : std::uint8_t { Sprite, Material };
@@ -253,9 +265,9 @@ constexpr std::array<std::string_view, 1> kSpriteSamplers{"sprite_texture"};
 constexpr std::array<std::string_view, kMaterialSamplers> kMaterialSamplerNames{
     "texture0",   "texture1",     "texture2",    "texture3",
     "normal_map", "specular_map", "light_atlas", "shadow_map"};
-constexpr std::array<std::string_view, kMeshTextures> kMeshSamplerNames{
-    "albedo_texture", "metallic_texture", "roughness_texture", "emission_texture",
-    "normal_texture"};
+constexpr std::array<std::string_view, kMeshTextures + 2> kMeshSamplerNames{
+    "albedo_texture", "metallic_texture",  "roughness_texture", "emission_texture",
+    "normal_texture", "directional_atlas", "positional_atlas"};
 
 // Turns clip space upside down. GL puts clip space's top at a framebuffer's last row, where the
 // other backends put it at the first, so frames draw upside down into textures, which leaves
@@ -466,6 +478,19 @@ public:
                 }
                 if (mesh_program_ != 0) {
                     gl_.delete_program(mesh_program_);
+                }
+                if (shadow_program_ != 0) {
+                    gl_.delete_program(shadow_program_);
+                }
+                for (const GlShadowAtlas& atlas :
+                     {shadow_atlases_[0], shadow_atlases_[1], no_shadows_}) {
+                    if (atlas.texture != 0) {
+                        gl_.delete_textures(1, &atlas.texture);
+                    }
+                }
+                if (shadow_sampler_ != 0) {
+                    gl_.delete_samplers(1, &shadow_sampler_);
+                    gl_.delete_framebuffers(1, &shadow_framebuffer_);
                 }
                 if (depth_ != 0) {
                     gl_.delete_renderbuffers(1, &depth_);
@@ -777,7 +802,7 @@ public:
     }
 
     Result<void> draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
-                           std::uint32_t layers) override {
+                           std::uint32_t layers, ShadowCasting shadows) override {
         if (!in_frame_) {
             return no_frame("draw_mesh");
         }
@@ -788,8 +813,8 @@ public:
             !checked) {
             return checked;
         }
-        if (frame_width_ == 0) {
-            return {}; // a skipped frame
+        if (frame_width_ == 0 || !frame_.scene) {
+            return {}; // a skipped frame (check_mesh_draw refused one with no scene)
         }
         // Made at the first draw that needs them, so a failure shows there.
         make_current();
@@ -799,6 +824,9 @@ public:
         if (auto depth = depth_buffer(frame_width_, frame_height_); !depth) {
             return depth.error();
         }
+        if (auto ready = prepare_shadows(*frame_.scene); !ready) {
+            return ready;
+        }
         MeshBatch batch{.mesh = it->second, .units = {}};
         const std::array<const MaterialTexture*, kMeshTextures> slots{
             &material.albedo_texture, &material.metallic_texture, &material.roughness_texture,
@@ -806,8 +834,11 @@ public:
         for (std::size_t slot = 0; slot < kMeshTextures; ++slot) {
             batch.units.at(slot) = binding(slots.at(slot)->texture, slots.at(slot)->repeat);
         }
-        mesh_draws_.push_back(
-            {.mesh = mesh, .transform = transform, .material = material, .layers = layers});
+        mesh_draws_.push_back({.mesh = mesh,
+                               .transform = transform,
+                               .material = material,
+                               .layers = layers,
+                               .shadows = shadows});
         mesh_batches_.push_back(batch);
         ++stats_.draws;
         stats_.triangles += static_cast<std::uint64_t>(it->second.index_count / 3);
@@ -879,6 +910,7 @@ public:
         batches_.clear();
         mesh_draws_.clear();
         mesh_batches_.clear();
+        shadow_plan_.reset();
         // Minimized or hidden: there is nothing to draw to this time.
         return width != 0;
     }
@@ -976,9 +1008,10 @@ public:
         gl_.clear_color(frame_.clear.r, frame_.clear.g, frame_.clear.b, frame_.clear.a);
         gl_.clear(gl::kColorBufferBit);
         // Meshes draw first, and the 2D draws go over them.
-        // Mesh draws need a scene, so a frame with them has one.
-        if (frame_.scene && !mesh_draws_.empty()) {
-            draw_meshes(*frame_.scene);
+        // Mesh draws need a scene, and the first planned the shadows, so a frame with them has
+        // both.
+        if (frame_.scene && shadow_plan_ && !mesh_draws_.empty()) {
+            draw_meshes(*frame_.scene, *shadow_plan_);
         }
         if (!batches_.empty()) {
             draw_batches();
@@ -1131,6 +1164,12 @@ private:
         GLuint indices = 0;
         GLsizei index_count = 0;
         Bounds bounds;
+    };
+
+    // A shadow atlas: a depth texture the shadow passes draw into and the mesh pass samples.
+    struct GlShadowAtlas {
+        GLuint texture = 0;
+        std::uint32_t size = 0;
     };
 
     // What a mesh draw binds, found when it is made: its mesh may be destroyed before end_frame.
@@ -1342,7 +1381,8 @@ private:
               std::pair{"Lights", kLightsBinding},
               std::pair{"VertexProgram", kVertexProgramBinding},
               std::pair{"Camera", kCameraBinding}, std::pair{"Instance", kInstanceBinding},
-              std::pair{"Surface", kSurfaceBinding}, std::pair{"Scene", kSceneBinding}}) {
+              std::pair{"Surface", kSurfaceBinding}, std::pair{"Scene", kSceneBinding},
+              std::pair{"LightView", kShadowPassBinding}, std::pair{"Shadows", kShadowsBinding}}) {
             const GLuint index = gl_.get_uniform_block_index(program, name);
             if (index != gl::kInvalidIndex) {
                 gl_.uniform_block_binding(program, index, binding);
@@ -1574,10 +1614,170 @@ private:
         return depth_;
     }
 
-    // The frame's meshes, in the order mesh_draw_order gives, over the depth buffer cleared to
-    // the far plane. Frames draw upside down (see kFlipY), which turns the clockwise front faces
-    // counterclockwise.
-    void draw_meshes(const Scene3D& scene) {
+    // The frame's shadow plan, and the atlases, program, sampler and framebuffer it draws with,
+    // made at the frame's first mesh draw so a failure shows there.
+    Result<void> prepare_shadows(const Scene3D& scene) {
+        if (shadow_plan_) {
+            return {};
+        }
+        if (shadow_sampler_ == 0) {
+            // Each tap compares four texels and blends the results, as Godot's shadow sampler.
+            gl_.gen_samplers(1, &shadow_sampler_);
+            for (const auto& [name, value] :
+                 {std::pair{gl::kTextureMinFilter, gl::kLinear},
+                  std::pair{gl::kTextureMagFilter, gl::kLinear},
+                  std::pair{gl::kTextureWrapS, gl::kClampToEdge},
+                  std::pair{gl::kTextureWrapT, gl::kClampToEdge},
+                  std::pair{gl::kTextureCompareMode, gl::kCompareRefToTexture},
+                  std::pair{gl::kTextureCompareFunc, gl::kGequal}}) {
+                gl_.sampler_parameteri(shadow_sampler_, name, static_cast<GLint>(value));
+            }
+            gl_.gen_framebuffers(1, &shadow_framebuffer_);
+        }
+        if (no_shadows_.texture == 0) {
+            auto made = make_shadow_atlas(1);
+            if (!made) {
+                return made.error();
+            }
+            no_shadows_ = {.texture = made.value(), .size = 1};
+        }
+        // The largest power of two the context's textures reach.
+        std::uint32_t limit = 1;
+        while (limit < kMaxTextureSize && static_cast<GLint>(limit * 2) <= max_texture_size_) {
+            limit *= 2;
+        }
+        ShadowPlan plan = plan_shadows(scene, limit);
+        const std::array<std::uint32_t, 2> sizes{plan.directional_size, plan.positional_size};
+        for (std::size_t i = 0; i < 2; ++i) {
+            GlShadowAtlas& atlas = shadow_atlases_.at(i);
+            if (sizes.at(i) == 0 || atlas.size == sizes.at(i)) {
+                continue;
+            }
+            if (atlas.texture != 0) {
+                gl_.delete_textures(1, &atlas.texture);
+                atlas = {};
+            }
+            auto made = make_shadow_atlas(sizes.at(i));
+            if (!made) {
+                return made.error();
+            }
+            atlas = {.texture = made.value(), .size = sizes.at(i)};
+        }
+        if (!plan.passes.empty() && shadow_program_ == 0) {
+            const std::array<std::string_view, 1> samplers{"albedo_texture"};
+            auto program =
+                link(at_w1_vertex(shaders::kShadowVertexGlsl),
+                     at_w1_fragment(shaders::kShadowFragmentGlsl), samplers, "the shadow shader");
+            if (!program) {
+                return program.error();
+            }
+            shadow_program_ = program.value();
+        }
+        shadow_plan_ = std::move(plan);
+        return {};
+    }
+
+    Result<GLuint> make_shadow_atlas(std::uint32_t size) {
+        GLuint texture = 0;
+        gl_.gen_textures(1, &texture);
+        gl_.bind_texture(gl::kTexture2D, texture);
+        gl_.tex_image_2d(gl::kTexture2D, 0, static_cast<GLint>(gl::kDepthComponent32f),
+                         static_cast<GLsizei>(size), static_cast<GLsizei>(size), 0,
+                         gl::kDepthComponent, gl::kFloat, nullptr);
+        gl_.bind_texture(gl::kTexture2D, 0);
+        if (auto checked = check_errors("creating a shadow atlas"); !checked) {
+            gl_.delete_textures(1, &texture);
+            return checked.error();
+        }
+        return texture;
+    }
+
+    // The frame's shadow passes, each atlas cleared and drawn through the shadow framebuffer.
+    // They draw upside down, as frames do (see kFlipY), so the atlas's rows are the other
+    // devices'; each rect's first row is GL's bottom, and front faces turn counterclockwise.
+    void draw_shadows(const ShadowPlan& plan, std::span<const std::size_t> pass_uniforms,
+                      std::span<const std::pair<std::size_t, std::size_t>> placed) {
+        gl_.bind_framebuffer(gl::kFramebuffer, shadow_framebuffer_);
+        const GLenum none = gl::kNone;
+        gl_.draw_buffers(1, &none);
+        gl_.read_buffer(gl::kNone);
+        gl_.use_program(shadow_program_);
+        gl_.disable(gl::kBlend);
+        gl_.enable(gl::kDepthTest);
+        gl_.depth_func(gl::kGreater);
+        gl_.depth_mask(gl::kTrue);
+        gl_.front_face(gl::kCcw);
+        gl_.enable(gl::kScissorTest);
+        for (std::size_t atlas = 0; atlas < 2; ++atlas) {
+            const bool positional = atlas == 1;
+            if (std::ranges::none_of(plan.passes, [&](const ShadowPass& pass) {
+                    return pass.positional == positional;
+                })) {
+                continue;
+            }
+            const GlShadowAtlas& target = shadow_atlases_.at(atlas);
+            gl_.framebuffer_texture_2d(gl::kFramebuffer, gl::kDepthAttachment, gl::kTexture2D,
+                                       target.texture, 0);
+            const auto size = static_cast<GLsizei>(target.size);
+            gl_.viewport(0, 0, size, size);
+            gl_.scissor(0, 0, size, size);
+            constexpr GLfloat kFar = 0.0F;
+            gl_.clear_bufferfv(gl::kDepth, 0, &kFar);
+            for (std::size_t p = 0; p < plan.passes.size(); ++p) {
+                const ShadowPass& pass = plan.passes[p];
+                if (pass.positional != positional) {
+                    continue;
+                }
+                const auto x = static_cast<GLint>(pass.rect.x);
+                const auto y = static_cast<GLint>(pass.rect.y);
+                const auto w = static_cast<GLsizei>(pass.rect.width);
+                const auto h = static_cast<GLsizei>(pass.rect.height);
+                gl_.viewport(x, y, w, h);
+                gl_.scissor(x, y, w, h);
+                gl_.bind_buffer_range(gl::kUniformBuffer, kShadowPassBinding, uniform_buffer_,
+                                      static_cast<GLintptr>(pass_uniforms[p]),
+                                      static_cast<GLsizeiptr>(sizeof(MeshShadowPassUniforms)));
+                for (std::size_t i = 0; i < mesh_draws_.size(); ++i) {
+                    const MeshDraw& draw = mesh_draws_[i];
+                    const MeshBatch& batch = mesh_batches_[i];
+                    if (!shadow_pass_draws(pass, draw, batch.mesh.bounds)) {
+                        continue;
+                    }
+                    set_cull(shadow_cull(pass, draw));
+                    gl_.bind_buffer_range(gl::kUniformBuffer, kInstanceBinding, uniform_buffer_,
+                                          static_cast<GLintptr>(placed[i].first),
+                                          static_cast<GLsizeiptr>(sizeof(MeshInstanceUniforms)));
+                    gl_.bind_buffer_range(gl::kUniformBuffer, kSurfaceBinding, uniform_buffer_,
+                                          static_cast<GLintptr>(placed[i].second),
+                                          static_cast<GLsizeiptr>(sizeof(MeshSurfaceUniforms)));
+                    gl_.active_texture(gl::kTexture0);
+                    gl_.bind_texture(gl::kTexture2D, batch.units[0].texture);
+                    gl_.bind_sampler(0, batch.units[0].sampler);
+                    gl_.bind_vertex_array(batch.mesh.vertex_array);
+                    gl_.draw_elements(gl::kTriangles, batch.mesh.index_count, gl::kUnsignedInt,
+                                      nullptr);
+                }
+            }
+        }
+        gl_.framebuffer_texture_2d(gl::kFramebuffer, gl::kDepthAttachment, gl::kTexture2D, 0, 0);
+        gl_.disable(gl::kScissorTest);
+        gl_.bind_framebuffer(gl::kFramebuffer, frame_framebuffer_);
+        gl_.viewport(0, 0, static_cast<GLsizei>(frame_width_), static_cast<GLsizei>(frame_height_));
+    }
+
+    void set_cull(CullMode cull) const {
+        if (cull == CullMode::Disabled) {
+            gl_.disable(gl::kCullFace);
+        } else {
+            gl_.enable(gl::kCullFace);
+            gl_.cull_face(cull == CullMode::Back ? gl::kBack : gl::kFront);
+        }
+    }
+
+    // The frame's meshes: first into the shadow atlases, then in the order mesh_draw_order gives,
+    // over the depth buffer cleared to the far plane. Frames draw upside down (see kFlipY), which
+    // turns the clockwise front faces counterclockwise.
+    void draw_meshes(const Scene3D& scene, const ShadowPlan& plan) {
         uniform_bytes_.clear();
         MeshCameraUniforms camera = mesh_camera_uniforms(scene);
         camera.view_projection = multiply(kFlipY, camera.view_projection);
@@ -1587,8 +1787,16 @@ private:
         const std::vector<std::size_t> order =
             mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), scene,
                             [&](std::size_t at) { return mesh_batches_[at].mesh.bounds; });
+        const std::size_t shadows_at =
+            place_uniforms(plan.uniforms.get(), sizeof(MeshShadowUniforms));
+        std::vector<std::size_t> pass_uniforms;
+        for (const ShadowPass& pass : plan.passes) {
+            MeshShadowPassUniforms uniforms = pass.uniforms;
+            uniforms.projection = multiply(kFlipY, uniforms.projection);
+            pass_uniforms.push_back(place_uniforms(&uniforms, sizeof(uniforms)));
+        }
         std::vector<std::pair<std::size_t, std::size_t>> placed(mesh_draws_.size());
-        for (const std::size_t i : order) {
+        for (std::size_t i = 0; i < mesh_draws_.size(); ++i) {
             const MeshInstanceUniforms instance =
                 mesh_instance_uniforms(mesh_draws_[i].transform, mesh_draws_[i].material);
             const MeshSurfaceUniforms surface =
@@ -1605,6 +1813,12 @@ private:
         gl_.bind_buffer_range(gl::kUniformBuffer, kSceneBinding, uniform_buffer_,
                               static_cast<GLintptr>(scene_at),
                               static_cast<GLsizeiptr>(sizeof(MeshSceneUniforms)));
+        gl_.bind_buffer_range(gl::kUniformBuffer, kShadowsBinding, uniform_buffer_,
+                              static_cast<GLintptr>(shadows_at),
+                              static_cast<GLsizeiptr>(sizeof(MeshShadowUniforms)));
+        if (!plan.passes.empty()) {
+            draw_shadows(plan, pass_uniforms, placed);
+        }
 
         gl_.framebuffer_renderbuffer(gl::kFramebuffer, gl::kDepthAttachment, gl::kRenderbuffer,
                                      depth_);
@@ -1615,7 +1829,17 @@ private:
         gl_.clear_bufferfv(gl::kDepth, 0, &kFar);
         gl_.front_face(gl::kCcw);
         gl_.use_program(mesh_program_);
+        for (std::size_t atlas = 0; atlas < 2; ++atlas) {
+            const bool drawn = (atlas == 0 ? plan.directional_size : plan.positional_size) != 0;
+            gl_.active_texture(gl::kTexture0 + static_cast<GLenum>(kMeshTextures + atlas));
+            gl_.bind_texture(gl::kTexture2D,
+                             drawn ? shadow_atlases_.at(atlas).texture : no_shadows_.texture);
+            gl_.bind_sampler(static_cast<GLuint>(kMeshTextures + atlas), shadow_sampler_);
+        }
         for (const std::size_t i : order) {
+            if (mesh_draws_[i].shadows == ShadowCasting::ShadowsOnly) {
+                continue;
+            }
             const Material3D& material = mesh_draws_[i].material;
             const MeshBatch& batch = mesh_batches_[i];
             const bool blended = material.transparency == Transparency::Alpha;
@@ -1626,12 +1850,7 @@ private:
                 gl_.disable(gl::kBlend);
             }
             gl_.depth_mask(blended ? gl::kFalse : gl::kTrue);
-            if (material.cull == CullMode::Disabled) {
-                gl_.disable(gl::kCullFace);
-            } else {
-                gl_.enable(gl::kCullFace);
-                gl_.cull_face(material.cull == CullMode::Back ? gl::kBack : gl::kFront);
-            }
+            set_cull(material.cull);
             gl_.bind_buffer_range(gl::kUniformBuffer, kInstanceBinding, uniform_buffer_,
                                   static_cast<GLintptr>(placed[i].first),
                                   static_cast<GLsizeiptr>(sizeof(MeshInstanceUniforms)));
@@ -1647,6 +1866,12 @@ private:
             gl_.draw_elements(gl::kTriangles, batch.mesh.index_count, gl::kUnsignedInt, nullptr);
         }
         // Back to the 2D state the rest of the device draws with.
+        for (std::size_t atlas = 0; atlas < 2; ++atlas) {
+            gl_.active_texture(gl::kTexture0 + static_cast<GLenum>(kMeshTextures + atlas));
+            gl_.bind_texture(gl::kTexture2D, 0);
+            gl_.bind_sampler(static_cast<GLuint>(kMeshTextures + atlas), 0);
+        }
+        gl_.active_texture(gl::kTexture0);
         gl_.bind_vertex_array(0);
         gl_.use_program(0);
         gl_.depth_mask(gl::kTrue);
@@ -1661,6 +1886,7 @@ private:
         batches_.clear();
         mesh_draws_.clear();
         mesh_batches_.clear();
+        shadow_plan_.reset();
         if (!pending_release_.empty() || !pending_programs_.empty() || !pending_meshes_.empty()) {
             make_current();
             release_pending();
@@ -1712,6 +1938,13 @@ private:
     std::vector<GlMesh> pending_meshes_;
     GLuint mesh_program_ = 0;
     GLuint depth_ = 0; // a renderbuffer
+    // The frame's shadow plan, made at its first mesh draw, and what its passes draw with.
+    std::optional<ShadowPlan> shadow_plan_;
+    std::array<GlShadowAtlas, 2> shadow_atlases_{}; // directional, then positional
+    GlShadowAtlas no_shadows_;                      // bound for an atlas the frame doesn't draw
+    GLuint shadow_program_ = 0;
+    GLuint shadow_sampler_ = 0;
+    GLuint shadow_framebuffer_ = 0;
     std::uint32_t depth_width_ = 0;
     std::uint32_t depth_height_ = 0;
     detail::CpuParticles particles_;

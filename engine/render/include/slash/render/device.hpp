@@ -388,10 +388,12 @@ public:
     // Draws a mesh in the frame's scene, moved into the world by transform and colored by
     // material, if one of layers' bits is in a light's cull_mask, lit by that light. Opaque and
     // alpha scissor meshes are drawn first, nearest first, then alpha meshes, farthest first,
-    // as Godot sorts them; all before the frame's 2D draws.
+    // as Godot sorts them; all before the frame's 2D draws. shadows says which lights' shadow
+    // maps it is drawn into; alpha meshes cast no shadows, as in Godot.
     [[nodiscard]] virtual Result<void> draw_mesh(MeshId mesh, const Mat4& transform,
                                                  const Material3D& material,
-                                                 std::uint32_t layers = 1) = 0;
+                                                 std::uint32_t layers = 1,
+                                                 ShadowCasting shadows = ShadowCasting::On) = 0;
     // Sends the frame to the GPU, and to the window when it is the target.
     [[nodiscard]] virtual Result<void> end_frame() = 0;
 

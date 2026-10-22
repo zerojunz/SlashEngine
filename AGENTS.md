@@ -707,6 +707,19 @@ every canvas, so games, `slash-cli run` and `frame.capture` draw it. `check_mesh
 `-ffp-contract=off`, so meshes are the same bits everywhere. `examples/scene-3d` is a lit
 table.
 
+Shadows are Godot's Compatibility renderer's shadow maps. A `Light3D` with `shadow` set takes a
+slot (4 directional, 16 omni and spot), and `draw_mesh`'s `ShadowCasting` says whether a mesh
+casts (`ShadowsOnly` casts without being drawn). At `end_frame` each device asks
+`plan_shadows` (`src/shadow.cpp`) for the frame's passes: a directional light's cascades fitted
+to slices of the view as Godot's `RendererSceneCull` fits them, in its share of the directional
+atlas, and an omni light's six cube faces or a spot light's one view in tiles of the positional
+atlas. It draws each pass with `shaders/shadow.hlsl` into a depth atlas
+(`Scene3D::shadows`, from `rendering.lights_and_shadows`), then the forward pass samples them
+with a comparison sampler in `mesh.hlsl`, filtered by the soft shadow quality. `shadow_vertex`
+and `ShadowAtlas::compare` are the CPU twins, and `tests/test_shadow.cpp` holds every device to
+the software device's pixels. `MeshInstance3D.cast_shadow` and the lights' `shadow_*` fields
+are Godot's; `examples/shadows-3d` is a courtyard with three shadowed lights.
+
 Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V, MSL, GLSL ES and WGSL are committed
 in `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang,
 SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`

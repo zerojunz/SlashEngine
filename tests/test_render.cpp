@@ -14,9 +14,11 @@
 // The renderer's own headers, for its HLSL and Windows' compiler.
 #include "../engine/render/src/hlsl_compiler.hpp"
 #include "../engine/render/src/material_shaders.hpp"
+#include "../engine/render/src/mesh_shaders.hpp"
 #include "../engine/render/src/particles_draw_shaders.hpp"
 #include "../engine/render/src/particles_emit_shaders.hpp"
 #include "../engine/render/src/particles_process_shaders.hpp"
+#include "../engine/render/src/shadow_shaders.hpp"
 #include "../engine/render/src/sprite_shaders.hpp"
 #endif
 
@@ -756,9 +758,11 @@ TEST_CASE("the software and GPU devices draw distance fields as distance_field_c
 TEST_CASE("every shader compiles with Windows' HLSL compiler") {
 #if defined(_WIN32)
     namespace shaders = slash::render::shaders;
-    const std::array<std::pair<const char*, std::string_view>, 2> sources{{
+    const std::array<std::pair<const char*, std::string_view>, 4> sources{{
         {"sprite", shaders::kSpriteHlsl},
         {"material", shaders::kMaterialHlsl},
+        {"mesh", shaders::kMeshHlsl},
+        {"shadow", shaders::kShadowHlsl},
     }};
     for (const auto& [name, hlsl] : sources) {
         for (const auto& [entry, target] :
