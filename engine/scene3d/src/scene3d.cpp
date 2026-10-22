@@ -129,6 +129,9 @@ void add_lights(const world::World& world, const world::Tree3D& tree,
         const T& light = world.ecs().get<const T>(entity);
         render::Light3D shone;
         if constexpr (std::is_same_v<T, world::DirectionalLight3D>) {
+            if (light.sky_mode == "sky_only") {
+                continue;
+            }
             shone = light_base(light, render::LightType::Directional);
             shone.shadow_mode = shadow_mode_of(light.directional_shadow_mode);
             shone.shadow_splits = {light.directional_shadow_split_1,
@@ -157,6 +160,76 @@ void add_lights(const world::World& world, const world::Tree3D& tree,
         shone.up = {up.x, up.y, up.z};
         const auto at = order.find(entity);
         out.emplace_back(at != order.end() ? at->second : order.size(), shone);
+    }
+}
+
+std::array<float, 4> rgba(const Vec4& color) {
+    return {color.x, color.y, color.z, color.w};
+}
+
+// The sky material on a WorldEnvironment's entity as a frame's sky, as Godot's Sky: the first of
+// ProceduralSkyMaterial, PhysicalSkyMaterial and PanoramaSkyMaterial it has, or a default
+// ProceduralSkyMaterial, as Godot's new scenes have.
+void add_sky(const world::World& world, entt::entity entity, Environment& out) {
+    const auto& ecs = world.ecs();
+    const auto* procedural = ecs.try_get<const world::ProceduralSkyMaterial>(entity);
+    const auto* physical = ecs.try_get<const world::PhysicalSkyMaterial>(entity);
+    const auto* panorama = ecs.try_get<const world::PanoramaSkyMaterial>(entity);
+    const char* ignored = nullptr;
+    if (procedural != nullptr && physical != nullptr) {
+        ignored = "PhysicalSkyMaterial";
+    } else if ((procedural != nullptr || physical != nullptr) && panorama != nullptr) {
+        ignored = "PanoramaSkyMaterial";
+    }
+    if (ignored != nullptr) {
+        out.problems.push_back({entity, std::string("/components/") + ignored,
+                                "is a second sky material, which draws nothing: keep one of "
+                                "ProceduralSkyMaterial, PhysicalSkyMaterial and "
+                                "PanoramaSkyMaterial"});
+    }
+    render::Sky3D& sky = out.sky;
+    if (procedural != nullptr || (physical == nullptr && panorama == nullptr)) {
+        const world::ProceduralSkyMaterial m =
+            procedural != nullptr ? *procedural : world::ProceduralSkyMaterial{};
+        sky.kind = render::SkyKind::Procedural;
+        render::ProceduralSky& p = sky.procedural;
+        p.sky_top_color = rgb(m.sky_top_color);
+        p.sky_horizon_color = rgb(m.sky_horizon_color);
+        p.sky_curve = m.sky_curve;
+        p.sky_energy_multiplier = m.sky_energy_multiplier;
+        p.sky_cover_modulate = rgba(m.sky_cover_modulate);
+        p.ground_bottom_color = rgb(m.ground_bottom_color);
+        p.ground_horizon_color = rgb(m.ground_horizon_color);
+        p.ground_curve = m.ground_curve;
+        p.ground_energy_multiplier = m.ground_energy_multiplier;
+        p.sun_angle_max = m.sun_angle_max;
+        p.sun_curve = m.sun_curve;
+        p.use_debanding = m.use_debanding;
+        p.energy_multiplier = m.energy_multiplier;
+        out.sky_texture = m.sky_cover;
+        out.sky_texture_field = "/components/ProceduralSkyMaterial/sky_cover";
+    } else if (physical != nullptr) {
+        const world::PhysicalSkyMaterial& m = *physical;
+        sky.kind = render::SkyKind::Physical;
+        render::PhysicalSky& p = sky.physical;
+        p.rayleigh_coefficient = m.rayleigh_coefficient;
+        p.rayleigh_color = rgb(m.rayleigh_color);
+        p.mie_coefficient = m.mie_coefficient;
+        p.mie_eccentricity = m.mie_eccentricity;
+        p.mie_color = rgb(m.mie_color);
+        p.turbidity = m.turbidity;
+        p.sun_disk_scale = m.sun_disk_scale;
+        p.ground_color = rgb(m.ground_color);
+        p.energy_multiplier = m.energy_multiplier;
+        p.use_debanding = m.use_debanding;
+        out.sky_texture = m.night_sky;
+        out.sky_texture_field = "/components/PhysicalSkyMaterial/night_sky";
+    } else {
+        sky.kind = render::SkyKind::Panorama;
+        sky.panorama.energy_multiplier = panorama->energy_multiplier;
+        out.sky_texture = panorama->panorama;
+        out.sky_filter = panorama->filter ? render::Filter::Linear : render::Filter::Nearest;
+        out.sky_texture_field = "/components/PanoramaSkyMaterial/panorama";
     }
 }
 
@@ -256,14 +329,50 @@ Environment environment(const world::World& world, render::Color clear) {
                       .g = background.g * energy,
                       .b = background.b * energy,
                       .a = background.a};
-    if (env.ambient_light_source == "background") {
+    out.entity = environments.front();
+    const bool sky = env.background_mode == "sky";
+    if (env.ambient_light_source == "background" && !sky) {
         out.ambient = {background.r, background.g, background.b};
         out.ambient_energy = energy;
-    } else if (env.ambient_light_source == "color") {
+    } else if (env.ambient_light_source == "color" ||
+               (env.ambient_light_source == "background" && sky)) {
         out.ambient = rgb(env.ambient_light_color);
         out.ambient_energy = env.ambient_light_energy;
     }
-    out.entity = environments.front();
+    if (env.fog_enabled) {
+        render::Fog3D& fog = out.fog;
+        fog.enabled = true;
+        fog.depth = env.fog_mode == "depth";
+        fog.light_color = rgb(env.fog_light_color);
+        fog.light_energy = env.fog_light_energy;
+        fog.sun_scatter = env.fog_sun_scatter;
+        fog.density = env.fog_density;
+        fog.aerial_perspective = env.fog_aerial_perspective;
+        fog.sky_affect = env.fog_sky_affect;
+        fog.height = env.fog_height;
+        fog.height_density = env.fog_height_density;
+        fog.depth_curve = env.fog_depth_curve;
+        fog.depth_begin = env.fog_depth_begin;
+        fog.depth_end = env.fog_depth_end;
+    }
+    out.sky.energy = energy;
+    if (sky) {
+        add_sky(world, out.entity, out);
+        out.sky.custom_fov = env.sky_custom_fov;
+        // The world to the sky's space: the inverse, so the transpose, of the sky's turn.
+        const world::Affine3D turn = world::rotation_basis(world::quaternion(env.sky_rotation));
+        const std::array<Vec3, 3> columns{turn.x, turn.y, turn.z};
+        for (std::size_t row = 0; row < 3; ++row) {
+            out.sky.orientation.at(row) = columns.at(row).x;
+            out.sky.orientation.at(4 + row) = columns.at(row).y;
+            out.sky.orientation.at(8 + row) = columns.at(row).z;
+        }
+    } else if (env.fog_enabled) {
+        // Fog over the background, as Godot draws it: a sky of the background's color, which its
+        // energy multiplies twice, as Godot's fog sky material does.
+        out.sky.kind = render::SkyKind::Color;
+        out.sky.color = {out.background.r, out.background.g, out.background.b};
+    }
     for (std::size_t i = 0; i < render::kTonemapperNames.size(); ++i) {
         if (render::kTonemapperNames[i] == env.tonemap_mode) {
             out.post.tonemapper = static_cast<render::Tonemapper>(i);
@@ -302,6 +411,39 @@ std::vector<render::Light3D> lights(const world::World& world, const world::Tree
             break;
         }
         out.push_back(light);
+    }
+    return out;
+}
+
+std::vector<render::SkyLight>
+sky_lights(const world::World& world, const world::Tree3D& tree,
+           const std::function<world::Affine3D(entt::entity)>& global) {
+    std::unordered_map<entt::entity, std::size_t> order;
+    for (std::size_t i = 0; i < tree.order().size(); ++i) {
+        order.emplace(tree.order()[i], i);
+    }
+    std::vector<std::pair<std::size_t, render::SkyLight>> found;
+    for (const entt::entity entity : made<world::DirectionalLight3D>(world)) {
+        const auto& light = world.ecs().get<const world::DirectionalLight3D>(entity);
+        if (!tree.visible(entity) || light.sky_mode == "light_only") {
+            continue;
+        }
+        const Vec3 forward = normalized(scaled(global(entity).z, -1.0F));
+        render::SkyLight sun;
+        sun.direction = {forward.x, forward.y, forward.z};
+        sun.color = rgb(light.light_color);
+        sun.energy = light.light_negative ? -light.light_energy : light.light_energy;
+        sun.angular_distance = light.light_angular_distance;
+        const auto at = order.find(entity);
+        found.emplace_back(at != order.end() ? at->second : order.size(), sun);
+    }
+    std::ranges::stable_sort(found, {}, &std::pair<std::size_t, render::SkyLight>::first);
+    std::vector<render::SkyLight> out;
+    for (auto& [place, sun] : found) {
+        if (out.size() == render::kMaxSkyLights) {
+            break;
+        }
+        out.push_back(sun);
     }
     return out;
 }
@@ -401,6 +543,7 @@ render::Material3D material(const world::StandardMaterial3D& standard,
     }
     out.uv1_scale = {standard.uv1_scale.x, standard.uv1_scale.y};
     out.uv1_offset = {standard.uv1_offset.x, standard.uv1_offset.y};
+    out.disable_fog = standard.disable_fog;
     return out;
 }
 
@@ -529,6 +672,24 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
                      std::to_string(lut.value().width) + "x" + std::to_string(lut.value().height)});
         } else {
             frame.scene.post.color_correction = lut.value().id;
+        }
+    }
+    frame.scene.sky = env.sky;
+    frame.scene.fog = env.fog;
+    problems_.insert(problems_.end(), env.problems.begin(), env.problems.end());
+    if (env.sky.kind != render::SkyKind::None) {
+        frame.scene.sky.lights = sky_lights(world, tree, global);
+    }
+    if (!env.sky_texture.empty()) {
+        auto texture = textures_(env.sky_texture, env.sky_filter);
+        if (!texture) {
+            problems_.push_back({env.entity, env.sky_texture_field, texture.error().message});
+        } else if (env.sky.kind == render::SkyKind::Procedural) {
+            frame.scene.sky.procedural.sky_cover = texture.value().id;
+        } else if (env.sky.kind == render::SkyKind::Physical) {
+            frame.scene.sky.physical.night_sky = texture.value().id;
+        } else {
+            frame.scene.sky.panorama.panorama = texture.value().id;
         }
     }
     frame.scene.lights = scene3d::lights(world, tree, global);

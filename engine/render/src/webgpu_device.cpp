@@ -14,7 +14,10 @@
 #include "particles_process_shaders.hpp"
 #include "post_shaders.hpp"
 #include "post_shading.hpp"
+#include "shader_code.hpp"
 #include "shadow_shaders.hpp"
+#include "sky_shaders.hpp"
+#include "sky_shading.hpp"
 #include "sprite_shaders.hpp"
 #include "uniforms.hpp"
 
@@ -124,15 +127,6 @@ enum class ComputeKind : std::uint8_t { Process, Draw, Emit };
 
 WGPUStringView text_view(std::string_view text) {
     return {.data = text.data(), .length = text.size()};
-}
-
-// A compute shader's WGSL, which is in pieces since no string literal may be as long as it.
-std::string joined(std::span<const char* const> pieces) {
-    std::string text;
-    for (const char* piece : pieces) {
-        text += piece;
-    }
-    return text;
 }
 
 // Godot's canvas blend modes, for straight-alpha colors.
@@ -319,6 +313,9 @@ public:
         for (const auto& [format, pipeline] : post_pipelines_) {
             wgpuRenderPipelineRelease(pipeline);
         }
+        for (const auto& [format, pipeline] : sky_pipelines_) {
+            wgpuRenderPipelineRelease(pipeline);
+        }
         release_post_targets();
         release_pending();
         for (const GpuTexture& atlas :
@@ -361,7 +358,8 @@ public:
               process_outputs_layout_, draw_inputs_layout_, draw_outputs_layout_,
               emit_outputs_layout_, compute_uniforms_layout_, mesh_vertex_layout_,
               mesh_textures_layout_, mesh_fragment_layout_, shadow_vertex_layout_,
-              shadow_fragment_layout_, post_textures_layout_, post_uniforms_layout_}) {
+              shadow_fragment_layout_, post_textures_layout_, post_uniforms_layout_,
+              sky_uniforms_layout_}) {
             if (layout != nullptr) {
                 wgpuBindGroupLayoutRelease(layout);
             }
@@ -795,6 +793,11 @@ public:
                 !checked) {
                 return checked.error();
             }
+            if (auto checked =
+                    check_sky(*frame.scene, [&](TextureId id) { return textures_.contains(id); });
+                !checked) {
+                return checked.error();
+            }
         }
         WGPUTexture target = nullptr;
         WGPUTextureView view = nullptr;
@@ -1000,6 +1003,14 @@ public:
         }
         const MeshUniforms mesh_uniforms = add_mesh_uniforms();
         const bool post = frame_.scene && post_processes(frame_.scene->post);
+        const bool sky = frame_.scene && sky_draws(*frame_.scene);
+        std::optional<std::uint32_t> sky_uniforms_at;
+        if (sky) {
+            SkyUniforms uniforms = sky_uniforms(*frame_.scene, frame_width_, frame_height_);
+            uniforms.orientation = transposed(uniforms.orientation);
+            sky_uniforms_at = uniforms_.add(uniforms);
+            make_depth_target(frame_width_, frame_height_);
+        }
         const std::vector<PostDraw> post_draws =
             post ? post_draws_for(frame_.scene->post) : std::vector<PostDraw>{};
         upload_frame();
@@ -1007,17 +1018,19 @@ public:
         WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
         // Particles run and write their quads ahead of the render pass that draws them.
         encode_particle_jobs(encoder, job_uniforms);
-        // Meshes draw first, in a pass of their own, and the 2D draws go over them.
+        // The sky and meshes draw first, in a pass of their own, and the 2D draws go over them.
         if (!mesh_draws_.empty()) {
             encode_shadows(encoder, mesh_uniforms);
-            encode_meshes(encoder, mesh_uniforms);
+        }
+        if (!mesh_draws_.empty() || sky) {
+            encode_meshes(encoder, mesh_uniforms, sky_uniforms_at);
         }
         if (post) {
             encode_post(encoder, post_draws);
         }
         WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
         color.view = frame_view_;
-        color.loadOp = mesh_draws_.empty() && !post ? WGPULoadOp_Clear : WGPULoadOp_Load;
+        color.loadOp = mesh_draws_.empty() && !sky && !post ? WGPULoadOp_Clear : WGPULoadOp_Load;
         color.storeOp = WGPUStoreOp_Store;
         color.clearValue = {
             .r = frame_.clear.r, .g = frame_.clear.g, .b = frame_.clear.b, .a = frame_.clear.a};
@@ -1546,6 +1559,9 @@ private:
         const std::array post_uniforms{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(PostUniforms))};
         post_uniforms_layout_ = layout(post_uniforms);
+        const std::array sky_entries{
+            uniform_entry(0, WGPUShaderStage_Fragment, sizeof(SkyUniforms))};
+        sky_uniforms_layout_ = layout(sky_entries);
 
         const auto pipeline_layout = [&](std::initializer_list<WGPUBindGroupLayout> groups) {
             const std::vector<WGPUBindGroupLayout> list(groups);
@@ -1572,6 +1588,8 @@ private:
                              shadow_fragment_layout_});
         pipeline_layouts_.at(kPostLayout) = pipeline_layout(
             {empty_layout_, empty_layout_, post_textures_layout_, post_uniforms_layout_});
+        pipeline_layouts_.at(kSkyLayout) = pipeline_layout(
+            {empty_layout_, empty_layout_, sprite_textures_layout_, sky_uniforms_layout_});
     }
 
     WGPUShaderModule create_module(std::string_view wgsl) {
@@ -1785,13 +1803,15 @@ private:
         shadow_fragment_group_ = bind_group(shadow_fragment_layout_, shadow_fragment);
         const std::array post{buffer_entry(0, uniform_buffer_, sizeof(PostUniforms))};
         post_uniforms_group_ = bind_group(post_uniforms_layout_, post);
+        const std::array sky{buffer_entry(0, uniform_buffer_, sizeof(SkyUniforms))};
+        sky_uniforms_group_ = bind_group(sky_uniforms_layout_, sky);
     }
 
     void release_uniform_groups() {
         for (WGPUBindGroup* group :
              {&vertex_uniforms_group_, &fragment_uniforms_group_, &compute_uniforms_group_,
               &mesh_vertex_group_, &mesh_fragment_group_, &shadow_vertex_group_,
-              &shadow_fragment_group_, &post_uniforms_group_}) {
+              &shadow_fragment_group_, &post_uniforms_group_, &sky_uniforms_group_}) {
             if (*group != nullptr) {
                 wgpuBindGroupRelease(*group);
                 *group = nullptr;
@@ -2150,7 +2170,7 @@ private:
         color.format = format;
         color.blend = blended ? &blending : nullptr;
         WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
-        fragment.module = module(kMeshFragmentModule, shaders::kMeshFragmentWgsl);
+        fragment.module = module(kMeshFragmentModule, joined(shaders::kMeshFragmentWgsl));
         fragment.entryPoint = text_view("fs_main");
         fragment.targetCount = 1;
         fragment.targets = &color;
@@ -2162,7 +2182,7 @@ private:
 
         WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
         info.layout = pipeline_layouts_.at(kMeshLayout);
-        info.vertex.module = module(kMeshVertexModule, shaders::kMeshVertexWgsl);
+        info.vertex.module = module(kMeshVertexModule, joined(shaders::kMeshVertexWgsl));
         info.vertex.entryPoint = text_view("vs_main");
         info.vertex.bufferCount = 1;
         info.vertex.buffers = &buffer;
@@ -2267,9 +2287,11 @@ private:
         return at;
     }
 
-    // Records the frame's meshes, in the order mesh_draw_order gives, in a pass that clears the
-    // target and the depth buffer to the far plane.
-    void encode_meshes(WGPUCommandEncoder encoder, const MeshUniforms& at) {
+    // Records the frame's sky, when it has one (its uniforms at sky), then its meshes, in the
+    // order mesh_draw_order gives, in a pass that clears the target and the depth buffer to the
+    // far plane.
+    void encode_meshes(WGPUCommandEncoder encoder, const MeshUniforms& at,
+                       std::optional<std::uint32_t> sky) {
         WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
         // A scene that post-processes draws its meshes into a texture the post passes read.
         color.view = post_processes(frame_.scene->post) ? post_targets_.world.view : frame_view_;
@@ -2287,6 +2309,24 @@ private:
         descriptor.colorAttachments = &color;
         descriptor.depthStencilAttachment = &depth;
         WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+        if (sky) {
+            const auto [view, sampler] = binding(sky_texture(frame_.scene->sky), true);
+            std::array<WGPUBindGroupEntry, 2> entries{};
+            entries[0] = WGPU_BIND_GROUP_ENTRY_INIT;
+            entries[0].binding = 0;
+            entries[0].textureView = view;
+            entries[1] = WGPU_BIND_GROUP_ENTRY_INIT;
+            entries[1].binding = kSamplerBinding;
+            entries[1].sampler = sampler;
+            WGPUBindGroup texture = bind_group(sprite_textures_layout_, entries);
+            wgpuRenderPassEncoderSetPipeline(
+                pass, sky_pipeline_for(post_processes(frame_.scene->post) ? kTextureFormat
+                                                                          : frame_format_));
+            wgpuRenderPassEncoderSetBindGroup(pass, 2, texture, 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(pass, 3, sky_uniforms_group_, 1, &*sky);
+            wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+            wgpuBindGroupRelease(texture);
+        }
         WGPURenderPipeline bound = nullptr;
         for (const std::size_t i :
              mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), *frame_.scene,
@@ -2355,6 +2395,38 @@ private:
         }
         post_targets_.width = 0;
         post_targets_.height = 0;
+    }
+
+    // The sky's pipeline for a target format, made the first time a frame needs it: one triangle
+    // over the target that neither tests nor writes depth.
+    WGPURenderPipeline sky_pipeline_for(WGPUTextureFormat format) {
+        for (const auto& [made, pipeline] : sky_pipelines_) {
+            if (made == format) {
+                return pipeline;
+            }
+        }
+        WGPUColorTargetState color = WGPU_COLOR_TARGET_STATE_INIT;
+        color.format = format;
+        WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
+        fragment.module = module(kSkyFragmentModule, shaders::kSkyFragmentWgsl);
+        fragment.entryPoint = text_view("fs_main");
+        fragment.targetCount = 1;
+        fragment.targets = &color;
+        WGPUDepthStencilState depth = WGPU_DEPTH_STENCIL_STATE_INIT;
+        depth.format = kDepthFormat;
+        depth.depthWriteEnabled = WGPUOptionalBool_False;
+        depth.depthCompare = WGPUCompareFunction_Always;
+        WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
+        info.layout = pipeline_layouts_.at(kSkyLayout);
+        info.vertex.module = module(kSkyVertexModule, shaders::kSkyVertexWgsl);
+        info.vertex.entryPoint = text_view("vs_main");
+        info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        info.primitive.cullMode = WGPUCullMode_None;
+        info.depthStencil = &depth;
+        info.fragment = &fragment;
+        WGPURenderPipeline pipeline = wgpuDeviceCreateRenderPipeline(device_, &info);
+        sky_pipelines_.emplace_back(format, pipeline);
+        return pipeline;
     }
 
     // The post pipeline for a target format, made the first time a frame needs it.
@@ -2441,7 +2513,7 @@ private:
             descriptor.colorAttachments = &color;
             return wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
         };
-        if (mesh_draws_.empty()) {
+        if (mesh_draws_.empty() && !sky_draws(*frame_.scene)) {
             WGPURenderPassEncoder pass = begin(post_targets_.world.view, WGPULoadOp_Clear);
             wgpuRenderPassEncoderEnd(pass);
             wgpuRenderPassEncoderRelease(pass);
@@ -2653,6 +2725,8 @@ private:
     static constexpr std::size_t kShadowFragmentModule = 10;
     static constexpr std::size_t kPostVertexModule = 11;
     static constexpr std::size_t kPostFragmentModule = 12;
+    static constexpr std::size_t kSkyVertexModule = 13;
+    static constexpr std::size_t kSkyFragmentModule = 14;
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
@@ -2661,6 +2735,7 @@ private:
     static constexpr std::size_t kMeshLayout = 5;
     static constexpr std::size_t kShadowLayout = 6;
     static constexpr std::size_t kPostLayout = 7;
+    static constexpr std::size_t kSkyLayout = 8;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -2673,7 +2748,7 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 3> sampled_{true, false, false};
-    std::array<WGPUShaderModule, 13> modules_{};
+    std::array<WGPUShaderModule, 15> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -2696,7 +2771,8 @@ private:
     WGPUBindGroupLayout shadow_fragment_layout_ = nullptr;
     WGPUBindGroupLayout post_textures_layout_ = nullptr;
     WGPUBindGroupLayout post_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, 8> pipeline_layouts_{};
+    WGPUBindGroupLayout sky_uniforms_layout_ = nullptr;
+    std::array<WGPUPipelineLayout, 9> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -2718,6 +2794,7 @@ private:
     WGPUBindGroup shadow_vertex_group_ = nullptr;
     WGPUBindGroup shadow_fragment_group_ = nullptr;
     WGPUBindGroup post_uniforms_group_ = nullptr;
+    WGPUBindGroup sky_uniforms_group_ = nullptr;
     std::unordered_map<ParticlesId, ParticleSystem> particle_systems_;
     std::uint32_t next_particles_ = 1;
     std::vector<WGPUBuffer> pending_buffers_;
@@ -2743,6 +2820,7 @@ private:
     WGPUSampler shadow_sampler_ = nullptr;
     std::array<WGPURenderPipeline, 3> shadow_pipelines_{}; // by CullMode
     std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> post_pipelines_;
+    std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> sky_pipelines_;
     PostTargets post_targets_;
 
     // The frame being built. A skipped frame draws nothing.

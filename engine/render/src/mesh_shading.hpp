@@ -47,6 +47,7 @@ inline constexpr std::uint32_t kMeshEmissionTexture = 8;
 inline constexpr std::uint32_t kMeshNormalMap = 16;
 inline constexpr std::uint32_t kMeshSideCheck = 32;
 inline constexpr std::uint32_t kMeshHasAlpha = 64;
+inline constexpr std::uint32_t kMeshDisableFog = 128;
 
 // The vertex stage's uniforms: b0 and b1 in space1.
 struct MeshCameraUniforms {
@@ -77,7 +78,10 @@ struct MeshLightUniforms {
 struct MeshSceneUniforms {
     Float4 camera{}; // the camera's place, then how many lights
     Float4 ambient{};
-    Float4 tonemap{}; // exposure, white, the tonemapper, 1 to tonemap (0 when post passes do)
+    Float4 tonemap{};   // exposure, white, the tonemapper, 1 to tonemap (0 when post passes do)
+    Float4 fog_color{}; // linear, times its energy; then 0 for no fog, 1 exponential, 2 depth
+    Float4 fog{};       // density, sun scatter, height, height density
+    Float4 fog_depth{}; // depth fog's begin, end and curve
     std::array<MeshLightUniforms, kMaxLights3D> lights{};
 };
 
@@ -114,7 +118,7 @@ struct MeshShadowPassUniforms {
 
 static_assert(sizeof(MeshInstanceUniforms) == 144);
 static_assert(sizeof(MeshSurfaceUniforms) == 96);
-static_assert(sizeof(MeshSceneUniforms) == 48 + (80 * kMaxLights3D));
+static_assert(sizeof(MeshSceneUniforms) == 96 + (80 * kMaxLights3D));
 static_assert(sizeof(MeshDirectionalShadowUniforms) == 320);
 static_assert(sizeof(MeshPositionalShadowUniforms) == 576);
 static_assert(sizeof(MeshShadowUniforms) ==

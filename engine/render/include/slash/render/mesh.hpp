@@ -28,6 +28,10 @@
 // draws the meshes into shadow maps first, a directional light's into up to four cascades of one
 // atlas and an omni or spot light's into tiles of another (six for an omni light, a cube's faces),
 // and the forward pass compares each pixel with them, with Godot's biases and filters.
+//
+// A scene's sky (Sky3D) draws first, over the whole target, worked out for each pixel's view
+// direction as Godot's sky shaders do; then fog (Fog3D) fades the meshes, and the sky by its sky
+// affect, toward the fog's color with distance.
 namespace slash::render {
 
 // A mesh on the device. NOLINTNEXTLINE(performance-enum-size): ids count up, past 255
@@ -205,6 +209,117 @@ struct PostProcess {
     bool operator==(const PostProcess&) const = default;
 };
 
+// What a frame's 3D world shows behind its meshes, as Godot's Environment.background_mode with
+// its Compatibility renderer: nothing but the clear color, or a sky worked out for each pixel's
+// view direction and drawn before the meshes.
+enum class SkyKind : std::uint8_t {
+    None,       // the clear color, untouched
+    Color,      // color: the clear color or background color, fogged as a sky is
+    Procedural, // a ProceduralSkyMaterial
+    Physical,   // a PhysicalSkyMaterial
+    Panorama,   // a PanoramaSkyMaterial
+};
+
+// A sky shows the sun of at most this many directional lights, as Godot's Compatibility renderer.
+inline constexpr std::size_t kMaxSkyLights = 4;
+
+// A DirectionalLight3D the sky shows: its sun's place and size in the sky.
+struct SkyLight {
+    std::array<float, 3> direction{0.0F, 0.0F, -1.0F}; // the way it shines, in the world
+    std::array<float, 3> color{1.0F, 1.0F, 1.0F};      // sRGB
+    float energy = 1.0F;
+    float angular_distance = 0.0F; // degrees across the sun's radius, as light_angular_distance
+
+    bool operator==(const SkyLight&) const = default;
+};
+
+// Godot's ProceduralSkyMaterial: a gradient from the horizon up to the sky's top and down to the
+// ground's bottom, with each light's sun on it. Colors are sRGB.
+struct ProceduralSky {
+    std::array<float, 3> sky_top_color{0.385F, 0.454F, 0.55F};
+    std::array<float, 3> sky_horizon_color{0.6463F, 0.6558F, 0.6708F};
+    float sky_curve = 0.15F;
+    float sky_energy_multiplier = 1.0F;
+    TextureId sky_cover{}; // a panorama over the sky, or TextureId{} for none
+    std::array<float, 4> sky_cover_modulate{1.0F, 1.0F, 1.0F, 1.0F};
+    std::array<float, 3> ground_bottom_color{0.2F, 0.169F, 0.133F};
+    std::array<float, 3> ground_horizon_color{0.6463F, 0.6558F, 0.6708F};
+    float ground_curve = 0.02F;
+    float ground_energy_multiplier = 1.0F;
+    float sun_angle_max = 30.0F; // degrees from a sun's edge that its glow reaches
+    float sun_curve = 0.15F;
+    bool use_debanding = true;
+    float energy_multiplier = 1.0F;
+
+    bool operator==(const ProceduralSky&) const = default;
+};
+
+// Godot's PhysicalSkyMaterial: Rayleigh and Mie scattering of the first light's sun, after
+// Preetham. Colors are sRGB.
+struct PhysicalSky {
+    float rayleigh_coefficient = 2.0F;
+    std::array<float, 3> rayleigh_color{0.3F, 0.405F, 0.6F};
+    float mie_coefficient = 0.005F;
+    float mie_eccentricity = 0.8F;
+    std::array<float, 3> mie_color{0.69F, 0.729F, 0.812F};
+    float turbidity = 10.0F;
+    float sun_disk_scale = 1.0F;
+    std::array<float, 3> ground_color{0.1F, 0.07F, 0.034F};
+    float energy_multiplier = 1.0F;
+    bool use_debanding = true;
+    TextureId night_sky{}; // a panorama behind the sky, or TextureId{} for none
+
+    bool operator==(const PhysicalSky&) const = default;
+};
+
+// Godot's PanoramaSkyMaterial: an equirectangular texture all round. Whether it filters is the
+// texture's own sampler's choice.
+struct PanoramaSky {
+    TextureId panorama{};
+    float energy_multiplier = 1.0F;
+
+    bool operator==(const PanoramaSky&) const = default;
+};
+
+// What a frame draws behind its meshes. Only the material of kind is used.
+struct Sky3D {
+    SkyKind kind = SkyKind::None;
+    std::array<float, 3> color{}; // SkyKind::Color's, sRGB
+    ProceduralSky procedural;
+    PhysicalSky physical;
+    PanoramaSky panorama;
+    float energy = 1.0F; // Godot's background_energy_multiplier
+    // The world to the sky's space, column-major: the inverse of Environment.sky_rotation's turn.
+    std::array<float, 16> orientation = {1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F,
+                                         0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
+    // Degrees across the target's height the sky is seen with, or 0 for the camera's own field
+    // of view, as Environment.sky_custom_fov.
+    float custom_fov = 0.0F;
+    std::vector<SkyLight> lights; // up to kMaxSkyLights
+
+    bool operator==(const Sky3D&) const = default;
+};
+
+// Godot's Environment fog in its Compatibility renderer: meshes fade toward light_color with
+// distance (and below height), and so does the sky, by sky_affect.
+struct Fog3D {
+    bool enabled = false;
+    bool depth = false; // Godot's FOG_MODE_DEPTH, rather than exponential fog
+    std::array<float, 3> light_color{0.518F, 0.553F, 0.608F}; // sRGB
+    float light_energy = 1.0F;
+    float sun_scatter = 0.0F; // how much directional lights brighten the fog they shine through
+    float density = 0.01F;
+    float aerial_perspective = 0.0F; // how much the sky colors the fog in front of it
+    float sky_affect = 1.0F;
+    float height = 0.0F;
+    float height_density = 0.0F; // fog thickening below height; 0 for none
+    float depth_curve = 1.0F;
+    float depth_begin = 10.0F;
+    float depth_end = 100.0F; // where depth fog is thickest; 0 or less for the far plane
+
+    bool operator==(const Fog3D&) const = default;
+};
+
 // What a frame's meshes are seen from and lit by. Matrices are column-major, as Mat4.
 struct Scene3D {
     // The world to the camera's space: the inverse of the camera's transform.
@@ -218,6 +333,8 @@ struct Scene3D {
     std::vector<Light3D> lights; // up to kMaxLights3D
     ShadowSettings shadows;
     PostProcess post;
+    Sky3D sky; // drawn behind the meshes, over the clear color
+    Fog3D fog;
 
     // Godot's default Camera3D: 75 degrees across a square target, from 0.05 to 4000.
     static std::array<float, 16> perspective_default();

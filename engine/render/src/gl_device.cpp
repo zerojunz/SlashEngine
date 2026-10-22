@@ -8,7 +8,10 @@
 #include "mesh_shading.hpp"
 #include "post_shaders.hpp"
 #include "post_shading.hpp"
+#include "shader_code.hpp"
 #include "shadow_shaders.hpp"
+#include "sky_shaders.hpp"
+#include "sky_shading.hpp"
 #include "sprite_shaders.hpp"
 #include "uniforms.hpp"
 
@@ -257,8 +260,9 @@ constexpr GLuint kSurfaceBinding = 6;
 constexpr GLuint kSceneBinding = 7;
 constexpr GLuint kShadowPassBinding = 8;
 constexpr GLuint kShadowsBinding = 9;
-// The post-processing shader's.
+// The post-processing shader's, and the sky's.
 constexpr GLuint kPostBinding = 10;
+constexpr GLuint kSkyBinding = 11;
 
 // The two shaders: plain sprites, and materials that run a program.
 enum class ShaderKind : std::uint8_t { Sprite, Material };
@@ -273,6 +277,7 @@ constexpr std::array<std::string_view, kMeshTextures + 2> kMeshSamplerNames{
     "albedo_texture", "metallic_texture",  "roughness_texture", "emission_texture",
     "normal_texture", "directional_atlas", "positional_atlas"};
 constexpr std::array<std::string_view, 3> kPostSamplerNames{"source", "glow_texture", "lut"};
+constexpr std::array<std::string_view, 1> kSkySamplerNames{"sky_texture"};
 
 // Turns clip space upside down. GL puts clip space's top at a framebuffer's last row, where the
 // other backends put it at the first, so frames draw upside down into textures, which leaves
@@ -505,6 +510,10 @@ public:
                 if (post_program_ != 0) {
                     gl_.delete_program(post_program_);
                     gl_.delete_vertex_arrays(1, &post_vertex_array_);
+                }
+                if (sky_program_ != 0) {
+                    gl_.delete_program(sky_program_);
+                    gl_.delete_vertex_arrays(1, &sky_vertex_array_);
                 }
                 gl_.delete_buffers(1, &vertex_buffer_);
                 gl_.delete_buffers(1, &uniform_buffer_);
@@ -873,6 +882,11 @@ public:
                 !checked) {
                 return checked.error();
             }
+            if (auto checked =
+                    check_sky(*frame.scene, [&](TextureId id) { return textures_.contains(id); });
+                !checked) {
+                return checked.error();
+            }
         }
         std::uint32_t width = 0;
         std::uint32_t height = 0;
@@ -922,6 +936,11 @@ public:
             framebuffer = made.value();
             if (frame.scene && post_processes(frame.scene->post)) {
                 if (auto prepared = prepare_post(width, height); !prepared) {
+                    return prepared.error();
+                }
+            }
+            if (frame.scene && sky_draws(*frame.scene)) {
+                if (auto prepared = prepare_sky(); !prepared) {
                     return prepared.error();
                 }
             }
@@ -1036,9 +1055,12 @@ public:
         gl_.viewport(0, 0, static_cast<GLsizei>(frame_width_), static_cast<GLsizei>(frame_height_));
         gl_.clear_color(frame_.clear.r, frame_.clear.g, frame_.clear.b, frame_.clear.a);
         gl_.clear(gl::kColorBufferBit);
-        // Meshes draw first, and the 2D draws go over them.
+        // The sky and meshes draw first, and the 2D draws go over them.
         // Mesh draws need a scene, and the first planned the shadows, so a frame with them has
         // both.
+        if (frame_.scene && sky_draws(*frame_.scene)) {
+            draw_sky(*frame_.scene);
+        }
         if (frame_.scene && shadow_plan_ && !mesh_draws_.empty()) {
             draw_meshes(*frame_.scene, *shadow_plan_);
         }
@@ -1415,7 +1437,7 @@ private:
               std::pair{"Camera", kCameraBinding}, std::pair{"Instance", kInstanceBinding},
               std::pair{"Surface", kSurfaceBinding}, std::pair{"Scene", kSceneBinding},
               std::pair{"LightView", kShadowPassBinding}, std::pair{"Shadows", kShadowsBinding},
-              std::pair{"Post", kPostBinding}}) {
+              std::pair{"Post", kPostBinding}, std::pair{"Sky", kSkyBinding}}) {
             const GLuint index = gl_.get_uniform_block_index(program, name);
             if (index != gl::kInvalidIndex) {
                 gl_.uniform_block_binding(program, index, binding);
@@ -1614,9 +1636,9 @@ private:
         if (mesh_program_ != 0) {
             return mesh_program_;
         }
-        auto program =
-            link(at_w1_vertex(shaders::kMeshVertexGlsl), at_w1_fragment(shaders::kMeshFragmentGlsl),
-                 kMeshSamplerNames, "the mesh shader");
+        auto program = link(at_w1_vertex(joined(shaders::kMeshVertexGlsl)),
+                            at_w1_fragment(joined(shaders::kMeshFragmentGlsl)), kMeshSamplerNames,
+                            "the mesh shader");
         if (!program) {
             return program.error();
         }
@@ -1914,6 +1936,49 @@ private:
         gl_.framebuffer_renderbuffer(gl::kFramebuffer, gl::kDepthAttachment, gl::kRenderbuffer, 0);
     }
 
+    // The sky's program, made at the start of the first frame with a sky so a failure shows
+    // there.
+    Result<void> prepare_sky() {
+        if (sky_program_ != 0) {
+            return {};
+        }
+        auto program =
+            link(shaders::kSkyVertexGlsl, shaders::kSkyFragmentGlsl, kSkySamplerNames, "the sky");
+        if (!program) {
+            return program.error();
+        }
+        sky_program_ = program.value();
+        // Its triangle has no vertices to read, but a vertex array must be bound.
+        gl_.gen_vertex_arrays(1, &sky_vertex_array_);
+        return {};
+    }
+
+    // sky.hlsl's one triangle over the whole of the bound framebuffer, before the meshes.
+    void draw_sky(const Scene3D& scene) {
+        uniform_bytes_.clear();
+        const SkyUniforms uniforms = sky_uniforms(scene, frame_width_, frame_height_);
+        place_uniforms(&uniforms, sizeof(uniforms));
+        gl_.bind_buffer(gl::kUniformBuffer, uniform_buffer_);
+        gl_.buffer_data(gl::kUniformBuffer, static_cast<GLsizeiptr>(uniform_bytes_.size()),
+                        uniform_bytes_.data(), gl::kStreamDraw);
+        gl_.bind_buffer_range(gl::kUniformBuffer, kSkyBinding, uniform_buffer_, 0,
+                              static_cast<GLsizeiptr>(sizeof(SkyUniforms)));
+        gl_.disable(gl::kBlend);
+        gl_.use_program(sky_program_);
+        gl_.bind_vertex_array(sky_vertex_array_);
+        const Unit texture = binding(sky_texture(scene.sky), true);
+        gl_.active_texture(gl::kTexture0);
+        gl_.bind_texture(gl::kTexture2D, texture.texture);
+        gl_.bind_sampler(0, texture.sampler);
+        gl_.draw_arrays(gl::kTriangles, 0, 3);
+        // Back to the 2D state the rest of the device draws with.
+        gl_.bind_texture(gl::kTexture2D, 0);
+        gl_.bind_sampler(0, 0);
+        gl_.bind_vertex_array(0);
+        gl_.use_program(0);
+        gl_.enable(gl::kBlend);
+    }
+
     // The post-processing program, and the textures the meshes and glow draw into at the frame's
     // size, made at the start of a frame that post-processes so a failure shows there.
     Result<void> prepare_post(std::uint32_t width, std::uint32_t height) {
@@ -2130,6 +2195,8 @@ private:
     PostTargets post_targets_;
     GLuint post_program_ = 0;
     GLuint post_vertex_array_ = 0;
+    GLuint sky_program_ = 0;
+    GLuint sky_vertex_array_ = 0;
 
     // The frame being built. A skipped frame is 0 wide.
     bool in_frame_ = false;
