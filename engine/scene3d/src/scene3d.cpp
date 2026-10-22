@@ -236,7 +236,7 @@ void add_sky(const world::World& world, entt::entity entity, Environment& out) {
 }
 
 constexpr std::string_view kNoMesh =
-    "has no mesh: set mesh to a .gltf, .glb or .obj file, or add a BoxMesh, SphereMesh, "
+    "has no mesh: set mesh to a .gltf, .glb, .obj or .fbx file, or add a BoxMesh, SphereMesh, "
     "CylinderMesh, "
     "CapsuleMesh, PlaneMesh, QuadMesh, PrismMesh or TorusMesh";
 constexpr std::string_view kMeshField = "/components/MeshInstance3D/mesh";
@@ -249,7 +249,7 @@ std::string mesh_path_problem(const world::World& world, entt::entity entity,
                "\"..\" parts";
     }
     if (!is_model_path(path)) {
-        return "expected a .gltf, .glb or .obj file";
+        return "expected a .gltf, .glb, .obj or .fbx file";
     }
     auto primitive = primitive_of(world, entity);
     if (!primitive) {

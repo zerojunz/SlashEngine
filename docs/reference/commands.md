@@ -533,7 +533,7 @@ drawing it: its meshes, materials, images, the nodes that place its meshes and i
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `path` | string | | A `.gltf`, `.glb` or `.obj` file |
+| `path` | string | | A `.gltf`, `.glb`, `.obj` or `.fbx` file |
 | `id` | string | | Or an entity whose `MeshInstance3D` draws a model |
 
 Give one of them. Needs: `read`.

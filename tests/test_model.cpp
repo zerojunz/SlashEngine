@@ -1,4 +1,5 @@
 #include "devices.hpp"
+#include "fbx.hpp"
 #include "gltf.hpp"
 #include "jpeg.hpp"
 
@@ -38,6 +39,8 @@ namespace scene3d = slash::scene3d;
 namespace world = slash::world;
 using slash::Vec3;
 using slash::test::drawing_devices;
+using slash::test::Fbx;
+using slash::test::FbxNode;
 using slash::test::Gltf;
 using slash::test::quad;
 
@@ -523,7 +526,7 @@ TEST_CASE("models that can't draw are reported, in the world and in scene files"
     REQUIRE(problems.size() == 3);
     CHECK(problems[0].path == "/components/MeshInstance3D/mesh");
     CHECK(problems[0].message == "draws a model, so its BoxMesh is left out: remove one of them");
-    CHECK(problems[1].message == "expected a .gltf, .glb or .obj file");
+    CHECK(problems[1].message == "expected a .gltf, .glb, .obj or .fbx file");
     CHECK(problems[2].message == "\"models/gone.glb\" could not be read: no such file");
 
     // Drawing reports them too, and draws nothing for them.
@@ -864,4 +867,329 @@ TEST_CASE("MeshInstance3D draws an OBJ model as it draws the same glTF one") {
     const Rgba green = pixel(a, 42, 22);
     CHECK(red[0] > green[0] + 40);
     CHECK(green[1] > red[1] + 40);
+}
+
+namespace {
+
+// A quad from (-1, -1) to (1, 1) in x and y, facing +z, as exporters write one: its corners
+// counter-clockwise seen from the front, with texture coordinates up the texture. Its node,
+// "Quad", is under the scene's root.
+Fbx fbx_quad(std::vector<std::int32_t> materials = {}) {
+    Fbx out;
+    out.geometry(10, "QuadMesh", {-1.0, -1.0, 0.0, 1.0, -1.0, 0.0, 1.0, 1.0, 0.0, -1.0, 1.0, 0.0},
+                 {0, 1, 2, -4}, {}, {0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0}, {},
+                 std::move(materials));
+    out.model(20, "Quad");
+    out.connect(20, 0);
+    out.connect(10, 20);
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("FBX models load as Godot's importer reads them, in meters with y up") {
+    // As Blender writes one: z up and centimeters, a mesh under an empty node.
+    Fbx file;
+    file.up_axis = 2;
+    file.front_axis = 1;
+    file.front_sign = -1;
+    file.unit_scale = 1.0;
+    file.geometry(10, "PanelMesh",
+                  {-100.0, -100.0, 0.0, 100.0, -100.0, 0.0, 100.0, 100.0, 0.0, -100.0, 100.0, 0.0},
+                  {0, 1, 2, -4}, {}, {0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0});
+    file.model(20, "Base", {100.0, 0.0, 0.0});
+    file.model(21, "Panel", {0.0, 0.0, 50.0});
+    FbxNode& red = file.material(30, "Red");
+    slash::test::fbx_property(red, "DiffuseColor", "Color", {0.5, 0.25, 1.0});
+    file.connect(20, 0);
+    file.connect(21, 20);
+    file.connect(10, 21);
+    file.connect(30, 21);
+    for (const bool binary : {false, true}) {
+        CAPTURE(binary);
+        MemoryFiles files;
+        files.files["models/panel.fbx"] = binary ? file.binary() : file.ascii();
+        auto loaded = load(files, "models/panel.fbx");
+        REQUIRE_MESSAGE(loaded.ok(), error_of(loaded));
+        const scene3d::Model& m = loaded.value();
+        REQUIRE(m.meshes.size() == 1);
+        CHECK(m.meshes[0].name == "PanelMesh");
+        // Only nodes with a mesh are parts, placed by the nodes above them, turned to y up.
+        REQUIRE(m.parts.size() == 1);
+        CHECK(m.parts[0].node == "Panel");
+        CHECK(m.parts[0].mesh == 0);
+        CHECK(near(m.parts[0].transform.origin, {1.0F, 0.5F, 0.0F}));
+        CHECK(near(m.parts[0].transform.basis({0.0F, 0.0F, 1.0F}), {0.0F, 1.0F, 0.0F}));
+
+        const scene3d::ModelSurface& surface = m.meshes[0].surfaces.at(0);
+        CHECK(surface.material == 0);
+        REQUIRE(surface.vertices.size() == 4);
+        CHECK(surface.indices.size() == 6);
+        CHECK(clockwise(surface));
+        // Meters; normals made for a mesh without them; the texture's v runs down, as Godot's.
+        CHECK(near(surface.vertices[0].position, {-1.0F, -1.0F, 0.0F}));
+        CHECK(near(surface.vertices[0].uv, {0.0F, 1.0F}));
+        for (const render::Vertex3D& v : surface.vertices) {
+            CHECK(near(v.normal, {0.0F, 0.0F, 1.0F}));
+            CHECK(near(v.tangent, {1.0F, 0.0F, 0.0F, 1.0F}));
+        }
+        const scene3d::Bounds box = scene3d::bounds(m);
+        CHECK(near(box.min, {0.0F, 0.5F, -1.0F}));
+        CHECK(near(box.max, {2.0F, 0.5F, 1.0F}));
+
+        // A Lambert material: its diffuse color, from linear to sRGB, and corner colors shown.
+        REQUIRE(m.materials.size() == 1);
+        CHECK(m.materials[0].name == "Red");
+        const world::StandardMaterial3D& standard = m.materials[0].standard;
+        CHECK(near(standard.albedo_color.x, 0.735357F));
+        CHECK(near(standard.albedo_color.y, 0.537099F));
+        CHECK(near(standard.albedo_color.z, 1.0F));
+        CHECK(standard.vertex_color_use_as_albedo);
+        CHECK(standard.metallic == 0.0F);
+        CHECK(standard.roughness == 1.0F);
+        CHECK_FALSE(standard.emission_enabled);
+        CHECK(scene3d::check_model(files.files["models/panel.fbx"], "models/panel.fbx",
+                                   files.reader())
+                  .empty());
+    }
+}
+
+TEST_CASE("FBX meshes keep their normals, tangents, colors and a surface per material") {
+    Fbx file;
+    // Two quads side by side, the second facing -z, each of its own material; the first's
+    // corners are colored. Normals and tangents are the file's own.
+    file.geometry(10, "Pair", {-1.0, -1.0, 0.0, 1.0, -1.0, 0.0, 1.0, 1.0, 0.0, -1.0, 1.0, 0.0,
+                               1.0,  -1.0, 0.0, 3.0, -1.0, 0.0, 3.0, 1.0, 0.0, 1.0,  1.0, 0.0},
+                  {0, 1, 2, -4, 4, 7, 6, -6},
+                  {0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,  0.0, 0.0, 1.0,
+                   0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0},
+                  {},
+                  {1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0,
+                   0.0, 0.0, 1.0, 0.5, 0.0, 0.0, 1.0, 0.5, 0.0, 0.0, 1.0, 0.5, 0.0, 0.0, 1.0, 0.5},
+                  {0, 1});
+    file.model(20, "Pair");
+    file.material(30, "Front");
+    file.material(31, "Back");
+    file.connect(20, 0);
+    file.connect(10, 20);
+    file.connect(30, 20);
+    file.connect(31, 20);
+    MemoryFiles files;
+    files.files["pair.fbx"] = file.ascii();
+    auto loaded = load(files, "pair.fbx");
+    REQUIRE_MESSAGE(loaded.ok(), error_of(loaded));
+    const scene3d::ModelMesh& mesh = loaded.value().meshes.at(0);
+    REQUIRE(mesh.surfaces.size() == 2);
+    const scene3d::ModelSurface& front = mesh.surfaces[0];
+    const scene3d::ModelSurface& back = mesh.surfaces[1];
+    CHECK(front.material == 0);
+    CHECK(back.material == 1);
+    CHECK(clockwise(front));
+    CHECK(clockwise(back));
+    for (const render::Vertex3D& v : front.vertices) {
+        CHECK(near(v.normal, {0.0F, 0.0F, 1.0F}));
+        CHECK(v.rgba == std::array<std::uint8_t, 4>{255, 0, 0, 255});
+        // No texture coordinates, so Godot's stand-in tangent for the normal.
+        CHECK(near(v.tangent, {0.0F, -1.0F, 0.0F, 1.0F}));
+    }
+    for (const render::Vertex3D& v : back.vertices) {
+        CHECK(near(v.normal, {0.0F, 0.0F, -1.0F}));
+        CHECK(v.rgba == std::array<std::uint8_t, 4>{0, 0, 255, 128});
+    }
+    CHECK(loaded.value().materials.size() == 2);
+}
+
+TEST_CASE("FBX materials become StandardMaterial3Ds as Godot's importer makes them") {
+    Fbx file = fbx_quad({0});
+    // Phong: the diffuse color times its factor, and emission.
+    FbxNode& glow = file.material(30, "Glow", "phong");
+    slash::test::fbx_property(glow, "DiffuseColor", "Color", {0.5, 0.25, 1.0});
+    slash::test::fbx_property(glow, "DiffuseFactor", "Number", {0.5});
+    slash::test::fbx_property(glow, "EmissiveColor", "Color", {1.0, 0.5, 0.0});
+    slash::test::fbx_property(glow, "EmissiveFactor", "Number", {2.0});
+    // A diffuse texture, clamped in u, moved and scaled.
+    FbxNode& wood = file.material(31, "Wood");
+    slash::test::fbx_property(wood, "DiffuseFactor", "Number", {0.5});
+    FbxNode& texture = file.texture(40, "WoodTexture", "C:/art/wood.png", "wood.png");
+    FbxNode& settings = texture.add("Properties70");
+    slash::test::fbx_property(settings, "WrapModeU", "enum", {std::int64_t{1}});
+    slash::test::fbx_property(settings, "Translation", "Vector", {0.25, 0.5, 0.0});
+    slash::test::fbx_property(settings, "Scaling", "Vector", {2.0, 3.0, 1.0});
+    // 3ds Max's PBR material: metalness and roughness, a roughness texture and a normal map.
+    FbxNode& metal = file.material(32, "Metal", "unknown");
+    slash::test::fbx_property(metal, "3dsMax|ClassIDa", "int",
+                              {std::int64_t{static_cast<std::int32_t>(0xd00f1e00U)}});
+    slash::test::fbx_property(metal, "3dsMax|ClassIDb", "int",
+                              {std::int64_t{static_cast<std::int32_t>(0xbe77e500U)}});
+    slash::test::fbx_property(metal, "3dsMax|main|base_color", "ColorAndAlpha",
+                              {0.25, 0.5, 0.75, 1.0});
+    slash::test::fbx_property(metal, "3dsMax|main|metalness", "Float", {0.25});
+    slash::test::fbx_property(metal, "3dsMax|main|roughness", "Float", {0.75});
+    file.texture(41, "Rough", "rough.png", "rough.png");
+    file.texture(42, "Bumps", "bumps.png", "bumps.png");
+    for (const std::int64_t id : {30, 31, 32}) {
+        file.connect(id, 20);
+    }
+    file.connect(40, 31, "DiffuseColor");
+    file.connect(41, 32, "3dsMax|main|roughness_map");
+    file.connect(42, 32, "3dsMax|main|norm_map");
+
+    MemoryFiles files;
+    files.files["models/quad.fbx"] = file.ascii();
+    // The wood has see-through texels, and pixels only fully opaque or clear.
+    render::Image cutout = checker();
+    cutout.pixels[3] = 0;
+    files.files["models/textures/wood.png"] = render::encode_png(cutout).value();
+    files.files["models/rough.png"] = render::encode_png(checker()).value();
+    files.files["models/bumps.png"] = render::encode_png(checker()).value();
+    auto loaded = load(files, "models/quad.fbx");
+    REQUIRE_MESSAGE(loaded.ok(), error_of(loaded));
+    const scene3d::Model& m = loaded.value();
+    REQUIRE(m.materials.size() == 3);
+
+    const world::StandardMaterial3D& g = m.materials[0].standard;
+    CHECK(near(g.albedo_color.x, 0.537099F));
+    CHECK(near(g.albedo_color.y, 0.388573F));
+    CHECK(near(g.albedo_color.z, 0.735357F));
+    CHECK(g.emission_enabled);
+    CHECK(near(g.emission.x, 1.0F));
+    CHECK(near(g.emission.y, 0.735357F));
+    CHECK(near(g.emission.z, 0.0F));
+    CHECK(g.emission_energy_multiplier == 2.0F);
+    CHECK(m.materials[0].albedo_image == -1);
+
+    // The texture, found in the textures folder beside the model as Godot looks for it. Its
+    // texels set the colors, times the factor (alpha too), and its clear ones a cutout.
+    const scene3d::ModelMaterial& w = m.materials[1];
+    REQUIRE(w.albedo_image >= 0);
+    CHECK(m.images.at(static_cast<std::size_t>(w.albedo_image)).path == "models/textures/wood.png");
+    CHECK(near(w.standard.albedo_color.x, 0.735357F));
+    CHECK(near(w.standard.albedo_color.w, 0.5F));
+    CHECK(w.standard.transparency == "alpha_scissor");
+    CHECK_FALSE(w.standard.texture_repeat);
+    CHECK(near(w.standard.uv1_offset, {0.25F, 0.5F, 0.0F}));
+    CHECK(near(w.standard.uv1_scale, {2.0F, 3.0F, 1.0F}));
+
+    // PBR: metalness and roughness, the roughness from its texture's red channel, and the normal
+    // map. A four-part color takes its alpha from its third part, as Godot's importer does.
+    const scene3d::ModelMaterial& p = m.materials[2];
+    CHECK(near(p.standard.albedo_color.x, 0.537099F));
+    CHECK(near(p.standard.albedo_color.w, 0.75F));
+    CHECK(p.standard.metallic == 0.25F);
+    CHECK(p.standard.roughness == 1.0F);
+    CHECK(p.standard.roughness_texture_channel == "red");
+    REQUIRE(p.roughness_image >= 0);
+    CHECK(m.images.at(static_cast<std::size_t>(p.roughness_image)).path == "models/rough.png");
+    CHECK(p.metallic_image == -1);
+    CHECK(p.standard.normal_enabled);
+    REQUIRE(p.normal_image >= 0);
+    CHECK(m.images.at(static_cast<std::size_t>(p.normal_image)).path == "models/bumps.png");
+    CHECK(scene3d::check_model(files.files["models/quad.fbx"], "models/quad.fbx", files.reader())
+              .empty());
+}
+
+TEST_CASE("FBX textures are found where Godot's importer looks, and those that aren't reported") {
+    Fbx file = fbx_quad({0});
+    FbxNode& material = file.material(30, "Many");
+    (void)material;
+    file.connect(30, 20);
+    const std::vector<std::pair<std::string, std::string>> textures{
+        {"carried.png", "carried.png"},           // inside the file
+        {"/home/art/up.png", "../shared/up.png"}, // relative to the model
+        {"C:\\art\\metal.png", ""},               // in Textures/ at the project's top
+        {"gone.png", "gone.png"},                 // nowhere
+        {"bark.tga", "bark.tga"},                 // not a texture SlashEngine reads
+        {"broken.png", "broken.png"},             // inside the file, and doesn't decode
+    };
+    const std::array<const char*, 6> slots{"DiffuseColor",     "NormalMap",     "EmissiveColor",
+                                           "TransparentColor", "SpecularColor", "Bump"};
+    for (std::size_t i = 0; i < textures.size(); ++i) {
+        const auto id = static_cast<std::int64_t>(40 + i);
+        file.texture(id, "T" + std::to_string(i), textures[i].first, textures[i].second);
+        file.connect(id, 30, slots[i]);
+    }
+    file.video(50, 40, "carried.png", render::encode_png(checker()).value());
+    file.video(55, 45, "broken.png", "not a PNG");
+    MemoryFiles files;
+    files.files["models/many.fbx"] = file.binary();
+    files.files["shared/up.png"] = render::encode_png(checker()).value();
+    files.files["Textures/metal.png"] = render::encode_png(checker()).value();
+    files.files["models/bark.tga"] = "a TGA file";
+    auto loaded = load(files, "models/many.fbx");
+    REQUIRE_MESSAGE(loaded.ok(), error_of(loaded));
+    const scene3d::Model& m = loaded.value();
+    REQUIRE(m.images.size() == 3);
+    CHECK(m.images[0].path.empty());
+    CHECK(m.images[0].image.width == 2);
+    CHECK(m.images[1].path == "shared/up.png");
+    CHECK(m.images[2].path == "Textures/metal.png");
+    const scene3d::ModelMaterial& many = m.materials.at(0);
+    CHECK(many.albedo_image == 0);
+    CHECK(many.normal_image == 1);
+    CHECK(many.emission_image == 2);
+
+    const auto errors =
+        scene3d::check_model(files.files["models/many.fbx"], "models/many.fbx", files.reader());
+    REQUIRE(errors.size() == 3);
+    CHECK(errors[0].message == "texture \"gone.png\" isn't beside the model or in a folder Godot "
+                               "looks in; materials draw without it");
+    CHECK(errors[1].message == "texture \"bark.tga\" isn't a texture SlashEngine reads (.png, "
+                               ".bmp, .jpg, .jpeg or .ktx2); materials draw without it");
+    CHECK(errors[2].message.starts_with("the image it carries as \"broken.png\" doesn't decode: "));
+}
+
+TEST_CASE("FBX files that can't load say why, and warnings are reported") {
+    MemoryFiles files;
+    const auto error_for = [&](std::string bytes) {
+        files.files["bad.fbx"] = std::move(bytes);
+        return error_of(load(files, "bad.fbx"));
+    };
+    CHECK(error_for("") == "it doesn't read as FBX: Empty file");
+    const std::string binary = fbx_quad().binary();
+    CHECK(error_for(binary.substr(0, 100)) == "it doesn't read as FBX: Truncated file");
+    // OBJ text read as FBX, as a file named .fbx is.
+    CHECK(error_for(std::string(kObjQuad)).starts_with("it doesn't read as FBX: "));
+
+    // A name that isn't UTF-8 loads, with the warning ufbx gives.
+    Fbx file = fbx_quad({0});
+    file.material(30, "Bad\xff");
+    file.connect(30, 20);
+    files.files["warned.fbx"] = file.binary();
+    auto loaded = load(files, "warned.fbx");
+    REQUIRE_MESSAGE(loaded.ok(), error_of(loaded));
+    const auto errors =
+        scene3d::check_model(files.files["warned.fbx"], "warned.fbx", files.reader());
+    REQUIRE(errors.size() == 1);
+    CHECK(errors[0].message.starts_with("warning in \"Bad"));
+    CHECK(errors[0].message.ends_with(": Bad UTF-8 string"));
+}
+
+TEST_CASE("MeshInstance3D draws an FBX model as it draws the same OBJ one") {
+    Scene scene;
+    const std::string png = render::encode_png(checker()).value();
+    scene.files.files["models/checker.png"] = png;
+    scene.files.files["models/checker.mtl"] = "newmtl Checker\nmap_Kd checker.png\n";
+    scene.files.files["models/checker.obj"] = "mtllib checker.mtl\n" + std::string(kObjQuad) +
+                                              "usemtl Checker\nf 1/1/1 2/2/1 3/3/1 4/4/1\n";
+    Fbx file = fbx_quad({0});
+    file.material(30, "Checker");
+    file.texture(40, "CheckerTexture", "checker.png", "checker.png");
+    file.connect(30, 20);
+    file.connect(40, 30, "DiffuseColor");
+    scene.files.files["models/checker.fbx"] = file.binary();
+    scene.create("sun", R"({"Transform3D": {}, "DirectionalLight3D": {}})");
+    const entt::entity model = scene.create(
+        "model", R"({"Transform3D": {}, "MeshInstance3D": {"mesh": "models/checker.fbx"}})");
+    CHECK(scene3d::check_meshes(scene.world).empty());
+
+    const auto fbx = canvas::capture(scene.world, scene.assets);
+    REQUIRE_MESSAGE(fbx.ok(), error_of(fbx));
+    CHECK(fbx.value().meshes == 1);
+    scene.world.ecs().get<world::MeshInstance3D>(model).mesh = "models/checker.obj";
+    const auto obj = canvas::capture(scene.world, scene.assets);
+    REQUIRE_MESSAGE(obj.ok(), error_of(obj));
+    const render::Image& a = fbx.value().image;
+    const render::Image& b = obj.value().image;
+    REQUIRE(a.pixels.size() == b.pixels.size());
+    CHECK(a.pixels == b.pixels);
 }
