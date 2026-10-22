@@ -198,6 +198,13 @@ slash_add_dependency(miniaudio DOWNLOAD_ONLY TRUE)
 # its one source file with the BSD queue.h it carries, the same on every platform.
 slash_add_dependency(libebur128 DOWNLOAD_ONLY TRUE)
 
+# 3D models, as Godot imports glTF 2.0: cgltf parses .gltf and .glb files and MikkTSpace makes
+# the tangents a model leaves out, as Godot's SurfaceTool does (engine/scene3d); stb_image decodes
+# the JPEG textures models carry, which SDL can't (engine/render, beside PNG and BMP).
+slash_add_dependency(cgltf DOWNLOAD_ONLY TRUE)
+slash_add_dependency(mikktspace DOWNLOAD_ONLY TRUE)
+slash_add_dependency(stb DOWNLOAD_ONLY TRUE)
+
 # Compressed textures, BC7 and ASTC 4x4, which GPUs sample as they are: engine/render builds the
 # decoders, bc7enc_rdo's bc7decomp.cpp and astc-encoder without its compressor, for devices that
 # can't sample a format (the software device, or a GPU without it). Tools and tests also build

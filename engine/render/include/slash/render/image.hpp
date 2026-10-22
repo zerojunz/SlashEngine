@@ -11,12 +11,20 @@
 #include <vector>
 
 // Image files to and from Image, for textures and captures. PNG and BMP read, through SDL's own
-// loaders, and KTX2 files of RGBA8, BC7 or ASTC 4x4 texels; PNG and KTX2 write.
+// loaders, JPEG through stb_image's decoder, and KTX2 files of RGBA8, BC7 or ASTC 4x4 texels; PNG
+// and KTX2 write.
 namespace slash::render {
 
-// Decodes a PNG, BMP or KTX2 file's bytes to straight-alpha RGBA. A KTX2 file of BC7 or ASTC
-// blocks keeps them too, in blocks; only its first mip level is read. Images wider or taller than
-// 16384 pixels, the largest texture every GPU takes, are refused.
+// The suffixes of the image files decode_image reads, as texture paths end.
+inline constexpr std::array<std::string_view, 5> kImageSuffixes{".png", ".bmp", ".jpg", ".jpeg",
+                                                                ".ktx2"};
+// Whether a path ends in one of kImageSuffixes.
+[[nodiscard]] bool is_image_path(std::string_view path);
+
+// Decodes a PNG, BMP, JPEG or KTX2 file's bytes to straight-alpha RGBA. A KTX2 file of BC7 or
+// ASTC blocks keeps them too, in blocks; only its first mip level is read. Images wider or taller
+// than 16384 pixels, the largest texture every GPU takes, are refused. JPEG files decode with
+// integer math, to the same pixels on every machine.
 [[nodiscard]] Result<Image> decode_image(std::string_view bytes);
 
 // Whether the bytes are a KTX2 file, Khronos' container for textures as GPUs take them.

@@ -1,6 +1,7 @@
 #include "slash/render/image.hpp"
 
 #include "checks.hpp"
+#include "jpeg.h"
 
 #include <SDL3/SDL.h>
 
@@ -9,7 +10,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
+#include <string>
 
 namespace slash::render {
 namespace {
@@ -32,11 +35,49 @@ std::uint32_t texel_index(float texel, std::uint32_t size, bool repeat) {
     return static_cast<std::uint32_t>(std::clamp(texel, 0.0F, count - 1.0F));
 }
 
+// Whether the bytes start as a JPEG file does: a start of image marker, then another marker.
+bool is_jpeg(std::string_view bytes) {
+    return bytes.size() >= 3 && static_cast<unsigned char>(bytes[0]) == 0xFF &&
+           static_cast<unsigned char>(bytes[1]) == 0xD8 &&
+           static_cast<unsigned char>(bytes[2]) == 0xFF;
+}
+
+Result<Image> decode_jpeg(std::string_view bytes) {
+    if (bytes.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+        return make_error(ErrorCode::InvalidArgument, "the JPEG file is too large");
+    }
+    int width = 0;
+    int height = 0;
+    unsigned char* pixels = slash_decode_jpeg(reinterpret_cast<const unsigned char*>(bytes.data()),
+                                              static_cast<int>(bytes.size()), &width, &height);
+    if (pixels == nullptr) {
+        // stb_image refuses images past STBI_MAX_DIMENSIONS, the largest texture size.
+        return make_error(ErrorCode::InvalidArgument,
+                          std::string("not a JPEG image it can read: ") + slash_jpeg_error() +
+                              "; textures are at most " + std::to_string(detail::kMaxTextureSize) +
+                              " pixels on each side");
+    }
+    Image image;
+    image.width = static_cast<std::uint32_t>(width);
+    image.height = static_cast<std::uint32_t>(height);
+    image.pixels.assign(pixels, pixels + (std::size_t{image.width} * image.height * 4));
+    slash_free_jpeg(pixels);
+    return image;
+}
+
 } // namespace
+
+bool is_image_path(std::string_view path) {
+    return std::ranges::any_of(kImageSuffixes,
+                               [&](std::string_view suffix) { return path.ends_with(suffix); });
+}
 
 Result<Image> decode_image(std::string_view bytes) {
     if (is_ktx2(bytes)) {
         return decode_ktx2(bytes);
+    }
+    if (is_jpeg(bytes)) {
+        return decode_jpeg(bytes);
     }
     SDL_IOStream* stream = SDL_IOFromConstMem(bytes.data(), bytes.size());
     if (stream == nullptr) {
@@ -47,7 +88,7 @@ Result<Image> decode_image(std::string_view bytes) {
     const SurfacePtr loaded(SDL_LoadSurface_IO(stream, true));
     if (loaded == nullptr) {
         return make_error(ErrorCode::InvalidArgument,
-                          std::string("not a PNG, BMP or KTX2 image: ") + SDL_GetError());
+                          std::string("not a PNG, BMP, JPEG or KTX2 image: ") + SDL_GetError());
     }
     if (loaded->w > static_cast<int>(detail::kMaxTextureSize) ||
         loaded->h > static_cast<int>(detail::kMaxTextureSize)) {

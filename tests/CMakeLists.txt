@@ -75,6 +75,7 @@ add_executable(slash_tests
     test_material.cpp
     test_mcp.cpp
     test_mesh.cpp
+    test_model.cpp
     test_particle_graphs.cpp
     test_particles.cpp
     test_physics.cpp
@@ -125,6 +126,11 @@ target_link_libraries(slash_tests PRIVATE
     slash::platform slash::render slash::runtime slash::scene3d slash::server slash::services slash::shader_compiler slash::soundtrack slash::soundtrack_commands slash::storyboard slash::text slash::texture_encoder slash::ui slash::world doctest::doctest SDL3::SDL3-static
     slash_httplib # a stand-in model server for the AI provider tests
     webp) # WebP textures for the Godot unpacking tests
+# JPEG files for the image and model tests, made with stb_image_write's encoder.
+add_library(slash_test_jpeg STATIC jpeg_write.c)
+target_include_directories(slash_test_jpeg SYSTEM PRIVATE ${stb_SOURCE_DIR})
+target_compile_options(slash_test_jpeg PRIVATE "$<$<NOT:$<C_COMPILER_ID:MSVC>>:-w;-ffp-contract=off>")
+target_link_libraries(slash_tests PRIVATE slash_test_jpeg)
 # doctest forward-declares std::ostream by default, which breaks string_view checks on recent
 # MSVC standard libraries; include the real headers instead.
 target_compile_definitions(slash_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS
@@ -296,6 +302,12 @@ if(SLASH_BUILD_TOOLS)
         COMMAND slash-cli scene validate ${scenes}/invalid.frames.json)
     set_tests_properties(cli_scene_validate_invalid_frames PROPERTIES
         PASS_REGULAR_EXPRESSION "\"message\":\"the sheet has 4 frames, numbered from 0\",\"path\":\"/animations/walk/frames/1\"")
+
+    # The models-3d example's glTF model, checked as MeshInstance3D loads it.
+    add_test(NAME cli_scene_validate_model COMMAND slash-cli scene validate
+        ${PROJECT_SOURCE_DIR}/examples/models-3d/models/house.gltf)
+    set_tests_properties(cli_scene_validate_model PROPERTIES
+        PASS_REGULAR_EXPRESSION "\"images\":0,\"materials\":3,\"meshes\":3,\"valid\":true}")
 
     add_test(NAME cli_schema_material COMMAND slash-cli schema material)
     set_tests_properties(cli_schema_material PROPERTIES

@@ -53,7 +53,7 @@ std::uint64_t gpu_bytes(const render::Image& image, TextureFormat format) {
 }
 
 bool is_texture_path(std::string_view name) {
-    return name.ends_with(".png") || name.ends_with(".bmp") || name.ends_with(".ktx2");
+    return render::is_image_path(name);
 }
 
 // Whether a texture's project path is one of paths or under one of them; any when there are none.

@@ -2,6 +2,7 @@
 
 #include "slash/core/json.hpp"
 #include "slash/core/math.hpp"
+#include "slash/core/text.hpp"
 #include "slash/world/serialize.hpp"
 #include "slash/world/world.hpp"
 
@@ -234,8 +235,32 @@ void add_sky(const world::World& world, entt::entity entity, Environment& out) {
     }
 }
 
-constexpr std::string_view kNoMesh = "has no mesh: add a BoxMesh, SphereMesh, CylinderMesh, "
-                                     "CapsuleMesh, PlaneMesh, QuadMesh, PrismMesh or TorusMesh";
+constexpr std::string_view kNoMesh =
+    "has no mesh: set mesh to a .gltf or .glb file, or add a BoxMesh, SphereMesh, CylinderMesh, "
+    "CapsuleMesh, PlaneMesh, QuadMesh, PrismMesh or TorusMesh";
+constexpr std::string_view kMeshField = "/components/MeshInstance3D/mesh";
+
+// What's wrong with a MeshInstance3D's mesh path, without reading it; "" for nothing.
+std::string mesh_path_problem(const world::World& world, entt::entity entity,
+                              const std::string& path) {
+    if (!is_project_path(path)) {
+        return "expected a path inside the project folder, separated by '/', with no \".\" or "
+               "\"..\" parts";
+    }
+    if (!is_model_path(path)) {
+        return "expected a .gltf or .glb file";
+    }
+    auto primitive = primitive_of(world, entity);
+    if (!primitive) {
+        return {};
+    }
+    const std::optional<Primitive>& found = primitive.value();
+    if (found) {
+        return "draws a model, so its " + std::string(kPrimitiveNames[found->index()]) +
+               " is left out: remove one of them";
+    }
+    return {};
+}
 
 // The entity's primitive mesh when it can draw one; otherwise nullopt, with the problem.
 std::optional<Primitive> drawable(const world::World& world, entt::entity entity,
@@ -477,7 +502,31 @@ sky_lights(const world::World& world, const world::Tree3D& tree,
 std::vector<Problem> check_meshes(const world::World& world) {
     std::vector<Problem> problems;
     for (const entt::entity entity : made<world::MeshInstance3D>(world)) {
-        (void)drawable(world, entity, problems);
+        const std::string& path = world.ecs().get<const world::MeshInstance3D>(entity).mesh;
+        if (path.empty()) {
+            (void)drawable(world, entity, problems);
+            continue;
+        }
+        if (std::string problem = mesh_path_problem(world, entity, path); !problem.empty()) {
+            problems.push_back({entity, std::string(kMeshField), std::move(problem)});
+            continue;
+        }
+        const world::FileReader& reader = world.file_reader();
+        if (!reader) {
+            continue;
+        }
+        auto bytes = reader(path);
+        if (!bytes) {
+            problems.push_back({entity, std::string(kMeshField),
+                                "\"" + path + "\" could not be read: " + bytes.error().message});
+            continue;
+        }
+        for (const json::ValidationError& error : check_model(bytes.value(), path, reader)) {
+            problems.push_back({entity, std::string(kMeshField),
+                                "\"" + path + "\"" +
+                                    (error.path.empty() ? "" : " at " + error.path) + ": " +
+                                    error.message});
+        }
     }
     // A primitive mesh draws only on an entity with a MeshInstance3D, but two are always wrong.
     std::vector<entt::entity> others;
@@ -531,8 +580,7 @@ render::Material3D material(const world::StandardMaterial3D& standard,
                                 made.error().message});
             return {};
         }
-        // Godot's 3D textures repeat by default (texture_repeat).
-        return {.texture = made.value().id, .repeat = true};
+        return {.texture = made.value().id, .repeat = standard.texture_repeat};
     };
     out.albedo = {standard.albedo_color.x, standard.albedo_color.y, standard.albedo_color.z,
                   standard.albedo_color.w};
@@ -573,12 +621,15 @@ render::Material3D material(const world::StandardMaterial3D& standard,
     return out;
 }
 
-Renderer::Renderer(render::RenderDevice& device, TextureSource textures)
-    : device_(&device), textures_(std::move(textures)) {}
+Renderer::Renderer(render::RenderDevice& device, TextureSource textures, ModelSource models)
+    : device_(&device), textures_(std::move(textures)), models_(std::move(models)) {}
 
 Renderer::~Renderer() {
     for (const auto& [key, shared] : shared_) {
         device_->destroy_mesh(shared.id);
+    }
+    for (const auto& [key, texture] : embedded_) {
+        device_->destroy_texture(texture.id);
     }
 }
 
@@ -625,6 +676,135 @@ Result<render::MeshId> Renderer::mesh_for(const world::World& world, entt::entit
     return shared.id;
 }
 
+Result<render::MeshId> Renderer::model_mesh(const std::string& key, const ModelSurface& surface) {
+    Shared& shared = shared_[key];
+    if (shared.id == render::MeshId::None) {
+        auto made = device_->create_mesh(surface.vertices, surface.indices);
+        if (!made) {
+            shared_.erase(key);
+            return made.error();
+        }
+        shared.id = made.value();
+    }
+    shared.used = frame_;
+    return shared.id;
+}
+
+render::MaterialTexture Renderer::model_texture(const std::string& path, const SourceModel& source,
+                                                int image,
+                                                const world::StandardMaterial3D& standard,
+                                                entt::entity entity) {
+    if (image < 0 || static_cast<std::size_t>(image) >= source.model->images.size()) {
+        return {};
+    }
+    const bool nearest = standard.texture_filter.starts_with("nearest");
+    const render::Filter filter = nearest ? render::Filter::Nearest : render::Filter::Linear;
+    const ModelImage& found = source.model->images[static_cast<std::size_t>(image)];
+    if (!found.path.empty()) {
+        auto made = textures_(found.path, filter);
+        if (!made) {
+            problems_.push_back({entity, std::string(kMeshField),
+                                 "\"" + path + "\"'s texture: " + made.error().message});
+            return {};
+        }
+        return {.texture = made.value().id, .repeat = standard.texture_repeat};
+    }
+    const std::string key = path + "@" + std::to_string(source.version) + "#" +
+                            std::to_string(image) + (nearest ? "n" : "l");
+    Embedded& embedded = embedded_[key];
+    if (embedded.id == render::TextureId::None) {
+        auto made = device_->create_texture({.width = found.image.width,
+                                             .height = found.image.height,
+                                             .filter = filter,
+                                             .render_target = false,
+                                             .format = render::TextureFormat::Rgba8},
+                                            found.image.pixels);
+        if (!made) {
+            embedded_.erase(key);
+            problems_.push_back({entity, std::string(kMeshField),
+                                 "\"" + path + "\"'s image " + std::to_string(image) + ": " +
+                                     made.error().message});
+            return {};
+        }
+        embedded.id = made.value();
+    }
+    embedded.used = frame_;
+    return {.texture = embedded.id, .repeat = standard.texture_repeat};
+}
+
+void Renderer::add_model(const world::World& world, entt::entity entity,
+                         const world::MeshInstance3D& instance, const world::Affine3D& place,
+                         render::ShadowCasting casting) {
+    if (std::string problem = mesh_path_problem(world, entity, instance.mesh); !problem.empty()) {
+        problems_.push_back({entity, std::string(kMeshField), std::move(problem)});
+        return;
+    }
+    if (!models_) {
+        problems_.push_back({entity, std::string(kMeshField), "models can't load here"});
+        return;
+    }
+    auto source = models_(instance.mesh);
+    if (!source) {
+        problems_.push_back({entity, std::string(kMeshField), source.error().message});
+        return;
+    }
+    const Model& model = *source.value().model;
+    // A StandardMaterial3D on the entity takes the place of every surface's, as Godot's
+    // material_override.
+    std::optional<render::Material3D> override;
+    if (const auto* standard = world.ecs().try_get<world::StandardMaterial3D>(entity);
+        standard != nullptr) {
+        override = material(*standard, textures_, problems_, entity);
+    }
+    std::vector<std::optional<render::Material3D>> materials(model.materials.size());
+    const std::string prefix =
+        "model:" + instance.mesh + "@" + std::to_string(source.value().version) + "#";
+    for (const ModelPart& part : model.parts) {
+        const std::array<float, 16> transform = (place * part.transform).matrix();
+        const ModelMesh& mesh = model.meshes[part.mesh];
+        for (std::size_t i = 0; i < mesh.surfaces.size(); ++i) {
+            const ModelSurface& surface = mesh.surfaces[i];
+            auto made =
+                model_mesh(prefix + std::to_string(part.mesh) + "/" + std::to_string(i), surface);
+            if (!made) {
+                problems_.push_back({entity, std::string(kMeshField), made.error().message});
+                continue;
+            }
+            Draw draw;
+            draw.mesh = made.value();
+            draw.transform = transform;
+            if (override) {
+                draw.material = *override;
+            } else if (surface.material >= 0) {
+                const auto index = static_cast<std::size_t>(surface.material);
+                std::optional<render::Material3D>& made_material = materials[index];
+                if (!made_material) {
+                    const ModelMaterial& from = model.materials[index];
+                    render::Material3D out = material(from.standard, textures_, problems_, entity);
+                    const auto texture = [&](int image) {
+                        return model_texture(instance.mesh, source.value(), image, from.standard,
+                                             entity);
+                    };
+                    out.albedo_texture = texture(from.albedo_image);
+                    out.metallic_texture = texture(from.metallic_roughness_image);
+                    out.roughness_texture = out.metallic_texture;
+                    if (from.standard.normal_enabled) {
+                        out.normal_texture = texture(from.normal_image);
+                    }
+                    if (from.standard.emission_enabled) {
+                        out.emission_texture = texture(from.emission_image);
+                    }
+                    made_material = out;
+                }
+                draw.material = *made_material;
+            }
+            draw.layers = instance.layers;
+            draw.shadows = casting;
+            draws_.push_back(draw);
+        }
+    }
+}
+
 std::optional<Frame3D> Renderer::prepare(const world::World& world, float width, float height,
                                          double interpolation, render::Color clear,
                                          const render::ShadowSettings& shadows) {
@@ -636,11 +816,15 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
     const world::Tree3D tree(world);
     const entt::entity camera = current_camera(world, tree);
     if (camera == entt::null) {
-        // Meshes kept for a world that has none now go.
+        // Meshes and images kept for a world that has none now go.
         for (auto it = shared_.begin(); it != shared_.end();) {
             device_->destroy_mesh(it->second.id);
             it = shared_.erase(it);
         }
+        for (const auto& [key, texture] : embedded_) {
+            device_->destroy_texture(texture.id);
+        }
+        embedded_.clear();
         cached_.clear();
         return std::nullopt;
     }
@@ -736,6 +920,10 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
             }
             casting = render::ShadowCasting::ShadowsOnly;
         }
+        if (!instance.mesh.empty()) {
+            add_model(world, entity, instance, global(entity), casting);
+            continue;
+        }
         const std::optional<Primitive> primitive = drawable(world, entity, problems_);
         if (!primitive) {
             continue;
@@ -767,6 +955,14 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
         }
     }
     std::erase_if(cached_, [&](const auto& entry) { return !shared_.contains(entry.second.key); });
+    for (auto it = embedded_.begin(); it != embedded_.end();) {
+        if (it->second.used != frame_) {
+            device_->destroy_texture(it->second.id);
+            it = embedded_.erase(it);
+        } else {
+            ++it;
+        }
+    }
     return frame;
 }
 

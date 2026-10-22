@@ -640,9 +640,10 @@ they were to where they are, as sprites are. `frame.capture`'s `drawn` counts `m
 }}
 ```
 
-[examples/scene-3d](../../examples/scene-3d/) is a lit table with a crate, a ball and a ring, and
+[examples/scene-3d](../../examples/scene-3d/) is a lit table with a crate, a ball and a ring,
 [examples/shadows-3d](../../examples/shadows-3d/) a courtyard where the sun, a lamp and a
-flashlight cast shadows.
+flashlight cast shadows, and [examples/models-3d](../../examples/models-3d/) a house loaded from a
+glTF file.
 
 ### Meshes
 
@@ -674,11 +675,52 @@ Meshes of equal settings share one mesh on the GPU.
 
 Every primitive also has `flip_faces` (`false`), which turns it inside out, as for a skybox.
 
+### Models
+
+`MeshInstance3D`'s `mesh` (default `""`) names a glTF 2.0 model by project path: a `.gltf` file,
+with its buffers and images in files beside it or in data URIs, or a `.glb` file holding
+everything. The entity draws the model's meshes in place of a primitive mesh, read as Godot's
+glTF importer reads them:
+
+```json
+"house": {"components": {
+  "Transform3D": {"position": [0, 0, -3]},
+  "MeshInstance3D": {"mesh": "models/house.gltf"}
+}}
+```
+
+- Each node of the model's scene that has a mesh draws it where the node's transforms place it,
+  in the entity's space. glTF's units are meters with y up, as Godot's are.
+- Each glTF material becomes a `StandardMaterial3D` as Godot's importer makes it: the base color
+  factor and texture as the albedo, the metallic and roughness factors times the
+  metallic-roughness texture's blue and green channels, the normal map and its scale, the
+  emissive factor or texture, `alphaMode` (`"BLEND"` is `"alpha"`, `"MASK"` is
+  `"alpha_scissor"` at `alphaCutoff`), `doubleSided` as `cull_mode` `"disabled"`, and the base
+  color texture's sampler as `texture_filter` and `texture_repeat`. Linear colors are turned to
+  sRGB. `KHR_materials_emissive_strength`, `KHR_materials_unlit`, `KHR_texture_transform` and
+  `KHR_materials_pbrSpecularGlossiness` (its diffuse color and glossiness) are read too.
+- A primitive with vertex colors multiplies them into its albedo, and one with no material gets
+  Godot's default material.
+- A `StandardMaterial3D` on the entity replaces every material of the model, as Godot's
+  `material_override`.
+- Models keep Godot's clockwise front faces, a primitive with no normals gets one per face, and
+  one with texture coordinates but no tangents gets MikkTSpace's, as Godot's importer makes
+  them. `KHR_mesh_quantization` attributes are read.
+- Points and lines are left out, since only triangles draw, and so are cameras, `KHR_lights_punctual`
+  lights, skins, morph targets and animations. A file that requires any other extension, such as
+  Draco or meshopt compression, is refused, naming it.
+
+Images are PNG, JPEG, BMP or KTX2 files, as [textures](#textures) are. Entities drawing one model
+share its meshes and textures on the device, and the model reloads when its file changes.
+[`model.inspect`](commands.md#modelinspect) lists what a model holds without drawing it, and
+`slash-cli scene validate` takes a `.gltf` or `.glb` file and checks it as `MeshInstance3D` loads
+it.
+
 ### StandardMaterial3D
 
 Godot's `StandardMaterial3D`, as the mesh's material override. Colors are sRGB; textures are
-project paths of PNG, BMP or KTX2 files, and `""` leaves one out. Textures repeat, as Godot's
-do in 3D.
+project paths of PNG, JPEG, BMP or KTX2 files, and `""` leaves one out. Textures repeat, as
+Godot's do in 3D, unless `texture_repeat` is off.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
@@ -696,6 +738,7 @@ do in 3D.
 | `uv1_scale`, `uv1_offset` | `[1, 1, 1]`, `[0, 0, 0]` | Texture coordinates are scaled, then moved (x and y are used) |
 | `disable_fog` | `false` | The environment's fog leaves it alone |
 | `texture_filter` | `"linear_with_mipmaps"` | `"nearest"` and `"nearest_with_mipmaps"` keep texels sharp |
+| `texture_repeat` | `true` | Textures tile past their edges; `false` stretches the edge texels, as a glTF sampler that clamps |
 
 Opaque and alpha scissor meshes draw nearest first, then alpha meshes farthest first, as Godot
 sorts them. A texture that can't load is left out, with a warning and a problem in
@@ -888,8 +931,11 @@ energy multiplies twice, as Godot's does. A material's `disable_fog` leaves it c
 ### Checks
 
 `scene validate` and exports report an entity with two primitive meshes (at
-`/entities/<id>/components`), a `MeshInstance3D` with none (at its `MeshInstance3D`) and a
-`TorusMesh` whose radii are equal, as drawing would. `frame.summary` doesn't describe 3D meshes
+`/entities/<id>/components`), a `MeshInstance3D` with none (at its `MeshInstance3D`), a
+`TorusMesh` whose radii are equal, and a `mesh` that isn't a `.gltf` or `.glb` file in the
+project, doesn't load, or sits beside a primitive mesh (at its `mesh`), as drawing would. Exports
+check every `.gltf` and `.glb` file as `scene validate` does, and ship them with their `.bin`
+buffers and images. `frame.summary` doesn't describe 3D meshes
 yet.
 
 ## Canonical form
@@ -1093,7 +1139,9 @@ inside the scene follow them, so `hero`'s `Transform2D` `children` are `hero/spr
 
 ## Textures
 
-Fields that name a texture take a PNG, BMP or KTX2 file. PNG and BMP files are RGBA8 texels. A
+Fields that name a texture take a PNG, JPEG (`.jpg` or `.jpeg`), BMP or KTX2 file. PNG, JPEG and
+BMP files are RGBA8 texels. JPEG files, baseline or progressive, decode with stb_image's integer
+decoder, so they give the same texels on every machine. A
 KTX2 file holds texels the way GPUs take them: RGBA8 (Vulkan format 37 or 43), BC7 (145 or 146)
 or ASTC 4x4 (157 or 158), in one 2D level that is not supercompressed; only the first mip level
 is read. BC7 and ASTC take a byte a texel, a quarter of RGBA8's memory, in blocks of 4x4 texels,

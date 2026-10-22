@@ -830,10 +830,45 @@ void check_story_refs(const std::string& file, const json::Value& document,
     }
 }
 
+// A model's path in its project, which the files it names are relative to.
+std::string project_path(const std::string& file) {
+    namespace fs = std::filesystem;
+    std::error_code error;
+    const fs::path folder = fs::absolute(project_folder(file), error);
+    const fs::path relative = fs::absolute(file, error).lexically_relative(folder);
+    return relative.empty() ? file : relative.generic_string();
+}
+
+// Checks a .gltf or .glb model as MeshInstance3D's mesh loads it, and counts what it holds.
+int validate_model(const std::string& path, std::string_view bytes) {
+    const std::string in_project = project_path(path);
+    const auto read = prefab_reader(path);
+    const auto errors = slash::scene3d::check_model(bytes, in_project, read);
+    json::Value result;
+    result["valid"] = errors.empty();
+    if (!errors.empty()) {
+        result["errors"] = errors_to_json(errors);
+        print(result);
+        return kExitFailure;
+    }
+    const auto model = slash::scene3d::load_model(bytes, in_project, read);
+    result["meshes"] = model.value().meshes.size();
+    result["materials"] = model.value().materials.size();
+    result["images"] = model.value().images.size();
+    const auto box = slash::scene3d::bounds(model.value());
+    const auto corner = [](slash::Vec3 at) { return json::Array{at.x, at.y, at.z}; };
+    result["bounds"] = json::Object{{"min", corner(box.min)}, {"max", corner(box.max)}};
+    print(result);
+    return kExitOk;
+}
+
 int cmd_scene_validate(const std::string& path) {
     auto text = slash::platform::read_file(path);
     if (!text) {
         return failure("could not read the file", text.error());
+    }
+    if (slash::scene3d::is_model_path(path)) {
+        return validate_model(path, text.value());
     }
     world::ComponentRegistry registry = make_registry();
     (void)add_project_types(registry, path);
@@ -1097,6 +1132,10 @@ int cmd_scene(const std::vector<std::string>& args) {
     }
     if (path.empty()) {
         return usage_error("scene " + action + " needs a file path");
+    }
+    if (action == "format" && slash::scene3d::is_model_path(path)) {
+        return usage_error(
+            "scene format leaves glTF models as the tools that made them wrote them");
     }
     return action == "validate" ? cmd_scene_validate(path) : cmd_scene_format(path, check);
 }
