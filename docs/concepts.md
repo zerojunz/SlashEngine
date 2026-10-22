@@ -399,7 +399,10 @@ agent is doing. The [navigation example](../examples/navigation/) sends a guard 
 takes the meshes and static bodies under the region (in 2D, the outlines in its file less the
 static bodies in the way), keeps agents their radius from walls and writes the walkable area
 into the region's file. The [baking example](../examples/navigation-baking/) bakes a courtyard
-and a garden.
+and a garden. With **avoidance**, agents steer round each other and round **obstacles**
+(`NavigationObstacle2D`, `NavigationObstacle3D`): gameplay code sets the velocity an agent wants
+and moves it at the safe velocity avoidance gives back. The
+[avoidance example](../examples/navigation-avoidance/) has walkers weaving through a plaza.
 
 **Tile maps** follow Godot's TileSet and TileMapLayer. A `.tileset.json` file cuts atlas
 textures into **tiles** and groups **terrains** (grass, water) into terrain sets; each terrain

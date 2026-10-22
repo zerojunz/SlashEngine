@@ -1,6 +1,7 @@
 #include "slash/navigation/navigation.hpp"
 
 #include "core.hpp"
+#include "rvo2.hpp"
 
 #include "slash/world/components.hpp"
 #include "slash/world/tree2d.hpp"
@@ -8,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -27,6 +29,8 @@ using world::NavigationAgent2D;
 using world::NavigationAgent3D;
 using world::NavigationLink2D;
 using world::NavigationLink3D;
+using world::NavigationObstacle2D;
+using world::NavigationObstacle3D;
 using world::NavigationRegion2D;
 using world::NavigationRegion3D;
 
@@ -163,6 +167,20 @@ struct AgentState {
     std::size_t path_index = 0;
     std::uint64_t last_map_iteration_id = 0;
     Path<Vec3> path;
+    // Avoidance, in the map's space, as Godot's NavAgent and its RVO agent: the velocity the
+    // last step gave it (RVO2's velocity_, which the next step starts from), the velocity it
+    // last asked for, and the safe velocity it was last given.
+    Vec3 rvo_velocity;
+    Vec3 preferred_velocity;
+    Vec3 safe_velocity;
+    float stored_y_velocity = 0.0F; // NavigationAgent3D's, put back on the safe velocity
+    bool forced_submitted = false;  // set_velocity_forced was called
+    Vec3 velocity_forced;
+};
+
+// What avoidance keeps of an obstacle between ticks: its RVO agent's velocity.
+struct ObstacleState {
+    Vec3 rvo_velocity;
 };
 
 // The fields of either agent component.
@@ -173,6 +191,7 @@ struct AgentParams {
     float path_height_offset = 0.0F;
     float path_max_distance = 5.0F;
     PathOptions options;
+    bool avoidance_enabled = false;
 };
 
 PathOptions options_of(const auto& agent) {
@@ -196,7 +215,8 @@ AgentParams params_of(const NavigationAgent2D& agent) {
             .target_desired_distance = agent.target_desired_distance,
             .path_height_offset = 0.0F,
             .path_max_distance = agent.path_max_distance,
-            .options = options_of(agent)};
+            .options = options_of(agent),
+            .avoidance_enabled = agent.avoidance_enabled};
 }
 
 AgentParams params_of(const NavigationAgent3D& agent) {
@@ -205,7 +225,8 @@ AgentParams params_of(const NavigationAgent3D& agent) {
             .target_desired_distance = agent.target_desired_distance,
             .path_height_offset = agent.path_height_offset,
             .path_max_distance = agent.path_max_distance,
-            .options = options_of(agent)};
+            .options = options_of(agent),
+            .avoidance_enabled = agent.avoidance_enabled};
 }
 
 struct State {
@@ -220,10 +241,15 @@ struct State {
     MapState map_3d;
     std::map<entt::entity, AgentState> agents_2d;
     std::map<entt::entity, AgentState> agents_3d;
+    std::map<entt::entity, ObstacleState> obstacles_2d;
+    std::map<entt::entity, ObstacleState> obstacles_3d;
 
     MapState& map(Map kind) { return kind == Map::TwoD ? map_2d : map_3d; }
     std::map<entt::entity, AgentState>& agents(Map kind) {
         return kind == Map::TwoD ? agents_2d : agents_3d;
+    }
+    std::map<entt::entity, ObstacleState>& obstacles(Map kind) {
+        return kind == Map::TwoD ? obstacles_2d : obstacles_3d;
     }
 
     void reset() {
@@ -232,6 +258,8 @@ struct State {
         map_3d = MapState{};
         agents_2d.clear();
         agents_3d.clear();
+        obstacles_2d.clear();
+        obstacles_3d.clear();
     }
 };
 
@@ -731,10 +759,15 @@ private:
         }
     }
 
-    // NavigationAgent3D::_transition_to_navigation_finished.
+    // NavigationAgent3D::_transition_to_navigation_finished, which stops its avoidance.
     void finish() {
         agent_.navigation_finished = true;
         agent_.target_position_submitted = false;
+        if (params_.avoidance_enabled) {
+            agent_.preferred_velocity = {};
+            agent_.rvo_velocity = {};
+            agent_.stored_y_velocity = 0.0F;
+        }
         world_.emit("navigation_finished", id_);
     }
 
@@ -779,9 +812,364 @@ void drop_stale_agents(const world::World& world, State& state) {
         std::erase_if(state.agents(kind),
                       [&](const auto& entry) { return !has_agent(world, kind, entry.first); });
     }
+    std::erase_if(state.obstacles_2d, [&](const auto& entry) {
+        return !world.valid(entry.first) || !world.ecs().all_of<NavigationObstacle2D>(entry.first);
+    });
+    std::erase_if(state.obstacles_3d, [&](const auto& entry) {
+        return !world.valid(entry.first) || !world.ecs().all_of<NavigationObstacle3D>(entry.first);
+    });
 }
 
-void step(world::World& world, State& state) {
+// ---- Avoidance, as Godot's NavMap avoidance step: each avoiding agent and obstacle goes into an
+// RVO2 simulation, which gives each agent a safe velocity.
+
+rvo::V2 ground(Vec3 point) {
+    return {point.x, point.z};
+}
+rvo::V3 rvo_point(Vec3 point) {
+    return {point.x, point.y, point.z};
+}
+
+// Godot's Vector3::limit_length (and Vector2's, for (x, 0, y)).
+Vec3 limit_length(Vec3 v, float length) {
+    const float l = std::sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
+    if (l > 0.0F && length < l) {
+        v = {v.x / l, v.y / l, v.z / l};
+        v = {v.x * length, v.y * length, v.z * length};
+    }
+    return v;
+}
+
+// An outline for RVO2, with points that repeat the one before left out, since RVO2 can't turn
+// along an edge of no length. Null when fewer than two are left.
+std::vector<rvo::V2> outline_of(const std::vector<rvo::V2>& points) {
+    std::vector<rvo::V2> out;
+    out.reserve(points.size());
+    const auto same = [](rvo::V2 a, rvo::V2 b) { return a.x == b.x && a.y == b.y; };
+    for (const rvo::V2 point : points) {
+        if (out.empty() || !same(out.back(), point)) {
+            out.push_back(point);
+        }
+    }
+    while (out.size() > 1 && same(out.back(), out.front())) {
+        out.pop_back();
+    }
+    if (out.size() < 2) {
+        out.clear();
+    }
+    return out;
+}
+
+// The fields of either agent component that avoidance uses, in the map's space.
+struct Avoider {
+    entt::entity entity = entt::null;
+    Vec3 velocity;
+    float height = 0.0F;
+    float radius = 0.0F;
+    float neighbor_distance = 0.0F;
+    int max_neighbors = 0;
+    float time_horizon_agents = 0.0F;
+    float time_horizon_obstacles = 0.0F;
+    float max_speed = 0.0F;
+    std::uint32_t avoidance_layers = 1;
+    std::uint32_t avoidance_mask = 1;
+    float avoidance_priority = 1.0F;
+    bool use_3d_avoidance = false;
+    bool keep_y_velocity = false;
+};
+
+Avoider avoider_of(entt::entity entity, const NavigationAgent2D& agent) {
+    return {.entity = entity,
+            .velocity = to_map(agent.velocity),
+            .height = 0.0F,
+            .radius = agent.radius,
+            .neighbor_distance = agent.neighbor_distance,
+            .max_neighbors = agent.max_neighbors,
+            .time_horizon_agents = agent.time_horizon_agents,
+            .time_horizon_obstacles = agent.time_horizon_obstacles,
+            .max_speed = agent.max_speed,
+            .avoidance_layers = agent.avoidance_layers,
+            .avoidance_mask = agent.avoidance_mask,
+            .avoidance_priority = agent.avoidance_priority,
+            .use_3d_avoidance = false,
+            .keep_y_velocity = false};
+}
+
+Avoider avoider_of(entt::entity entity, const NavigationAgent3D& agent) {
+    return {.entity = entity,
+            .velocity = agent.velocity,
+            .height = agent.height,
+            .radius = agent.radius,
+            .neighbor_distance = agent.neighbor_distance,
+            .max_neighbors = agent.max_neighbors,
+            .time_horizon_agents = agent.time_horizon_agents,
+            .time_horizon_obstacles = agent.time_horizon_obstacles,
+            .max_speed = agent.max_speed,
+            .avoidance_layers = agent.avoidance_layers,
+            .avoidance_mask = agent.avoidance_mask,
+            .avoidance_priority = agent.avoidance_priority,
+            .use_3d_avoidance = agent.use_3d_avoidance,
+            .keep_y_velocity = agent.keep_y_velocity};
+}
+
+std::size_t neighbors_of(int max_neighbors) {
+    return static_cast<std::size_t>(std::max(max_neighbors, 0));
+}
+
+// One map's avoidance step. The 3D map's agents avoid on the ground in a 2D simulation, by
+// elevation and height, unless they use 3D avoidance; the 2D map's are all on the ground.
+class AvoidanceStep {
+public:
+    AvoidanceStep(world::World& world, State& state, Map kind)
+        : world_(world), state_(state), kind_(kind), tree_2d_(world), tree_3d_(world) {}
+
+    void run(float delta) {
+        if (kind_ == Map::TwoD) {
+            add_agents<NavigationAgent2D>();
+            add_obstacles<NavigationObstacle2D>();
+        } else {
+            add_agents<NavigationAgent3D>();
+            add_obstacles<NavigationObstacle3D>();
+        }
+        if (sim_2d_.agents.empty() && sim_3d_.agents.empty()) {
+            return;
+        }
+        // NavMap::step: compute and move, then call each agent back, 2D ones first.
+        sim_2d_.step(delta);
+        sim_3d_.step(delta);
+        for (const Entry& entry : entries_2d_) {
+            const rvo::V2 v = sim_2d_.agents[entry.index].velocity;
+            done(entry, Vec3{v.x, 0.0F, v.y});
+        }
+        for (const Entry& entry : entries_3d_) {
+            const rvo::V3 v = sim_3d_.agents[entry.index].velocity;
+            done(entry, Vec3{v.x, v.y, v.z});
+        }
+    }
+
+private:
+    struct Entry {
+        entt::entity entity = entt::null;
+        bool obstacle = false;
+        std::size_t index = 0; // in its simulation's agents
+        float max_speed = 0.0F;
+        bool use_3d_avoidance = false;
+    };
+
+    [[nodiscard]] Vec3 origin(entt::entity entity) const {
+        if (kind_ == Map::ThreeD) {
+            return tree_3d_.global(entity).origin;
+        }
+        return to_map(tree_2d_.global(entity).position);
+    }
+
+    template <typename Component>
+    void add_agents() {
+        for (const Order& order : ordered<Component>(world_)) {
+            const auto& component = world_.ecs().template get<const Component>(order.entity);
+            AgentState& agent = state_.agents(kind_)[order.entity];
+            const Avoider a = avoider_of(order.entity, component);
+            // The agent's physics process: while it follows a path, it asks for its velocity
+            // (on the ground, keeping y for later, without 3D avoidance) and takes a forced one.
+            if (agent.target_position_submitted) {
+                if (component.avoidance_enabled) {
+                    Vec3 velocity = a.velocity;
+                    if (kind_ == Map::ThreeD && !a.use_3d_avoidance) {
+                        if (a.keep_y_velocity) {
+                            agent.stored_y_velocity = velocity.y;
+                        }
+                        velocity.y = 0.0F;
+                    }
+                    agent.preferred_velocity = velocity;
+                    if (agent.forced_submitted) {
+                        agent.rvo_velocity = agent.velocity_forced;
+                    }
+                }
+                agent.forced_submitted = false;
+            }
+            if (!component.avoidance_enabled) {
+                continue;
+            }
+            const Vec3 position = origin(order.entity);
+            if (kind_ == Map::ThreeD && a.use_3d_avoidance) {
+                rvo::Agent3D& r = sim_3d_.agents.emplace_back();
+                r.max_neighbors = neighbors_of(a.max_neighbors);
+                r.max_speed = a.max_speed;
+                r.neighbor_dist = a.neighbor_distance;
+                r.radius = a.radius;
+                r.time_horizon = a.time_horizon_agents;
+                r.position = rvo_point(position);
+                r.pref_velocity = rvo_point(agent.preferred_velocity);
+                r.velocity = rvo_point(agent.rvo_velocity);
+                r.height = a.height;
+                r.avoidance_layers = a.avoidance_layers;
+                r.avoidance_mask = a.avoidance_mask;
+                r.avoidance_priority = a.avoidance_priority;
+                entries_3d_.push_back(
+                    {order.entity, false, sim_3d_.agents.size() - 1, a.max_speed, true});
+            } else {
+                rvo::Agent2D& r = sim_2d_.agents.emplace_back();
+                r.max_neighbors = neighbors_of(a.max_neighbors);
+                r.max_speed = a.max_speed;
+                r.neighbor_dist = a.neighbor_distance;
+                r.radius = a.radius;
+                r.time_horizon = a.time_horizon_agents;
+                r.time_horizon_obst = a.time_horizon_obstacles;
+                r.position = ground(position);
+                r.pref_velocity = ground(agent.preferred_velocity);
+                r.velocity = ground(agent.rvo_velocity);
+                if (kind_ == Map::ThreeD) {
+                    r.elevation = position.y;
+                    r.height = a.height;
+                }
+                r.avoidance_layers = a.avoidance_layers;
+                r.avoidance_mask = a.avoidance_mask;
+                r.avoidance_priority = a.avoidance_priority;
+                entries_2d_.push_back(
+                    {order.entity, false, sim_2d_.agents.size() - 1, a.max_speed, false});
+            }
+        }
+    }
+
+    // NavigationObstacle's _update_transform and NavObstacle's agent: a circle that moves at
+    // velocity and avoids nothing, and an outline in the 2D simulation.
+    template <typename Component>
+    void add_obstacles() {
+        constexpr bool kThreeD = std::is_same_v<Component, NavigationObstacle3D>;
+        // NavigationDefaults2D and 3D's AVOIDANCE_AGENT_MAX_SPEED, which obstacles' agents keep.
+        constexpr float kMaxSpeed = kThreeD ? 10.0F : 100.0F;
+        for (const Order& order : ordered<Component>(world_)) {
+            const auto& obstacle = world_.ecs().template get<const Component>(order.entity);
+            if (!obstacle.avoidance_enabled) {
+                continue;
+            }
+            const ObstacleState& kept = state_.obstacles(kind_)[order.entity];
+            Vec3 position;
+            Vec3 velocity;
+            float radius = 0.0F;
+            const float height = [&] {
+                if constexpr (kThreeD) {
+                    const Vec3 y = tree_3d_.global(order.entity).y;
+                    return std::max(std::sqrt((y.x * y.x) + (y.y * y.y) + (y.z * y.z)), 0.001F) *
+                           obstacle.height;
+                } else {
+                    return 1.0F; // the 2D map's outlines keep Obstacle2D's default height
+                }
+            }();
+            std::vector<rvo::V2> outline;
+            if constexpr (kThreeD) {
+                const world::Affine3D global = tree_3d_.global(order.entity);
+                position = global.origin;
+                velocity = obstacle.velocity;
+                const auto safe = [](Vec3 axis) {
+                    return std::max(
+                        std::sqrt((axis.x * axis.x) + (axis.y * axis.y) + (axis.z * axis.z)),
+                        0.001F);
+                };
+                const Vec3 scale{safe(global.x), safe(global.y), safe(global.z)};
+                radius = std::max({scale.x, scale.y, scale.z}) * obstacle.radius;
+                // Only the turn about y counts: Basis().scaled(scale).rotated(up, rotation.y).
+                const Vec2 cs = cos_sin(world::euler(global).y);
+                outline.reserve(obstacle.vertices.size());
+                for (const Vec3 v : obstacle.vertices) {
+                    const float x = ((cs.x * scale.x) * v.x) + ((cs.y * scale.z) * v.z);
+                    const float z = ((-cs.y * scale.x) * v.x) + ((cs.x * scale.z) * v.z);
+                    outline.push_back({x + position.x, z + position.z});
+                }
+            } else {
+                const world::Affine2D global = tree_2d_.global_affine(order.entity);
+                position = to_map(global.origin);
+                velocity = to_map(obstacle.velocity);
+                const auto safe = [](Vec2 axis) {
+                    return std::max(std::sqrt((axis.x * axis.x) + (axis.y * axis.y)), 0.001F);
+                };
+                radius = std::max(safe(global.x), safe(global.y)) * obstacle.radius;
+                // The global transform less its translation, then the position added.
+                outline.reserve(obstacle.vertices.size());
+                for (const Vec2 v : obstacle.vertices) {
+                    const Vec2 turned{(global.x.x * v.x) + (global.y.x * v.y),
+                                      (global.x.y * v.x) + (global.y.y * v.y)};
+                    outline.push_back({turned.x + global.origin.x, turned.y + global.origin.y});
+                }
+            }
+            const bool use_3d = [&] {
+                if constexpr (kThreeD) {
+                    return obstacle.use_3d_avoidance;
+                } else {
+                    return false;
+                }
+            }();
+            // Its agent: no neighbors, no mask and the highest priority, so agents avoid it and
+            // it avoids nothing.
+            if (use_3d) {
+                rvo::Agent3D& r = sim_3d_.agents.emplace_back();
+                r.max_speed = kMaxSpeed;
+                r.radius = radius;
+                r.position = rvo_point(position);
+                r.pref_velocity = rvo_point(velocity);
+                r.velocity = rvo_point(kept.rvo_velocity);
+                r.height = height;
+                r.avoidance_layers = obstacle.avoidance_layers;
+                r.avoidance_mask = 0;
+                entries_3d_.push_back(
+                    {order.entity, true, sim_3d_.agents.size() - 1, kMaxSpeed, true});
+            } else {
+                rvo::Agent2D& r = sim_2d_.agents.emplace_back();
+                r.max_speed = kMaxSpeed;
+                r.radius = radius;
+                r.position = ground(position);
+                r.pref_velocity = ground(velocity);
+                r.velocity = ground(kept.rvo_velocity);
+                if constexpr (kThreeD) {
+                    r.elevation = position.y;
+                    r.height = height;
+                }
+                r.avoidance_layers = obstacle.avoidance_layers;
+                r.avoidance_mask = 0;
+                entries_2d_.push_back(
+                    {order.entity, true, sim_2d_.agents.size() - 1, kMaxSpeed, false});
+            }
+            // Its outline, always on the ground, from its elevation up.
+            if (const std::vector<rvo::V2> points = outline_of(outline); !points.empty()) {
+                if constexpr (kThreeD) {
+                    sim_2d_.add_obstacle(points, height, position.y, obstacle.avoidance_layers);
+                } else {
+                    sim_2d_.add_obstacle(points, 1.0F, 0.0F, obstacle.avoidance_layers);
+                }
+            }
+        }
+    }
+
+    // NavAgent::dispatch_avoidance_callback and the node's _avoidance_done.
+    void done(const Entry& entry, Vec3 velocity) {
+        if (entry.obstacle) {
+            state_.obstacles(kind_)[entry.entity].rvo_velocity = velocity;
+            return;
+        }
+        AgentState& agent = state_.agents(kind_)[entry.entity];
+        agent.rvo_velocity = velocity;
+        Vec3 safe = limit_length(velocity, entry.max_speed);
+        if (kind_ == Map::ThreeD && !entry.use_3d_avoidance) {
+            safe.y = agent.stored_y_velocity;
+        }
+        agent.safe_velocity = safe;
+        json::Value details;
+        details["safe_velocity"] = point_json(kind_, safe);
+        world_.emit("velocity_computed", world_.id_of(entry.entity), std::move(details));
+    }
+
+    world::World& world_;
+    State& state_;
+    Map kind_;
+    world::Tree2D tree_2d_;
+    world::Tree3D tree_3d_;
+    rvo::Simulation2D sim_2d_;
+    rvo::Simulation3D sim_3d_;
+    std::vector<Entry> entries_2d_;
+    std::vector<Entry> entries_3d_;
+};
+
+void step(world::World& world, State& state, double tick_seconds) {
     {
         const Trees trees(world);
         sync_map(world, state, trees, state.map_2d);
@@ -798,6 +1186,8 @@ void step(world::World& world, State& state) {
     };
     run.template operator()<NavigationAgent2D>(Map::TwoD);
     run.template operator()<NavigationAgent3D>(Map::ThreeD);
+    AvoidanceStep(world, state, Map::TwoD).run(static_cast<float>(tick_seconds));
+    AvoidanceStep(world, state, Map::ThreeD).run(static_cast<float>(tick_seconds));
 }
 
 // ---- Snapshots.
@@ -812,6 +1202,8 @@ struct Saved {
     MapState map_3d;
     std::map<std::string, SavedAgent, std::less<>> agents_2d;
     std::map<std::string, SavedAgent, std::less<>> agents_3d;
+    std::map<std::string, ObstacleState, std::less<>> obstacles_2d;
+    std::map<std::string, ObstacleState, std::less<>> obstacles_3d;
 };
 
 world::MemoryPart memory_of(const State& state) {
@@ -839,11 +1231,14 @@ world::MemoryPart memory_of(const State& state) {
                      (agent.path.points.size() * (sizeof(Vec3) + sizeof(entt::entity) + 1));
         }
     }
+    const std::uint64_t obstacles = state.obstacles_2d.size() + state.obstacles_3d.size();
+    bytes += obstacles * world::kMapNodeBytes<std::map<entt::entity, ObstacleState>>;
     part.bytes = bytes;
     part.counts["regions"] = state.map_2d.regions.size() + state.map_3d.regions.size();
     part.counts["links"] = state.map_2d.links.size() + state.map_3d.links.size();
     part.counts["polygons"] = polygons;
     part.counts["agents"] = agents;
+    part.counts["obstacles"] = obstacles;
     return part;
 }
 
@@ -949,10 +1344,12 @@ void install(world::World& world, asset::Assets& assets, const Settings& setting
     world.add_reset([state](world::World& /*world*/) { state->reset(); });
     world.add_memory_source("navigation",
                             [state](const world::World& /*world*/) { return memory_of(*state); });
-    world.add_system("navigation",
-                     [state](world::World& w, double /*tick_seconds*/) { step(w, *state); },
-                     {.doc = "Rebuilds changed navigation maps and moves agents along their paths.",
-                      .priority = 960});
+    world.add_system(
+        "navigation",
+        [state](world::World& w, double tick_seconds) { step(w, *state, tick_seconds); },
+        {.doc = "Rebuilds changed navigation maps, moves agents along their paths "
+                "and gives avoiding agents safe velocities.",
+         .priority = 960});
 }
 
 void set_settings(world::World& world, const Settings& settings) {
@@ -1172,6 +1569,64 @@ float distance_to_target(const world::World& world, entt::entity agent) {
                             agent_params(world, kind, agent).target);
 }
 
+namespace {
+
+// The agent's safe velocity in the map's space, or its velocity without avoidance.
+Vec3 safe_velocity(const world::World& world, entt::entity agent, Map kind) {
+    if (!has_agent(world, kind, agent)) {
+        return {};
+    }
+    bool avoiding = false;
+    Vec3 velocity;
+    if (kind == Map::ThreeD) {
+        const auto& component = world.ecs().get<const NavigationAgent3D>(agent);
+        avoiding = component.avoidance_enabled;
+        velocity = component.velocity;
+    } else {
+        const auto& component = world.ecs().get<const NavigationAgent2D>(agent);
+        avoiding = component.avoidance_enabled;
+        velocity = to_map(component.velocity);
+    }
+    if (!avoiding) {
+        return velocity;
+    }
+    const State* state = find_state(world);
+    if (state == nullptr) {
+        return {};
+    }
+    const auto& agents = kind == Map::TwoD ? state->agents_2d : state->agents_3d;
+    const auto found = agents.find(agent);
+    return found != agents.end() ? found->second.safe_velocity : Vec3{};
+}
+
+void force_velocity(world::World& world, entt::entity agent, Map kind, Vec3 velocity) {
+    State* state = find_state(world);
+    if (state == nullptr || !has_agent(world, kind, agent)) {
+        return;
+    }
+    AgentState& agent_state = state->agents(kind)[agent];
+    agent_state.forced_submitted = true;
+    agent_state.velocity_forced = velocity;
+}
+
+} // namespace
+
+Vec2 safe_velocity_2d(const world::World& world, entt::entity agent) {
+    return to_2d(safe_velocity(world, agent, Map::TwoD));
+}
+
+Vec3 safe_velocity_3d(const world::World& world, entt::entity agent) {
+    return safe_velocity(world, agent, Map::ThreeD);
+}
+
+void set_velocity_forced(world::World& world, entt::entity agent, Vec2 velocity) {
+    force_velocity(world, agent, Map::TwoD, to_map(velocity));
+}
+
+void set_velocity_forced(world::World& world, entt::entity agent, Vec3 velocity) {
+    force_velocity(world, agent, Map::ThreeD, velocity);
+}
+
 AgentInfo agent_info(world::World& world, entt::entity agent) {
     AgentInfo out;
     const State* state = find_state(world);
@@ -1191,10 +1646,12 @@ AgentInfo agent_info(world::World& world, entt::entity agent) {
     out.last_waypoint_reached = a.last_waypoint_reached;
     out.path_index = a.path_index;
     out.path = a.path;
+    out.safe_velocity = a.safe_velocity;
     if (kind == Map::TwoD) {
         for (Vec3& point : out.path.points) {
             point = {point.x, point.z, 0.0F};
         }
+        out.safe_velocity = {a.safe_velocity.x, a.safe_velocity.z, 0.0F};
     }
     return out;
 }
@@ -1225,6 +1682,16 @@ Snapshot save(const world::World& world) {
     };
     save_agents(state->agents_2d, saved->agents_2d);
     save_agents(state->agents_3d, saved->agents_3d);
+    const auto save_obstacles = [&](const std::map<entt::entity, ObstacleState>& from,
+                                    std::map<std::string, ObstacleState, std::less<>>& to) {
+        for (const auto& [entity, obstacle] : from) {
+            if (const std::string_view id = world.id_of(entity); !id.empty()) {
+                to[std::string(id)] = obstacle;
+            }
+        }
+    };
+    save_obstacles(state->obstacles_2d, saved->obstacles_2d);
+    save_obstacles(state->obstacles_3d, saved->obstacles_3d);
     return {std::move(saved)};
 }
 
@@ -1254,6 +1721,18 @@ void restore(world::World& world, const Snapshot& snapshot) {
     };
     restore_agents(saved.agents_2d, state->agents_2d);
     restore_agents(saved.agents_3d, state->agents_3d);
+    const auto restore_obstacles =
+        [&](const std::map<std::string, ObstacleState, std::less<>>& from,
+            std::map<entt::entity, ObstacleState>& to) {
+            to.clear();
+            for (const auto& [id, obstacle] : from) {
+                if (const entt::entity entity = world.find(id); entity != entt::null) {
+                    to[entity] = obstacle;
+                }
+            }
+        };
+    restore_obstacles(saved.obstacles_2d, state->obstacles_2d);
+    restore_obstacles(saved.obstacles_3d, state->obstacles_3d);
 }
 
 // ---- Scene checks.

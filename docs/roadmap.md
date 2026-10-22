@@ -628,7 +628,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         `navigation.agent`
   - [x] Baking navigation meshes from a scene's geometry on Recast in 3D, and polygons on
         Clipper2 and polypartition in 2D, as Godot does (`navigation.bake`)
-  - [ ] Avoidance on RVO2 for agents and obstacles
+  - [x] Avoidance on RVO2 for agents and obstacles, and obstacles cut out of bakes, as Godot's
   - [ ] Navigation layers on tile sets
 - [ ] 3D audio, as Godot's `AudioStreamPlayer3D` and `AudioListener3D`: attenuation models,
       Doppler, emission angles, `Area3D` reverb and up to 7.1 speakers
@@ -787,7 +787,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Done |
 | UI | Retained UI with flexbox layout and themes, defined in text | 5 | Done |
 | Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | Done |
-| Navigation | Godot's navigation server, Recast baking, 2D and 3D, avoidance | 7 | In part: navigation meshes, regions, links, layers, agents' paths and baking are done; avoidance and tile navigation next |
+| Navigation | Godot's navigation server, Recast baking, 2D and 3D, avoidance | 7 | In part: navigation meshes, regions, links, layers, agents' paths, baking and avoidance are done; tile navigation next |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Done |
 | Profiling | Tracy, plus `perf.stats` over the command API | 5, 6 | Done: Tracy, and `perf.stats` reports frame pacing, tick and system times and memory by part of the engine |
 | Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | In progress: the library, search, refining, hosted and test generators, feedback, team sharing and ready-to-use texture forms done; 3D in 7 |
