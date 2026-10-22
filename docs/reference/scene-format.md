@@ -1631,8 +1631,9 @@ entity, so animate `Sprite2D/offset` to move a sprite around its entity instead.
 
 ## Animation trees
 
-A `.animtree.json` file is a tree of animation nodes, as Godot's `AnimationNodeBlendTree` and the
-nodes it holds: animations blended, added, faded in and out and switched between. An entity's
+A `.animtree.json` file is a tree of animation nodes, as Godot's `AnimationNodeBlendTree`,
+`AnimationNodeStateMachine` and the nodes they hold: animations blended, added, faded in and out,
+switched between and played as states. An entity's
 [`AnimationTree`](#built-in-components) names the file in `tree_root` and the libraries its animations
 come from in `libraries` (`.anim.json` files or models). Each tick the `animation_tree` system,
 after `animation_player`, processes the tree with the entity's `parameters`, keeps what the nodes
@@ -1663,7 +1664,7 @@ parameters. [examples/animation-tree](../../examples/animation-tree/) points a w
 }
 ```
 
-`root` is an `Animation`, a `BlendTree` or a blend space. A `BlendTree` holds nodes by name and connects them by the names in each
+`root` is an `Animation`, a `BlendTree`, a blend space or a `StateMachine`. A `BlendTree` holds nodes by name and connects them by the names in each
 node's `inputs`; `output` names the node whose result it gives. The node types are Godot's, with
 its field names:
 
@@ -1678,12 +1679,64 @@ its field names:
 | `TimeScale` | `in` | | `scale` |
 | `TimeSeek` | `in` | `explicit_elapse` | `seek_request`: seconds |
 | `Transition` | a list of `{name, node, auto_advance, break_loop_at_end, reset}` | `xfade_time`, `xfade_curve`, `allow_transition_to_self`, `sync` | `transition_request`: an input's name |
-| `BlendSpace1D`, `BlendSpace2D` | | `points` (`{position, node}`, each node an `Animation`, a `BlendTree` or a blend space), `blend_mode` (`interpolated`, `discrete`, `discrete_carry`), `min_space`, `max_space`, `sync`; 2D: `auto_triangles` (Delaunay, as Godot's) or `triangles` | `blend_position`: a number, or `[x, y]` |
+| `BlendSpace1D`, `BlendSpace2D` | | `points` (`{position, node}`, each node an `Animation`, a `BlendTree`, a blend space or a `StateMachine`), `blend_mode` (`interpolated`, `discrete`, `discrete_carry`), `min_space`, `max_space`, `sync`; 2D: `auto_triangles` (Delaunay, as Godot's) or `triangles` | `blend_position`: a number, or `[x, y]` |
+| `StateMachine` | | `states` (by name, `{node, position}`), `transitions`, `state_machine_type` (`root`, `nested`, `grouped`), `allow_transition_to_self`, `reset_ends` | `travel`, `start`: a state's name; `next`, `stop`: `true`; `conditions/<name>` |
 
 Filters (`filter_enabled` and `filters`) name the tracks a node blends: a model node's name for
 the tracks that move it, a value track's path, `@` and an event track's event, each after its
 target and `:` if it has one (`"sword:Transform2D/rotation"`). The rest pass through, as Godot's
 filters.
+
+A `StateMachine` plays one of its `states` at a time, as Godot's `AnimationNodeStateMachine`, and
+moves between them through its `transitions`:
+
+```json
+{
+  "type": "StateMachine",
+  "states": {
+    "idle": {"node": {"type": "Animation", "animation": "Idle"}, "position": [0, 0]},
+    "run": {"node": {"type": "Animation", "animation": "Run"}, "position": [200, 0]},
+    "jump": {"node": {"type": "Animation", "animation": "Jump"}, "position": [100, -100]}
+  },
+  "transitions": [
+    {"from": "Start", "to": "idle", "advance_mode": "auto"},
+    {"from": "idle", "to": "run", "xfade_time": 0.2},
+    {"from": "run", "to": "idle", "xfade_time": 0.2},
+    {"from": "idle", "to": "jump", "advance_mode": "auto", "advance_condition": "jumping"},
+    {"from": "jump", "to": "idle", "advance_mode": "auto", "switch_mode": "at_end",
+     "xfade_time": 0.1}
+  ]
+}
+```
+
+- `Start` and `End` are the machine's own states and play nothing; an auto transition from
+  `Start` picks the first state. In `states` they take only a `position`.
+- A transition's `advance_mode` is `enabled` (the default: travels take it), `auto` (also taken
+  on its own once its `advance_condition`, if it has one, is `true` in the parameter
+  `conditions/<name>`) or `disabled`. Of the auto transitions that can be taken, the lowest
+  `priority` goes. `switch_mode` is `immediate`, `sync` (the next state goes on from where the
+  last one was) or `at_end` (once the current state has `xfade_time` left; `break_loop_at_end`
+  ends a loop). `xfade_time` and `xfade_curve` cross-fade the two states, and `reset` (the
+  default) starts the next one over. Transitions taken one after another happen in one tick
+  until one cross-fades.
+- `travel` names a state to go to by the cheapest way through transitions that aren't disabled,
+  as Godot's `travel()`: A* over the states' `position`s, each step costing its length times its
+  `priority`, a direct transition first. With no way there, it jumps there. `start` jumps to a
+  state and starts it over, `next` takes the next transition (a travel's next step or an auto
+  transition) now, without waiting for `at_end`, and `stop` plays nothing for a tick and leaves
+  the machine stopped, so the next `travel` sets out from `Start`; the tree sets them back once
+  it acts on them. `state` keeps the machine's `playback` (`"move/playback"`): `current`,
+  `fading_from` with the cross-fade's `fading_time` and `fading_pos`, the travel's `path`, and
+  `playing`.
+- `state_machine_type`: a `root` machine (the default) starts over when its parent seeks it to
+  its start, as the tree's first tick and a Transition switching to it do; a `nested` one
+  carries on, starting over only once it reached `End`; a `grouped` one is a state of another
+  machine and plays as part of it. Its transitions from `Start` and to `End` stand for the
+  parent's into and out of it, so there are as many of each, and a travel goes into it by a
+  path, `"combat/shoot"`, through its `End` when it leaves.
+- A state's node's parameters are named after the state: `"move/run/blend_position"`.
+- Not supported: Godot's `advance_expression`, a script expression; set a condition from gameplay
+  code instead.
 
 - A parameter's name is its node's path in the tree and its own: `"shot/request"`,
   `"locomotion/walk/blend_amount"` for a node inside a blend tree inside the root's, and
@@ -1711,10 +1764,10 @@ filters.
 - `slash-cli scene validate` and exports check, in a scene or prefab, that each tree and library
   loads, that the tree's animations and filters' tracks are in its libraries (with "did you
   mean"), that `root_motion_track` is a node some animation moves, that `parameters` names
-  parameters the tree has with values they take, that `targets` has every target the tracks
+  parameters the tree has with values they take (a `travel` a state the machine has), that
+  `targets` has every target the tracks
   name, and, for a deterministic tree, that every value track has a key in a `RESET`
   animation. Tree files reload when they change, and exports check and ship them.
-- Not yet: state machines (`AnimationNodeStateMachine`), which come next.
 
 ## Tile sets
 

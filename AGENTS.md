@@ -858,9 +858,10 @@ up to and including where it got to. `animation.eval` returns a track's values a
 
 `AnimationTree` is Godot's AnimationTree: a `.animtree.json` file (`$cli schema animtree`;
 `tree.hpp`) of blend tree, animation, Blend2/3, Add2/3, Sub2, OneShot, TimeScale, TimeSeek,
-Transition and BlendSpace1D/2D nodes, played with the animations of the component's `libraries`
-by the `animation_tree` system (priority 910). `src/tree_run.cpp` ports the nodes' `_process`
-calls, keeping what they need in the component's `state` and reading `parameters`;
+Transition, BlendSpace1D/2D and StateMachine nodes, played with the animations of the component's
+`libraries` by the `animation_tree` system (priority 910). `src/tree_run.cpp` ports the nodes'
+`_process` calls and the state machine playback's travel, keeping what they need in the
+component's `state` (a state machine's playback as an object) and reading `parameters`;
 `src/tree_system.cpp` ports `AnimationMixer`'s caches, blending and root motion, and hands
 model poses to `scene3d` through the clip source, ahead of the `AnimationPlayer`'s. Godot
 compares weights in float, so do the same (`is_zero_approx(float)` in `src/internal.hpp`).
