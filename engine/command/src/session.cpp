@@ -14,6 +14,7 @@
 #include "slash/gameplay/host.hpp"
 #include "slash/input/input.hpp"
 #include "slash/physics2d/physics2d.hpp"
+#include "slash/physics3d/physics3d.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/scene3d/blend.hpp"
 #include "slash/services/services.hpp"
@@ -61,6 +62,15 @@ physics2d::Settings physics_settings(const json::Value& project) {
         return {};
     }
     return physics2d::parse_settings(*settings);
+}
+
+// The project's physics_3d settings, or the defaults if it has none or they don't validate.
+physics3d::Settings physics_3d_settings(const json::Value& project) {
+    const json::Value* settings = project.is_object() ? project.find("physics_3d") : nullptr;
+    if (settings == nullptr || !json::validate(*settings, physics3d::settings_schema()).empty()) {
+        return {};
+    }
+    return physics3d::parse_settings(*settings);
 }
 
 // The project's threading.max_threads, or -1 (one thread per core) if it doesn't validate.
@@ -216,6 +226,7 @@ Session::Session(const world::ComponentRegistry& component_registry,
     ui::set_settings(world_, ui_settings(project));
     animation::install(world_, assets_);
     physics2d::install(world_, physics_settings(project));
+    physics3d::install(world_, physics_3d_settings(project));
     input::install(world_, input_map(project), input_settings(project));
     audio::install(world_, assets_, audio_settings(project));
     // Ads load and purchases complete as services.test says, with no store account.
@@ -793,6 +804,7 @@ void Session::poll_project() {
     canvas::set_settings(world_, canvas_settings(project));
     ui::set_settings(world_, ui_settings(project));
     physics2d::set_settings(world_, physics_settings(project));
+    physics3d::set_settings(world_, physics_3d_settings(project));
     input::install(world_, input_map(project), input_settings(project));
     audio::set_settings(world_, audio_settings(project));
     services::install(world_, services_settings(project));

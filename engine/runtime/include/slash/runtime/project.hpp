@@ -7,6 +7,7 @@
 #include "slash/core/text.hpp"
 #include "slash/input/input.hpp"
 #include "slash/physics2d/physics2d.hpp"
+#include "slash/physics3d/physics3d.hpp"
 #include "slash/render/mesh.hpp"
 #include "slash/render/upscaler.hpp"
 #include "slash/services/services.hpp"
@@ -92,6 +93,8 @@ struct Project {
     TextureImport texture_import;
     // Gravity and default damping for 2D physics.
     physics2d::Settings physics_2d;
+    // Gravity and default damping for 3D physics.
+    physics3d::Settings physics_3d;
     // A .theme.json file every control uses after its own themes, as Godot's gui/theme/custom;
     // empty for none.
     std::string gui_theme;

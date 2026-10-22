@@ -340,6 +340,7 @@ json::Value project_schema() {
     properties["max_fps"] = std::move(max_fps);
     properties["rendering"] = std::move(rendering);
     properties["physics_2d"] = physics2d::settings_schema();
+    properties["physics_3d"] = physics3d::settings_schema();
     json::Value gui;
     gui["type"] = "object";
     gui["additionalProperties"] = false;
@@ -604,6 +605,9 @@ Result<Project> parse_project(const json::Value& project) {
     }
     if (const json::Value* physics = project.find("physics_2d"); physics != nullptr) {
         out.physics_2d = physics2d::parse_settings(*physics);
+    }
+    if (const json::Value* physics = project.find("physics_3d"); physics != nullptr) {
+        out.physics_3d = physics3d::parse_settings(*physics);
     }
     if (const json::Value* gui = project.find("gui"); gui != nullptr) {
         if (const json::Value* theme = gui->find("theme"); theme != nullptr) {

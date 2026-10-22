@@ -80,6 +80,7 @@ add_executable(slash_tests
     test_particle_graphs.cpp
     test_particles.cpp
     test_physics.cpp
+    test_physics3d.cpp
     test_playtest.cpp
     test_platform.cpp
     test_post.cpp
@@ -123,7 +124,7 @@ add_executable(slash_tests
     test_upscaler.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
-    slash::ai slash::ai_commands slash::animation slash::asset slash::audio slash::bench slash::canvas slash::command slash::core slash::debug slash::exporter slash::importer slash::input slash::library slash::library_commands slash::physics2d
+    slash::ai slash::ai_commands slash::animation slash::asset slash::audio slash::bench slash::canvas slash::command slash::core slash::debug slash::exporter slash::importer slash::input slash::library slash::library_commands slash::physics2d slash::physics3d
     slash::platform slash::render slash::runtime slash::scene3d slash::server slash::services slash::shader_compiler slash::soundtrack slash::soundtrack_commands slash::storyboard slash::text slash::texture_encoder slash::ui slash::world doctest::doctest SDL3::SDL3-static
     slash_httplib # a stand-in model server for the AI provider tests
     webp) # WebP textures for the Godot unpacking tests
