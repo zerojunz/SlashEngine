@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <entt/entity/entity.hpp>
 #include <map>
+#include <numbers>
 #include <string>
 #include <vector>
 
@@ -1077,6 +1078,168 @@ SLASH_COMPONENT(Area3D, collision_layer, collision_mask, monitoring, monitorable
                 gravity_space_override, gravity_point, gravity_point_unit_distance,
                 gravity_point_center, gravity_direction, gravity, linear_damp_space_override,
                 linear_damp, angular_damp_space_override, angular_damp)
+
+// 3D joints, as Godot's Joint3D nodes on its Jolt module: node_a and node_b name two bodies, and
+// a missing one is the world. The joint is made at the entity's Transform3D, after its parents',
+// once both bodies exist, and stays there when a parent carries the entity away; changing the
+// entity's own Transform3D or bodies makes it again. Parameters Godot's Jolt module ignores
+// (bias, softness, relaxation and the like) are left out.
+
+// Pins two bodies together at a point, letting them turn every way, as Godot's PinJoint3D.
+struct PinJoint3D {
+    entt::entity node_a{entt::null};
+    entt::entity node_b{entt::null};
+    bool exclude_nodes_from_collision = true;
+
+    friend bool operator==(const PinJoint3D&, const PinJoint3D&) = default;
+};
+SLASH_COMPONENT(PinJoint3D, node_a, node_b, exclude_nodes_from_collision)
+
+// Lets two bodies turn about the entity's z axis only, as a door's hinge, as Godot's
+// HingeJoint3D.
+struct HingeJoint3D {
+    entt::entity node_a{entt::null};
+    entt::entity node_b{entt::null};
+    bool exclude_nodes_from_collision = true;
+    bool angular_limit_enabled = false;
+    float angular_limit_upper = 1.5707964F;  // radians
+    float angular_limit_lower = -1.5707964F; // radians
+    bool motor_enabled = false;
+    float motor_target_velocity = 1.0F; // radians per second
+    float motor_max_impulse = 1.0F;     // per tick
+
+    friend bool operator==(const HingeJoint3D&, const HingeJoint3D&) = default;
+};
+SLASH_COMPONENT(HingeJoint3D, node_a, node_b, exclude_nodes_from_collision, angular_limit_enabled,
+                angular_limit_upper, angular_limit_lower, motor_enabled, motor_target_velocity,
+                motor_max_impulse)
+
+// Lets two bodies slide along the entity's x axis only, as Godot's SliderJoint3D.
+struct SliderJoint3D {
+    entt::entity node_a{entt::null};
+    entt::entity node_b{entt::null};
+    bool exclude_nodes_from_collision = true;
+    float linear_limit_upper = 1.0F;  // meters
+    float linear_limit_lower = -1.0F; // meters
+
+    friend bool operator==(const SliderJoint3D&, const SliderJoint3D&) = default;
+};
+SLASH_COMPONENT(SliderJoint3D, node_a, node_b, exclude_nodes_from_collision, linear_limit_upper,
+                linear_limit_lower)
+
+// Lets two bodies swing in a cone about the entity's x axis and twist about it, as a shoulder,
+// as Godot's ConeTwistJoint3D.
+struct ConeTwistJoint3D {
+    entt::entity node_a{entt::null};
+    entt::entity node_b{entt::null};
+    bool exclude_nodes_from_collision = true;
+    float swing_span = 0.7853982F;                // radians
+    float twist_span = std::numbers::pi_v<float>; // radians
+
+    friend bool operator==(const ConeTwistJoint3D&, const ConeTwistJoint3D&) = default;
+};
+SLASH_COMPONENT(ConeTwistJoint3D, node_a, node_b, exclude_nodes_from_collision, swing_span,
+                twist_span)
+
+// One axis of a Generic6DOFJoint3D along which the bodies move.
+struct Joint3DLinearAxis {
+    bool limit_enabled = true;
+    float limit_upper = 0.0F; // meters
+    float limit_lower = 0.0F; // meters
+    bool motor_enabled = false;
+    float motor_target_velocity = 0.0F; // meters per second
+    float motor_force_limit = 0.0F;     // newtons
+    bool spring_enabled = false;
+    float spring_stiffness = 0.01F;
+    float spring_damping = 0.01F;
+    float spring_equilibrium_point = 0.0F; // meters
+
+    friend bool operator==(const Joint3DLinearAxis&, const Joint3DLinearAxis&) = default;
+};
+SLASH_REFLECT(Joint3DLinearAxis, limit_enabled, limit_upper, limit_lower, motor_enabled,
+              motor_target_velocity, motor_force_limit, spring_enabled, spring_stiffness,
+              spring_damping, spring_equilibrium_point)
+
+// One axis of a Generic6DOFJoint3D about which the bodies turn.
+struct Joint3DAngularAxis {
+    bool limit_enabled = true;
+    float limit_upper = 0.0F; // radians
+    float limit_lower = 0.0F; // radians
+    bool motor_enabled = false;
+    float motor_target_velocity = 0.0F; // radians per second
+    float motor_force_limit = 300.0F;   // newton-meters
+    bool spring_enabled = false;
+    float spring_stiffness = 0.0F;
+    float spring_damping = 0.0F;
+    float spring_equilibrium_point = 0.0F; // radians
+
+    friend bool operator==(const Joint3DAngularAxis&, const Joint3DAngularAxis&) = default;
+};
+SLASH_REFLECT(Joint3DAngularAxis, limit_enabled, limit_upper, limit_lower, motor_enabled,
+              motor_target_velocity, motor_force_limit, spring_enabled, spring_stiffness,
+              spring_damping, spring_equilibrium_point)
+
+// Limits, drives or springs each of the six ways two bodies move apart, along and about the
+// entity's axes, as Godot's Generic6DOFJoint3D. By default every axis is locked.
+struct Generic6DOFJoint3D {
+    entt::entity node_a{entt::null};
+    entt::entity node_b{entt::null};
+    bool exclude_nodes_from_collision = true;
+    Joint3DLinearAxis linear_x;
+    Joint3DLinearAxis linear_y;
+    Joint3DLinearAxis linear_z;
+    Joint3DAngularAxis angular_x;
+    Joint3DAngularAxis angular_y;
+    Joint3DAngularAxis angular_z;
+
+    friend bool operator==(const Generic6DOFJoint3D&, const Generic6DOFJoint3D&) = default;
+};
+SLASH_COMPONENT(Generic6DOFJoint3D, node_a, node_b, exclude_nodes_from_collision, linear_x,
+                linear_y, linear_z, angular_x, angular_y, angular_z)
+
+// A car, as Godot's VehicleBody3D: the RigidBody3D on the same entity rolls on the
+// VehicleWheel3D entities right under it. Its engine force, brake and steering go to its wheels
+// when they change. Godot's VehicleBody3D is a rigid body of 40 kilograms.
+struct VehicleBody3D {
+    float engine_force = 0.0F; // newtons, to the wheels used as traction
+    float brake = 0.0F;        // to every wheel
+    float steering = 0.0F;     // radians, to the wheels used as steering; positive turns left
+};
+SLASH_COMPONENT(VehicleBody3D, engine_force, brake, steering)
+
+// A wheel of the VehicleBody3D its entity is right under, as Godot's VehicleWheel3D: a ray cast
+// down its y axis is its suspension, and its x axis is its axle. The physics step rolls, steers
+// and lifts it from where it is mounted, writing its Transform3D, and writes what it found.
+struct VehicleWheel3D {
+    float engine_force = 0.0F; // newtons
+    float brake = 0.0F;
+    float steering = 0.0F; // radians
+    bool use_as_traction = false;
+    bool use_as_steering = false;
+    float wheel_roll_influence = 0.1F;
+    float wheel_radius = 0.5F;       // meters
+    float wheel_rest_length = 0.15F; // meters
+    float wheel_friction_slip = 10.5F;
+    float suspension_travel = 0.2F; // meters
+    float suspension_stiffness = 5.88F;
+    float suspension_max_force = 6000.0F; // newtons
+    float damping_compression = 0.83F;
+    float damping_relaxation = 0.88F;
+    // What the last step found.
+    bool in_contact = false;
+    Vec3 contact_point;
+    Vec3 contact_normal;
+    entt::entity contact_body{entt::null};
+    float suspension_length = 0.0F; // meters
+    float rotation = 0.0F;          // radians it has rolled
+    float rpm = 0.0F;
+    float skid_info = 0.0F; // 1 grips, toward 0 skids
+};
+SLASH_COMPONENT(VehicleWheel3D, engine_force, brake, steering, use_as_traction, use_as_steering,
+                wheel_roll_influence, wheel_radius, wheel_rest_length, wheel_friction_slip,
+                suspension_travel, suspension_stiffness, suspension_max_force, damping_compression,
+                damping_relaxation, in_contact, contact_point, contact_normal, contact_body,
+                suspension_length, rotation, rpm, skid_info)
 
 // ---- Particles, as Godot's CPUParticles2D.
 
