@@ -1502,9 +1502,9 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("shadow_caster_mask", shadow_caster_mask);
 
     registry.add<WorldEnvironment>()
-        .set_doc("The 3D world's background and ambient light, as Godot's WorldEnvironment. The "
-                 "first one applies; with none, the background is the clear color and there is "
-                 "no ambient light.")
+        .set_doc("The 3D world's background, ambient light, tonemap, glow and adjustments, as "
+                 "Godot's WorldEnvironment. The first one applies; with none, the background is "
+                 "the clear color, there is no ambient light and colors stay as they are.")
         .describe("background_mode", {.doc = "\"clear_color\" is the project's "
                                              "rendering.clear_color; \"color\" is "
                                              "background_color.",
@@ -1516,7 +1516,32 @@ void register_3d_components(ComponentRegistry& registry) {
                           "ambient_light_color.",
                    .choices = {"background", "disabled", "color"}})
         .describe("ambient_light_color", color)
-        .describe("ambient_light_energy", energy);
+        .describe("ambient_light_energy", energy)
+        .describe("tonemap_mode", {.doc = "How lit colors map to the screen's range.",
+                                   .choices = {"linear", "reinhard", "filmic", "aces", "agx"}})
+        .describe("tonemap_exposure",
+                  {.doc = "Multiplies lit colors before they are tonemapped.", .min = 0})
+        .describe("tonemap_white",
+                  {.doc = "The color tonemapped to white; agx ignores it.", .min = 0})
+        .describe("glow_enabled", {.doc = "Bright colors bleed into what is around them."})
+        .describe("glow_intensity", {.doc = "How strong the glow is.", .min = 0})
+        .describe("glow_bloom", {.doc = "How much of every color glows.", .min = 0, .max = 1})
+        .describe("glow_hdr_threshold",
+                  {.doc = "Colors above it glow; drawn colors reach 1 at most, so glow needs it "
+                          "below 1 or glow_bloom.",
+                   .min = 0})
+        .describe("glow_hdr_scale",
+                  {.doc = "How far above the threshold colors reach full glow.", .min = 0})
+        .describe("glow_hdr_luminance_cap", {.doc = "The brightest glow.", .min = 0})
+        .describe("adjustment_enabled",
+                  {.doc = "Brightness, contrast, saturation and color correction apply."})
+        .describe("adjustment_brightness", {.doc = "Multiplies colors.", .min = 0})
+        .describe("adjustment_contrast", {.doc = "0 is flat gray, 1 as it is.", .min = 0})
+        .describe("adjustment_saturation", {.doc = "0 is gray, 1 as it is.", .min = 0})
+        .describe("adjustment_color_correction",
+                  {.doc = "Project path of a lookup texture colors pass through: 1 pixel tall "
+                          "(each channel read at its value along it), or as wide as its height "
+                          "squared (a 3D LUT of height slices side by side); \"\" for none."});
 }
 
 void register_builtin_components(ComponentRegistry& registry) {

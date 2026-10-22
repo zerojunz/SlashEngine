@@ -203,7 +203,7 @@ Image draw_everything(RenderDevice& device, std::uint32_t size) {
     CHECK(device.draw_mesh(card.value(), placed(180.0F, 0.0F, 1.2F, 0.0F), {}).ok());
     REQUIRE(device.end_frame().ok());
     auto image = device.read_texture(target.value());
-    REQUIRE(image.ok());
+    REQUIRE_MESSAGE(image.ok(), error_of(image));
     device.destroy_mesh(box.value());
     device.destroy_mesh(card.value());
     device.destroy_mesh(floor.value());
@@ -315,7 +315,8 @@ TEST_CASE("every device checks meshes, scenes and mesh draws") {
                 .ok());
         CHECK(error_of(device->draw_mesh(mesh.value(), identity, {})) ==
               "no mesh " + std::to_string(static_cast<std::uint32_t>(mesh.value())));
-        REQUIRE(device->end_frame().ok());
+        const auto ended = device->end_frame();
+        REQUIRE_MESSAGE(ended.ok(), error_of(ended));
         device->destroy_texture(target.value());
     }
 }
@@ -358,7 +359,7 @@ TEST_CASE("every device lights a face by Godot's formulas") {
                         .ok());
             REQUIRE(device->end_frame().ok());
             auto image = device->read_texture(target.value());
-            REQUIRE(image.ok());
+            REQUIRE_MESSAGE(image.ok(), error_of(image));
             return pixel(image.value(), 4, 4);
         };
         render::Scene3D scene;
@@ -414,7 +415,7 @@ TEST_CASE("nearer meshes hide farther ones whatever order they are drawn in") {
             }
             REQUIRE(device->end_frame().ok());
             auto image = device->read_texture(target.value());
-            REQUIRE(image.ok());
+            REQUIRE_MESSAGE(image.ok(), error_of(image));
             CHECK(pixel(image.value(), 8, 8) == std::array<int, 4>{255, 0, 0, 255});
         }
         device->destroy_mesh(card.value());
@@ -445,7 +446,7 @@ TEST_CASE("cull modes hide back faces, front faces or neither") {
                             .ok());
                 REQUIRE(device->end_frame().ok());
                 auto image = device->read_texture(target.value());
-                REQUIRE(image.ok());
+                REQUIRE_MESSAGE(image.ok(), error_of(image));
                 const bool facing = turn == 0.0F;
                 const bool shown = cull == render::CullMode::Disabled ||
                                    (cull == render::CullMode::Back) == facing;
@@ -481,7 +482,7 @@ TEST_CASE("2D draws go over a frame's meshes") {
         REQUIRE(device->draw(TextureId::None, corner).ok());
         REQUIRE(device->end_frame().ok());
         auto image = device->read_texture(target.value());
-        REQUIRE(image.ok());
+        REQUIRE_MESSAGE(image.ok(), error_of(image));
         CHECK(pixel(image.value(), 2, 2) == std::array<int, 4>{255, 0, 255, 255});
         CHECK(pixel(image.value(), 8, 8) == std::array<int, 4>{0, 255, 0, 255});
         device->destroy_mesh(box.value());

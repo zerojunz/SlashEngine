@@ -1,0 +1,8 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[188,67],[198,67],[122,100],[190,106],[40,20]]}}
+{"jsonrpc":"2.0","id":3,"method":"component.set","params":{"id":"environment","components":{"WorldEnvironment":{"glow_enabled":false}}}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"points":[[188,67],[198,67]]}}
+{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"environment","components":{"WorldEnvironment":{"tonemap_mode":"linear"}}}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[122,100],[190,106]]}}
+{"jsonrpc":"2.0","id":7,"method":"component.set","params":{"id":"environment","components":{"WorldEnvironment":{"tonemap_mode":"agx","glow_enabled":true,"adjustment_saturation":0.3}}}}
+{"jsonrpc":"2.0","id":8,"method":"frame.capture","params":{"points":[[198,67],[122,100],[190,106]],"path":"shots/night.png"}}

@@ -491,7 +491,7 @@ TEST_CASE("the 3D world draws under the canvas, on the software device and every
         CHECK(renderer.meshes_drawn() == 2);
         CHECK(renderer.lights_3d_drawn() == 1);
         const auto drawn = device->read_texture(target.value());
-        REQUIRE(drawn.ok());
+        REQUIRE_MESSAGE(drawn.ok(), (drawn.ok() ? std::string() : drawn.error().message));
         for (const auto& [x, y] :
              {std::pair{32U, 32U}, std::pair{32U, 4U}, std::pair{4U, 4U}, std::pair{50U, 32U}}) {
             CAPTURE(x);
@@ -504,6 +504,73 @@ TEST_CASE("the 3D world draws under the canvas, on the software device and every
         }
         device->destroy_texture(target.value());
     }
+}
+
+TEST_CASE("the WorldEnvironment's tonemap, glow and adjustments post-process the 3D world") {
+    Scene scene;
+    scene.create("camera", R"({"Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}})");
+    scene.create("cube", R"({"Transform3D": {}, "MeshInstance3D": {}, "BoxMesh": {},
+        "StandardMaterial3D": {"shading_mode": "unshaded", "albedo_color": [1, 0, 0, 1]}})");
+    const entt::entity env = scene.create("env", R"({"WorldEnvironment": {
+        "tonemap_mode": "aces", "tonemap_exposure": 2, "tonemap_white": 4, "glow_enabled": true,
+        "glow_bloom": 0.25, "glow_hdr_threshold": 0.5, "adjustment_enabled": true,
+        "adjustment_saturation": 0, "adjustment_color_correction": "grade.png"}})");
+    const scene3d::Environment read = scene3d::environment(scene.world, {});
+    CHECK(read.entity == env);
+    CHECK(read.post == render::PostProcess{.tonemapper = render::Tonemapper::Aces,
+                                           .exposure = 2.0F,
+                                           .white = 4.0F,
+                                           .glow = true,
+                                           .glow_bloom = 0.25F,
+                                           .glow_hdr_threshold = 0.5F,
+                                           .adjustments = true,
+                                           .saturation = 0.0F});
+    CHECK(read.color_correction == "grade.png");
+
+    // Saturation 0 turns the red cube gray. The texture is missing, so it is reported and left
+    // out.
+    auto& settings = scene.world.ecs().get<world::WorldEnvironment>(env);
+    settings.tonemap_mode = "linear";
+    settings.tonemap_exposure = 1.0F;
+    settings.glow_enabled = false;
+    const auto device = render::create_software_device();
+    const auto draw = [&](canvas::FrameContents& contents) {
+        canvas::CanvasRenderer renderer(*device, scene.assets);
+        auto target = device->create_texture({.width = 64, .height = 64, .render_target = true});
+        REQUIRE(target.ok());
+        canvas::CanvasOptions options;
+        options.target = target.value();
+        options.width = 64.0F;
+        options.height = 64.0F;
+        options.contents = &contents;
+        REQUIRE(renderer.draw(scene.world, options).ok());
+        auto image = device->read_texture(target.value());
+        REQUIRE(image.ok());
+        device->destroy_texture(target.value());
+        return pixel(image.value(), 32, 32);
+    };
+    canvas::FrameContents contents;
+    Rgba middle = draw(contents);
+    CHECK(std::abs(int{middle[0]} - 85) <= 2);
+    CHECK(middle[1] == middle[0]);
+    REQUIRE(contents.problems.size() == 1);
+    CHECK(contents.problems[0].path == "/components/WorldEnvironment/adjustment_color_correction");
+
+    // A texture of the wrong shape is reported too; a 1D one that maps everything to blue is used.
+    const render::Image square{
+        .width = 2, .height = 2, .pixels = std::vector<std::uint8_t>(16, 255)};
+    scene.files.files["square.png"] = render::encode_png(square).value();
+    settings.adjustment_color_correction = "square.png";
+    contents = {};
+    draw(contents);
+    REQUIRE(contents.problems.size() == 1);
+    CHECK(contents.problems[0].message.find("not 2x2") != std::string::npos);
+    const render::Image blue{.width = 2, .height = 1, .pixels = {0, 0, 255, 255, 0, 0, 255, 255}};
+    scene.files.files["blue.png"] = render::encode_png(blue).value();
+    settings.adjustment_color_correction = "blue.png";
+    contents = {};
+    CHECK(draw(contents) == Rgba{0, 0, 255, 255});
+    CHECK(contents.problems.empty());
 }
 
 TEST_CASE("project.json's rendering.lights_and_shadows is read and checked") {
