@@ -3,6 +3,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/math.hpp"
 #include "slash/core/text.hpp"
+#include "slash/scene3d/ik.hpp"
 #include "slash/world/serialize.hpp"
 #include "slash/world/world.hpp"
 
@@ -513,11 +514,19 @@ std::vector<Problem> check_meshes(const world::World& world) {
                 {entity, "/components/Skeleton3D" + problem.path, std::move(problem.message)});
         }
     };
+    // Its skeleton modifiers' bones, chains, targets and names.
+    const auto check_ik = [&](entt::entity entity, const Model* model) {
+        for (ModifierProblem& problem : check_modifiers(world, entity, model)) {
+            problems.push_back(
+                {problem.entity, std::move(problem.path), std::move(problem.message)});
+        }
+    };
     for (const entt::entity entity : made<world::MeshInstance3D>(world)) {
         const std::string& path = world.ecs().get<const world::MeshInstance3D>(entity).mesh;
         if (path.empty()) {
             (void)drawable(world, entity, problems);
             check_bones(entity, nullptr);
+            check_ik(entity, nullptr);
             continue;
         }
         if (std::string problem = mesh_path_problem(world, entity, path); !problem.empty()) {
@@ -541,11 +550,16 @@ std::vector<Problem> check_meshes(const world::World& world) {
                                     (error.path.empty() ? "" : " at " + error.path) + ": " +
                                     error.message});
         }
-        if (errors.empty() && world.ecs().all_of<world::Skeleton3D>(entity)) {
+        if (errors.empty() &&
+            (world.ecs().all_of<world::Skeleton3D>(entity) || has_modifiers(world, entity))) {
             if (auto model = load_model(bytes.value(), path, reader); model) {
                 check_bones(entity, &model.value());
+                check_ik(entity, &model.value());
             }
         }
+    }
+    for (ModifierProblem& problem : check_stray_modifiers(world)) {
+        problems.push_back({problem.entity, std::move(problem.path), std::move(problem.message)});
     }
     for (const entt::entity entity : made<world::Skeleton3D>(world)) {
         if (!world.ecs().all_of<world::MeshInstance3D>(entity)) {
@@ -797,6 +811,7 @@ render::MaterialTexture Renderer::model_texture(const std::string& path, const S
 
 void Renderer::add_model(const world::World& world, entt::entity entity,
                          const world::MeshInstance3D& instance, const world::Affine3D& place,
+                         const std::function<world::Affine3D(entt::entity)>& global,
                          render::ShadowCasting casting, float interpolation) {
     if (std::string problem = mesh_path_problem(world, entity, instance.mesh); !problem.empty()) {
         problems_.push_back({entity, std::string(kMeshField), std::move(problem)});
@@ -823,15 +838,17 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
     const std::string prefix =
         "model:" + instance.mesh + "@" + std::to_string(source.value().version) + "#";
 
-    // A model with a skin, an animation playing or a Skeleton3D is posed: its parts go where its
-    // nodes are posed, and its skins move their surfaces' vertices.
+    // A model with a skin, an animation playing, a Skeleton3D or skeleton modifiers is posed: its
+    // parts go where its nodes are posed, and its skins move their surfaces' vertices.
     PoseKey now{.clips = clips(world, entity), .skeleton = std::nullopt};
     if (const auto* skeleton = world.ecs().try_get<const world::Skeleton3D>(entity);
         skeleton != nullptr) {
         now.skeleton = *skeleton;
     }
     std::vector<world::Affine3D> globals;
-    if (!model.nodes.empty() && (!model.skins.empty() || !now.clips.empty() || now.skeleton)) {
+    const bool modified = has_modifiers(world, entity);
+    if (!model.nodes.empty() &&
+        (!model.skins.empty() || !now.clips.empty() || now.skeleton || modified)) {
         const ModelLoader load =
             [this](const std::string& path) -> Result<std::shared_ptr<const Model>> {
             auto loaded = models_(path);
@@ -850,6 +867,10 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
             const std::vector<NodePose> before =
                 pose_of(model, was->second.clips, skeleton_of(was->second.skeleton), load);
             pose = blend_poses(before, pose, interpolation);
+        }
+        // Modifiers turn bones after that, toward targets where they are drawn.
+        if (modified) {
+            apply_modifiers(world, entity, model, place, global, pose);
         }
         globals = node_globals(model, pose);
     }
@@ -1037,7 +1058,7 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
             casting = render::ShadowCasting::ShadowsOnly;
         }
         if (!instance.mesh.empty()) {
-            add_model(world, entity, instance, global(entity), casting, t);
+            add_model(world, entity, instance, global(entity), global, casting, t);
             continue;
         }
         const std::optional<Primitive> primitive = drawable(world, entity, problems_);

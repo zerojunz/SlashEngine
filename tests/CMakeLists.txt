@@ -64,6 +64,7 @@ add_executable(slash_tests
     test_import_unity.cpp
     test_gui.cpp
     test_icons.cpp
+    test_ik.cpp
     test_input.cpp
     test_jobs.cpp
     test_json.cpp

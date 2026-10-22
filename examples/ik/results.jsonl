@@ -1,0 +1,14 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":8,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"bones":[{"name":"Shoulder","parent":"Rig","position":[0,0,0],"rotation":[0.0384,-0.0048,-0.2501],"scale":[1,1,1],"world_position":[-0.6,0,0]},{"name":"Elbow","parent":"Shoulder","position":[0,0.8,0],"rotation":[0.7627,-0.1115,-0.8767],"scale":[1,1,1],"world_position":[-0.4021,0.7745,0.0307]},{"name":"Hand","parent":"Elbow","position":[0,0.5,0],"rotation":[0,0,-0.35],"scale":[1,1,1],"world_position":[0,0.9,0.3]}],"clips":[{"animation":"Wave-loop","time":0}],"model":"models/arm.gltf"}}
+{"id":3,"jsonrpc":"2.0","result":{"bones":[{"name":"Hand","parent":"Elbow","position":[0,0.5,0],"rotation":[0,0,-0.35],"scale":[1,1,1],"world_position":[0.3177,1.2127,0]}],"clips":[{"animation":"Wave-loop","time":0}],"model":"models/arm.gltf"}}
+{"id":4,"jsonrpc":"2.0","result":{"tick":60,"ticks":60}}
+{"id":5,"jsonrpc":"2.0","result":{"bones":[{"name":"Elbow","parent":"Shoulder","position":[0,0.8,0],"rotation":[0.2829,0.3114,1.0683],"scale":[1,1,1],"world_position":[0.4337,0.7781,0.0831]},{"name":"Hand","parent":"Elbow","position":[0,0.5,0],"rotation":[0,0,-0.35],"scale":[1,1,1],"world_position":[0,0.9,0.3]}],"clips":[{"animation":"Wave-loop","time":1}],"model":"models/arm.gltf"}}
+{"id":6,"jsonrpc":"2.0","result":{"colors":[[0.337,0.478,0.745,1],[1,0.949,0.549,1],[0.322,0.463,0.725,1],[0.604,0.584,0.349,1],[0.549,0.722,0.922,1]],"drawn":{"meshes":6},"height":90,"width":160}}
+{"id":7,"jsonrpc":"2.0","result":{"changed":{"Transform3D":{"position":[0.0,0.5,0.4]}},"id":"ball"}}
+{"id":8,"jsonrpc":"2.0","result":{"tick":61,"ticks":1}}
+{"id":9,"jsonrpc":"2.0","result":{"bones":[{"name":"Hand","parent":"Elbow","position":[0,0.5,0],"rotation":[0,0,-0.3267],"scale":[1,1,1],"world_position":[0,0.5,0.4]}],"clips":[{"animation":"Wave-loop","time":0.0167}],"model":"models/arm.gltf"}}
+{"id":10,"jsonrpc":"2.0","result":{"bones":[{"name":"Hand","parent":"Elbow","position":[0,0.5,0],"rotation":[0,0,-0.3267],"scale":[1,1,1],"world_position":[-0.0881,0.7359,0.3811]}],"clips":[{"animation":"Wave-loop","time":0.0167}],"model":"models/arm.gltf"}}
+{"id":11,"jsonrpc":"2.0","result":{"tick":121,"ticks":60}}
+{"id":12,"jsonrpc":"2.0","result":{"bones":[{"name":"Hand","parent":"Elbow","position":[0,0.5,0],"rotation":[0,0,-0.3267],"scale":[1,1,1],"world_position":[0,0.5,0.4]}],"clips":[{"animation":"Wave-loop","time":0.0167}],"model":"models/arm.gltf"}}
+{"id":13,"jsonrpc":"2.0","result":{"changed":{"TwoBoneIK3D":{"influence":0.5}},"id":"reacher"}}
+{"id":14,"jsonrpc":"2.0","result":{"bones":[{"name":"Hand","parent":"Elbow","position":[0,0.5,0],"rotation":[0,0,-0.3267],"scale":[1,1,1],"world_position":[-0.2776,1.0976,0.4055]}],"clips":[{"animation":"Wave-loop","time":0.0167}],"model":"models/arm.gltf"}}

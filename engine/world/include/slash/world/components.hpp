@@ -85,6 +85,135 @@ struct Skeleton3D {
 };
 SLASH_COMPONENT(Skeleton3D, bone_positions, bone_rotations, bone_scales, show_rest_only)
 
+// Skeleton modifiers turn bones of the model an entity's MeshInstance3D draws after its
+// animations and Skeleton3D, as Godot's SkeletonModifier3D children of a Skeleton3D do: those on
+// the entity, then those on each entity in its Transform3D children, in list order; on each,
+// TwoBoneIK3D, FABRIK3D, CCDIK3D, then JacobianIK3D. Each moves the pose influence of the way.
+
+// One arm or leg a TwoBoneIK3D bends, as a Godot TwoBoneIK3D setting: from root_bone through
+// middle_bone to end_bone (or, with use_virtual_end, to a point end_bone_length past middle_bone),
+// the end reaching for the target entity and bending toward the pole entity.
+struct TwoBoneIKSetting {
+    std::string root_bone;
+    std::string middle_bone;
+    std::string end_bone;
+    // "from_parent" (the way from its parent to it), or "plus_x", "minus_x", "plus_y",
+    // "minus_y", "plus_z" or "minus_z" in the bone's space.
+    std::string end_bone_direction = "from_parent";
+    // The middle bone's axis rolled toward the pole: "none", "plus_x", "minus_x", "plus_y",
+    // "minus_y", "plus_z", "minus_z" or "custom" (pole_direction_vector).
+    std::string pole_direction = "none";
+    Vec3 pole_direction_vector;
+    float end_bone_length = 0.0F;
+    entt::entity target{entt::null};
+    entt::entity pole{entt::null};
+    bool use_virtual_end = false;
+    // Reaches with a point end_bone_length along end_bone_direction from the end bone.
+    bool extend_end_bone = false;
+
+    friend bool operator==(const TwoBoneIKSetting&, const TwoBoneIKSetting&) = default;
+};
+SLASH_REFLECT(TwoBoneIKSetting, root_bone, middle_bone, end_bone, use_virtual_end, extend_end_bone,
+              end_bone_direction, end_bone_length, target, pole, pole_direction,
+              pole_direction_vector)
+
+// Bends two bones so the end of the second reaches a target, as Godot's TwoBoneIK3D.
+struct TwoBoneIK3D {
+    std::vector<TwoBoneIKSetting> settings;
+    float influence = 1.0F;
+    bool active = true;
+    // Bone lengths come from where the bones are posed, not where they rest.
+    bool mutable_bone_axes = true;
+
+    friend bool operator==(const TwoBoneIK3D&, const TwoBoneIK3D&) = default;
+};
+SLASH_COMPONENT(TwoBoneIK3D, settings, active, influence, mutable_bone_axes)
+
+// How one bone of a chain may turn, as a Godot IterateIK3D joint: only about rotation_axis, and
+// within a cone around where it points at rest (limitation "cone", limitation_angle radians
+// across).
+struct ChainIKJoint {
+    // "all", "x", "y", "z" or "custom" (rotation_axis_vector), in the bone's space.
+    std::string rotation_axis = "all";
+    std::string limitation; // "" or "cone"
+    // Which way is right in the cone's space: "none", "plus_x", ... or "custom".
+    std::string limitation_right_axis = "none";
+    Vec3 rotation_axis_vector{1.0F, 0.0F, 0.0F};
+    Vec3 limitation_right_axis_vector{1.0F, 0.0F, 0.0F};
+    // The cone turned by radians about each axis, as Transform3D's rotation.
+    Vec3 limitation_rotation_offset;
+    float limitation_angle = 1.5707964F; // a quarter turn
+
+    friend bool operator==(const ChainIKJoint&, const ChainIKJoint&) = default;
+};
+SLASH_REFLECT(ChainIKJoint, rotation_axis, rotation_axis_vector, limitation, limitation_angle,
+              limitation_right_axis, limitation_right_axis_vector, limitation_rotation_offset)
+
+// One chain an iterating IK solver turns, as a Godot ChainIK3D setting: every bone from root_bone
+// down to end_bone, the end reaching for the target entity. joints limits bones, by name.
+struct ChainIKSetting {
+    std::string root_bone;
+    std::string end_bone;
+    std::string end_bone_direction = "from_parent";
+    std::map<std::string, ChainIKJoint> joints;
+    float end_bone_length = 0.0F;
+    entt::entity target{entt::null};
+    bool extend_end_bone = false;
+
+    friend bool operator==(const ChainIKSetting&, const ChainIKSetting&) = default;
+};
+SLASH_REFLECT(ChainIKSetting, root_bone, end_bone, extend_end_bone, end_bone_direction,
+              end_bone_length, target, joints)
+
+// Godot's iterating IK solvers, FABRIK3D, CCDIK3D and JacobianIK3D: each tick takes up to
+// max_iterations steps, each turning a bone at most angular_delta_limit radians, until the end is
+// within min_distance of the target. Unless deterministic, a chain carries on from where the last
+// tick left it, so it eases toward a target that jumps.
+struct FABRIK3D {
+    std::vector<ChainIKSetting> settings;
+    double min_distance = 0.001;
+    double angular_delta_limit = 0.03490658503988659; // 2 degrees
+    int max_iterations = 4;
+    float influence = 1.0F;
+    bool active = true;
+    bool mutable_bone_axes = true;
+    bool deterministic = false;
+
+    friend bool operator==(const FABRIK3D&, const FABRIK3D&) = default;
+};
+SLASH_COMPONENT(FABRIK3D, settings, active, influence, mutable_bone_axes, max_iterations,
+                min_distance, angular_delta_limit, deterministic)
+
+struct CCDIK3D {
+    std::vector<ChainIKSetting> settings;
+    double min_distance = 0.001;
+    double angular_delta_limit = 0.03490658503988659;
+    int max_iterations = 4;
+    float influence = 1.0F;
+    bool active = true;
+    bool mutable_bone_axes = true;
+    bool deterministic = false;
+
+    friend bool operator==(const CCDIK3D&, const CCDIK3D&) = default;
+};
+SLASH_COMPONENT(CCDIK3D, settings, active, influence, mutable_bone_axes, max_iterations,
+                min_distance, angular_delta_limit, deterministic)
+
+struct JacobianIK3D {
+    std::vector<ChainIKSetting> settings;
+    double min_distance = 0.001;
+    double angular_delta_limit = 0.03490658503988659;
+    int max_iterations = 4;
+    float influence = 1.0F;
+    bool active = true;
+    bool mutable_bone_axes = true;
+    bool deterministic = false;
+
+    friend bool operator==(const JacobianIK3D&, const JacobianIK3D&) = default;
+};
+SLASH_COMPONENT(JacobianIK3D, settings, active, influence, mutable_bone_axes, max_iterations,
+                min_distance, angular_delta_limit, deterministic)
+
 // Godot's BoxMesh: a box of size centered on the entity, each face cut into subdivisions + 1
 // strips along each axis.
 struct BoxMesh {
