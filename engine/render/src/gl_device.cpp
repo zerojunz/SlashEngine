@@ -1382,7 +1382,7 @@ private:
               std::pair{"VertexProgram", kVertexProgramBinding},
               std::pair{"Camera", kCameraBinding}, std::pair{"Instance", kInstanceBinding},
               std::pair{"Surface", kSurfaceBinding}, std::pair{"Scene", kSceneBinding},
-              std::pair{"Pass", kShadowPassBinding}, std::pair{"Shadows", kShadowsBinding}}) {
+              std::pair{"LightView", kShadowPassBinding}, std::pair{"Shadows", kShadowsBinding}}) {
             const GLuint index = gl_.get_uniform_block_index(program, name);
             if (index != gl::kInvalidIndex) {
                 gl_.uniform_block_binding(program, index, binding);

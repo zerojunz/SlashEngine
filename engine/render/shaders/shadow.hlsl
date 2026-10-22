@@ -4,7 +4,7 @@
 // holes in the shadow too. Keep it in step with shadow_vertex and shadow_keeps in
 // src/shadow.cpp, its CPU twins. The vertex input, Instance and Surface are mesh.hlsl's.
 
-cbuffer Pass : register(b0, space1) {
+cbuffer LightView : register(b0, space1) {
     float4x4 view;       // the world to the pass's camera space
     float4x4 projection; // its camera space to clip space, with reversed depth
     // x: the bias; y: 1 pushes by the bias along the ray, as an omni light's linear depth; z: 1
