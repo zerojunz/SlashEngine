@@ -9,6 +9,7 @@
 #include "sprite_shaders.hpp"
 #include "uniforms.hpp"
 
+#include "slash/core/assert.hpp"
 #include "slash/core/log.hpp"
 #include "slash/render/image.hpp"
 
@@ -29,6 +30,7 @@
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
@@ -334,6 +336,99 @@ bool version_matches(GlApi api, std::string_view version) {
 // they use and takes their precision qualifiers.
 constexpr std::string_view kEsVersionLine = "#version 300 es";
 constexpr std::string_view kDesktopVersionLine = "#version 330 core";
+
+// Apple's software OpenGL renderer, which Macs without a GPU run (CI's among them), loses
+// triangles that cross a screen edge unless each corner's w is 1. 3D shaders get around it
+// exactly: a corner in front of the camera is scaled by 1/w, which names the same point and is
+// clipped the same, and its outputs are scaled with it and divided back in each fragment by the
+// interpolated scale, which gives the perspective-correct values they had. Corners behind the
+// camera keep their w. at_w1_vertex rewrites a vertex shader so, and at_w1_fragment the fragment
+// shader that reads its outputs.
+
+// The names of a shader's non-flat inputs or outputs, declared as "<keyword> [precision] <type>
+// <name>;" lines, and the lines' starts.
+struct Varying {
+    std::size_t line = 0;
+    std::size_t end = 0; // past the line's ';'
+    std::string precision;
+    std::string type;
+    std::string name;
+};
+
+std::vector<Varying> varyings(std::string_view source, std::string_view keyword) {
+    std::vector<Varying> out;
+    std::size_t line = 0;
+    while (line < source.size()) {
+        const std::size_t next = std::min(source.find('\n', line), source.size());
+        const std::string_view text = source.substr(line, next - line);
+        if (text.starts_with(keyword) && text.size() > keyword.size() &&
+            text[keyword.size()] == ' ' && text.ends_with(';')) {
+            std::vector<std::string_view> words;
+            std::string_view rest =
+                text.substr(keyword.size() + 1, text.size() - keyword.size() - 2);
+            while (!rest.empty()) {
+                const std::size_t space = std::min(rest.find(' '), rest.size());
+                words.push_back(rest.substr(0, space));
+                rest.remove_prefix(std::min(space + 1, rest.size()));
+            }
+            if (words.size() == 2 || words.size() == 3) {
+                out.push_back({.line = line,
+                               .end = next,
+                               .precision = words.size() == 3 ? std::string(words[0]) : "",
+                               .type = std::string(words[words.size() - 2]),
+                               .name = std::string(words.back())});
+            }
+        }
+        line = next + 1;
+    }
+    return out;
+}
+
+// Declares each varying of a shader under "slash_<name>" and its own name as a global that main
+// reads or writes, so the rewrites below can scale it between the two.
+std::string renamed(std::string_view source, const std::vector<Varying>& found,
+                    std::string_view keyword) {
+    std::string out(source);
+    for (const Varying& v : std::ranges::reverse_view(found)) {
+        const std::string type = (v.precision.empty() ? "" : v.precision + " ") + v.type;
+        std::string declared(keyword);
+        declared.append(" ").append(type).append(" slash_").append(v.name).append(";\n");
+        declared.append(type).append(" ").append(v.name).append(";");
+        out.replace(v.line, v.end - v.line, declared);
+    }
+    return out;
+}
+
+std::string at_w1_vertex(std::string_view source) {
+    const std::vector<Varying> outputs = varyings(source, "out");
+    std::string out = renamed(source, outputs, "out");
+    std::string scaling = "    slash_scale = gl_Position.w > 1.0e-3 ? 1.0 / gl_Position.w : 1.0;\n"
+                          "    gl_Position *= slash_scale;\n";
+    for (const Varying& v : outputs) {
+        scaling += "    slash_" + v.name + " = " + v.name + " * slash_scale;\n";
+    }
+    const std::size_t end = out.rfind('}');
+    SLASH_ASSERT(end != std::string::npos, "a vertex shader has a main function");
+    out.insert(end, scaling);
+    const std::size_t main = out.find("void main()");
+    SLASH_ASSERT(main != std::string::npos, "a vertex shader has a main function");
+    out.insert(main, "out highp float slash_scale;\n");
+    return out;
+}
+
+std::string at_w1_fragment(std::string_view source) {
+    const std::vector<Varying> inputs = varyings(source, "in");
+    std::string out = renamed(source, inputs, "in");
+    std::string dividing;
+    for (const Varying& v : inputs) {
+        dividing += "    " + v.name + " = slash_" + v.name + " / slash_scale;\n";
+    }
+    const std::size_t main = out.find("void main()");
+    SLASH_ASSERT(main != std::string::npos, "a fragment shader has a main function");
+    out.insert(out.find('{', main) + 2, dividing);
+    out.insert(main, "in highp float slash_scale;\n");
+    return out;
+}
 
 class GlDevice final : public RenderDevice {
 public:
@@ -1446,8 +1541,9 @@ private:
         if (mesh_program_ != 0) {
             return mesh_program_;
         }
-        auto program = link(shaders::kMeshVertexGlsl, shaders::kMeshFragmentGlsl, kMeshSamplerNames,
-                            "the mesh shader");
+        auto program =
+            link(at_w1_vertex(shaders::kMeshVertexGlsl), at_w1_fragment(shaders::kMeshFragmentGlsl),
+                 kMeshSamplerNames, "the mesh shader");
         if (!program) {
             return program.error();
         }
