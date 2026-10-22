@@ -87,6 +87,7 @@ add_executable(slash_tests
     test_platform.cpp
     test_post.cpp
     test_project_map.cpp
+    test_ragdoll.cpp
     test_reflect.cpp
     test_render.cpp
     test_render_scale.cpp

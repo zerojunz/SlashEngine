@@ -88,7 +88,8 @@ SLASH_COMPONENT(Skeleton3D, bone_positions, bone_rotations, bone_scales, show_re
 // Skeleton modifiers turn bones of the model an entity's MeshInstance3D draws after its
 // animations and Skeleton3D, as Godot's SkeletonModifier3D children of a Skeleton3D do: those on
 // the entity, then those on each entity in its Transform3D children, in list order; on each,
-// TwoBoneIK3D, FABRIK3D, CCDIK3D, then JacobianIK3D. Each moves the pose influence of the way.
+// TwoBoneIK3D, FABRIK3D, CCDIK3D, JacobianIK3D, then PhysicalBoneSimulator3D. Each moves the
+// pose influence of the way.
 
 // One arm or leg a TwoBoneIK3D bends, as a Godot TwoBoneIK3D setting: from root_bone through
 // middle_bone to end_bone (or, with use_virtual_end, to a point end_bone_length past middle_bone),
@@ -1437,6 +1438,95 @@ SLASH_COMPONENT(VehicleWheel3D, engine_force, brake, steering, use_as_traction, 
                 suspension_travel, suspension_stiffness, suspension_max_force, damping_compression,
                 damping_relaxation, in_contact, contact_point, contact_normal, contact_body,
                 suspension_length, rotation, rpm, skid_info)
+
+// The ragdoll of a model, as Godot 4.6's PhysicalBoneSimulator3D: a skeleton modifier on the entity
+// that draws the model or on one of its Transform3D children, whose PhysicalBone3D children are
+// bodies for the model's bones. While it simulates, physics moves the bones it names (and those
+// under them, or every bone when it names none) and they pose the model; the other bones' bodies
+// follow the model's pose as kinematic bodies, while it is active.
+struct PhysicalBoneSimulator3D {
+    bool active = true;
+    float influence = 1.0F; // how far simulated bones replace the pose, 0 to 1
+    // Godot's physical_bones_start_simulation and physical_bones_stop_simulation.
+    bool simulating = false;
+    std::vector<std::string> simulated_bones;       // with the bones under them; empty for all
+    std::vector<entt::entity> collision_exceptions; // bodies its bones never collide with
+
+    friend bool operator==(const PhysicalBoneSimulator3D&,
+                           const PhysicalBoneSimulator3D&) = default;
+};
+SLASH_COMPONENT(PhysicalBoneSimulator3D, active, influence, simulating, simulated_bones,
+                collision_exceptions)
+
+// One axis of a PhysicalBone3D's "6dof" joint, along and about which the bodies move.
+struct PhysicalBone3DAxis {
+    bool linear_limit_enabled = true;
+    float linear_limit_upper = 0.0F; // meters
+    float linear_limit_lower = 0.0F; // meters
+    bool linear_spring_enabled = false;
+    float linear_spring_stiffness = 0.0F;
+    float linear_spring_damping = 0.0F;
+    float linear_equilibrium_point = 0.0F; // meters
+    bool angular_limit_enabled = true;
+    float angular_limit_upper = 0.0F; // radians
+    float angular_limit_lower = 0.0F; // radians
+    bool angular_spring_enabled = false;
+    float angular_spring_stiffness = 0.0F;
+    float angular_spring_damping = 0.0F;
+    float angular_equilibrium_point = 0.0F; // radians
+
+    friend bool operator==(const PhysicalBone3DAxis&, const PhysicalBone3DAxis&) = default;
+};
+SLASH_REFLECT(PhysicalBone3DAxis, linear_limit_enabled, linear_limit_upper, linear_limit_lower,
+              linear_spring_enabled, linear_spring_stiffness, linear_spring_damping,
+              linear_equilibrium_point, angular_limit_enabled, angular_limit_upper,
+              angular_limit_lower, angular_spring_enabled, angular_spring_stiffness,
+              angular_spring_damping, angular_equilibrium_point)
+
+// A body for one bone of a model, as Godot's PhysicalBone3D: a Transform3D child of a
+// PhysicalBoneSimulator3D's entity, shaped by its CollisionShape3D or those of entities under it,
+// placed at the bone times body_offset. Its joint holds it to the body of the nearest bone above
+// its own that has one, at its bone's origin. The physics step writes its Transform3D (top_level
+// while it simulates) and velocities, and the skeleton_modifiers system its Transform3D while it
+// follows the pose. Joint parameters Godot's Jolt module ignores are left out.
+struct PhysicalBone3D {
+    std::string bone_name;
+    Vec3 body_offset_position;       // where the body is in the bone's space
+    Vec3 body_offset_rotation;       // radians, as Transform3D's
+    std::string joint_type = "none"; // "none", "pin", "cone", "hinge", "slider" or "6dof"
+    Vec3 joint_rotation;             // the joint's axes in the body's space, radians
+    float swing_span = 0.7853982F;   // cone, radians
+    float twist_span = std::numbers::pi_v<float>; // cone, radians
+    bool angular_limit_enabled = false;           // hinge
+    float angular_limit_upper = 1.5707964F;       // hinge, radians
+    float angular_limit_lower = -1.5707964F;      // hinge, radians
+    float linear_limit_upper = 1.0F;              // slider, meters
+    float linear_limit_lower = -1.0F;             // slider, meters
+    PhysicalBone3DAxis x;                         // 6dof
+    PhysicalBone3DAxis y;                         // 6dof
+    PhysicalBone3DAxis z;                         // 6dof
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    float mass = 1.0F;
+    float friction = 1.0F;
+    float bounce = 0.0F;
+    float gravity_scale = 1.0F;
+    std::string linear_damp_mode = "combine"; // "combine" adds to the project's; "replace"
+    float linear_damp = 0.0F;
+    std::string angular_damp_mode = "combine";
+    float angular_damp = 0.0F;
+    Vec3 linear_velocity;
+    Vec3 angular_velocity;
+    bool can_sleep = true;
+
+    friend bool operator==(const PhysicalBone3D&, const PhysicalBone3D&) = default;
+};
+SLASH_COMPONENT(PhysicalBone3D, bone_name, body_offset_position, body_offset_rotation, joint_type,
+                joint_rotation, swing_span, twist_span, angular_limit_enabled, angular_limit_upper,
+                angular_limit_lower, linear_limit_upper, linear_limit_lower, x, y, z,
+                collision_layer, collision_mask, mass, friction, bounce, gravity_scale,
+                linear_damp_mode, linear_damp, angular_damp_mode, angular_damp, linear_velocity,
+                angular_velocity, can_sleep)
 
 // ---- Particles, as Godot's CPUParticles2D.
 
