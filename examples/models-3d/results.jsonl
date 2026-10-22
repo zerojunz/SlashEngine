@@ -1,0 +1,7 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":5,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"bounds":{"max":[1.15,2.2,0.95],"min":[-1.15,0,-0.95]},"images":[],"materials":[{"name":"Plaster","standard":{"albedo_color":[0.9261,0.8756,0.7736,1],"roughness":0.9}},{"name":"Tiles","standard":{"albedo_color":[0.7977,0.3656,0.2717,1],"roughness":0.7,"vertex_color_use_as_albedo":true}},{"name":"Wood","standard":{"albedo_color":[0.4845,0.3318,0.206,1],"cull_mode":"disabled","roughness":0.8}}],"meshes":[{"materials":[0],"name":"Walls","triangles":8,"vertices":16},{"materials":[1],"name":"Roof","triangles":6,"vertices":18},{"materials":[2],"name":"Door","triangles":2,"vertices":4}],"parts":[{"mesh":0,"node":"Walls"},{"mesh":1,"node":"Roof"},{"mesh":2,"node":"Door"}]}}
+{"id":3,"jsonrpc":"2.0","result":{"colors":[[0.627,0.302,0.239,1],[0.882,0.851,0.784,1],[0.694,0.678,0.639,1],[0.361,0.255,0.169,1],[0.549,0.722,0.922,1],[0.341,0.565,0.294,1]],"drawn":{"meshes":4},"height":90,"width":160}}
+{"id":4,"jsonrpc":"2.0","result":{"id":"shed"}}
+{"id":5,"jsonrpc":"2.0","result":{"colors":[[0.694,0.678,0.639,1],[0.588,0.463,0.349,1],[0.506,0.4,0.302,1]],"drawn":{"meshes":7},"height":90,"path":"shots/village.png","width":160}}
+{"id":6,"jsonrpc":"2.0","result":{"id":"barn"}}
+{"id":7,"jsonrpc":"2.0","result":{"drawn":[],"problems":[{"id":"barn","message":"expected a .gltf or .glb file","path":"/components/MeshInstance3D/mesh"}],"viewport":[160,90]}}

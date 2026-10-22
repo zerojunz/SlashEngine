@@ -162,7 +162,9 @@ enum class DataFile : std::uint8_t {
     Theme,
     Sound,
     AudioStream,
-    BusLayout
+    BusLayout,
+    Model,
+    Buffer
 };
 
 DataFile data_file(std::string_view name) {
@@ -187,8 +189,15 @@ DataFile data_file(std::string_view name) {
     if (name.ends_with(canvas::kTileSetSuffix)) {
         return DataFile::TileSet;
     }
-    if (name.ends_with(".png") || name.ends_with(".bmp") || name.ends_with(".ktx2")) {
+    if (render::is_image_path(name)) {
         return DataFile::Texture;
+    }
+    if (scene3d::is_model_path(name)) {
+        return DataFile::Model;
+    }
+    // A .gltf model's buffers, checked with the model.
+    if (name.ends_with(".bin")) {
+        return DataFile::Buffer;
     }
     if (name.ends_with(text::kFontSuffix)) {
         return DataFile::FontSettings;
@@ -232,6 +241,12 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         if (auto sound = audio::decode_sound(text, file); !sound) {
             return {{"", sound.error().message}};
         }
+        return {};
+    }
+    if (kind == DataFile::Model) {
+        return scene3d::check_model(text, file, reader);
+    }
+    if (kind == DataFile::Buffer) {
         return {};
     }
     auto parsed = json::parse(text);

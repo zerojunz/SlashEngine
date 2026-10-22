@@ -297,7 +297,7 @@ bool repeats_last(const Record& record, const Feedback& feedback) {
 
 std::string_view type_of(std::string_view extension) {
     const std::string lower = lowercase(extension);
-    if (lower == ".png" || lower == ".bmp") {
+    if (lower == ".png" || lower == ".bmp" || lower == ".jpg" || lower == ".jpeg") {
         return "image";
     }
     if (lower == ".wav" || lower == ".ogg" || lower == ".mp3") {

@@ -52,8 +52,12 @@ SLASH_COMPONENT(Transform3D, position, rotation, scale, visible, top_level, chil
 
 // Draws the entity's mesh at its Transform3D, as Godot's MeshInstance3D: its primitive mesh
 // component (BoxMesh, SphereMesh and the rest), colored by its StandardMaterial3D, or Godot's
-// default material without one.
+// default material without one; or a glTF model file, with its own materials.
 struct MeshInstance3D {
+    // A .gltf or .glb file's meshes, placed as its nodes place them, in place of a primitive mesh
+    // component; "" for none. A StandardMaterial3D on the entity replaces the file's materials,
+    // as Godot's material_override.
+    std::string mesh;
     // The render layers it is on: cameras whose cull_mask and lights whose light_cull_mask share
     // a bit with them see it and light it.
     std::uint32_t layers = 1;
@@ -63,7 +67,7 @@ struct MeshInstance3D {
 
     friend bool operator==(const MeshInstance3D&, const MeshInstance3D&) = default;
 };
-SLASH_COMPONENT(MeshInstance3D, layers, cast_shadow)
+SLASH_COMPONENT(MeshInstance3D, mesh, layers, cast_shadow)
 
 // Godot's BoxMesh: a box of size centered on the entity, each face cut into subdivisions + 1
 // strips along each axis.
@@ -202,7 +206,8 @@ struct StandardMaterial3D {
     Vec3 uv1_offset;
     // "nearest", "linear", "nearest_with_mipmaps" or "linear_with_mipmaps"
     std::string texture_filter = "linear_with_mipmaps";
-    bool disable_fog = false; // the WorldEnvironment's fog leaves it alone
+    bool texture_repeat = true; // textures tile past 0..1; false stretches their edges
+    bool disable_fog = false;   // the WorldEnvironment's fog leaves it alone
 
     friend bool operator==(const StandardMaterial3D&, const StandardMaterial3D&) = default;
 };
@@ -211,7 +216,7 @@ SLASH_COMPONENT(StandardMaterial3D, transparency, alpha_scissor_threshold, blend
                 metallic_specular, metallic_texture, metallic_texture_channel, roughness,
                 roughness_texture, roughness_texture_channel, emission_enabled, emission,
                 emission_energy_multiplier, emission_texture, normal_enabled, normal_scale,
-                normal_texture, uv1_scale, uv1_offset, texture_filter, disable_fog)
+                normal_texture, uv1_scale, uv1_offset, texture_filter, texture_repeat, disable_fog)
 
 // What the 3D world is seen through, as Godot's Camera3D: it looks down its entity's -z. The
 // world is seen through the current camera: the first with current set, else the first one,

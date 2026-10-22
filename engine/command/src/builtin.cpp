@@ -31,6 +31,7 @@
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/light.hpp"
+#include "slash/scene3d/model.hpp"
 #include "slash/soundtrack/score.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/text/text.hpp"
@@ -2200,6 +2201,105 @@ Reply text_measure(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+// A glTF model's meshes, materials, images and parts, as a MeshInstance3D draws them.
+Reply model_inspect(Session& session, const json::Value& params) {
+    const std::string id = text(params, "id");
+    std::string path = text(params, "path");
+    if (id.empty() == path.empty()) {
+        return param_error(code::kInvalidParams, "",
+                           "give id (an entity whose MeshInstance3D draws a model) or path (a "
+                           ".gltf or .glb file)");
+    }
+    const world::World& world = session.world();
+    if (!id.empty()) {
+        const entt::entity entity = world.find(id);
+        if (entity == entt::null) {
+            return unknown_entity(world, id, "/id");
+        }
+        const auto* instance = world.ecs().try_get<world::MeshInstance3D>(entity);
+        if (instance == nullptr || instance->mesh.empty()) {
+            return param_error(code::kInvalidParams, "/id",
+                               quoted(id) + (instance == nullptr
+                                                 ? " has no MeshInstance3D"
+                                                 : "'s MeshInstance3D draws no model"));
+        }
+        path = instance->mesh;
+    } else if (!scene3d::is_model_path(path)) {
+        return param_error(code::kInvalidParams, "/path",
+                           quoted(path) + " isn't a model: give a .gltf or .glb file");
+    }
+    auto loaded = session.assets().load<scene3d::Model>(path);
+    if (!loaded) {
+        return param_error(loaded.error(), id.empty() ? "/path" : "/id");
+    }
+    const scene3d::Model& model = *loaded.value();
+    json::Value result;
+    result["meshes"] = json::Array{};
+    for (const scene3d::ModelMesh& mesh : model.meshes) {
+        std::size_t vertices = 0;
+        std::size_t triangles = 0;
+        json::Array materials;
+        for (const scene3d::ModelSurface& surface : mesh.surfaces) {
+            vertices += surface.vertices.size();
+            triangles += surface.indices.size() / 3;
+            materials.emplace_back(surface.material);
+        }
+        json::Value out;
+        out["name"] = mesh.name;
+        out["materials"] = std::move(materials);
+        out["vertices"] = vertices;
+        out["triangles"] = triangles;
+        result["meshes"].push_back(std::move(out));
+    }
+    // Each material's StandardMaterial3D fields that differ from the defaults, and the images
+    // its textures sample.
+    const json::Value defaults = world::to_json(world, world::StandardMaterial3D{});
+    result["materials"] = json::Array{};
+    for (const scene3d::ModelMaterial& material : model.materials) {
+        json::Value standard = world::to_json(world, material.standard);
+        json::Object changed;
+        for (auto& [field, value] : standard.as_object()) {
+            if (value != *defaults.find(field)) {
+                changed.emplace(field, std::move(value));
+            }
+        }
+        json::Value out;
+        out["name"] = material.name;
+        out["standard"] = rounded(json::Value(std::move(changed)));
+        const auto texture = [&](std::string_view name, int image) {
+            if (image >= 0) {
+                out["textures"][name] = image;
+            }
+        };
+        texture("albedo", material.albedo_image);
+        texture("metallic_roughness", material.metallic_roughness_image);
+        texture("normal", material.normal_image);
+        texture("emission", material.emission_image);
+        result["materials"].push_back(std::move(out));
+    }
+    result["images"] = json::Array{};
+    for (const scene3d::ModelImage& image : model.images) {
+        json::Value out;
+        if (image.path.empty()) {
+            out["size"] = json::Array{image.image.width, image.image.height};
+        } else {
+            out["path"] = image.path;
+        }
+        result["images"].push_back(std::move(out));
+    }
+    result["parts"] = json::Array{};
+    for (const scene3d::ModelPart& part : model.parts) {
+        json::Value out;
+        out["node"] = part.node;
+        out["mesh"] = part.mesh;
+        result["parts"].push_back(std::move(out));
+    }
+    const scene3d::Bounds box = scene3d::bounds(model);
+    result["bounds"]["min"] = rounded(json::Array{box.min.x, box.min.y, box.min.z});
+    result["bounds"]["max"] = rounded(json::Array{box.max.x, box.max.y, box.max.z});
+    return Reply::success(std::move(result));
+}
+
 Reply ui_press(Session& session, const json::Value& params) {
     world::World& world = session.world();
     const std::string id = text(params, "id");
@@ -4148,7 +4248,7 @@ Reply storyboard_check(Session& session, const json::Value& /*params*/) {
     std::vector<std::string> textures;
     std::vector<std::string> scenes;
     for (const std::string& path : files.value()) {
-        if (path.ends_with(".png") || path.ends_with(".bmp") || path.ends_with(".ktx2")) {
+        if (render::is_image_path(path)) {
             textures.push_back(path);
         }
         if (path.ends_with(world::kSceneSuffix)) {
@@ -5852,6 +5952,19 @@ void register_builtin_commands(Registry& registry) {
             },
             {"text"}),
         .handler = text_measure,
+    });
+
+    registry.add({
+        .name = "model.inspect",
+        .description = "Returns a glTF model's meshes, materials, images, parts and bounds, as a "
+                       "MeshInstance3D draws them.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({
+            {"id", id_property("An entity whose MeshInstance3D draws a model. Or give path.")},
+            {"path", property("string", "A .gltf or .glb file. Or give id.")},
+        }),
+        .handler = model_inspect,
     });
 
     json::Value inject_events = property("array", "Events in order. Mouse and finger positions "

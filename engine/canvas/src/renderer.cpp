@@ -306,6 +306,18 @@ CanvasRenderer::CanvasRenderer(render::RenderDevice& device, asset::Assets& asse
               return scene3d::SourceTexture{.id = made.value()->id,
                                             .width = made.value()->width,
                                             .height = made.value()->height};
+          },
+          [this](const std::string& path) -> Result<scene3d::SourceModel> {
+              auto it = models_.find(path);
+              if (it == models_.end()) {
+                  auto loaded = assets_->load<scene3d::Model>(path);
+                  if (!loaded) {
+                      return loaded.error();
+                  }
+                  it = models_.emplace(path, std::move(loaded).value()).first;
+              }
+              return scene3d::SourceModel{.model = it->second.share(),
+                                          .version = it->second.version()};
           }) {}
 
 CanvasRenderer::~CanvasRenderer() {
