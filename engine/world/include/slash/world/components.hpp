@@ -54,8 +54,8 @@ SLASH_COMPONENT(Transform3D, position, rotation, scale, visible, top_level, chil
 // component (BoxMesh, SphereMesh and the rest), colored by its StandardMaterial3D, or Godot's
 // default material without one; or a model file, with its own materials.
 struct MeshInstance3D {
-    // A .gltf, .glb or .obj file's meshes, placed as its nodes place them, in place of a primitive
-    // mesh component; "" for none. A StandardMaterial3D on the entity replaces the file's
+    // A .gltf, .glb, .obj or .fbx file's meshes, placed as its nodes place them, in place of a
+    // primitive mesh component; "" for none. A StandardMaterial3D on the entity replaces the file's
     // materials, as Godot's material_override.
     std::string mesh;
     // The render layers it is on: cameras whose cull_mask and lights whose light_cull_mask share

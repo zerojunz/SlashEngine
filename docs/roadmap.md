@@ -611,7 +611,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
       and JPEG textures, as Godot's importer reads them
 - [x] OBJ models (`.obj` with their `.mtl` libraries) on `MeshInstance3D`, as Godot's OBJ importer
       reads them
-- [ ] FBX models through ufbx, as Godot 4.3's importer reads them
+- [x] FBX models through ufbx, as Godot 4.3's importer reads them
 - [ ] Blender `.blend` files the way Godot does it: the engine runs the artist's own Blender in
       the background to convert them to glTF, so no Blender code is linked or shipped
 - [ ] 3D scenes in `project.import` from Godot and Unity projects, and Unreal Engine projects
