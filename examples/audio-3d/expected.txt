@@ -1,0 +1,19 @@
+wrote audio/engine.wav and audio/trickle.wav
+scene.open {"path":"main.scene.json"}
+{"entities":4,"path":"main.scene.json"}
+step {"ticks":30}
+{"tick":30,"ticks":30}
+audio.state {"ids":["car"]}
+{"buses":[{"name":"Master","peak_db":-10.3,"volume_db":0},{"effects":[{"type":"hard_limiter"}],"name":"Sfx","peak_db":-25,"volume_db":0},{"effects":[{"type":"low_pass_filter"}],"name":"Cave","peak_db":-20.2,"volume_db":0},{"effects":[{"type":"reverb"}],"name":"Echo","peak_db":-13.9,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Sfx","filter_db":-21.7,"id":"car","kind":"AudioStreamPlayer3D","length":5,"pitch_scale":1.0586,"position":0.5399,"stream":"audio/engine.wav","voices":1,"volume":[0.0847,0.0444]}]}
+step {"ticks":90}
+{"tick":120,"ticks":90}
+audio.state {"ids":["car"]}
+{"buses":[{"name":"Master","peak_db":-9.2,"volume_db":0},{"effects":[{"type":"hard_limiter"}],"name":"Sfx","peak_db":-13.8,"volume_db":0},{"effects":[{"type":"low_pass_filter"}],"name":"Cave","peak_db":-20.2,"volume_db":0},{"effects":[{"type":"reverb"}],"name":"Echo","peak_db":-11.1,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Sfx","filter_db":-13.5,"id":"car","kind":"AudioStreamPlayer3D","length":5,"pitch_scale":1,"position":2.1043,"stream":"audio/engine.wav","voices":1,"volume":[0.3094,0.3094]}]}
+step {"ticks":60}
+{"tick":180,"ticks":60}
+audio.state {"ids":["car"]}
+{"buses":[{"name":"Master","peak_db":-12.1,"volume_db":0},{"effects":[{"type":"hard_limiter"}],"name":"Sfx","peak_db":-20.6,"volume_db":0},{"effects":[{"type":"low_pass_filter"}],"name":"Cave","peak_db":-20.2,"volume_db":0},{"effects":[{"type":"reverb"}],"name":"Echo","peak_db":-11.2,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Sfx","filter_db":-20.1,"id":"car","kind":"AudioStreamPlayer3D","length":5,"pitch_scale":0.9504,"position":3.0679,"stream":"audio/engine.wav","voices":1,"volume":[0.0775,0.1412]}]}
+audio.state {"ids":["trickle"]}
+{"buses":[{"name":"Master","peak_db":-12.1,"volume_db":0},{"effects":[{"type":"hard_limiter"}],"name":"Sfx","peak_db":-20.6,"volume_db":0},{"effects":[{"type":"low_pass_filter"}],"name":"Cave","peak_db":-20.2,"volume_db":0},{"effects":[{"type":"reverb"}],"name":"Echo","peak_db":-11.2,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Cave","filter_db":-13.3,"id":"trickle","kind":"AudioStreamPlayer3D","length":5,"pitch_scale":1,"position":3.0099,"sends":[{"bus":"Echo","volume":[0.129,0.235]}],"stream":"audio/trickle.wav","voices":1,"volume":[0.215,0.3916]}]}
+audio.capture {"bus":"Echo","seconds":0.5,"slices":5}
+{"peak_db":-10.5,"rms_db":-20.2,"seconds":0.5,"slices":[-10.8,-10.7,-10.5,-10.6,-10.5]}

@@ -1,0 +1,23 @@
+{
+  "animations": {
+    "drive": {
+      "length": 4,
+      "tracks": [
+        {
+          "keys": [
+            {
+              "time": 0,
+              "value": -40
+            },
+            {
+              "time": 4,
+              "value": 40
+            }
+          ],
+          "path": "Transform3D/position/x"
+        }
+      ]
+    }
+  },
+  "format": 1
+}

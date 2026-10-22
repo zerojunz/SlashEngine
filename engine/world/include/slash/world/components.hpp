@@ -378,11 +378,14 @@ struct Camera3D {
     float v_offset = 0.0F; // and its y
     bool current = false;
     std::uint32_t cull_mask = 0xFFFFFU; // the render layers it sees
+    // Whether 3D sounds' doppler follows its speed while it is the listener: "disabled",
+    // "idle_step" or "physics_step".
+    std::string doppler_tracking = "disabled";
 
     friend bool operator==(const Camera3D&, const Camera3D&) = default;
 };
 SLASH_COMPONENT(Camera3D, projection, keep_aspect, fov, size, near, far, h_offset, v_offset,
-                current, cull_mask)
+                current, cull_mask, doppler_tracking)
 
 // Light from one direction over the whole world, as Godot's DirectionalLight3D, such as the sun:
 // it shines down its entity's -z.
@@ -1273,11 +1276,21 @@ struct Area3D {
     float linear_damp = 0.1F;
     std::string angular_damp_space_override = "disabled";
     float angular_damp = 0.1F;
+    // What happens to AudioStreamPlayer3D sounds in it, as Godot's Area3D: they play through
+    // audio_bus_name and send to reverb_bus_name.
+    bool audio_bus_override = false;
+    std::string audio_bus_name = "Master";
+    bool reverb_bus_enabled = false;
+    std::string reverb_bus_name = "Master";
+    float reverb_bus_amount = 0.0F;
+    float reverb_bus_uniformity = 0.0F;
 };
 SLASH_COMPONENT(Area3D, collision_layer, collision_mask, monitoring, monitorable, priority,
                 gravity_space_override, gravity_point, gravity_point_unit_distance,
                 gravity_point_center, gravity_direction, gravity, linear_damp_space_override,
-                linear_damp, angular_damp_space_override, angular_damp)
+                linear_damp, angular_damp_space_override, angular_damp, audio_bus_override,
+                audio_bus_name, reverb_bus_enabled, reverb_bus_name, reverb_bus_amount,
+                reverb_bus_uniformity)
 
 // 3D joints, as Godot's Joint3D nodes on its Jolt module: node_a and node_b name two bodies, and
 // a missing one is the world. The joint is made at the entity's Transform3D, after its parents',
@@ -1942,6 +1955,50 @@ struct AudioListener2D {
     friend bool operator==(const AudioListener2D&, const AudioListener2D&) = default;
 };
 SLASH_COMPONENT(AudioListener2D, current)
+
+// Plays a sound at the entity's Transform3D, as Godot's AudioStreamPlayer3D: quieter with
+// distance from the listener, panned by where it is around it, muffled with distance and
+// outside its emission cone, pitched by doppler, and sent to the buses of an Area3D it is in.
+struct AudioStreamPlayer3D {
+    std::string stream; // project path of a .wav, .ogg, .mp3 or .audio.json file
+    // "inverse_distance", "inverse_square_distance", "logarithmic" or "disabled".
+    std::string attenuation_model = "inverse_distance";
+    float volume_db = 0.0F;
+    float unit_size = 10.0F; // meters at which it is at volume_db
+    float max_db = 3.0F;     // the loudest it gets, however close
+    float pitch_scale = 1.0F;
+    bool playing = false;
+    bool autoplay = false;
+    bool stream_paused = false;
+    float max_distance = 0.0F; // meters; silent beyond; 0 for no limit
+    int max_polyphony = 1;
+    float panning_strength = 1.0F;
+    std::string bus = "Master";
+    std::uint32_t area_mask = 1; // Area3D layers whose bus override and reverb apply; 0 for none
+    bool emission_angle_enabled = false;
+    float emission_angle_degrees = 45.0F; // half the cone it faces down its -z
+    float emission_angle_filter_attenuation_db = -12.0F;
+    float attenuation_filter_cutoff_hz = 5000.0F;
+    float attenuation_filter_db = -24.0F;
+    std::string doppler_tracking = "disabled"; // "disabled", "idle_step" or "physics_step"
+    std::map<std::string, json::Value> parameters;
+
+    friend bool operator==(const AudioStreamPlayer3D&, const AudioStreamPlayer3D&) = default;
+};
+SLASH_COMPONENT(AudioStreamPlayer3D, stream, attenuation_model, volume_db, unit_size, max_db,
+                pitch_scale, playing, autoplay, stream_paused, max_distance, max_polyphony,
+                panning_strength, bus, area_mask, emission_angle_enabled, emission_angle_degrees,
+                emission_angle_filter_attenuation_db, attenuation_filter_cutoff_hz,
+                attenuation_filter_db, doppler_tracking, parameters)
+
+// Where 3D sounds are heard from, as Godot's AudioListener3D, in place of the current Camera3D.
+struct AudioListener3D {
+    bool current = false;
+    std::string doppler_tracking = "disabled"; // "disabled", "idle_step" or "physics_step"
+
+    friend bool operator==(const AudioListener3D&, const AudioListener3D&) = default;
+};
+SLASH_COMPONENT(AudioListener3D, current, doppler_tracking)
 
 // Registers the components above, with their docs.
 void register_builtin_components(ComponentRegistry& registry);

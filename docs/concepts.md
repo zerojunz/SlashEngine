@@ -287,11 +287,12 @@ Sound follows Godot's AudioServer. **Sounds** are `.wav`, `.ogg` and `.mp3` file
 `.audio.json` file loops one, or picks one of several at random each time it plays, as footsteps
 want. **Players** are components: an `AudioStreamPlayer` plays everywhere at once, as music
 does, and an `AudioStreamPlayer2D` fades with distance from the `AudioListener2D` and pans left
-or right by where it is. Each player mixes into a **bus**, and each bus runs its **effects**
+or right by where it is. An `AudioStreamPlayer3D` does the same in 3D from the `AudioListener3D`
+or camera, muffled with distance and pitched by the Doppler effect. Each player mixes into a **bus**, and each bus runs its **effects**
 (filters, EQs, delay, reverb, compression and the rest of Godot's) and sends to another bus,
 down to Master, which plays on the speakers. The project's `.bus_layout.json` file lists the
-buses, so music and sound effects get their own volumes, as in an options menu. An `Area2D` can
-send the sounds inside it to a bus of its own, so a cave echoes. Music can be a playlist, layers
+buses, so music and sound effects get their own volumes, as in an options menu. An `Area2D` or
+`Area3D` can send the sounds inside it to a bus of its own, so a cave echoes. Music can be a playlist, layers
 that play together, or **interactive music**: clips such as explore and combat that switch on
 the next beat or bar when the game sets the player's `switch_to_clip`, as Godot's.
 

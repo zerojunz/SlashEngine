@@ -5,6 +5,7 @@
 #include "slash/core/json_schema.hpp"
 #include "slash/core/math.hpp"
 #include "slash/physics2d/physics2d.hpp"
+#include "slash/physics3d/physics3d.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -1973,6 +1974,316 @@ TEST_CASE("without a listener, 2D sounds are heard from the middle of the camera
     check_frame(sounds.player("hum")->volume, (1.0F - pan) * fade, pan * fade);
 }
 
+namespace {
+
+// Each side's share of a sound straight ahead of a 3D listener: the cosine of 45 degrees.
+float ahead() {
+    return std::sqrt(0.5F);
+}
+
+// A current AudioListener3D at the origin, looking down -z as everything in Godot does.
+entt::entity listen_3d(Sounds& sounds) {
+    const entt::entity ears = sounds.add("ears", "AudioListener3D", R"({"current": true})");
+    sounds.world.ecs().emplace<world::Transform3D>(ears);
+    return ears;
+}
+
+// An AudioStreamPlayer3D playing a steady hum of 0.5 at a place, with more fields.
+entt::entity hum_3d(Sounds& sounds, slash::Vec3 at, std::string_view fields = "") {
+    sounds.files.write("hum.wav", steady_wav(kRate, {0.5F, 0.5F}));
+    std::string text = R"({"stream": "hum.wav", "autoplay": true)";
+    if (!fields.empty()) {
+        text += ", ";
+        text += fields;
+    }
+    text += "}";
+    const entt::entity hum = sounds.add("hum", "AudioStreamPlayer3D", text);
+    sounds.world.ecs().emplace<world::Transform3D>(hum).position = at;
+    return hum;
+}
+
+} // namespace
+
+TEST_CASE("an AudioStreamPlayer3D fades with distance as Godot's attenuation models say") {
+    Sounds sounds;
+    listen_3d(sounds);
+    const entt::entity hum = hum_3d(sounds, {});
+    auto& player = sounds.world.ecs().get<world::AudioStreamPlayer3D>(hum);
+    const auto volume_at = [&](float distance) {
+        sounds.world.ecs().get<world::Transform3D>(hum).position = {0.0F, 0.0F, -distance};
+        sounds.step();
+        return sounds.player("hum")->volume;
+    };
+    // Straight ahead, each side gets the cosine of 45 degrees of it; inverse_distance, the
+    // default, halves it at twice unit_size.
+    check_frame(volume_at(20.0F), 0.5F * ahead(), 0.5F * ahead());
+    sounds.step();
+    check_frame(sounds.last(), 0.25F * ahead(), 0.25F * ahead());
+    player.attenuation_model = "inverse_square_distance";
+    check_frame(volume_at(20.0F), 0.25F * ahead(), 0.25F * ahead());
+    player.attenuation_model = "logarithmic";
+    const float logarithmic = audio::db_to_linear(-20.0F * std::log(2.0F));
+    check_frame(volume_at(20.0F), logarithmic * ahead(), logarithmic * ahead());
+    player.attenuation_model = "disabled";
+    check_frame(volume_at(20.0F), ahead(), ahead());
+
+    // Nearer than unit_size it is louder, up to max_db.
+    player.attenuation_model = "inverse_distance";
+    check_frame(volume_at(1.0F), audio::db_to_linear(3.0F) * ahead(),
+                audio::db_to_linear(3.0F) * ahead());
+    // At unit_size it plays at volume_db.
+    player.unit_size = 20.0F;
+    player.volume_db = audio::linear_to_db(0.5F);
+    check_frame(volume_at(20.0F), 0.5F * ahead(), 0.5F * ahead());
+}
+
+TEST_CASE("an AudioStreamPlayer3D pans by where it is around the listener, as Godot's") {
+    Sounds sounds;
+    const entt::entity ears = listen_3d(sounds);
+    const entt::entity hum = hum_3d(sounds, {10.0F, 0.0F, 0.0F});
+    const auto volume = [&] {
+        sounds.step();
+        return sounds.player("hum")->volume;
+    };
+    // Godot's _calc_output_vol_stereo at the project's panning_strength_3d, a half: each side is
+    // sqrt((1 -+ 0.6 cos a) / 2), where a is the angle from the listener's right.
+    check_frame(volume(), std::sqrt(0.2F), std::sqrt(0.8F));
+    CHECK(sounds.player("hum")->bus == "Master");
+    // Height doesn't pan, but it is further away.
+    auto& at = sounds.world.ecs().get<world::Transform3D>(hum).position;
+    at = {10.0F, 10.0F, 0.0F};
+    const float further = 1.0F / std::sqrt(2.0F);
+    check_frame(volume(), std::sqrt(0.2F) * further, std::sqrt(0.8F) * further);
+
+    // Turned round, the listener hears it on the left.
+    at = {10.0F, 0.0F, 0.0F};
+    sounds.world.ecs().get<world::Transform3D>(ears).rotation.y = std::numbers::pi_v<float>;
+    check_frame(volume(), std::sqrt(0.8F), std::sqrt(0.2F));
+    sounds.world.ecs().get<world::Transform3D>(ears).rotation.y = 0.0F;
+
+    // panning_strength scales the project's: at none it's the same on both sides, at twice it
+    // pans all the way.
+    auto& player = sounds.world.ecs().get<world::AudioStreamPlayer3D>(hum);
+    player.panning_strength = 0.0F;
+    check_frame(volume(), ahead(), ahead());
+    player.panning_strength = 2.0F;
+    check_frame(volume(), 0.0F, 1.0F);
+}
+
+TEST_CASE("an AudioStreamPlayer3D dulls as it fades and is silent past max_distance") {
+    Sounds sounds;
+    listen_3d(sounds);
+    const entt::entity hum = hum_3d(sounds, {0.0F, 0.0F, -10.0F}, R"("max_distance": 40)");
+    sounds.step();
+    // A quarter of the way to max_distance it is a quarter quieter, and the high shelf takes that
+    // share of attenuation_filter_db off its highs.
+    std::optional<audio::PlayerInfo> info = sounds.player("hum");
+    check_frame(info->volume, 0.75F * ahead(), 0.75F * ahead());
+    CHECK(info->filter_db == doctest::Approx(-6.0F).epsilon(0.001));
+
+    // Past it, nothing is heard and the filter stays as it was, as Godot's.
+    sounds.world.ecs().get<world::Transform3D>(hum).position.z = -50.0F;
+    sounds.step(2);
+    info = sounds.player("hum");
+    CHECK(info->voices == 1);
+    check_frame(info->volume, 0.0F, 0.0F);
+    CHECK(info->filter_db == doctest::Approx(-6.0F).epsilon(0.001));
+    check_frame(sounds.last(), 0.0F, 0.0F);
+
+    // Without attenuation_filter_db, the highs stay.
+    sounds.world.ecs().get<world::Transform3D>(hum).position.z = -10.0F;
+    sounds.world.ecs().get<world::AudioStreamPlayer3D>(hum).attenuation_filter_db = 0.0F;
+    sounds.step();
+    CHECK(sounds.player("hum")->filter_db == doctest::Approx(0.0F));
+}
+
+TEST_CASE("an AudioStreamPlayer3D with an emission angle dulls when it faces away") {
+    Sounds sounds;
+    listen_3d(sounds);
+    const entt::entity hum =
+        hum_3d(sounds, {0.0F, 0.0F, -10.0F}, R"("emission_angle_enabled": true)");
+    const auto filter_turned = [&](float turn) {
+        sounds.world.ecs().get<world::Transform3D>(hum).rotation.y = turn;
+        sounds.step();
+        return sounds.player("hum")->filter_db;
+    };
+    const float half_turn = std::numbers::pi_v<float>;
+    // Facing away, outside the 45 degrees around its front, its highs lose
+    // emission_angle_filter_attenuation_db.
+    CHECK(filter_turned(0.0F) == doctest::Approx(-12.0F).epsilon(0.001));
+    CHECK(filter_turned(half_turn) == doctest::Approx(0.0F).epsilon(0.001));
+    CHECK(filter_turned(half_turn / 2.0F) == doctest::Approx(-12.0F).epsilon(0.001));
+    sounds.world.ecs().get<world::AudioStreamPlayer3D>(hum).emission_angle_degrees = 100.0F;
+    CHECK(filter_turned(half_turn / 2.0F) == doctest::Approx(0.0F).epsilon(0.001));
+    // Its volume stays.
+    check_frame(sounds.player("hum")->volume, ahead(), ahead());
+}
+
+TEST_CASE("an AudioStreamPlayer3D tracking doppler is higher coming and lower going") {
+    Sounds sounds;
+    const entt::entity ears = listen_3d(sounds);
+    const entt::entity hum =
+        hum_3d(sounds, {0.0F, 0.0F, -100.0F}, R"("doppler_tracking": "physics_step")");
+    // Moves an entity along z by some each tick for some ticks.
+    const auto glide = [&](entt::entity entity, float by, int ticks) {
+        for (int i = 0; i < ticks; ++i) {
+            sounds.world.ecs().get<world::Transform3D>(entity).position.z += by;
+            sounds.step();
+        }
+        return sounds.player("hum")->pitch_scale;
+    };
+    // At 60 units a second (one a tick), against sound's 343.
+    constexpr float kSound = 343.0F;
+    CHECK(glide(hum, 1.0F, 5) == doctest::Approx(kSound / (kSound - 60.0F)).epsilon(0.001));
+    CHECK(glide(hum, -1.0F, 5) == doctest::Approx(kSound / (kSound + 60.0F)).epsilon(0.001));
+    // Godot measures speed over the last fifth of a second.
+    CHECK(glide(hum, 0.0F, 13) == doctest::Approx(1.0F));
+
+    // A listener that tracks doppler counts its own speed.
+    sounds.world.ecs().get<world::AudioListener3D>(ears).doppler_tracking = "idle_step";
+    CHECK(glide(ears, -1.0F, 5) == doctest::Approx(kSound / (kSound - 60.0F)).epsilon(0.001));
+    glide(ears, 0.0F, 13);
+
+    // A player that doesn't track it keeps its pitch_scale.
+    auto& player = sounds.world.ecs().get<world::AudioStreamPlayer3D>(hum);
+    player.doppler_tracking = "disabled";
+    player.pitch_scale = 2.0F;
+    CHECK(glide(ears, -1.0F, 5) == doctest::Approx(2.0F));
+}
+
+TEST_CASE("an Area3D sends the 3D sounds inside it to its bus, its reverb bus or both") {
+    audio::Settings settings;
+    settings.bus_layout = "buses.bus_layout.json";
+    Sounds sounds(settings);
+    slash::physics3d::install(sounds.world);
+    sounds.files.write("buses.bus_layout.json", R"({"format": 1, "buses": [{"name": "Master"},
+        {"name": "Sfx"}, {"name": "Cave"}, {"name": "Echo"}]})");
+    listen_3d(sounds);
+    const entt::entity hum = hum_3d(sounds, {0.0F, 0.0F, -10.0F}, R"("bus": "Sfx")");
+    const entt::entity cave =
+        sounds.add("cave", "Area3D", R"({"audio_bus_override": true, "audio_bus_name": "Cave"})");
+    sounds.world.ecs().emplace<world::Transform3D>(cave).position = {0.0F, 0.0F, -10.0F};
+    sounds.world.ecs().emplace<world::CollisionShape3D>(cave).size = {4.0F, 4.0F, 4.0F};
+    const auto heard = [&] {
+        sounds.step();
+        return *sounds.player("hum");
+    };
+    audio::PlayerInfo info = heard();
+    CHECK(info.bus == "Cave");
+    check_frame(info.volume, ahead(), ahead());
+    CHECK(info.sends.empty());
+
+    // With a reverb bus as well, it plays on both, the reverb bus getting reverb_bus_amount of it.
+    auto& area = sounds.world.ecs().get<world::Area3D>(cave);
+    area.reverb_bus_enabled = true;
+    area.reverb_bus_name = "Echo";
+    area.reverb_bus_amount = 0.5F;
+    info = heard();
+    CHECK(info.bus == "Cave");
+    REQUIRE(info.sends.size() == 1);
+    CHECK(info.sends[0].bus == "Echo");
+    check_frame(info.sends[0].volume, 0.5F * ahead(), 0.5F * ahead());
+    sounds.step();
+    const audio::Server& server = *audio::server(sounds.world);
+    CHECK(server.bus_peak_db(server.bus_index("Cave")).left ==
+          doctest::Approx(audio::linear_to_db(0.5F * ahead())).epsilon(0.001));
+    CHECK(server.bus_peak_db(server.bus_index("Echo")).left ==
+          doctest::Approx(audio::linear_to_db(0.25F * ahead())).epsilon(0.001));
+
+    // A reverb bus without the bus override sends it to the reverb bus alone, as Godot's does.
+    area.audio_bus_override = false;
+    info = heard();
+    CHECK(info.bus == "Echo");
+    check_frame(info.volume, 0.5F * ahead(), 0.5F * ahead());
+    CHECK(info.sends.empty());
+
+    // With uniformity, the reverb comes from the area's nearest point to the listener; inside the
+    // area that is the listener itself, so it is heard on both sides alike, at max_db.
+    area.reverb_bus_uniformity = 1.0F;
+    sounds.world.ecs().get<world::CollisionShape3D>(cave).size = {40.0F, 40.0F, 40.0F};
+    const float uniform = 0.5F * 0.5F * audio::db_to_linear(3.0F);
+    check_frame(heard().volume, uniform, uniform);
+    area.reverb_bus_uniformity = 0.0F;
+    sounds.world.ecs().get<world::CollisionShape3D>(cave).size = {4.0F, 4.0F, 4.0F};
+
+    // A bus the layout doesn't have is Master, as Godot's.
+    area.reverb_bus_name = "Nowhere";
+    CHECK(heard().bus == "Master");
+    // Areas whose layer isn't in area_mask, and those it isn't in, leave its bus.
+    auto& player = sounds.world.ecs().get<world::AudioStreamPlayer3D>(hum);
+    player.area_mask = 2;
+    CHECK(heard().bus == "Sfx");
+    player.area_mask = 1;
+    sounds.world.ecs().get<world::Transform3D>(hum).position.z = -20.0F;
+    CHECK(heard().bus == "Sfx");
+}
+
+TEST_CASE("without an AudioListener3D, 3D sounds are heard from the current camera") {
+    Sounds sounds;
+    hum_3d(sounds, {0.0F, 0.0F, -10.0F});
+    // With neither, nothing hears it.
+    sounds.step();
+    check_frame(sounds.player("hum")->volume, 0.0F, 0.0F);
+
+    // A camera 20 units behind it, turned a quarter left, has it on its right.
+    const entt::entity camera = sounds.world.create("cam").value();
+    auto& view = sounds.world.ecs().emplace<world::Transform3D>(camera);
+    view.position = {0.0F, 0.0F, 10.0F};
+    view.rotation.y = std::numbers::pi_v<float> / 2.0F;
+    sounds.world.ecs().emplace<world::Camera3D>(camera);
+    sounds.step();
+    check_frame(sounds.player("hum")->volume, 0.5F * std::sqrt(0.2F), 0.5F * std::sqrt(0.8F));
+
+    // A listener takes over, current or not, as the first in a viewport becomes current.
+    const entt::entity ears = sounds.add("ears", "AudioListener3D", "{}");
+    sounds.world.ecs().emplace<world::Transform3D>(ears).position = {0.0F, 0.0F, 10.0F};
+    sounds.step();
+    check_frame(sounds.player("hum")->volume, 0.5F * ahead(), 0.5F * ahead());
+    // Of several, the current one.
+    const entt::entity near = sounds.add("near", "AudioListener3D", R"({"current": true})");
+    sounds.world.ecs().emplace<world::Transform3D>(near);
+    sounds.step();
+    check_frame(sounds.player("hum")->volume, ahead(), ahead());
+}
+
+TEST_CASE("a playback mixes into several buses at once, through one high shelf") {
+    audio::Server server(kRate);
+    auto layout = audio::parse_bus_layout(parse(R"({"format": 1, "buses": [{"name": "Master"},
+        {"name": "Dry"}, {"name": "Wet"}]})"));
+    REQUIRE(layout.ok());
+    server.set_layout(layout.value());
+    const auto id = server.start(steady_stream(kRate, {0.5F, 0.5F})->instantiate(kRate, 0), "Dry",
+                                 {1.0F, 1.0F}, 0.0, 1.0F);
+    server.set_bus_volumes(id, {{"Dry", {1.0F, 0.5F}}, {"Wet", {0.5F, 0.5F}}});
+    check_frame(mix(server, 1024).back(), 0.75F, 0.5F);
+    CHECK(server.bus_peak_db(1).left == doctest::Approx(audio::linear_to_db(0.5F)).epsilon(0.001));
+    CHECK(server.bus_peak_db(2).left == doctest::Approx(audio::linear_to_db(0.25F)).epsilon(0.001));
+    // A bus it leaves fades out over the next mix step.
+    server.set_bus_volumes(id, {{"Wet", {0.5F, 0.5F}}});
+    check_frame(mix(server, 1024).back(), 0.25F, 0.25F);
+
+    // The high shelf leaves what is below its cutoff and cuts what is above. As Godot's filter
+    // takes the gain where the cookbook formula takes its square root, the highs lose twice the
+    // gain in decibels: a quarter leaves a sixteenth.
+    const auto shelved = [&](double hz) {
+        const auto sound = std::make_shared<audio::Sound>();
+        sound->mix_rate = kRate;
+        sound->channels = 1;
+        sound->frames = kRate;
+        for (const Frame& frame : sine(hz, 0.5F, kRate)) {
+            sound->samples.push_back(frame.left);
+        }
+        audio::Server alone(kRate);
+        const auto playing = alone.start(audio::sound_stream(sound)->instantiate(kRate, 0),
+                                         "Master", {1.0F, 1.0F}, 0.0, 1.0F);
+        alone.set_highshelf(playing, 0.25F, 5000.0F);
+        const std::vector<Frame> out = mix(alone, 8192);
+        return rms(std::span(out).subspan(4096)) / (0.5F / std::sqrt(2.0F));
+    };
+    CHECK(shelved(100.0) == doctest::Approx(1.0F).epsilon(0.02));
+    CHECK(shelved(16000.0) == doctest::Approx(0.0625F).epsilon(0.1));
+}
+
 TEST_CASE("buses come from the project's .bus_layout.json, reloaded when it changes") {
     MemoryFiles* files = nullptr;
     audio::Settings settings;
@@ -2055,9 +2366,10 @@ TEST_CASE("project.json's audio settings are checked") {
         return audio::validate_settings(parse(text), "/audio");
     };
     CHECK(errors(R"({"bus_layout": "audio/main.bus_layout.json", "mix_rate": 48000,
-                     "output_latency": 30, "panning_strength_2d": 1})")
+                     "output_latency": 30, "panning_strength_2d": 1, "panning_strength_3d": 2})")
               .empty());
     CHECK(errors(R"({"mix_rate": 1000})").front().path == "/audio/mix_rate");
+    CHECK(errors(R"({"panning_strength_3d": 5})").front().path == "/audio/panning_strength_3d");
     CHECK(errors(R"({"mixrate": 48000})").front().path == "/audio/mixrate");
     CHECK(errors(R"({"bus_layout": "buses.json"})").front().message ==
           "expected a .bus_layout.json file");
@@ -2065,12 +2377,13 @@ TEST_CASE("project.json's audio settings are checked") {
 
     const audio::Settings parsed = audio::parse_settings(
         parse(R"({"bus_layout": "a.bus_layout.json", "mix_rate": 48000, "output_latency": 30,
-                  "panning_strength_2d": 1, "enable_input": true,
+                  "panning_strength_2d": 1, "panning_strength_3d": 2, "enable_input": true,
                   "input_usage_description": "Sing to the lanterns."})"));
     CHECK(parsed.bus_layout == "a.bus_layout.json");
     CHECK(parsed.mix_rate == 48000);
     CHECK(parsed.output_latency == 30.0F);
     CHECK(parsed.panning_strength_2d == 1.0F);
+    CHECK(parsed.panning_strength_3d == 2.0F);
     CHECK(parsed.enable_input);
     CHECK(parsed.input_usage_description == "Sing to the lanterns.");
     CHECK(audio::parse_settings(parse("{}")) == audio::Settings{});

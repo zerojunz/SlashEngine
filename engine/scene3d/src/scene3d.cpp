@@ -39,14 +39,6 @@ Vec3 normalized(Vec3 v) {
     return length == 0.0F ? v : scaled(v, 1.0F / length);
 }
 
-// Godot's Basis::orthonormalize: Gram-Schmidt on the columns, x first.
-world::Affine3D orthonormalized(world::Affine3D t) {
-    t.x = normalized(t.x);
-    t.y = normalized(t.y - scaled(t.x, dot(t.x, t.y)));
-    t.z = normalized(t.z - scaled(t.x, dot(t.x, t.z)) - scaled(t.y, dot(t.y, t.z)));
-    return t;
-}
-
 std::array<float, 3> rgb(const Vec4& color) {
     return {color.x, color.y, color.z};
 }
@@ -289,31 +281,7 @@ std::optional<Primitive> drawable(const world::World& world, entt::entity entity
 } // namespace
 
 entt::entity current_camera(const world::World& world, const world::Tree3D& tree) {
-    const auto& ecs = world.ecs();
-    entt::entity first = entt::null;
-    for (const entt::entity entity : tree.order()) {
-        if (const auto* camera = ecs.try_get<world::Camera3D>(entity); camera != nullptr) {
-            if (camera->current) {
-                return entity;
-            }
-            if (first == entt::null) {
-                first = entity;
-            }
-        }
-    }
-    // Cameras without a Transform3D come after those in the tree, in the order they were made.
-    for (const entt::entity entity : made<world::Camera3D>(world)) {
-        if (ecs.all_of<world::Transform3D>(entity)) {
-            continue;
-        }
-        if (ecs.get<const world::Camera3D>(entity).current) {
-            return entity;
-        }
-        if (first == entt::null) {
-            first = entity;
-        }
-    }
-    return first;
+    return world::current_camera(world, tree);
 }
 
 CameraView camera_view(const world::Camera3D& camera, const world::Affine3D& global, float aspect) {
@@ -947,7 +915,7 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
     lights_ = 0;
     const auto& ecs = world.ecs();
     const world::Tree3D tree(world);
-    const entt::entity camera = current_camera(world, tree);
+    const entt::entity camera = scene3d::current_camera(world, tree);
     if (camera == entt::null) {
         // Meshes and images kept for a world that has none now go.
         for (auto it = shared_.begin(); it != shared_.end();) {
