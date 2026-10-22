@@ -73,7 +73,7 @@ Image draw_post(RenderDevice& device, const PostProcess& post, const std::array<
     REQUIRE(device.draw_mesh(mesh.value(), kIdentity, {.albedo = color, .unshaded = true}).ok());
     REQUIRE(device.end_frame().ok());
     auto image = device.read_texture(target.value());
-    REQUIRE(image.ok());
+    REQUIRE_MESSAGE(image.ok(), (image.ok() ? std::string() : image.error().message));
     device.destroy_mesh(mesh.value());
     device.destroy_texture(target.value());
     return image.value();
@@ -87,7 +87,7 @@ Image draw_clear(RenderDevice& device, const PostProcess& post, render::Color cl
         device.begin_frame({.target = target.value(), .clear = clear, .scene = facing(post)}).ok());
     REQUIRE(device.end_frame().ok());
     auto image = device.read_texture(target.value());
-    REQUIRE(image.ok());
+    REQUIRE_MESSAGE(image.ok(), (image.ok() ? std::string() : image.error().message));
     device.destroy_texture(target.value());
     return image.value();
 }
