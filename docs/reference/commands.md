@@ -1085,8 +1085,10 @@ geometry under it, as Godot's `bake_navigation_mesh` and `bake_navigation_polygo
 yet). It replaces the file's `vertices` and `polygons`, keeping everything else as written, and
 returns how many it wrote, how many obstructions a 2D bake cut out, how many
 `obstacle_outlines` of [obstacles](scene-format.md#avoidance) with `affect_navigation_mesh` it
-cut out, and `warnings` when there are any: settings that don't fit whole cells, meshes that didn't load and a region with nothing
-under it to bake. A bake that comes out the same reports `"unchanged": true` and records no undo
+cut out, and `warnings` when there are any: settings that don't fit whole cells, meshes or tile
+sets that didn't load and a region with nothing under it to bake. A 2D bake takes the
+[tile map layers](scene-format.md#tile-navigation) under the region too: their tiles'
+navigation outlines and collision polygons. A bake that comes out the same reports `"unchanged": true` and records no undo
 step. Undo puts the file back as it was, removing it if the bake made it, and redo writes the
 bake again; both fail if the file changed since. The map takes the new file at the next command
 or tick.

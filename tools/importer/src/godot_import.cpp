@@ -5,6 +5,7 @@
 
 #include "slash/animation/animation.hpp"
 #include "slash/audio/audio.hpp"
+#include "slash/canvas/debug_draw.hpp"
 #include "slash/canvas/gpu_particles.hpp"
 #include "slash/canvas/tilemap.hpp"
 #include "slash/core/assert.hpp"
@@ -2261,10 +2262,11 @@ private:
         std::optional<canvas::TileSet> set;
     };
 
-    // What a tile set's tiles may refer to: how many occlusion layers it has, and its custom
-    // data layers that carry over, by Godot's index.
+    // What a tile set's tiles may refer to: how many occlusion and navigation layers it has, and
+    // its custom data layers that carry over, by Godot's index.
     struct TileLayers {
         std::size_t occlusion = 0;
+        std::size_t navigation = 0;
         std::map<std::int64_t, canvas::CustomDataLayer> data;
     };
 
@@ -2286,9 +2288,10 @@ private:
         // Terrain sets by index: their modes and their terrains' names by index.
         std::map<std::int64_t, std::int64_t> modes;
         std::map<std::pair<std::int64_t, std::int64_t>, std::string> terrains;
-        std::map<std::int64_t, json::Value> physics;    // physics layers by index
-        std::map<std::int64_t, std::int64_t> occlusion; // occlusion layers' light masks by index
-        std::set<std::int64_t> sdf_collision;           // occlusion layers particles collide with
+        std::map<std::int64_t, json::Value> physics;     // physics layers by index
+        std::map<std::int64_t, std::int64_t> occlusion;  // occlusion layers' light masks by index
+        std::set<std::int64_t> sdf_collision;            // occlusion layers particles collide with
+        std::map<std::int64_t, std::int64_t> navigation; // navigation layers' layers by index
         // Custom data layers' names and Variant types by index.
         std::map<std::int64_t, std::pair<std::string, std::int64_t>> data;
         std::vector<std::pair<std::int64_t, const Value*>> sources;
@@ -2393,7 +2396,15 @@ private:
                     problems_.add("TileSet." + name, where);
                 }
             } else if (parts[0].starts_with("navigation_layer_")) {
-                problems_.add("tile set navigation layers", where);
+                const auto index =
+                    parse_int(parts[0].substr(std::string_view("navigation_layer_").size()));
+                const std::string_view field = parts.size() == 2 ? parts[1] : "";
+                if (index && *index >= 0 && field == "layers") {
+                    navigation[*index] = static_cast<std::uint32_t>(
+                        static_cast<std::int64_t>(value.number()) & 0xFFFFFFFF);
+                } else {
+                    problems_.add("TileSet." + name, where);
+                }
             } else {
                 problems_.add("TileSet." + name, where);
             }
@@ -2426,6 +2437,19 @@ private:
             }
             layers.occlusion = out_layers.size();
             doc["occlusion_layers"] = std::move(out_layers);
+        }
+        if (!navigation.empty()) {
+            json::Array out_layers;
+            for (std::int64_t index = 0; index <= navigation.rbegin()->first; ++index) {
+                const auto found = navigation.find(index);
+                json::Value layer = json::Object{};
+                if (found != navigation.end() && found->second != 1) {
+                    layer["layers"] = found->second;
+                }
+                out_layers.push_back(std::move(layer));
+            }
+            layers.navigation = out_layers.size();
+            doc["navigation_layers"] = std::move(out_layers);
         }
         // Custom data layers of the types a tile set holds; Godot's names are unique already.
         std::set<std::string> data_names;
@@ -2545,10 +2569,12 @@ private:
             std::int64_t terrain = -1;
             std::map<canvas::Neighbor, std::int64_t> bits;
             Polygons polygons;
-            Polygons occluders; // by occlusion layer and polygon number
+            Polygons occluders;  // by occlusion layer and polygon number
+            Polygons navigation; // by navigation layer and outline number
             std::map<std::int64_t, json::Value> alternatives;
             std::map<std::int64_t, Polygons> alternative_polygons;
             std::map<std::int64_t, Polygons> alternative_occluders;
+            std::map<std::int64_t, Polygons> alternative_navigation;
             std::int64_t frames = 1;                  // animation_frames_count, if given
             std::map<std::int64_t, double> durations; // animation_frame_N/duration
         };
@@ -2654,6 +2680,80 @@ private:
                     canvas::kTileCullNames.at(static_cast<std::size_t>(cull->integer));
             }
             occluders[{*layer, *polygon}] = std::move(out);
+            return true;
+        };
+        // A tile's "navigation_layer_N/polygon": its NavigationPolygon's outlines go into
+        // navigation, as the tile set editor drew them, or its polygons when it has no outlines
+        // (they cover the same area). Godot drops polygons on layers the tile set lacks, and so
+        // does this; outlines with no area are left out and reported. False if it is another
+        // property.
+        const auto navigation_property = [&](std::span<const std::string_view> path,
+                                             const Value& value, Polygons& outlines) {
+            if (path.size() != 2 || !path[0].starts_with("navigation_layer_") ||
+                path[1] != "polygon") {
+                return false;
+            }
+            const auto layer =
+                parse_int(path[0].substr(std::string_view("navigation_layer_").size()));
+            if (!layer || *layer < 0 || static_cast<std::uint64_t>(*layer) >= layers.navigation) {
+                return true;
+            }
+            const auto [polygon, owner] = resource_section(value, file);
+            if (polygon == nullptr || resource_type(*polygon, *owner) != "NavigationPolygon") {
+                return true; // no polygon
+            }
+            std::vector<std::vector<Vec2>> found;
+            const auto points_of = [](const Value& points) {
+                std::vector<Vec2> out;
+                const auto numbers = points.numbers().value_or(std::vector<double>{});
+                for (std::size_t i = 0; i + 1 < numbers.size(); i += 2) {
+                    out.push_back(
+                        {static_cast<float>(numbers[i]), static_cast<float>(numbers[i + 1])});
+                }
+                return out;
+            };
+            if (const Value* given = polygon->property("outlines");
+                given != nullptr && given->kind == Value::Kind::Array) {
+                for (const Value& outline : given->items) {
+                    found.push_back(points_of(outline));
+                }
+            }
+            if (found.empty()) {
+                const Value* vertices = polygon->property("vertices");
+                const Value* polygons = polygon->property("polygons");
+                const std::vector<Vec2> all =
+                    vertices != nullptr ? points_of(*vertices) : std::vector<Vec2>{};
+                if (polygons != nullptr && polygons->kind == Value::Kind::Array) {
+                    for (const Value& indices : polygons->items) {
+                        std::vector<Vec2>& outline = found.emplace_back();
+                        for (const double index :
+                             indices.numbers().value_or(std::vector<double>{})) {
+                            if (index >= 0.0 && index < static_cast<double>(all.size())) {
+                                outline.push_back(all[static_cast<std::size_t>(index)]);
+                            }
+                        }
+                    }
+                }
+            }
+            for (const std::vector<Vec2>& outline : found) {
+                if (outline.size() < 3 || canvas::triangulate(outline).empty()) {
+                    problems_.add("tile navigation outline with no area", where,
+                                  "left out; an outline needs three corners and must not cross "
+                                  "itself");
+                    continue;
+                }
+                json::Value out;
+                json::Array points;
+                for (const Vec2 point : outline) {
+                    points.emplace_back(json::Array{point.x, point.y});
+                }
+                out["points"] = std::move(points);
+                if (*layer != 0) {
+                    out["layer"] = *layer;
+                }
+                const auto number = static_cast<std::int64_t>(outlines.size());
+                outlines[{*layer, number}] = std::move(out);
+            }
             return true;
         };
         // A tile's or an alternative's "custom_data_N", into its custom_data by the layer's name,
@@ -2822,6 +2922,8 @@ private:
                                              tile.alternative_polygons[*alternative]) &&
                            !occlusion_property(path, value,
                                                tile.alternative_occluders[*alternative]) &&
+                           !navigation_property(path, value,
+                                                tile.alternative_navigation[*alternative]) &&
                            !custom_data_property(path, value, own)) {
                     problems_.add("alternative tile property " + std::string(path[0]), where);
                 }
@@ -2847,6 +2949,8 @@ private:
                                          tile.polygons) &&
                        !occlusion_property(std::span<const std::string_view>(parts).subspan(1),
                                            value, tile.occluders) &&
+                       !navigation_property(std::span<const std::string_view>(parts).subspan(1),
+                                            value, tile.navigation) &&
                        !custom_data_property(std::span<const std::string_view>(parts).subspan(1),
                                              value, tile.json)) {
                 problems_.add("tile property " + std::string(parts[1]), where);
@@ -2885,6 +2989,9 @@ private:
             if (json::Array occluders = collision(tile.occluders); !occluders.empty()) {
                 tile.json["occlusion"] = std::move(occluders);
             }
+            if (json::Array outlines = collision(tile.navigation); !outlines.empty()) {
+                tile.json["navigation"] = std::move(outlines);
+            }
             for (auto& [number, alternative] : tile.alternatives) {
                 if (json::Array polygons = collision(tile.alternative_polygons[number]);
                     !polygons.empty()) {
@@ -2893,6 +3000,10 @@ private:
                 if (json::Array occluders = collision(tile.alternative_occluders[number]);
                     !occluders.empty()) {
                     alternative["occlusion"] = std::move(occluders);
+                }
+                if (json::Array outlines = collision(tile.alternative_navigation[number]);
+                    !outlines.empty()) {
+                    alternative["navigation"] = std::move(outlines);
                 }
                 tile.json["alternatives"][std::to_string(number)] = std::move(alternative);
             }
@@ -3039,7 +3150,11 @@ private:
                     }
                 } else if (key == "z_index" && value.is_number()) {
                     layer["z_index"] = static_cast<std::int64_t>(value.number());
-                } else if (key != "name" && key != "navigation_enabled") {
+                } else if (key == "navigation_enabled") {
+                    if (value.kind == Value::Kind::Bool && !value.boolean) {
+                        layer["navigation_enabled"] = false;
+                    }
+                } else if (key != "name") {
                     problems_.add("TileMap layer " + key, where);
                 }
             }

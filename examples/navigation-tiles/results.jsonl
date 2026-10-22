@@ -1,0 +1,9 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":3,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"2d":{"edge_connections":35,"free_edges":50,"iteration_id":1,"links":0,"polygons":30,"regions":31}}}
+{"id":3,"jsonrpc":"2.0","result":{"length":225.8668,"owners":["maze","maze","maze","maze","maze","maze","maze","maze","maze","maze","maze","maze","maze","maze","maze","maze"],"points":[[24,88],[25.1429,80],[27.4286,64],[29.7143,48],[32,32],[48,32],[64,32],[80,32],[96,32],[112,32],[128,32],[128,48],[128,64],[128,80],[112,85.3333],[104,88]],"types":["region","region","region","region","region","region","region","region","region","region","region","region","region","region","region","region"]}}
+{"id":4,"jsonrpc":"2.0","result":{"length":50.5964,"points":[[56,56],[64,58.6667],[80,64],[96,69.3333],[104,72]]}}
+{"id":5,"jsonrpc":"2.0","result":{"length":61.0753,"points":[[56,56],[64,58.6667],[80,64],[96,72],[112,80]]}}
+{"id":6,"jsonrpc":"2.0","result":{"changed":1,"id":"maze"}}
+{"id":7,"jsonrpc":"2.0","result":{"length":80,"points":[[24,88],[104,88]]}}
+{"id":8,"jsonrpc":"2.0","result":{"file":"nav/lawn.navpoly.json","obstructions":1,"polygons":6,"vertices":8}}
+{"id":9,"jsonrpc":"2.0","result":{"length":73.6825,"points":[[204,24],[225.7004,28.7187],[240,31.8281],[254.2996,28.7187],[276,24]]}}

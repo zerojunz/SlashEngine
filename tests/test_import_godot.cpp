@@ -365,6 +365,7 @@ layer_1/name = "Top"
 layer_1/modulate = Color(1, 1, 1, 0.5)
 layer_1/z_index = 2
 layer_1/y_sort_enabled = true
+layer_1/navigation_enabled = false
 layer_1/tile_data = PackedInt32Array(-65536, 65536, 0)
 
 [node name="Music" type="AudioStreamPlayer" parent="."]
@@ -1016,6 +1017,9 @@ TEST_CASE("importing Godot tile maps, themes and bus layouts writes their SlashE
     const json::Value top = entity(files, level, "old_top");
     CHECK(top.find("TileMapLayer")->find("z_index")->as_int() == 2);
     CHECK(*top.find("TileMapLayer")->find("modulate") == parse("[1.0, 1.0, 1.0, 0.5]"));
+    CHECK_FALSE(top.find("TileMapLayer")->find("navigation_enabled")->as_bool());
+    CHECK(entity(files, level, "old_ground").find("TileMapLayer")->find("navigation_enabled") ==
+          nullptr);
     CHECK(cells_of(files, *top.find("TileMapLayer")) ==
           std::map<std::string, std::string>{{"0,-1", "tiles:1,0"}});
     CHECK(!unsupported(plan.report, "TileMap layer y_sort_enabled").is_null());
@@ -1239,6 +1243,79 @@ occlusion_enabled = false
     CHECK(why("tile set custom data layer type Dictionary").starts_with("layer 4 left out"));
     CHECK(why("tile custom data value") ==
           "a value that isn't string in layer \"kind\" takes the type's default");
+    fs::remove_all(project);
+}
+
+TEST_CASE("importing a Godot tile set keeps its navigation layers and tiles' outlines") {
+    const fs::path project = "import_godot_tile_navigation";
+    fs::remove_all(project);
+    write(project / "godot/project.godot",
+          "config_version=5\n\n[application]\n\nconfig/name=\"Maze\"\n");
+    write_png(project / "godot/art/maze.png", 48, 16);
+    // The tile set editor saves outlines; a polygon with only vertices and polygons covers the
+    // same area. Outlines on layers the tile set lacks go, as Godot drops them.
+    write(project / "godot/level.tscn", R"([gd_scene format=3]
+
+[ext_resource type="Texture2D" path="res://art/maze.png" id="1_tex"]
+
+[sub_resource type="NavigationPolygon" id="NavigationPolygon_floor"]
+vertices = PackedVector2Array(8, 8, -8, 8, -8, -8, 8, -8)
+polygons = Array[PackedInt32Array]([PackedInt32Array(0, 1, 2, 3)])
+outlines = Array[PackedVector2Array]([PackedVector2Array(-8, -8, 8, -8, 8, 8, -8, 8)])
+agent_radius = 0.0
+
+[sub_resource type="NavigationPolygon" id="NavigationPolygon_half"]
+vertices = PackedVector2Array(-8, -8, 8, -8, 8, 0, -8, 0)
+polygons = Array[PackedInt32Array]([PackedInt32Array(0, 1, 2, 3)])
+
+[sub_resource type="NavigationPolygon" id="NavigationPolygon_line"]
+outlines = Array[PackedVector2Array]([PackedVector2Array(0, 0, 4, 0)])
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_1"]
+texture = ExtResource("1_tex")
+0:0/0 = 0
+0:0/0/navigation_layer_0/polygon = SubResource("NavigationPolygon_floor")
+0:0/0/navigation_layer_2/polygon = SubResource("NavigationPolygon_floor")
+0:0/1 = 1
+0:0/1/navigation_layer_1/polygon = SubResource("NavigationPolygon_half")
+1:0/0 = 0
+1:0/0/navigation_layer_1/polygon = SubResource("NavigationPolygon_half")
+2:0/0 = 0
+2:0/0/navigation_layer_0/polygon = SubResource("NavigationPolygon_line")
+
+[sub_resource type="TileSet" id="TileSet_1"]
+navigation_layer_0/layers = 1
+navigation_layer_1/layers = 6
+sources/0 = SubResource("TileSetAtlasSource_1")
+
+[node name="Level" type="Node2D"]
+
+[node name="Paths" type="TileMapLayer" parent="."]
+tile_set = SubResource("TileSet_1")
+navigation_enabled = false
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string level = "godot/level.scene.json";
+    REQUIRE(files.contains(level));
+    const json::Value paths = *entity(files, level, "paths").find("TileMapLayer");
+    CHECK_FALSE(paths.find("navigation_enabled")->as_bool());
+    const std::string tileset = paths.find("tile_set")->as_string();
+    REQUIRE(files.contains(tileset));
+    CHECK(slash::canvas::validate_tileset(parse(files.at(tileset))).empty());
+    CHECK(parse(files.at(tileset)) == parse(R"({
+        "format": 1,
+        "navigation_layers": [{}, {"layers": 6}],
+        "sources": {"maze": {"texture": "godot/art/maze.png", "tiles": {
+            "0,0": {"navigation": [{"points": [[-8, -8], [8, -8], [8, 8], [-8, 8]]}],
+                    "alternatives": {"1": {"navigation": [{"layer": 1,
+                        "points": [[-8, -8], [8, -8], [8, 0], [-8, 0]]}]}}},
+            "1,0": {"navigation": [{"layer": 1, "points": [[-8, -8], [8, -8], [8, 0], [-8, 0]]}]},
+            "2,0": {}}}}})"));
+    CHECK(unsupported(plan.report, "tile set navigation layers").is_null());
+    const json::Value line = unsupported(plan.report, "tile navigation outline with no area");
+    REQUIRE(line.is_object());
+    CHECK(line.find("why")->as_string().starts_with("left out"));
     fs::remove_all(project);
 }
 

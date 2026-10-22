@@ -748,9 +748,11 @@ struct TileMapLayer {
     int light_mask = 1;                     // lit by lights sharing a bit
     bool collision_enabled = true;          // its tiles' collision polygons are solid
     bool occlusion_enabled = true;          // its tiles' occluders cast shadows
+    bool navigation_enabled = true; // each cell is a region of its tile's navigation polygons
 };
 SLASH_COMPONENT(TileMapLayer, tile_set, origin, legend, rows, z_index, z_as_relative, visible,
-                modulate, texture_filter, light_mask, collision_enabled, occlusion_enabled)
+                modulate, texture_filter, light_mask, collision_enabled, occlusion_enabled,
+                navigation_enabled)
 
 // A light shining from the entity's Transform2D (or the origin) through a texture, as Godot's
 // PointLight2D. It lights the sprites and tile map layers whose light_mask shares a bit with

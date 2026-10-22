@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "grass": {
+      "components": {
+        "TileMapLayer": {
+          "legend": {
+            "_": "floor",
+            "r": "rock"
+          },
+          "navigation_enabled": false,
+          "rows": ["_____", "__r__", "_____"],
+          "tile_set": "maze.tileset.json"
+        },
+        "Transform2D": {}
+      }
+    },
+    "lawn": {
+      "components": {
+        "NavigationRegion2D": {
+          "navigation_polygon": "nav/lawn.navpoly.json"
+        },
+        "Transform2D": {
+          "children": ["grass"],
+          "position": [200.0, 0.0]
+        }
+      }
+    },
+    "maze": {
+      "components": {
+        "TileMapLayer": {
+          "legend": {
+            "#": "wall",
+            "_": "floor",
+            "~": "water"
+          },
+          "rows": ["##########", "#________#", "#_##_###_#", "#_#~~~~#_#", "#_#~~~~#_#", "#____#___#", "##########"],
+          "tile_set": "maze.tileset.json"
+        },
+        "Transform2D": {}
+      }
+    }
+  },
+  "format": 1
+}
