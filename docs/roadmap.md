@@ -612,7 +612,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [x] OBJ models (`.obj` with their `.mtl` libraries) on `MeshInstance3D`, as Godot's OBJ importer
       reads them
 - [x] FBX models through ufbx, as Godot 4.3's importer reads them
-- [ ] Blender `.blend` files the way Godot does it: the engine runs the artist's own Blender in
+- [x] Blender `.blend` files the way Godot does it: the engine runs the artist's own Blender in
       the background to convert them to glTF, so no Blender code is linked or shipped
 - [ ] 3D scenes in `project.import` from Godot and Unity projects, and Unreal Engine projects
       imported through the user's own Unreal Editor: its project files are a closed binary
@@ -762,7 +762,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | UI | Retained UI with flexbox layout and themes, defined in text | 5 | Done |
 | Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | Done |
 | Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
-| Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Planned |
+| Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Done |
 | Profiling | Tracy, plus `perf.stats` over the command API | 5, 6 | Done: Tracy, and `perf.stats` reports frame pacing, tick and system times and memory by part of the engine |
 | Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | In progress: the library, search, refining, hosted and test generators, feedback, team sharing and ready-to-use texture forms done; 3D in 7 |
 | Global illumination | Baked lightmaps and probe-based GI | 7 | Planned |

@@ -24,7 +24,8 @@ class Assets;
 // everything in one), Wavefront OBJ as editor/import/3d/resource_importer_obj.cpp (.obj files
 // and the .mtl material libraries and textures beside them), and FBX as modules/fbx/
 // fbx_document.cpp reads it with ufbx (.fbx files, binary or ASCII, and their textures inside them
-// or beside them). MeshInstance3D's mesh draws one.
+// or beside them). Blender's .blend files are read as the glTF Blender exports of them
+// (blend.hpp). MeshInstance3D's mesh draws one.
 // Meshes keep Godot's clockwise front faces, and a model with no tangents gets MikkTSpace's, as
 // Godot's importers make them.
 namespace slash::scene3d {
@@ -81,7 +82,7 @@ struct Model {
     std::vector<ModelPart> parts;
 };
 
-// Whether a path names a model file: ".gltf", ".glb", ".obj" or ".fbx".
+// Whether a path names a model file: ".gltf", ".glb", ".obj", ".fbx" or ".blend".
 [[nodiscard]] bool is_model_path(std::string_view path);
 
 // Reads a model from its file's bytes; path is its project path, which the files it names are
@@ -89,6 +90,7 @@ struct Model {
 // files that need extensions it doesn't read, such as Draco compression, are refused, naming
 // them. An OBJ model whose material library can't be read loads with Godot's default material,
 // and an OBJ or FBX model whose textures can't be found loads without them, as Godot's importers.
+// A .blend file's bytes must be the glTF Blender made of it (blend.hpp).
 [[nodiscard]] Result<Model> load_model(std::string_view bytes, std::string_view path,
                                        const ModelReader& read);
 
@@ -112,8 +114,9 @@ struct Bounds {
 // What a model holds in memory, for asset.list and perf.stats.
 [[nodiscard]] std::size_t model_bytes(const Model& model);
 
-// Adds the "model" asset type, .gltf, .glb, .obj and .fbx files as Model, the files they name read
-// through assets, so asset.list shows them. A model reloads when its own file changes.
+// Adds the "model" asset type, .gltf, .glb, .obj, .fbx and .blend files as Model, the files they
+// name read through assets, so asset.list shows them. A model reloads when its own file changes.
+// A .blend file loads only from files that read it as its glTF (scene3d::with_blender).
 void add_asset_types(asset::Assets& assets);
 
 } // namespace slash::scene3d

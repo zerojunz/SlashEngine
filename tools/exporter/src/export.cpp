@@ -29,6 +29,7 @@
 #include "slash/render/shader.hpp"
 #include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/project.hpp"
+#include "slash/scene3d/blend.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
 #include "slash/text/text.hpp"
@@ -410,7 +411,15 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
     world::register_builtin_components(components);
     // The game's own components, checked by the names and fields its sources declare.
     (void)runtime::add_gameplay_types(components, project_dir.string(), project, false);
-    const world::FileReader reader = runtime::folder_reader(project_dir.string());
+    // .blend files are checked and shipped as the glTF the artist's Blender makes of them, so
+    // games never need Blender.
+    const scene3d::BlendOptions blend_options{.project_root = project_dir.string(),
+                                              .run_blender = true,
+                                              .why_not = {},
+                                              .blender = {},
+                                              .timeout_seconds = 600};
+    const world::FileReader reader =
+        scene3d::with_blender(runtime::folder_reader(project_dir.string()), blend_options);
     json::Array problems;
     bool found_main = false;
     FormCounts forms;
@@ -431,6 +440,10 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
         const std::string file = relative.generic_string();
         found_main = found_main || file == project.main_scene;
         auto text = platform::read_file(entry.path().string());
+        const bool blend = kind == DataFile::Model && file.ends_with(scene3d::kBlendSuffix);
+        if (blend && text) {
+            text = scene3d::convert_blend(file, text.value(), blend_options);
+        }
         const std::vector<json::ValidationError> errors =
             text ? check_data_file(kind, file, text.value(), components, reader)
                  : std::vector<json::ValidationError>{{"", text.error().message}};
@@ -445,6 +458,9 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
         std::optional<std::string> compiled;
         if (kind == DataFile::Material && errors.empty()) {
             compiled = with_compiled_shader(text.value(), reader, target);
+        }
+        if (blend && text) {
+            compiled = std::move(text.value());
         }
         if (compiled) {
             if (auto written = platform::write_file((data / relative).string(), *compiled);
