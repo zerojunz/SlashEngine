@@ -6,6 +6,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
+#include "slash/scene3d/ik.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/world/components.hpp"
 
@@ -408,6 +409,16 @@ void add_systems(world::World& world, asset::Assets& assets) {
                      [trees](world::World& w, double tick_seconds) { trees->run(w, tick_seconds); },
                      {.doc = "Blends each AnimationTree's animations into its entity's components.",
                       .priority = 910});
+    // IK modifiers turn bones after the animations, as Godot's SkeletonModifier3Ds process after
+    // the AnimationMixer.
+    scene3d::add_modifier_system(
+        world, [&assets](const std::string& path) -> Result<std::shared_ptr<const scene3d::Model>> {
+            auto found = assets.load<scene3d::Model>(path);
+            if (!found) {
+                return found.error();
+            }
+            return found.value().share();
+        });
 }
 
 void install(world::World& world, asset::Assets& assets) {

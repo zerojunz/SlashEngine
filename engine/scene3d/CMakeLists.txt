@@ -14,6 +14,7 @@ target_compile_definitions(slash_ufbx PRIVATE $<$<C_COMPILER_ID:MSVC>:_CRT_SECUR
 add_library(slash_scene3d
     src/blend.cpp
     src/fbx.cpp
+    src/ik.cpp
     src/model.cpp
     src/model_tools.cpp
     src/obj.cpp

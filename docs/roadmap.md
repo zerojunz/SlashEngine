@@ -608,7 +608,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Pin, hinge, slider, cone twist and 6DOF joints, and `VehicleBody3D` with
         `VehicleWheel3D`, as Godot 4.4's
   - [ ] Ragdolls (physical bones, after skinned meshes)
-- [ ] Skinned meshes, animation blending, state machines, root motion, two-bone and FABRIK IK
+- [x] Skinned meshes, animation blending, state machines, root motion, two-bone and FABRIK IK
   - [x] glTF skins skinning meshes, model animations played by `AnimationPlayer` (alone or
         `from` a `.anim.json` animation) and `Skeleton3D` bone poses, as Godot's importer,
         skeleton and `AnimationMixer`; `skeleton.get`
@@ -618,7 +618,8 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         `animation.tree` and `animation.set_parameters`
   - [x] State machines with travel, conditions and grouped and nested machines, as Godot's
         `AnimationNodeStateMachine`
-  - [ ] Two-bone and FABRIK IK
+  - [x] Two-bone, FABRIK, CCD and Jacobian IK with joint limits, as Godot 4.6's `TwoBoneIK3D`,
+        `FABRIK3D`, `CCDIK3D` and `JacobianIK3D`
 - [ ] Navigation on Recast and Detour, in 2D and 3D, with avoidance
 - [ ] 3D audio, as Godot's `AudioStreamPlayer3D` and `AudioListener3D`: attenuation models,
       Doppler, emission angles, `Area3D` reverb and up to 7.1 speakers
@@ -768,8 +769,8 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Post-processing | Tonemap, bloom, SSAO, SSR, DoF, auto exposure, color grading | 7 | Planned |
 | Materials and shaders | HLSL shaders plus a JSON material graph | 5, 7 | In part: canvas material graphs, a game's own HLSL canvas shaders and `StandardMaterial3D`'s inputs on meshes are done; 3D shaders and material files in 7 |
 | Keyframe animation | Keyframe tracks on any reflected property | 5 | Done |
-| Skeletal animation | Skinned meshes, blending, root motion | 7 | In part: glTF and FBX skins, model animations on `AnimationPlayer` and `Skeleton3D` poses are done; blending and root motion in 7 |
-| Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Planned |
+| Skeletal animation | Skinned meshes, blending, root motion | 7 | Done |
+| Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Done |
 | Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials, particle graphs, turbulence, collision, sub-emitters and trails are done; attractors with 3D in 7 |
 | Soundtracks | Music planned in the storyboard, written as scores or generated, arranged into interactive music and checked by analysis, all through commands | 6 | Done |
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | In part: 2D players, buses, effects, area bus overrides, interactive music, generated and polyphonic streams and microphone input are done; 3D audio in 7 |
