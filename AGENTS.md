@@ -789,7 +789,9 @@ files read as their glTF: sessions run Blender only with the `build` capability,
 Skinned meshes and model animations follow Godot's glTF importer, `Skeleton3D` and
 `AnimationMixer` (`engine/scene3d/src/skeleton.cpp`). A glTF model keeps its nodes (named as
 Godot's `validate_node_name` and made unique), skins (joints and inverse bind matrices),
-vertices' joints and weights, and animations (node tracks; `-loop` and `-cycle` names loop).
+vertices' joints and weights, and animations (node tracks; `-loop` and `-cycle` names loop); an
+FBX model keeps the same from its skin deformers and its animation stacks, baked at 30 a second
+with `ufbx_bake_anim` as Godot's FBX importer bakes them (`src/fbx.cpp`).
 `pose_of` poses a model from its rest, then by its clips (`blend_animation`, Godot's blend of 3D
 tracks with its deterministic slerp), then by the entity's `Skeleton3D`; poses are worked out
 from components every time, never kept. The animation module tells scene3d what an entity's
