@@ -7,6 +7,13 @@
       "repository": "https://github.com/skypjack/entt.git",
       "tag": "v3.16.0"
     },
+    "JoltPhysics": {
+      "license": "MIT",
+      "license_file": "LICENSE",
+      "license_sha256": "800abe35d64ad9defd636ff1ee8c961e06f0ebca3ef8d10083e8aa0e8ef86ac3",
+      "repository": "https://github.com/jrouwe/JoltPhysics.git",
+      "tag": "v5.6.0"
+    },
     "SDL3": {
       "license": "Zlib",
       "license_file": "LICENSE.txt",
