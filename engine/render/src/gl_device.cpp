@@ -4,9 +4,12 @@
 #include "cpu_particles.hpp"
 #include "gpu_device.hpp"
 #include "material_shaders.hpp"
+#include "mesh_shaders.hpp"
+#include "mesh_shading.hpp"
 #include "sprite_shaders.hpp"
 #include "uniforms.hpp"
 
+#include "slash/core/assert.hpp"
 #include "slash/core/log.hpp"
 #include "slash/render/image.hpp"
 
@@ -25,7 +28,9 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <numeric>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
@@ -55,6 +60,10 @@ constexpr GLenum kNoError = 0;
 constexpr GLboolean kFalse = 0;
 constexpr GLboolean kTrue = 1;
 constexpr GLenum kTriangles = 0x0004;
+constexpr GLenum kGreater = 0x0204;
+constexpr GLenum kFront = 0x0404;
+constexpr GLenum kBack = 0x0405;
+constexpr GLenum kCcw = 0x0901;
 constexpr GLenum kZero = 0;
 constexpr GLenum kOne = 1;
 constexpr GLenum kSrcAlpha = 0x0302;
@@ -73,7 +82,9 @@ constexpr GLenum kPackAlignment = 0x0D05;
 constexpr GLenum kMaxTextureSize = 0x0D33;
 constexpr GLenum kTexture2D = 0x0DE1;
 constexpr GLenum kUnsignedByte = 0x1401;
+constexpr GLenum kUnsignedInt = 0x1405;
 constexpr GLenum kFloat = 0x1406;
+constexpr GLenum kDepth = 0x1801;
 constexpr GLenum kRgba = 0x1908;
 constexpr GLenum kRenderer = 0x1F01;
 constexpr GLenum kVersion = 0x1F02;
@@ -91,7 +102,9 @@ constexpr GLenum kClampToEdge = 0x812F;
 constexpr GLenum kNumExtensions = 0x821D;
 constexpr GLenum kTexture0 = 0x84C0;
 constexpr GLenum kArrayBuffer = 0x8892;
+constexpr GLenum kElementArrayBuffer = 0x8893;
 constexpr GLenum kStreamDraw = 0x88E0;
+constexpr GLenum kStaticDraw = 0x88E4;
 constexpr GLenum kUniformBuffer = 0x8A11;
 constexpr GLenum kUniformBufferOffsetAlignment = 0x8A34;
 constexpr GLenum kFragmentShader = 0x8B30;
@@ -100,10 +113,13 @@ constexpr GLenum kCompileStatus = 0x8B81;
 constexpr GLenum kLinkStatus = 0x8B82;
 constexpr GLenum kInfoLogLength = 0x8B84;
 constexpr GLenum kReadFramebuffer = 0x8CA8;
+constexpr GLenum kDepthComponent32f = 0x8CAC;
 constexpr GLenum kDrawFramebuffer = 0x8CA9;
 constexpr GLenum kFramebufferComplete = 0x8CD5;
 constexpr GLenum kColorAttachment0 = 0x8CE0;
+constexpr GLenum kDepthAttachment = 0x8D00;
 constexpr GLenum kFramebuffer = 0x8D40;
+constexpr GLenum kRenderbuffer = 0x8D41;
 constexpr GLenum kCompressedRgbaBptcUnorm = 0x8E8C; // ARB_ and EXT_texture_compression_bptc
 constexpr GLenum kCompressedRgbaAstc4x4 = 0x93B0;   // KHR_texture_compression_astc_ldr
 constexpr GLuint kInvalidIndex = 0xFFFFFFFF;
@@ -118,6 +134,7 @@ constexpr GLuint kInvalidIndex = 0xFFFFFFFF;
     X(BindBuffer, bind_buffer, void, (GLenum, GLuint))                                             \
     X(BindBufferRange, bind_buffer_range, void, (GLenum, GLuint, GLuint, GLintptr, GLsizeiptr))    \
     X(BindFramebuffer, bind_framebuffer, void, (GLenum, GLuint))                                   \
+    X(BindRenderbuffer, bind_renderbuffer, void, (GLenum, GLuint))                                 \
     X(BindSampler, bind_sampler, void, (GLuint, GLuint))                                           \
     X(BindTexture, bind_texture, void, (GLenum, GLuint))                                           \
     X(BindVertexArray, bind_vertex_array, void, (GLuint))                                          \
@@ -128,6 +145,7 @@ constexpr GLuint kInvalidIndex = 0xFFFFFFFF;
     X(BufferData, buffer_data, void, (GLenum, GLsizeiptr, const void*, GLenum))                    \
     X(CheckFramebufferStatus, check_framebuffer_status, GLenum, (GLenum))                          \
     X(Clear, clear, void, (GLbitfield))                                                            \
+    X(ClearBufferfv, clear_bufferfv, void, (GLenum, GLint, const GLfloat*))                        \
     X(ClearColor, clear_color, void, (GLfloat, GLfloat, GLfloat, GLfloat))                         \
     X(CompileShader, compile_shader, void, (GLuint))                                               \
     X(CompressedTexImage2D, compressed_tex_image_2d, void,                                         \
@@ -136,20 +154,28 @@ constexpr GLuint kInvalidIndex = 0xFFFFFFFF;
       (GLenum, GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLsizei, const void*))               \
     X(CreateProgram, create_program, GLuint, ())                                                   \
     X(CreateShader, create_shader, GLuint, (GLenum))                                               \
+    X(CullFace, cull_face, void, (GLenum))                                                         \
     X(DeleteBuffers, delete_buffers, void, (GLsizei, const GLuint*))                               \
     X(DeleteFramebuffers, delete_framebuffers, void, (GLsizei, const GLuint*))                     \
     X(DeleteProgram, delete_program, void, (GLuint))                                               \
+    X(DeleteRenderbuffers, delete_renderbuffers, void, (GLsizei, const GLuint*))                   \
     X(DeleteSamplers, delete_samplers, void, (GLsizei, const GLuint*))                             \
     X(DeleteShader, delete_shader, void, (GLuint))                                                 \
     X(DeleteTextures, delete_textures, void, (GLsizei, const GLuint*))                             \
     X(DeleteVertexArrays, delete_vertex_arrays, void, (GLsizei, const GLuint*))                    \
+    X(DepthFunc, depth_func, void, (GLenum))                                                       \
+    X(DepthMask, depth_mask, void, (GLboolean))                                                    \
     X(Disable, disable, void, (GLenum))                                                            \
     X(DrawArrays, draw_arrays, void, (GLenum, GLint, GLsizei))                                     \
+    X(DrawElements, draw_elements, void, (GLenum, GLsizei, GLenum, const void*))                   \
     X(Enable, enable, void, (GLenum))                                                              \
     X(EnableVertexAttribArray, enable_vertex_attrib_array, void, (GLuint))                         \
+    X(FramebufferRenderbuffer, framebuffer_renderbuffer, void, (GLenum, GLenum, GLenum, GLuint))   \
     X(FramebufferTexture2D, framebuffer_texture_2d, void, (GLenum, GLenum, GLenum, GLuint, GLint)) \
+    X(FrontFace, front_face, void, (GLenum))                                                       \
     X(GenBuffers, gen_buffers, void, (GLsizei, GLuint*))                                           \
     X(GenFramebuffers, gen_framebuffers, void, (GLsizei, GLuint*))                                 \
+    X(GenRenderbuffers, gen_renderbuffers, void, (GLsizei, GLuint*))                               \
     X(GenSamplers, gen_samplers, void, (GLsizei, GLuint*))                                         \
     X(GenTextures, gen_textures, void, (GLsizei, GLuint*))                                         \
     X(GenVertexArrays, gen_vertex_arrays, void, (GLsizei, GLuint*))                                \
@@ -166,6 +192,7 @@ constexpr GLuint kInvalidIndex = 0xFFFFFFFF;
     X(LinkProgram, link_program, void, (GLuint))                                                   \
     X(PixelStorei, pixel_storei, void, (GLenum, GLint))                                            \
     X(ReadPixels, read_pixels, void, (GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void*))      \
+    X(RenderbufferStorage, renderbuffer_storage, void, (GLenum, GLenum, GLsizei, GLsizei))         \
     X(SamplerParameteri, sampler_parameteri, void, (GLuint, GLenum, GLint))                        \
     X(ShaderSource, shader_source, void, (GLuint, GLsizei, const GLchar* const*, const GLint*))    \
     X(TexImage2D, tex_image_2d, void,                                                              \
@@ -211,6 +238,11 @@ constexpr GLuint kProgramBinding = 1;
 constexpr GLuint kLightsBinding = 2;
 // A game's shader's vertex stage reads the material's constants (tools/shader_compiler).
 constexpr GLuint kVertexProgramBinding = 3;
+// The mesh shader's.
+constexpr GLuint kCameraBinding = 4;
+constexpr GLuint kInstanceBinding = 5;
+constexpr GLuint kSurfaceBinding = 6;
+constexpr GLuint kSceneBinding = 7;
 
 // The two shaders: plain sprites, and materials that run a program.
 enum class ShaderKind : std::uint8_t { Sprite, Material };
@@ -221,6 +253,9 @@ constexpr std::array<std::string_view, 1> kSpriteSamplers{"sprite_texture"};
 constexpr std::array<std::string_view, kMaterialSamplers> kMaterialSamplerNames{
     "texture0",   "texture1",     "texture2",    "texture3",
     "normal_map", "specular_map", "light_atlas", "shadow_map"};
+constexpr std::array<std::string_view, kMeshTextures> kMeshSamplerNames{
+    "albedo_texture", "metallic_texture", "roughness_texture", "emission_texture",
+    "normal_texture"};
 
 // Turns clip space upside down. GL puts clip space's top at a framebuffer's last row, where the
 // other backends put it at the first, so frames draw upside down into textures, which leaves
@@ -302,6 +337,99 @@ bool version_matches(GlApi api, std::string_view version) {
 constexpr std::string_view kEsVersionLine = "#version 300 es";
 constexpr std::string_view kDesktopVersionLine = "#version 330 core";
 
+// Apple's software OpenGL renderer, which Macs without a GPU run (CI's among them), loses
+// triangles that cross a screen edge unless each corner's w is 1. 3D shaders get around it
+// exactly: a corner in front of the camera is scaled by 1/w, which names the same point and is
+// clipped the same, and its outputs are scaled with it and divided back in each fragment by the
+// interpolated scale, which gives the perspective-correct values they had. Corners behind the
+// camera keep their w. at_w1_vertex rewrites a vertex shader so, and at_w1_fragment the fragment
+// shader that reads its outputs.
+
+// The names of a shader's non-flat inputs or outputs, declared as "<keyword> [precision] <type>
+// <name>;" lines, and the lines' starts.
+struct Varying {
+    std::size_t line = 0;
+    std::size_t end = 0; // past the line's ';'
+    std::string precision;
+    std::string type;
+    std::string name;
+};
+
+std::vector<Varying> varyings(std::string_view source, std::string_view keyword) {
+    std::vector<Varying> out;
+    std::size_t line = 0;
+    while (line < source.size()) {
+        const std::size_t next = std::min(source.find('\n', line), source.size());
+        const std::string_view text = source.substr(line, next - line);
+        if (text.starts_with(keyword) && text.size() > keyword.size() &&
+            text[keyword.size()] == ' ' && text.ends_with(';')) {
+            std::vector<std::string_view> words;
+            std::string_view rest =
+                text.substr(keyword.size() + 1, text.size() - keyword.size() - 2);
+            while (!rest.empty()) {
+                const std::size_t space = std::min(rest.find(' '), rest.size());
+                words.push_back(rest.substr(0, space));
+                rest.remove_prefix(std::min(space + 1, rest.size()));
+            }
+            if (words.size() == 2 || words.size() == 3) {
+                out.push_back({.line = line,
+                               .end = next,
+                               .precision = words.size() == 3 ? std::string(words[0]) : "",
+                               .type = std::string(words[words.size() - 2]),
+                               .name = std::string(words.back())});
+            }
+        }
+        line = next + 1;
+    }
+    return out;
+}
+
+// Declares each varying of a shader under "slash_<name>" and its own name as a global that main
+// reads or writes, so the rewrites below can scale it between the two.
+std::string renamed(std::string_view source, const std::vector<Varying>& found,
+                    std::string_view keyword) {
+    std::string out(source);
+    for (const Varying& v : std::ranges::reverse_view(found)) {
+        const std::string type = (v.precision.empty() ? "" : v.precision + " ") + v.type;
+        std::string declared(keyword);
+        declared.append(" ").append(type).append(" slash_").append(v.name).append(";\n");
+        declared.append(type).append(" ").append(v.name).append(";");
+        out.replace(v.line, v.end - v.line, declared);
+    }
+    return out;
+}
+
+std::string at_w1_vertex(std::string_view source) {
+    const std::vector<Varying> outputs = varyings(source, "out");
+    std::string out = renamed(source, outputs, "out");
+    std::string scaling = "    slash_scale = gl_Position.w > 1.0e-3 ? 1.0 / gl_Position.w : 1.0;\n"
+                          "    gl_Position *= slash_scale;\n";
+    for (const Varying& v : outputs) {
+        scaling += "    slash_" + v.name + " = " + v.name + " * slash_scale;\n";
+    }
+    const std::size_t end = out.rfind('}');
+    SLASH_ASSERT(end != std::string::npos, "a vertex shader has a main function");
+    out.insert(end, scaling);
+    const std::size_t main = out.find("void main()");
+    SLASH_ASSERT(main != std::string::npos, "a vertex shader has a main function");
+    out.insert(main, "out highp float slash_scale;\n");
+    return out;
+}
+
+std::string at_w1_fragment(std::string_view source) {
+    const std::vector<Varying> inputs = varyings(source, "in");
+    std::string out = renamed(source, inputs, "in");
+    std::string dividing;
+    for (const Varying& v : inputs) {
+        dividing += "    " + v.name + " = slash_" + v.name + " / slash_scale;\n";
+    }
+    const std::size_t main = out.find("void main()");
+    SLASH_ASSERT(main != std::string::npos, "a fragment shader has a main function");
+    out.insert(out.find('{', main) + 2, dividing);
+    out.insert(main, "in highp float slash_scale;\n");
+    return out;
+}
+
 class GlDevice final : public RenderDevice {
 public:
     using RenderDevice::draw;
@@ -332,6 +460,15 @@ public:
                 }
                 for (const auto& [id, program] : game_programs_) {
                     gl_.delete_program(program);
+                }
+                for (const auto& [id, mesh] : meshes_) {
+                    delete_mesh(mesh);
+                }
+                if (mesh_program_ != 0) {
+                    gl_.delete_program(mesh_program_);
+                }
+                if (depth_ != 0) {
+                    gl_.delete_renderbuffers(1, &depth_);
                 }
                 gl_.delete_buffers(1, &vertex_buffer_);
                 gl_.delete_buffers(1, &uniform_buffer_);
@@ -575,9 +712,116 @@ public:
         return particles_.read(particles);
     }
 
+    Result<MeshId> create_mesh(std::span<const Vertex3D> vertices,
+                               std::span<const std::uint32_t> indices) override {
+        if (auto checked = check_mesh(vertices, indices); !checked) {
+            return checked.error();
+        }
+        std::vector<std::uint32_t> implicit;
+        if (indices.empty()) {
+            implicit.resize(vertices.size());
+            std::iota(implicit.begin(), implicit.end(), 0U);
+            indices = implicit;
+        }
+        make_current();
+        GlMesh mesh{.index_count = static_cast<GLsizei>(indices.size()),
+                    .bounds = mesh_bounds(vertices)};
+        gl_.gen_vertex_arrays(1, &mesh.vertex_array);
+        gl_.gen_buffers(1, &mesh.vertices);
+        gl_.gen_buffers(1, &mesh.indices);
+        gl_.bind_vertex_array(mesh.vertex_array);
+        gl_.bind_buffer(gl::kArrayBuffer, mesh.vertices);
+        gl_.buffer_data(gl::kArrayBuffer, static_cast<GLsizeiptr>(vertices.size_bytes()),
+                        vertices.data(), gl::kStaticDraw);
+        constexpr auto kStride = static_cast<GLsizei>(sizeof(Vertex3D));
+        gl_.vertex_attrib_pointer(0, 3, gl::kFloat, gl::kFalse, kStride,
+                                  offset(offsetof(Vertex3D, position)));
+        gl_.vertex_attrib_pointer(1, 3, gl::kFloat, gl::kFalse, kStride,
+                                  offset(offsetof(Vertex3D, normal)));
+        gl_.vertex_attrib_pointer(2, 4, gl::kFloat, gl::kFalse, kStride,
+                                  offset(offsetof(Vertex3D, tangent)));
+        gl_.vertex_attrib_pointer(3, 2, gl::kFloat, gl::kFalse, kStride,
+                                  offset(offsetof(Vertex3D, uv)));
+        gl_.vertex_attrib_pointer(4, 4, gl::kUnsignedByte, gl::kTrue, kStride,
+                                  offset(offsetof(Vertex3D, rgba)));
+        for (GLuint location = 0; location < 5; ++location) {
+            gl_.enable_vertex_attrib_array(location);
+        }
+        // The vertex array keeps the index buffer bound to it.
+        gl_.bind_buffer(gl::kElementArrayBuffer, mesh.indices);
+        gl_.buffer_data(gl::kElementArrayBuffer, static_cast<GLsizeiptr>(indices.size_bytes()),
+                        indices.data(), gl::kStaticDraw);
+        gl_.bind_vertex_array(0);
+        if (auto checked = check_errors("creating a mesh"); !checked) {
+            delete_mesh(mesh);
+            return checked.error();
+        }
+        const auto id = static_cast<MeshId>(next_mesh_++);
+        meshes_[id] = mesh;
+        return id;
+    }
+
+    void destroy_mesh(MeshId mesh) override {
+        const auto it = meshes_.find(mesh);
+        if (it == meshes_.end()) {
+            return;
+        }
+        if (in_frame_) {
+            // The frame's draws still read it when it is sent.
+            pending_meshes_.push_back(it->second);
+        } else {
+            make_current();
+            delete_mesh(it->second);
+        }
+        meshes_.erase(it);
+    }
+
+    Result<void> draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
+                           std::uint32_t layers) override {
+        if (!in_frame_) {
+            return no_frame("draw_mesh");
+        }
+        const auto it = meshes_.find(mesh);
+        if (auto checked = check_mesh_draw(frame_.scene.has_value(), it != meshes_.end(), mesh,
+                                           transform, material, frame_.target,
+                                           [&](TextureId id) { return textures_.contains(id); });
+            !checked) {
+            return checked;
+        }
+        if (frame_width_ == 0) {
+            return {}; // a skipped frame
+        }
+        // Made at the first draw that needs them, so a failure shows there.
+        make_current();
+        if (auto program = mesh_program(); !program) {
+            return program.error();
+        }
+        if (auto depth = depth_buffer(frame_width_, frame_height_); !depth) {
+            return depth.error();
+        }
+        MeshBatch batch{.mesh = it->second, .units = {}};
+        const std::array<const MaterialTexture*, kMeshTextures> slots{
+            &material.albedo_texture, &material.metallic_texture, &material.roughness_texture,
+            &material.emission_texture, &material.normal_texture};
+        for (std::size_t slot = 0; slot < kMeshTextures; ++slot) {
+            batch.units.at(slot) = binding(slots.at(slot)->texture, slots.at(slot)->repeat);
+        }
+        mesh_draws_.push_back(
+            {.mesh = mesh, .transform = transform, .material = material, .layers = layers});
+        mesh_batches_.push_back(batch);
+        ++stats_.draws;
+        stats_.triangles += static_cast<std::uint64_t>(it->second.index_count / 3);
+        return {};
+    }
+
     Result<bool> begin_frame(const Frame& frame) override {
         if (in_frame_) {
             return frame_in_progress("begin_frame");
+        }
+        if (frame.scene) {
+            if (auto checked = check_scene(*frame.scene); !checked) {
+                return checked.error();
+            }
         }
         std::uint32_t width = 0;
         std::uint32_t height = 0;
@@ -633,6 +877,8 @@ public:
         frame_height_ = height;
         vertices_.clear();
         batches_.clear();
+        mesh_draws_.clear();
+        mesh_batches_.clear();
         // Minimized or hidden: there is nothing to draw to this time.
         return width != 0;
     }
@@ -729,6 +975,11 @@ public:
         gl_.viewport(0, 0, static_cast<GLsizei>(frame_width_), static_cast<GLsizei>(frame_height_));
         gl_.clear_color(frame_.clear.r, frame_.clear.g, frame_.clear.b, frame_.clear.a);
         gl_.clear(gl::kColorBufferBit);
+        // Meshes draw first, and the 2D draws go over them.
+        // Mesh draws need a scene, so a frame with them has one.
+        if (frame_.scene && !mesh_draws_.empty()) {
+            draw_meshes(*frame_.scene);
+        }
         if (!batches_.empty()) {
             draw_batches();
         }
@@ -871,6 +1122,21 @@ private:
         std::array<float, 4> texel{};
         GLint first = 0;
         GLsizei count = 0;
+    };
+
+    // A mesh's vertex array, which holds its buffers.
+    struct GlMesh {
+        GLuint vertex_array = 0;
+        GLuint vertices = 0;
+        GLuint indices = 0;
+        GLsizei index_count = 0;
+        Bounds bounds;
+    };
+
+    // What a mesh draw binds, found when it is made: its mesh may be destroyed before end_frame.
+    struct MeshBatch {
+        GlMesh mesh;
+        std::array<Unit, kMeshTextures> units{};
     };
 
     static std::size_t sampler_index(Filter filter, bool repeat) {
@@ -1074,7 +1340,9 @@ private:
         for (const auto& [name, binding] :
              {std::pair{"View", kViewBinding}, std::pair{"Program", kProgramBinding},
               std::pair{"Lights", kLightsBinding},
-              std::pair{"VertexProgram", kVertexProgramBinding}}) {
+              std::pair{"VertexProgram", kVertexProgramBinding},
+              std::pair{"Camera", kCameraBinding}, std::pair{"Instance", kInstanceBinding},
+              std::pair{"Surface", kSurfaceBinding}, std::pair{"Scene", kSceneBinding}}) {
             const GLuint index = gl_.get_uniform_block_index(program, name);
             if (index != gl::kInvalidIndex) {
                 gl_.uniform_block_binding(program, index, binding);
@@ -1262,10 +1530,138 @@ private:
         gl_.bind_vertex_array(0);
     }
 
+    void delete_mesh(const GlMesh& mesh) const {
+        gl_.delete_vertex_arrays(1, &mesh.vertex_array);
+        gl_.delete_buffers(1, &mesh.vertices);
+        gl_.delete_buffers(1, &mesh.indices);
+    }
+
+    // The mesh program, made the first time a frame draws a mesh.
+    Result<GLuint> mesh_program() {
+        if (mesh_program_ != 0) {
+            return mesh_program_;
+        }
+        auto program =
+            link(at_w1_vertex(shaders::kMeshVertexGlsl), at_w1_fragment(shaders::kMeshFragmentGlsl),
+                 kMeshSamplerNames, "the mesh shader");
+        if (!program) {
+            return program.error();
+        }
+        mesh_program_ = program.value();
+        return mesh_program_;
+    }
+
+    // The depth buffer meshes draw over, made again when the target's size changes. It is
+    // attached to the frame's framebuffer only while the meshes draw.
+    Result<GLuint> depth_buffer(std::uint32_t width, std::uint32_t height) {
+        if (depth_ != 0 && depth_width_ == width && depth_height_ == height) {
+            return depth_;
+        }
+        if (depth_ == 0) {
+            gl_.gen_renderbuffers(1, &depth_);
+        }
+        gl_.bind_renderbuffer(gl::kRenderbuffer, depth_);
+        gl_.renderbuffer_storage(gl::kRenderbuffer, gl::kDepthComponent32f,
+                                 static_cast<GLsizei>(width), static_cast<GLsizei>(height));
+        gl_.bind_renderbuffer(gl::kRenderbuffer, 0);
+        if (auto checked = check_errors("creating the depth buffer"); !checked) {
+            gl_.delete_renderbuffers(1, &depth_);
+            depth_ = 0;
+            return checked.error();
+        }
+        depth_width_ = width;
+        depth_height_ = height;
+        return depth_;
+    }
+
+    // The frame's meshes, in the order mesh_draw_order gives, over the depth buffer cleared to
+    // the far plane. Frames draw upside down (see kFlipY), which turns the clockwise front faces
+    // counterclockwise.
+    void draw_meshes(const Scene3D& scene) {
+        uniform_bytes_.clear();
+        MeshCameraUniforms camera = mesh_camera_uniforms(scene);
+        camera.view_projection = multiply(kFlipY, camera.view_projection);
+        const std::size_t camera_at = place_uniforms(&camera, sizeof(camera));
+        const auto lights = std::make_unique<MeshSceneUniforms>(mesh_scene_uniforms(scene));
+        const std::size_t scene_at = place_uniforms(lights.get(), sizeof(MeshSceneUniforms));
+        const std::vector<std::size_t> order =
+            mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), scene,
+                            [&](std::size_t at) { return mesh_batches_[at].mesh.bounds; });
+        std::vector<std::pair<std::size_t, std::size_t>> placed(mesh_draws_.size());
+        for (const std::size_t i : order) {
+            const MeshInstanceUniforms instance =
+                mesh_instance_uniforms(mesh_draws_[i].transform, mesh_draws_[i].material);
+            const MeshSurfaceUniforms surface =
+                mesh_surface_uniforms(mesh_draws_[i].material, mesh_draws_[i].layers);
+            placed[i] = {place_uniforms(&instance, sizeof(instance)),
+                         place_uniforms(&surface, sizeof(surface))};
+        }
+        gl_.bind_buffer(gl::kUniformBuffer, uniform_buffer_);
+        gl_.buffer_data(gl::kUniformBuffer, static_cast<GLsizeiptr>(uniform_bytes_.size()),
+                        uniform_bytes_.data(), gl::kStreamDraw);
+        gl_.bind_buffer_range(gl::kUniformBuffer, kCameraBinding, uniform_buffer_,
+                              static_cast<GLintptr>(camera_at),
+                              static_cast<GLsizeiptr>(sizeof(MeshCameraUniforms)));
+        gl_.bind_buffer_range(gl::kUniformBuffer, kSceneBinding, uniform_buffer_,
+                              static_cast<GLintptr>(scene_at),
+                              static_cast<GLsizeiptr>(sizeof(MeshSceneUniforms)));
+
+        gl_.framebuffer_renderbuffer(gl::kFramebuffer, gl::kDepthAttachment, gl::kRenderbuffer,
+                                     depth_);
+        gl_.enable(gl::kDepthTest);
+        gl_.depth_func(gl::kGreater);
+        gl_.depth_mask(gl::kTrue);
+        constexpr GLfloat kFar = 0.0F;
+        gl_.clear_bufferfv(gl::kDepth, 0, &kFar);
+        gl_.front_face(gl::kCcw);
+        gl_.use_program(mesh_program_);
+        for (const std::size_t i : order) {
+            const Material3D& material = mesh_draws_[i].material;
+            const MeshBatch& batch = mesh_batches_[i];
+            const bool blended = material.transparency == Transparency::Alpha;
+            if (blended) {
+                gl_.enable(gl::kBlend);
+                set_blend(material.blend);
+            } else {
+                gl_.disable(gl::kBlend);
+            }
+            gl_.depth_mask(blended ? gl::kFalse : gl::kTrue);
+            if (material.cull == CullMode::Disabled) {
+                gl_.disable(gl::kCullFace);
+            } else {
+                gl_.enable(gl::kCullFace);
+                gl_.cull_face(material.cull == CullMode::Back ? gl::kBack : gl::kFront);
+            }
+            gl_.bind_buffer_range(gl::kUniformBuffer, kInstanceBinding, uniform_buffer_,
+                                  static_cast<GLintptr>(placed[i].first),
+                                  static_cast<GLsizeiptr>(sizeof(MeshInstanceUniforms)));
+            gl_.bind_buffer_range(gl::kUniformBuffer, kSurfaceBinding, uniform_buffer_,
+                                  static_cast<GLintptr>(placed[i].second),
+                                  static_cast<GLsizeiptr>(sizeof(MeshSurfaceUniforms)));
+            for (std::size_t unit = 0; unit < kMeshTextures; ++unit) {
+                gl_.active_texture(gl::kTexture0 + static_cast<GLenum>(unit));
+                gl_.bind_texture(gl::kTexture2D, batch.units.at(unit).texture);
+                gl_.bind_sampler(static_cast<GLuint>(unit), batch.units.at(unit).sampler);
+            }
+            gl_.bind_vertex_array(batch.mesh.vertex_array);
+            gl_.draw_elements(gl::kTriangles, batch.mesh.index_count, gl::kUnsignedInt, nullptr);
+        }
+        // Back to the 2D state the rest of the device draws with.
+        gl_.bind_vertex_array(0);
+        gl_.use_program(0);
+        gl_.depth_mask(gl::kTrue);
+        gl_.disable(gl::kDepthTest);
+        gl_.disable(gl::kCullFace);
+        gl_.enable(gl::kBlend);
+        gl_.framebuffer_renderbuffer(gl::kFramebuffer, gl::kDepthAttachment, gl::kRenderbuffer, 0);
+    }
+
     void finish_frame() {
         vertices_.clear();
         batches_.clear();
-        if (!pending_release_.empty() || !pending_programs_.empty()) {
+        mesh_draws_.clear();
+        mesh_batches_.clear();
+        if (!pending_release_.empty() || !pending_programs_.empty() || !pending_meshes_.empty()) {
             make_current();
             release_pending();
         }
@@ -1280,6 +1676,10 @@ private:
             gl_.delete_program(program);
         }
         pending_programs_.clear();
+        for (const GlMesh& mesh : pending_meshes_) {
+            delete_mesh(mesh);
+        }
+        pending_meshes_.clear();
     }
 
     SDL_Window* window_;
@@ -1307,6 +1707,13 @@ private:
     std::unordered_map<ShaderId, GLuint> game_programs_;
     std::uint32_t next_shader_ = 1;
     std::vector<GLuint> pending_programs_;
+    std::unordered_map<MeshId, GlMesh> meshes_;
+    std::uint32_t next_mesh_ = 1;
+    std::vector<GlMesh> pending_meshes_;
+    GLuint mesh_program_ = 0;
+    GLuint depth_ = 0; // a renderbuffer
+    std::uint32_t depth_width_ = 0;
+    std::uint32_t depth_height_ = 0;
     detail::CpuParticles particles_;
     std::vector<Vertex2D> particle_vertices_;
     Texture present_;
@@ -1319,6 +1726,9 @@ private:
     std::uint32_t frame_height_ = 0;
     std::vector<Vertex2D> vertices_;
     std::vector<Batch> batches_;
+    // The frame's mesh draws, and what each binds.
+    std::vector<MeshDraw> mesh_draws_;
+    std::vector<MeshBatch> mesh_batches_;
     bool break_batch_ = false; // the next draw starts a batch
     std::vector<std::uint8_t> uniform_bytes_;
     VsyncMode vsync_ = VsyncMode::Enabled;

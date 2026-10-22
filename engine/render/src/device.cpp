@@ -3,6 +3,7 @@
 #include "checks.hpp"
 #include "gl_device.hpp"
 #include "gpu_device.hpp"
+#include "mesh_shading.hpp"
 #ifdef __EMSCRIPTEN__
 #include "webgpu_device.hpp"
 #endif
@@ -474,6 +475,18 @@ public:
         return std::vector<Particle>(std::size_t{it->second.amount} * it->second.trail);
     }
 
+    Result<MeshId> create_mesh(std::span<const Vertex3D> vertices,
+                               std::span<const std::uint32_t> indices) override {
+        if (auto checked = detail::check_mesh(vertices, indices); !checked) {
+            return checked.error();
+        }
+        const auto id = static_cast<MeshId>(next_mesh_++);
+        meshes_[id] = (indices.empty() ? vertices.size() : indices.size()) / 3;
+        return id;
+    }
+
+    void destroy_mesh(MeshId mesh) override { meshes_.erase(mesh); }
+
     Result<bool> begin_frame(const Frame& frame) override {
         if (in_frame_) {
             return detail::frame_in_progress("begin_frame");
@@ -481,6 +494,11 @@ public:
         if (frame.target == TextureId::None) {
             return make_error(ErrorCode::InvalidArgument,
                               "the null device has no window; draw to a render-target texture");
+        }
+        if (frame.scene) {
+            if (auto checked = detail::check_scene(*frame.scene); !checked) {
+                return checked.error();
+            }
         }
         const auto it = textures_.find(frame.target);
         if (it == textures_.end()) {
@@ -500,6 +518,7 @@ public:
         }
         it->second.cleared = detail::to_rgba8(frame.clear);
         lighting_ = frame.lighting;
+        has_scene_ = frame.scene.has_value();
         in_frame_ = true;
         target_ = frame.target;
         frame_vertices_ = 0;
@@ -526,6 +545,24 @@ public:
         }
         frame_vertices_ += vertices.size();
         stats_.triangles += vertices.size() / 3;
+        return {};
+    }
+
+    Result<void> draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
+                           std::uint32_t /*layers*/) override {
+        if (!in_frame_) {
+            return detail::no_frame("draw_mesh");
+        }
+        const auto it = meshes_.find(mesh);
+        if (auto checked = detail::check_mesh_draw(
+                has_scene_, it != meshes_.end(), mesh, transform, material, target_,
+                [&](TextureId id) { return textures_.contains(id); });
+            !checked) {
+            return checked;
+        }
+        // Each mesh is a draw of its own, as on the GPU device.
+        ++stats_.draws;
+        stats_.triangles += it->second;
         return {};
     }
 
@@ -613,7 +650,11 @@ private:
     };
     std::unordered_map<ParticlesId, Shape> particles_;
     std::uint32_t next_particles_ = 1;
+    // A mesh's triangle count.
+    std::unordered_map<MeshId, std::size_t> meshes_;
+    std::uint32_t next_mesh_ = 1;
     bool in_frame_ = false;
+    bool has_scene_ = false;
     TextureId target_ = TextureId::None;
     std::size_t frame_vertices_ = 0;
     std::optional<TextureId> last_texture_;

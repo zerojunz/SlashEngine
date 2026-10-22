@@ -39,6 +39,7 @@ add_library(slash_render
     src/image.cpp
     src/light.cpp
     src/material.cpp
+    src/mesh.cpp
     src/particle_layout.cpp
     src/particles.cpp
     src/resize.cpp
@@ -77,8 +78,8 @@ endif()
 # The software device draws the same pixels, and particles and their graphs move the same, on
 # every platform: no fused multiply-adds, which arm64 compilers would otherwise emit and x86-64
 # ones not.
-set_source_files_properties(src/device.cpp src/material.cpp src/particles.cpp src/resize.cpp
-    src/shader_vm.cpp src/software_device.cpp src/upscaler.cpp PROPERTIES
+set_source_files_properties(src/device.cpp src/material.cpp src/mesh.cpp src/particles.cpp
+    src/resize.cpp src/shader_vm.cpp src/software_device.cpp src/upscaler.cpp PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
 # Regenerates src/*_shaders.hpp from shaders/*.hlsl. The headers are committed, so only someone
@@ -87,9 +88,11 @@ find_program(SLASH_GLSLANG NAMES glslangValidator glslang)
 find_program(SLASH_SPIRV_CROSS NAMES spirv-cross)
 find_program(SLASH_TINT NAMES tint)
 set(slash_shader_headers "")
-# Each shader as file:Name, with the compute shaders after the vertex and fragment pairs.
-set(slash_shaders sprite:Sprite material:Material particles_process:ParticlesProcess:compute
-    particles_emit:ParticlesEmit:compute particles_draw:ParticlesDraw:compute)
+# Each shader as file:Name, then compute for compute shaders and 3d for the mesh shader, whose
+# varyings GLSL names apart from the canvas shaders' and whose depth it maps to OpenGL's.
+set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
+    particles_process:ParticlesProcess:compute particles_emit:ParticlesEmit:compute
+    particles_draw:ParticlesDraw:compute)
 foreach(entry IN LISTS slash_shaders)
     string(REPLACE ":" ";" parts ${entry})
     list(GET parts 0 shader)
@@ -97,9 +100,18 @@ foreach(entry IN LISTS slash_shaders)
     list(LENGTH parts count)
     set(compute OFF)
     set(include canvas)
+    set(interface v_uv,v_color,v_world)
+    set(fixup OFF)
     if(count GREATER 2)
-        set(compute ON)
-        set(include particles)
+        list(GET parts 2 kind)
+        if(kind STREQUAL "compute")
+            set(compute ON)
+            set(include particles)
+        else()
+            set(include mesh)
+            set(interface v_world,v_normal,v_tangent,v_binormal,v_uv,v_color)
+            set(fixup ON)
+        endif()
     endif()
     set(header ${CMAKE_CURRENT_SOURCE_DIR}/src/${shader}_shaders.hpp)
     set(stamp ${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}.stamp)
@@ -107,7 +119,8 @@ foreach(entry IN LISTS slash_shaders)
         OUTPUT ${stamp}
         COMMAND ${CMAKE_COMMAND}
             -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/shaders/${shader}.hlsl -DOUTPUT=${header}
-            -DNAME=${name} -DCOMPUTE=${compute} -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/shaders
+            -DNAME=${name} -DCOMPUTE=${compute} -DINTERFACE=${interface}
+            -DFIXUP_CLIPSPACE=${fixup} -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/shaders
             -DGLSLANG=${SLASH_GLSLANG} -DSPIRV_CROSS=${SLASH_SPIRV_CROSS} -DTINT=${SLASH_TINT}
             -P ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake
         COMMAND ${CMAKE_COMMAND} -E touch ${stamp}
