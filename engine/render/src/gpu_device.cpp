@@ -9,6 +9,8 @@
 #include "particles_draw_shaders.hpp"
 #include "particles_emit_shaders.hpp"
 #include "particles_process_shaders.hpp"
+#include "post_shaders.hpp"
+#include "post_shading.hpp"
 #include "shadow_shaders.hpp"
 #include "sprite_shaders.hpp"
 #include "uniforms.hpp"
@@ -269,6 +271,15 @@ public:
                 SDL_ReleaseGPUShader(device_, shader);
             }
         }
+        for (SDL_GPUShader* shader : post_shaders_) {
+            if (shader != nullptr) {
+                SDL_ReleaseGPUShader(device_, shader);
+            }
+        }
+        for (const auto& [format, pipeline] : post_pipelines_) {
+            SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+        }
+        release_post_targets();
         for (const auto& [id, game] : game_shaders_) {
             SDL_ReleaseGPUShader(device_, game.vertex);
             SDL_ReleaseGPUShader(device_, game.fragment);
@@ -752,6 +763,15 @@ public:
             if (auto checked = check_scene(*frame.scene); !checked) {
                 return checked.error();
             }
+            if (auto checked = check_post(
+                    frame.scene->post, [&](TextureId id) { return textures_.contains(id); },
+                    [&](TextureId id) {
+                        const TextureDesc& desc = textures_.at(id).desc;
+                        return std::pair{desc.width, desc.height};
+                    });
+                !checked) {
+                return checked.error();
+            }
         }
         SDL_GPUTexture* target = nullptr;
         std::uint32_t width = 0;
@@ -805,6 +825,12 @@ public:
                 SDL_CancelGPUCommandBuffer(commands);
                 start_frame(frame, nullptr, nullptr, 0, 0);
                 return false;
+            }
+        }
+        if (frame.scene && post_processes(frame.scene->post)) {
+            if (auto ready = prepare_post(format, width, height); !ready) {
+                SDL_CancelGPUCommandBuffer(commands);
+                return ready.error();
             }
         }
         start_frame(frame, commands, target, width, height);
@@ -865,7 +891,9 @@ public:
         if (auto ready = prepare_shadows(*frame_.scene); !ready) {
             return ready;
         }
-        auto pipeline = mesh_pipeline_for(frame_format_, material);
+        // With post-processing, meshes draw into the post passes' texture instead of the target.
+        auto pipeline = mesh_pipeline_for(
+            post_processes(frame_.scene->post) ? kTextureFormat : frame_format_, material);
         if (!pipeline) {
             return pipeline.error();
         }
@@ -916,14 +944,18 @@ public:
         // Meshes draw first, in a pass of their own, and the 2D draws go over them.
         // Mesh draws need a scene, so a frame with them has one.
         const bool meshes = frame_.scene && shadow_plan_ && !mesh_draws_.empty();
+        const bool post = frame_.scene && post_processes(frame_.scene->post);
         if (meshes) {
             draw_meshes(commands, *frame_.scene, *shadow_plan_);
+        }
+        if (post) {
+            draw_post(commands, frame_.scene->post, !meshes);
         }
 
         SDL_GPUColorTargetInfo color{};
         color.texture = frame_texture_;
         color.clear_color = {frame_.clear.r, frame_.clear.g, frame_.clear.b, frame_.clear.a};
-        color.load_op = meshes ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_CLEAR;
+        color.load_op = meshes || post ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_CLEAR;
         color.store_op = SDL_GPU_STOREOP_STORE;
         SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
         if (!batches_.empty()) {
@@ -1905,7 +1937,7 @@ private:
     void draw_meshes(SDL_GPUCommandBuffer* commands, const Scene3D& scene, const ShadowPlan& plan) {
         draw_shadows(commands, plan);
         SDL_GPUColorTargetInfo color{};
-        color.texture = frame_texture_;
+        color.texture = post_processes(scene.post) ? post_targets_.world : frame_texture_;
         color.clear_color = {frame_.clear.r, frame_.clear.g, frame_.clear.b, frame_.clear.a};
         color.load_op = SDL_GPU_LOADOP_CLEAR;
         color.store_op = SDL_GPU_STOREOP_STORE;
@@ -1963,6 +1995,166 @@ private:
             SDL_DrawGPUIndexedPrimitives(pass, batch.index_count, 1, 0, 0, 0);
         }
         SDL_EndGPURenderPass(pass);
+    }
+
+    // The post passes' shaders, their pipeline for a target format, and their textures at the
+    // frame's size: the meshes' and glow's four. Made at the start of a frame that needs them.
+    Result<void> prepare_post(SDL_GPUTextureFormat format, std::uint32_t width,
+                              std::uint32_t height) {
+        if (post_shaders_[0] == nullptr) {
+            const ShaderCode code{.vertex_spirv = shaders::kPostVertexSpirv,
+                                  .fragment_spirv = shaders::kPostFragmentSpirv,
+                                  .vertex_msl = shaders::kPostVertexMsl,
+                                  .fragment_msl = shaders::kPostFragmentMsl,
+                                  .hlsl = shaders::kPostHlsl};
+            auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 0);
+            if (!vertex) {
+                return vertex.error();
+            }
+            auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, 3, 1);
+            if (!fragment) {
+                SDL_ReleaseGPUShader(device_, vertex.value());
+                return fragment.error();
+            }
+            post_shaders_ = {vertex.value(), fragment.value()};
+        }
+        for (const SDL_GPUTextureFormat needed : {kTextureFormat, format}) {
+            if (auto pipeline = post_pipeline(needed); !pipeline) {
+                return pipeline.error();
+            }
+        }
+        if (post_targets_.world != nullptr && post_targets_.width == width &&
+            post_targets_.height == height) {
+            return {};
+        }
+        release_post_targets();
+        const auto made = [&](std::uint32_t w, std::uint32_t h) {
+            return create_gpu_texture(
+                {.width = w, .height = h, .filter = Filter::Linear, .render_target = true});
+        };
+        auto world = made(width, height);
+        if (!world) {
+            return world.error();
+        }
+        post_targets_.world = world.value();
+        const std::array<PostSize, kGlowLevels> sizes = glow_sizes(width, height);
+        for (std::size_t i = 0; i < kGlowLevels; ++i) {
+            auto level = made(sizes.at(i).width, sizes.at(i).height);
+            if (!level) {
+                release_post_targets();
+                return level.error();
+            }
+            post_targets_.glow.at(i) = level.value();
+        }
+        post_targets_.width = width;
+        post_targets_.height = height;
+        return {};
+    }
+
+    Result<SDL_GPUGraphicsPipeline*> post_pipeline(SDL_GPUTextureFormat format) {
+        for (const auto& [made, pipeline] : post_pipelines_) {
+            if (made == format) {
+                return pipeline;
+            }
+        }
+        SDL_GPUColorTargetDescription color{};
+        color.format = format;
+        SDL_GPUGraphicsPipelineCreateInfo info{};
+        info.vertex_shader = post_shaders_[0];
+        info.fragment_shader = post_shaders_[1];
+        info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+        info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+        info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+        info.target_info.color_target_descriptions = &color;
+        info.target_info.num_color_targets = 1;
+        SDL_GPUGraphicsPipeline* pipeline = SDL_CreateGPUGraphicsPipeline(device_, &info);
+        if (pipeline == nullptr) {
+            return sdl_error("creating the post-processing pipeline failed");
+        }
+        post_pipelines_.emplace_back(format, pipeline);
+        return pipeline;
+    }
+
+    void release_post_targets() {
+        const auto release = [this](SDL_GPUTexture*& texture) {
+            if (texture != nullptr) {
+                pending_release_.push_back(std::exchange(texture, nullptr));
+            }
+        };
+        release(post_targets_.world);
+        for (SDL_GPUTexture*& texture : post_targets_.glow) {
+            release(texture);
+        }
+        post_targets_.width = 0;
+        post_targets_.height = 0;
+    }
+
+    // post.hlsl's passes: glow's filter, downsampling and upsampling through its four textures,
+    // then the post pass from the meshes' texture over the frame's target. A frame with no mesh
+    // draws clears the meshes' texture first.
+    void draw_post(SDL_GPUCommandBuffer* commands, const PostProcess& post, bool clear) {
+        if (clear) {
+            SDL_GPUColorTargetInfo color{};
+            color.texture = post_targets_.world;
+            color.clear_color = {frame_.clear.r, frame_.clear.g, frame_.clear.b, frame_.clear.a};
+            color.load_op = SDL_GPU_LOADOP_CLEAR;
+            color.store_op = SDL_GPU_STOREOP_STORE;
+            SDL_EndGPURenderPass(SDL_BeginGPURenderPass(commands, &color, 1, nullptr));
+        }
+        SDL_GPUSampler* sampler = samplers_.at(sampler_index(Filter::Linear, false));
+        const auto pass = [&](SDL_GPUTexture* target, SDL_GPUTextureFormat format,
+                              const PostUniforms& uniforms, SDL_GPUTexture* source,
+                              SDL_GPUTexture* glow, SDL_GPUTexture* lut) {
+            SDL_GPUColorTargetInfo color{};
+            color.texture = target;
+            color.load_op = SDL_GPU_LOADOP_DONT_CARE;
+            color.store_op = SDL_GPU_STOREOP_STORE;
+            // Made in prepare_post, at the start of the frame.
+            auto pipeline = post_pipeline(format);
+            if (!pipeline) {
+                return;
+            }
+            SDL_GPURenderPass* render = SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
+            SDL_BindGPUGraphicsPipeline(render, pipeline.value());
+            SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
+                                           static_cast<std::uint32_t>(sizeof(uniforms)));
+            const std::array<SDL_GPUTextureSamplerBinding, 3> bindings{{
+                {.texture = source, .sampler = sampler},
+                {.texture = glow, .sampler = sampler},
+                {.texture = lut, .sampler = sampler},
+            }};
+            SDL_BindGPUFragmentSamplers(render, 0, bindings.data(),
+                                        static_cast<std::uint32_t>(bindings.size()));
+            SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
+            SDL_EndGPURenderPass(render);
+        };
+        const std::array<PostSize, kGlowLevels> sizes = glow_sizes(frame_width_, frame_height_);
+        const auto glow_pass = [&](PostPass kind, std::size_t from, std::size_t to) {
+            pass(post_targets_.glow.at(to), kTextureFormat,
+                 post_uniforms(post, kind, sizes.at(to).width, sizes.at(to).height),
+                 kind == PostPass::GlowFilter ? post_targets_.world : post_targets_.glow.at(from),
+                 white_, white_);
+        };
+        if (post.glow) {
+            glow_pass(PostPass::GlowFilter, 0, 0);
+            for (std::size_t i = 1; i < kGlowLevels; ++i) {
+                glow_pass(PostPass::GlowDownsample, i - 1, i);
+            }
+            for (std::size_t i = kGlowLevels - 1; i-- > 0;) {
+                glow_pass(PostPass::GlowUpsample, i + 1, i);
+            }
+        }
+        SDL_GPUTexture* lut = white_;
+        TextureDesc lut_desc{};
+        if (post.adjustments && post.color_correction != TextureId::None) {
+            const Texture& found = textures_.at(post.color_correction);
+            lut = found.gpu;
+            lut_desc = found.desc;
+        }
+        pass(frame_texture_, frame_format_,
+             post_uniforms(post, PostPass::Post, frame_width_, frame_height_, lut_desc.width,
+                           lut_desc.height),
+             post_targets_.world, post.glow ? post_targets_.glow[0] : white_, lut);
     }
 
     // Both of a kind's shaders, unless they are made already.
@@ -2325,6 +2517,17 @@ private:
     std::array<SDL_GPUGraphicsPipeline*, 3> shadow_pipelines_{}; // by CullMode
     std::uint32_t depth_width_ = 0;
     std::uint32_t depth_height_ = 0;
+    // What the post passes draw with: their shaders, a pipeline for each target format, and the
+    // meshes' texture and glow's at the frame's size.
+    struct PostTargets {
+        SDL_GPUTexture* world = nullptr;
+        std::array<SDL_GPUTexture*, kGlowLevels> glow{};
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+    };
+    std::array<SDL_GPUShader*, 2> post_shaders_{}; // vertex, then fragment
+    std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> post_pipelines_;
+    PostTargets post_targets_;
 
     // The frame being built. A skipped frame has no command buffer.
     bool in_frame_ = false;

@@ -6,6 +6,7 @@ if(EMSCRIPTEN)
         test_gpu_particles.cpp
         test_light.cpp
         test_mesh.cpp
+        test_post.cpp
         test_render.cpp
         test_shadow.cpp
         test_upscaler.cpp)
@@ -78,6 +79,7 @@ add_executable(slash_tests
     test_physics.cpp
     test_playtest.cpp
     test_platform.cpp
+    test_post.cpp
     test_project_map.cpp
     test_reflect.cpp
     test_render.cpp
@@ -181,7 +183,7 @@ add_test(NAME unit_${unit_index} COMMAND slash_tests --source-file-exclude=${uni
 
 # The compiled shaders committed in engine/render/src match their HLSL; see
 # cmake/compile_shaders.cmake.
-foreach(shader IN ITEMS sprite material mesh shadow particles_process particles_emit
+foreach(shader IN ITEMS sprite material mesh shadow post particles_process particles_emit
         particles_draw)
     add_test(NAME shaders_up_to_date_${shader}
         COMMAND ${CMAKE_COMMAND} -DSOURCE=${PROJECT_SOURCE_DIR}/engine/render/shaders/${shader}.hlsl

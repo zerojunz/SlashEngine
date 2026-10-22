@@ -165,6 +165,46 @@ struct ShadowSettings {
 // Whether size is an atlas size: a power of two from 256 to 16384.
 [[nodiscard]] bool valid_shadow_atlas_size(std::uint32_t size);
 
+// A texture on the device (device.hpp).
+// NOLINTNEXTLINE(performance-enum-size): ids count up, past 255
+enum class TextureId : std::uint32_t;
+
+// How the lit 3D world's colors map to the screen's, as Godot's Environment.tonemap_mode.
+enum class Tonemapper : std::uint8_t { Linear, Reinhard, Filmic, Aces, Agx };
+inline constexpr std::array<std::string_view, 5> kTonemapperNames{"linear", "reinhard", "filmic",
+                                                                  "aces", "agx"};
+
+// What happens to the 3D world's colors after it is lit, as Godot's Environment's tonemap, glow
+// and adjustments in its Compatibility renderer. Without glow or adjustments, meshes tonemap as
+// they draw. With either, they draw untonemapped into a texture of the target's size, glow blurs
+// its bright parts into four textures each half the size of the last, and a pass over the target
+// blends the glow in, tonemaps, then adjusts brightness, contrast and saturation and corrects
+// colors, before the frame's 2D draws go over it. The textures are 8 bits a channel, as the
+// Compatibility renderer's are, so glow comes from colors above glow_hdr_threshold only when it
+// is below 1, or from glow_bloom.
+struct PostProcess {
+    Tonemapper tonemapper = Tonemapper::Linear;
+    float exposure = 1.0F; // multiplies the lit colors before they are tonemapped
+    float white = 1.0F;    // the color tonemapped to white; AgX ignores it
+    bool glow = false;
+    float glow_intensity = 0.8F;
+    float glow_bloom = 0.0F;              // how much of every color glows, from 0 to 1
+    float glow_hdr_threshold = 1.0F;      // colors above it glow
+    float glow_hdr_scale = 2.0F;          // how far above it they reach full glow
+    float glow_hdr_luminance_cap = 12.0F; // the brightest glow
+    bool adjustments = false;
+    float brightness = 1.0F;
+    float contrast = 1.0F;
+    float saturation = 1.0F;
+    // With adjustments, a lookup texture colors pass through: one texel tall, each channel read
+    // at its own value along x (Godot's 1D LUT, a GradientTexture1D), or as wide as its height
+    // squared, height slices of height texels side by side for blue, x in each red and y green
+    // (a 3D LUT). TextureId{} for none.
+    TextureId color_correction{};
+
+    bool operator==(const PostProcess&) const = default;
+};
+
 // What a frame's meshes are seen from and lit by. Matrices are column-major, as Mat4.
 struct Scene3D {
     // The world to the camera's space: the inverse of the camera's transform.
@@ -177,6 +217,7 @@ struct Scene3D {
     float ambient_energy = 1.0F;
     std::vector<Light3D> lights; // up to kMaxLights3D
     ShadowSettings shadows;
+    PostProcess post;
 
     // Godot's default Camera3D: 75 degrees across a square target, from 0.05 to 4000.
     static std::array<float, 16> perspective_default();

@@ -326,9 +326,10 @@ SLASH_COMPONENT(SpotLight3D, light_color, light_energy, light_specular, light_ne
                 shadow_enabled, shadow_bias, shadow_normal_bias, shadow_reverse_cull_face,
                 shadow_opacity, shadow_caster_mask)
 
-// The 3D world's background and ambient light, as Godot's WorldEnvironment and its Environment.
-// The first one made applies; without one the background is the project's clear color and there
-// is no ambient light.
+// The 3D world's background, ambient light, tonemap, glow and adjustments, as Godot's
+// WorldEnvironment and its Environment in the Compatibility renderer. The first one made applies;
+// without one the background is the project's clear color, there is no ambient light and colors
+// are left as they are.
 struct WorldEnvironment {
     std::string background_mode = "clear_color"; // "clear_color" or "color"
     Vec4 background_color{0.0F, 0.0F, 0.0F, 1.0F};
@@ -337,11 +338,29 @@ struct WorldEnvironment {
     std::string ambient_light_source = "background";
     Vec4 ambient_light_color{0.0F, 0.0F, 0.0F, 1.0F};
     float ambient_light_energy = 1.0F;
+    std::string tonemap_mode = "linear"; // "linear", "reinhard", "filmic", "aces" or "agx"
+    float tonemap_exposure = 1.0F;
+    float tonemap_white = 1.0F;
+    bool glow_enabled = false;
+    float glow_intensity = 0.8F;
+    float glow_bloom = 0.0F;
+    float glow_hdr_threshold = 1.0F;
+    float glow_hdr_scale = 2.0F;
+    float glow_hdr_luminance_cap = 12.0F;
+    bool adjustment_enabled = false;
+    float adjustment_brightness = 1.0F;
+    float adjustment_contrast = 1.0F;
+    float adjustment_saturation = 1.0F;
+    std::string adjustment_color_correction; // project path of a lookup texture; "" for none
 
     friend bool operator==(const WorldEnvironment&, const WorldEnvironment&) = default;
 };
 SLASH_COMPONENT(WorldEnvironment, background_mode, background_color, background_energy_multiplier,
-                ambient_light_source, ambient_light_color, ambient_light_energy)
+                ambient_light_source, ambient_light_color, ambient_light_energy, tonemap_mode,
+                tonemap_exposure, tonemap_white, glow_enabled, glow_intensity, glow_bloom,
+                glow_hdr_threshold, glow_hdr_scale, glow_hdr_luminance_cap, adjustment_enabled,
+                adjustment_brightness, adjustment_contrast, adjustment_saturation,
+                adjustment_color_correction)
 
 // Ties an entity to the storyboard entries it stands for, such as the character it plays or the
 // place it is, so a brief for the scene includes them and checks catch a misspelled ID.

@@ -576,6 +576,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         game and by `frame.capture`
 - [x] Cascaded, omni and spot shadows
 - [ ] Post-processing: tonemap, bloom, SSAO, SSR, depth of field, auto exposure, color grading
+  - [x] Godot's Compatibility renderer's tonemappers (linear, Reinhard, filmic, ACES, AgX),
+        exposure, glow, brightness, contrast, saturation and 1D or 3D color correction LUTs in
+        every render device, set by `WorldEnvironment`
 - [ ] Baked lightmaps and probe-based global illumination
 - [ ] Render scale and upscalers, as Godot's `scaling_3d` setting: bilinear, FSR 1 and FSR 2/3
       (AMD's FidelityFX code, MIT) on every backend and MetalFX on Apple, set in `project.json`

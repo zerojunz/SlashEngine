@@ -6,6 +6,8 @@
 #include "material_shaders.hpp"
 #include "mesh_shaders.hpp"
 #include "mesh_shading.hpp"
+#include "post_shaders.hpp"
+#include "post_shading.hpp"
 #include "shadow_shaders.hpp"
 #include "sprite_shaders.hpp"
 #include "uniforms.hpp"
@@ -255,6 +257,8 @@ constexpr GLuint kSurfaceBinding = 6;
 constexpr GLuint kSceneBinding = 7;
 constexpr GLuint kShadowPassBinding = 8;
 constexpr GLuint kShadowsBinding = 9;
+// The post-processing shader's.
+constexpr GLuint kPostBinding = 10;
 
 // The two shaders: plain sprites, and materials that run a program.
 enum class ShaderKind : std::uint8_t { Sprite, Material };
@@ -268,6 +272,7 @@ constexpr std::array<std::string_view, kMaterialSamplers> kMaterialSamplerNames{
 constexpr std::array<std::string_view, kMeshTextures + 2> kMeshSamplerNames{
     "albedo_texture", "metallic_texture",  "roughness_texture", "emission_texture",
     "normal_texture", "directional_atlas", "positional_atlas"};
+constexpr std::array<std::string_view, 3> kPostSamplerNames{"source", "glow_texture", "lut"};
 
 // Turns clip space upside down. GL puts clip space's top at a framebuffer's last row, where the
 // other backends put it at the first, so frames draw upside down into textures, which leaves
@@ -494,6 +499,12 @@ public:
                 }
                 if (depth_ != 0) {
                     gl_.delete_renderbuffers(1, &depth_);
+                }
+                release_post_targets();
+                release_pending();
+                if (post_program_ != 0) {
+                    gl_.delete_program(post_program_);
+                    gl_.delete_vertex_arrays(1, &post_vertex_array_);
                 }
                 gl_.delete_buffers(1, &vertex_buffer_);
                 gl_.delete_buffers(1, &uniform_buffer_);
@@ -853,6 +864,15 @@ public:
             if (auto checked = check_scene(*frame.scene); !checked) {
                 return checked.error();
             }
+            if (auto checked = check_post(
+                    frame.scene->post, [&](TextureId id) { return textures_.contains(id); },
+                    [&](TextureId id) {
+                        const TextureDesc& desc = textures_.at(id).desc;
+                        return std::pair{desc.width, desc.height};
+                    });
+                !checked) {
+                return checked.error();
+            }
         }
         std::uint32_t width = 0;
         std::uint32_t height = 0;
@@ -900,6 +920,11 @@ public:
                 return made.error();
             }
             framebuffer = made.value();
+            if (frame.scene && post_processes(frame.scene->post)) {
+                if (auto prepared = prepare_post(width, height); !prepared) {
+                    return prepared.error();
+                }
+            }
         }
         in_frame_ = true;
         frame_ = frame;
@@ -1003,7 +1028,11 @@ public:
             return {};
         }
         make_current();
-        gl_.bind_framebuffer(gl::kFramebuffer, frame_framebuffer_);
+        // A scene that post-processes draws its meshes into a texture first, which the post
+        // passes draw over the frame's framebuffer.
+        const bool post = frame_.scene && post_processes(frame_.scene->post);
+        gl_.bind_framebuffer(gl::kFramebuffer,
+                             post ? post_targets_.world.framebuffer : frame_framebuffer_);
         gl_.viewport(0, 0, static_cast<GLsizei>(frame_width_), static_cast<GLsizei>(frame_height_));
         gl_.clear_color(frame_.clear.r, frame_.clear.g, frame_.clear.b, frame_.clear.a);
         gl_.clear(gl::kColorBufferBit);
@@ -1012,6 +1041,9 @@ public:
         // both.
         if (frame_.scene && shadow_plan_ && !mesh_draws_.empty()) {
             draw_meshes(*frame_.scene, *shadow_plan_);
+        }
+        if (post) {
+            draw_post(frame_.scene->post);
         }
         if (!batches_.empty()) {
             draw_batches();
@@ -1382,7 +1414,8 @@ private:
               std::pair{"VertexProgram", kVertexProgramBinding},
               std::pair{"Camera", kCameraBinding}, std::pair{"Instance", kInstanceBinding},
               std::pair{"Surface", kSurfaceBinding}, std::pair{"Scene", kSceneBinding},
-              std::pair{"LightView", kShadowPassBinding}, std::pair{"Shadows", kShadowsBinding}}) {
+              std::pair{"LightView", kShadowPassBinding}, std::pair{"Shadows", kShadowsBinding},
+              std::pair{"Post", kPostBinding}}) {
             const GLuint index = gl_.get_uniform_block_index(program, name);
             if (index != gl::kInvalidIndex) {
                 gl_.uniform_block_binding(program, index, binding);
@@ -1881,6 +1914,145 @@ private:
         gl_.framebuffer_renderbuffer(gl::kFramebuffer, gl::kDepthAttachment, gl::kRenderbuffer, 0);
     }
 
+    // The post-processing program, and the textures the meshes and glow draw into at the frame's
+    // size, made at the start of a frame that post-processes so a failure shows there.
+    Result<void> prepare_post(std::uint32_t width, std::uint32_t height) {
+        if (post_program_ == 0) {
+            auto program = link(shaders::kPostVertexGlsl, shaders::kPostFragmentGlsl,
+                                kPostSamplerNames, "the post-processing shader");
+            if (!program) {
+                return program.error();
+            }
+            post_program_ = program.value();
+            // The passes' triangle has no vertices to read, but a vertex array must be bound.
+            gl_.gen_vertex_arrays(1, &post_vertex_array_);
+        }
+        if (post_targets_.world.gl != 0 && post_targets_.world.desc.width == width &&
+            post_targets_.world.desc.height == height) {
+            return {};
+        }
+        release_post_targets();
+        const auto made = [&](std::uint32_t w, std::uint32_t h, Texture& texture) -> Result<void> {
+            const TextureDesc desc{
+                .width = w, .height = h, .filter = Filter::Linear, .render_target = true};
+            auto gl = create_gl_texture(desc, {});
+            if (!gl) {
+                return gl.error();
+            }
+            texture = Texture{.gl = gl.value(), .framebuffer = 0, .desc = desc};
+            if (auto framebuffer = attach(texture); !framebuffer) {
+                return framebuffer.error();
+            }
+            return {};
+        };
+        auto world = made(width, height, post_targets_.world);
+        const std::array<PostSize, kGlowLevels> sizes = glow_sizes(width, height);
+        for (std::size_t i = 0; i < kGlowLevels && world; ++i) {
+            world = made(sizes.at(i).width, sizes.at(i).height, post_targets_.glow.at(i));
+        }
+        if (!world) {
+            release_post_targets();
+            return world.error();
+        }
+        return {};
+    }
+
+    void release_post_targets() {
+        const auto release = [this](Texture& texture) {
+            if (texture.gl != 0) {
+                pending_release_.push_back(std::exchange(texture, Texture{}));
+            }
+        };
+        release(post_targets_.world);
+        for (Texture& texture : post_targets_.glow) {
+            release(texture);
+        }
+    }
+
+    // post.hlsl's passes, as the GPU device draws them: glow's filter, downsampling and
+    // upsampling through its four textures, then the post pass from the meshes' texture over the
+    // frame's framebuffer, which is left bound.
+    void draw_post(const PostProcess& post) {
+        struct PostDraw {
+            GLuint framebuffer = 0;
+            PostSize size;
+            std::array<GLuint, 3> textures{}; // the source, glow and the color correction
+            std::size_t uniforms = 0;
+        };
+        std::vector<PostDraw> draws;
+        uniform_bytes_.clear();
+        const auto add = [&](const Texture& target, const PostUniforms& uniforms,
+                             std::array<GLuint, 3> textures) {
+            draws.push_back({.framebuffer = target.framebuffer,
+                             .size = {target.desc.width, target.desc.height},
+                             .textures = textures,
+                             .uniforms = place_uniforms(&uniforms, sizeof(uniforms))});
+        };
+        if (post.glow) {
+            for (std::size_t i = 0; i < kGlowLevels; ++i) {
+                const Texture& target = post_targets_.glow.at(i);
+                add(target,
+                    post_uniforms(post, i == 0 ? PostPass::GlowFilter : PostPass::GlowDownsample,
+                                  target.desc.width, target.desc.height),
+                    {i == 0 ? post_targets_.world.gl : post_targets_.glow.at(i - 1).gl, white_,
+                     white_});
+            }
+            for (std::size_t i = kGlowLevels - 1; i-- > 0;) {
+                const Texture& target = post_targets_.glow.at(i);
+                add(target,
+                    post_uniforms(post, PostPass::GlowUpsample, target.desc.width,
+                                  target.desc.height),
+                    {post_targets_.glow.at(i + 1).gl, white_, white_});
+            }
+        }
+        GLuint lut = white_;
+        TextureDesc lut_desc{};
+        if (post.adjustments && post.color_correction != TextureId::None) {
+            const Texture& found = textures_.at(post.color_correction);
+            lut = found.gl;
+            lut_desc = found.desc;
+        }
+        const Texture frame{.gl = 0,
+                            .framebuffer = frame_framebuffer_,
+                            .desc = {.width = frame_width_, .height = frame_height_}};
+        add(frame,
+            post_uniforms(post, PostPass::Post, frame_width_, frame_height_, lut_desc.width,
+                          lut_desc.height),
+            {post_targets_.world.gl, post.glow ? post_targets_.glow[0].gl : white_, lut});
+
+        gl_.bind_buffer(gl::kUniformBuffer, uniform_buffer_);
+        gl_.buffer_data(gl::kUniformBuffer, static_cast<GLsizeiptr>(uniform_bytes_.size()),
+                        uniform_bytes_.data(), gl::kStreamDraw);
+        gl_.disable(gl::kBlend);
+        gl_.use_program(post_program_);
+        gl_.bind_vertex_array(post_vertex_array_);
+        const GLuint sampler = samplers_.at(sampler_index(Filter::Linear, false));
+        for (const PostDraw& draw : draws) {
+            gl_.bind_framebuffer(gl::kFramebuffer, draw.framebuffer);
+            gl_.viewport(0, 0, static_cast<GLsizei>(draw.size.width),
+                         static_cast<GLsizei>(draw.size.height));
+            gl_.bind_buffer_range(gl::kUniformBuffer, kPostBinding, uniform_buffer_,
+                                  static_cast<GLintptr>(draw.uniforms),
+                                  static_cast<GLsizeiptr>(sizeof(PostUniforms)));
+            for (std::size_t unit = 0; unit < draw.textures.size(); ++unit) {
+                gl_.active_texture(gl::kTexture0 + static_cast<GLenum>(unit));
+                gl_.bind_texture(gl::kTexture2D, draw.textures.at(unit));
+                gl_.bind_sampler(static_cast<GLuint>(unit), sampler);
+            }
+            gl_.draw_arrays(gl::kTriangles, 0, 3);
+        }
+        // Back to the 2D state the rest of the device draws with.
+        for (std::size_t unit = 0; unit < 3; ++unit) {
+            gl_.active_texture(gl::kTexture0 + static_cast<GLenum>(unit));
+            gl_.bind_texture(gl::kTexture2D, 0);
+            gl_.bind_sampler(static_cast<GLuint>(unit), 0);
+        }
+        gl_.active_texture(gl::kTexture0);
+        gl_.bind_vertex_array(0);
+        gl_.use_program(0);
+        gl_.enable(gl::kBlend);
+    }
+
     void finish_frame() {
         vertices_.clear();
         batches_.clear();
@@ -1950,6 +2122,14 @@ private:
     detail::CpuParticles particles_;
     std::vector<Vertex2D> particle_vertices_;
     Texture present_;
+    // What a frame that post-processes draws with: the meshes' texture and glow's.
+    struct PostTargets {
+        Texture world;
+        std::array<Texture, kGlowLevels> glow{};
+    };
+    PostTargets post_targets_;
+    GLuint post_program_ = 0;
+    GLuint post_vertex_array_ = 0;
 
     // The frame being built. A skipped frame is 0 wide.
     bool in_frame_ = false;

@@ -263,6 +263,25 @@ Environment environment(const world::World& world, render::Color clear) {
         out.ambient = rgb(env.ambient_light_color);
         out.ambient_energy = env.ambient_light_energy;
     }
+    out.entity = environments.front();
+    for (std::size_t i = 0; i < render::kTonemapperNames.size(); ++i) {
+        if (render::kTonemapperNames[i] == env.tonemap_mode) {
+            out.post.tonemapper = static_cast<render::Tonemapper>(i);
+        }
+    }
+    out.post.exposure = env.tonemap_exposure;
+    out.post.white = env.tonemap_white;
+    out.post.glow = env.glow_enabled;
+    out.post.glow_intensity = env.glow_intensity;
+    out.post.glow_bloom = env.glow_bloom;
+    out.post.glow_hdr_threshold = env.glow_hdr_threshold;
+    out.post.glow_hdr_scale = env.glow_hdr_scale;
+    out.post.glow_hdr_luminance_cap = env.glow_hdr_luminance_cap;
+    out.post.adjustments = env.adjustment_enabled;
+    out.post.brightness = env.adjustment_brightness;
+    out.post.contrast = env.adjustment_contrast;
+    out.post.saturation = env.adjustment_saturation;
+    out.color_correction = env.adjustment_color_correction;
     return out;
 }
 
@@ -345,7 +364,7 @@ render::Material3D material(const world::StandardMaterial3D& standard,
             return {};
         }
         // Godot's 3D textures repeat by default (texture_repeat).
-        return {.texture = made.value(), .repeat = true};
+        return {.texture = made.value().id, .repeat = true};
     };
     out.albedo = {standard.albedo_color.x, standard.albedo_color.y, standard.albedo_color.z,
                   standard.albedo_color.w};
@@ -494,6 +513,24 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
     frame.clear = env.background;
     frame.scene.ambient = env.ambient;
     frame.scene.ambient_energy = env.ambient_energy;
+    frame.scene.post = env.post;
+    if (env.post.adjustments && !env.color_correction.empty()) {
+        // Sampled smoothly, as Godot samples its LUTs.
+        auto lut = textures_(env.color_correction, render::Filter::Linear);
+        const char* const field = "/components/WorldEnvironment/adjustment_color_correction";
+        if (!lut) {
+            problems_.push_back({env.entity, field, lut.error().message});
+        } else if (lut.value().height != 1 &&
+                   lut.value().width != lut.value().height * lut.value().height) {
+            problems_.push_back(
+                {env.entity, field,
+                 "a color correction texture is 1 pixel tall, or as wide as its height squared, "
+                 "not " +
+                     std::to_string(lut.value().width) + "x" + std::to_string(lut.value().height)});
+        } else {
+            frame.scene.post.color_correction = lut.value().id;
+        }
+    }
     frame.scene.lights = scene3d::lights(world, tree, global);
     frame.scene.shadows = shadows;
     lights_ = frame.scene.lights.size();
