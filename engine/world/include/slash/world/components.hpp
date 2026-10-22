@@ -1528,6 +1528,122 @@ SLASH_COMPONENT(PhysicalBone3D, bone_name, body_offset_position, body_offset_rot
                 linear_damp_mode, linear_damp, angular_damp_mode, angular_damp, linear_velocity,
                 angular_velocity, can_sleep)
 
+// ---- Navigation, as Godot's (engine/navigation): regions of navigation mesh, links between
+// places and agents that follow paths over them, on one 2D and one 3D map per world.
+
+// Places a .navpoly.json navigation polygon on the 2D map at the entity's Transform2D, as Godot's
+// NavigationRegion2D. Regions join where their edges meet or come within the map's
+// edge_connection_margin.
+struct NavigationRegion2D {
+    std::string navigation_polygon; // a .navpoly.json file
+    bool enabled = true;
+    bool use_edge_connections = true; // join edges near other regions' edges
+    std::uint32_t navigation_layers = 1;
+    float enter_cost = 0.0F;  // added to a path that enters it from another region
+    float travel_cost = 1.0F; // what each unit of distance in it costs
+
+    friend bool operator==(const NavigationRegion2D&, const NavigationRegion2D&) = default;
+};
+SLASH_COMPONENT(NavigationRegion2D, navigation_polygon, enabled, use_edge_connections,
+                navigation_layers, enter_cost, travel_cost)
+
+// Places a .navmesh.json navigation mesh on the 3D map at the entity's Transform3D, as Godot's
+// NavigationRegion3D.
+struct NavigationRegion3D {
+    std::string navigation_mesh; // a .navmesh.json file
+    bool enabled = true;
+    bool use_edge_connections = true;
+    std::uint32_t navigation_layers = 1;
+    float enter_cost = 0.0F;
+    float travel_cost = 1.0F;
+
+    friend bool operator==(const NavigationRegion3D&, const NavigationRegion3D&) = default;
+};
+SLASH_COMPONENT(NavigationRegion3D, navigation_mesh, enabled, use_edge_connections,
+                navigation_layers, enter_cost, travel_cost)
+
+// A way between two places on the 2D map that the regions don't join, such as a jump or a
+// ladder, as Godot's NavigationLink2D: start_position and end_position are in the entity's
+// Transform2D space, and each end joins the closest region polygon within the map's
+// link_connection_radius.
+struct NavigationLink2D {
+    bool enabled = true;
+    bool bidirectional = true; // false: only from start to end
+    std::uint32_t navigation_layers = 1;
+    Vec2 start_position;
+    Vec2 end_position;
+    float enter_cost = 0.0F;
+    float travel_cost = 1.0F;
+
+    friend bool operator==(const NavigationLink2D&, const NavigationLink2D&) = default;
+};
+SLASH_COMPONENT(NavigationLink2D, enabled, bidirectional, navigation_layers, start_position,
+                end_position, enter_cost, travel_cost)
+
+// The same on the 3D map, as Godot's NavigationLink3D.
+struct NavigationLink3D {
+    bool enabled = true;
+    bool bidirectional = true;
+    std::uint32_t navigation_layers = 1;
+    Vec3 start_position;
+    Vec3 end_position;
+    float enter_cost = 0.0F;
+    float travel_cost = 1.0F;
+
+    friend bool operator==(const NavigationLink3D&, const NavigationLink3D&) = default;
+};
+SLASH_COMPONENT(NavigationLink3D, enabled, bidirectional, navigation_layers, start_position,
+                end_position, enter_cost, travel_cost)
+
+// Finds a path on the 2D map from the entity's Transform2D to target_position and follows its
+// progress, as Godot's NavigationAgent2D. Setting target_position asks for a path; gameplay code
+// moves the entity toward navigation::next_path_position and the agent emits path_changed,
+// waypoint_reached, link_reached, target_reached and navigation_finished events as it goes. It
+// moves nothing itself.
+struct NavigationAgent2D {
+    Vec2 target_position;
+    float path_desired_distance = 20.0F;   // how near a waypoint counts as reaching it
+    float target_desired_distance = 10.0F; // how near target_position counts as reaching it
+    float path_max_distance = 100.0F;      // how far off the path before it is found again
+    std::uint32_t navigation_layers = 1;
+    std::string path_postprocessing = "corridorfunnel"; // "corridorfunnel", "edgecentered", "none"
+    bool simplify_path = false;
+    float simplify_epsilon = 0.0F;
+    float path_return_max_length = 0.0F;   // 0: no limit
+    float path_return_max_radius = 0.0F;   // 0: no limit
+    int path_search_max_polygons = 4096;   // 0: no limit
+    float path_search_max_distance = 0.0F; // 0: no limit
+
+    friend bool operator==(const NavigationAgent2D&, const NavigationAgent2D&) = default;
+};
+SLASH_COMPONENT(NavigationAgent2D, target_position, path_desired_distance, target_desired_distance,
+                path_max_distance, navigation_layers, path_postprocessing, simplify_path,
+                simplify_epsilon, path_return_max_length, path_return_max_radius,
+                path_search_max_polygons, path_search_max_distance)
+
+// The same on the 3D map from the entity's Transform3D, as Godot's NavigationAgent3D.
+struct NavigationAgent3D {
+    Vec3 target_position;
+    float path_desired_distance = 1.0F;
+    float target_desired_distance = 1.0F;
+    float path_height_offset = 0.0F; // how far the entity's origin is above the mesh
+    float path_max_distance = 5.0F;
+    std::uint32_t navigation_layers = 1;
+    std::string path_postprocessing = "corridorfunnel";
+    bool simplify_path = false;
+    float simplify_epsilon = 0.0F;
+    float path_return_max_length = 0.0F;
+    float path_return_max_radius = 0.0F;
+    int path_search_max_polygons = 4096;
+    float path_search_max_distance = 0.0F;
+
+    friend bool operator==(const NavigationAgent3D&, const NavigationAgent3D&) = default;
+};
+SLASH_COMPONENT(NavigationAgent3D, target_position, path_desired_distance, target_desired_distance,
+                path_height_offset, path_max_distance, navigation_layers, path_postprocessing,
+                simplify_path, simplify_epsilon, path_return_max_length, path_return_max_radius,
+                path_search_max_polygons, path_search_max_distance)
+
 // ---- Particles, as Godot's CPUParticles2D.
 
 // A color at a point of a gradient, as one stop of Godot's Gradient.

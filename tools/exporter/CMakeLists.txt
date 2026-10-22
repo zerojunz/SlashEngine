@@ -23,7 +23,7 @@ add_library(slash::exporter ALIAS slash_exporter)
 target_include_directories(slash_exporter PUBLIC include)
 target_link_libraries(slash_exporter
     PUBLIC slash::command slash::core slash::render slash::runtime
-    PRIVATE slash::ai slash::animation slash::audio slash::canvas slash::library slash::platform slash::scene3d slash::shader_compiler slash::text
+    PRIVATE slash::ai slash::animation slash::audio slash::canvas slash::library slash::navigation slash::platform slash::scene3d slash::shader_compiler slash::text
             slash::texture_encoder slash::ui slash::world)
 # Where exports find the engine sources when SLASH_ENGINE_DIR and an installed copy are absent.
 target_compile_definitions(slash_exporter PRIVATE SLASH_ENGINE_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
