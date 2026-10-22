@@ -79,7 +79,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, sdk)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, sdk)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -88,8 +88,8 @@ $cli scene format --check level.scene.json          # exit 1 if not canonical
 Validate after editing a scene or prefab by hand, and format before committing one. Both
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
-`.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json` and
-`.score.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`); validating a
+`.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
+`.score.json`, `.navmesh.json` and `.navpoly.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -949,6 +949,30 @@ before the step, each wheel's ray cast, suspension and friction push the body af
 wheels' `Transform3D` and contact fields are written back. `examples/joints-and-vehicles` has a
 lamp, a bell, a door, a drawer and a car.
 
+## Navigation
+
+`engine/navigation` is navigation, as Godot 4.6's `NavigationServer2D` and `NavigationServer3D`,
+ported from Godot's `modules/navigation` (each function names the one it follows). Each world
+has a 2D and a 3D map built from components: `NavigationRegion3D` and `NavigationRegion2D` place
+`.navmesh.json` and `.navpoly.json` files (`$cli schema navmesh`; convex polygons over shared
+vertices, as Godot's `NavigationMesh` and `NavigationPolygon`), and `NavigationLink3D` and
+`NavigationLink2D` join places the regions don't. `src/core.cpp` is the map: regions' polygons
+and edges keyed to the map's merge cells, edge connections across regions, links joined to the
+closest polygons, and Godot's A* (`query_path`) with its corridor funnel, edge centering, path
+clipping and simplification, `closest_point` and `random_point`. The 2D map is the 3D one with
+points at (x, 0, y), as Godot's 2D server was before 4.5. The `navigation` system (priority
+960, after physics) rebuilds a map only when its regions, links, files or settings change (its
+`iteration_id` goes up), then updates each `NavigationAgent3D` and `NavigationAgent2D` as
+Godot's agent nodes do and emits `path_changed`, `waypoint_reached`, `link_reached`,
+`target_reached` and `navigation_finished`; agents move nothing, gameplay code moves them toward
+`next_path_position_3d`. Agents' paths live beside the components by entity ID
+(`navigation::save` and `restore`). `project.json`'s `navigation_2d` and `navigation_3d` set the
+maps' cell sizes and margins. The commands are `navigation.path`, `navigation.closest`,
+`navigation.random`, `navigation.map` and `navigation.agent` (`engine/command/src/navigation.cpp`),
+and `check_scene` checks regions' files for `scene validate` and exports. Paths must be the same
+everywhere: the library builds with `-ffp-contract=off`, keeps Godot's insertion order where it walks a hash map, and picks random points with a seeded PCG.
+`examples/navigation` has a guard crossing a hatch and a cat in a yard.
+
 ## Particles
 
 `CPUParticles2D` is Godot's, with Godot's field names and angles in degrees. The
@@ -1036,7 +1060,7 @@ code worth seeing; they change no layout, so gameplay modules built without Trac
 `heap_bytes` of its fields, through `ComponentType::memory`), and a part from each memory source.
 A module that keeps state outside components adds a source when it installs
 (`World::add_memory_source`, as Godot's `Performance.add_custom_monitor`): physics2d, audio,
-both particle systems and ui's glyph atlases do. Asset types say what a loaded asset holds with
+navigation, both particle systems and ui's glyph atlases do. Asset types say what a loaded asset holds with
 `add_type`'s `bytes` function, else the file's size counts; a running game adds the render
 device's texture bytes (`render::Stats::texture_bytes`). Count from capacities, and keep a
 source cheap: agents call it between ticks. `examples/memory-report` finds a growing trail.
@@ -1404,7 +1428,7 @@ CI rejects unformatted code and any clang-tidy finding.
   (controls, containers and themes: layout, draw calls, buttons, focus and text fields), `animation` (`.anim.json` keyframe
   animations, `.animtree.json` animation trees and the systems that play them),
   `scene3d` (3D nodes: primitive meshes, glTF, OBJ, FBX and Blender models, materials, cameras, lights and environments,
-  and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `physics3d` (3D bodies, areas, character movement and queries on Jolt), `library` (the asset library, its
+  and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `physics3d` (3D bodies, areas, character movement and queries on Jolt), `navigation` (navigation meshes, maps, paths and agents), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems, drafting cue sheets and arranging them),
   `command` (commands, sessions with undo, JSON-RPC and MCP),

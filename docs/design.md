@@ -96,7 +96,7 @@ SlashEngine covers nearly every Godot 4 feature area at launch and adds UE5 feat
 | Refresh rates and frame pacing | V-Sync modes, max FPS | V-Sync, max FPS, frame rate smoothing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | Launch |
 | UI | Control nodes, containers, themes | UMG | Retained UI with flexbox layout and themes, defined in text | Launch |
 | Text and fonts | Font rendering, BiDi, IME | Slate fonts, IME | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | Launch |
-| Navigation | Navigation meshes, avoidance | Nav mesh, AI controllers | Recast and Detour, 2D and 3D, avoidance | Launch |
+| Navigation | Navigation meshes, avoidance | Nav mesh, AI controllers | Godot's navigation server, meshes baked on Recast, 2D and 3D, avoidance | Launch |
 | Asset import | glTF, FBX, OBJ, `.blend` through Blender, images, audio | FBX, glTF, USD | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | Launch |
 | Profiling | Profiler, debugger, monitors | Unreal Insights | Tracy, plus perf.stats over the command API | Launch |
 | Asset generation and library | Asset Library (add-ons, no generation) | Fab, shared Derived Data Cache | Generated assets saved once by content hash and shared by every project and teammate; agents search before generating, and agent feedback ranks results; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants and reviewed automatically | Launch |
@@ -153,7 +153,7 @@ Every line in the repo is Apache 2.0 or comes from a dependency under a permissi
 | Jolt Physics | 3D physics, soft bodies | MIT |
 | Box2D v3 | 2D physics | MIT |
 | miniaudio | Audio | MIT-0 or public domain |
-| Recast and Detour | Navigation | zlib |
+| Recast | Baking navigation meshes (paths are Godot's own, as in Godot) | zlib |
 | FreeType, HarfBuzz | Fonts and text shaping | FreeType License (BSD-style), MIT |
 | msdfgen | Multichannel signed distance field fonts | MIT |
 | Roboto | The default font | Apache 2.0 |

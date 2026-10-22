@@ -2586,6 +2586,145 @@ any body is. [examples/ragdoll](../../examples/ragdoll/) lets a waving arm go li
 `scene validate` reports `simulated_bones` and `bone_name`s the model hasn't (with "did you
 mean"), a bone with two bodies and a `PhysicalBone3D` no simulator holds.
 
+## Navigation
+
+Navigation follows Godot 4.6's `NavigationServer2D` and `NavigationServer3D`. Each world has a
+2D map and a 3D map, made of the regions of navigation mesh and the links that components place
+on them. Paths are found with Godot's own A* over the regions' polygons and pulled tight with its
+funnel, so they come out as Godot's do, and the same on every machine. Each tick, after physics,
+the `navigation` system (priority 960) rebuilds the maps whose regions or links changed, then
+updates each agent's path and progress. [examples/navigation](../../examples/navigation/) sends a
+guard through a hatch and a cat round the corner of a yard.
+
+### Navigation meshes and polygons
+
+A `.navmesh.json` file is Godot's `NavigationMesh`: convex polygons over shared vertices, in
+meters. A `.navpoly.json` file is its `NavigationPolygon`, the same in pixels. Baking them from a
+scene's geometry comes later; until then an agent writes them.
+
+```json
+{
+  "format": 1,
+  "vertices": [[0, 0, 0], [0, 0, 4], [4, 0, 4], [4, 0, 0], [0, 0, 8], [4, 0, 8]],
+  "polygons": [[0, 1, 2, 3], [1, 4, 5, 2]],
+  "cell_size": 0.25,
+  "cell_height": 0.25
+}
+```
+
+| Field | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `format` | Yes | | `1` |
+| `vertices` | Yes | | Points, as `[x, y, z]` (`[x, y]` in a `.navpoly.json` file) |
+| `polygons` | Yes | | Convex polygons, each a list of three or more indices into `vertices` |
+| `cell_size` | No | `0.25` (`1` in 2D) | The cell size it was made for, as Godot's |
+| `cell_height` | No | `0.25` | The cell height it was made for, in `.navmesh.json` files only |
+
+`$cli scene validate` and `$cli scene format` take both, and `$cli schema navmesh` and
+`$cli schema navpoly` print their schemas. Validating reports an index past the vertices, an
+index used twice in one polygon and a polygon that isn't convex, each with its JSON Pointer.
+Files reload when they change, and their maps rebuild.
+
+### Regions
+
+A `NavigationRegion3D` places a `.navmesh.json` file on the 3D map at the entity's `Transform3D`
+(position, rotation and scale), and a `NavigationRegion2D` places a `.navpoly.json` file on the
+2D map at its `Transform2D`.
+
+```json
+"house": {"components": {
+  "Transform3D": {},
+  "NavigationRegion3D": {"navigation_mesh": "nav/house.navmesh.json"}
+}}
+```
+
+- A region's polygons join where they share an edge. Regions join each other where their edges
+  meet, or, with `use_edge_connections` on in both the region and the map, where they come within
+  the map's `edge_connection_margin` of each other.
+- `navigation_layers` is a bit mask: a path uses only the regions and links whose layers share a
+  bit with its own.
+- `travel_cost` multiplies the cost of each unit of distance in the region, and `enter_cost` is
+  added when a path enters it from another region. The search finds the cheapest way, which is
+  not always the shortest. As in Godot, the search charges `enter_cost` by the polygon it took
+  last rather than the one the path comes from, so `travel_cost` steers paths more reliably.
+- A region that isn't `enabled` is left out of paths, but `navigation.closest` still finds it,
+  as Godot's `map_get_closest_point` does.
+- A file that doesn't load, or is of the wrong kind, leaves the region out of the map, and
+  `navigation.map` reports why under `errors`.
+
+### Links
+
+A `NavigationLink3D` or `NavigationLink2D` joins two places the regions don't, such as a jump, a
+ladder or a door, as Godot's. `start_position` and `end_position` are in the space of the
+entity's transform, and each end joins the closest region polygon within the map's
+`link_connection_radius`.
+
+```json
+"hatch": {"components": {
+  "Transform3D": {},
+  "NavigationLink3D": {"start_position": [3, 0, 2], "end_position": [9, 0, 2], "travel_cost": 1.5}
+}}
+```
+
+- A link that isn't `bidirectional` goes only from start to end.
+- `travel_cost` multiplies the cost of its length and `enter_cost` is added when a path takes
+  it; `navigation_layers` and `enabled` work as a region's.
+- A path through a link has a point at each end. Its metadata names the link as the owner of
+  the first, and the region it leads to as the owner of the second.
+
+### Agents
+
+A `NavigationAgent3D` finds a path on the 3D map from the entity's `Transform3D` to its
+`target_position` and keeps track of its progress, as Godot's; a `NavigationAgent2D` does the
+same on the 2D map from the entity's `Transform2D`. Agents move nothing: gameplay code moves the
+entity toward `navigation::next_path_position_3d` (or `_2d`), as a Godot script calls
+`get_next_path_position`, and asks `navigation::is_navigation_finished` when to stop.
+
+```json
+"guard": {"components": {
+  "Transform3D": {"position": [1, 0, 1]},
+  "NavigationAgent3D": {"target_position": [10, 0, 6], "path_desired_distance": 0.25,
+                        "target_desired_distance": 0.5}
+}}
+```
+
+- Changing `target_position`, or calling `navigation::set_target_position`, asks for a new path.
+  So do a rebuild of the map and the entity straying more than `path_max_distance` from its
+  path.
+- The agent moves on to the next path point when the entity comes within
+  `path_desired_distance` of the one it is going to, and has reached its target within
+  `target_desired_distance` of `target_position`. For a target it can't reach, navigation
+  finishes at the end of the path, the closest point it can reach.
+- `path_height_offset` is how far the entity's origin is above the navigation mesh.
+- `path_postprocessing` shapes the path, as Godot's: `"corridorfunnel"` pulls it tight round
+  corners, `"edgecentered"` goes through the middle of each edge it crosses, and `"none"` keeps
+  the points where the search entered each polygon. `simplify_path` then drops the points within
+  `simplify_epsilon` of a straight line, as Godot's Ramer-Douglas-Peucker.
+- `path_search_max_polygons` and `path_search_max_distance` limit the search, and
+  `path_return_max_length` and `path_return_max_radius` cut the path it returns; `0` means no
+  limit.
+- The agent emits world events as Godot's emits signals: `path_changed` when it has a new path,
+  `waypoint_reached` at each point (with its `position`, `type` (`"region"` or `"link"`) and
+  `owner`), also `link_reached` at a link's start (with `link_entry_position` and
+  `link_exit_position`), then `target_reached` and `navigation_finished`.
+- Paths and progress live beside the components, kept by entity ID, so saving, snapshots and
+  undo leave them alone; a failed command or a dry run puts them back.
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `NavigationRegion2D` | `navigation_polygon` `""` (a `.navpoly.json` file), `enabled` `true`, `use_edge_connections` `true`, `navigation_layers` `1`, `enter_cost` `0`, `travel_cost` `1` |
+| `NavigationRegion3D` | `navigation_mesh` `""` (a `.navmesh.json` file), and the rest as `NavigationRegion2D`'s |
+| `NavigationLink2D` | `enabled` `true`, `bidirectional` `true`, `navigation_layers` `1`, `start_position` and `end_position` `[0, 0]`, `enter_cost` `0`, `travel_cost` `1` |
+| `NavigationLink3D` | The same, with `start_position` and `end_position` `[0, 0, 0]` |
+| `NavigationAgent2D` | `target_position` `[0, 0]`, `path_desired_distance` `20`, `target_desired_distance` `10`, `path_max_distance` `100`, `navigation_layers` `1`, `path_postprocessing` `"corridorfunnel"`, `simplify_path` `false`, `simplify_epsilon` `0`, `path_return_max_length` `0`, `path_return_max_radius` `0`, `path_search_max_polygons` `4096`, `path_search_max_distance` `0` |
+| `NavigationAgent3D` | `target_position` `[0, 0, 0]`, `path_desired_distance` `1`, `target_desired_distance` `1`, `path_height_offset` `0`, `path_max_distance` `5`, and the rest as `NavigationAgent2D`'s |
+
+The maps' settings are `project.json`'s [`navigation_2d` and `navigation_3d`](project-format.md).
+`scene validate` and exports check each region's file and report one that doesn't exist or
+validate, or a `.navpoly.json` file on a `NavigationRegion3D`. The
+[`navigation.*` commands](commands.md#navigationpath) find paths and points and report maps and
+agents.
+
 ## Particles
 
 Particles follow Godot's `CPUParticles2D`. Each tick, after physics, the `cpu_particles_2d`

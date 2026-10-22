@@ -1283,12 +1283,12 @@ TEST_CASE("engine.describe lists systems in the order they run") {
                      {.doc = "Moves things by their velocity."});
     world.add_system("controls", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
     // Every session applies input and service events first and plays animations, steps 2D and
-    // 3D physics, moves the camera and parallax, runs particles, hands over models' replies and
-    // plays sound with built-in systems that run late. The two particle systems are threaded and
-    // run at the same time.
+    // 3D physics and navigation, moves the camera and parallax, runs particles, hands over models'
+    // replies and plays sound with built-in systems that run late. The two particle systems are
+    // threaded and run at the same time.
     CHECK(*engine.ok("engine.describe").find("systems") ==
           parse(R"(["input", "gui", "services", "controls", "movement", "animation_player",
-                    "animation_tree", "skeleton_modifiers", "physics2d", "physics3d", "animated_sprite_2d",
+                    "animation_tree", "skeleton_modifiers", "physics2d", "physics3d", "navigation", "animated_sprite_2d",
                     "camera_2d", "parallax_2d", "cpu_particles_2d", "gpu_particles_2d", "ai", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
@@ -1315,6 +1315,9 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         {"name": "physics3d",
          "doc": "Steps 3D physics: moves rigid and character bodies and reports contacts.",
          "priority": 950},
+        {"name": "navigation",
+         "doc": "Rebuilds changed navigation maps and moves agents along their paths.",
+         "priority": 960},
         {"name": "animated_sprite_2d",
          "doc": "Plays each AnimatedSprite2D's animation on its Sprite2D.", "priority": 1000},
         {"name": "camera_2d",
@@ -1325,10 +1328,10 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "priority": 1060},
         {"name": "cpu_particles_2d",
          "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100,
-         "threaded": true, "stage": 13, "reads": ["Transform2D"], "writes": ["CPUParticles2D"]},
+         "threaded": true, "stage": 14, "reads": ["Transform2D"], "writes": ["CPUParticles2D"]},
         {"name": "gpu_particles_2d",
          "doc": "Steps each GPUParticles2D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 13,
+         "threaded": true, "stage": 14,
          "reads": ["Transform2D", "LightOccluder2D", "TileMapLayer", "CanvasLayer", "Control",
                    "Camera2D"],
          "writes": ["GPUParticles2D", "assets"]},
@@ -1823,6 +1826,76 @@ TEST_CASE("skeleton.get returns a model's bones, posed as its entity draws them"
         "MeshInstance3D": {}, "BoxMesh": {}}})");
     reply = engine.fails("skeleton.get", R"({"id": "box"})", command::code::kInvalidParams);
     CHECK(reply.message == "/id: \"box\"'s MeshInstance3D draws no model");
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("navigation commands find paths, points and agents' progress") {
+    const std::string root = "navigation_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root + "/nav").ok());
+    REQUIRE(slash::platform::write_file(root + "/nav/l.navmesh.json", R"({"format": 1,
+        "vertices": [[0, 0, 0], [4, 0, 0], [8, 0, 0], [8, 0, 4], [4, 0, 4], [0, 0, 4],
+                     [8, 0, 8], [4, 0, 8]],
+        "polygons": [[0, 5, 4, 1], [1, 4, 3, 2], [4, 7, 6, 3]]})")
+                .ok());
+    REQUIRE(slash::platform::write_file(root + "/nav/room.navpoly.json", R"({"format": 1,
+        "vertices": [[0, 0], [64, 0], [64, 64], [0, 64]], "polygons": [[0, 1, 2, 3]]})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "floor", "components": {
+            "Transform3D": {}, "NavigationRegion3D": {"navigation_mesh": "nav/l.navmesh.json"}}}},
+        {"command": "entity.create", "params": {"id": "room", "components": {
+            "Transform2D": {"position": [100, 50]},
+            "NavigationRegion2D": {"navigation_polygon": "nav/room.navpoly.json"}}}},
+        {"command": "entity.create", "params": {"id": "walker", "components": {
+            "Transform3D": {"position": [1, 0, 1]},
+            "NavigationAgent3D": {"target_position": [6, 0, 7]}}}}]})");
+
+    CHECK(engine.ok("navigation.path", R"({"from": [1, 0, 1], "to": [6, 0, 7]})") ==
+          parse(R"({"points": [[1, 0, 1], [4, 0, 4], [6, 0, 7]], "length": 7.8482})"));
+    CHECK(engine.ok("navigation.path", R"({"from": [110, 60], "to": [500, 100],
+                                           "postprocessing": "none", "metadata": true})") ==
+          parse(R"({"points": [[110, 60], [164, 100]], "length": 67.2012,
+                    "owners": ["room", "room"], "types": ["region", "region"]})"));
+    CHECK(engine.ok("navigation.closest", R"({"point": [-3, 2, 1]})") ==
+          parse(R"({"point": [0, 0, 1], "normal": [0, 16, 0], "owner": "floor"})"));
+    CHECK(engine.ok("navigation.closest", R"({"point": [0, 0]})") ==
+          parse(R"({"point": [100, 50], "owner": "room"})"));
+    const json::Value random = engine.ok("navigation.random", R"({"uniformly": true, "seed": 3})");
+    CHECK(random == engine.ok("navigation.random", R"({"map": "3d", "uniformly": true,
+                                                       "seed": 3})"));
+    CHECK(random.find("point")->size() == 3);
+    CHECK(engine.ok("navigation.random", R"({"map": "2d"})").find("point")->size() == 2);
+    CHECK(engine.ok("navigation.map", R"({"map": "3d"})") ==
+          parse(R"({"3d": {"iteration_id": 1, "regions": 1, "links": 0, "polygons": 3,
+                           "edge_connections": 0, "free_edges": 8}})"));
+
+    const json::Value agent = engine.ok("navigation.agent", R"({"id": "walker"})");
+    CHECK(agent == parse(R"({"next_position": [4, 0, 4], "navigation_finished": false,
+        "target_reached": false, "target_reachable": true, "distance_to_target": 7.8102,
+        "path": [[1, 0, 1], [4, 0, 4], [6, 0, 7]], "path_index": 1})"));
+
+    auto reply = engine.fails("navigation.path", R"({"from": [0, 0], "to": [1, 0, 1]})",
+                              command::code::kInvalidParams);
+    CHECK(reply.message == "/to: from and to need the same number of coordinates");
+    reply = engine.fails("navigation.path",
+                         R"({"from": [0, 0, 0], "to": [1, 0, 1], "excluded_regions": ["flor"]})",
+                         command::code::kNotFound);
+    CHECK(reply.message ==
+          "/excluded_regions/0: no entity has the id \"flor\"; did you mean \"floor\"?");
+    reply = engine.fails("navigation.agent", R"({"id": "floor"})", command::code::kInvalidParams);
+    CHECK(reply.message == "/id: \"floor\" has no NavigationAgent2D or NavigationAgent3D");
+
+    // A region whose file is missing is left out, and navigation.map says why.
+    engine.ok("entity.create", R"({"id": "lost", "components": {"Transform3D": {},
+        "NavigationRegion3D": {"navigation_mesh": "nav/gone.navmesh.json"}}})");
+    const json::Value map = engine.ok("navigation.map", R"({"map": "3d"})");
+    const json::Value& errors = *map.find("3d")->find("errors");
+    REQUIRE(errors.size() == 1);
+    CHECK(*errors.as_array()[0].find("id") == "lost");
     std::filesystem::remove_all(root);
 }
 
