@@ -40,6 +40,7 @@ add_executable(slash_tests
     test_ai.cpp
     test_android_library.cpp
     test_animation.cpp
+    test_animation_tree.cpp
     test_api_search.cpp
     test_asset.cpp
     test_audio.cpp

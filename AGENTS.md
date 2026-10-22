@@ -856,6 +856,18 @@ model file, and an animation can come `from` a model's animation, posing the ent
 up to and including where it got to. `animation.eval` returns a track's values at given times;
 `examples/keyframe-animation` plays a walk cycle and a hit.
 
+`AnimationTree` is Godot's AnimationTree: a `.animtree.json` file (`$cli schema animtree`;
+`tree.hpp`) of blend tree, animation, Blend2/3, Add2/3, Sub2, OneShot, TimeScale, TimeSeek,
+Transition and BlendSpace1D/2D nodes, played with the animations of the component's `libraries`
+by the `animation_tree` system (priority 910). `src/tree_run.cpp` ports the nodes' `_process`
+calls, keeping what they need in the component's `state` and reading `parameters`;
+`src/tree_system.cpp` ports `AnimationMixer`'s caches, blending and root motion, and hands
+model poses to `scene3d` through the clip source, ahead of the `AnimationPlayer`'s. Godot
+compares weights in float, so do the same (`is_zero_approx(float)` in `src/internal.hpp`).
+`animation.tree` lists a tree's parameters and what plays, `animation.set_parameters` sets them,
+and `check_trees` backs `scene validate` and exports; `examples/animation-tree` points a waving
+arm.
+
 ## 2D physics
 
 `engine/physics2d` is 2D physics on Box2D v3, as Godot's. Bodies and areas are components:
@@ -1366,7 +1378,7 @@ CI rejects unformatted code and any clang-tidy finding.
   animations, `.material.json` materials, `.tileset.json` tile maps, 2D lights and shadows, CPU
   particles, GPU particles' steps and drawing them), `text` (fonts, shaping, line breaking, carets and selections, and glyph atlases), `ui`
   (controls, containers and themes: layout, draw calls, buttons, focus and text fields), `animation` (`.anim.json` keyframe
-  animations and the system that plays them),
+  animations, `.animtree.json` animation trees and the systems that play them),
   `scene3d` (3D nodes: primitive meshes, glTF, OBJ, FBX and Blender models, materials, cameras, lights and environments,
   and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `physics3d` (3D bodies, areas, character movement and queries on Jolt), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
