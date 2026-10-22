@@ -1,8 +1,9 @@
 // The 3D shader: meshes lit by a frame's lights as Godot's Compatibility renderer lights them
 // (drivers/gles3/shaders/scene.glsl), with a StandardMaterial3D's albedo, metallic, roughness,
-// specular, emission and normal map, and shadowed by the lights' shadow maps (shadow.hlsl draws
-// them), then fogged. Colors are worked in linear, tonemapped (tonemap.hlsl) and written as sRGB,
-// with Godot's approximations of the two.
+// specular, emission and normal map, shadowed by the lights' shadow maps (shadow.hlsl draws
+// them) and lit by the sky's radiance (radiance.hlsl filters it), then fogged. Colors are worked
+// in linear, tonemapped (tonemap.hlsl) and written as sRGB, with Godot's approximations of the
+// two.
 // Keep it in step with shade_mesh in src/mesh.cpp, its CPU twin. Registers follow SDL's GPU
 // conventions: vertex uniforms in space1, fragment textures and samplers in space2, fragment
 // uniforms in space3.
@@ -65,6 +66,9 @@ Texture2D directional_atlas : register(t5, space2);
 Texture2D positional_atlas : register(t6, space2);
 SamplerComparisonState directional_sampler : register(s5, space2);
 SamplerComparisonState positional_sampler : register(s6, space2);
+// The sky's radiance: sRGB, each level blurrier, filtered linearly across levels and faces.
+TextureCube<float4> radiance_map : register(t7, space2);
+SamplerState radiance_sampler : register(s7, space2);
 
 static const uint kUnshaded = 1u;
 static const uint kVertexColorAlbedo = 2u;
@@ -97,6 +101,7 @@ static const float kDirectional = 0.0;
 static const float kOmni = 1.0;
 static const float kSpot = 2.0;
 static const float kPi = 3.14159265358979323;
+static const float kRadianceMaxLevel = 5.0; // Godot's RADIANCE_MAX_LOD
 
 cbuffer Scene : register(b1, space3) {
     float4 camera;  // the camera's place, then how many lights
@@ -106,6 +111,10 @@ cbuffer Scene : register(b1, space3) {
     float4 fog_color; // linear, times its energy; then 0 for no fog, 1 exponential, 2 depth
     float4 fog;       // density, sun scatter, height, height density
     float4 fog_depth; // depth fog's begin, end and curve
+    // 1 for ambient light from the radiance, 1 for reflections of it, the background's energy,
+    // ambient light's sky contribution.
+    float4 sky;
+    float4 sky_rows[3]; // the world to the sky's space, a row each
     Light lights[64];
 };
 
@@ -467,8 +476,40 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
                       light.color.w, diffuse_light, specular_light);
     }
 
-    float3 ambient_light = ambient.rgb * base * (1.0 - metallic);
+    // Light from the sky's radiance, as Godot's scene.glsl takes it: reflections by roughness
+    // and ambient light by the normal, then specular occlusion and Lazarov's environment BRDF.
+    float3 ambient_light = ambient.rgb;
+    float3 reflected = (float3)0.0;
+    if (sky.y != 0.0) {
+        float3 ray = reflect(-view, normal);
+        ray = lerp(ray, normal, roughness * roughness);
+        float horizon = min(1.0 + dot(ray, normal), 1.0);
+        float3 turned = float3(dot(sky_rows[0].xyz, ray), dot(sky_rows[1].xyz, ray),
+                               dot(sky_rows[2].xyz, ray));
+        float3 texel = radiance_map.SampleLevel(radiance_sampler, turned,
+                                                sqrt(roughness) * kRadianceMaxLevel).rgb;
+        reflected = srgb_to_linear(texel) * horizon * horizon * sky.z;
+    }
+    if (sky.x != 0.0) {
+        float3 turned = float3(dot(sky_rows[0].xyz, normal), dot(sky_rows[1].xyz, normal),
+                               dot(sky_rows[2].xyz, normal));
+        float3 texel = radiance_map.SampleLevel(radiance_sampler, turned, kRadianceMaxLevel).rgb;
+        ambient_light = lerp(ambient_light, srgb_to_linear(texel) * sky.z, sky.w);
+    }
+    float occlusion =
+        (ambient_light.r * 0.3 + ambient_light.g * 0.59 + ambient_light.b * 0.11) * 2.0;
+    occlusion = min(occlusion * 4.0, 1.0);
+    float reflective = (1.0 - roughness) * metallic;
+    occlusion = max(min(reflective * occlusion * 10.0, 1.0), occlusion);
+    float n_dot_v = saturate(dot(normal, view));
+    float4 r = roughness * float4(-1.0, -0.0275, -0.572, 0.022) +
+               float4(1.0, 0.0425, 1.04, -0.04);
+    float a004 = min(r.x * r.x, exp2(-9.28 * n_dot_v)) * r.x + r.y;
+    float2 env = float2(-1.04, 1.04) * a004 + r.zw;
+    reflected *= occlusion * (env.x * f0 + env.y * clamp(50.0 * f0.g, metallic, 1.0));
+
+    ambient_light *= base * (1.0 - metallic);
     diffuse_light *= base * (1.0 - metallic);
-    float3 lit = diffuse_light + specular_light + emitted + ambient_light;
+    float3 lit = diffuse_light + specular_light + reflected + emitted + ambient_light;
     return finish(lit, alpha, input.world);
 }

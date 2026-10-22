@@ -9,7 +9,10 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <numbers>
+#include <span>
+#include <vector>
 
 namespace slash::render::detail {
 
@@ -56,6 +59,11 @@ Float3 xyz(const Float4& v) {
 
 float dot3(const Float3& a, const Float3& b) {
     return (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]);
+}
+
+Float3 cross3(const Float3& a, const Float3& b) {
+    return {(a[1] * b[2]) - (a[2] * b[1]), (a[2] * b[0]) - (a[0] * b[2]),
+            (a[0] * b[1]) - (a[1] * b[0])};
 }
 
 Float3 normalize3(const Float3& v) {
@@ -233,14 +241,88 @@ Float3 physical_sky(const SkyUniforms& u, const Float3& eye, const Float4& night
     return color;
 }
 
-} // namespace
+// A cube face's own axis (n), and the axes its s and t run along (a and b), as cube_direction
+// takes them: the table every API selects cube faces by.
+struct CubeFace {
+    Float3 n;
+    Float3 a;
+    Float3 b;
+};
+constexpr std::array<CubeFace, kCubeFaces> kCubeFaceAxes{{
+    {{1.0F, 0.0F, 0.0F}, {0.0F, 0.0F, -1.0F}, {0.0F, -1.0F, 0.0F}},
+    {{-1.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, {0.0F, -1.0F, 0.0F}},
+    {{0.0F, 1.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 1.0F}},
+    {{0.0F, -1.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, {0.0F, 0.0F, -1.0F}},
+    {{0.0F, 0.0F, 1.0F}, {1.0F, 0.0F, 0.0F}, {0.0F, -1.0F, 0.0F}},
+    {{0.0F, 0.0F, -1.0F}, {-1.0F, 0.0F, 0.0F}, {0.0F, -1.0F, 0.0F}},
+}};
 
-bool sky_draws(const Scene3D& scene) {
-    return scene.sky.kind != SkyKind::None;
+// A cube face's texel a direction falls in, and where in it: s and t from 0 to 1 across the face.
+struct CubeCoord {
+    std::uint32_t face = 0;
+    float s = 0.0F;
+    float t = 0.0F;
+};
+CubeCoord cube_coord(const Float3& d) {
+    const float x = std::abs(d[0]);
+    const float y = std::abs(d[1]);
+    const float z = std::abs(d[2]);
+    std::uint32_t face = 0;
+    float major = 0.0F;
+    if (x >= y && x >= z) {
+        face = d[0] >= 0.0F ? 0 : 1;
+        major = x;
+    } else if (y >= z) {
+        face = d[1] >= 0.0F ? 2 : 3;
+        major = y;
+    } else {
+        face = d[2] >= 0.0F ? 4 : 5;
+        major = z;
+    }
+    const CubeFace& axes = kCubeFaceAxes.at(face);
+    const float inverse = major > 0.0F ? 1.0F / major : 0.0F;
+    return {.face = face,
+            .s = ((dot3(d, axes.a) * inverse) + 1.0F) * 0.5F,
+            .t = ((dot3(d, axes.b) * inverse) + 1.0F) * 0.5F};
 }
 
-TextureId sky_texture(const Sky3D& sky) {
-    switch (sky.kind) {
+// A color as RGB10A2 holds it.
+Float4 quantized(const Float4& color) {
+    Float4 out{};
+    for (std::size_t i = 0; i < 3; ++i) {
+        out.at(i) = std::floor((saturate(color.at(i)) * kRadianceSteps) + 0.5F) / kRadianceSteps;
+    }
+    out[3] = 1.0F;
+    return out;
+}
+
+// Godot's helpers for IBL filtering, in effects/cubemap_filter.cpp.
+float radical_inverse_vdc(std::uint32_t bits) {
+    bits = (bits << 16U) | (bits >> 16U);
+    bits = ((bits & 0x55555555U) << 1U) | ((bits & 0xAAAAAAAAU) >> 1U);
+    bits = ((bits & 0x33333333U) << 2U) | ((bits & 0xCCCCCCCCU) >> 2U);
+    bits = ((bits & 0x0F0F0F0FU) << 4U) | ((bits & 0xF0F0F0F0U) >> 4U);
+    bits = ((bits & 0x00FF00FFU) << 8U) | ((bits & 0xFF00FF00U) >> 8U);
+    return static_cast<float>(bits) * 2.3283064365386963e-10F;
+}
+
+Float3 importance_sample_ggx(float xi_x, float xi_y, float roughness4) {
+    const float phi = 2.0F * kPi * xi_x;
+    const float cos_theta = std::sqrt((1.0F - xi_y) / (1.0F + ((roughness4 - 1.0F) * xi_y)));
+    const float sin_theta = std::sqrt(1.0F - (cos_theta * cos_theta));
+    const slash::Vec2 turn = slash::cos_sin(phi);
+    return {sin_theta * turn.x, sin_theta * turn.y, cos_theta};
+}
+
+float distribution_ggx(float n_dot_h, float roughness4) {
+    const float n_dot_h2 = n_dot_h * n_dot_h;
+    float denominator = (n_dot_h2 * (roughness4 - 1.0F)) + 1.0F;
+    denominator = kPi * denominator * denominator;
+    return roughness4 / denominator;
+}
+
+TextureId material_texture(const Sky3D& sky, SkyKind kind) {
+    switch (kind) {
     case SkyKind::Procedural:
         return sky.procedural.sky_cover;
     case SkyKind::Physical:
@@ -250,6 +332,16 @@ TextureId sky_texture(const Sky3D& sky) {
     default:
         return TextureId::None;
     }
+}
+
+} // namespace
+
+bool sky_draws(const Scene3D& scene) {
+    return scene.sky.kind != SkyKind::None;
+}
+
+TextureId sky_texture(const Sky3D& sky) {
+    return material_texture(sky, sky.kind);
 }
 
 SkyUniforms sky_uniforms(const Scene3D& scene, std::uint32_t width, std::uint32_t height) {
@@ -413,6 +505,247 @@ Float4 shade_sky(const SkyUniforms& uniforms, const SkyRay& ray, const Float4& t
         color = {color[0] + noise, color[1] - noise, color[2] + noise};
     }
     return {color[0], color[1], color[2], 1.0F};
+}
+
+std::uint32_t radiance_levels(std::uint32_t size) {
+    std::uint32_t levels = 1;
+    while ((size >> levels) >= 4) {
+        ++levels;
+    }
+    return levels;
+}
+
+Float3 cube_direction(std::uint32_t face, float s, float t) {
+    const CubeFace& axes = kCubeFaceAxes.at(face);
+    return add(add(axes.n, scale(axes.a, s)), scale(axes.b, t));
+}
+
+bool radiance_used(const Scene3D& scene) {
+    const Radiance3D& radiance = scene.radiance;
+    return radiance.kind != SkyKind::None && (radiance.ambient || radiance.reflections);
+}
+
+TextureId radiance_texture(const Scene3D& scene) {
+    return material_texture(scene.sky, scene.radiance.kind);
+}
+
+SkyUniforms radiance_face_uniforms(const Scene3D& scene, std::uint32_t face) {
+    const std::uint32_t size = scene.radiance.size;
+    Scene3D cube;
+    cube.sky = scene.sky;
+    cube.sky.kind = scene.radiance.kind;
+    cube.sky.custom_fov = 0.0F;
+    cube.post = scene.post;
+    SkyUniforms out = sky_uniforms(cube, size, size);
+    // A pixel's direction is (s, -t, -1) from its place across the face, -1 to 1; the face's
+    // matrix turns that into its own s and t axes and out along its axis.
+    const CubeFace& axes = kCubeFaceAxes.at(face);
+    out.orientation = {axes.a[0],  axes.a[1], axes.a[2],  0.0F,       -axes.b[0], -axes.b[1],
+                       -axes.b[2], 0.0F,      -axes.n[0], -axes.n[1], -axes.n[2], 0.0F,
+                       0.0F,       0.0F,      0.0F,       1.0F};
+    out.projection = {0.0F, 1.0F, 0.0F, 1.0F};
+    out.tonemap[3] = 0.0F;
+    out.fog_color[3] = 0.0F;
+    return out;
+}
+
+RadianceUniforms radiance_uniforms(std::uint32_t size, std::uint32_t levels, std::uint32_t level) {
+    RadianceUniforms out;
+    const std::uint32_t level_size = std::max(size >> level, 1U);
+    out.params = {0.0F, 1.0F / static_cast<float>(level_size), 0.0F, 0.0F};
+    if (level == 0) {
+        return out;
+    }
+    constexpr std::array<std::uint32_t, 5> kSampleCounts{
+        1, kRadianceSamples / 16, kRadianceSamples / 8, kRadianceSamples / 4, kRadianceSamples};
+    const std::uint32_t count = kSampleCounts.at(std::min(level, 4U));
+    float roughness = static_cast<float>(level) / static_cast<float>(std::max(levels, 2U) - 1);
+    roughness *= roughness; // non-perceptual
+    float roughness4 = roughness * roughness;
+    roughness4 *= roughness4;
+    const float solid_angle_texel =
+        4.0F * kPi / (6.0F * static_cast<float>(level_size) * static_cast<float>(level_size));
+    const float base_level = static_cast<float>(std::max(1, static_cast<int>(level) - 3));
+
+    std::uint32_t index = 0;
+    float weight = 0.0F;
+    for (std::uint32_t i = 0; i < count; ++i) {
+        const Float3 dir = importance_sample_ggx(static_cast<float>(i) / static_cast<float>(count),
+                                                 radical_inverse_vdc(i), roughness4);
+        const Float3 light = {2.0F * dir[2] * dir[0], 2.0F * dir[2] * dir[1],
+                              (2.0F * dir[2] * dir[2]) - 1.0F};
+        if (light[2] <= 0.0F) {
+            continue;
+        }
+        const float d = distribution_ggx(dir[2], roughness4);
+        const float pdf = (d * dir[2] / (4.0F * dir[2])) + 0.0001F;
+        const float solid_angle_sample = 1.0F / ((static_cast<float>(count) * pdf) + 0.0001F);
+        const float mip = std::max((0.5F * slash::ln(solid_angle_sample / solid_angle_texel) /
+                                    std::numbers::ln2_v<float>)+base_level,
+                                   1.0F);
+        out.samples.at(index) = {light[0], light[1], light[2], mip};
+        weight += light[2];
+        ++index;
+    }
+    out.params[2] = weight;
+    out.params[3] = static_cast<float>(index);
+    return out;
+}
+
+bool RadianceKey::operator==(const RadianceKey& other) const {
+    return texture == other.texture && size == other.size &&
+           std::ranges::equal(std::as_bytes(std::span(&face, 1)),
+                              std::as_bytes(std::span(&other.face, 1)));
+}
+
+RadianceKey radiance_key(const Scene3D& scene) {
+    return {.face = radiance_face_uniforms(scene, 0),
+            .texture = radiance_texture(scene),
+            .size = scene.radiance.size};
+}
+
+const Float4& CubeImage::texel(std::uint32_t level, std::uint32_t face, std::uint32_t x,
+                               std::uint32_t y) const {
+    const std::uint32_t n = std::max(size >> level, 1U);
+    return levels.at(level).at((((std::size_t{face} * n) + y) * n) + x);
+}
+
+Float4 CubeImage::sample(const Float3& direction, float level) const {
+    const auto top = static_cast<float>(levels.size() - 1);
+    const float clamped = std::clamp(level, 0.0F, top);
+    const auto bilinear = [&](std::uint32_t at) {
+        const std::uint32_t n = std::max(size >> at, 1U);
+        const auto texels = static_cast<float>(n);
+        // A texel of the face or, past its edges, the one of the next face that its center's
+        // direction falls in, as cube textures filter across faces.
+        const auto fetch = [&](std::uint32_t face, int x, int y) -> const Float4& {
+            if (x >= 0 && y >= 0 && x < static_cast<int>(n) && y < static_cast<int>(n)) {
+                return texel(at, face, static_cast<std::uint32_t>(x),
+                             static_cast<std::uint32_t>(y));
+            }
+            const CubeCoord next = cube_coord(
+                cube_direction(face, (2.0F * (static_cast<float>(x) + 0.5F) / texels) - 1.0F,
+                               (2.0F * (static_cast<float>(y) + 0.5F) / texels) - 1.0F));
+            const auto place = [&](float s) {
+                return std::min(static_cast<std::uint32_t>(std::max(s * texels, 0.0F)), n - 1);
+            };
+            return texel(at, next.face, place(next.s), place(next.t));
+        };
+        const CubeCoord coord = cube_coord(direction);
+        const float u = (coord.s * texels) - 0.5F;
+        const float v = (coord.t * texels) - 0.5F;
+        const float x0 = std::floor(u);
+        const float y0 = std::floor(v);
+        const float fx = u - x0;
+        const float fy = v - y0;
+        const int x = static_cast<int>(x0);
+        const int y = static_cast<int>(y0);
+        const Float4& a = fetch(coord.face, x, y);
+        const Float4& b = fetch(coord.face, x + 1, y);
+        const Float4& c = fetch(coord.face, x, y + 1);
+        const Float4& d = fetch(coord.face, x + 1, y + 1);
+        Float4 out{};
+        for (std::size_t i = 0; i < 4; ++i) {
+            out.at(i) = lerp(lerp(a.at(i), b.at(i), fx), lerp(c.at(i), d.at(i), fx), fy);
+        }
+        return out;
+    };
+    const auto low = static_cast<std::uint32_t>(clamped);
+    const float blend = clamped - static_cast<float>(low);
+    const Float4 first = bilinear(low);
+    if (blend <= 0.0F) {
+        return first;
+    }
+    const Float4 second = bilinear(low + 1);
+    Float4 out{};
+    for (std::size_t i = 0; i < 4; ++i) {
+        out.at(i) = lerp(first.at(i), second.at(i), blend);
+    }
+    return out;
+}
+
+CubeImage make_radiance(const Scene3D& scene,
+                        const std::function<Float4(const std::array<float, 2>&)>& texel) {
+    const std::uint32_t size = scene.radiance.size;
+    const std::uint32_t levels = radiance_levels(size);
+    const auto empty = [&] {
+        CubeImage cube{.size = size, .levels = {}};
+        for (std::uint32_t level = 0; level < levels; ++level) {
+            const std::size_t n = size >> level;
+            cube.levels.emplace_back(kCubeFaces * n * n);
+        }
+        return cube;
+    };
+
+    // The sky into the raw cube's faces, then its mipmaps, each texel the mean of four.
+    CubeImage raw = empty();
+    for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+        const SkyUniforms uniforms = radiance_face_uniforms(scene, face);
+        for (std::uint32_t y = 0; y < size; ++y) {
+            for (std::uint32_t x = 0; x < size; ++x) {
+                const float px = static_cast<float>(x) + 0.5F;
+                const float py = static_cast<float>(y) + 0.5F;
+                const SkyRay ray = sky_ray(uniforms, px, py);
+                raw.levels[0][(((std::size_t{face} * size) + y) * size) + x] =
+                    quantized(shade_sky(uniforms, ray, texel(ray.coords), px, py));
+            }
+        }
+    }
+    for (std::uint32_t level = 1; level < levels; ++level) {
+        const std::uint32_t n = size >> level;
+        for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+            for (std::uint32_t y = 0; y < n; ++y) {
+                for (std::uint32_t x = 0; x < n; ++x) {
+                    Float4 sum{};
+                    for (const auto& [dx, dy] : {std::pair{0U, 0U}, std::pair{1U, 0U},
+                                                 std::pair{0U, 1U}, std::pair{1U, 1U}}) {
+                        const Float4& t = raw.texel(level - 1, face, (x * 2) + dx, (y * 2) + dy);
+                        for (std::size_t i = 0; i < 4; ++i) {
+                            sum.at(i) += t.at(i) * 0.25F;
+                        }
+                    }
+                    raw.levels[level][(((std::size_t{face} * n) + y) * n) + x] = quantized(sum);
+                }
+            }
+        }
+    }
+
+    // radiance.hlsl's twin: level 0 as it is, then each next level blurred from the raw cube.
+    CubeImage out = empty();
+    out.levels[0] = raw.levels[0];
+    for (std::uint32_t level = 1; level < levels; ++level) {
+        const RadianceUniforms uniforms = radiance_uniforms(size, levels, level);
+        const std::uint32_t n = size >> level;
+        const auto count = static_cast<std::uint32_t>(uniforms.params[3]);
+        for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+            for (std::uint32_t y = 0; y < n; ++y) {
+                for (std::uint32_t x = 0; x < n; ++x) {
+                    const float s =
+                        ((static_cast<float>(x) + 0.5F) * uniforms.params[1] * 2.0F) - 1.0F;
+                    const float t =
+                        ((static_cast<float>(y) + 0.5F) * uniforms.params[1] * 2.0F) - 1.0F;
+                    const Float3 normal = normalize3(cube_direction(face, s, t));
+                    const Float3 up = std::abs(normal[2]) < 0.999F ? Float3{0.0F, 0.0F, 1.0F}
+                                                                   : Float3{1.0F, 0.0F, 0.0F};
+                    const Float3 tangent = normalize3(cross3(up, normal));
+                    const Float3 bitangent = cross3(normal, tangent);
+                    Float3 sum{};
+                    for (std::uint32_t i = 0; i < count; ++i) {
+                        const Float4& sample = uniforms.samples.at(i);
+                        const Float3 l =
+                            add(add(scale(tangent, sample[0]), scale(bitangent, sample[1])),
+                                scale(normal, sample[2]));
+                        const Float3 value = srgb_to_linear(rgb(raw.sample(l, sample[3])));
+                        sum = add(sum, scale(value, sample[2]));
+                    }
+                    const Float3 color = linear_to_srgb(scale(sum, 1.0F / uniforms.params[2]));
+                    out.levels[level][(((std::size_t{face} * n) + y) * n) + x] =
+                        quantized({color[0], color[1], color[2], 1.0F});
+                }
+            }
+        }
+    }
+    return out;
 }
 
 } // namespace slash::render::detail

@@ -5,6 +5,7 @@
 #include "checks.hpp"
 #include "mesh_shading.hpp"
 #include "post_shading.hpp"
+#include "sky_shading.hpp"
 
 #include "slash/core/math.hpp"
 
@@ -40,6 +41,10 @@ Float3 scale(const Float3& a, float s) {
 
 Float3 add(const Float3& a, const Float3& b) {
     return {a[0] + b[0], a[1] + b[1], a[2] + b[2]};
+}
+
+Float3 xyz(const Float4& v) {
+    return {v[0], v[1], v[2]};
 }
 
 Float3 sub(const Float3& a, const Float3& b) {
@@ -269,14 +274,14 @@ float sample_shadow(const detail::ShadowAtlas& atlas, const Mat4& matrix, const 
 
 // directional_shadow in shaders/mesh.hlsl: a directional light's shadow at a pixel, its cascade
 // picked by view depth, as Godot's scene.glsl picks it.
-float directional_shadow(const detail::MeshShadows& shadows, std::size_t slot, const Float3& world,
+float directional_shadow(const detail::MeshMaps& maps, std::size_t slot, const Float3& world,
                          const Float3& normal, const Float3& toward_light) {
-    const detail::MeshShadowUniforms& u = *shadows.uniforms;
+    const detail::MeshShadowUniforms& u = *maps.uniforms;
     const detail::MeshDirectionalShadowUniforms& s = u.directional.at(slot);
     const float view_z = dot3(world, {u.camera_z[0], u.camera_z[1], u.camera_z[2]}) + u.camera_z[3];
     const Float3 base_bias = scale(normal, 1.0F - std::max(0.0F, -dot3(toward_light, normal)));
     const auto cascade = [&](std::size_t i) {
-        return sample_shadow(shadows.directional, s.matrices.at(i),
+        return sample_shadow(maps.directional, s.matrices.at(i),
                              add(world, scale(base_bias, s.normal_bias.at(i))), s.options[1],
                              u.filters[0], nullptr);
     };
@@ -302,9 +307,9 @@ float directional_shadow(const detail::MeshShadows& shadows, std::size_t slot, c
 
 // positional_shadow in shaders/mesh.hlsl: an omni or spot light's shadow at a pixel, through
 // the cube face its ray from the light leaves by for an omni light.
-float positional_shadow(const detail::MeshShadows& shadows, std::size_t slot, const Float3& world,
+float positional_shadow(const detail::MeshMaps& maps, std::size_t slot, const Float3& world,
                         const Float3& normal) {
-    const detail::MeshShadowUniforms& u = *shadows.uniforms;
+    const detail::MeshShadowUniforms& u = *maps.uniforms;
     const detail::MeshPositionalShadowUniforms& s = u.positional.at(slot);
     const Float3 to_light = sub({s.position[0], s.position[1], s.position[2]}, world);
     const float light_length = length(to_light);
@@ -326,7 +331,7 @@ float positional_shadow(const detail::MeshShadows& shadows, std::size_t slot, co
         }
         taps = 1.0F; // Godot samples an omni light's cube once
     }
-    const float shadow = sample_shadow(shadows.positional, s.faces.at(face), point, s.params[2],
+    const float shadow = sample_shadow(maps.positional, s.faces.at(face), point, s.params[2],
                                        taps, &s.rects.at(face));
     return lerp(1.0F, shadow, s.params[1]);
 }
@@ -493,6 +498,14 @@ MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
         const float end = fog.depth_end > 0.0F ? fog.depth_end : far;
         out.fog_depth = {std::min(fog.depth_begin, end - 0.001F), end, fog.depth_curve, 0.0F};
     }
+    if (radiance_used(scene)) {
+        const Radiance3D& radiance = scene.radiance;
+        out.sky = {radiance.ambient ? 1.0F : 0.0F, radiance.reflections ? 1.0F : 0.0F,
+                   scene.sky.energy, radiance.ambient_mix};
+        const Mat4& o = scene.sky.orientation;
+        out.sky_rows = {Float4{o[0], o[4], o[8], 0.0F}, Float4{o[1], o[5], o[9], 0.0F},
+                        Float4{o[2], o[6], o[10], 0.0F}};
+    }
     for (std::size_t i = 0; i < count; ++i) {
         const Light3D& light = scene.lights[i];
         MeshLightUniforms& packed = out.lights.at(i);
@@ -653,7 +666,7 @@ MeshCorner mesh_vertex(const MeshCameraUniforms& camera, const MeshInstanceUnifo
 }
 
 std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshSceneUniforms& scene,
-                                 const MeshShadows& shadows, const MeshPixel& pixel) {
+                                 const MeshMaps& maps, const MeshPixel& pixel) {
     const std::uint32_t flags = surface.options[0];
     Float4 color{};
     for (std::size_t i = 0; i < 4; ++i) {
@@ -743,8 +756,8 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         if (type == 0.0F) {
             const Float3 toward =
                 normalize({light.direction[0], light.direction[1], light.direction[2]});
-            const float shadow = slot >= 0.0F && shadows.uniforms != nullptr
-                                     ? directional_shadow(shadows, static_cast<std::size_t>(slot),
+            const float shadow = slot >= 0.0F && maps.uniforms != nullptr
+                                     ? directional_shadow(maps, static_cast<std::size_t>(slot),
                                                           pixel.world, geometry, toward)
                                      : 1.0F;
             light_compute(normal, toward, view, light_color, shadow, f0, roughness, metallic,
@@ -764,18 +777,60 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
             const float rim = std::max(0.0001F, (1.0F - scos) / (1.0F - cone));
             attenuation *= 1.0F - power(rim, light.params[2]);
         }
-        if (slot >= 0.0F && shadows.uniforms != nullptr) {
+        if (slot >= 0.0F && maps.uniforms != nullptr) {
             attenuation *=
-                positional_shadow(shadows, static_cast<std::size_t>(slot), pixel.world, geometry);
+                positional_shadow(maps, static_cast<std::size_t>(slot), pixel.world, geometry);
         }
         light_compute(normal, normalize(to_light), view, light_color, attenuation, f0, roughness,
                       metallic, light.color[3], light_sum);
     }
 
-    const Float3 ambient_light =
-        scale(mul({scene.ambient[0], scene.ambient[1], scene.ambient[2]}, base), 1.0F - metallic);
+    // Light from the sky's radiance, as Godot's scene.glsl takes it: reflections by roughness
+    // and ambient light by the normal, then specular occlusion and Lazarov's environment BRDF.
+    Float3 ambient_light{scene.ambient[0], scene.ambient[1], scene.ambient[2]};
+    Float3 reflected{};
+    if (maps.radiance != nullptr) {
+        const auto to_sky = [&](const Float3& v) {
+            return Float3{dot3(xyz(scene.sky_rows[0]), v), dot3(xyz(scene.sky_rows[1]), v),
+                          dot3(xyz(scene.sky_rows[2]), v)};
+        };
+        if (scene.sky[1] != 0.0F) {
+            Float3 ray = sub(scale(normal, 2.0F * dot3(normal, view)), view);
+            ray = lerp3(ray, normal, roughness * roughness);
+            const float horizon = std::min(1.0F + dot3(ray, normal), 1.0F);
+            const Float4 texel =
+                maps.radiance->sample(to_sky(ray), std::sqrt(roughness) * kRadianceMaxLevel);
+            reflected = scale(srgb_to_linear(xyz(texel)), horizon * horizon * scene.sky[2]);
+        }
+        if (scene.sky[0] != 0.0F) {
+            const Float4 texel = maps.radiance->sample(to_sky(normal), kRadianceMaxLevel);
+            ambient_light = lerp3(ambient_light, scale(srgb_to_linear(xyz(texel)), scene.sky[2]),
+                                  scene.sky[3]);
+        }
+    }
+    float occlusion =
+        ((ambient_light[0] * 0.3F) + (ambient_light[1] * 0.59F) + (ambient_light[2] * 0.11F)) *
+        2.0F;
+    occlusion = std::min(occlusion * 4.0F, 1.0F);
+    const float reflective = (1.0F - roughness) * metallic;
+    occlusion = std::max(std::min(reflective * occlusion * 10.0F, 1.0F), occlusion);
+    const float n_dot_v = std::clamp(dot3(normal, view), 0.0F, 1.0F);
+    const Float4 r{1.0F - roughness, (roughness * -0.0275F) + 0.0425F,
+                   (roughness * -0.572F) + 1.04F, (roughness * 0.022F) - 0.04F};
+    const float a004 =
+        (std::min(r[0] * r[0], slash::exp(-9.28F * n_dot_v * std::numbers::ln2_v<float>)) * r[0]) +
+        r[1];
+    const float env_x = (-1.04F * a004) + r[2];
+    const float env_y = (1.04F * a004) + r[3];
+    const float env_g = std::min(std::max(50.0F * f0[1], metallic), 1.0F);
+    for (std::size_t i = 0; i < 3; ++i) {
+        reflected.at(i) *= occlusion * ((env_x * f0.at(i)) + (env_y * env_g));
+    }
+
+    ambient_light = scale(mul(ambient_light, base), 1.0F - metallic);
     const Float3 diffuse_light = mul(light_sum.diffuse, scale(base, 1.0F - metallic));
-    const Float3 lit = add(add(add(diffuse_light, light_sum.specular), emitted), ambient_light);
+    const Float3 lit = add(add(add(add(diffuse_light, light_sum.specular), reflected), emitted),
+                           ambient_light);
     return finish(lit);
 }
 
