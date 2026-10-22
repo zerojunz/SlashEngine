@@ -133,9 +133,11 @@ file, a [`.theme.json`](scene-format.md#themes) file, an
 [`.bus_layout.json`](scene-format.md#bus-layouts) file, a
 [`.replay.json`](scene-format.md#replays) file, a [`.test.json`](scene-format.md#tests) file or
 a [`.score.json`](scene-format.md#scores) file, or a [model](scene-format.md#models)
-(`.gltf`, `.glb`, `.obj` or `.fbx`), and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
+(`.gltf`, `.glb`, `.obj`, `.fbx` or `.blend`), and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
 [scenes](scene-format.md#instanced-scenes) a file extends, the tile sets its layers use, the animation libraries its players use and the project's window size and theme are read from its
-project: the nearest folder above it with a `project.json`, else the current folder.
+project: the nearest folder above it with a `project.json`, else the current folder. A `.blend`
+file, and one a scene's `MeshInstance3D` names, is converted with the artist's own Blender first
+if it hasn't been (`SLASH_BLENDER_PATH`; see [Blender models](scene-format.md#blender-models)).
 
 ```bash
 slash-cli scene validate <file>
@@ -596,7 +598,9 @@ scene and prefab, copies `project.json` and
 the `.scene.json` and `.prefab.json` files into a staging folder (nothing else, so stray files such as `.env` never
 ship), builds the game with CMake, signs it and installs it into the output folder. Each
 material's [shader](scene-format.md#shaders) is compiled for the platform into its staged file,
-since games can't compile shaders, and the `.hlsl` files stay behind. Textures ship in the
+since games can't compile shaders, and the `.hlsl` files stay behind. Each
+[`.blend` file](scene-format.md#blender-models) is converted with the artist's own Blender, if it
+hasn't been, and ships as its glTF under its own name, so games never need Blender. Textures ship in the
 forms `project.json`'s [`rendering.textures`](project-format.md#texture-forms) asks for, made
 once and cached in the asset library. Every platform's [icons](project-format.md#icons) are
 made from `project.json`'s `icon`, or the engine's, and the result's `icon` names which. A

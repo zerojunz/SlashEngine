@@ -526,7 +526,7 @@ TEST_CASE("models that can't draw are reported, in the world and in scene files"
     REQUIRE(problems.size() == 3);
     CHECK(problems[0].path == "/components/MeshInstance3D/mesh");
     CHECK(problems[0].message == "draws a model, so its BoxMesh is left out: remove one of them");
-    CHECK(problems[1].message == "expected a .gltf, .glb, .obj or .fbx file");
+    CHECK(problems[1].message == "expected a .gltf, .glb, .obj, .fbx or .blend file");
     CHECK(problems[2].message == "\"models/gone.glb\" could not be read: no such file");
 
     // Drawing reports them too, and draws nothing for them.

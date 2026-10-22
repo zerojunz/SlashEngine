@@ -643,8 +643,9 @@ they were to where they are, as sprites are. `frame.capture`'s `drawn` counts `m
 [examples/scene-3d](../../examples/scene-3d/) is a lit table with a crate, a ball and a ring,
 [examples/shadows-3d](../../examples/shadows-3d/) a courtyard where the sun, a lamp and a
 flashlight cast shadows, [examples/models-3d](../../examples/models-3d/) a house loaded from a
-glTF file, [examples/obj-models](../../examples/obj-models/) a lamp post from an OBJ file and
-[examples/fbx-models](../../examples/fbx-models/) a windmill from an FBX file.
+glTF file, [examples/obj-models](../../examples/obj-models/) a lamp post from an OBJ file,
+[examples/fbx-models](../../examples/fbx-models/) a windmill from an FBX file and
+[examples/blend-models](../../examples/blend-models/) a toadstool from a Blender file.
 
 ### Meshes
 
@@ -680,7 +681,8 @@ Every primitive also has `flip_faces` (`false`), which turns it inside out, as f
 
 `MeshInstance3D`'s `mesh` (default `""`) names a model by project path: a glTF 2.0 `.gltf` file,
 with its buffers and images in files beside it or in data URIs, a `.glb` file holding
-everything, a Wavefront [`.obj` file](#obj-models) or an [`.fbx` file](#fbx-models). The entity draws the model's meshes in
+everything, a Wavefront [`.obj` file](#obj-models), an [`.fbx` file](#fbx-models) or a
+[Blender `.blend` file](#blender-models). The entity draws the model's meshes in
 place of a primitive mesh, read as Godot's importers read them:
 
 ```json
@@ -714,7 +716,7 @@ place of a primitive mesh, read as Godot's importers read them:
 Images are PNG, JPEG, BMP or KTX2 files, as [textures](#textures) are. Entities drawing one model
 share its meshes and textures on the device, and the model reloads when its file changes.
 [`model.inspect`](commands.md#modelinspect) lists what a model holds without drawing it, and
-`slash-cli scene validate` takes a `.gltf`, `.glb`, `.obj` or `.fbx` file and checks it as
+`slash-cli scene validate` takes a `.gltf`, `.glb`, `.obj`, `.fbx` or `.blend` file and checks it as
 `MeshInstance3D` loads it.
 
 #### OBJ models
@@ -772,6 +774,32 @@ An `.fbx` file, binary or ASCII, is read with ufbx as Godot 4.3's FBX importer r
   PNG, JPEG, BMP or KTX2 file, or doesn't decode is left out of its materials; the model still
   loads, and `scene validate` reports it, with the warnings ufbx gives about the file.
 - Cameras, lights, skins, blend shapes and animations are left out.
+
+#### Blender models
+
+A `.blend` file is imported as Godot imports one: the engine never reads it, but runs the
+artist's own Blender in the background (`blender --background --python-expr ...`), which opens
+the file and exports it as a `.glb` file with Godot's default import options (y up, modifiers
+applied, every object whether visible or not, materials, skins and actions, no vertex colors),
+and reads that as a [glTF model](#meshes). No Blender code is linked into the engine or shipped
+with a game.
+
+- Blender is the program `SLASH_BLENDER_PATH` names, else the first of these that runs, as
+  Godot looks: `blender` on `PATH`, then where Blender's installers put it (`/Applications` and
+  `~/Applications`, Homebrew and MacPorts on macOS; `C:\Program Files\Blender Foundation` on
+  Windows; `/usr/bin`, `/usr/local/bin`, `/opt/blender/bin` and the Snap Store on Linux). It
+  must be Blender 3.0 or later.
+- The glTF is kept in the project's `.slash/imported/` folder, named after the file and a hash
+  of its bytes (`.slash/imported/models/tree.blend-<hash>.glb`), with what Blender printed in a
+  `.log` file beside it. It is used until the `.blend` file changes; then the model reloads,
+  Blender converts it again and the files made before are removed. A conversion that fails
+  gives Blender's last lines and names its log.
+- Running a program needs the `build` capability: a session without it reads files converted
+  before and reports the rest. `slash-cli export` converts every `.blend` file in the project
+  and ships the glTF under the `.blend` file's name, so games never need Blender, and
+  `slash-cli scene validate` converts the files it checks.
+- Textures packed into the `.blend` file, or found where it names them, are carried inside the
+  `.glb` file.
 
 ### StandardMaterial3D
 

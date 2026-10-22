@@ -15,6 +15,7 @@
 #include "slash/input/input.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/scene3d/blend.hpp"
 #include "slash/services/services.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/scene.hpp"
@@ -176,18 +177,27 @@ canvas::Settings canvas_settings(const json::Value& project) {
 Session::Session(const world::ComponentRegistry& component_registry,
                  const Registry& command_registry, SessionOptions session_options)
     : commands_(&command_registry), options_(std::move(session_options)),
-      assets_(asset::FileSource{
-          .read = [this](std::string_view path) -> Result<std::string> {
-              if (auto file = resolve_path(path); !file) {
-                  return file.error();
-              }
-              return platform::read_file_in(options_.project_root, path);
+      // .blend files read as the glTF the artist's Blender makes of them, which runs a program,
+      // so only for callers with the build capability.
+      assets_(scene3d::with_blender(
+          asset::FileSource{
+              .read = [this](std::string_view path) -> Result<std::string> {
+                  if (auto file = resolve_path(path); !file) {
+                      return file.error();
+                  }
+                  return platform::read_file_in(options_.project_root, path);
+              },
+              .stamp = [this](std::string_view path) -> std::optional<platform::FileStamp> {
+                  auto file = resolve_path(path);
+                  return file ? platform::file_stamp(file.value()) : std::nullopt;
+              },
           },
-          .stamp = [this](std::string_view path) -> std::optional<platform::FileStamp> {
-              auto file = resolve_path(path);
-              return file ? platform::file_stamp(file.value()) : std::nullopt;
-          },
-      }),
+          {.project_root = options_.project_root,
+           .run_blender = std::ranges::find(options_.capabilities, Capability::Build) !=
+                          options_.capabilities.end(),
+           .why_not = "this session runs Blender only with the build capability (--allow build)",
+           .blender = {},
+           .timeout_seconds = 600})),
       world_(component_registry) {
     world_.set_event_listener([this](const world::Event& event) { on_world_event(event); });
     world_.set_file_reader(

@@ -45,6 +45,7 @@
 #include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/icon.hpp"
 #include "slash/runtime/project.hpp"
+#include "slash/scene3d/blend.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/server/server.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
@@ -787,9 +788,20 @@ std::string project_folder(const std::string& file) {
     return ".";
 }
 
-// Reads the prefabs a scene or prefab extends from its project.
+// How the CLI converts .blend files: with the artist's Blender, kept in the project.
+slash::scene3d::BlendOptions blend_options(const std::string& file) {
+    return {.project_root = project_folder(file),
+            .run_blender = true,
+            .why_not = {},
+            .blender = {},
+            .timeout_seconds = 600};
+}
+
+// Reads the prefabs a scene or prefab extends from its project, and the models it names, .blend
+// files as their glTF.
 world::FileReader prefab_reader(const std::string& file) {
-    return slash::runtime::folder_reader(project_folder(file));
+    return slash::scene3d::with_blender(slash::runtime::folder_reader(project_folder(file)),
+                                        blend_options(file));
 }
 
 // Adds the component types of the game's own code to a registry, for checking a file of its
@@ -840,11 +852,22 @@ std::string project_path(const std::string& file) {
 }
 
 // Checks a model as MeshInstance3D's mesh loads it, and counts what it holds.
-int validate_model(const std::string& path, std::string_view bytes) {
+int validate_model(const std::string& path, std::string_view file) {
     const std::string in_project = project_path(path);
     const auto read = prefab_reader(path);
-    const auto errors = slash::scene3d::check_model(bytes, in_project, read);
+    std::string bytes(file);
     json::Value result;
+    if (path.ends_with(slash::scene3d::kBlendSuffix)) {
+        auto converted = slash::scene3d::convert_blend(in_project, file, blend_options(path));
+        if (!converted) {
+            result["valid"] = false;
+            result["errors"] = errors_to_json({{"", converted.error().message}});
+            print(result);
+            return kExitFailure;
+        }
+        bytes = std::move(converted).value();
+    }
+    const auto errors = slash::scene3d::check_model(bytes, in_project, read);
     result["valid"] = errors.empty();
     if (!errors.empty()) {
         result["errors"] = errors_to_json(errors);
