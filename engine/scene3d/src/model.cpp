@@ -452,38 +452,13 @@ world::Affine3D affine_of(const std::array<float, 16>& m) {
     return out;
 }
 
-// Godot's String::validate_node_name, with AnimationLibrary::validate_library_name's characters
-// for animations: those a name can't have become underscores.
-std::string valid_name(std::string_view name, bool animation) {
-    std::string out(name);
-    for (char& c : out) {
-        if (c == '.' || c == ':' || c == '@' || c == '/' || c == '"' || c == '%' ||
-            (animation && (c == ',' || c == '['))) {
-            c = '_';
-        }
-    }
-    return out;
-}
-
-// Godot's GLTFDocument::_gen_unique_name: a valid name, numbered from 2 when it is taken.
-std::string unique_name(std::set<std::string, std::less<>>& taken, std::string_view name,
-                        bool animation = false) {
-    const std::string base = valid_name(name, animation);
-    std::string out = base;
-    for (int index = 2; taken.contains(out); ++index) {
-        out = base + std::to_string(index);
-    }
-    taken.insert(out);
-    return out;
-}
-
 // The scene's nodes in tree order, parents first, and the meshes they place, as Godot's
 // GLTFDocument::_parse_nodes and _assign_node_names make them.
 struct SceneReader {
     const cgltf_data& data;
     Model& model;
     std::unordered_map<const cgltf_node*, std::size_t> indices;
-    std::set<std::string, std::less<>> names;
+    NameSet names;
     std::vector<const cgltf_node*> part_nodes; // the node of each part
 
     void add(const cgltf_node& node, int parent) {
@@ -609,17 +584,13 @@ std::array<float, 4> normalized_rotation(std::array<float, 4> q) {
 // them: a track per channel that moves a node of the scene (morph target weights are left out),
 // cubic splines baked into linear keys at 30 a second, Godot's default bake rate.
 void read_animations(const cgltf_data& data, const SceneReader& scene, Model& model) {
-    std::set<std::string, std::less<>> taken;
+    NameSet taken;
     for (cgltf_size i = 0; i < data.animations_count; ++i) {
         const cgltf_animation& in = data.animations[i];
         ModelAnimation out;
         const bool named = in.name != nullptr && *in.name != '\0';
         out.name = unique_name(taken, named ? in.name : "Animation", true);
-        std::string lower = named ? in.name : "";
-        std::ranges::transform(lower, lower.begin(),
-                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        out.loop = lower.starts_with("loop") || lower.ends_with("loop") ||
-                   lower.starts_with("cycle") || lower.ends_with("cycle");
+        out.loop = named && loops_by_name(in.name);
         struct Channel {
             NodeTrack track;
             bool cubic = false;
@@ -726,6 +697,36 @@ void read_animations(const cgltf_data& data, const SceneReader& scene, Model& mo
 }
 
 } // namespace
+
+std::string unique_name(NameSet& taken, std::string_view name, bool animation) {
+    // Godot's String::validate_node_name, with AnimationLibrary::validate_library_name's
+    // characters for animations: those a name can't have become underscores.
+    std::string base(name);
+    for (char& c : base) {
+        if (c == '.' || c == ':' || c == '@' || c == '/' || c == '"' || c == '%' ||
+            (animation && (c == ',' || c == '['))) {
+            c = '_';
+        }
+    }
+    std::string out = base;
+    for (int index = 2; taken.contains(out); ++index) {
+        out = base + std::to_string(index);
+    }
+    taken.insert(out);
+    return out;
+}
+
+NameSet node_names() {
+    return {"Skeleton3D"};
+}
+
+bool loops_by_name(std::string_view name) {
+    std::string lower(name);
+    std::ranges::transform(lower, lower.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return lower.starts_with("loop") || lower.ends_with("loop") || lower.starts_with("cycle") ||
+           lower.ends_with("cycle");
+}
 
 bool is_model_path(std::string_view path) {
     return path.ends_with(".gltf") || path.ends_with(".glb") || path.ends_with(".obj") ||
@@ -846,7 +847,8 @@ Result<Model> load_model(std::string_view bytes, std::string_view path, const Mo
     if (scene == nullptr && data->scenes_count > 0) {
         scene = &data->scenes[0];
     }
-    SceneReader reader{.data = *data, .model = model, .indices = {}, .names = {}, .part_nodes = {}};
+    SceneReader reader{
+        .data = *data, .model = model, .indices = {}, .names = node_names(), .part_nodes = {}};
     if (scene != nullptr) {
         for (cgltf_size i = 0; i < scene->nodes_count; ++i) {
             reader.add(*scene->nodes[i], -1);

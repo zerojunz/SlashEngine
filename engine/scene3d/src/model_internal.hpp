@@ -7,7 +7,9 @@
 #include "slash/scene3d/model.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -28,6 +30,20 @@ struct Problems {
         }
     }
 };
+
+using NameSet = std::set<std::string, std::less<>>;
+
+// Godot's importers' _gen_unique_name: name with the characters a node's name (or an animation's,
+// which also can't have ',' or '[') can't have made underscores, numbered from 2 when it is taken.
+std::string unique_name(NameSet& taken, std::string_view name, bool animation = false);
+
+// The names a model's nodes can't take: "Skeleton3D", which Godot's importers keep for the
+// skeleton.
+NameSet node_names();
+
+// Godot's import hint: an animation whose name begins or ends with "loop" or "cycle", in any case,
+// loops.
+bool loops_by_name(std::string_view name);
 
 // Godot's Color::linear_to_srgb, for one channel.
 float linear_to_srgb(float c);

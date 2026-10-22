@@ -37,6 +37,11 @@ the paused player's `time` poses the arm too.
 - [anim/arm.anim.json](anim/arm.anim.json)'s `wave` comes `from` the model's `Wave-loop`, taking
   its length and loop, and adds an event track. Playing it for a second emits `wave_out` at each
   end of the swing, which `events.read` returns.
+- [models/arm.fbx](models/arm.fbx) is the same arm as Maya writes an ASCII FBX file, y up and in
+  centimeters, with a skin deformer and two animation stacks. `model.inspect` finds the same skin
+  and animations, the stacks baked at 30 a second as Godot's FBX importer bakes them, and with
+  the mesh and player switched to it, the hand half way through the wave is where the glTF arm's
+  is. The glove's color differs a little, since an FBX Lambert material is fully rough.
 
 `slash-cli scene validate main.scene.json` checks a `Skeleton3D`'s bone names against the model,
 with "did you mean".
