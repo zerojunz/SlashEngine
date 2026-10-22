@@ -1,0 +1,57 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 60.0
+        },
+        "Transform3D": {
+          "position": [0.4, 1.8, 4.2]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.6, 0.7, 0.9, 1.0],
+          "ambient_light_energy": 0.5,
+          "ambient_light_source": "color",
+          "background_color": [0.45, 0.65, 0.9, 1.0],
+          "background_mode": "color"
+        }
+      }
+    },
+    "field": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [30.0, 30.0]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.35, 0.55, 0.25, 1.0]
+        },
+        "Transform3D": {}
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {
+          "light_color": [1.0, 0.95, 0.85, 1.0]
+        },
+        "Transform3D": {
+          "rotation": [-0.7, -0.5, 0.0]
+        }
+      }
+    },
+    "windmill": {
+      "components": {
+        "MeshInstance3D": {
+          "mesh": "models/windmill.fbx"
+        },
+        "Transform3D": {}
+      }
+    }
+  },
+  "format": 1
+}

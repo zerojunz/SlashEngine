@@ -217,6 +217,13 @@
       "repository": "https://github.com/wolfpld/tracy.git",
       "tag": "v0.14.1"
     },
+    "ufbx": {
+      "license": "MIT OR Unlicense",
+      "license_file": "LICENSE",
+      "license_sha256": "0dd48ebadf52273c736256325c8f078c03c8bb4facee22a4122de0ad3f615391",
+      "repository": "https://github.com/ufbx/ufbx.git",
+      "tag": "v0.23.1"
+    },
     "wayland": {
       "license": "MIT",
       "license_file": "COPYING",

@@ -173,16 +173,6 @@ void smooth_normals(std::vector<render::Vertex3D>& corners,
     }
 }
 
-struct Problems {
-    std::vector<json::ValidationError>* out = nullptr;
-
-    void add(std::string message) const {
-        if (out != nullptr) {
-            out->push_back({"", std::move(message)});
-        }
-    }
-};
-
 // A material in a library, as Godot's _parse_material_library makes it, with the project paths
 // of its textures, "" for none.
 struct LibraryMaterial {
