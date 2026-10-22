@@ -462,6 +462,21 @@ bool Layers::ShouldCollide(JPH::ObjectLayer a, JPH::ObjectLayer b) const {
 
 // ---- Contacts
 
+JPH::ValidateResult ContactListener::OnContactValidate(const JPH::Body& a, const JPH::Body& b,
+                                                       JPH::RVec3Arg /*base_offset*/,
+                                                       const JPH::CollideShapeResult& /*result*/) {
+    const Body* first = Space::body_of(a);
+    const Body* second = Space::body_of(b);
+    if (first != nullptr && second != nullptr && space_->excepted(first->entity, second->entity)) {
+        return JPH::ValidateResult::RejectAllContactsForThisBodyPair;
+    }
+    return JPH::ValidateResult::AcceptAllContactsForThisBodyPair;
+}
+
+bool Space::excepted(entt::entity a, entt::entity b) const {
+    return !exceptions_.empty() && exceptions_.contains(std::minmax(a, b));
+}
+
 void ContactListener::OnContactAdded(const JPH::Body& a, const JPH::Body& b,
                                      const JPH::ContactManifold& /*manifold*/,
                                      JPH::ContactSettings& settings) {
@@ -561,11 +576,22 @@ Space::Space(const Settings& settings) : settings_(settings) {
 }
 
 Space::~Space() {
+    for (auto& [entity, joint] : joints_) {
+        remove_joint(joint);
+    }
+    joints_.clear();
     bodies_.clear();
     system_.reset();
 }
 
 void Space::reset() {
+    for (auto& [entity, joint] : joints_) {
+        remove_joint(joint);
+    }
+    joints_.clear();
+    exceptions_.clear();
+    wheels_.clear();
+    vehicles_.clear();
     bodies_.clear();
     system_.reset();
     jobs_.reset();
@@ -631,6 +657,7 @@ void Space::create_system() {
 
 void Space::destroy(Body& body) {
     if (system_ != nullptr && !body.id.IsInvalid()) {
+        drop_joints(body.id);
         JPH::BodyInterface& interface = system_->GetBodyInterfaceNoLock();
         interface.RemoveBody(body.id);
         interface.DestroyBody(body.id);
@@ -941,6 +968,7 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
     each.template operator()<AnimatableBody3D>(Kind::Animatable);
     each.template operator()<StaticBody3D>(Kind::Static);
     each.template operator()<Area3D>(Kind::Area);
+    sync_joints(world, tree);
     if (added_ >= kOptimizeAfter) {
         system_->OptimizeBroadPhase();
         added_ = 0;
@@ -1021,6 +1049,7 @@ void Space::pre_step(const world::World& world, float seconds) {
     const entt::registry& registry = world.ecs();
     JPH::BodyInterface& interface = system_->GetBodyInterfaceNoLock();
     const JPH::BodyLockInterfaceNoLock& locks = system_->GetBodyLockInterfaceNoLock();
+    pre_step_joints(seconds);
 
     // Impulses queued since the last step, as Godot applies them when they're called.
     for (const Impulse& impulse : impulses_) {
@@ -1236,6 +1265,7 @@ void Space::step(world::World& world, float seconds) {
         impulses_.clear();
         return;
     }
+    pre_step_vehicles(world, tree, seconds);
     pre_step(world, seconds);
     {
         SLASH_PROFILE_ZONE("Jolt step");
@@ -1248,6 +1278,7 @@ void Space::step(world::World& world, float seconds) {
                        {"max_contact_constraints", static_cast<int>(kMaxContacts)}});
         }
     }
+    step_vehicles(world, tree, seconds);
     read_back(world, tree);
     move_characters(world, tree, seconds);
     find_overlaps(world);
@@ -1312,13 +1343,16 @@ world::MemoryPart Space::memory() const {
     for (const auto& [entity, body] : bodies_) {
         shapes += body->parts.size();
     }
-    part.counts = {{"active", 0}, {"bodies", bodies_.size()}, {"shapes", shapes}};
+    part.counts = {
+        {"active", 0}, {"bodies", bodies_.size()}, {"shapes", shapes}, {"joints", joints_.size()}};
     if (system_ != nullptr) {
         // What Jolt allocated for every space in the process; a session or game has one.
         part.bytes = g_jolt_bytes.load();
         part.counts["active"] = system_->GetNumActiveBodies(JPH::EBodyType::RigidBody);
     }
     part.bytes += bodies_.size() * (sizeof(Body) + sizeof(EntityMap<std::unique_ptr<Body>>::Entry));
+    part.bytes += (joints_.size() * sizeof(EntityMap<Joint>::Entry)) +
+                  (wheels_.size() * sizeof(EntityMap<Wheel>::Entry));
     return part;
 }
 

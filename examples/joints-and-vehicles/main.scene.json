@@ -1,0 +1,203 @@
+{
+  "entities": {
+    "bell": {
+      "components": {
+        "CollisionShape3D": {
+          "radius": 0.3,
+          "shape": "sphere"
+        },
+        "RigidBody3D": {
+          "linear_velocity": [3.0, 0.0, 0.0],
+          "mass": 2.0
+        },
+        "Transform3D": {
+          "position": [-3.0, 2.2, 0.0]
+        }
+      }
+    },
+    "bell_mount": {
+      "components": {
+        "ConeTwistJoint3D": {
+          "node_b": "bell",
+          "swing_span": 0.35
+        },
+        "Transform3D": {
+          "position": [-3.0, 3.2, 0.0],
+          "rotation": [0.0, 0.0, -1.5707964]
+        }
+      }
+    },
+    "cabinet": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [0.7, 0.3, 0.7]
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [4.0, 1.0, 0.0]
+        }
+      }
+    },
+    "car": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [2.0, 0.5, 4.0]
+        },
+        "RigidBody3D": {
+          "mass": 40.0
+        },
+        "Transform3D": {
+          "children": ["front_left", "front_right", "rear_left", "rear_right"],
+          "position": [0.0, 1.0, -20.0]
+        },
+        "VehicleBody3D": {}
+      }
+    },
+    "door": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [1.0, 2.0, 0.1]
+        },
+        "RigidBody3D": {
+          "mass": 10.0
+        },
+        "Transform3D": {
+          "position": [0.0, 1.05, 4.0]
+        }
+      }
+    },
+    "door_hinge": {
+      "components": {
+        "HingeJoint3D": {
+          "angular_limit_enabled": true,
+          "angular_limit_lower": 0.0,
+          "motor_max_impulse": 5.0,
+          "node_a": "door"
+        },
+        "Transform3D": {
+          "position": [-0.5, 1.05, 4.0],
+          "rotation": [-1.5707964, 0.0, 0.0]
+        }
+      }
+    },
+    "drawer": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [0.6, 0.2, 0.6]
+        },
+        "RigidBody3D": {
+          "linear_velocity": [1.5, 0.0, 0.0],
+          "mass": 2.0
+        },
+        "Transform3D": {
+          "position": [4.0, 1.0, 0.0]
+        }
+      }
+    },
+    "drawer_runner": {
+      "components": {
+        "SliderJoint3D": {
+          "linear_limit_lower": 0.0,
+          "linear_limit_upper": 0.5,
+          "node_a": "cabinet",
+          "node_b": "drawer"
+        },
+        "Transform3D": {
+          "position": [4.0, 1.0, 0.0]
+        }
+      }
+    },
+    "front_left": {
+      "components": {
+        "Transform3D": {
+          "position": [1.0, -0.3, 1.5]
+        },
+        "VehicleWheel3D": {
+          "suspension_stiffness": 30.0,
+          "suspension_travel": 0.3,
+          "use_as_steering": true,
+          "wheel_radius": 0.4,
+          "wheel_rest_length": 0.3
+        }
+      }
+    },
+    "front_right": {
+      "components": {
+        "Transform3D": {
+          "position": [-1.0, -0.3, 1.5]
+        },
+        "VehicleWheel3D": {
+          "suspension_stiffness": 30.0,
+          "suspension_travel": 0.3,
+          "use_as_steering": true,
+          "wheel_radius": 0.4,
+          "wheel_rest_length": 0.3
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [60.0, 1.0, 60.0]
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [0.0, -0.5, 0.0]
+        }
+      }
+    },
+    "lamp": {
+      "components": {
+        "CollisionShape3D": {
+          "radius": 0.2,
+          "shape": "sphere"
+        },
+        "RigidBody3D": {
+          "linear_velocity": [2.0, 0.0, 0.0]
+        },
+        "Transform3D": {
+          "position": [-6.0, 3.0, 0.0]
+        }
+      }
+    },
+    "lamp_cord": {
+      "components": {
+        "PinJoint3D": {
+          "node_b": "lamp"
+        },
+        "Transform3D": {
+          "position": [-6.0, 5.0, 0.0]
+        }
+      }
+    },
+    "rear_left": {
+      "components": {
+        "Transform3D": {
+          "position": [1.0, -0.3, -1.5]
+        },
+        "VehicleWheel3D": {
+          "suspension_stiffness": 30.0,
+          "suspension_travel": 0.3,
+          "use_as_traction": true,
+          "wheel_radius": 0.4,
+          "wheel_rest_length": 0.3
+        }
+      }
+    },
+    "rear_right": {
+      "components": {
+        "Transform3D": {
+          "position": [-1.0, -0.3, -1.5]
+        },
+        "VehicleWheel3D": {
+          "suspension_stiffness": 30.0,
+          "suspension_travel": 0.3,
+          "use_as_traction": true,
+          "wheel_radius": 0.4,
+          "wheel_rest_length": 0.3
+        }
+      }
+    }
+  },
+  "format": 1
+}

@@ -90,31 +90,32 @@ private:
 };
 
 // What a moving body hits, as Godot's JoltMotionFilter3D: bodies, not areas, whose collision
-// layer is in its mask, but not itself or what the motion excludes.
+// layer is in its mask, but not itself, bodies a joint keeps it apart from or what the motion
+// excludes.
 class MotionFilter final : public JPH::BroadPhaseLayerFilter,
                            public JPH::ObjectLayerFilter,
                            public JPH::BodyFilter {
 public:
-    MotionFilter(const Layers& layers, const Body& self, const std::vector<entt::entity>& exclude)
-        : layers_(&layers), self_(&self), exclude_(&exclude) {}
+    MotionFilter(const Space& space, const Body& self, const std::vector<entt::entity>& exclude)
+        : space_(&space), self_(&self), exclude_(&exclude) {}
 
     [[nodiscard]] bool ShouldCollide(JPH::BroadPhaseLayer layer) const override {
         return layer == broad::kStatic || layer == broad::kMoving;
     }
     [[nodiscard]] bool ShouldCollide(JPH::ObjectLayer layer) const override {
-        return (self_->mask & std::get<1>(layers_->from_object_layer(layer))) != 0;
+        return (self_->mask & std::get<1>(space_->layers().from_object_layer(layer))) != 0;
     }
     [[nodiscard]] bool ShouldCollide(const JPH::BodyID& id) const override {
         return id != self_->id;
     }
     [[nodiscard]] bool ShouldCollideLocked(const JPH::Body& body) const override {
         const Body* other = Space::body_of(body);
-        return other != nullptr &&
+        return other != nullptr && !space_->excepted(self_->entity, other->entity) &&
                std::find(exclude_->begin(), exclude_->end(), other->entity) == exclude_->end();
     }
 
 private:
-    const Layers* layers_;
+    const Space* space_;
     const Body* self_;
     const std::vector<entt::entity>* exclude_;
 };
@@ -273,9 +274,8 @@ bool cast_shape(const JPH::PhysicsSystem& system, const JPH::ConvexShape& shape,
     JPH::CollideShapeSettings settings;
     settings.mActiveEdgeMode = JPH::EActiveEdgeMode::CollideWithAll;
     settings.mCollectFacesMode = JPH::ECollectFacesMode::CollectFaces;
-    const auto collides = [&](const JPH::Body& other, float fraction) {
+    const auto collides = [&](const JPH::TransformedShape& other_shape, float fraction) {
         motion_shape.set_motion(motion_local * fraction);
-        const JPH::TransformedShape other_shape = other.GetTransformedShape();
         Any<JPH::CollideShapeCollector> collector;
         JPH::InternalEdgeRemovingCollector edges(collector,
                                                  settings.mInternalEdgeRemovalVertexToleranceSq);
@@ -293,7 +293,11 @@ bool cast_shape(const JPH::PhysicsSystem& system, const JPH::ConvexShape& shape,
             continue;
         }
         const JPH::Body* other = locks.TryGetBody(id);
-        if (other == nullptr || !filter.ShouldCollideLocked(*other) || !collides(*other, 1.0F)) {
+        if (other == nullptr || !filter.ShouldCollideLocked(*other)) {
+            continue;
+        }
+        const JPH::TransformedShape other_shape = other->GetTransformedShape();
+        if (!collides(other_shape, 1.0F)) {
             continue;
         }
         float lo = 0.0F;
@@ -301,7 +305,7 @@ bool cast_shape(const JPH::PhysicsSystem& system, const JPH::ConvexShape& shape,
         float coefficient = 0.5F;
         for (int j = 0; j < steps; ++j) {
             const float fraction = lo + ((hi - lo) * coefficient);
-            if (collides(*other, fraction)) {
+            if (collides(other_shape, fraction)) {
                 collided = true;
                 hi = fraction;
                 coefficient = j == 0 || lo > 0.0F ? 0.5F : 0.25F;
@@ -447,7 +451,7 @@ bool Space::test_motion(const Body& body, const MotionParameters& parameters,
     const int max_collisions = std::min(parameters.max_collisions, kMaxCollisions);
     const Unscaled from = unscale(parameters.from);
     world::Affine3D transform = from.transform;
-    const MotionFilter filter(layers_, body, parameters.exclude);
+    const MotionFilter filter(*this, body, parameters.exclude);
 
     Vec3 recovery;
     const bool recovered = recover(*system_, body, transform, margin, filter, recovery);
