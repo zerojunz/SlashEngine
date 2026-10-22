@@ -13,6 +13,7 @@
 #include "slash/core/text.hpp"
 #include "slash/gameplay/host.hpp"
 #include "slash/input/input.hpp"
+#include "slash/navigation/navigation.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/platform/file.hpp"
@@ -71,6 +72,26 @@ physics3d::Settings physics_3d_settings(const json::Value& project) {
         return {};
     }
     return physics3d::parse_settings(*settings);
+}
+
+// The project's navigation_2d and navigation_3d settings; a map whose settings don't validate
+// keeps the defaults.
+navigation::Settings navigation_settings(const json::Value& project) {
+    navigation::Settings out;
+    if (!project.is_object()) {
+        return out;
+    }
+    for (const navigation::Map map : {navigation::Map::TwoD, navigation::Map::ThreeD}) {
+        const json::Value* settings =
+            project.find(map == navigation::Map::TwoD ? "navigation_2d" : "navigation_3d");
+        if (settings == nullptr ||
+            !json::validate(*settings, navigation::settings_schema(map)).empty()) {
+            continue;
+        }
+        (map == navigation::Map::TwoD ? out.map_2d : out.map_3d) =
+            navigation::parse_settings(map, *settings);
+    }
+    return out;
 }
 
 // The project's threading.max_threads, or -1 (one thread per core) if it doesn't validate.
@@ -227,6 +248,7 @@ Session::Session(const world::ComponentRegistry& component_registry,
     animation::install(world_, assets_);
     physics2d::install(world_, physics_settings(project));
     physics3d::install(world_, physics_3d_settings(project));
+    navigation::install(world_, assets_, navigation_settings(project));
     input::install(world_, input_map(project), input_settings(project));
     audio::install(world_, assets_, audio_settings(project));
     // Ads load and purchases complete as services.test says, with no store account.
@@ -356,12 +378,13 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
     Snapshot before{command->name, save(), {}, true};
     // Input events a failed command or dry run stepped through wait for the next tick again,
     // focus, hover and buttons being pressed are as they were, and so are the world's events.
-    // Requests to models asked meanwhile are cancelled.
+    // Requests to models asked meanwhile are cancelled, and agents' paths are as they were.
     const input::Snapshot input_before = input::save(world_);
     const ui::Snapshot ui_before = ui::save(world_);
     const audio::Snapshot audio_before = audio::save(world_);
     const services::Snapshot services_before = services::save(world_);
     const ai::Snapshot ai_before = ai::save(world_);
+    const navigation::Snapshot navigation_before = navigation::save(world_);
     const std::string path_before = scene_path_;
     const world::World::Counters counters_before = world_.counters();
     world::World::EventQueues events_before = world_.event_queues();
@@ -401,6 +424,7 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
         audio::restore(world_, audio_before);
         services::restore(world_, services_before);
         ai::restore(world_, ai_before);
+        navigation::restore(world_, navigation_before);
         scene_path_ = path_before;
         world_.set_counters(counters_before);
         world_.set_event_queues(std::move(events_before));
@@ -805,6 +829,7 @@ void Session::poll_project() {
     ui::set_settings(world_, ui_settings(project));
     physics2d::set_settings(world_, physics_settings(project));
     physics3d::set_settings(world_, physics_3d_settings(project));
+    navigation::set_settings(world_, navigation_settings(project));
     input::install(world_, input_map(project), input_settings(project));
     audio::set_settings(world_, audio_settings(project));
     services::install(world_, services_settings(project));

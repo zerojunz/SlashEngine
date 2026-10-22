@@ -38,6 +38,7 @@
 #include "slash/input/sdl.hpp"
 #include "slash/library/commands.hpp"
 #include "slash/library/team.hpp"
+#include "slash/navigation/navigation.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/platform.hpp"
 #include "slash/platform/process.hpp"
@@ -117,8 +118,8 @@ Usage:
   slash-cli scene validate <file>    Check a scene, .prefab.json, .frames.json,
                                      .material.json, .process_material.json, .anim.json,
                                      .animtree.json, .tileset.json, .font.json, .theme.json,
-                                     .audio.json,
-                                     .bus_layout.json, .replay.json, .test.json or .score.json
+                                     .audio.json, .bus_layout.json, .navmesh.json,
+                                     .navpoly.json, .replay.json, .test.json or .score.json
                                      file; lists every error
   slash-cli scene format <file>      Rewrite one of those files in canonical form
       --check                        Only report whether it is canonical; change nothing
@@ -127,7 +128,8 @@ Usage:
                                      (.process_material.json), animation (.anim.json),
                                      animtree (.animtree.json), tileset (.tileset.json), font (.font.json), theme
                                      (.theme.json), audio (.audio.json), bus_layout
-                                     (.bus_layout.json), replay (.replay.json), test
+                                     (.bus_layout.json), navmesh (.navmesh.json), navpoly
+                                     (.navpoly.json), replay (.replay.json), test
                                      (.test.json), score (.score.json), storyboard, project
                                      (project.json), presets (export_presets.json), sdk
                                      (sdk.json), providers (providers.json) or bench (a
@@ -908,6 +910,8 @@ int cmd_scene_validate(const std::string& path) {
     const bool theme = path.ends_with(slash::ui::kThemeSuffix);
     const bool stream = path.ends_with(slash::audio::kStreamSuffix);
     const bool buses = path.ends_with(slash::audio::kBusLayoutSuffix);
+    const bool navmesh = path.ends_with(slash::navigation::kMeshSuffix);
+    const bool navpoly = path.ends_with(slash::navigation::kPolygonSuffix);
     const bool replay = path.ends_with(command::kReplaySuffix);
     const bool test = path.ends_with(command::kTestSuffix);
     const bool score = path.ends_with(slash::soundtrack::kScoreSuffix);
@@ -939,6 +943,10 @@ int cmd_scene_validate(const std::string& path) {
         errors = slash::audio::validate_stream_file(parsed.value());
     } else if (buses) {
         errors = slash::audio::validate_bus_layout(parsed.value());
+    } else if (navmesh) {
+        errors = slash::navigation::validate_mesh(parsed.value());
+    } else if (navpoly) {
+        errors = slash::navigation::validate_polygon(parsed.value());
     } else if (replay) {
         errors = command::validate_replay(parsed.value());
     } else if (test) {
@@ -967,9 +975,12 @@ int cmd_scene_validate(const std::string& path) {
         if (errors.empty() && !prefab) {
             errors = slash::scene3d::check_meshes(registry, parsed.value(), prefab_reader(path));
         }
+        if (errors.empty()) {
+            errors = slash::navigation::check_scene(parsed.value(), prefab_reader(path));
+        }
     }
     if (parsed && !frames && !material && !process && !animation && !tree && !tileset && !font &&
-        !theme && !stream && !buses && !replay && !test && !score) {
+        !theme && !stream && !buses && !navmesh && !navpoly && !replay && !test && !score) {
         check_story_refs(path, parsed.value(), errors);
     }
     result["valid"] = errors.empty();
@@ -1028,6 +1039,8 @@ int cmd_scene_validate(const std::string& path) {
         }
         if (buses) {
             counted = "buses";
+        } else if (navmesh || navpoly) {
+            counted = "polygons";
         } else if (test) {
             counted = "tests";
         } else if (frames || animation) {
@@ -1105,6 +1118,12 @@ int cmd_scene_format(const std::string& path, bool check) {
         }
         if (path.ends_with(slash::audio::kBusLayoutSuffix)) {
             return format_checked(text.value(), slash::audio::parse_bus_layout);
+        }
+        if (path.ends_with(slash::navigation::kMeshSuffix)) {
+            return format_checked(text.value(), slash::navigation::parse_mesh);
+        }
+        if (path.ends_with(slash::navigation::kPolygonSuffix)) {
+            return format_checked(text.value(), slash::navigation::parse_polygon);
         }
         const auto checked_by = [](auto validate) {
             return [validate](const json::Value& doc) -> slash::Result<void> {
@@ -1184,17 +1203,16 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 21> kKinds = {
-        "scene",      "prefab",     "frames",  "material", "process_material",
-        "animation",  "animtree",   "tileset", "font",     "theme",
-        "audio",      "bus_layout", "replay",  "test",     "score",
-        "storyboard", "project",    "presets", "sdk",      "providers",
-        "bench"};
+    constexpr std::array<std::string_view, 23> kKinds = {
+        "scene",     "prefab", "frames", "material",   "process_material", "animation", "animtree",
+        "tileset",   "font",   "theme",  "audio",      "bus_layout",       "navmesh",   "navpoly",
+        "replay",    "test",   "score",  "storyboard", "project",          "presets",   "sdk",
+        "providers", "bench"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error("schema takes one argument: scene, prefab, frames, material, "
                            "process_material, animation, animtree, tileset, font, theme, audio, "
-                           "bus_layout, replay, test, score, storyboard, project, presets, sdk, "
-                           "providers or bench");
+                           "bus_layout, navmesh, navpoly, replay, test, score, storyboard, "
+                           "project, presets, sdk, providers or bench");
     }
     json::Value schema;
     if (args[0] == "scene") {
@@ -1221,6 +1239,10 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::audio::stream_file_schema();
     } else if (args[0] == "bus_layout") {
         schema = slash::audio::bus_layout_schema();
+    } else if (args[0] == "navmesh") {
+        schema = slash::navigation::mesh_schema();
+    } else if (args[0] == "navpoly") {
+        schema = slash::navigation::polygon_schema();
     } else if (args[0] == "replay") {
         schema = command::replay_schema();
     } else if (args[0] == "test") {

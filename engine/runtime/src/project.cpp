@@ -341,6 +341,8 @@ json::Value project_schema() {
     properties["rendering"] = std::move(rendering);
     properties["physics_2d"] = physics2d::settings_schema();
     properties["physics_3d"] = physics3d::settings_schema();
+    properties["navigation_2d"] = navigation::settings_schema(navigation::Map::TwoD);
+    properties["navigation_3d"] = navigation::settings_schema(navigation::Map::ThreeD);
     json::Value gui;
     gui["type"] = "object";
     gui["additionalProperties"] = false;
@@ -608,6 +610,12 @@ Result<Project> parse_project(const json::Value& project) {
     }
     if (const json::Value* physics = project.find("physics_3d"); physics != nullptr) {
         out.physics_3d = physics3d::parse_settings(*physics);
+    }
+    if (const json::Value* map = project.find("navigation_2d"); map != nullptr) {
+        out.navigation.map_2d = navigation::parse_settings(navigation::Map::TwoD, *map);
+    }
+    if (const json::Value* map = project.find("navigation_3d"); map != nullptr) {
+        out.navigation.map_3d = navigation::parse_settings(navigation::Map::ThreeD, *map);
     }
     if (const json::Value* gui = project.find("gui"); gui != nullptr) {
         if (const json::Value* theme = gui->find("theme"); theme != nullptr) {

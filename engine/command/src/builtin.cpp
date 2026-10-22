@@ -16,6 +16,7 @@
 #include "slash/canvas/particles.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/canvas/tilemap.hpp"
+#include "slash/command/navigation.hpp"
 #include "slash/command/perf.hpp"
 #include "slash/command/replay.hpp"
 #include "slash/command/services.hpp"
@@ -28,6 +29,7 @@
 #include "slash/core/version.hpp"
 #include "slash/gameplay/host.hpp"
 #include "slash/input/input.hpp"
+#include "slash/navigation/navigation.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/platform/file.hpp"
@@ -437,6 +439,12 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "bus_layout") {
         return Reply::success(audio::bus_layout_schema());
+    }
+    if (kind == "navmesh") {
+        return Reply::success(navigation::mesh_schema());
+    }
+    if (kind == "navpoly") {
+        return Reply::success(navigation::polygon_schema());
     }
     if (kind == "replay") {
         return Reply::success(replay_schema());
@@ -5608,21 +5616,24 @@ void register_builtin_commands(Registry& registry) {
                                           "(.tileset.json), \"font\" "
                                           "(.font.json), \"theme\" (.theme.json), \"audio\" "
                                           "(.audio.json), \"bus_layout\" (.bus_layout.json), "
+                                          "\"navmesh\" (.navmesh.json), \"navpoly\" "
+                                          "(.navpoly.json), "
                                           "\"replay\" (.replay.json), \"score\" (.score.json) "
                                           "or \"storyboard\" for those files, \"component\" for "
                                           "one component's fields, \"command\" for a command's "
                                           "params.");
-    kind["enum"] = json::Array{"scene",      "prefab",           "frames",  "material", "animation",
-                               "animtree",   "process_material", "tileset", "font",     "theme",
-                               "audio",      "bus_layout",       "replay",  "test",     "score",
-                               "storyboard", "component",        "command"};
+    kind["enum"] = json::Array{
+        "scene",   "prefab", "frames", "material",   "animation",  "animtree", "process_material",
+        "tileset", "font",   "theme",  "audio",      "bus_layout", "navmesh",  "navpoly",
+        "replay",  "test",   "score",  "storyboard", "component",  "command"};
     registry.add({
         .name = "schema.get",
         .description =
             "Returns a JSON Schema: for scene, prefab, .frames.json, .material.json, "
             ".anim.json, .animtree.json, .process_material.json, .tileset.json, .font.json, "
             ".theme.json, .audio.json, "
-            ".bus_layout.json, .replay.json, .test.json, .score.json or storyboard "
+            ".bus_layout.json, .navmesh.json, .navpoly.json, .replay.json, .test.json, "
+            ".score.json or storyboard "
             "files, one component or one command.",
         .capabilities = {Read},
         .effect = Effect::Read,
@@ -6976,6 +6987,7 @@ void register_builtin_commands(Registry& registry) {
     register_test_commands(registry);
     register_playtest_commands(registry);
     register_project_map(registry);
+    register_navigation_commands(registry);
     register_services_commands(registry);
 }
 
