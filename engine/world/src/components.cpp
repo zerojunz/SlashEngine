@@ -1291,7 +1291,10 @@ void register_3d_components(ComponentRegistry& registry) {
     registry.add<MeshInstance3D>()
         .set_doc("Draws the entity's primitive mesh (BoxMesh, SphereMesh, ...) at its "
                  "Transform3D, as Godot's MeshInstance3D, with its StandardMaterial3D if it has "
-                 "one.")
+                 "one; or a glTF model's meshes.")
+        .describe("mesh", {.doc = "Project path of a .gltf or .glb model drawn in place of a "
+                                  "primitive mesh, with its materials unless the entity has a "
+                                  "StandardMaterial3D; \"\" for none."})
         .describe("layers", {.doc = "Render layers: cameras whose cull_mask and lights whose "
                                     "light_cull_mask share a bit see and light it."})
         .describe("cast_shadow",
@@ -1407,6 +1410,8 @@ void register_3d_components(ComponentRegistry& registry) {
                   {.doc = "How textures are sampled. Textures have no mipmaps yet, so the "
                           "mipmap filters sample as the plain ones.",
                    .choices = {"nearest", "linear", "nearest_with_mipmaps", "linear_with_mipmaps"}})
+        .describe("texture_repeat", {.doc = "Textures tile past their edges; false stretches "
+                                            "the edge pixels."})
         .describe("disable_fog", {.doc = "The WorldEnvironment's fog leaves it alone."});
 
     registry.add<Camera3D>()

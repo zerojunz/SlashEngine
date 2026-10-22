@@ -1,3 +1,6 @@
+#include "gltf.hpp"
+#include "jpeg.hpp"
+
 #include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
@@ -966,7 +969,7 @@ TEST_CASE("exports ship textures, frames, material, animation and tile set files
           "\"color\"?");
     CHECK(problems[4] == "sprites/bad.tileset.json /sources/ground/tiles/0,0/terrain no terrain "
                          "set has a terrain named \"grass\"");
-    CHECK(contains(problems[5], "sprites/broken.png  not a PNG, BMP or KTX2 image"));
+    CHECK(contains(problems[5], "sprites/broken.png  not a PNG, BMP, JPEG or KTX2 image"));
 
     // The good files were staged with the scenes; files a game never loads were not.
     const std::filesystem::path data = folder / ".slash" / "export" / host / "data";
@@ -1149,6 +1152,60 @@ TEST_CASE("exports ship sounds, .audio.json and .bus_layout.json files and check
     const std::filesystem::path data = folder / ".slash" / "export" / host / "data";
     CHECK(std::filesystem::exists(data / "audio" / "beep.wav"));
     CHECK(std::filesystem::exists(data / "audio" / "main.bus_layout.json"));
+    std::filesystem::remove_all(folder);
+}
+
+TEST_CASE("exports ship glTF models with their buffers and images, and check them first") {
+    const std::filesystem::path folder = "exporter_model_project";
+    std::filesystem::remove_all(folder);
+    std::filesystem::create_directories(folder / "models");
+    const auto write = [&](const std::string& path, std::string_view text) {
+        REQUIRE(slash::platform::write_file((folder / path).string(), text).ok());
+    };
+    write("project.json", R"({"format": 1, "name": "Models", "main_scene": "main.scene.json"})");
+    write("main.scene.json", R"({"format": 1, "entities": {"house": {"components": {
+        "Transform3D": {}, "MeshInstance3D": {"mesh": "models/house.gltf"}}}}})");
+    slash::test::Gltf house = slash::test::quad(0);
+    house.document["images"] = parse(R"([{"uri": "wood.jpg"}])");
+    house.document["textures"] = parse(R"([{"source": 0}])");
+    house.document["materials"] =
+        parse(R"([{"pbrMetallicRoughness": {"baseColorTexture": {"index": 0}}}])");
+    write("models/house.gltf", house.gltf("house.bin"));
+    write("models/house.bin", house.bin);
+    slash::render::Image wood;
+    wood.width = 2;
+    wood.height = 2;
+    wood.pixels.assign(16, 128);
+    write("models/wood.jpg", slash::test::make_jpeg(wood));
+    house.document["images"] = parse(R"([{"uri": "gone.png"}])");
+    write("models/broken.gltf", house.gltf("house.bin"));
+
+#if defined(__APPLE__)
+    const std::string host = "macos";
+#elif defined(_WIN32)
+    const std::string host = "windows";
+#else
+    const std::string host = "linux";
+#endif
+    exporter::ExportOptions options;
+    options.target = host;
+    options.project = folder.string();
+    const exporter::ExportResult result = exporter::export_game(options);
+    CHECK_FALSE(result.ok);
+    const json::Value* error = result.json.find("error");
+    REQUIRE(error != nullptr);
+    CHECK(error->find("step")->as_string() == "validate");
+    REQUIRE(error->find("errors") != nullptr);
+    std::vector<std::string> problems;
+    for (const json::Value& problem : error->find("errors")->as_array()) {
+        problems.push_back(problem.find("file")->as_string() + " " +
+                           problem.find("path")->as_string());
+    }
+    CHECK(problems == std::vector<std::string>{"models/broken.gltf /images/0/uri"});
+    const std::filesystem::path data = folder / ".slash" / "export" / host / "data";
+    CHECK(std::filesystem::exists(data / "models" / "house.gltf"));
+    CHECK(std::filesystem::exists(data / "models" / "house.bin"));
+    CHECK(std::filesystem::exists(data / "models" / "wood.jpg"));
     std::filesystem::remove_all(folder);
 }
 

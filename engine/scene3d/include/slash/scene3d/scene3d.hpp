@@ -5,6 +5,7 @@
 #include "slash/core/result.hpp"
 #include "slash/render/device.hpp"
 #include "slash/render/mesh.hpp"
+#include "slash/scene3d/model.hpp"
 #include "slash/scene3d/primitive.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -16,6 +17,7 @@
 #include <cstdint>
 #include <entt/entity/entity.hpp>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -26,10 +28,10 @@ class World;
 }
 
 // The 3D world, as Godot's 3D nodes draw it: Transform3D trees (world/tree3d.hpp), meshes
-// (MeshInstance3D with a primitive mesh and a StandardMaterial3D), the current Camera3D, the
-// DirectionalLight3D, OmniLight3D and SpotLight3D lights and the WorldEnvironment, turned into a
-// frame's render::Scene3D and mesh draws (render/mesh.hpp). canvas::CanvasRenderer draws them
-// under the canvas, as Godot's viewports draw 3D under 2D.
+// (MeshInstance3D with a primitive mesh and a StandardMaterial3D, or a glTF model), the current
+// Camera3D, the DirectionalLight3D, OmniLight3D and SpotLight3D lights and the WorldEnvironment,
+// turned into a frame's render::Scene3D and mesh draws (render/mesh.hpp). canvas::CanvasRenderer
+// draws them under the canvas, as Godot's viewports draw 3D under 2D.
 namespace slash::scene3d {
 
 // The camera the world is seen through, as Godot's Viewport::get_camera_3d: the first Camera3D
@@ -103,9 +105,19 @@ struct SourceTexture {
 using TextureSource =
     std::function<Result<SourceTexture>(const std::string& path, render::Filter filter)>;
 
+// A model loaded by project path, and its version: a reload raises it, and its meshes are made
+// again.
+struct SourceModel {
+    std::shared_ptr<const Model> model;
+    std::uint64_t version = 0;
+};
+// The models MeshInstance3D's mesh names, loaded by project path.
+using ModelSource = std::function<Result<SourceModel>(const std::string& path)>;
+
 // The meshes of a world that can't draw, in the order their entities were made: an entity with
-// more than one primitive mesh, a MeshInstance3D with none, and settings Godot refuses (a torus
-// whose radii are equal).
+// more than one primitive mesh, a MeshInstance3D with none or with both a model and a primitive
+// mesh, and settings Godot refuses (a torus whose radii are equal). With the world's file reader
+// set, each model is read and checked as check_model does.
 [[nodiscard]] std::vector<Problem> check_meshes(const world::World& world);
 
 // The same in a parsed scene file, each at its JSON Pointer in the file. Prefabs and instanced
@@ -130,10 +142,11 @@ struct Frame3D {
 };
 
 // Draws a world's meshes through a render device, keeping their meshes on the device between
-// frames: meshes of equal settings share one, and a mesh no entity used last frame goes.
+// frames: meshes of equal settings share one, each model's meshes and images are made once, and
+// a mesh no entity used last frame goes.
 class Renderer {
 public:
-    Renderer(render::RenderDevice& device, TextureSource textures);
+    Renderer(render::RenderDevice& device, TextureSource textures, ModelSource models = {});
     ~Renderer();
     Renderer(const Renderer&) = delete;
     Renderer& operator=(const Renderer&) = delete;
@@ -183,11 +196,27 @@ private:
         render::ShadowCasting shadows = render::ShadowCasting::On;
     };
 
+    struct Embedded {
+        render::TextureId id = render::TextureId::None;
+        std::uint64_t used = 0;
+    };
+
     Result<render::MeshId> mesh_for(const world::World& world, entt::entity entity,
                                     const Primitive& primitive);
+    // A model's surface as a mesh on the device, made once per version of the model.
+    Result<render::MeshId> model_mesh(const std::string& key, const ModelSurface& surface);
+    // A texture a model's material samples: a file through textures_, or an image inside it.
+    render::MaterialTexture model_texture(const std::string& path, const SourceModel& source,
+                                          int image, const world::StandardMaterial3D& standard,
+                                          entt::entity entity);
+    void add_model(const world::World& world, entt::entity entity,
+                   const world::MeshInstance3D& instance, const world::Affine3D& place,
+                   render::ShadowCasting casting);
 
     render::RenderDevice* device_;
     TextureSource textures_;
+    ModelSource models_;
+    std::unordered_map<std::string, Embedded> embedded_;
     std::unordered_map<entt::entity, Local> before_;
     std::unordered_map<entt::entity, Cached> cached_;
     std::unordered_map<std::string, Shared> shared_;

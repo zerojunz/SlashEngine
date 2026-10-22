@@ -31,6 +31,12 @@ endif()
 target_compile_options(slash_astcenc PRIVATE
     "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w;-ffp-contract=off>")
 
+# JPEG textures through stb_image's decoder (src/jpeg.c), with no SIMD, so a file decodes to the
+# same pixels everywhere.
+add_library(slash_jpeg STATIC src/jpeg.c)
+target_include_directories(slash_jpeg SYSTEM PRIVATE ${stb_SOURCE_DIR})
+target_compile_options(slash_jpeg PRIVATE "$<$<NOT:$<C_COMPILER_ID:MSVC>>:-w;-ffp-contract=off>")
+
 add_library(slash_render
     src/device.cpp
     src/gl_device.cpp
@@ -57,7 +63,7 @@ add_library(slash::render ALIAS slash_render)
 target_include_directories(slash_render PUBLIC include)
 target_link_libraries(slash_render
     PUBLIC slash::core
-    PRIVATE slash_astcenc slash_bc7 SDL3::SDL3-static)
+    PRIVATE slash_astcenc slash_bc7 slash_jpeg SDL3::SDL3-static)
 slash_engine_target(slash_render)
 
 # Web builds draw with WebGPU where the browser has it, through Dawn's webgpu.h for Emscripten

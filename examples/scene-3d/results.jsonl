@@ -7,4 +7,4 @@
 {"id":7,"jsonrpc":"2.0","result":{"changed":{"WorldEnvironment":{"background_color":[0.95,0.6,0.4,1.0]}},"id":"environment"}}
 {"id":8,"jsonrpc":"2.0","result":{"drawn":{"meshes":6},"height":90,"path":"shots/table.png","width":160}}
 {"id":9,"jsonrpc":"2.0","result":{"id":"ghost"}}
-{"id":10,"jsonrpc":"2.0","result":{"drawn":[],"problems":[{"id":"ghost","message":"has no mesh: add a BoxMesh, SphereMesh, CylinderMesh, CapsuleMesh, PlaneMesh, QuadMesh, PrismMesh or TorusMesh","path":"/components/MeshInstance3D"}],"viewport":[160,90]}}
+{"id":10,"jsonrpc":"2.0","result":{"drawn":[],"problems":[{"id":"ghost","message":"has no mesh: set mesh to a .gltf or .glb file, or add a BoxMesh, SphereMesh, CylinderMesh, CapsuleMesh, PlaneMesh, QuadMesh, PrismMesh or TorusMesh","path":"/components/MeshInstance3D"}],"viewport":[160,90]}}

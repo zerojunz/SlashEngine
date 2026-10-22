@@ -1,5 +1,6 @@
 #include "blocks.hpp"
 #include "devices.hpp"
+#include "jpeg.hpp"
 
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
@@ -188,6 +189,46 @@ TEST_CASE("encode_texels compresses texels close to what they were, the same eac
     CHECK(error_of(
               render::encode_texels(TextureFormat::Astc4x4, 4, 4, std::vector<std::uint8_t>(16))) ==
           "a 4x4 texture takes 64 bytes of RGBA, not 16");
+}
+
+TEST_CASE("JPEG files decode to RGBA, and texture paths name them") {
+    CHECK(render::is_image_path("photos/beach.jpg"));
+    CHECK(render::is_image_path("photos/beach.jpeg"));
+    CHECK(render::is_image_path("photos/beach.png"));
+    CHECK_FALSE(render::is_image_path("photos/beach.gif"));
+
+    // Four flat quadrants, which JPEG keeps close at quality 100.
+    Image source{.width = 16, .height = 16, .pixels = {}};
+    constexpr std::array<Rgba, 4> kColors{
+        {{220, 30, 30, 255}, {30, 200, 40, 255}, {40, 50, 210, 255}, {128, 128, 128, 255}}};
+    for (std::uint32_t y = 0; y < 16; ++y) {
+        for (std::uint32_t x = 0; x < 16; ++x) {
+            const Rgba& color = kColors[(y < 8 ? 0U : 2U) + (x < 8 ? 0U : 1U)];
+            source.pixels.insert(source.pixels.end(), color.begin(), color.end());
+        }
+    }
+    const std::string file = slash::test::make_jpeg(source);
+    auto decoded = render::decode_image(file);
+    REQUIRE_MESSAGE(decoded.ok(), error_of(decoded));
+    CHECK(decoded.value().width == 16);
+    CHECK(decoded.value().height == 16);
+    CHECK(decoded.value().block_format == TextureFormat::Rgba8);
+    for (const auto& [x, y] :
+         {std::pair{3U, 3U}, std::pair{12U, 3U}, std::pair{3U, 12U}, std::pair{12U, 12U}}) {
+        CAPTURE(x);
+        CAPTURE(y);
+        const std::size_t at = ((std::size_t{y} * 16) + x) * 4;
+        const Rgba& want = kColors[(y < 8 ? 0U : 2U) + (x < 8 ? 0U : 1U)];
+        for (std::size_t c = 0; c < 3; ++c) {
+            CHECK(std::abs(int{decoded.value().pixels[at + c]} - int{want[c]}) <= 6);
+        }
+        CHECK(decoded.value().pixels[at + 3] == 255); // JPEG has no alpha
+    }
+
+    // A file cut short is refused.
+    auto cut = render::decode_image(file.substr(0, 40));
+    REQUIRE_FALSE(cut.ok());
+    CHECK(cut.error().message.starts_with("not a JPEG image it can read"));
 }
 
 TEST_CASE("KTX2 files hold RGBA8, BC7 and ASTC textures, and other KTX2 files are refused") {

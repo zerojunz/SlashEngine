@@ -607,9 +607,11 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [ ] 3D audio, as Godot's `AudioStreamPlayer3D` and `AudioListener3D`: attenuation models,
       Doppler, emission angles, `Area3D` reverb and up to 7.1 speakers
 - [ ] Heightmap terrain; CSG and grid-based tile placement
-- [ ] Import of glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG and MP3, plus Blender `.blend`
-      files the way Godot does it: the engine runs the artist's own Blender in the background to
-      convert them to glTF, so no Blender code is linked or shipped
+- [x] glTF 2.0 models (`.gltf` and `.glb`: meshes, materials and textures) on `MeshInstance3D`,
+      and JPEG textures, as Godot's importer reads them
+- [ ] Import of FBX and OBJ, plus Blender `.blend` files the way Godot does it: the engine runs
+      the artist's own Blender in the background to convert them to glTF, so no Blender code is
+      linked or shipped
 - [ ] 3D scenes in `project.import` from Godot and Unity projects, and Unreal Engine projects
       imported through the user's own Unreal Editor: its project files are a closed binary
       format, so the editor exports the levels and assets and the importer converts what it

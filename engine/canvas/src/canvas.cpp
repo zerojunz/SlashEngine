@@ -158,8 +158,7 @@ asset::FileSource with_texture_forms(const asset::FileSource& files,
     using render::TextureFormat;
     // The form to read in place of path, or "" to read path itself.
     auto form_of = [files, samples = std::move(samples)](std::string_view path) -> std::string {
-        if ((!path.ends_with(".png") && !path.ends_with(".bmp") && !path.ends_with(".ktx2")) ||
-            files.stamp(path)) {
+        if (!render::is_image_path(path) || files.stamp(path)) {
             return {};
         }
         constexpr std::array<TextureFormat, 2> kCompressed{TextureFormat::Bc7,
@@ -193,9 +192,10 @@ asset::FileSource with_texture_forms(const asset::FileSource& files,
 }
 
 void add_asset_types(asset::Assets& assets) {
+    scene3d::add_asset_types(assets);
     // A texture's decoded texels; renderers keep a copy on the GPU too (perf.stats' gpu).
     assets.add_type<render::Image>(
-        "texture", {".png", ".bmp", ".ktx2"},
+        "texture", {render::kImageSuffixes.begin(), render::kImageSuffixes.end()},
         [](std::string_view bytes, std::string_view /*path*/) {
             return render::decode_image(bytes);
         },
