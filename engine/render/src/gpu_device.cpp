@@ -731,6 +731,7 @@ public:
         const auto vertex_bytes = static_cast<std::uint32_t>(vertices.size_bytes());
         const auto index_bytes = static_cast<std::uint32_t>(indices.size_bytes());
         Mesh mesh{.index_count = static_cast<std::uint32_t>(indices.size()),
+                  .vertex_count = vertices.size(),
                   .bounds = mesh_bounds(vertices)};
         SDL_GPUBufferCreateInfo info{};
         info.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
@@ -773,6 +774,45 @@ public:
         const auto id = static_cast<MeshId>(next_mesh_++);
         meshes_[id] = mesh;
         return id;
+    }
+
+    Result<void> update_mesh(MeshId mesh, std::span<const Vertex3D> vertices) override {
+        if (in_frame_) {
+            return frame_in_progress("update_mesh");
+        }
+        const auto it = meshes_.find(mesh);
+        if (it == meshes_.end()) {
+            return unknown_mesh(mesh);
+        }
+        if (auto checked = check_mesh_update(vertices, it->second.vertex_count); !checked) {
+            return checked;
+        }
+        const auto bytes = static_cast<std::uint32_t>(vertices.size_bytes());
+        const TransferBuffer transfer(device_, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, bytes);
+        void* mapped = transfer.get() == nullptr
+                           ? nullptr
+                           : SDL_MapGPUTransferBuffer(device_, transfer.get(), false);
+        if (mapped == nullptr) {
+            return sdl_error("making room for a mesh's vertices failed");
+        }
+        std::memcpy(mapped, vertices.data(), bytes);
+        SDL_UnmapGPUTransferBuffer(device_, transfer.get());
+        SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+        if (commands == nullptr) {
+            return sdl_error("uploading a mesh's vertices failed");
+        }
+        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+        const SDL_GPUTransferBufferLocation source{.transfer_buffer = transfer.get(), .offset = 0};
+        const SDL_GPUBufferRegion destination{
+            .buffer = it->second.vertices, .offset = 0, .size = bytes};
+        // Cycling gives the buffer new memory if a frame sent before still reads it.
+        SDL_UploadToGPUBuffer(copy, &source, &destination, true);
+        SDL_EndGPUCopyPass(copy);
+        if (!SDL_SubmitGPUCommandBuffer(commands)) {
+            return sdl_error("uploading a mesh's vertices failed");
+        }
+        it->second.bounds = mesh_bounds(vertices);
+        return {};
     }
 
     void destroy_mesh(MeshId mesh) override {
@@ -1192,6 +1232,7 @@ private:
         SDL_GPUBuffer* vertices = nullptr;
         SDL_GPUBuffer* indices = nullptr;
         std::uint32_t index_count = 0;
+        std::size_t vertex_count = 0;
         Bounds bounds;
     };
 

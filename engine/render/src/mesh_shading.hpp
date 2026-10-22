@@ -218,6 +218,8 @@ mesh_draw_order(std::span<const MeshDraw> draws, const Scene3D& scene, const Bou
 // The checks every device makes on a mesh's vertices and indices.
 [[nodiscard]] Result<void> check_mesh(std::span<const Vertex3D> vertices,
                                       std::span<const std::uint32_t> indices);
+// The checks every device makes on new vertices for a mesh of count vertices (update_mesh).
+[[nodiscard]] Result<void> check_mesh_update(std::span<const Vertex3D> vertices, std::size_t count);
 // That a scene's numbers are usable and it has at most kMaxLights3D lights.
 [[nodiscard]] Result<void> check_scene(const Scene3D& scene);
 // That a material's numbers are usable, and its textures exist (known) and aren't the target.

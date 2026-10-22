@@ -33,6 +33,7 @@
 #include "slash/render/image.hpp"
 #include "slash/render/light.hpp"
 #include "slash/scene3d/model.hpp"
+#include "slash/scene3d/skeleton.hpp"
 #include "slash/soundtrack/score.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/text/text.hpp"
@@ -42,6 +43,7 @@
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/tree2d.hpp"
+#include "slash/world/tree3d.hpp"
 #include "slash/world/world.hpp"
 
 #include <algorithm>
@@ -2431,11 +2433,128 @@ Reply model_inspect(Session& session, const json::Value& params) {
         json::Value out;
         out["node"] = part.node;
         out["mesh"] = part.mesh;
+        if (part.skin >= 0) {
+            out["skin"] = part.skin;
+        }
         result["parts"].push_back(std::move(out));
+    }
+    // Skins and animations only for a model that has them; skeleton.get lists the bones.
+    for (const scene3d::ModelSkin& skin : model.skins) {
+        json::Value out;
+        out["name"] = skin.name;
+        out["joints"] = skin.joints.size();
+        result["skins"].push_back(std::move(out));
+    }
+    for (const scene3d::ModelAnimation& animation : model.animations) {
+        json::Value out;
+        out["name"] = animation.name;
+        out["length"] = rounded(json::Value(animation.length));
+        if (animation.loop) {
+            out["loop"] = true;
+        }
+        out["tracks"] = animation.tracks.size();
+        result["animations"].push_back(std::move(out));
     }
     const scene3d::Bounds box = scene3d::bounds(model);
     result["bounds"]["min"] = rounded(json::Array{box.min.x, box.min.y, box.min.z});
     result["bounds"]["max"] = rounded(json::Array{box.max.x, box.max.y, box.max.z});
+    return Reply::success(std::move(result));
+}
+
+// The bones of the model an entity's MeshInstance3D draws, posed as it draws them: by the
+// animation its AnimationPlayer plays from a model, then its Skeleton3D.
+Reply skeleton_get(Session& session, const json::Value& params) {
+    const world::World& world = session.world();
+    const std::string id = text(params, "id");
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        return unknown_entity(world, id, "/id");
+    }
+    const auto* instance = world.ecs().try_get<world::MeshInstance3D>(entity);
+    if (instance == nullptr || instance->mesh.empty()) {
+        return param_error(code::kInvalidParams, "/id",
+                           quoted(id) + (instance == nullptr ? " has no MeshInstance3D"
+                                                             : "'s MeshInstance3D draws no model"));
+    }
+    auto loaded = session.assets().load<scene3d::Model>(instance->mesh);
+    if (!loaded) {
+        return param_error(loaded.error(), "/id");
+    }
+    const scene3d::Model& model = *loaded.value();
+    if (model.nodes.empty()) {
+        return param_error(code::kInvalidParams, "/id",
+                           quoted(instance->mesh) + " has no nodes to pose, as OBJ models haven't");
+    }
+    std::vector<std::string> names;
+    names.reserve(model.nodes.size());
+    for (const scene3d::ModelNode& node : model.nodes) {
+        names.push_back(node.name);
+    }
+    std::vector<std::size_t> wanted;
+    if (const json::Value* bones = params.find("bones"); bones != nullptr) {
+        const json::Array& list = bones->as_array();
+        for (std::size_t i = 0; i < list.size(); ++i) {
+            const int node = scene3d::find_node(model, list[i].as_string());
+            if (node < 0) {
+                std::string message =
+                    quoted(instance->mesh) + " has no bone " + quoted(list[i].as_string());
+                add_hint(message, list[i].as_string(), names);
+                return param_error(code::kInvalidParams, "/bones/" + std::to_string(i), message);
+            }
+            wanted.push_back(static_cast<std::size_t>(node));
+        }
+    }
+    const std::vector<scene3d::ClipSample> clips = scene3d::clips(world, entity);
+    json::Value result;
+    result["model"] = instance->mesh;
+    result["clips"] = json::Array{};
+    for (const scene3d::ClipSample& clip : clips) {
+        json::Value out;
+        out["animation"] = clip.animation;
+        if (clip.model != instance->mesh) {
+            out["model"] = clip.model;
+        }
+        out["time"] = rounded(json::Value(clip.time));
+        result["clips"].push_back(std::move(out));
+    }
+    result["bones"] = json::Array{};
+    if (wanted.empty()) {
+        // The tree, parents first.
+        for (const scene3d::ModelNode& node : model.nodes) {
+            json::Value out;
+            out["name"] = node.name;
+            if (node.parent >= 0) {
+                out["parent"] = model.nodes[static_cast<std::size_t>(node.parent)].name;
+            }
+            result["bones"].push_back(std::move(out));
+        }
+        return Reply::success(std::move(result));
+    }
+    const scene3d::ModelLoader load =
+        [&session](const std::string& path) -> Result<std::shared_ptr<const scene3d::Model>> {
+        auto found = session.assets().load<scene3d::Model>(path);
+        if (!found) {
+            return found.error();
+        }
+        return found.value().share();
+    };
+    const auto* skeleton = world.ecs().try_get<world::Skeleton3D>(entity);
+    const std::vector<scene3d::NodePose> pose = scene3d::pose_of(model, clips, skeleton, load);
+    const std::vector<world::Affine3D> globals = scene3d::node_globals(model, pose);
+    const world::Affine3D place = world::Tree3D(world).global(entity);
+    for (const std::size_t node : wanted) {
+        const scene3d::NodePose& local = pose[node];
+        json::Value out;
+        out["name"] = model.nodes[node].name;
+        if (model.nodes[node].parent >= 0) {
+            out["parent"] = model.nodes[static_cast<std::size_t>(model.nodes[node].parent)].name;
+        }
+        out["position"] = point_value(local.position);
+        out["rotation"] = point_value(world::euler(world::rotation_basis(local.rotation)));
+        out["scale"] = point_value(local.scale);
+        out["world_position"] = point_value((place * globals[node]).origin);
+        result["bones"].push_back(std::move(out));
+    }
     return Reply::success(std::move(result));
 }
 
@@ -6113,6 +6232,22 @@ void register_builtin_commands(Registry& registry) {
             {"path", property("string", "A .gltf, .glb, .obj, .fbx or .blend file. Or give id.")},
         }),
         .handler = model_inspect,
+    });
+    registry.add({
+        .name = "skeleton.get",
+        .description = "Returns the bones of an entity's model (each with its parent) and the "
+                       "animations posing them. Bones named get their pose as drawn: position, "
+                       "rotation (radians, as Skeleton3D's) and scale in the parent, and "
+                       "world_position.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {
+                {"id", id_property("An entity whose MeshInstance3D draws a model.")},
+                {"bones", names_property("Bones to pose. Default: the tree, without poses.")},
+            },
+            {"id"}),
+        .handler = skeleton_get,
     });
 
     json::Value inject_events = property("array", "Events in order. Mouse and finger positions "

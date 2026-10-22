@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "arm": {
+      "components": {
+        "AnimationPlayer": {
+          "animation": "Wave-loop",
+          "library": "models/arm.gltf",
+          "playing": false
+        },
+        "MeshInstance3D": {
+          "mesh": "models/arm.gltf"
+        },
+        "Transform3D": {}
+      }
+    },
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 60.0
+        },
+        "Transform3D": {
+          "position": [0.0, 0.9, 2.2]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.55, 0.62, 0.75, 1.0],
+          "ambient_light_energy": 0.5,
+          "ambient_light_source": "color",
+          "background_color": [0.55, 0.72, 0.92, 1.0],
+          "background_mode": "color"
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [20.0, 20.0]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.35, 0.58, 0.28, 1.0]
+        },
+        "Transform3D": {}
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {},
+        "Transform3D": {
+          "rotation": [-0.8, -0.5, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

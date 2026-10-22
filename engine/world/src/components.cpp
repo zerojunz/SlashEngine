@@ -1622,6 +1622,16 @@ void register_3d_components(ComponentRegistry& registry) {
                           "shares a bit with its layers, culled as its material culls; "
                           "double_sided culls no faces; shadows_only casts but isn't seen.",
                    .choices = {"off", "on", "double_sided", "shadows_only"}});
+    registry.add<Skeleton3D>()
+        .set_doc("Poses bones of the model the entity's MeshInstance3D draws, by name, in place of "
+                 "their animation or rest pose, as Godot's Skeleton3D bone poses.")
+        .describe("bone_positions",
+                  {.doc = "Bone name -> position in its parent's space, as [x, y, z] meters."})
+        .describe("bone_rotations", {.doc = "Bone name -> rotation in its parent's space, as "
+                                            "Transform3D's: radians about each axis."})
+        .describe("bone_scales", {.doc = "Bone name -> scale, as [x, y, z]."})
+        .describe("show_rest_only",
+                  {.doc = "Shows the rest pose, leaving out animations and these maps."});
     registry.add<BoxMesh>()
         .set_doc("A box centered on the entity, as Godot's BoxMesh; MeshInstance3D draws it.")
         .describe("size", {.doc = "Width, height and depth in meters, as [x, y, z].", .min = 0})
@@ -2109,9 +2119,11 @@ void register_builtin_components(ComponentRegistry& registry) {
 
     registry.add<AnimationPlayer>()
         .set_doc("Plays a keyframe animation from a .anim.json file on the entity's components, "
-                 "and on the entities its targets name. Emits animation_finished when an "
-                 "animation that doesn't loop ends, and the events of its event tracks.")
-        .describe("library", {.doc = "Project path of a .anim.json file."})
+                 "and on the entities its targets name, or a model file's animation on the "
+                 "skeleton of the model its MeshInstance3D draws. Emits animation_finished when "
+                 "an animation that doesn't loop ends, and the events of its event tracks.")
+        .describe("library", {.doc = "Project path of a .anim.json file, or of a .gltf, .glb or "
+                                     ".blend model whose animations it plays."})
         .describe("animation", {.doc = "Name of the animation to play."})
         .describe("playing", {.doc = "Advance the animation each tick."})
         .describe("speed_scale", {.doc = "Multiplies the playback speed; negative plays "
