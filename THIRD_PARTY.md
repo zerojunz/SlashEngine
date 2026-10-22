@@ -60,6 +60,7 @@ file, as its license asks:
 | Name | License | Used for | Where |
 | --- | --- | --- | --- |
 | smbPitchShift and smbFft, by Stephan M. Bernsee (1999-2015), as Godot uses them | Wide Open License: use, copy and change it if the notice stays in the source | The `pitch_shift` and `spectrum_analyzer` audio effects | `engine/audio/src/effects.cpp` |
+| [RVO2](https://github.com/snape/RVO2) and [RVO2-3D](https://github.com/snape/RVO2-3D), by the University of North Carolina at Chapel Hill (2008), as Godot 4.6 changes them | Apache 2.0 | Agents' and obstacles' avoidance | `engine/navigation/src/rvo2.hpp`, `rvo2_2d.cpp` and `rvo2_3d.cpp` |
 | [FidelityFX Super Resolution 1](https://github.com/GPUOpen-Effects/FidelityFX-FSR) (`ffx_fsr1.h`), by Advanced Micro Devices (2021), as Godot uses it | MIT | The `fsr` render scale mode: EASU and RCAS | `engine/render/shaders/fsr_easu.hlsl` and `fsr_rcas.hlsl`, compiled into `engine/render/src/fsr_shaders.hpp` |
 
 The renderer's own shaders are compiled ahead of time with three command-line tools whose output

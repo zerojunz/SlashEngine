@@ -1600,30 +1600,52 @@ SLASH_COMPONENT(NavigationLink3D, enabled, bidirectional, navigation_layers, sta
 // moves the entity toward navigation::next_path_position and the agent emits path_changed,
 // waypoint_reached, link_reached, target_reached and navigation_finished events as it goes. It
 // moves nothing itself.
+//
+// With avoidance_enabled, each tick the navigation system turns velocity, the velocity gameplay
+// code wants it to move at, into a safe velocity that keeps it clear of other agents and of
+// obstacles, with RVO2 as Godot's, and emits it as velocity_computed (also
+// navigation::safe_velocity_2d). velocity counts only while the agent follows a path.
 struct NavigationAgent2D {
     Vec2 target_position;
+    Vec2 velocity;
     float path_desired_distance = 20.0F;   // how near a waypoint counts as reaching it
     float target_desired_distance = 10.0F; // how near target_position counts as reaching it
     float path_max_distance = 100.0F;      // how far off the path before it is found again
     std::uint32_t navigation_layers = 1;
     std::string path_postprocessing = "corridorfunnel"; // "corridorfunnel", "edgecentered", "none"
     bool simplify_path = false;
+    bool avoidance_enabled = false;
     float simplify_epsilon = 0.0F;
     float path_return_max_length = 0.0F;   // 0: no limit
     float path_return_max_radius = 0.0F;   // 0: no limit
     int path_search_max_polygons = 4096;   // 0: no limit
     float path_search_max_distance = 0.0F; // 0: no limit
+    float radius = 10.0F;
+    float neighbor_distance = 500.0F;    // how far it looks for other agents
+    int max_neighbors = 10;              // how many of them it avoids at most
+    float time_horizon_agents = 1.0F;    // how many seconds ahead it avoids other agents
+    float time_horizon_obstacles = 0.0F; // and obstacles' outlines
+    float max_speed = 100.0F;
+    std::uint32_t avoidance_layers = 1; // the layers it is on, for others' avoidance_mask
+    std::uint32_t avoidance_mask = 1;   // the layers of what it avoids
+    float avoidance_priority = 1.0F;    // from 0 to 1: it leaves agents of higher ones alone
 
     friend bool operator==(const NavigationAgent2D&, const NavigationAgent2D&) = default;
 };
 SLASH_COMPONENT(NavigationAgent2D, target_position, path_desired_distance, target_desired_distance,
                 path_max_distance, navigation_layers, path_postprocessing, simplify_path,
                 simplify_epsilon, path_return_max_length, path_return_max_radius,
-                path_search_max_polygons, path_search_max_distance)
+                path_search_max_polygons, path_search_max_distance, avoidance_enabled, velocity,
+                radius, neighbor_distance, max_neighbors, time_horizon_agents,
+                time_horizon_obstacles, max_speed, avoidance_layers, avoidance_mask,
+                avoidance_priority)
 
-// The same on the 3D map from the entity's Transform3D, as Godot's NavigationAgent3D.
+// The same on the 3D map from the entity's Transform3D, as Godot's NavigationAgent3D. Its
+// avoidance is on the ground (x and z) unless use_3d_avoidance: there it is kept from what is
+// below or above it by height, and with keep_y_velocity the safe velocity keeps velocity's y.
 struct NavigationAgent3D {
     Vec3 target_position;
+    Vec3 velocity;
     float path_desired_distance = 1.0F;
     float target_desired_distance = 1.0F;
     float path_height_offset = 0.0F; // how far the entity's origin is above the mesh
@@ -1631,18 +1653,72 @@ struct NavigationAgent3D {
     std::uint32_t navigation_layers = 1;
     std::string path_postprocessing = "corridorfunnel";
     bool simplify_path = false;
+    bool avoidance_enabled = false;
+    bool use_3d_avoidance = false;
+    bool keep_y_velocity = true;
     float simplify_epsilon = 0.0F;
     float path_return_max_length = 0.0F;
     float path_return_max_radius = 0.0F;
     int path_search_max_polygons = 4096;
     float path_search_max_distance = 0.0F;
+    float height = 1.0F;
+    float radius = 0.5F;
+    float neighbor_distance = 50.0F;
+    int max_neighbors = 10;
+    float time_horizon_agents = 1.0F;
+    float time_horizon_obstacles = 0.0F;
+    float max_speed = 10.0F;
+    std::uint32_t avoidance_layers = 1;
+    std::uint32_t avoidance_mask = 1;
+    float avoidance_priority = 1.0F;
 
     friend bool operator==(const NavigationAgent3D&, const NavigationAgent3D&) = default;
 };
 SLASH_COMPONENT(NavigationAgent3D, target_position, path_desired_distance, target_desired_distance,
                 path_height_offset, path_max_distance, navigation_layers, path_postprocessing,
                 simplify_path, simplify_epsilon, path_return_max_length, path_return_max_radius,
-                path_search_max_polygons, path_search_max_distance)
+                path_search_max_polygons, path_search_max_distance, avoidance_enabled, velocity,
+                height, radius, neighbor_distance, max_neighbors, time_horizon_agents,
+                time_horizon_obstacles, max_speed, use_3d_avoidance, keep_y_velocity,
+                avoidance_layers, avoidance_mask, avoidance_priority)
+
+// Something agents keep clear of on the 2D map, at the entity's Transform2D, as Godot's
+// NavigationObstacle2D: a circle of radius that moves at velocity, avoided as an agent that
+// doesn't avoid back, and an outline of vertices that agents keep out of (or, wound the other
+// way, in). With affect_navigation_mesh, navigation.bake also takes it out of the regions it is
+// under: shrunk around by their agent_radius, or exactly as it is with carve_navigation_mesh.
+struct NavigationObstacle2D {
+    std::vector<Vec2> vertices;
+    Vec2 velocity;
+    float radius = 0.0F;
+    std::uint32_t avoidance_layers = 1;
+    bool avoidance_enabled = true;
+    bool affect_navigation_mesh = false;
+    bool carve_navigation_mesh = false;
+
+    friend bool operator==(const NavigationObstacle2D&, const NavigationObstacle2D&) = default;
+};
+SLASH_COMPONENT(NavigationObstacle2D, radius, vertices, avoidance_enabled, velocity,
+                avoidance_layers, affect_navigation_mesh, carve_navigation_mesh)
+
+// The same on the 3D map, as Godot's NavigationObstacle3D. Its outline is on the ground: the
+// vertices' y is not used, only the entity's turn about y counts, and it reaches height up from
+// the entity. The circle is a sphere with use_3d_avoidance, for agents that use it too.
+struct NavigationObstacle3D {
+    std::vector<Vec3> vertices;
+    Vec3 velocity;
+    float radius = 0.0F;
+    float height = 1.0F;
+    std::uint32_t avoidance_layers = 1;
+    bool avoidance_enabled = true;
+    bool use_3d_avoidance = false;
+    bool affect_navigation_mesh = false;
+    bool carve_navigation_mesh = false;
+
+    friend bool operator==(const NavigationObstacle3D&, const NavigationObstacle3D&) = default;
+};
+SLASH_COMPONENT(NavigationObstacle3D, radius, height, vertices, avoidance_enabled, velocity,
+                avoidance_layers, use_3d_avoidance, affect_navigation_mesh, carve_navigation_mesh)
 
 // ---- Particles, as Godot's CPUParticles2D.
 

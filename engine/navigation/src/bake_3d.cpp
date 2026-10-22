@@ -1,7 +1,7 @@
 // Baking 3D navigation meshes on Recast, as Godot 4.6's NavMeshGenerator3D
 // (modules/navigation/3d/nav_mesh_generator_3d.cpp, generator_bake_from_source_geometry_data):
-// the same Recast steps with the same settings, and the detail mesh's triangles kept as the
-// polygons, as Godot keeps them.
+// the same Recast steps with the same settings, obstacles' projected obstructions marked out of
+// the walkable area, and the detail mesh's triangles kept as the polygons, as Godot keeps them.
 
 #include "slash/navigation/navigation.hpp"
 
@@ -226,9 +226,28 @@ Result<NavigationMesh> bake(const NavigationMesh& settings, const SourceGeometry
     rcFreeHeightField(recast.heightfield);
     recast.heightfield = nullptr;
 
+    // Projected obstructions take their columns out of the walkable area: before it shrinks by
+    // the agent radius, or after it if they carve.
+    const auto mark_obstructions = [&](bool carve) {
+        for (const SourceGeometry3D::Obstruction& obstruction : geometry.projected_obstructions) {
+            if (obstruction.carve != carve || obstruction.vertices.empty()) {
+                continue;
+            }
+            std::vector<float> points;
+            points.reserve(obstruction.vertices.size() * 3);
+            for (const Vec3 vertex : obstruction.vertices) {
+                points.insert(points.end(), {vertex.x, vertex.y, vertex.z});
+            }
+            rcMarkConvexPolyArea(&ctx, points.data(), static_cast<int>(obstruction.vertices.size()),
+                                 obstruction.elevation, obstruction.elevation + obstruction.height,
+                                 RC_NULL_AREA, *recast.compact);
+        }
+    };
+    mark_obstructions(false);
     if (!rcErodeWalkableArea(&ctx, cfg.walkableRadius, *recast.compact)) {
         return failed("erode the walkable area by agent_radius");
     }
+    mark_obstructions(true);
 
     bool partitioned = false;
     switch (settings.sample_partition_type) {

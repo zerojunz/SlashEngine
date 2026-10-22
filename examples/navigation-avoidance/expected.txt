@@ -1,0 +1,17 @@
+scene.open {"path":"main.scene.json"}
+{"entities":8,"path":"main.scene.json"}
+navigation.bake {"id":"plaza"}
+{"file":"nav/plaza.navpoly.json","obstacle_outlines":1,"obstructions":0,"polygons":12,"vertices":16}
+events.subscribe {"kinds":["target_reached"]}
+{"subscription":"events_1"}
+1 s: courier (224.4, 95.6) west_1 (100.0, 280.0) west_2 (100.0, 320.0) east_1 (300.0, 285.0) east_2 (300.0, 315.0) cart (120.0, 220.0)
+2 s: courier (236.7, 172.1) west_1 (178.6, 273.2) west_2 (178.7, 326.8) east_1 (238.6, 287.8) east_2 (238.6, 312.2) cart (120.0, 260.0)
+navigation.agent {"id":"west_1"}
+{"distance_to_target":201.4898,"navigation_finished":false,"next_position":[298.8978,280],"path":[[20,280],[87.5868,280],[101.1023,280],[114.684,280],[298.8978,280],[312.4132,280],[321.4111,280],[380,280]],"path_index":4,"safe_velocity":[78.6577,-8.9328],"target_reachable":true,"target_reached":false}
+3 s: courier (222.7, 250.9) west_1 (257.3, 273.9) west_2 (257.7, 327.6) east_1 (180.6, 287.2) east_2 (183.1, 309.2) cart (120.0, 300.0)
+4 s: courier (208.9, 329.7) west_1 (337.0, 279.4) west_2 (337.4, 320.8) east_1 (100.6, 285.2) east_2 (109.2, 310.0) cart (120.0, 340.0)
+5 s: courier (201.7, 370.4) west_1 (370.3, 279.9) west_2 (370.7, 320.2) east_1 (29.9, 285.0) east_2 (29.4, 314.8) cart (120.0, 380.0)
+6 s: courier (201.7, 370.4) west_1 (370.3, 279.9) west_2 (370.7, 320.2) east_1 (29.9, 285.0) east_2 (29.4, 314.8) cart (120.0, 420.0)
+closest two walkers came: 20.0; closest a walker came to the cart: 25.0
+events.read {"subscription":"events_1"}
+{"dropped":0,"events":[{"id":"west_2","kind":"target_reached","seq":1,"tick":265},{"id":"west_1","kind":"target_reached","seq":2,"tick":265},{"id":"courier","kind":"target_reached","seq":3,"tick":271},{"id":"east_1","kind":"target_reached","seq":4,"tick":293},{"id":"east_2","kind":"target_reached","seq":5,"tick":300}],"more":false}

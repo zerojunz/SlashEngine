@@ -28,6 +28,11 @@
 // path_changed, waypoint_reached, link_reached, target_reached and navigation_finished events.
 // Agents move nothing; gameplay code moves them toward next_path_position.
 //
+// Agents with avoidance_enabled and NavigationObstacle2D and 3D avoid each other as Godot's do,
+// with ORCA from RVO2 (src/rvo2.hpp): last in each tick, each agent's velocity becomes a safe
+// velocity, emitted as velocity_computed and returned by safe_velocity_2d and 3d, which gameplay
+// code moves it at. Obstacles with affect_navigation_mesh are cut out of bakes.
+//
 // The 2D map is the 3D one with its points at (x, 0, y), as Godot's 2D server was before 4.5, so
 // both share the same code. Maps build at once rather than on a thread, and their floats are the
 // same bits everywhere, so paths repeat on every machine.
@@ -122,6 +127,16 @@ void add_asset_types(asset::Assets& assets);
 struct SourceGeometry3D {
     std::vector<float> vertices; // x, y and z of each point
     std::vector<int> indices;    // three per triangle
+    // Outlines of obstacles with affect_navigation_mesh, on the ground from elevation up to
+    // elevation + height, as Godot's projected obstructions: taken out before the walkable area
+    // shrinks by agent_radius, or after it with carve.
+    struct Obstruction {
+        std::vector<Vec3> vertices; // y is not used
+        float elevation = 0.0F;
+        float height = 0.0F;
+        bool carve = false;
+    };
+    std::vector<Obstruction> projected_obstructions{}; // NOLINT(readability-redundant-member-init)
 };
 
 // What a 2D bake works from, as Godot's NavigationMeshSourceGeometryData2D: outlines in the
@@ -129,20 +144,27 @@ struct SourceGeometry3D {
 struct SourceGeometry2D {
     std::vector<std::vector<Vec2>> traversable_outlines;
     std::vector<std::vector<Vec2>> obstruction_outlines;
+    struct Obstruction {
+        std::vector<Vec2> vertices;
+        bool carve = false;
+    };
+    std::vector<Obstruction> projected_obstructions{}; // NOLINT(readability-redundant-member-init)
 };
 
 // The geometry under a region entity, as Godot's parse_source_geometry_data with the region as
 // its root node: the entity and those under it in Transform3D children, each MeshInstance3D's
 // primitive mesh or model file (with geometry_parsed_geometry_type mesh_instances or both) and
 // the shapes of each StaticBody3D and AnimatableBody3D whose collision_layer shares a bit with
-// geometry_collision_mask (static_colliders or both). Model files load through assets; a mesh
+// geometry_collision_mask (static_colliders or both), and each NavigationObstacle3D with
+// affect_navigation_mesh as a projected obstruction. Model files load through assets; a mesh
 // that doesn't load is left out with a warning naming its entity.
 [[nodiscard]] SourceGeometry3D parse_source_geometry(const world::World& world,
                                                      asset::Assets& assets, entt::entity root,
                                                      const NavigationMesh& settings,
                                                      std::vector<std::string>* warnings = nullptr);
 // The same in 2D: the shapes of each StaticBody2D and AnimatableBody2D under the region whose
-// collision_layer shares a bit with parsed_collision_mask, as obstructions.
+// collision_layer shares a bit with parsed_collision_mask, as obstructions, and each
+// NavigationObstacle2D with affect_navigation_mesh as a projected obstruction.
 [[nodiscard]] SourceGeometry2D parse_source_geometry(const world::World& world, entt::entity root,
                                                      const NavigationPolygon& settings);
 
@@ -155,7 +177,8 @@ struct SourceGeometry2D {
                                           const SourceGeometry3D& geometry,
                                           std::vector<std::string>* warnings = nullptr);
 // The 2D one: the outlines (the file's and the geometry's) merged, the obstructions taken out,
-// shrunk by agent_radius and split into convex polygons or triangles.
+// shrunk by agent_radius, carving obstructions taken out, and split into convex polygons or
+// triangles.
 [[nodiscard]] Result<NavigationPolygon> bake(const NavigationPolygon& settings,
                                              const SourceGeometry2D& geometry);
 
@@ -312,6 +335,16 @@ void set_target_position(world::World& world, entt::entity agent, Vec3 position)
 // The straight distance from the entity to target_position.
 [[nodiscard]] float distance_to_target(const world::World& world, entt::entity agent);
 
+// Avoidance, as Godot's NavigationAgent avoidance: the safe velocity the last tick gave an agent
+// with avoidance_enabled (its last velocity_computed event's), or its velocity without.
+[[nodiscard]] Vec2 safe_velocity_2d(const world::World& world, entt::entity agent);
+[[nodiscard]] Vec3 safe_velocity_3d(const world::World& world, entt::entity agent);
+// Replaces the velocity avoidance starts the next step from, as Godot's set_velocity_forced, so
+// an agent that was moved to a new place doesn't carry its old velocity there. It takes effect
+// on the next tick the agent follows a path. Called often, it can get agents stuck.
+void set_velocity_forced(world::World& world, entt::entity agent, Vec2 velocity);
+void set_velocity_forced(world::World& world, entt::entity agent, Vec3 velocity);
+
 // An agent's path and progress, for navigation.agent: 2D agents' points are (x, y, 0).
 struct AgentInfo {
     bool target_submitted = false; // its path is being followed
@@ -320,13 +353,14 @@ struct AgentInfo {
     bool last_waypoint_reached = false;
     std::size_t path_index = 0; // the point it is going to
     Path<Vec3> path;
+    Vec3 safe_velocity; // the last tick's, with avoidance_enabled
 };
 // An agent with no state yet, or no agent component, is all defaults.
 [[nodiscard]] AgentInfo agent_info(world::World& world, entt::entity agent);
 
-// What the navigation system keeps between ticks beside the components: agents' paths and
-// progress, by entity ID. Sessions put it back with the world when a command fails or is a dry
-// run.
+// What the navigation system keeps between ticks beside the components: agents' paths, progress
+// and avoidance velocities and obstacles' avoidance velocities, by entity ID. Sessions put it
+// back with the world when a command fails or is a dry run.
 struct Snapshot {
     std::shared_ptr<const void> state;
 };
