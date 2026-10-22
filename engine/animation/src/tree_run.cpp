@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <deque>
 #include <utility>
 
 namespace slash::animation::detail {
@@ -39,6 +40,175 @@ struct NodeTimeInfo {
         return is_zero_approx(left) ? 0.0 : left;
     }
 };
+
+constexpr std::string_view kStart = "Start";
+constexpr std::string_view kEnd = "End";
+
+// Godot's AnimationNodeStateMachinePlayback: a state machine's state between ticks, kept in its
+// "playback" parameter, and the requests made of it.
+struct Playback {
+    std::string current;
+    std::string fading_from;
+    double fading_time = 0.0;
+    double fading_pos = 0.0;
+    std::vector<std::string> path; // the states a travel goes through, its target last
+    bool playing = false;
+    TreeCurve current_curve; // the cross-fade's, from the transition to current
+    std::string start_request;
+    std::string travel_request;
+    bool reset_request = false;
+    bool reset_request_on_teleport = false;
+    bool reset_request_for_fading_from = false;
+    bool next_request = false;
+    bool stop_request = false;
+    bool teleport_request = false;
+    // Within a tick only.
+    NodeTimeInfo current_nti;
+    NodeTimeInfo fading_from_nti;
+
+    [[nodiscard]] bool is_end() const { return current == kEnd && fading_from.empty(); }
+
+    // Godot's _travel_main and _start_main.
+    void travel_main(std::string state, bool reset_on_teleport) {
+        travel_request = std::move(state);
+        reset_request_on_teleport = reset_on_teleport;
+        stop_request = false;
+    }
+    void start_main(std::string state, bool reset) {
+        travel_request.clear();
+        path.clear();
+        reset_request = reset;
+        start_request = std::move(state);
+        stop_request = false;
+    }
+};
+
+std::string text_of(const json::Value& value, std::string_view key) {
+    const json::Value* found = value.find(key);
+    return found != nullptr && found->is_string() ? found->as_string() : std::string();
+}
+
+bool bool_of(const json::Value& value, std::string_view key) {
+    const json::Value* found = value.find(key);
+    return found != nullptr && found->is_bool() && found->as_bool();
+}
+
+double number_of(const json::Value& value, std::string_view key) {
+    const json::Value* found = value.find(key);
+    return found != nullptr && found->is_number() ? found->as_double() : 0.0;
+}
+
+Playback playback_of(const json::Value& value) {
+    Playback out;
+    if (!value.is_object()) {
+        return out;
+    }
+    out.current = text_of(value, "current");
+    out.fading_from = text_of(value, "fading_from");
+    out.fading_time = number_of(value, "fading_time");
+    out.fading_pos = number_of(value, "fading_pos");
+    if (const json::Value* path = value.find("path"); path != nullptr && path->is_array()) {
+        for (const json::Value& state : path->as_array()) {
+            if (state.is_string()) {
+                out.path.push_back(state.as_string());
+            }
+        }
+    }
+    out.playing = bool_of(value, "playing");
+    if (const json::Value* curve = value.find("xfade_curve");
+        curve != nullptr && curve->is_array()) {
+        for (const json::Value& point : curve->as_array()) {
+            if (point.is_array() && point.size() == 2 && point.as_array()[0].is_number() &&
+                point.as_array()[1].is_number()) {
+                out.current_curve.push_back(
+                    {point.as_array()[0].as_double(), point.as_array()[1].as_double()});
+            }
+        }
+    }
+    out.start_request = text_of(value, "start_request");
+    out.travel_request = text_of(value, "travel_request");
+    out.reset_request = bool_of(value, "reset_request");
+    out.reset_request_on_teleport = bool_of(value, "reset_request_on_teleport");
+    out.reset_request_for_fading_from = bool_of(value, "reset_request_for_fading_from");
+    out.next_request = bool_of(value, "next_request");
+    out.stop_request = bool_of(value, "stop_request");
+    out.teleport_request = bool_of(value, "teleport_request");
+    return out;
+}
+
+// The playback as its parameter keeps it, each field left out while it has its default.
+json::Value json_of(const Playback& playback) {
+    json::Object out;
+    const auto text = [&](const char* key, const std::string& value) {
+        if (!value.empty()) {
+            out.emplace(key, value);
+        }
+    };
+    const auto flag = [&](const char* key, bool value) {
+        if (value) {
+            out.emplace(key, true);
+        }
+    };
+    text("current", playback.current);
+    // The cross-fade's time and position count only while it fades.
+    if (!playback.fading_from.empty()) {
+        out.emplace("fading_from", playback.fading_from);
+        if (playback.fading_time != 0.0) {
+            out.emplace("fading_time", playback.fading_time);
+        }
+        if (playback.fading_pos != 0.0) {
+            out.emplace("fading_pos", playback.fading_pos);
+        }
+    }
+    if (!playback.path.empty()) {
+        json::Array path;
+        for (const std::string& state : playback.path) {
+            path.emplace_back(state);
+        }
+        out.emplace("path", std::move(path));
+    }
+    flag("playing", playback.playing);
+    if (!playback.current_curve.empty()) {
+        json::Array curve;
+        for (const auto& point : playback.current_curve) {
+            curve.emplace_back(json::Array{point[0], point[1]});
+        }
+        out.emplace("xfade_curve", std::move(curve));
+    }
+    text("start_request", playback.start_request);
+    text("travel_request", playback.travel_request);
+    flag("reset_request", playback.reset_request);
+    flag("reset_request_on_teleport", playback.reset_request_on_teleport);
+    flag("reset_request_for_fading_from", playback.reset_request_for_fading_from);
+    flag("next_request", playback.next_request);
+    flag("stop_request", playback.stop_request);
+    flag("teleport_request", playback.teleport_request);
+    return out;
+}
+
+// Godot's String::split("/"), keeping empty parts.
+std::vector<std::string> split_path(std::string_view path) {
+    std::vector<std::string> out;
+    std::size_t begin = 0;
+    while (true) {
+        const std::size_t slash = path.find('/', begin);
+        if (slash == std::string_view::npos) {
+            out.emplace_back(path.substr(begin));
+            return out;
+        }
+        out.emplace_back(path.substr(begin, slash - begin));
+        begin = slash + 1;
+    }
+}
+
+// The first count parts of a split path joined again.
+std::string join_path(const std::vector<std::string>& parts, std::size_t count) {
+    std::string out;
+    for (std::size_t i = 0; i < count; ++i) {
+        out += (i == 0 ? "" : "/") + parts[i];
+    }
+    return out;
+}
 
 std::uint64_t mix(std::uint64_t x) {
     x += 0x9E3779B97F4A7C15ULL;
@@ -149,6 +319,10 @@ public:
         if (!out_.invalid.empty()) {
             out_.instances.clear();
         }
+        // The state machines' playbacks, which Godot keeps as objects in the parameters.
+        for (const auto& [index, playback] : playbacks_) {
+            set(index, "playback", json_of(playback));
+        }
         return std::move(out_);
     }
 
@@ -221,6 +395,7 @@ private:
     // Godot's AnimationNode::process (and AnimationNodeAnimation's): the node's time from where
     // it was, then its own processing, then its time info stored.
     NodeTimeInfo process(int index, const PlaybackInfo& in, bool test_only) {
+        const bool outer = testing_;
         testing_ = test_only;
         PlaybackInfo info = in;
         if (in.seeked) {
@@ -238,6 +413,7 @@ private:
             set(index, "current_position", out.position);
             set(index, "current_delta", out.delta);
         }
+        testing_ = outer;
         return out;
     }
 
@@ -367,6 +543,8 @@ private:
             return run_blend_space_1d(index, info, test_only);
         case TreeNodeType::BlendSpace2D:
             return run_blend_space_2d(index, info, test_only);
+        case TreeNodeType::StateMachine:
+            return run_state_machine(index, info, test_only);
         }
         return {};
     }
@@ -1123,13 +1301,825 @@ private:
         return mind;
     }
 
+    // State machines, as Godot's AnimationNodeStateMachine and AnimationNodeStateMachinePlayback.
+
+    // Where a state machine goes next, as Godot's NextInfo.
+    struct NextInfo {
+        std::string node;
+        double xfade = 0.0;
+        TreeCurve curve;
+        SwitchMode switch_mode = SwitchMode::Immediate;
+        bool is_reset = false;
+        bool break_loop_at_end = false;
+    };
+
+    // A transition as Godot's _check_group_transition finds it: a grouped state machine's
+    // transitions from its Start and to its End are those into and out of it in its parent.
+    struct GroupTransition {
+        const MachineTransition* transition = nullptr;
+        int machine = 0; // whose conditions it reads
+        bool bypass = false;
+    };
+
+    [[nodiscard]] const MachineState* state(int machine, std::string_view name) const {
+        for (const MachineState& s : node(machine).states) {
+            if (s.name == name) {
+                return &s;
+            }
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] bool has_state(int machine, std::string_view name) const {
+        return state(machine, name) != nullptr;
+    }
+
+    [[nodiscard]] Vec2 position(int machine, std::string_view name) const {
+        const MachineState* s = state(machine, name);
+        return s != nullptr ? s->position : Vec2{};
+    }
+
+    [[nodiscard]] bool has_transition_from(int machine, std::string_view name) const {
+        return std::ranges::any_of(node(machine).machine_transitions,
+                                   [&](const MachineTransition& t) { return t.from == name; });
+    }
+
+    [[nodiscard]] bool is_grouped(int index) const {
+        return index >= 0 && node(index).type == TreeNodeType::StateMachine &&
+               node(index).state_machine_type == StateMachineType::Grouped;
+    }
+
+    // Godot's AnimationNode::find_node_by_path: the node a path of names leads to from a node,
+    // or -1. A state machine's Start and End lead nowhere.
+    [[nodiscard]] int find_node_by_path(int index, std::string_view path) const {
+        int at = index;
+        for (const std::string& name : split_path(path)) {
+            const TreeNode& n = node(at);
+            int next = -1;
+            if (n.type == TreeNodeType::StateMachine) {
+                if (const MachineState* s = state(at, name); s != nullptr) {
+                    next = s->node;
+                }
+            } else {
+                for (const int child : n.children) {
+                    if (node(child).name == name) {
+                        next = child;
+                        break;
+                    }
+                }
+            }
+            at = next;
+            if (at < 0) {
+                break;
+            }
+        }
+        return at;
+    }
+
+    // A state machine's playback, read from its parameter the first time a tick needs it.
+    Playback& playback(int index) {
+        auto it = playbacks_.find(index);
+        if (it == playbacks_.end()) {
+            it = playbacks_.emplace(index, playback_of(get(index, "playback"))).first;
+        }
+        return it->second;
+    }
+
+    // A grouped state machine's playback for its parent to call: the real one, or, while
+    // testing, a copy that goes when copies does, as Godot duplicates it.
+    Playback& child_playback(int index, bool test_only, std::deque<Playback>& copies) {
+        Playback& real = playback(index);
+        if (!test_only) {
+            return real;
+        }
+        copies.push_back(real);
+        return copies.back();
+    }
+
+    // Godot's AnimationNodeStateMachine::blend_node for a state; Start and End play nothing.
+    NodeTimeInfo blend_state(int machine, std::string_view name, const PlaybackInfo& info,
+                             bool test_only) {
+        const MachineState* s = state(machine, name);
+        if (s == nullptr || s->node < 0) {
+            return {};
+        }
+        return blend(machine, s->node, info, Filter::Ignore, true, test_only);
+    }
+
+    // Godot's AnimationNodeStateMachine::_process: the requests callers set in its parameters,
+    // as calls to Godot's start, travel, next and stop in that order, then its playback.
+    NodeTimeInfo run_state_machine(int index, const PlaybackInfo& info, bool test_only) {
+        Playback copy;
+        Playback* pb = &playback(index);
+        if (test_only) {
+            copy = *pb; // Don't process the original when testing.
+            pb = &copy;
+        }
+        if (node(index).state_machine_type != StateMachineType::Grouped) {
+            if (const json::Value start = get(index, "start");
+                start.is_string() && !start.as_string().empty()) {
+                pb->start_main(start.as_string(), true);
+                set(index, "start", "");
+            }
+            if (const json::Value travel = get(index, "travel");
+                travel.is_string() && !travel.as_string().empty()) {
+                pb->travel_main(travel.as_string(), true);
+                set(index, "travel", "");
+            }
+            if (flag(index, "next")) {
+                pb->next_request = true;
+                set(index, "next", false);
+            }
+            if (flag(index, "stop")) {
+                pb->stop_request = true;
+                set(index, "stop", false);
+            }
+        }
+        const NodeTimeInfo out = process_playback(index, *pb, info, test_only);
+        pb->start_request.clear();
+        pb->next_request = false;
+        pb->stop_request = false;
+        pb->reset_request_on_teleport = false;
+        return out;
+    }
+
+    // Godot's _start.
+    static void start(Playback& pb) {
+        pb.playing = true;
+        pb.current = !pb.start_request.empty() ? pb.start_request : std::string(kStart);
+        pb.teleport_request = true;
+        pb.stop_request = false;
+        pb.start_request.clear();
+    }
+
+    // Godot's _clear_path_children.
+    void clear_path_children(int machine, const Playback& pb, bool test_only) {
+        for (const MachineState& s : node(machine).states) {
+            if (!is_grouped(s.node)) {
+                continue;
+            }
+            std::deque<Playback> copies;
+            Playback& child = child_playback(s.node, test_only, copies);
+            child.path.clear();
+            clear_path_children(s.node, child, test_only);
+            if (pb.current != s.name) {
+                start(child); // Can restart.
+            }
+        }
+    }
+
+    // Godot's _start_children: starts the grouped state machines a path goes into on its states.
+    void start_children(int machine, Playback& pb, const std::string& path, bool test_only) {
+        if (node(machine).state_machine_type == StateMachineType::Grouped) {
+            return; // Only the top state machine does this.
+        }
+        const std::vector<std::string> temp_path = split_path(path);
+        if (temp_path.size() <= 1) {
+            return;
+        }
+        for (std::size_t i = 1; i < temp_path.size(); ++i) {
+            const int group = find_node_by_path(machine, join_path(temp_path, i));
+            if (!is_grouped(group)) {
+                return; // A path goes only into grouped state machines.
+            }
+            std::deque<Playback> copies;
+            Playback& child = child_playback(group, test_only, copies);
+            child.start_main(temp_path[i], i == temp_path.size() - 1 ? pb.reset_request : false);
+        }
+        pb.reset_request = false;
+    }
+
+    // Godot's _travel_children: the travel paths inside the grouped state machines a path goes
+    // into, or, when one has none, a start on each.
+    bool travel_children(int machine, Playback& pb, const std::string& path,
+                         bool allow_transition_to_self, bool parent_same_state, bool test_only) {
+        if (node(machine).state_machine_type == StateMachineType::Grouped) {
+            return false; // Only the top state machine does this.
+        }
+        struct ChildInfo {
+            Playback* playback = nullptr;
+            std::vector<std::string> path;
+            bool is_reset = false;
+        };
+        const std::vector<std::string> temp_path = split_path(path);
+        std::vector<ChildInfo> children;
+        std::deque<Playback> copies;
+        bool found_route = true;
+        bool is_parent_same_state = parent_same_state;
+        if (temp_path.size() > 1) {
+            for (std::size_t i = 1; i < temp_path.size(); ++i) {
+                const std::string concatenated = join_path(temp_path, i);
+                const int group = find_node_by_path(machine, concatenated);
+                if (!is_grouped(group)) {
+                    return false; // A path goes only into grouped state machines.
+                }
+                Playback& child = child_playback(group, test_only, copies);
+                if (!child.playing) {
+                    start(child);
+                }
+                ChildInfo info;
+                info.playback = &child;
+                // When the parent's state changes, the child's groups travel to their ends and
+                // it starts over.
+                bool child_found_route = true;
+                const bool is_current_same_state = temp_path[i] == child.current;
+                if (!is_parent_same_state) {
+                    std::string child_path = "/" + child.current;
+                    while (true) {
+                        const int inner = find_node_by_path(machine, concatenated + child_path);
+                        if (!is_grouped(inner)) {
+                            break;
+                        }
+                        Playback& inner_pb = child_playback(inner, test_only, copies);
+                        inner_pb.travel_main(std::string(kEnd), true);
+                        child_found_route =
+                            travel(inner, inner_pb, false, test_only) && child_found_route;
+                        child_path += "/" + inner_pb.current;
+                    }
+                    start(child);
+                }
+                is_parent_same_state = is_current_same_state;
+
+                const bool is_deepest_state = i == temp_path.size() - 1;
+                info.is_reset = is_deepest_state && pb.reset_request_on_teleport;
+                child.travel_main(temp_path[i], info.is_reset);
+                if (make_travel_path(group, child, is_deepest_state && allow_transition_to_self,
+                                     info.path, test_only)) {
+                    found_route = found_route && child_found_route;
+                } else {
+                    info.path.push_back(temp_path[i]);
+                    found_route = false;
+                }
+                children.push_back(std::move(info));
+            }
+            pb.reset_request_on_teleport = false;
+        }
+        if (found_route) {
+            for (ChildInfo& child : children) {
+                child.playback->path = child.path;
+            }
+        } else {
+            for (ChildInfo& child : children) {
+                child.playback->travel_main("", child.is_reset); // Clear the travel.
+                if (!child.path.empty()) {
+                    child.playback->start_main(child.path.back(), child.is_reset);
+                }
+            }
+        }
+        return found_route;
+    }
+
+    // Godot's _travel.
+    bool travel(int machine, Playback& pb, bool allow_transition_to_self, bool test_only) {
+        std::vector<std::string> path;
+        const bool found = make_travel_path(machine, pb, allow_transition_to_self, path, test_only);
+        if (found) {
+            pb.path = std::move(path);
+        }
+        return found;
+    }
+
+    // Godot's _validate_path: a path to a grouped state machine goes on to the state after its
+    // Start.
+    [[nodiscard]] std::string validate_path(int machine, const std::string& path) const {
+        if (node(machine).state_machine_type == StateMachineType::Grouped) {
+            return path;
+        }
+        std::string target = path;
+        int group = find_node_by_path(machine, target);
+        while (is_grouped(group)) {
+            const auto& transitions = node(group).machine_transitions;
+            const auto first = std::ranges::find(transitions, kStart, &MachineTransition::from);
+            if (first == transitions.end()) {
+                break;
+            }
+            target += "/" + first->to;
+            group = find_node_by_path(machine, target);
+        }
+        return target;
+    }
+
+    // Godot's _make_travel_path: the cheapest way through the transitions that can be taken
+    // from the current state to the travel request, by A* over the states' positions, each step
+    // costing its length times its transition's priority.
+    bool make_travel_path(int machine, Playback& pb, bool allow_transition_to_self,
+                          std::vector<std::string>& r_path, bool test_only) {
+        const std::string target = std::move(pb.travel_request);
+        pb.travel_request.clear();
+        if (!pb.playing) {
+            start(pb);
+        }
+        if (!has_state(machine, target) || !has_state(machine, pb.current)) {
+            return false;
+        }
+        if (pb.current == target) {
+            return !allow_transition_to_self;
+        }
+
+        struct AStarCost {
+            float distance = 0.0F;
+            std::string prev;
+        };
+        const std::vector<MachineTransition>& transitions = node(machine).machine_transitions;
+        const int count = static_cast<int>(transitions.size());
+        const auto transition = [&](int i) -> const MachineTransition& {
+            return transitions[static_cast<std::size_t>(i)];
+        };
+        const Vec2 current_pos = position(machine, pb.current);
+        const Vec2 target_pos = position(machine, target);
+        bool found_route = false;
+        std::map<std::string, AStarCost, std::less<>> cost_map;
+        std::vector<int> open_list;
+
+        for (int i = 0; i < count; ++i) {
+            const MachineTransition& t = transition(i);
+            if (t.advance_mode == AdvanceMode::Disabled || t.from != pb.current) {
+                continue;
+            }
+            open_list.push_back(i);
+            float cost = distance(position(machine, t.to), current_pos);
+            cost *= static_cast<float>(t.priority);
+            cost_map[t.to] = {.distance = cost, .prev = pb.current};
+            if (t.to == target) {
+                found_route = true; // Found it already.
+                break;
+            }
+        }
+
+        while (!found_route && !open_list.empty()) {
+            // The open transition of least cost.
+            std::size_t least = 0;
+            float least_cost = 1e20F;
+            for (std::size_t e = 0; e < open_list.size(); ++e) {
+                const MachineTransition& t = transition(open_list[e]);
+                float cost = cost_map[t.to].distance;
+                cost += distance(position(machine, t.to), target_pos);
+                if (cost < least_cost) {
+                    least = e;
+                    least_cost = cost;
+                }
+            }
+            const std::string transition_prev = transition(open_list[least]).from;
+            const std::string transition_to = transition(open_list[least]).to;
+            for (int i = 0; i < count; ++i) {
+                const MachineTransition& t = transition(i);
+                if (t.advance_mode == AdvanceMode::Disabled || t.from != transition_to ||
+                    t.to == transition_prev) {
+                    continue;
+                }
+                float cost = distance(position(machine, t.from), position(machine, t.to));
+                cost *= static_cast<float>(t.priority);
+                cost += cost_map[t.from].distance;
+                if (const auto it = cost_map.find(t.to); it != cost_map.end()) {
+                    if (cost < it->second.distance) { // Visited already: is this way cheaper?
+                        it->second.distance = cost;
+                        it->second.prev = t.from;
+                    }
+                } else {
+                    cost_map[t.to] = {.distance = cost, .prev = t.from};
+                    open_list.push_back(i);
+                    if (t.to == target) {
+                        found_route = true;
+                        break;
+                    }
+                }
+            }
+            if (found_route) {
+                break;
+            }
+            open_list.erase(open_list.begin() + static_cast<std::ptrdiff_t>(least));
+        }
+
+        std::vector<std::string> new_path;
+        if (found_route) {
+            std::string at = target;
+            while (at != pb.current && new_path.size() <= cost_map.size()) {
+                new_path.push_back(at);
+                at = cost_map[at].prev;
+            }
+            std::ranges::reverse(new_path);
+            // The ways through the grouped state machines on the path, from Start to End:
+            // [current - End] - [Start - End] - [Start - target].
+            std::string current_path = pb.current;
+            for (std::size_t i = 0; i < new_path.size() + 1; ++i) {
+                const int group = find_node_by_path(machine, current_path);
+                if (is_grouped(group)) {
+                    std::deque<Playback> copies;
+                    Playback& child = child_playback(group, test_only, copies);
+                    if (i > 0) {
+                        start(child);
+                    }
+                    if (i >= new_path.size()) {
+                        break;
+                    }
+                    child.travel_main(std::string(kEnd), true);
+                    if (!travel(group, child, false, test_only)) {
+                        found_route = false;
+                        break;
+                    }
+                }
+                if (i >= new_path.size()) {
+                    break;
+                }
+                current_path = new_path[i];
+            }
+        }
+        if (found_route) {
+            r_path = std::move(new_path);
+        }
+        return found_route;
+    }
+
+    // Godot's AnimationNodeStateMachinePlayback::_process.
+    NodeTimeInfo process_playback(int machine, Playback& pb, const PlaybackInfo& info,
+                                  bool test_only) {
+        const TreeNode& n = node(machine);
+        const double delta = info.delta;
+        const bool seek = info.seeked;
+
+        // A seek to 0 by the parent starts the state machine over, or a nested one's state.
+        if (is_zero_approx(info.time) && seek && !info.external) {
+            if (n.state_machine_type != StateMachineType::Nested || pb.is_end() || !pb.playing) {
+                if (n.state_machine_type != StateMachineType::Grouped) {
+                    pb.path.clear();
+                    clear_path_children(machine, pb, test_only);
+                }
+                start(pb);
+                pb.reset_request = true;
+            } else {
+                pb.reset_request = true;
+                pb.teleport_request = true;
+            }
+        }
+
+        if (pb.stop_request) {
+            pb.start_request.clear();
+            pb.travel_request.clear();
+            pb.path.clear();
+            pb.playing = false;
+            return {};
+        }
+        if (!pb.playing && !pb.start_request.empty() && !pb.travel_request.empty()) {
+            return {};
+        }
+
+        // Start and travel requests.
+        if ((!pb.start_request.empty() || !pb.travel_request.empty()) &&
+            n.state_machine_type != StateMachineType::Grouped) {
+            clear_path_children(machine, pb, test_only);
+        }
+        if (!pb.start_request.empty()) {
+            pb.path.clear();
+            const std::string start_target = validate_path(machine, pb.start_request);
+            pb.start_request = split_path(start_target)[0];
+            start_children(machine, pb, start_target, test_only);
+            if (!has_state(machine, pb.start_request)) {
+                return {}; // No such state.
+            }
+            start(pb); // Teleport to it.
+        }
+        if (!pb.travel_request.empty()) {
+            const std::string travel_target = validate_path(machine, pb.travel_request);
+            const std::vector<std::string> travel_path = split_path(travel_target);
+            pb.travel_request = travel_path[0];
+            const std::string target = pb.travel_request; // for a teleport, if it can't travel
+            std::vector<std::string> new_path;
+            bool can_travel =
+                make_travel_path(machine, pb, travel_path.size() <= 1 && n.allow_transition_to_self,
+                                 new_path, test_only);
+            if (can_travel) {
+                can_travel = travel_children(machine, pb, travel_target, n.allow_transition_to_self,
+                                             travel_path[0] == pb.current, test_only);
+            } else {
+                start_children(machine, pb, travel_target, test_only);
+            }
+            if (can_travel) {
+                pb.path = std::move(new_path);
+            } else {
+                if (!has_state(machine, target)) {
+                    return {}; // No such state.
+                }
+                pb.path.clear();
+                if (pb.current != target || pb.reset_request_on_teleport) {
+                    pb.current = target;
+                    pb.reset_request = pb.reset_request_on_teleport;
+                    pb.teleport_request = true;
+                }
+            }
+        }
+
+        PlaybackInfo pi = info;
+        if (pb.teleport_request) {
+            pb.teleport_request = false;
+            // A teleport ends a cross-fade.
+            pb.fading_from.clear();
+            pb.fading_from_nti = {};
+            pb.fading_pos = 0.0;
+            // The current state's length.
+            pi.time = 0.0;
+            pi.seeked = true;
+            pi.external = false;
+            pi.weight = 0.0F;
+            pb.current_nti = blend_state(machine, pb.current, pi, true);
+            // A state that can be left at once isn't processed; the next one is.
+            transition_to_next_recursive(machine, pb, delta, test_only);
+        }
+
+        if (!has_state(machine, pb.current)) {
+            pb.playing = false;
+            pb.current.clear();
+            return {};
+        }
+
+        // A grouped state machine's Start and End count for nothing, so its parent's cross-fade
+        // into and out of it shows; without reset_ends, so do a state machine's own.
+        bool is_start_of_group = false;
+        bool is_end_of_group = false;
+        if (!n.reset_ends || n.state_machine_type == StateMachineType::Grouped) {
+            is_start_of_group = pb.fading_from == kStart;
+            is_end_of_group = pb.current == kEnd;
+        }
+
+        // The cross-fade's blend.
+        float fade_blend = 1.0F;
+        if (pb.fading_time != 0.0 && !pb.fading_from.empty()) {
+            if (!has_state(machine, pb.fading_from)) {
+                pb.fading_from.clear();
+            } else {
+                if (!seek) {
+                    pb.fading_pos += std::abs(delta);
+                }
+                fade_blend = static_cast<float>(std::min(1.0, pb.fading_pos / pb.fading_time));
+            }
+        }
+        if (!pb.current_curve.empty()) {
+            fade_blend = static_cast<float>(sample_curve(pb.current_curve, fade_blend));
+        }
+        // Above zero, so discrete keys at the edges still play.
+        fade_blend = is_zero_approx(fade_blend) ? static_cast<float>(kCmpEpsilon) : fade_blend;
+        if (is_start_of_group) {
+            fade_blend = 1.0F;
+        } else if (is_end_of_group) {
+            fade_blend = 0.0F;
+        }
+
+        pi = info;
+        pi.weight = fade_blend;
+        if (pb.reset_request) {
+            pb.reset_request = false;
+            pi.time = 0.0;
+            pi.seeked = true;
+        }
+        pb.current_nti = blend_state(machine, pb.current, pi, test_only);
+
+        if (!pb.fading_from.empty()) {
+            double fade_blend_inv = 1.0 - fade_blend;
+            fade_blend_inv = is_zero_approx(fade_blend_inv) ? kCmpEpsilon : fade_blend_inv;
+            if (is_start_of_group) {
+                fade_blend_inv = 0.0;
+            } else if (is_end_of_group) {
+                fade_blend_inv = 1.0;
+            }
+            pi = info;
+            pi.weight = static_cast<float>(fade_blend_inv);
+            if (pb.reset_request_for_fading_from) {
+                pb.reset_request_for_fading_from = false;
+                pi.time = 0.0;
+                pi.seeked = true;
+            }
+            pb.fading_from_nti = blend_state(machine, pb.fading_from, pi, test_only);
+            if (is_greater_or_equal_approx(pb.fading_pos, pb.fading_time)) {
+                pb.fading_from.clear(); // The cross-fade is over.
+                pb.fading_from_nti = {};
+            }
+        }
+
+        const bool will_end =
+            transition_to_next_recursive(machine, pb, delta, test_only) || pb.current == kEnd;
+
+        // How long is left: with nothing after the current state, its time.
+        if (will_end || (n.state_machine_type == StateMachineType::Nested &&
+                         !has_transition_from(machine, pb.current))) {
+            if (!pb.fading_from.empty()) {
+                return is_greater_approx(pb.current_nti.remain(false),
+                                         pb.fading_from_nti.remain(false))
+                           ? pb.current_nti
+                           : pb.fading_from_nti;
+            }
+            return pb.current_nti;
+        }
+        if (!pb.is_end()) {
+            pb.current_nti.infinity = true;
+        }
+        return pb.current_nti;
+    }
+
+    // Godot's _transition_to_next_recursive: takes the transitions that can be taken now, one
+    // after another in a tick, until one cross-fades. Whether it reached End.
+    bool transition_to_next_recursive(int machine, Playback& pb, double delta, bool test_only) {
+        pb.reset_request_for_fading_from = false;
+        PlaybackInfo pi;
+        pi.delta = delta;
+        NextInfo next;
+        std::vector<std::string> transition_path{pb.current};
+        while (true) {
+            next = find_next(machine, pb);
+            if (!can_transition_to_next(machine, pb, next, test_only)) {
+                break;
+            }
+            if (std::ranges::find(transition_path, next.node) != transition_path.end()) {
+                break; // Transitions in a loop in one tick: stop rather than go round forever.
+            }
+            transition_path.push_back(next.node);
+
+            if (next.xfade != 0.0) {
+                pb.fading_from = pb.current;
+                pb.fading_time = next.xfade;
+                pb.fading_pos = 0.0;
+            } else {
+                if (pb.reset_request) {
+                    // It can't be processed twice now, so the reset applies here.
+                    pi.time = 0.0;
+                    pi.seeked = true;
+                    pi.external = false;
+                    pi.weight = 0.0F;
+                    blend_state(machine, pb.current, pi, test_only);
+                }
+                pb.fading_from.clear();
+                pb.fading_from_nti = {};
+                pb.fading_time = 0.0;
+                pb.fading_pos = 0.0;
+            }
+
+            if (!pb.path.empty()) {
+                pb.path.erase(pb.path.begin()); // It came from the travel path.
+            }
+            pb.current = next.node;
+            pb.current_curve = next.curve;
+            if (pb.current == kEnd) {
+                break;
+            }
+
+            // Reset in the cross-fade in process_playback, so it isn't processed twice.
+            pb.reset_request_for_fading_from = pb.reset_request;
+            pb.reset_request = next.is_reset;
+            pb.fading_from_nti = pb.current_nti;
+
+            if (next.switch_mode == SwitchMode::Sync) {
+                // The new state goes on from where the old one was.
+                pi.time = pb.current_nti.position;
+                pi.seeked = true;
+                pi.external = false;
+                pi.weight = 0.0F;
+                blend_state(machine, pb.current, pi, test_only);
+            }
+            // Only its length, to find the next.
+            pi.time = 0.0;
+            pi.external = false;
+            pi.weight = 0.0F;
+            pi.seeked = next.is_reset;
+            pb.current_nti = blend_state(machine, pb.current, pi, true);
+
+            if (pb.fading_time != 0.0) {
+                break; // The cross-fade must be processed.
+            }
+        }
+        return next.node == kEnd;
+    }
+
+    // Godot's _can_transition_to_next.
+    bool can_transition_to_next(int machine, Playback& pb, const NextInfo& next, bool test_only) {
+        if (next.node.empty()) {
+            return false;
+        }
+        if (pb.next_request) {
+            pb.next_request = false; // Once.
+            // A next request goes to the deepest state machine.
+            const int group = find_node_by_path(machine, pb.current);
+            if (!is_grouped(group)) {
+                return true;
+            }
+            std::deque<Playback> copies;
+            child_playback(group, test_only, copies).next_request = true;
+            pb.fading_from.clear();
+            pb.fading_from_nti = {};
+            pb.fading_pos = 0.0;
+        }
+        if (!pb.fading_from.empty()) {
+            return false;
+        }
+        if (pb.current != kStart && next.switch_mode == SwitchMode::AtEnd) {
+            return is_less_or_equal_approx(pb.current_nti.remain(next.break_loop_at_end),
+                                           next.xfade);
+        }
+        return true;
+    }
+
+    // Godot's _get_parent_playback: a grouped state machine's parent's playback, while its
+    // current state is the group.
+    Playback* parent_playback(int machine) {
+        const int parent = node(machine).parent;
+        if (parent < 0 || node(parent).type != TreeNodeType::StateMachine) {
+            return nullptr;
+        }
+        Playback& out = playback(parent);
+        return out.current == node(machine).name ? &out : nullptr;
+    }
+
+    // Godot's _check_group_transition.
+    GroupTransition check_group_transition(int machine, const MachineTransition& transition) {
+        GroupTransition out{.transition = &transition, .machine = machine};
+        if (node(machine).state_machine_type != StateMachineType::Grouped) {
+            return out;
+        }
+        const bool from_start = transition.from == kStart;
+        if (!from_start && transition.to != kEnd) {
+            return out;
+        }
+        const Playback* parent = parent_playback(machine);
+        if (parent == nullptr) {
+            return out;
+        }
+        out.bypass = from_start;
+        // The parent's first transition into the group, or out of it.
+        const int parent_machine = node(machine).parent;
+        for (const MachineTransition& t : node(parent_machine).machine_transitions) {
+            if ((from_start ? t.to : t.from) == parent->current) {
+                out.transition = &t;
+                out.machine = parent_machine;
+                break;
+            }
+        }
+        return out;
+    }
+
+    // Godot's _check_advance_condition: an auto transition whose condition, if it has one, holds.
+    [[nodiscard]] bool check_advance_condition(int machine, const MachineTransition& t) const {
+        if (t.advance_mode != AdvanceMode::Auto) {
+            return false;
+        }
+        return t.advance_condition.empty() || flag(machine, "conditions/" + t.advance_condition);
+    }
+
+    // Godot's _find_next: the next state on the travel path, or the auto transition of best
+    // priority whose condition holds, the last of equals.
+    NextInfo find_next(int machine, const Playback& pb) {
+        NextInfo next;
+        const auto fill = [&](const std::string& to, const MachineTransition& t) {
+            next.node = to;
+            next.xfade = t.xfade_time;
+            next.curve = t.xfade_curve;
+            next.switch_mode = t.switch_mode;
+            next.is_reset = t.reset;
+            next.break_loop_at_end = t.break_loop_at_end;
+        };
+        const std::vector<MachineTransition>& transitions = node(machine).machine_transitions;
+        if (!pb.path.empty()) {
+            for (const MachineTransition& t : transitions) {
+                const GroupTransition g = check_group_transition(machine, t);
+                if (g.transition->advance_mode == AdvanceMode::Disabled) {
+                    continue;
+                }
+                if (t.from == pb.current && t.to == pb.path[0]) {
+                    fill(pb.path[0], *g.transition);
+                }
+            }
+            return next;
+        }
+        const MachineTransition* best = nullptr;
+        GroupTransition best_group;
+        float priority_best = 1e20F;
+        for (const MachineTransition& t : transitions) {
+            const GroupTransition g = check_group_transition(machine, t);
+            if (g.transition->advance_mode == AdvanceMode::Disabled) {
+                continue;
+            }
+            if (t.from == pb.current &&
+                (check_advance_condition(g.machine, *g.transition) || g.bypass) &&
+                static_cast<float>(g.transition->priority) <= priority_best) {
+                priority_best = static_cast<float>(g.transition->priority);
+                best = &t;
+                best_group = g;
+            }
+        }
+        if (best != nullptr) {
+            fill(best->to, *best_group.transition);
+        }
+        return next;
+    }
+
     const TreeContext& context_;
     TreeParameters& parameters_;
     const std::vector<TreeNode>& nodes_;
     // Each node's track weights, as Godot's NodeState::track_weights.
     std::vector<std::vector<float>> weights_;
-    // Godot's ProcessState::is_testing: set by each node processed, and left set after.
+    // Godot's ProcessState::is_testing, set while a node is processed. Godot leaves it set after
+    // a node processed only to test it, so the writes its parent makes next are lost; here the
+    // parent's own setting comes back.
     bool testing_ = false;
+    // The state machines' playbacks this tick, by node, read from their parameters when first
+    // needed and written back after the tick.
+    std::map<int, Playback> playbacks_;
     TreeTick out_;
 };
 

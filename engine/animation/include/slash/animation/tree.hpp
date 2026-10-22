@@ -17,8 +17,10 @@
 // nodes, and the AnimationTree component plays it on its entity, with the animations of its
 // libraries. A blend tree connects nodes that blend their inputs; blend spaces blend the points
 // nearest a position; a Transition cross-fades between its inputs and a OneShot plays one over
-// another. Each tick the tree works out how much each animation counts, track by track, and the
-// animations are mixed into the entity's components and the pose of its model.
+// another. A state machine plays one state at a time and moves between them through transitions,
+// on their own or by the shortest way to a state callers ask for. Each tick the tree works out how
+// much each animation counts, track by track, and the animations are mixed into the entity's
+// components and the pose of its model.
 //
 //   {
 //     "format": 1,
@@ -40,7 +42,8 @@
 // Node types are Godot's AnimationNode classes without the prefix, with their properties'
 // names. A node's parameters, which the AnimationTree component keeps, are named by the path of
 // node names to it, then the parameter, as Godot's without "parameters/": "speed/blend_amount",
-// "shot/request". A blend space's points are named by their index.
+// "shot/request". A blend space's points are named by their index, a state machine's states by
+// their names: "move/travel", "move/run/blend_position".
 namespace slash::animation {
 
 inline constexpr std::string_view kTreeSuffix = ".animtree.json";
@@ -59,6 +62,7 @@ enum class TreeNodeType : std::uint8_t {
     TimeScale,
     TimeSeek,
     Transition,
+    StateMachine,
     Output, // a blend tree's output, made by the blend tree
 };
 
@@ -71,6 +75,37 @@ enum class MixMode : std::uint8_t { Blend, Add };
 // A curve of [offset, value] points from offset 0 to 1, joined by straight lines, as particles'
 // curves; empty is the line from [0, 0] to [1, 1].
 using TreeCurve = std::vector<std::array<double, 2>>;
+
+// A root state machine starts over when the tree does; a nested one carries on, starting over
+// only once it ended; a grouped one is a state of its parent, which plays it as part of itself.
+enum class StateMachineType : std::uint8_t { Root, Nested, Grouped };
+// When a transition happens: at once, at once with the next state going on from where the last
+// one was, or when the current state ends.
+enum class SwitchMode : std::uint8_t { Immediate, Sync, AtEnd };
+// Whether a transition can be taken: never, by travel, or by travel and on its own.
+enum class AdvanceMode : std::uint8_t { Disabled, Enabled, Auto };
+
+// One of a state machine's states: a node at a position, or its Start or End, which play nothing.
+struct MachineState {
+    std::string name;
+    int node = -1; // -1 for Start and End
+    Vec2 position;
+};
+
+// A transition between two of a state machine's states, as Godot's
+// AnimationNodeStateMachineTransition.
+struct MachineTransition {
+    std::string from;
+    std::string to;
+    std::string advance_condition; // an auto transition waits for "conditions/<it>" to be true
+    double xfade_time = 0.0;
+    TreeCurve xfade_curve;
+    int priority = 1; // lower goes first when several can be taken; travel counts it as cost
+    SwitchMode switch_mode = SwitchMode::Immediate;
+    AdvanceMode advance_mode = AdvanceMode::Enabled;
+    bool break_loop_at_end = false; // with at_end, end a looping state at the end of its loop
+    bool reset = true;              // start the next state over
+};
 
 // One of a Transition's inputs.
 struct TransitionInput {
@@ -85,7 +120,8 @@ struct TransitionInput {
 struct TreeNode {
     std::string name; // in its parent: a blend tree's name for it or a point's index; "" for root
     std::string path; // its parameters' prefix: "" for the root, then "speed/", "space/0/"
-    // A blend tree's nodes, its output last, or a blend space's points.
+    // A blend tree's nodes, its output last, a blend space's points or a state machine's states'
+    // nodes.
     std::vector<int> children;
     // In a blend tree, the node connected to each of this one's inputs.
     std::vector<int> inputs;
@@ -116,6 +152,10 @@ struct TreeNode {
     std::string x_label = "x";   // BlendSpace1D's value_label
     std::string y_label = "y";
     std::vector<std::array<int, 3>> triangles; // points by index, each sorted
+
+    // StateMachine
+    std::vector<MachineState> states; // by name, Start and End among them
+    std::vector<MachineTransition> machine_transitions;
 
     int parent = -1;
     // BlendSpace1D (x only) and BlendSpace2D
@@ -148,8 +188,12 @@ struct TreeNode {
     // TimeSeek
     bool explicit_elapse = true;
 
-    // Transition
+    // Transition and StateMachine
     bool allow_transition_to_self = false;
+
+    // StateMachine
+    StateMachineType state_machine_type = StateMachineType::Root;
+    bool reset_ends = false; // count Start and End as states that play nothing
 };
 
 // A .animtree.json file: its nodes, the root first.
@@ -190,7 +234,8 @@ struct TreeParameter {
 
 // The error in a value for an input parameter, or "" for none: a number where one is wanted, a
 // OneShot request of "none", "fire", "abort" or "fade_out", a Transition request naming one of
-// its inputs, with "did you mean", a 2D blend position of [x, y].
+// its inputs or a state machine's travel or start naming one of its states, with "did you mean",
+// a 2D blend position of [x, y].
 [[nodiscard]] std::string check_parameter(const AnimationTreeResource& tree,
                                           const TreeParameter& parameter, const json::Value& value);
 

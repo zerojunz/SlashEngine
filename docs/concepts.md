@@ -362,10 +362,13 @@ an animation sets at any times, so an agent checks it without stepping the game.
 [keyframe animation example](../examples/keyframe-animation/) plays a walk cycle and a hit.
 
 **Animation trees** follow Godot's AnimationTree. A `.animtree.json` file is a tree of **nodes**:
-animations, blends, one-shots that fade in and out, transitions and blend spaces. An entity's
+animations, blends, one-shots that fade in and out, transitions, blend spaces and **state
+machines**, which play one state at a time and move between states through transitions, on
+their own or along the cheapest way to a state a game asks for. An entity's
 `AnimationTree` plays it with the animations of its libraries, mixing them by weight into the
 entity's components and its model's skeleton as Godot's `AnimationMixer` does, and games steer
-it by its **parameters** (`"shot/request": "fire"`, a blend position). `animation.tree` lists the
+it by its **parameters** (`"shot/request": "fire"`, `"move/travel": "run"`, a blend position).
+`animation.tree` lists the
 parameters and what plays, and `animation.set_parameters` sets them, checked against their
 nodes. The [animation tree example](../examples/animation-tree/) points a waving arm.
 
