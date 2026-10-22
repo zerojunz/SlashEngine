@@ -28,6 +28,10 @@
 // path_changed, waypoint_reached, link_reached, target_reached and navigation_finished events.
 // Agents move nothing; gameplay code moves them toward next_path_position.
 //
+// A TileMapLayer with navigation_enabled puts a region on the 2D map for each cell, in each of its
+// tile set's navigation layers that the cell's tile has outlines in, as Godot's TileMapLayer does
+// (slash/canvas/tilemap.hpp).
+//
 // Agents with avoidance_enabled and NavigationObstacle2D and 3D avoid each other as Godot's do,
 // with ORCA from RVO2 (src/rvo2.hpp): last in each tick, each agent's velocity becomes a safe
 // velocity, emitted as velocity_computed and returned by safe_velocity_2d and 3d, which gameplay
@@ -163,10 +167,17 @@ struct SourceGeometry2D {
                                                      const NavigationMesh& settings,
                                                      std::vector<std::string>* warnings = nullptr);
 // The same in 2D: the shapes of each StaticBody2D and AnimatableBody2D under the region whose
-// collision_layer shares a bit with parsed_collision_mask, as obstructions, and each
-// NavigationObstacle2D with affect_navigation_mesh as a projected obstruction.
-[[nodiscard]] SourceGeometry2D parse_source_geometry(const world::World& world, entt::entity root,
-                                                     const NavigationPolygon& settings);
+// collision_layer shares a bit with parsed_collision_mask, as obstructions, each
+// NavigationObstacle2D with affect_navigation_mesh as a projected obstruction, and each
+// TileMapLayer's tiles: their navigation outlines as traversable outlines, and their collision
+// polygons in physics layers whose collision_layer shares a bit with parsed_collision_mask as
+// obstructions (with parsed_geometry_type static_colliders or both). Tile sets load through
+// assets; a layer whose set doesn't load, or whose cells don't decode, is left out with a warning
+// naming its entity.
+[[nodiscard]] SourceGeometry2D parse_source_geometry(const world::World& world,
+                                                     asset::Assets& assets, entt::entity root,
+                                                     const NavigationPolygon& settings,
+                                                     std::vector<std::string>* warnings = nullptr);
 
 // The settings with their polygons baked from the geometry, as Godot's
 // bake_from_source_geometry_data: Recast's walkable area, its detail mesh's triangles as the

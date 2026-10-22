@@ -1730,3 +1730,64 @@ TEST_CASE("tiles' occluders cast shadows, as Godot's TileMapLayer places them in
         CHECK(draw() == std::array{white, white, white, black});
     }
 }
+
+TEST_CASE("tile sets give tiles navigation outlines, checked and turned with their cells") {
+    constexpr std::string_view kNavigation = R"({"format": 1,
+        "navigation_layers": [{}, {"layers": 6}],
+        "sources": {"a": {"texture": "a.png", "tiles": {"0,0": {
+            "navigation": [{"points": [[-8, -8], [8, -8], [8, 0]]},
+                           {"layer": 1, "points": [[-8, 0], [8, 0], [8, 8], [-8, 8]]}],
+            "alternatives": {"1": {"navigation": [{"points": [[0, 0], [4, 0], [4, 4]]}]},
+                             "2": {"flip_v": true}}}}}}})";
+    CHECK(first_error(kNavigation) == "(valid)");
+    auto parsed = canvas::parse_tileset(parse(kNavigation));
+    REQUIRE(parsed.ok());
+    const canvas::TileSet& set = parsed.value();
+    REQUIRE(set.navigation_layers.size() == 2);
+    CHECK(set.navigation_layers[0].layers == 1);
+    CHECK(set.navigation_layers[1].layers == 6);
+
+    const auto turned = [&](canvas::TileRef tile) {
+        std::string out;
+        for (const canvas::TileNavigation& outline : canvas::tile_navigation(set, tile)) {
+            out += (out.empty() ? "" : " | ") + std::to_string(outline.layer) + ": " +
+                   points_text(outline.points);
+        }
+        return out;
+    };
+    const canvas::TileRef plain{.source = "a", .atlas = {0, 0}};
+    CHECK(turned(plain) == "0: -8,-8 8,-8 8,0 | 1: -8,0 8,0 8,8 -8,8");
+    // A turn that mirrors the points reverses them, so outlines wind as written, as Godot's
+    // TileData::get_navigation_polygon keeps their winding order.
+    canvas::TileRef tile = plain;
+    tile.flip_h = true;
+    CHECK(turned(tile) == "0: -8,0 -8,-8 8,-8 | 1: 8,8 -8,8 -8,0 8,0");
+    tile.flip_v = true;
+    CHECK(turned(tile) == "0: 8,8 -8,8 -8,0 | 1: 8,0 -8,0 -8,-8 8,-8");
+    tile = plain;
+    tile.transpose = true;
+    CHECK(turned(tile) == "0: 0,8 -8,8 -8,-8 | 1: 8,-8 8,8 0,8 0,-8");
+    // An alternative has outlines of its own, as in Godot; the second has none.
+    CHECK(turned({.source = "a", .atlas = {0, 0}, .alternative = 1}) == "0: 0,0 4,0 4,4");
+    CHECK(turned({.source = "a", .atlas = {0, 0}, .alternative = 2}).empty());
+
+    const auto with = [&](std::string_view from, std::string_view to) {
+        std::string text(kNavigation);
+        const std::size_t at = text.find(from);
+        REQUIRE(at != std::string::npos);
+        text.replace(at, from.size(), to);
+        return text;
+    };
+    CHECK(first_error(with(R"("navigation_layers": [{}, {"layers": 6}],)", "")) ==
+          "/sources/a/tiles/0,0/navigation/0/layer: the tile set has no navigation layers; add "
+          "one to navigation_layers");
+    CHECK(first_error(with(R"("layer": 1,)", R"("layer": 2,)")) ==
+          "/sources/a/tiles/0,0/navigation/1/layer: the tile set has navigation layers 0 to 1");
+    CHECK(first_error(with("[[0, 0], [4, 0], [4, 4]]", "[[0, 0], [4, 4], [4, 0], [0, 4]]")) ==
+          "/sources/a/tiles/0,0/alternatives/1/navigation/0/points: the outline has no area or "
+          "crosses itself");
+    CHECK(first_error(with("[[0, 0], [4, 0], [4, 4]]", "[[0, 0], [4, 0]]"))
+              .starts_with("/sources/a/tiles/0,0/alternatives/1/navigation/0/points"));
+    CHECK(first_error(with(R"("layers": 6)", R"("layers": -1)"))
+              .starts_with("/navigation_layers/1/layers"));
+}

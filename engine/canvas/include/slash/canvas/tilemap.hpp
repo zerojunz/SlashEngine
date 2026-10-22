@@ -53,7 +53,9 @@
 // tile's "alternatives" are its other versions, flipped, transposed or tinted, by number from 1;
 // and any cell can flip or transpose its tile, as Godot's runtime tile transforms do. A source's
 // "normal_texture" and "specular_texture" give its tiles bumps and highlights under 2D lights, as
-// a CanvasTexture does for a Godot atlas source.
+// a CanvasTexture does for a Godot atlas source. Its "navigation_layers" and each tile's
+// "navigation" outlines make each cell a region of the 2D navigation map, and tiles' outlines and
+// collision polygons are what 2D navigation bakes work from, as Godot's tile navigation.
 namespace slash::canvas {
 
 inline constexpr std::string_view kTileSetSuffix = ".tileset.json";
@@ -159,6 +161,17 @@ struct TileOccluder {
     friend bool operator==(const TileOccluder&, const TileOccluder&) = default;
 };
 
+// An outline of where agents can go in one of its tile set's navigation layers, as one of the
+// outlines of a Godot tile's navigation polygon. Each layer's outlines are baked into the tile's
+// polygons as Godot's tile set editor bakes them, with no agent radius, and each cell of a
+// TileMapLayer with navigation_enabled is a region of them on the 2D map.
+struct TileNavigation {
+    int layer = 0;            // into TileSet::navigation_layers
+    std::vector<Vec2> points; // in pixels from the tile's center
+
+    friend bool operator==(const TileNavigation&, const TileNavigation&) = default;
+};
+
 // The kinds of value a custom data layer holds, as the Godot Variant types its tiles' custom
 // data take; each is written as JSON (vectors as [x, y], colors as [r, g, b, a]).
 enum class CustomDataType : std::uint8_t { Bool, Int, Float, String, Vector2, Vector2i, Color };
@@ -176,7 +189,8 @@ struct CustomDataLayer {
 [[nodiscard]] json::Value custom_data_default(CustomDataType type);
 
 // Another version of a tile, as Godot's alternative tiles: its own look, collision polygons,
-// occluders and custom data (none, or the layers' defaults, unless it gives some). Its flips
+// occluders, navigation outlines and custom data (none, or the layers' defaults, unless it gives
+// some). Its flips
 // change only how it draws, as in Godot; a cell's turns flip the polygons too.
 struct AlternativeTile {
     bool flip_h = false;
@@ -186,6 +200,7 @@ struct AlternativeTile {
     Vec2i texture_origin; // as the tile's; its own, (0, 0) unless it gives one
     std::vector<TilePolygon> collision;
     std::vector<TileOccluder> occlusion;
+    std::vector<TileNavigation> navigation;
     std::map<int, json::Value> custom_data; // by custom data layer
 };
 
@@ -207,6 +222,7 @@ struct TileData {
     Vec2i texture_origin;
     std::vector<TilePolygon> collision;
     std::vector<TileOccluder> occlusion;
+    std::vector<TileNavigation> navigation;
     // Values in the tile set's custom data layers, by layer; others have their type's default.
     std::map<int, json::Value> custom_data;
     std::map<int, AlternativeTile> alternatives; // by number, from 1
@@ -237,6 +253,12 @@ struct PhysicsLayer {
 struct OcclusionLayer {
     std::uint32_t light_mask = 1;
     bool sdf_collision = false;
+};
+
+// A tile set's navigation layer, as Godot's: the navigation layers its tiles' regions are in, as
+// bits, which agents' and queries' navigation_layers pick.
+struct NavigationLayer {
+    std::uint32_t layers = 1;
 };
 
 struct AtlasSource {
@@ -270,6 +292,7 @@ struct TileSet {
     TileOffsetAxis offset_axis = TileOffsetAxis::Horizontal;
     std::vector<PhysicsLayer> physics_layers;
     std::vector<OcclusionLayer> occlusion_layers;
+    std::vector<NavigationLayer> navigation_layers;
     std::vector<CustomDataLayer> custom_data_layers;
     std::map<std::string, AtlasSource, std::less<>> sources;
     std::vector<TerrainSet> terrain_sets;
@@ -358,6 +381,11 @@ struct TileLook {
 // it swaps clockwise and counter_clockwise and the same sides cast shadows; Godot's turned copies
 // drop the cull mode and close open ones instead.
 [[nodiscard]] std::vector<TileOccluder> tile_occluders(const TileSet& set, const TileRef& tile);
+
+// A tile's navigation outlines as a cell places them, in pixels from the cell's center: the
+// tile's or its alternative's, turned as tile_collision turns polygons, with the points of those a
+// turn mirrors reversed so they wind as written (Godot's TileData::get_navigation_polygon).
+[[nodiscard]] std::vector<TileNavigation> tile_navigation(const TileSet& set, const TileRef& tile);
 
 // The pixels a tile's frame takes in its atlas texture, as [x, y, width, height], as Godot's
 // TileSetAtlasSource::get_tile_texture_region.

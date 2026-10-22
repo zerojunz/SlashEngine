@@ -2533,7 +2533,10 @@ void register_builtin_components(ComponentRegistry& registry) {
         .describe("collision_enabled", {.doc = "Its tiles' collision polygons are solid in 2D "
                                                "physics."})
         .describe("occlusion_enabled",
-                  {.doc = "Its tiles' occluders cast shadows from 2D lights while it is visible."});
+                  {.doc = "Its tiles' occluders cast shadows from 2D lights while it is visible."})
+        .describe("navigation_enabled",
+                  {.doc = "Each cell is a region of the 2D navigation map in each of the tile "
+                          "set's navigation layers that its tile has outlines in."});
 
     registry.add<PointLight2D>()
         .set_doc("A light shining from the entity's Transform2D through a texture. It lights "
