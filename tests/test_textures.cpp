@@ -203,7 +203,7 @@ TEST_CASE("JPEG files decode to RGBA, and texture paths name them") {
         {{220, 30, 30, 255}, {30, 200, 40, 255}, {40, 50, 210, 255}, {128, 128, 128, 255}}};
     for (std::uint32_t y = 0; y < 16; ++y) {
         for (std::uint32_t x = 0; x < 16; ++x) {
-            const Rgba& color = kColors[(y < 8 ? 0 : 2) + (x < 8 ? 0 : 1)];
+            const Rgba& color = kColors[(y < 8 ? 0U : 2U) + (x < 8 ? 0U : 1U)];
             source.pixels.insert(source.pixels.end(), color.begin(), color.end());
         }
     }
@@ -218,7 +218,7 @@ TEST_CASE("JPEG files decode to RGBA, and texture paths name them") {
         CAPTURE(x);
         CAPTURE(y);
         const std::size_t at = ((std::size_t{y} * 16) + x) * 4;
-        const Rgba& want = kColors[(y < 8 ? 0 : 2) + (x < 8 ? 0 : 1)];
+        const Rgba& want = kColors[(y < 8 ? 0U : 2U) + (x < 8 ? 0U : 1U)];
         for (std::size_t c = 0; c < 3; ++c) {
             CHECK(std::abs(int{decoded.value().pixels[at + c]} - int{want[c]}) <= 6);
         }
