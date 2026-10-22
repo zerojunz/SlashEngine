@@ -1,0 +1,6 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "Navigation Baking",
+  "version": "1.0.0"
+}

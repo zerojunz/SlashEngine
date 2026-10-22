@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <vector>
 
 // 3D physics on Jolt Physics, as Godot 4.4's Jolt module (modules/jolt_physics). The components
@@ -110,5 +111,10 @@ struct Gravity {
 void apply_impulse(world::World& world, entt::entity entity, Vec3 impulse, Vec3 offset = {});
 // Turns a rigid body at the next physics step, as Godot's apply_torque_impulse.
 void apply_torque_impulse(world::World& world, entt::entity entity, Vec3 impulse);
+
+// The convex hull of points as triangles, three points each, wound clockwise as seen from
+// outside, as Godot's faces are: what a convex_polygon shape bakes into a navigation mesh as.
+// Empty when the points don't span a volume.
+[[nodiscard]] std::vector<Vec3> convex_hull_triangles(std::span<const Vec3> points);
 
 } // namespace slash::physics3d

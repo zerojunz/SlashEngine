@@ -36,22 +36,66 @@ namespace slash::navigation {
 inline constexpr std::string_view kMeshSuffix = ".navmesh.json";
 inline constexpr std::string_view kPolygonSuffix = ".navpoly.json";
 
-// A .navmesh.json file, as Godot's NavigationMesh: convex polygons over shared vertices.
+// What geometry under a region bakes into its file, as Godot's ParsedGeometryType.
+enum class ParsedGeometry : std::uint8_t { MeshInstances, StaticColliders, Both };
+// How Recast splits a 3D bake's walkable area, as Godot's NavigationMesh SamplePartitionType.
+enum class Partition3D : std::uint8_t { Watershed, Monotone, Layers };
+// How a 2D bake's area is split, as Godot's NavigationPolygon SamplePartitionType.
+enum class Partition2D : std::uint8_t { ConvexPartition, Triangulate };
+
+// A .navmesh.json file, as Godot's NavigationMesh: convex polygons over shared vertices, and the
+// settings that bake them (navigation.bake), with Godot's names and defaults.
 //
 //   {"format": 1, "vertices": [[0, 0, 0], [4, 0, 0], [4, 0, 4], [0, 0, 4]],
-//    "polygons": [[0, 1, 2, 3]], "cell_size": 0.25, "cell_height": 0.25}
+//    "polygons": [[0, 1, 2, 3]], "cell_size": 0.25, "agent_radius": 0.4}
 struct NavigationMesh {
     std::vector<Vec3> vertices;
     std::vector<std::vector<int>> polygons; // indices into vertices
     float cell_size = 0.25F;
     float cell_height = 0.25F;
+    // Baking, in meters (agent_max_slope in degrees).
+    Partition3D sample_partition_type = Partition3D::Watershed;
+    ParsedGeometry geometry_parsed_geometry_type = ParsedGeometry::Both;
+    std::uint32_t geometry_collision_mask = 0xFFFFFFFFU;
+    float border_size = 0.0F;
+    float agent_height = 1.5F;
+    float agent_radius = 0.5F;
+    float agent_max_climb = 0.25F;
+    float agent_max_slope = 45.0F;
+    float region_min_size = 2.0F;
+    float region_merge_size = 20.0F;
+    float edge_max_length = 0.0F;
+    float edge_max_error = 1.3F;
+    float vertices_per_polygon = 6.0F;
+    float detail_sample_distance = 6.0F;
+    float detail_sample_max_error = 1.0F;
+    bool filter_low_hanging_obstacles = false;
+    bool filter_ledge_spans = false;
+    bool filter_walkable_low_height_spans = false;
+    // Bakes only what is in this box, when its size has volume.
+    Vec3 filter_baking_aabb_position;
+    Vec3 filter_baking_aabb_size;
+    Vec3 filter_baking_aabb_offset;
 };
 
-// A .navpoly.json file, as Godot's NavigationPolygon: the same in 2D, in pixels.
+// A .navpoly.json file, as Godot's NavigationPolygon: the same in 2D, in pixels, with outlines
+// that baking fills.
 struct NavigationPolygon {
     std::vector<Vec2> vertices;
     std::vector<std::vector<int>> polygons;
+    // Closed outlines of the walkable area that baking merges, as Godot's outlines.
+    std::vector<std::vector<Vec2>> outlines;
     float cell_size = 1.0F;
+    // Baking, in pixels.
+    Partition2D sample_partition_type = Partition2D::ConvexPartition;
+    ParsedGeometry parsed_geometry_type = ParsedGeometry::Both;
+    std::uint32_t parsed_collision_mask = 0xFFFFFFFFU;
+    float border_size = 0.0F;
+    float agent_radius = 10.0F;
+    // Bakes only what is in this rect, when it has area.
+    Vec2 baking_rect_position;
+    Vec2 baking_rect_size;
+    Vec2 baking_rect_offset;
 };
 
 // JSON Schemas for the two files.
@@ -69,6 +113,56 @@ struct NavigationPolygon {
 
 // Registers .navmesh.json and .navpoly.json files with assets.
 void add_asset_types(asset::Assets& assets);
+
+// ---- Baking, as Godot 4.6's NavigationServer3D and 2D: parse the geometry under a region, then
+// bake it into the region's polygons with the settings in its file.
+
+// What a 3D bake works from, as Godot's NavigationMeshSourceGeometryData3D: triangles in the
+// region's space, wound counterclockwise as Recast takes them.
+struct SourceGeometry3D {
+    std::vector<float> vertices; // x, y and z of each point
+    std::vector<int> indices;    // three per triangle
+};
+
+// What a 2D bake works from, as Godot's NavigationMeshSourceGeometryData2D: outlines in the
+// region's space of where agents can go and of what is in their way.
+struct SourceGeometry2D {
+    std::vector<std::vector<Vec2>> traversable_outlines;
+    std::vector<std::vector<Vec2>> obstruction_outlines;
+};
+
+// The geometry under a region entity, as Godot's parse_source_geometry_data with the region as
+// its root node: the entity and those under it in Transform3D children, each MeshInstance3D's
+// primitive mesh or model file (with geometry_parsed_geometry_type mesh_instances or both) and
+// the shapes of each StaticBody3D and AnimatableBody3D whose collision_layer shares a bit with
+// geometry_collision_mask (static_colliders or both). Model files load through assets; a mesh
+// that doesn't load is left out with a warning naming its entity.
+[[nodiscard]] SourceGeometry3D parse_source_geometry(const world::World& world,
+                                                     asset::Assets& assets, entt::entity root,
+                                                     const NavigationMesh& settings,
+                                                     std::vector<std::string>* warnings = nullptr);
+// The same in 2D: the shapes of each StaticBody2D and AnimatableBody2D under the region whose
+// collision_layer shares a bit with parsed_collision_mask, as obstructions.
+[[nodiscard]] SourceGeometry2D parse_source_geometry(const world::World& world, entt::entity root,
+                                                     const NavigationPolygon& settings);
+
+// The settings with their polygons baked from the geometry, as Godot's
+// bake_from_source_geometry_data: Recast's walkable area, its detail mesh's triangles as the
+// polygons. With no geometry the polygons are empty. Warnings say which settings don't fit
+// whole cells, as Godot's do. Fails when Recast does, or when the geometry spans more than
+// 30 million cells, as Godot refuses to bake.
+[[nodiscard]] Result<NavigationMesh> bake(const NavigationMesh& settings,
+                                          const SourceGeometry3D& geometry,
+                                          std::vector<std::string>* warnings = nullptr);
+// The 2D one: the outlines (the file's and the geometry's) merged, the obstructions taken out,
+// shrunk by agent_radius and split into convex polygons or triangles.
+[[nodiscard]] Result<NavigationPolygon> bake(const NavigationPolygon& settings,
+                                             const SourceGeometry2D& geometry);
+
+// A file's document with its vertices and polygons replaced by a bake's, keeping the rest as
+// written. doc is the file's, or null for a new one.
+[[nodiscard]] json::Value with_polygons(json::Value doc, const NavigationMesh& mesh);
+[[nodiscard]] json::Value with_polygons(json::Value doc, const NavigationPolygon& polygon);
 
 // One map's settings, as Godot's navigation/2d and navigation/3d project settings.
 struct MapSettings {
