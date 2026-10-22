@@ -204,6 +204,9 @@ slash_add_dependency(libebur128 DOWNLOAD_ONLY TRUE)
 slash_add_dependency(cgltf DOWNLOAD_ONLY TRUE)
 slash_add_dependency(mikktspace DOWNLOAD_ONLY TRUE)
 slash_add_dependency(stb DOWNLOAD_ONLY TRUE)
+# FBX models, read with ufbx as Godot 4.3's importer reads them (engine/scene3d builds its one
+# source file).
+slash_add_dependency(ufbx DOWNLOAD_ONLY TRUE)
 
 # Compressed textures, BC7 and ASTC 4x4, which GPUs sample as they are: engine/render builds the
 # decoders, bc7enc_rdo's bc7decomp.cpp and astc-encoder without its compressor, for devices that

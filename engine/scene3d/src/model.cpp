@@ -105,13 +105,6 @@ struct DataDeleter {
 };
 using DataPtr = std::unique_ptr<cgltf_data, DataDeleter>;
 
-float linear_to_srgb(float c) {
-    // Godot's Color::linear_to_srgb.
-    return c < 0.0031308F
-               ? 12.92F * c
-               : static_cast<float>((1.055 * std::pow(static_cast<double>(c), 1.0 / 2.4)) - 0.055);
-}
-
 Vec4 srgb_color(const float* linear, bool alpha) {
     return {linear_to_srgb(linear[0]), linear_to_srgb(linear[1]), linear_to_srgb(linear[2]),
             alpha ? linear[3] : 1.0F};
@@ -428,12 +421,16 @@ void add_parts(const cgltf_data& data, const cgltf_node& node, Model& model) {
 } // namespace
 
 bool is_model_path(std::string_view path) {
-    return path.ends_with(".gltf") || path.ends_with(".glb") || path.ends_with(".obj");
+    return path.ends_with(".gltf") || path.ends_with(".glb") || path.ends_with(".obj") ||
+           path.ends_with(".fbx");
 }
 
 Result<Model> load_model(std::string_view bytes, std::string_view path, const ModelReader& read) {
     if (path.ends_with(".obj")) {
         return load_obj(bytes, path, read, nullptr);
+    }
+    if (path.ends_with(".fbx")) {
+        return load_fbx(bytes, path, read, nullptr);
     }
     Files files{.read = &read, .error = {}};
     cgltf_options options{};
@@ -553,8 +550,16 @@ Result<Model> load_model(std::string_view bytes, std::string_view path, const Mo
 std::vector<json::ValidationError> check_model(std::string_view bytes, std::string_view path,
                                                const ModelReader& read) {
     const bool obj = path.ends_with(".obj");
+    const bool fbx = path.ends_with(".fbx");
     std::vector<json::ValidationError> errors;
-    auto model = obj ? load_obj(bytes, path, read, &errors) : load_model(bytes, path, read);
+    Result<Model> model = make_error(ErrorCode::InvalidArgument, "");
+    if (obj) {
+        model = load_obj(bytes, path, read, &errors);
+    } else if (fbx) {
+        model = load_fbx(bytes, path, read, &errors);
+    } else {
+        model = load_model(bytes, path, read);
+    }
     if (!model) {
         return {{"", model.error().message}};
     }
@@ -563,7 +568,7 @@ std::vector<json::ValidationError> check_model(std::string_view bytes, std::stri
         if (file.empty()) {
             continue;
         }
-        const std::string at = obj ? "" : "/images/" + std::to_string(i) + "/uri";
+        const std::string at = obj || fbx ? "" : "/images/" + std::to_string(i) + "/uri";
         auto text = read(file);
         if (!text) {
             errors.push_back({at, quoted(file) + " could not be read: " + text.error().message});
@@ -610,7 +615,7 @@ std::size_t model_bytes(const Model& model) {
 
 void add_asset_types(asset::Assets& assets) {
     assets.add_type<Model>(
-        "model", {".gltf", ".glb", ".obj"},
+        "model", {".gltf", ".glb", ".obj", ".fbx"},
         [&assets](std::string_view bytes, std::string_view path) {
             return load_model(bytes, path, [&assets](std::string_view file) {
                 return assets.read(file, "model_file");

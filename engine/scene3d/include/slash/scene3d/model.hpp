@@ -21,8 +21,10 @@ class Assets;
 
 // 3D models, read as Godot's importers read them: glTF 2.0 as modules/gltf/gltf_document.cpp
 // (.gltf files, their buffers and images beside them or in data URIs, and .glb files with
-// everything in one), and Wavefront OBJ as editor/import/3d/resource_importer_obj.cpp (.obj files
-// and the .mtl material libraries and textures beside them). MeshInstance3D's mesh draws one.
+// everything in one), Wavefront OBJ as editor/import/3d/resource_importer_obj.cpp (.obj files
+// and the .mtl material libraries and textures beside them), and FBX as modules/fbx/
+// fbx_document.cpp reads it with ufbx (.fbx files, binary or ASCII, and their textures inside them
+// or beside them). MeshInstance3D's mesh draws one.
 // Meshes keep Godot's clockwise front faces, and a model with no tangents gets MikkTSpace's, as
 // Godot's importers make them.
 namespace slash::scene3d {
@@ -31,7 +33,7 @@ namespace slash::scene3d {
 using ModelReader = std::function<Result<std::string>(std::string_view path)>;
 
 // A texture a model's material samples: a file beside the model, read as any texture is, or an
-// image inside a glTF model (a .glb's buffer or a data URI), decoded.
+// image inside the model (a .glb's buffer, a data URI or an FBX file's video), decoded.
 struct ModelImage {
     std::string path; // its project path, or "" for an image inside the model
     render::Image image;
@@ -79,22 +81,23 @@ struct Model {
     std::vector<ModelPart> parts;
 };
 
-// Whether a path names a model file: ".gltf", ".glb" or ".obj".
+// Whether a path names a model file: ".gltf", ".glb", ".obj" or ".fbx".
 [[nodiscard]] bool is_model_path(std::string_view path);
 
 // Reads a model from its file's bytes; path is its project path, which the files it names are
 // relative to, read with read. Points and lines are left out, since only triangles draw. glTF
 // files that need extensions it doesn't read, such as Draco compression, are refused, naming
 // them. An OBJ model whose material library can't be read loads with Godot's default material,
-// and one whose textures are outside the project loads without them, as Godot's importer.
+// and an OBJ or FBX model whose textures can't be found loads without them, as Godot's importers.
 [[nodiscard]] Result<Model> load_model(std::string_view bytes, std::string_view path,
                                        const ModelReader& read);
 
 // Every problem in a model file: why load_model refuses it, at the file's top level ("") since
 // model files are not always JSON, or else each image file beside it that can't be read or
-// decoded, at a glTF model's "/images/<index>/uri". An OBJ model's problems are all at "", their
-// messages naming the line, as are its material libraries' and the textures they name. None
-// for a model that draws as written.
+// decoded, at a glTF model's "/images/<index>/uri". OBJ and FBX models' problems are all at "": an
+// OBJ model's messages name the line, as do its material libraries' and the textures they name,
+// and an FBX model's name its textures and give ufbx's warnings. None for a model that draws as
+// written.
 [[nodiscard]] std::vector<json::ValidationError>
 check_model(std::string_view bytes, std::string_view path, const ModelReader& read);
 
@@ -109,7 +112,7 @@ struct Bounds {
 // What a model holds in memory, for asset.list and perf.stats.
 [[nodiscard]] std::size_t model_bytes(const Model& model);
 
-// Adds the "model" asset type, .gltf, .glb and .obj files as Model, the files they name read
+// Adds the "model" asset type, .gltf, .glb, .obj and .fbx files as Model, the files they name read
 // through assets, so asset.list shows them. A model reloads when its own file changes.
 void add_asset_types(asset::Assets& assets);
 
