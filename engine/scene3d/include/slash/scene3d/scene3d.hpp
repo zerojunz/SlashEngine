@@ -117,11 +117,12 @@ public:
     void before_tick(const world::World& world);
 
     // Works out the frame for a target of width by height pixels, interpolation of the way from
-    // the transforms before the last tick to the current ones: nullopt when the world has no
-    // camera, and nothing 3D draws. The mesh draws wait for draw().
+    // the transforms before the last tick to the current ones, its shadows drawn with shadows:
+    // nullopt when the world has no camera, and nothing 3D draws. The mesh draws wait for draw().
     [[nodiscard]] std::optional<Frame3D> prepare(const world::World& world, float width,
                                                  float height, double interpolation,
-                                                 render::Color clear);
+                                                 render::Color clear,
+                                                 const render::ShadowSettings& shadows = {});
     // Draws the meshes prepare found into the frame begun with its scene.
     [[nodiscard]] Result<void> draw();
 
@@ -151,6 +152,7 @@ private:
         std::array<float, 16> transform{};
         render::Material3D material;
         std::uint32_t layers = 1;
+        render::ShadowCasting shadows = render::ShadowCasting::On;
     };
 
     Result<render::MeshId> mesh_for(const world::World& world, entt::entity entity,

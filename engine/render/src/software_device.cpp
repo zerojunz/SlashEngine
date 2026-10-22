@@ -357,7 +357,7 @@ public:
     }
 
     Result<void> draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
-                           std::uint32_t layers) override {
+                           std::uint32_t layers, ShadowCasting shadows) override {
         if (!in_frame_) {
             return detail::no_frame("draw_mesh");
         }
@@ -368,8 +368,11 @@ public:
             !checked) {
             return checked;
         }
-        mesh_draws_.push_back(
-            {.mesh = mesh, .transform = transform, .material = material, .layers = layers});
+        mesh_draws_.push_back({.mesh = mesh,
+                               .transform = transform,
+                               .material = material,
+                               .layers = layers,
+                               .shadows = shadows});
         ++stats_.draws;
         stats_.triangles += it->second.indices.size() / 3;
         return {};
@@ -1027,6 +1030,7 @@ private:
         const Material3D* material = nullptr;
         detail::MeshSurfaceUniforms surface;
         const detail::MeshSceneUniforms* scene = nullptr;
+        const detail::MeshShadows* shadows = nullptr;
         Bound albedo;
         Bound metallic;
         Bound roughness;
@@ -1034,9 +1038,57 @@ private:
         Bound normal;
     };
 
-    // The frame's meshes, in the order mesh_draw_order gives, over a depth buffer cleared to 0,
-    // the far plane: each pixel is drawn where it is nearer, as the GPU's GREATER depth test.
+    // Where a pass rasterizes: a rect of a depth buffer stride texels across, onto which clip
+    // space's x and y map as a viewport maps them, and the faces it culls. Each pixel is drawn
+    // where it is nearer than the buffer, as the GPU's GREATER depth test draws it.
+    struct MeshRaster {
+        std::span<float> depth;
+        std::uint32_t stride = 0;
+        detail::AtlasRect viewport;
+        CullMode cull = CullMode::Back;
+    };
+
+    // A pixel of a triangle: its corners, their perspective-correct shares and whether the
+    // triangle faces the camera.
+    struct MeshFragment {
+        std::array<const ClipVertex*, 3> corners{};
+        std::array<double, 3> shares{};
+        double total = 0.0;
+        bool front = true;
+
+        [[nodiscard]] float varying(std::size_t k) const {
+            return static_cast<float>(((shares[0] * corners[0]->varying.at(k)) +
+                                       (shares[1] * corners[1]->varying.at(k)) +
+                                       (shares[2] * corners[2]->varying.at(k))) /
+                                      total);
+        }
+        [[nodiscard]] std::array<float, 18> varyings() const {
+            std::array<float, 18> out{};
+            for (std::size_t k = 0; k < out.size(); ++k) {
+                out.at(k) = varying(k);
+            }
+            return out;
+        }
+    };
+
+    // The frame's meshes: first into the shadow maps of the lights that cast shadows, then onto
+    // the target in the order mesh_draw_order gives, over a depth buffer cleared to 0, the far
+    // plane.
     void draw_meshes(const Scene3D& scene, Image& target) {
+        const detail::ShadowPlan plan = detail::plan_shadows(scene, kMaxTextureSize);
+        std::vector<float> directional(std::size_t{plan.directional_size} * plan.directional_size,
+                                       0.0F);
+        std::vector<float> positional(std::size_t{plan.positional_size} * plan.positional_size,
+                                      0.0F);
+        for (const detail::ShadowPass& pass : plan.passes) {
+            draw_shadow_pass(pass, pass.positional ? positional : directional,
+                             pass.positional ? plan.positional_size : plan.directional_size);
+        }
+        const detail::MeshShadows shadows{
+            .uniforms = plan.uniforms.get(),
+            .directional = {.depths = directional, .size = plan.directional_size},
+            .positional = {.depths = positional, .size = plan.positional_size}};
+
         std::vector<float> depth(std::size_t{target.width} * target.height, 0.0F);
         const detail::MeshCameraUniforms camera = detail::mesh_camera_uniforms(scene);
         const auto lights =
@@ -1047,12 +1099,16 @@ private:
         std::vector<ClipVertex> corners;
         for (const std::size_t index : order) {
             const detail::MeshDraw& draw = mesh_draws_[index];
+            if (draw.shadows == ShadowCasting::ShadowsOnly) {
+                continue;
+            }
             const Material3D& material = draw.material;
             const SoftwareMesh& mesh = find_mesh(draw.mesh);
             const MeshShader shader{
                 .material = &material,
                 .surface = detail::mesh_surface_uniforms(material, draw.layers),
                 .scene = lights.get(),
+                .shadows = &shadows,
                 .albedo = bound(material.albedo_texture.texture, material.albedo_texture.repeat),
                 .metallic =
                     bound(material.metallic_texture.texture, material.metallic_texture.repeat),
@@ -1081,18 +1137,82 @@ private:
                 put(corner.uv);
                 put(corner.color);
             }
+            const MeshRaster raster{.depth = depth,
+                                    .stride = target.width,
+                                    .viewport = {.width = target.width, .height = target.height},
+                                    .cull = material.cull};
+            const bool blended = material.transparency == Transparency::Alpha;
+            const auto shade = [&](const MeshFragment& fragment, std::size_t at) {
+                const auto color = shade_mesh_pixel(shader, fragment.varyings(), fragment.front);
+                if (!color) {
+                    return false; // discarded, as by the alpha scissor
+                }
+                write_mesh_pixel(material, blended, *color, target, at);
+                return !blended;
+            };
             for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
                 clip_and_draw({corners[mesh.indices[i]], corners[mesh.indices[i + 1]],
                                corners[mesh.indices[i + 2]]},
-                              shader, target, depth);
+                              raster, shade);
+            }
+        }
+    }
+
+    // A shadow pass: the meshes it draws, depth only, into its rect of an atlas size texels
+    // across, as shaders/shadow.hlsl draws them.
+    void draw_shadow_pass(const detail::ShadowPass& pass, std::vector<float>& atlas,
+                          std::uint32_t size) {
+        std::vector<ClipVertex> corners;
+        for (const detail::MeshDraw& draw : mesh_draws_) {
+            const SoftwareMesh& mesh = find_mesh(draw.mesh);
+            if (!detail::shadow_pass_draws(pass, draw, mesh.bounds)) {
+                continue;
+            }
+            const Material3D& material = draw.material;
+            const detail::MeshInstanceUniforms instance =
+                detail::mesh_instance_uniforms(draw.transform, material);
+            const detail::MeshSurfaceUniforms surface =
+                detail::mesh_surface_uniforms(material, draw.layers);
+            const bool scissor = (surface.options[0] & detail::kMeshAlphaScissor) != 0;
+            const Bound albedo =
+                bound(material.albedo_texture.texture, material.albedo_texture.repeat);
+            corners.clear();
+            for (const Vertex3D& vertex : mesh.vertices) {
+                ClipVertex& out = corners.emplace_back();
+                out.clip = detail::shadow_vertex(pass.uniforms, instance, vertex);
+                out.varying[12] = (vertex.uv[0] * instance.uv1[0]) + instance.uv1[2];
+                out.varying[13] = (vertex.uv[1] * instance.uv1[1]) + instance.uv1[3];
+                for (std::size_t i = 0; i < 4; ++i) {
+                    out.varying.at(14 + i) = static_cast<float>(vertex.rgba.at(i)) / 255.0F;
+                }
+            }
+            const MeshRaster raster{.depth = atlas,
+                                    .stride = size,
+                                    .viewport = pass.rect,
+                                    .cull = detail::shadow_cull(pass, draw)};
+            const auto keep = [&](const MeshFragment& fragment, std::size_t /*at*/) {
+                if (!scissor) {
+                    return true;
+                }
+                const float u = fragment.varying(12);
+                const float v = fragment.varying(13);
+                return detail::shadow_keeps(surface, albedo.sample(u, v),
+                                            {fragment.varying(14), fragment.varying(15),
+                                             fragment.varying(16), fragment.varying(17)});
+            };
+            for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+                clip_and_draw({corners[mesh.indices[i]], corners[mesh.indices[i + 1]],
+                               corners[mesh.indices[i + 2]]},
+                              raster, keep);
             }
         }
     }
 
     // Clips a triangle to the near plane (z <= w), the far plane (z >= 0) and the guard band,
     // as GPUs clip, and draws what is left as a fan of triangles.
-    void clip_and_draw(const std::array<ClipVertex, 3>& triangle, const MeshShader& shader,
-                       Image& target, std::vector<float>& depth) const {
+    template <typename Shade>
+    void clip_and_draw(const std::array<ClipVertex, 3>& triangle, const MeshRaster& raster,
+                       const Shade& shade) const {
         std::vector<ClipVertex> polygon(triangle.begin(), triangle.end());
         std::vector<ClipVertex> clipped;
         // Each plane as how far inside a corner is, 0 or more inside.
@@ -1135,7 +1255,7 @@ private:
             }
         }
         for (std::size_t i = 1; i + 1 < polygon.size(); ++i) {
-            rasterize_mesh(polygon[0], polygon[i], polygon[i + 1], shader, target, depth);
+            rasterize_mesh(polygon[0], polygon[i], polygon[i + 1], raster, shade);
         }
     }
 
@@ -1148,10 +1268,15 @@ private:
         const ClipVertex* source = nullptr;
     };
 
-    static MeshScreenVertex to_mesh_screen(const ClipVertex& vertex, const Image& target) {
+    static MeshScreenVertex to_mesh_screen(const ClipVertex& vertex,
+                                           const detail::AtlasRect& viewport) {
         const float inv_w = 1.0F / vertex.clip[3];
-        const double sx = (static_cast<double>(vertex.clip[0] * inv_w) + 1.0) * 0.5 * target.width;
-        const double sy = (1.0 - static_cast<double>(vertex.clip[1] * inv_w)) * 0.5 * target.height;
+        const double sx =
+            ((static_cast<double>(vertex.clip[0] * inv_w) + 1.0) * 0.5 * viewport.width) +
+            viewport.x;
+        const double sy =
+            ((1.0 - static_cast<double>(vertex.clip[1] * inv_w)) * 0.5 * viewport.height) +
+            viewport.y;
         MeshScreenVertex out;
         out.at.x = std::llround(sx * kSubpixel);
         out.at.y = std::llround(sy * kSubpixel);
@@ -1161,20 +1286,22 @@ private:
         return out;
     }
 
+    // Draws a triangle's pixels that are nearer than the depth buffer with shade(fragment, at),
+    // at being the pixel's place in the buffer, and keeps their depth where shade returns true.
+    template <typename Shade>
     void rasterize_mesh(const ClipVertex& va, const ClipVertex& vb, const ClipVertex& vc,
-                        const MeshShader& shader, Image& target, std::vector<float>& depth) const {
-        const MeshScreenVertex a = to_mesh_screen(va, target);
-        MeshScreenVertex b = to_mesh_screen(vb, target);
-        MeshScreenVertex c = to_mesh_screen(vc, target);
+                        const MeshRaster& raster, const Shade& shade) const {
+        const MeshScreenVertex a = to_mesh_screen(va, raster.viewport);
+        MeshScreenVertex b = to_mesh_screen(vb, raster.viewport);
+        MeshScreenVertex c = to_mesh_screen(vc, raster.viewport);
         std::int64_t area = edge(a.at, b.at, c.at.x, c.at.y);
         if (area == 0) {
             return;
         }
         // Clockwise on the target, which is positive area on a y-down target, faces the camera.
         const bool front = area > 0;
-        const Material3D& material = *shader.material;
-        if ((material.cull == CullMode::Back && !front) ||
-            (material.cull == CullMode::Front && front)) {
+        if ((raster.cull == CullMode::Back && !front) ||
+            (raster.cull == CullMode::Front && front)) {
             return;
         }
         if (!front) {
@@ -1182,22 +1309,23 @@ private:
             area = -area;
         }
         const std::int64_t half = kSubpixel / 2;
-        const auto first = [&](std::int64_t low, std::uint32_t size) {
-            return std::clamp<std::int64_t>((low - half + kSubpixel - 1) / kSubpixel, 0,
-                                            static_cast<std::int64_t>(size));
+        const auto first = [&](std::int64_t low, std::uint32_t origin, std::uint32_t size) {
+            return std::clamp<std::int64_t>((low - half + kSubpixel - 1) / kSubpixel, origin,
+                                            std::int64_t{origin} + size);
         };
-        const auto last = [&](std::int64_t high, std::uint32_t size) {
-            return std::clamp<std::int64_t>(((high - half) / kSubpixel), -1,
-                                            static_cast<std::int64_t>(size) - 1);
+        const auto last = [&](std::int64_t high, std::uint32_t origin, std::uint32_t size) {
+            return std::clamp<std::int64_t>(((high - half) / kSubpixel), std::int64_t{origin} - 1,
+                                            std::int64_t{origin} + size - 1);
         };
-        const std::int64_t x0 = first(std::min({a.at.x, b.at.x, c.at.x}), target.width);
-        const std::int64_t x1 = last(std::max({a.at.x, b.at.x, c.at.x}), target.width);
-        const std::int64_t y0 = first(std::min({a.at.y, b.at.y, c.at.y}), target.height);
-        const std::int64_t y1 = last(std::max({a.at.y, b.at.y, c.at.y}), target.height);
+        const detail::AtlasRect& view = raster.viewport;
+        const std::int64_t x0 = first(std::min({a.at.x, b.at.x, c.at.x}), view.x, view.width);
+        const std::int64_t x1 = last(std::max({a.at.x, b.at.x, c.at.x}), view.x, view.width);
+        const std::int64_t y0 = first(std::min({a.at.y, b.at.y, c.at.y}), view.y, view.height);
+        const std::int64_t y1 = last(std::max({a.at.y, b.at.y, c.at.y}), view.y, view.height);
         const bool top_left_a = top_left(b.at, c.at);
         const bool top_left_b = top_left(c.at, a.at);
         const bool top_left_c = top_left(a.at, b.at);
-        const bool blended = material.transparency == Transparency::Alpha;
+        MeshFragment fragment{.corners = {a.source, b.source, c.source}, .front = front};
         for (std::int64_t py = y0; py <= y1; ++py) {
             for (std::int64_t px = x0; px <= x1; ++px) {
                 const std::int64_t cx = (px * kSubpixel) + half;
@@ -1214,29 +1342,15 @@ private:
                 const double bc = static_cast<double>(wc) / static_cast<double>(area);
                 const auto z = static_cast<float>((ba * a.z) + (bb * b.z) + (bc * c.z));
                 const std::size_t at =
-                    (static_cast<std::size_t>(py) * target.width) + static_cast<std::size_t>(px);
-                if (!(z > depth[at])) {
+                    (static_cast<std::size_t>(py) * raster.stride) + static_cast<std::size_t>(px);
+                if (!(z > raster.depth[at])) {
                     continue;
                 }
                 // Perspective-correct: each corner's share over its w.
-                const double qa = ba * a.inv_w;
-                const double qb = bb * b.inv_w;
-                const double qc = bc * c.inv_w;
-                const double total = qa + qb + qc;
-                std::array<float, 18> varying{};
-                for (std::size_t k = 0; k < varying.size(); ++k) {
-                    varying.at(k) = static_cast<float>(((qa * a.source->varying.at(k)) +
-                                                        (qb * b.source->varying.at(k)) +
-                                                        (qc * c.source->varying.at(k))) /
-                                                       total);
-                }
-                const auto color = shade_mesh_pixel(shader, varying, front);
-                if (!color) {
-                    continue; // discarded, as by the alpha scissor
-                }
-                write_mesh_pixel(material, blended, *color, target, at);
-                if (!blended) {
-                    depth[at] = z;
+                fragment.shares = {ba * a.inv_w, bb * b.inv_w, bc * c.inv_w};
+                fragment.total = fragment.shares[0] + fragment.shares[1] + fragment.shares[2];
+                if (shade(fragment, at)) {
+                    raster.depth[at] = z;
                 }
             }
         }
@@ -1264,7 +1378,7 @@ private:
                                       .roughness_texel = shader.roughness.sample(u, v),
                                       .emission_texel = rgb(shader.emission.sample(u, v)),
                                       .normal_texel = rgb(shader.normal.sample(u, v))};
-        return detail::shade_mesh(shader.surface, *shader.scene, pixel);
+        return detail::shade_mesh(shader.surface, *shader.scene, *shader.shadows, pixel);
     }
 
     // Writes a mesh pixel as the GPU device's mesh pipelines do: opaque ones replace the pixel,

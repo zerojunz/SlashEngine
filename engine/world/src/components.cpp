@@ -1276,13 +1276,29 @@ void register_3d_components(ComponentRegistry& registry) {
     const FieldMeta range{.doc = "How far it reaches, in meters.", .min = 0};
     const FieldMeta attenuation{.doc = "How it fades with distance: 1 as light does, 0 not at all.",
                                 .min = -10};
+    const FieldMeta shadow_bias{
+        .doc = "Pushes shadow map depths away from the light, against acne.", .min = 0, .max = 10};
+    const FieldMeta shadow_normal_bias{
+        .doc = "Moves lit points along their normals, in shadow map texels, against acne.",
+        .min = 0,
+        .max = 10};
+    const FieldMeta shadow_reverse_cull_face{
+        .doc = "Shadow maps draw the faces meshes cull and cull the rest."};
+    const FieldMeta shadow_opacity{
+        .doc = "How dark its shadows are: 0 casts none, 1 a full one.", .min = 0, .max = 1};
+    const FieldMeta shadow_caster_mask{.doc = "Meshes whose layers share a bit cast its shadows."};
 
     registry.add<MeshInstance3D>()
         .set_doc("Draws the entity's primitive mesh (BoxMesh, SphereMesh, ...) at its "
                  "Transform3D, as Godot's MeshInstance3D, with its StandardMaterial3D if it has "
                  "one.")
         .describe("layers", {.doc = "Render layers: cameras whose cull_mask and lights whose "
-                                    "light_cull_mask share a bit see and light it."});
+                                    "light_cull_mask share a bit see and light it."})
+        .describe("cast_shadow",
+                  {.doc = "Which shadows it casts: those of lights whose shadow_caster_mask "
+                          "shares a bit with its layers, culled as its material culls; "
+                          "double_sided culls no faces; shadows_only casts but isn't seen.",
+                   .choices = {"off", "on", "double_sided", "shadows_only"}});
     registry.add<BoxMesh>()
         .set_doc("A box centered on the entity, as Godot's BoxMesh; MeshInstance3D draws it.")
         .describe("size", {.doc = "Width, height and depth in meters, as [x, y, z].", .min = 0})
@@ -1417,7 +1433,37 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("light_energy", energy)
         .describe("light_specular", light_specular)
         .describe("light_negative", light_negative)
-        .describe("light_cull_mask", light_cull_mask);
+        .describe("light_cull_mask", light_cull_mask)
+        .describe("shadow_enabled", {.doc = "Meshes cast shadows from it."})
+        .describe("shadow_bias", shadow_bias)
+        .describe("shadow_normal_bias", shadow_normal_bias)
+        .describe("shadow_reverse_cull_face", shadow_reverse_cull_face)
+        .describe("shadow_opacity", shadow_opacity)
+        .describe("shadow_caster_mask", shadow_caster_mask)
+        .describe("directional_shadow_mode",
+                  {.doc = "How its shadow map covers the view: in one piece, or in 2 or 4 "
+                          "cascades split by distance.",
+                   .choices = {"orthogonal", "parallel_2_splits", "parallel_4_splits"}})
+        .describe("directional_shadow_split_1",
+                  {.doc = "Where the first cascade ends, as a fraction of max_distance.",
+                   .min = 0,
+                   .max = 1})
+        .describe("directional_shadow_split_2",
+                  {.doc = "Where the second cascade ends.", .min = 0, .max = 1})
+        .describe("directional_shadow_split_3",
+                  {.doc = "Where the third cascade ends.", .min = 0, .max = 1})
+        .describe("directional_shadow_blend_splits",
+                  {.doc = "Blends neighboring cascades where they meet, hiding the seam."})
+        .describe("directional_shadow_fade_start",
+                  {.doc = "Where shadows start fading out, as a fraction of max_distance.",
+                   .min = 0,
+                   .max = 1})
+        .describe("directional_shadow_max_distance",
+                  {.doc = "How far from the camera shadows reach, in meters.", .min = 0})
+        .describe("directional_shadow_pancake_size",
+                  {.doc = "How far behind the view, toward the light, meshes still cast; 0 "
+                          "casts only from inside the view.",
+                   .min = 0});
     registry.add<OmniLight3D>()
         .set_doc("Light from the entity in every direction, such as a lamp, as Godot's "
                  "OmniLight3D.")
@@ -1427,7 +1473,13 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("light_negative", light_negative)
         .describe("light_cull_mask", light_cull_mask)
         .describe("omni_range", range)
-        .describe("omni_attenuation", attenuation);
+        .describe("omni_attenuation", attenuation)
+        .describe("shadow_enabled", {.doc = "Meshes cast shadows from it."})
+        .describe("shadow_bias", shadow_bias)
+        .describe("shadow_normal_bias", shadow_normal_bias)
+        .describe("shadow_reverse_cull_face", shadow_reverse_cull_face)
+        .describe("shadow_opacity", shadow_opacity)
+        .describe("shadow_caster_mask", shadow_caster_mask);
     registry.add<SpotLight3D>()
         .set_doc("Light from the entity in a cone down its -z, such as a torch, as Godot's "
                  "SpotLight3D.")
@@ -1441,7 +1493,13 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("spot_angle",
                   {.doc = "Degrees from its axis to the cone's edge.", .min = 0, .max = 180})
         .describe("spot_angle_attenuation",
-                  {.doc = "How it fades toward the cone's edge.", .min = 0});
+                  {.doc = "How it fades toward the cone's edge.", .min = 0})
+        .describe("shadow_enabled", {.doc = "Meshes cast shadows from it."})
+        .describe("shadow_bias", shadow_bias)
+        .describe("shadow_normal_bias", shadow_normal_bias)
+        .describe("shadow_reverse_cull_face", shadow_reverse_cull_face)
+        .describe("shadow_opacity", shadow_opacity)
+        .describe("shadow_caster_mask", shadow_caster_mask);
 
     registry.add<WorldEnvironment>()
         .set_doc("The 3D world's background and ambient light, as Godot's WorldEnvironment. The "

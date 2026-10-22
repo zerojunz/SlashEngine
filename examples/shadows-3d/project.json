@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "Shadows 3D",
+  "rendering": {
+    "clear_color": [0.0, 0.0, 0.0, 1.0],
+    "lights_and_shadows": {
+      "directional_shadow": {
+        "size": 2048
+      },
+      "positional_shadow": {
+        "atlas_size": 1024,
+        "soft_shadow_filter_quality": "hard"
+      }
+    }
+  },
+  "version": "1.0.0",
+  "window": {
+    "height": 90,
+    "width": 160
+  }
+}

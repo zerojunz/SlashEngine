@@ -443,6 +443,8 @@ struct Settings {
     double tick_seconds = 1.0 / 60.0;
     // rendering.scaling: the size the world draws at and how it scales to the screen.
     render::Scaling scaling;
+    // rendering.lights_and_shadows: the 3D shadow atlases.
+    render::ShadowSettings shadows;
 };
 void set_settings(world::World& world, const Settings& settings);
 // The settings given to the world, or the defaults.

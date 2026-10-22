@@ -175,7 +175,8 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
                                                         ? render::Filter::Nearest
                                                         : render::Filter::Linear,
                                   .tick_seconds = 1.0 / project_.tick_hz,
-                                  .scaling = project_.scaling});
+                                  .scaling = project_.scaling,
+                                  .shadows = project_.shadows});
     ui::set_settings(world_, {.viewport = {static_cast<float>(project_.window_width),
                                            static_cast<float>(project_.window_height)},
                               .theme = project_.gui_theme,

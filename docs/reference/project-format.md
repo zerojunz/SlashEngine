@@ -38,6 +38,7 @@ checks it.
 | `rendering.fallback_to_opengl` | No | `true` | Draw with `opengl` where the driver's GPU backend (`auto`'s, or the one `vulkan`, `metal` or `d3d12` names) doesn't work, as Godot's `rendering_device/fallback_to_opengl3`: an old GPU or driver, a virtual machine, a remote desktop. The game asks before it makes the window, logs a warning when it falls back, and reports `opengl` (or `opengl_es`) as its `renderer` |
 | `rendering.texture_filter` | No | `linear` | How sprites whose `texture_filter` is `inherit` are sampled when scaled: `linear` is smooth, `nearest` keeps pixel art sharp |
 | `rendering.scaling` | No | no scaling | Draw the world at another size and scale it to the window, under controls drawn at full size: see [Render scale](#render-scale) |
+| `rendering.lights_and_shadows` | No | 4096-texel atlases, `soft_low` | The 3D shadow atlases' sizes and edge filters: see [Shadows](#shadows) |
 | `rendering.textures` | No | `lossless` | How exports ship textures: as their files, or compressed for each platform's GPUs: see [Texture forms](#texture-forms) |
 | `rendering.interpolation` | No | `true` | Draw sprites part of the way between fixed ticks, from where they were before the last tick to where they are, so motion looks smooth when the display refreshes faster than the game ticks. Drawing lags the simulation by up to one tick; set `false` to draw exactly where things are |
 | `physics_2d.gravity` | No | `980` | Gravity's strength in pixels per second squared, as Godot's `physics/2d/default_gravity` |
@@ -108,6 +109,31 @@ made on the device. `render::UpscalerInfo::supports` says which devices one runs
 vendor's on its own GPUs. One that is `temporal` (DLSS, XeSS, FSR 2 and later) needs depth,
 motion vectors and a jittered camera, so `add_upscaler` refuses it until the 3D renderer makes
 them.
+
+## Shadows
+
+`rendering.lights_and_shadows` sizes the two atlases 3D lights draw their
+[shadow maps](scene-format.md#lights) into and picks how their edges are filtered, as Godot's
+`rendering/lights_and_shadows` settings.
+
+```json
+"rendering": {"lights_and_shadows": {
+  "directional_shadow": {"size": 4096, "soft_shadow_filter_quality": "soft_low"},
+  "positional_shadow": {"atlas_size": 2048, "soft_shadow_filter_quality": "hard"}
+}}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `directional_shadow.size` | `4096` | The atlas directional lights' cascades share, in texels across: a power of two from 256 to 16384 |
+| `directional_shadow.soft_shadow_filter_quality` | `soft_low` | `hard` takes one sample a pixel; `soft_very_low` and `soft_low` 5, filtered between texels; `soft_medium`, `soft_high` and `soft_ultra` 13, softer still |
+| `positional_shadow.atlas_size` | `4096` | The atlas omni and spot lights share, as `size` |
+| `positional_shadow.soft_shadow_filter_quality` | `soft_low` | As the directional one's |
+
+A device draws an atlas at most as large as its largest texture (8192 texels for WebGPU), and a
+frame with no shadowed light draws none. Larger atlases make sharper shadows and cost GPU
+memory: a 4096-texel atlas takes 64 MB. Godot's Compatibility renderer splits the positional
+atlas into quadrants of different tile sizes; here every tile is the same size.
 
 ## Texture forms
 

@@ -11,7 +11,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <limits>
 #include <numbers>
 #include <string>
@@ -21,16 +20,6 @@ namespace slash::render {
 namespace {
 
 constexpr float kPi = std::numbers::pi_v<float>;
-
-// A value's bits as another type of the same size. std::bit_cast would do, but the glibc 2.31
-// sysroot Linux exports build against has libstdc++ 10, which lacks it.
-template <typename To, typename From>
-To same_bits(From value) {
-    static_assert(sizeof(To) == sizeof(From));
-    To out{};
-    std::memcpy(&out, &value, sizeof(out));
-    return out;
-}
 
 using detail::Float3;
 using detail::Float4;
@@ -206,6 +195,119 @@ Float4 channel_vector(TextureChannel channel) {
     return {0.3333333F, 0.3333333F, 0.3333333F, 0.0F};
 }
 
+// smoothstep, written out, since its result is undefined for edges in falling order (the fade's)
+// in some shading languages.
+float smooth(float edge0, float edge1, float x) {
+    if (edge0 == edge1) {
+        return x < edge0 ? 0.0F : 1.0F;
+    }
+    const float t = std::clamp((x - edge0) / (edge1 - edge0), 0.0F, 1.0F);
+    return t * t * (3.0F - (2.0F * t));
+}
+
+// sample_shadow in shaders/mesh.hlsl, Godot's: the shadow at a point through a matrix into an
+// atlas, from 1, 5 or 13 samples a texel apart; each sample's coordinate kept within clamp's
+// low and high corners when it is given.
+float sample_shadow(const detail::ShadowAtlas& atlas, const Mat4& matrix, const Float3& point,
+                    float texel, float taps, const Float4* clamp) {
+    const Float4 at = transform(matrix, {point[0], point[1], point[2], 1.0F});
+    const float u = at[0] / at[3];
+    const float v = at[1] / at[3];
+    const float reference = std::clamp(at[2] / at[3], 0.0F, 1.0F);
+    const auto tap = [&](float du, float dv) {
+        float su = u + (du * texel);
+        float sv = v + (dv * texel);
+        if (clamp != nullptr) {
+            su = std::clamp(su, (*clamp)[0], (*clamp)[2]);
+            sv = std::clamp(sv, (*clamp)[1], (*clamp)[3]);
+        }
+        return atlas.compare(su, sv, reference);
+    };
+    float sum = tap(0.0F, 0.0F);
+    if (taps > 12.0F) {
+        sum += tap(2.0F, 0.0F) + tap(-2.0F, 0.0F) + tap(0.0F, 2.0F) + tap(0.0F, -2.0F);
+        // Godot stops early where the far samples agree.
+        if (sum <= 0.000001F) {
+            return 0.0F;
+        }
+        if (sum >= 4.999999F) {
+            return 1.0F;
+        }
+        sum += tap(1.0F, 0.0F) + tap(-1.0F, 0.0F) + tap(0.0F, 1.0F) + tap(0.0F, -1.0F);
+        sum += tap(1.0F, 1.0F) + tap(-1.0F, 1.0F) + tap(1.0F, -1.0F) + tap(-1.0F, -1.0F);
+        return sum * (1.0F / 13.0F);
+    }
+    if (taps > 4.0F) {
+        sum += tap(1.0F, 0.0F) + tap(-1.0F, 0.0F) + tap(0.0F, 1.0F) + tap(0.0F, -1.0F);
+        return sum * (1.0F / 5.0F);
+    }
+    return sum;
+}
+
+// directional_shadow in shaders/mesh.hlsl: a directional light's shadow at a pixel, its cascade
+// picked by view depth, as Godot's scene.glsl picks it.
+float directional_shadow(const detail::MeshShadows& shadows, std::size_t slot, const Float3& world,
+                         const Float3& normal, const Float3& toward_light) {
+    const detail::MeshShadowUniforms& u = *shadows.uniforms;
+    const detail::MeshDirectionalShadowUniforms& s = u.directional.at(slot);
+    const float view_z = dot3(world, {u.camera_z[0], u.camera_z[1], u.camera_z[2]}) + u.camera_z[3];
+    const Float3 base_bias = scale(normal, 1.0F - std::max(0.0F, -dot3(toward_light, normal)));
+    const auto cascade = [&](std::size_t i) {
+        return sample_shadow(shadows.directional, s.matrices.at(i),
+                             add(world, scale(base_bias, s.normal_bias.at(i))), s.options[1],
+                             u.filters[0], nullptr);
+    };
+    const auto count = static_cast<std::size_t>(s.params[3]);
+    const float depth_z = -view_z;
+    float shadow = 1.0F;
+    if (count <= 1) {
+        shadow = cascade(0);
+    } else if (depth_z < s.splits.at(count - 1)) {
+        std::size_t i = 0;
+        while (i + 1 < count && !(depth_z < s.splits.at(i))) {
+            ++i;
+        }
+        shadow = cascade(i);
+        if (s.options[0] != 0.0F && i + 1 < count) {
+            const float from = i == 0 ? 0.0F : s.splits.at(i - 1);
+            shadow = lerp(shadow, cascade(i + 1), smooth(from, s.splits.at(i), depth_z));
+        }
+    }
+    shadow = lerp(shadow, 1.0F, smooth(s.params[0], s.params[1], view_z));
+    return lerp(1.0F, shadow, s.params[2]);
+}
+
+// positional_shadow in shaders/mesh.hlsl: an omni or spot light's shadow at a pixel, through
+// the cube face its ray from the light leaves by for an omni light.
+float positional_shadow(const detail::MeshShadows& shadows, std::size_t slot, const Float3& world,
+                        const Float3& normal) {
+    const detail::MeshShadowUniforms& u = *shadows.uniforms;
+    const detail::MeshPositionalShadowUniforms& s = u.positional.at(slot);
+    const Float3 to_light = sub({s.position[0], s.position[1], s.position[2]}, world);
+    const float light_length = length(to_light);
+    const float a_n_dot_l = std::abs(dot3(normal, scale(to_light, 1.0F / light_length)));
+    const Float3 point = add(world, scale(normal, (1.0F - a_n_dot_l) * s.params[0] * light_length));
+    std::size_t face = 0;
+    float taps = u.filters[1];
+    if (s.params[3] > 1.5F) {
+        const Float4 local = transform(s.light, {point[0], point[1], point[2], 1.0F});
+        const float ax = std::abs(local[0]);
+        const float ay = std::abs(local[1]);
+        const float az = std::abs(local[2]);
+        if (ax >= ay && ax >= az) {
+            face = local[0] > 0.0F ? 0 : 1;
+        } else if (ay >= az) {
+            face = local[1] < 0.0F ? 2 : 3;
+        } else {
+            face = local[2] > 0.0F ? 4 : 5;
+        }
+        taps = 1.0F; // Godot samples an omni light's cube once
+    }
+    const float shadow = sample_shadow(shadows.positional, s.faces.at(face), point, s.params[2],
+                                       taps, &s.rects.at(face));
+    return lerp(1.0F, shadow, s.params[1]);
+}
+
 } // namespace
 
 std::array<float, 16> perspective(float fov_y, float aspect, float near, float far) {
@@ -345,6 +447,7 @@ MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
     }
     const std::size_t count = std::min(scene.lights.size(), kMaxLights3D);
     out.camera = {place[0], place[1], place[2], static_cast<float>(count)};
+    const std::array<int, kMaxLights3D> slots = shadow_slots(scene);
     const float energy = scene.ambient_energy;
     out.ambient = {srgb_to_linear_exact(scene.ambient[0]) * energy,
                    srgb_to_linear_exact(scene.ambient[1]) * energy,
@@ -371,6 +474,7 @@ MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
         const Vec2 cone = slash::cos_sin(light.spot_angle * (kPi / 180.0F));
         packed.params = {light.attenuation, cone.x, 1.0F / light.spot_attenuation,
                          static_cast<float>(light.cull_mask & kRenderLayers)};
+        packed.shadow = {static_cast<float>(slots.at(i)), 0.0F, 0.0F, 0.0F};
     }
     return out;
 }
@@ -460,6 +564,18 @@ Result<void> check_scene(const Scene3D& scene) {
             return make_error(ErrorCode::InvalidArgument,
                               "light " + std::to_string(i) + " has a direction");
         }
+        if (!finite({l.up[0], l.up[1], l.up[2], l.shadow_bias, l.shadow_normal_bias,
+                     l.shadow_opacity, l.shadow_splits[0], l.shadow_splits[1], l.shadow_splits[2],
+                     l.shadow_fade_start, l.shadow_max_distance, l.shadow_pancake_size})) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "light " + std::to_string(i) + "'s shadow numbers are finite");
+        }
+    }
+    if (!valid_shadow_atlas_size(scene.shadows.directional_size) ||
+        !valid_shadow_atlas_size(scene.shadows.positional_size)) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "shadow atlases are powers of two from 256 to " +
+                              std::to_string(kMaxTextureSize) + " texels across");
     }
     return {};
 }
@@ -496,7 +612,7 @@ MeshCorner mesh_vertex(const MeshCameraUniforms& camera, const MeshInstanceUnifo
 }
 
 std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshSceneUniforms& scene,
-                                 const MeshPixel& pixel) {
+                                 const MeshShadows& shadows, const MeshPixel& pixel) {
     const std::uint32_t flags = surface.options[0];
     Float4 color{};
     for (std::size_t i = 0; i < 4; ++i) {
@@ -556,6 +672,8 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     const float dielectric = 0.16F * specular * specular;
     const Float3 f0 = lerp3({dielectric, dielectric, dielectric}, base, metallic);
 
+    // Shadows offset the point they sample along the vertex normal, as Godot's normal_interp.
+    const Float3 geometry = normalize(pixel.normal);
     LightSum light_sum;
     const auto count = static_cast<std::size_t>(scene.camera[3]);
     for (std::size_t i = 0; i < count && i < kMaxLights3D; ++i) {
@@ -565,10 +683,16 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         }
         const float type = light.direction[3];
         const Float3 light_color{light.color[0], light.color[1], light.color[2]};
+        const float slot = light.shadow[0];
         if (type == 0.0F) {
-            light_compute(
-                normal, normalize({light.direction[0], light.direction[1], light.direction[2]}),
-                view, light_color, 1.0F, f0, roughness, metallic, light.color[3], light_sum);
+            const Float3 toward =
+                normalize({light.direction[0], light.direction[1], light.direction[2]});
+            const float shadow = slot >= 0.0F && shadows.uniforms != nullptr
+                                     ? directional_shadow(shadows, static_cast<std::size_t>(slot),
+                                                          pixel.world, geometry, toward)
+                                     : 1.0F;
+            light_compute(normal, toward, view, light_color, shadow, f0, roughness, metallic,
+                          light.color[3], light_sum);
             continue;
         }
         const Float3 to_light =
@@ -583,6 +707,10 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
                          cone);
             const float rim = std::max(0.0001F, (1.0F - scos) / (1.0F - cone));
             attenuation *= 1.0F - power(rim, light.params[2]);
+        }
+        if (slot >= 0.0F && shadows.uniforms != nullptr) {
+            attenuation *=
+                positional_shadow(shadows, static_cast<std::size_t>(slot), pixel.world, geometry);
         }
         light_compute(normal, normalize(to_light), view, light_color, attenuation, f0, roughness,
                       metallic, light.color[3], light_sum);

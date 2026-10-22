@@ -84,7 +84,36 @@ render::Light3D light_base(const T& light, render::LightType type) {
     out.energy = light.light_negative ? -light.light_energy : light.light_energy;
     out.specular = light.light_specular;
     out.cull_mask = light.light_cull_mask;
+    out.shadow = light.shadow_enabled;
+    out.shadow_bias = light.shadow_bias;
+    out.shadow_normal_bias = light.shadow_normal_bias;
+    out.shadow_opacity = light.shadow_opacity;
+    out.shadow_reverse_cull_face = light.shadow_reverse_cull_face;
+    out.shadow_caster_mask = light.shadow_caster_mask;
     return out;
+}
+
+render::DirectionalShadowMode shadow_mode_of(const std::string& name) {
+    if (name == "orthogonal") {
+        return render::DirectionalShadowMode::Orthogonal;
+    }
+    if (name == "parallel_2_splits") {
+        return render::DirectionalShadowMode::Parallel2Splits;
+    }
+    return render::DirectionalShadowMode::Parallel4Splits;
+}
+
+render::ShadowCasting casting_of(const std::string& name) {
+    if (name == "off") {
+        return render::ShadowCasting::Off;
+    }
+    if (name == "double_sided") {
+        return render::ShadowCasting::DoubleSided;
+    }
+    if (name == "shadows_only") {
+        return render::ShadowCasting::ShadowsOnly;
+    }
+    return render::ShadowCasting::On;
 }
 
 // Each light of type T that shines, with where it is, keyed by its place in tree order.
@@ -101,6 +130,14 @@ void add_lights(const world::World& world, const world::Tree3D& tree,
         render::Light3D shone;
         if constexpr (std::is_same_v<T, world::DirectionalLight3D>) {
             shone = light_base(light, render::LightType::Directional);
+            shone.shadow_mode = shadow_mode_of(light.directional_shadow_mode);
+            shone.shadow_splits = {light.directional_shadow_split_1,
+                                   light.directional_shadow_split_2,
+                                   light.directional_shadow_split_3};
+            shone.shadow_blend_splits = light.directional_shadow_blend_splits;
+            shone.shadow_fade_start = light.directional_shadow_fade_start;
+            shone.shadow_max_distance = light.directional_shadow_max_distance;
+            shone.shadow_pancake_size = light.directional_shadow_pancake_size;
         } else if constexpr (std::is_same_v<T, world::OmniLight3D>) {
             shone = light_base(light, render::LightType::Omni);
             shone.range = light.omni_range;
@@ -116,6 +153,8 @@ void add_lights(const world::World& world, const world::Tree3D& tree,
         shone.position = {placed.origin.x, placed.origin.y, placed.origin.z};
         const Vec3 forward = normalized(scaled(placed.z, -1.0F));
         shone.direction = {forward.x, forward.y, forward.z};
+        const Vec3 up = normalized(placed.y);
+        shone.up = {up.x, up.y, up.z};
         const auto at = order.find(entity);
         out.emplace_back(at != order.end() ? at->second : order.size(), shone);
     }
@@ -399,7 +438,8 @@ Result<render::MeshId> Renderer::mesh_for(const world::World& world, entt::entit
 }
 
 std::optional<Frame3D> Renderer::prepare(const world::World& world, float width, float height,
-                                         double interpolation, render::Color clear) {
+                                         double interpolation, render::Color clear,
+                                         const render::ShadowSettings& shadows) {
     ++frame_;
     draws_.clear();
     problems_.clear();
@@ -455,12 +495,21 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
     frame.scene.ambient = env.ambient;
     frame.scene.ambient_energy = env.ambient_energy;
     frame.scene.lights = scene3d::lights(world, tree, global);
+    frame.scene.shadows = shadows;
     lights_ = frame.scene.lights.size();
 
     for (const entt::entity entity : made<world::MeshInstance3D>(world)) {
         const auto& instance = ecs.get<const world::MeshInstance3D>(entity);
-        if ((instance.layers & lens.cull_mask) == 0 || !tree.visible(entity)) {
+        if (!tree.visible(entity)) {
             continue;
+        }
+        // A mesh the camera doesn't see still casts, as Godot's: it draws only into shadow maps.
+        render::ShadowCasting casting = casting_of(instance.cast_shadow);
+        if ((instance.layers & lens.cull_mask) == 0) {
+            if (casting == render::ShadowCasting::Off) {
+                continue;
+            }
+            casting = render::ShadowCasting::ShadowsOnly;
         }
         const std::optional<Primitive> primitive = drawable(world, entity, problems_);
         if (!primitive) {
@@ -480,6 +529,7 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
             draw.material = material(*standard, textures_, problems_, entity);
         }
         draw.layers = instance.layers;
+        draw.shadows = casting;
         draws_.push_back(draw);
     }
     // Meshes no entity drew this frame go, and so do the entities' records of them.
@@ -497,7 +547,8 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
 
 Result<void> Renderer::draw() {
     for (const Draw& draw : draws_) {
-        if (auto drawn = device_->draw_mesh(draw.mesh, draw.transform, draw.material, draw.layers);
+        if (auto drawn = device_->draw_mesh(draw.mesh, draw.transform, draw.material, draw.layers,
+                                            draw.shadows);
             !drawn) {
             return drawn;
         }

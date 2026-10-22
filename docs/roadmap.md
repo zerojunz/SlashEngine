@@ -574,7 +574,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         eight primitive meshes, `StandardMaterial3D`, `Camera3D`, `DirectionalLight3D`,
         `OmniLight3D`, `SpotLight3D` and `WorldEnvironment`, drawn under the canvas by every
         game and by `frame.capture`
-- [ ] Cascaded, omni and spot shadows
+- [x] Cascaded, omni and spot shadows
 - [ ] Post-processing: tonemap, bloom, SSAO, SSR, depth of field, auto exposure, color grading
 - [ ] Baked lightmaps and probe-based global illumination
 - [ ] Render scale and upscalers, as Godot's `scaling_3d` setting: bilinear, FSR 1 and FSR 2/3
@@ -739,7 +739,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | 2D physics | Box2D v3: bodies, areas, joints, character movement and queries | 5 | In part: tile collision is done; area overrides in 5 |
 | 3D physics | Jolt: rigid bodies, joints, character controller, vehicles | 7 | Planned |
 | 3D renderer | Clustered forward+ with PBR, plus a low-end path for web and mobile | 7 | In part: meshes, depth and PBR lighting in every render device, as Godot's Compatibility renderer, are done |
-| Shadows | Cascaded, omni and spot shadow maps | 7 | Planned |
+| Shadows | Cascaded, omni and spot shadow maps | 7 | Done |
 | Post-processing | Tonemap, bloom, SSAO, SSR, DoF, auto exposure, color grading | 7 | Planned |
 | Materials and shaders | HLSL shaders plus a JSON material graph | 5, 7 | In part: canvas material graphs, a game's own HLSL canvas shaders and `StandardMaterial3D`'s inputs on meshes are done; 3D shaders and material files in 7 |
 | Keyframe animation | Keyframe tracks on any reflected property | 5 | Done |

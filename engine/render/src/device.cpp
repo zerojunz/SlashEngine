@@ -549,7 +549,7 @@ public:
     }
 
     Result<void> draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
-                           std::uint32_t /*layers*/) override {
+                           std::uint32_t /*layers*/, ShadowCasting /*shadows*/) override {
         if (!in_frame_) {
             return detail::no_frame("draw_mesh");
         }
