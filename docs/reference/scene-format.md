@@ -633,6 +633,56 @@ cannon and a deck.
   of the lists of parents that stay.
 - **Not yet.** Node2D and Control entities in one tree.
 
+## Paths
+
+`Path2D` and `Path3D` are Godot's paths: a curve through `points`, each with a `position` and
+`in` and `out` handles relative to it (`[0, 0]` or `[0, 0, 0]` for a sharp corner), joined by
+cubic Bézier segments. The curve is baked as Godot bakes it, each segment halved until its
+pieces are no longer than `bake_interval`, so its length and the points along it are Godot's.
+An entity with a `PathFollow2D` or `PathFollow3D` in a path's `Transform2D` or `Transform3D`
+`children` sits `progress` along its curve: each tick the `path_follow` system, after animations
+and before physics, wraps its `progress` and sets its transform's position and rotation, as
+Godot's `PathFollow2D` and `PathFollow3D` do.
+
+```json
+"track": {"components": {
+  "Transform3D": {"children": ["cart"]},
+  "Path3D": {"closed": true, "points": [
+    {"position": [0, 0, 3], "in": [2, 0, 0], "out": [-2, 0, 0]},
+    {"position": [-4, 0, 0], "in": [0, 0, 2], "out": [0, 0, -2]},
+    {"position": [0, 1, -3], "in": [-2, 0, 0], "out": [2, 0, 0]},
+    {"position": [4, 0, 0], "in": [0, 0, -2], "out": [0, 0, 2]}
+  ]}
+}},
+"cart": {"components": {
+  "Transform3D": {},
+  "PathFollow3D": {"progress": 2.5, "rotation_mode": "oriented"}
+}}
+```
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `Path2D` | `points` (`position`, `in`, `out`), `bake_interval` `5` pixels |
+| `Path3D` | `points` (`position`, `in`, `out`, `tilt` `0`: radians the up vector turns about the way the curve goes there), `closed` `false` (a segment back to the first point), `bake_interval` `0.2` meters, `up_vector_enabled` `true` (up vectors carried along the curve as a parallel transport frame; without them y is up) |
+| `PathFollow2D` | `progress` `0` (pixels along the curve), `h_offset` and `v_offset` `0` (along and across it), `rotates` `true` (turned to face the way it goes; otherwise the offsets are the world's axes and the rotation is left alone), `cubic_interp` `true`, `loop` `true` |
+| `PathFollow3D` | `progress` `0` (meters), `h_offset` and `v_offset` `0` (along its x and y), `rotation_mode` `"xyz"`, `use_model_front` `false` (+z faces the way it goes rather than -z), `cubic_interp` `true`, `loop` `true`, `tilt_enabled` `true` |
+
+- **Progress.** With `loop`, progress goes round: past the end it comes back from the start, and
+  below zero from the end. Without, it stops at the ends. The system writes the wrapped value
+  back, so an `AnimationPlayer` track or gameplay code can keep adding to it.
+- **Rotation.** `PathFollow3D`'s `rotation_mode` is Godot's: `"none"` leaves it unturned,
+  `"y"` turns it only about y, `"xy"` about y and x, `"xyz"` as the curve's up vectors say, and
+  `"oriented"` faces it the way the curve goes with y up. With `tilt_enabled`, the curve's tilt
+  rolls it after. Its `scale` is left as it is.
+- **Checks.** [`scene validate`](cli.md#scene-validate) and exports report a follower whose
+  parent has no path of its kind, and `"oriented"` on a `Path3D` without up vectors, as Godot's
+  configuration warnings.
+- **Commands.** [`path.get`](commands.md#pathget) returns a curve's length, the position and
+  rotation at offsets or ratios along it, and its nearest point to another.
+
+A [`CSGPolygon3D`](#csg-shapes) in `"path"` mode pushes its polygon along a `Path3D`.
+[examples/paths](../../examples/paths/) laps a cart round a rail.
+
 ## 3D nodes
 
 The 3D world is Godot's 3D nodes as components. Units are meters, y points up, and a camera or
@@ -984,7 +1034,7 @@ box shows that box's material, and faces from a shape with none get Godot's defa
 | `CSGSphere3D` | `radius` `0.5`, `radial_segments` `12`, `rings` `6`, `smooth_faces` `true` |
 | `CSGCylinder3D` | `radius` `0.5`, `height` `2`, `sides` `8`, `cone` `false` (a point at the top), `smooth_faces` `true` |
 | `CSGTorus3D` | `inner_radius` `0.5`, `outer_radius` `1` (they can't be equal), `sides` `8`, `ring_sides` `6`, `smooth_faces` `true` |
-| `CSGPolygon3D` | `polygon` (`[x, y]` points in the entity's xy plane; default a unit square), `mode` `"depth"` (pushed `depth` `1` along -z) or `"spin"` (turned `spin_degrees` `360` around y in `spin_sides` `8` steps), `smooth_faces` `false` |
+| `CSGPolygon3D` | `polygon` (`[x, y]` points in the entity's xy plane; default a unit square), `mode` `"depth"` (pushed `depth` `1` along -z), `"spin"` (turned `spin_degrees` `360` around y in `spin_sides` `8` steps) or `"path"` (pushed along a [path](#paths), below), `smooth_faces` `false` |
 | `CSGMesh3D` | `mesh` (a `.gltf`, `.glb`, `.obj`, `.fbx` or `.blend` file, its meshes placed as at rest; `""` for the entity's primitive mesh). The mesh must be closed |
 
 Each also has the fields of Godot's `CSGShape3D`:
@@ -1003,8 +1053,21 @@ Shapes are made as Godot makes them, face for face, then combined with
 builds the same here. A root keeps its mesh until a shape under it changes; moving the root
 alone doesn't remake it. [`csg.get`](commands.md#csgget) returns what a root makes.
 
+In `"path"` mode a `CSGPolygon3D` pushes its polygon along the `Path3D` of the entity its
+`path_node` names, as Godot's `MODE_PATH`: a ring of the polygon every `path_interval` (`1`)
+meters (`path_interval_type` `"distance"`), or as many rings as the path has points divided by
+`path_interval` (`"subdivide"`), each facing the way the curve goes. `path_rotation` turns the rings:
+`"polygon"` not at all, `"path"` to face along the curve, `"path_follow"` (the default) with its
+up vectors and tilt too; `path_rotation_accurate` (`false`) takes their direction from the curve
+itself rather than the next ring. `path_simplify_angle` (`0`) merges rings that turn less than
+that many degrees, `path_joined` (`false`) joins the last ring to the first with no ends, and
+`path_continuous_u` (`true`) and `path_u_distance` (`1`) lay the texture along it. The path's
+place in the world counts unless `path_local` (`false`), as in Godot, so leave the CSG root at
+the origin, and a path that changes or moves remakes the mesh.
+
 A shape that can't be made is left out and reported: a `polygon` with fewer than 3 points, no
-area or edges that cross, a `CSGMesh3D` whose mesh doesn't load or isn't closed, a torus whose
+area or edges that cross, a path mode `path_node` that names no `Path3D` or one with fewer than
+2 points, a `CSGMesh3D` whose mesh doesn't load or isn't closed, a torus whose
 radii are equal, or a root whose result is empty. An entity has at most one CSG shape and no
 `MeshInstance3D` beside it, since the shape draws itself.
 [examples/csg-shapes](../../examples/csg-shapes/) builds a hamlet.
@@ -1228,7 +1291,8 @@ energy multiplies twice, as Godot's does. A material's `disable_fog` leaves it c
 `/entities/<id>/components`), a `MeshInstance3D` with none (at its `MeshInstance3D`), a
 `TorusMesh` whose radii are equal, and a `mesh` that isn't a `.gltf`, `.glb`, `.obj` or `.fbx` file in the
 project, doesn't load, or sits beside a primitive mesh (at its `mesh`), as drawing would, and
-[CSG shapes](#csg-shapes) that can't be made. Exports
+[CSG shapes](#csg-shapes) that can't be made and [path followers](#paths) that can't follow.
+Exports
 check every `.gltf`, `.glb`, `.obj` and `.fbx` file as `scene validate` does, and ship them with their
 `.bin` buffers, `.mtl` libraries and images. `frame.summary` doesn't describe 3D meshes
 yet.

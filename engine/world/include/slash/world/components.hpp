@@ -611,6 +611,83 @@ SLASH_COMPONENT(WorldEnvironment, background_mode, background_color, background_
                 adjustment_enabled, adjustment_brightness, adjustment_contrast,
                 adjustment_saturation, adjustment_color_correction)
 
+// ---- Paths, as Godot's Path2D and Path3D with their curves (path.hpp) ----
+//
+// A path is a curve of Bézier segments from each point to the next in the entity's space, as
+// Godot's Curve2D and Curve3D: each point has control handles before (in) and after (out) it,
+// relative to it, and both zero make the segments straight lines. A PathFollow2D or PathFollow3D
+// child is placed on its parent's curve each tick by the path_follow system.
+
+// A point of a Path2D's curve, as Godot's Curve2D keeps them.
+struct CurvePoint2D {
+    Vec2 position;
+    Vec2 in;
+    Vec2 out;
+
+    friend bool operator==(const CurvePoint2D&, const CurvePoint2D&) = default;
+};
+SLASH_REFLECT(CurvePoint2D, position, in, out)
+
+// Godot's Path2D with its Curve2D.
+struct Path2D {
+    std::vector<CurvePoint2D> points;
+    float bake_interval = 5.0F; // pixels between the points it is baked into
+
+    friend bool operator==(const Path2D&, const Path2D&) = default;
+};
+SLASH_COMPONENT(Path2D, points, bake_interval)
+
+// Godot's PathFollow2D: places the entity's Transform2D on its parent's Path2D curve.
+struct PathFollow2D {
+    float progress = 0.0F; // pixels along the curve
+    float h_offset = 0.0F; // along the curve
+    float v_offset = 0.0F; // across it
+    bool rotates = true;
+    bool cubic_interp = true;
+    bool loop = true;
+
+    friend bool operator==(const PathFollow2D&, const PathFollow2D&) = default;
+};
+SLASH_COMPONENT(PathFollow2D, progress, h_offset, v_offset, rotates, cubic_interp, loop)
+
+// A point of a Path3D's curve, as Godot's Curve3D keeps them, with its tilt in radians.
+struct CurvePoint3D {
+    Vec3 position;
+    Vec3 in;
+    Vec3 out;
+    float tilt = 0.0F;
+
+    friend bool operator==(const CurvePoint3D&, const CurvePoint3D&) = default;
+};
+SLASH_REFLECT(CurvePoint3D, position, in, out, tilt)
+
+// Godot's Path3D with its Curve3D.
+struct Path3D {
+    std::vector<CurvePoint3D> points;
+    bool closed = false;        // a segment from the last point back to the first
+    float bake_interval = 0.2F; // meters between the points it is baked into
+    bool up_vector_enabled = true;
+
+    friend bool operator==(const Path3D&, const Path3D&) = default;
+};
+SLASH_COMPONENT(Path3D, points, closed, bake_interval, up_vector_enabled)
+
+// Godot's PathFollow3D: places the entity's Transform3D on its parent's Path3D curve.
+struct PathFollow3D {
+    float progress = 0.0F;             // meters along the curve
+    float h_offset = 0.0F;             // to the side
+    float v_offset = 0.0F;             // up
+    std::string rotation_mode = "xyz"; // "none", "y", "xy", "xyz" or "oriented"
+    bool use_model_front = false;
+    bool cubic_interp = true;
+    bool loop = true;
+    bool tilt_enabled = true;
+
+    friend bool operator==(const PathFollow3D&, const PathFollow3D&) = default;
+};
+SLASH_COMPONENT(PathFollow3D, progress, h_offset, v_offset, rotation_mode, use_model_front,
+                cubic_interp, loop, tilt_enabled)
+
 // ---- CSG shapes, as Godot's CSG nodes (engine/scene3d/src/csg.cpp) ----
 //
 // An entity with one of the components below is a CSG shape. A shape whose Transform3D parent is
@@ -722,14 +799,25 @@ SLASH_COMPONENT(CSGTorus3D, inner_radius, outer_radius, sides, ring_sides, smoot
                 operation, calculate_tangents, use_collision, collision_layer, collision_mask,
                 layers, cast_shadow)
 
-// Godot's CSGPolygon3D: a polygon in the entity's xy plane, pushed depth along -z ("depth") or
-// turned spin_degrees around y in spin_sides steps ("spin").
+// Godot's CSGPolygon3D: a polygon in the entity's xy plane, pushed depth along -z ("depth"),
+// turned spin_degrees around y in spin_sides steps ("spin") or pushed along a Path3D's curve
+// ("path"), where the path's place in the world is where it starts unless path_local.
 struct CSGPolygon3D {
     std::vector<Vec2> polygon{{0.0F, 0.0F}, {0.0F, 1.0F}, {1.0F, 1.0F}, {1.0F, 0.0F}};
-    std::string mode = "depth"; // "depth" or "spin"
+    std::string mode = "depth"; // "depth", "spin" or "path"
     float depth = 1.0F;
     float spin_degrees = 360.0F;
     int spin_sides = 8;
+    entt::entity path_node{entt::null};          // the Path3D it is pushed along, in path mode
+    std::string path_interval_type = "distance"; // or "subdivide"
+    float path_interval = 1.0F;
+    float path_simplify_angle = 0.0F;
+    std::string path_rotation = "path_follow"; // "polygon", "path" or "path_follow"
+    bool path_rotation_accurate = false;
+    bool path_local = false;
+    bool path_continuous_u = true;
+    float path_u_distance = 1.0F;
+    bool path_joined = false;
     bool smooth_faces = false;
     bool flip_faces = false;
     std::string operation = "union";
@@ -742,9 +830,11 @@ struct CSGPolygon3D {
 
     friend bool operator==(const CSGPolygon3D&, const CSGPolygon3D&) = default;
 };
-SLASH_COMPONENT(CSGPolygon3D, polygon, mode, depth, spin_degrees, spin_sides, smooth_faces,
-                flip_faces, operation, calculate_tangents, use_collision, collision_layer,
-                collision_mask, layers, cast_shadow)
+SLASH_COMPONENT(CSGPolygon3D, polygon, mode, depth, spin_degrees, spin_sides, path_node,
+                path_interval_type, path_interval, path_simplify_angle, path_rotation,
+                path_rotation_accurate, path_local, path_continuous_u, path_u_distance, path_joined,
+                smooth_faces, flip_faces, operation, calculate_tangents, use_collision,
+                collision_layer, collision_mask, layers, cast_shadow)
 
 // Godot's CSGMesh3D: a closed mesh as a shape, a model's meshes or the entity's primitive mesh.
 struct CSGMesh3D {

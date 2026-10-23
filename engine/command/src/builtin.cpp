@@ -46,6 +46,7 @@
 #include "slash/world/camera2d.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/path.hpp"
 #include "slash/world/scene.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/tree3d.hpp"
@@ -2814,6 +2815,100 @@ Reply csg_get(Session& session, const json::Value& params) {
             problems.push_back(std::move(item));
         }
         result["problems"] = std::move(problems);
+    }
+    return Reply::success(std::move(result));
+}
+
+// A Path2D's or Path3D's curve, baked as Godot bakes it: its length, the points at offsets along
+// it with the way it goes there, and the point of it nearest to another.
+Reply path_get(Session& session, const json::Value& params) {
+    const world::World& world = session.world();
+    const std::string id = text(params, "id");
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        return unknown_entity(world, id, "/id");
+    }
+    const bool cubic = flag(params, "cubic");
+    const bool global = flag(params, "global");
+    const json::Value* closest_to = params.find("closest_to");
+    // Offsets along the curve, then ratios of its length.
+    const auto offsets = [&](float length) {
+        std::vector<float> out;
+        if (const json::Value* given = params.find("offsets"); given != nullptr) {
+            for (const json::Value& offset : given->as_array()) {
+                out.push_back(static_cast<float>(offset.as_double()));
+            }
+        }
+        if (const json::Value* given = params.find("ratios"); given != nullptr) {
+            for (const json::Value& ratio : given->as_array()) {
+                out.push_back(static_cast<float>(ratio.as_double()) * length);
+            }
+        }
+        return out;
+    };
+    json::Value result;
+    if (const auto* path = world.ecs().try_get<const world::Path2D>(entity); path != nullptr) {
+        const std::shared_ptr<const world::Curve2D> curve = world::curve_2d(world, entity);
+        const world::Affine2D place =
+            global ? world::Tree2D(world).global_affine(entity) : world::Affine2D{};
+        result["points"] = path->points.size();
+        result["baked_points"] = curve->points().size();
+        result["length"] = rounded(curve->length());
+        json::Array samples;
+        for (const float offset : offsets(curve->length())) {
+            const world::Affine2D at = place * curve->sample_with_rotation(offset, cubic);
+            json::Value sample;
+            sample["offset"] = rounded(std::clamp(offset, 0.0F, curve->length()));
+            sample["position"] = point_value(at.origin);
+            sample["rotation"] = rounded(slash::atan2(at.x.y, at.x.x));
+            samples.push_back(std::move(sample));
+        }
+        if (!samples.empty()) {
+            result["samples"] = std::move(samples);
+        }
+        if (closest_to != nullptr) {
+            if (closest_to->size() != 2) {
+                return param_error(code::kInvalidParams, "/closest_to",
+                                   "a Path2D's points are [x, y]");
+            }
+            const auto xy = floats<2>(*closest_to);
+            const Vec2 to = place.inverse().apply({xy[0], xy[1]});
+            result["closest"]["offset"] = rounded(curve->closest_offset(to));
+            result["closest"]["position"] = point_value(place.apply(curve->closest_point(to)));
+        }
+        return Reply::success(std::move(result));
+    }
+    const auto* path = world.ecs().try_get<const world::Path3D>(entity);
+    if (path == nullptr) {
+        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no Path2D or Path3D");
+    }
+    const std::shared_ptr<const world::Curve3D> curve = world::curve_3d(world, entity);
+    const world::Affine3D place = global ? world::Tree3D(world).global(entity) : world::Affine3D{};
+    result["points"] = path->points.size();
+    result["baked_points"] = curve->points().size();
+    result["length"] = rounded(curve->length());
+    json::Array samples;
+    for (const float offset : offsets(curve->length())) {
+        const world::Affine3D at = place * curve->sample_with_rotation(offset, cubic, true);
+        json::Value sample;
+        sample["offset"] = rounded(std::clamp(offset, 0.0F, curve->length()));
+        sample["position"] = point_value(at.origin);
+        sample["rotation"] = point_value(world::euler(world::orthonormalized(at)));
+        sample["up"] = point_value(place.basis(curve->sample_up_vector(offset, true)));
+        sample["tilt"] = rounded(curve->sample_tilt(offset));
+        samples.push_back(std::move(sample));
+    }
+    if (!samples.empty()) {
+        result["samples"] = std::move(samples);
+    }
+    if (closest_to != nullptr) {
+        if (closest_to->size() != 3) {
+            return param_error(code::kInvalidParams, "/closest_to",
+                               "a Path3D's points are [x, y, z]");
+        }
+        const Vec3 to = place.inverse().apply(vec3_of(*closest_to));
+        result["closest"]["offset"] = rounded(curve->closest_offset(to));
+        result["closest"]["position"] = point_value(place.apply(curve->closest_point(to)));
     }
     return Reply::success(std::move(result));
 }
@@ -6605,6 +6700,40 @@ void register_builtin_commands(Registry& registry) {
             },
             {"id"}),
         .handler = skeleton_get,
+    });
+    json::Value path_offsets =
+        property("array", "Distances along the curve to sample, kept on it.");
+    path_offsets["items"]["type"] = "number";
+    path_offsets["maxItems"] = 1024;
+    json::Value path_ratios = property("array", "Fractions of its length to sample, 0 to 1.");
+    path_ratios["items"]["type"] = "number";
+    path_ratios["maxItems"] = 1024;
+    json::Value path_point = property("array", "Return the curve's nearest point to this, [x, y] "
+                                               "or [x, y, z], and its offset.");
+    path_point["items"]["type"] = "number";
+    path_point["minItems"] = 2;
+    path_point["maxItems"] = 3;
+    registry.add({
+        .name = "path.get",
+        .description = "Returns a Path2D's or Path3D's curve as baked: length, then for each "
+                       "offset or ratio asked for the position and rotation there (3D: euler, "
+                       "up vector and tilt), and the nearest point to closest_to. In the "
+                       "path's space, or the world's with global.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {
+                {"id", id_property("An entity with a Path2D or Path3D.")},
+                {"offsets", std::move(path_offsets)},
+                {"ratios", std::move(path_ratios)},
+                {"closest_to", std::move(path_point)},
+                {"cubic", property("boolean", "Cubic interpolation between baked points, as "
+                                              "PathFollow's cubic_interp. Default false.")},
+                {"global", property("boolean", "Positions and rotations in the world's space. "
+                                               "Default false.")},
+            },
+            {"id"}),
+        .handler = path_get,
     });
     registry.add({
         .name = "csg.get",

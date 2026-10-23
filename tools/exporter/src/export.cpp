@@ -308,7 +308,8 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     // Each tile map layer's cells must name tiles in its tile set, each AnimationPlayer's
     // animation and track targets must be in its library and targets, each AnimationTree's tree
     // must play from its libraries, controls must lay out, each sub-emitter must take part in a
-    // chain, each 3D mesh must draw and each navigation region's file must load.
+    // chain, each 3D mesh must draw, each path follower must have its path and each navigation
+    // region's file must load.
     if (errors.empty()) {
         errors = canvas::check_tile_layers(parsed.value(), reader);
     }

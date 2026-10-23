@@ -11,6 +11,7 @@
 #include "slash/render/image.hpp"
 #include "slash/scene3d/csg.hpp"
 #include "slash/ui/ui.hpp"
+#include "slash/world/path.hpp"
 
 #include <algorithm>
 #include <array>
@@ -317,6 +318,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
     world::add_camera_system(world, [](const world::World& w) { return ui::settings(w).viewport; });
     world::add_parallax_system(world,
                                [](const world::World& w) { return ui::settings(w).viewport; });
+    world::add_path_systems(world);
     add_particles_system(world);
     add_gpu_particles_system(world, &assets);
     // CSG roots keep their meshes until a shape changes, CSGMesh3D models read through assets.

@@ -1288,7 +1288,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     // threaded and run at the same time.
     CHECK(*engine.ok("engine.describe").find("systems") ==
           parse(R"(["input", "gui", "services", "controls", "movement", "animation_player",
-                    "animation_tree", "skeleton_modifiers", "physics2d", "physics3d", "navigation", "animated_sprite_2d",
+                    "animation_tree", "skeleton_modifiers", "path_follow", "physics2d", "physics3d", "navigation", "animated_sprite_2d",
                     "camera_2d", "parallax_2d", "cpu_particles_2d", "gpu_particles_2d", "ai", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
@@ -1309,6 +1309,9 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         {"name": "skeleton_modifiers",
          "doc": "Steps the chains of FABRIK3D, CCDIK3D and JacobianIK3D modifiers that aren't deterministic toward their targets, and moves the physical bones that follow the pose.",
          "priority": 920},
+        {"name": "path_follow",
+         "doc": "Wraps each PathFollow2D's and PathFollow3D's progress and places it on its parent's curve.",
+         "priority": 930},
         {"name": "physics2d",
          "doc": "Steps 2D physics: moves rigid and character bodies and reports contacts.",
          "priority": 950},
@@ -1328,10 +1331,10 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "priority": 1060},
         {"name": "cpu_particles_2d",
          "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100,
-         "threaded": true, "stage": 14, "reads": ["Transform2D"], "writes": ["CPUParticles2D"]},
+         "threaded": true, "stage": 15, "reads": ["Transform2D"], "writes": ["CPUParticles2D"]},
         {"name": "gpu_particles_2d",
          "doc": "Steps each GPUParticles2D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 14,
+         "threaded": true, "stage": 15,
          "reads": ["Transform2D", "LightOccluder2D", "TileMapLayer", "CanvasLayer", "Control",
                    "Camera2D"],
          "writes": ["GPUParticles2D", "assets"]},
@@ -1815,6 +1818,43 @@ TEST_CASE("csg.get returns the mesh a CSG root makes") {
     CHECK(*empty.find("triangles") == parse("0"));
     REQUIRE(empty.find("problems") != nullptr);
     CHECK(contains(json::write(*empty.find("problems")), "makes an empty shape"));
+}
+
+TEST_CASE("path.get samples a Path2D's or Path3D's curve and finds its nearest point") {
+    Engine engine;
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "road", "components": {
+            "Transform2D": {"position": [100, 0]},
+            "Path2D": {"points": [{"position": [0, 0]}, {"position": [0, 50]}]}}}},
+        {"command": "entity.create", "params": {"id": "rail", "components": {
+            "Transform3D": {"position": [0, 1, 0]},
+            "Path3D": {"points": [{"position": [0, 0, 0]}, {"position": [0, 0, -10], "tilt": 1}]}}}}
+    ]})");
+    CHECK(engine.ok("path.get", R"({"id": "road", "ratios": [0.5], "closest_to": [130, 20]})") ==
+          parse(R"({"points": 2, "baked_points": 15, "length": 50,
+                    "samples": [{"offset": 25, "position": [0, 25], "rotation": 1.5708}],
+                    "closest": {"offset": 20, "position": [0, 20]}})"));
+    // In the world's space with global; offsets past the end stay on the curve.
+    CHECK(engine.ok("path.get", R"({"id": "road", "offsets": [80], "closest_to": [130, 20],
+                                    "global": true})") ==
+          parse(R"({"points": 2, "baked_points": 15, "length": 50,
+                    "samples": [{"offset": 50, "position": [100, 50], "rotation": 1.5708}],
+                    "closest": {"offset": 20, "position": [100, 20]}})"));
+    const json::Value rail =
+        engine.ok("path.get", R"({"id": "rail", "offsets": [10], "global": true})");
+    CHECK(*rail.find("length") == parse("10"));
+    const json::Value& end = rail.find("samples")->as_array()[0];
+    CHECK(*end.find("position") == parse("[0, 1, -10]"));
+    CHECK(*end.find("tilt") == parse("1"));
+    CHECK(*end.find("rotation") == parse("[0, 0, -1]"));
+    CHECK(*end.find("up") == parse("[0.8415, 0.5403, 0]"));
+
+    auto reply = engine.fails("path.get", R"({"id": "rail", "closest_to": [1, 2]})",
+                              command::code::kInvalidParams);
+    CHECK(reply.message == "/closest_to: a Path3D's points are [x, y, z]");
+    engine.ok("entity.create", R"({"id": "post", "components": {"Transform3D": {}}})");
+    reply = engine.fails("path.get", R"({"id": "post"})", command::code::kInvalidParams);
+    CHECK(contains(reply.message, "has no Path2D or Path3D"));
 }
 
 TEST_CASE("skeleton.get returns a model's bones, posed as its entity draws them") {
