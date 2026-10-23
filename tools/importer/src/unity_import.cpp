@@ -17,6 +17,7 @@
 #include "slash/render/image.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/scene3d/model.hpp"
+#include "slash/scene3d/terrain.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -3054,7 +3055,7 @@ private:
             return std::string(k3DWhy);
         }
         if (type == "Terrain" || type == "TerrainCollider") {
-            return "terrains convert in a later import";
+            return std::string(k3DWhy);
         }
         if (type == "HingeJoint" || type == "FixedJoint" || type == "SpringJoint" ||
             type == "ConfigurableJoint" || type == "CharacterJoint" || type == "WheelCollider") {
@@ -10012,6 +10013,8 @@ private:
         const Component* listener = nullptr;
         const Component* rigidbody = nullptr;
         const Component* controller = nullptr;
+        const Component* terrain = nullptr;
+        const Component* terrain_collider = nullptr;
         std::vector<const Component*> colliders;
     };
 
@@ -10066,6 +10069,12 @@ private:
                 break;
             case kCharacterController:
                 parts.controller = &component;
+                break;
+            case kTerrain:
+                parts.terrain = &component;
+                break;
+            case kTerrainCollider:
+                parts.terrain_collider = &component;
                 break;
             case kSkinnedMeshRenderer:
                 problems_.add("component SkinnedMeshRenderer", ctx.where,
@@ -10136,6 +10145,7 @@ private:
             turned.emplace_back("listener", std::move(listener));
         }
         physics_3d(ctx, parts, out);
+        terrain_3d(ctx, parts, place, out);
         if (const auto body = out.components.find("RigidBody3D");
             out.collisions && body != out.components.end()) {
             body->second["contact_monitor"] = true;
@@ -10208,6 +10218,538 @@ private:
             return std::int64_t{1};
         }
         return std::int64_t{1} << layer;
+    }
+
+    // --- Terrains ---
+
+    // What a TerrainData asset gives an HTerrain: its maps, written once, its scale and its
+    // ground textures, and how wide it is, which the terrain moves by as x mirrors.
+    struct TerrainFields {
+        json::Value fields;
+        double width = 0.0;
+    };
+
+    // A Terrain as an HTerrain on an entity of its own under the object, moved its width along -x:
+    // Unity's terrains reach toward +x from their object, so mirrored they reach toward -x, and
+    // their columns are flipped. Its TerrainCollider, if it has one, is the HTerrain's collision.
+    void terrain_3d(const Context& ctx, const Parts3D& parts, const Place3D& place,
+                    Converted& out) {
+        if (parts.terrain == nullptr) {
+            if (parts.terrain_collider != nullptr) {
+                problems_.add("TerrainCollider without a Terrain", ctx.where,
+                              "an HTerrain draws and collides together; put the Terrain beside it");
+            }
+            return;
+        }
+        const Node& terrain = parts.terrain->body;
+        const ObjectRef data = ref_at(terrain, "m_TerrainData").value_or(ObjectRef{});
+        const Asset* asset = data.guid.empty() ? nullptr : asset_of(data.guid);
+        if (asset == nullptr) {
+            problems_.add("Terrain", ctx.where,
+                          "its TerrainData isn't an asset in the project's Assets folder");
+            return;
+        }
+        const std::string key = data.guid + ":" + std::to_string(data.file_id);
+        auto [it, inserted] = terrains_.try_emplace(key);
+        if (inserted) {
+            it->second = terrain_data_fields(*asset, data.file_id);
+        }
+        const std::optional<TerrainFields>& found = it->second;
+        if (!found) {
+            return;
+        }
+        const TerrainFields& converted = *found;
+        json::Object components;
+        json::Value hterrain = converted.fields;
+        const std::int64_t shadows = terrain.integer_at("m_ShadowCastingMode", 2);
+        static constexpr std::array<std::string_view, 4> kShadows{"off", "on", "double_sided",
+                                                                  "shadows_only"};
+        if (shadows >= 0 && shadows < 4 && shadows != 1) {
+            hterrain["cast_shadow"] = kShadows.at(static_cast<std::size_t>(shadows));
+        }
+        const GameObject& go = ctx.file->objects[static_cast<std::size_t>(ctx.index)];
+        const std::int64_t layer =
+            std::clamp<std::int64_t>(go.body.integer_at("m_Layer", 0), 0, 31);
+        if (json::Value layers = render_layers(layer, ctx.where); layers.as_int() != 1) {
+            hterrain["render_layers"] = std::move(layers);
+        }
+        const Component* collider = parts.terrain_collider;
+        if (collider != nullptr && collider->body.flag_at("m_Enabled", true)) {
+            if (const auto own = ref_at(collider->body, "m_TerrainData");
+                own && (own->guid != data.guid || own->file_id != data.file_id)) {
+                problems_.add("TerrainCollider of another TerrainData", ctx.where,
+                              "the HTerrain collides where it draws");
+            }
+            const std::uint32_t layer_bit = 1U << static_cast<std::uint32_t>(layer);
+            if (layer_bit != 1U) {
+                hterrain["collision_layer"] = std::int64_t{layer_bit};
+            }
+            if (const std::uint32_t mask = layer_masks_3d_.at(static_cast<std::size_t>(layer));
+                mask != 1U) {
+                hterrain["collision_mask"] = std::int64_t{mask};
+            }
+            Material material = default_material_3d_;
+            if (const auto ref = ref_at(collider->body, "m_Material"); ref && !ref->guid.empty()) {
+                material = physics_material_3d(ref->guid);
+            }
+            hterrain["friction"] = material.friction;
+            if (material.bounce != 0.0) {
+                hterrain["bounce"] = material.bounce;
+            }
+            if (parts.rigidbody != nullptr) {
+                problems_.add("TerrainCollider on a Rigidbody", ctx.where,
+                              "an HTerrain collides as static ground");
+            }
+        } else {
+            hterrain["collision_enabled"] = false;
+        }
+        json::Value transform;
+        transform["position"] = json::Array{tidy_number(-converted.width), 0.0, 0.0};
+        if (!terrain.flag_at("m_Enabled", true) || !terrain.flag_at("m_DrawHeightmap", true)) {
+            transform["visible"] = false;
+        }
+        if (quaternion_euler(place.rotation) != std::array<double, 3>{} ||
+            place.scale != std::array<double, 3>{1.0, 1.0, 1.0}) {
+            problems_.add("Terrain on a turned or scaled object", ctx.where,
+                          "Unity draws terrains unturned and unscaled; the HTerrain turns and "
+                          "scales with its object");
+        }
+        if (const auto material = ref_at(terrain, "m_MaterialTemplate");
+            material && !material->guid.empty() && asset_of(material->guid) != nullptr) {
+            problems_.add("Terrain material", ctx.where,
+                          "an HTerrain shades as HTerrain's Classic4 shader");
+        }
+        components["Transform3D"] = std::move(transform);
+        components["HTerrain"] = std::move(hterrain);
+        out.added.emplace_back("terrain", std::move(components));
+    }
+
+    // Unity's heights are 16-bit numbers from 0 to this, standing for 0 to the terrain's height.
+    static constexpr double kMaxTerrainHeight = 32766.0;
+
+    // The bytes a hex string stands for, as Unity writes arrays of numbers, or nullopt when it
+    // isn't one.
+    static std::optional<std::vector<std::uint8_t>> hex_bytes(std::string_view text) {
+        std::vector<std::uint8_t> out;
+        out.reserve(text.size() / 2);
+        int high = -1;
+        for (const char c : text) {
+            int nibble = -1;
+            if (c >= '0' && c <= '9') {
+                nibble = c - '0';
+            } else if (c >= 'a' && c <= 'f') {
+                nibble = c - 'a' + 10;
+            } else if (c >= 'A' && c <= 'F') {
+                nibble = c - 'A' + 10;
+            } else if (c == ' ' || c == '\n') {
+                continue; // where a long line was wrapped
+            } else {
+                return std::nullopt;
+            }
+            if (high < 0) {
+                high = nibble;
+            } else {
+                out.push_back(static_cast<std::uint8_t>((high << 4) | nibble));
+                high = -1;
+            }
+        }
+        if (high >= 0) {
+            return std::nullopt;
+        }
+        return out;
+    }
+
+    // A grid of values a power of two plus one across, made one finer: values halfway between
+    // two are their mean, and ones in the middle of four the mean of the four.
+    template <typename T, typename Mix>
+    static std::vector<T> refine_grid(const std::vector<T>& grid, int size, const Mix& mix) {
+        const int finer = (size * 2) - 1;
+        std::vector<T> out(static_cast<std::size_t>(finer) * static_cast<std::size_t>(finer));
+        const auto at = [&](int x, int z) {
+            return grid[(static_cast<std::size_t>(z) * static_cast<std::size_t>(size)) +
+                        static_cast<std::size_t>(x)];
+        };
+        for (int z = 0; z < finer; ++z) {
+            for (int x = 0; x < finer; ++x) {
+                const int x0 = x / 2;
+                const int z0 = z / 2;
+                const int x1 = std::min(x0 + (x % 2), size - 1);
+                const int z1 = std::min(z0 + (z % 2), size - 1);
+                out[(static_cast<std::size_t>(z) * static_cast<std::size_t>(finer)) +
+                    static_cast<std::size_t>(x)] =
+                    mix(at(x0, z0), at(x1, z0), at(x0, z1), at(x1, z1));
+            }
+        }
+        return out;
+    }
+
+    // The fields a TerrainData asset gives an HTerrain, its maps written beside it.
+    std::optional<TerrainFields> terrain_data_fields(const Asset& asset, std::int64_t file_id) {
+        const std::string& where = asset.path;
+        auto text = platform::read_file(source_ + asset.path);
+        auto objects =
+            text ? unity::parse_file(text.value()) : Result<std::vector<Object>>(text.error());
+        if (!objects) {
+            problems_.add("unreadable file", where, objects.error().message);
+            return std::nullopt;
+        }
+        const Object* data = nullptr;
+        std::map<std::int64_t, const Object*> by_id;
+        for (const Object& object : objects.value()) {
+            by_id[object.file_id] = &object;
+            if (object.type == "TerrainData" && (data == nullptr || object.file_id == file_id)) {
+                data = &object;
+            }
+        }
+        if (data == nullptr) {
+            problems_.add("Terrain", where, "the asset holds no TerrainData");
+            return std::nullopt;
+        }
+        const Node& body = data->body;
+        const Node* map = body.get("m_Heightmap");
+        const int unity_size =
+            map != nullptr ? static_cast<int>(map->integer_at("m_Resolution")) : 0;
+        const auto bytes = map != nullptr ? hex_bytes(map->string_at("m_Heights")) : std::nullopt;
+        const std::size_t count =
+            static_cast<std::size_t>(unity_size) * static_cast<std::size_t>(unity_size);
+        if (unity_size < 2 || !bytes || bytes->size() != count * 2) {
+            problems_.add("unreadable file", where,
+                          "its heightmap isn't m_Resolution by m_Resolution 16-bit heights");
+            return std::nullopt;
+        }
+        const double height = map->number_at("m_Scale.y", 600.0);
+        // Rows run along +z, as the HTerrain's do; columns are flipped, as x mirrors.
+        std::vector<float> heights(count);
+        for (int z = 0; z < unity_size; ++z) {
+            for (int x = 0; x < unity_size; ++x) {
+                const std::size_t from =
+                    ((static_cast<std::size_t>(z) * static_cast<std::size_t>(unity_size)) +
+                     static_cast<std::size_t>(unity_size - 1 - x)) *
+                    2;
+                const auto value =
+                    static_cast<std::int16_t>(static_cast<std::uint16_t>((*bytes)[from]) |
+                                              static_cast<std::uint16_t>((*bytes)[from + 1] << 8U));
+                heights[(static_cast<std::size_t>(z) * static_cast<std::size_t>(unity_size)) +
+                        static_cast<std::size_t>(x)] =
+                    static_cast<float>(
+                        std::clamp(static_cast<double>(value), 0.0, kMaxTerrainHeight) /
+                        kMaxTerrainHeight * height);
+            }
+        }
+        // Holes: Unity's are cells, an HTerrain's heights. A height is a hole where every cell
+        // around it is one.
+        std::vector<std::uint8_t> holes;
+        if (const auto cells = hex_bytes(map->string_at("m_Holes"));
+            cells && cells->size() == static_cast<std::size_t>(unity_size - 1) *
+                                          static_cast<std::size_t>(unity_size - 1)) {
+            const int cell_size = unity_size - 1;
+            const auto solid = [&](int x, int z) {
+                return x < 0 || z < 0 || x >= cell_size || z >= cell_size ||
+                       (*cells)[(static_cast<std::size_t>(z) *
+                                 static_cast<std::size_t>(cell_size)) +
+                                static_cast<std::size_t>(x)] != 0;
+            };
+            bool any = false;
+            holes.assign(count, 0);
+            for (int z = 0; z < unity_size; ++z) {
+                for (int x = 0; x < unity_size; ++x) {
+                    bool hole = true;
+                    bool touched = false;
+                    for (int dz = -1; dz <= 0; ++dz) {
+                        for (int dx = -1; dx <= 0; ++dx) {
+                            const int cx = x + dx;
+                            const int cz = z + dz;
+                            if (cx < 0 || cz < 0 || cx >= cell_size || cz >= cell_size) {
+                                continue;
+                            }
+                            touched = true;
+                            hole = hole && !solid(cx, cz);
+                        }
+                    }
+                    if (hole && touched) {
+                        holes[(static_cast<std::size_t>(z) * static_cast<std::size_t>(unity_size)) +
+                              static_cast<std::size_t>(unity_size - 1 - x)] = 1;
+                        any = true;
+                    }
+                }
+            }
+            bool cut = false;
+            for (int i = 0; i < cell_size * cell_size && !cut; ++i) {
+                cut = (*cells)[static_cast<std::size_t>(i)] == 0;
+            }
+            if (cut) {
+                problems_.add("Terrain holes", where,
+                              "a height is a hole where every cell around it is one, so holes "
+                              "come in half a cell at their edges and one a cell across closes");
+            }
+            if (!any) {
+                holes.clear();
+            }
+        }
+        // An HTerrain is 65 to 4097 heights across; Unity's smallest, 33, is made one finer.
+        int size = unity_size;
+        double cell = 1.0;
+        while (size < 65) {
+            heights = refine_grid(heights, size, [](float a, float b, float c, float d) {
+                return (a + b + c + d) / 4.0F;
+            });
+            if (!holes.empty()) {
+                holes =
+                    refine_grid(holes, size,
+                                [](std::uint8_t a, std::uint8_t b, std::uint8_t c, std::uint8_t d) {
+                                    return static_cast<std::uint8_t>(a & b & c & d);
+                                });
+            }
+            size = (size * 2) - 1;
+            cell /= 2.0;
+        }
+        if (size != unity_size) {
+            problems_.add("Terrain heightmap resolution", where,
+                          "an HTerrain is 65 to 4097 heights across; this one's " +
+                              std::to_string(unity_size) + " are made " + std::to_string(size));
+        }
+        TerrainFields out;
+        json::Value& fields = out.fields;
+        const std::string stem = destination(without_extension(asset.path));
+        float low = std::numeric_limits<float>::max();
+        float high = std::numeric_limits<float>::lowest();
+        for (const float h : heights) {
+            low = std::min(low, h);
+            high = std::max(high, h);
+        }
+        Vec2 range{std::floor(low), std::ceil(high)};
+        if (range.y <= range.x) {
+            range.y = range.x + 1.0F;
+        }
+        auto png = render::encode_gray16_png(scene3d::encode_heights(heights, size, range));
+        if (!png) {
+            problems_.add("unreadable file", where, png.error().message);
+            return std::nullopt;
+        }
+        add_file(stem + std::string(scene3d::kHeightmapSuffix), std::move(png).value());
+        fields["heightmap"] = stem + std::string(scene3d::kHeightmapSuffix);
+        fields["resolution"] = size;
+        fields["height_range"] =
+            json::Array{static_cast<double>(range.x), static_cast<double>(range.y)};
+        const double cell_x = map->number_at("m_Scale.x", 1.0) * cell;
+        const double cell_z = map->number_at("m_Scale.z", 1.0) * cell;
+        fields["map_scale"] = json::Array{tidy_number(cell_x), 1.0, tidy_number(cell_z)};
+        out.width = cell_x * (size - 1);
+        if (!holes.empty()) {
+            render::Image color{
+                .width = static_cast<std::uint32_t>(size),
+                .height = static_cast<std::uint32_t>(size),
+                .pixels = std::vector<std::uint8_t>(
+                    static_cast<std::size_t>(size) * static_cast<std::size_t>(size) * 4, 255),
+                .block_format = render::TextureFormat::Rgba8,
+                .blocks = {}};
+            for (std::size_t i = 0; i < holes.size(); ++i) {
+                if (holes[i] != 0) {
+                    color.pixels[(i * 4) + 3] = 0;
+                }
+            }
+            if (auto written = render::encode_png(color)) {
+                add_file(stem + ".color.png", std::move(written).value());
+                fields["colormap"] = stem + ".color.png";
+            }
+        }
+        terrain_layers(*data, by_id, cell_x, size, stem, where, fields);
+        if (const Node* details = body.get("m_DetailDatabase")) {
+            const Node* trees = details->get("m_TreeInstances");
+            if (trees != nullptr && !trees->items.empty()) {
+                problems_.add("Terrain trees", where,
+                              "trees on terrains don't convert; place them as model instances");
+            }
+            const Node* grass = details->get("m_DetailPrototypes");
+            if (grass != nullptr && !grass->items.empty()) {
+                problems_.add("Terrain details", where,
+                              "grass and other details on terrains don't convert");
+            }
+        }
+        return out;
+    }
+
+    // A TerrainData's first four terrain layers as the HTerrain's textures, and its first alpha
+    // map, their weights, as its splat map.
+    void terrain_layers(const Object& data, const std::map<std::int64_t, const Object*>& by_id,
+                        double cell, int size, const std::string& stem, const std::string& where,
+                        json::Value& fields) {
+        const Node* splats = data.body.get("m_SplatDatabase");
+        if (splats == nullptr) {
+            return;
+        }
+        if (const Node* old = splats->get("m_Splats"); old != nullptr && !old->items.empty()) {
+            problems_.add("Terrain splat prototypes", where,
+                          "Unity 2018.3 made them terrain layers; open the project in it to "
+                          "convert them, then import again");
+        }
+        const Node* layers = splats->get("m_TerrainLayers");
+        json::Array textures;
+        for (const Node& item : layers != nullptr ? layers->items : std::vector<Node>{}) {
+            if (textures.size() == 4) {
+                problems_.add("Terrain layers past the fourth", where,
+                              "an HTerrain mixes 4 textures, as HTerrain's Classic4 shader; the "
+                              "others are left out");
+                break;
+            }
+            const auto ref = unity::object_ref(item);
+            textures.push_back(ref && !ref->guid.empty() ? terrain_layer(ref->guid, cell)
+                                                         : json::Value(json::Object{}));
+        }
+        if (textures.empty()) {
+            return;
+        }
+        const std::size_t layer_count = textures.size();
+        fields["textures"] = std::move(textures);
+        // Unity weighs layers by their alpha maps; there is no bump in its textures to blend by.
+        fields["depth_blending"] = false;
+        if (layer_count < 2) {
+            return; // the first texture covers the terrain
+        }
+        const Node* alphas = splats->get("m_AlphaTextures");
+        const auto first = alphas != nullptr && !alphas->items.empty()
+                               ? unity::object_ref(alphas->items.front())
+                               : std::nullopt;
+        const auto found = first ? by_id.find(first->file_id) : by_id.end();
+        if (found == by_id.end() || found->second->type != "Texture2D") {
+            problems_.add("Terrain alpha map", where,
+                          "it has no alpha map in its asset, so the first texture covers it");
+            return;
+        }
+        const Node& texture = found->second->body;
+        const auto width = static_cast<std::size_t>(texture.integer_at("m_Width"));
+        const auto height = static_cast<std::size_t>(texture.integer_at("m_Height"));
+        const std::int64_t format = texture.integer_at("m_TextureFormat");
+        const auto texels = hex_bytes(texture.string_at("_typelessdata"));
+        // RGBA32 (4), ARGB32 (5) and BGRA32 (14), each a byte a channel.
+        static constexpr std::array<std::array<std::size_t, 4>, 3> kOrders{
+            {{0, 1, 2, 3}, {1, 2, 3, 0}, {2, 1, 0, 3}}};
+        std::size_t order = 0;
+        if (format == 5) {
+            order = 1;
+        } else if (format == 14) {
+            order = 2;
+        }
+        if ((format != 4 && format != 5 && format != 14) || width == 0 || height == 0 || !texels ||
+            texels->size() < width * height * 4) {
+            problems_.add("Terrain alpha map", where,
+                          "it isn't an uncompressed texture of 8-bit channels, so the first "
+                          "texture covers the terrain");
+            return;
+        }
+        // Each height takes the weights where it is on the alpha map, whose texels sit at
+        // their centers and whose rows run along +z from the bottom, as the heights' do;
+        // columns are flipped, as x mirrors.
+        const auto texel = [&](std::size_t x, std::size_t z, std::size_t channel) {
+            return static_cast<double>(
+                (*texels)[(((z * width) + x) * 4) + kOrders.at(order).at(channel)]);
+        };
+        render::Image splat{.width = static_cast<std::uint32_t>(size),
+                            .height = static_cast<std::uint32_t>(size),
+                            .pixels = {},
+                            .block_format = render::TextureFormat::Rgba8,
+                            .blocks = {}};
+        splat.pixels.resize(static_cast<std::size_t>(size) * static_cast<std::size_t>(size) * 4);
+        for (int z = 0; z < size; ++z) {
+            for (int x = 0; x < size; ++x) {
+                const double u = static_cast<double>(size - 1 - x) / (size - 1);
+                const double v = static_cast<double>(z) / (size - 1);
+                const double fx = std::clamp((u * static_cast<double>(width)) - 0.5, 0.0,
+                                             static_cast<double>(width - 1));
+                const double fz = std::clamp((v * static_cast<double>(height)) - 0.5, 0.0,
+                                             static_cast<double>(height - 1));
+                const auto x0 = static_cast<std::size_t>(fx);
+                const auto z0 = static_cast<std::size_t>(fz);
+                const std::size_t x1 = std::min(x0 + 1, width - 1);
+                const std::size_t z1 = std::min(z0 + 1, height - 1);
+                const double tx = fx - static_cast<double>(x0);
+                const double tz = fz - static_cast<double>(z0);
+                for (std::size_t channel = 0; channel < 4; ++channel) {
+                    const double top =
+                        std::lerp(texel(x0, z0, channel), texel(x1, z0, channel), tx);
+                    const double bottom =
+                        std::lerp(texel(x0, z1, channel), texel(x1, z1, channel), tx);
+                    splat.pixels[((static_cast<std::size_t>(z) * static_cast<std::size_t>(size) +
+                                   static_cast<std::size_t>(x)) *
+                                  4) +
+                                 channel] =
+                        static_cast<std::uint8_t>(std::lround(std::lerp(top, bottom, tz)));
+                }
+            }
+        }
+        auto png = render::encode_png(splat);
+        if (!png) {
+            problems_.add("unreadable file", where, png.error().message);
+            return;
+        }
+        add_file(stem + ".splat.png", std::move(png).value());
+        fields["splatmap"] = stem + ".splat.png";
+    }
+
+    // A TerrainLayer as an HTerrain texture: its diffuse texture, its normal map and how many
+    // cells one repeat of them covers.
+    json::Value terrain_layer(const std::string& guid, double cell) {
+        json::Value out = json::Object{};
+        const Asset* asset = asset_of(guid);
+        auto text = asset != nullptr ? platform::read_file(source_ + asset->path)
+                                     : Result<std::string>(Error{.code = ErrorCode::NotFound,
+                                                                 .message = "not in the project"});
+        auto objects =
+            text ? unity::parse_file(text.value()) : Result<std::vector<Object>>(text.error());
+        const Object* layer = nullptr;
+        if (objects) {
+            for (const Object& object : objects.value()) {
+                if (object.type == "TerrainLayer") {
+                    layer = &object;
+                }
+            }
+        }
+        const std::string where = asset != nullptr ? asset->path : "TerrainLayer " + guid;
+        if (layer == nullptr) {
+            problems_.add("Terrain layer", where,
+                          "not a terrain layer in the project's Assets folder; its texture is "
+                          "white");
+            return out;
+        }
+        const Node& body = layer->body;
+        const auto texture = [&](std::string_view key) -> std::string {
+            const auto ref = ref_at(body, key);
+            if (!ref || ref->null()) {
+                return {};
+            }
+            const Asset* file = asset_of(ref->guid);
+            if (file == nullptr || !is_texture_file(extension_of(file->path))) {
+                problems_.add("Terrain layer texture", where + ": " + std::string(key),
+                              file == nullptr ? "a texture from outside the project's Assets folder"
+                                              : file->path + ": not a texture");
+                return {};
+            }
+            return destination(file->path);
+        };
+        if (std::string albedo = texture("m_DiffuseTexture"); !albedo.empty()) {
+            out["albedo_bump"] = std::move(albedo);
+        }
+        if (std::string normal = texture("m_NormalMapTexture"); !normal.empty()) {
+            out["normal_roughness"] = std::move(normal);
+        }
+        const double tile_x = body.number_at("m_TileSize.x", 15.0);
+        const double tile_y = body.number_at("m_TileSize.y", 15.0);
+        out["uv_scale"] = tidy_number(tile_x / cell);
+        if (std::abs(tile_x - tile_y) > 1e-9) {
+            problems_.add("Terrain layer tile size", where,
+                          "its textures repeat as often both ways, by its x");
+        }
+        if (body.number_at("m_TileOffset.x") != 0.0 || body.number_at("m_TileOffset.y") != 0.0) {
+            problems_.add("Terrain layer tile offset", where, "its textures start at the corner");
+        }
+        const auto mask = ref_at(body, "m_MaskMapTexture");
+        if (body.number_at("m_Smoothness") != 0.0 || body.number_at("m_Metallic") != 0.0 ||
+            (mask && !mask->null()) || body.number_at("m_NormalScale", 1.0) != 1.0) {
+            problems_.add("Terrain layer surface", where,
+                          "an HTerrain's textures take roughness from their normal maps' alpha; "
+                          "smoothness, metallic, mask maps and normal strength don't convert");
+        }
+        return out;
     }
 
     // --- Meshes picked out of model files ---
@@ -12233,6 +12775,7 @@ private:
     std::map<std::string, std::optional<json::Value>> surfaces_; // by material GUID
     json::Value default_surface_ = json::Object{{"roughness", 0.5}};
     std::map<std::string, Material> materials_3d_;
+    std::map<std::string, std::optional<TerrainFields>> terrains_; // by TerrainData GUID:file ID
     Material default_material_3d_{kDefaultFriction3D, 0.0};
     Node physics3d_;
     std::array<std::uint32_t, 32> layer_masks_3d_ = [] {
