@@ -621,7 +621,15 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         `AnimationNodeStateMachine`
   - [x] Two-bone, FABRIK, CCD and Jacobian IK with joint limits, as Godot 4.6's `TwoBoneIK3D`,
         `FABRIK3D`, `CCDIK3D` and `JacobianIK3D`
-- [ ] Navigation on Recast and Detour, in 2D and 3D, with avoidance
+- [ ] Navigation in 2D and 3D, as Godot 4.6's `NavigationServer2D` and `NavigationServer3D`
+  - [x] Navigation meshes and polygons (`.navmesh.json`, `.navpoly.json`), regions, links,
+        layers, edge connections and agents' paths, as Godot's own A* over polygons;
+        `navigation.path`, `navigation.closest`, `navigation.random`, `navigation.map` and
+        `navigation.agent`
+  - [ ] Baking navigation meshes from a scene's geometry on Recast in 3D, and polygons on
+        Clipper2 and polypartition in 2D, as Godot does
+  - [ ] Avoidance on RVO2 for agents and obstacles
+  - [ ] Navigation layers on tile sets
 - [ ] 3D audio, as Godot's `AudioStreamPlayer3D` and `AudioListener3D`: attenuation models,
       Doppler, emission angles, `Area3D` reverb and up to 7.1 speakers
 - [ ] Heightmap terrain; CSG and grid-based tile placement
@@ -779,7 +787,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Refresh rates and frame pacing | V-Sync modes, frame cap, display refresh rates, variable refresh rate, rendering interpolated between fixed ticks | 5 | Done |
 | UI | Retained UI with flexbox layout and themes, defined in text | 5 | Done |
 | Text and fonts | FreeType, HarfBuzz, MSDF fonts, BiDi, IME input, fallback fonts | 5 | Done |
-| Navigation | Recast and Detour, 2D and 3D, avoidance | 7 | Planned |
+| Navigation | Godot's navigation server, Recast baking, 2D and 3D, avoidance | 7 | In part: navigation meshes, regions, links, layers and agents' paths are done; baking, avoidance and tile navigation next |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Done |
 | Profiling | Tracy, plus `perf.stats` over the command API | 5, 6 | Done: Tracy, and `perf.stats` reports frame pacing, tick and system times and memory by part of the engine |
 | Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | In progress: the library, search, refining, hosted and test generators, feedback, team sharing and ready-to-use texture forms done; 3D in 7 |

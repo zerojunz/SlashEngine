@@ -50,6 +50,16 @@ checks it.
 | `physics_3d.linear_damp` | No | `0.1` | How fast 3D rigid bodies slow down, per second, combined with a body's own as in 2D |
 | `physics_3d.angular_damp` | No | `0.1` | How fast 3D rigid bodies stop turning, per second, combined the same way |
 | `physics_3d.areas_detect_static_bodies` | No | `false` | Whether `Area3D` reports static bodies, as Godot's `physics/jolt_physics_3d/simulation/areas_detect_static_bodies` |
+| `navigation_2d.cell_size` | No | `1` | The 2D map's cell size in pixels, as Godot's `navigation/2d/default_cell_size`: edge ends are rounded to it, so make navigation polygons for it |
+| `navigation_2d.merge_rasterizer_cell_scale` | No | `1` | Edge ends closer than `cell_size` times this (at most 0.1) are the same point, as Godot's |
+| `navigation_2d.use_edge_connections` | No | `true` | Whether regions' edges that come within `edge_connection_margin` join |
+| `navigation_2d.edge_connection_margin` | No | `1` | How close, in pixels, two regions' edges must come to join |
+| `navigation_2d.link_connection_radius` | No | `4` | How far, in pixels, a link's ends reach for a region |
+| `navigation_3d.cell_size`, `navigation_3d.cell_height` | No | `0.25` | The 3D map's cell size and height in meters, as Godot's `navigation/3d/default_cell_size` and `default_cell_height` |
+| `navigation_3d.merge_rasterizer_cell_scale`, `use_edge_connections` | No | `1`, `true` | As in 2D |
+| `navigation_3d.edge_connection_margin` | No | `0.25` | How close, in meters, two regions' edges must come to join |
+| `navigation_3d.link_connection_radius` | No | `1` | How far, in meters, a link's ends reach for a region |
+| `navigation_3d.up` | No | `[0, 1, 0]` | Which way is up for paths, as Godot's `navigation/3d/default_up` |
 | `gui.theme` | No | | A [`.theme.json`](scene-format.md#themes) file every control uses after its own and its parents' themes, before Godot's default theme, as Godot's `gui/theme/custom`. `project validate` checks that it exists and `export` checks and ships it |
 | `gui.allow_system_fallback` | No | `true` | Let text take characters its fonts and their [fallbacks](scene-format.md#fonts) lack from fonts installed on the machine. Off, text lays out the same on every machine, as on the web, which has none; a `.font.json` file's `allow_system_fallback` turns them off for one font |
 | `gui.tooltip_delay_sec` | No | `0.5` | Seconds the pointer rests on a control before its [tooltip](scene-format.md#tooltips-and-drag-and-drop) shows, as Godot's `gui/timers/tooltip_delay_sec` |
