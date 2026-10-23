@@ -1,0 +1,109 @@
+{
+  "entities": {
+    "courtyard": {
+      "components": {
+        "NavigationRegion3D": {
+          "navigation_mesh": "nav/courtyard.navmesh.json"
+        },
+        "Transform3D": {
+          "children": ["ground", "wall", "well", "platform", "ramp"]
+        }
+      }
+    },
+    "garden": {
+      "components": {
+        "NavigationRegion2D": {
+          "navigation_polygon": "nav/garden.navpoly.json"
+        },
+        "Transform2D": {
+          "children": ["pond", "tree"]
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [12.0, 1.0, 12.0]
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [0.0, -0.5, 0.0]
+        }
+      }
+    },
+    "platform": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [4.0, 1.0, 3.0]
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [3.0, 0.5, -4.5]
+        }
+      }
+    },
+    "pond": {
+      "components": {
+        "CollisionPolygon2D": {
+          "polygon": [
+            [120.0, 60.0],
+            [200.0, 50.0],
+            [220.0, 110.0],
+            [150.0, 130.0]
+          ]
+        },
+        "StaticBody2D": {},
+        "Transform2D": {}
+      }
+    },
+    "ramp": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [2.0, 0.1, 4.2]
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [3.0, 0.45, -1.0],
+          "rotation": [0.245, 0.0, 0.0]
+        }
+      }
+    },
+    "tree": {
+      "components": {
+        "CollisionShape2D": {
+          "radius": 16.0,
+          "shape": "circle"
+        },
+        "StaticBody2D": {},
+        "Transform2D": {
+          "position": [70.0, 90.0]
+        }
+      }
+    },
+    "wall": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [0.5, 2.0, 6.0]
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [-2.0, 1.0, 0.0]
+        }
+      }
+    },
+    "well": {
+      "components": {
+        "CylinderMesh": {
+          "bottom_radius": 0.5,
+          "height": 1.0,
+          "top_radius": 0.5
+        },
+        "MeshInstance3D": {},
+        "Transform3D": {
+          "position": [1.5, 0.5, 3.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

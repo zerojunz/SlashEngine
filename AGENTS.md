@@ -973,6 +973,17 @@ and `check_scene` checks regions' files for `scene validate` and exports. Paths 
 everywhere: the library builds with `-ffp-contract=off`, keeps Godot's insertion order where it walks a hash map, and picks random points with a seeded PCG.
 `examples/navigation` has a guard crossing a hatch and a cat in a yard.
 
+Baking follows Godot 4.6's `NavMeshGenerator3D` and `NavMeshGenerator2D`. `src/sources.cpp`
+parses the geometry under a region as Godot's parsers do (`parse_source_geometry`: meshes and
+static bodies' shapes in 3D, static bodies' shapes as obstructions in 2D), `src/bake_3d.cpp`
+runs Recast with Godot's settings and keeps the detail mesh's triangles, and `src/bake_2d.cpp`
+merges and shrinks outlines with Clipper2 and splits them with PolyPartition. `navigation.bake`
+writes the result into the region's file with `with_polygons`, keeping its settings, and records
+undo with `Session::add_undo_file`, which puts back a file's text (or removes it) and refuses if
+the file changed since. Recast, Clipper2 and PolyPartition build with `-ffp-contract=off`, and
+the walkable slope's cosine comes from `slash::cos_sin`, so bakes are the same everywhere.
+`examples/navigation-baking` bakes a courtyard and a garden.
+
 ## Particles
 
 `CPUParticles2D` is Godot's, with Godot's field names and angles in degrees. The

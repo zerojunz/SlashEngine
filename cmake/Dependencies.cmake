@@ -249,6 +249,39 @@ slash_add_dependency(stb DOWNLOAD_ONLY TRUE)
 # source file).
 slash_add_dependency(ufbx DOWNLOAD_ONLY TRUE)
 
+# Baking navigation meshes, as Godot does (engine/navigation): Recast voxelizes 3D geometry into
+# polygons, and Clipper2 and PolyPartition merge, cut and split 2D outlines. No fused multiply-adds,
+# so bakes give the same polygons on every platform.
+slash_add_dependency(recastnavigation DOWNLOAD_ONLY TRUE)
+if(recastnavigation_ADDED)
+    file(GLOB _slash_recast_sources ${recastnavigation_SOURCE_DIR}/Recast/Source/*.cpp)
+    add_library(slash_recast STATIC ${_slash_recast_sources})
+    target_include_directories(slash_recast SYSTEM PUBLIC
+        ${recastnavigation_SOURCE_DIR}/Recast/Include)
+    target_compile_options(slash_recast PRIVATE
+        $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)
+endif()
+slash_add_dependency(Clipper2 DOWNLOAD_ONLY TRUE)
+if(Clipper2_ADDED)
+    file(GLOB _slash_clipper2_sources ${Clipper2_SOURCE_DIR}/CPP/Clipper2Lib/src/*.cpp)
+    add_library(slash_clipper2 STATIC ${_slash_clipper2_sources})
+    target_include_directories(slash_clipper2 SYSTEM PUBLIC
+        ${Clipper2_SOURCE_DIR}/CPP/Clipper2Lib/include)
+    target_compile_options(slash_clipper2 PRIVATE
+        $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)
+    # Its headers use std::back_inserter without including <iterator>, which newer libc++ (as in
+    # llvm-mingw) no longer brings in through <algorithm>.
+    target_compile_options(slash_clipper2 PUBLIC
+        "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:SHELL:-include iterator>")
+endif()
+slash_add_dependency(polypartition DOWNLOAD_ONLY TRUE)
+if(polypartition_ADDED)
+    add_library(slash_polypartition STATIC ${polypartition_SOURCE_DIR}/src/polypartition.cpp)
+    target_include_directories(slash_polypartition SYSTEM PUBLIC ${polypartition_SOURCE_DIR}/src)
+    target_compile_options(slash_polypartition PRIVATE
+        $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)
+endif()
+
 # Compressed textures, BC7 and ASTC 4x4, which GPUs sample as they are: engine/render builds the
 # decoders, bc7enc_rdo's bc7decomp.cpp and astc-encoder without its compressor, for devices that
 # can't sample a format (the software device, or a GPU without it). Tools and tests also build

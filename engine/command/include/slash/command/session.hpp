@@ -140,6 +140,13 @@ public:
     // calls as one staged change; if one fails, for example because the file changed since,
     // nothing changes and undo reports why.
     void add_undo_call(std::string command, json::Value undo_params, json::Value redo_params);
+    // Undo for a file a command staged: undo puts back the text it had before (removing it when
+    // before is nullopt, as the command made it), and redo writes after again. Either fails and
+    // changes nothing if the file changed since.
+    void add_undo_file(std::string path, std::optional<std::string> before, std::string after);
+    // Says the command running now found nothing to change, as a bake that comes out the same,
+    // so no undo step is recorded for it.
+    void mark_unchanged() noexcept { unchanged_ = true; }
 
     // Who is calling, for records such as the storyboard journal: the MCP client's name, or "".
     [[nodiscard]] const std::string& client() const noexcept { return client_; }
@@ -217,17 +224,25 @@ private:
         json::Value redo;
     };
 
+    struct UndoFile {
+        std::string path;
+        std::optional<std::string> before; // nullopt: there was no file
+        std::optional<std::string> after;
+    };
+
     struct Snapshot {
         std::string label;
         SavedWorld saved;
         std::vector<UndoCall> calls;
         bool restores_world = true; // false when the step changed only files
+        std::vector<UndoFile> files;
     };
 
     struct StagedFile {
         std::optional<std::string> seen; // on disk when the command first read it
         std::optional<std::string> text; // what to write, if the command replaced it
         std::string append;              // what to append
+        bool remove = false;             // remove the file instead
     };
 
     struct Subscription {
@@ -256,6 +271,7 @@ private:
     Result<void> commit_files();
     void discard_files();
     Result<StagedFile*> staged(std::string_view path);
+    Result<void> stage_remove(std::string_view path);
     [[nodiscard]] Result<std::optional<std::string>> read_disk(std::string_view path) const;
     // Runs a step's undo calls (or its redo calls) as one staged change.
     Reply replay(const Snapshot& step, bool undo);
@@ -274,8 +290,9 @@ private:
     std::map<std::string, SavedWorld, std::less<>> snapshots_;
     int depth_ = 0; // how many commands are running (more than one inside a batch)
     std::uint64_t revision_ = 0;
-    bool edited_ = false;   // an Edit command succeeded during the outermost call
-    bool replaced_ = false; // a Replace command succeeded during the outermost call
+    bool edited_ = false;    // an Edit command succeeded during the outermost call
+    bool unchanged_ = false; // the command running now called mark_unchanged
+    bool replaced_ = false;  // a Replace command succeeded during the outermost call
     bool dry_running_ = false;
     bool playing_ = false;
     std::map<std::string, Subscription, std::less<>> subscriptions_;
@@ -287,7 +304,8 @@ private:
     std::map<std::string, StagedFile, std::less<>> staged_;
     bool staging_ = false;
     std::vector<UndoCall> undo_calls_; // from the command running now
-    bool replaying_ = false;           // undo or redo is running a step's calls
+    std::vector<UndoFile> undo_files_;
+    bool replaying_ = false; // undo or redo is running a step's calls
     std::string client_;
     CallListener call_listener_;
     mutable std::mutex logs_mutex_; // the log sink may run on any thread

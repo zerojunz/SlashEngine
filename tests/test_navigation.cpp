@@ -3,13 +3,16 @@
 #include "slash/core/json_schema.hpp"
 #include "slash/core/math.hpp"
 #include "slash/navigation/navigation.hpp"
+#include "slash/scene3d/primitive.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/world.hpp"
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <map>
@@ -586,4 +589,283 @@ TEST_CASE("navigation settings come from project.json's navigation_2d and naviga
     CHECK(!json::validate(parse(R"({"up": [0, 1, 0]})"),
                           navigation::settings_schema(navigation::Map::TwoD))
                .empty());
+}
+
+// ---- Baking
+
+namespace {
+
+// A 10 by 10 static floor whose top is at y 0, and a 1 by 3 by 1 pillar mesh standing on it at
+// (2, 2), both under a region.
+entt::entity floor_and_pillar(Scene& scene) {
+    scene.create("floor", R"({"Transform3D": {"position": [0, -0.5, 0]}, "StaticBody3D": {},
+                              "CollisionShape3D": {"size": [10, 1, 10]}})");
+    scene.create("pillar", R"({"Transform3D": {"position": [2, 1.5, 2]}, "MeshInstance3D": {},
+                               "BoxMesh": {"size": [1, 3, 1]}})");
+    return scene.create("level", R"({"Transform3D": {"children": ["floor", "pillar"]},
+                                     "NavigationRegion3D": {}})");
+}
+
+std::size_t triangles(const navigation::SourceGeometry3D& geometry) {
+    return geometry.indices.size() / 3;
+}
+
+template <typename V>
+float lowest(const std::vector<V>& points, float V::*axis) {
+    float out = points.front().*axis;
+    for (const V& point : points) {
+        out = std::min(out, point.*axis);
+    }
+    return out;
+}
+
+template <typename V>
+float highest(const std::vector<V>& points, float V::*axis) {
+    float out = points.front().*axis;
+    for (const V& point : points) {
+        out = std::max(out, point.*axis);
+    }
+    return out;
+}
+
+// The area a 2D bake's polygons cover.
+double area(const navigation::NavigationPolygon& polygon) {
+    double out = 0.0;
+    for (const std::vector<int>& indices : polygon.polygons) {
+        double twice = 0.0;
+        for (std::size_t i = 0; i < indices.size(); ++i) {
+            const Vec2 a = polygon.vertices[static_cast<std::size_t>(indices[i])];
+            const Vec2 b =
+                polygon.vertices[static_cast<std::size_t>(indices[(i + 1) % indices.size()])];
+            twice += (static_cast<double>(a.x) * b.y) - (static_cast<double>(b.x) * a.y);
+        }
+        out += std::abs(twice) / 2.0;
+    }
+    return out;
+}
+
+navigation::NavigationPolygon square_outline(float size) {
+    navigation::NavigationPolygon settings;
+    settings.outlines = {{{0.0F, 0.0F}, {size, 0.0F}, {size, size}, {0.0F, size}}};
+    return settings;
+}
+
+} // namespace
+
+TEST_CASE("a 3D bake finds the walkable floor around what stands on it") {
+    Scene scene;
+    const entt::entity level = floor_and_pillar(scene);
+    const navigation::NavigationMesh settings;
+    std::vector<std::string> warnings;
+    const navigation::SourceGeometry3D geometry =
+        navigation::parse_source_geometry(scene.world, scene.assets, level, settings, &warnings);
+    CHECK(warnings.empty());
+    CHECK(triangles(geometry) == 24); // the floor's box and the pillar's mesh, 12 each
+
+    auto baked = navigation::bake(settings, geometry, &warnings);
+    REQUIRE(baked.ok());
+    CHECK(warnings.empty());
+    const navigation::NavigationMesh& mesh = baked.value();
+    CHECK(mesh.polygons.size() == 11);
+    // The floor's top, raised a cell as Recast's detail mesh raises it and to the top of the
+    // cell it rasterizes into, shrunk by agent_radius: 4.5 from the middle.
+    CHECK(lowest(mesh.vertices, &Vec3::y) == 0.5F);
+    CHECK(highest(mesh.vertices, &Vec3::y) == 0.5F);
+    CHECK(lowest(mesh.vertices, &Vec3::x) == -4.5F);
+    CHECK(highest(mesh.vertices, &Vec3::x) == 4.5F);
+    CHECK(lowest(mesh.vertices, &Vec3::z) == -4.5F);
+    CHECK(highest(mesh.vertices, &Vec3::z) == 4.5F);
+    // Nothing within agent_radius of the pillar, which spans 1.5 to 2.5.
+    for (const Vec3 vertex : mesh.vertices) {
+        CHECK_FALSE((vertex.x > 1.0F && vertex.x < 3.0F && vertex.z > 1.0F && vertex.z < 3.0F));
+    }
+    // The file it makes loads, and paths go round the pillar.
+    const json::Value doc = navigation::with_polygons(nullptr, mesh);
+    CHECK(navigation::validate_mesh(doc).empty());
+    scene.files.write("level.navmesh.json", json::write(doc));
+    scene.create("baked", R"({"Transform3D": {}, "NavigationRegion3D":
+        {"navigation_mesh": "level.navmesh.json"}})");
+    const auto path =
+        navigation::query_path(scene.world, Vec3{-4.0F, 0.0F, -4.0F}, Vec3{4.0F, 0.0F, 4.0F});
+    CHECK(text_of(path.points) == "(-4, 0.5, -4) (1.71212, 0.5, 0.0800866) (3, 0.5, 1) "
+                                  "(3.47727, 0.5, 2.43182) (3.875, 0.5, 3.625) (4, 0.5, 4)");
+}
+
+TEST_CASE("what a 3D bake takes follows the parsed geometry type and the collision mask") {
+    Scene scene;
+    const entt::entity level = floor_and_pillar(scene);
+    const auto parsed = [&](std::string_view settings_json) {
+        auto settings = navigation::parse_mesh(parse(settings_json));
+        REQUIRE(settings.ok());
+        return triangles(
+            navigation::parse_source_geometry(scene.world, scene.assets, level, settings.value()));
+    };
+    CHECK(parsed(R"({"format": 1, "geometry_parsed_geometry_type": "mesh_instances"})") == 12);
+    CHECK(parsed(R"({"format": 1, "geometry_parsed_geometry_type": "static_colliders"})") == 12);
+    CHECK(parsed(R"({"format": 1, "geometry_collision_mask": 2})") == 12); // the pillar alone
+
+    // A rigid body's shape is left out, and so is a child shape with a body of its own; a
+    // shape on a child with no body of its own is the static body's.
+    scene.create("crate", R"({"Transform3D": {}, "RigidBody3D": {}, "CollisionShape3D": {}})");
+    scene.create("trigger", R"({"Transform3D": {}, "Area3D": {}, "CollisionShape3D": {}})");
+    scene.create("rail", R"({"Transform3D": {}, "CollisionShape3D": {"shape": "sphere"}})");
+    scene.create("wall", R"({"Transform3D": {"children": ["trigger", "rail"]},
+                             "StaticBody3D": {}})");
+    const entt::entity yard = scene.create("yard", R"({"Transform3D": {
+        "position": [0, 10, 0], "children": ["crate", "wall"]}, "NavigationRegion3D": {}})");
+    const navigation::SourceGeometry3D geometry =
+        navigation::parse_source_geometry(scene.world, scene.assets, yard, {});
+    const auto sphere = slash::scene3d::make_mesh(world::SphereMesh{});
+    REQUIRE(sphere.ok());
+    CHECK(triangles(geometry) == sphere.value().indices.size() / 3);
+
+    // Geometry is in the region's space, wherever the region is.
+    scene.create("ground", R"({"Transform3D": {"position": [0, 3, 0], "top_level": true},
+        "StaticBody3D": {}, "CollisionShape3D": {"size": [2, 2, 2]}})");
+    const entt::entity high = scene.create("high", R"({"Transform3D": {
+        "position": [0, 10, 0], "children": ["ground"]}, "NavigationRegion3D": {}})");
+    const navigation::SourceGeometry3D placed =
+        navigation::parse_source_geometry(scene.world, scene.assets, high, {});
+    float low = placed.vertices[1];
+    float top = placed.vertices[1];
+    for (std::size_t i = 1; i < placed.vertices.size(); i += 3) {
+        low = std::min(low, placed.vertices[i]);
+        top = std::max(top, placed.vertices[i]);
+    }
+    CHECK(low == -8.0F);
+    CHECK(top == -6.0F);
+}
+
+TEST_CASE("3D bakes warn of settings that don't fit whole cells and refuse too many cells") {
+    Scene scene;
+    const entt::entity level = floor_and_pillar(scene);
+    navigation::NavigationMesh settings;
+    settings.agent_radius = 0.3F;
+    settings.agent_max_climb = 0.3F;
+    std::vector<std::string> warnings;
+    const navigation::SourceGeometry3D geometry =
+        navigation::parse_source_geometry(scene.world, scene.assets, level, settings);
+    REQUIRE(navigation::bake(settings, geometry, &warnings).ok());
+    CHECK(warnings ==
+          std::vector<std::string>{"agent_max_climb is rounded down to whole cells of cell_height",
+                                   "agent_radius is rounded up to whole cells of cell_size"});
+
+    settings.cell_size = 0.001F;
+    auto refused = navigation::bake(settings, geometry);
+    REQUIRE_FALSE(refused.ok());
+    CHECK(refused.error().message.find("too many to bake") != std::string::npos);
+
+    // Only what is in filter_baking_aabb bakes: here the floor's quarter at x and z below 0.
+    settings = {};
+    settings.filter_baking_aabb_position = {-5.0F, -1.0F, -5.0F};
+    settings.filter_baking_aabb_size = {5.0F, 2.0F, 5.0F};
+    auto quarter = navigation::bake(settings, geometry);
+    REQUIRE(quarter.ok());
+    CHECK(lowest(quarter.value().vertices, &Vec3::x) == -4.5F);
+    CHECK(highest(quarter.value().vertices, &Vec3::x) <= 0.0F);
+    CHECK(highest(quarter.value().vertices, &Vec3::z) <= 0.0F);
+
+    // No geometry bakes no polygons.
+    auto empty = navigation::bake(navigation::NavigationMesh{}, navigation::SourceGeometry3D{});
+    REQUIRE(empty.ok());
+    CHECK(empty.value().polygons.empty());
+}
+
+TEST_CASE("a 2D bake merges outlines, cuts out obstructions and shrinks by the agent's radius") {
+    Scene scene;
+    scene.create("rock", R"({"Transform2D": {"position": [100, 100]}, "StaticBody2D": {},
+        "CollisionShape2D": {"shape": "circle", "radius": 20}})");
+    const entt::entity yard = scene.create(
+        "yard", R"({"Transform2D": {"children": ["rock"]}, "NavigationRegion2D": {}})");
+    const navigation::NavigationPolygon settings = square_outline(200.0F);
+    const navigation::SourceGeometry2D geometry =
+        navigation::parse_source_geometry(scene.world, yard, settings);
+    REQUIRE(geometry.obstruction_outlines.size() == 1);
+    CHECK(geometry.obstruction_outlines[0].size() == 12); // Godot's circle has 12 sides
+
+    auto baked = navigation::bake(settings, geometry);
+    REQUIRE(baked.ok());
+    const navigation::NavigationPolygon& polygon = baked.value();
+    CHECK(polygon.polygons.size() == 12);
+    CHECK(polygon.vertices.size() == 16);
+    CHECK(lowest(polygon.vertices, &Vec2::x) == 10.0F);
+    CHECK(highest(polygon.vertices, &Vec2::x) == 190.0F);
+    // The rock's 12 sides moved out by the agent's radius, the corners mitered.
+    for (const Vec2 vertex : polygon.vertices) {
+        CHECK(std::hypot(vertex.x - 100.0F, vertex.y - 100.0F) >= 30.0F - 0.01F);
+    }
+    const json::Value doc = navigation::with_polygons(nullptr, polygon);
+    CHECK(navigation::validate_polygon(doc).empty());
+
+    // Triangulated instead, every polygon is a triangle over the same area.
+    navigation::NavigationPolygon triangulate = settings;
+    triangulate.sample_partition_type = navigation::Partition2D::Triangulate;
+    auto triangles_2d = navigation::bake(triangulate, geometry);
+    REQUIRE(triangles_2d.ok());
+    for (const std::vector<int>& indices : triangles_2d.value().polygons) {
+        CHECK(indices.size() == 3);
+    }
+    CHECK(area(triangles_2d.value()) == doctest::Approx(area(polygon)).epsilon(0.0001));
+
+    // Overlapping outlines merge, and with no agent radius nothing shrinks.
+    navigation::NavigationPolygon two = square_outline(100.0F);
+    two.outlines.push_back({{50.0F, 50.0F}, {150.0F, 50.0F}, {150.0F, 150.0F}, {50.0F, 150.0F}});
+    two.agent_radius = 0.0F;
+    auto merged = navigation::bake(two, {});
+    REQUIRE(merged.ok());
+    CHECK(area(merged.value()) == doctest::Approx(17500.0));
+
+    // baking_rect clips what bakes, and border_size keeps it off the rect's edges.
+    navigation::NavigationPolygon clipped = square_outline(200.0F);
+    clipped.agent_radius = 0.0F;
+    clipped.baking_rect_size = {100.0F, 200.0F};
+    clipped.border_size = 5.0F;
+    auto half = navigation::bake(clipped, {});
+    REQUIRE(half.ok());
+    CHECK(highest(half.value().vertices, &Vec2::x) == 95.0F);
+    CHECK(area(half.value()) == doctest::Approx(90.0 * 190.0));
+
+    // A rigid body is no obstruction, nor a static body off parsed_collision_mask.
+    scene.create("ball", R"({"Transform2D": {}, "RigidBody2D": {}, "CollisionShape2D": {}})");
+    scene.create("wall", R"({"Transform2D": {}, "StaticBody2D": {"collision_layer": 2},
+        "CollisionPolygon2D": {"polygon": [[0, 0], [10, 0], [10, 10]]}})");
+    const entt::entity park = scene.create("park", R"({"Transform2D": {
+        "children": ["ball", "wall"]}, "NavigationRegion2D": {}})");
+    CHECK(navigation::parse_source_geometry(scene.world, park, settings)
+              .obstruction_outlines.size() == 1);
+    navigation::NavigationPolygon layer_one = settings;
+    layer_one.parsed_collision_mask = 1;
+    CHECK(navigation::parse_source_geometry(scene.world, park, layer_one)
+              .obstruction_outlines.empty());
+}
+
+TEST_CASE("baked polygons replace a file's own, keeping its settings") {
+    const json::Value doc = parse(R"({"format": 1, "agent_radius": 4,
+        "outlines": [[[0, 0], [64, 0], [64, 64], [0, 64]]],
+        "vertices": [[0, 0], [1, 0], [1, 1]], "polygons": [[0, 1, 2]]})");
+    REQUIRE(navigation::validate_polygon(doc).empty());
+    auto settings = navigation::parse_polygon(doc);
+    REQUIRE(settings.ok());
+    CHECK(settings.value().agent_radius == 4.0F);
+    REQUIRE(settings.value().outlines.size() == 1);
+    auto baked = navigation::bake(settings.value(), {});
+    REQUIRE(baked.ok());
+    CHECK(navigation::with_polygons(doc, baked.value()) == parse(R"({"format": 1, "agent_radius": 4,
+                    "outlines": [[[0, 0], [64, 0], [64, 64], [0, 64]]],
+                    "vertices": [[60.0, 60.0], [4.0, 60.0], [4.0, 4.0], [60.0, 4.0]],
+                    "polygons": [[0, 1, 2, 3]]})"));
+    // A new file is the format and the polygons.
+    CHECK(navigation::with_polygons(nullptr, baked.value()) == parse(R"({"format": 1,
+                    "vertices": [[60.0, 60.0], [4.0, 60.0], [4.0, 4.0], [60.0, 4.0]],
+                    "polygons": [[0, 1, 2, 3]]})"));
+
+    // Bake settings are checked as every field is.
+    const auto errors = navigation::validate_mesh(parse(R"({"format": 1,
+        "sample_partition_type": "watershad", "agent_max_slope": 120})"));
+    REQUIRE(errors.size() == 2);
+    CHECK(errors[0].path == "/agent_max_slope");
+    CHECK(errors[0].message == "must be at most 90, got 120");
+    CHECK(errors[1].path == "/sample_partition_type");
+    CHECK(errors[1].message ==
+          R"(expected one of "watershed", "monotone", "layers", got "watershad")");
 }
