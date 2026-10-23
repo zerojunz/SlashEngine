@@ -99,6 +99,9 @@ struct ModelNode {
     Vec3 position;
     Quat rotation;
     Vec3 scale{1.0F, 1.0F, 1.0F};
+    // Its index in the file (a glTF node's index, an FBX node's typed_id), by which Godot's
+    // importer orders a skeleton's bones; -1 where the file has none.
+    int file_index = -1;
 };
 
 // A skin, as glTF's and Godot's Skin: the nodes that are its joints, each with its inverse bind

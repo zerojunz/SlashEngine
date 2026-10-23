@@ -2,6 +2,7 @@
 
 #include "common.hpp"
 #include "godot_binary.hpp"
+#include "godot_bones.hpp"
 #include "skeletons.hpp"
 
 #include "slash/animation/animation.hpp"
@@ -640,6 +641,14 @@ struct Property {
     const TextFile* file = nullptr; // where the value's ExtResource and SubResource IDs point
 };
 
+// What a scene sets on a node inside a model an instance draws, such as its Skeleton3D's bone
+// poses: the node's path in the model's scene and the properties, later ones winning.
+struct ModelOverride {
+    std::string node; // "Armature/Skeleton3D"
+    std::string declared;
+    std::vector<Property> properties;
+};
+
 // A node of a scene with the scenes it instances flattened into it.
 struct Node {
     std::string path; // from the scene's root: "." or "Player/Sprite2D"
@@ -652,6 +661,10 @@ struct Node {
     int instance_root = -1;              // the root of the instanced scene it came with
     const TextFile* instanced = nullptr; // for an instance's root, the scene it instances
     std::string model;                   // for an instance of a model file, its path
+    // For a skeleton modifier or bone attachment a scene adds under a node of a model an instance
+    // draws (its parent), that node's path in the model's scene: "Armature/Skeleton3D".
+    std::string in_model;
+    std::vector<ModelOverride> model_overrides; // for an instance of a model file
     std::vector<int> children;
     std::string id;
 
@@ -778,6 +791,13 @@ constexpr std::array kNodeTypes{
     NodeType{"Path2D", Family::Node2D, "Path2D", ""},
     NodeType{"PathFollow2D", Family::Node2D, "PathFollow2D", ""},
     NodeType{"GridMap", Family::Node3D, "GridMap", ""},
+    NodeType{"TwoBoneIK3D", Family::Node3D, "TwoBoneIK3D", ""},
+    NodeType{"FABRIK3D", Family::Node3D, "FABRIK3D", ""},
+    NodeType{"CCDIK3D", Family::Node3D, "CCDIK3D", ""},
+    NodeType{"JacobianIK3D", Family::Node3D, "JacobianIK3D", ""},
+    NodeType{"PhysicalBoneSimulator3D", Family::Node3D, "PhysicalBoneSimulator3D", ""},
+    NodeType{"PhysicalBone3D", Family::Node3D, "PhysicalBone3D", ""},
+    NodeType{"BoneAttachment3D", Family::Node3D, "BoneAttachment3D", ""},
     NodeType{"NavigationRegion2D", Family::Node2D, "NavigationRegion2D", ""},
     NodeType{"NavigationLink2D", Family::Node2D, "NavigationLink2D", ""},
     NodeType{"NavigationObstacle2D", Family::Node2D, "NavigationObstacle2D", ""},
@@ -789,6 +809,12 @@ constexpr std::array kNodeTypes{
     NodeType{"NavigationObstacle3D", Family::Node3D, "NavigationObstacle3D", ""},
     NodeType{"NavigationAgent3D", Family::Node3D, "NavigationAgent3D", ""},
 };
+
+// The nodes a scene can add under the Skeleton3D of a model it instances: its skeleton modifiers
+// and bone attachments, and physical bones as Godot 4.2's scenes put them.
+constexpr std::array<std::string_view, 7> kSkeletonChildTypes{
+    "TwoBoneIK3D",    "FABRIK3D",        "CCDIK3D", "JacobianIK3D", "PhysicalBoneSimulator3D",
+    "PhysicalBone3D", "BoneAttachment3D"};
 
 const NodeType* find_node_type(std::string_view godot) {
     for (const NodeType& type : kNodeTypes) {
@@ -2072,10 +2098,50 @@ private:
             } else if (parent_field != nullptr &&
                        inside_model(nodes, by_path, join_path(prefix, parent_local),
                                     instance != nullptr || section.field("type") != nullptr)) {
-                problems_.add("node in an imported model", file.path + ": " + local,
-                              "a model file's own nodes can't be changed or added to; edit the "
-                              "model, or add the node beside its entity");
-                continue;
+                const auto [owner, under] =
+                    model_owner(nodes, by_path, join_path(prefix, parent_local));
+                const std::string type = section.field_string("type");
+                if (owner >= 0 && instance == nullptr && section.field("type") == nullptr) {
+                    // What the scene sets on one of the model's nodes, such as its Skeleton3D's
+                    // bone poses, converted with the instance.
+                    std::string path = under;
+                    if (!path.empty()) {
+                        path += '/';
+                    }
+                    path += name;
+                    ModelOverride set{.node = std::move(path),
+                                      .declared = file.path + ": " + local,
+                                      .properties = {}};
+                    for (const auto& [property, value] : section.properties) {
+                        set.properties.push_back(
+                            Property{.name = property, .value = &value, .file = &file});
+                    }
+                    nodes[static_cast<std::size_t>(owner)].model_overrides.push_back(
+                        std::move(set));
+                    continue;
+                }
+                if (owner < 0 || instance != nullptr || !contains(kSkeletonChildTypes, type) ||
+                    under.empty()) {
+                    problems_.add("node in an imported model", file.path + ": " + local,
+                                  "a model file's own nodes can't be changed or added to, but for "
+                                  "its Skeleton3D's bone poses and the skeleton modifiers and bone "
+                                  "attachments under it; edit the model, or add the node beside "
+                                  "its entity");
+                    continue;
+                }
+                // A skeleton modifier or bone attachment under the model's Skeleton3D: a child
+                // of the entity that draws the model.
+                Node node;
+                node.path = full;
+                node.name = name;
+                node.type = type;
+                node.declared = file.path + ": " + local;
+                node.in_model = under;
+                node.parent = owner;
+                index = static_cast<int>(nodes.size());
+                nodes.push_back(std::move(node));
+                by_path[full] = index;
+                nodes[static_cast<std::size_t>(owner)].children.push_back(index);
             } else if (instance != nullptr && ext != file.ext.end() &&
                        is_model_file(extension_of(ext->second.path))) {
                 // A model file Godot imports as a scene: one entity that draws it.
@@ -2161,6 +2227,34 @@ private:
         return root;
     }
 
+    // The instance of a model file that a path inside it is under, and the rest of the path:
+    // the path of a node in the model's scene ("" for the instance itself).
+    static std::pair<int, std::string> model_owner(const std::vector<Node>& nodes,
+                                                   const std::map<std::string, int>& by_path,
+                                                   const std::string& path) {
+        std::string head = path;
+        while (true) {
+            if (const auto found = by_path.find(head); found != by_path.end()) {
+                if (nodes[static_cast<std::size_t>(found->second)].model.empty()) {
+                    return {-1, {}};
+                }
+                return {found->second,
+                        head.size() < path.size() ? path.substr(head.size() + 1) : std::string()};
+            }
+            const std::size_t slash = head.rfind('/');
+            if (slash == std::string::npos) {
+                // The scene's root, when it is the model's instance.
+                if (const auto root = by_path.find(".");
+                    root != by_path.end() &&
+                    !nodes[static_cast<std::size_t>(root->second)].model.empty()) {
+                    return {root->second, path};
+                }
+                return {-1, {}};
+            }
+            head.resize(slash);
+        }
+    }
+
     // Whether a node a scene declares under parent is inside a model file an instance draws: an
     // override of one of the model's own nodes, or a node added under one. A node added right
     // under the instance (typed, or an instance itself) is the instance's child instead.
@@ -2174,7 +2268,10 @@ private:
             }
             const std::size_t slash = parent.rfind('/');
             if (slash == std::string::npos) {
-                return false;
+                // Under the scene's root, which may be the model's instance itself.
+                const auto root = by_path.find(".");
+                return parent != "." && root != by_path.end() &&
+                       !nodes[static_cast<std::size_t>(root->second)].model.empty();
             }
             parent.resize(slash);
         }
@@ -6509,15 +6606,35 @@ private:
         }
     }
 
-    // The nodes of a model a scene instances, by its path in the Godot project, read once; null
-    // if it can't be read.
-    const std::vector<std::string>* model_nodes(const std::string& model) {
+    // What the importer needs of a model a scene instances: its nodes, which of them its own
+    // animations move, and the Skeleton3D nodes Godot's importer makes of its skins.
+    struct ModelInfo {
+        std::vector<scene3d::ModelNode> nodes;
+        std::vector<std::string> names; // the nodes' names
+        std::vector<bool> animated;     // by node
+        std::vector<godot::ModelSkeleton> skeletons;
+
+        // The skeleton at a node path in the model's Godot scene, or null.
+        [[nodiscard]] const godot::ModelSkeleton* skeleton(std::string_view path) const {
+            const auto found = std::ranges::find(skeletons, path, &godot::ModelSkeleton::path);
+            return found != skeletons.end() ? &*found : nullptr;
+        }
+        // A node's index by its name, or -1.
+        [[nodiscard]] int index_of(std::string_view name) const {
+            const auto found = std::ranges::find(names, name);
+            return found != names.end() ? static_cast<int>(found - names.begin()) : -1;
+        }
+    };
+
+    // A model a scene instances, by its path in the Godot project, read once; null if it can't be
+    // read.
+    const ModelInfo* model_info(const std::string& model) {
         const std::string path = destination(model);
-        if (const auto done = model_nodes_.find(path); done != model_nodes_.end()) {
-            const std::optional<std::vector<std::string>>& known = done->second;
+        if (const auto done = models_.find(path); done != models_.end()) {
+            const std::optional<ModelInfo>& known = done->second;
             return known ? &*known : nullptr;
         }
-        std::optional<std::vector<std::string>>& names = model_nodes_[path];
+        std::optional<ModelInfo>& info = models_[path];
         const world::FileReader reader = asset_files();
         auto bytes = reader(path);
         auto loaded = bytes ? scene3d::load_model(bytes.value(), path, reader)
@@ -6525,11 +6642,801 @@ private:
         if (!loaded) {
             return nullptr;
         }
-        names.emplace();
-        for (const scene3d::ModelNode& node : loaded.value().nodes) {
-            names->push_back(node.name);
+        const scene3d::Model& read = loaded.value();
+        info.emplace();
+        info->nodes = read.nodes;
+        info->animated.assign(read.nodes.size(), false);
+        for (const scene3d::ModelNode& node : read.nodes) {
+            info->names.push_back(node.name);
         }
-        return &*names;
+        for (const scene3d::ModelAnimation& animation : read.animations) {
+            for (const scene3d::NodeTrack& track : animation.tracks) {
+                if (track.node < info->animated.size()) {
+                    info->animated[track.node] = true;
+                }
+            }
+        }
+        info->skeletons = godot::model_skeletons(read);
+        return &*info;
+    }
+
+    // The nodes of a model a scene instances; null if it can't be read.
+    const std::vector<std::string>* model_nodes(const std::string& model) {
+        const ModelInfo* info = model_info(model);
+        return info != nullptr ? &info->names : nullptr;
+    }
+
+    // ---- Skeletons: what a scene sets on the Skeleton3D of a model it instances, and the
+    // skeleton modifiers, physical bones and bone attachments it adds under it. Each becomes an
+    // entity in the Transform3D children of the entity that draws the model, in Godot's order.
+
+    // The model a skeleton modifier, physical bone or bone attachment works on.
+    struct BoneSource {
+        const Node* owner = nullptr;     // the model's instance
+        const ModelInfo* info = nullptr; // null if the model can't be read
+        const godot::ModelSkeleton* skeleton = nullptr;
+        std::string under; // the model's node it is under: "Armature/Skeleton3D"
+    };
+
+    // The model a node is under, through the node it is under that a scene added inside it; no
+    // owner for a node in no model.
+    BoneSource bone_source(const std::vector<Node>& nodes, const Node& node) {
+        const Node* at = &node;
+        while (at->in_model.empty()) {
+            if (at->parent < 0) {
+                return {};
+            }
+            at = &nodes[static_cast<std::size_t>(at->parent)];
+        }
+        BoneSource out;
+        out.owner = &nodes[static_cast<std::size_t>(at->parent)];
+        out.under = at->in_model;
+        out.info = model_info(out.owner->model);
+        if (out.info != nullptr) {
+            out.skeleton = out.info->skeleton(out.under);
+        }
+        return out;
+    }
+
+    // The model's node a Godot bone name or index names, as the skeleton's bones are: by name
+    // first, as Godot's modifiers find a bone, or by index first, as a BoneAttachment3D does. ""
+    // with why when neither names one.
+    static std::string bone_named(const BoneSource& source, const std::string& name,
+                                  std::int64_t index, bool index_first, std::string& why) {
+        const ModelInfo& info = *source.info;
+        std::string by_index;
+        if (source.skeleton != nullptr && index >= 0 &&
+            index < static_cast<std::int64_t>(source.skeleton->bones.size())) {
+            by_index = info.names[source.skeleton->bones[static_cast<std::size_t>(index)]];
+        }
+        std::string by_name;
+        if (!name.empty()) {
+            if (std::string node = model_node_name(info.names, name); contains(info.names, node)) {
+                by_name = std::move(node);
+            }
+        }
+        if (index_first && !by_index.empty()) {
+            return by_index;
+        }
+        if (!by_name.empty()) {
+            return by_name;
+        }
+        if (!by_index.empty() && name.empty()) {
+            return by_index;
+        }
+        if (!name.empty()) {
+            why = "\"" + name + "\" isn't a bone of " + source.owner->model;
+            if (const std::string_view near = closest_match(name, info.names); !near.empty()) {
+                why.append("; did you mean \"").append(near).append("\"?");
+            }
+        } else if (index >= 0) {
+            why = "bone " + std::to_string(index) + " isn't one of the skeleton's";
+        } else {
+            why = "names no bone";
+        }
+        return {};
+    }
+
+    // A node's properties under a prefix such as "settings/0/", by the rest of their names;
+    // later ones win.
+    static std::map<std::string, const Property*, std::less<>>
+    properties_under(const Node& node, std::string_view prefix) {
+        std::map<std::string, const Property*, std::less<>> out;
+        for (const Property& property : node.properties) {
+            if (property.name.starts_with(prefix)) {
+                out[property.name.substr(prefix.size())] = &property;
+            }
+        }
+        return out;
+    }
+
+    // The numbered entries under a prefix such as "settings/": how many there are, by Godot's
+    // count property or else the highest number used.
+    static std::int64_t entry_count(const Node& node, std::string_view prefix,
+                                    std::string_view count_property) {
+        if (const Property* count = node.find(count_property);
+            count != nullptr && count->value->kind == Value::Kind::Int) {
+            return count->value->integer;
+        }
+        std::int64_t out = 0;
+        for (const auto& [name, property] : properties_under(node, prefix)) {
+            std::int64_t index = 0;
+            const auto [end, error] =
+                std::from_chars(name.data(), name.data() + name.size(), index);
+            if (error == std::errc() && end != name.data()) {
+                out = std::max(out, index + 1);
+            }
+        }
+        return out;
+    }
+
+    // The name of a Godot enum value, by index; "" for one out of range.
+    template <std::size_t N>
+    static std::string_view enum_value(const Value& value,
+                                       const std::array<std::string_view, N>& names) {
+        if (value.kind != Value::Kind::Int || value.integer < 0 ||
+            value.integer >= static_cast<std::int64_t>(N)) {
+            return {};
+        }
+        return names.at(static_cast<std::size_t>(value.integer));
+    }
+
+    // Godot's SkeletonModifier3D::BoneDirection, SecondaryDirection and RotationAxis.
+    static constexpr std::array<std::string_view, 7> kBoneDirections{
+        "plus_x", "minus_x", "plus_y", "minus_y", "plus_z", "minus_z", "from_parent"};
+    static constexpr std::array<std::string_view, 8> kSecondaryDirections{
+        "none", "plus_x", "minus_x", "plus_y", "minus_y", "plus_z", "minus_z", "custom"};
+    static constexpr std::array<std::string_view, 5> kRotationAxes{"x", "y", "z", "all", "custom"};
+
+    // A Vector3 value as an [x, y, z] array, or null.
+    static std::optional<json::Value> vector3(const Value& value) {
+        const auto numbers = value.numbers();
+        if (!numbers || numbers->size() != 3) {
+            return std::nullopt;
+        }
+        return json::Value(json::Array{numbers->at(0), numbers->at(1), numbers->at(2)});
+    }
+
+    // A Quaternion value as Transform3D's rotation, or null.
+    static std::optional<json::Value> quaternion_rotation(const Value& value) {
+        const auto numbers = value.numbers();
+        if (!numbers || numbers->size() != 4) {
+            return std::nullopt;
+        }
+        const std::array<double, 3> euler =
+            quaternion_euler({numbers->at(0), numbers->at(1), numbers->at(2), numbers->at(3)});
+        return json::Value(json::Array{euler[0], euler[1], euler[2]});
+    }
+
+    // Whether a property of a skeleton modifier, physical bone or bone attachment converts with
+    // the node as a whole (convert_bone_node), rather than as one field.
+    static bool bone_node_property(const Node& node, std::string_view name) {
+        if (node.type == "PhysicalBone3D") {
+            return name == "bone_name" || name == "body_offset" || name == "joint_offset" ||
+                   name.starts_with("joint_constraints/");
+        }
+        if (node.type == "BoneAttachment3D") {
+            return name == "bone_name" || name == "bone_idx" || name == "override_pose" ||
+                   name == "use_external_skeleton" || name == "external_skeleton";
+        }
+        const bool ik = node.type == "TwoBoneIK3D" || node.type == "FABRIK3D" ||
+                        node.type == "CCDIK3D" || node.type == "JacobianIK3D";
+        return ik && (name == "setting_count" || name.starts_with("settings/"));
+    }
+
+    // Converts what a skeleton modifier, physical bone or bone attachment sets as a whole: the
+    // bones it names, its settings and its joint.
+    void convert_bone_node(const std::vector<Node>& nodes, const Node& node,
+                           json::Object& components) {
+        const BoneSource source = bone_source(nodes, node);
+        const std::string& type = node.type;
+        const bool external =
+            type == "BoneAttachment3D" && node_bool(node, "use_external_skeleton");
+        std::string why;
+        if (!external) {
+            if (source.owner == nullptr) {
+                why = "SlashEngine's " + type +
+                      " works on the model an instance of a model file draws; add it under that "
+                      "model's Skeleton3D";
+            } else if (source.info == nullptr) {
+                why = "couldn't read the model " + source.owner->model;
+            } else if (source.skeleton == nullptr) {
+                why = "it is under " + source.under + ", which isn't a Skeleton3D Godot makes of " +
+                      source.owner->model + ", so Godot's does nothing there";
+            }
+            if (!why.empty()) {
+                problems_.add("node type " + type, node.declared, why);
+                components.erase(type);
+                return;
+            }
+        }
+        if (type == "BoneAttachment3D") {
+            convert_bone_attachment(nodes, node, source, components[type]);
+        } else if (type == "PhysicalBone3D") {
+            convert_physical_bone(node, source, components[type]);
+        } else if (type == "TwoBoneIK3D") {
+            convert_two_bone_ik(nodes, node, source, components[type]);
+        } else if (type != "PhysicalBoneSimulator3D") {
+            convert_chain_ik(nodes, node, source, components[type]);
+        }
+    }
+
+    void convert_bone_attachment(const std::vector<Node>& nodes, const Node& node,
+                                 BoneSource source, json::Value& out) {
+        std::string why;
+        if (node_bool(node, "override_pose")) {
+            problems_.add("BoneAttachment3D.override_pose", node.declared,
+                          "SlashEngine's bone attachments follow their bones; pose the bone with "
+                          "the model's Skeleton3D or an animation instead");
+        }
+        if (node_bool(node, "use_external_skeleton")) {
+            const Property* path = node.find("external_skeleton");
+            const std::string text =
+                path != nullptr ? path->value->string_argument().value_or(path->value->text) : "";
+            const auto [model, rest] = find_in_model(nodes, node, text);
+            source = {};
+            if (model != nullptr && !model->model.empty()) {
+                source.owner = model;
+                source.under = rest;
+                source.info = model_info(model->model);
+                if (source.info != nullptr) {
+                    source.skeleton = source.info->skeleton(rest);
+                }
+            }
+            if (source.skeleton == nullptr) {
+                problems_.add("BoneAttachment3D.external_skeleton", node.declared,
+                              "node path " + text +
+                                  " names no Skeleton3D of a model an instance in the scene "
+                                  "draws");
+                return;
+            }
+            out["external_skeleton"] = model->id;
+        }
+        std::int64_t index = -1;
+        if (const Property* idx = node.find("bone_idx");
+            idx != nullptr && idx->value->kind == Value::Kind::Int) {
+            index = idx->value->integer;
+        }
+        const Property* name = node.find("bone_name");
+        const std::string bone =
+            bone_named(source, name != nullptr && name->value->is_string() ? name->value->text : "",
+                       index, true, why);
+        if (bone.empty()) {
+            problems_.add("BoneAttachment3D.bone_name", node.declared, why);
+            return;
+        }
+        out["bone_name"] = bone;
+    }
+
+    void convert_physical_bone(const Node& node, const BoneSource& source, json::Value& out) {
+        std::string why;
+        if (const Property* name = node.find("bone_name"); name != nullptr) {
+            const std::string bone = bone_named(
+                source, name->value->is_string() ? name->value->text : "", -1, false, why);
+            if (bone.empty()) {
+                problems_.add("PhysicalBone3D.bone_name", node.declared, why);
+            } else {
+                out["bone_name"] = bone;
+            }
+        }
+        const auto placement = [](const Property* property) {
+            const auto numbers = property != nullptr ? property->value->numbers() : std::nullopt;
+            return numbers ? decompose_transform(*numbers) : std::nullopt;
+        };
+        // Godot orthonormalizes the body's transform, so a scale here does nothing.
+        if (const auto body = placement(node.find("body_offset"))) {
+            out["body_offset_position"] =
+                json::Array{body->position[0], body->position[1], body->position[2]};
+            out["body_offset_rotation"] =
+                json::Array{body->rotation[0], body->rotation[1], body->rotation[2]};
+        }
+        // Godot puts the joint at the bone's origin whatever joint_offset's origin is
+        // (_fix_joint_offset), and joint_rotation is its basis's rotation.
+        if (node.find("joint_rotation") == nullptr) {
+            if (const auto joint = placement(node.find("joint_offset"))) {
+                out["joint_rotation"] =
+                    json::Array{joint->rotation[0], joint->rotation[1], joint->rotation[2]};
+            }
+        }
+        std::int64_t joint_type = 0;
+        if (const Property* given = node.find("joint_type");
+            given != nullptr && given->value->kind == Value::Kind::Int) {
+            joint_type = given->value->integer;
+        }
+        // Godot's joint parameters by joint type: the field each sets, whether Godot keeps it
+        // in degrees, and, for those Godot's Jolt module ignores, Godot's default.
+        struct Constraint {
+            std::int64_t joint;
+            std::string_view godot;
+            std::string_view field; // "" for one Jolt ignores
+            bool degrees = false;
+            double fallback = 0.0;
+        };
+        static constexpr std::array kConstraints{
+            Constraint{1, "bias", "", false, 0.3},
+            Constraint{1, "damping", "", false, 1.0},
+            Constraint{1, "impulse_clamp", "", false, 0.0},
+            Constraint{2, "swing_span", "swing_span", true},
+            Constraint{2, "twist_span", "twist_span", true},
+            Constraint{2, "bias", "", false, 0.3},
+            Constraint{2, "softness", "", false, 0.8},
+            Constraint{2, "relaxation", "", false, 1.0},
+            Constraint{3, "angular_limit_enabled", "angular_limit_enabled"},
+            Constraint{3, "angular_limit_upper", "angular_limit_upper", true},
+            Constraint{3, "angular_limit_lower", "angular_limit_lower", true},
+            Constraint{3, "angular_limit_bias", "", false, 0.3},
+            Constraint{3, "angular_limit_softness", "", false, 0.9},
+            Constraint{3, "angular_limit_relaxation", "", false, 1.0},
+            Constraint{4, "linear_limit_upper", "linear_limit_upper"},
+            Constraint{4, "linear_limit_lower", "linear_limit_lower"},
+            Constraint{4, "linear_limit_softness", "", false, 1.0},
+            Constraint{4, "linear_limit_restitution", "", false, 0.7},
+            Constraint{4, "linear_limit_damping", "", false, 1.0},
+            Constraint{4, "angular_limit_upper", "", true, 0.0},
+            Constraint{4, "angular_limit_lower", "", true, 0.0},
+            Constraint{4, "angular_limit_softness", "", false, 1.0},
+            Constraint{4, "angular_limit_restitution", "", false, 0.7},
+            Constraint{4, "angular_limit_damping", "", false, 1.0},
+            Constraint{5, "linear_limit_enabled", "linear_limit_enabled"},
+            Constraint{5, "linear_limit_upper", "linear_limit_upper"},
+            Constraint{5, "linear_limit_lower", "linear_limit_lower"},
+            Constraint{5, "linear_spring_enabled", "linear_spring_enabled"},
+            Constraint{5, "linear_spring_stiffness", "linear_spring_stiffness"},
+            Constraint{5, "linear_spring_damping", "linear_spring_damping"},
+            Constraint{5, "linear_equilibrium_point", "linear_equilibrium_point"},
+            Constraint{5, "angular_limit_enabled", "angular_limit_enabled"},
+            Constraint{5, "angular_limit_upper", "angular_limit_upper", true},
+            Constraint{5, "angular_limit_lower", "angular_limit_lower", true},
+            Constraint{5, "angular_spring_enabled", "angular_spring_enabled"},
+            Constraint{5, "angular_spring_stiffness", "angular_spring_stiffness"},
+            Constraint{5, "angular_spring_damping", "angular_spring_damping"},
+            Constraint{5, "angular_equilibrium_point", "angular_equilibrium_point"},
+            Constraint{5, "linear_limit_softness", "", false, 0.7},
+            Constraint{5, "linear_restitution", "", false, 0.5},
+            Constraint{5, "linear_damping", "", false, 1.0},
+            Constraint{5, "angular_limit_softness", "", false, 0.5},
+            Constraint{5, "angular_restitution", "", false, 0.0},
+            Constraint{5, "angular_damping", "", false, 1.0},
+            Constraint{5, "erp", "", false, 0.5},
+        };
+        for (const auto& [rest, property] : properties_under(node, "joint_constraints/")) {
+            std::string_view name = rest;
+            std::string axis; // a 6DOF joint's "x", "y" or "z"
+            if (joint_type == 5 && name.size() > 2 && name[1] == '/') {
+                axis = std::string(name.substr(0, 1));
+                name.remove_prefix(2);
+            }
+            const std::string where = "PhysicalBone3D.joint_constraints/" + rest;
+            const Constraint* found = nullptr;
+            for (const Constraint& constraint : kConstraints) {
+                if (constraint.joint == joint_type && constraint.godot == name) {
+                    found = &constraint;
+                    break;
+                }
+            }
+            const Value& value = *property->value;
+            if (found == nullptr ||
+                (joint_type == 5 && axis != "x" && axis != "y" && axis != "z")) {
+                problems_.add(where, node.declared);
+                continue;
+            }
+            if (found->field.empty()) {
+                if (std::abs(value.number() - found->fallback) > 1.0e-6) {
+                    problems_.add(where, node.declared,
+                                  "Godot's Jolt physics, which SlashEngine follows, ignores it");
+                }
+                continue;
+            }
+            json::Value& target = axis.empty() ? out : out[axis];
+            if (value.kind == Value::Kind::Bool) {
+                target[std::string(found->field)] = value.boolean;
+            } else if (value.is_number()) {
+                const double number = value.number();
+                target[std::string(found->field)] =
+                    found->degrees ? tidy_number(number * std::numbers::pi / 180.0) : number;
+            } else {
+                problems_.add(where, node.declared, "not a number");
+            }
+        }
+    }
+
+    // The target or pole node a setting names, as an entity ID, or "" with a problem reported.
+    std::string setting_node(const std::vector<Node>& nodes, const Node& node, const Value& value,
+                             const std::string& where) {
+        const std::string path = value.string_argument().value_or(value.text);
+        if (path.empty()) {
+            return {};
+        }
+        std::string id = resolve_node_path(nodes, node, path);
+        if (id.empty()) {
+            problems_.add(where, node.declared,
+                          "node path " + path + " names no node in the scene");
+        }
+        return id;
+    }
+
+    void convert_two_bone_ik(const std::vector<Node>& nodes, const Node& node,
+                             const BoneSource& source, json::Value& out) {
+        const std::int64_t count = entry_count(node, "settings/", "setting_count");
+        json::Array settings;
+        for (std::int64_t i = 0; i < count; ++i) {
+            const std::string prefix = "settings/" + std::to_string(i) + "/";
+            const auto given = properties_under(node, prefix);
+            const std::string at = "TwoBoneIK3D." + prefix;
+            json::Value setting = json::Object{};
+            for (const std::string_view part : {"root", "middle", "end"}) {
+                const std::string name_key = std::string(part) + "_bone_name";
+                const std::string index_key = std::string(part) + "_bone";
+                const auto name = given.find(name_key);
+                const auto index = given.find(index_key);
+                const std::string text = name != given.end() && name->second->value->is_string()
+                                             ? name->second->value->text
+                                             : std::string();
+                const std::int64_t number =
+                    index != given.end() && index->second->value->kind == Value::Kind::Int
+                        ? index->second->value->integer
+                        : -1;
+                if (text.empty() && number < 0) {
+                    continue;
+                }
+                std::string why;
+                const std::string bone = bone_named(source, text, number, false, why);
+                if (bone.empty()) {
+                    problems_.add(at + name_key, node.declared, why);
+                } else {
+                    setting[index_key] = bone;
+                }
+            }
+            for (const auto& [key, property] : given) {
+                const Value& value = *property->value;
+                const std::string where = at + key;
+                if (key.ends_with("_bone_name") || key == "root_bone" || key == "middle_bone" ||
+                    key == "end_bone") {
+                    continue;
+                }
+                if (key == "target_node" || key == "pole_node") {
+                    if (std::string id = setting_node(nodes, node, value, where); !id.empty()) {
+                        setting[key == "target_node" ? "target" : "pole"] = std::move(id);
+                    }
+                } else if (key == "pole_direction" || key == "end_bone/direction") {
+                    const std::string_view name = key == "pole_direction"
+                                                      ? enum_value(value, kSecondaryDirections)
+                                                      : enum_value(value, kBoneDirections);
+                    if (name.empty()) {
+                        problems_.add(where, node.declared, "an unknown direction");
+                    } else {
+                        setting[key == "pole_direction" ? "pole_direction" : "end_bone_direction"] =
+                            name;
+                    }
+                } else if (key == "pole_direction_vector" && vector3(value)) {
+                    setting["pole_direction_vector"] = *vector3(value);
+                } else if (key == "end_bone/length" && value.is_number()) {
+                    setting["end_bone_length"] = value.number();
+                } else if ((key == "use_virtual_end" || key == "extend_end_bone") &&
+                           value.kind == Value::Kind::Bool) {
+                    setting[key] = value.boolean;
+                } else {
+                    problems_.add(where, node.declared);
+                }
+            }
+            settings.push_back(std::move(setting));
+        }
+        out["settings"] = std::move(settings);
+    }
+
+    // The bones from root down to end, as Godot's ChainIK3D::_update_joints finds them; none if
+    // end isn't root or under it.
+    static std::vector<std::size_t> bone_chain(const ModelInfo& info, const std::string& root,
+                                               const std::string& end) {
+        const int first = info.index_of(root);
+        std::vector<std::size_t> out;
+        for (int at = info.index_of(end); at >= 0;
+             at = info.nodes[static_cast<std::size_t>(at)].parent) {
+            out.push_back(static_cast<std::size_t>(at));
+            if (at == first) {
+                std::ranges::reverse(out);
+                return out;
+            }
+        }
+        return {};
+    }
+
+    void convert_chain_ik(const std::vector<Node>& nodes, const Node& node,
+                          const BoneSource& source, json::Value& out) {
+        const std::string& type = node.type;
+        const std::int64_t count = entry_count(node, "settings/", "setting_count");
+        json::Array settings;
+        for (std::int64_t i = 0; i < count; ++i) {
+            const std::string prefix = "settings/" + std::to_string(i) + "/";
+            const auto given = properties_under(node, prefix);
+            std::string at = type;
+            at += '.';
+            at += prefix;
+            json::Value setting = json::Object{};
+            std::array<std::string, 2> ends; // the root and end bones
+            for (std::size_t part = 0; part < ends.size(); ++part) {
+                const std::string base = part == 0 ? "root_bone" : "end_bone";
+                const std::string name_key = part == 0 ? "root_bone_name" : "end_bone_name";
+                const auto name = given.find(name_key);
+                const auto index = given.find(base);
+                const std::string text = name != given.end() && name->second->value->is_string()
+                                             ? name->second->value->text
+                                             : std::string();
+                const std::int64_t number =
+                    index != given.end() && index->second->value->kind == Value::Kind::Int
+                        ? index->second->value->integer
+                        : -1;
+                if (text.empty() && number < 0) {
+                    continue;
+                }
+                std::string why;
+                ends.at(part) = bone_named(source, text, number, false, why);
+                if (ends.at(part).empty()) {
+                    problems_.add(at + name_key, node.declared, why);
+                } else {
+                    setting[base] = ends.at(part);
+                }
+            }
+            const std::vector<std::size_t> chain = ends[0].empty() || ends[1].empty()
+                                                       ? std::vector<std::size_t>{}
+                                                       : bone_chain(*source.info, ends[0], ends[1]);
+            if (!ends[0].empty() && !ends[1].empty() && chain.empty()) {
+                std::string why = ends[1];
+                why += " isn't ";
+                why += ends[0];
+                why += " or a bone under it";
+                problems_.add(at + "end_bone_name", node.declared, why);
+            }
+            for (const auto& [key, property] : given) {
+                const Value& value = *property->value;
+                const std::string where = at + key;
+                if (key == "root_bone_name" || key == "root_bone" || key == "end_bone_name" ||
+                    key == "end_bone" || key == "joint_count") {
+                    continue;
+                }
+                if (key == "target_node") {
+                    if (std::string id = setting_node(nodes, node, value, where); !id.empty()) {
+                        setting["target"] = std::move(id);
+                    }
+                } else if (key == "end_bone/direction") {
+                    if (const std::string_view name = enum_value(value, kBoneDirections);
+                        !name.empty()) {
+                        setting["end_bone_direction"] = name;
+                    } else {
+                        problems_.add(where, node.declared, "an unknown direction");
+                    }
+                } else if (key == "end_bone/length" && value.is_number()) {
+                    setting["end_bone_length"] = value.number();
+                } else if (key == "extend_end_bone" && value.kind == Value::Kind::Bool) {
+                    setting["extend_end_bone"] = value.boolean;
+                } else if (key.starts_with("joints/")) {
+                    convert_chain_joint(node, key, *property, chain, *source.info, where, setting);
+                } else {
+                    problems_.add(where, node.declared);
+                }
+            }
+            drop_default_joints(setting);
+            settings.push_back(std::move(setting));
+        }
+        out["settings"] = std::move(settings);
+    }
+
+    // Leaves out of a setting's joints what Godot saves of each though it is as a joint is by
+    // default (ChainIKJoint's defaults, which are Godot's), then joints left with nothing.
+    static void drop_default_joints(json::Value& setting) {
+        json::Value* joints = setting.find("joints");
+        if (joints == nullptr) {
+            return;
+        }
+        const json::Value axis = json::Array{1.0, 0.0, 0.0};
+        const json::Value unturned = json::Array{0.0, 0.0, 0.0};
+        for (auto& [bone, joint] : joints->as_object()) {
+            json::Object& fields = joint.as_object();
+            const auto drop = [&](std::string_view field, const json::Value& fallback) {
+                if (const auto it = fields.find(field);
+                    it != fields.end() && it->second == fallback) {
+                    fields.erase(it);
+                }
+            };
+            drop("rotation_axis", "all");
+            drop("rotation_axis_vector", axis);
+            drop("limitation_right_axis", "none");
+            drop("limitation_right_axis_vector", axis);
+            drop("limitation_rotation_offset", unturned);
+        }
+        std::erase_if(joints->as_object(),
+                      [](const auto& joint) { return joint.second.size() == 0; });
+        if (joints->size() == 0) {
+            setting.as_object().erase("joints");
+        }
+    }
+
+    // One property of a chain's joint, "joints/<n>/<what>", on the joint of the chain's nth
+    // bone, by its name.
+    void convert_chain_joint(const Node& node, const std::string& key, const Property& property,
+                             const std::vector<std::size_t>& chain, const ModelInfo& info,
+                             const std::string& where, json::Value& setting) {
+        const std::string_view rest =
+            std::string_view(key).substr(std::string_view("joints/").size());
+        const std::size_t slash = std::min(rest.find('/'), rest.size());
+        std::size_t index = 0;
+        const auto parsed = std::from_chars(rest.data(), rest.data() + slash, index);
+        const std::string_view what =
+            slash < rest.size() ? rest.substr(slash + 1) : std::string_view();
+        if (parsed.ec != std::errc() || what.empty()) {
+            problems_.add(where, node.declared);
+            return;
+        }
+        if (what == "bone_name" || what == "bone") {
+            return; // the chain's bones, which Godot works out itself
+        }
+        const Value& value = *property.value;
+        if (index >= chain.size()) {
+            problems_.add(where, node.declared,
+                          "the chain has " + std::to_string(chain.size()) + " bones");
+            return;
+        }
+        json::Value& joint = setting["joints"][info.names[chain[index]]];
+        if (what == "rotation_axis" || what == "limitation/right_axis") {
+            const std::string_view name = what == "rotation_axis"
+                                              ? enum_value(value, kRotationAxes)
+                                              : enum_value(value, kSecondaryDirections);
+            if (name.empty()) {
+                problems_.add(where, node.declared, "an unknown axis");
+            } else {
+                joint[what == "rotation_axis" ? "rotation_axis" : "limitation_right_axis"] = name;
+            }
+        } else if (const auto axis = vector3(value);
+                   (what == "rotation_axis_vector" || what == "limitation/right_axis_vector") &&
+                   axis) {
+            joint[what == "rotation_axis_vector" ? "rotation_axis_vector"
+                                                 : "limitation_right_axis_vector"] = *axis;
+        } else if (const auto offset = quaternion_rotation(value);
+                   what == "limitation/rotation_offset" && offset) {
+            joint["limitation_rotation_offset"] = *offset;
+        } else if (what == "limitation") {
+            if (value.kind == Value::Kind::Nil) {
+                return;
+            }
+            const auto [section, file] = resource_section(value, *property.file);
+            if (section == nullptr || resource_type(*section, *file) != "JointLimitationCone3D") {
+                problems_.add(where, node.declared,
+                              section == nullptr
+                                  ? "a missing resource"
+                                  : resource_type(*section, *file) + " limitations don't convert");
+                return;
+            }
+            joint["limitation"] = "cone";
+            if (const Value* angle = section->property("angle");
+                angle != nullptr && angle->is_number()) {
+                joint["limitation_angle"] = angle->number();
+            }
+        } else {
+            problems_.add(where, node.declared);
+        }
+    }
+
+    // What a scene sets on the nodes of a model it instances: its Skeleton3D's bone poses
+    // become the entity's Skeleton3D, as Godot's poses them before animations play.
+    void convert_model_overrides(const Node& node, json::Object& components) {
+        const ModelInfo* info = model_info(node.model);
+        for (const ModelOverride& set : node.model_overrides) {
+            const godot::ModelSkeleton* skeleton =
+                info != nullptr ? info->skeleton(set.node) : nullptr;
+            const bool sets_any = std::ranges::any_of(
+                set.properties, [](const Property& p) { return !ignored_property(p.name); });
+            if (skeleton == nullptr) {
+                if (sets_any) {
+                    problems_.add("node in an imported model", set.declared,
+                                  info == nullptr ? "couldn't read the model " + node.model
+                                                  : "a model file's own nodes can't be changed, "
+                                                    "but for its Skeleton3D's bone poses; edit "
+                                                    "the model");
+                }
+                continue;
+            }
+            for (const Property& property : set.properties) {
+                if (!ignored_property(property.name)) {
+                    skeleton_property(*info, *skeleton, property, set.declared, components);
+                }
+            }
+        }
+    }
+
+    // One property a scene sets on a model's Skeleton3D, or a problem.
+    void skeleton_property(const ModelInfo& info, const godot::ModelSkeleton& skeleton,
+                           const Property& property, const std::string& declared,
+                           json::Object& components) {
+        const std::string& name = property.name;
+        const Value& value = *property.value;
+        const std::string kind = "Skeleton3D." + name;
+        if (name == "show_rest_only" && value.kind == Value::Kind::Bool) {
+            components["Skeleton3D"]["show_rest_only"] = value.boolean;
+            return;
+        }
+        if (!name.starts_with("bones/")) {
+            problems_.add(kind, declared,
+                          "of a model's Skeleton3D, bone poses and show_rest_only "
+                          "convert");
+            return;
+        }
+        const std::string_view rest =
+            std::string_view(name).substr(std::string_view("bones/").size());
+        const std::size_t slash = std::min(rest.find('/'), rest.size());
+        std::size_t index = 0;
+        const auto parsed = std::from_chars(rest.data(), rest.data() + slash, index);
+        const std::string_view what =
+            slash < rest.size() ? rest.substr(slash + 1) : std::string_view();
+        if (parsed.ec != std::errc() || index >= skeleton.bones.size()) {
+            problems_.add(kind, declared,
+                          "the skeleton has " + std::to_string(skeleton.bones.size()) + " bones");
+            return;
+        }
+        const std::size_t bone = skeleton.bones[index];
+        const scene3d::ModelNode& at_rest = info.nodes[bone];
+        const std::string& bone_name = info.names[bone];
+        constexpr double kSame = 1.0e-5;
+        const auto numbers = value.numbers();
+        if (what == "position" || what == "scale") {
+            if (!numbers || numbers->size() != 3) {
+                problems_.add(kind, declared, "not a Vector3");
+                return;
+            }
+            const Vec3 was = what == "position" ? at_rest.position : at_rest.scale;
+            if (std::abs(numbers->at(0) - was.x) < kSame &&
+                std::abs(numbers->at(1) - was.y) < kSame &&
+                std::abs(numbers->at(2) - was.z) < kSame) {
+                return; // as the model has it
+            }
+            if (info.animated[bone]) {
+                problems_.add(kind, declared, animated_bone(bone_name));
+                return;
+            }
+            components["Skeleton3D"][what == "position" ? "bone_positions" : "bone_scales"]
+                      [bone_name] = json::Array{numbers->at(0), numbers->at(1), numbers->at(2)};
+            return;
+        }
+        if (what == "rotation") {
+            if (!numbers || numbers->size() != 4) {
+                problems_.add(kind, declared, "not a Quaternion");
+                return;
+            }
+            const Quaternion given{numbers->at(0), numbers->at(1), numbers->at(2), numbers->at(3)};
+            const Quaternion was{at_rest.rotation.x, at_rest.rotation.y, at_rest.rotation.z,
+                                 at_rest.rotation.w};
+            if (rotation_between(given, was) < kSame) {
+                return;
+            }
+            if (info.animated[bone]) {
+                problems_.add(kind, declared, animated_bone(bone_name));
+                return;
+            }
+            const std::array<double, 3> euler = quaternion_euler(given);
+            components["Skeleton3D"]["bone_rotations"][bone_name] =
+                json::Array{euler[0], euler[1], euler[2]};
+            return;
+        }
+        if (what == "enabled" && value.kind == Value::Kind::Bool && value.boolean) {
+            return;
+        }
+        problems_.add(kind, declared,
+                      what == "enabled" ? "SlashEngine's bones are always enabled"
+                                        : "a model's bones are as its file has them; edit the "
+                                          "model");
+    }
+
+    static std::string animated_bone(const std::string& bone) {
+        return bone + " is moved by the model's own animations, where SlashEngine's Skeleton3D "
+                      "pose would hold it still; pose it in the animations instead";
+    }
+
+    // Whether a scene puts physical bones right under a model's Skeleton3D, as Godot 4.2 did
+    // before PhysicalBoneSimulator3D: Godot 4.3 and later add a simulator for them.
+    static bool has_loose_physical_bones(const std::vector<Node>& nodes, const Node& owner) {
+        return std::ranges::any_of(owner.children, [&](int child) {
+            const Node& node = nodes[static_cast<std::size_t>(child)];
+            return node.type == "PhysicalBone3D" && !node.in_model.empty();
+        });
     }
 
     // Why a kind of Godot track doesn't convert.
@@ -6992,22 +7899,21 @@ private:
         return {};
     }
 
-    // A model's node for a bone or node name in a Godot path, as Godot's importer names bones:
-    // ':' and '/' become '_'.
+    // A model's node for a bone or node name in a Godot path. Godot's importer keeps the '.',
+    // '@', '"' and '%' of a file's bone names ("UpperArm.L"), where a model's nodes have '_' as
+    // Godot's other node names do.
     static std::string model_node_name(const std::vector<std::string>& nodes,
                                        const std::string& name) {
         if (contains(nodes, name)) {
             return name;
         }
-        for (const std::string& node : nodes) {
-            std::string sanitized = node;
-            std::ranges::replace(sanitized, ':', '_');
-            std::ranges::replace(sanitized, '/', '_');
-            if (sanitized == name) {
-                return node;
+        std::string valid = name;
+        for (char& c : valid) {
+            if (c == '.' || c == ':' || c == '@' || c == '/' || c == '"' || c == '%') {
+                c = '_';
             }
         }
-        return name;
+        return contains(nodes, valid) ? valid : name;
     }
 
     // The track names a Godot filter path stands for: a model node's name, or a converted
@@ -8075,11 +8981,17 @@ private:
             const NodeType* type = find_node_type(nodes[i].type);
             families[i] = type != nullptr ? type->family : guess_family(nodes[i]);
             if (type == nullptr) {
-                problems_.add("node type " + nodes[i].type, nodes[i].declared,
-                              components_.find(nodes[i].type) != nullptr
-                                  ? "the importer doesn't convert it yet; add SlashEngine's " +
-                                        nodes[i].type + " component by hand"
-                                  : unsupported_node(nodes[i].type));
+                std::string why;
+                if (nodes[i].type == "Skeleton3D") {
+                    why = "a skeleton a scene builds itself doesn't convert yet; one an instance "
+                          "of a model file brings does";
+                } else if (components_.find(nodes[i].type) != nullptr) {
+                    why = "the importer doesn't convert it yet; add SlashEngine's " +
+                          nodes[i].type + " component by hand";
+                } else {
+                    why = unsupported_node(nodes[i].type);
+                }
+                problems_.add("node type " + nodes[i].type, nodes[i].declared, why);
             }
             // A ParallaxBackground that follows the camera's zoom is drawn with the world, as
             // Godot's converter turns it into a Node2D.
@@ -8154,6 +9066,9 @@ private:
                 if (node.find(given.name) != &given) {
                     continue; // a later value overrides it
                 }
+                if (bone_node_property(node, given.name)) {
+                    continue; // converted with the node, below
+                }
                 Property property = given;
                 if (auto field = joint_field(node.type, given.name); field) {
                     if (field->empty()) {
@@ -8189,6 +9104,15 @@ private:
                     continue;
                 }
                 problems_.add(node.type + "." + property.name, node.declared);
+            }
+            if (contains(kSkeletonChildTypes, node.type)) {
+                convert_bone_node(nodes, node, components);
+            }
+            if (!node.model.empty()) {
+                convert_model_overrides(node, components);
+                if (has_loose_physical_bones(nodes, node)) {
+                    components["PhysicalBoneSimulator3D"] = json::Object{};
+                }
             }
             if (node.type == "TileMap") {
                 convert_tile_map(node, components, added,
@@ -8668,13 +9592,13 @@ private:
     std::map<std::string, TileSetFile> tile_sets_;
     std::map<std::string, std::string> themes_written_;
     std::set<std::string> bus_layouts_written_;
-    std::map<std::string, LibraryFile> libraries_written_; // by file name, without its suffix
-    std::map<std::string, std::string> moved_players_;     // AnimationPlayer node to its model's
-    std::map<std::string, std::optional<std::vector<std::string>>> model_nodes_; // by path
-    std::map<std::string, std::string> trees_written_; // by resource, its file or ""
-    std::map<std::string, ScriptRecord> scripts_;      // by res path
-    std::optional<Skeletons> skeletons_;               // by res path
-    std::string module_;                               // the game module written, or ""
+    std::map<std::string, LibraryFile> libraries_written_;   // by file name, without its suffix
+    std::map<std::string, std::string> moved_players_;       // AnimationPlayer node to its model's
+    std::map<std::string, std::optional<ModelInfo>> models_; // by path
+    std::map<std::string, std::string> trees_written_;       // by resource, its file or ""
+    std::map<std::string, ScriptRecord> scripts_;            // by res path
+    std::optional<Skeletons> skeletons_;                     // by res path
+    std::string module_;                                     // the game module written, or ""
     std::map<std::string, std::string> task_of_;
     std::map<std::string, std::string> autoloads_;
     std::map<std::string, std::vector<std::string>> groups_;
