@@ -694,7 +694,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Unity's terrains as `HTerrain`s: heights, alpha maps, layers, holes and the collider
   - [x] Unity's 3D animation: Animators on 3D objects and on models' instances, clips moving
         `Transform3D` and the models' nodes, and model clips played from the converted models
-  - [ ] Unity's skinned meshes, humanoid animation and root motion
+  - [x] Unity's humanoid animation, retargeted from one model's Avatar to another's, and root
+        motion taken out of the pose by the `AnimationTree`
+  - [ ] Unity's skinned meshes
   - [ ] Unreal Engine levels and assets through the user's own Unreal Editor
 - [ ] 3D in the asset library and generator ([design](design.md#3d-assets))
   - [ ] Parametric models: agents write a `.model.json` recipe of shapes, CSG on Manifold,
