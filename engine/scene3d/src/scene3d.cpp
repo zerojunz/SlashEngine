@@ -3,6 +3,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/math.hpp"
 #include "slash/core/text.hpp"
+#include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/ik.hpp"
 #include "slash/world/serialize.hpp"
 #include "slash/world/world.hpp"
@@ -549,6 +550,9 @@ std::vector<Problem> check_meshes(const world::World& world) {
             problems.push_back({entity, "/components", primitive.error().message});
         }
     }
+    for (Problem& problem : check_csg(world)) {
+        problems.push_back(std::move(problem));
+    }
     return problems;
 }
 
@@ -699,10 +703,12 @@ Result<render::MeshId> Renderer::mesh_for(const world::World& world, entt::entit
     return shared.id;
 }
 
-Result<render::MeshId> Renderer::model_mesh(const std::string& key, const ModelSurface& surface) {
+Result<render::MeshId> Renderer::kept_mesh(const std::string& key,
+                                           const std::vector<render::Vertex3D>& vertices,
+                                           const std::vector<std::uint32_t>& indices) {
     Shared& shared = shared_[key];
     if (shared.id == render::MeshId::None) {
-        auto made = device_->create_mesh(surface.vertices, surface.indices);
+        auto made = device_->create_mesh(vertices, indices);
         if (!made) {
             shared_.erase(key);
             return made.error();
@@ -738,7 +744,7 @@ Result<render::MeshId> Renderer::skinned_mesh(const std::string& key, const Mode
 render::MaterialTexture Renderer::model_texture(const std::string& path, const SourceModel& source,
                                                 int image,
                                                 const world::StandardMaterial3D& standard,
-                                                entt::entity entity) {
+                                                entt::entity entity, const std::string& field) {
     if (image < 0 || static_cast<std::size_t>(image) >= source.model->images.size()) {
         return {};
     }
@@ -748,8 +754,8 @@ render::MaterialTexture Renderer::model_texture(const std::string& path, const S
     if (!found.path.empty()) {
         auto made = textures_(found.path, filter);
         if (!made) {
-            problems_.push_back({entity, std::string(kMeshField),
-                                 "\"" + path + "\"'s texture: " + made.error().message});
+            problems_.push_back(
+                {entity, field, "\"" + path + "\"'s texture: " + made.error().message});
             return {};
         }
         return {.texture = made.value().id, .repeat = standard.texture_repeat};
@@ -766,7 +772,7 @@ render::MaterialTexture Renderer::model_texture(const std::string& path, const S
                                             found.image.pixels);
         if (!made) {
             embedded_.erase(key);
-            problems_.push_back({entity, std::string(kMeshField),
+            problems_.push_back({entity, field,
                                  "\"" + path + "\"'s image " + std::to_string(image) + ": " +
                                      made.error().message});
             return {};
@@ -863,8 +869,8 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
             auto made =
                 skinned ? skinned_mesh(skin_prefix + std::to_string(p) + "/" + std::to_string(i),
                                        surface, joints)
-                        : model_mesh(prefix + std::to_string(part.mesh) + "/" + std::to_string(i),
-                                     surface);
+                        : kept_mesh(prefix + std::to_string(part.mesh) + "/" + std::to_string(i),
+                                    surface.vertices, surface.indices);
             if (!made) {
                 problems_.push_back({entity, std::string(kMeshField), made.error().message});
                 continue;
@@ -882,7 +888,7 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
                     render::Material3D out = material(from.standard, textures_, problems_, entity);
                     const auto texture = [&](int image) {
                         return model_texture(instance.mesh, source.value(), image, from.standard,
-                                             entity);
+                                             entity, std::string(kMeshField));
                     };
                     out.albedo_texture = texture(from.albedo_image);
                     out.metallic_texture = texture(from.metallic_image);
@@ -903,6 +909,75 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
             draw.shadows = casting;
             draws_.push_back(draw);
         }
+    }
+}
+
+void Renderer::add_csg(const world::World& world, const world::Tree3D& tree, entt::entity root,
+                       const world::Affine3D& place, std::uint32_t cull_mask) {
+    const std::optional<CsgShape> shape = csg_shape_of(world, root);
+    if (!shape) {
+        return;
+    }
+    const CsgSettings settings = csg_settings(*shape);
+    render::ShadowCasting casting = casting_of(settings.cast_shadow);
+    if ((settings.layers & cull_mask) == 0) {
+        if (casting == render::ShadowCasting::Off) {
+            return;
+        }
+        casting = render::ShadowCasting::ShadowsOnly;
+    }
+    const std::shared_ptr<const CsgMesh> mesh = csg_mesh(world, tree, root);
+    problems_.insert(problems_.end(), mesh->problems.begin(), mesh->problems.end());
+    const std::array<float, 16> transform = place.matrix();
+    const std::string prefix = "csg:" + std::to_string(mesh->version) + "/";
+    for (std::size_t i = 0; i < mesh->surfaces.size(); ++i) {
+        const CsgSurface& surface = mesh->surfaces[i];
+        auto made = kept_mesh(prefix + std::to_string(i), surface.vertices, surface.indices);
+        if (!made) {
+            problems_.push_back({root, "/components", made.error().message});
+            continue;
+        }
+        Draw draw;
+        draw.mesh = made.value();
+        draw.transform = transform;
+        const CsgMaterial& from = surface.material;
+        if (from.standard) {
+            draw.material = material(*from.standard, textures_, problems_, root);
+        } else if (from.model != nullptr && from.model_material >= 0 &&
+                   static_cast<std::size_t>(from.model_material) < from.model->materials.size()) {
+            // A CSGMesh3D's model's own material, its images found as a MeshInstance3D's are.
+            const ModelMaterial& model_material =
+                from.model->materials[static_cast<std::size_t>(from.model_material)];
+            draw.material = material(model_material.standard, textures_, problems_, from.entity);
+            // Its images are kept by the model's version where models load here.
+            SourceModel source{.model = from.model, .version = 0};
+            if (models_) {
+                if (auto loaded = models_(from.model_path);
+                    loaded && loaded.value().model == from.model) {
+                    source.version = loaded.value().version;
+                }
+            }
+            const std::string field = "/components/CSGMesh3D/mesh";
+            const auto texture = [&](int image) {
+                return model_texture(from.model_path, source, image, model_material.standard,
+                                     from.entity, field);
+            };
+            draw.material.albedo_texture = texture(model_material.albedo_image);
+            draw.material.metallic_texture = texture(model_material.metallic_image);
+            draw.material.roughness_texture =
+                model_material.roughness_image == model_material.metallic_image
+                    ? draw.material.metallic_texture
+                    : texture(model_material.roughness_image);
+            if (model_material.standard.normal_enabled) {
+                draw.material.normal_texture = texture(model_material.normal_image);
+            }
+            if (model_material.standard.emission_enabled) {
+                draw.material.emission_texture = texture(model_material.emission_image);
+            }
+        }
+        draw.layers = settings.layers;
+        draw.shadows = casting;
+        draws_.push_back(draw);
     }
 }
 
@@ -1049,6 +1124,12 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
         draw.layers = instance.layers;
         draw.shadows = casting;
         draws_.push_back(draw);
+    }
+    // CSG roots draw their results; the shapes under them draw nothing of their own.
+    for (const entt::entity root : csg_roots(world, tree)) {
+        if (tree.visible(root)) {
+            add_csg(world, tree, root, global(root), lens.cull_mask);
+        }
     }
     // Meshes no entity drew this frame go, and so do the entities' records of them.
     for (auto it = shared_.begin(); it != shared_.end();) {

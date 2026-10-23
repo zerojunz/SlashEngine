@@ -801,6 +801,21 @@ the CPU as Godot's skeleton shader does (`skin_vertices`) into a mesh per entity
 `RenderDevice::update_mesh` refills, and blends poses between ticks. `skeleton.get` lists and
 poses bones; `examples/skinned-meshes` waves an arm.
 
+CSG shapes are Godot 4.6's CSG module (`engine/scene3d/src/csg.cpp`, after
+`modules/csg/csg_shape.cpp`): `CSGBox3D`, `CSGSphere3D`, `CSGCylinder3D`, `CSGTorus3D`,
+`CSGPolygon3D`, `CSGMesh3D` and `CSGCombiner3D`. Each shape's faces are made as Godot's
+`_build_brush` makes them, packed into Manifold (built with `MANIFOLD_PAR=-1` and
+`-ffp-contract=off`) and combined in Godot's order: a shape with its children, a child's
+`operation` against what came before, hidden children left out. A root (a shape whose parent
+isn't one) becomes one mesh with a surface per material, its normals and tangents as Godot's
+`update_shape` makes them. `install_csg` (called by `canvas::install`) keeps each root's mesh in
+the world until the shapes under it change; `csg_mesh` makes it on each call in a world without.
+`Renderer` draws roots, physics3d makes a static body of each root with `use_collision` (its
+triangles as a concave shape), navigation bakes take roots as Godot's
+`CSGShape3D::navmesh_parse_source_geometry` does, `check_csg` reports shapes that can't be made
+for `scene validate`, and `csg.get` returns a root's size, surfaces and problems.
+`examples/csg-shapes` builds a hamlet.
+
 Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V, MSL, GLSL ES and WGSL are committed
 in `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang,
 SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`
@@ -1473,7 +1488,7 @@ CI rejects unformatted code and any clang-tidy finding.
   particles, GPU particles' steps and drawing them), `text` (fonts, shaping, line breaking, carets and selections, and glyph atlases), `ui`
   (controls, containers and themes: layout, draw calls, buttons, focus and text fields), `animation` (`.anim.json` keyframe
   animations, `.animtree.json` animation trees and the systems that play them),
-  `scene3d` (3D nodes: primitive meshes, glTF, OBJ, FBX and Blender models, materials, cameras, lights and environments,
+  `scene3d` (3D nodes: primitive meshes, glTF, OBJ, FBX and Blender models, CSG shapes, materials, cameras, lights and environments,
   and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `physics3d` (3D bodies, areas, character movement and queries on Jolt), `navigation` (navigation meshes, maps, paths and agents), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems, drafting cue sheets and arranging them),

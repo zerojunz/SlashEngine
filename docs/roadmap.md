@@ -638,7 +638,13 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Up to 7.1 speakers, as Godot's speaker modes: a buffer and effects per speaker pair,
         Spcap panning for 3D sounds, mix targets, and `audio.state` and `audio.capture` per
         speaker
-- [ ] Heightmap terrain; CSG and grid-based tile placement
+- [ ] Level geometry and terrain
+  - [x] CSG shapes on Manifold, as Godot 4.6's: boxes, spheres, cylinders and cones, tori,
+        polygons pushed or spun, meshes and combiners; drawn, colliding and baked into
+        navigation meshes, with `csg.get`
+  - [ ] `Path3D` and `CSGPolygon3D`'s path mode, as Godot's
+  - [ ] `GridMap` and `MeshLibrary` for grid-based tile placement, as Godot's
+  - [ ] Heightmap terrain with splat materials and LOD
 - [x] glTF 2.0 models (`.gltf` and `.glb`: meshes, materials and textures) on `MeshInstance3D`,
       and JPEG textures, as Godot's importer reads them
 - [x] OBJ models (`.obj` with their `.mtl` libraries) on `MeshInstance3D`, as Godot's OBJ importer
@@ -805,7 +811,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Decals | Clustered decals | 7 | Planned |
 | Networking | ENet transport, replication driven by reflection, WebSocket for web | 8 | Planned |
 | Terrain | Heightmap terrain with splat materials and LOD | 7 | Planned |
-| Level geometry | CSG and grid-based tile placement | 7 | Planned |
+| Level geometry | CSG and grid-based tile placement | 7 | In progress: CSG shapes done; paths and `GridMap` planned |
 | LOD and culling | Generated LODs with meshoptimizer, occlusion culling | 7 | Planned |
 | XR | OpenXR | 8 | Planned |
 | Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | Planned |

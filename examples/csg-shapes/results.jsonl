@@ -1,0 +1,14 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":13,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"aabb":{"max":[1.8,2.5,1.7],"min":[-1.8,-1.2,-1.7]},"surfaces":[{"material":{"albedo_color":[0.9,0.85,0.7,1]},"triangles":32},{"material":{"albedo_color":[0.45,0.3,0.2,1]},"triangles":34},{"triangles":36},{"material":{"albedo_color":[0.7,0.2,0.15,1]},"triangles":14}],"triangles":116,"vertices":196,"volume":15.6585}}
+{"error":{"code":-32602,"data":{"path":"/id"},"message":"/id: \"door\" is part of the CSG shape \"house\", which makes the mesh: ask for \"house\""},"id":3,"jsonrpc":"2.0"}
+{"id":4,"jsonrpc":"2.0","result":{"hit":{"fraction":0.6083,"id":"house","normal":[0,0,1],"point":[0,0.5,-1.3]}}}
+{"id":5,"jsonrpc":"2.0","result":{"hit":{"fraction":0.375,"id":"house","normal":[0,0,1],"point":[0.6,0.5,1.5]}}}
+{"id":6,"jsonrpc":"2.0","result":{"colors":[[0.627,0.184,0.141,1],[0.808,0.761,0.643,1],[0.18,0.137,0.118,1],[0.525,0.525,0.561,1],[0.227,0.322,0.718,1],[0.388,0.302,0.059,1],[0.204,0.58,0.584,1],[0.11,0.216,0.118,1],[0.451,0.651,0.902,1]],"drawn":{"meshes":9},"height":90,"width":160}}
+{"id":7,"jsonrpc":"2.0","result":{"changed":{"CSGBox3D":{"size":[1.4,1.5,1.0]}},"id":"door"}}
+{"id":8,"jsonrpc":"2.0","result":{"hit":{"fraction":0.6083,"id":"house","normal":[0,0,1],"point":[0.6,0.5,-1.3]}}}
+{"id":9,"jsonrpc":"2.0","result":{"aabb":{"max":[1.8,2.5,1.7],"min":[-1.8,-1.2,-1.7]},"surfaces":[{"material":{"albedo_color":[0.9,0.85,0.7,1]},"triangles":32},{"material":{"albedo_color":[0.45,0.3,0.2,1]},"triangles":34},{"triangles":36},{"material":{"albedo_color":[0.7,0.2,0.15,1]},"triangles":14}],"triangles":116,"vertices":196,"volume":15.4305}}
+{"id":10,"jsonrpc":"2.0","result":{"id":"hoop"}}
+{"id":11,"jsonrpc":"2.0","result":{"aabb":{"max":[0,0,0],"min":[0,0,0]},"problems":[{"id":"hoop","message":"equals outer_radius, so the torus has no thickness","path":"/components/CSGTorus3D/inner_radius"}],"surfaces":[],"triangles":0,"vertices":0,"volume":0}}
+{"id":12,"jsonrpc":"2.0","result":{"can_redo":1,"can_undo":1,"undone":"entity.create"}}
+{"id":13,"jsonrpc":"2.0","result":{"can_redo":2,"can_undo":0,"undone":"component.set"}}
+{"id":14,"jsonrpc":"2.0","result":{"hit":{"fraction":0.375,"id":"house","normal":[0,0,1],"point":[0.6,0.5,1.5]}}}

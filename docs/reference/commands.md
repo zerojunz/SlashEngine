@@ -61,7 +61,7 @@ as `entity.get`, reject it as an unknown param.
 | Assets | [`asset.list`](#assetlist) |
 | Materials | [`material.eval`](#materialeval) |
 | Animations | [`animation.eval`](#animationeval) |
-| Models | [`model.inspect`](#modelinspect), [`skeleton.get`](#skeletonget) |
+| Models | [`model.inspect`](#modelinspect), [`skeleton.get`](#skeletonget), [`csg.get`](#csgget) |
 | Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity) |
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
@@ -655,6 +655,39 @@ Needs: `read`.
 
 A bone the model hasn't fails at `/bones/<n>` with "did you mean", and an entity that draws no
 model, or a model with no nodes (an OBJ model), at `/id`.
+
+### csg.get
+
+Returns the mesh a [CSG root](scene-format.md#csg-shapes) makes from the shapes under it: its
+size, its surfaces by material and what couldn't be made.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | A CSG root: a CSG shape whose parent isn't one |
+
+Needs: `read`.
+
+```json
+{"id": "house"}
+```
+
+```json
+{"aabb":{"max":[1.8,2.5,1.7],"min":[-1.8,-1.2,-1.7]},"surfaces":[{"material":{"albedo_color":[0.9,0.85,0.7,1]},"triangles":32},{"material":{"albedo_color":[0.45,0.3,0.2,1]},"triangles":34},{"triangles":36},{"material":{"albedo_color":[0.7,0.2,0.15,1]},"triangles":14}],"triangles":116,"vertices":196,"volume":15.6585}
+```
+
+- `aabb` and `volume` (cubic meters) are in the root's own space, as Godot's `get_aabb`; an
+  empty result has a zero box and volume. A subtraction that cut nothing leaves the volume as
+  it was.
+- `surfaces` are in the order their materials first appear. Each has its triangles and the
+  `material` it draws with: the `StandardMaterial3D` fields that differ from the defaults, or
+  `model` and `model_material` for a `CSGMesh3D` model's own material, or neither for Godot's
+  default material.
+- `problems` are there only when a shape under the root couldn't be made or the result is empty,
+  each with its entity's `id`, the `path` of the bad field and a `message`, as
+  [`scene validate`](cli.md#scene-validate) reports them.
+
+A shape under a root fails at `/id`, naming the root to ask for instead, and so does an entity
+with no CSG shape.
 
 ### tilemap.paint
 
@@ -3674,6 +3707,7 @@ to what the allocator handed out but not exactly it, and they vary by platform.
 | `audio` | Each bus's last ten seconds for `audio.capture` (an item per bus) and the mixing buffers |
 | `cpu_particles_2d`, `gpu_particles_2d` | Each emitter's particles, or the steps GPU particles replay |
 | `text` | The glyph atlas pages text draws from |
+| `csg` | The meshes CSG roots keep (`meshes`) and their `triangles` |
 
 A part that grows from one report to the next while the game keeps doing the same thing is the
 place to look for a leak, and its items name what grew

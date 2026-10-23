@@ -51,6 +51,7 @@ add_executable(slash_tests
     test_canvas_layer.cpp
     test_canvas.cpp
     test_command.cpp
+    test_csg.cpp
     test_debug.cpp
     test_exporter.cpp
     test_fixed_step.cpp

@@ -2,6 +2,7 @@
 
 #include "slash/core/log.hpp"
 #include "slash/core/profile.hpp"
+#include "slash/scene3d/csg.hpp"
 
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Core/JobSystemSingleThreaded.h>
@@ -726,10 +727,11 @@ void Space::destroy(Body& body) {
     body.id = JPH::BodyID();
 }
 
-void Space::remove_stale(world::World& world) {
+void Space::remove_stale(world::World& world, const std::vector<entt::entity>& csg) {
     const entt::registry& registry = world.ecs();
     bodies_.erase_if([&](entt::entity entity, const std::unique_ptr<Body>& body) {
-        if (world.valid(entity) && kind_of(registry, entity) == body->kind) {
+        if (body->csg ? std::ranges::find(csg, entity) != csg.end()
+                      : world.valid(entity) && kind_of(registry, entity) == body->kind) {
             return false;
         }
         removed_.insert(body->name);
@@ -749,6 +751,7 @@ void Space::build_shape(const world::World& world, Body& body, const ShapeKey& k
     JPH::StaticCompoundShapeSettings compound;
     JPH::RefConst<JPH::Shape> single;
     world::Affine3D single_transform;
+    std::size_t built = 0;
     for (std::size_t i = 0; i < key.parts.size(); ++i) {
         const Part& part = key.parts[i];
         if (part.shape.disabled) {
@@ -773,9 +776,25 @@ void Space::build_shape(const world::World& world, Body& body, const ShapeKey& k
                           shape.GetPtr());
         single = shape;
         single_transform = local.transform;
+        ++built;
+    }
+    // A CSG root's triangles, as Godot's ConcavePolygonShape3D of them, in the root's space.
+    if (key.csg != nullptr && !key.csg->empty()) {
+        world::CollisionShape3D faces;
+        faces.shape = "concave_polygon";
+        faces.faces = *key.csg;
+        const BuiltShape made = detail::build_shape(faces);
+        if (!made.error.empty()) {
+            warn_shape(world, body.entity, made.error);
+        } else if (made.shape != nullptr) {
+            compound.AddShape(JPH::Vec3::sZero(), JPH::Quat::sIdentity(), made.shape.GetPtr());
+            single = made.shape;
+            single_transform = {};
+            ++built;
+        }
     }
     JPH::RefConst<JPH::Shape> whole;
-    if (body.parts.size() == 1) {
+    if (built == 1) {
         whole = single;
         if (single_transform != world::Affine3D{}) {
             const JPH::ShapeSettings::ShapeResult result =
@@ -784,7 +803,7 @@ void Space::build_shape(const world::World& world, Body& body, const ShapeKey& k
                     .Create();
             whole = result.HasError() ? single : result.Get();
         }
-    } else if (body.parts.size() > 1) {
+    } else if (built > 1) {
         const JPH::ShapeSettings::ShapeResult result = compound.Create();
         if (result.HasError()) {
             const JPH::String& error = result.GetError();
@@ -862,10 +881,12 @@ void Space::create_body(Body& body, const world::Affine3D& global, const world::
 }
 
 void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::entity entity,
-                      Kind kind) {
+                      Kind kind, const CsgShape* csg) {
     entt::registry& registry = world.ecs();
     const world::Affine3D global = tree.global(entity);
-    Fields fields = fields_of(registry, entity, kind);
+    // A CSG root collides as a static body with no physics material: friction 1, no bounce.
+    Fields fields = csg != nullptr ? Fields{csg->layer, csg->mask, 1.0F, 0.0F, {}, {}}
+                                   : fields_of(registry, entity, kind);
     auto bone_mode = world::PhysicalBoneMode::Static;
     if (kind == Kind::Bone) {
         const auto link = bone_links_.find(entity);
@@ -877,7 +898,13 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
             fields.mask = 0;
         }
     }
-    const ShapeKey shape_key = shape_key_of(registry, tree, entity);
+    ShapeKey shape_key;
+    if (csg != nullptr) {
+        shape_key.scale = scale_of(registry, tree, entity);
+        shape_key.csg = csg->faces;
+    } else {
+        shape_key = shape_key_of(registry, tree, entity);
+    }
     JPH::BodyInterface& interface = system_->GetBodyInterfaceNoLock();
     const JPH::BodyLockInterfaceNoLock& locks = system_->GetBodyLockInterfaceNoLock();
 
@@ -887,6 +914,7 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
         made->entity = entity;
         made->name = world.id_of(entity);
         made->kind = kind;
+        made->csg = csg != nullptr;
         made->layer = fields.layer;
         made->mask = fields.mask;
         made->friction = fields.friction;
@@ -1047,9 +1075,14 @@ void Space::sync(world::World& world) {
 
 void Space::sync(world::World& world, const world::Tree3D& tree) {
     entt::registry& registry = world.ecs();
+    // CSG roots with use_collision, unless the entity is a body of its own.
+    std::vector<scene3d::CsgBody> csg = scene3d::csg_bodies(world, tree);
+    std::erase_if(csg, [&](const scene3d::CsgBody& body) {
+        return kind_of(registry, body.entity).has_value();
+    });
     if (system_ == nullptr) {
-        if (!has_any<RigidBody3D, CharacterBody3D, AnimatableBody3D, StaticBody3D, Area3D,
-                     PhysicalBone3D>(registry)) {
+        if (csg.empty() && !has_any<RigidBody3D, CharacterBody3D, AnimatableBody3D, StaticBody3D,
+                                    Area3D, PhysicalBone3D>(registry)) {
             return;
         }
         create_system();
@@ -1060,9 +1093,14 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
             bone_links_.insert_or_assign(entity, std::move(link));
         }
     }
-    remove_stale(world);
+    std::vector<entt::entity> csg_roots;
+    csg_roots.reserve(csg.size());
+    for (const scene3d::CsgBody& body : csg) {
+        csg_roots.push_back(body.entity);
+    }
+    remove_stale(world, csg_roots);
     // New bodies are made in the same order on every machine: by kind, then in each
-    // component's storage order.
+    // component's storage order, then CSG roots in tree order.
     const auto each = [&]<typename Component>(Kind kind) {
         for (const entt::entity entity : registry.view<Component>()) {
             if (kind_of(registry, entity) == kind) {
@@ -1076,6 +1114,11 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
     each.template operator()<StaticBody3D>(Kind::Static);
     each.template operator()<Area3D>(Kind::Area);
     each.template operator()<PhysicalBone3D>(Kind::Bone);
+    for (scene3d::CsgBody& body : csg) {
+        const CsgShape shape{
+            .layer = body.layer, .mask = body.mask, .faces = std::move(body.faces)};
+        sync_body(world, tree, body.entity, Kind::Static, &shape);
+    }
     sync_joints(world, tree);
     if (added_ >= kOptimizeAfter) {
         system_->OptimizeBroadPhase();

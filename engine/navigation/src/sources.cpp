@@ -1,12 +1,13 @@
 // The geometry a bake works from, as Godot 4.6's source geometry parsers: the region entity and
 // those under it, each giving what Godot's node of the same kind gives
-// (MeshInstance3D::navmesh_parse_source_geometry, StaticBody3D's and StaticBody2D's,
+// (MeshInstance3D::navmesh_parse_source_geometry, StaticBody3D's and StaticBody2D's, CSGShape3D's,
 // NavigationObstacle3D's and 2D's, TileMapLayer's), placed in the region's space as Godot's
 // root_node_transform places it.
 
 #include "slash/canvas/tilemap.hpp"
 #include "slash/navigation/navigation.hpp"
 #include "slash/physics3d/physics3d.hpp"
+#include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/primitive.hpp"
 #include "slash/world/tree2d.hpp"
@@ -241,6 +242,22 @@ void parse_3d(const world::World& world, asset::Assets& assets, const world::Tre
                 } else {
                     add_surface(out, mesh.value().vertices, mesh.value().indices, transform);
                 }
+            }
+        }
+    }
+    // CSGShape3D::navmesh_parse_source_geometry: a root's result, once, with mesh_instances or
+    // both, and with static_colliders when it collides on a layer the mask takes.
+    if (const std::optional<scene3d::CsgShape> shape = scene3d::csg_shape_of(world, entity);
+        shape && scene3d::is_csg_root(world, tree, entity)) {
+        const scene3d::CsgSettings csg = scene3d::csg_settings(*shape);
+        const bool collides =
+            csg.use_collision && (csg.collision_layer & settings.geometry_collision_mask) != 0U;
+        if (parses_meshes(settings.geometry_parsed_geometry_type) ||
+            (parses_colliders(settings.geometry_parsed_geometry_type) && collides)) {
+            const Affine3D transform = root * tree.global(entity);
+            for (const scene3d::CsgSurface& surface :
+                 scene3d::csg_mesh(world, tree, entity)->surfaces) {
+                add_surface(out, surface.vertices, surface.indices, transform);
             }
         }
     }
