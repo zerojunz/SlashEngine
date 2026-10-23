@@ -1,0 +1,120 @@
+[gd_scene load_steps=11 format=3 uid="uid://c4armrig0skel1"]
+
+[ext_resource type="PackedScene" uid="uid://dq8armmodel02" path="res://models/arm.gltf" id="1_arm"]
+
+[sub_resource type="Environment" id="Environment_sky"]
+background_mode = 1
+background_color = Color(0.55, 0.72, 0.92, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.6, 0.6, 0.6, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_grass"]
+albedo_color = Color(0.35, 0.58, 0.28, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ground"]
+material = SubResource("StandardMaterial3D_grass")
+size = Vector3(8, 0.2, 4)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
+size = Vector3(8, 0.2, 4)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_red"]
+albedo_color = Color(0.9, 0.2, 0.15, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_ball"]
+material = SubResource("StandardMaterial3D_red")
+radius = 0.08
+height = 0.16
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_steel"]
+albedo_color = Color(0.85, 0.87, 0.9, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_blade"]
+material = SubResource("StandardMaterial3D_steel")
+size = Vector3(0.05, 0.8, 0.02)
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_upper"]
+radius = 0.06
+height = 0.8
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_fore"]
+radius = 0.05
+height = 0.5
+
+[node name="Stage" type="Node3D"]
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_sky")
+
+[node name="Camera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3, 0.9, 2.2)
+fov = 60.0
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 3, 3)
+
+[node name="Ground" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Ground"]
+mesh = SubResource("BoxMesh_ground")
+
+[node name="Shape" type="CollisionShape3D" parent="Ground"]
+shape = SubResource("BoxShape3D_ground")
+
+[node name="Ball" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0.3)
+mesh = SubResource("SphereMesh_ball")
+
+[node name="ElbowHint" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.2, 0.5, -0.5)
+
+[node name="Reacher" parent="." instance=ExtResource("1_arm")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.6, 0, 0)
+
+[node name="ReachIK" type="TwoBoneIK3D" parent="Reacher/Rig/Skeleton3D"]
+setting_count = 1
+settings/0/target_node = NodePath("../../../../Ball")
+settings/0/pole_node = NodePath("../../../../ElbowHint")
+settings/0/root_bone_name = "Shoulder"
+settings/0/root_bone = 0
+settings/0/middle_bone_name = "Elbow"
+settings/0/middle_bone = 1
+settings/0/end_bone_name = "Hand"
+settings/0/end_bone = 2
+
+[node name="Grip" type="BoneAttachment3D" parent="Reacher/Rig/Skeleton3D"]
+bone_name = "Hand"
+bone_idx = 2
+
+[node name="Blade" type="MeshInstance3D" parent="Reacher/Rig/Skeleton3D/Grip"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+mesh = SubResource("BoxMesh_blade")
+
+[node name="Limp" parent="." instance=ExtResource("1_arm")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0, 0)
+
+[node name="Skeleton3D" parent="Limp/Rig" index="0"]
+bones/0/rotation = Quaternion(0, 0, -0.25881905, 0.9659258)
+bones/1/rotation = Quaternion(0, 0, 0.38268343, 0.9238795)
+
+[node name="Ragdoll" type="PhysicalBoneSimulator3D" parent="Limp/Rig/Skeleton3D"]
+
+[node name="Physical Bone Shoulder" type="PhysicalBone3D" parent="Limp/Rig/Skeleton3D/Ragdoll"]
+body_offset = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 0)
+bone_name = &"Shoulder"
+mass = 2.0
+
+[node name="Shape" type="CollisionShape3D" parent="Limp/Rig/Skeleton3D/Ragdoll/Physical Bone Shoulder"]
+shape = SubResource("CapsuleShape3D_upper")
+
+[node name="Physical Bone Elbow" type="PhysicalBone3D" parent="Limp/Rig/Skeleton3D/Ragdoll"]
+joint_type = 3
+body_offset = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, 0)
+bone_name = &"Elbow"
+joint_constraints/angular_limit_enabled = true
+joint_constraints/angular_limit_upper = 135.0
+joint_constraints/angular_limit_lower = -135.0
+
+[node name="Shape" type="CollisionShape3D" parent="Limp/Rig/Skeleton3D/Ragdoll/Physical Bone Elbow"]
+shape = SubResource("CapsuleShape3D_fore")

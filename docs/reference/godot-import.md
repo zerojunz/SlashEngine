@@ -429,7 +429,8 @@ does. [examples/import-godot-3d](../../examples/import-godot-3d/) imports a cour
 - An instance of a `.glb`, `.gltf`, `.fbx` or `.blend` file, Godot's imported scene, becomes a
   `Transform3D` and a `MeshInstance3D` whose `mesh` is the file, which draws its nodes, meshes and
   materials as Godot imports them (see [models](scene-format.md#models)). The instance keeps the
-  transform the scene gave it. The model's own nodes can't be changed from the scene, so
+  transform the scene gave it. The model's own nodes can't be changed from the scene, but for
+  its `Skeleton3D` and what the scene adds under it ([skeletons](#skeletons)), so other
   editable children and nodes added under them are reported. A model's `.import` file with a
   `nodes/root_scale` or a `nodes/root_type` other than `Node3D` is reported too: scale the
   entities that draw it, or add the component to them.
@@ -472,6 +473,46 @@ does. [examples/import-godot-3d](../../examples/import-godot-3d/) imports a cour
   only meshes by default, so `geometry_parsed_geometry_type` is written as `"mesh_instances"`
   unless it is set; a source geometry mode or group is reported, since a bake takes the
   region's entity and those under it.
+
+### Skeletons
+
+Godot's importer makes a `Skeleton3D` of a model's skins, and a scene that instances the model
+can pose its bones and add skeleton modifiers, physical bones and bone attachments under it.
+The importer works out the skeletons as Godot's `SkinTool` does: which nodes are bones, their
+order (roots, then each bone's children, by their index in the file) and where each
+`Skeleton3D` goes, so a property that names a bone by its index finds the model's node.
+Godot keeps a file's `.` in bone names (`UpperArm.L`), where a model's nodes have `_`, as its
+other node names do; tracks, filters and the properties below find the node either way.
+
+- The `Skeleton3D`'s `bones/<n>/position`, `rotation` and `scale` become the entity's
+  [`Skeleton3D`](scene-format.md#skeletons-and-model-animations) maps, by the bone's node, and
+  `show_rest_only` carries over. A pose the model already has is left out. A bone the model's
+  own animations move is reported rather than posed, since the pose would hold it still where
+  Godot's animation moves it; changed bone names, parents, rests and disabled bones are
+  reported too.
+- `TwoBoneIK3D`, `FABRIK3D`, `CCDIK3D`, `JacobianIK3D`, `PhysicalBoneSimulator3D` and
+  `BoneAttachment3D` under the `Skeleton3D` become entities with the component of the same name
+  in the `Transform3D` children of the entity that draws the model, in Godot's order, so the
+  modifiers run in it. Their `settings/<n>/` become `settings`: bones by name first, then by
+  index, as Godot's modifiers find them; `target_node` and `pole_node` the entities they name;
+  directions by name. A chain's `joints/<n>/` are its nth bone's, from the root down, keyed by
+  the bone, and a `JointLimitationCone3D` is `limitation: "cone"` with its `angle`.
+- A `PhysicalBone3D` keeps its body's fields. `body_offset` becomes `body_offset_position` and
+  `body_offset_rotation`, and `joint_offset` the joint's rotation, its origin being the bone's
+  whatever it says, as Godot's `_fix_joint_offset` makes it. Its `joint_constraints/` take
+  Godot's degrees as radians; the softness, bias, relaxation, restitution, damping and `erp`
+  parameters, and a slider's angular limits, which Godot's Jolt physics ignores, are reported
+  when they differ from Godot's defaults. Physical bones right under the `Skeleton3D`, as Godot
+  4.2 put them, give the model's entity the `PhysicalBoneSimulator3D` Godot 4.3 makes for them.
+- A `BoneAttachment3D` follows the bone `bone_idx` names, or else `bone_name`, as Godot's does,
+  with what hangs under it. With `use_external_skeleton`, its `external_skeleton` is the entity
+  that draws the model the path goes into. `override_pose` is reported.
+
+Modifiers anywhere but under a model's `Skeleton3D` do nothing in Godot, and are reported with
+their components left out; other modifiers, such as `LookAtModifier3D` and `SkeletonIK3D`, are
+reported as nodes in an imported model.
+[examples/import-godot-skeleton](../../examples/import-godot-skeleton/) imports an arm that
+reaches for a ball with a blade in its hand, and another that falls as a ragdoll.
 
 ## Project settings
 
@@ -586,10 +627,11 @@ The report lists each of these once per kind, with how many and where it was fir
 
 | What | Why, and when |
 | --- | --- |
-| `Skeleton3D` and its modifiers, `PhysicalBone3D` | Not converted yet; add SlashEngine's component of the same name by hand |
+| A `Skeleton3D` a scene builds itself, and what is under it | Not converted yet; a model's skeleton converts with the instance of the model file |
+| `LookAtModifier3D`, `SkeletonIK3D`, `SpringBoneSimulator3D` and the other skeleton modifiers SlashEngine hasn't | Turn the bones from gameplay code, or with a modifier SlashEngine has |
 | A state machine transition's `advance_expression`, `AnimationNodeExtension` and `AnimationNodeOutput` subclasses, and a tree's manual `callback_mode_process` | Set a condition from gameplay code; the tree plays every tick |
 | `blend_shape` tracks, 3D tracks on the bones of a `Skeleton3D` in a scene, and compressed animations | Models have no blend shapes yet, and scenes' own skeletons don't convert yet; turn off an animation's compression in Godot |
-| A model's own nodes changed from a scene (editable children), and its `.import` file's root scale and root type | The model draws as its file has it; place, scale and add components to the entity that draws it |
+| A model's own nodes changed from a scene (editable children), but for its `Skeleton3D`'s bone poses, and its `.import` file's root scale and root type | The model draws as its file has it; place, scale and add components to the entity that draws it |
 | `ArrayMesh` resources, the meshes Godot saves from imported models | Export the mesh as a glTF file |
 | A CSG root's `material_override`, a mesh library item's shape scale | Give each shape its material; set the shape's size |
 | Joint softness, bias, relaxation and damping, and `solver_priority` | Godot's Jolt physics, which SlashEngine follows, ignores them |
