@@ -2,6 +2,7 @@ project.import {"dry_run":true,"source":"unity"}
 {
   "converted": {
     "animation_libraries": 1,
+    "animation_trees": 1,
     "assets": 9,
     "bus_layouts": 1,
     "input_actions": 12,
@@ -11,7 +12,7 @@ project.import {"dry_run":true,"source":"unity"}
   },
   "dry_run": true,
   "engine": "unity",
-  "files": ["unity/Assets/Audio/Pond.bus_layout.json", "unity/Assets/Prefabs/Coin.scene.json", "unity/Assets/Animations/Frog.anim.json", "unity/Assets/Prefabs/Frog.scene.json", "unity/Assets/Prefabs/Gold Coin.scene.json", "unity/Assets/Audio/pond.loop.audio.json", "unity/Assets/tiles.tileset.json", "unity/Assets/lights/spot_17_50.png", "unity/Assets/Scenes/Pond.scene.json", "project.json", "storyboard/work.json", "src/imported/camera_follow.cpp", "src/imported/coin.cpp", "src/imported/frog.cpp", "src/imported/hud.cpp", "src/imported/scripts.cpp", "src/game.cpp", "import/unity.json"],
+  "files": ["unity/Assets/Audio/Pond.bus_layout.json", "unity/Assets/Prefabs/Coin.scene.json", "unity/Assets/Animations/Frog.anim.json", "unity/Assets/Animations/Frog.animtree.json", "unity/Assets/Prefabs/Frog.scene.json", "unity/Assets/Prefabs/Gold Coin.scene.json", "unity/Assets/Audio/pond.loop.audio.json", "unity/Assets/tiles.tileset.json", "unity/Assets/lights/spot_17_50.png", "unity/Assets/Scenes/Pond.scene.json", "project.json", "storyboard/work.json", "src/imported/camera_follow.cpp", "src/imported/coin.cpp", "src/imported/frog.cpp", "src/imported/hud.cpp", "src/imported/scripts.cpp", "src/game.cpp", "import/unity.json"],
   "main_scene": "unity/Assets/Scenes/Pond.scene.json",
   "module": "src/game.cpp",
   "pixels_per_unit": 32.0,
@@ -97,6 +98,7 @@ project.import {"source":"unity"}
 {
   "converted": {
     "animation_libraries": 1,
+    "animation_trees": 1,
     "assets": 9,
     "bus_layouts": 1,
     "input_actions": 12,
@@ -105,7 +107,7 @@ project.import {"source":"unity"}
     "tile_sets": 1
   },
   "engine": "unity",
-  "files": 18,
+  "files": 19,
   "main_scene": "unity/Assets/Scenes/Pond.scene.json",
   "module": "src/game.cpp",
   "pixels_per_unit": 32.0,
@@ -620,13 +622,16 @@ project.import {"source":"unity"}
     },
     "frog": {
       "components": {
-        "AnimationPlayer": {
-          "animation": "Idle",
-          "library": "unity/Assets/Animations/Frog.anim.json",
+        "AnimationTree": {
+          "deterministic": false,
+          "libraries": {
+            "": "unity/Assets/Animations/Frog.anim.json"
+          },
           "targets": {
             "#sprite": "frog_sprite",
             "Feet": "feet"
-          }
+          },
+          "tree_root": "unity/Assets/Animations/Frog.animtree.json"
         },
         "AudioStreamPlayer2D": {
           "bus": "SFX",
@@ -882,6 +887,56 @@ project.import {"source":"unity"}
     }
   },
   "format": 1
+}
+--- unity/Assets/Animations/Frog.animtree.json
+{
+  "format": 1,
+  "root": {
+    "states": {
+      "Hop": {
+        "node": {
+          "animation": "Hop",
+          "type": "Animation"
+        },
+        "position": [300.0, 200.0]
+      },
+      "Idle": {
+        "node": {
+          "animation": "Idle",
+          "type": "Animation"
+        },
+        "position": [300.0, 100.0]
+      }
+    },
+    "transitions": [
+      {
+        "advance_mode": "auto",
+        "from": "Start",
+        "priority": 0,
+        "to": "Idle"
+      },
+      {
+        "advance_expression": "Hop",
+        "advance_mode": "auto",
+        "from": "Idle",
+        "priority": 0,
+        "to": "Hop"
+      },
+      {
+        "advance_expression": "Grounded",
+        "advance_mode": "auto",
+        "from": "Hop",
+        "priority": 0,
+        "switch_mode": "at_end",
+        "to": "Idle"
+      }
+    ],
+    "type": "StateMachine"
+  },
+  "triggers": ["Hop"],
+  "variables": {
+    "Grounded": true
+  }
 }
 --- unity/Assets/Audio/Pond.bus_layout.json
 {
@@ -1152,6 +1207,11 @@ world.query {"include":["Transform2D"],"with":["RigidBody2D"]}
   ],
   "truncated": false
 }
+step {"ticks":50}
+{
+  "tick": 110,
+  "ticks": 50
+}
 events.read {"subscription":"events_1"}
 {
   "dropped": 0,
@@ -1160,15 +1220,10 @@ events.read {"subscription":"events_1"}
       "id": "frog",
       "kind": "Ribbit",
       "seq": 1,
-      "tick": 59
+      "tick": 60
     }
   ],
   "more": false
-}
-step {"ticks":50}
-{
-  "tick": 110,
-  "ticks": 50
 }
 entity.get {"components":["Sprite2D"],"id":"frog/frog_sprite","omit_defaults":true}
 {
@@ -1185,6 +1240,38 @@ entity.get {"components":["Sprite2D"],"id":"frog/frog_sprite","omit_defaults":tr
     "scale": [1, 1]
   },
   "id": "frog/frog_sprite",
+  "parent": "frog"
+}
+animation.set_parameters {"id":"frog","parameters":{"Hop":true}}
+{
+  "changed": {
+    "Hop": true
+  },
+  "id": "frog"
+}
+step {"ticks":16}
+{
+  "tick": 126,
+  "ticks": 16
+}
+entity.get {"components":["Transform2D"],"id":"frog/feet"}
+{
+  "components": {
+    "Transform2D": {
+      "children": [],
+      "position": [0.0, 23.466667],
+      "rotation": 0.0,
+      "scale": [1.0, 1.0],
+      "skew": 0.0,
+      "top_level": false
+    }
+  },
+  "global": {
+    "position": [-96, 155.47],
+    "rotation": 0,
+    "scale": [1, 1]
+  },
+  "id": "frog/feet",
   "parent": "frog"
 }
 ui.layout {"ids":["coins","icon","count","pause","hint"]}
@@ -1246,10 +1333,10 @@ light.sample {"points":[[-160,-32],[144,112]]}
   "lit": true,
   "points": [
     {
-      "color": [1.547, 1.409, 1.194],
+      "color": [1.56, 1.42, 1.2],
       "lights": [
         {
-          "color": [1.187, 1.009, 0.594],
+          "color": [1.2, 1.02, 0.6],
           "id": "lantern",
           "shadow": 0
         }
@@ -1267,7 +1354,7 @@ light.sample {"points":[[-160,-32],[144,112]]}
     }
   ]
 }
-animation.eval {"animation":"Hop","id":"frog","times":[0,0.25],"tracks":["Feet:Transform2D/position/y"]}
+animation.eval {"animation":"Hop","path":"unity/Assets/Animations/Frog.anim.json","times":[0,0.25],"tracks":["Feet:Transform2D/position/y"]}
 {
   "length": 0.5,
   "loop": "none",
@@ -1319,10 +1406,10 @@ storyboard.query {"kind":"task"}
     {
       "fields": {
         "name": "Port the state machine of Assets/Animations/Frog.controller",
-        "summary": "Unity Animator controller: pick its animations from gameplay code."
+        "summary": "Unity Animator controller: set its parameters from gameplay code."
       },
       "id": "task/port-frog-anim",
-      "version": "57805f8a"
+      "version": "410f15db"
     },
     {
       "fields": {
