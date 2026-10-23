@@ -8,6 +8,7 @@
 #include "slash/navigation/navigation.hpp"
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/scene3d/csg.hpp"
+#include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/primitive.hpp"
 #include "slash/world/tree2d.hpp"
@@ -255,9 +256,27 @@ void parse_3d(const world::World& world, asset::Assets& assets, const world::Tre
         if (parses_meshes(settings.geometry_parsed_geometry_type) ||
             (parses_colliders(settings.geometry_parsed_geometry_type) && collides)) {
             const Affine3D transform = root * tree.global(entity);
-            for (const scene3d::CsgSurface& surface :
+            for (const scene3d::MeshSurface& surface :
                  scene3d::csg_mesh(world, tree, entity)->surfaces) {
                 add_surface(out, surface.vertices, surface.indices, transform);
+            }
+        }
+    }
+    // GridMap::navmesh_parse_source_geometry: its cells' meshes with mesh_instances or both,
+    // else, with static_colliders, their shapes when it is on a layer the mask takes.
+    if (const auto* map = registry.try_get<world::GridMap>(entity); map != nullptr) {
+        const Affine3D transform = root * tree.global(entity);
+        const std::shared_ptr<const scene3d::GridMesh> mesh = scene3d::grid_mesh(world, entity);
+        if (parses_meshes(settings.geometry_parsed_geometry_type)) {
+            for (const auto& octant : mesh->octants) {
+                for (const scene3d::GridSurface& surface : octant->surfaces) {
+                    add_surface(out, surface.mesh.vertices, surface.mesh.indices, transform);
+                }
+            }
+        } else if (parses_colliders(settings.geometry_parsed_geometry_type) &&
+                   (map->collision_layer & settings.geometry_collision_mask) != 0U) {
+            for (const scene3d::GridShape& shape : *mesh->shapes) {
+                add_shape(out, shape.shape, transform * shape.local);
             }
         }
     }

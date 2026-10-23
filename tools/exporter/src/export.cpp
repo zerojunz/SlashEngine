@@ -32,6 +32,7 @@
 #include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/scene3d/blend.hpp"
+#include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
 #include "slash/text/text.hpp"
@@ -149,7 +150,8 @@ std::optional<fs::path> find_emscripten_toolchain() {
 }
 
 // The files a game reads at run time: scenes, prefabs, the assets sprites draw, animations and
-// animation trees, tile sets, particle process materials, fonts and sounds.
+// animation trees, tile sets, particle process materials, fonts, sounds, navigation meshes,
+// models and mesh libraries.
 enum class DataFile : std::uint8_t {
     None,
     Scene,
@@ -169,6 +171,7 @@ enum class DataFile : std::uint8_t {
     BusLayout,
     NavigationMesh,
     NavigationPolygon,
+    MeshLibrary,
     Model,
     Buffer
 };
@@ -225,6 +228,9 @@ DataFile data_file(std::string_view name) {
     }
     if (name.ends_with(navigation::kPolygonSuffix)) {
         return DataFile::NavigationPolygon;
+    }
+    if (name.ends_with(scene3d::kMeshLibrarySuffix)) {
+        return DataFile::MeshLibrary;
     }
     if (audio::is_sound_path(name)) {
         return DataFile::Sound;
@@ -298,6 +304,8 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return navigation::validate_mesh(parsed.value());
     case DataFile::NavigationPolygon:
         return navigation::validate_polygon(parsed.value());
+    case DataFile::MeshLibrary:
+        return scene3d::validate_mesh_library(parsed.value());
     case DataFile::Prefab:
         errors = world::validate_prefab(components, parsed.value(), reader);
         break;
@@ -417,7 +425,8 @@ Result<bool> stage_texture_forms(std::string_view file, std::string_view bytes,
 
 // Copies project.json, providers.json and every scene, prefab, texture, .frames.json,
 // .material.json, .anim.json, .animtree.json, .tileset.json, font, .theme.json, sound, .audio.json,
-// .bus_layout.json, .navmesh.json and .navpoly.json file into data, checking each on the way.
+// .bus_layout.json, .navmesh.json, .navpoly.json and .meshlib.json file and every model into
+// data, checking each on the way.
 // Materials take their shaders compiled for the platform, and textures ship in the forms
 // project.json's rendering.textures asks for, kept in library_dir's cache.
 bool stage_data(const fs::path& project_dir, const runtime::Project& project, const fs::path& data,

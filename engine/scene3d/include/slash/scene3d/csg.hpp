@@ -5,6 +5,7 @@
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/scene3d/skeleton.hpp"
+#include "slash/scene3d/surface.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/tree3d.hpp"
 
@@ -65,35 +66,13 @@ struct CsgSettings {
 [[nodiscard]] std::vector<entt::entity> csg_roots(const world::World& world,
                                                   const world::Tree3D& tree);
 
-// What a part of the result is drawn with: the StandardMaterial3D of the shape its faces came
-// from, as Godot's material property, or a CSGMesh3D model's own material; neither for Godot's
-// default material.
-struct CsgMaterial {
-    std::optional<world::StandardMaterial3D> standard;
-    std::string model_path;             // the model whose material it is, or ""
-    std::shared_ptr<const Model> model; // that model
-    int model_material = -1;            // into its materials
-    entt::entity entity = entt::null;   // the CSGMesh3D that names the model
-
-    friend bool operator==(const CsgMaterial& a, const CsgMaterial& b) {
-        return a.standard == b.standard && a.model == b.model &&
-               a.model_material == b.model_material;
-    }
-};
-
-// One surface of a root's mesh, as Godot's root mesh has one per material: triangles with
-// Godot's clockwise front faces, smooth faces' normals shared at each corner.
-struct CsgSurface {
-    std::vector<render::Vertex3D> vertices;
-    std::vector<std::uint32_t> indices;
-    CsgMaterial material;
-};
-
 // A root's result.
 struct CsgMesh {
     // A number no other mesh made in this process has, for keeping it on a device.
     std::uint64_t version = 0;
-    std::vector<CsgSurface> surfaces;
+    // One surface per material, as Godot's root mesh has: smooth faces' normals shared at each
+    // corner. A CSGMesh3D's model's own material names the CSGMesh3D as its entity.
+    std::vector<MeshSurface> surfaces;
     // Every three corners a triangle facing out, as Godot's ConcavePolygonShape3D for
     // use_collision, in the root's space.
     std::shared_ptr<const std::vector<Vec3>> collision;

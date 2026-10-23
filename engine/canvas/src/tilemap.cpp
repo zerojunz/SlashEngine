@@ -2,6 +2,7 @@
 
 #include "slash/canvas/debug_draw.hpp"
 #include "slash/core/text.hpp"
+#include "slash/world/legend.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -22,14 +23,12 @@ constexpr std::array<std::string_view, 3> kModeNames = {"match_corners_and_sides
                                                         "match_sides"};
 // A texture is at most 16384 pixels on a side.
 constexpr std::int64_t kMaxPixels = 16384;
-constexpr std::size_t kMaxKeyLength = 3;
 // Godot keeps alternative IDs below its transform flags, bit 12 up.
 constexpr int kMaxAlternative = 4095;
 constexpr std::int64_t kMaxFrames = 256;
 // The most texture cells one tile and its frames can cover.
 constexpr std::int64_t kMaxCovered = 65536;
 constexpr std::array<std::string_view, 2> kAnimationModeNames = {"default", "random_start_times"};
-constexpr std::size_t kKeyCount = kKeyCharacters.size();
 
 json::Value property(std::string_view type, std::string_view description) {
     json::Value out;
@@ -1044,16 +1043,6 @@ private:
     std::vector<json::ValidationError> errors_;
 };
 
-bool valid_key(std::string_view key) {
-    return !key.empty() && key.size() <= kMaxKeyLength && std::ranges::all_of(key, [](char c) {
-        return kKeyCharacters.find(c) != std::string_view::npos;
-    });
-}
-
-bool empty_key(std::string_view key) {
-    return std::ranges::all_of(key, [](char c) { return c == '.'; });
-}
-
 // Decodes a layer's cells into out, if given, collecting errors; stops at the first if asked.
 void decode(const world::TileMapLayer& layer, const TileSet& set, Cells* out,
             std::vector<json::ValidationError>& errors, bool first_only) {
@@ -1063,7 +1052,7 @@ void decode(const world::TileMapLayer& layer, const TileSet& set, Cells* out,
     bool lengths_ok = true;
     for (const auto& [key, value] : layer.legend) {
         const std::string at = "/legend/" + json::pointer_escape(key);
-        if (!valid_key(key)) {
+        if (!world::valid_legend_key(key)) {
             errors.push_back({at, "a key is one to three letters, digits or punctuation marks "
                                   "other than '.', '\"' and backslash"});
             lengths_ok = false;
@@ -1111,7 +1100,7 @@ void decode(const world::TileMapLayer& layer, const TileSet& set, Cells* out,
         } else {
             for (std::size_t column = 0; column * length < row.size(); ++column) {
                 const std::string_view key = std::string_view(row).substr(column * length, length);
-                if (empty_key(key)) {
+                if (world::empty_legend_key(key)) {
                     continue;
                 }
                 const auto it = keys.find(key);
@@ -1131,41 +1120,6 @@ void decode(const world::TileMapLayer& layer, const TileSet& set, Cells* out,
             return;
         }
     }
-}
-
-// The key a new tile gets: the start of its name if that is free, else the first free key.
-std::string new_key(std::string_view name, std::size_t length,
-                    const std::set<std::string, std::less<>>& taken) {
-    if (name.size() >= length) {
-        std::string start(name.substr(0, length));
-        if (valid_key(start) && !taken.contains(start)) {
-            return start;
-        }
-        if (length == 1 && start.front() >= 'a' && start.front() <= 'z') {
-            start.front() = static_cast<char>(start.front() - 'a' + 'A');
-            if (!taken.contains(start)) {
-                return start;
-            }
-        }
-    }
-    // Every key of this length, in kKeyCharacters order.
-    std::size_t combinations = 1;
-    for (std::size_t i = 0; i < length; ++i) {
-        combinations *= kKeyCount;
-    }
-    std::string key(length, ' ');
-    for (std::size_t n = 0; n < combinations; ++n) {
-        std::size_t rest = n;
-        for (std::size_t i = length; i-- > 0;) {
-            key[i] = kKeyCharacters[rest % kKeyCount];
-            rest /= kKeyCount;
-        }
-        if (!taken.contains(key)) {
-            return key;
-        }
-    }
-    SLASH_ASSERT(false, "no legend key left");
-    return key;
 }
 
 // A cell as 64 bits, for hashing.
@@ -2258,13 +2212,10 @@ void encode_cells(const Cells& cells, const TileSet& set, world::TileMapLayer& l
     std::ranges::stable_sort(order, [&](const std::string& a, const std::string& b) {
         return uses.find(a)->second > uses.find(b)->second;
     });
-    std::size_t length = 1;
-    for (std::size_t capacity = kKeyCount; capacity < order.size(); capacity *= kKeyCount) {
-        ++length;
-    }
+    const std::size_t length = world::legend_key_length(order.size());
     std::set<std::string, std::less<>> taken;
     for (const auto& [key, value] : layer.legend) {
-        if (key.size() != length || !valid_key(key)) {
+        if (key.size() != length || !world::valid_legend_key(key)) {
             continue;
         }
         auto tile = find_tile(set, value);
@@ -2280,7 +2231,7 @@ void encode_cells(const Cells& cells, const TileSet& set, world::TileMapLayer& l
     for (const std::string& text : order) {
         std::string& key = key_of.find(text)->second;
         if (key.empty()) {
-            key = new_key(name_of.find(text)->second, length, taken);
+            key = world::new_legend_key(name_of.find(text)->second, length, taken);
             taken.insert(key);
         }
     }

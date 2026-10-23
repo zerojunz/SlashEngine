@@ -403,6 +403,15 @@ or an animation track. A `CSGPolygon3D` in **path mode** pushes its polygon alon
 which makes rails, pipes, roads and walls from a curve. The [paths example](../examples/paths/)
 laps a cart round a rail over a hill.
 
+**Grid maps** are Godot's `GridMap`: a level built from blocks placed in a 3D grid of cells.
+A **mesh library** (a `.meshlib.json` file) holds the blocks by name, each a mesh with the
+shapes it collides as and the navigation mesh it is walked on, and the GridMap writes which
+block is in each cell, and which of 24 ways it is turned, as rows of short keys, floor by
+floor, like a tile map. Cells are drawn and collide in blocks of cells called **octants**, and
+each cell's navigation mesh joins its neighbors', so laying out a level is writing a few rows
+of text, and changing it is `gridmap.set`. The [GridMap example](../examples/gridmap/) lays out
+a room with a ramp up to a platform.
+
 **Navigation** follows Godot 4.6's navigation servers: each world has a 2D and a 3D **map**,
 made of **regions** of navigation mesh (convex polygons, in `.navmesh.json` and `.navpoly.json`
 files) that join where their edges meet, and **links** between places the regions don't join,

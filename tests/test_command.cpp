@@ -1857,6 +1857,91 @@ TEST_CASE("path.get samples a Path2D's or Path3D's curve and finds its nearest p
     CHECK(contains(reply.message, "has no Path2D or Path3D"));
 }
 
+TEST_CASE("gridmap commands set and read a GridMap's cells, and rays name the cell they hit") {
+    const std::string root = "gridmap_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    REQUIRE(slash::platform::write_file(root + "/blocks.meshlib.json", R"({"format": 1,
+        "items": {
+          "block": {"primitive": {"BoxMesh": {"size": [2, 2, 2]}},
+                    "shapes": [{"shape": "box", "size": [2, 2, 2]}]},
+          "ramp": {"primitive": {"PrismMesh": {"size": [2, 2, 2]}}}}})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create", R"({"id": "grid", "components": {"Transform3D": {
+        "position": [0, -2, 0]}, "GridMap": {"mesh_library": "blocks.meshlib.json"}}})");
+    engine.ok("entity.create", R"({"id": "empty", "components": {"Transform3D": {}}})");
+
+    // gridmap.set fills cells or a box with one item, turned or not, or erases them.
+    CHECK(engine.ok("gridmap.set", R"({"id": "grid", "box": [-1, 0, 0, 3, 1, 2],
+                                       "item": "block"})") ==
+          parse(R"({"id": "grid", "changed": 6})"));
+    CHECK(engine.ok("gridmap.set", R"({"id": "grid", "cells": [[0, 1, 0]], "item": "ramp",
+                                       "orientation": 16})") ==
+          parse(R"({"id": "grid", "changed": 1})"));
+    CHECK(engine.ok("gridmap.set", R"({"id": "grid", "cells": [[1, 0, 1], [5, 5, 5]],
+                                       "item": null})") ==
+          parse(R"({"id": "grid", "changed": 1})"));
+    CHECK(engine.ok("gridmap.get", R"({"id": "grid"})") ==
+          parse(R"({"cells": 6, "legend": {"b": "block", "r": "ramp:16"},
+                    "floors": [{"y": 0, "origin": [-1, 0], "rows": ["bbb", "bb"]},
+                               {"y": 1, "origin": [0, 0], "rows": ["r"]}],
+                    "items": ["block", "ramp"]})"));
+    // Given cells' items and centers, and the cells points are in, in the world's space.
+    CHECK(engine.ok("gridmap.get", R"({"id": "grid", "cells": [[0, 1, 0], [9, 0, 0]],
+                                       "points": [[-1.5, -1, 3]], "global": true})") ==
+          parse(R"({"cells": [{"cell": [0, 1, 0], "item": "ramp", "orientation": 16,
+                               "center": [1, 1, 1]},
+                              {"cell": [9, 0, 0], "item": null, "center": [19, -1, 1]}],
+                    "points": [{"cell": [-1, 0, 1], "item": "block"}]})"));
+    // Rays report the cell and its item.
+    const json::Value hit =
+        engine.ok("physics.raycast", R"({"from": [3, 9, 1], "to": [3, -9, 1]})");
+    CHECK(*hit.find("hit")->find("id") == parse(R"("grid")"));
+    CHECK(*hit.find("hit")->find("cell") == parse("[1, 0, 0]"));
+    CHECK(*hit.find("hit")->find("item") == parse(R"("block")"));
+    CHECK(*hit.find("hit")->find("point") == parse("[3, 0, 1]"));
+
+    // Each edit is one undo step, and a dry run changes nothing.
+    engine.ok("undo");
+    CHECK(*engine.ok("gridmap.get", R"({"id": "grid"})").find("cells") == parse("7"));
+    engine.ok("gridmap.set", R"({"id": "grid", "box": [-1, 0, 0, 3, 2, 2], "item": null,
+                                 "dry_run": true})");
+    CHECK(*engine.ok("gridmap.get", R"({"id": "grid"})").find("cells") == parse("7"));
+    CHECK(engine.ok("schema.get", R"({"kind": "meshlib"})").find("$defs") != nullptr);
+
+    auto reply = engine.fails("gridmap.set", R"({"id": "empty", "cells": [[0, 0, 0]],
+                                                 "item": null})",
+                              command::code::kInvalidParams);
+    CHECK(reply.message == "/id: \"empty\" has no GridMap");
+    reply = engine.fails("gridmap.set", R"({"id": "grid", "cells": [[0, 0, 0]], "item": "blok"})",
+                         command::code::kNotFound);
+    CHECK(reply.message == "/item: the mesh library has no item \"blok\"; did you mean \"block\"?");
+    reply = engine.fails("gridmap.set", R"({"id": "grid", "item": "block"})",
+                         command::code::kInvalidParams);
+    CHECK(contains(reply.message, "give cells"));
+    reply = engine.fails("gridmap.set", R"({"id": "grid", "box": [0, 0, 0, 100, 10, 100],
+                                            "item": null})",
+                         command::code::kInvalidParams);
+    CHECK(reply.message == "/box: covers 100000 cells; the most is 65536");
+    engine.fails("gridmap.set", R"({"id": "grid", "cells": [[0, 0, 0]], "item": "block",
+                                    "orientation": 24})",
+                 command::code::kInvalidParams);
+    engine.ok("component.set", R"({"id": "grid", "components": {"GridMap": {
+        "mesh_library": "", "floors": [{"rows": ["q"]}]}}})");
+    reply = engine.fails("gridmap.get", R"({"id": "grid"})", command::code::kInvalidArgument);
+    CHECK(reply.message ==
+          "/id: \"grid\"'s GridMap/floors/0/rows/0: column 0: \"q\" is not in the legend");
+    engine.ok("component.set",
+              R"({"id": "grid", "components": {"GridMap": {"legend": {}, "floors": []}}})");
+    reply = engine.fails("gridmap.set", R"({"id": "grid", "cells": [[0, 0, 0]], "item": "block"})",
+                         command::code::kInvalidParams);
+    CHECK(reply.message == "/id: \"grid\"'s GridMap has no mesh_library to place items from");
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("skeleton.get returns a model's bones, posed as its entity draws them") {
     const std::string root = "skeleton_test_project";
     std::filesystem::remove_all(root);

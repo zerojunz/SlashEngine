@@ -15,6 +15,7 @@ add_library(slash_scene3d
     src/blend.cpp
     src/csg.cpp
     src/fbx.cpp
+    src/gridmap.cpp
     src/ik.cpp
     src/model.cpp
     src/model_tools.cpp
