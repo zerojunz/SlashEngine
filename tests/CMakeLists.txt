@@ -45,6 +45,7 @@ add_executable(slash_tests
     test_audio.cpp
     test_audio_analysis.cpp
     test_bench.cpp
+    test_blend.cpp
     test_camera2d.cpp
     test_canvas_layer.cpp
     test_canvas.cpp
@@ -146,6 +147,12 @@ slash_target_warnings(fake-assetripper)
 add_dependencies(slash_tests fake-assetripper)
 target_compile_definitions(slash_tests PRIVATE
     SLASH_FAKE_ASSETRIPPER="$<TARGET_FILE:fake-assetripper>")
+
+# A stand-in for Blender, so the .blend tests and the blend-models example run without it.
+add_executable(fake-blender fake_blender.cpp)
+slash_target_warnings(fake-blender)
+add_dependencies(slash_tests fake-blender)
+target_compile_definitions(slash_tests PRIVATE SLASH_FAKE_BLENDER="$<TARGET_FILE:fake-blender>")
 
 # Gameplay libraries for test_gameplay.cpp, built as cmake/gameplay builds a game's code: with the
 # engine's headers, and its functions left for the program that loads them.

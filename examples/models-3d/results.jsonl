@@ -4,4 +4,4 @@
 {"id":4,"jsonrpc":"2.0","result":{"id":"shed"}}
 {"id":5,"jsonrpc":"2.0","result":{"colors":[[0.694,0.678,0.639,1],[0.588,0.463,0.349,1],[0.506,0.4,0.302,1]],"drawn":{"meshes":7},"height":90,"path":"shots/village.png","width":160}}
 {"id":6,"jsonrpc":"2.0","result":{"id":"barn"}}
-{"id":7,"jsonrpc":"2.0","result":{"drawn":[],"problems":[{"id":"barn","message":"expected a .gltf, .glb, .obj or .fbx file","path":"/components/MeshInstance3D/mesh"}],"viewport":[160,90]}}
+{"id":7,"jsonrpc":"2.0","result":{"drawn":[],"problems":[{"id":"barn","message":"expected a .gltf, .glb, .obj, .fbx or .blend file","path":"/components/MeshInstance3D/mesh"}],"viewport":[160,90]}}

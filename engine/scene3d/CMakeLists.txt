@@ -12,6 +12,7 @@ target_compile_options(slash_ufbx PRIVATE "$<$<NOT:$<C_COMPILER_ID:MSVC>>:-w;-ff
 target_compile_definitions(slash_ufbx PRIVATE $<$<C_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>)
 
 add_library(slash_scene3d
+    src/blend.cpp
     src/fbx.cpp
     src/model.cpp
     src/model_tools.cpp
@@ -22,7 +23,7 @@ add_library(slash::scene3d ALIAS slash_scene3d)
 
 target_include_directories(slash_scene3d PUBLIC include)
 target_link_libraries(slash_scene3d PUBLIC slash::asset slash::core slash::render slash::world
-    PRIVATE slash_cgltf slash_ufbx)
+    PRIVATE slash::platform slash_cgltf slash_ufbx)
 slash_engine_target(slash_scene3d)
 # Meshes and cameras are the same bits on every platform: no fused multiply-adds, which arm64
 # compilers would otherwise emit and x86-64 ones not.
