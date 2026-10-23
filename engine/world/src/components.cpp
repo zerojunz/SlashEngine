@@ -701,6 +701,113 @@ void register_ik_components(ComponentRegistry& registry) {
                                         "the Jacobian transpose, as Godot's JacobianIK3D.");
 }
 
+// The navigation components: Godot's NavigationRegion, NavigationLink and NavigationAgent nodes.
+void register_navigation_components(ComponentRegistry& registry) {
+    const FieldMeta enabled{.doc = "Whether paths can go through it."};
+    const FieldMeta use_edge_connections{
+        .doc = "Joins its edges to other regions' edges within the map's edge_connection_margin."};
+    const FieldMeta layers{.doc = "The navigation layers it is on, as bits; a path uses it when "
+                                  "its navigation_layers share one.",
+                           .min = 0,
+                           .max = 4294967295.0};
+    const FieldMeta enter_cost{.doc = "Added to a path's cost where it enters from elsewhere.",
+                               .min = 0};
+    const FieldMeta travel_cost{.doc = "Multiplies the cost of each unit of distance in it.",
+                                .min = 0};
+    const FieldMeta bidirectional{.doc = "Paths can go both ways; false: only start to end."};
+    const auto region = [&](ComponentType& added, const std::string& doc, std::string_view mesh,
+                            const std::string& mesh_doc) {
+        added.set_doc(doc)
+            .describe(mesh, {.doc = mesh_doc})
+            .describe("enabled", enabled)
+            .describe("use_edge_connections", use_edge_connections)
+            .describe("navigation_layers", layers)
+            .describe("enter_cost", enter_cost)
+            .describe("travel_cost", travel_cost);
+    };
+    region(registry.add<NavigationRegion2D>(),
+           "Places a navigation polygon on the 2D map at the entity's Transform2D, as Godot's "
+           "NavigationRegion2D. Regions join where their edges meet.",
+           "navigation_polygon", "The .navpoly.json file.");
+    region(registry.add<NavigationRegion3D>(),
+           "Places a navigation mesh on the 3D map at the entity's Transform3D, as Godot's "
+           "NavigationRegion3D. Regions join where their edges meet.",
+           "navigation_mesh", "The .navmesh.json file.");
+    const auto link = [&](ComponentType& added, const std::string& doc, const std::string& unit) {
+        added.set_doc(doc)
+            .describe("enabled", enabled)
+            .describe("bidirectional", bidirectional)
+            .describe("navigation_layers", layers)
+            .describe("start_position", {.doc = "One end, in the entity's space, as " + unit +
+                                                "; it joins the closest region within the map's "
+                                                "link_connection_radius."})
+            .describe("end_position", {.doc = "The other end, as " + unit + "."})
+            .describe("enter_cost", enter_cost)
+            .describe("travel_cost", travel_cost);
+    };
+    link(registry.add<NavigationLink2D>(),
+         "A way between two places on the 2D map that regions don't join, such as a jump, as "
+         "Godot's NavigationLink2D.",
+         "[x, y] pixels");
+    link(registry.add<NavigationLink3D>(),
+         "A way between two places on the 3D map that regions don't join, such as a ladder, as "
+         "Godot's NavigationLink3D.",
+         "[x, y, z] meters");
+    const FieldMeta postprocessing{
+        .doc = "How the path's points are placed: corridorfunnel pulls it tight around corners, "
+               "edgecentered puts a point at the middle of each edge it crosses, none at each "
+               "crossing.",
+        .choices = {"corridorfunnel", "edgecentered", "none"}};
+    const FieldMeta simplify_path{.doc = "Leaves out points within simplify_epsilon of the line."};
+    const FieldMeta simplify_epsilon{.doc = "How far off the line a point can be left out.",
+                                     .min = 0};
+    const FieldMeta max_length{.doc = "Cuts the path off at this length; 0 keeps it all.",
+                               .min = 0};
+    const FieldMeta max_radius{
+        .doc = "Cuts the path off where it leaves this distance from its start; 0 keeps it all.",
+        .min = 0};
+    const FieldMeta max_polygons{
+        .doc = "Most polygons the search looks at before taking the closest it found; 0: all.",
+        .min = 0};
+    const FieldMeta max_distance{.doc = "How far from the start the search looks; 0: everywhere.",
+                                 .min = 0};
+    const auto agent = [&](ComponentType& added, const std::string& doc,
+                           const std::string& unit) -> ComponentType& {
+        return added.set_doc(doc)
+            .describe("target_position",
+                      {.doc = "Where it goes, as " + unit + "; setting it asks for a path."})
+            .describe("path_desired_distance",
+                      {.doc = "How near a path point counts as reaching it.", .min = 0})
+            .describe("target_desired_distance",
+                      {.doc = "How near target_position counts as reaching it.", .min = 0})
+            .describe(
+                "path_max_distance",
+                {.doc = "How far off its path it can be before the path is found again.", .min = 0})
+            .describe("navigation_layers", layers)
+            .describe("path_postprocessing", postprocessing)
+            .describe("simplify_path", simplify_path)
+            .describe("simplify_epsilon", simplify_epsilon)
+            .describe("path_return_max_length", max_length)
+            .describe("path_return_max_radius", max_radius)
+            .describe("path_search_max_polygons", max_polygons)
+            .describe("path_search_max_distance", max_distance);
+    };
+    agent(registry.add<NavigationAgent2D>(),
+          "Finds a path on the 2D map from the entity's Transform2D to target_position and "
+          "follows how far along it the entity is, as Godot's NavigationAgent2D. Gameplay code "
+          "moves the entity toward navigation::next_path_position; it emits path_changed, "
+          "waypoint_reached, link_reached, target_reached and navigation_finished events.",
+          "[x, y] pixels");
+    agent(registry.add<NavigationAgent3D>(),
+          "Finds a path on the 3D map from the entity's Transform3D to target_position and "
+          "follows how far along it the entity is, as Godot's NavigationAgent3D. Gameplay code "
+          "moves the entity toward navigation::next_path_position; it emits path_changed, "
+          "waypoint_reached, link_reached, target_reached and navigation_finished events.",
+          "[x, y, z] meters")
+        .describe("path_height_offset",
+                  {.doc = "How far the entity's origin is above the navigation mesh."});
+}
+
 } // namespace
 
 // The particles component: Godot's CPUParticles2D.
@@ -2526,6 +2633,7 @@ void register_builtin_components(ComponentRegistry& registry) {
     register_3d_components(registry);
     register_physics_components(registry);
     register_physics_3d_components(registry);
+    register_navigation_components(registry);
     register_particle_components(registry);
     register_audio_components(registry);
     register_ui_components(registry);

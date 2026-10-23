@@ -64,6 +64,7 @@ as `entity.get`, reject it as an unknown param.
 | Models | [`model.inspect`](#modelinspect), [`skeleton.get`](#skeletonget) |
 | Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity) |
+| Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent) |
 | Particles | [`particles.eval`](#particleseval) |
 | Lights | [`light.sample`](#lightsample) |
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
@@ -145,11 +146,13 @@ Returns a JSON Schema: for scene, prefab, [`.frames.json`](scene-format.md#sprit
 [`.tileset.json`](scene-format.md#tile-sets), [`.font.json`](scene-format.md#fonts),
 [`.theme.json`](scene-format.md#themes), [`.audio.json`](scene-format.md#audio-streams),
 [`.bus_layout.json`](scene-format.md#bus-layouts), [`.replay.json`](scene-format.md#replays),
-[`.test.json`](scene-format.md#tests) or storyboard files, one component or one command.
+[`.test.json`](scene-format.md#tests),
+[`.navmesh.json` or `.navpoly.json`](scene-format.md#navigation-meshes-and-polygons) or storyboard
+files, one component or one command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -924,6 +927,147 @@ Needs: `read`. The rock below the planet in
 
 An unknown ID, or an entity with no body or with an `Area2D`, is an error at its index in
 `/ids`.
+
+## Navigation
+
+Questions about the world's [navigation maps](scene-format.md#navigation), as Godot's
+`NavigationServer2D` and `NavigationServer3D` queries. Points of two numbers ask the 2D map, in
+pixels, and points of three the 3D one, in meters. Each command first rebuilds a map whose
+regions or links changed since the last step. Numbers are rounded to four decimals. The examples
+are the scene of [examples/navigation](../../examples/navigation/): a house of two rooms joined
+the long way round by a corridor and the short way by a hatch, a link that costs one and a half
+times as much to cross as to walk.
+
+### navigation.path
+
+Returns a path over the map from `from` to `to`, as Godot's `query_path`, and its length. It
+starts at the point of the map closest to `from` and ends at the closest it reaches to `to`, so
+a target off the map, or cut off from `from`, still gets a path; it is empty when the map is.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `from` | `[x, y]` or `[x, y, z]` | required | Where it starts |
+| `to` | `[x, y]` or `[x, y, z]` | required | Where it goes, with as many numbers as `from` |
+| `navigation_layers` | integer | `1` | The regions and links it may use, as bits |
+| `postprocessing` | string | `"corridorfunnel"` | `"corridorfunnel"` pulls it tight, `"edgecentered"` goes through the middle of each edge, `"none"` keeps where the search first touched each polygon |
+| `simplify_epsilon` | number | | Simplify the path, dropping points closer than this to the line, as Godot's `simplify_path` |
+| `excluded_regions` | string array | `[]` | Region entities it may not use |
+| `included_regions` | string array | `[]` | The only region entities it may use, when not empty; either leaves links out, as Godot's |
+| `max_polygons` | integer | `4096` | Stop the search after this many polygons; `0` for no limit |
+| `max_distance` | number | `0` | Stop the search this far from `from`; `0` for no limit |
+| `return_max_length` | number | `0` | Cut the path to this length; `0` for no limit |
+| `return_max_radius` | number | `0` | Cut the path where it goes this far from `from`; `0` for no limit |
+| `metadata` | boolean | `false` | Also return each point's `owners` (a region or link ID) and `types` (`"region"` or `"link"`) |
+
+Needs: `read`. Through the hatch:
+
+```json
+{"from": [1, 0, 1], "to": [10, 0, 2], "metadata": true}
+```
+
+```json
+{"length":9.2361,"owners":["house","hatch","house","house"],"points":[[1,0,1],[3,0,2],[9,0,2],[10,0,2]],"types":["region","link","region","region"]}
+```
+
+With the hatch moved off layer 1, the long way round:
+
+```json
+{"length":21.3956,"points":[[1,0,1],[0.5714,0,4],[0,0,8],[4,0,8],[8,0,8],[9.3333,0,4],[10,0,2]]}
+```
+
+`from` and `to` of different sizes fail at `/to`, and an unknown region ID at its index, with a
+"did you mean".
+
+### navigation.closest
+
+Returns the point of the map closest to a point and the region it is on, as Godot's
+`map_get_closest_point` and `map_get_closest_point_owner`; in 3D also its polygon's normal,
+which is not normalized, as Godot's. Regions that aren't enabled count. `point` is `null` when
+the map is empty.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `point` | `[x, y]` or `[x, y, z]` | required | The point |
+
+Needs: `read`. A point above the hatch's middle, between the rooms:
+
+```json
+{"point": [6, 1, 2]}
+```
+
+```json
+{"normal":[0,16,0],"owner":"house","point":[4,0,2]}
+```
+
+### navigation.random
+
+Returns a random point of the map's regions on `navigation_layers`, as Godot's
+`map_get_random_point`: in a random polygon of a random region, or, with `uniformly`, anywhere
+with the same chance. The same seed picks the same point on every machine.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `map` | string | `"3d"` if it has regions, else `"2d"` | `"2d"` or `"3d"` |
+| `navigation_layers` | integer | `1` | The regions it may pick, as bits |
+| `uniformly` | boolean | `false` | Any point with the same chance |
+| `seed` | integer | `0` | The seed |
+
+Needs: `read`.
+
+```json
+{"map": "2d", "uniformly": true, "seed": 7}
+```
+
+```json
+{"point":[126.8636,10.6323]}
+```
+
+### navigation.map
+
+Returns what each map is made of: its `iteration_id` (which goes up each time it is rebuilt, as
+Godot's), its `regions`, `links` and `polygons` (a link's counts as one), `edge_connections`
+(edges of different regions joined, shared or within the map's `edge_connection_margin`),
+`free_edges` (edges joined to nothing), `merge_errors` (edges three or more polygons share, left
+out when none do) and `errors`: the regions left out, each with its entity's `id` and a
+`message` saying why.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `map` | string | both | `"2d"` or `"3d"` |
+
+Needs: `read`.
+
+```json
+{}
+```
+
+```json
+{"2d":{"edge_connections":0,"free_edges":6,"iteration_id":1,"links":0,"polygons":2,"regions":1},"3d":{"edge_connections":0,"free_edges":16,"iteration_id":1,"links":1,"polygons":8,"regions":1}}
+```
+
+### navigation.agent
+
+Returns how a [`NavigationAgent2D` or `NavigationAgent3D`](scene-format.md#agents) is doing, as
+Godot's `NavigationAgent` getters: its `next_position`, whether its `navigation_finished`, it
+`target_reached` and its target is `target_reachable`, the straight `distance_to_target`, and its
+`path` with the `path_index` of the point it is going to. Asking brings the path up to date
+first, as `get_next_path_position` does.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with an agent |
+
+Needs: `read`. The guard, before it sets off:
+
+```json
+{"id": "guard"}
+```
+
+```json
+{"distance_to_target":10.2956,"navigation_finished":false,"next_position":[3,0,2],"path":[[1,0,1],[3,0,2],[9,0,2],[9.5,0,4],[10,0,6]],"path_index":1,"target_reachable":true,"target_reached":false}
+```
+
+An unknown ID fails at `/id` with a "did you mean", and an entity with no agent fails there too.
 
 ## Particles
 

@@ -187,6 +187,7 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
     animation::install(world_, assets_);
     physics2d::install(world_, project_.physics_2d);
     physics3d::install(world_, project_.physics_3d);
+    navigation::install(world_, assets_, project_.navigation);
     input::install(world_, project_.input, project_.input_devices);
     audio::install(world_, assets_, project_.audio);
     // With no backends until an SDK package's glue code gives some.

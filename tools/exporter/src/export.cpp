@@ -24,6 +24,7 @@
 #include "slash/exporter/sdk.hpp"
 #include "slash/exporter/toolchains.hpp"
 #include "slash/library/library.hpp"
+#include "slash/navigation/navigation.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/render/image.hpp"
@@ -166,6 +167,8 @@ enum class DataFile : std::uint8_t {
     Sound,
     AudioStream,
     BusLayout,
+    NavigationMesh,
+    NavigationPolygon,
     Model,
     Buffer
 };
@@ -216,6 +219,12 @@ DataFile data_file(std::string_view name) {
     }
     if (name.ends_with(audio::kBusLayoutSuffix)) {
         return DataFile::BusLayout;
+    }
+    if (name.ends_with(navigation::kMeshSuffix)) {
+        return DataFile::NavigationMesh;
+    }
+    if (name.ends_with(navigation::kPolygonSuffix)) {
+        return DataFile::NavigationPolygon;
     }
     if (audio::is_sound_path(name)) {
         return DataFile::Sound;
@@ -285,6 +294,10 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return audio::validate_stream_file(parsed.value());
     case DataFile::BusLayout:
         return audio::validate_bus_layout(parsed.value());
+    case DataFile::NavigationMesh:
+        return navigation::validate_mesh(parsed.value());
+    case DataFile::NavigationPolygon:
+        return navigation::validate_polygon(parsed.value());
     case DataFile::Prefab:
         errors = world::validate_prefab(components, parsed.value(), reader);
         break;
@@ -295,7 +308,7 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     // Each tile map layer's cells must name tiles in its tile set, each AnimationPlayer's
     // animation and track targets must be in its library and targets, each AnimationTree's tree
     // must play from its libraries, controls must lay out, each sub-emitter must take part in a
-    // chain and each 3D mesh must draw.
+    // chain, each 3D mesh must draw and each navigation region's file must load.
     if (errors.empty()) {
         errors = canvas::check_tile_layers(parsed.value(), reader);
     }
@@ -313,6 +326,9 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     }
     if (errors.empty() && kind == DataFile::Scene) {
         errors = scene3d::check_meshes(components, parsed.value(), reader);
+    }
+    if (errors.empty()) {
+        errors = navigation::check_scene(parsed.value(), reader);
     }
     return errors;
 }
@@ -399,10 +415,10 @@ Result<bool> stage_texture_forms(std::string_view file, std::string_view bytes,
 }
 
 // Copies project.json, providers.json and every scene, prefab, texture, .frames.json,
-// .material.json, .anim.json, .animtree.json, .tileset.json, font, .theme.json, sound, .audio.json
-// and .bus_layout.json file into data, checking each on the way. Materials take their shaders
-// compiled for the platform, and textures ship in the forms project.json's rendering.textures asks
-// for, kept in library_dir's cache.
+// .material.json, .anim.json, .animtree.json, .tileset.json, font, .theme.json, sound, .audio.json,
+// .bus_layout.json, .navmesh.json and .navpoly.json file into data, checking each on the way.
+// Materials take their shaders compiled for the platform, and textures ship in the forms
+// project.json's rendering.textures asks for, kept in library_dir's cache.
 bool stage_data(const fs::path& project_dir, const runtime::Project& project, const fs::path& data,
                 std::string_view target, const std::string& library_dir, Failure& failure) {
     std::error_code error;

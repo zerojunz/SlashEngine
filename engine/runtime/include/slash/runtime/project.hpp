@@ -6,6 +6,7 @@
 #include "slash/core/result.hpp"
 #include "slash/core/text.hpp"
 #include "slash/input/input.hpp"
+#include "slash/navigation/navigation.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/render/mesh.hpp"
@@ -95,6 +96,8 @@ struct Project {
     physics2d::Settings physics_2d;
     // Gravity and default damping for 3D physics.
     physics3d::Settings physics_3d;
+    // The 2D and 3D navigation maps' cell sizes and how regions join.
+    navigation::Settings navigation;
     // A .theme.json file every control uses after its own themes, as Godot's gui/theme/custom;
     // empty for none.
     std::string gui_theme;

@@ -386,6 +386,16 @@ land on them; once it **simulates**, physics moves the bodies and the bones foll
 whole skeleton or only the bones under one (`simulated_bones`), so a character goes limp when
 hit or an arm dangles. The [ragdoll example](../examples/ragdoll/) lets a waving arm go limp.
 
+**Navigation** follows Godot 4.6's navigation servers: each world has a 2D and a 3D **map**,
+made of **regions** of navigation mesh (convex polygons, in `.navmesh.json` and `.navpoly.json`
+files) that join where their edges meet, and **links** between places the regions don't join,
+such as a jump or a hatch. Paths are the cheapest way over the polygons on a path's **layers**,
+pulled tight round corners. An **agent** (`NavigationAgent3D`, `NavigationAgent2D`) finds a path
+to its target and follows the entity's progress along it, emitting events at each point, but
+moves nothing: gameplay code moves it toward its next path position. `navigation.path`,
+`navigation.closest` and `navigation.random` ask where the maps go, and `navigation.agent` how an
+agent is doing. The [navigation example](../examples/navigation/) sends a guard through a hatch.
+
 **Tile maps** follow Godot's TileSet and TileMapLayer. A `.tileset.json` file cuts atlas
 textures into **tiles** and groups **terrains** (grass, water) into terrain sets; each terrain
 tile's **peering** says which terrain its sides and corners must touch. A `TileMapLayer` keeps
