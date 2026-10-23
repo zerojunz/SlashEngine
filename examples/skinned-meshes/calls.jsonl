@@ -16,3 +16,7 @@
 {"jsonrpc":"2.0","id":16,"method":"step","params":{"ticks":60}}
 {"jsonrpc":"2.0","id":17,"method":"events.read","params":{"subscription":"events_1"}}
 {"jsonrpc":"2.0","id":18,"method":"skeleton.get","params":{"id":"arm","bones":["Hand"]}}
+{"jsonrpc":"2.0","id":19,"method":"model.inspect","params":{"path":"models/arm.fbx"}}
+{"jsonrpc":"2.0","id":20,"method":"component.set","params":{"id":"arm","components":{"MeshInstance3D":{"mesh":"models/arm.fbx"},"AnimationPlayer":{"library":"models/arm.fbx","animation":"Wave-loop","time":0.5,"playing":false}}}}
+{"jsonrpc":"2.0","id":21,"method":"skeleton.get","params":{"id":"arm","bones":["Hand"]}}
+{"jsonrpc":"2.0","id":22,"method":"frame.capture","params":{"points":[[67,27],[92,26],[127,52],[52,30],[80,67]]}}
