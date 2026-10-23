@@ -668,8 +668,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Godot's 3D nodes: transforms, primitive meshes and materials, instanced and mesh model
         files, cameras, lights, `WorldEnvironment` and skies, 3D bodies and collision shapes, 3D
         sound and the 3D project settings
-  - [ ] Godot's CSG shapes, paths, `GridMap`, joints, vehicles, navigation, `AnimationTree`,
-        skeletons, HTerrain data and 3D animation tracks
+  - [x] Godot's CSG shapes, paths, `GridMap` and mesh libraries (text and binary), joints,
+        vehicles and navigation nodes, meshes and polygons
+  - [ ] Godot's `AnimationTree`, skeletons and their modifiers, ragdolls, HTerrain data and 3D
+        animation tracks
   - [ ] Unity 3D scenes
   - [ ] Unreal Engine levels and assets through the user's own Unreal Editor
 - [ ] 3D in the asset library and generator ([design](design.md#3d-assets))
