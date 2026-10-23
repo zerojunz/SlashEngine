@@ -1385,6 +1385,11 @@ std::vector<json::ValidationError> check_trees(const json::Value& doc,
                     key += animation_name;
                     animations.emplace(std::move(key), &animation);
                     for (const Track& track : animation.tracks) {
+                        if (!track.node.empty()) {
+                            tracks.insert(track.node);
+                            nodes_moved.insert(track.node);
+                            continue;
+                        }
                         tracks.insert(track.path.empty() ? event_track_name(track)
                                                          : value_track_name(track));
                         if (!track.target.empty()) {

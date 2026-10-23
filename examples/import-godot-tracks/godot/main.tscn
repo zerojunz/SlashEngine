@@ -1,0 +1,84 @@
+[gd_scene load_steps=7 format=3 uid="uid://c3armtracks01"]
+
+[ext_resource type="PackedScene" uid="uid://dq8armmodel01" path="res://models/arm.gltf" id="1_arm"]
+
+[sub_resource type="Animation" id="Animation_signal"]
+resource_name = "signal"
+length = 1.0
+loop_mode = 1
+tracks/0/type = "rotation_3d"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Arm/Rig/Skeleton3D:Shoulder")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = PackedFloat32Array(0, 1, 0, 0, 0, 1, 0.5, 1, 0, 0, -0.3826834, 0.9238795)
+tracks/1/type = "rotation_3d"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Arm/Rig/Skeleton3D:Elbow")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = PackedFloat32Array(0, 1, 0, 0, 0, 1, 0.5, 1, 0, 0, 0.5, 0.8660254)
+tracks/2/type = "rotation_3d"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Flag")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = PackedFloat32Array(0, 1, 0, 0, 0, 1, 0.5, 1, 0, 1, 0, 0)
+tracks/3/type = "position_3d"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Flag")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = PackedFloat32Array(0, -2, -0.6, 0.3, 0, 0.5, -2, -0.6, 0.6, 0)
+tracks/4/type = "scale_3d"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath("Flag")
+tracks/4/interp = 0
+tracks/4/loop_wrap = true
+tracks/4/keys = PackedFloat32Array(0, 1, 1, 1, 1, 0.4, 1, 1.25, 1.25, 1.25)
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_signal"]
+_data = {
+&"signal": SubResource("Animation_signal")
+}
+
+[sub_resource type="BoxMesh" id="BoxMesh_flag"]
+size = Vector3(0.3, 0.2, 0.02)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flag"]
+albedo_color = Color(0.9, 0.2, 0.2, 1)
+
+[sub_resource type="Environment" id="Environment_sky"]
+background_mode = 1
+background_color = Color(0.55, 0.72, 0.92, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.6, 0.6, 0.6, 1)
+
+[node name="Stage" type="Node3D"]
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_sky")
+
+[node name="Camera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, 1.6)
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 3, 3)
+
+[node name="Arm" parent="." instance=ExtResource("1_arm")]
+
+[node name="Flag" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.6, 0.3, 0)
+mesh = SubResource("BoxMesh_flag")
+surface_material_override/0 = SubResource("StandardMaterial3D_flag")
+
+[node name="Signaller" type="AnimationPlayer" parent="."]
+libraries = {
+&"": SubResource("AnimationLibrary_signal")
+}
+autoplay = &"signal"

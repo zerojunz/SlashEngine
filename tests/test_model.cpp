@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <cstring>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -1633,5 +1634,86 @@ TEST_CASE("animation files play a model's animations with tracks of their own") 
                         "/entities/b/components/AnimationPlayer/library: anim/bad.anim.json: "
                         "/animations/x/from/animation: models/arm.gltf has no animation "
                         "\"Idel-loop\"; did you mean \"Idle-loop\"?",
+                    });
+}
+
+TEST_CASE("node tracks in animation files move the nodes of the model the entity draws") {
+    Scene scene;
+    slash::animation::install(scene.world, scene.assets);
+    scene.files.files["models/arm.gltf"] = slash::test::arm().gltf();
+    // Lower turns a quarter turn about z over a second, as the model's Bend does, while Upper
+    // stands half a unit up, then drops back.
+    scene.files.files["anim/arm.anim.json"] = R"({"format": 1, "animations": {
+        "bend": {"length": 1, "tracks": [
+            {"node": "Lower", "property": "rotation",
+             "keys": [{"time": 0, "value": [0, 0, 0]}, {"time": 1, "value": [0, 0, 1.5707964]}]},
+            {"node": "Upper", "property": "position", "interpolation": "nearest",
+             "keys": [{"time": 0, "value": [0, 0.5, 0]}, {"time": 0.5, "value": [0, 0, 0]}]}]}}})";
+    const entt::entity arm =
+        scene.create("arm", R"({"Transform3D": {}, "MeshInstance3D": {"mesh": "models/arm.gltf"},
+                   "AnimationPlayer": {"library": "anim/arm.anim.json", "animation": "bend",
+                                       "playing": true}})");
+    auto model = scene.assets.load<scene3d::Model>("models/arm.gltf");
+    REQUIRE(model.ok());
+    const scene3d::ModelLoader load =
+        [&](const std::string& path) -> slash::Result<std::shared_ptr<const scene3d::Model>> {
+        auto found = scene.assets.load<scene3d::Model>(path);
+        if (!found) {
+            return found.error();
+        }
+        return found.value().share();
+    };
+    const auto pose_at = [&](const std::vector<scene3d::ClipSample>& clips) {
+        return scene3d::pose_of(*model.value(), clips, nullptr, load);
+    };
+    for (int tick = 0; tick < 15; ++tick) {
+        scene.world.step(1.0 / 60.0);
+    }
+    const auto clips = scene3d::clips(scene.world, arm);
+    REQUIRE(clips.size() == 1);
+    CHECK(clips[0].model == "anim/arm.anim.json");
+    CHECK(clips[0].animation == "bend");
+    CHECK(clips[0].time == doctest::Approx(0.25));
+    REQUIRE(clips[0].source != nullptr);
+    const auto bent = pose_at(clips);
+    const auto bend = pose_at({{.model = "models/arm.gltf", .animation = "Bend", .time = 0.25}});
+    const int upper = scene3d::find_node(*model.value(), "Upper");
+    const int lower = scene3d::find_node(*model.value(), "Lower");
+    REQUIRE(upper >= 0);
+    REQUIRE(lower >= 0);
+    const auto u = static_cast<std::size_t>(upper);
+    const auto l = static_cast<std::size_t>(lower);
+    CHECK(near(bent[l].rotation.z, bend[l].rotation.z));
+    CHECK(near(bent[l].rotation.w, bend[l].rotation.w));
+    CHECK(near(bent[l].position, {0.0F, 1.0F, 0.0F})); // untouched, at rest
+    CHECK(near(bent[u].position, {0.0F, 0.5F, 0.0F}));
+    for (int tick = 0; tick < 30; ++tick) {
+        scene.world.step(1.0 / 60.0);
+    }
+    const auto later = pose_at(scene3d::clips(scene.world, arm));
+    CHECK(near(later[u].position, {0.0F, 0.0F, 0.0F}));
+
+    // Scenes are checked against the model the entity draws.
+    scene.files.files["anim/typo.anim.json"] = R"({"format": 1, "animations": {
+        "wave": {"length": 1, "tracks": [{"node": "Lowr", "property": "scale",
+                                          "keys": [{"time": 0, "value": [1, 1, 1]}]}]}}})";
+    const json::Value doc = parse(R"({"format": 1, "entities": {
+        "a": {"components": {"MeshInstance3D": {"mesh": "models/arm.gltf"},
+                             "AnimationPlayer": {"library": "anim/typo.anim.json"}}},
+        "b": {"components": {"AnimationPlayer": {"library": "anim/arm.anim.json"}}},
+        "c": {"components": {"MeshInstance3D": {"mesh": "models/arm.gltf"},
+                             "AnimationPlayer": {"library": "anim/arm.anim.json"}}}}})");
+    std::vector<std::string> errors;
+    for (const json::ValidationError& error :
+         slash::animation::check_players(doc, scene.files.reader())) {
+        errors.push_back(error.path + ": " + error.message);
+    }
+    CHECK(errors == std::vector<std::string>{
+                        "/entities/a/components/AnimationPlayer: \"Lowr\", which "
+                        "anim/typo.anim.json's node tracks move, isn't a node of "
+                        "models/arm.gltf; did you mean \"Lower\"?",
+                        "/entities/b/components/AnimationPlayer: anim/arm.anim.json's node "
+                        "tracks move the nodes of the model the entity draws, but it draws none: "
+                        "give it a MeshInstance3D whose mesh is a model file",
                     });
 }

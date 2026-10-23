@@ -1928,7 +1928,9 @@ plays one of them: each tick the `animation_player` system moves `time` on, sets
 animation's value tracks name on the entity's own components (adding a component it lacks), and
 emits the events its event tracks name. A track with a `target` acts on another entity instead,
 the one the player's `targets` maps that name to, as a Godot track names a node by its path from
-the player's root node. `slash-cli schema animation` prints the schema,
+the player's root node. A node track moves a node or bone of the model the entity's
+`MeshInstance3D` draws, as Godot's position, rotation and scale tracks move a `Node3D` or a
+`Skeleton3D` bone (see [node tracks](#node-tracks)). `slash-cli schema animation` prints the schema,
 `slash-cli scene validate` and `scene format` accept `.anim.json` files, and the
 [`animation.eval`](commands.md#animationeval) command returns the values an animation sets.
 [examples/keyframe-animation](../../examples/keyframe-animation/) has two.
@@ -1974,18 +1976,20 @@ and the entity that plays it, whose child `sword` the last track turns:
 | `animations/<name>/from` | No | A model's animation it plays on the nodes of the model the entity's `MeshInstance3D` draws: `{"model": "models/hero.glb", "animation": "Walk"}` ([model animations](#skeletons-and-model-animations)) |
 | `animations/<name>/length` | Unless `from` | Seconds, more than 0. Left out, the length of the model's animation it comes from |
 | `animations/<name>/loop` | No | What happens at the end, as Godot's loop modes: `none` stops there, `linear` starts over, `pingpong` turns round. Left out, the model animation's (`linear` if it loops), else `none` |
-| `animations/<name>/tracks` | Unless `from` | Value tracks and event tracks |
+| `animations/<name>/tracks` | Unless `from` | Value tracks, event tracks and node tracks |
 | `tracks/<n>/path` | One of these | A value track: the field it sets, as a component, a field and optionally a part of the field |
 | `tracks/<n>/event` | One of these | An event track: the event kind it emits |
+| `tracks/<n>/node` | One of these | A [node track](#node-tracks): the node of the drawn model it moves |
+| `tracks/<n>/property` | Node tracks | What it moves: `position`, `rotation` (Euler angles in radians, as `Transform3D`'s) or `scale` |
 | `tracks/<n>/target` | No | The entity it acts on: a name the `AnimationPlayer`'s `targets` maps to an entity. Left out, the player's own entity |
 | `tracks/<n>/keys` | Yes | At least one key, in time order, each later than the one before and no later than the length |
 | `keys/<n>/time` | Yes | Seconds from the start |
-| `keys/<n>/value` | Value tracks | A value the field takes |
+| `keys/<n>/value` | Value and node tracks | A value the field takes; for a node track, `[x, y, z]` |
 | `keys/<n>/data` | No | Event tracks: the event's data, any JSON |
 | `keys/<n>/transition` | No | Easing on the way to the next key, as Godot's easing curve: 1 (default) is linear, above 1 eases in, between 0 and 1 eases out, below 0 eases in and out, 0 holds the value until the next key |
-| `tracks/<n>/interpolation` | No | Value tracks: `linear` (default), `nearest` (each key's value until the next), `cubic` (a smooth curve through the keys), or `linear_angle` and `cubic_angle`, which turn the short way round, for rotations in radians |
+| `tracks/<n>/interpolation` | No | Value tracks: `linear` (default), `nearest` (each key's value until the next), `cubic` (a smooth curve through the keys), or `linear_angle` and `cubic_angle`, which turn the short way round, for rotations in radians. Node tracks: `linear` or `nearest` |
 | `tracks/<n>/update` | No | Value tracks: `continuous` sets the value every tick, `discrete` sets a key's value when playback reaches it. `auto` (default) is continuous for float fields and discrete for others: integers, strings, booleans and entity references |
-| `tracks/<n>/loop_wrap` | No | Value tracks in a looping animation: before the first key and after the last, move between the last key and the first across the loop's end (default `true`); `false` holds them |
+| `tracks/<n>/loop_wrap` | No | Value and node tracks in a looping animation: before the first key and after the last, move between the last key and the first across the loop's end (default `true`); `false` holds them |
 
 A path's part picks one number out of a vector or color field, by `x`, `y`, `z` or `w`, `r`, `g`,
 `b` or `a`, or by index (`Sprite2D/modulate/a`, `Transform2D/position/y`), or a field of a
@@ -2017,6 +2021,35 @@ entity, so animate `Sprite2D/offset` to move a sprite around its entity instead.
   its tracks use. A player whose file, animation or track can't
   be used logs one warning and plays what it can.
 - Animation files reload when they change, like every asset, and exports check and ship them.
+
+### Node tracks
+
+A node track moves one node of the model the playing entity's `MeshInstance3D` draws, a bone
+or any other node, as a Godot `position_3d`, `rotation_3d` or `scale_3d` track moves a node or a
+`Skeleton3D` bone. It plays as a model's own animations do: the player poses the model, an
+[animation tree](#animation-trees) blends it with the model's animations and uses it for root
+motion, and nodes no track moves keep their rests. Rotations are Euler angles in radians, as
+`Transform3D`'s, and turn the shorter way round from key to key, as Godot slerps them.
+
+```json
+"wave": {
+  "length": 1,
+  "loop": "linear",
+  "tracks": [
+    {"node": "Elbow", "property": "rotation",
+     "keys": [{"time": 0, "value": [0, 0, 0]}, {"time": 0.5, "value": [0, 0, 1.2]}]},
+    {"node": "Hand", "property": "scale", "interpolation": "nearest",
+     "keys": [{"time": 0, "value": [1, 1, 1]}, {"time": 0.5, "value": [1.2, 1.2, 1.2]}]}
+  ]
+}
+```
+
+- Node tracks have no `target`, `update` or key `transition`, and an animation `from` a model
+  moves the model's nodes by its own tracks, so it has none. Two tracks may not move one node's
+  same property.
+- `scene validate` checks that an entity whose player plays node tracks draws a model, and that
+  each node they name is one of its nodes (with "did you mean").
+- [`animation.eval`](commands.md#animationeval) returns their values under `nodes`.
 
 ## Animation trees
 

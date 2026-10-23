@@ -3610,6 +3610,266 @@ TEST_CASE("importing Godot AnimationTrees writes their trees and plays them wher
     }
 }
 
+TEST_CASE("importing Godot's 3D tracks moves a model's nodes and a scene's 3D nodes as Godot's "
+          "do") {
+    const fs::path project = "import_godot_tracks";
+    fs::remove_all(project);
+    write(project / "godot/project.godot", R"(config_version=5
+
+[application]
+
+config/name="Tracks"
+run/main_scene="res://stage.tscn"
+)");
+    write(project / "godot/models/arm.glb", slash::test::arm().glb());
+    write(project / "godot/stage.tscn", R"tscn([gd_scene load_steps=5 format=3]
+
+[ext_resource type="PackedScene" path="res://models/arm.glb" id="1_arm"]
+
+[sub_resource type="Animation" id="Animation_wave"]
+resource_name = "wave"
+length = 1.0
+loop_mode = 1
+tracks/0/type = "rotation_3d"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Arm/Armature/Skeleton3D:Lower")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = PackedFloat32Array(0, 1, 0, 0, 0, 1, 0.5, 1, 0, 0, 0.7071068, 0.7071068)
+tracks/1/type = "position_3d"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Arm/Armature/Skeleton3D:Upper")
+tracks/1/interp = 2
+tracks/1/loop_wrap = false
+tracks/1/keys = PackedFloat32Array(0, 1, 0, 0, 0, 1, 1, 0, 0.5, 0)
+tracks/2/type = "rotation_3d"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Box")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = PackedFloat32Array(0, 1, 0, 0, 0, 1, 0.5, 1, 0, 1, 0, 0)
+tracks/3/type = "scale_3d"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Box")
+tracks/3/interp = 0
+tracks/3/loop_wrap = true
+tracks/3/keys = PackedFloat32Array(0, 1, 1, 1, 1, 0.5, 1, 2, 2, 2)
+tracks/4/type = "position_3d"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath("Box")
+tracks/4/interp = 1
+tracks/4/loop_wrap = true
+tracks/4/keys = PackedFloat32Array(0, 0.5, 0, 0, 0, 1, 1, 0, 1, 0)
+tracks/5/type = "blend_shape"
+tracks/5/imported = false
+tracks/5/enabled = true
+tracks/5/path = NodePath("Arm/Armature/Skeleton3D/Arm:smile")
+tracks/5/interp = 1
+tracks/5/loop_wrap = true
+tracks/5/keys = PackedFloat32Array(0, 1, 0)
+tracks/6/type = "rotation_3d"
+tracks/6/imported = false
+tracks/6/enabled = true
+tracks/6/path = NodePath("Arm/Armature/Skeleton3D:Lowr")
+tracks/6/interp = 1
+tracks/6/loop_wrap = true
+tracks/6/keys = PackedFloat32Array(0, 1, 0, 0, 0, 1)
+tracks/7/type = "scale_3d"
+tracks/7/imported = false
+tracks/7/enabled = true
+tracks/7/path = NodePath("Rig:Hip")
+tracks/7/interp = 1
+tracks/7/loop_wrap = true
+tracks/7/keys = PackedFloat32Array(0, 1, 1, 1, 1)
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_stage"]
+_data = {
+&"wave": SubResource("Animation_wave")
+}
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_wave"]
+animation = &"wave"
+
+[node name="Stage" type="Node3D"]
+
+[node name="Arm" parent="." instance=ExtResource("1_arm")]
+
+[node name="Box" type="MeshInstance3D" parent="."]
+
+[node name="Rig" type="Skeleton3D" parent="."]
+
+[node name="Mover" type="AnimationPlayer" parent="."]
+libraries = {
+&"": SubResource("AnimationLibrary_stage")
+}
+autoplay = &"wave"
+
+[node name="MoverTree" type="AnimationTree" parent="."]
+anim_player = NodePath("../Mover")
+root_motion_track = NodePath("Arm/Armature/Skeleton3D:Upper")
+tree_root = SubResource("AnimationNodeAnimation_wave")
+)tscn");
+    write(project / "godot/hand.tscn", R"tscn([gd_scene load_steps=9 format=3]
+
+[ext_resource type="PackedScene" path="res://models/arm.glb" id="1_arm"]
+
+[sub_resource type="Animation" id="Animation_bend"]
+resource_name = "bend"
+length = 1.0
+tracks/0/type = "rotation_3d"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Arm/Armature/Skeleton3D:Lower")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = PackedFloat32Array(0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0.7071068, 0.7071068)
+tracks/1/type = "position_3d"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Lamp")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = PackedFloat32Array(0, 1, 0, 2, 0, 1, 1, 0, 3, 0)
+
+[sub_resource type="Animation" id="Animation_still"]
+resource_name = "still"
+length = 1.0
+tracks/0/type = "rotation_3d"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Arm/Armature/Skeleton3D:Lower")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = PackedFloat32Array(0, 1, 0, 0, 0, 1)
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_hand"]
+_data = {
+&"bend": SubResource("Animation_bend"),
+&"still": SubResource("Animation_still")
+}
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_bend"]
+animation = &"bend"
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_still"]
+animation = &"still"
+
+[sub_resource type="AnimationNodeBlend2" id="AnimationNodeBlend2_mix"]
+filter_enabled = true
+filters = ["Arm/Armature/Skeleton3D:Lower", "Lamp"]
+
+[sub_resource type="AnimationNodeBlendTree" id="AnimationNodeBlendTree_hand"]
+nodes/bend/node = SubResource("AnimationNodeAnimation_bend")
+nodes/still/node = SubResource("AnimationNodeAnimation_still")
+nodes/mix/node = SubResource("AnimationNodeBlend2_mix")
+node_connections = [&"output", 0, &"mix", &"mix", 0, &"still", &"mix", 1, &"bend"]
+
+[node name="Hand" type="Node3D"]
+
+[node name="Arm" parent="." instance=ExtResource("1_arm")]
+
+[node name="Lamp" type="OmniLight3D" parent="."]
+
+[node name="HandTree" type="AnimationTree" parent="."]
+root_node = NodePath("..")
+libraries = {
+&"": SubResource("AnimationLibrary_hand")
+}
+tree_root = SubResource("AnimationNodeBlendTree_hand")
+parameters/mix/blend_amount = 0.5
+)tscn");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+
+    // Tracks that move a model's bones become node tracks, so the player plays on the entity
+    // that draws the model, and its tree with it. A track that moves a 3D node of the scene
+    // becomes a Transform3D value track, which the player's targets reach.
+    const std::string stage = "godot/stage.scene.json";
+    const std::string wave = "godot/stage_animation_library_stage.anim.json";
+    CHECK(entity(files, stage, "arm") == parse(R"({
+        "AnimationPlayer": {"animation": "wave", "library": "godot/stage_animation_library_stage.anim.json",
+                            "targets": {"Box": "box"}},
+        "AnimationTree": {"tree_root": "godot/stage_mover_tree.animtree.json",
+                          "libraries": {"": "godot/stage_animation_library_stage.anim.json"},
+                          "targets": {"Box": "box"}, "root_motion_track": "Upper"},
+        "MeshInstance3D": {"mesh": "godot/models/arm.glb"}, "Transform3D": {}})"));
+    CHECK(entry(files, stage, "mover").find("components") == nullptr);
+    CHECK(unsupported(plan.report, "AnimationPlayer").find("why")->as_string() ==
+          "it plays on arm, the entity that draws the model whose nodes its tracks move");
+    REQUIRE(files.contains(wave));
+    const json::Value animations = *parse(files.at(wave)).find("animations");
+    // Rotations are Euler angles. Godot slerps between keys, so a Transform3D track turning
+    // half round gets keys in between, the turn round the loop to the first key included;
+    // a node track slerps as Godot's does.
+    CHECK(*animations.find("wave") == parse(R"({"length": 1.0, "loop": "linear", "tracks": [
+        {"node": "Lower", "property": "rotation",
+         "keys": [{"time": 0, "value": [0, 0, 0]}, {"time": 0.5, "value": [0, 0, 1.570796]}]},
+        {"node": "Upper", "property": "position", "loop_wrap": false,
+         "keys": [{"time": 0, "value": [0, 0, 0]}, {"time": 1, "value": [0, 0.5, 0]}]},
+        {"target": "Box", "path": "Transform3D/rotation", "interpolation": "linear_angle",
+         "keys": [{"time": 0, "value": [0, 0, 0]}, {"time": 0.25, "value": [0, 1.570796, 0]},
+                  {"time": 0.5, "value": [0, 3.141593, 0]},
+                  {"time": 0.75, "value": [0, 1.570796, 0]}, {"time": 1, "value": [0, 0, 0]}]},
+        {"target": "Box", "path": "Transform3D/scale", "interpolation": "nearest",
+         "keys": [{"time": 0, "value": [1, 1, 1]}, {"time": 0.5, "value": [2, 2, 2]}]},
+        {"target": "Box", "path": "Transform3D/position",
+         "keys": [{"time": 0, "value": [0, 0, 0], "transition": 0.5},
+                  {"time": 1, "value": [0, 1, 0]}]}]})"));
+    // A deterministic tree starts a 3D node's scale at one, as Godot's does.
+    CHECK(*animations.find("RESET")->find("tracks") == parse(R"([
+        {"target": "Box", "path": "Transform3D/rotation", "keys": [{"time": 0, "value": [0, 0, 0]}]},
+        {"target": "Box", "path": "Transform3D/scale", "keys": [{"time": 0, "value": [1, 1, 1]}]},
+        {"target": "Box", "path": "Transform3D/position", "keys": [{"time": 0, "value": [0, 0, 0]}]}])"));
+    CHECK(unsupported(plan.report, "animation position_3d track").find("why")->as_string() ==
+          "node tracks interpolate linearly, so it does");
+    CHECK(unsupported(plan.report, "animation rotation_3d track").find("why")->as_string() ==
+          "\"Lowr\" isn't a node of models/arm.glb; did you mean \"Lower\"?");
+    CHECK(unsupported(plan.report, "animation scale_3d track").find("why")->as_string() ==
+          "bones of a Skeleton3D in a scene don't convert yet; a model's do");
+    CHECK(unsupported(plan.report, "animation blend_shape track").find("why")->as_string() ==
+          "SlashEngine models have no blend shapes yet");
+
+    // A tree with libraries of its own goes on the model's entity too. Filters name a model's
+    // bones by their nodes, and a 3D node by the Transform3D tracks its tracks became.
+    const std::string hand = "godot/hand.scene.json";
+    CHECK(*entity(files, hand, "arm").find("AnimationTree") ==
+          parse(R"({"tree_root": "godot/hand_hand_tree.animtree.json",
+                    "libraries": {"": "godot/hand_animation_library_hand.anim.json"},
+                    "targets": {"Lamp": "lamp"}, "parameters": {"mix/blend_amount": 0.5}})"));
+    REQUIRE(files.contains("godot/hand_hand_tree.animtree.json"));
+    CHECK(*parse(files.at("godot/hand_hand_tree.animtree.json"))
+               .find("root")
+               ->find("nodes")
+               ->find("mix")
+               ->find("filters") == parse(R"(["Lower", "Lamp:Transform3D/position"])"));
+
+    // What converted checks out as a scene's players and trees do, the bones node tracks move
+    // included.
+    const slash::world::FileReader reader =
+        [&](std::string_view path) -> slash::Result<std::string> {
+        if (const auto it = files.find(std::string(path)); it != files.end()) {
+            return it->second;
+        }
+        return slash::platform::read_file((project / path).string());
+    };
+    CHECK(reader("godot/models/arm.glb").ok());
+    for (const std::string& scene : {stage, hand}) {
+        for (const json::ValidationError& error :
+             slash::animation::check_players(parse(files.at(scene)), reader)) {
+            FAIL_CHECK(scene << error.path << ": " << error.message);
+        }
+        for (const json::ValidationError& error :
+             slash::animation::check_trees(parse(files.at(scene)), reader)) {
+            FAIL_CHECK(scene << error.path << ": " << error.message);
+        }
+    }
+}
+
 TEST_CASE("importing a Godot project turns each script into a storyboard task") {
     const fs::path project = "import_godot_scripts";
     fs::remove_all(project);
