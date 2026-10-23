@@ -8,9 +8,9 @@
 
 #include <algorithm>
 #include <array>
-#include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <set>
@@ -41,10 +41,17 @@ Vec2 to_2d(Vec3 point) {
     return {point.x, point.z};
 }
 
+// A float's bits. std::bit_cast would do, but the glibc 2.31 sysroot Linux exports build
+// against has libstdc++ 10, which lacks it.
+std::uint32_t bits_of(float value) {
+    std::uint32_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    return bits;
+}
+
 bool same_bits(Vec3 a, Vec3 b) {
-    return std::bit_cast<std::uint32_t>(a.x) == std::bit_cast<std::uint32_t>(b.x) &&
-           std::bit_cast<std::uint32_t>(a.y) == std::bit_cast<std::uint32_t>(b.y) &&
-           std::bit_cast<std::uint32_t>(a.z) == std::bit_cast<std::uint32_t>(b.z);
+    return bits_of(a.x) == bits_of(b.x) && bits_of(a.y) == bits_of(b.y) &&
+           bits_of(a.z) == bits_of(b.z);
 }
 
 // The order regions, links and agents go in: entities with IDs by ID, then the rest by handle,
@@ -95,15 +102,10 @@ struct RegionInput {
         return id == o.id && path == o.path && enabled == o.enabled &&
                use_edge_connections == o.use_edge_connections &&
                navigation_layers == o.navigation_layers &&
-               std::bit_cast<std::uint32_t>(enter_cost) ==
-                   std::bit_cast<std::uint32_t>(o.enter_cost) &&
-               std::bit_cast<std::uint32_t>(travel_cost) ==
-                   std::bit_cast<std::uint32_t>(o.travel_cost) &&
+               bits_of(enter_cost) == bits_of(o.enter_cost) &&
+               bits_of(travel_cost) == bits_of(o.travel_cost) &&
                std::ranges::equal(transform, o.transform,
-                                  [](float a, float b) {
-                                      return std::bit_cast<std::uint32_t>(a) ==
-                                             std::bit_cast<std::uint32_t>(b);
-                                  }) &&
+                                  [](float a, float b) { return bits_of(a) == bits_of(b); }) &&
                file == o.file;
     }
 };
@@ -127,11 +129,8 @@ struct LinkInput {
     [[nodiscard]] bool same_content(const LinkInput& o) const {
         return id == o.id && enabled == o.enabled && bidirectional == o.bidirectional &&
                navigation_layers == o.navigation_layers && same_bits(start, o.start) &&
-               same_bits(end, o.end) &&
-               std::bit_cast<std::uint32_t>(enter_cost) ==
-                   std::bit_cast<std::uint32_t>(o.enter_cost) &&
-               std::bit_cast<std::uint32_t>(travel_cost) ==
-                   std::bit_cast<std::uint32_t>(o.travel_cost);
+               same_bits(end, o.end) && bits_of(enter_cost) == bits_of(o.enter_cost) &&
+               bits_of(travel_cost) == bits_of(o.travel_cost);
     }
 };
 
