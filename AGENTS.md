@@ -869,6 +869,19 @@ compares weights in float, so do the same (`is_zero_approx(float)` in `src/inter
 and `check_trees` backs `scene validate` and exports; `examples/animation-tree` points a waving
 arm.
 
+IK follows Godot 4.6's skeleton modifiers (`engine/scene3d/src/ik.cpp`, ported from
+`TwoBoneIK3D`, `ChainIK3D`, `IterateIK3D`, `FABRIK3D`, `CCDIK3D`, `JacobianIK3D` and
+`JointLimitationCone3D`). `TwoBoneIK3D`, `FABRIK3D`, `CCDIK3D` and `JacobianIK3D` components on
+a drawing entity or its `Transform3D` children turn the model's bones after `pose_of`:
+`apply_modifiers` runs them where poses are made (drawing and `skeleton.get`), with targets and
+poles placed by the caller so drawing between ticks moves them smoothly. A two-bone or
+deterministic modifier solves from the pose each time; the others carry their chains from tick
+to tick, as Godot's do from frame to frame, in a `ModifierState` in the world's context that the
+`skeleton_modifiers` system (priority 920, added by `animation::add_systems`) steps once a
+tick and `apply_modifiers` only shows. Angles go through `slash::atan2` and `cos_sin` and
+scene3d builds with `-ffp-contract=off`, so chains converge the same everywhere.
+`check_modifiers` backs `scene validate`; `examples/ik` reaches with an arm.
+
 ## 2D physics
 
 `engine/physics2d` is 2D physics on Box2D v3, as Godot's. Bodies and areas are components:

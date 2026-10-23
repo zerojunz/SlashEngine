@@ -876,6 +876,81 @@ file's skin deformers and animation stacks are read as [FBX models](#fbx-models)
 model. [examples/skinned-meshes](../../examples/skinned-meshes/) waves a skinned arm, from a
 glTF file and from the same arm as an FBX file.
 
+#### IK modifiers
+
+`TwoBoneIK3D`, `FABRIK3D`, `CCDIK3D` and `JacobianIK3D` are Godot 4.6's IK modifiers: they turn a
+model's bones after its animations and `Skeleton3D`, so a hand reaches a target while the arm
+walks. Each goes on the entity that draws the model or on an entity in its `Transform3D`
+`children` (Godot's modifier children of a `Skeleton3D`), and names bones by name and target and
+pole entities by ID, which may be anywhere in the world.
+
+```json
+"goal": {"components": {"Transform3D": {"position": [1, 1, 0]}}},
+"knee": {"components": {"Transform3D": {"position": [2, -1, 0]}}},
+"arm": {"components": {
+  "Transform3D": {},
+  "MeshInstance3D": {"mesh": "models/arm.gltf"},
+  "TwoBoneIK3D": {"settings": [{"root_bone": "Shoulder", "middle_bone": "Elbow",
+                                "end_bone": "Hand", "target": "goal", "pole": "knee"}]}
+}}
+```
+
+- They run in Godot's order: those on the drawing entity, then those on each of its children in
+  list order; on one entity, `TwoBoneIK3D`, `FABRIK3D`, `CCDIK3D`, then `JacobianIK3D`. Each
+  setting in `settings` is one limb or chain, solved in turn.
+- `TwoBoneIK3D` bends two bones so the end reaches the target, with the middle joint on the
+  pole's side, as Godot's: straight at the target when it is out of reach. It needs a target
+  and a pole. `pole_direction` rolls the middle bone so that axis faces the pole.
+- `FABRIK3D`, `CCDIK3D` and `JacobianIK3D` turn every bone from `root_bone` to `end_bone`. Like
+  Godot's, each joint turns at most `angular_delta_limit` a step and they take at most
+  `max_iterations` steps a tick, carrying the chain from tick to tick, so it eases toward a
+  moving target; the chain is kept beside the components, so saving, snapshots and undo leave it
+  alone. `deterministic` solves from the pose each time instead.
+- A chain's `joints` limit its bones by name: `rotation_axis` turns one only about an axis, and
+  a `"cone"` limitation keeps it within `limitation_angle` (the cone's full width, in radians)
+  of the way it points at rest.
+- `extend_end_bone` reaches with a point `end_bone_length` meters past the end bone, along
+  `end_bone_direction`; on `TwoBoneIK3D`, `use_virtual_end` makes that point the end, so the end
+  bone is the middle bone.
+- `influence` blends the result into the pose (0 leaves it, 1 replaces it), and `active` turns
+  a modifier off.
+
+| `TwoBoneIK3D` field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `settings` | Array of settings | `[]` | One limb each: `root_bone`, `middle_bone`, `end_bone`, `target`, `pole`, and those below |
+| `active` | `bool` | `true` | Whether it turns bones |
+| `influence` | `float` | `1` | How far its result replaces the pose, from 0 to 1 |
+| `mutable_bone_axes` | `bool` | `true` | Follow bones the pose moves rather than their rest, as Godot's |
+
+| Two-bone setting field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `use_virtual_end`, `extend_end_bone` | `bool` | `false` | Reach with a point past the end bone, as above |
+| `end_bone_direction` | string | `"from_parent"` | The way the end bone points: `"from_parent"`, `"plus_x"`, `"minus_x"`, `"plus_y"`, `"minus_y"`, `"plus_z"` or `"minus_z"` |
+| `end_bone_length` | `float` | `0` | Meters past the end bone |
+| `pole_direction`, `pole_direction_vector` | string, `Vec3` | `"none"`, `[0, 0, 0]` | The middle bone's axis that faces the pole: `"none"`, an axis as above, or `"custom"` with the vector |
+
+`FABRIK3D`, `CCDIK3D` and `JacobianIK3D` have `settings`, `active`, `influence` and
+`mutable_bone_axes` as `TwoBoneIK3D`'s, and:
+
+| Chain field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `max_iterations` | `int` | `4` | Most solver steps a tick |
+| `min_distance` | `float` | `0.001` | Meters from the target at which it stops |
+| `angular_delta_limit` | `float` | `0.0349` | Most radians a joint turns in one step (2°) |
+| `deterministic` | `bool` | `false` | Solve from the pose each time rather than carrying the chain |
+
+| Chain setting field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `root_bone`, `end_bone` | string | `""` | The bones the chain runs between |
+| `target` | entity ID | none | The entity the end reaches for |
+| `extend_end_bone`, `end_bone_direction`, `end_bone_length` | | `false`, `"from_parent"`, `0` | As a two-bone setting's |
+| `joints` | Map of joints | `{}` | A bone's limits, by name: `rotation_axis` (`"all"`, `"x"`, `"y"`, `"z"` or `"custom"` with `rotation_axis_vector`), `limitation` (`""` or `"cone"`), `limitation_angle` (default a quarter turn), `limitation_rotation_offset`, and `limitation_right_axis` with `limitation_right_axis_vector` |
+
+`skeleton.get` reports bones after their modifiers, and `scene validate` reports bones the model
+hasn't (with "did you mean"), bones that aren't one under the other, names of directions and
+axes, settings with no target or pole, and modifiers that turn no model's bones.
+[examples/ik](../../examples/ik/) reaches with an arm.
+
 ### StandardMaterial3D
 
 Godot's `StandardMaterial3D`, as the mesh's material override. Colors are sRGB; textures are

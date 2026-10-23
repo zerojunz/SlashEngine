@@ -33,6 +33,7 @@
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/light.hpp"
+#include "slash/scene3d/ik.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/soundtrack/score.hpp"
@@ -2700,9 +2701,13 @@ Reply skeleton_get(Session& session, const json::Value& params) {
         return found.value().share();
     };
     const auto* skeleton = world.ecs().try_get<world::Skeleton3D>(entity);
-    const std::vector<scene3d::NodePose> pose = scene3d::pose_of(model, clips, skeleton, load);
+    std::vector<scene3d::NodePose> pose = scene3d::pose_of(model, clips, skeleton, load);
+    const world::Tree3D tree(world);
+    const world::Affine3D place = tree.global(entity);
+    // After the IK modifiers, as drawn.
+    scene3d::apply_modifiers(
+        world, entity, model, place, [&tree](entt::entity e) { return tree.global(e); }, pose);
     const std::vector<world::Affine3D> globals = scene3d::node_globals(model, pose);
-    const world::Affine3D place = world::Tree3D(world).global(entity);
     for (const std::size_t node : wanted) {
         const scene3d::NodePose& local = pose[node];
         json::Value out;

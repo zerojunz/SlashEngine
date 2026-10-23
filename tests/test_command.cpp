@@ -1288,8 +1288,8 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     // run at the same time.
     CHECK(*engine.ok("engine.describe").find("systems") ==
           parse(R"(["input", "gui", "services", "controls", "movement", "animation_player",
-                    "animation_tree", "physics2d", "physics3d", "animated_sprite_2d", "camera_2d", "parallax_2d",
-                    "cpu_particles_2d", "gpu_particles_2d", "ai", "audio"])"));
+                    "animation_tree", "skeleton_modifiers", "physics2d", "physics3d", "animated_sprite_2d",
+                    "camera_2d", "parallax_2d", "cpu_particles_2d", "gpu_particles_2d", "ai", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
          "priority": -1000},
@@ -1306,6 +1306,9 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         {"name": "animation_tree",
          "doc": "Blends each AnimationTree's animations into its entity's components.",
          "priority": 910},
+        {"name": "skeleton_modifiers",
+         "doc": "Steps the chains of FABRIK3D, CCDIK3D and JacobianIK3D modifiers that aren't deterministic toward their targets.",
+         "priority": 920},
         {"name": "physics2d",
          "doc": "Steps 2D physics: moves rigid and character bodies and reports contacts.",
          "priority": 950},
@@ -1322,10 +1325,10 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "priority": 1060},
         {"name": "cpu_particles_2d",
          "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100,
-         "threaded": true, "stage": 12, "reads": ["Transform2D"], "writes": ["CPUParticles2D"]},
+         "threaded": true, "stage": 13, "reads": ["Transform2D"], "writes": ["CPUParticles2D"]},
         {"name": "gpu_particles_2d",
          "doc": "Steps each GPUParticles2D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 12,
+         "threaded": true, "stage": 13,
          "reads": ["Transform2D", "LightOccluder2D", "TileMapLayer", "CanvasLayer", "Control",
                    "Camera2D"],
          "writes": ["GPUParticles2D", "assets"]},

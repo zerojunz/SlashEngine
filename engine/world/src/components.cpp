@@ -568,6 +568,63 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("skid_info", {.doc = "1 while it grips, toward 0 as it skids."});
 }
 
+// The skeleton modifiers: Godot 4.6's TwoBoneIK3D, FABRIK3D, CCDIK3D and JacobianIK3D.
+void register_ik_components(ComponentRegistry& registry) {
+    const FieldMeta active{.doc = "Whether it turns bones."};
+    const FieldMeta influence{
+        .doc = "How far its result replaces the pose: 0 not at all, 1 fully.", .min = 0, .max = 1};
+    const FieldMeta mutable_bone_axes{
+        .doc = "Follows bones whose children the pose moves, rather than their rest."};
+    const std::string axes = R"("plus_x", "minus_x", "plus_y", "minus_y", "plus_z" or "minus_z")";
+    const std::string directions = R"("from_parent", )" + axes;
+    const std::string end = "end_bone; extend_end_bone reaches past it end_bone_length meters "
+                            "along end_bone_direction (" +
+                            directions + ")";
+    const std::string chain_doc =
+        "One chain each: root_bone, the bone it turns from, to " + end +
+        "; target, the entity it reaches for; and joints, bone name -> {rotation_axis (\"all\", "
+        "\"x\", \"y\", \"z\" or \"custom\" with rotation_axis_vector), limitation (\"\" or "
+        "\"cone\": limitation_angle radians around limitation_rotation_offset, with "
+        "limitation_right_axis and limitation_right_axis_vector as pole_direction)}.";
+    const FieldMeta chain_settings{.doc = chain_doc};
+    const FieldMeta max_iterations{.doc = "Most solver steps a tick.", .min = 0};
+    const FieldMeta min_distance{.doc = "Meters from the target at which it stops.", .min = 0};
+    const FieldMeta angular_delta_limit{.doc = "Most radians a joint turns in one step.", .min = 0};
+    const FieldMeta deterministic{.doc = "Solves from the pose each time rather than carrying its "
+                                         "chain from tick to tick."};
+
+    registry.add<TwoBoneIK3D>()
+        .set_doc("Bends two bones of the model the entity (or its Transform3D parent) draws so "
+                 "the end reaches a target, toward a pole, as Godot's TwoBoneIK3D.")
+        .describe("settings",
+                  {.doc = "One limb each: root_bone, middle_bone and " + end +
+                          "; use_virtual_end reaches with that point; target and pole, the "
+                          "entities it reaches for and bends toward; pole_direction, the "
+                          "middle bone's axis that points at the pole (\"none\" or one of " +
+                          axes + ", or \"custom\" with pole_direction_vector)."})
+        .describe("active", active)
+        .describe("influence", influence)
+        .describe("mutable_bone_axes", mutable_bone_axes);
+    const auto chain = [&](ComponentType& added, const std::string& doc) {
+        added.set_doc(doc)
+            .describe("settings", chain_settings)
+            .describe("active", active)
+            .describe("influence", influence)
+            .describe("mutable_bone_axes", mutable_bone_axes)
+            .describe("max_iterations", max_iterations)
+            .describe("min_distance", min_distance)
+            .describe("angular_delta_limit", angular_delta_limit)
+            .describe("deterministic", deterministic);
+    };
+    chain(registry.add<FABRIK3D>(),
+          "Turns a chain of bones so its end reaches a target by forward and backward reaching, "
+          "as Godot's FABRIK3D.");
+    chain(registry.add<CCDIK3D>(), "Turns a chain of bones so its end reaches a target, one "
+                                   "joint at a time from the end, as Godot's CCDIK3D.");
+    chain(registry.add<JacobianIK3D>(), "Turns a chain of bones so its end reaches a target by "
+                                        "the Jacobian transpose, as Godot's JacobianIK3D.");
+}
+
 } // namespace
 
 // The particles component: Godot's CPUParticles2D.
@@ -1632,6 +1689,7 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("bone_scales", {.doc = "Bone name -> scale, as [x, y, z]."})
         .describe("show_rest_only",
                   {.doc = "Shows the rest pose, leaving out animations and these maps."});
+    register_ik_components(registry);
     registry.add<BoxMesh>()
         .set_doc("A box centered on the entity, as Godot's BoxMesh; MeshInstance3D draws it.")
         .describe("size", {.doc = "Width, height and depth in meters, as [x, y, z].", .min = 0})

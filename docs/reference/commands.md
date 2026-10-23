@@ -625,7 +625,8 @@ A model that doesn't load is an error at `/path` (or `/id`) saying why, as
 
 Returns the bones of the model an entity's `MeshInstance3D` draws, and the
 [animations posing them](scene-format.md#skeletons-and-model-animations): its `AnimationPlayer`'s
-animation from a model, then its `Skeleton3D`. Bones named get their pose as it is drawn.
+animation from a model, then its `Skeleton3D`, then its [IK modifiers](scene-format.md#ik-modifiers).
+Bones named get their pose as it is drawn.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
