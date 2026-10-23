@@ -672,7 +672,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         vehicles and navigation nodes, meshes and polygons
   - [x] Godot's `AnimationTree`: blend trees, blend spaces, transitions, state machines and
         their parameters, on a model's own animations or a player's libraries
-  - [ ] Godot's skeletons and their modifiers, ragdolls, HTerrain data and 3D animation tracks
+  - [x] Godot's 3D animation tracks, as node tracks on a model's bones and `Transform3D` tracks
+        on a scene's 3D nodes
+  - [ ] Godot's skeletons and their modifiers, ragdolls and HTerrain data
   - [ ] Unity 3D scenes
   - [ ] Unreal Engine levels and assets through the user's own Unreal Editor
 - [ ] 3D in the asset library and generator ([design](design.md#3d-assets))

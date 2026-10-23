@@ -2993,6 +2993,24 @@ TEST_CASE("animation.eval returns the values an animation's tracks set, and step
           parse(R"({"length": 0.5, "loop": "none",
                     "tracks": {"shadow:Sprite2D/modulate/a": [0.25]}})"));
 
+    // Node tracks come back under nodes, by node and what they move: rotations as Euler angles.
+    REQUIRE(slash::platform::write_file(root + "/arm.anim.json", R"({"format": 1, "animations": {
+        "wave": {"length": 1, "tracks": [
+          {"node": "Lower", "property": "rotation",
+           "keys": [{"time": 0, "value": [0, 0, 0]}, {"time": 1, "value": [0, 0, 1]}]},
+          {"node": "Lower", "property": "position", "interpolation": "nearest",
+           "keys": [{"time": 0, "value": [0, 1, 0]}, {"time": 0.5, "value": [0, 2, 0]}]},
+          {"path": "Transform3D/visible", "keys": [{"time": 0, "value": true}]}]}}})")
+                .ok());
+    CHECK(engine.ok("animation.eval", R"({"path": "arm.anim.json", "animation": "wave",
+                                          "times": [0.5]})") ==
+          parse(R"({"length": 1, "loop": "none", "tracks": {"Transform3D/visible": [true]},
+                    "nodes": {"Lower": {"position": [[0, 2, 0]], "rotation": [[0, 0, 0.5]]}}})"));
+    CHECK(engine.ok("animation.eval", R"({"path": "arm.anim.json", "animation": "wave",
+                                          "times": [0.25], "tracks": ["Lower"]})") ==
+          parse(R"({"length": 1, "loop": "none", "tracks": {},
+                    "nodes": {"Lower": {"position": [[0, 1, 0]], "rotation": [[0, 0, 0.25]]}}})"));
+
     // step plays it: the frame jumps at its key and the event fires as playback passes it.
     engine.ok("events.subscribe");
     CHECK(engine.ok("step", R"({"ticks": 31})").find("tick")->as_int() == 31);
@@ -3026,8 +3044,8 @@ TEST_CASE("animation.eval returns the values an animation's tracks set, and step
     reply = engine.fails("animation.eval", R"({"id": "hero", "times": [0],
                                               "tracks": ["Sprite2D/fram"]})",
                          command::code::kNotFound);
-    CHECK(reply.message == "/tracks/0: bob has no value track \"Sprite2D/fram\"; did you mean "
-                           "\"Sprite2D/frame\"?");
+    CHECK(reply.message == "/tracks/0: bob has no value or node track \"Sprite2D/fram\"; did "
+                           "you mean \"Sprite2D/frame\"?");
     reply = engine.fails("animation.eval", R"({"path": "gone.anim.json", "animation": "a",
                                               "times": [0]})",
                          command::code::kNotFound);

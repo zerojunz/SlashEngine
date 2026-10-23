@@ -546,6 +546,68 @@ TEST_CASE("a model node's motion is reported as root motion rather than posed") 
     CHECK(near(scene.tree(hero).root_motion_position, {-0.5F, 0.0F, 0.0F}));
 }
 
+TEST_CASE("a tree plays node tracks as it plays a model's animations, from the drawn model's "
+          "rests") {
+    Scene scene;
+    slash::test::Gltf walker;
+    walker.document["nodes"] = slash::test::gltf_json(R"([
+        {"name": "Root", "children": [1]}, {"name": "Body", "translation": [0, 1, 0]}])");
+    walker.document["scenes"] = slash::test::gltf_json(R"([{"nodes": [0]}])");
+    walker.document["scene"] = 0;
+    scene.files.write("walker.gltf", walker.gltf());
+    // The walk of the test before, as node tracks.
+    scene.files.write("hero.anim.json", R"({"format": 1, "animations": {
+        "walk": {"length": 1, "loop": "linear", "tracks": [
+            {"node": "Root", "property": "position",
+             "keys": [{"time": 0, "value": [0, 0, 0]}, {"time": 1, "value": [0, 0, 2]}]},
+            {"node": "Body", "property": "position",
+             "keys": [{"time": 0, "value": [0, 1, 0]}, {"time": 1, "value": [0, 2, 0]}]}]}}})");
+    scene.files.write("hero.animtree.json",
+                      R"({"format": 1, "root": {"type": "Animation", "animation": "walk"}})");
+    const entt::entity hero = scene.create("hero", R"({"AnimationTree":
+        {"tree_root": "hero.animtree.json", "libraries": {"": "hero.anim.json"},
+         "root_motion_track": "Root"}, "MeshInstance3D": {"mesh": "walker.gltf"}})");
+    scene.world.step(0.25);
+    scene.world.step(0.25);
+    CHECK(near(scene.tree(hero).root_motion_position, {0.0F, 0.0F, 0.5F}));
+    const std::vector<scene3d::ClipSample> clips = scene3d::clips(scene.world, hero);
+    REQUIRE(clips.size() == 1);
+    CHECK(clips[0].model == "hero.anim.json");
+    CHECK(clips[0].animation == "walk");
+    CHECK(clips[0].source != nullptr);
+    CHECK(clips[0].node_weights == std::map<std::string, float>{{"Root", 0.0F}});
+    auto model = scene.assets.load<scene3d::Model>("walker.gltf");
+    REQUIRE(model.ok());
+    const auto pose = scene3d::pose_of(*model.value(), clips, nullptr, {});
+    CHECK(near(pose[0].position, {0.0F, 0.0F, 0.0F}));
+    CHECK(near(pose[1].position, {0.0F, 1.25F, 0.0F}));
+
+    // Half blended in, the root's accumulated position is half way from its rest in the drawn
+    // model to the track's value, as Godot's mixer starts from the skeleton's rest.
+    walker.document["nodes"] = slash::test::gltf_json(R"([
+        {"name": "Root", "translation": [4, 0, 0], "children": [1]},
+        {"name": "Body", "translation": [0, 1, 0]}])");
+    scene.files.write("shifted.gltf", walker.gltf());
+    scene.files.write("blend.anim.json", R"({"format": 1, "animations": {
+        "rest": {"length": 1, "loop": "linear", "tracks": []},
+        "walk": {"length": 1, "loop": "linear", "tracks": [
+            {"node": "Root", "property": "position",
+             "keys": [{"time": 0, "value": [0, 0, 0]}, {"time": 1, "value": [0, 0, 2]}]}]}}})");
+    scene.files.write("blend.animtree.json", R"({"format": 1, "root": {"type": "BlendTree",
+        "nodes": {"walk": {"type": "Animation", "animation": "walk"},
+                  "rest": {"type": "Animation", "animation": "rest"},
+                  "mix": {"type": "Blend2", "inputs": {"in": "rest", "blend": "walk"}}},
+        "output": "mix"}})");
+    const entt::entity blender = scene.create("blender", R"({"AnimationTree":
+        {"tree_root": "blend.animtree.json", "libraries": {"": "blend.anim.json"},
+         "root_motion_track": "Root", "parameters": {"mix/blend_amount": 0.5}},
+         "MeshInstance3D": {"mesh": "shifted.gltf"}})");
+    scene.world.step(0.25);
+    scene.world.step(0.25);
+    CHECK(scene.tree(blender).invalid.empty());
+    CHECK(near(scene.tree(blender).root_motion_position_accumulator, {2.0F, 0.0F, 0.25F}));
+}
+
 TEST_CASE("tree files are checked, with every error at its JSON Pointer") {
     CHECK(errors_of(parse(R"({"format": 1, "root": {"type": "BlendTree",
         "nodes": {"a": {"type": "Animation", "animation": "walk"},
