@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstring>
 #include <deque>
+#include <optional>
+#include <string_view>
 #include <utility>
 
 namespace slash::animation::detail {
@@ -1311,6 +1313,8 @@ private:
         SwitchMode switch_mode = SwitchMode::Immediate;
         bool is_reset = false;
         bool break_loop_at_end = false;
+        // The transition when it is taken on its own, whose expression's triggers it uses up.
+        const MachineTransition* advanced = nullptr;
     };
 
     // A transition as Godot's _check_group_transition finds it: a grouped state machine's
@@ -1954,6 +1958,9 @@ private:
             if (!pb.path.empty()) {
                 pb.path.erase(pb.path.begin()); // It came from the travel path.
             }
+            if (next.advanced != nullptr && !test_only) {
+                use_triggers(*next.advanced);
+            }
             pb.current = next.node;
             pb.current_curve = next.curve;
             if (pb.current == kEnd) {
@@ -2053,12 +2060,33 @@ private:
         return out;
     }
 
-    // Godot's _check_advance_condition: an auto transition whose condition, if it has one, holds.
+    // Godot's _check_advance_condition: an auto transition whose condition and expression, if
+    // it has them, hold. An expression that fails to run doesn't.
     [[nodiscard]] bool check_advance_condition(int machine, const MachineTransition& t) const {
         if (t.advance_mode != AdvanceMode::Auto) {
             return false;
         }
-        return t.advance_condition.empty() || flag(machine, "conditions/" + t.advance_condition);
+        if (!t.advance_condition.empty() && !flag(machine, "conditions/" + t.advance_condition)) {
+            return false;
+        }
+        if (t.advance_expression.empty()) {
+            return true;
+        }
+        const auto result =
+            t.advance_expression.execute([&](std::string_view name) -> std::optional<json::Value> {
+                return parameters_.get(node(0), name);
+            });
+        return result && truthy(result.value());
+    }
+
+    // Sets the triggers a transition taken on its own read back to false, as Unity's Animator
+    // uses its triggers up.
+    void use_triggers(const MachineTransition& t) {
+        for (const std::string& name : t.advance_expression.names()) {
+            if (std::ranges::find(context_.tree.triggers, name) != context_.tree.triggers.end()) {
+                parameters_.set(node(0), name, false);
+            }
+        }
     }
 
     // Godot's _find_next: the next state on the travel path, or the auto transition of best
@@ -2104,6 +2132,7 @@ private:
         }
         if (best != nullptr) {
             fill(best->to, *best_group.transition);
+            next.advanced = best_group.bypass ? nullptr : best_group.transition;
         }
         return next;
     }

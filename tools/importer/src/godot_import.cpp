@@ -13,6 +13,7 @@
 #include "slash/canvas/gpu_particles.hpp"
 #include "slash/canvas/tilemap.hpp"
 #include "slash/core/assert.hpp"
+#include "slash/core/expression.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/text.hpp"
 #include "slash/importer/godot_text.hpp"
@@ -8829,11 +8830,20 @@ private:
                     out[property] = value.text;
                 }
             } else if (property == "advance_expression" && value.is_string()) {
-                if (!value.text.empty()) {
-                    problems_.add("StateMachine transition advance_expression", where,
-                                  "expressions don't convert; set a condition from gameplay "
-                                  "code instead");
+                if (value.text.empty()) {
+                    continue;
                 }
+                // The names Godot reads from the base node become the tree's variables.
+                auto parsed = Expression::parse(value.text);
+                if (!parsed) {
+                    problems_.add("StateMachine transition advance_expression", where,
+                                  value.text + " doesn't convert (" + parsed.error().message +
+                                      "); set a variable from gameplay code and read it");
+                    continue;
+                }
+                out[property] = value.text;
+                tree_variables_.insert(parsed.value().names().begin(),
+                                       parsed.value().names().end());
             } else if (property == "xfade_curve") {
                 curve_property(out, property, value, *owner, "StateMachine transition", where);
             } else if (property != "resource_name" && property != "resource_local_to_scene") {
@@ -8860,6 +8870,7 @@ private:
                                      ? without_extension(owner->path)
                                      : scene.stem + "_" + snake_case(node.name);
         std::string path = destination(base + std::string(animation::kTreeSuffix));
+        tree_variables_.clear();
         auto root = tree_node(reference, file, "AnimationTree.tree_root", source, nodes, order_of);
         trees_written_[key] = root ? path : std::string();
         if (!root) {
@@ -8868,6 +8879,17 @@ private:
         json::Value doc;
         doc["format"] = 1;
         doc["root"] = std::move(*root);
+        if (!tree_variables_.empty()) {
+            std::string names;
+            for (const std::string& name : tree_variables_) {
+                doc["variables"][name] = json::Value();
+                names += (names.empty() ? "" : ", ") + name;
+            }
+            problems_.add("AnimationTree advance_expression_base_node", node.declared,
+                          "its advance expressions read " + names +
+                              " from the tree's variables, which gameplay code sets as "
+                              "parameters");
+        }
         keep_valid(doc, path,
                    [](const json::Value& value) { return animation::validate_tree(value); });
         if (doc.find("root") == nullptr) {
@@ -9949,9 +9971,10 @@ private:
     std::map<std::string, std::optional<ModelInfo>> models_; // by path
     std::map<std::string, json::Value> terrain_data_;        // HTerrain fields, by data.hterrain
     std::map<std::string, std::string> trees_written_;       // by resource, its file or ""
-    std::map<std::string, ScriptRecord> scripts_;            // by res path
-    std::optional<Skeletons> skeletons_;                     // by res path
-    std::string module_;                                     // the game module written, or ""
+    std::set<std::string> tree_variables_; // the names the tree being written's expressions read
+    std::map<std::string, ScriptRecord> scripts_; // by res path
+    std::optional<Skeletons> skeletons_;          // by res path
+    std::string module_;                          // the game module written, or ""
     std::map<std::string, std::string> task_of_;
     std::map<std::string, std::string> autoloads_;
     std::map<std::string, std::vector<std::string>> groups_;

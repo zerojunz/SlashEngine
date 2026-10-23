@@ -1012,3 +1012,121 @@ TEST_CASE("state machine files and travel requests are checked") {
           "after the group");
     CHECK(check(3) == "expected the name of one of the state machine's states");
 }
+
+TEST_CASE("advance expressions read the tree's variables, and transitions use up the triggers "
+          "they read") {
+    Scene scene;
+    scene.files.write("hero.anim.json", std::string(kMoves));
+    scene.files.write("hero.animtree.json", R"({"format": 1,
+        "variables": {"speed": 0.0, "limit": null}, "triggers": ["jump"],
+        "root": {"type": "StateMachine",
+        "states": {"idle": {"node": {"type": "Animation", "animation": "idle"}},
+                   "walk": {"node": {"type": "Animation", "animation": "walk"}},
+                   "run": {"node": {"type": "Animation", "animation": "run"}},
+                   "jump": {"node": {"type": "Animation", "animation": "jump"}}},
+        "transitions": [{"from": "Start", "to": "idle", "advance_mode": "auto"},
+                        {"from": "idle", "to": "run", "advance_mode": "auto",
+                         "advance_expression": "speed > 1"},
+                        {"from": "idle", "to": "walk", "advance_mode": "auto",
+                         "advance_expression": "speed > limit"},
+                        {"from": "run", "to": "jump", "advance_mode": "auto",
+                         "advance_expression": "jump and speed < 5"},
+                        {"from": "jump", "to": "idle", "advance_mode": "auto",
+                         "switch_mode": "at_end"}]}})");
+    const entt::entity hero = scene.create("hero", kTreeComponent);
+    const auto x = [&] { return static_cast<double>(scene.transform(hero).position.x); };
+    const auto parameters = [&] {
+        return json::write(json::Value(scene.tree(hero).parameters), json::Style::Compact);
+    };
+
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(10.0));
+    // The expression lets the transition go at the end of the tick; run starts on the next.
+    scene.set(hero, "speed", 2);
+    scene.world.step(0.1);
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(30.0));
+
+    // A trigger waits, set, until the rest of its expression holds.
+    scene.set(hero, "speed", 6);
+    scene.set(hero, "jump", true);
+    scene.world.step(0.1);
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(30.0));
+    CHECK(parameters() == R"({"jump":true,"speed":6})");
+    // Taking the transition uses it up.
+    scene.set(hero, "speed", 3.5);
+    scene.world.step(0.1);
+    CHECK(parameters() == R"({"speed":3.5})");
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(40.0));
+
+    // An expression that can't run, here comparing a number with null, isn't taken.
+    scene.set(hero, "speed", 0.5);
+    for (int i = 0; i < 8; ++i) {
+        scene.world.step(0.1);
+    }
+    CHECK(x() == doctest::Approx(10.0));
+    CHECK(json::write(scene.tree(hero).state.at("playback"), json::Style::Compact) ==
+          R"({"current":"idle","playing":true})");
+    scene.set(hero, "limit", 0.25);
+    scene.world.step(0.1);
+    scene.world.step(0.1);
+    CHECK(x() == doctest::Approx(20.0));
+}
+
+TEST_CASE("advance expressions, variables and triggers are checked") {
+    CHECK(errors_of(parse(R"({"format": 1,
+        "variables": {"speed": 0, "2fast": 1, "null": false, "jump": false, "on-ground": true},
+        "triggers": ["jump", "land"],
+        "root": {"type": "StateMachine",
+        "states": {"idle": {"node": {"type": "Animation", "animation": "idle"}},
+                   "run": {"node": {"type": "Animation", "animation": "run"}}},
+        "transitions": [{"from": "idle", "to": "run", "advance_expression": "sped > 1 or lnd"},
+                        {"from": "run", "to": "idle", "advance_expression": "speed >"}]}})")) ==
+          "/variables/2fast: a variable's name is letters, digits and \"_\", not starting with a "
+          "digit\n"
+          "/variables/null: \"null\" is an expression's own word\n"
+          "/variables/on-ground: a variable's name is letters, digits and \"_\", not starting "
+          "with a digit\n"
+          "/triggers/0: \"jump\" is a variable and a trigger\n"
+          "/root/transitions/0/advance_expression: \"sped\" isn't one of the tree's variables or "
+          "triggers; did you mean \"speed\"?\n"
+          "/root/transitions/0/advance_expression: \"lnd\" isn't one of the tree's variables or "
+          "triggers; did you mean \"land\"?\n"
+          "/root/transitions/1/advance_expression: at character 8: expected a value");
+    // Variables are parameters of the tree, beside the root node's own.
+    CHECK(errors_of(parse(R"({"format": 1, "variables": {"travel": 0}, "triggers": ["next"],
+        "root": {"type": "StateMachine",
+        "states": {"idle": {"node": {"type": "Animation", "animation": "idle"}}}}})")) ==
+          "/variables/travel: \"travel\" is a parameter of the root node\n"
+          "/triggers/0: \"next\" is a parameter of the root node");
+    CHECK(errors_of(parse(R"({"format": 1, "variables": {"name": "mira"},
+        "root": {"type": "Animation", "animation": "idle"}})")) ==
+          "/variables/name: expected number or boolean or null, got string");
+
+    const auto tree = animation::parse_tree(parse(R"({"format": 1,
+        "variables": {"speed": 0.5, "target": null}, "triggers": ["jump"],
+        "root": {"type": "StateMachine",
+        "states": {"idle": {"node": {"type": "Animation", "animation": "idle"}}},
+        "transitions": [{"from": "Start", "to": "idle", "advance_mode": "auto",
+                         "advance_expression": "target != null and jump"}]}})"));
+    REQUIRE(tree.ok());
+    const auto parameters = animation::tree_parameters(tree.value());
+    REQUIRE(parameters.size() >= 3);
+    CHECK(parameters[0].key == "speed");
+    CHECK(parameters[0].default_value == json::Value(0.5));
+    CHECK(parameters[1].key == "target");
+    CHECK(parameters[2].key == "jump");
+    CHECK(parameters[2].default_value == json::Value(false));
+    CHECK((parameters[0].input && parameters[1].input && parameters[2].input));
+    const auto check = [&](std::size_t index, const json::Value& value) {
+        return animation::check_parameter(tree.value(), parameters[index], value);
+    };
+    CHECK(check(0, 2).empty());
+    CHECK(check(0, true) == "expected a number");
+    CHECK(check(1, 2).empty());
+    CHECK(check(1, true).empty());
+    CHECK(check(1, "x") == "expected a number, true, false or null");
+    CHECK(check(2, 1) == "expected true or false");
+}
