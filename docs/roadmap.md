@@ -638,7 +638,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Up to 7.1 speakers, as Godot's speaker modes: a buffer and effects per speaker pair,
         Spcap panning for 3D sounds, mix targets, and `audio.state` and `audio.capture` per
         speaker
-- [ ] Level geometry and terrain
+- [x] Level geometry and terrain
   - [x] CSG shapes on Manifold, as Godot 4.6's: boxes, spheres, cylinders and cones, tori,
         polygons pushed or spun, meshes and combiners; drawn, colliding and baked into
         navigation meshes, with `csg.get`
@@ -649,7 +649,11 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         `.meshlib.json` library in cells written as rows of legend keys, turned Godot's 24
         ways, drawn and colliding by octant, navigation regions per cell, with `gridmap.set`,
         `gridmap.get` and the cell a ray hits
-  - [ ] Heightmap terrain with splat materials and LOD
+  - [x] Heightmap terrain with splat materials and LOD, as the HTerrain plugin for Godot:
+        `HTerrain` heights from 16-bit `.height.png` files, drawn in chunks by its quad tree
+        with seams stitched, four textures by splat map, a color map with holes, colliding as a
+        height field and walked by navigation bakes, with `terrain.generate`, `terrain.brush`
+        and `terrain.get`
 - [x] glTF 2.0 models (`.gltf` and `.glb`: meshes, materials and textures) on `MeshInstance3D`,
       and JPEG textures, as Godot's importer reads them
 - [x] OBJ models (`.obj` with their `.mtl` libraries) on `MeshInstance3D`, as Godot's OBJ importer

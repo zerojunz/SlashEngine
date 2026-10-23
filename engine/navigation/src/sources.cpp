@@ -11,6 +11,7 @@
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/primitive.hpp"
+#include "slash/scene3d/terrain.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/tree3d.hpp"
 
@@ -277,6 +278,27 @@ void parse_3d(const world::World& world, asset::Assets& assets, const world::Tre
                    (map->collision_layer & settings.geometry_collision_mask) != 0U) {
             for (const scene3d::GridShape& shape : *mesh->shapes) {
                 add_shape(out, shape.shape, transform * shape.local);
+            }
+        }
+    }
+    // An HTerrain's heights at full detail, holes left out, with mesh_instances or both, else,
+    // with static_colliders, when it collides on a layer the mask takes: what Godot parses of
+    // the HeightMapShape3D it collides as.
+    if (const auto* terrain = registry.try_get<world::HTerrain>(entity); terrain != nullptr) {
+        const bool collides = terrain->collision_enabled &&
+                              (terrain->collision_layer & settings.geometry_collision_mask) != 0U;
+        if (parses_meshes(settings.geometry_parsed_geometry_type) ||
+            (parses_colliders(settings.geometry_parsed_geometry_type) && collides)) {
+            const std::shared_ptr<const scene3d::TerrainData> data =
+                scene3d::terrain_data(world, entity);
+            if (data->empty()) {
+                if (!data->problems.empty()) {
+                    warn("its terrain was left out: " + data->problems.front().message);
+                }
+            } else {
+                add_faces(out, scene3d::terrain_faces(*data),
+                          root * scene3d::terrain_transform(*terrain, data->resolution,
+                                                            tree.global(entity)));
             }
         }
     }

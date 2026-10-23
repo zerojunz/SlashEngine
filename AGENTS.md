@@ -847,6 +847,22 @@ navigation bakes take its meshes and shapes as Godot's `GridMap::navmesh_parse_s
 `check_gridmaps` reports items the library doesn't have for `scene validate` and exports.
 `examples/gridmap` lays out a room with a ramp.
 
+Terrains follow the HTerrain plugin for Godot (zylann.hterrain, MIT; Godot has none of its own),
+in `engine/scene3d/src/terrain.cpp`. An `HTerrain` names a 16-bit `.height.png` heightmap
+(`render::Gray16`, `decode_gray16` and `encode_gray16_png`), a splat map and a color map, each
+`resolution` pixels square; one that doesn't exist yet reads as flat, the first texture and
+white. `terrain_data` (kept by `install_terrain`, called by `canvas::install`, until the
+component or a map changes) holds the heights and HTerrain's range map; `terrain_chunks` settles
+its quad tree for a viewer, `terrain_indices` and `terrain_chunk_vertices` make chunks with
+seams toward coarser neighbors as its mesher does, and `Renderer` draws them with
+`render::TerrainShading` (Classic4 in `mesh.hlsl`, `terrain_texel` in `mesh.cpp` its CPU twin;
+a change to one goes in both). physics3d makes it a Jolt height field with holes, navigation
+bakes take `terrain_faces`, and `generate_heights` and `paint` are HTerrain's generator and
+brushes, behind `terrain.generate`, `terrain.brush` and `terrain.get`
+(`engine/command/src/terrain.cpp`), which stage the map files and record their undo. Exports
+ship heightmaps and the maps HTerrains name as they are, never in compressed forms.
+`examples/terrain` makes an island.
+
 Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V, MSL, GLSL ES and WGSL are committed
 in `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang,
 SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`

@@ -31,11 +31,12 @@ endif()
 target_compile_options(slash_astcenc PRIVATE
     "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w;-ffp-contract=off>")
 
-# JPEG textures through stb_image's decoder (src/jpeg.c), with no SIMD, so a file decodes to the
-# same pixels everywhere.
-add_library(slash_jpeg STATIC src/jpeg.c)
-target_include_directories(slash_jpeg SYSTEM PRIVATE ${stb_SOURCE_DIR})
-target_compile_options(slash_jpeg PRIVATE "$<$<NOT:$<C_COMPILER_ID:MSVC>>:-w;-ffp-contract=off>")
+# JPEG textures and 16-bit heightmaps through stb_image and stb_image_write (src/image_codecs.c),
+# with no SIMD, so a file decodes and encodes to the same bytes everywhere.
+add_library(slash_image_codecs STATIC src/image_codecs.c)
+target_include_directories(slash_image_codecs SYSTEM PRIVATE ${stb_SOURCE_DIR})
+target_compile_options(slash_image_codecs PRIVATE
+    "$<$<NOT:$<C_COMPILER_ID:MSVC>>:-w;-ffp-contract=off>")
 
 add_library(slash_render
     src/device.cpp
@@ -63,7 +64,7 @@ add_library(slash::render ALIAS slash_render)
 target_include_directories(slash_render PUBLIC include)
 target_link_libraries(slash_render
     PUBLIC slash::core
-    PRIVATE slash_astcenc slash_bc7 slash_jpeg SDL3::SDL3-static)
+    PRIVATE slash_astcenc slash_bc7 slash_image_codecs SDL3::SDL3-static)
 slash_engine_target(slash_render)
 
 # Web builds draw with WebGPU where the browser has it, through Dawn's webgpu.h for Emscripten
@@ -102,7 +103,8 @@ set(slash_shader_headers "")
 # Each shader as file:Name, then compute for compute shaders, and 3d for the mesh shader and
 # depth for the shadow pass shader, whose varyings GLSL names apart from the canvas shaders' and
 # whose depth it maps to OpenGL's, and post for the post passes, the sky and the radiance filter,
-# which have no varyings. The mesh shader's code is long enough to come in pieces.
+# which have no varyings. The mesh shader's code is long enough to come in pieces, and its fourteen
+# textures put its WGSL samplers 16 bindings after them instead of 8.
 set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d shadow:Shadow:depth post:Post:post
     sky:Sky:post radiance:Radiance:post particles_process:ParticlesProcess:compute
     particles_emit:ParticlesEmit:compute particles_draw:ParticlesDraw:compute)
@@ -116,6 +118,7 @@ foreach(entry IN LISTS slash_shaders)
     set(interface v_uv,v_color,v_world)
     set(fixup OFF)
     set(pieces OFF)
+    set(sampler_shift 8)
     if(count GREATER 2)
         list(GET parts 2 kind)
         if(kind STREQUAL "compute")
@@ -133,6 +136,7 @@ foreach(entry IN LISTS slash_shaders)
             set(interface v_world,v_normal,v_tangent,v_binormal,v_uv,v_color)
             set(fixup ON)
             set(pieces ON)
+            set(sampler_shift 16)
         endif()
     endif()
     set(header ${CMAKE_CURRENT_SOURCE_DIR}/src/${shader}_shaders.hpp)
@@ -142,7 +146,8 @@ foreach(entry IN LISTS slash_shaders)
         COMMAND ${CMAKE_COMMAND}
             -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/shaders/${shader}.hlsl -DOUTPUT=${header}
             -DNAME=${name} -DCOMPUTE=${compute} -DINTERFACE=${interface}
-            -DFIXUP_CLIPSPACE=${fixup} -DPIECES=${pieces} -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/shaders
+            -DFIXUP_CLIPSPACE=${fixup} -DPIECES=${pieces} -DSAMPLER_SHIFT=${sampler_shift}
+            -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/shaders
             -DGLSLANG=${SLASH_GLSLANG} -DSPIRV_CROSS=${SLASH_SPIRV_CROSS} -DTINT=${SLASH_TINT}
             -P ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake
         COMMAND ${CMAKE_COMMAND} -E touch ${stamp}

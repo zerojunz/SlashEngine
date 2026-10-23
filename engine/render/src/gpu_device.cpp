@@ -994,11 +994,9 @@ public:
                         .index_count = it->second.index_count,
                         .bounds = it->second.bounds,
                         .pipeline = pipeline.value()};
-        const std::array<const MaterialTexture*, kMeshTextures> slots{
-            &material.albedo_texture, &material.metallic_texture, &material.roughness_texture,
-            &material.emission_texture, &material.normal_texture};
+        const std::array<MaterialTexture, kMeshTextures> slots = mesh_texture_slots(material);
         for (std::size_t slot = 0; slot < kMeshTextures; ++slot) {
-            batch.samplers.at(slot) = binding(slots.at(slot)->texture, slots.at(slot)->repeat);
+            batch.samplers.at(slot) = binding(slots.at(slot).texture, slots.at(slot).repeat);
         }
         mesh_draws_.push_back({.mesh = mesh,
                                .transform = transform,

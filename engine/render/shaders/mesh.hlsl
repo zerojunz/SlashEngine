@@ -1,9 +1,9 @@
 // The 3D shader: meshes lit by a frame's lights as Godot's Compatibility renderer lights them
 // (drivers/gles3/shaders/scene.glsl), with a StandardMaterial3D's albedo, metallic, roughness,
-// specular, emission and normal map, shadowed by the lights' shadow maps (shadow.hlsl draws
-// them) and lit by the sky's radiance (radiance.hlsl filters it), then fogged. Colors are worked
-// in linear, tonemapped (tonemap.hlsl) and written as sRGB, with Godot's approximations of the
-// two.
+// specular, emission and normal map, or a terrain's splat-mapped ground as the HTerrain plugin's
+// Classic4 shader blends it, shadowed by the lights' shadow maps (shadow.hlsl draws them) and lit
+// by the sky's radiance (radiance.hlsl filters it), then fogged. Colors are worked in linear,
+// tonemapped (tonemap.hlsl) and written as sRGB, with Godot's approximations of the two.
 // Keep it in step with shade_mesh in src/mesh.cpp, its CPU twin. Registers follow SDL's GPU
 // conventions: vertex uniforms in space1, fragment textures and samplers in space2, fragment
 // uniforms in space3.
@@ -51,24 +51,39 @@ VertexOutput vs_main(VertexInput input) {
     return output;
 }
 
+// A terrain's textures take the first eleven slots: the color map, splat map and normal map in
+// albedo's, metallic's and roughness's, then its layers' albedo_bump in emission's, normal's and
+// ground 2 and 3's, then their normal_roughness.
 Texture2D<float4> albedo_texture : register(t0, space2);
 Texture2D<float4> metallic_texture : register(t1, space2);
 Texture2D<float4> roughness_texture : register(t2, space2);
 Texture2D<float4> emission_texture : register(t3, space2);
 Texture2D<float4> normal_texture : register(t4, space2);
+Texture2D<float4> ground_texture_2 : register(t5, space2);
+Texture2D<float4> ground_texture_3 : register(t6, space2);
+Texture2D<float4> ground_normal_0 : register(t7, space2);
+Texture2D<float4> ground_normal_1 : register(t8, space2);
+Texture2D<float4> ground_normal_2 : register(t9, space2);
+Texture2D<float4> ground_normal_3 : register(t10, space2);
 SamplerState albedo_sampler : register(s0, space2);
 SamplerState metallic_sampler : register(s1, space2);
 SamplerState roughness_sampler : register(s2, space2);
 SamplerState emission_sampler : register(s3, space2);
 SamplerState normal_sampler : register(s4, space2);
+SamplerState ground_sampler_2 : register(s5, space2);
+SamplerState ground_sampler_3 : register(s6, space2);
+SamplerState ground_normal_sampler_0 : register(s7, space2);
+SamplerState ground_normal_sampler_1 : register(s8, space2);
+SamplerState ground_normal_sampler_2 : register(s9, space2);
+SamplerState ground_normal_sampler_3 : register(s10, space2);
 // The shadow atlases, depths compared with GREATER_OR_EQUAL and filtered linearly.
-Texture2D directional_atlas : register(t5, space2);
-Texture2D positional_atlas : register(t6, space2);
-SamplerComparisonState directional_sampler : register(s5, space2);
-SamplerComparisonState positional_sampler : register(s6, space2);
+Texture2D directional_atlas : register(t11, space2);
+Texture2D positional_atlas : register(t12, space2);
+SamplerComparisonState directional_sampler : register(s11, space2);
+SamplerComparisonState positional_sampler : register(s12, space2);
 // The sky's radiance: sRGB, each level blurrier, filtered linearly across levels and faces.
-TextureCube<float4> radiance_map : register(t7, space2);
-SamplerState radiance_sampler : register(s7, space2);
+TextureCube<float4> radiance_map : register(t13, space2);
+SamplerState radiance_sampler : register(s13, space2);
 
 static const uint kUnshaded = 1u;
 static const uint kVertexColorAlbedo = 2u;
@@ -78,6 +93,10 @@ static const uint kNormalMap = 16u;
 static const uint kSideCheck = 32u;
 static const uint kHasAlpha = 64u;
 static const uint kDisableFog = 128u;
+// Terrain flags, in options.w.
+static const uint kTerrain = 1u;
+static const uint kTerrainDepthBlending = 2u;
+static const uint kTerrainNormals = 16u; // shifted left by the layer
 
 cbuffer Surface : register(b0, space3) {
     float4 albedo;            // sRGB, and alpha
@@ -85,8 +104,11 @@ cbuffer Surface : register(b0, space3) {
     float4 surface;           // metallic, roughness, specular and the normal map's scale
     float4 metallic_channel;  // which of metallic_texture's channels is metallic
     float4 roughness_channel; // and roughness_texture's roughness
-    // x: the flags above, y: the alpha scissor threshold's bits, z: the draw's layers.
+    // x: the flags above, y: the alpha scissor threshold's bits, z: the draw's layers, w: the
+    // terrain flags.
     uint4 options;
+    float4 terrain_uv;      // each ground layer's tiling: the maps' resolution over its uv_scale
+    float4 terrain_opacity; // how much the color map tints each ground layer
 };
 
 struct Light {
@@ -390,38 +412,42 @@ float light_shadow(bool directional, uint slot, float3 world, float3 normal, flo
     return lerp(1.0, shadow, params.z);
 }
 
-// A lit pixel's color, linear: its lights, reflections, emission and ambient light on base, the
-// albedo.
-float3 lit_color(VertexOutput input, bool front, uint flags, float3 base, float4 metallic_texel,
-                 float4 roughness_texel, float3 emission_texel, float3 mapped) {
-    float metallic = surface.x * dot(metallic_texel, metallic_channel);
-    float roughness = surface.y * dot(roughness_texel, roughness_channel);
-    float specular = surface.z;
-    float3 emitted = emission.rgb;
-    if ((flags & kEmissionTexture) != 0u) {
-        emitted += emission_texel;
-    }
-    emitted = srgb_to_linear(emitted * emission.w);
+// get_depth_blended_weights in HTerrain's shader: the splat map's weights, sharpened where one
+// layer's bump stands above the others.
+float4 depth_blended_weights(float4 splat, float4 bumps) {
+    float dh = 0.2;
+    float4 h = bumps + splat;
+    h *= smoothstep((float4)0.0, (float4)0.05, splat);
+    float4 d = h + dh;
+    d.r -= max(h.g, max(h.b, h.a));
+    d.g -= max(h.r, max(h.b, h.a));
+    d.b -= max(h.g, max(h.r, h.a));
+    d.a -= max(h.g, max(h.b, h.r));
+    return saturate(d);
+}
 
-    float3 normal = input.normal;
-    if ((flags & kSideCheck) != 0u && !front) {
-        normal = -normal;
-    }
-    if ((flags & kNormalMap) != 0u) {
-        // With the interpolated, unnormalized tangent frame, per MikkTSpace, as Godot does.
-        mapped.xy = mapped.xy * 2.0 - 1.0;
-        mapped.z = sqrt(max(0.0, 1.0 - dot(mapped.xy, mapped.xy)));
-        normal = normalize(lerp(
-            normal, input.tangent * mapped.x + input.binormal * mapped.y + normal * mapped.z,
-            surface.w));
-    } else {
-        normal = normalize(normal);
-    }
+// unpack_normal in HTerrain's shader: an OpenGL-style normal map's texel, its green along the
+// terrain's -Z and its blue along +Y.
+float3 unpack_ground_normal(float4 texel) {
+    float3 n = texel.xzy * 2.0 - 1.0;
+    n.z = -n.z;
+    return n;
+}
+
+// A direction in the mesh's space, in the world through the pixel's tangent frame: a terrain's
+// vertices have the normal +Y and the tangent +X, so its binormal is -Z.
+float3 frame_direction(VertexOutput input, float3 v) {
+    return normalize(input.tangent * v.x + input.normal * v.y - input.binormal * v.z);
+}
+
+// A lit pixel's color, linear: its lights, reflections, emission and ambient light on base, the
+// albedo, with the shading normal and the one shadows offset along (geometry).
+float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry, float metallic,
+                 float roughness, float3 emitted) {
+    float specular = surface.z;
     float3 view = normalize(camera.xyz - input.world);
     float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic);
 
-    // Shadows offset the point they sample along the vertex normal, as Godot's normal_interp.
-    float3 geometry = normalize(input.normal);
     float3 diffuse_light = (float3)0.0;
     float3 specular_light = (float3)0.0;
     uint count = (uint)camera.w;
@@ -491,12 +517,22 @@ float3 lit_color(VertexOutput input, bool front, uint flags, float3 base, float4
 }
 
 float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
-    // Every texture is sampled first, while control flow is uniform, as WGSL requires.
+    // Every texture is sampled first, while control flow is uniform, as WGSL requires. A
+    // terrain's ground layers tile across its maps.
+    bool terrain = (options.w & kTerrain) != 0u;
     float4 texel = albedo_texture.Sample(albedo_sampler, input.uv);
     float4 metallic_texel = metallic_texture.Sample(metallic_sampler, input.uv);
     float4 roughness_texel = roughness_texture.Sample(roughness_sampler, input.uv);
-    float3 emission_texel = emission_texture.Sample(emission_sampler, input.uv).rgb;
-    float3 mapped = normal_texture.Sample(normal_sampler, input.uv).rgb;
+    float4 emission_texel =
+        emission_texture.Sample(emission_sampler, terrain ? input.uv * terrain_uv.x : input.uv);
+    float4 mapped_texel =
+        normal_texture.Sample(normal_sampler, terrain ? input.uv * terrain_uv.y : input.uv);
+    float4 ground_2 = ground_texture_2.Sample(ground_sampler_2, input.uv * terrain_uv.z);
+    float4 ground_3 = ground_texture_3.Sample(ground_sampler_3, input.uv * terrain_uv.w);
+    float4 normal_0 = ground_normal_0.Sample(ground_normal_sampler_0, input.uv * terrain_uv.x);
+    float4 normal_1 = ground_normal_1.Sample(ground_normal_sampler_1, input.uv * terrain_uv.y);
+    float4 normal_2 = ground_normal_2.Sample(ground_normal_sampler_2, input.uv * terrain_uv.z);
+    float4 normal_3 = ground_normal_3.Sample(ground_normal_sampler_3, input.uv * terrain_uv.w);
 
     uint flags = options.x;
     float4 color = albedo * texel;
@@ -504,7 +540,7 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         color *= input.color;
     }
     // Opaque materials leave alpha alone, as Godot's StandardMaterial3D only sets ALPHA when
-    // it is transparent.
+    // it is transparent. A terrain's color map cuts its holes here.
     float alpha = (flags & kHasAlpha) != 0u ? color.a : 1.0;
     if ((flags & kAlphaScissor) != 0u) {
         if (alpha < asfloat(options.y)) {
@@ -512,11 +548,75 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         }
         alpha = 1.0;
     }
-    float3 base = srgb_to_linear(color.rgb);
+    float3 base;
+    float metallic;
+    float roughness;
+    float3 shape = (float3)0.0;
+    float3 ground = (float3)0.0;
+    if (terrain) {
+        // HTerrain's Classic4 shader: each layer tinted by the color map, weighed by the splat
+        // map (depth-blended by the bumps), its normal added to the terrain's.
+        uint terrain_flags = options.w;
+        float4 normal_roughness[4] = {normal_0, normal_1, normal_2, normal_3};
+        float4 albedo_bump[4] = {emission_texel, mapped_texel, ground_2, ground_3};
+        float4 bumps = float4(albedo_bump[0].a, albedo_bump[1].a, albedo_bump[2].a,
+                              albedo_bump[3].a);
+        float4 weights = (terrain_flags & kTerrainDepthBlending) != 0u
+                             ? depth_blended_weights(metallic_texel, bumps)
+                             : metallic_texel;
+        // Splat weights that are all 0 leave the ground black rather than undefined.
+        float sum = max(weights.x + weights.y + weights.z + weights.w, 1.0e-6);
+        float3 blended = (float3)0.0;
+        float rough = 0.0;
+        [unroll] for (uint i = 0u; i < 4u; ++i) {
+            // A layer without a normal_roughness texture is flat, with roughness 1.
+            float4 nr = (terrain_flags & (kTerrainNormals << i)) != 0u
+                            ? normal_roughness[i]
+                            : float4(0.5, 0.5, 1.0, 1.0);
+            float share = weights[i] / sum;
+            blended += srgb_to_linear(albedo_bump[i].rgb) *
+                       lerp((float3)1.0, texel.rgb, terrain_opacity[i]) * share;
+            rough += nr.a * share;
+            ground += unpack_ground_normal(nr) * share;
+        }
+        base = srgb_to_linear(albedo.rgb) * blended;
+        metallic = surface.x;
+        roughness = surface.y * rough;
+        shape = normalize(roughness_texel.xyz * 2.0 - 1.0);
+    } else {
+        base = srgb_to_linear(color.rgb);
+        metallic = surface.x * dot(metallic_texel, metallic_channel);
+        roughness = surface.y * dot(roughness_texel, roughness_channel);
+    }
     float3 lit = base;
     if ((flags & kUnshaded) == 0u) {
-        lit = lit_color(input, front, flags, base, metallic_texel, roughness_texel, emission_texel,
-                        mapped);
+        float3 emitted = emission.rgb;
+        if ((flags & kEmissionTexture) != 0u) {
+            emitted += emission_texel.rgb;
+        }
+        emitted = srgb_to_linear(emitted * emission.w);
+        float3 normal = terrain
+                            ? frame_direction(input, normalize(float3(shape.x + ground.x, shape.y,
+                                                                      shape.z + ground.z)))
+                            : input.normal;
+        if ((flags & kSideCheck) != 0u && !front) {
+            normal = -normal;
+        }
+        if ((flags & kNormalMap) != 0u) {
+            // With the interpolated, unnormalized tangent frame, per MikkTSpace, as Godot does.
+            float3 mapped = mapped_texel.rgb;
+            mapped.xy = mapped.xy * 2.0 - 1.0;
+            mapped.z = sqrt(max(0.0, 1.0 - dot(mapped.xy, mapped.xy)));
+            normal = normalize(lerp(
+                normal, input.tangent * mapped.x + input.binormal * mapped.y + normal * mapped.z,
+                surface.w));
+        } else {
+            normal = normalize(normal);
+        }
+        // Shadows offset the point they sample along the vertex normal, as Godot's
+        // normal_interp; a terrain's along its shape's.
+        float3 geometry = terrain ? frame_direction(input, shape) : normalize(input.normal);
+        lit = lit_color(input, base, normal, geometry, metallic, roughness, emitted);
     }
     // One call, so the tonemappers are inlined once and the shader stays small.
     return finish(lit, alpha, input.world);
