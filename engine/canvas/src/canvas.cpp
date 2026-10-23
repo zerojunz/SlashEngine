@@ -9,6 +9,7 @@
 #include "slash/core/text.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/render/image.hpp"
+#include "slash/scene3d/csg.hpp"
 #include "slash/ui/ui.hpp"
 
 #include <algorithm>
@@ -318,6 +319,15 @@ void add_systems(world::World& world, asset::Assets& assets) {
                                [](const world::World& w) { return ui::settings(w).viewport; });
     add_particles_system(world);
     add_gpu_particles_system(world, &assets);
+    // CSG roots keep their meshes until a shape changes, CSGMesh3D models read through assets.
+    scene3d::install_csg(
+        world, [&assets](const std::string& path) -> Result<std::shared_ptr<const scene3d::Model>> {
+            auto found = assets.load<scene3d::Model>(path);
+            if (!found) {
+                return found.error();
+            }
+            return found.value().share();
+        });
 }
 
 void install(world::World& world, asset::Assets& assets) {

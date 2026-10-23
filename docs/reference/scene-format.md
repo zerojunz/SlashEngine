@@ -956,6 +956,59 @@ axes, settings with no target or pole, and modifiers that turn no model's bones.
 A `PhysicalBoneSimulator3D` is a modifier too, run after the IK modifiers on its entity: it puts
 bones where their physics bodies are ([ragdolls](#ragdolls)).
 
+### CSG shapes
+
+Seven components are Godot 4.6's CSG nodes: shapes that add to, cut from or intersect each other
+to build level geometry, as in Godot's editor. A shape's children (entities in its `Transform3D`
+`children` that are CSG shapes too) change it in their order, each placed by its own transform;
+a hidden child is left out. Only the root, a CSG shape whose parent isn't one, draws, collides
+and bakes into navigation meshes: everything under it makes one mesh, with a surface per
+material. Faces keep the `StandardMaterial3D` of the shape they came from, so a hole cut by a
+box shows that box's material, and faces from a shape with none get Godot's default material.
+
+```json
+"house": {"components": {
+  "Transform3D": {"position": [0, 1.2, 0], "children": ["door"]},
+  "CSGBox3D": {"size": [3, 2.4, 3], "use_collision": true}
+}},
+"door": {"components": {
+  "Transform3D": {"position": [0, -0.45, 1.4]},
+  "CSGBox3D": {"size": [0.8, 1.5, 1], "operation": "subtraction"}
+}}
+```
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `CSGCombiner3D` | none of its own: it combines its children, as a group |
+| `CSGBox3D` | `size` `[1, 1, 1]` |
+| `CSGSphere3D` | `radius` `0.5`, `radial_segments` `12`, `rings` `6`, `smooth_faces` `true` |
+| `CSGCylinder3D` | `radius` `0.5`, `height` `2`, `sides` `8`, `cone` `false` (a point at the top), `smooth_faces` `true` |
+| `CSGTorus3D` | `inner_radius` `0.5`, `outer_radius` `1` (they can't be equal), `sides` `8`, `ring_sides` `6`, `smooth_faces` `true` |
+| `CSGPolygon3D` | `polygon` (`[x, y]` points in the entity's xy plane; default a unit square), `mode` `"depth"` (pushed `depth` `1` along -z) or `"spin"` (turned `spin_degrees` `360` around y in `spin_sides` `8` steps), `smooth_faces` `false` |
+| `CSGMesh3D` | `mesh` (a `.gltf`, `.glb`, `.obj`, `.fbx` or `.blend` file, its meshes placed as at rest; `""` for the entity's primitive mesh). The mesh must be closed |
+
+Each also has the fields of Godot's `CSGShape3D`:
+
+- `operation` (`"union"`): how it changes its parent, `"union"`, `"intersection"` or
+  `"subtraction"`. A root's operation is unused.
+- `use_collision` (`false`), `collision_layer` and `collision_mask` (`1`): a root with
+  `use_collision` is a static body with its triangles as a concave shape, for
+  [3D physics](#3d-physics). Shapes under a root leave these unused.
+- `calculate_tangents` (`true`): a root makes tangents for normal maps, as Godot's does.
+- `layers` (`1`) and `cast_shadow` (`"on"`): as a [`MeshInstance3D`'s](#meshes), for a root.
+- `flip_faces` (`false`, not on `CSGCombiner3D`): turns the shape inside out.
+
+Shapes are made as Godot makes them, face for face, then combined with
+[Manifold](https://github.com/elalish/manifold) in Godot's order, so a level built in Godot
+builds the same here. A root keeps its mesh until a shape under it changes; moving the root
+alone doesn't remake it. [`csg.get`](commands.md#csgget) returns what a root makes.
+
+A shape that can't be made is left out and reported: a `polygon` with fewer than 3 points, no
+area or edges that cross, a `CSGMesh3D` whose mesh doesn't load or isn't closed, a torus whose
+radii are equal, or a root whose result is empty. An entity has at most one CSG shape and no
+`MeshInstance3D` beside it, since the shape draws itself.
+[examples/csg-shapes](../../examples/csg-shapes/) builds a hamlet.
+
 ### StandardMaterial3D
 
 Godot's `StandardMaterial3D`, as the mesh's material override. Colors are sRGB; textures are
@@ -1174,7 +1227,8 @@ energy multiplies twice, as Godot's does. A material's `disable_fog` leaves it c
 `scene validate` and exports report an entity with two primitive meshes (at
 `/entities/<id>/components`), a `MeshInstance3D` with none (at its `MeshInstance3D`), a
 `TorusMesh` whose radii are equal, and a `mesh` that isn't a `.gltf`, `.glb`, `.obj` or `.fbx` file in the
-project, doesn't load, or sits beside a primitive mesh (at its `mesh`), as drawing would. Exports
+project, doesn't load, or sits beside a primitive mesh (at its `mesh`), as drawing would, and
+[CSG shapes](#csg-shapes) that can't be made. Exports
 check every `.gltf`, `.glb`, `.obj` and `.fbx` file as `scene validate` does, and ship them with their
 `.bin` buffers, `.mtl` libraries and images. `frame.summary` doesn't describe 3D meshes
 yet.

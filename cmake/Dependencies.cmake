@@ -278,6 +278,34 @@ if(polypartition_ADDED)
         $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)
 endif()
 
+# CSG shapes, as Godot 4.6's (engine/scene3d/src/csg.cpp): Manifold's booleans, built as Godot
+# builds them, without its threads (MANIFOLD_PAR -1) or cross sections, and with no fused
+# multiply-adds, so a shape has the same triangles on every platform.
+slash_add_dependency(manifold DOWNLOAD_ONLY TRUE)
+if(manifold_ADDED)
+    add_library(slash_manifold STATIC
+        ${manifold_SOURCE_DIR}/src/boolean3.cpp
+        ${manifold_SOURCE_DIR}/src/boolean_result.cpp
+        ${manifold_SOURCE_DIR}/src/constructors.cpp
+        ${manifold_SOURCE_DIR}/src/csg_tree.cpp
+        ${manifold_SOURCE_DIR}/src/edge_op.cpp
+        ${manifold_SOURCE_DIR}/src/face_op.cpp
+        ${manifold_SOURCE_DIR}/src/impl.cpp
+        ${manifold_SOURCE_DIR}/src/manifold.cpp
+        ${manifold_SOURCE_DIR}/src/polygon.cpp
+        ${manifold_SOURCE_DIR}/src/properties.cpp
+        ${manifold_SOURCE_DIR}/src/quickhull.cpp
+        ${manifold_SOURCE_DIR}/src/sdf.cpp
+        ${manifold_SOURCE_DIR}/src/smoothing.cpp
+        ${manifold_SOURCE_DIR}/src/sort.cpp
+        ${manifold_SOURCE_DIR}/src/subdivision.cpp
+        ${manifold_SOURCE_DIR}/src/tree2d.cpp)
+    target_include_directories(slash_manifold SYSTEM PUBLIC ${manifold_SOURCE_DIR}/include)
+    target_compile_definitions(slash_manifold PRIVATE MANIFOLD_PAR=-1)
+    target_compile_options(slash_manifold PRIVATE
+        "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w;-ffp-contract=off>" $<$<CXX_COMPILER_ID:MSVC>:/bigobj>)
+endif()
+
 # Compressed textures, BC7 and ASTC 4x4, which GPUs sample as they are: engine/render builds the
 # decoders, bc7enc_rdo's bc7decomp.cpp and astc-encoder without its compressor, for devices that
 # can't sample a format (the software device, or a GPU without it). Tools and tests also build
