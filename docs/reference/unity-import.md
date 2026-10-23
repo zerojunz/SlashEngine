@@ -1,12 +1,14 @@
 # Importing Unity projects
 
 [`project.import`](commands.md#projectimport) and [`slash-cli import`](cli.md#import) convert a
-Unity project's 2D game into a SlashEngine project in one pass: its scenes and prefabs, sprites,
-tile maps, animation, cameras, 2D physics and joints, 2D lights and shadows, sounds and audio
+Unity project's 2D or 3D game into a SlashEngine project in one pass: its scenes and prefabs,
+sprites, tile maps, animation, cameras, 2D physics and joints, 2D lights and shadows, 3D meshes,
+models, materials, lights, physics and skies (see [3D scenes](#3d-scenes)), sounds and audio
 mixers, UI, input and settings. Scripts don't convert,
 since SlashEngine games are plain C++: each becomes a storyboard task to port it, with what the
 port needs, as does each Animator controller's state machine.
-[examples/import-unity](../../examples/import-unity/) imports a small platformer.
+[examples/import-unity](../../examples/import-unity/) imports a small platformer, and
+[examples/import-unity-3d](../../examples/import-unity-3d/) a 3D courtyard.
 
 A folder imports as a Unity project when it has `Assets/` and
 `ProjectSettings/ProjectVersion.txt`. Projects saved by Unity 2018.3 or later import (prefabs
@@ -30,8 +32,9 @@ serialization). A game built with Unity imports too: see [Unity builds](#unity-b
 | `src/imported/scripts.cpp`, `src/game.cpp` | The file registering every skeleton, and a game module calling it when the project's code has none |
 | `import/unity.json` | The full report: every object's entity, what each script needs, tags, layers and everything that didn't convert |
 
-Textures (`.png`, `.bmp`), sounds (`.wav`, `.ogg`, `.mp3`), fonts (`.ttf`, `.otf`) and data files
-(`.json`, `.txt`, `.csv`) are used as they are. When the Unity folder is inside the project, they
+Textures (`.png`, `.jpg`, `.bmp`), models (`.glb`, `.gltf`, `.obj` with its `.mtl`, `.fbx`,
+`.blend`), sounds (`.wav`, `.ogg`, `.mp3`), fonts (`.ttf`, `.otf`) and data files (`.json`,
+`.txt`, `.csv`) are used as they are. When the Unity folder is inside the project, they
 stay where they are and the converted files go beside the originals (`Assets/Art/a.png` in
 `unity/` is `unity/Assets/Art/a.png`). When it is anywhere else, they and the scripts are copied
 in at their paths in the Unity project (`Assets/Art/a.png`). Folders ending in `~` and scripts
@@ -43,7 +46,8 @@ settings.
 
 ## Units
 
-Unity measures in units with y up; SlashEngine in pixels with y down. The import takes the
+Unity measures in units with y up; SlashEngine's 2D in pixels with y down. (3D scenes keep
+Unity's meters: see [3D scenes](#3d-scenes).) The import takes the
 project's pixels per unit from its sprites: the `Pixels Per Unit` most sprite textures use (100
 when there are none), reported as `pixels_per_unit`. Positions, sizes, offsets, radii, distances
 and gravity are multiplied by it, y is negated, and angles turn the other way. A 2D object turns
@@ -415,6 +419,67 @@ alignment, input validation, best fit and auto-sized text, bold and italic style
 transitions, objects that aren't UI under UI objects and other components on UI objects. The
 `EventSystem` isn't needed: the gui system sends input to controls itself.
 
+## 3D scenes
+
+A scene or prefab converts in 3D when it has more of Unity's 3D components (mesh renderers, model
+instances, lights, `Rigidbody`, 3D colliders, `CharacterController`, terrains, perspective cameras)
+than 2D ones (sprites, tile maps, `Rigidbody2D`, 2D colliders, orthographic cameras). One with as
+many of each (a prefab of only Transforms, say) converts as most of the project does. A 2D
+component in a 3D scene, or a 3D one in a 2D scene, is reported. Its objects nest through
+`Transform3D` `children`.
+
+Unity's axes are left-handed and Godot's right-handed, so a 3D scene converts mirrored in x, which
+keeps every picture as Unity draws it: a position (x, y, z) becomes (-x, y, z), and rotations turn
+the other way about y and z (a quaternion (x, y, z, w) becomes (x, -y, -z, w)). Sizes and
+distances stay in meters. Unity's model importers mirror right-handed glTF, OBJ and FBX files into
+its axes, so the mirror puts them back as SlashEngine reads them. Cameras, lights and quads face
+along +z in Unity and along -z in Godot, so they turn half a turn about y: on the object itself
+when nothing else on it faces a way (its children turn back), else on a `camera`, `light`,
+`listener` or `mesh` child entity turned `[0, 3.141593, 0]`.
+
+| Unity | SlashEngine |
+| --- | --- |
+| `Transform` | `Transform3D`: position, rotation (Godot's YXZ Euler angles, in radians) and scale |
+| `MeshFilter` and `MeshRenderer` of Unity's cube, sphere, capsule, cylinder, plane and quad | `MeshInstance3D` with `BoxMesh`, `SphereMesh`, `CapsuleMesh`, `CylinderMesh`, `PlaneMesh` (10 by 10 meters) or `QuadMesh`; cast shadows as `cast_shadow`, the layer as `layers` |
+| An instance of a model file | `MeshInstance3D` whose `mesh` is the file, scaled by its import settings' scale factor on a `model` child entity; a material put in place of all of the model's is its `StandardMaterial3D` |
+| A material of Unity's Standard shader or URP's Lit, Simple Lit or Unlit | `StandardMaterial3D`, converted once per material (see below) |
+| `Camera` (perspective or orthographic) | `Camera3D`: fov, `size` (twice Unity's orthographic size), near, far, the culling mask's first 20 layers; the `MainCamera` is `current` |
+| `Light`: directional, point, spot | `DirectionalLight3D`, `OmniLight3D` (range), `SpotLight3D` (range, half the spot angle): color, intensity as energy, shadows on with their strength as opacity, culling mask |
+| `AudioListener` | `AudioListener3D` |
+| `AudioSource` with spatial blend above 0 | `AudioStreamPlayer3D`: `unit_size` its min distance, `max_db` 0, `max_distance` its max distance |
+| `Rigidbody` | `RigidBody3D`: mass, gravity, drag and angular drag as damping, kinematic as `freeze` (`kinematic`), frozen axes as axis locks, continuous detection |
+| `CharacterController` | `CharacterBody3D` with its capsule, `floor_max_angle` from the slope limit, `safe_margin` from the skin width |
+| Colliders with no `Rigidbody` above | `StaticBody3D`; a collider one level under its `Rigidbody` is a shape its parent's body takes |
+| Trigger colliders | `Area3D`: on the object when it has no body, else a `trigger` child entity |
+| `BoxCollider`, `SphereCollider`, `CapsuleCollider` | `CollisionShape3D`: box, sphere, capsule (turned to its axis), at its center |
+| `MeshCollider` of a built-in mesh | The same shape; a plane's or quad's is its two triangles, solid from both sides |
+| `PhysicMaterial` | `friction` (its dynamic friction) and `bounce`; Unity's default friction is 0.6 |
+| `LODGroup` | Only its first level draws; renderers in the others are reported |
+| The scene's `RenderSettings` and its main camera's clear flags | An `environment` entity: `WorldEnvironment` (see below) and the sky |
+
+A material's color, main texture (with its tiling and offset), metallic, smoothness (as 1 minus
+roughness), metallic map, normal map, HDR emission (its brightest channel past 1 as
+`emission_energy_multiplier`), transparency (URP's surface type and alpha clip, the Standard
+shader's rendering mode), culling and URP Unlit's unshaded mode convert; the main texture's import
+settings give `texture_filter` and `texture_repeat`. The specular workflow converts as metallic 0,
+and occlusion, height and detail maps are reported. A material of any other shader converts from
+the properties it shares with Standard's, and is reported.
+
+The environment's background is the sky when the main camera clears to the skybox, else its solid
+color. Unity's procedural skybox (Default-Skybox among them) becomes a `ProceduralSkyMaterial`
+gradient in the colors Unity's draws with its defaults, scaled by its tint, with its ground color
+and its exposure as energy (Godot's physical sky is dim without HDR). A panoramic skybox of a
+360-degree image becomes a `PanoramaSkyMaterial`, turned as Unity turns it (`sky_rotation`).
+Ambient light from the skybox, a flat color or a gradient (its equator's color, reported) and fog
+(exponential as is, linear as depth fog, exponential squared reported) convert, and fog leaves the
+sky alone, as Unity's does.
+
+Reported, for a later import: meshes picked out of a model file or saved as assets, skinned meshes
+and `Animator`s on 3D objects (their controllers and clips wait with them), mesh colliders of
+models, terrains, 3D joints and wheels, navigation, reflection and light probes, line and trail
+renderers, area and baked lights, cookies and color temperature, cubemap skyboxes, a camera's
+viewport rect and render texture, and a `CharacterController`'s step offset.
+
 ## Project settings
 
 | Unity | `project.json` |
@@ -425,6 +490,7 @@ transitions, objects that aren't UI under UI objects and other components on UI 
 | The first enabled scene in the build settings (else the first scene) | `main_scene` |
 | Time: Fixed Timestep | `tick_hz` |
 | Physics 2D: Gravity | `physics_2d.gravity` and `gravity_vector` |
+| Physics: Gravity (when a scene converts in 3D) | `physics_3d.gravity` and `gravity_vector`, mirrored in x |
 | Quality: the current level's VSync Count | `window.vsync_mode` |
 | The main audio mixer | `audio.bus_layout` (see [audio mixers](#audio-mixers)) |
 | Input Manager axes and Input System actions | `input` (see [input](#input)) |
@@ -535,6 +601,7 @@ build keeps as AAC (`.audioclip` files) are reported. A build whose asset bundle
 
 Particle systems convert in a later import; until then each is reported where it is used. TextMesh Pro text in the world (not under
 a canvas) is reported too.
-Materials and shaders, 3D (milestone 7) and Timeline don't convert. Everything that didn't
+A game's own shaders (materials of them convert from the properties they share with the Standard
+shader), the 3D parts listed under [3D scenes](#3d-scenes) and Timeline don't convert. Everything that didn't
 convert is in the report's `unsupported`, once per kind with how many and the first place it was
 seen.

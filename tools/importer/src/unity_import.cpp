@@ -105,6 +105,24 @@ constexpr int kTilemapCollider2D = 19719996;
 constexpr int kGrid = 156049354;
 constexpr int kTilemapRenderer = 483693784;
 constexpr int kTilemap = 1839735485;
+// 3D, which converts in scenes with more 3D components than 2D ones.
+constexpr int kMeshRenderer = 23;
+constexpr int kMeshFilter = 33;
+constexpr int kRigidbody = 54;
+constexpr int kMeshCollider = 64;
+constexpr int kBoxCollider = 65;
+constexpr int kLight = 108;
+constexpr int kSphereCollider = 135;
+constexpr int kCapsuleCollider = 136;
+constexpr int kSkinnedMeshRenderer = 137;
+constexpr int kCharacterController = 143;
+constexpr int kTerrainCollider = 154;
+constexpr int kLodGroup = 205;
+constexpr int kTerrain = 218;
+// Not one of Unity's: an instance of a model file, which the import makes for a PrefabInstance of
+// one.
+constexpr int kModelInstance = -1;
+constexpr std::int64_t kModelComponent = 0x4D4F44454C; // its ID in the instance: "MODEL"
 // The script of Unity's own Tile class, which tile assets name; other tiles are scripted.
 constexpr std::string_view kTileScriptGuid = "0000000000000000e000000000000000";
 constexpr std::int64_t kTileScriptId = 13312;
@@ -119,12 +137,37 @@ constexpr std::int64_t kBackgroundSprite = 10907;
 constexpr std::int64_t kInputFieldSprite = 10911;
 constexpr std::int64_t kKnobSprite = 10913;
 constexpr std::int64_t kMaskSprite = 10917;
+// Unity's built-in meshes, in its default resources (kBuiltinExtraGuid), and its default material
+// and skybox, in its extra resources (kBuiltinSprites).
+constexpr std::int64_t kCubeMesh = 10202;
+constexpr std::int64_t kCylinderMesh = 10206;
+constexpr std::int64_t kSphereMesh = 10207;
+constexpr std::int64_t kCapsuleMesh = 10208;
+constexpr std::int64_t kPlaneMesh = 10209;
+constexpr std::int64_t kQuadMesh = 10210;
+constexpr std::int64_t kDefaultMaterial = 10303;
+constexpr std::int64_t kDefaultSkybox = 10304;
+constexpr std::int64_t kSpecularShader = 45; // Standard (Specular setup)
+// URP's shaders, whose GUIDs are the same in every project.
+constexpr std::string_view kUrpLit = "933532a4fcc9baf4fa0491de14d08ed7";
+constexpr std::string_view kUrpSimpleLit = "8d2bb70cbf9db8d4da26e15b26e74248";
+constexpr std::string_view kUrpUnlit = "650dd9526735d5b46b79224bc6e94025";
+// The IDs a model's top object and its Transform have in the model: since Unity 2019.3, then
+// before it.
+constexpr std::array<std::int64_t, 2> kModelRootObjects{919132149155446097, 100000};
+constexpr std::array<std::int64_t, 2> kModelRootTransforms{-8679921383154817045, 400000};
+// Unity's 3D friction when no physics material sets it.
+constexpr double kDefaultFriction3D = 0.6;
 
 constexpr std::string_view kUiWhy = "a UI component outside a Canvas; put it under one";
 constexpr std::string_view kLostWhy =
     "its values didn't survive the game's build: the build's scripts couldn't be read";
 constexpr std::string_view kEventWhy =
     "not needed: SlashEngine's gui system sends input to controls itself";
+constexpr std::string_view k3DWhy = "a 3D component in a 2D scene; a scene with more 3D "
+                                    "components than 2D ones converts in 3D";
+constexpr std::string_view k2DWhy = "a 2D component in a 3D scene; a scene with more 2D "
+                                    "components than 3D ones converts in 2D";
 
 // Components of Unity's own packages, by their scripts' GUIDs, which are the same in every
 // project. UI ones convert on objects under a Canvas; why says why one doesn't.
@@ -262,6 +305,36 @@ Node ref_node(const ObjectRef& ref) {
         node.entries.push_back({"type", std::move(type)});
     }
     return node;
+}
+
+Node scalar_node(std::string text) {
+    Node node;
+    node.text = std::move(text);
+    return node;
+}
+
+Node seq_node() {
+    Node node;
+    node.kind = Node::Kind::Seq;
+    return node;
+}
+
+Node map_node(std::vector<std::pair<std::string, Node>> entries) {
+    Node node;
+    node.kind = Node::Kind::Map;
+    for (auto& [key, value] : entries) {
+        node.entries.push_back({std::move(key), std::move(value)});
+    }
+    return node;
+}
+
+// Sets a mapping's value at a key, adding the key if it has none.
+void set_node(Node& map, std::string_view key, Node value) {
+    if (Node* existing = map.get(key)) {
+        *existing = std::move(value);
+    } else {
+        map.entries.push_back({std::string(key), std::move(value)});
+    }
 }
 
 // Calls change on every reference to an object of the same file under node.
@@ -852,6 +925,7 @@ public:
             take_file(file);
         }
         convert_mixers();
+        count_dimensions();
         for (const std::string& file : files_) {
             const std::string extension = extension_of(file);
             if (extension == ".prefab" || extension == ".unity") {
@@ -1018,6 +1092,19 @@ private:
                 default_material_ = physics_material(material->guid);
             }
         }
+        if (const auto physics = settings("DynamicsManager.asset", "PhysicsManager")) {
+            physics3d_ = *physics;
+            const std::string matrix = physics->string_at("m_LayerCollisionMatrix");
+            for (std::size_t layer = 0; layer < 32 && (layer + 1) * 8 <= matrix.size(); ++layer) {
+                if (const auto bits = hex_word(std::string_view(matrix).substr(layer * 8, 8))) {
+                    layer_masks_3d_.at(layer) = *bits;
+                }
+            }
+            if (const auto material = unity::object_ref_at(*physics, "m_DefaultMaterial");
+                material && !material->guid.empty()) {
+                default_material_3d_ = physics_material_3d(material->guid);
+            }
+        }
         if (const auto tags = settings("TagManager.asset", "TagManager")) {
             if (const Node* layers = tags->get("layers"); layers != nullptr) {
                 for (std::size_t i = 0; i < layers->items.size() && i < 32; ++i) {
@@ -1072,7 +1159,8 @@ private:
         const std::string extension = extension_of(file);
         if (extension == ".meta" || extension == ".unity" || extension == ".prefab" ||
             extension == ".anim" || extension == ".controller" ||
-            extension == ".overridecontroller" || extension == ".mixer") {
+            extension == ".overridecontroller" || extension == ".mixer" || extension == ".mat" ||
+            extension == ".physicMaterial" || extension == ".physicsMaterial") {
             return; // converted with what uses them
         }
         const bool editor = file.find("/Editor/") != std::string::npos;
@@ -1086,8 +1174,8 @@ private:
             return;
         }
         if (is_texture_file(extension) || is_sound_file(extension) || is_font_file(extension) ||
-            is_data_file(extension)) {
-            if (!is_data_file(extension)) {
+            is_model_file(extension) || is_data_file(extension) || extension == ".mtl") {
+            if (!is_data_file(extension) && extension != ".mtl") {
                 ++assets_;
             }
             if (copy_assets_) {
@@ -1096,8 +1184,6 @@ private:
             return;
         }
         static const std::map<std::string_view, std::string_view> kWhys{
-            {".mat", "materials and shaders don't convert; sprites draw with the default "
-                     "material"},
             {".shader", "a game's own shaders are on the roadmap"},
             {".shadergraph", "a game's own shaders are on the roadmap"},
             {".dll", "compiled plugins don't load; closed SDKs come in as SDK packages (on the "
@@ -1109,7 +1195,8 @@ private:
             {".spriteatlas", "not needed: sprites draw from their own textures"},
             {".spriteatlasv2", "not needed: sprites draw from their own textures"},
             {".rendertexture", "render textures aren't supported yet"},
-            {".lighting", "3D lighting comes with milestone 7"},
+            {".lighting",
+             "baked lighting settings don't convert; lights light the scene as it runs"},
             {".playable", "Timeline isn't supported; animate with AnimationPlayer"},
         };
         if (const auto it = kWhys.find(extension); it != kWhys.end()) {
@@ -1199,8 +1286,15 @@ private:
         }
         auto bytes = platform::read_file(source_ + asset->path);
         std::optional<std::pair<int, int>> size;
-        if (bytes) {
-            size = extension == ".png" ? png_size(bytes.value()) : bmp_size(bytes.value());
+        if (bytes && extension == ".png") {
+            size = png_size(bytes.value());
+        } else if (bytes && extension == ".bmp") {
+            size = bmp_size(bytes.value());
+        } else if (bytes) {
+            if (const auto image = render::decode_image(bytes.value())) {
+                size = std::pair{static_cast<int>(image.value().width),
+                                 static_cast<int>(image.value().height)};
+            }
         }
         if (!size) {
             out.why = asset->path + ": unreadable texture";
@@ -2010,6 +2104,17 @@ private:
 
     struct Expanded;
 
+    // A model file instanced as a prefab: one object of the file's own, its top object's and
+    // Transform's IDs in the model, and theirs here.
+    struct ModelInstance {
+        std::int64_t id = 0;
+        std::string guid;
+        std::int64_t root_object = 0;
+        std::int64_t root_transform = 0;
+        std::int64_t object = 0;
+        std::int64_t transform = 0;
+    };
+
     struct Instance {
         std::int64_t id = 0;
         const Expanded* prefab = nullptr;
@@ -2023,6 +2128,7 @@ private:
         std::string path;
         std::vector<GameObject> objects;
         std::vector<Instance> instances;
+        std::vector<ModelInstance> models;
         std::map<std::int64_t, std::int64_t> aliases; // a stripped object's ID: what it stands for
         std::map<std::int64_t, int> by_id;            // GameObjects by ID
         std::map<std::int64_t, std::pair<int, int>> components; // by ID: object, component
@@ -2033,6 +2139,8 @@ private:
         std::set<std::string> used;     // the scene's own entity IDs
         bool finished = false;
         bool failed = false;
+        bool three_d = false; // converted as a 3D scene
+        Node render_settings; // a scene's RenderSettings: its sky, ambient light and fog
 
         [[nodiscard]] std::int64_t resolve(std::int64_t id) const {
             const auto it = aliases.find(id);
@@ -2091,6 +2199,7 @@ private:
             }
         }
         expand(file, objects.value(), depth);
+        file.three_d = is_3d(file);
         if (extension_of(path) == ".prefab") {
             if (file.roots.empty()) {
                 return fail("prefab with no objects", "");
@@ -2119,6 +2228,12 @@ private:
             }
         }
         // A stripped object stands for an object an instance brought.
+        std::set<std::int64_t> fathers; // the Transforms the file's own objects are under
+        for (const Object& object : objects) {
+            if (object.class_id == kTransform && is_own(object)) {
+                fathers.insert(object.body.integer_at("m_Father.fileID", 0));
+            }
+        }
         for (const Object& object : objects) {
             const auto instance = ref_at(object.body, "m_PrefabInstance");
             const auto source = ref_at(object.body, "m_CorrespondingSourceObject");
@@ -2131,9 +2246,33 @@ private:
                         remap(known.id, known.prefab->resolve(source->file_id));
                 }
             }
+            for (const ModelInstance& model : file.models) {
+                if (model.id != instance->file_id) {
+                    continue;
+                }
+                // A model's inner objects aren't objects here: what is under one goes under the
+                // model's top object.
+                if (source->file_id == model.root_object || object.class_id == kGameObject) {
+                    file.aliases[object.file_id] = model.object;
+                } else if (source->file_id == model.root_transform ||
+                           object.class_id == kTransform) {
+                    file.aliases[object.file_id] = model.transform;
+                    if (source->file_id != model.root_transform &&
+                        fathers.contains(object.file_id)) {
+                        problems_.add("object under a model's inner object",
+                                      file.path + ": instance of a model",
+                                      "it goes under the model's top object; a BoneAttachment3D "
+                                      "can follow one of its bones");
+                    }
+                }
+            }
         }
         std::vector<std::int64_t> root_order;
         for (const Object& object : objects) {
+            if (object.type == "RenderSettings") {
+                file.render_settings = object.body;
+                continue;
+            }
             if (object.type == "SceneRoots") {
                 if (const Node* roots = object.body.get("m_Roots")) {
                     for (const Node& root : roots->items) {
@@ -2179,6 +2318,11 @@ private:
                     id = file.objects[static_cast<std::size_t>(instance.root)].transform;
                 }
             }
+            for (const ModelInstance& model : file.models) {
+                if (model.id == id) {
+                    id = model.transform;
+                }
+            }
         }
         build_hierarchy(file, root_order);
     }
@@ -2190,6 +2334,10 @@ private:
         if (asset == nullptr) {
             problems_.add("instance of a missing prefab", where,
                           "its prefab isn't in the project's Assets folder");
+            return;
+        }
+        if (is_model_file(extension_of(asset->path))) {
+            instantiate_model(file, object, *asset);
             return;
         }
         if (extension_of(asset->path) != ".prefab") {
@@ -2300,6 +2448,121 @@ private:
                 }
             }
         }
+    }
+
+    // A model file instanced as a prefab becomes one object of the file's own, with a Transform
+    // and a ModelInstance naming the model, which a MeshInstance3D draws whole. The model's inner
+    // objects aren't objects here; overrides of them are reported, but for their materials.
+    void instantiate_model(Expanded& file, const Object& object, const Asset& asset) {
+        const std::string where = file.path + ": instance of " + asset.path;
+        ModelInstance model;
+        model.id = object.file_id;
+        model.guid = asset.meta.string_at("guid");
+        const Node* modifications = object.body.path("m_Modification.m_Modifications");
+        const std::vector<Node> none;
+        const std::vector<Node>& changes = modifications != nullptr ? modifications->items : none;
+        // Its top object and Transform: the IDs Unity gives them, else the ones overrides name.
+        std::set<std::int64_t> objects;
+        std::set<std::int64_t> transforms;
+        for (const Node& change : changes) {
+            const auto target = ref_at(change, "target");
+            if (!target || target->guid != model.guid) {
+                continue;
+            }
+            const std::string path = change.string_at("propertyPath");
+            if (path.starts_with("m_Local") || path == "m_RootOrder") {
+                transforms.insert(target->file_id);
+            } else if (path == "m_Name" || path == "m_IsActive" || path == "m_Layer" ||
+                       path == "m_TagString") {
+                objects.insert(target->file_id);
+            }
+        }
+        const auto root = [&](const std::array<std::int64_t, 2>& known,
+                              const std::set<std::int64_t>& named, std::string_view type) {
+            for (const std::int64_t id : known) {
+                if (named.contains(id)) {
+                    return id;
+                }
+            }
+            // A model's meta names its objects' IDs, its top one "//RootNode".
+            if (const Node* table = asset.meta.path("ModelImporter.internalIDToNameTable")) {
+                for (const Node& entry : table->items) {
+                    const Node* first = entry.get("first");
+                    if (entry.string_at("second") != "//RootNode" || first == nullptr) {
+                        continue;
+                    }
+                    if (const Node* id = first->get(type); id != nullptr && id->integer()) {
+                        return *id->integer();
+                    }
+                }
+            }
+            return named.size() == 1 ? *named.begin() : known.front();
+        };
+        model.root_object = root(kModelRootObjects, objects, "1");
+        model.root_transform = root(kModelRootTransforms, transforms, "4");
+        model.object = remap(model.id, model.root_object);
+        model.transform = remap(model.id, model.root_transform);
+
+        GameObject go;
+        go.id = model.object;
+        go.body = map_node(
+            {{"m_Name", scalar_node(file_stem(asset.path))}, {"m_IsActive", scalar_node("1")}});
+        Component transform{.id = model.transform,
+                            .class_id = kTransform,
+                            .type = "Transform",
+                            .body = map_node({{"m_Children", seq_node()}})};
+        Component instance{.id = remap(model.id, kModelComponent),
+                           .class_id = kModelInstance,
+                           .type = "ModelInstance",
+                           .body = map_node({{"path", scalar_node(asset.path)},
+                                             {"guid", scalar_node(model.guid)}})};
+        ObjectRef father;
+        if (const auto parent = ref_at(object.body, "m_Modification.m_TransformParent")) {
+            father.file_id = parent->file_id;
+        }
+        set_node(transform.body, "m_Father", ref_node(father));
+        Node materials = seq_node();
+        for (const Node& change : changes) {
+            const auto target = ref_at(change, "target");
+            if (!target) {
+                continue;
+            }
+            const std::string path = change.string_at("propertyPath");
+            const auto reference = ref_at(change, "objectReference");
+            if (path.starts_with("m_Materials.Array.data[")) {
+                if (reference && !reference->null()) {
+                    materials.items.push_back(ref_node(*reference));
+                }
+            } else if (target->file_id == model.root_object) {
+                set_property(go.body, path, change.string_at("value"), reference);
+            } else if (target->file_id == model.root_transform) {
+                set_property(transform.body, path, change.string_at("value"), reference);
+            } else {
+                problems_.add("change to a model's inner object", where,
+                              "a model draws as its file has it; " + path + " isn't changed");
+            }
+        }
+        // Materials the model's import settings put in place of its own.
+        if (const Node* remapped = asset.meta.path("ModelImporter.externalObjects")) {
+            for (const Node& entry : remapped->items) {
+                const auto reference = ref_at(entry, "second");
+                if (entry.string_at("first.type") == "UnityEngine:Material" && reference &&
+                    !reference->null()) {
+                    materials.items.push_back(ref_node(*reference));
+                }
+            }
+        }
+        set_node(instance.body, "m_Materials", std::move(materials));
+        if (object.body.path("m_Modification.m_RemovedComponents") != nullptr &&
+            !object.body.path("m_Modification.m_RemovedComponents")->items.empty()) {
+            problems_.add("component removed from a model's inner object", where,
+                          "a model draws as its file has it");
+        }
+        go.components.push_back(std::move(transform));
+        go.components.push_back(std::move(instance));
+        file.by_id[go.id] = static_cast<int>(file.objects.size());
+        file.objects.push_back(std::move(go));
+        file.models.push_back(std::move(model));
     }
 
     static void mark_removed(Expanded& file, int index) {
@@ -2470,6 +2733,14 @@ private:
 
     // --- Converting objects ---
 
+    // A 3D object's place in its parent's space, in Godot's axes: Unity's mirrored in x.
+    struct Place3D {
+        std::array<double, 3> position{};
+        Quaternion rotation{0.0, 0.0, 0.0, 1.0};
+        std::array<double, 3> scale{1.0, 1.0, 1.0};
+        bool visible = true;
+    };
+
     // What one object becomes: its components, and entities made for it by what they are for.
     // An Animator converts once every object has its entity, since its tracks name objects
     // under it.
@@ -2480,6 +2751,10 @@ private:
         std::string children_to; // the added entity that holds the object's children, if one
         Vec2 child_shift;        // moves the object's children by minus this
         bool collisions = false; // a script takes collision messages, so its body reports them
+        // 3D: its place, written once its parent is known to be turned or not, and whether it is
+        // turned half a turn about y, as a camera, light or quad is.
+        std::optional<Place3D> place;
+        bool turned = false;
     };
 
     struct Context {
@@ -2499,6 +2774,10 @@ private:
         }
         if (go.ui) {
             convert_ui_object(ctx, out);
+            return out;
+        }
+        if (ctx.file->three_d) {
+            convert_object_3d(ctx, out);
             return out;
         }
         if (const Component* transform = transform_of(go)) {
@@ -2588,6 +2867,9 @@ private:
             }
             case kAnimator:
                 out.animator = &component;
+                break;
+            case kModelInstance:
+                problems_.add("model instance", ctx.where, std::string(k3DWhy));
                 break;
             default:
                 problems_.add("component " + component.type, ctx.where,
@@ -2697,8 +2979,29 @@ private:
         }
         if (type == "MeshRenderer" || type == "MeshFilter" || type == "SkinnedMeshRenderer" ||
             type == "Light" || type == "BoxCollider" || type == "SphereCollider" ||
-            type == "CapsuleCollider" || type == "MeshCollider" || type == "Rigidbody") {
-            return "3D comes with milestone 7";
+            type == "CapsuleCollider" || type == "MeshCollider" || type == "Rigidbody" ||
+            type == "CharacterController" || type == "LODGroup") {
+            return std::string(k3DWhy);
+        }
+        if (type == "Terrain" || type == "TerrainCollider") {
+            return "terrains convert in a later import";
+        }
+        if (type == "HingeJoint" || type == "FixedJoint" || type == "SpringJoint" ||
+            type == "ConfigurableJoint" || type == "CharacterJoint" || type == "WheelCollider") {
+            return "3D joints and wheels convert in a later import";
+        }
+        if (type == "NavMeshAgent" || type == "NavMeshObstacle" || type == "OffMeshLink") {
+            return "navigation converts in a later import";
+        }
+        if (type == "ReflectionProbe" || type == "LightProbeGroup" ||
+            type == "LightProbeProxyVolume") {
+            return "probes don't convert; lit surfaces take their light from the sky and lights";
+        }
+        if (type == "Skybox") {
+            return "a camera's own skybox doesn't convert; the scene's skybox is the sky";
+        }
+        if (type == "LineRenderer" || type == "TrailRenderer") {
+            return "line and trail renderers don't convert";
         }
         if (type.find("Joint2D") != std::string_view::npos) {
             return "Godot's joints are PinJoint2D, DampedSpringJoint2D and GrooveJoint2D, which "
@@ -2854,7 +3157,7 @@ private:
                 Converted& out) {
         const Node& body = component.body;
         if (!body.flag_at("orthographic")) {
-            problems_.add("perspective camera", ctx.where, "3D comes with milestone 7");
+            problems_.add("perspective camera", ctx.where, std::string(k3DWhy));
             return;
         }
         const double size = body.number_at("orthographic size", 5.0);
@@ -2881,7 +3184,8 @@ private:
         }
     }
 
-    void audio_source(const Component& component, const Context& ctx, Converted& out) {
+    void audio_source(const Component& component, const Context& ctx, Converted& out,
+                      bool three_d = false) {
         const Node& body = component.body;
         json::Value player;
         const auto clip = ref_at(body, "m_audioClip");
@@ -2912,16 +3216,28 @@ private:
         player["autoplay"] =
             body.flag_at("m_PlayOnAwake", true) && body.flag_at("m_Enabled", true) && ctx.active;
         const double spatial = body.number_at("panLevelCustomCurve.m_Curve.0.value", 0.0);
-        if (spatial > 0.0) {
+        std::string kind = "AudioStreamPlayer";
+        if (spatial > 0.0 && three_d) {
+            // Unity's logarithmic rolloff is Godot's inverse distance from MinDistance, never
+            // louder than at it.
+            kind = "AudioStreamPlayer3D";
+            player["unit_size"] = body.number_at("MinDistance", 1.0);
+            player["max_db"] = 0.0;
+            player["max_distance"] = body.number_at("MaxDistance", 500.0);
+            if (body.integer_at("rolloffMode", 0) != 0) {
+                problems_.add("audio rolloff", ctx.where,
+                              "sounds fade with the inverse of their distance, as Unity's "
+                              "logarithmic rolloff");
+            }
+        } else if (spatial > 0.0) {
+            kind = "AudioStreamPlayer2D";
             player["max_distance"] = tidy(body.number_at("MaxDistance", 500.0) * ppu_);
             if (body.integer_at("rolloffMode", 0) != 1) {
                 problems_.add("audio rolloff", ctx.where,
                               "sounds fade linearly to max_distance (attenuation 1)");
             }
-            out.components["AudioStreamPlayer2D"] = std::move(player);
-        } else {
-            out.components["AudioStreamPlayer"] = std::move(player);
         }
+        out.components[kind] = std::move(player);
         if (const auto group = ref_at(body, "OutputAudioMixerGroup"); group && !group->null()) {
             const std::string* bus = nullptr;
             if (const auto mixer = mixer_buses_.find(group->guid); mixer != mixer_buses_.end()) {
@@ -2933,9 +3249,6 @@ private:
                 problems_.add("audio mixer group", ctx.where,
                               "a group of a mixer that didn't convert; the sound plays on Master");
             } else if (*bus != "Master") {
-                const char* kind = out.components.contains("AudioStreamPlayer2D")
-                                       ? "AudioStreamPlayer2D"
-                                       : "AudioStreamPlayer";
                 out.components[kind]["bus"] = *bus;
             }
         }
@@ -3130,7 +3443,9 @@ private:
                 out.collisions = out.collisions ||
                                  std::ranges::any_of(code.functions, [](const ScriptFunction& f) {
                                      return f.source_name == "OnCollisionEnter2D" ||
-                                            f.source_name == "OnCollisionExit2D";
+                                            f.source_name == "OnCollisionExit2D" ||
+                                            f.source_name == "OnCollisionEnter" ||
+                                            f.source_name == "OnCollisionExit";
                                  });
             }
             ScriptRecord& record = scripts_[asset->path];
@@ -8355,13 +8670,30 @@ private:
         for (const auto& [path, guid] : by_path) {
             const std::string extension = extension_of(path);
             if ((extension == ".controller" || extension == ".overridecontroller") &&
-                !libraries_.contains(guid)) {
+                !libraries_.contains(guid) && !controllers_3d_.contains(guid)) {
                 (void)library(ObjectRef{.file_id = 0, .guid = guid}, path);
             }
         }
         std::set<std::string> played;
         for (const auto& entry : clips_) {
             played.insert(entry.first.substr(0, entry.first.find(':')));
+        }
+        // The clips of 3D Animators' controllers, reported with their Animators.
+        for (const std::string& controller : controllers_3d_) {
+            const Asset* asset = asset_of(controller);
+            if (asset == nullptr) {
+                continue;
+            }
+            const auto text = platform::read_file(source_ + asset->path);
+            if (!text) {
+                continue;
+            }
+            constexpr std::string_view kGuid = "guid: ";
+            const std::string_view view = text.value();
+            for (std::size_t at = view.find(kGuid); at != std::string_view::npos;
+                 at = view.find(kGuid, at + kGuid.size())) {
+                played.emplace(view.substr(at + kGuid.size(), 32));
+            }
         }
         for (const auto& [path, guid] : by_path) {
             if (extension_of(path) == ".anim" && !played.contains(guid)) {
@@ -8465,6 +8797,12 @@ private:
         scene_clear_color_.reset();
         scene_lit_ = false;
         scene_global_ = false;
+        scene_camera_.reset();
+        lod_hidden_.clear();
+        if (file.three_d) {
+            ++three_d_files_;
+            hide_lod_levels(file);
+        }
         json::Value record;
         record["scene"] = file.scene;
         json::Object entities;
@@ -8557,9 +8895,24 @@ private:
             const Instance* instance =
                 go.instance >= 0 ? &file.instances[static_cast<std::size_t>(go.instance)] : nullptr;
             json::Value entity;
+            if (converted.place) {
+                // Under a turned parent, an object turns back.
+                Place3D place = *converted.place;
+                const std::size_t parent = static_cast<std::size_t>(std::max(go.parent, 0));
+                if (go.parent >= 0 && done[parent] && done[parent]->converted.turned) {
+                    place.position = {-place.position[0], place.position[1], -place.position[2]};
+                    place.rotation = multiply(kHalfTurn, place.rotation);
+                }
+                if (converted.turned) {
+                    place.rotation = multiply(place.rotation, kHalfTurn);
+                }
+                converted.components["Transform3D"] = transform_3d(place);
+            }
             // A control's children are controls, listed in its Control; other objects' children
-            // in their Transform2D. A canvas under a world object is a root of the UI.
-            json::Value& transform = converted.components[go.ui ? "Control" : "Transform2D"];
+            // in their Transform2D or Transform3D. A canvas under a world object is a root of the
+            // UI.
+            const char* placed = file.three_d ? "Transform3D" : "Transform2D";
+            json::Value& transform = converted.components[go.ui ? "Control" : placed];
             std::vector<std::string> children;
             std::function<void(int)> lift = [&](int at) {
                 for (const int child : file.objects[static_cast<std::size_t>(at)].children) {
@@ -8620,6 +8973,9 @@ private:
                 }
             }
         }
+        if (file.three_d && extension_of(file.path) == ".unity") {
+            environment_3d(file, entities);
+        }
         // URP's 2D lights leave what no light reaches dark unless a global light lights it.
         if (scene_lit_ && !scene_global_ && extension_of(file.path) == ".unity") {
             const std::string id = take(file.used, "ambient");
@@ -8665,6 +9021,1404 @@ private:
         }
         report_scenes_[file.path] = std::move(record);
         ++(extension_of(file.path) == ".prefab" ? prefabs_ : scenes_);
+    }
+
+    // --- 3D ---
+
+    // Unity's axes are left-handed and Godot's right-handed: a 3D scene converts mirrored in x,
+    // which keeps every picture as Unity draws it. Unity's cameras, lights and quads face down
+    // their +z, Godot's down -z, so they turn half a turn about y.
+    static constexpr Quaternion kHalfTurn{0.0, 1.0, 0.0, 0.0};
+
+    // a, then b in a's space: the Hamilton product a * b, as Godot's Quaternion multiplies.
+    static Quaternion multiply(const Quaternion& a, const Quaternion& b) {
+        const auto [ax, ay, az, aw] = a;
+        const auto [bx, by, bz, bw] = b;
+        return {(aw * bx) + (ax * bw) + (ay * bz) - (az * by),
+                (aw * by) + (ay * bw) + (az * bx) - (ax * bz),
+                (aw * bz) + (az * bw) + (ax * by) - (ay * bx),
+                (aw * bw) - (ax * bx) - (ay * by) - (az * bz)};
+    }
+
+    static json::Value triple(const std::array<double, 3>& v) {
+        return json::Array{tidy_number(v[0]), tidy_number(v[1]), tidy_number(v[2])};
+    }
+
+    static json::Value rgba(const Node& color) {
+        return json::Array{color.number_at("r", 1.0), color.number_at("g", 1.0),
+                           color.number_at("b", 1.0), color.number_at("a", 1.0)};
+    }
+
+    static json::Value half_turn() { return json::Array{0.0, tidy_number(std::numbers::pi), 0.0}; }
+
+    // 3 for one of Unity's 3D components, 2 for a 2D one, 0 for either.
+    static int dimension_of(int class_id, bool orthographic) {
+        switch (class_id) {
+        case kMeshRenderer:
+        case kSkinnedMeshRenderer:
+        case kLight:
+        case kRigidbody:
+        case kBoxCollider:
+        case kSphereCollider:
+        case kCapsuleCollider:
+        case kMeshCollider:
+        case kCharacterController:
+        case kTerrain:
+        case kTerrainCollider:
+        case kModelInstance:
+            return 3;
+        case kSpriteRenderer:
+        case kRigidbody2D:
+        case kBoxCollider2D:
+        case kCircleCollider2D:
+        case kCapsuleCollider2D:
+        case kPolygonCollider2D:
+        case kEdgeCollider2D:
+        case kTilemap:
+            return 2;
+        case kCamera:
+            return orthographic ? 2 : 3;
+        default:
+            return 0;
+        }
+    }
+
+    // Whether a scene or prefab converts in 3D: it has more of Unity's 3D components than its 2D
+    // ones, or as many and the project has more.
+    [[nodiscard]] bool is_3d(const Expanded& file) const {
+        int three = 0;
+        int two = 0;
+        for (const GameObject& go : file.objects) {
+            if (go.removed) {
+                continue;
+            }
+            for (const Component& component : go.components) {
+                const int dimension =
+                    dimension_of(component.class_id, component.body.flag_at("orthographic"));
+                three += dimension == 3 ? 1 : 0;
+                two += dimension == 2 ? 1 : 0;
+            }
+        }
+        return three > two || (three == two && project_3d_);
+    }
+
+    // Whether the project's scenes and prefabs have more 3D components than 2D ones, counted by
+    // the class IDs their objects start with.
+    void count_dimensions() {
+        int three = 0;
+        int two = 0;
+        for (const std::string& file : files_) {
+            const std::string extension = extension_of(file);
+            if (extension != ".unity" && extension != ".prefab") {
+                continue;
+            }
+            const auto text = platform::read_file(source_ + file);
+            if (!text) {
+                continue;
+            }
+            const std::string_view view = text.value();
+            constexpr std::string_view kStart = "--- !u!";
+            for (std::size_t at = view.find(kStart); at != std::string_view::npos;
+                 at = view.find(kStart, at + 1)) {
+                const std::size_t begin = at + kStart.size();
+                const std::size_t end = view.find(' ', begin);
+                const auto id = parse_int(view.substr(begin, end - begin));
+                const int dimension =
+                    id && *id != kCamera ? dimension_of(static_cast<int>(*id), false) : 0;
+                three += dimension == 3 ? 1 : 0;
+                two += dimension == 2 ? 1 : 0;
+            }
+        }
+        project_3d_ = three > two;
+    }
+
+    // An object's place from its Transform, mirrored in x, which turns its rotations the other way
+    // about y and z.
+    static Place3D place_of(const Node& transform) {
+        Place3D place;
+        place.position = {-transform.number_at("m_LocalPosition.x"),
+                          transform.number_at("m_LocalPosition.y"),
+                          transform.number_at("m_LocalPosition.z")};
+        place.rotation = {transform.number_at("m_LocalRotation.x"),
+                          -transform.number_at("m_LocalRotation.y"),
+                          -transform.number_at("m_LocalRotation.z"),
+                          transform.number_at("m_LocalRotation.w", 1.0)};
+        place.scale = {transform.number_at("m_LocalScale.x", 1.0),
+                       transform.number_at("m_LocalScale.y", 1.0),
+                       transform.number_at("m_LocalScale.z", 1.0)};
+        return place;
+    }
+
+    static json::Value transform_3d(const Place3D& place) {
+        json::Value out = json::Object{};
+        std::array<double, 3> position{};
+        std::array<double, 3> scale{};
+        for (std::size_t i = 0; i < 3; ++i) {
+            position.at(i) = tidy_number(place.position.at(i));
+            scale.at(i) = tidy_number(place.scale.at(i));
+        }
+        if (position != std::array<double, 3>{}) {
+            out["position"] = triple(position);
+        }
+        if (const std::array<double, 3> rotation = quaternion_euler(place.rotation);
+            rotation != std::array<double, 3>{}) {
+            out["rotation"] = triple(rotation);
+        }
+        if (scale != std::array<double, 3>{1.0, 1.0, 1.0}) {
+            out["scale"] = triple(scale);
+        }
+        if (!place.visible) {
+            out["visible"] = false;
+        }
+        return out;
+    }
+
+    // The parts of a 3D object that convert together.
+    struct Parts3D {
+        const Component* filter = nullptr;
+        const Component* renderer = nullptr;
+        const Component* model = nullptr;
+        const Component* camera = nullptr;
+        const Component* light = nullptr;
+        const Component* listener = nullptr;
+        const Component* rigidbody = nullptr;
+        const Component* controller = nullptr;
+        std::vector<const Component*> colliders;
+    };
+
+    // Parts that turn half a turn, by what they are for, with their components.
+    using Turned = std::vector<std::pair<std::string, json::Object>>;
+
+    void convert_object_3d(const Context& ctx, Converted& out) {
+        const GameObject& go = ctx.file->objects[static_cast<std::size_t>(ctx.index)];
+        Place3D place;
+        if (const Component* transform = transform_of(go)) {
+            place = place_of(transform->body);
+        }
+        place.visible = go.body.flag_at("m_IsActive", true);
+        Parts3D parts;
+        for (const Component& component : go.components) {
+            switch (component.class_id) {
+            case kTransform:
+            case kRectTransform:
+            case kGuiLayer:
+            case kFlareLayer:
+            case kLodGroup: // read before the scene's objects convert
+                break;
+            case kMeshFilter:
+                parts.filter = &component;
+                break;
+            case kMeshRenderer:
+                parts.renderer = &component;
+                break;
+            case kModelInstance:
+                parts.model = &component;
+                break;
+            case kCamera:
+                parts.camera = &component;
+                break;
+            case kLight:
+                parts.light = &component;
+                break;
+            case kAudioListener:
+                parts.listener = &component;
+                break;
+            case kAudioSource:
+                audio_source(component, ctx, out, true);
+                break;
+            case kRigidbody:
+                parts.rigidbody = &component;
+                break;
+            case kBoxCollider:
+            case kSphereCollider:
+            case kCapsuleCollider:
+            case kMeshCollider:
+                parts.colliders.push_back(&component);
+                break;
+            case kCharacterController:
+                parts.controller = &component;
+                break;
+            case kSkinnedMeshRenderer:
+                problems_.add("component SkinnedMeshRenderer", ctx.where,
+                              "a skinned mesh draws with the model it is part of; instance the "
+                              "model");
+                break;
+            case kAnimator:
+                problems_.add("Animator in a 3D scene", ctx.where,
+                              "3D animation from Unity doesn't convert yet");
+                if (const auto controller = ref_at(component.body, "m_Controller");
+                    controller && !controller->null()) {
+                    controllers_3d_.insert(controller->guid);
+                }
+                break;
+            case kSpriteRenderer:
+            case kRigidbody2D:
+            case kBoxCollider2D:
+            case kCircleCollider2D:
+            case kCapsuleCollider2D:
+            case kPolygonCollider2D:
+            case kEdgeCollider2D:
+            case kCompositeCollider2D:
+            case kHingeJoint2D:
+            case kSpringJoint2D:
+            case kSliderJoint2D:
+            case kGrid:
+            case kTilemap:
+            case kTilemapRenderer:
+            case kTilemapCollider2D:
+            case kPlatformEffector2D:
+                problems_.add("component " + component.type, ctx.where, std::string(k2DWhy));
+                break;
+            case kMonoBehaviour: {
+                if (const KnownScript* lost = lost_script(component);
+                    lost != nullptr && !lost->ui) {
+                    problems_.add("component " + std::string(lost->name), ctx.where,
+                                  std::string(kLostWhy));
+                    break;
+                }
+                const KnownScript* known = known_script(component);
+                const std::string_view name = known != nullptr ? known->name : std::string_view();
+                if (name == "Light2D" || name == "ShadowCaster2D" ||
+                    name == "CompositeShadowCaster2D") {
+                    problems_.add("component " + std::string(name), ctx.where, std::string(k2DWhy));
+                } else {
+                    mono_behaviour(component, ctx, out);
+                }
+                break;
+            }
+            default:
+                problems_.add("component " + component.type, ctx.where,
+                              component_why(component.type));
+                break;
+            }
+        }
+        Turned turned;
+        mesh_3d(ctx, parts, out, turned);
+        if (parts.camera != nullptr) {
+            turned.emplace_back("camera", camera_3d(*parts.camera, ctx, go));
+        }
+        if (parts.light != nullptr) {
+            light_3d(*parts.light, ctx, out, turned);
+        }
+        if (parts.listener != nullptr) {
+            json::Object listener;
+            listener["AudioListener3D"]["current"] =
+                parts.listener->body.flag_at("m_Enabled", true) && ctx.active;
+            turned.emplace_back("listener", std::move(listener));
+        }
+        physics_3d(ctx, parts, out);
+        if (const auto body = out.components.find("RigidBody3D");
+            out.collisions && body != out.components.end()) {
+            body->second["contact_monitor"] = true;
+        }
+        place_turned(out, turned);
+        out.place = place;
+    }
+
+    // Parts that turn go on the object, which turns with them, when nothing else on it faces a
+    // way; otherwise each goes on an entity of its own under it, turned half a turn.
+    static void place_turned(Converted& out, Turned& turned) {
+        if (turned.empty()) {
+            return;
+        }
+        static constexpr std::array<std::string_view, 7> kFacing{
+            "MeshInstance3D", "CollisionShape3D", "StaticBody3D", "AnimatableBody3D",
+            "RigidBody3D",    "CharacterBody3D",  "Area3D"};
+        const bool facing = std::ranges::any_of(kFacing, [&](std::string_view name) {
+            return out.components.contains(std::string(name));
+        });
+        if (facing || !out.added.empty()) {
+            for (auto& [purpose, components] : turned) {
+                components["Transform3D"]["rotation"] = half_turn();
+                out.added.emplace_back(purpose, std::move(components));
+            }
+            return;
+        }
+        for (auto& [purpose, components] : turned) {
+            for (auto& [name, fields] : components) {
+                out.components[name] = std::move(fields);
+            }
+        }
+        out.turned = true;
+    }
+
+    // Renderers in a LOD group's levels past its first don't draw: only its most detailed level
+    // does.
+    void hide_lod_levels(const Expanded& file) {
+        for (const GameObject& go : file.objects) {
+            for (const Component& component : go.components) {
+                const Node* lods = component.body.get("m_LODs");
+                if (component.class_id != kLodGroup || lods == nullptr) {
+                    continue;
+                }
+                std::set<std::int64_t> first;
+                std::set<std::int64_t> rest;
+                for (std::size_t level = 0; level < lods->items.size(); ++level) {
+                    const Node* renderers = lods->items[level].get("renderers");
+                    for (const Node& entry :
+                         renderers != nullptr ? renderers->items : std::vector<Node>{}) {
+                        if (const auto ref = ref_at(entry, "renderer"); ref && !ref->null()) {
+                            (level == 0 ? first : rest).insert(file.resolve(ref->file_id));
+                        }
+                    }
+                }
+                for (const std::int64_t id : rest) {
+                    if (!first.contains(id)) {
+                        lod_hidden_.insert(id);
+                    }
+                }
+            }
+        }
+    }
+
+    // Render layers from an object's layer: Unity has 32, Godot 20.
+    json::Value render_layers(std::int64_t layer, const std::string& where) {
+        if (layer < 0 || layer >= 20) {
+            problems_.add("object on a layer past 19", where,
+                          "there are 20 render layers; it is on the first");
+            return std::int64_t{1};
+        }
+        return std::int64_t{1} << layer;
+    }
+
+    // A MeshFilter and its MeshRenderer, or a model instance: a MeshInstance3D with its mesh and
+    // material.
+    void mesh_3d(const Context& ctx, const Parts3D& parts, Converted& out, Turned& turned) {
+        const GameObject& go = ctx.file->objects[static_cast<std::size_t>(ctx.index)];
+        if (parts.model != nullptr) {
+            model_3d(ctx, *parts.model, out);
+        }
+        if (parts.renderer == nullptr) {
+            return; // a MeshFilter alone draws nothing
+        }
+        const Node& renderer = parts.renderer->body;
+        if (lod_hidden_.contains(parts.renderer->id)) {
+            problems_.add("LOD level past the first", ctx.where,
+                          "only the most detailed level of a LOD group draws");
+            return;
+        }
+        if (parts.filter == nullptr) {
+            problems_.add("MeshRenderer without a MeshFilter", ctx.where, "it has no mesh to draw");
+            return;
+        }
+        const auto ref = ref_at(parts.filter->body, "m_Mesh");
+        if (!ref || ref->null()) {
+            return;
+        }
+        json::Object mesh;
+        bool quad = false;
+        if (ref->guid == kBuiltinExtraGuid) {
+            switch (ref->file_id) {
+            case kCubeMesh:
+                mesh["BoxMesh"] = json::Object{};
+                break;
+            case kCylinderMesh:
+                mesh["CylinderMesh"] = json::Object{};
+                break;
+            case kSphereMesh:
+                mesh["SphereMesh"] = json::Object{};
+                break;
+            case kCapsuleMesh:
+                mesh["CapsuleMesh"] = json::Object{};
+                break;
+            case kPlaneMesh:
+                mesh["PlaneMesh"]["size"] = json::Array{10.0, 10.0};
+                break;
+            case kQuadMesh:
+                mesh["QuadMesh"] = json::Object{};
+                quad = true;
+                break;
+            default:
+                problems_.add("built-in mesh", ctx.where,
+                              "Unity's cube, sphere, capsule, cylinder, plane and quad convert");
+                return;
+            }
+        } else {
+            const Asset* asset = ref->guid.empty() ? nullptr : asset_of(ref->guid);
+            if (ref->guid.empty()) {
+                problems_.add("mesh made in the scene", ctx.where,
+                              "meshes saved in a scene, as ProBuilder saves them, don't convert "
+                              "yet");
+            } else if (asset != nullptr && is_model_file(extension_of(asset->path))) {
+                problems_.add("mesh from a model on a MeshFilter", ctx.where,
+                              "meshes picked out of a model file convert in a later import; "
+                              "instance the model itself");
+            } else {
+                problems_.add("mesh asset", ctx.where,
+                              asset != nullptr
+                                  ? asset->path + ": meshes saved as Unity assets don't convert"
+                                  : "a mesh from outside the project's Assets folder");
+            }
+            return;
+        }
+        json::Value instance = json::Object{};
+        if (const std::int64_t layer = go.body.integer_at("m_Layer", 0); layer != 0) {
+            instance["layers"] = render_layers(layer, ctx.where);
+        }
+        static constexpr std::array<std::string_view, 4> kShadows{"off", "on", "double_sided",
+                                                                  "shadows_only"};
+        if (const std::int64_t shadows = renderer.integer_at("m_CastShadows", 1);
+            shadows != 1 && shadows >= 0 && shadows < 4) {
+            instance["cast_shadow"] = std::string(kShadows.at(static_cast<std::size_t>(shadows)));
+        }
+        mesh["MeshInstance3D"] = std::move(instance);
+        if (const Node* materials = renderer.get("m_Materials");
+            materials != nullptr && !materials->items.empty()) {
+            if (const auto material = unity::object_ref(materials->items.front());
+                material && !material->null()) {
+                if (const json::Value* surface = surface_material(*material, ctx.where)) {
+                    mesh["StandardMaterial3D"] = *surface;
+                }
+            }
+            if (materials->items.size() > 1) {
+                problems_.add("more materials than the mesh has parts", ctx.where,
+                              "the mesh draws once, with its first material");
+            }
+        }
+        if (!renderer.flag_at("m_ReceiveShadows", true)) {
+            problems_.add("renderer that receives no shadows", ctx.where, "it receives them");
+        }
+        if (!renderer.flag_at("m_Enabled", true)) {
+            // Hidden on an entity of its own, which gameplay code can show.
+            mesh["Transform3D"]["visible"] = false;
+            if (quad) {
+                mesh["Transform3D"]["rotation"] = half_turn();
+            }
+            out.added.emplace_back("mesh", std::move(mesh));
+            return;
+        }
+        if (quad) {
+            turned.emplace_back("mesh", std::move(mesh));
+            return;
+        }
+        for (auto& [name, fields] : mesh) {
+            out.components[name] = std::move(fields);
+        }
+    }
+
+    // A model instance: a MeshInstance3D drawing the model file whole, with a material in place of
+    // its own when the instance or the model's import settings put one in place of all of them.
+    void model_3d(const Context& ctx, const Component& model, Converted& out) {
+        const GameObject& go = ctx.file->objects[static_cast<std::size_t>(ctx.index)];
+        const Asset* asset = asset_of(model.body.string_at("guid"));
+        json::Object parts;
+        json::Value instance;
+        instance["mesh"] = destination(model.body.string_at("path"));
+        if (const std::int64_t layer = go.body.integer_at("m_Layer", 0); layer != 0) {
+            instance["layers"] = render_layers(layer, ctx.where);
+        }
+        parts["MeshInstance3D"] = std::move(instance);
+        std::set<std::pair<std::string, std::int64_t>> named;
+        std::optional<ObjectRef> material;
+        if (const Node* materials = model.body.get("m_Materials")) {
+            for (const Node& item : materials->items) {
+                if (const auto ref = unity::object_ref(item); ref && !ref->null()) {
+                    named.emplace(ref->guid, ref->file_id);
+                    material = ref;
+                }
+            }
+        }
+        if (named.size() == 1 && material) {
+            if (const json::Value* surface = surface_material(*material, ctx.where)) {
+                parts["StandardMaterial3D"] = *surface;
+            }
+        } else if (named.size() > 1) {
+            problems_.add("several materials in place of a model's own", ctx.where,
+                          "the model draws with its own materials");
+        }
+        const Node empty;
+        const Node& meta = asset != nullptr ? asset->meta : empty;
+        if (!meta.flag_at("ModelImporter.meshes.useFileScale", true)) {
+            problems_.add("model imported without its file's units", ctx.where,
+                          "it is sized as its file's units say");
+        }
+        // The import's scale sizes the model, not the objects under its instance.
+        if (const double scale = meta.number_at("ModelImporter.meshes.globalScale", 1.0);
+            scale != 1.0) {
+            parts["Transform3D"]["scale"] = triple({scale, scale, scale});
+            out.added.emplace_back("model", std::move(parts));
+            return;
+        }
+        for (auto& [name, fields] : parts) {
+            out.components[name] = std::move(fields);
+        }
+    }
+
+    // The scene's background is its main camera's, else its first enabled camera's.
+    struct SceneCamera {
+        bool main = false;
+        std::int64_t clear = 1; // Unity's clear flags: 1 skybox, 2 solid color, 3 depth, 4 nothing
+        json::Value color;
+    };
+
+    json::Object camera_3d(const Component& component, const Context& ctx, const GameObject& go) {
+        const Node& body = component.body;
+        json::Value camera = json::Object{};
+        if (body.flag_at("orthographic")) {
+            camera["projection"] = "orthogonal";
+            camera["size"] = tidy_number(2.0 * body.number_at("orthographic size", 5.0));
+        } else {
+            camera["fov"] = body.number_at("field of view", 60.0);
+        }
+        camera["near"] = body.number_at("near clip plane", 0.3);
+        camera["far"] = body.number_at("far clip plane", 1000.0);
+        const bool enabled = body.flag_at("m_Enabled", true) && ctx.active;
+        const bool main = go.body.string_at("m_TagString") == "MainCamera";
+        if (main && enabled) {
+            camera["current"] = true;
+        }
+        if (const auto mask =
+                static_cast<std::uint32_t>(body.integer_at("m_CullingMask.m_Bits", 0xFFFFFFFF)) &
+                0xFFFFFU;
+            mask != 0xFFFFFU) {
+            camera["cull_mask"] = std::int64_t{mask};
+        }
+        camera_problems(body, ctx);
+        if (enabled && (!scene_camera_ || (main && !scene_camera_->main))) {
+            const Node* color = body.get("m_BackGroundColor");
+            scene_camera_ =
+                SceneCamera{.main = main,
+                            .clear = body.integer_at("m_ClearFlags", 1),
+                            .color = color != nullptr
+                                         ? json::Array{color->number_at("r"), color->number_at("g"),
+                                                       color->number_at("b"), 1.0}
+                                         : json::Array{0.0, 0.0, 0.0, 1.0}};
+        }
+        json::Object out;
+        out["Camera3D"] = std::move(camera);
+        return out;
+    }
+
+    void camera_problems(const Node& body, const Context& ctx) {
+        const Node* rect = body.get("m_NormalizedViewPortRect");
+        if (rect != nullptr &&
+            (rect->number_at("x") != 0.0 || rect->number_at("y") != 0.0 ||
+             rect->number_at("width", 1.0) != 1.0 || rect->number_at("height", 1.0) != 1.0)) {
+            problems_.add("camera viewport rect", ctx.where, "every camera fills the window");
+        }
+        if (const auto target = ref_at(body, "m_TargetTexture"); target && !target->null()) {
+            problems_.add("camera render texture", ctx.where,
+                          "render textures aren't supported yet");
+        }
+    }
+
+    void light_3d(const Component& component, const Context& ctx, Converted& out, Turned& turned) {
+        const Node& body = component.body;
+        const std::int64_t type = body.integer_at("m_Type", 2);
+        json::Value light = json::Object{};
+        std::string kind;
+        switch (type) {
+        case 0:
+            kind = "SpotLight3D";
+            light["spot_range"] = body.number_at("m_Range", 10.0);
+            light["spot_angle"] = tidy_number(body.number_at("m_SpotAngle", 30.0) / 2.0);
+            break;
+        case 1:
+            kind = "DirectionalLight3D";
+            break;
+        case 2:
+            kind = "OmniLight3D";
+            light["omni_range"] = body.number_at("m_Range", 10.0);
+            break;
+        default:
+            problems_.add("area light", ctx.where,
+                          "area lights are baked in Unity; there are none");
+            return;
+        }
+        if (const Node* color = body.get("m_Color")) {
+            light["light_color"] =
+                json::Array{color->number_at("r", 1.0), color->number_at("g", 1.0),
+                            color->number_at("b", 1.0), 1.0};
+        }
+        light["light_energy"] = body.number_at("m_Intensity", 1.0);
+        if (body.integer_at("m_Shadows.m_Type", 0) != 0) {
+            light["shadow_enabled"] = true;
+            light["shadow_opacity"] = body.number_at("m_Shadows.m_Strength", 1.0);
+        }
+        if (const auto mask =
+                static_cast<std::uint32_t>(body.integer_at("m_CullingMask.m_Bits", 0xFFFFFFFF));
+            mask != 0xFFFFFFFFU) {
+            light["light_cull_mask"] = std::int64_t{mask};
+        }
+        if (body.integer_at("m_Lightmapping", 4) == 2) {
+            problems_.add("baked light", ctx.where,
+                          "it lights the scene as it runs, as every light here does");
+        }
+        if (body.flag_at("m_UseColorTemperature")) {
+            problems_.add("light color temperature", ctx.where, "the light has its color alone");
+        }
+        if (const auto cookie = ref_at(body, "m_Cookie"); cookie && !cookie->null()) {
+            problems_.add("light cookie", ctx.where, "lights have no cookies");
+        }
+        json::Object parts;
+        parts[kind] = std::move(light);
+        const bool turns = type != 2; // a point light shines all round
+        if (!body.flag_at("m_Enabled", true)) {
+            parts["Transform3D"]["visible"] = false;
+            if (turns) {
+                parts["Transform3D"]["rotation"] = half_turn();
+            }
+            out.added.emplace_back("light", std::move(parts));
+        } else if (turns) {
+            turned.emplace_back("light", std::move(parts));
+        } else {
+            for (auto& [name, fields] : parts) {
+                out.components[name] = std::move(fields);
+            }
+        }
+    }
+
+    // --- 3D physics ---
+
+    // A collider's shape, or nullopt for one that doesn't convert.
+    std::optional<json::Value> collider_shape(const Component& collider, const Context& ctx) {
+        const Node& body = collider.body;
+        json::Value shape = json::Object{};
+        const auto center = [&] {
+            const std::array<double, 3> at{-body.number_at("m_Center.x"),
+                                           body.number_at("m_Center.y"),
+                                           body.number_at("m_Center.z")};
+            if (tidy_number(at[0]) != 0.0 || tidy_number(at[1]) != 0.0 ||
+                tidy_number(at[2]) != 0.0) {
+                shape["position"] = triple(at);
+            }
+        };
+        const auto capsule = [&](double radius, double height, std::int64_t direction) {
+            shape["shape"] = "capsule";
+            shape["radius"] = std::abs(radius);
+            shape["height"] = std::max(std::abs(height), 2.0 * std::abs(radius));
+            const double quarter = tidy_number(std::numbers::pi / 2.0);
+            if (direction == 0) {
+                shape["rotation"] = json::Array{0.0, 0.0, quarter};
+            } else if (direction == 2) {
+                shape["rotation"] = json::Array{quarter, 0.0, 0.0};
+            }
+        };
+        switch (collider.class_id) {
+        case kBoxCollider:
+            shape["size"] = triple({std::abs(body.number_at("m_Size.x", 1.0)),
+                                    std::abs(body.number_at("m_Size.y", 1.0)),
+                                    std::abs(body.number_at("m_Size.z", 1.0))});
+            center();
+            break;
+        case kSphereCollider:
+            shape["shape"] = "sphere";
+            shape["radius"] = std::abs(body.number_at("m_Radius", 0.5));
+            center();
+            break;
+        case kCapsuleCollider:
+            capsule(body.number_at("m_Radius", 0.5), body.number_at("m_Height", 2.0),
+                    body.integer_at("m_Direction", 1));
+            center();
+            break;
+        default: { // a MeshCollider: Unity's built-in meshes become shapes
+            const auto mesh = ref_at(body, "m_Mesh");
+            if (!mesh || mesh->guid != kBuiltinExtraGuid) {
+                problems_.add("MeshCollider of a model's or a saved mesh", ctx.where,
+                              "mesh colliders of meshes besides Unity's built-in ones convert in "
+                              "a later import");
+                return std::nullopt;
+            }
+            // A plane and a quad are one-sided in Unity; here both their sides collide.
+            const auto faces = [&](double half, bool upright) {
+                const auto corner = [&](double a, double b) {
+                    return upright ? json::Array{a, b, 0.0} : json::Array{a, 0.0, b};
+                };
+                shape["shape"] = "concave_polygon";
+                shape["faces"] =
+                    json::Array{corner(-half, -half), corner(half, -half), corner(half, half),
+                                corner(-half, -half), corner(half, half),  corner(-half, half)};
+                shape["backface_collision"] = true;
+            };
+            switch (mesh->file_id) {
+            case kCubeMesh:
+                break;
+            case kSphereMesh:
+                shape["shape"] = "sphere";
+                shape["radius"] = 0.5;
+                break;
+            case kCapsuleMesh:
+                capsule(0.5, 2.0, 1);
+                break;
+            case kCylinderMesh:
+                shape["shape"] = "cylinder";
+                break;
+            case kPlaneMesh:
+                faces(5.0, false);
+                break;
+            case kQuadMesh:
+                faces(0.5, true);
+                break;
+            default:
+                return std::nullopt;
+            }
+            break;
+        }
+        }
+        if (!body.flag_at("m_Enabled", true) || !ctx.active) {
+            shape["disabled"] = true;
+        }
+        return shape;
+    }
+
+    // A 3D physics material: dynamic friction and bounciness.
+    Material physics_material_3d(const std::string& guid) {
+        if (const auto it = materials_3d_.find(guid); it != materials_3d_.end()) {
+            return it->second;
+        }
+        Material material = default_material_3d_;
+        if (const Asset* asset = asset_of(guid); asset != nullptr) {
+            if (auto text = platform::read_file(source_ + asset->path); text) {
+                if (auto objects = unity::parse_file(text.value()); objects) {
+                    for (const Object& object : objects.value()) {
+                        if (object.type == "PhysicMaterial" || object.type == "PhysicsMaterial") {
+                            material.friction = std::max(
+                                0.0, object.body.number_at("dynamicFriction", kDefaultFriction3D));
+                            material.bounce =
+                                std::clamp(object.body.number_at("bounciness", 0.0), 0.0, 1.0);
+                        }
+                    }
+                }
+            }
+        }
+        materials_3d_[guid] = material;
+        return material;
+    }
+
+    // The nearest object above that has a component of a class, and how many levels up it is.
+    [[nodiscard]] static std::pair<int, int> above_with(const Expanded& file, int index,
+                                                        int class_id) {
+        int levels = 0;
+        for (int at = file.objects[static_cast<std::size_t>(index)].parent; at >= 0;
+             at = file.objects[static_cast<std::size_t>(at)].parent) {
+            ++levels;
+            for (const Component& component :
+                 file.objects[static_cast<std::size_t>(at)].components) {
+                if (component.class_id == class_id) {
+                    return {at, levels};
+                }
+            }
+            if (levels > 256) {
+                break;
+            }
+        }
+        return {-1, 0};
+    }
+
+    void physics_3d(const Context& ctx, const Parts3D& parts, Converted& out) {
+        if (parts.rigidbody == nullptr && parts.controller == nullptr && parts.colliders.empty()) {
+            return;
+        }
+        const GameObject& go = ctx.file->objects[static_cast<std::size_t>(ctx.index)];
+        const std::int64_t layer =
+            std::clamp<std::int64_t>(go.body.integer_at("m_Layer", 0), 0, 31);
+        const std::uint32_t layer_bit = 1U << static_cast<std::uint32_t>(layer);
+        const std::uint32_t mask = layer_masks_3d_.at(static_cast<std::size_t>(layer));
+        std::vector<json::Value> solid;
+        std::vector<json::Value> triggers;
+        Material material = default_material_3d_;
+        for (const Component* collider : parts.colliders) {
+            auto shape = collider_shape(*collider, ctx);
+            if (!shape) {
+                continue;
+            }
+            (collider->body.flag_at("m_IsTrigger") ? triggers : solid).push_back(std::move(*shape));
+            if (const auto ref = ref_at(collider->body, "m_Material"); ref && !ref->guid.empty()) {
+                material = physics_material_3d(ref->guid);
+            }
+        }
+        const auto body_fields = [&](json::Value& fields, bool with_material) {
+            fields["collision_layer"] = std::int64_t{layer_bit};
+            fields["collision_mask"] = std::int64_t{mask};
+            if (with_material) {
+                fields["friction"] = material.friction;
+                fields["bounce"] = material.bounce;
+            }
+        };
+        std::string body_type;
+        if (parts.controller != nullptr) {
+            // A CharacterController is a capsule moved by gameplay code: a CharacterBody3D.
+            const Node& controller = parts.controller->body;
+            body_type = "CharacterBody3D";
+            json::Value fields;
+            body_fields(fields, false);
+            fields["floor_max_angle"] =
+                tidy_number(controller.number_at("m_SlopeLimit", 45.0) * std::numbers::pi / 180.0);
+            fields["safe_margin"] = controller.number_at("m_SkinWidth", 0.08);
+            out.components[body_type] = std::move(fields);
+            const double radius = std::abs(controller.number_at("m_Radius", 0.5));
+            json::Value capsule;
+            capsule["shape"] = "capsule";
+            capsule["radius"] = radius;
+            capsule["height"] =
+                std::max(std::abs(controller.number_at("m_Height", 2.0)), 2.0 * radius);
+            const std::array<double, 3> at{-controller.number_at("m_Center.x"),
+                                           controller.number_at("m_Center.y"),
+                                           controller.number_at("m_Center.z")};
+            if (at != std::array<double, 3>{}) {
+                capsule["position"] = triple(at);
+            }
+            solid.insert(solid.begin(), std::move(capsule));
+            if (controller.number_at("m_StepOffset", 0.3) > 0.0) {
+                problems_.add("CharacterController step offset", ctx.where,
+                              "a CharacterBody3D doesn't climb steps on its own; gameplay code "
+                              "can");
+            }
+            if (parts.rigidbody != nullptr) {
+                problems_.add("Rigidbody beside a CharacterController", ctx.where,
+                              "the object is a CharacterBody3D");
+            }
+        } else if (parts.rigidbody != nullptr) {
+            const Node& rb = parts.rigidbody->body;
+            body_type = "RigidBody3D";
+            json::Value fields;
+            body_fields(fields, true);
+            fields["mass"] = rb.number_at("m_Mass", 1.0);
+            if (!rb.flag_at("m_UseGravity", true)) {
+                fields["gravity_scale"] = 0.0;
+            }
+            const Node* linear = rb.get("m_LinearDamping");
+            const Node* angular = rb.get("m_AngularDamping");
+            fields["linear_damp"] =
+                linear != nullptr ? linear->number().value_or(0.0) : rb.number_at("m_Drag", 0.0);
+            fields["angular_damp"] = angular != nullptr ? angular->number().value_or(0.05)
+                                                        : rb.number_at("m_AngularDrag", 0.05);
+            if (rb.flag_at("m_IsKinematic")) {
+                fields["freeze"] = true;
+                fields["freeze_mode"] = "kinematic";
+            }
+            const std::int64_t constraints = rb.integer_at("m_Constraints", 0);
+            static constexpr std::array<std::pair<std::int64_t, std::string_view>, 6> kLocks{
+                {{2, "axis_lock_linear_x"},
+                 {4, "axis_lock_linear_y"},
+                 {8, "axis_lock_linear_z"},
+                 {16, "axis_lock_angular_x"},
+                 {32, "axis_lock_angular_y"},
+                 {64, "axis_lock_angular_z"}}};
+            for (const auto& [bit, field] : kLocks) {
+                if ((constraints & bit) != 0) {
+                    fields[std::string(field)] = true;
+                }
+            }
+            if (rb.integer_at("m_CollisionDetection", 0) != 0) {
+                fields["continuous_cd"] = true;
+            }
+            out.components[body_type] = std::move(fields);
+        } else if (!solid.empty()) {
+            const auto [above, levels] = above_with(*ctx.file, ctx.index, kRigidbody);
+            if (above < 0) {
+                body_type = "StaticBody3D"; // a collider with no Rigidbody is static
+            } else if (levels > 1) {
+                body_type = "AnimatableBody3D";
+                problems_.add("collider two or more levels under its Rigidbody", ctx.where,
+                              "it becomes an AnimatableBody3D that follows its parent; bodies "
+                              "take shapes from their own children only");
+            }
+            if (!body_type.empty()) {
+                json::Value fields;
+                body_fields(fields, true);
+                out.components[body_type] = std::move(fields);
+            }
+        } else if (!triggers.empty()) {
+            body_type = "Area3D";
+            json::Value fields;
+            body_fields(fields, false);
+            out.components[body_type] = std::move(fields);
+            solid = std::move(triggers);
+            triggers.clear();
+        }
+        // One shape on the object, the rest on child entities.
+        const bool has_body = !body_type.empty();
+        int extra = 1;
+        for (std::size_t i = 0; i < solid.size(); ++i) {
+            if (i == 0) {
+                out.components["CollisionShape3D"] = std::move(solid[i]);
+                continue;
+            }
+            if (!has_body) {
+                problems_.add("more colliders than an object without a Rigidbody can hold",
+                              ctx.where,
+                              "its parent's body takes one shape from it; the rest don't attach");
+                continue;
+            }
+            json::Object added;
+            added["Transform3D"] = json::Object{};
+            added["CollisionShape3D"] = std::move(solid[i]);
+            out.added.emplace_back("shape_" + std::to_string(++extra), std::move(added));
+        }
+        // Triggers on a body: an Area3D child entity, as Godot keeps areas apart from bodies.
+        int trigger_count = 0;
+        for (json::Value& shape : triggers) {
+            json::Object added;
+            added["Transform3D"] = json::Object{};
+            json::Value area;
+            body_fields(area, false);
+            added["Area3D"] = std::move(area);
+            added["CollisionShape3D"] = std::move(shape);
+            ++trigger_count;
+            out.added.emplace_back(trigger_count == 1 ? std::string("trigger")
+                                                      : "trigger_" + std::to_string(trigger_count),
+                                   std::move(added));
+        }
+    }
+
+    // --- 3D materials ---
+
+    // A .mat file's properties, by name.
+    struct MaterialFile {
+        std::string path;
+        ObjectRef shader;
+        std::map<std::string, Node> textures; // each with m_Texture, m_Scale and m_Offset
+        std::map<std::string, double> numbers;
+        std::map<std::string, Node> colors;
+        std::set<std::string> keywords;
+
+        [[nodiscard]] double number(const std::string& name, double fallback) const {
+            const auto it = numbers.find(name);
+            return it != numbers.end() ? it->second : fallback;
+        }
+        [[nodiscard]] std::optional<ObjectRef> texture(const std::string& name) const {
+            const auto it = textures.find(name);
+            if (it == textures.end()) {
+                return std::nullopt;
+            }
+            auto ref = unity::object_ref_at(it->second, "m_Texture");
+            return ref && !ref->null() ? ref : std::nullopt;
+        }
+    };
+
+    std::optional<MaterialFile> read_material(const std::string& guid) {
+        const Asset* asset = asset_of(guid);
+        if (asset == nullptr || extension_of(asset->path) != ".mat") {
+            return std::nullopt;
+        }
+        const auto text = platform::read_file(source_ + asset->path);
+        const auto objects =
+            text ? unity::parse_file(text.value()) : Result<std::vector<Object>>(text.error());
+        if (!objects) {
+            return std::nullopt;
+        }
+        for (const Object& object : objects.value()) {
+            if (object.type != "Material") {
+                continue;
+            }
+            MaterialFile file;
+            file.path = asset->path;
+            const Node& body = object.body;
+            if (const auto shader = ref_at(body, "m_Shader")) {
+                file.shader = *shader;
+            }
+            // Each list holds one-entry mappings: a property's name and its value.
+            const auto each = [&](std::string_view list, const auto& take) {
+                if (const Node* items = body.path(list)) {
+                    for (const Node& item : items->items) {
+                        for (const auto& [name, value] : item.entries) {
+                            take(name, value);
+                        }
+                    }
+                }
+            };
+            each("m_SavedProperties.m_TexEnvs",
+                 [&](const std::string& name, const Node& value) { file.textures[name] = value; });
+            const auto number = [&](const std::string& name, const Node& value) {
+                file.numbers[name] = value.number().value_or(0.0);
+            };
+            each("m_SavedProperties.m_Floats", number);
+            each("m_SavedProperties.m_Ints", number);
+            each("m_SavedProperties.m_Colors",
+                 [&](const std::string& name, const Node& value) { file.colors[name] = value; });
+            for (const std::string_view keyword :
+                 split_path(body.string_at("m_ShaderKeywords"), ' ')) {
+                if (!keyword.empty()) {
+                    file.keywords.emplace(keyword);
+                }
+            }
+            if (const Node* valid = body.get("m_ValidKeywords")) {
+                for (const Node& keyword : valid->items) {
+                    file.keywords.emplace(keyword.string());
+                }
+            }
+            return file;
+        }
+        return std::nullopt;
+    }
+
+    // A material's StandardMaterial3D, converted once, or null when it doesn't convert.
+    const json::Value* surface_material(const ObjectRef& ref, const std::string& where) {
+        if (ref.guid == kBuiltinSprites) {
+            if (ref.file_id == kDefaultMaterial) {
+                return &default_surface_; // Standard, white, smoothness 0.5
+            }
+            problems_.add("built-in material", where,
+                          "of Unity's materials, Default-Material converts");
+            return nullptr;
+        }
+        auto [it, inserted] = surfaces_.try_emplace(ref.guid);
+        std::optional<json::Value>& surface = it->second;
+        if (inserted) {
+            surface = convert_surface(ref.guid, where);
+        }
+        return surface ? &*surface : nullptr;
+    }
+
+    // A texture of a material, by its path here, or "" when it has none.
+    std::string material_texture(const MaterialFile& file, const std::string& name) {
+        const auto ref = file.texture(name);
+        if (!ref) {
+            return {};
+        }
+        const Asset* asset = asset_of(ref->guid);
+        if (asset == nullptr || !is_texture_file(extension_of(asset->path))) {
+            const std::string why =
+                asset != nullptr ? unsupported_asset(extension_of(asset->path)) : "";
+            problems_.add("material texture", file.path + ": " + name,
+                          asset == nullptr
+                              ? "a texture from outside the project's Assets folder"
+                              : asset->path + ": " + (why.empty() ? "not a texture" : why));
+            return {};
+        }
+        return destination(asset->path);
+    }
+
+    // Unity's Standard and URP Lit properties as a StandardMaterial3D's fields.
+    std::optional<json::Value> convert_surface(const std::string& guid, const std::string& where) {
+        auto read = read_material(guid);
+        if (!read) {
+            problems_.add("material", where,
+                          "a material that isn't a readable .mat file in the project's Assets "
+                          "folder");
+            return std::nullopt;
+        }
+        const MaterialFile& file = *read;
+        const std::string& at = file.path;
+        const std::string& shader = file.shader.guid;
+        const bool urp = shader == kUrpLit || shader == kUrpSimpleLit || shader == kUrpUnlit;
+        const bool standard = shader == kBuiltinSprites;
+        if (!urp && !standard) {
+            problems_.add("material with a shader of its own", at,
+                          "converted from the properties it shares with Unity's Standard "
+                          "shader");
+        }
+        json::Value material = json::Object{};
+        const auto color =
+            file.colors.find(file.colors.contains("_BaseColor") ? "_BaseColor" : "_Color");
+        if (color != file.colors.end()) {
+            material["albedo_color"] = rgba(color->second);
+        }
+        const std::string base = file.textures.contains("_BaseMap") ? "_BaseMap" : "_MainTex";
+        if (std::string texture = material_texture(file, base); !texture.empty()) {
+            material["albedo_texture"] = std::move(texture);
+            const Node& env = file.textures.at(base);
+            const double sx = env.number_at("m_Scale.x", 1.0);
+            const double sy = env.number_at("m_Scale.y", 1.0);
+            const double ox = env.number_at("m_Offset.x");
+            const double oy = env.number_at("m_Offset.y");
+            if (sx != 1.0 || sy != 1.0) {
+                material["uv1_scale"] = triple({sx, sy, 1.0});
+            }
+            // Unity's texture coordinates start at the bottom, Godot's at the top.
+            if (const double y = 1.0 - sy - oy; ox != 0.0 || tidy_number(y) != 0.0) {
+                material["uv1_offset"] = triple({ox, y, 0.0});
+            }
+            if (const auto ref = file.texture(base)) {
+                texture_settings(ref->guid, at, material);
+            }
+        }
+        material["metallic"] = file.number("_Metallic", 0.0);
+        const double smoothness = file.number(urp ? "_Smoothness" : "_Glossiness", 0.5);
+        material["roughness"] = tidy_number(1.0 - smoothness);
+        if (std::string map = material_texture(file, "_MetallicGlossMap"); !map.empty()) {
+            material["metallic_texture"] = std::move(map);
+            material["metallic"] = 1.0;
+            const double scale = urp ? smoothness : file.number("_GlossMapScale", 1.0);
+            material["roughness"] = tidy_number(1.0 - scale);
+            problems_.add("smoothness in a metallic map", at,
+                          "roughness is 1 minus its smoothness scale over the whole surface");
+        }
+        if ((standard && file.shader.file_id == kSpecularShader) ||
+            (urp && file.number("_WorkflowMode", 1.0) == 0.0)) {
+            problems_.add("specular workflow material", at,
+                          "converted as a metallic one, with metallic 0");
+            material["metallic"] = 0.0;
+        }
+        if (std::string normal = material_texture(file, "_BumpMap"); !normal.empty()) {
+            material["normal_enabled"] = true;
+            material["normal_texture"] = std::move(normal);
+            material["normal_scale"] = file.number("_BumpScale", 1.0);
+        }
+        if (file.keywords.contains("_EMISSION")) {
+            // An HDR color: its brightest channel past 1 is its energy.
+            material["emission_enabled"] = true;
+            if (const auto emission = file.colors.find("_EmissionColor");
+                emission != file.colors.end()) {
+                std::array<double, 3> rgb{emission->second.number_at("r"),
+                                          emission->second.number_at("g"),
+                                          emission->second.number_at("b")};
+                const double energy = std::max({rgb[0], rgb[1], rgb[2]});
+                if (energy > 1.0) {
+                    for (double& channel : rgb) {
+                        channel /= energy;
+                    }
+                    material["emission_energy_multiplier"] = tidy_number(energy);
+                }
+                material["emission"] =
+                    json::Array{tidy_number(rgb[0]), tidy_number(rgb[1]), tidy_number(rgb[2]), 1.0};
+            }
+            if (std::string map = material_texture(file, "_EmissionMap"); !map.empty()) {
+                material["emission_texture"] = std::move(map);
+            }
+        }
+        static constexpr std::array<std::pair<std::string_view, std::string_view>, 4> kMaps{
+            {{"_OcclusionMap", "occlusion map"},
+             {"_ParallaxMap", "height map"},
+             {"_DetailAlbedoMap", "detail maps"},
+             {"_DetailNormalMap", "detail maps"}}};
+        for (const auto& [name, what] : kMaps) {
+            if (file.texture(std::string(name))) {
+                problems_.add("material " + std::string(what), at,
+                              "StandardMaterial3D here has none; the material draws without it");
+            }
+        }
+        if (urp) {
+            if (file.number("_Surface", 0.0) == 1.0) {
+                material["transparency"] = "alpha";
+                const double blend = file.number("_Blend", 0.0);
+                if (blend == 2.0) {
+                    material["blend_mode"] = "add";
+                } else if (blend == 3.0) {
+                    material["blend_mode"] = "mul";
+                }
+            } else if (file.number("_AlphaClip", 0.0) == 1.0) {
+                material["transparency"] = "alpha_scissor";
+                material["alpha_scissor_threshold"] = file.number("_Cutoff", 0.5);
+            }
+            if (shader == kUrpUnlit) {
+                material["shading_mode"] = "unshaded";
+            }
+        } else if (const double mode = file.number("_Mode", 0.0); mode == 1.0) {
+            material["transparency"] = "alpha_scissor";
+            material["alpha_scissor_threshold"] = file.number("_Cutoff", 0.5);
+        } else if (mode == 2.0 || mode == 3.0) {
+            material["transparency"] = "alpha";
+        }
+        if (const double cull = file.number("_Cull", 2.0); cull == 0.0) {
+            material["cull_mode"] = "disabled";
+        } else if (cull == 1.0) {
+            material["cull_mode"] = "front";
+        }
+        return material;
+    }
+
+    // How a material's textures are filtered and repeat, from its main texture's import
+    // settings.
+    void texture_settings(const std::string& guid, const std::string& where,
+                          json::Value& material) {
+        const Asset* asset = asset_of(guid);
+        const Node* importer = asset != nullptr ? asset->meta.get("TextureImporter") : nullptr;
+        if (importer == nullptr) {
+            return;
+        }
+        std::string filter =
+            importer->integer_at("textureSettings.filterMode", 1) == 0 ? "nearest" : "linear";
+        if (importer->flag_at("mipmaps.enableMipMap", true)) {
+            filter += "_with_mipmaps";
+        }
+        if (filter != "linear_with_mipmaps") {
+            material["texture_filter"] = filter;
+        }
+        std::int64_t wrap = importer->integer_at("textureSettings.wrapU", -1);
+        if (wrap < 0) {
+            wrap = importer->integer_at("textureSettings.wrapMode", 0);
+        }
+        if (wrap == 1) {
+            material["texture_repeat"] = false;
+        } else if (wrap == 2 || wrap == 3) {
+            problems_.add("mirrored texture wrapping", where, "the texture repeats");
+        }
+    }
+
+    // --- The 3D environment ---
+
+    // A skybox material as the sky's component and its fields, or nullopt.
+    std::optional<std::pair<std::string, json::Value>> sky_material(const ObjectRef& ref,
+                                                                    const std::string& where) {
+        // Unity's procedural sky scatters the sun's light through the air in HDR. Godot's physical
+        // sky does too, but is dim without HDR, so it becomes a ProceduralSkyMaterial's gradient
+        // in the colors Unity's draws with its default settings: its tint scales the sky's colors
+        // and its exposure, 1.3 by default, the sky's energy.
+        const auto procedural = [&](const MaterialFile* file) {
+            json::Value sky = json::Object{};
+            const auto number = [&](const char* name, double fallback) {
+                return file != nullptr ? file->number(name, fallback) : fallback;
+            };
+            const auto color = [&](const char* name) -> const Node* {
+                if (file == nullptr) {
+                    return nullptr;
+                }
+                const auto found = file->colors.find(name);
+                return found != file->colors.end() ? &found->second : nullptr;
+            };
+            static constexpr std::array<double, 3> kTop{0.29, 0.45, 0.75};
+            static constexpr std::array<double, 3> kHorizon{0.72, 0.77, 0.84};
+            const Node* tint = color("_SkyTint");
+            const std::array<double, 3> scale{
+                tint != nullptr ? tint->number_at("r", 0.5) / 0.5 : 1.0,
+                tint != nullptr ? tint->number_at("g", 0.5) / 0.5 : 1.0,
+                tint != nullptr ? tint->number_at("b", 0.5) / 0.5 : 1.0};
+            const auto tinted = [&](const std::array<double, 3>& rgb) {
+                json::Array out;
+                for (std::size_t i = 0; i < 3; ++i) {
+                    out.emplace_back(tidy_number(std::min(1.0, rgb.at(i) * scale.at(i))));
+                }
+                out.emplace_back(1.0);
+                return json::Value(std::move(out));
+            };
+            sky["sky_top_color"] = tinted(kTop);
+            sky["sky_horizon_color"] = tinted(kHorizon);
+            sky["ground_horizon_color"] = tinted(kHorizon);
+            if (const Node* ground = color("_GroundColor")) {
+                json::Value bottom = rgba(*ground);
+                bottom.as_array()[3] = 1.0;
+                sky["ground_bottom_color"] = std::move(bottom);
+            } else {
+                sky["ground_bottom_color"] = json::Array{0.369, 0.349, 0.341, 1.0};
+            }
+            sky["energy_multiplier"] = tidy_number(number("_Exposure", 1.3) / 1.3);
+            problems_.add("procedural skybox", where,
+                          "approximated by ProceduralSkyMaterial's gradient, tinted as Unity's "
+                          "sky is");
+            if (number("_AtmosphereThickness", 1.0) != 1.0) {
+                problems_.add("skybox atmosphere thickness", where,
+                              "the sky has the colors of the default thickness");
+            }
+            return std::pair<std::string, json::Value>{"ProceduralSkyMaterial", std::move(sky)};
+        };
+        if (ref.guid == kBuiltinSprites && ref.file_id == kDefaultSkybox) {
+            return procedural(nullptr);
+        }
+        const auto file = read_material(ref.guid);
+        if (!file) {
+            problems_.add("skybox material", where,
+                          "a material that isn't a readable .mat file in the project's Assets "
+                          "folder");
+            return std::nullopt;
+        }
+        if (file->numbers.contains("_AtmosphereThickness") || file->colors.contains("_SkyTint")) {
+            return procedural(&*file);
+        }
+        if (file->textures.contains("_MainTex") && file->numbers.contains("_Mapping")) {
+            // A panoramic sky. Unity's longitude turns from x towards z and Godot's from -z
+            // towards x; in mirrored axes they agree a quarter turn apart.
+            if (file->number("_Mapping", 1.0) != 1.0 || file->number("_ImageType", 0.0) != 0.0) {
+                problems_.add("panoramic skybox layout", file->path,
+                              "only 360-degree latitude-longitude panoramas convert");
+                return std::nullopt;
+            }
+            std::string panorama = material_texture(*file, "_MainTex");
+            if (panorama.empty()) {
+                return std::nullopt;
+            }
+            json::Value sky = json::Object{};
+            sky["panorama"] = std::move(panorama);
+            sky["energy_multiplier"] = file->number("_Exposure", 1.0);
+            double turn = (-file->number("_Rotation", 0.0) * std::numbers::pi / 180.0) -
+                          (std::numbers::pi / 2.0);
+            turn = std::remainder(turn, 2.0 * std::numbers::pi);
+            sky_rotation_ = tidy_number(turn);
+            return std::pair<std::string, json::Value>{"PanoramaSkyMaterial", std::move(sky)};
+        }
+        problems_.add("cubemap skybox", file->path,
+                      "procedural and panoramic skyboxes convert; the background is the camera's "
+                      "color");
+        return std::nullopt;
+    }
+
+    // The scene's sky, ambient light and fog, from its RenderSettings and the background its main
+    // camera clears to, on an entity of its own.
+    void environment_3d(Expanded& file, json::Object& entities) {
+        const Node& settings = file.render_settings;
+        const std::string where = file.path + ": RenderSettings";
+        json::Value environment = json::Object{};
+        json::Object components;
+        sky_rotation_ = 0.0;
+        std::optional<std::pair<std::string, json::Value>> sky;
+        if (const auto ref = ref_at(settings, "m_SkyboxMaterial"); ref && !ref->null()) {
+            sky = sky_material(*ref, where);
+        }
+        const std::int64_t clear = scene_camera_ ? scene_camera_->clear : 1;
+        if (clear == 1 && sky) {
+            environment["background_mode"] = "sky";
+        } else if (scene_camera_ && (clear == 1 || clear == 2)) {
+            environment["background_mode"] = "color";
+            environment["background_color"] = scene_camera_->color;
+        } else if (scene_camera_) {
+            problems_.add("camera that clears only depth or nothing", file.path,
+                          "the background is the project's clear color");
+        }
+        const auto color = [&](std::string_view key) {
+            const Node* value = settings.get(key);
+            return value != nullptr ? json::Array{value->number_at("r"), value->number_at("g"),
+                                                  value->number_at("b"), 1.0}
+                                    : json::Array{0.0, 0.0, 0.0, 1.0};
+        };
+        switch (settings.integer_at("m_AmbientMode", 0)) {
+        case 1:
+            environment["ambient_light_source"] = "color";
+            environment["ambient_light_color"] = color("m_AmbientEquatorColor");
+            problems_.add("gradient ambient light", where,
+                          "one color lights the scene all round: the equator's");
+            break;
+        case 3:
+            environment["ambient_light_source"] = "color";
+            environment["ambient_light_color"] = color("m_AmbientSkyColor");
+            break;
+        default:
+            if (settings.integer_at("m_AmbientMode", 0) != 0) {
+                problems_.add("custom ambient light", where, "the sky lights the scene");
+            }
+            if (sky) {
+                environment["ambient_light_source"] = "sky";
+                environment["ambient_light_energy"] = settings.number_at("m_AmbientIntensity", 1.0);
+            } else {
+                environment["ambient_light_source"] = "color";
+                environment["ambient_light_color"] = color("m_AmbientSkyColor");
+            }
+            break;
+        }
+        if (sky) {
+            environment["reflected_light_source"] = "sky";
+            if (sky_rotation_ != 0.0) {
+                environment["sky_rotation"] = json::Array{0.0, sky_rotation_, 0.0};
+            }
+        }
+        if (settings.flag_at("m_Fog")) {
+            environment["fog_enabled"] = true;
+            environment["fog_light_color"] = color("m_FogColor");
+            environment["fog_sky_affect"] = 0.0; // Unity's fog leaves the sky alone
+            const std::int64_t mode = settings.integer_at("m_FogMode", 3);
+            if (mode == 1) {
+                environment["fog_mode"] = "depth";
+                environment["fog_density"] = 1.0;
+                environment["fog_depth_begin"] = settings.number_at("m_LinearFogStart", 0.0);
+                environment["fog_depth_end"] = settings.number_at("m_LinearFogEnd", 300.0);
+                problems_.add("linear fog", where,
+                              "depth fog thickens from its start to its end along a smooth curve, "
+                              "not a straight line");
+            } else {
+                environment["fog_density"] = settings.number_at("m_FogDensity", 0.01);
+                if (mode == 3) {
+                    problems_.add("exponential squared fog", where,
+                                  "it thickens as Unity's exponential fog does");
+                }
+            }
+        }
+        components["WorldEnvironment"] = std::move(environment);
+        if (sky) {
+            components[sky->first] = std::move(sky->second);
+        }
+        json::Value entity;
+        entity["components"] = std::move(components);
+        entities[take(file.used, "environment")] = std::move(entity);
     }
 
     // Reads the files this import has written so far, for checking scenes that instance them.
@@ -8745,6 +10499,20 @@ private:
         // Unity has no damping besides each body's own.
         project["physics_2d"]["linear_damp"] = 0.0;
         project["physics_2d"]["angular_damp"] = 0.0;
+        if (three_d_files_ > 0) {
+            // Mirrored in x, as the scenes are.
+            const double x = physics3d_.number_at("m_Gravity.x", 0.0);
+            const double y = physics3d_.number_at("m_Gravity.y", -9.81);
+            const double z = physics3d_.number_at("m_Gravity.z", 0.0);
+            const double length = std::sqrt((x * x) + (y * y) + (z * z));
+            project["physics_3d"]["gravity"] = tidy(length);
+            if (length > 0.0) {
+                project["physics_3d"]["gravity_vector"] =
+                    json::Array{tidy(-x / length), tidy(y / length), tidy(z / length)};
+            }
+            project["physics_3d"]["linear_damp"] = 0.0;
+            project["physics_3d"]["angular_damp"] = 0.0;
+        }
         if (const auto color = clear_colors_.find(main_source_); color != clear_colors_.end()) {
             project["rendering"]["clear_color"] = color->second;
         }
@@ -9345,6 +11113,24 @@ private:
     std::map<std::string, std::map<std::int64_t, std::string>> mixer_buses_; // by mixer GUID
     std::string bus_layout_;
     json::Value bus_groups_; // the buses' names, by mixer and group
+    // 3D: whether the project has more 3D components than 2D ones, the scene's main camera, the
+    // LOD levels it hides, and materials, physics and the sky's turn as converted.
+    bool project_3d_ = false;
+    std::optional<SceneCamera> scene_camera_;
+    std::set<std::int64_t> lod_hidden_;
+    std::map<std::string, std::optional<json::Value>> surfaces_; // by material GUID
+    json::Value default_surface_ = json::Object{{"roughness", 0.5}};
+    std::map<std::string, Material> materials_3d_;
+    Material default_material_3d_{kDefaultFriction3D, 0.0};
+    Node physics3d_;
+    std::array<std::uint32_t, 32> layer_masks_3d_ = [] {
+        std::array<std::uint32_t, 32> masks{};
+        masks.fill(0xFFFFFFFFU);
+        return masks;
+    }();
+    double sky_rotation_ = 0.0;
+    int three_d_files_ = 0;
+    std::set<std::string> controllers_3d_; // by GUID: controllers of 3D Animators, not converted
 };
 
 } // namespace

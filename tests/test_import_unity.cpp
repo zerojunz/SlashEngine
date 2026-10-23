@@ -1957,6 +1957,253 @@ void write_lights(const fs::path& folder) {
     write(folder / "Assets/Scenes/Night.unity.meta", meta("a3000000000000000000000000000004"));
 }
 
+// --- A 3D project: "Hall", saved by Unity 2022.3 ---
+
+constexpr std::string_view kBuiltinExtra = "0000000000000000e000000000000000";
+constexpr std::string_view kBuiltinSprites = "0000000000000000f000000000000000";
+constexpr std::string_view kWoodPng = "a4000000000000000000000000000001";
+constexpr std::string_view kWoodMat = "a4000000000000000000000000000002";
+constexpr std::string_view kStoneMat = "a4000000000000000000000000000003";
+constexpr std::string_view kTreeGlb = "a4000000000000000000000000000004";
+constexpr std::string_view kStepsOgg = "a4000000000000000000000000000005";
+constexpr std::string_view kTreeRoot = "-8679921383154817045"; // a model's top Transform
+constexpr std::string_view kTreeObject = "919132149155446097"; // and its top GameObject
+
+std::string transform_3d(std::int64_t object, std::int64_t owner, std::string_view position,
+                         std::string_view rotation, std::string_view scale, std::int64_t father = 0,
+                         std::initializer_list<std::int64_t> children = {}) {
+    std::string out = "--- !u!4 &" + id(object) + "\nTransform:\n" + std::string(kSource) +
+                      "  m_GameObject: {fileID: " + id(owner) + "}\n  serializedVersion: 2\n" +
+                      "  m_LocalRotation: " + std::string(rotation) + "\n" +
+                      "  m_LocalPosition: " + std::string(position) + "\n" +
+                      "  m_LocalScale: " + std::string(scale) + "\n";
+    if (children.size() == 0) {
+        out += "  m_Children: []\n";
+    } else {
+        out += "  m_Children:\n";
+        for (const std::int64_t child : children) {
+            out += "  - {fileID: " + id(child) + "}\n";
+        }
+    }
+    return out + "  m_Father: {fileID: " + id(father) + "}\n";
+}
+
+// A change an instance of the tree model makes to one of its objects, by its ID in the model.
+std::string model_change(std::string_view target, std::string_view path, std::string_view value,
+                         std::string_view reference = "{fileID: 0}") {
+    return "    - target: {fileID: " + std::string(target) + ", guid: " + std::string(kTreeGlb) +
+           ",\n        type: 3}\n      propertyPath: " + std::string(path) +
+           "\n      value: " + std::string(value) +
+           "\n      objectReference: " + std::string(reference) + "\n";
+}
+
+constexpr std::string_view kNoTurn = "{x: 0, y: 0, z: 0, w: 1}";
+constexpr std::string_view kOne = "{x: 1, y: 1, z: 1}";
+
+std::string mesh_filter(std::int64_t object, std::int64_t owner, int mesh) {
+    return "--- !u!33 &" + id(object) + "\nMeshFilter:\n" + std::string(kSource) +
+           "  m_GameObject: {fileID: " + id(owner) + "}\n  m_Mesh: " + ref(mesh, kBuiltinExtra, 0) +
+           "\n";
+}
+
+std::string mesh_renderer(std::int64_t object, std::int64_t owner, std::string_view material) {
+    return component(23, "MeshRenderer", object, owner,
+                     "  m_CastShadows: 1\n  m_ReceiveShadows: 1\n  m_Materials:\n  - " +
+                         std::string(material) + "\n");
+}
+
+std::string material_file(std::string_view name, std::string_view shader, std::string_view keywords,
+                          std::string_view textures, std::string_view floats,
+                          std::string_view colors) {
+    return std::string(kHeader) + "--- !u!21 &2100000\nMaterial:\n  serializedVersion: 8\n" +
+           std::string(kSource) + "  m_Name: " + std::string(name) +
+           "\n  m_Shader: " + std::string(shader) +
+           "\n  m_ShaderKeywords: " + std::string(keywords) +
+           "\n  m_SavedProperties:\n    serializedVersion: 3\n    m_TexEnvs:" +
+           std::string(textures) + "\n    m_Floats:" + std::string(floats) +
+           "\n    m_Colors:" + std::string(colors) + "\n";
+}
+
+void write_hall(const fs::path& folder) {
+    write(folder / "ProjectSettings/ProjectVersion.txt", "m_EditorVersion: 2022.3.20f1\n");
+    write(folder / "ProjectSettings/ProjectSettings.asset",
+          std::string(kHeader) + "--- !u!129 &1\nPlayerSettings:\n  productName: Hall\n");
+    std::string matrix;
+    for (int layer = 0; layer < 32; ++layer) {
+        matrix += "ffffffff";
+    }
+    write(folder / "ProjectSettings/DynamicsManager.asset",
+          std::string(kHeader) + "--- !u!55 &1\nPhysicsManager:\n  m_ObjectHideFlags: 0\n" +
+              "  serializedVersion: 13\n  m_Gravity: {x: 0, y: -9.81, z: 0}\n" +
+              "  m_DefaultMaterial: {fileID: 0}\n  m_LayerCollisionMatrix: " + matrix + "\n");
+
+    write_png(folder / "Assets/Art/wood.png", 8, 8);
+    write(folder / "Assets/Art/wood.png.meta",
+          meta(kWoodPng, "TextureImporter",
+               "  mipmaps:\n    enableMipMap: 1\n  textureSettings:\n    serializedVersion: 2\n"
+               "    filterMode: 0\n    wrapU: 0\n  textureType: 0\n"));
+    // Unity's Standard shader: a texture tiled twice, smoothness and an HDR emission color.
+    write(folder / "Assets/Materials/Wood.mat",
+          material_file("Wood", ref(46, kBuiltinSprites, 0), "_EMISSION",
+                        "\n    - _MainTex:\n        m_Texture: " + ref(2800000, kWoodPng) +
+                            "\n        m_Scale: {x: 2, y: 2}\n        m_Offset: {x: 0, y: 0}\n"
+                            "    - _BumpMap:\n        m_Texture: {fileID: 0}\n"
+                            "        m_Scale: {x: 1, y: 1}\n        m_Offset: {x: 0, y: 0}",
+                        "\n    - _Glossiness: 0.2\n    - _Metallic: 0\n    - _Mode: 0",
+                        "\n    - _Color: {r: 0.8, g: 0.6, b: 0.4, a: 1}\n"
+                        "    - _EmissionColor: {r: 2, g: 1, b: 0, a: 1}"));
+    write(folder / "Assets/Materials/Wood.mat.meta",
+          meta(kWoodMat, "NativeFormatImporter", "  mainObjectFileID: 2100000\n"));
+    // URP's Lit shader, both sides drawn.
+    write(folder / "Assets/Materials/Stone.mat",
+          material_file("Stone", ref(4800000, "933532a4fcc9baf4fa0491de14d08ed7"), "", " []",
+                        "\n    - _Smoothness: 0.1\n    - _Surface: 0\n    - _Cull: 0",
+                        "\n    - _BaseColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}"));
+    write(folder / "Assets/Materials/Stone.mat.meta",
+          meta(kStoneMat, "NativeFormatImporter", "  mainObjectFileID: 2100000\n"));
+    write(folder / "Assets/Models/Tree.glb", "glTF");
+    write(folder / "Assets/Models/Tree.glb.meta",
+          meta(kTreeGlb, "ModelImporter", "  meshes:\n    globalScale: 1\n    useFileScale: 1\n"));
+    write(folder / "Assets/Audio/steps.ogg", "OggS");
+    write(folder / "Assets/Audio/steps.ogg.meta", meta(kStepsOgg, "AudioImporter"));
+    // A prefab with only a Transform converts as the project does: in 3D.
+    write(folder / "Assets/Prefabs/Spawn.prefab", std::string(kHeader) +
+                                                      game_object(500, "Spawn", {501}) +
+                                                      transform(501, 500, "{x: 1, y: 0, z: 0}"));
+    write(folder / "Assets/Prefabs/Spawn.prefab.meta", meta("a4000000000000000000000000000006"));
+
+    const std::string default_material = ref(10303, kBuiltinSprites, 0);
+    std::string scene(kHeader);
+    scene += "--- !u!104 &2\nRenderSettings:\n  m_ObjectHideFlags: 0\n  serializedVersion: 9\n"
+             "  m_Fog: 1\n  m_FogColor: {r: 0.6, g: 0.7, b: 0.8, a: 1}\n  m_FogMode: 2\n"
+             "  m_FogDensity: 0.02\n  m_LinearFogStart: 0\n  m_LinearFogEnd: 300\n"
+             "  m_AmbientSkyColor: {r: 0.212, g: 0.227, b: 0.259, a: 1}\n"
+             "  m_AmbientIntensity: 1\n  m_AmbientMode: 0\n  m_SkyboxMaterial: " +
+             ref(10304, kBuiltinSprites, 0) + "\n";
+    // The camera, at -10 looking along +z, with a cube held in front of it.
+    scene += game_object(10, "Main Camera", {11, 12, 13}, 0,
+                         "  m_TagString: MainCamera\n  m_IsActive: 1\n");
+    scene += transform_3d(11, 10, "{x: 1, y: 2, z: -10}", kNoTurn, kOne, 0, {16});
+    scene += component(20, "Camera", 12, 10,
+                       "  m_ClearFlags: 1\n  m_BackGroundColor: {r: 0.2, g: 0.3, b: 0.5, a: 0}\n"
+                       "  m_NormalizedViewPortRect:\n    serializedVersion: 2\n    x: 0\n"
+                       "    y: 0\n    width: 1\n    height: 1\n  near clip plane: 0.1\n"
+                       "  far clip plane: 500\n  field of view: 50\n  orthographic: 0\n"
+                       "  orthographic size: 5\n  m_CullingMask:\n    serializedVersion: 2\n"
+                       "    m_Bits: 4294967295\n  m_TargetTexture: {fileID: 0}\n");
+    scene += component(81, "AudioListener", 13, 10, "");
+    scene += game_object(15, "Gun", {16, 17, 18});
+    scene += transform_3d(16, 15, "{x: 0.5, y: -0.5, z: 1}", kNoTurn, kOne, 11);
+    scene += mesh_filter(17, 15, 10202);
+    scene += mesh_renderer(18, 15, default_material);
+    // The sun: Unity's Euler angles (50, -30, 0), soft shadows.
+    scene += game_object(30, "Sun", {31, 32});
+    scene += transform_3d(31, 30, "{x: 0, y: 3, z: 0}",
+                          "{x: 0.40821788, y: -0.23456968, z: 0.10938163, w: 0.8754261}", kOne);
+    scene += component(108, "Light", 32, 30,
+                       "  serializedVersion: 10\n  m_Type: 1\n"
+                       "  m_Color: {r: 1, g: 0.95, b: 0.85, a: 1}\n  m_Intensity: 1.2\n"
+                       "  m_Range: 10\n  m_SpotAngle: 30\n  m_Shadows:\n    m_Type: 2\n"
+                       "    m_Strength: 0.8\n  m_Cookie: {fileID: 0}\n  m_Lightmapping: 4\n"
+                       "  m_CullingMask:\n    serializedVersion: 2\n    m_Bits: 4294967295\n");
+    // A crate turned 30 degrees, wooden, falling, with a label on its front.
+    scene += game_object(40, "Crate", {41, 42, 43, 44, 45});
+    scene += transform_3d(41, 40, "{x: 3, y: 0.5, z: 2}",
+                          "{x: 0, y: 0.25881904, z: 0, w: 0.9659258}", kOne, 0, {47});
+    scene += mesh_filter(42, 40, 10202);
+    scene += mesh_renderer(43, 40, ref(2100000, kWoodMat, 2));
+    scene += component(65, "BoxCollider", 44, 40,
+                       "  m_Material: {fileID: 0}\n  m_IsTrigger: 0\n  serializedVersion: 3\n"
+                       "  m_Size: {x: 1, y: 1, z: 1}\n  m_Center: {x: 0, y: 0, z: 0}\n");
+    scene += "--- !u!54 &45\nRigidbody:\n" + std::string(kSource) +
+             "  m_GameObject: {fileID: 40}\n  serializedVersion: 4\n  m_Mass: 2\n"
+             "  m_Drag: 0.1\n  m_AngularDrag: 0.05\n  m_UseGravity: 1\n  m_IsKinematic: 0\n"
+             "  m_Interpolate: 0\n  m_Constraints: 80\n  m_CollisionDetection: 0\n";
+    scene += game_object(46, "Label", {47, 48, 49});
+    scene += transform_3d(47, 46, "{x: 0, y: 0, z: -0.51}", kNoTurn, kOne, 41);
+    scene += mesh_filter(48, 46, 10210);
+    scene += mesh_renderer(49, 46, default_material);
+    // The floor: a plane twice its size, of stone, its mesh its collider.
+    scene += game_object(50, "Floor", {51, 52, 53, 54});
+    scene += transform_3d(51, 50, "{x: 0, y: 0, z: 0}", kNoTurn, "{x: 2, y: 1, z: 2}");
+    scene += mesh_filter(52, 50, 10209);
+    scene += mesh_renderer(53, 50, ref(2100000, kStoneMat, 2));
+    scene += component(64, "MeshCollider", 54, 50,
+                       "  m_Material: {fileID: 0}\n  m_IsTrigger: 0\n  serializedVersion: 5\n"
+                       "  m_Convex: 0\n  m_Mesh: " +
+                           ref(10209, kBuiltinExtra, 0) + "\n");
+    // A lamp, and a spot light switched off.
+    scene += game_object(60, "Lamp", {61, 62});
+    scene += transform_3d(61, 60, "{x: 0, y: 3, z: 0}", kNoTurn, kOne);
+    scene += component(108, "Light", 62, 60,
+                       "  m_Type: 2\n  m_Color: {r: 1, g: 0.8, b: 0.6, a: 1}\n"
+                       "  m_Intensity: 2\n  m_Range: 8\n  m_Shadows:\n    m_Type: 0\n");
+    scene += game_object(65, "Spot", {66, 67});
+    scene += transform_3d(66, 65, "{x: 2, y: 4, z: 0}", kNoTurn, kOne);
+    scene += "--- !u!108 &67\nLight:\n" + std::string(kSource) +
+             "  m_GameObject: {fileID: 65}\n  m_Enabled: 0\n  m_Type: 0\n"
+             "  m_Color: {r: 1, g: 1, b: 1, a: 1}\n  m_Intensity: 1\n  m_Range: 12\n"
+             "  m_SpotAngle: 40\n";
+    // The player: a character controller with footsteps around it.
+    scene += game_object(70, "Player", {71, 72, 73});
+    scene += transform_3d(71, 70, "{x: 0, y: 0, z: -3}", kNoTurn, kOne);
+    scene += component(143, "CharacterController", 72, 70,
+                       "  m_Material: {fileID: 0}\n  m_IsTrigger: 0\n  serializedVersion: 3\n"
+                       "  m_Height: 1.8\n  m_Radius: 0.4\n  m_SlopeLimit: 50\n"
+                       "  m_StepOffset: 0.3\n  m_SkinWidth: 0.05\n"
+                       "  m_MinMoveDistance: 0.001\n  m_Center: {x: 0, y: 0.9, z: 0}\n");
+    scene += component(
+        82, "AudioSource", 73, 70,
+        "  OutputAudioMixerGroup: {fileID: 0}\n  m_audioClip: " + ref(8300000, kStepsOgg) +
+            "\n  m_PlayOnAwake: 1\n  m_Volume: 1\n  m_Pitch: 1\n  Loop: 0\n"
+            "  Mute: 0\n  MinDistance: 2\n  MaxDistance: 30\n  rolloffMode: 1\n"
+            "  panLevelCustomCurve:\n    serializedVersion: 2\n    m_Curve:\n"
+            "    - serializedVersion: 3\n      time: 0\n      value: 1\n");
+    // A tree model, its materials replaced with stone, and a bird perched in it.
+    scene += instance(100, kTreeGlb, 0,
+                      model_change(kTreeRoot, "m_LocalPosition.x", "-4") +
+                          model_change(kTreeRoot, "m_LocalPosition.z", "6") +
+                          model_change(kTreeObject, "m_Name", "Oak") +
+                          model_change("-7511558181221131132", "m_Materials.Array.data[0]", "",
+                                       ref(2100000, kStoneMat, 2)));
+    scene += "--- !u!4 &101 stripped\nTransform:\n  m_CorrespondingSourceObject: {fileID: " +
+             std::string(kTreeRoot) + ", guid: " + std::string(kTreeGlb) +
+             ",\n    type: 3}\n  m_PrefabInstance: {fileID: 100}\n  m_PrefabAsset: {fileID: 0}\n";
+    scene += game_object(105, "Bird", {106, 107, 108, 109});
+    scene += transform_3d(106, 105, "{x: 1, y: 3, z: 0}", kNoTurn, kOne, 101);
+    scene += mesh_filter(107, 105, 10207);
+    scene += mesh_renderer(108, 105, default_material);
+    scene += component(135, "SphereCollider", 109, 105,
+                       "  m_Material: {fileID: 0}\n  m_IsTrigger: 1\n  serializedVersion: 3\n"
+                       "  m_Radius: 0.25\n  m_Center: {x: 0, y: 0, z: 0}\n");
+    // A rock with two levels of detail: only the first draws.
+    scene += game_object(110, "Rock", {111, 112});
+    scene += transform_3d(111, 110, "{x: 5, y: 0, z: 0}", kNoTurn, kOne, 0, {121, 131});
+    scene += "--- !u!205 &112\nLODGroup:\n" + std::string(kSource) +
+             "  m_GameObject: {fileID: 110}\n  serializedVersion: 2\n  m_Size: 1\n"
+             "  m_LODs:\n  - screenRelativeHeight: 0.6\n    renderers:\n"
+             "    - renderer: {fileID: 123}\n  - screenRelativeHeight: 0.1\n    renderers:\n"
+             "    - renderer: {fileID: 133}\n  m_Enabled: 1\n";
+    scene += game_object(120, "Rock_LOD0", {121, 122, 123});
+    scene += transform_3d(121, 120, "{x: 0, y: 0, z: 0}", kNoTurn, kOne, 111);
+    scene += mesh_filter(122, 120, 10207);
+    scene += mesh_renderer(123, 120, default_material);
+    scene += game_object(130, "Rock_LOD1", {131, 132, 133});
+    scene += transform_3d(131, 130, "{x: 0, y: 0, z: 0}", kNoTurn, kOne, 111);
+    scene += mesh_filter(132, 130, 10202);
+    scene += mesh_renderer(133, 130, default_material);
+    // A sprite in a 3D scene doesn't convert.
+    scene += game_object(140, "Sign", {141, 142});
+    scene += transform_3d(141, 140, "{x: 0, y: 1, z: 4}", kNoTurn, kOne);
+    scene += sprite_renderer(142, 140, ref(21300000, kWoodPng));
+    scene += "--- !u!1660057539 &9223372036854775807\nSceneRoots:\n  m_ObjectHideFlags: 0\n"
+             "  m_Roots:\n  - {fileID: 11}\n  - {fileID: 31}\n  - {fileID: 41}\n"
+             "  - {fileID: 51}\n  - {fileID: 61}\n  - {fileID: 66}\n  - {fileID: 71}\n"
+             "  - {fileID: 100}\n  - {fileID: 111}\n  - {fileID: 141}\n";
+    write(folder / "Assets/Scenes/Hall.unity", scene);
+    write(folder / "Assets/Scenes/Hall.unity.meta", meta("a4000000000000000000000000000007"));
+}
+
 fs::path make_project(const fs::path& folder) {
     fs::remove_all(folder);
     write_settings(folder);
@@ -2089,7 +2336,7 @@ TEST_CASE("importing a Unity project converts its settings and input") {
     CHECK(unsupported(report, "main scene").find("where")->as_string() ==
           "ProjectSettings/EditorBuildSettings.asset");
     CHECK(unsupported(report, "file type .psd").find("why")->as_string() ==
-          "textures are PNG or BMP files; save it as PNG");
+          "textures are PNG, JPEG or BMP files; save it as PNG");
     CHECK(*report.find("physics_layers") ==
           parse(R"({"Default": 1, "TransparentFX": 2, "Ignore Raycast": 4, "Water": 16,
                     "UI": 32, "Enemies": 256})"));
@@ -2184,7 +2431,8 @@ TEST_CASE("importing a Unity scene converts cameras, sprites, bodies and sounds 
 
     const json::Value report = parse(files.at("import/unity.json"));
     CHECK(unsupported(report, "component Light").find("why")->as_string() ==
-          "3D comes with milestone 7");
+          "a 3D component in a 2D scene; a scene with more 3D components than 2D ones converts in "
+          "3D");
     CHECK(unsupported(report, "component Image").find("why")->as_string() ==
           "a UI component outside a Canvas; put it under one");
     CHECK(unsupported(report, "component CinemachineCamera").find("why")->as_string() ==
@@ -3895,4 +4143,149 @@ TEST_CASE("project.import unpacks a Unity build only where it may run AssetRippe
     CHECK(fs::exists(project / "Assets/Texture2D/sheet.png"));
     CHECK(session.call("scene.open", parse(R"({"path": "Assets/Scenes/Main.scene.json"})")).ok);
     fs::remove_all(project);
+}
+
+TEST_CASE("Unity 3D scenes convert mirrored in x: meshes, materials, cameras, lights and bodies") {
+    const fs::path project = "import_unity_3d";
+    fs::remove_all(project);
+    write_hall(project / "unity");
+    const auto files = files_of(plan_inside(project));
+    const std::string hall = "unity/Assets/Scenes/Hall.scene.json";
+    REQUIRE(files.contains(hall));
+    slash::world::ComponentRegistry components;
+    slash::world::register_builtin_components(components);
+    CHECK(slash::world::validate_scene(components, parse(files.at(hall))).empty());
+
+    // Unity's axes are left-handed and Godot's right-handed, so x is mirrored: positions flip in
+    // x and rotations turn the other way about y and z. The crate turned 30 degrees about y in
+    // Unity turns -30 here.
+    const json::Value crate = entity(files, hall, "crate");
+    CHECK(*crate.find("Transform3D") == parse(R"({"position": [-3.0, 0.5, 2.0],
+        "rotation": [0.0, -0.523599, 0.0], "children": ["label"]})"));
+    CHECK(*crate.find("BoxMesh") == parse("{}"));
+    CHECK(*crate.find("MeshInstance3D") == parse("{}"));
+    // The Standard shader's color, texture (tiled twice, its offset from the top), smoothness and
+    // HDR emission, filtered as the texture's import settings say.
+    CHECK(*crate.find("StandardMaterial3D") == parse(R"({"albedo_color": [0.8, 0.6, 0.4, 1.0],
+                    "albedo_texture": "unity/Assets/Art/wood.png", "uv1_scale": [2.0, 2.0, 1.0],
+                    "uv1_offset": [0.0, -1.0, 0.0], "roughness": 0.8, "emission_enabled": true,
+                    "emission": [1.0, 0.5, 0.0, 1.0], "emission_energy_multiplier": 2.0,
+                    "texture_filter": "nearest_with_mipmaps"})"));
+    // Unity's default friction, its colliders meeting every layer, frozen rotations as locks.
+    CHECK(*crate.find("RigidBody3D") ==
+          parse(R"({"mass": 2.0, "linear_damp": 0.1, "angular_damp": 0.05, "friction": 0.6,
+                    "collision_mask": 4294967295, "axis_lock_angular_x": true,
+                    "axis_lock_angular_z": true})"));
+    CHECK(*crate.find("CollisionShape3D") == parse("{}")); // a box a meter across
+
+    // Unity's cameras, lights and quads face along +z, Godot's along -z: they turn half a turn
+    // about y, and what is under a turned object turns back.
+    const json::Value camera = entity(files, hall, "main_camera");
+    CHECK(*camera.find("Transform3D") == parse(R"({"position": [-1.0, 2.0, -10.0],
+        "rotation": [0.0, 3.141593, 0.0], "children": ["gun"]})"));
+    CHECK(*camera.find("Camera3D") ==
+          parse(R"({"fov": 50.0, "near": 0.1, "far": 500.0, "current": true})"));
+    CHECK(*camera.find("AudioListener3D") == parse(R"({"current": true})"));
+    const json::Value gun = entity(files, hall, "gun");
+    CHECK(*gun.find("Transform3D") ==
+          parse(R"({"position": [0.5, -0.5, -1.0], "rotation": [0.0, 3.141593, 0.0]})"));
+    CHECK(*gun.find("StandardMaterial3D") == parse(R"({"roughness": 0.5})")); // Default-Material
+    const json::Value label = entity(files, hall, "label");
+    CHECK(*label.find("Transform3D") ==
+          parse(R"({"position": [0.0, 0.0, -0.51], "rotation": [0.0, 3.141593, 0.0]})"));
+    CHECK(label.find("QuadMesh") != nullptr);
+    // The sun's Euler angles (50, -30, 0) shine the same way here.
+    const json::Value sun = entity(files, hall, "sun");
+    CHECK(*sun.find("Transform3D") ==
+          parse(R"({"position": [0.0, 3.0, 0.0], "rotation": [-0.872665, -2.617994, 0.0]})"));
+    CHECK(*sun.find("DirectionalLight3D") ==
+          parse(R"({"light_color": [1.0, 0.95, 0.85, 1.0], "light_energy": 1.2,
+                    "shadow_enabled": true, "shadow_opacity": 0.8})"));
+    // A point light shines all round, so it doesn't turn. A switched-off light waits hidden on
+    // an entity of its own; a spot light's angle is half Unity's.
+    CHECK(
+        *entity(files, hall, "lamp").find("OmniLight3D") ==
+        parse(R"({"omni_range": 8.0, "light_energy": 2.0, "light_color": [1.0, 0.8, 0.6, 1.0]})"));
+    const json::Value spot = entity(files, hall, "spot_light");
+    CHECK(*spot.find("Transform3D") ==
+          parse(R"({"rotation": [0.0, 3.141593, 0.0], "visible": false})"));
+    CHECK(*spot.find("SpotLight3D") == parse(R"({"spot_range": 12.0, "spot_angle": 20.0})"));
+
+    // A plane's mesh collider is its two triangles, solid from both sides; a collider with no
+    // Rigidbody is static. URP's Lit shader converts as the Standard one does.
+    const json::Value floor = entity(files, hall, "floor");
+    CHECK(*floor.find("PlaneMesh") == parse(R"({"size": [10.0, 10.0]})"));
+    CHECK(*floor.find("Transform3D") == parse(R"({"scale": [2.0, 1.0, 2.0]})"));
+    CHECK(*floor.find("StandardMaterial3D") ==
+          parse(R"({"albedo_color": [0.5, 0.5, 0.5, 1.0], "roughness": 0.9,
+                    "cull_mode": "disabled"})"));
+    CHECK(*floor.find("StaticBody3D") ==
+          parse(R"({"friction": 0.6, "collision_mask": 4294967295})"));
+    const json::Value& faces = *floor.find("CollisionShape3D");
+    CHECK(faces.find("shape")->as_string() == "concave_polygon");
+    CHECK(faces.find("faces")->as_array().size() == 6);
+    CHECK(faces.find("backface_collision")->as_bool());
+
+    // A CharacterController is a CharacterBody3D with its capsule; a sound all in 3D an
+    // AudioStreamPlayer3D, as loud as Unity's up to its MinDistance.
+    const json::Value player = entity(files, hall, "player");
+    CHECK(*player.find("CharacterBody3D") ==
+          parse(R"({"collision_mask": 4294967295, "floor_max_angle": 0.872665,
+                    "safe_margin": 0.05})"));
+    CHECK(*player.find("CollisionShape3D") ==
+          parse(R"({"shape": "capsule", "radius": 0.4, "height": 1.8,
+                    "position": [0.0, 0.9, 0.0]})"));
+    CHECK(*player.find("AudioStreamPlayer3D") ==
+          parse(R"({"stream": "unity/Assets/Audio/steps.ogg", "autoplay": true,
+                    "unit_size": 2.0, "max_db": 0.0, "max_distance": 30.0})"));
+
+    // A model instance draws its file whole, with the material the instance puts in place of its
+    // own; what is under its top object stays under it. A trigger with no body is an Area3D.
+    const json::Value oak = entity(files, hall, "oak");
+    CHECK(*oak.find("Transform3D") ==
+          parse(R"({"position": [4.0, 0.0, 6.0], "children": ["bird"]})"));
+    CHECK(*oak.find("MeshInstance3D") == parse(R"({"mesh": "unity/Assets/Models/Tree.glb"})"));
+    CHECK(*oak.find("StandardMaterial3D") == *floor.find("StandardMaterial3D"));
+    const json::Value bird = entity(files, hall, "bird");
+    CHECK(*bird.find("Transform3D") == parse(R"({"position": [-1.0, 3.0, 0.0]})"));
+    CHECK(*bird.find("Area3D") == parse(R"({"collision_mask": 4294967295})"));
+    CHECK(*bird.find("CollisionShape3D") == parse(R"({"shape": "sphere", "radius": 0.25})"));
+
+    // Only a LOD group's first level draws.
+    CHECK(entity(files, hall, "rock_lod0").find("SphereMesh") != nullptr);
+    CHECK(entity(files, hall, "rock_lod1").find("MeshInstance3D") == nullptr);
+
+    // The scene's sky, ambient light and fog: Unity's procedural Default-Skybox becomes a
+    // procedural sky in its colors; Unity's fog leaves the sky alone.
+    const json::Value environment = entity(files, hall, "environment");
+    CHECK(*environment.find("WorldEnvironment") ==
+          parse(R"({"background_mode": "sky", "ambient_light_source": "sky",
+                    "reflected_light_source": "sky", "fog_enabled": true,
+                    "fog_light_color": [0.6, 0.7, 0.8, 1.0], "fog_density": 0.02,
+                    "fog_sky_affect": 0.0})"));
+    REQUIRE(environment.find("ProceduralSkyMaterial") != nullptr);
+    CHECK(*environment.find("ProceduralSkyMaterial") ==
+          parse(R"({"sky_top_color": [0.29, 0.45, 0.75, 1.0],
+                    "sky_horizon_color": [0.72, 0.77, 0.84, 1.0],
+                    "ground_horizon_color": [0.72, 0.77, 0.84, 1.0],
+                    "ground_bottom_color": [0.369, 0.349, 0.341, 1.0]})"));
+
+    // The project's 3D gravity, mirrored as the scenes are. A prefab with neither 2D nor 3D
+    // components converts as most of the project does.
+    const json::Value settings = parse(files.at("project.json"));
+    CHECK(*settings.find("physics_3d") ==
+          parse(R"({"gravity": 9.81, "gravity_vector": [0.0, -1.0, 0.0],
+        "linear_damp": 0.0, "angular_damp": 0.0})"));
+    CHECK(*entity(files, "unity/Assets/Prefabs/Spawn.scene.json", "spawn").find("Transform3D") ==
+          parse(R"({"position": [-1.0, 0.0, 0.0]})"));
+
+    const json::Value report = parse(files.at("import/unity.json"));
+    CHECK(unsupported(report, "component SpriteRenderer").find("why")->as_string() ==
+          "a 2D component in a 3D scene; a scene with more 2D components than 3D ones converts in "
+          "2D");
+    CHECK(unsupported(report, "LOD level past the first").find("where")->as_string() ==
+          "Assets/Scenes/Hall.unity: Rock/Rock_LOD1");
+    CHECK(!unsupported(report, "CharacterController step offset").is_null());
+    CHECK(!unsupported(report, "procedural skybox").is_null());
+    CHECK(!unsupported(report, "audio rolloff").is_null());
 }
