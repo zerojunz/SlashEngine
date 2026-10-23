@@ -706,9 +706,10 @@ private:
         const json::Value request_value = get(index, "request");
         Request request = Request::None;
         if (request_value.is_string()) {
-            if (const auto* it = std::ranges::find(kRequests, request_value.as_string());
-                it != kRequests.end()) {
-                request = static_cast<Request>(it - kRequests.begin());
+            const auto at =
+                std::ranges::find(kRequests, request_value.as_string()) - kRequests.begin();
+            if (at < std::ssize(kRequests)) {
+                request = static_cast<Request>(at);
             }
         }
         const bool cur_active = flag(index, "active");
@@ -1554,7 +1555,7 @@ private:
             pb.reset_request_on_teleport = false;
         }
         if (found_route) {
-            for (ChildInfo& child : children) {
+            for (const ChildInfo& child : children) {
                 child.playback->path = child.path;
             }
         } else {
