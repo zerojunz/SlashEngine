@@ -716,6 +716,15 @@ void register_ik_components(ComponentRegistry& registry) {
                                    "joint at a time from the end, as Godot's CCDIK3D.");
     chain(registry.add<JacobianIK3D>(), "Turns a chain of bones so its end reaches a target by "
                                         "the Jacobian transpose, as Godot's JacobianIK3D.");
+
+    registry.add<BoneAttachment3D>()
+        .set_doc("Puts the entity where a bone of a model is posed each tick, after animations "
+                 "and skeleton modifiers, as Godot's BoneAttachment3D, so its Transform3D "
+                 "children move with the bone.")
+        .describe("bone_name", {.doc = "The bone (or other node) of the model it follows."})
+        .describe("external_skeleton",
+                  {.doc = "The entity drawing the model it follows; none for its Transform3D "
+                          "parent."});
 }
 
 // The navigation components: Godot's NavigationRegion, NavigationLink, NavigationAgent and

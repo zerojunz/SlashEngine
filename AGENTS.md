@@ -1004,6 +1004,12 @@ physics3d doesn't depend on scene3d. The `skeleton_modifiers` system makes simul
 kinematic bodies; `apply_modifiers` puts simulating bones where their bodies are.
 `examples/ragdoll` lets a waving arm go limp.
 
+Bone attachments follow Godot's `BoneAttachment3D` (`engine/scene3d/src/bone_attachment.cpp`):
+at the end of each `skeleton_modifiers` run, `place_attachments` poses each followed model
+(`pose_of`, then `apply_modifiers`) and writes the attachment's `Transform3D`, parents first, so
+bodies under it reach physics where the bone is. `check_attachments` backs `scene validate`;
+`examples/bone-attachment` puts a sword in a waving hand.
+
 ## 2D physics
 
 `engine/physics2d` is 2D physics on Box2D v3, as Godot's. Bodies and areas are components:

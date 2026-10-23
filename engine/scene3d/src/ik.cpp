@@ -3,6 +3,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/math.hpp"
 #include "slash/core/text.hpp"
+#include "slash/scene3d/bone_attachment.hpp"
 #include "slash/scene3d/physical_bones.hpp"
 #include "slash/world/components.hpp"
 
@@ -1500,10 +1501,12 @@ void add_modifier_system(world::World& world, ModelLoader load) {
             }
             std::erase_if(state->chains,
                           [&](const auto& entry) { return !seen.contains(entry.first); });
+            // Then the bone attachments, where the bones ended up.
+            place_attachments(w, load);
         },
         {.doc = "Steps the chains of FABRIK3D, CCDIK3D and JacobianIK3D modifiers that aren't "
-                "deterministic toward their targets, and moves the physical bones that follow "
-                "the pose.",
+                "deterministic toward their targets, moves the physical bones that follow the "
+                "pose and puts bone attachments where their bones are.",
          .priority = 920});
 }
 

@@ -1,0 +1,9 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"step","params":{"ticks":30}}
+{"jsonrpc":"2.0","id":3,"method":"skeleton.get","params":{"id":"arm","bones":["Hand"]}}
+{"jsonrpc":"2.0","id":4,"method":"entity.get","params":{"id":"grip","components":["Transform3D"]}}
+{"jsonrpc":"2.0","id":5,"method":"physics.raycast","params":{"from":[0.4,3,0],"to":[0.4,0,0]}}
+{"jsonrpc":"2.0","id":6,"method":"step","params":{"ticks":30}}
+{"jsonrpc":"2.0","id":7,"method":"skeleton.get","params":{"id":"arm","bones":["Hand"]}}
+{"jsonrpc":"2.0","id":8,"method":"entity.get","params":{"id":"grip","components":["Transform3D"]}}
+{"jsonrpc":"2.0","id":9,"method":"frame.capture","params":{"points":[[69,22],[72,31],[73,37],[20,20]]}}

@@ -215,6 +215,18 @@ struct JacobianIK3D {
 SLASH_COMPONENT(JacobianIK3D, settings, active, influence, mutable_bone_axes, max_iterations,
                 min_distance, angular_delta_limit, deterministic)
 
+// Follows a bone of a model, as Godot's BoneAttachment3D: each tick, after the model's animations
+// and skeleton modifiers, the entity goes where the bone is posed, so what hangs under it in its
+// Transform3D children (a sword in a hand, a hit box on a head) moves with the bone. The model is
+// the one its Transform3D parent draws, or external_skeleton's, as Godot's use_external_skeleton.
+struct BoneAttachment3D {
+    std::string bone_name;
+    entt::entity external_skeleton{entt::null};
+
+    friend bool operator==(const BoneAttachment3D&, const BoneAttachment3D&) = default;
+};
+SLASH_COMPONENT(BoneAttachment3D, bone_name, external_skeleton)
+
 // Godot's BoxMesh: a box of size centered on the entity, each face cut into subdivisions + 1
 // strips along each axis.
 struct BoxMesh {
