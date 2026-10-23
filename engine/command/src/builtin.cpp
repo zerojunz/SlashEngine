@@ -21,6 +21,7 @@
 #include "slash/command/replay.hpp"
 #include "slash/command/services.hpp"
 #include "slash/command/session.hpp"
+#include "slash/command/terrain.hpp"
 #include "slash/command/test.hpp"
 #include "slash/core/assert.hpp"
 #include "slash/core/json_schema.hpp"
@@ -7602,6 +7603,7 @@ void register_builtin_commands(Registry& registry) {
     register_playtest_commands(registry);
     register_project_map(registry);
     register_navigation_commands(registry);
+    register_terrain_commands(registry);
     register_services_commands(registry);
 }
 

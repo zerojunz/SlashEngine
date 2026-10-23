@@ -897,6 +897,55 @@ SLASH_COMPONENT(GridMap, mesh_library, cell_size, cell_octant_size, cell_center_
                 cell_center_z, cell_scale, collision_layer, collision_mask, friction, bounce,
                 bake_navigation, legend, floors)
 
+// One of an HTerrain's four ground textures, as the HTerrain plugin's texture set: an albedo with
+// a bump (its height, for depth blending) in alpha, a normal map with roughness in alpha, how many
+// cells one repeat covers and how much the terrain's color map tints it.
+struct TerrainTexture {
+    std::string albedo_bump;      // project path of an image, sRGB; "" is white
+    std::string normal_roughness; // project path of an image, OpenGL style; "" is flat, rough
+    float uv_scale = 20.0F;
+    float colormap_opacity = 1.0F;
+
+    friend bool operator==(const TerrainTexture&, const TerrainTexture&) = default;
+};
+SLASH_REFLECT(TerrainTexture, albedo_bump, normal_roughness, uv_scale, colormap_opacity)
+
+// A heightmap terrain, as the HTerrain plugin for Godot (Godot has no terrain node of its own):
+// resolution x resolution heights, one a cell apart, in the entity's Transform3D space from its
+// origin toward +X and +Z (or around it, centered), scaled by map_scale. The heightmap is a 16-bit
+// gray PNG whose 0 and 65535 are height_range's ends; the splat map weighs the four textures in
+// its RGBA channels and the color map tints them, its alpha under 0.5 cutting holes. A map file
+// that doesn't exist yet reads as flat at height_range's low end, the first texture everywhere and
+// white. It draws in chunks of chunk_size cells, coarser with distance as HTerrain's quad tree
+// makes them, collides as a static height field and is walked on by navigation bakes.
+struct HTerrain {
+    std::string heightmap; // project path of a .height.png file
+    int resolution = 513;  // heights along each side: a power of two plus one, 65 to 4097
+    Vec2 height_range{0.0F, 100.0F};
+    std::string splatmap;                 // project path of a PNG file
+    std::string colormap;                 // project path of a PNG file
+    std::vector<TerrainTexture> textures; // up to 4
+    bool depth_blending = true;
+    float specular = 0.5F;
+    Vec3 map_scale{1.0F, 1.0F, 1.0F};
+    bool centered = false;
+    int chunk_size = 32;    // cells along each side of a chunk: 16, 32 or 64
+    float lod_scale = 2.0F; // how far each level of detail reaches, in chunks
+    bool collision_enabled = true;
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    float friction = 1.0F; // its physics material's
+    float bounce = 0.0F;
+    std::uint32_t render_layers = 1; // as MeshInstance3D's layers
+    std::string cast_shadow = "on";  // as MeshInstance3D's
+
+    friend bool operator==(const HTerrain&, const HTerrain&) = default;
+};
+SLASH_COMPONENT(HTerrain, heightmap, resolution, height_range, splatmap, colormap, textures,
+                depth_blending, specular, map_scale, centered, chunk_size, lod_scale,
+                collision_enabled, collision_layer, collision_mask, friction, bounce, render_layers,
+                cast_shadow)
+
 // Ties an entity to the storyboard entries it stands for, such as the character it plays or the
 // place it is, so a brief for the scene includes them and checks catch a misspelled ID.
 struct StoryRef {

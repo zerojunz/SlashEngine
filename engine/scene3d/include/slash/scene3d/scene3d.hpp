@@ -247,6 +247,12 @@ private:
     // A GridMap's octants, drawn as Godot draws their MultiMeshes.
     void add_gridmap(const world::World& world, entt::entity entity, const world::Affine3D& place,
                      std::uint32_t cull_mask);
+    // An HTerrain's chunks for a camera at camera, as HTerrain draws them.
+    void add_terrain(const world::World& world, entt::entity entity, const world::Affine3D& place,
+                     const world::Affine3D& camera, const world::Camera3D& lens);
+    // An image the renderer makes, such as a terrain's normal map, as a texture on the device,
+    // made once per key.
+    render::MaterialTexture kept_texture(const std::string& key, const render::Image& image);
     // A skinned surface's vertices moved by joints, in its entity's mesh on the device.
     Result<render::MeshId> skinned_mesh(const std::string& key, const ModelSurface& surface,
                                         const std::vector<world::Affine3D>& joints);

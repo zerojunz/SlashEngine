@@ -136,7 +136,7 @@ file, a [`.theme.json`](scene-format.md#themes) file, an
 [`.navmesh.json` or `.navpoly.json`](scene-format.md#navigation-meshes-and-polygons) file, a
 [`.meshlib.json`](scene-format.md#mesh-libraries) file, or a [model](scene-format.md#models)
 (`.gltf`, `.glb`, `.obj`, `.fbx` or `.blend`), and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
-[scenes](scene-format.md#instanced-scenes) a file extends, the tile sets its layers use, the animation libraries and trees its players and trees use, the navigation meshes and polygons its regions place, the mesh libraries its grid maps use and the project's window size and theme are read from its
+[scenes](scene-format.md#instanced-scenes) a file extends, the tile sets its layers use, the animation libraries and trees its players and trees use, the navigation meshes and polygons its regions place, the mesh libraries its grid maps use, the maps its terrains read and the project's window size and theme are read from its
 project: the nearest folder above it with a `project.json`, else the current folder. A `.blend`
 file, and one a scene's `MeshInstance3D` names, is converted with the artist's own Blender first
 if it hasn't been (`SLASH_BLENDER_PATH`; see [Blender models](scene-format.md#blender-models)).

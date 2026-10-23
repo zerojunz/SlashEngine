@@ -23,7 +23,8 @@ add_library(slash_scene3d
     src/physical_bones.cpp
     src/primitive.cpp
     src/scene3d.cpp
-    src/skeleton.cpp)
+    src/skeleton.cpp
+    src/terrain.cpp)
 add_library(slash::scene3d ALIAS slash_scene3d)
 
 target_include_directories(slash_scene3d PUBLIC include)

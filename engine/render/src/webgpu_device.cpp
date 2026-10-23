@@ -117,10 +117,11 @@ constexpr std::uint64_t kLargestUniforms = std::max<std::uint64_t>(
 // (cmake/compile_shaders.cmake): a vertex stage's uniforms in group 1, a fragment stage's
 // textures in group 2 (samplers kSamplerBinding after their textures) and its uniforms in group
 // 3; a compute shader's read-only buffers in group 0, read-write ones in 1 and uniforms in 2. The
-// mesh shader's are the same: its camera and instance, its five textures and two shadow atlases,
-// its surface, scene and shadows; and the shadow shader's: its pass and instance, its albedo
-// texture and its surface.
+// mesh shader's are the same: its camera and instance, its eleven textures, two shadow atlases and
+// the radiance, with their samplers kMeshSamplerBinding after them, its surface, scene and
+// shadows; and the shadow shader's: its pass and instance, its albedo texture and its surface.
 constexpr std::uint32_t kSamplerBinding = 8;
+constexpr std::uint32_t kMeshSamplerBinding = 16;
 
 // The two shaders: plain sprites, and materials that run a program.
 enum class ShaderKind : std::uint8_t { Sprite, Material };
@@ -994,11 +995,9 @@ public:
             .pipeline = mesh_pipeline_for(
                 post_processes(frame_.scene->post) ? kTextureFormat : frame_format_, material),
             .bindings = {}};
-        const std::array<const MaterialTexture*, kMeshTextures> slots{
-            &material.albedo_texture, &material.metallic_texture, &material.roughness_texture,
-            &material.emission_texture, &material.normal_texture};
+        const std::array<MaterialTexture, kMeshTextures> slots = mesh_texture_slots(material);
         for (std::size_t slot = 0; slot < kMeshTextures; ++slot) {
-            batch.bindings.at(slot) = binding(slots.at(slot)->texture, slots.at(slot)->repeat);
+            batch.bindings.at(slot) = binding(slots.at(slot).texture, slots.at(slot).repeat);
         }
         mesh_draws_.push_back({.mesh = mesh,
                                .transform = transform,
@@ -1214,7 +1213,8 @@ private:
     };
 
     // The textures and samplers a batch binds: a key for the group that binds them.
-    using TextureBindings = std::array<std::pair<WGPUTextureView, WGPUSampler>, kMaterialSamplers>;
+    using TextureBindings = std::array<std::pair<WGPUTextureView, WGPUSampler>,
+                                       std::max(kMaterialSamplers, kMeshTextures + 3)>;
     struct BindingsHash {
         std::size_t operator()(const TextureBindings& bindings) const {
             std::size_t hash = 0;
@@ -1264,8 +1264,9 @@ private:
     // radiance.
     using MeshBindings = std::array<std::pair<WGPUTextureView, WGPUSampler>, kMeshTextures + 3>;
     // They share texture_groups_ with batches: a mesh's key binds a cube texture in its last slot,
-    // which a material batch's never does.
-    static_assert(kMeshTextures + 3 == kMaterialSamplers);
+    // past every slot a material batch's binds.
+    static_assert(kMeshTextures + 3 > kMaterialSamplers);
+    static_assert(kMeshTextures + 3 <= kMeshSamplerBinding);
 
     // A cube texture of the radiance's format: a view of every level, which meshes and the
     // filter sample, a view of each level alone, which each next level's mipmaps are drawn from,
@@ -1616,12 +1617,12 @@ private:
             const bool atlas = slot >= kMeshTextures;
             mesh_textures.at(slot) = atlas ? depth_entry(slot) : texture_entry(slot);
             mesh_textures.at(kMeshTextures + 3 + slot) =
-                atlas ? comparison_entry(kSamplerBinding + slot)
-                      : sampler_entry(kSamplerBinding + slot);
+                atlas ? comparison_entry(kMeshSamplerBinding + slot)
+                      : sampler_entry(kMeshSamplerBinding + slot);
         }
         mesh_textures.at(kMeshTextures + 2) = cube_entry(kMeshTextures + 2);
         mesh_textures.at(((kMeshTextures + 3) * 2) - 1) =
-            sampler_entry(kSamplerBinding + kMeshTextures + 2);
+            sampler_entry(kMeshSamplerBinding + kMeshTextures + 2);
         mesh_textures_layout_ = layout(mesh_textures);
         const std::array mesh_fragment{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(MeshSurfaceUniforms)),
@@ -2541,7 +2542,7 @@ private:
             texture.textureView = bindings.at(slot).first;
             WGPUBindGroupEntry& sampler = entries.at(kMeshTextures + 3 + slot);
             sampler = WGPU_BIND_GROUP_ENTRY_INIT;
-            sampler.binding = kSamplerBinding + slot;
+            sampler.binding = kMeshSamplerBinding + slot;
             sampler.sampler = bindings.at(slot).second;
         }
         WGPUBindGroup group = bind_group(mesh_textures_layout_, entries);
