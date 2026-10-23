@@ -13,6 +13,7 @@
 #include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/scene3d/model.hpp"
+#include "slash/scene3d/terrain.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/text/text.hpp"
 #include "slash/world/component_registry.hpp"
@@ -25,6 +26,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <initializer_list>
@@ -4975,4 +4977,267 @@ TEST_CASE("Unity meshes picked out of a model become glTF files of their own") {
     REQUIRE(!lost.is_null());
     CHECK(lost.find("why")->as_string() == "Assets/Models/Props.obj has no mesh with the ID 12345");
     CHECK(entity(files, yard, "lost").find("MeshInstance3D") == nullptr);
+}
+
+namespace {
+
+// Bytes as Unity writes arrays of numbers in text: two hex digits each.
+std::string hex_of(const std::vector<std::uint8_t>& bytes) {
+    std::string out;
+    out.reserve(bytes.size() * 2);
+    for (const std::uint8_t byte : bytes) {
+        out.push_back("0123456789abcdef"[byte >> 4U]);
+        out.push_back("0123456789abcdef"[byte & 0xFU]);
+    }
+    return out;
+}
+
+// A Unity height at a column and row of the hills: rising 100 a column along +x, 10 a row.
+std::int16_t hill_height(int x, int z) {
+    return static_cast<std::int16_t>((x * 100) + (z * 10));
+}
+
+std::string terrain_layer_file(std::string_view name, std::string_view diffuse,
+                               std::string_view normal, std::string_view tile,
+                               std::string_view smoothness) {
+    return std::string(kHeader) + "--- !u!1953259897 &8574412962073106934\nTerrainLayer:\n" +
+           std::string(kSource) + "  m_Name: " + std::string(name) +
+           "\n  m_DiffuseTexture: " + std::string(diffuse) +
+           "\n  m_NormalMapTexture: " + std::string(normal) +
+           "\n  m_MaskMapTexture: {fileID: 0}\n  m_TileSize: " + std::string(tile) +
+           "\n  m_TileOffset: {x: 0, y: 0}\n  m_Specular: {r: 0, g: 0, b: 0, a: 0}\n"
+           "  m_Metallic: 0\n  m_Smoothness: " +
+           std::string(smoothness) + "\n  m_NormalScale: 1\n";
+}
+
+// Hills: a terrain of 65 by 65 heights, 2 m apart along x and 3 along z, 100 m high, with grass,
+// rock and sand painted by a 4 by 4 alpha map, a hole three cells across and a tree.
+void write_hills(const fs::path& folder) {
+    write(folder / "ProjectSettings/ProjectVersion.txt", "m_EditorVersion: 2022.3.20f1\n");
+    std::string matrix;
+    for (int layer = 0; layer < 32; ++layer) {
+        matrix += "ffffffff";
+    }
+    write(folder / "ProjectSettings/DynamicsManager.asset",
+          std::string(kHeader) + "--- !u!55 &1\nPhysicsManager:\n  m_ObjectHideFlags: 0\n" +
+              "  serializedVersion: 13\n  m_Gravity: {x: 0, y: -9.81, z: 0}\n" +
+              "  m_DefaultMaterial: {fileID: 0}\n  m_LayerCollisionMatrix: " + matrix + "\n");
+    const std::array<std::pair<std::string_view, std::string_view>, 4> textures{
+        {{"grass", "a6000000000000000000000000000001"},
+         {"rock", "a6000000000000000000000000000002"},
+         {"rock_normal", "a6000000000000000000000000000003"},
+         {"sand", "a6000000000000000000000000000004"}}};
+    for (const auto& [name, guid] : textures) {
+        write_png(folder / ("Assets/Terrain/" + std::string(name) + ".png"), 4, 4);
+        write(folder / ("Assets/Terrain/" + std::string(name) + ".png.meta"),
+              meta(guid, "TextureImporter", "  textureType: 0\n"));
+    }
+    const auto texture = [](std::string_view guid) { return ref(2800000, guid, 3); };
+    write(folder / "Assets/Terrain/Grass.terrainlayer",
+          terrain_layer_file("Grass", texture("a6000000000000000000000000000001"), "{fileID: 0}",
+                             "{x: 10, y: 10}", "0"));
+    write(folder / "Assets/Terrain/Rock.terrainlayer",
+          terrain_layer_file("Rock", texture("a6000000000000000000000000000002"),
+                             texture("a6000000000000000000000000000003"), "{x: 8, y: 8}", "0.5"));
+    write(folder / "Assets/Terrain/Sand.terrainlayer",
+          terrain_layer_file("Sand", texture("a6000000000000000000000000000004"), "{fileID: 0}",
+                             "{x: 6, y: 4}", "0"));
+    const std::array<std::string_view, 3> layers{"a6000000000000000000000000000011",
+                                                 "a6000000000000000000000000000012",
+                                                 "a6000000000000000000000000000013"};
+    const std::array<std::string_view, 3> layer_files{"Grass", "Rock", "Sand"};
+    for (std::size_t i = 0; i < layers.size(); ++i) {
+        write(folder / ("Assets/Terrain/" + std::string(layer_files.at(i)) + ".terrainlayer.meta"),
+              meta(layers.at(i), "NativeFormatImporter",
+                   "  mainObjectFileID: 8574412962073106934\n"));
+    }
+
+    constexpr int kSize = 65;
+    std::vector<std::uint8_t> heights;
+    for (int z = 0; z < kSize; ++z) {
+        for (int x = 0; x < kSize; ++x) {
+            const auto value = static_cast<std::uint16_t>(hill_height(x, z));
+            heights.push_back(static_cast<std::uint8_t>(value & 0xFFU));
+            heights.push_back(static_cast<std::uint8_t>(value >> 8U));
+        }
+    }
+    // Cells 10 to 12 along x and 20 to 22 along z are cut.
+    std::vector<std::uint8_t> holes;
+    for (int z = 0; z < kSize - 1; ++z) {
+        for (int x = 0; x < kSize - 1; ++x) {
+            holes.push_back(x >= 10 && x <= 12 && z >= 20 && z <= 22 ? 0 : 1);
+        }
+    }
+    // The alpha map's texel at column x and row z (from the bottom, along +z): grass along the
+    // first column, rock along the last, sand in between rows.
+    std::vector<std::uint8_t> alpha;
+    for (int z = 0; z < 4; ++z) {
+        for (int x = 0; x < 4; ++x) {
+            const std::array<std::uint8_t, 4> texel =
+                x == 0 ? std::array<std::uint8_t, 4>{255, 0, 0, 0}
+                       : (x == 3 ? std::array<std::uint8_t, 4>{0, 255, 0, 0}
+                                 : std::array<std::uint8_t, 4>{
+                                       0, static_cast<std::uint8_t>(z * 80),
+                                       static_cast<std::uint8_t>(255 - (z * 80)), 0});
+            alpha.insert(alpha.end(), texel.begin(), texel.end());
+        }
+    }
+    std::string data(kHeader);
+    data += "--- !u!156 &15600000\nTerrainData:\n" + std::string(kSource) +
+            "  m_Name: Hills\n  serializedVersion: 6\n  m_SplatDatabase:\n"
+            "    serializedVersion: 2\n    m_TerrainLayers:\n";
+    for (const std::string_view guid : layers) {
+        data += "    - " + ref(8574412962073106934, guid, 2) + "\n";
+    }
+    data += "    m_AlphaTextures:\n    - {fileID: 2800001}\n    m_AlphamapResolution: 4\n"
+            "    m_BaseMapResolution: 16\n  m_DetailDatabase:\n    serializedVersion: 3\n"
+            "    m_Patches: []\n    m_DetailPrototypes: []\n    m_TreeInstances:\n"
+            "    - position: {x: 0.5, y: 0, z: 0.5}\n      widthScale: 1\n      heightScale: 1\n"
+            "      prototypeIndex: 0\n    m_TreePrototypes: []\n"
+            "  m_Heightmap:\n    serializedVersion: 6\n    m_Holes: " +
+            hex_of(holes) + "\n    m_Heights: " + hex_of(heights) +
+            "\n    m_Resolution: 65\n    m_Levels: 2\n    m_Scale: {x: 2, y: 100, z: 3}\n";
+    data += "--- !u!28 &2800001\nTexture2D:\n" + std::string(kSource) +
+            "  m_Name: SplatAlpha 0\n  serializedVersion: 13\n  m_Width: 4\n  m_Height: 4\n"
+            "  m_CompleteImageSize: 64\n  m_TextureFormat: 4\n  m_MipCount: 1\n"
+            "  image data: 64\n  _typelessdata: " +
+            hex_of(alpha) + "\n";
+    write(folder / "Assets/Terrain/Hills.asset", data);
+    write(folder / "Assets/Terrain/Hills.asset.meta",
+          meta("a6000000000000000000000000000020", "NativeFormatImporter",
+               "  mainObjectFileID: 15600000\n"));
+    write(folder / "Assets/Terrain/Mud.physicMaterial",
+          std::string(kHeader) + "--- !u!134 &13400000\nPhysicMaterial:\n" + std::string(kSource) +
+              "  m_Name: Mud\n  dynamicFriction: 0.4\n  staticFriction: 0.4\n"
+              "  bounciness: 0.25\n");
+    write(folder / "Assets/Terrain/Mud.physicMaterial.meta",
+          meta("a6000000000000000000000000000021", "NativeFormatImporter",
+               "  mainObjectFileID: 13400000\n"));
+
+    // The terrain object 10 m along +x and 20 m along +z, with its collider.
+    const std::string terrain_data = ref(15600000, "a6000000000000000000000000000020", 2);
+    std::string scene(kHeader);
+    scene += game_object(10, "Hills", {11, 12, 13});
+    scene += transform_3d(11, 10, "{x: 10, y: 0, z: 20}", kNoTurn, kOne);
+    scene += component(218, "Terrain", 12, 10,
+                       "  serializedVersion: 6\n  m_TerrainData: " + terrain_data +
+                           "\n  m_TreeDistance: 5000\n  m_HeightmapPixelError: 5\n"
+                           "  m_ShadowCastingMode: 1\n  m_DrawHeightmap: 1\n"
+                           "  m_MaterialTemplate: {fileID: 10652, guid: "
+                           "0000000000000000f000000000000000, type: 0}\n");
+    scene += component(154, "TerrainCollider", 13, 10,
+                       "  m_Material: " + ref(13400000, "a6000000000000000000000000000021", 2) +
+                           "\n  serializedVersion: 2\n  m_TerrainData: " + terrain_data +
+                           "\n  m_EnableTreeColliders: 1\n");
+    write(folder / "Assets/Scenes/Hills.unity", scene);
+    write(folder / "Assets/Scenes/Hills.unity.meta", meta("a6000000000000000000000000000030"));
+}
+
+} // namespace
+
+TEST_CASE("Unity terrains become HTerrains: heights, layers, alpha maps and holes, mirrored in x") {
+    const fs::path project = "import_unity_terrain";
+    fs::remove_all(project);
+    write_hills(project / "unity");
+    auto imported = importer::import_project(
+        {.source = (project / "unity").string(), .destination = project.string()});
+    REQUIRE_MESSAGE(imported.ok(), (imported.ok() ? std::string() : imported.error().message));
+    const auto files = files_of(imported.value());
+    const std::string scene = "unity/Assets/Scenes/Hills.scene.json";
+    REQUIRE(files.contains(scene));
+    slash::world::ComponentRegistry components;
+    slash::world::register_builtin_components(components);
+    CHECK(slash::world::validate_scene(components, parse(files.at(scene))).empty());
+
+    // The terrain reaches toward +x from its object in Unity, so toward -x mirrored: its entity
+    // moves back its width, 128 m. Its collider's material is the HTerrain's; its layers' tiles
+    // are cells, 2 m each.
+    CHECK(*entity(files, scene, "hills").find("Transform3D") ==
+          parse(R"({"position": [-10.0, 0.0, 20.0], "children": ["hills_terrain"]})"));
+    const json::Value terrain = entity(files, scene, "hills_terrain");
+    CHECK(*terrain.find("Transform3D") == parse(R"({"position": [-128.0, 0.0, 0.0]})"));
+    CHECK(*terrain.find("HTerrain") == parse(R"({
+        "heightmap": "unity/Assets/Terrain/Hills.height.png",
+        "colormap": "unity/Assets/Terrain/Hills.color.png",
+        "splatmap": "unity/Assets/Terrain/Hills.splat.png",
+        "resolution": 65, "height_range": [0.0, 22.0], "map_scale": [2.0, 1.0, 3.0],
+        "textures": [{"albedo_bump": "unity/Assets/Terrain/grass.png", "uv_scale": 5.0},
+                     {"albedo_bump": "unity/Assets/Terrain/rock.png",
+                      "normal_roughness": "unity/Assets/Terrain/rock_normal.png", "uv_scale": 4.0},
+                     {"albedo_bump": "unity/Assets/Terrain/sand.png", "uv_scale": 3.0}],
+        "depth_blending": false, "collision_mask": 4294967295, "friction": 0.4,
+        "bounce": 0.25})"));
+
+    // Heights: Unity's 0 to 32766 are 0 to 100 m; columns are flipped, as x mirrors.
+    const auto heights =
+        slash::render::decode_gray16(files.at("unity/Assets/Terrain/Hills.height.png"));
+    REQUIRE(heights.ok());
+    const std::vector<float> meters =
+        slash::scene3d::decode_heights(heights.value(), slash::Vec2{0.0F, 22.0F});
+    for (const auto& [x, z] :
+         std::initializer_list<std::pair<int, int>>{{0, 0}, {64, 64}, {5, 40}}) {
+        const double expected = hill_height(64 - x, z) / 32766.0 * 100.0;
+        CHECK(std::abs(meters[static_cast<std::size_t>((z * 65) + x)] - expected) <=
+              22.0 / 65535.0);
+    }
+    // The alpha map's weights at each height, its columns flipped too.
+    const auto splat =
+        slash::render::decode_image(files.at("unity/Assets/Terrain/Hills.splat.png"));
+    REQUIRE(splat.ok());
+    const auto weights = [&](int x, int z) {
+        const std::size_t at = static_cast<std::size_t>((z * 65) + x) * 4;
+        return std::array<int, 4>{splat.value().pixels[at], splat.value().pixels[at + 1],
+                                  splat.value().pixels[at + 2], splat.value().pixels[at + 3]};
+    };
+    CHECK(weights(64, 0) == std::array<int, 4>{255, 0, 0, 0}); // Unity's corner at x 0, z 0
+    CHECK(weights(0, 64) == std::array<int, 4>{0, 255, 0, 0});
+    CHECK(weights(32, 32) == std::array<int, 4>{0, 120, 135, 0}); // between four sand texels
+    // Holes: the heights inside the cut cells, at Unity's columns 11 and 12, rows 21 and 22.
+    const auto color =
+        slash::render::decode_image(files.at("unity/Assets/Terrain/Hills.color.png"));
+    REQUIRE(color.ok());
+    int cut = 0;
+    for (int z = 0; z < 65; ++z) {
+        for (int x = 0; x < 65; ++x) {
+            const bool hole =
+                color.value().pixels[(static_cast<std::size_t>((z * 65) + x) * 4) + 3] < 128;
+            cut += hole ? 1 : 0;
+            if (hole) {
+                CHECK((x == 52 || x == 53));
+                CHECK((z == 21 || z == 22));
+            }
+        }
+    }
+    CHECK(cut == 4);
+
+    const json::Value report = parse(files.at("import/unity.json"));
+    for (const auto& [what, where] : std::initializer_list<std::pair<std::string, std::string>>{
+             {"Terrain holes", "Assets/Terrain/Hills.asset"},
+             {"Terrain trees", "Assets/Terrain/Hills.asset"},
+             {"Terrain layer surface", "Assets/Terrain/Rock.terrainlayer"},
+             {"Terrain layer tile size", "Assets/Terrain/Sand.terrainlayer"}}) {
+        const json::Value item = unsupported(report, what);
+        REQUIRE_MESSAGE(!item.is_null(), what);
+        CHECK(item.find("where")->as_string() == where);
+    }
+    CHECK(unsupported(report, "component Terrain").is_null());
+    CHECK(unsupported(report, "component TerrainCollider").is_null());
+
+    // The ground is where Unity has it, mirrored: Unity's height at column 5 and row 40, at x
+    // 10 + 2 * 5 and z 20 + 3 * 40, is at x -20 here.
+    command::Registry commands;
+    command::register_builtin_commands(commands);
+    command::SessionOptions options;
+    options.project_root = project.string();
+    options.capture_logs = false;
+    command::Session session(components, commands, options);
+    const command::Reply opened =
+        session.call("scene.open", parse(R"({"path": ")" + scene + "\"}"));
+    REQUIRE_MESSAGE(opened.ok, opened.message);
+    const command::Reply ground = session.call(
+        "terrain.get", parse(R"({"id": "hills_terrain", "points": [[-20, 140]], "global": true})"));
+    REQUIRE_MESSAGE(ground.ok, ground.message);
+    const json::Value& position = *ground.value.find("points")->as_array()[0].find("position");
+    CHECK(position.as_array()[1].as_double() ==
+          doctest::Approx(hill_height(5, 40) / 32766.0 * 100.0).epsilon(0.001));
 }

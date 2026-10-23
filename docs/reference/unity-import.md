@@ -3,12 +3,13 @@
 [`project.import`](commands.md#projectimport) and [`slash-cli import`](cli.md#import) convert a
 Unity project's 2D or 3D game into a SlashEngine project in one pass: its scenes and prefabs,
 sprites, tile maps, animation, cameras, 2D physics and joints, 2D lights and shadows, 3D meshes,
-models, materials, lights, physics and skies (see [3D scenes](#3d-scenes)), sounds and audio
+models, materials, lights, physics, terrains and skies (see [3D scenes](#3d-scenes)), sounds and audio
 mixers, UI, input and settings. Scripts don't convert,
 since SlashEngine games are plain C++: each becomes a storyboard task to port it, with what the
 port needs, and each Animator controller's state machine a task to set its parameters.
 [examples/import-unity](../../examples/import-unity/) imports a small platformer, and
-[examples/import-unity-3d](../../examples/import-unity-3d/) a 3D courtyard.
+[examples/import-unity-3d](../../examples/import-unity-3d/) a 3D courtyard and
+[examples/import-unity-terrain](../../examples/import-unity-terrain/) a terrain.
 
 A folder imports as a Unity project when it has `Assets/` and
 `ProjectSettings/ProjectVersion.txt`. Projects saved by Unity 2018.3 or later import (prefabs
@@ -26,6 +27,7 @@ serialization). A game built with Unity imports too: see [Unity builds](#unity-b
 | `Assets/tiles.tileset.json` | The sprites tile maps show, as a tile set (`tiles_2.tileset.json` and on for tile maps of other cell sizes or physics) |
 | `<controller>.anim.json` beside each `.controller` and `.overrideController` | The controller's states, as an animation library |
 | `<mixer>.bus_layout.json` beside the main `.mixer` | Every audio mixer's groups, as one bus layout |
+| `<terrain>.height.png`, `.splat.png` and `.color.png` beside each terrain's `.asset` | Its heights, its alpha map as a splat map, and its holes (see [terrains](#terrains)) |
 | `project.json` | The player, time, physics, quality and input settings, merged into the project's own if it has one |
 | `storyboard/work.json` | A task per C# script and per state machine, merged into the project's own tasks |
 | `src/imported/<name>.cpp` | A C++ skeleton per C# script, in the gameplay sources (see [Scripts](#scripts)) |
@@ -494,6 +496,7 @@ when nothing else on it faces a way (its children turn back), else on a `camera`
 | `MeshCollider` of a model's mesh | `convex_polygon` of its corners when it is convex, else `concave_polygon` of its triangles, scaled as the mesh |
 | `PhysicMaterial` | `friction` (its dynamic friction) and `bounce`; Unity's default friction is 0.6 |
 | `LODGroup` | Only its first level draws; renderers in the others are reported |
+| `Terrain` and `TerrainCollider` | `HTerrain` on a `terrain` child entity (see [terrains](#terrains)) |
 | The scene's `RenderSettings` and its main camera's clear flags | An `environment` entity: `WorldEnvironment` (see below) and the sky |
 
 A material's color, main texture (with its tiling and offset), metallic, smoothness (as 1 minus
@@ -523,8 +526,30 @@ Ambient light from the skybox, a flat color or a gradient (its equator's color, 
 (exponential as is, linear as depth fog, exponential squared reported) convert, and fog leaves the
 sky alone, as Unity's does.
 
+### Terrains
+
+A `Terrain` becomes an `HTerrain`, the heightmap terrain that follows the HTerrain plugin for
+Godot, on a child entity named `<object>_terrain`. Unity's terrains reach toward +x and +z from
+their object; mirrored in x, the terrain would reach toward -x, so the child moves back the
+terrain's width and the ground stays where Unity draws it. Its `TerrainData` asset converts once,
+however many terrains use it:
+
+| TerrainData | HTerrain |
+| --- | --- |
+| The heights and `m_Scale` | `heightmap`, a 16-bit `<terrain>.height.png` with its columns flipped as x mirrors, and `height_range`, the whole meters that hold every height; `map_scale` is the cell size. A heightmap under 65 heights across is refined to 65, the smallest an `HTerrain` takes, and reported |
+| The first alpha map | `splatmap`, `<terrain>.splat.png`, resampled to one weight a height |
+| The first four terrain layers | `textures`: the diffuse texture as `albedo_bump`, the normal map as `normal_roughness`, and the tile size in cells as `uv_scale`. Depth blending is off, since Unity's diffuse alpha is smoothness, not height. More layers, tiles that aren't square, tile offsets and a layer's smoothness, metallic, mask map and normal scale are reported |
+| The holes | `colormap`, `<terrain>.color.png`, white with alpha 0 at the holes. A height is a hole where every cell around it is cut, so holes come in half a cell at their edges, which is reported |
+| Trees and detail patches | Reported |
+
+The `Terrain`'s shadow casting mode is `cast_shadow` and its object's layer `render_layers`; a
+disabled one, or one that doesn't draw its heightmap, is hidden. A custom material and a terrain on
+a turned or scaled object are reported. The `TerrainCollider` gives the collision layer and mask,
+from the object's layer, and its physic material's `friction` and `bounce`; one of another
+`TerrainData`, or on a `Rigidbody`, is reported. With no `TerrainCollider`, collision is off.
+
 Reported, for a later import: meshes saved as assets, skinned meshes and `Animator`s on 3D objects
-(their controllers and clips wait with them), mesh colliders of meshes saved as assets, terrains, 3D joints and wheels, navigation, reflection and light probes, line and trail
+(their controllers and clips wait with them), mesh colliders of meshes saved as assets, 3D joints and wheels, navigation, reflection and light probes, line and trail
 renderers, area and baked lights, cookies and color temperature, cubemap skyboxes, a camera's
 viewport rect and render texture, and a `CharacterController`'s step offset.
 
