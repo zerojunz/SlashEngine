@@ -3,6 +3,7 @@
 #include "slash/core/json.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -48,11 +49,32 @@ template <typename Range, typename T>
 // it: other image, font, 3D and video formats. "" for any other extension.
 [[nodiscard]] std::string unsupported_asset(std::string_view extension);
 
+// A 3D model file a MeshInstance3D draws: glTF, OBJ, FBX or .blend.
+[[nodiscard]] bool is_model_file(std::string_view extension);
+
 // The pixel size of a PNG file, from its IHDR chunk.
 [[nodiscard]] std::optional<std::pair<int, int>> png_size(std::string_view bytes);
 
 // Removes the value at a JSON Pointer; false if there is none to remove.
 bool remove_pointer(json::Value& root, std::string_view pointer);
+
+// --- 3D math ---
+
+// Rounds an angle or scale made from a matrix, so 90 degrees is 1.570796 rather than
+// 1.5707963267948966 or 1.5707962513.
+[[nodiscard]] double tidy_number(double value);
+
+// A rotation as Godot's Quaternion keeps it: x, y, z and w.
+using Quaternion = std::array<double, 4>;
+
+// The Euler angles of an orthonormal basis, given by rows, as Godot's Basis::get_euler for
+// EulerOrder::YXZ.
+[[nodiscard]] std::array<double, 3> basis_euler(const std::array<std::array<double, 3>, 3>& m);
+// The YXZ Euler angles of a rotation's quaternion, as Godot's Basis(Quaternion) then
+// Basis::get_euler find them, tidied.
+[[nodiscard]] std::array<double, 3> quaternion_euler(const Quaternion& q);
+// The quaternion of YXZ Euler angles, as Godot's Quaternion::from_euler.
+[[nodiscard]] Quaternion euler_quaternion(const std::array<double, 3>& euler);
 
 // --- The destination ---
 
