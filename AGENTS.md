@@ -526,7 +526,12 @@ URP's 2D lights as `CanvasModulate` and `PointLight2D`s through generated fallof
 shadow casters as `LightOccluder2D`s, objects under a `Canvas` as controls (rects as anchors and
 offsets, uGUI and TextMesh Pro widgets as Godot's, their parts folded into the control's theme
 and fields), settings and both input systems merged into `project.json`, and a task per C#
-script and per state machine. Each script's skeleton takes its serialized fields, which scenes
+script and per state machine. A file with more 3D components than 2D ones (`is_3d`, the project's
+count breaking ties) converts in 3D (`convert_object_3d`): mirrored in x into Godot's
+right-handed axes (`place_of`), cameras, lights and quads turned half a turn about y
+(`place_turned`), built-in meshes, model instances (`instantiate_model`), `.mat` files as
+`StandardMaterial3D` (`convert_surface`), 3D bodies and colliders, and `RenderSettings` as an
+`environment` entity. Each script's skeleton takes its serialized fields, which scenes
 fill in; its trigger and collision messages make the importer set `contact_monitor` on the
 object's `RigidBody2D`, and UI events' persistent calls connect to its methods.
 Objects a prefab brings are written whole, so `format_scene` keeps only what differs.
