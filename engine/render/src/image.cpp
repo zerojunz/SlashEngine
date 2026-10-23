@@ -1,7 +1,7 @@
 #include "slash/render/image.hpp"
 
 #include "checks.hpp"
-#include "jpeg.h"
+#include "image_codecs.h"
 
 #include <SDL3/SDL.h>
 
@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -53,7 +54,7 @@ Result<Image> decode_jpeg(std::string_view bytes) {
     if (pixels == nullptr) {
         // stb_image refuses images past STBI_MAX_DIMENSIONS, the largest texture size.
         return make_error(ErrorCode::InvalidArgument,
-                          std::string("not a JPEG image it can read: ") + slash_jpeg_error() +
+                          std::string("not a JPEG image it can read: ") + slash_image_error() +
                               "; textures are at most " + std::to_string(detail::kMaxTextureSize) +
                               " pixels on each side");
     }
@@ -61,7 +62,7 @@ Result<Image> decode_jpeg(std::string_view bytes) {
     image.width = static_cast<std::uint32_t>(width);
     image.height = static_cast<std::uint32_t>(height);
     image.pixels.assign(pixels, pixels + (std::size_t{image.width} * image.height * 4));
-    slash_free_jpeg(pixels);
+    slash_free_image(pixels);
     return image;
 }
 
@@ -150,6 +151,48 @@ Result<std::string> encode_png(const Image& image) {
         return make_error(ErrorCode::PlatformFailure, "could not encode the image");
     }
     return png;
+}
+
+Result<Gray16> decode_gray16(std::string_view bytes) {
+    if (bytes.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+        return make_error(ErrorCode::InvalidArgument, "the PNG file is too large");
+    }
+    int width = 0;
+    int height = 0;
+    unsigned short* values =
+        slash_decode_gray16(reinterpret_cast<const unsigned char*>(bytes.data()),
+                            static_cast<int>(bytes.size()), &width, &height);
+    if (values == nullptr) {
+        return make_error(ErrorCode::InvalidArgument,
+                          std::string("not a PNG image it can read: ") + slash_image_error() +
+                              "; images are at most " + std::to_string(detail::kMaxTextureSize) +
+                              " pixels on each side");
+    }
+    Gray16 image;
+    image.width = static_cast<std::uint32_t>(width);
+    image.height = static_cast<std::uint32_t>(height);
+    image.values.assign(values, values + (std::size_t{image.width} * image.height));
+    slash_free_image(values);
+    return image;
+}
+
+Result<std::string> encode_gray16_png(const Gray16& image) {
+    if (image.width == 0 || image.height == 0 || image.width > detail::kMaxTextureSize ||
+        image.height > detail::kMaxTextureSize ||
+        image.values.size() != std::size_t{image.width} * image.height) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "the image needs width * height values, at most " +
+                              std::to_string(detail::kMaxTextureSize) + " on each side");
+    }
+    int size = 0;
+    unsigned char* png = slash_encode_gray16_png(image.values.data(), static_cast<int>(image.width),
+                                                 static_cast<int>(image.height), &size);
+    if (png == nullptr) {
+        return make_error(ErrorCode::PlatformFailure, "could not encode the image");
+    }
+    std::string bytes(reinterpret_cast<const char*>(png), static_cast<std::size_t>(size));
+    std::free(png); // NOLINT(cppcoreguidelines-no-malloc): the C encoder allocates with malloc
+    return bytes;
 }
 
 std::array<float, 4> sample_image(const Image& image, Filter filter, bool repeat, float u,

@@ -6,6 +6,7 @@
 #include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/ik.hpp"
+#include "slash/scene3d/terrain.hpp"
 #include "slash/world/path.hpp"
 #include "slash/world/serialize.hpp"
 #include "slash/world/world.hpp"
@@ -561,6 +562,9 @@ std::vector<Problem> check_meshes(const world::World& world) {
     for (Problem& problem : check_gridmaps(world)) {
         problems.push_back(std::move(problem));
     }
+    for (Problem& problem : check_terrains(world)) {
+        problems.push_back(std::move(problem));
+    }
     return problems;
 }
 
@@ -1029,6 +1033,174 @@ void Renderer::add_gridmap(const world::World& world, entt::entity entity,
     }
 }
 
+namespace {
+
+// Where a camera's forward ray first meets a terrain, in its cell space, as HTerrain's
+// cell_raycast finds it for orthogonal cameras: stepping half a cell at a time up to far * 1.2.
+std::optional<Vec3> terrain_hit(const TerrainData& data, const world::Affine3D& to_cells,
+                                const world::Affine3D& camera, float far, float step) {
+    constexpr int kMaxSteps = 1 << 14;
+    const Vec3 forward = normalized(scaled(camera.z, -1.0F));
+    const float limit = far * 1.2F;
+    step = std::max(step, limit / static_cast<float>(kMaxSteps));
+    if (!(step > 0.0F)) {
+        return std::nullopt;
+    }
+    const auto edge = static_cast<float>(data.resolution - 1);
+    const auto steps = static_cast<int>(limit / step);
+    for (int i = 0; i <= steps; ++i) {
+        const float t = static_cast<float>(i) * step;
+        const Vec3 cell = to_cells.apply(camera.origin + scaled(forward, t));
+        if (cell.x < 0.0F || cell.z < 0.0F || cell.x > edge || cell.z > edge) {
+            continue;
+        }
+        const float h = data.interpolated_height(cell.x, cell.z);
+        if (cell.y <= h) {
+            return Vec3{cell.x, h, cell.z};
+        }
+    }
+    return std::nullopt;
+}
+
+} // namespace
+
+render::MaterialTexture Renderer::kept_texture(const std::string& key, const render::Image& image) {
+    Embedded& embedded = embedded_[key];
+    if (embedded.id == render::TextureId::None) {
+        auto made = device_->create_texture({.width = image.width,
+                                             .height = image.height,
+                                             .filter = render::Filter::Linear,
+                                             .render_target = false,
+                                             .format = render::TextureFormat::Rgba8},
+                                            image.pixels);
+        if (!made) {
+            embedded_.erase(key);
+            return {};
+        }
+        embedded.id = made.value();
+    }
+    embedded.used = frame_;
+    return {.texture = embedded.id, .repeat = false};
+}
+
+void Renderer::add_terrain(const world::World& world, entt::entity entity,
+                           const world::Affine3D& place, const world::Affine3D& camera,
+                           const world::Camera3D& lens) {
+    const auto& terrain = world.ecs().get<const world::HTerrain>(entity);
+    const std::shared_ptr<const TerrainData> data = terrain_data(world, entity);
+    problems_.insert(problems_.end(), data->problems.begin(), data->problems.end());
+    if (data->empty()) {
+        return;
+    }
+    const int chunk_size = terrain.chunk_size;
+    if (chunk_size != 16 && chunk_size != 32 && chunk_size != 64) {
+        problems_.push_back({entity, "/components/HTerrain/chunk_size",
+                             "is 16, 32 or 64, not " + std::to_string(chunk_size)});
+        return;
+    }
+    render::ShadowCasting casting = casting_of(terrain.cast_shadow);
+    if ((terrain.render_layers & lens.cull_mask) == 0) {
+        if (casting == render::ShadowCasting::Off) {
+            return;
+        }
+        casting = render::ShadowCasting::ShadowsOnly;
+    }
+    const world::Affine3D cells = terrain_transform(terrain, data->resolution, place);
+    const world::Affine3D to_cells = cells.inverse();
+    // The viewer in cell space, 1 unit a cell; orthogonal cameras stand where they look at the
+    // terrain, as their distance says nothing of what they show.
+    Vec3 viewer = to_cells.apply(camera.origin);
+    if (lens.projection == "orthogonal") {
+        const float step =
+            0.5F * std::min(std::abs(terrain.map_scale.x), std::abs(terrain.map_scale.z));
+        if (const std::optional<Vec3> hit = terrain_hit(*data, to_cells, camera, lens.far, step);
+            hit) {
+            viewer = *hit;
+        }
+    }
+
+    render::Material3D material;
+    material.specular = terrain.specular;
+    render::TerrainShading& shading = material.terrain;
+    shading.enabled = true;
+    shading.resolution = static_cast<std::uint32_t>(data->resolution);
+    shading.depth_blending = terrain.depth_blending;
+    const auto map = [&](const std::string& path, bool present, const char* field,
+                         const char* fallback, std::array<std::uint8_t, 4> rgba) {
+        if (present && textures_) {
+            auto made = textures_(path, render::Filter::Linear);
+            if (made) {
+                return render::MaterialTexture{.texture = made.value().id, .repeat = false};
+            }
+            problems_.push_back(
+                {entity, std::string("/components/HTerrain/") + field, made.error().message});
+        }
+        render::Image pixel;
+        pixel.width = 1;
+        pixel.height = 1;
+        pixel.pixels = {rgba[0], rgba[1], rgba[2], rgba[3]};
+        return kept_texture(fallback, pixel);
+    };
+    shading.colormap = map(terrain.colormap, data->colormap != nullptr, "colormap", "terrain:white",
+                           {255, 255, 255, 255});
+    shading.splatmap = map(terrain.splatmap, data->splatmap != nullptr, "splatmap", "terrain:first",
+                           {255, 0, 0, 0});
+    const std::string normals_key = "terrain-normals:" + std::to_string(data->version) + "@" +
+                                    std::to_string(terrain.map_scale.x) + "," +
+                                    std::to_string(terrain.map_scale.y) + "," +
+                                    std::to_string(terrain.map_scale.z);
+    if (const auto found = embedded_.find(normals_key); found != embedded_.end()) {
+        found->second.used = frame_;
+        shading.normalmap = {.texture = found->second.id, .repeat = false};
+    } else {
+        shading.normalmap = kept_texture(normals_key, terrain_normals(*data, terrain.map_scale));
+    }
+    for (std::size_t i = 0; i < terrain.textures.size() && i < shading.layers.size(); ++i) {
+        const world::TerrainTexture& ground = terrain.textures[i];
+        render::TerrainLayer& layer = shading.layers.at(i);
+        const std::string at = "/components/HTerrain/textures/" + std::to_string(i) + "/";
+        const auto texture = [&](const std::string& path, const char* field) {
+            if (path.empty() || !textures_) {
+                return render::MaterialTexture{};
+            }
+            auto made = textures_(path, render::Filter::Linear);
+            if (!made) {
+                problems_.push_back({entity, at + field, made.error().message});
+                return render::MaterialTexture{};
+            }
+            return render::MaterialTexture{.texture = made.value().id, .repeat = true};
+        };
+        layer.albedo_bump = texture(ground.albedo_bump, "albedo_bump");
+        layer.normal_roughness = texture(ground.normal_roughness, "normal_roughness");
+        layer.uv_scale = ground.uv_scale;
+        layer.colormap_opacity = ground.colormap_opacity;
+    }
+
+    const std::array<float, 16> transform = cells.matrix();
+    const std::string prefix =
+        "terrain:" + std::to_string(data->version) + "/" + std::to_string(chunk_size) + "/";
+    for (const TerrainChunk& chunk : terrain_chunks(*data, chunk_size, terrain.lod_scale, viewer)) {
+        const std::string key = prefix + std::to_string(chunk.x) + "," + std::to_string(chunk.z) +
+                                "," + std::to_string(chunk.lod) + "," + std::to_string(chunk.seams);
+        const auto found = shared_.find(key);
+        auto made = found != shared_.end() && found->second.id != render::MeshId::None
+                        ? kept_mesh(key, {}, {})
+                        : kept_mesh(key, terrain_chunk_vertices(*data, chunk_size, chunk),
+                                    terrain_indices(chunk_size, chunk_size, chunk.seams));
+        if (!made) {
+            problems_.push_back({entity, "/components/HTerrain", made.error().message});
+            return;
+        }
+        Draw draw;
+        draw.mesh = made.value();
+        draw.transform = transform;
+        draw.material = material;
+        draw.layers = terrain.render_layers;
+        draw.shadows = casting;
+        draws_.push_back(draw);
+    }
+}
+
 std::optional<Frame3D> Renderer::prepare(const world::World& world, float width, float height,
                                          double interpolation, render::Color clear,
                                          const render::ShadowSettings& shadows) {
@@ -1183,6 +1355,12 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
     for (const entt::entity entity : made<world::GridMap>(world)) {
         if (tree.visible(entity)) {
             add_gridmap(world, entity, global(entity), lens.cull_mask);
+        }
+    }
+    // Terrains draw the chunks their quad trees settle on for the camera.
+    for (const entt::entity entity : made<world::HTerrain>(world)) {
+        if (tree.visible(entity)) {
+            add_terrain(world, entity, global(entity), global(camera), lens);
         }
     }
     // Meshes no entity drew this frame go, and so do the entities' records of them.

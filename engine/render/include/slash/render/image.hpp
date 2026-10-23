@@ -12,7 +12,7 @@
 
 // Image files to and from Image, for textures and captures. PNG and BMP read, through SDL's own
 // loaders, JPEG through stb_image's decoder, and KTX2 files of RGBA8, BC7 or ASTC 4x4 texels; PNG
-// and KTX2 write.
+// and KTX2 write. 16-bit gray PNG files, as heightmaps are, read and write as Gray16.
 namespace slash::render {
 
 // The suffixes of the image files decode_image reads, as texture paths end.
@@ -53,6 +53,21 @@ inline constexpr std::array<std::string_view, 5> kImageSuffixes{".png", ".bmp", 
 
 // Encodes an image as a PNG file's bytes.
 [[nodiscard]] Result<std::string> encode_png(const Image& image);
+
+// A grid of 16-bit values, rows from the top, as a heightmap's PNG file holds them.
+struct Gray16 {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::vector<std::uint16_t> values; // width * height
+
+    bool operator==(const Gray16&) const = default;
+};
+// Decodes a PNG file to 16-bit gray values, through stb_image's decoder, the same on every
+// machine: 8-bit samples widen to 16 bits (times 257) and colors become gray by their luminance.
+// Images wider or taller than 16384 pixels are refused.
+[[nodiscard]] Result<Gray16> decode_gray16(std::string_view bytes);
+// Encodes the values as a 16-bit gray PNG file, the same bytes on every machine.
+[[nodiscard]] Result<std::string> encode_gray16_png(const Gray16& image);
 
 // The image's color at a texture coordinate, from (0, 0) at its top left to (1, 1), as RGBA from
 // 0 to 1, filtered as a GPU samples it. Outside 0..1 the edge pixels stretch on, or with repeat

@@ -34,6 +34,7 @@
 #include "slash/scene3d/blend.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/scene3d.hpp"
+#include "slash/scene3d/terrain.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
 #include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
@@ -45,6 +46,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -151,7 +153,7 @@ std::optional<fs::path> find_emscripten_toolchain() {
 
 // The files a game reads at run time: scenes, prefabs, the assets sprites draw, animations and
 // animation trees, tile sets, particle process materials, fonts, sounds, navigation meshes,
-// models and mesh libraries.
+// models, mesh libraries and terrains' heightmaps.
 enum class DataFile : std::uint8_t {
     None,
     Scene,
@@ -162,6 +164,7 @@ enum class DataFile : std::uint8_t {
     Animation,
     AnimationTree,
     TileSet,
+    Heightmap,
     Texture,
     FontSettings,
     Font,
@@ -200,6 +203,10 @@ DataFile data_file(std::string_view name) {
     }
     if (name.ends_with(canvas::kTileSetSuffix)) {
         return DataFile::TileSet;
+    }
+    // A 16-bit heightmap is data, not a texture: it never ships in a texture's forms.
+    if (name.ends_with(scene3d::kHeightmapSuffix)) {
+        return DataFile::Heightmap;
     }
     if (render::is_image_path(name)) {
         return DataFile::Texture;
@@ -246,6 +253,12 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
                                                    std::string_view text,
                                                    const world::ComponentRegistry& components,
                                                    const world::FileReader& reader) {
+    if (kind == DataFile::Heightmap) {
+        if (auto heights = render::decode_gray16(text); !heights) {
+            return {{"", heights.error().message}};
+        }
+        return {};
+    }
     if (kind == DataFile::Texture) {
         if (auto image = render::decode_image(text); !image) {
             return {{"", image.error().message}};
@@ -423,9 +436,58 @@ Result<bool> stage_texture_forms(std::string_view file, std::string_view bytes,
     return true;
 }
 
+// The splat and color maps the HTerrains in a project's scenes and prefabs name. They ship as
+// they are, as the HTerrain plugin keeps its maps: terrains read their pixels for holes, collision
+// and navigation, which a texture's compressed forms don't keep.
+std::set<std::string, std::less<>> terrain_maps(const fs::path& project_dir) {
+    std::set<std::string, std::less<>> maps;
+    std::function<void(const json::Value&)> walk = [&](const json::Value& value) {
+        if (value.is_array()) {
+            for (const json::Value& item : value.as_array()) {
+                walk(item);
+            }
+            return;
+        }
+        if (!value.is_object()) {
+            return;
+        }
+        for (const auto& [key, item] : value.as_object()) {
+            if (key == "HTerrain" && item.is_object()) {
+                for (const std::string_view map : {"splatmap", "colormap"}) {
+                    if (const json::Value* path = item.find(map);
+                        path != nullptr && path->is_string() && !path->as_string().empty()) {
+                        maps.insert(path->as_string());
+                    }
+                }
+            }
+            walk(item);
+        }
+    };
+    std::error_code error;
+    auto it = fs::recursive_directory_iterator(project_dir, error);
+    for (; !error && it != fs::recursive_directory_iterator(); it.increment(error)) {
+        const fs::directory_entry& entry = *it;
+        if (entry.is_directory(error)) {
+            if (skipped_folder(entry.path().filename())) {
+                it.disable_recursion_pending();
+            }
+            continue;
+        }
+        const DataFile kind = data_file(entry.path().filename().string());
+        if (kind != DataFile::Scene && kind != DataFile::Prefab) {
+            continue;
+        }
+        auto text = platform::read_file(entry.path().string());
+        if (auto document = text ? json::parse(text.value()) : Result<json::Value>(text.error())) {
+            walk(document.value());
+        }
+    }
+    return maps;
+}
+
 // Copies project.json, providers.json and every scene, prefab, texture, .frames.json,
 // .material.json, .anim.json, .animtree.json, .tileset.json, font, .theme.json, sound, .audio.json,
-// .bus_layout.json, .navmesh.json, .navpoly.json and .meshlib.json file and every model into
+// .bus_layout.json, .navmesh.json, .navpoly.json and .meshlib.json file, heightmap and model into
 // data, checking each on the way.
 // Materials take their shaders compiled for the platform, and textures ship in the forms
 // project.json's rendering.textures asks for, kept in library_dir's cache.
@@ -460,6 +522,7 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
     json::Array problems;
     bool found_main = false;
     FormCounts forms;
+    const std::set<std::string, std::less<>> raw_textures = terrain_maps(project_dir);
     auto it = fs::recursive_directory_iterator(project_dir, error);
     for (; !error && it != fs::recursive_directory_iterator(); it.increment(error)) {
         const fs::directory_entry& entry = *it;
@@ -507,7 +570,7 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
             }
             continue;
         }
-        if (kind == DataFile::Texture && errors.empty()) {
+        if (kind == DataFile::Texture && errors.empty() && !raw_textures.contains(file)) {
             auto staged = stage_texture_forms(file, text.value(), project.texture_import, target,
                                               data, library_dir, forms);
             if (!staged) {

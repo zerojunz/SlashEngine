@@ -2170,6 +2170,57 @@ void register_gridmap_components(ComponentRegistry& registry) {
                           "empty cell."});
 }
 
+void register_terrain_components(ComponentRegistry& registry) {
+    registry.add<HTerrain>()
+        .set_doc("A heightmap terrain, as the HTerrain plugin for Godot: heights a cell apart from "
+                 "a 16-bit PNG, four ground textures weighed by a splat map and tinted by a color "
+                 "map whose alpha cuts holes, drawn in chunks coarser with distance, colliding as "
+                 "a height field and walked on by navigation bakes.")
+        .describe("heightmap", {.doc = "Project path of a .height.png file, 16-bit gray; one that "
+                                       "doesn't exist yet is flat."})
+        .describe("resolution", {.doc = "Heights along each side, which every map's size "
+                                        "matches: a power of two plus one.",
+                                 .min = 65,
+                                 .max = 4097})
+        .describe("height_range",
+                  {.doc = "The heights in meters the heightmap's 0 and 65535 stand for, as "
+                          "[low, high]."})
+        .describe("splatmap", {.doc = "Project path of a PNG whose R, G, B and A weigh the four "
+                                      "textures; one that doesn't exist yet is the first."})
+        .describe("colormap", {.doc = "Project path of a PNG that tints the textures, its alpha "
+                                      "under 0.5 a hole; one that doesn't exist yet is white."})
+        .describe("textures",
+                  {.doc = "Up to 4 ground textures, each {\"albedo_bump\", \"normal_roughness\", "
+                          "\"uv_scale\", \"colormap_opacity\"}: an sRGB albedo with its bump in "
+                          "alpha, an OpenGL-style normal map with roughness in alpha (\"\" is "
+                          "flat and rough), cells a repeat covers (20) and how much the color "
+                          "map tints it (1)."})
+        .describe("depth_blending",
+                  {.doc = "Where textures meet, the one whose bump stands higher shows, as "
+                          "HTerrain's depth blending."})
+        .describe("specular", {.doc = "How bright highlights are.", .min = 0, .max = 1})
+        .describe("map_scale", {.doc = "Meters a cell covers along x and z, and what heights are "
+                                       "multiplied by, as [x, y, z].",
+                                .min = 0.01})
+        .describe("centered", {.doc = "Its middle, not its corner, is at the entity."})
+        .describe("chunk_size", {.doc = "Cells along each side of a chunk drawn at one level of "
+                                        "detail: 16, 32 or 64.",
+                                 .min = 16,
+                                 .max = 64})
+        .describe("lod_scale", {.doc = "How far each level of detail reaches, in chunks of its "
+                                       "size; higher draws more detail further away.",
+                                .min = 2,
+                                .max = 5})
+        .describe("collision_enabled", {.doc = "Collides as a static height field."})
+        .describe("collision_layer", {.doc = "The physics layers it is in."})
+        .describe("collision_mask", {.doc = "The layers it collides with."})
+        .describe("friction", {.doc = "Its physics material's friction.", .min = 0, .max = 1})
+        .describe("bounce", {.doc = "Its physics material's bounce.", .min = 0, .max = 1})
+        .describe("render_layers", {.doc = "Render layers, as MeshInstance3D's layers."})
+        .describe("cast_shadow", {.doc = "Which shadows it casts, as MeshInstance3D's.",
+                                  .choices = {"off", "on", "double_sided", "shadows_only"}});
+}
+
 void register_3d_components(ComponentRegistry& registry) {
     const FieldMeta flip_faces{.doc = "Turns its faces inside out, so its inside shows."};
     const FieldMeta subdivide{.doc = "Extra cuts across each face along this axis.", .min = 0};
@@ -2996,6 +3047,7 @@ void register_builtin_components(ComponentRegistry& registry) {
     register_path_components(registry);
     register_csg_components(registry);
     register_gridmap_components(registry);
+    register_terrain_components(registry);
     register_physics_components(registry);
     register_physics_3d_components(registry);
     register_navigation_components(registry);

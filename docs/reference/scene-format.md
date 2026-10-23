@@ -1176,6 +1176,91 @@ it.
 
 [examples/gridmap](../../examples/gridmap/) lays out a room with a ramp up to a platform.
 
+### Heightmap terrains
+
+An `HTerrain` is a heightmap terrain, as the HTerrain plugin for Godot (zylann.hterrain), since
+Godot has no terrain node of its own: `resolution` by `resolution` heights a cell apart, from the
+entity's origin toward +x and +z in its `Transform3D` space, stretched by `map_scale`. Its
+heights, ground texture weights and colors are image files that the
+[terrain commands](commands.md#terraingenerate) write, so no one edits them by hand.
+
+```json
+"land": {"components": {
+  "Transform3D": {},
+  "HTerrain": {
+    "heightmap": "terrain/land.height.png",
+    "splatmap": "terrain/land.splat.png",
+    "colormap": "terrain/land.color.png",
+    "resolution": 513,
+    "height_range": [0, 100],
+    "map_scale": [2, 1, 2],
+    "textures": [{"albedo_bump": "ground/grass.png", "uv_scale": 20},
+                 {"albedo_bump": "ground/rock.png", "normal_roughness": "ground/rock_normal.png"}]
+  }
+}}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `heightmap` | `""` | A 16-bit gray PNG whose name ends in `.height.png` |
+| `resolution` | `513` | Heights along each side, which every map's size matches: a power of two plus one, `65` to `4097` |
+| `height_range` | `[0, 100]` | The heights in meters the heightmap's `0` and `65535` stand for |
+| `splatmap` | `""` | A PNG whose red, green, blue and alpha weigh the four textures |
+| `colormap` | `""` | A PNG that tints the textures; alpha under 0.5 is a hole |
+| `textures` | `[]` | Up to 4 ground textures, below |
+| `depth_blending` | `true` | Where textures meet, the one whose bump stands higher shows |
+| `specular` | `0.5` | How bright highlights are, `0` to `1` |
+| `map_scale` | `[1, 1, 1]` | Meters a cell covers along x and z, and what heights are multiplied by |
+| `centered` | `false` | Its middle, not its corner, is at the entity |
+| `chunk_size` | `32` | Cells along each side of a chunk drawn at one level of detail: `16`, `32` or `64` |
+| `lod_scale` | `2` | How far each level of detail reaches, in chunks of its size, `2` to `5` |
+| `collision_enabled` | `true` | Collides as a static height field |
+| `collision_layer`, `collision_mask` | `1` | As a [static body's](#3d-physics) |
+| `friction`, `bounce` | `1`, `0` | Its physics material |
+| `render_layers` | `1` | As a `MeshInstance3D`'s `layers` |
+| `cast_shadow` | `"on"` | As a `MeshInstance3D`'s |
+
+Each texture is HTerrain's Classic4 ground layer:
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `albedo_bump` | `""` | An sRGB image, its alpha the bump depth blending compares; `""` is white |
+| `normal_roughness` | `""` | An OpenGL-style normal map with roughness in alpha; `""` is flat and rough |
+| `uv_scale` | `20` | Cells one repeat of the textures covers |
+| `colormap_opacity` | `1` | How much the color map tints it |
+
+- **Maps that don't exist yet.** A heightmap file that doesn't exist reads as flat ground at
+  `height_range`'s low end, a splat map as the first texture everywhere and a color map as
+  white with no holes, so a new terrain needs only paths. Each map is `resolution` pixels
+  square, its top row at -z.
+- **Heights.** A heightmap value `v` is `low + (high - low) * v / 65535` meters, times
+  `map_scale.y`. The commands widen `height_range` to whole meters that hold the heights they
+  write.
+- **Drawing.** As HTerrain's quad tree (`util/quad_tree_lod.gd`), a quad splits into four finer
+  ones while the camera is nearer its middle than `chunk_size` cells times 2 to the level of
+  detail times `lod_scale`, so detail falls off with distance. A chunk beside a coarser one
+  skips every other vertex on that side, as HTerrain's mesher does, so no cracks show. The
+  textures are mixed by the splat map (sharpened by their bumps with `depth_blending`), tinted
+  by the color map and lit through the terrain's normals, as HTerrain's Classic4 shader.
+- **Collision.** With `collision_enabled`, the terrain is a static height field on its
+  `collision_layer` and `collision_mask`, as HTerrain's `HeightMapShape3D` collider, with holes
+  where the color map has them. [`physics.raycast`](commands.md#physicsraycast) hits it.
+- **Navigation.** [Baking](#baking) a navigation mesh takes the terrain's triangles at full
+  detail, leaving out those touching a hole.
+- **Commands.** [`terrain.generate`](commands.md#terraingenerate) makes heights from noise,
+  [`terrain.brush`](commands.md#terrainbrush) raises, lowers, smooths, flattens, levels, paints
+  textures and colors and cuts holes, and [`terrain.get`](commands.md#terrainget) reads heights,
+  normals, texture weights and colors at points. Each writes the map files it changes, and
+  `undo` puts them back.
+- **Exports.** A `.height.png` file ships as it is, as do the splat and color maps a scene or
+  prefab's `HTerrain` names, whatever `rendering.textures` says: terrains read their pixels.
+- **Checks.** `scene validate` and exports report a `resolution` that isn't a power of two plus
+  one, a `chunk_size` that isn't 16, 32 or 64, more than four textures, an `HTerrain` on a
+  physics body's entity, and maps that don't load, aren't `resolution` pixels square or hold
+  only compressed texels, each at its JSON Pointer.
+
+[examples/terrain](../../examples/terrain/) makes an island, paints its slopes and cuts a hole.
+
 ### StandardMaterial3D
 
 Godot's `StandardMaterial3D`, as the mesh's material override. Colors are sRGB; textures are

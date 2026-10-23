@@ -2,6 +2,7 @@
 
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/scene3d/gridmap.hpp"
+#include "slash/scene3d/terrain.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/physical_bones.hpp"
 #include "slash/world/tree3d.hpp"
@@ -182,6 +183,12 @@ struct BuiltShape {
     std::string error;
 };
 [[nodiscard]] BuiltShape build_shape(const world::CollisionShape3D& shape);
+// An HTerrain's heights as a Jolt height field in its entity's space, as Godot's
+// JoltHeightMapShape3D builds a height map shape (mirrored along z, so Jolt splits each quad as
+// Godot does): cell (x, z) at map_scale * (x, height, z), moved back half the terrain when
+// centered. Holes don't collide.
+[[nodiscard]] BuiltShape build_terrain_shape(const scene3d::TerrainData& data, Vec3 map_scale,
+                                             bool centered);
 // The same scaled, made valid for the shape as Godot's JOLT_ENSURE_SCALE_VALID does (a sphere
 // scales the same along every axis).
 [[nodiscard]] JPH::RefConst<JPH::Shape> scaled(const JPH::Shape* shape, Vec3 scale);
@@ -204,6 +211,10 @@ struct ShapeKey {
     std::shared_ptr<const std::vector<Vec3>> csg;
     // A GridMap's cells' shapes, the same way.
     std::shared_ptr<const std::vector<scene3d::GridShape>> grid;
+    // An HTerrain's heights, the same way, and how they are placed.
+    std::shared_ptr<const scene3d::TerrainData> terrain;
+    Vec3 terrain_scale{1.0F, 1.0F, 1.0F};
+    bool terrain_centered = false;
 
     friend bool operator==(const ShapeKey&, const ShapeKey&) = default;
 };
@@ -232,8 +243,9 @@ struct Body {
     entt::entity entity = entt::null;
     std::string name; // the entity's ID
     Kind kind = Kind::Static;
-    // A CSG root with use_collision, a static body of its triangles as Godot's CSGShape3D's, or
-    // a GridMap, a static body of its cells' shapes as its octants' bodies: what scene3d makes.
+    // A CSG root with use_collision, a static body of its triangles as Godot's CSGShape3D's, a
+    // GridMap, a static body of its cells' shapes as its octants' bodies, or an HTerrain, a
+    // static height field as its collider: what scene3d makes.
     bool generated = false;
     // Physical bones: what their simulator makes of them.
     world::PhysicalBoneMode bone_mode = world::PhysicalBoneMode::Static;
@@ -469,7 +481,8 @@ public:
     [[nodiscard]] world::MemoryPart memory() const;
 
 private:
-    // A static body scene3d makes: a CSG root's triangles or a GridMap's cells' shapes, with
+    // A static body scene3d makes: a CSG root's triangles, a GridMap's cells' shapes or an
+    // HTerrain's heights, with
     // their collision layer and mask and physics material.
     struct MadeShape {
         std::uint32_t layer = 1;
@@ -478,6 +491,9 @@ private:
         float bounce = 0.0F;
         std::shared_ptr<const std::vector<Vec3>> faces;
         std::shared_ptr<const std::vector<scene3d::GridShape>> grid;
+        std::shared_ptr<const scene3d::TerrainData> terrain;
+        Vec3 terrain_scale{1.0F, 1.0F, 1.0F};
+        bool terrain_centered = false;
     };
 
     void create_system();

@@ -16,6 +16,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 // What every device shares to draw meshes: the uniform buffers of shaders/mesh.hlsl, laid out as
@@ -36,8 +37,9 @@ template <typename To, typename From>
     return out;
 }
 
-// The textures a mesh draw samples: albedo, metallic, roughness, emission and normal.
-inline constexpr std::size_t kMeshTextures = 5;
+// The textures a mesh draw samples: albedo, metallic, roughness, emission and normal, then six
+// only terrain shading samples (mesh_texture_slots).
+inline constexpr std::size_t kMeshTextures = 11;
 
 // mesh.hlsl's Surface flags.
 inline constexpr std::uint32_t kMeshUnshaded = 1;
@@ -48,6 +50,12 @@ inline constexpr std::uint32_t kMeshNormalMap = 16;
 inline constexpr std::uint32_t kMeshSideCheck = 32;
 inline constexpr std::uint32_t kMeshHasAlpha = 64;
 inline constexpr std::uint32_t kMeshDisableFog = 128;
+
+// mesh.hlsl's terrain flags, in MeshSurfaceUniforms::options' w: terrain shading, depth blending,
+// and from kMeshTerrainNormals up, which layers have a normal_roughness texture.
+inline constexpr std::uint32_t kMeshTerrain = 1;
+inline constexpr std::uint32_t kMeshTerrainDepthBlending = 2;
+inline constexpr std::uint32_t kMeshTerrainNormals = 16;
 
 // The vertex stage's uniforms: b0 and b1 in space1.
 struct MeshCameraUniforms {
@@ -66,8 +74,22 @@ struct MeshSurfaceUniforms {
     Float4 surface{}; // metallic, roughness, specular, normal scale
     Float4 metallic_channel{};
     Float4 roughness_channel{};
-    std::array<std::uint32_t, 4> options{}; // flags, the scissor threshold's bits, layers, 0
+    // Flags, the scissor threshold's bits, layers, the terrain flags.
+    std::array<std::uint32_t, 4> options{};
+    Float4 terrain_uv{};      // each ground layer's tiling: the maps' resolution over its uv_scale
+    Float4 terrain_opacity{}; // how much the color map tints each ground layer
 };
+
+// A draw's textures in mesh.hlsl's slots. A StandardMaterial3D's albedo, metallic, roughness,
+// emission and normal textures, the rest None; with terrain shading, the color map, splat map and
+// normal map, then the four layers' albedo_bump and their normal_roughness.
+[[nodiscard]] std::array<MaterialTexture, kMeshTextures>
+mesh_texture_slots(const Material3D& material);
+// Where slot samples for a pixel at uv: the ground layers' slots tile by terrain_uv, the rest
+// sample at uv.
+[[nodiscard]] std::array<float, 2> mesh_texture_uv(const MeshSurfaceUniforms& surface,
+                                                   std::size_t slot, std::array<float, 2> uv);
+
 struct MeshLightUniforms {
     Float4 position{};
     Float4 direction{};
@@ -121,7 +143,7 @@ struct MeshShadowPassUniforms {
 };
 
 static_assert(sizeof(MeshInstanceUniforms) == 144);
-static_assert(sizeof(MeshSurfaceUniforms) == 96);
+static_assert(sizeof(MeshSurfaceUniforms) == 128);
 static_assert(sizeof(MeshSceneUniforms) == 160 + (80 * kMaxLights3D));
 static_assert(sizeof(MeshDirectionalShadowUniforms) == 320);
 static_assert(sizeof(MeshPositionalShadowUniforms) == 576);
@@ -258,11 +280,14 @@ struct MeshPixel {
     Float3 binormal{};
     Float4 color{};
     bool front = true;
-    Float4 albedo_texel{1.0F, 1.0F, 1.0F, 1.0F};
-    Float4 metallic_texel{1.0F, 1.0F, 1.0F, 1.0F};
-    Float4 roughness_texel{1.0F, 1.0F, 1.0F, 1.0F};
-    Float3 emission_texel{1.0F, 1.0F, 1.0F};
-    Float3 normal_texel{1.0F, 1.0F, 1.0F};
+    // Each slot's texel, at mesh_texture_uv.
+    std::array<Float4, kMeshTextures> texels{white_texels()};
+
+    [[nodiscard]] static constexpr std::array<Float4, kMeshTextures> white_texels() {
+        std::array<Float4, kMeshTextures> out{};
+        out.fill({1.0F, 1.0F, 1.0F, 1.0F});
+        return out;
+    }
 };
 // A shadow atlas on the CPU: depths in rows from the top, size texels across.
 struct ShadowAtlas {
@@ -325,17 +350,27 @@ Result<void> check_material_3d(const Material3D& material, TextureId target, con
                  m.uv1_offset[0], m.uv1_offset[1]})) {
         return make_error(ErrorCode::InvalidArgument, "a 3D material's numbers are finite");
     }
-    for (const MaterialTexture* slot :
-         {&m.albedo_texture, &m.metallic_texture, &m.roughness_texture, &m.emission_texture,
-          &m.normal_texture}) {
-        if (slot->texture == TextureId::None) {
+    if (m.terrain.enabled) {
+        if (m.terrain.resolution == 0 || m.terrain.resolution > kMaxTextureSize) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a terrain's resolution is 1 to " + std::to_string(kMaxTextureSize));
+        }
+        for (const TerrainLayer& layer : m.terrain.layers) {
+            if (!finite({layer.uv_scale, layer.colormap_opacity}) || !(layer.uv_scale > 0.0F)) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "a terrain layer's uv_scale is above 0 and its numbers finite");
+            }
+        }
+    }
+    for (const MaterialTexture& slot : mesh_texture_slots(m)) {
+        if (slot.texture == TextureId::None) {
             continue;
         }
-        if (!known(slot->texture)) {
-            return unknown_texture(slot->texture);
+        if (!known(slot.texture)) {
+            return unknown_texture(slot.texture);
         }
-        if (slot->texture == target) {
-            return target_in_use(slot->texture);
+        if (slot.texture == target) {
+            return target_in_use(slot.texture);
         }
     }
     return {};

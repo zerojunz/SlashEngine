@@ -826,6 +826,19 @@ void Space::build_shape(const world::World& world, Body& body, const ShapeKey& k
             ++built;
         }
     }
+    // An HTerrain's heights, as a height field.
+    if (key.terrain != nullptr) {
+        const BuiltShape made =
+            detail::build_terrain_shape(*key.terrain, key.terrain_scale, key.terrain_centered);
+        if (!made.error.empty()) {
+            warn_shape(world, body.entity, made.error);
+        } else if (made.shape != nullptr) {
+            compound.AddShape(JPH::Vec3::sZero(), JPH::Quat::sIdentity(), made.shape.GetPtr());
+            single = made.shape;
+            single_transform = {};
+            ++built;
+        }
+    }
     if (built != 1) {
         body.grid_part.reset();
     }
@@ -943,6 +956,9 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
         shape_key.scale = scale_of(registry, tree, entity);
         shape_key.csg = made_shape->faces;
         shape_key.grid = made_shape->grid;
+        shape_key.terrain = made_shape->terrain;
+        shape_key.terrain_scale = made_shape->terrain_scale;
+        shape_key.terrain_centered = made_shape->terrain_centered;
     } else {
         shape_key = shape_key_of(registry, tree, entity);
     }
@@ -1128,8 +1144,17 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
                std::ranges::any_of(
                    csg, [&](const scene3d::CsgBody& root) { return root.entity == body.entity; });
     });
+    std::vector<scene3d::TerrainBody> terrains = scene3d::terrain_bodies(world);
+    std::erase_if(terrains, [&](const scene3d::TerrainBody& body) {
+        return kind_of(registry, body.entity).has_value() ||
+               std::ranges::any_of(
+                   csg, [&](const scene3d::CsgBody& root) { return root.entity == body.entity; }) ||
+               std::ranges::any_of(grids, [&](const scene3d::GridBody& grid) {
+                   return grid.entity == body.entity;
+               });
+    });
     if (system_ == nullptr) {
-        if (csg.empty() && grids.empty() &&
+        if (csg.empty() && grids.empty() && terrains.empty() &&
             !has_any<RigidBody3D, CharacterBody3D, AnimatableBody3D, StaticBody3D, Area3D,
                      PhysicalBone3D>(registry)) {
             return;
@@ -1143,17 +1168,20 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
         }
     }
     std::vector<entt::entity> made;
-    made.reserve(csg.size() + grids.size());
+    made.reserve(csg.size() + grids.size() + terrains.size());
     for (const scene3d::CsgBody& body : csg) {
         made.push_back(body.entity);
     }
     for (const scene3d::GridBody& body : grids) {
         made.push_back(body.entity);
     }
+    for (const scene3d::TerrainBody& body : terrains) {
+        made.push_back(body.entity);
+    }
     remove_stale(world, made);
     // New bodies are made in the same order on every machine: by kind, then in each
-    // component's storage order, then CSG roots in tree order, then GridMaps in the order they
-    // were made.
+    // component's storage order, then CSG roots in tree order, then GridMaps and HTerrains in
+    // the order they were made.
     const auto each = [&]<typename Component>(Kind kind) {
         for (const entt::entity entity : registry.view<Component>()) {
             if (kind_of(registry, entity) == kind) {
@@ -1174,7 +1202,10 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
                               .friction = 1.0F,
                               .bounce = 0.0F,
                               .faces = std::move(body.faces),
-                              .grid = nullptr};
+                              .grid = nullptr,
+                              .terrain = nullptr,
+                              .terrain_scale = {1.0F, 1.0F, 1.0F},
+                              .terrain_centered = false};
         sync_body(world, tree, body.entity, Kind::Static, &shape);
     }
     for (scene3d::GridBody& body : grids) {
@@ -1183,7 +1214,23 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
                               .friction = body.friction,
                               .bounce = body.bounce,
                               .faces = nullptr,
-                              .grid = std::move(body.shapes)};
+                              .grid = std::move(body.shapes),
+                              .terrain = nullptr,
+                              .terrain_scale = {1.0F, 1.0F, 1.0F},
+                              .terrain_centered = false};
+        sync_body(world, tree, body.entity, Kind::Static, &shape);
+    }
+    // An HTerrain collides as a static body of its heights, as HTerrainCollider's.
+    for (scene3d::TerrainBody& body : terrains) {
+        const MadeShape shape{.layer = body.layer,
+                              .mask = body.mask,
+                              .friction = body.friction,
+                              .bounce = body.bounce,
+                              .faces = nullptr,
+                              .grid = nullptr,
+                              .terrain = std::move(body.data),
+                              .terrain_scale = body.map_scale,
+                              .terrain_centered = body.centered};
         sync_body(world, tree, body.entity, Kind::Static, &shape);
     }
     sync_joints(world, tree);

@@ -5,6 +5,7 @@
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 #include <Jolt/Physics/Collision/Shape/CylinderShape.h>
+#include <Jolt/Physics/Collision/Shape/HeightFieldShape.h>
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/PlaneShape.h>
 #include <Jolt/Physics/Collision/Shape/ScaledShape.h>
@@ -14,6 +15,7 @@
 #include <limits>
 #include <numbers>
 #include <string>
+#include <vector>
 
 namespace slash::physics3d::detail {
 
@@ -212,6 +214,44 @@ BuiltShape build_shape(const world::CollisionShape3D& shape) {
                     "world boundary");
     }
     return {nullptr, "unknown shape \"" + shape.shape + "\""};
+}
+
+BuiltShape build_terrain_shape(const scene3d::TerrainData& data, Vec3 map_scale, bool centered) {
+    const int r = data.resolution;
+    if (data.empty() || r < 2) {
+        return {};
+    }
+    const auto count = static_cast<std::size_t>(r);
+    // Rows reversed, to undo the mirroring that makes Jolt split quads as Godot does.
+    std::vector<float> rows(count * count);
+    for (int z = 0; z < r; ++z) {
+        const auto row = static_cast<std::size_t>(r - 1 - z);
+        for (int x = 0; x < r; ++x) {
+            rows[(row * count) + static_cast<std::size_t>(x)] =
+                data.hole(x, z) ? JPH::HeightFieldShapeConstants::cNoCollisionValue
+                                : data.height(x, z);
+        }
+    }
+    const float half = centered ? 0.5F * static_cast<float>(r - 1) : 0.0F;
+    // Sample (x, row) sits at offset + scale * (x, h, row); mirrored, row r - 1 - z lands at
+    // (z - half) * scale.z.
+    const JPH::Vec3 offset(-half * map_scale.x, 0.0F,
+                           map_scale.z * (half - static_cast<float>(r - 1)));
+    JPH::HeightFieldShapeSettings settings(rows.data(), offset, to_jolt(map_scale),
+                                           static_cast<JPH::uint32>(r));
+    settings.mBitsPerSample = settings.CalculateBitsPerSampleForError(0.0F);
+    settings.mActiveEdgeCosThresholdAngle = kActiveEdgeCos;
+    BuiltShape built = made(settings, "terrain");
+    if (built.shape != nullptr) {
+        const JPH::ShapeSettings::ShapeResult mirrored =
+            JPH::ScaledShapeSettings(built.shape.GetPtr(), JPH::Vec3(1.0F, 1.0F, -1.0F)).Create();
+        if (mirrored.HasError()) {
+            const JPH::String& error = mirrored.GetError();
+            return {nullptr, "terrain: " + std::string(error.data(), error.size())};
+        }
+        built.shape = mirrored.Get();
+    }
+    return built;
 }
 
 JPH::RefConst<JPH::Shape> scaled(const JPH::Shape* shape, Vec3 scale) {
