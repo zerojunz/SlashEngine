@@ -496,8 +496,8 @@ the texture), `FRAGCOORD` and `TIME` read.
 
 ### animation.eval
 
-Returns the values an [animation](scene-format.md#animations)'s value tracks set at the times
-given, as `AnimationPlayer` sets them, without playing it: a check that needs no stepping. Given
+Returns the values an [animation](scene-format.md#animations)'s value and node tracks set at the
+times given, as `AnimationPlayer` sets them, without playing it: a check that needs no stepping. Given
 an entity, it uses its `AnimationPlayer`'s library and, unless `animation` names another, its
 animation.
 
@@ -507,7 +507,7 @@ animation.
 | `path` | string | | A `.anim.json` file |
 | `animation` | string | the entity's | The animation's name; required with `path` |
 | `times` | array of numbers | required | Seconds into the animation, 1 to 100 of them, each from 0 to its length |
-| `tracks` | array of strings | all | The value tracks to return, by path, or `"target:path"` for a track with a target |
+| `tracks` | array of strings | all | The value tracks to return, by path, or `"target:path"` for a track with a target, and the node tracks, by node |
 
 Needs: `read`.
 
@@ -524,6 +524,12 @@ target by its target, `:` and its path, as Godot's `Node:property` (`sword:Trans
 Numbers are rounded to four decimals. A discrete track gives the value of the last key at or before each time. An
 unknown animation or track path fails with the closest name, and a time past the animation's
 length fails with its `path`, `/times/<n>`. Event tracks are left out; read them in the file.
+[Node tracks](scene-format.md#node-tracks) go under `nodes`, by node, then property, one
+`[x, y, z]` per time, rotations as Euler angles:
+
+```json
+{"length":1,"loop":"linear","tracks":{},"nodes":{"Elbow":{"rotation":[[0,0,0],[0,0,0.6],[0,0,1.2]]}}}
+```
 
 ### animation.tree
 

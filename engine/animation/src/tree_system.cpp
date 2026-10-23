@@ -8,12 +8,15 @@
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
+#include "slash/scene3d/model.hpp"
+#include "slash/scene3d/skeleton.hpp"
 #include "slash/world/components.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <numbers>
 #include <optional>
 #include <set>
@@ -48,7 +51,7 @@ struct TreeTrack {
 struct AnimationTracks {
     std::string name; // in the tree
     const Animation* animation = nullptr;
-    std::vector<int> tracks; // the tree track of each of the animation's tracks
+    std::vector<int> tracks; // the tree track of each of the animation's tracks; -1 for none
     // The model animation it plays, and the tree track of each of that animation's tracks.
     const scene3d::Model* model = nullptr;
     const scene3d::ModelAnimation* clip = nullptr;
@@ -70,6 +73,8 @@ struct TableKey {
     std::uint64_t tree_version = 0;
     std::vector<std::pair<std::string, std::uint64_t>> libraries; // path and build
     std::uint64_t types = 0;
+    std::string model; // the entity's MeshInstance3D's, whose rests node tracks start from
+    std::uint64_t model_version = 0;
 
     friend bool operator==(const TableKey&, const TableKey&) = default;
 };
@@ -229,12 +234,13 @@ struct TreePlayer::State {
         return &tree;
     }
 
-    // The model an animation from a model plays from, through the library it is in.
+    // The model an animation from a model plays from, through the library it is in, or the
+    // library's model of its node tracks for an animation with them.
     static const scene3d::Model* clip_model(const LibraryCache::Entry& entry,
                                             const std::string& library_path,
                                             const Animation& animation) {
         if (animation.from.model.empty()) {
-            return nullptr;
+            return has_node_tracks(animation) ? entry.nodes.get() : nullptr;
         }
         if (entry.model && animation.from.model == library_path) {
             return &*entry.model;
@@ -257,11 +263,13 @@ struct TreePlayer::State {
     }
 
     // Builds an entity's track table, as Godot's AnimationMixer::_update_caches.
+    // A model node's rest is the drawn model's, as Godot's mixer starts a 3D track from the
+    // skeleton's bone rest, or else the clip model's.
     static void
     build(EntityCache& cache, const AnimationTreeResource& resource,
           const world::AnimationTree& tree,
           const std::vector<std::pair<const std::string*, LibraryCache::Entry*>>& loaded,
-          const world::ComponentRegistry& components) {
+          const world::ComponentRegistry& components, const scene3d::Model* drawn) {
         TreeTable table;
         std::map<std::pair<TrackKind, std::string>, int> by_name;
         const auto track_of = [&](TrackKind kind, const std::string& name) -> std::pair<int, bool> {
@@ -297,6 +305,10 @@ struct TreePlayer::State {
                 out.animation = &animation;
                 std::set<int> unique;
                 for (const Track& track : animation.tracks) {
+                    if (!track.node.empty()) {
+                        out.tracks.push_back(-1); // as the library's model of them, below
+                        continue;
+                    }
                     if (track.path.empty()) {
                         const auto [index, added] =
                             track_of(TrackKind::Event, event_track_name(track));
@@ -336,9 +348,10 @@ struct TreePlayer::State {
                 }
                 out.model = clip_model(*entry, library_path, animation);
                 if (out.model != nullptr) {
-                    const auto found =
-                        std::ranges::find(out.model->animations, animation.from.animation,
-                                          &scene3d::ModelAnimation::name);
+                    const std::string& clip_name =
+                        animation.from.model.empty() ? animation_name : animation.from.animation;
+                    const auto found = std::ranges::find(out.model->animations, clip_name,
+                                                         &scene3d::ModelAnimation::name);
                     if (found != out.model->animations.end()) {
                         out.clip = &*found;
                     }
@@ -352,10 +365,16 @@ struct TreePlayer::State {
                         const scene3d::ModelNode& node = out.model->nodes[track.node];
                         const auto [index, added] = track_of(TrackKind::Node, node.name);
                         if (added) {
+                            const scene3d::ModelNode* rest = &node;
+                            if (drawn != nullptr) {
+                                if (const int at = scene3d::find_node(*drawn, node.name); at >= 0) {
+                                    rest = &drawn->nodes[static_cast<std::size_t>(at)];
+                                }
+                            }
                             table.tracks[static_cast<std::size_t>(index)].rest = {
-                                .position = node.position,
-                                .rotation = node.rotation,
-                                .scale = node.scale};
+                                .position = rest->position,
+                                .rotation = rest->rotation,
+                                .scale = rest->scale};
                         }
                         out.node_tracks.push_back(index);
                         unique.insert(index);
@@ -453,8 +472,16 @@ struct TreePlayer::State {
             key.libraries.emplace_back(tree.libraries.at(*name),
                                        entry != nullptr ? entry->version : 0);
         }
+        const scene3d::Model* drawn = nullptr;
+        if (const auto* instance = ecs.try_get<world::MeshInstance3D>(entity);
+            instance != nullptr && scene3d::is_model_path(instance->mesh)) {
+            key.model = instance->mesh;
+            // The MeshInstance3D reports a model that doesn't load.
+            drawn = libraries.model(
+                instance->mesh, [](const std::string& /*message*/) {}, &key.model_version);
+        }
         if (!(cache.key == key)) {
-            build(cache, resource, tree, loaded, world.components());
+            build(cache, resource, tree, loaded, world.components(), drawn);
             cache.key = std::move(key);
         }
         const TreeTable& table = cache.table;
@@ -625,6 +652,9 @@ struct TreePlayer::State {
             for (std::size_t i = 0; i < animation.tracks.size(); ++i) {
                 const Track& track = animation.tracks[i];
                 const int index = tracks.tracks[i];
+                if (index < 0) {
+                    continue;
+                }
                 const std::optional<float> blend = final_blend(instance, index);
                 if (!blend) {
                     continue;
@@ -926,6 +956,9 @@ struct TreePlayer::State {
             // "library/animation", or an animation of the library named "".
             const Animation* animation = nullptr;
             const scene3d::Model* model = nullptr;
+            const std::string* library_path = nullptr;
+            const std::string* animation_name = nullptr;
+            std::shared_ptr<const scene3d::Model> nodes;
             const auto find = [&](const std::string& library, const std::string& name) {
                 const auto path = tree->libraries.find(library);
                 if (path == tree->libraries.end()) {
@@ -942,6 +975,9 @@ struct TreePlayer::State {
                 }
                 animation = &found->second;
                 model = clip_model(*entry, path->second, found->second);
+                library_path = &path->second;
+                animation_name = &found->first;
+                nodes = entry->nodes;
                 return true;
             };
             const std::size_t slash = played.animation.find('/');
@@ -952,11 +988,14 @@ struct TreePlayer::State {
             if (animation == nullptr || model == nullptr) {
                 continue;
             }
-            scene3d::ClipSample clip{.model = animation->from.model,
-                                     .animation = animation->from.animation,
+            // An animation with node tracks plays from the library's model of them.
+            const bool own = animation->from.model.empty();
+            scene3d::ClipSample clip{.model = own ? *library_path : animation->from.model,
+                                     .animation = own ? *animation_name : animation->from.animation,
                                      .time = played.time,
                                      .weight = played.weight,
-                                     .node_weights = played.node_weights};
+                                     .node_weights = played.node_weights,
+                                     .source = own ? nodes : nullptr};
             if (!tree->root_motion_track.empty()) {
                 clip.node_weights.insert_or_assign(tree->root_motion_track, 0.0F);
             }

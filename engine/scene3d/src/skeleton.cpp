@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <map>
+#include <memory>
 #include <optional>
 #include <unordered_map>
 #include <utility>
@@ -180,6 +181,7 @@ std::array<float, 4> sample_track(const NodeTrack& track, double time, double le
         return track.values.front();
     }
     time = std::clamp(time, 0.0, length);
+    loop = loop && track.loop_wrap;
     const auto before = static_cast<std::size_t>(
         std::ranges::upper_bound(times.begin(), times.begin() + static_cast<std::ptrdiff_t>(count),
                                  time, std::less<>{},
@@ -435,14 +437,18 @@ std::vector<NodePose> pose_of(const Model& model, std::span<const ClipSample> cl
         return pose;
     }
     for (const ClipSample& clip : clips) {
-        if (!load) {
-            break;
+        std::shared_ptr<const Model> source = clip.source;
+        if (source == nullptr) {
+            if (!load) {
+                continue;
+            }
+            auto loaded = load(clip.model);
+            if (!loaded || loaded.value() == nullptr) {
+                continue;
+            }
+            source = std::move(loaded).value();
         }
-        auto source = load(clip.model);
-        if (!source || source.value() == nullptr) {
-            continue;
-        }
-        const Model& from = *source.value();
+        const Model& from = *source;
         const auto found =
             std::ranges::find(from.animations, clip.animation, &ModelAnimation::name);
         if (found == from.animations.end()) {

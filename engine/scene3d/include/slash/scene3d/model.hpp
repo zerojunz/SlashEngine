@@ -120,6 +120,9 @@ struct NodeTrack {
     std::size_t node = 0; // into Model::nodes
     NodeProperty property = NodeProperty::Position;
     bool step = false;
+    // In a looping animation, move from the last key to the first across the loop's end, as
+    // Godot's loop wrap.
+    bool loop_wrap = true;
     std::vector<float> times; // seconds, earliest first
     std::vector<std::array<float, 4>> values;
 };

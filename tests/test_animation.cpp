@@ -2,6 +2,7 @@
 #include "slash/asset/assets.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
+#include "slash/scene3d/model.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/world.hpp"
@@ -11,6 +12,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <numbers>
 #include <optional>
 #include <string>
@@ -21,6 +23,7 @@
 namespace animation = slash::animation;
 namespace asset = slash::asset;
 namespace json = slash::json;
+namespace scene3d = slash::scene3d;
 namespace world = slash::world;
 
 namespace {
@@ -194,12 +197,13 @@ TEST_CASE("animation files are checked, with every error at its JSON Pointer") {
           "before: 0.5 comes after 0.5\n"
           "/animations/a/tracks/0/keys/2/time: 2 is past the animation's length, 1");
 
-    // A track is a value track or an event track.
+    // A track is a value track, an event track or a node track.
     CHECK(errors_of(library(R"({"keys": [{"time": 0}]})")) ==
-          "/animations/a/tracks/0: a track has a \"path\", for a value track, or an \"event\"");
+          "/animations/a/tracks/0: a track has a \"path\", for a value track, an \"event\" or a "
+          "\"node\"");
     CHECK(errors_of(library(R"({"path": "Transform2D/rotation", "event": "hit",
                                 "keys": [{"time": 0}]})")) ==
-          "/animations/a/tracks/0: a track has a \"path\" or an \"event\", not both");
+          "/animations/a/tracks/0: a track has one of \"path\", \"event\" and \"node\", not more");
     CHECK(errors_of(library(R"({"event": "entity.created", "interpolation": "cubic",
                                 "keys": [{"time": 0, "value": 1}]})")) ==
           "/animations/a/tracks/0/event: \"entity.created\" is one of the engine's own events; "
@@ -246,6 +250,98 @@ TEST_CASE("animation files are checked, with every error at its JSON Pointer") {
     CHECK(errors_of(library(R"({"path": "Sprite2D/texture",
                                 "keys": [{"time": 0, "value": "a.png"},
                                          {"time": 1, "value": "b.png"}]})")) == "(valid)");
+
+    // Node tracks move a model node's position, rotation or scale, [x, y, z] at each key.
+    CHECK(errors_of(library(R"({"node": "Elbow", "property": "rotation", "interpolation": "nearest",
+                                "keys": [{"time": 0, "value": [0, 0, 0]},
+                                         {"time": 1, "value": [0, 0, 1.5]}]},
+                               {"node": "Elbow", "property": "scale", "loop_wrap": false,
+                                "keys": [{"time": 0, "value": [1, 1, 1]}]})")) == "(valid)");
+    CHECK(errors_of(library(R"({"node": "Elbow", "target": "arm", "update": "discrete",
+                                "interpolation": "cubic",
+                                "keys": [{"time": 0, "value": [0, 0], "transition": 2},
+                                         {"time": 0.5, "data": 1}]},
+                               {"node": "Hand", "property": "position",
+                                "keys": [{"time": 0, "value": 1}]},
+                               {"node": "Hand", "property": "position",
+                                "keys": [{"time": 0, "value": [0, 0, 0]}]},
+                               {"path": "Transform3D/position", "property": "position",
+                                "keys": [{"time": 0, "value": [0, 0, 0]}]})")) ==
+          "/animations/a/tracks/0/target: node tracks move the nodes of the model the entity "
+          "draws, so they have no target\n"
+          "/animations/a/tracks/0/update: node tracks change smoothly, or jump from key to key "
+          "with \"interpolation\": \"nearest\", so they have no update\n"
+          "/animations/a/tracks/0/interpolation: node tracks interpolate \"nearest\" or "
+          "\"linear\", as model animations do\n"
+          "/animations/a/tracks/0: a node track needs a \"property\": \"position\", \"rotation\" "
+          "or \"scale\"\n"
+          "/animations/a/tracks/0/keys/0/value: a node track's value is [x, y, z], not 2 numbers\n"
+          "/animations/a/tracks/0/keys/0/transition: node tracks go straight from key to key, "
+          "so their keys have no transition\n"
+          "/animations/a/tracks/0/keys/1/data: a node track's keys carry \"value\", not \"data\"\n"
+          "/animations/a/tracks/0/keys/1: a node track's keys need a \"value\", [x, y, z]\n"
+          "/animations/a/tracks/1/keys/0/value: a node track's value is [x, y, z], not a number\n"
+          "/animations/a/tracks/2/node: another track already moves \"Hand\"'s position\n"
+          "/animations/a/tracks/3/property: only node tracks have property");
+    CHECK(errors_of(R"({"format": 1, "animations": {"a": {
+        "from": {"model": "hero.glb", "animation": "Walk"},
+        "tracks": [{"node": "Hand", "property": "scale", "keys": [{"time": 0, "value": [2, 2, 2]}]}]}}})") ==
+          "/animations/a/tracks/0: an animation from a model moves its nodes by the model's "
+          "tracks; give node tracks an animation of their own");
+}
+
+TEST_CASE("node tracks interpolate as Godot's 3D tracks: rotations the shorter way round") {
+    auto parsed = animation::parse_animation_library(parse(R"({"format": 1, "animations": {
+        "spin": {"length": 1, "loop": "linear", "tracks": [
+            {"node": "Elbow", "property": "rotation",
+             "keys": [{"time": 0, "value": [0, 0, 0]}, {"time": 0.5, "value": [0, 3, 0]}]},
+            {"node": "Elbow", "property": "position",
+             "keys": [{"time": 0.25, "value": [0, 0, 0]}, {"time": 0.75, "value": [4, 0, 0]}]},
+            {"node": "Hand", "property": "position", "loop_wrap": false,
+             "keys": [{"time": 0.25, "value": [0, 0, 0]}, {"time": 0.75, "value": [4, 0, 0]}]},
+            {"node": "Hand", "property": "scale", "interpolation": "nearest",
+             "keys": [{"time": 0, "value": [1, 1, 1]}, {"time": 0.5, "value": [2, 2, 2]}]}]},
+        "still": {"length": 1, "tracks": [
+            {"path": "Transform3D/position", "keys": [{"time": 0, "value": [0, 0, 0]}]}]}}})"));
+    REQUIRE(parsed.ok());
+    const animation::AnimationLibrary& library = parsed.value();
+    const animation::Animation& spin = library.animations.at("spin");
+    CHECK(animation::has_node_tracks(spin));
+    CHECK_FALSE(animation::has_node_tracks(library.animations.at("still")));
+    const auto at = [&](std::size_t track, double time) {
+        return json::write(animation::sample_node(spin, spin.tracks[track], time),
+                           json::Style::Compact);
+    };
+    const auto angle = [&](double time) {
+        return animation::sample_node(spin, spin.tracks[0], time).as_array()[1].as_double();
+    };
+    // Three radians about y, then back round the loop's end, a quarter way each 0.125 s.
+    CHECK(angle(0.25) == doctest::Approx(1.5).epsilon(1e-5));
+    CHECK(angle(0.5) == doctest::Approx(3.0).epsilon(1e-5));
+    CHECK(angle(0.75) == doctest::Approx(1.5).epsilon(1e-5));
+    // Round the loop's end from the last key to the first, or held without loop_wrap.
+    CHECK(at(1, 0.0) == "[2.0,0.0,0.0]");
+    CHECK(at(1, 0.5) == "[2.0,0.0,0.0]");
+    CHECK(at(2, 0.0) == "[0.0,0.0,0.0]");
+    CHECK(at(2, 1.0) == "[4.0,0.0,0.0]");
+    CHECK(at(3, 0.49) == "[1.0,1.0,1.0]");
+    CHECK(at(3, 0.5) == "[2.0,2.0,2.0]");
+
+    // As a model's animations, which pose the nodes of the same names.
+    const std::shared_ptr<const scene3d::Model> nodes = animation::node_animations(library);
+    REQUIRE(nodes != nullptr);
+    REQUIRE(nodes->nodes.size() == 2);
+    CHECK(nodes->nodes[0].name == "Elbow");
+    CHECK(nodes->nodes[1].name == "Hand");
+    REQUIRE(nodes->animations.size() == 1);
+    CHECK(nodes->animations[0].name == "spin");
+    CHECK(nodes->animations[0].loop);
+    CHECK(nodes->animations[0].tracks.size() == 4);
+    CHECK(nodes->animations[0].tracks[3].step);
+    CHECK_FALSE(nodes->animations[0].tracks[2].loop_wrap);
+    animation::AnimationLibrary none;
+    none.animations.emplace("still", library.animations.at("still"));
+    CHECK(animation::node_animations(none) == nullptr);
 }
 
 TEST_CASE("track paths lead to a component's field, or a part of it") {
