@@ -1783,6 +1783,348 @@ safe_margin = 0.5
     fs::remove_all(project);
 }
 
+// A Godot 3D project: a level of meshes, models, lights, a sky and bodies.
+fs::path make_3d_project(const fs::path& folder) {
+    fs::remove_all(folder);
+    write(folder / "project.godot", R"(config_version=5
+
+[application]
+
+config/name="Garden"
+run/main_scene="res://level.tscn"
+
+[audio]
+
+general/3d_panning_strength=0.75
+
+[physics]
+
+3d/default_gravity=12.0
+3d/default_gravity_vector=Vector3(0, -1, 0)
+3d/default_linear_damp=0.2
+jolt_physics_3d/simulation/areas_detect_static_bodies=true
+)");
+    write(folder / "level.tscn", R"([gd_scene load_steps=16 format=3]
+
+[ext_resource type="Texture2D" path="res://art/bricks.jpg" id="1_bricks"]
+[ext_resource type="ArrayMesh" path="res://models/rock.obj" id="2_rock"]
+[ext_resource type="PackedScene" path="res://models/cart.gltf" id="3_cart"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_wall"]
+transparency = 3
+albedo_color = Color(0.8, 0.4, 0.2, 1)
+albedo_texture = ExtResource("1_bricks")
+roughness = 0.6
+texture_filter = 0
+uv1_scale = Vector3(2, 2, 1)
+rim_enabled = true
+
+[sub_resource type="BoxMesh" id="BoxMesh_wall"]
+material = SubResource("StandardMaterial3D_wall")
+size = Vector3(4, 2, 0.5)
+
+[sub_resource type="ORMMaterial3D" id="ORMMaterial3D_metal"]
+metallic = 1.0
+orm_texture = ExtResource("1_bricks")
+
+[sub_resource type="SphereMesh" id="SphereMesh_ball"]
+material = SubResource("StandardMaterial3D_wall")
+radius = 0.25
+height = 0.5
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_blob"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
+sky_top_color = Color(0.2, 0.4, 0.8, 1)
+sun_angle_max = 20.0
+
+[sub_resource type="Sky" id="Sky_1"]
+sky_material = SubResource("ProceduralSkyMaterial_1")
+radiance_size = 2
+process_mode = 3
+
+[sub_resource type="Environment" id="Environment_1"]
+background_mode = 2
+sky = SubResource("Sky_1")
+ambient_light_source = 3
+tonemap_mode = 3
+glow_enabled = true
+glow_levels/2 = 0.5
+ssao_enabled = true
+fog_enabled = true
+fog_density = 0.02
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_1"]
+size = Vector3(1, 2, 1)
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_1"]
+points = PackedVector3Array(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+
+[sub_resource type="WorldBoundaryShape3D" id="WorldBoundaryShape3D_1"]
+plane = Plane(0, 1, 0, -2)
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_1"]
+friction = 0.3
+bounce = 0.5
+
+[node name="Level" type="Node3D"]
+
+[node name="Wall" type="MeshInstance3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 3, 1, -2)
+mesh = SubResource("BoxMesh_wall")
+cast_shadow = 2
+
+[node name="Ball" type="MeshInstance3D" parent="Wall"]
+transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 1.5, 0)
+mesh = SubResource("SphereMesh_ball")
+surface_material_override/0 = SubResource("ORMMaterial3D_metal")
+
+[node name="Rock" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.5, -0.866025, 0, 0.866025, 0.5, 0, 0, 5)
+mesh = ExtResource("2_rock")
+
+[node name="Blob" type="MeshInstance3D" parent="."]
+mesh = SubResource("ArrayMesh_blob")
+
+[node name="Cart" parent="." instance=ExtResource("3_cart")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0, 0)
+
+[node name="Wheel" parent="Cart"]
+visible = false
+
+[node name="Hitbox" type="Area3D" parent="Cart"]
+monitorable = false
+
+[node name="Camera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 8)
+fov = 60.0
+keep_aspect = 0
+current = true
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 10, 0)
+light_energy = 1.5
+shadow_enabled = true
+directional_shadow_mode = 1
+sky_mode = 1
+
+[node name="Lamp" type="OmniLight3D" parent="."]
+light_color = Color(1, 0.8, 0.6, 1)
+omni_range = 8.0
+
+[node name="Torch" type="SpotLight3D" parent="."]
+light_indirect_energy = 2.0
+spot_angle = 30.0
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_1")
+
+[node name="Crate" type="RigidBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4, 0)
+mass = 5.0
+physics_material_override = SubResource("PhysicsMaterial_1")
+freeze_mode = 1
+linear_damp_mode = 1
+
+[node name="Shape" type="CollisionShape3D" parent="Crate"]
+shape = SubResource("BoxShape3D_1")
+
+[node name="Ground" type="StaticBody3D" parent="."]
+
+[node name="Hull" type="CollisionShape3D" parent="Ground"]
+shape = SubResource("ConvexPolygonShape3D_1")
+
+[node name="Floor" type="CollisionShape3D" parent="Ground"]
+shape = SubResource("WorldBoundaryShape3D_1")
+
+[node name="Hero" type="CharacterBody3D" parent="."]
+motion_mode = 1
+floor_max_angle = 0.5
+
+[node name="Hum" type="AudioStreamPlayer3D" parent="Hero"]
+attenuation_model = 2
+unit_size = 4.0
+autoplay = true
+doppler_tracking = 2
+
+[node name="Enemies" type="Node" parent="."]
+
+[node name="Bat" type="Node3D" parent="Enemies"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 2, 3)
+
+[node name="Mirror" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+
+[node name="Sparks" type="GPUParticles3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+amount = 16
+
+[node name="Hut" type="CSGBox3D" parent="."]
+)");
+    write_png(folder / "art/bricks.jpg", 8, 8);
+    write(folder / "models/rock.obj", "mtllib rock.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+    write(folder / "models/rock.mtl", "newmtl stone\nKd 0.5 0.5 0.5\n");
+    write(folder / "models/cart.gltf",
+          R"({"asset": {"version": "2.0"}, "buffers": [{"uri": "cart.bin", "byteLength": 4}],
+              "images": [{"uri": "cart.png"}, {"uri": "data:image/png;base64,AAAA"}]})");
+    write(folder / "models/cart.bin", "abcd");
+    write_png(folder / "models/cart.png", 4, 4);
+    write(folder / "models/cart.gltf.import", R"([remap]
+
+importer="scene"
+type="PackedScene"
+
+[params]
+
+nodes/root_type="VehicleBody3D"
+nodes/root_scale=0.5
+)");
+    write(folder / "models/statue.dae", "<COLLADA/>");
+    return folder;
+}
+
+TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights and bodies") {
+    const fs::path project = "import_godot_3d";
+    make_3d_project(project / "godot");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string level = "godot/level.scene.json";
+    REQUIRE(files.contains(level));
+
+    // Transforms decompose as Godot's Node3D does, and Node3D children nest.
+    CHECK(*entity(files, level, "level").find("Transform3D") == parse(R"({
+        "children": ["wall", "rock", "blob", "cart", "camera", "sun", "lamp", "torch", "crate",
+                     "ground", "hero", "mirror", "sparks", "hut"]})"));
+    CHECK(*entity(files, level, "wall").find("Transform3D") ==
+          parse(R"({"position": [3.0, 1.0, -2.0], "rotation": [0.0, 1.570796, 0.0],
+                    "children": ["ball"]})"));
+    CHECK(*entity(files, level, "ball").find("Transform3D") ==
+          parse(R"({"position": [0.0, 1.5, 0.0], "scale": [2.0, 2.0, 2.0]})"));
+    CHECK(*entity(files, level, "rock").find("Transform3D") ==
+          parse(R"({"position": [0.0, 0.0, 5.0], "rotation": [1.047197, 0.0, 0.0]})"));
+    CHECK(*entity(files, level, "sun").find("Transform3D") ==
+          parse(R"({"position": [0.0, 10.0, 0.0], "rotation": [-0.785398, 0.0, 0.0]})"));
+    // A mirrored basis, as Godot reads it: turned half round x with every axis flipped.
+    CHECK(*entity(files, level, "mirror").find("Transform3D") ==
+          parse(R"({"rotation": [3.141593, 0.0, 0.0], "scale": [-1.0, -1.0, -1.0]})"));
+    // A plain Node breaks the chain: what is under it is placed in the world.
+    CHECK(entity(files, level, "enemies").size() == 0);
+    CHECK(*entity(files, level, "bat").find("Transform3D") ==
+          parse(R"({"position": [1.0, 2.0, 3.0]})"));
+
+    // Primitive meshes and their materials; a surface override beats the mesh's own material.
+    const json::Value wall = entity(files, level, "wall");
+    CHECK(*wall.find("BoxMesh") == parse(R"({"size": [4.0, 2.0, 0.5]})"));
+    CHECK(*wall.find("MeshInstance3D") == parse(R"({"cast_shadow": "double_sided"})"));
+    CHECK(*wall.find("StandardMaterial3D") == parse(R"({
+        "transparency": "alpha_scissor", "albedo_color": [0.8, 0.4, 0.2, 1.0],
+        "albedo_texture": "godot/art/bricks.jpg", "roughness": 0.6, "texture_filter": "nearest",
+        "uv1_scale": [2.0, 2.0, 1.0]})"));
+    const json::Value ball = entity(files, level, "ball");
+    CHECK(*ball.find("SphereMesh") == parse(R"({"radius": 0.25, "height": 0.5})"));
+    CHECK(*ball.find("StandardMaterial3D") == parse(R"({
+        "metallic": 1.0, "metallic_texture": "godot/art/bricks.jpg",
+        "metallic_texture_channel": "blue", "roughness_texture": "godot/art/bricks.jpg",
+        "roughness_texture_channel": "green"})"));
+    // A model Godot imports as a mesh, and one it imports as a scene.
+    CHECK(*entity(files, level, "rock").find("MeshInstance3D") ==
+          parse(R"({"mesh": "godot/models/rock.obj"})"));
+    const json::Value cart = entity(files, level, "cart");
+    CHECK(*cart.find("MeshInstance3D") == parse(R"({"mesh": "godot/models/cart.gltf"})"));
+    CHECK(*cart.find("Transform3D") ==
+          parse(R"({"position": [-4.0, 0.0, 0.0], "children": ["hitbox"]})"));
+    CHECK(*entity(files, level, "hitbox").find("Area3D") == parse(R"({"monitorable": false})"));
+    CHECK(entity(files, level, "blob").find("ArrayMesh") == nullptr);
+
+    // Cameras, lights and the environment with its sky.
+    CHECK(*entity(files, level, "camera").find("Camera3D") ==
+          parse(R"({"fov": 60.0, "keep_aspect": "width", "current": true})"));
+    CHECK(*entity(files, level, "sun").find("DirectionalLight3D") == parse(R"({
+        "light_energy": 1.5, "shadow_enabled": true,
+        "directional_shadow_mode": "parallel_2_splits", "sky_mode": "light_only"})"));
+    CHECK(*entity(files, level, "lamp").find("OmniLight3D") ==
+          parse(R"({"light_color": [1.0, 0.8, 0.6, 1.0], "omni_range": 8.0})"));
+    CHECK(*entity(files, level, "torch").find("SpotLight3D") == parse(R"({"spot_angle": 30.0})"));
+    const json::Value environment = entity(files, level, "environment");
+    CHECK(environment.find("Transform2D") == nullptr);
+    CHECK(*environment.find("WorldEnvironment") == parse(R"({
+        "background_mode": "sky", "ambient_light_source": "sky", "tonemap_mode": "aces",
+        "glow_enabled": true, "fog_enabled": true, "fog_density": 0.02,
+        "sky_radiance_size": 128})"));
+    CHECK(*environment.find("ProceduralSkyMaterial") ==
+          parse(R"({"sky_top_color": [0.2, 0.4, 0.8, 1.0], "sun_angle_max": 20.0})"));
+
+    // Bodies and their shapes.
+    CHECK(*entity(files, level, "crate").find("RigidBody3D") == parse(R"({
+        "mass": 5.0, "friction": 0.3, "bounce": 0.5, "freeze_mode": "kinematic",
+        "linear_damp_mode": "replace"})"));
+    CHECK(*entity(files, level, "shape").find("CollisionShape3D") ==
+          parse(R"({"size": [1.0, 2.0, 1.0]})"));
+    CHECK(*entity(files, level, "hull").find("CollisionShape3D") == parse(R"({
+        "shape": "convex_polygon",
+        "points": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]})"));
+    CHECK(*entity(files, level, "floor").find("CollisionShape3D") ==
+          parse(R"({"shape": "world_boundary", "plane": [0.0, 1.0, 0.0, -2.0]})"));
+    CHECK(*entity(files, level, "hero").find("CharacterBody3D") ==
+          parse(R"({"motion_mode": "floating", "floor_max_angle": 0.5})"));
+    CHECK(*entity(files, level, "hum").find("AudioStreamPlayer3D") == parse(R"({
+        "attenuation_model": "logarithmic", "unit_size": 4.0, "autoplay": true,
+        "doppler_tracking": "physics_step"})"));
+    // A 3D node that doesn't convert still places what is under it.
+    CHECK(*entity(files, level, "sparks").find("Transform3D") ==
+          parse(R"({"position": [0.0, 1.0, 0.0]})"));
+
+    const json::Value project_file = parse(files.at("project.json"));
+    CHECK(*project_file.find("physics_3d") == parse(R"({
+        "gravity": 12.0, "gravity_vector": [0.0, -1.0, 0.0], "linear_damp": 0.2,
+        "areas_detect_static_bodies": true})"));
+    CHECK(project_file.find("audio")->find("panning_strength_3d")->as_double() == 0.75);
+
+    const json::Value& report = plan.report;
+    const auto why = [&](std::string_view what) {
+        const json::Value item = unsupported(report, what);
+        REQUIRE_MESSAGE(!item.is_null(), what);
+        return item.find("why")->as_string();
+    };
+    CHECK(why("StandardMaterial3D.transparency") ==
+          "alpha hash dithers; it cuts at alpha_scissor_threshold instead");
+    CHECK(!unsupported(report, "StandardMaterial3D.rim_enabled").is_null());
+    CHECK(why("MeshInstance3D.mesh") ==
+          "a mesh saved in Godot's own format; export it as a glTF file");
+    CHECK(unsupported(report, "node in an imported model").find("where")->as_string() ==
+          "level.tscn: Cart/Wheel");
+    CHECK(why("model root scale") ==
+          "the model draws at its file's own scale; scale the entities that draw it instead");
+    CHECK(why("model root type") == "its instances become Node3D entities that draw it; add the "
+                                    "VehicleBody3D component to them by hand");
+    CHECK(!unsupported(report, "Environment.glow_levels").is_null());
+    CHECK(!unsupported(report, "Environment.ssao_enabled").is_null());
+    CHECK(!unsupported(report, "SpotLight3D.light_indirect_energy").is_null());
+    CHECK(why("node type GPUParticles3D") == "no SlashEngine component for it yet");
+    CHECK(why("node type CSGBox3D") ==
+          "the importer doesn't convert it yet; add SlashEngine's CSGBox3D component by hand");
+    CHECK(why("file type .dae") == "models are glTF, OBJ, FBX or .blend files; export it as glTF");
+    CHECK(unsupported(report, "file type .jpg").is_null());
+    CHECK(unsupported(report, "Sky.process_mode").is_null());
+    fs::remove_all(project);
+}
+
+TEST_CASE("a Godot 3D project outside the destination brings its models along") {
+    const fs::path source = make_3d_project("import_godot_3d_source");
+    const fs::path destination = "import_godot_3d_destination";
+    fs::remove_all(destination);
+    auto result =
+        importer::import_project({.source = source.string(), .destination = destination.string()});
+    REQUIRE_MESSAGE(result.ok(), (result.ok() ? std::string() : result.error().message));
+    for (const char* file : {"models/rock.obj", "models/rock.mtl", "models/cart.gltf",
+                             "models/cart.bin", "models/cart.png", "art/bricks.jpg"}) {
+        CHECK_MESSAGE(fs::exists(destination / file), file);
+    }
+    CHECK_FALSE(fs::exists(destination / "models/statue.dae"));
+    fs::remove_all(source);
+    fs::remove_all(destination);
+}
+
 TEST_CASE("importing Godot's top_level and z_as_relative keeps them") {
     const fs::path project = "import_godot_top_level";
     fs::remove_all(project);

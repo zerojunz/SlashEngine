@@ -32,6 +32,7 @@
 #include <initializer_list>
 #include <map>
 #include <memory>
+#include <numbers>
 #include <optional>
 #include <ranges>
 #include <set>
@@ -67,13 +68,149 @@ bool is_script_file(std::string_view extension) {
     return extension == ".gd" || extension == ".cs";
 }
 
+// A texture file: JPEG files load as PNG and BMP files do.
+bool is_godot_texture(std::string_view extension) {
+    return is_texture_file(extension) || extension == ".jpg" || extension == ".jpeg";
+}
+
+// A 3D model file a MeshInstance3D draws.
+bool is_model_file(std::string_view extension) {
+    return extension == ".glb" || extension == ".gltf" || extension == ".obj" ||
+           extension == ".fbx" || extension == ".blend";
+}
+
 // Why a file Godot uses can't come along, by extension, or "".
 std::string unsupported_file(std::string_view extension) {
     if (extension == ".gdshader" || extension == ".gdshaderinc") {
         return "a game's own shaders are on the roadmap; canvas materials are .material.json "
                "graphs";
     }
+    if (extension == ".dae" || extension == ".3ds" || extension == ".max" || extension == ".ma" ||
+        extension == ".mb") {
+        return "models are glTF, OBJ, FBX or .blend files; export it as glTF";
+    }
+    if (extension == ".svg" || extension == ".webp") {
+        return "textures are PNG, JPEG or BMP files; save it as PNG";
+    }
     return unsupported_asset(extension);
+}
+
+// Rounds an angle or scale made from a matrix, so 90 degrees is 1.570796 rather than
+// 1.5707963267948966 or 1.5707962513.
+double tidy_number(double value) {
+    const double rounded = std::round(value * 1e6) / 1e6;
+    return rounded == 0.0 ? 0.0 : rounded;
+}
+
+// A Node3D's place, as Node3D keeps it beside its transform.
+struct Placement3D {
+    std::array<double, 3> position{};
+    std::array<double, 3> rotation{};
+    std::array<double, 3> scale{1.0, 1.0, 1.0};
+};
+
+// A Transform3D's twelve numbers (its basis by rows, then its origin) as position, rotation and
+// scale, as Node3D::_update_rotation_and_scale finds them: the scale is the basis's column
+// lengths signed by its determinant (Basis::get_scale), and the rotation the YXZ Euler angles of
+// the basis orthonormalized (Basis::get_euler_normalized and get_euler).
+std::optional<Placement3D> decompose_transform(const std::vector<double>& numbers) {
+    constexpr std::size_t kNumbers = 12;
+    if (numbers.size() != kNumbers) {
+        return std::nullopt;
+    }
+    using Vec = std::array<double, 3>;
+    std::array<Vec, 3> rows{};
+    for (std::size_t i = 0; i < 3; ++i) {
+        for (std::size_t j = 0; j < 3; ++j) {
+            rows.at(i).at(j) = numbers.at((i * 3) + j);
+        }
+    }
+    const auto dot = [](const Vec& a, const Vec& b) {
+        return (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]);
+    };
+    const auto determinant = [](const std::array<Vec, 3>& m) {
+        return (m[0][0] * ((m[1][1] * m[2][2]) - (m[1][2] * m[2][1]))) -
+               (m[0][1] * ((m[1][0] * m[2][2]) - (m[1][2] * m[2][0]))) +
+               (m[0][2] * ((m[1][0] * m[2][1]) - (m[1][1] * m[2][0])));
+    };
+    std::array<Vec, 3> columns{};
+    for (std::size_t i = 0; i < 3; ++i) {
+        for (std::size_t j = 0; j < 3; ++j) {
+            columns.at(j).at(i) = rows.at(i).at(j);
+        }
+    }
+    Placement3D out;
+    out.position = {numbers[9], numbers[10], numbers[11]};
+    const double det = determinant(rows);
+    double sign = 0.0; // SIGN(0) is 0 in Godot
+    if (det > 0.0) {
+        sign = 1.0;
+    } else if (det < 0.0) {
+        sign = -1.0;
+    }
+    for (std::size_t i = 0; i < 3; ++i) {
+        out.scale.at(i) = tidy_number(sign * std::sqrt(dot(columns.at(i), columns.at(i))));
+    }
+    // Gram-Schmidt, as Basis::orthonormalize; a zero column stays zero, as Vector3::normalize
+    // leaves it.
+    const auto normalize = [&](Vec& v) {
+        const double length = std::sqrt(dot(v, v));
+        for (double& component : v) {
+            component = length == 0.0 ? 0.0 : component / length;
+        }
+    };
+    const auto minus = [](Vec& v, const Vec& along, double amount) {
+        for (std::size_t i = 0; i < 3; ++i) {
+            v.at(i) -= along.at(i) * amount;
+        }
+    };
+    Vec& x = columns[0];
+    Vec& y = columns[1];
+    Vec& z = columns[2];
+    normalize(x);
+    minus(y, x, dot(x, y));
+    normalize(y);
+    minus(z, x, dot(x, z));
+    minus(z, y, dot(y, z));
+    normalize(z);
+    std::array<Vec, 3> m{};
+    for (std::size_t i = 0; i < 3; ++i) {
+        for (std::size_t j = 0; j < 3; ++j) {
+            m.at(i).at(j) = columns.at(j).at(i);
+        }
+    }
+    if (determinant(m) < 0.0) {
+        for (Vec& row : m) {
+            for (double& component : row) {
+                component = -component;
+            }
+        }
+    }
+    // Basis::get_euler for EulerOrder::YXZ.
+    constexpr double kEpsilon = 0.00001; // CMP_EPSILON
+    constexpr double kHalfPi = std::numbers::pi / 2.0;
+    Vec euler{};
+    const double m12 = m[1][2];
+    if (m12 < 1.0 - kEpsilon) {
+        if (m12 > -(1.0 - kEpsilon)) {
+            if (m[1][0] == 0.0 && m[0][1] == 0.0 && m[0][2] == 0.0 && m[2][0] == 0.0 &&
+                m[0][0] == 1.0) {
+                // A turn about x alone, in its simplest form.
+                euler = {std::atan2(-m12, m[1][1]), 0.0, 0.0};
+            } else {
+                euler = {std::asin(-m12), std::atan2(m[0][2], m[2][2]),
+                         std::atan2(m[1][0], m[1][1])};
+            }
+        } else {
+            euler = {kHalfPi, std::atan2(m[0][1], m[0][0]), 0.0};
+        }
+    } else {
+        euler = {-kHalfPi, -std::atan2(m[0][1], m[0][0]), 0.0};
+    }
+    for (std::size_t i = 0; i < 3; ++i) {
+        out.rotation.at(i) = tidy_number(euler.at(i));
+    }
+    return out;
 }
 
 // --- Tile data ---------------------------------------------------------------------------------
@@ -344,6 +481,7 @@ struct Node {
     int parent = -1;
     int instance_root = -1;              // the root of the instanced scene it came with
     const TextFile* instanced = nullptr; // for an instance's root, the scene it instances
+    std::string model;                   // for an instance of a model file, its path
     std::vector<int> children;
     std::string id;
 
@@ -357,12 +495,12 @@ struct Node {
     }
 };
 
-enum class Family : std::uint8_t { Plain, Node2D, Control };
+enum class Family : std::uint8_t { Plain, Node2D, Control, Node3D };
 
 struct NodeType {
     std::string_view godot;
     Family family;
-    std::string_view first; // components besides Transform2D or Control
+    std::string_view first; // components besides Transform2D, Control or Transform3D
     std::string_view second;
     bool vertical = false; // VBoxContainer, VSlider and the like
 };
@@ -434,6 +572,22 @@ constexpr std::array kNodeTypes{
     NodeType{"VSlider", Family::Control, "Slider", "", true},
     NodeType{"HScrollBar", Family::Control, "ScrollBar", ""},
     NodeType{"VScrollBar", Family::Control, "ScrollBar", "", true},
+    NodeType{"Node3D", Family::Node3D, "", ""},
+    NodeType{"Marker3D", Family::Node3D, "", ""},
+    NodeType{"MeshInstance3D", Family::Node3D, "MeshInstance3D", ""},
+    NodeType{"Camera3D", Family::Node3D, "Camera3D", ""},
+    NodeType{"DirectionalLight3D", Family::Node3D, "DirectionalLight3D", ""},
+    NodeType{"OmniLight3D", Family::Node3D, "OmniLight3D", ""},
+    NodeType{"SpotLight3D", Family::Node3D, "SpotLight3D", ""},
+    NodeType{"WorldEnvironment", Family::Plain, "WorldEnvironment", ""},
+    NodeType{"CollisionShape3D", Family::Node3D, "CollisionShape3D", ""},
+    NodeType{"StaticBody3D", Family::Node3D, "StaticBody3D", ""},
+    NodeType{"AnimatableBody3D", Family::Node3D, "AnimatableBody3D", ""},
+    NodeType{"RigidBody3D", Family::Node3D, "RigidBody3D", ""},
+    NodeType{"CharacterBody3D", Family::Node3D, "CharacterBody3D", ""},
+    NodeType{"Area3D", Family::Node3D, "Area3D", ""},
+    NodeType{"AudioStreamPlayer3D", Family::Node3D, "AudioStreamPlayer3D", ""},
+    NodeType{"AudioListener3D", Family::Node3D, "AudioListener3D", ""},
 };
 
 const NodeType* find_node_type(std::string_view godot) {
@@ -453,6 +607,14 @@ Family guess_family(const Node& node) {
             property.name == "layout_mode") {
             return Family::Control;
         }
+    }
+    for (const Property& property : node.properties) {
+        if (property.name == "transform" && property.value->is_call("Transform3D")) {
+            return Family::Node3D;
+        }
+    }
+    if (type.ends_with("3D") || type == "GridMap") {
+        return Family::Node3D;
     }
     if (type.ends_with("2D") || type == "TileMapLayer" || type == "TileMap" ||
         type == "BackBufferCopy" || type == "TouchScreenButton" || type == "CanvasGroup") {
@@ -553,14 +715,6 @@ void convert_parallax_layer(const std::vector<Node>& nodes, const Node& layer,
 
 // Why a node type doesn't convert.
 std::string unsupported_node(std::string_view type) {
-    if (type.ends_with("3D") || type == "WorldEnvironment" || type == "GridMap" ||
-        type == "CSGBox3D") {
-        return "3D comes with milestone 7";
-    }
-    if (type == "AnimationTree") {
-        return "blend trees and state machines come with milestone 7; play the animations with "
-               "an AnimationPlayer";
-    }
     if (type == "Timer") {
         return "timers are gameplay code: count the ticks in a C++ system";
     }
@@ -640,6 +794,11 @@ const std::vector<std::string_view>* enum_names(std::string_view component,
         {"BoxContainer.alignment", {"begin", "center", "end"}},
         {"FlowContainer.alignment", {"begin", "center", "end"}},
         {"Camera2D.anchor_mode", {"fixed_top_left", "drag_center"}},
+        {"Camera3D.keep_aspect", {"width", "height"}},
+        {"StandardMaterial3D.shading_mode", {"unshaded", "per_pixel", ""}},
+        {"StandardMaterial3D.texture_filter",
+         {"nearest", "linear", "nearest_with_mipmaps", "linear_with_mipmaps",
+          "nearest_with_mipmaps", "linear_with_mipmaps"}},
         {"CPUParticles2D.emission_shape",
          {"point", "sphere", "sphere_surface", "rectangle", "points", "directed_points", "ring"}},
         {"Control.focus_mode", {"none", "click", "all", "none"}},
@@ -1149,10 +1308,12 @@ private:
         uids_[std::string(text.substr(at, end - at))] = file;
     }
 
-    // Keeps a sound's import settings: its .import file's [params].
+    // Keeps a sound's import settings, its .import file's [params], and reports a model's
+    // that change how it draws.
     void learn_import_settings(std::string_view text, const std::string& file) {
-        const std::string sound = without_extension(file);
-        if (!is_sound_file(extension_of(sound))) {
+        const std::string asset = without_extension(file);
+        const bool sound = is_sound_file(extension_of(asset));
+        if (!sound && !is_model_file(extension_of(asset))) {
             return;
         }
         auto sections = godot::parse_project_settings(text);
@@ -1161,8 +1322,25 @@ private:
             return;
         }
         for (Section& section : sections.value()) {
-            if (section.tag == "params") {
-                sound_settings_[sound] = std::move(section);
+            if (section.tag != "params") {
+                continue;
+            }
+            if (sound) {
+                sound_settings_[asset] = std::move(section);
+                continue;
+            }
+            if (const Value* scale = section.property("nodes/root_scale");
+                scale != nullptr && scale->is_number() && scale->number() != 1.0) {
+                problems_.add("model root scale", asset,
+                              "the model draws at its file's own scale; scale the entities that "
+                              "draw it instead");
+            }
+            if (const Value* type = section.property("nodes/root_type");
+                type != nullptr && type->is_string() && !type->text.empty() &&
+                type->text != "Node3D") {
+                problems_.add("model root type", asset,
+                              "its instances become Node3D entities that draw it; add the " +
+                                  type->text + " component to them by hand");
             }
         }
     }
@@ -1185,12 +1363,75 @@ private:
         }
     }
 
+    // The files a .gltf file names beside it, by project path: its buffers and images.
+    static std::vector<std::string> gltf_files(const std::string& file, std::string_view text) {
+        std::vector<std::string> out;
+        auto parsed = json::parse(text);
+        if (!parsed || !parsed.value().is_object()) {
+            return out;
+        }
+        const std::size_t slash = file.rfind('/');
+        const std::string folder = slash == std::string::npos ? "" : file.substr(0, slash + 1);
+        for (const char* list : {"buffers", "images"}) {
+            const json::Value* items = parsed.value().find(list);
+            if (items == nullptr || !items->is_array()) {
+                continue;
+            }
+            for (const json::Value& item : items->as_array()) {
+                const json::Value* uri = item.is_object() ? item.find("uri") : nullptr;
+                if (uri != nullptr && uri->is_string() && !uri->as_string().starts_with("data:")) {
+                    out.push_back(folder + uri->as_string());
+                }
+            }
+        }
+        return out;
+    }
+
+    // Copies a model file, an OBJ file's material library, and a .gltf file's buffers.
+    void take_model(const std::string& file, const std::string& extension) {
+        if (extension != ".mtl") {
+            ++assets_;
+        }
+        if (!copy_assets_ && extension != ".gltf") {
+            return;
+        }
+        auto bytes = read(file);
+        if (!bytes) {
+            problems_.add("unreadable file", file, bytes.error().message);
+            return;
+        }
+        if (extension == ".gltf") {
+            for (const std::string& companion : gltf_files(file, bytes.value())) {
+                if (is_godot_texture(extension_of(companion))) {
+                    continue; // copied as a texture
+                }
+                if (!std::ranges::binary_search(files_, companion)) {
+                    problems_.add("missing file", file, companion);
+                    continue;
+                }
+                if (copy_assets_ && copied_.insert(companion).second) {
+                    if (auto companion_bytes = read(companion); companion_bytes) {
+                        add_file(destination(companion), std::move(companion_bytes.value()));
+                    }
+                }
+            }
+        }
+        if (copy_assets_) {
+            add_file(destination(file), std::move(bytes.value()));
+        }
+    }
+
     // Copies an asset, or notes one that can't come along.
     void take_file(const std::string& file) {
         const std::string extension = extension_of(file);
-        if (is_texture_file(extension) || is_sound_file(extension) || is_font_file(extension) ||
+        if (is_model_file(extension) || extension == ".mtl") {
+            take_model(file, extension);
+            return;
+        }
+        if (is_godot_texture(extension) || is_sound_file(extension) || is_font_file(extension) ||
             is_data_file(extension) || is_script_file(extension)) {
-            if (is_texture_file(extension) || is_sound_file(extension) || is_font_file(extension)) {
+            if (is_godot_texture(extension) || is_sound_file(extension) ||
+                is_font_file(extension)) {
                 ++assets_;
             }
             if (is_script_file(extension)) {
@@ -1331,6 +1572,26 @@ private:
         if (const Value* damp = number("physics", "2d/default_angular_damp")) {
             project["physics_2d"]["angular_damp"] = damp->number();
         }
+        if (const Value* gravity = number("physics", "3d/default_gravity")) {
+            project["physics_3d"]["gravity"] = gravity->number();
+        }
+        if (const Value* vector = setting("physics", "3d/default_gravity_vector")) {
+            if (auto xyz = vector->numbers(); xyz && xyz->size() == 3) {
+                project["physics_3d"]["gravity_vector"] =
+                    json::Array{xyz->at(0), xyz->at(1), xyz->at(2)};
+            }
+        }
+        if (const Value* damp = number("physics", "3d/default_linear_damp")) {
+            project["physics_3d"]["linear_damp"] = damp->number();
+        }
+        if (const Value* damp = number("physics", "3d/default_angular_damp")) {
+            project["physics_3d"]["angular_damp"] = damp->number();
+        }
+        if (const Value* detect =
+                setting("physics", "jolt_physics_3d/simulation/areas_detect_static_bodies");
+            detect != nullptr && detect->kind == Value::Kind::Bool) {
+            project["physics_3d"]["areas_detect_static_bodies"] = detect->boolean;
+        }
         if (const Value* stretch = setting("display", "window/stretch/mode");
             stretch != nullptr && stretch->is_string() && stretch->text != "disabled") {
             problems_.add("setting display/window/stretch/mode", "project.godot",
@@ -1373,6 +1634,9 @@ private:
         }
         if (const Value* strength = number("audio", "general/2d_panning_strength")) {
             project["audio"]["panning_strength_2d"] = strength->number();
+        }
+        if (const Value* strength = number("audio", "general/3d_panning_strength")) {
+            project["audio"]["panning_strength_3d"] = strength->number();
         }
         if (const Value* input = setting("audio", "driver/enable_input");
             input != nullptr && input->kind == Value::Kind::Bool && input->boolean) {
@@ -1503,11 +1767,35 @@ private:
             }
             const std::string full = join_path(prefix, local);
             int index = -1;
+            const Value* instance = section.field("instance");
+            const auto ext = file.ext.find(
+                instance != nullptr ? instance->string_argument().value_or("") : std::string());
             if (const auto found = by_path.find(full); found != by_path.end()) {
                 index = found->second; // an override of a node an instanced scene added
-            } else if (const Value* instance = section.field("instance"); instance != nullptr) {
-                const std::string id = instance->string_argument().value_or("");
-                const auto ext = file.ext.find(id);
+            } else if (parent_field != nullptr &&
+                       inside_model(nodes, by_path, join_path(prefix, parent_local),
+                                    instance != nullptr || section.field("type") != nullptr)) {
+                problems_.add("node in an imported model", file.path + ": " + local,
+                              "a model file's own nodes can't be changed or added to; edit the "
+                              "model, or add the node beside its entity");
+                continue;
+            } else if (instance != nullptr && ext != file.ext.end() &&
+                       is_model_file(extension_of(ext->second.path))) {
+                // A model file Godot imports as a scene: one entity that draws it.
+                if (!std::ranges::binary_search(files_, ext->second.path)) {
+                    problems_.add("missing model", file.path + ": " + local, ext->second.path);
+                    continue;
+                }
+                Node node;
+                node.path = full;
+                node.name = name;
+                node.type = "Node3D";
+                node.declared = file.path + ": " + local;
+                node.model = ext->second.path;
+                index = static_cast<int>(nodes.size());
+                nodes.push_back(std::move(node));
+                by_path[full] = index;
+            } else if (instance != nullptr) {
                 const TextFile* instanced = nullptr;
                 if (ext != file.ext.end()) {
                     if (const auto it = text_files_.find(ext->second.path);
@@ -1574,6 +1862,25 @@ private:
         }
         stack.pop_back();
         return root;
+    }
+
+    // Whether a node a scene declares under parent is inside a model file an instance draws: an
+    // override of one of the model's own nodes, or a node added under one. A node added right
+    // under the instance (typed, or an instance itself) is the instance's child instead.
+    static bool inside_model(const std::vector<Node>& nodes,
+                             const std::map<std::string, int>& by_path, std::string parent,
+                             bool typed) {
+        for (bool direct = true;; direct = false) {
+            if (const auto found = by_path.find(parent); found != by_path.end()) {
+                return !nodes[static_cast<std::size_t>(found->second)].model.empty() &&
+                       !(direct && typed);
+            }
+            const std::size_t slash = parent.rfind('/');
+            if (slash == std::string::npos) {
+                return false;
+            }
+            parent.resize(slash);
+        }
     }
 
     void assign_ids(std::vector<Node>& nodes) {
@@ -1746,6 +2053,9 @@ private:
         if (value.text == "PackedVector2Array") {
             return group(2);
         }
+        if (value.text == "PackedVector3Array") {
+            return group(3);
+        }
         if (value.text == "PackedColorArray") {
             return group(4);
         }
@@ -1774,7 +2084,7 @@ private:
             if (is_sound_file(extension)) {
                 return sound_path(path);
             }
-            if (is_texture_file(extension) || is_font_file(extension)) {
+            if (is_godot_texture(extension) || is_font_file(extension)) {
                 return destination(path);
             }
             if (extension == ".tscn") {
@@ -4174,6 +4484,27 @@ private:
         if (item_property(node, property, components)) {
             return true;
         }
+        if (components.contains("Transform3D")) {
+            if (name == "transform") {
+                place_3d(value, components["Transform3D"], node);
+                return true;
+            }
+            // How Godot's inspector shows the rotation; the transform holds it.
+            if (name == "rotation_edit_mode" || name == "rotation_order") {
+                return true;
+            }
+        }
+        if (components.contains("MeshInstance3D") && mesh_property(node, property, components)) {
+            return true;
+        }
+        if (name == "environment" && components.contains("WorldEnvironment")) {
+            convert_environment(value, file, components, node);
+            return true;
+        }
+        if (name == "shape" && components.contains("CollisionShape3D")) {
+            convert_shape_3d(value, file, components["CollisionShape3D"], node);
+            return true;
+        }
         // An OptionButton shows its selected option's text and icon.
         if (components.contains("OptionButton") && (name == "text" || name == "icon")) {
             return true;
@@ -4277,7 +4608,8 @@ private:
         }
         if (name == "physics_material_override") {
             const auto [section, owner] = resource_section(value, file);
-            for (const char* body : {"StaticBody2D", "AnimatableBody2D", "RigidBody2D"}) {
+            for (const char* body : {"StaticBody2D", "AnimatableBody2D", "RigidBody2D",
+                                     "StaticBody3D", "AnimatableBody3D", "RigidBody3D"}) {
                 if (!components.contains(body) || section == nullptr) {
                     continue;
                 }
@@ -4387,6 +4719,298 @@ private:
             return true;
         }
         return false;
+    }
+
+    // --- 3D ---
+
+    // A Node3D's transform as its Transform3D's position, rotation and scale.
+    void place_3d(const Value& value, json::Value& transform, const Node& node) {
+        const auto numbers = value.is_call("Transform3D") ? value.numbers() : std::nullopt;
+        const auto placement = numbers ? decompose_transform(*numbers) : std::nullopt;
+        if (!placement) {
+            problems_.add(node.type + ".transform", node.declared, "not a Transform3D");
+            return;
+        }
+        const auto triple = [](const std::array<double, 3>& xyz) {
+            return json::Array{xyz[0], xyz[1], xyz[2]};
+        };
+        transform["position"] = triple(placement->position);
+        transform["rotation"] = triple(placement->rotation);
+        transform["scale"] = triple(placement->scale);
+    }
+
+    // Sets a component's fields from a resource's properties of the same names, reporting each
+    // it has no field for as "<resource type>.<property>". The caller reads those in skip.
+    void resource_fields(const Section& section, const TextFile& owner,
+                         const std::string& component, json::Value& out, const Node& node,
+                         std::initializer_list<std::string_view> skip = {}) {
+        const world::ComponentType* type = components_.find(component);
+        const std::string resource = resource_type(section, owner);
+        for (const auto& [name, value] : section.properties) {
+            if (name == "resource_name" || name == "resource_local_to_scene" ||
+                contains(skip, std::string_view(name))) {
+                continue;
+            }
+            const json::Value* fallback = type != nullptr ? type->defaults().find(name) : nullptr;
+            std::string what = resource + ".";
+            if (fallback == nullptr) {
+                what += name.substr(0, name.find('/'));
+                problems_.add(what, node.declared);
+                continue;
+            }
+            std::string why;
+            if (auto converted =
+                    field_value(component, name, *fallback, value, owner, SceneContext{}, why)) {
+                out[name] = std::move(*converted);
+            } else {
+                what += name;
+                problems_.add(what, node.declared, why);
+            }
+        }
+    }
+
+    // The primitive meshes SlashEngine has components for, by Godot's names.
+    static constexpr std::array<std::string_view, 8> kPrimitiveMeshes{
+        "BoxMesh",   "SphereMesh", "CylinderMesh", "CapsuleMesh",
+        "PlaneMesh", "QuadMesh",   "PrismMesh",    "TorusMesh"};
+
+    // MeshInstance3D's mesh and materials: a primitive mesh as its component, a model file
+    // Godot imported as a mesh (an .obj file) as its mesh, and the material that wins
+    // (material_override, then surface 0's override, then the mesh's own) as the entity's
+    // StandardMaterial3D.
+    bool mesh_property(const Node& node, const Property& property, json::Object& components) {
+        const std::string& name = property.name;
+        const Value& value = *property.value;
+        const TextFile& file = *property.file;
+        const auto set = [&](std::string_view other) {
+            const Property* found = node.find(other);
+            return found != nullptr && found->value->kind != Value::Kind::Nil;
+        };
+        const bool overridden = set("material_override");
+        const bool surface = set("surface_material_override/0");
+        if (name == "material_override") {
+            convert_material(value, file, components, node);
+            return true;
+        }
+        if (name.starts_with("surface_material_override/")) {
+            if (name == "surface_material_override/0") {
+                if (!overridden) {
+                    convert_material(value, file, components, node);
+                }
+            } else if (value.kind != Value::Kind::Nil) {
+                problems_.add("MeshInstance3D.surface_material_override", node.declared,
+                              "a mesh has one material, surface 0's");
+            }
+            return true;
+        }
+        if (name == "material_overlay") {
+            if (value.kind != Value::Kind::Nil) {
+                problems_.add("MeshInstance3D.material_overlay", node.declared,
+                              "a mesh has one material");
+            }
+            return true;
+        }
+        if (name != "mesh" || node.type != "MeshInstance3D") {
+            return false;
+        }
+        if (value.kind == Value::Kind::Nil) {
+            return true;
+        }
+        if (value.is_call("ExtResource")) {
+            if (const auto ext = file.ext.find(value.string_argument().value_or(""));
+                ext != file.ext.end() && is_model_file(extension_of(ext->second.path))) {
+                if (std::ranges::binary_search(files_, ext->second.path)) {
+                    components["MeshInstance3D"]["mesh"] = destination(ext->second.path);
+                } else {
+                    problems_.add("MeshInstance3D.mesh", node.declared,
+                                  "missing file " + ext->second.path);
+                }
+                return true;
+            }
+        }
+        const auto [section, owner] = resource_section(value, file);
+        const std::string type = section != nullptr ? resource_type(*section, *owner) : "";
+        if (!contains(kPrimitiveMeshes, std::string_view(type))) {
+            std::string why = type + " meshes";
+            if (section == nullptr) {
+                why = "a mesh saved in Godot's binary format; save it as a glTF file";
+            } else if (type == "ArrayMesh") {
+                why = "a mesh saved in Godot's own format; export it as a glTF file";
+            }
+            problems_.add("MeshInstance3D.mesh", node.declared, why);
+            return true;
+        }
+        resources_used_.insert(type);
+        json::Value& primitive = components[type];
+        primitive = json::Object{};
+        resource_fields(*section, *owner, type, primitive, node, {"material"});
+        if (const Value* material = section->property("material");
+            material != nullptr && !overridden && !surface) {
+            convert_material(*material, *owner, components, node);
+        }
+        return true;
+    }
+
+    // A material as the entity's StandardMaterial3D, from BaseMaterial3D's properties of the
+    // same names.
+    void convert_material(const Value& reference, const TextFile& file, json::Object& components,
+                          const Node& node) {
+        if (reference.kind == Value::Kind::Nil) {
+            return;
+        }
+        const auto [section, owner] = resource_section(reference, file);
+        const std::string type = section != nullptr ? resource_type(*section, *owner) : "";
+        if (type != "StandardMaterial3D" && type != "ORMMaterial3D") {
+            problems_.add("material " + (type.empty() ? std::string("resource") : type),
+                          node.declared,
+                          type == "ShaderMaterial"
+                              ? "a game's own 3D shaders aren't supported yet"
+                              : "only StandardMaterial3D and ORMMaterial3D resources convert");
+            return;
+        }
+        resources_used_.insert(type);
+        json::Value material = json::Object{};
+        resource_fields(*section, *owner, "StandardMaterial3D", material, node,
+                        {"transparency", "orm_texture", "next_pass", "render_priority"});
+        if (const Value* transparency = section->property("transparency");
+            transparency != nullptr && transparency->kind == Value::Kind::Int) {
+            // Alpha hash dithers and depth pre-pass sorts: the nearest modes cut and blend.
+            static constexpr std::array<std::string_view, 5> kModes{
+                "disabled", "alpha", "alpha_scissor", "alpha_scissor", "alpha"};
+            const std::int64_t mode = transparency->integer;
+            if (mode >= 0 && std::cmp_less(mode, kModes.size())) {
+                material["transparency"] = kModes.at(static_cast<std::size_t>(mode));
+            }
+            if (mode == 3) {
+                problems_.add("StandardMaterial3D.transparency", node.declared,
+                              "alpha hash dithers; it cuts at alpha_scissor_threshold instead");
+            } else if (mode == 4) {
+                problems_.add("StandardMaterial3D.transparency", node.declared,
+                              "depth pre-pass blends as alpha");
+            }
+        }
+        if (const Value* orm = section->property("orm_texture");
+            orm != nullptr && orm->kind != Value::Kind::Nil) {
+            std::string why;
+            if (std::string path = resource_path(*orm, *owner, why); !path.empty()) {
+                // ORM packs occlusion, roughness and metallic in red, green and blue.
+                material["roughness_texture"] = path;
+                material["roughness_texture_channel"] = "green";
+                material["metallic_texture"] = std::move(path);
+                material["metallic_texture_channel"] = "blue";
+            } else {
+                problems_.add("ORMMaterial3D.orm_texture", node.declared, why);
+            }
+        }
+        if (const Value* next = section->property("next_pass");
+            next != nullptr && next->kind != Value::Kind::Nil) {
+            problems_.add(type + ".next_pass", node.declared, "a mesh has one material");
+        }
+        components["StandardMaterial3D"] = std::move(material);
+    }
+
+    // A WorldEnvironment's Environment as its fields, and its Sky's material as the sky
+    // component of the same name on its entity.
+    void convert_environment(const Value& reference, const TextFile& file, json::Object& components,
+                             const Node& node) {
+        if (reference.kind == Value::Kind::Nil) {
+            return;
+        }
+        const auto [section, owner] = resource_section(reference, file);
+        if (section == nullptr || resource_type(*section, *owner) != "Environment") {
+            problems_.add("WorldEnvironment.environment", node.declared,
+                          "not an Environment resource");
+            return;
+        }
+        resources_used_.insert("Environment");
+        json::Value& environment = components["WorldEnvironment"];
+        resource_fields(*section, *owner, "WorldEnvironment", environment, node, {"sky"});
+        const Value* sky_reference = section->property("sky");
+        if (sky_reference == nullptr || sky_reference->kind == Value::Kind::Nil) {
+            return;
+        }
+        const auto [sky, sky_owner] = resource_section(*sky_reference, *owner);
+        if (sky == nullptr || resource_type(*sky, *sky_owner) != "Sky") {
+            problems_.add("Environment.sky", node.declared, "not a Sky resource");
+            return;
+        }
+        resources_used_.insert("Sky");
+        static constexpr std::array<std::int64_t, 7> kRadianceSizes{32,  64,   128, 256,
+                                                                    512, 1024, 2048};
+        for (const auto& [name, value] : sky->properties) {
+            if (name == "radiance_size" && value.kind == Value::Kind::Int && value.integer >= 0 &&
+                std::cmp_less(value.integer, kRadianceSizes.size())) {
+                environment["sky_radiance_size"] =
+                    kRadianceSizes.at(static_cast<std::size_t>(value.integer));
+            } else if (name == "sky_material") {
+                const auto [material, material_owner] = resource_section(value, *sky_owner);
+                const std::string type =
+                    material != nullptr ? resource_type(*material, *material_owner) : "";
+                if (type == "ProceduralSkyMaterial" || type == "PhysicalSkyMaterial" ||
+                    type == "PanoramaSkyMaterial") {
+                    resources_used_.insert(type);
+                    json::Value& out = components[type];
+                    out = json::Object{};
+                    resource_fields(*material, *material_owner, type, out, node);
+                } else if (value.kind != Value::Kind::Nil) {
+                    problems_.add("sky material " + (type.empty() ? std::string("resource") : type),
+                                  node.declared,
+                                  type == "ShaderMaterial"
+                                      ? "a game's own sky shaders aren't supported yet"
+                                      : "not a ProceduralSkyMaterial, PhysicalSkyMaterial or "
+                                        "PanoramaSkyMaterial");
+                }
+            } else if (name != "process_mode" && name != "resource_name" &&
+                       name != "resource_local_to_scene") {
+                // process_mode says how often Godot redraws the sky's light; SlashEngine redraws
+                // it when it changes.
+                problems_.add("Sky." + name, node.declared);
+            }
+        }
+    }
+
+    // A Shape3D as a CollisionShape3D's shape and the fields it sets.
+    void convert_shape_3d(const Value& reference, const TextFile& file, json::Value& shape,
+                          const Node& node) {
+        if (reference.kind == Value::Kind::Nil) {
+            return;
+        }
+        const auto [section, owner] = resource_section(reference, file);
+        if (section == nullptr) {
+            problems_.add("collision shape", node.declared, "a missing shape resource");
+            return;
+        }
+        const std::string type = resource_type(*section, *owner);
+        static const std::map<std::string, std::string, std::less<>> kShapes{
+            {"BoxShape3D", "box"},
+            {"SphereShape3D", "sphere"},
+            {"CapsuleShape3D", "capsule"},
+            {"CylinderShape3D", "cylinder"},
+            {"ConvexPolygonShape3D", "convex_polygon"},
+            {"ConcavePolygonShape3D", "concave_polygon"},
+            {"WorldBoundaryShape3D", "world_boundary"},
+        };
+        const auto found = kShapes.find(type);
+        if (found == kShapes.end()) {
+            problems_.add("collision shape " + type, node.declared,
+                          type == "HeightMapShape3D"
+                              ? "an HTerrain's height field collides; use one"
+                              : "no SlashEngine shape for it yet");
+            return;
+        }
+        resources_used_.insert(type);
+        shape["shape"] = found->second;
+        // custom_solver_bias tunes Godot Physics' solver, which Jolt has no use for.
+        resource_fields(*section, *owner, "CollisionShape3D", shape, node,
+                        {"data", "custom_solver_bias"});
+        if (const Value* data = section->property("data"); data != nullptr) {
+            std::string why;
+            if (auto faces = guess(*data, *owner, why); faces) {
+                shape["faces"] = std::move(*faces);
+            } else {
+                problems_.add(type + ".data", node.declared, why);
+            }
+        }
     }
 
     void convert_shape(const Value& reference, const TextFile& file, json::Value& shape,
@@ -4717,7 +5341,7 @@ private:
             return "start the other AnimationPlayer from gameplay code, on an event track's event";
         }
         if (type.ends_with("_3d") || type == "blend_shape") {
-            return "3D comes with milestone 7";
+            return "3D tracks don't convert yet";
         }
         return "no SlashEngine track of this kind";
     }
@@ -4987,13 +5611,19 @@ private:
     }
 
     // The components a node becomes, in the order its properties look for a field: Transform2D
-    // first, so a node's position goes there rather than to a field of the same name, such as
-    // CollisionShape2D's.
+    // or Transform3D first, so a node's position goes there rather than to a field of the same
+    // name, such as CollisionShape2D's.
     static std::vector<std::string> component_order(const Node& node, Family family,
                                                     bool transform) {
         std::vector<std::string> order;
         if (transform) {
             order.emplace_back("Transform2D");
+        }
+        if (family == Family::Node3D) {
+            order.emplace_back("Transform3D");
+        }
+        if (!node.model.empty()) {
+            order.emplace_back("MeshInstance3D");
         }
         // A ParallaxBackground in the world is a Node2D, as Godot's converter makes it.
         const bool background_in_world =
@@ -5094,7 +5724,10 @@ private:
             families[i] = type != nullptr ? type->family : guess_family(nodes[i]);
             if (type == nullptr) {
                 problems_.add("node type " + nodes[i].type, nodes[i].declared,
-                              unsupported_node(nodes[i].type));
+                              components_.find(nodes[i].type) != nullptr
+                                  ? "the importer doesn't convert it yet; add SlashEngine's " +
+                                        nodes[i].type + " component by hand"
+                                  : unsupported_node(nodes[i].type));
             }
             // A ParallaxBackground that follows the camera's zoom is drawn with the world, as
             // Godot's converter turns it into a Node2D.
@@ -5110,6 +5743,7 @@ private:
                 families[i] == Family::Node2D ||
                 (families[i] == Family::Plain && !layers[i] &&
                  nodes[i].type != "AudioStreamPlayer" && nodes[i].type != "PopupMenu" &&
+                 nodes[i].type != "WorldEnvironment" &&
                  (parent < 0 || (families[static_cast<std::size_t>(parent)] == Family::Plain &&
                                  (has_transform[static_cast<std::size_t>(parent)] ||
                                   layers[static_cast<std::size_t>(parent)]))));
@@ -5134,6 +5768,9 @@ private:
             const NodeType* type = find_node_type(node.type);
             if (type != nullptr && type->vertical) {
                 components[std::string(type->first)]["vertical"] = true;
+            }
+            if (!node.model.empty()) {
+                components["MeshInstance3D"]["mesh"] = destination(node.model);
             }
             if (components.contains("AnimatedSprite2D")) {
                 // Godot's plays only with autoplay or when code calls play().
@@ -5229,7 +5866,8 @@ private:
         }
 
         // Children: Node2D under Node2D through Transform2D, Control under Control through
-        // Control. Anything else stays where Godot would draw it, at the top of its canvas.
+        // Control, Node3D under Node3D through Transform3D. Anything else stays where Godot
+        // would draw it, at the top of its canvas or in the world.
         std::vector<bool> linked(nodes.size(), false);
         for (std::size_t i = 0; i < nodes.size(); ++i) {
             for (const int child : nodes[i].children) {
@@ -5240,6 +5878,9 @@ private:
                     linked[c] = true;
                 } else if (families[i] == Family::Control && families[c] == Family::Control) {
                     parent["Control"]["children"].push_back(nodes[c].id);
+                    linked[c] = true;
+                } else if (families[i] == Family::Node3D && families[c] == Family::Node3D) {
+                    parent["Transform3D"]["children"].push_back(nodes[c].id);
                     linked[c] = true;
                 } else if (families[i] == Family::Control && families[c] == Family::Node2D) {
                     problems_.add("Node2D under a Control", nodes[c].declared,
@@ -5659,6 +6300,7 @@ private:
     std::map<std::string, std::vector<std::string>> groups_;
     std::map<std::string, json::Value> report_scenes_;
     std::set<std::string> scenes_started_;
+    std::set<std::string> copied_; // .gltf files' buffers, copied once
     // Each converted scene's entity IDs, by node path from its root.
     std::map<std::string, std::map<std::string, std::string>> scene_ids_;
     Problems problems_;
