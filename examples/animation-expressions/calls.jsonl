@@ -1,0 +1,17 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"animation.tree","params":{"path":"hero.animtree.json"}}
+{"jsonrpc":"2.0","id":3,"method":"step","params":{"ticks":10}}
+{"jsonrpc":"2.0","id":4,"method":"animation.set_parameters","params":{"id":"hero","parameters":{"sped":2}}}
+{"jsonrpc":"2.0","id":5,"method":"animation.set_parameters","params":{"id":"hero","parameters":{"speed":2}}}
+{"jsonrpc":"2.0","id":6,"method":"step","params":{"ticks":10}}
+{"jsonrpc":"2.0","id":7,"method":"events.subscribe","params":{"kinds":["animation_started","animation_finished"]}}
+{"jsonrpc":"2.0","id":8,"method":"animation.set_parameters","params":{"id":"hero","parameters":{"jump":true,"grounded":false}}}
+{"jsonrpc":"2.0","id":9,"method":"step","params":{"ticks":10}}
+{"jsonrpc":"2.0","id":10,"method":"animation.tree","params":{"id":"hero"}}
+{"jsonrpc":"2.0","id":11,"method":"animation.set_parameters","params":{"id":"hero","parameters":{"grounded":true}}}
+{"jsonrpc":"2.0","id":12,"method":"step","params":{"ticks":10}}
+{"jsonrpc":"2.0","id":13,"method":"entity.get","params":{"id":"hero","components":["Transform2D","AnimationTree"]}}
+{"jsonrpc":"2.0","id":14,"method":"animation.set_parameters","params":{"id":"hero","parameters":{"speed":0}}}
+{"jsonrpc":"2.0","id":15,"method":"step","params":{"ticks":40}}
+{"jsonrpc":"2.0","id":16,"method":"events.read","params":{"subscription":"events_1"}}
+{"jsonrpc":"2.0","id":17,"method":"animation.tree","params":{"id":"hero"}}

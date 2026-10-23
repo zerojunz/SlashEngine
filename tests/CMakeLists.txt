@@ -55,6 +55,7 @@ add_executable(slash_tests
     test_csg.cpp
     test_debug.cpp
     test_exporter.cpp
+    test_expression.cpp
     test_fixed_step.cpp
     test_frame_summary.cpp
     test_gameplay.cpp
