@@ -696,7 +696,8 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         `Transform3D` and the models' nodes, and model clips played from the converted models
   - [x] Unity's humanoid animation, retargeted from one model's Avatar to another's, and root
         motion taken out of the pose by the `AnimationTree`
-  - [ ] Unity's skinned meshes
+  - [x] Unity's skinned meshes: nodes posed in a scene as the model's `Skeleton3D`, objects on
+        nodes as `BoneAttachment3D`s, and models unpacked into objects folded back into one
   - [ ] Unreal Engine levels and assets through the user's own Unreal Editor
 - [ ] 3D in the asset library and generator ([design](design.md#3d-assets))
   - [ ] Parametric models: agents write a `.model.json` recipe of shapes, CSG on Manifold,
