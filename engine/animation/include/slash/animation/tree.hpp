@@ -1,6 +1,7 @@
 #pragma once
 
 #include "slash/animation/animation.hpp"
+#include "slash/core/expression.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/json_schema.hpp"
 #include "slash/core/math.hpp"
@@ -44,6 +45,13 @@
 // node names to it, then the parameter, as Godot's without "parameters/": "speed/blend_amount",
 // "shot/request". A blend space's points are named by their index, a state machine's states by
 // their names: "move/travel", "move/run/blend_position".
+//
+// A tree's variables are values games set for its state machines' advance expressions to read,
+// as Godot's read the properties of the tree's advance_expression_base_node: with
+// "variables": {"speed": 0.0} and "triggers": ["jump"], a transition's "advance_expression":
+// "jump and speed < 4" is taken once the game sets the parameter "jump" to true while "speed" is
+// below 4. A trigger is a variable that starts false and goes back to false once a transition
+// that reads it is taken, as Unity's Animator triggers do.
 namespace slash::animation {
 
 inline constexpr std::string_view kTreeSuffix = ".animtree.json";
@@ -98,6 +106,9 @@ struct MachineTransition {
     std::string from;
     std::string to;
     std::string advance_condition; // an auto transition waits for "conditions/<it>" to be true
+    // An auto transition also waits for this to run to a value that counts as true, as Godot's
+    // advance_expression; it reads the tree's variables. Empty for none.
+    Expression advance_expression;
     double xfade_time = 0.0;
     TreeCurve xfade_curve;
     int priority = 1; // lower goes first when several can be taken; travel counts it as cost
@@ -199,6 +210,8 @@ struct TreeNode {
 // A .animtree.json file: its nodes, the root first.
 struct AnimationTreeResource {
     std::vector<TreeNode> nodes;
+    json::Object variables;            // advance expressions' values, by name, with defaults
+    std::vector<std::string> triggers; // variables that go back to false once read
 };
 
 [[nodiscard]] std::string_view tree_node_type_name(TreeNodeType type);
