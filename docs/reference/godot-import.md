@@ -24,6 +24,7 @@ from its `.pck` file or executable: see [Exported games](#exported-games).
 | `<name>.meshlib.json` | Each `MeshLibrary` resource, text or binary (`.meshlib`, `.res`), named as frames are (see [3D](#3d)) |
 | `<name>.navmesh.json`, `<name>.navpoly.json` | Each `NavigationMesh` and `NavigationPolygon` resource, named as frames are |
 | `<name>.anim.json` | Each `AnimationPlayer`'s animation libraries: one library's named as above, several together as `<scene>_<player>.anim.json` |
+| `<name>.animtree.json` | Each `AnimationTree`'s `tree_root`: a resource file's beside it, a scene's own as `<scene>_<tree>.animtree.json` (see [animation trees](#animation-trees)) |
 | `project.json` | `project.godot`'s settings and input map, merged into the project's own if it has one |
 | `storyboard/work.json` | A task per script, merged into the project's own tasks |
 | `import/godot.json` | The full report: every node's entity, what each script needs and everything that didn't convert |
@@ -110,6 +111,7 @@ above the world.
 | `PinJoint2D`, `DampedSpringJoint2D`, `GrooveJoint2D` | `Transform2D` and the joint |
 | `AudioStreamPlayer` | `AudioStreamPlayer` |
 | `AnimationPlayer` | `AnimationPlayer` (see [animations](#animations)) |
+| `AnimationTree` | `AnimationTree`, on the entity that draws the model when it plays a model's own animations (see [animation trees](#animation-trees)) |
 | `Control` | `Control` |
 | `Label`, `ColorRect`, `Panel`, `TextureRect`, `NinePatchRect`, `ProgressBar`, `Button`, `CheckBox`, `CheckButton`, `TextureButton`, `LineEdit`, `TextEdit`, `ScrollContainer`, `MarginContainer`, `CenterContainer`, `PanelContainer`, `GridContainer` | `Control` and the component of the same name |
 | `CodeEdit` | `Control`, `TextEdit` and `CodeEdit`: its text, gutters and guidelines |
@@ -325,6 +327,42 @@ An instance of the scene has the same library, with its targets under the instan
 Each animation keeps its `length` and loop mode (`loop_mode` 1 is `linear`, 2 is `pingpong`).
 Keys past the end, which Godot never plays, are left out, and so are disabled tracks.
 
+## Animation trees
+
+An `AnimationTree` node becomes an [`AnimationTree`](scene-format.md#animation-trees) component
+and its `tree_root` a `.animtree.json` file, written once for a resource several trees share.
+Each `AnimationNode` becomes the node of the same name without the prefix (`AnimationNodeOneShot`
+is `OneShot`), with Godot's property names and values, enums by name (`play_mode = 1` is
+`"backward"`, `switch_mode = 2` `"at_end"`):
+
+| Godot | Becomes |
+| --- | --- |
+| A blend tree's `nodes/<name>/node` and `node_connections` | A node of the same name in `nodes`; each connection an input by its Godot name (`OneShot`'s `in` and `shot`, `Add3`'s `-add`, `in` and `+add`), and the one to `output` the tree's `output` |
+| A blend space's `blend_point_<n>/node` and `pos`, `triangles` | Its `points` in order; `triangles` only when `auto_triangles` is off, by the points' new indices |
+| A `Transition`'s `input_<n>/name`, `auto_advance`, `break_loop_at_end` and `reset` | Its `inputs`, each with the blend tree node connected to it |
+| A state machine's `states/<name>/node` and `position`, and `transitions` | Its `states`, and a transition for each triple, with its switch and advance modes, condition, priority and cross-fade |
+| `fadein_curve`, `fadeout_curve`, `xfade_curve` | `[offset, value]` points joined by straight lines, as the report says |
+| `filters` | The tracks they name: a bone or node of a model by its name, a converted track as `<target>:<component>/<field>`, and a node's method tracks as its event tracks |
+
+The tree plays the animations of the `AnimationPlayer` its `anim_player` names, with that
+player's library and `targets`, or its own `libraries` from its `root_node`. The player Godot's
+importer gives a model with animations is the model itself: the library is the model file and
+the component goes on the entity that draws it, since a tree poses the model its own entity
+draws, and the report says so. Godot drops a `-loop` or `_loop`, `-cycle` or `_cycle`, or a
+`$loop` from a model's animation names; the file names each as the model does.
+
+`active`, `deterministic`, `root_motion_track` (the model node it names) and `root_motion_local`
+carry over. A deterministic tree starts each value track from its key in the library's `RESET`
+animation, or from zero, as Godot's does, so a converted library without one gets `RESET` keys at
+zero, as the report says. `parameters/` values that callers set (`request`, `blend_amount`,
+`blend_position`, `transition_request`, a state machine's `conditions/`) become the component's
+`parameters`, a `OneShot` request by name; what the tree keeps as it plays is left for it.
+
+A node whose animation the libraries lack plays nothing in Godot, and a node with nothing
+connected to one of its inputs is reported as invalid there; such a node goes, and the report
+says so, with the nodes it fed in turn. `report.converted.animation_trees` counts the files
+written.
+
 ## Particles
 
 A `CPUParticles2D` keeps its settings in its component. A `GPUParticles2D` keeps the node's, and
@@ -537,7 +575,8 @@ The report lists each of these once per kind, with how many and where it was fir
 
 | What | Why, and when |
 | --- | --- |
-| `AnimationTree`, `Skeleton3D` and its modifiers, `PhysicalBone3D` | Not converted yet; add SlashEngine's component of the same name by hand |
+| `Skeleton3D` and its modifiers, `PhysicalBone3D` | Not converted yet; add SlashEngine's component of the same name by hand |
+| A state machine transition's `advance_expression`, `AnimationNodeExtension` and `AnimationNodeOutput` subclasses, and a tree's manual `callback_mode_process` | Set a condition from gameplay code; the tree plays every tick |
 | 3D tracks (`position_3d`, `rotation_3d`, `scale_3d`, `blend_shape`) | Not converted yet; a model's own animations play from the model file |
 | A model's own nodes changed from a scene (editable children), and its `.import` file's root scale and root type | The model draws as its file has it; place, scale and add components to the entity that draws it |
 | `ArrayMesh` resources, the meshes Godot saves from imported models | Export the mesh as a glTF file |

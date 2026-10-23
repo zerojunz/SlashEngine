@@ -670,8 +670,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         sound and the 3D project settings
   - [x] Godot's CSG shapes, paths, `GridMap` and mesh libraries (text and binary), joints,
         vehicles and navigation nodes, meshes and polygons
-  - [ ] Godot's `AnimationTree`, skeletons and their modifiers, ragdolls, HTerrain data and 3D
-        animation tracks
+  - [x] Godot's `AnimationTree`: blend trees, blend spaces, transitions, state machines and
+        their parameters, on a model's own animations or a player's libraries
+  - [ ] Godot's skeletons and their modifiers, ragdolls, HTerrain data and 3D animation tracks
   - [ ] Unity 3D scenes
   - [ ] Unreal Engine levels and assets through the user's own Unreal Editor
 - [ ] 3D in the asset library and generator ([design](design.md#3d-assets))
