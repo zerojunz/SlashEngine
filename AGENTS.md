@@ -480,7 +480,10 @@ trigger and collision messages on physics events, connected methods on their sig
 none. Properties convert by the target field's reflected type, Godot's enum numbers
 through its `choices`, and a value that fails its file's schema (scene, tile set, theme, bus
 layout or animation) is left out and reported, so one bad value can't stop a file. Everything that didn't
-convert goes in `import/godot.json`, once per kind. `docs/reference/godot-import.md` maps each
+convert goes in `import/godot.json`, once per kind. `src/godot_bones.cpp` works out the
+`Skeleton3D` nodes Godot's importer makes of a model's skins, as its `SkinTool` does, so a
+scene's bone poses, IK modifiers, ragdolls and bone attachments under them convert onto the
+entity that draws the model. `docs/reference/godot-import.md` maps each
 node and setting; `examples/import-godot` imports a small platformer and
 `examples/import-godot-scripts` ports a script from its skeleton.
 
