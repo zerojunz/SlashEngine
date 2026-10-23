@@ -281,6 +281,26 @@ Affine3D orthonormalized(Affine3D transform) {
     return transform;
 }
 
+Affine3D looking_at(Vec3 target, Vec3 up) {
+    const auto normalized = [](Vec3 v) {
+        const float l = dot(v, v);
+        return l == 0.0F ? Vec3{} : scaled(v, 1.0F / std::sqrt(l));
+    };
+    const auto is_zero_approx = [](Vec3 v) {
+        constexpr float kEpsilon = 0.00001F; // Godot's CMP_EPSILON
+        return std::abs(v.x) < kEpsilon && std::abs(v.y) < kEpsilon && std::abs(v.z) < kEpsilon;
+    };
+    const Vec3 z = scaled(normalized(target), -1.0F);
+    Vec3 x = cross(up, z);
+    if (is_zero_approx(x)) {
+        // Vector3::get_any_perpendicular.
+        const bool right = std::abs(up.x) <= std::abs(up.y) && std::abs(up.x) <= std::abs(up.z);
+        x = normalized(cross(up, right ? Vec3{1.0F, 0.0F, 0.0F} : Vec3{0.0F, 1.0F, 0.0F}));
+    }
+    x = normalized(x);
+    return {.x = x, .y = cross(z, x), .z = z, .origin = {}};
+}
+
 entt::entity current_camera(const World& world, const Tree3D& tree) {
     const auto& ecs = world.ecs();
     entt::entity first = entt::null;

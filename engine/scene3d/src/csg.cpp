@@ -3,6 +3,7 @@
 #include "model_internal.hpp"
 
 #include "slash/core/text.hpp"
+#include "slash/world/path.hpp"
 #include "slash/world/world.hpp"
 
 #include <algorithm>
@@ -206,6 +207,11 @@ struct CsgNode {
     std::shared_ptr<const Model> model;
     std::optional<Primitive> primitive;
     std::string mesh_error;
+    // A CSGPolygon3D's path in path mode: its Path3D, where the curve starts (the path's place in
+    // the world, or nowhere with path_local), or why there is none.
+    std::optional<world::Path3D> path;
+    world::Affine3D path_place;
+    std::string path_error;
     std::vector<CsgNode> children; // the visible ones, in order
 
     friend bool operator==(const CsgNode&, const CsgNode&) = default;
@@ -413,7 +419,8 @@ std::vector<Face> torus_faces(const world::CSGTorus3D& torus) {
 }
 
 std::vector<Face> polygon_faces(const world::CSGPolygon3D& polygon, const std::string& path,
-                                entt::entity entity, std::vector<Problem>& problems) {
+                                const CsgNode& node, std::vector<Problem>& problems) {
+    const entt::entity entity = node.entity;
     std::vector<Face> faces;
     const std::string field = path + "/polygon";
     if (polygon.polygon.size() < 3) {
@@ -423,9 +430,10 @@ std::vector<Face> polygon_faces(const world::CSGPolygon3D& polygon, const std::s
         return faces;
     }
     const bool spin = polygon.mode == "spin";
-    if (!spin && polygon.mode != "depth") {
-        problems.push_back(
-            {entity, path + "/mode", R"(expected "depth" or "spin", not ")" + polygon.mode + "\""});
+    const bool along_path = polygon.mode == "path";
+    if (!spin && !along_path && polygon.mode != "depth") {
+        problems.push_back({entity, path + "/mode",
+                            R"(expected "depth", "spin" or "path", not ")" + polygon.mode + "\""});
         return faces;
     }
     std::vector<Vec2> shape = polygon.polygon;
@@ -456,18 +464,104 @@ std::vector<Face> polygon_faces(const world::CSGPolygon3D& polygon, const std::s
         return Vec2{d.x / rect_size.x, d.y / rect_size.y};
     };
 
+    // In path mode, the curve it is pushed along.
+    std::optional<world::Curve3D> curve;
+    if (along_path) {
+        if (!node.path) {
+            problems.push_back({entity, path + "/path_node", node.path_error});
+            return faces;
+        }
+        if (node.path->points.size() < 2) {
+            problems.push_back({entity, path + "/path_node",
+                                "names a Path3D with fewer than 2 points: give it more"});
+            return faces;
+        }
+        curve.emplace(node.path->points, node.path->closed, node.path->bake_interval,
+                      node.path->up_vector_enabled);
+    }
+
     const int spin_sides = std::max(polygon.spin_sides, 3);
     const float spin_degrees = std::clamp(polygon.spin_degrees, 0.01F, 360.0F);
-    const int extrusions = spin ? spin_sides : 1;
-    const int end_count = !spin || spin_degrees < 360.0F ? 2 : 0;
-    const double u_step = 1.0 / extrusions;
+    const float path_interval = std::max(polygon.path_interval, 0.01F);
+    int extrusions = 1;
+    int end_count = 2;
+    double curve_length = 1.0;
+    if (spin) {
+        extrusions = spin_sides;
+        end_count = spin_degrees < 360.0F ? 2 : 0;
+    } else if (along_path) {
+        curve_length = curve->length();
+        if (polygon.path_interval_type == "subdivide") {
+            extrusions = static_cast<int>(std::ceil(static_cast<double>(node.path->points.size()) /
+                                                    static_cast<double>(path_interval)));
+        } else {
+            extrusions = std::max(1, static_cast<int>(std::ceil(curve_length / path_interval))) + 1;
+        }
+        if (!polygon.path_joined) {
+            extrusions -= 1;
+        } else {
+            end_count = 0;
+        }
+        extrusions = std::max(extrusions, 1);
+    }
+    double u_step = 1.0 / extrusions;
+    if (polygon.path_u_distance > 0.0F) {
+        u_step *= curve_length / polygon.path_u_distance;
+    }
     const double v_step = 1.0 / sides;
     const auto spin_step =
         (spin_degrees / static_cast<float>(spin_sides)) * static_cast<float>(kPi / 180.0);
     const float depth = std::max(polygon.depth, 0.001F);
+    double extrusion_step = 1.0 / extrusions;
+    if (along_path) {
+        if (polygon.path_joined) {
+            extrusion_step = 1.0 / std::max(extrusions - 1, 1);
+        }
+        extrusion_step *= curve_length;
+    }
 
+    // Where each ring of the polygon is: Godot's spin turns an Xform; a path places an Affine3D,
+    // its rings facing the way the curve goes.
     Xform current;
-    const auto point = [&](const Xform& t, Vec2 p) { return t.xform({p.x, p.y, 0.0F}); };
+    world::Affine3D on_path;
+    world::Affine3D previous_on_path;
+    world::Affine3D before_previous_on_path;
+    const world::Affine3D base = along_path ? node.path_place : world::Affine3D{};
+    const bool rotate_with_path = polygon.path_rotation != "polygon";
+    const auto ring_at = [&](Vec3 at, Vec3 direction, Vec3 up) {
+        // base.translated_local(at) * Transform3D().looking_at(direction, up).
+        world::Affine3D placed = base * world::looking_at(direction, up);
+        placed.origin = base.apply(at);
+        return placed;
+    };
+    if (along_path) {
+        Vec3 at;
+        Vec3 up{0.0F, 1.0F, 0.0F};
+        Vec3 direction{0.0F, 0.0F, -1.0F};
+        if (!rotate_with_path) {
+            at = curve->sample(0.0F);
+        } else {
+            if (!polygon.path_rotation_accurate) {
+                at = curve->sample(0.0F);
+                const Vec3 next = curve->sample(static_cast<float>(extrusion_step));
+                direction = next - at;
+                if (polygon.path_joined) {
+                    direction = next - curve->sample(curve->length());
+                }
+            } else {
+                const world::Affine3D sampled = curve->sample_with_rotation(0.0F);
+                at = sampled.origin;
+                direction = sampled.basis({0.0F, 0.0F, -1.0F});
+            }
+            if (polygon.path_rotation == "path_follow") {
+                up = curve->sample_up_vector(0.0F, true);
+            }
+        }
+        on_path = ring_at(at, direction, up);
+    }
+    const auto point = [&](const Xform& t, Vec2 p) {
+        return along_path ? on_path.apply({p.x, p.y, 0.0F}) : t.xform({p.x, p.y, 0.0F});
+    };
     const auto triangle_at = [&](std::size_t face, std::size_t corner) {
         return static_cast<std::size_t>(triangles[(face * 3) + corner]);
     };
@@ -488,17 +582,77 @@ std::vector<Face> polygon_faces(const world::CSGPolygon3D& polygon, const std::s
             faces.push_back(face);
         }
     }
+    const float simplify_dot =
+        cos_sin(static_cast<float>(static_cast<double>(polygon.path_simplify_angle) * kPi / 180.0))
+            .x;
+    Vec3 previous_simplify_direction;
+    int faces_combined = 0;
+    const std::size_t extrusion_faces = static_cast<std::size_t>(sides) * 2;
     for (int x0 = 0; x0 < extrusions; ++x0) {
         const Xform previous = current;
-        if (!spin) {
+        before_previous_on_path = previous_on_path;
+        previous_on_path = on_path;
+        if (along_path) {
+            // Godot's MODE_PATH step: the next ring along the curve.
+            const double previous_offset = x0 * extrusion_step;
+            double current_offset = (x0 + 1) * extrusion_step;
+            if (polygon.path_joined && x0 == extrusions - 1) {
+                current_offset = 0.0;
+            }
+            const Vec3 previous_point = curve->sample(static_cast<float>(previous_offset));
+            const world::Affine3D sampled =
+                curve->sample_with_rotation(static_cast<float>(current_offset));
+            const Vec3 current_point = sampled.origin;
+            const Vec3 step = current_point - previous_point;
+            const float step_length =
+                std::sqrt((step.x * step.x) + (step.y * step.y) + (step.z * step.z));
+            const Vec3 extrusion_direction =
+                step_length == 0.0F ? Vec3{} : step * (1.0F / step_length);
+            // A ring turned less than path_simplify_angle from the last replaces its quads.
+            const float turn = (previous_simplify_direction.x * extrusion_direction.x) +
+                               (previous_simplify_direction.y * extrusion_direction.y) +
+                               (previous_simplify_direction.z * extrusion_direction.z);
+            if (polygon.path_simplify_angle > 0.0F && x0 > 0 && turn > simplify_dot) {
+                faces_combined += 1;
+                previous_on_path = before_previous_on_path;
+                faces.resize(faces.size() - extrusion_faces);
+            } else {
+                faces_combined = 0;
+                previous_simplify_direction = extrusion_direction;
+            }
+            Vec3 up{0.0F, 1.0F, 0.0F};
+            Vec3 direction{0.0F, 0.0F, -1.0F};
+            if (rotate_with_path) {
+                if (!polygon.path_rotation_accurate) {
+                    double next_offset = (x0 + 2) * extrusion_step;
+                    if (x0 == extrusions - 1) {
+                        next_offset = polygon.path_joined ? extrusion_step : current_offset;
+                    }
+                    direction = curve->sample(static_cast<float>(next_offset)) - previous_point;
+                } else {
+                    direction = sampled.basis({0.0F, 0.0F, -1.0F});
+                }
+                if (polygon.path_rotation == "path_follow") {
+                    up = curve->sample_up_vector(static_cast<float>(current_offset), true);
+                }
+            }
+            on_path = ring_at(current_point, direction, up);
+        } else if (!spin) {
             current.origin = current.origin + Vec3{0.0F, 0.0F, -depth};
         } else if (end_count == 0 && x0 == extrusions - 1) {
             current = Xform{};
         } else {
             current.rotate({0.0F, 1.0F, 0.0F}, spin_step);
         }
-        const double u0 = x0 * u_step;
-        const double u1 = (x0 + 1) * u_step;
+        double u0 = (x0 - faces_combined) * u_step;
+        double u1 = (x0 + 1) * u_step;
+        if (along_path && !polygon.path_continuous_u) {
+            u0 = 0.0;
+            u1 = 1.0;
+        }
+        const auto previous_point_of = [&](Vec2 p) {
+            return along_path ? previous_on_path.apply({p.x, p.y, 0.0F}) : point(previous, p);
+        };
         for (int y0 = 0; y0 < sides; ++y0) {
             const int y1 = (y0 + 1) % sides;
             // The top half of the texture.
@@ -506,8 +660,8 @@ std::vector<Face> polygon_faces(const world::CSGPolygon3D& polygon, const std::s
             const double v1 = ((y0 + 1) * v_step) / 2.0;
             const Vec2 p0 = shape[static_cast<std::size_t>(y0)];
             const Vec2 p1 = shape[static_cast<std::size_t>(y1)];
-            const std::array<Vec3, 4> v = {point(previous, p0), point(current, p0),
-                                           point(current, p1), point(previous, p1)};
+            const std::array<Vec3, 4> v = {previous_point_of(p0), point(current, p0),
+                                           point(current, p1), previous_point_of(p1)};
             const auto uv = [](double x, double y) {
                 return Vec2{static_cast<float>(x), static_cast<float>(y)};
             };
@@ -621,7 +775,7 @@ Brush own_brush(const CsgNode& node, std::vector<Problem>& problems) {
                 }
                 return primitive_brush(torus_faces(shape), node, shape.flip_faces);
             } else if constexpr (std::is_same_v<T, world::CSGPolygon3D>) {
-                return primitive_brush(polygon_faces(shape, path, node.entity, problems), node,
+                return primitive_brush(polygon_faces(shape, path, node, problems), node,
                                        shape.flip_faces);
             } else {
                 if (!node.mesh_error.empty()) {
@@ -979,6 +1133,24 @@ CsgNode node_of(const world::World& world, const world::Tree3D& tree, entt::enti
     if (const auto* standard = ecs.try_get<const world::StandardMaterial3D>(entity);
         standard != nullptr) {
         node.material = *standard;
+    }
+    if (const auto* polygon = std::get_if<world::CSGPolygon3D>(&shape);
+        polygon != nullptr && polygon->mode == "path") {
+        const auto* path = world.valid(polygon->path_node)
+                               ? ecs.try_get<const world::Path3D>(polygon->path_node)
+                               : nullptr;
+        if (polygon->path_node == entt::null) {
+            node.path_error = "names no entity: name the entity with the Path3D to push the "
+                              "polygon along";
+        } else if (path == nullptr) {
+            node.path_error = "\"" + std::string(world.id_of(polygon->path_node)) +
+                              "\" has no Path3D: give it one, or name another entity";
+        } else {
+            node.path = *path;
+            if (!polygon->path_local) {
+                node.path_place = tree.global(polygon->path_node);
+            }
+        }
     }
     if (const auto* mesh = std::get_if<world::CSGMesh3D>(&shape); mesh != nullptr) {
         auto found = primitive_of(world, entity);

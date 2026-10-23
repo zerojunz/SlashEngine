@@ -1,0 +1,24 @@
+{
+  "animations": {
+    "lap": {
+      "length": 10,
+      "loop": "linear",
+      "tracks": [
+        {
+          "keys": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 10,
+              "value": 40
+            }
+          ],
+          "path": "PathFollow3D/progress"
+        }
+      ]
+    }
+  },
+  "format": 1
+}

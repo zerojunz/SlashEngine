@@ -395,6 +395,14 @@ draws, collides when `use_collision` is on and bakes into navigation meshes, so 
 block out a level, cut doors in it and walk it without a modeling tool. The
 [CSG example](../examples/csg-shapes/) builds a hamlet.
 
+**Paths** are Godot's `Path2D` and `Path3D`: a curve through points with Bézier handles,
+baked into points about `bake_interval` apart. An entity with a `PathFollow2D` or
+`PathFollow3D` among a path's children sits `progress` along its curve, turned to face the way
+it goes, so moving something along a route is a matter of changing one number, by gameplay code
+or an animation track. A `CSGPolygon3D` in **path mode** pushes its polygon along a `Path3D`,
+which makes rails, pipes, roads and walls from a curve. The [paths example](../examples/paths/)
+laps a cart round a rail over a hill.
+
 **Navigation** follows Godot 4.6's navigation servers: each world has a 2D and a 3D **map**,
 made of **regions** of navigation mesh (convex polygons, in `.navmesh.json` and `.navpoly.json`
 files) that join where their edges meet, and **links** between places the regions don't join,

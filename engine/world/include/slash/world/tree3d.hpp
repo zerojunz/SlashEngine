@@ -88,6 +88,11 @@ private:
 // Gram-Schmidt on the columns, x first. The origin stays.
 [[nodiscard]] Affine3D orthonormalized(Affine3D transform);
 
+// A rotation basis whose -z axis faces target and whose y axis is as near up as it can be, as
+// Godot's Basis::looking_at: with up along target, x is any direction across up. Its origin is
+// zero.
+[[nodiscard]] Affine3D looking_at(Vec3 target, Vec3 up = {0.0F, 1.0F, 0.0F});
+
 // The camera the 3D world is seen through, as Godot's Viewport::get_camera_3d: the first
 // Camera3D with current set in tree order, else the first one; cameras with no Transform3D come
 // after those in the tree, in the order they were made. Null with none.
