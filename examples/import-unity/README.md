@@ -15,9 +15,9 @@ From a shell, `slash-cli import unity` does the same.
 
 ```text
 project.import {"source":"unity"}
-{"converted": {"animation_libraries": 1, "assets": 9, "bus_layouts": 1, "input_actions": 12,
-               "prefabs": 3, "scenes": 1, "tile_sets": 1},
- "files": 18, "main_scene": "unity/Assets/Scenes/Pond.scene.json", "pixels_per_unit": 32.0,
+{"converted": {"animation_libraries": 1, "animation_trees": 1, "assets": 9, "bus_layouts": 1,
+               "input_actions": 12, "prefabs": 3, "scenes": 1, "tile_sets": 1},
+ "files": 19, "main_scene": "unity/Assets/Scenes/Pond.scene.json", "pixels_per_unit": 32.0,
  "report": "import/unity.json",
  "module": "src/game.cpp",
  "scripts": [{"code": "src/imported/camera_follow.cpp", "component": "CameraFollow",
@@ -65,14 +65,16 @@ project.import {"source":"unity"}
   layers, so its z range covers their sprites. The lily pad's `ShadowCaster2D` is a
   `LightOccluder2D` with its shape: beside the lantern, `light.sample` finds the lantern's light
   on top of the dusk, and under the lily pad only the dusk.
-- The frog's `Animator` becomes an `AnimationPlayer`, and its controller an animation library,
-  `Frog.anim.json`, with an animation per state: `Idle`, which plays first, swaps the frog's
-  sprite to blink and calls `Ribbit` (an event track), and `Hop`, which stretches its feet. The
-  sprite tracks target `#sprite`, the entity drawing the frog's sprite, and the feet track
-  `Feet`, both bound in the player's `targets`. A second in, the frog has ribbited, and at
-  1.75 seconds it blinks. The state machine, Hop on the `Hop` trigger and back to Idle when
-  `Grounded` at the end of the hop, is a storyboard task, since gameplay code picks the
-  animations.
+- The frog's `Animator` becomes an `AnimationTree`, its controller an animation library,
+  `Frog.anim.json`, with an animation per state, and its state machine a tree,
+  `Frog.animtree.json`. `Idle`, which plays first, swaps the frog's sprite to blink and calls
+  `Ribbit` (an event track), and `Hop` stretches its feet. The sprite tracks target `#sprite`,
+  the entity drawing the frog's sprite, and the feet track `Feet`, both bound in the tree's
+  `targets`. A second in, the frog has ribbited, and at 1.75 seconds it blinks. The controller's
+  `Hop` trigger and `Grounded` bool are the tree's trigger and variable: Idle goes to Hop on
+  `Hop`, and Hop back to Idle at its end when `Grounded`. Setting `Hop` with
+  `animation.set_parameters`, as gameplay code does where Unity's called `SetTrigger("Hop")`,
+  makes the frog hop. The storyboard task for the controller lists the parameters to set.
 - An `AudioSource` becomes an `AudioStreamPlayer`, or an `AudioStreamPlayer2D` when it is
   spatial. The music loops, so it plays a `.audio.json` file that loops the sound.
 - The audio mixer becomes a bus layout, `Pond.bus_layout.json`, which `project.json` sets: its
