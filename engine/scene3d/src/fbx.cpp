@@ -600,6 +600,7 @@ void FbxReader::add_nodes(const ufbx_node& node, int parent, const ufbx_matrix& 
     const ufbx_transform& local = node.local_transform;
     ModelNode out;
     out.name = unique_name(names_, name);
+    out.file_name = text_of(node.name);
     out.parent = parent;
     out.file_index = static_cast<int>(node.typed_id);
     out.position = vec3_of(local.translation);
