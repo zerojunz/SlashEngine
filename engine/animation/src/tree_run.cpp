@@ -1555,7 +1555,7 @@ private:
             pb.reset_request_on_teleport = false;
         }
         if (found_route) {
-            for (ChildInfo& child : children) {
+            for (const ChildInfo& child : children) {
                 child.playback->path = child.path;
             }
         } else {

@@ -756,13 +756,17 @@ private:
                                         "allow_transition_to_self, a travel to the current state "
                                         "starts it over");
                 } else if (ok && !seen.emplace(from, to).second) {
-                    fail(transition_at,
-                         "another transition goes from \"" + from + "\" to \"" + to + "\"");
+                    std::string message = "another transition goes from \"";
+                    message += from;
+                    message += "\" to \"";
+                    message += to;
+                    message += '"';
+                    fail(transition_at, message);
                 }
                 if (string_of(list[i], "advance_condition", "").find_first_of("/:") !=
                     std::string::npos) {
                     fail(transition_at + "/advance_condition",
-                         "condition names can't have \"/\" or \":\"");
+                         R"(condition names can't have "/" or ":")");
                 }
                 check_curve(list[i], "xfade_curve", transition_at);
                 ++into[to];
@@ -1138,8 +1142,10 @@ std::string check_state_path(const AnimationTreeResource& tree, int machine,
         }
         if (found == nullptr) {
             std::string message =
-                (walked.empty() ? std::string("the state machine") : "\"" + walked + "\"") +
-                " has no state \"" + name + "\"";
+                walked.empty() ? std::string("the state machine") : "\"" + walked + "\"";
+            message += " has no state \"";
+            message += name;
+            message += '"';
             if (const std::string_view hint = closest_match(name, names); !hint.empty()) {
                 message += "; did you mean \"" + std::string(hint) + "\"?";
             }
