@@ -1,3 +1,5 @@
+#include "fbx.hpp"
+
 #include "slash/canvas/tilemap.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
@@ -913,6 +915,7 @@ struct ClipCurves {
     std::string floats;
     std::string sprites;
     std::string events;
+    std::string rotation;
 };
 
 void write_clip(const fs::path& path, std::string_view guid, std::string_view stop, bool loop,
@@ -923,8 +926,8 @@ void write_clip(const fs::path& path, std::string_view guid, std::string_view st
     write(path, std::string(kHeader) + "--- !u!74 &7400000\nAnimationClip:\n" +
                     std::string(kSource) + "  m_Name: " + path.stem().string() +
                     "\n  serializedVersion: 7\n  m_Legacy: 0\n  m_Compressed: 0\n"
-                    "  m_UseHighQualityCurve: 1\n  m_RotationCurves: []\n"
-                    "  m_CompressedRotationCurves: []\n  m_EulerCurves:" +
+                    "  m_UseHighQualityCurve: 1\n  m_RotationCurves:" +
+                    listed(curves.rotation) + "  m_CompressedRotationCurves: []\n  m_EulerCurves:" +
                     listed(curves.euler) + "  m_PositionCurves:" + listed(curves.position) +
                     "  m_ScaleCurves: []\n  m_FloatCurves:" + listed(curves.floats) +
                     "  m_PPtrCurves:" + listed(curves.sprites) +
@@ -5240,4 +5243,234 @@ TEST_CASE("Unity terrains become HTerrains: heights, layers, alpha maps and hole
     const json::Value& position = *ground.value.find("points")->as_array()[0].find("position");
     CHECK(position.as_array()[1].as_double() ==
           doctest::Approx(hill_height(5, 40) / 32766.0 * 100.0).epsilon(0.001));
+}
+
+// --- 3D animation: "Shed", saved by Unity 2022.3 ---
+
+namespace {
+
+constexpr std::string_view kArmFbx = "a7000000000000000000000000000001";
+constexpr std::string_view kArmController = "a7000000000000000000000000000002";
+constexpr std::string_view kFanController = "a7000000000000000000000000000003";
+constexpr std::string_view kSpinAnim = "a7000000000000000000000000000004";
+constexpr std::string_view kLiftAnim = "a7000000000000000000000000000005";
+constexpr std::int64_t kWaveClip = 1827226128182048838; // the arm's clips, by their IDs
+constexpr std::int64_t kIdleClip = 6011206929000000001;
+
+// A key of a quaternion curve.
+std::string quaternion_key(std::string_view time, std::string_view value, std::string_view slope) {
+    return "      - serializedVersion: 3\n        time: " + std::string(time) +
+           "\n        value: " + std::string(value) + "\n        inSlope: " + std::string(slope) +
+           "\n        outSlope: " + std::string(slope) +
+           "\n        tangentMode: 0\n        weightedMode: 0\n"
+           "        inWeight: {x: 0.33333334, y: 0.33333334, z: 0.33333334, w: 0.33333334}\n"
+           "        outWeight: {x: 0.33333334, y: 0.33333334, z: 0.33333334, w: 0.33333334}\n";
+}
+
+std::string controller_file(std::string_view name, std::string_view states,
+                            std::string_view children, std::int64_t first) {
+    return std::string(kHeader) + "--- !u!91 &9100000\nAnimatorController:\n" +
+           std::string(kSource) + "  m_Name: " + std::string(name) +
+           "\n  serializedVersion: 5\n  m_AnimatorParameters: []\n"
+           "  m_AnimatorLayers:\n  - serializedVersion: 5\n    m_Name: Base Layer\n"
+           "    m_StateMachine: {fileID: 110700000}\n    m_Mask: {fileID: 0}\n" +
+           std::string(states) +
+           "--- !u!1107 &110700000\nAnimatorStateMachine:\n  serializedVersion: 6\n" +
+           std::string(kSource) + "  m_Name: Base Layer\n  m_ChildStates:\n" +
+           std::string(children) +
+           "  m_ChildStateMachines: []\n  m_AnyStateTransitions: []\n"
+           "  m_EntryTransitions: []\n  m_DefaultState: " +
+           ref(first) + "\n";
+}
+
+std::string child_state(std::int64_t state) {
+    return "  - serializedVersion: 1\n    m_State: " + ref(state) + "\n";
+}
+
+// A fan whose Animator spins its blade and blinks the tip, with a spot light on it, and an
+// instance of the FBX arm of tests/fbx.hpp, whose Animator a scene gives a controller of the
+// arm's clips: Wave, the first half of its Bend take, looping, with an event; Idle, its
+// Idle-loop take; and Lift, a clip of its own moving its bones.
+void write_shed(const fs::path& folder) {
+    write(folder / "ProjectSettings/ProjectVersion.txt", "m_EditorVersion: 2022.3.20f1\n");
+    write(folder / "ProjectSettings/ProjectSettings.asset",
+          std::string(kHeader) + "--- !u!129 &1\nPlayerSettings:\n  productName: Shed\n");
+
+    write(folder / "Assets/Models/Arm.fbx", slash::test::fbx_arm().binary());
+    write(folder / "Assets/Models/Arm.fbx.meta",
+          meta(kArmFbx, "ModelImporter",
+               "  internalIDToNameTable:\n  - first:\n      74: " + id(kWaveClip) +
+                   "\n    second: Wave\n  meshes:\n    globalScale: 1\n    useFileScale: 1\n"
+                   "  animations:\n    clipAnimations:\n    - serializedVersion: 16\n"
+                   "      name: Wave\n      takeName: Bend\n      internalID: 0\n"
+                   "      firstFrame: 0\n      lastFrame: 12\n      loopTime: 1\n"
+                   "      events:\n      - time: 0.5\n        functionName: Creak\n"
+                   "        data: \n        objectReferenceParameter: {instanceID: 0}\n"
+                   "        floatParameter: 0\n        intParameter: 0\n"
+                   "        messageOptions: 0\n    - serializedVersion: 16\n"
+                   "      name: Idle\n      takeName: Idle-loop\n      internalID: " +
+                   id(kIdleClip) +
+                   "\n      firstFrame: 0\n      lastFrame: 24\n      loopTime: 1\n"
+                   "      events: []\n"));
+
+    // Spin moves the fan up a meter, turns its blade a whole turn about y and hides the tip
+    // halfway; it also dims the fan's light, which doesn't convert.
+    const std::string linear_up = "{x: 0, y: 1, z: 0}";
+    ClipCurves spin;
+    spin.position =
+        anim_curve(anim_key("0", "{x: 1, y: 2, z: 3}", linear_up, linear_up, kVectorWeight) +
+                       anim_key("1", "{x: 1, y: 3, z: 3}", linear_up, linear_up, kVectorWeight),
+                   "    path: \n");
+    const std::string whole_turn = "{x: 0, y: 360, z: 0}";
+    spin.euler =
+        anim_curve(anim_key("0", "{x: 0, y: 0, z: 0}", whole_turn, whole_turn, kVectorWeight) +
+                       anim_key("1", "{x: 0, y: 360, z: 0}", whole_turn, whole_turn, kVectorWeight),
+                   "    path: Blade\n");
+    spin.floats = anim_curve(anim_key("0", "1", "Infinity", "Infinity") +
+                                 anim_key("0.5", "0", "Infinity", "Infinity"),
+                             anim_binding("m_IsActive", "Blade/Tip", 1)) +
+                  anim_curve(anim_key("0", "2", "-1", "-1") + anim_key("1", "1", "-1", "-1"),
+                             anim_binding("m_Intensity", "", 108));
+    write_clip(folder / "Assets/Animations/Spin.anim", kSpinAnim, "1", true, spin);
+
+    // Lift slides the upper bone half a meter along x and bends the lower one a quarter turn
+    // about z, by quaternions.
+    ClipCurves lift;
+    const std::string half_x = "{x: 0.5, y: 0, z: 0}";
+    lift.position =
+        anim_curve(anim_key("0", "{x: 0, y: 0, z: 0}", half_x, half_x, kVectorWeight) +
+                       anim_key("1", "{x: 0.5, y: 0, z: 0}", half_x, half_x, kVectorWeight),
+                   "    path: Armature/Upper\n");
+    const std::string bend = "{x: 0, y: 0, z: 0.70710677, w: -0.29289323}";
+    lift.rotation =
+        anim_curve(quaternion_key("0", "{x: 0, y: 0, z: 0, w: 1}", bend) +
+                       quaternion_key("1", "{x: 0, y: 0, z: 0.70710677, w: 0.70710677}", bend),
+                   "    path: Armature/Upper/Lower\n");
+    write_clip(folder / "Assets/Animations/Lift.anim", kLiftAnim, "1", false, lift);
+
+    write(folder / "Assets/Animations/Fan.controller",
+          controller_file(
+              "Fan",
+              animator_state(110200001, "Spin", "1", " []", ref(7400000, kSpinAnim, 2)) +
+                  animator_state(110200002, "Wave", "1", " []", ref(kWaveClip, kArmFbx, 3)),
+              child_state(110200001) + child_state(110200002), 110200001));
+    write(folder / "Assets/Animations/Fan.controller.meta",
+          meta(kFanController, "NativeFormatImporter", "  mainObjectFileID: 9100000\n"));
+    write(folder / "Assets/Animations/Arm.controller",
+          controller_file(
+              "Arm",
+              animator_state(110200001, "Idle", "1", " []", ref(kIdleClip, kArmFbx, 3)) +
+                  animator_state(110200002, "Wave", "2", " []", ref(kWaveClip, kArmFbx, 3)) +
+                  animator_state(110200003, "Lift", "1", " []", ref(7400000, kLiftAnim, 2)),
+              child_state(110200001) + child_state(110200002) + child_state(110200003), 110200001));
+    write(folder / "Assets/Animations/Arm.controller.meta",
+          meta(kArmController, "NativeFormatImporter", "  mainObjectFileID: 9100000\n"));
+
+    std::string scene(kHeader);
+    scene += game_object(10, "Fan", {11, 12, 13});
+    scene += transform_3d(11, 10, "{x: 1, y: 2, z: 3}", kNoTurn, kOne, 0, {21});
+    scene += component(108, "Light", 12, 10,
+                       "  m_Type: 0\n  m_Color: {r: 1, g: 1, b: 1, a: 1}\n  m_Intensity: 2\n"
+                       "  m_Range: 6\n  m_SpotAngle: 60\n");
+    scene += component(95, "Animator", 13, 10,
+                       "  serializedVersion: 5\n  m_Avatar: {fileID: 0}\n  m_Controller: " +
+                           ref(9100000, kFanController, 2) +
+                           "\n  m_CullingMode: 0\n  m_ApplyRootMotion: 0\n");
+    scene += game_object(20, "Blade", {21});
+    scene += transform_3d(21, 20, "{x: 0, y: 0, z: 0}", kNoTurn, kOne, 11, {31});
+    scene += game_object(30, "Tip", {31});
+    scene += transform_3d(31, 30, "{x: 1, y: 0, z: 0}", kNoTurn, kOne, 21);
+    scene += instance(200, kArmFbx, 0,
+                      modification(-8679921383154817045, kArmFbx, "m_LocalPosition.x", "2") +
+                          modification(919132149155446097, kArmFbx, "m_Name", "Arm") +
+                          modification(5866666021909216657, kArmFbx, "m_Controller", "",
+                                       ref(9100000, kArmController, 2)) +
+                          modification(5866666021909216657, kArmFbx, "m_ApplyRootMotion", "1"));
+    write(folder / "Assets/Scenes/Shed.unity", scene);
+    write(folder / "Assets/Scenes/Shed.unity.meta", meta("a7000000000000000000000000000006"));
+}
+
+} // namespace
+
+TEST_CASE("Unity 3D animation: Animators move Transform3D, and on a model's instance its nodes") {
+    const fs::path project = "import_unity_shed";
+    fs::remove_all(project);
+    write_shed(project / "unity");
+    auto imported = importer::import_project(
+        {.source = (project / "unity").string(), .destination = project.string()});
+    REQUIRE_MESSAGE(imported.ok(), (imported.ok() ? std::string() : imported.error().message));
+    const auto files = files_of(imported.value());
+    const std::string scene = "unity/Assets/Scenes/Shed.scene.json";
+    REQUIRE(files.contains(scene));
+
+    // The fan's clip moves its Transform3D, mirrored in x, and turns its blade the other way
+    // about y, as Unity's Euler angles do, key by key; the tip shows and hides.
+    const json::Value fan_library = parse(files.at("unity/Assets/Animations/Fan.anim.json"));
+    CHECK(*fan_library.find("animations") == parse(R"({"Spin": {"length": 1.0, "loop": "linear",
+        "tracks": [
+          {"path": "Transform3D/position",
+           "keys": [{"time": 0.0, "value": [-1.0, 2.0, 3.0]}, {"time": 1.0, "value": [-1.0, 3.0, 3.0]}]},
+          {"target": "Blade", "path": "Transform3D/rotation",
+           "keys": [{"time": 0.0, "value": [0.0, 0.0, 0.0]},
+                    {"time": 1.0, "value": [0.0, -6.283185, 0.0]}]},
+          {"target": "Blade/Tip", "path": "Transform3D/visible",
+           "keys": [{"time": 0.0, "value": true}, {"time": 0.5, "value": false}]}]}})"));
+    // Animated, the fan keeps Unity's place, its spot light turned on an entity of its own.
+    const json::Value fan = entity(files, scene, "fan");
+    CHECK(*fan.find("AnimationPlayer") ==
+          parse(R"({"library": "unity/Assets/Animations/Fan.anim.json", "animation": "Spin",
+                    "targets": {"Blade": "blade", "Blade/Tip": "tip"}})"));
+    CHECK(*fan.find("Transform3D") ==
+          parse(R"({"position": [-1.0, 2.0, 3.0], "children": ["fan_light", "blade"]})"));
+    const json::Value light = entity(files, scene, "fan_light");
+    CHECK(*light.find("Transform3D") == parse(R"({"rotation": [0.0, 3.141593, 0.0]})"));
+    CHECK(light.find("SpotLight3D") != nullptr);
+
+    // On the arm's instance, its model's clips play its takes "from" the model: Wave the first
+    // twelve frames of Bend, at 24 frames a second, with its event halfway; and Lift's curves
+    // move the bones they name as node tracks, its quaternions keyed every few degrees.
+    const json::Value arm_library = parse(files.at("unity/Assets/Animations/Arm.anim.json"));
+    const json::Value& animations = *arm_library.find("animations");
+    CHECK(*animations.find("Idle") ==
+          parse(R"({"from": {"model": "unity/Assets/Models/Arm.fbx", "animation": "Idle-loop"},
+                    "loop": "linear", "length": 1.0})"));
+    CHECK(*animations.find("Wave") ==
+          parse(R"({"from": {"model": "unity/Assets/Models/Arm.fbx", "animation": "Bend"},
+                    "loop": "linear", "length": 0.5,
+                    "tracks": [{"event": "Creak", "keys": [{"time": 0.25}]}]})"));
+    const json::Array& lift = animations.find("Lift")->find("tracks")->as_array();
+    REQUIRE(lift.size() == 2);
+    // Unity interpolates a quaternion's parts, so the bend is slower at its ends than halfway.
+    REQUIRE(lift[0].find("keys")->as_array().size() == 17);
+    CHECK(lift[0].find("node")->as_string() == "Lower");
+    CHECK(lift[0].find("property")->as_string() == "rotation");
+    CHECK(lift[0].find("interpolation") == nullptr);
+    const std::vector<double> turns{0.0,       -0.089976, -0.182982, -0.278754, -0.376959,
+                                    -0.477201, -0.579027, -0.681937, -0.785398, -0.888859,
+                                    -0.991769, -1.093595, -1.193837, -1.292042, -1.387814,
+                                    -1.480821, -1.570796};
+    for (std::size_t i = 0; i < turns.size(); ++i) {
+        const json::Value& key = lift[0].find("keys")->as_array()[i];
+        CHECK(key.find("time")->as_double() == doctest::Approx(static_cast<double>(i) / 16.0));
+        CHECK(*key.find("value") == json::Value(json::Array{0.0, 0.0, turns[i]}));
+    }
+    CHECK(lift[1] == parse(R"({"node": "Upper", "property": "position", "keys": [
+        {"time": 0.0, "value": [0.0, 0.0, 0.0]}, {"time": 1.0, "value": [-0.5, 0.0, 0.0]}]})"));
+    // The scene's change to the model's Animator gives the entity drawing it a player.
+    const json::Value arm = entity(files, scene, "arm");
+    CHECK(*arm.find("MeshInstance3D") == parse(R"({"mesh": "unity/Assets/Models/Arm.fbx"})"));
+    CHECK(*arm.find("AnimationPlayer") ==
+          parse(R"({"library": "unity/Assets/Animations/Arm.anim.json", "animation": "Idle"})"));
+
+    const json::Value report = parse(files.at("import/unity.json"));
+    CHECK(unsupported(report, "Animator in a 3D scene").is_null());
+    CHECK(unsupported(report, "animated m_IsActive").find("where")->as_string() ==
+          "Assets/Animations/Spin.anim");
+    CHECK(!unsupported(report, "animated Light.m_Intensity").is_null());
+    CHECK(unsupported(report, "animation clip of a model").find("where")->as_string() ==
+          "Assets/Animations/Fan.controller: state Wave");
+    CHECK(unsupported(report, "state speed on a model's clip").find("where")->as_string() ==
+          "Assets/Animations/Arm.controller: state Wave");
+    CHECK(unsupported(report, "Animator root motion").find("where")->as_string() ==
+          "Assets/Scenes/Shed.unity: Arm");
 }

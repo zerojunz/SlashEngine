@@ -1681,6 +1681,7 @@ TEST_CASE("FBX skins and animation stacks load as Godot's importer reads them") 
         CHECK(bend.name == "Bend");
         CHECK_FALSE(bend.loop);
         CHECK(bend.length == doctest::Approx(1.0));
+        CHECK(bend.frame_rate == doctest::Approx(24.0)); // the file names no time mode
         REQUIRE(bend.tracks.size() == 1);
         CHECK(bend.tracks[0].node == 2);
         CHECK(bend.tracks[0].property == scene3d::NodeProperty::Rotation);
