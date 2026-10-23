@@ -1,0 +1,27 @@
+scene.open {"path":"main.scene.json"}
+{"entities":13,"path":"main.scene.json"}
+events.subscribe {"kinds":["coin_taken","body_entered"]}
+{"subscription":"events_1"}
+tick 60: hero at (3.00, 0.90, 0.00), on the floor
+tick 120: hero at (6.00, 0.90, 0.00), on the floor
+tick 180: hero at (9.00, 0.90, 0.00), on the floor
+tick 240: hero at (11.84, 1.43, 0.00)
+tick 300: hero at (14.04, 0.90, 0.00), on the floor
+tick 360: hero at (14.04, 0.90, 0.00), on the floor
+  ball at (9.72, 0.30, -4.00)
+  parcel at (16.00, 0.30, 4.44)
+  crate_1 at (6.00, 0.50, 3.00)
+  crate_2 at (6.00, 1.50, 3.00)
+  crate_3 at (6.00, 2.50, 3.00)
+events.read {"subscription":"events_1"}
+{"dropped":0,"events":[{"data":{"body":"belt"},"id":"parcel","kind":"body_entered","seq":1,"tick":8},{"data":{"body":"hero"},"id":"coin_1","kind":"body_entered","seq":2,"tick":47},{"id":"coin_1","kind":"coin_taken","seq":3,"tick":48},{"data":{"body":"hero"},"id":"coin_2","kind":"body_entered","seq":4,"tick":126},{"id":"coin_2","kind":"coin_taken","seq":5,"tick":127},{"data":{"body":"hero"},"id":"coin_3","kind":"body_entered","seq":6,"tick":210},{"id":"coin_3","kind":"coin_taken","seq":7,"tick":211},{"data":{"body":"floor"},"id":"parcel","kind":"body_entered","seq":8,"tick":306}],"more":false}
+physics.raycast {"exclude":["hero"],"from":[14,2,0],"to":[14,-2,0]}
+{"hit":{"fraction":0.5,"id":"floor","normal":[0,1,0],"point":[14,0,0]}}
+physics.contacts {"id":"hero"}
+{"areas":[],"bodies":["floor"]}
+physics.overlap {"point":[6,2.5,3]}
+{"ids":["crate_3"]}
+physics.overlap {"position":[6,0.4,2.2],"shape":{"radius":0.5,"shape":"sphere"}}
+{"ids":["crate_1","floor"]}
+physics.gravity {"ids":["parcel"]}
+{"bodies":{"parcel":{"angular_damp":0.1,"gravity":[0,-9.8,0],"linear_damp":0.1}}}

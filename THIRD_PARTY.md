@@ -12,6 +12,7 @@ or license not allowed here, or whose license text changed without review.
 | [EnTT](https://github.com/skypjack/entt) | v3.16.0 | MIT | Entity component system | Fetched, header-only |
 | [yyjson](https://github.com/ibireme/yyjson) | 0.13.0 | MIT | JSON parsing and number formatting | Fetched, linked statically |
 | [Box2D](https://github.com/erincatto/box2d) | v3.1.1 | MIT | 2D physics: bodies, shapes, joints, queries | Fetched, linked statically |
+| [Jolt Physics](https://github.com/jrouwe/JoltPhysics) | v5.6.0 | MIT | 3D physics: bodies, shapes, queries and motion tests, as Godot 4.4's Jolt module uses it | Fetched, linked statically |
 | [FreeType](https://github.com/freetype/freetype) | VER-2-14-3 | FreeType License (FTL), or GPL 2.0 at the user's choice; SlashEngine uses it under the FTL | Loading fonts and drawing glyph images | Fetched, linked statically |
 | [HarfBuzz](https://github.com/harfbuzz/harfbuzz) | 14.5.0 | MIT ("Old MIT" and MIT) | Text shaping | Fetched, linked statically |
 | [SheenBidi](https://github.com/Tehreer/SheenBidi) | v3.0.0 | Apache 2.0 | The Unicode Bidirectional Algorithm and script runs, for right-to-left text | Fetched, linked statically |
