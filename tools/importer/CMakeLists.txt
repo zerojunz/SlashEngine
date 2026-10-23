@@ -9,6 +9,7 @@ add_library(slash_importer
     src/godot_bones.cpp
     src/godot_import.cpp
     src/godot_pack.cpp
+    src/godot_terrain.cpp
     src/godot_text.cpp
     src/godot_unpack.cpp
     src/import.cpp
