@@ -154,6 +154,7 @@ Every line in the repo is Apache 2.0 or comes from a dependency under a permissi
 | Box2D v3 | 2D physics | MIT |
 | miniaudio | Audio | MIT-0 or public domain |
 | Recast | Baking navigation meshes (paths are Godot's own, as in Godot) | zlib |
+| Clipper2, PolyPartition | Baking 2D navigation polygons: merging, cutting and shrinking outlines, then splitting them into convex polygons, as Godot does | BSL-1.0, MIT |
 | FreeType, HarfBuzz | Fonts and text shaping | FreeType License (BSD-style), MIT |
 | msdfgen | Multichannel signed distance field fonts | MIT |
 | Roboto | The default font | Apache 2.0 |

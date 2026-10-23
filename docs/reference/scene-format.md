@@ -2599,8 +2599,9 @@ guard through a hatch and a cat round the corner of a yard.
 ### Navigation meshes and polygons
 
 A `.navmesh.json` file is Godot's `NavigationMesh`: convex polygons over shared vertices, in
-meters. A `.navpoly.json` file is its `NavigationPolygon`, the same in pixels. Baking them from a
-scene's geometry comes later; until then an agent writes them.
+meters. A `.navpoly.json` file is its `NavigationPolygon`, the same in pixels. An agent can write
+the polygons, or bake them from the scene with [`navigation.bake`](commands.md#navigationbake)
+and the settings below ([Baking](#baking)).
 
 ```json
 {
@@ -2615,8 +2616,8 @@ scene's geometry comes later; until then an agent writes them.
 | Field | Required | Default | Meaning |
 | --- | --- | --- | --- |
 | `format` | Yes | | `1` |
-| `vertices` | Yes | | Points, as `[x, y, z]` (`[x, y]` in a `.navpoly.json` file) |
-| `polygons` | Yes | | Convex polygons, each a list of three or more indices into `vertices` |
+| `vertices` | No | `[]` | Points, as `[x, y, z]` (`[x, y]` in a `.navpoly.json` file) |
+| `polygons` | No | `[]` | Convex polygons, each a list of three or more indices into `vertices` |
 | `cell_size` | No | `0.25` (`1` in 2D) | The cell size it was made for, as Godot's |
 | `cell_height` | No | `0.25` | The cell height it was made for, in `.navmesh.json` files only |
 
@@ -2624,6 +2625,63 @@ scene's geometry comes later; until then an agent writes them.
 `$cli schema navpoly` print their schemas. Validating reports an index past the vertices, an
 index used twice in one polygon and a polygon that isn't convex, each with its JSON Pointer.
 Files reload when they change, and their maps rebuild.
+
+### Baking
+
+`navigation.bake` bakes a region's file from the geometry under the region, as Godot's
+`bake_navigation_mesh` and `bake_navigation_polygon`: the region's entity and those under it in
+`Transform3D` (or `Transform2D`) children, in the region's space. It replaces the file's
+`vertices` and `polygons` and keeps everything else as written, so the settings below stay in
+the file. [examples/navigation-baking](../../examples/navigation-baking/) bakes a courtyard and
+a garden.
+
+In 3D, what bakes is each `MeshInstance3D`'s primitive mesh or model file and the shapes of
+each `StaticBody3D` and `AnimatableBody3D` (on the body or on children with no body of their
+own), as Godot's parsers take them: a primitive shape as Godot's mesh of it, a convex polygon
+as its hull's faces. Recast marks the triangles agents can walk, voxelizes them into cells,
+keeps agents `agent_radius` from walls and returns the walkable area; its detail triangles are
+the polygons, wound clockwise seen from above, as Godot's are. A bake warns when a setting
+doesn't fit whole cells, as Godot does, and fails past 30 million cells.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `sample_partition_type` | `"watershed"` | How Recast splits the walkable area: `"watershed"`, `"monotone"` or `"layers"` |
+| `geometry_parsed_geometry_type` | `"both"` | What bakes: `"mesh_instances"`, `"static_colliders"` or `"both"` |
+| `geometry_collision_mask` | `4294967295` | Static bodies bake when their `collision_layer` shares a bit with this |
+| `border_size` | `0` | Space kept free inside `filter_baking_aabb`, in meters |
+| `agent_height` | `1.5` | How tall agents are; lower ceilings aren't walkable |
+| `agent_radius` | `0.5` | How far agents keep from walls |
+| `agent_max_climb` | `0.25` | The tallest step agents climb |
+| `agent_max_slope` | `45` | The steepest slope agents walk, in degrees (at most 90) |
+| `region_min_size` | `2` | Islands smaller than this many cells squared are dropped |
+| `region_merge_size` | `20` | Areas smaller than this many cells squared merge into their neighbors |
+| `edge_max_length` | `0` | The longest edge along a border; `0` for any |
+| `edge_max_error` | `1.3` | How far a border may stray from the walkable area's outline, in cells |
+| `vertices_per_polygon` | `6` | The most corners Recast's polygons have before they are split into triangles |
+| `detail_sample_distance` | `6` | How far apart the detail mesh samples heights, in cells |
+| `detail_sample_max_error` | `1` | How far the detail mesh may stray from the surface, in cell heights |
+| `filter_low_hanging_obstacles` | `false` | Walk over obstacles lower than `agent_max_climb` |
+| `filter_ledge_spans` | `false` | Leave out ledges agents would step off |
+| `filter_walkable_low_height_spans` | `false` | Leave out places lower than `agent_height` |
+| `filter_baking_aabb_position`, `filter_baking_aabb_size`, `filter_baking_aabb_offset` | `[0, 0, 0]` | Bake only what is in this box, when its size has volume |
+
+In 2D, a `.navpoly.json` file's `outlines` say where agents may walk: closed outlines of
+`[x, y]` points, merged where they overlap. The shapes of each `StaticBody2D` and
+`AnimatableBody2D` under the region are cut out of them, as Godot's parser takes them: a
+rectangle, a circle of 12 sides, a capsule of 14 corners, a polygon's convex hull, or a
+`CollisionPolygon2D` as written. Clipper2 merges the outlines and the obstructions, takes one
+from the other and shrinks the rest by `agent_radius`, then PolyPartition splits it into convex
+polygons or triangles.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `outlines` | `[]` | Closed outlines of where agents may walk, each three or more `[x, y]` points |
+| `sample_partition_type` | `"convex_partition"` | `"convex_partition"` or `"triangulate"` |
+| `parsed_geometry_type` | `"both"` | What bakes: `"mesh_instances"`, `"static_colliders"` or `"both"`; only static bodies bake so far |
+| `parsed_collision_mask` | `4294967295` | Static bodies bake when their `collision_layer` shares a bit with this |
+| `border_size` | `0` | Space kept free inside `baking_rect`, in pixels |
+| `agent_radius` | `10` | How far agents keep from walls and obstructions, in pixels |
+| `baking_rect_position`, `baking_rect_size`, `baking_rect_offset` | `[0, 0]` | Bake only what is in this rect, when it has area |
 
 ### Regions
 

@@ -375,7 +375,7 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
         return run(*command, *command_args);
     }
 
-    Snapshot before{command->name, save(), {}, true};
+    Snapshot before{command->name, save(), {}, true, {}};
     // Input events a failed command or dry run stepped through wait for the next tick again,
     // focus, hover and buttons being pressed are as they were, and so are the world's events.
     // Requests to models asked meanwhile are cancelled, and agents' paths are as they were.
@@ -394,6 +394,7 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
     buffering_events_ = true;
     dry_running_ = dry_run;
     undo_calls_.clear();
+    undo_files_.clear();
     begin_files();
     const std::vector<world::TreeProblem> tree_before = world::check_tree(world_);
     Reply reply = run(*command, *command_args);
@@ -410,6 +411,8 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
     discard_files();
     std::vector<UndoCall> calls = std::move(undo_calls_);
     undo_calls_.clear();
+    std::vector<UndoFile> files = std::move(undo_files_);
+    undo_files_.clear();
     if (!reply.ok || dry_run) {
         pending_events_.clear();
         json::Value changes;
@@ -447,7 +450,7 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
     // A command that changed only files, such as storyboard.edit, leaves the world alone on undo.
     bool world_changed = true;
     std::optional<SavedWorld> after;
-    if (!calls.empty()) {
+    if (!calls.empty() || !files.empty()) {
         after = save();
         world_changed = !same_world(before.saved, *after);
     }
@@ -458,6 +461,7 @@ Reply Session::call_command(std::string_view name, const json::Value& params) {
         clear_history();
     } else if (edited_) {
         before.calls = std::move(calls);
+        before.files = std::move(files);
         before.restores_world = world_changed;
         if (!world_changed) {
             before.saved = {};
@@ -486,10 +490,14 @@ Reply Session::keeps_tree(const std::vector<world::TreeProblem>& before, Reply r
 
 Reply Session::run(const Command& command, const json::Value& params) {
     ++depth_;
+    const bool outer_unchanged = unchanged_;
+    unchanged_ = false;
     Reply reply = command.handler(*this, params);
+    const bool unchanged = unchanged_;
+    unchanged_ = outer_unchanged;
     --depth_;
     if (reply.ok) {
-        edited_ = edited_ || command.effect == Effect::Edit;
+        edited_ = edited_ || (command.effect == Effect::Edit && !unchanged);
         replaced_ = replaced_ || command.effect == Effect::Replace;
     }
     return reply;
@@ -560,7 +568,7 @@ Reply Session::undo() {
     Snapshot target = std::move(undo_.back());
     undo_.pop_back();
     Snapshot current{target.label, target.restores_world ? save() : SavedWorld{},
-                     std::move(target.calls), target.restores_world};
+                     std::move(target.calls), target.restores_world, std::move(target.files)};
     if (target.restores_world) {
         restore(target.saved);
         publish_changes("undo", current.saved, target.saved);
@@ -583,7 +591,7 @@ Reply Session::redo() {
     Snapshot target = std::move(redo_.back());
     redo_.pop_back();
     Snapshot current{target.label, target.restores_world ? save() : SavedWorld{},
-                     std::move(target.calls), target.restores_world};
+                     std::move(target.calls), target.restores_world, std::move(target.files)};
     if (target.restores_world) {
         restore(target.saved);
         publish_changes("redo", current.saved, target.saved);
@@ -638,6 +646,9 @@ Result<std::optional<std::string>> Session::read_project_file(std::string_view p
         return file.error();
     }
     const StagedFile& staged_file = *file.value();
+    if (staged_file.remove) {
+        return std::optional<std::string>();
+    }
     const std::optional<std::string>& text = staged_file.text ? staged_file.text : staged_file.seen;
     if (!text && staged_file.append.empty()) {
         return std::optional<std::string>();
@@ -651,6 +662,18 @@ Result<void> Session::stage_file(std::string_view path, std::string text) {
         return file.error();
     }
     file.value()->text = std::move(text);
+    file.value()->remove = false;
+    return {};
+}
+
+Result<void> Session::stage_remove(std::string_view path) {
+    auto file = staged(path);
+    if (!file) {
+        return file.error();
+    }
+    file.value()->text.reset();
+    file.value()->append.clear();
+    file.value()->remove = true;
     return {};
 }
 
@@ -666,6 +689,13 @@ Result<void> Session::stage_append(std::string_view path, std::string_view text)
 void Session::add_undo_call(std::string command, json::Value undo_params, json::Value redo_params) {
     if (!replaying_) {
         undo_calls_.push_back({std::move(command), std::move(undo_params), std::move(redo_params)});
+    }
+}
+
+void Session::add_undo_file(std::string path, std::optional<std::string> before,
+                            std::string after) {
+    if (!replaying_) {
+        undo_files_.push_back({std::move(path), std::move(before), std::move(after)});
     }
 }
 
@@ -698,7 +728,7 @@ Result<Session::StagedFile*> Session::staged(std::string_view path) {
 Result<void> Session::commit_files() {
     // Nothing is written if a file changed on disk since the command read it.
     for (const auto& [path, file] : staged_) {
-        if (!file.text) {
+        if (!file.text && !file.remove) {
             continue;
         }
         auto now = read_disk(path);
@@ -713,12 +743,18 @@ Result<void> Session::commit_files() {
         }
     }
     for (const auto& [path, file] : staged_) {
-        if (!file.text && file.append.empty()) {
+        if (!file.text && file.append.empty() && (!file.remove || !file.seen)) {
             continue;
         }
         auto resolved = resolve_path(path);
         if (!resolved) {
             return resolved.error();
+        }
+        if (file.remove) {
+            if (auto removed = platform::remove_file(resolved.value()); !removed) {
+                return removed.error();
+            }
+            continue;
         }
         std::string text;
         if (file.text) {
@@ -740,7 +776,7 @@ Result<void> Session::commit_files() {
 }
 
 Reply Session::replay(const Snapshot& step, bool undo) {
-    if (step.calls.empty()) {
+    if (step.calls.empty() && step.files.empty()) {
         return Reply::success({});
     }
     begin_files();
@@ -752,15 +788,44 @@ Reply Session::replay(const Snapshot& step, bool undo) {
         reply = run(*command, undo ? call.undo : call.redo);
         return reply.ok;
     };
+    const auto put_back = [&](const UndoFile& file) {
+        const std::optional<std::string>& expected = undo ? file.after : file.before;
+        const std::optional<std::string>& wanted = undo ? file.before : file.after;
+        auto now = read_project_file(file.path);
+        if (!now) {
+            reply = Reply::failure(now.error());
+            return false;
+        }
+        if (now.value() != expected) {
+            reply = Reply::failure(code::kConflict,
+                                   in_quotes(file.path) + " changed since; nothing was changed");
+            return false;
+        }
+        auto staged = wanted ? stage_file(file.path, *wanted) : stage_remove(file.path);
+        if (!staged) {
+            reply = Reply::failure(staged.error());
+        }
+        return staged.ok();
+    };
     if (undo) {
+        for (const UndoFile& file : std::views::reverse(step.files)) {
+            if (!put_back(file)) {
+                break;
+            }
+        }
         for (const UndoCall& call : std::views::reverse(step.calls)) {
-            if (!run_call(call)) {
+            if (!reply.ok || !run_call(call)) {
                 break;
             }
         }
     } else {
         for (const UndoCall& call : step.calls) {
             if (!run_call(call)) {
+                break;
+            }
+        }
+        for (const UndoFile& file : step.files) {
+            if (!reply.ok || !put_back(file)) {
                 break;
             }
         }
