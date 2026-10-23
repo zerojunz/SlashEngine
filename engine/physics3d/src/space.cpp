@@ -727,11 +727,11 @@ void Space::destroy(Body& body) {
     body.id = JPH::BodyID();
 }
 
-void Space::remove_stale(world::World& world, const std::vector<entt::entity>& csg) {
+void Space::remove_stale(world::World& world, const std::vector<entt::entity>& made) {
     const entt::registry& registry = world.ecs();
     bodies_.erase_if([&](entt::entity entity, const std::unique_ptr<Body>& body) {
-        if (body->csg ? std::ranges::find(csg, entity) != csg.end()
-                      : world.valid(entity) && kind_of(registry, entity) == body->kind) {
+        if (body->generated ? std::ranges::find(made, entity) != made.end()
+                            : world.valid(entity) && kind_of(registry, entity) == body->kind) {
             return false;
         }
         removed_.insert(body->name);
@@ -747,6 +747,7 @@ void Space::wake_in(const JPH::AABox& box) {
 
 void Space::build_shape(const world::World& world, Body& body, const ShapeKey& key) {
     body.parts.clear();
+    body.grid_part.reset();
     body.shape_key = key;
     JPH::StaticCompoundShapeSettings compound;
     JPH::RefConst<JPH::Shape> single;
@@ -792,6 +793,41 @@ void Space::build_shape(const world::World& world, Body& body, const ShapeKey& k
             single_transform = {};
             ++built;
         }
+    }
+    // A GridMap's cells' shapes, as Godot's GridMap adds each to its octant's body: cells of
+    // the same item share each built shape.
+    if (key.grid != nullptr) {
+        std::vector<std::pair<const world::CollisionShape3D*, JPH::RefConst<JPH::Shape>>> shapes;
+        for (std::size_t i = 0; i < key.grid->size(); ++i) {
+            const scene3d::GridShape& part = (*key.grid)[i];
+            JPH::RefConst<JPH::Shape> unscaled;
+            const auto found = std::ranges::find_if(
+                shapes, [&](const auto& each) { return *each.first == part.shape; });
+            if (found != shapes.end()) {
+                unscaled = found->second;
+            } else {
+                const BuiltShape made = detail::build_shape(part.shape);
+                if (!made.error.empty()) {
+                    warn_shape(world, body.entity, made.error);
+                }
+                unscaled = made.shape;
+                shapes.emplace_back(&part.shape, unscaled);
+            }
+            if (unscaled == nullptr) {
+                continue;
+            }
+            const Unscaled local = unscale(part.local);
+            const JPH::RefConst<JPH::Shape> shape = scaled(unscaled.GetPtr(), local.scale);
+            compound.AddShape(to_jolt(local.transform.origin), rotation_of(local.transform),
+                              shape.GetPtr(), static_cast<std::uint32_t>(i));
+            single = shape;
+            single_transform = local.transform;
+            body.grid_part = i;
+            ++built;
+        }
+    }
+    if (built != 1) {
+        body.grid_part.reset();
     }
     JPH::RefConst<JPH::Shape> whole;
     if (built == 1) {
@@ -881,12 +917,16 @@ void Space::create_body(Body& body, const world::Affine3D& global, const world::
 }
 
 void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::entity entity,
-                      Kind kind, const CsgShape* csg) {
+                      Kind kind, const MadeShape* made_shape) {
     entt::registry& registry = world.ecs();
     const world::Affine3D global = tree.global(entity);
-    // A CSG root collides as a static body with no physics material: friction 1, no bounce.
-    Fields fields = csg != nullptr ? Fields{csg->layer, csg->mask, 1.0F, 0.0F, {}, {}}
-                                   : fields_of(registry, entity, kind);
+    Fields fields = made_shape != nullptr ? Fields{made_shape->layer,
+                                                   made_shape->mask,
+                                                   made_shape->friction,
+                                                   made_shape->bounce,
+                                                   {},
+                                                   {}}
+                                          : fields_of(registry, entity, kind);
     auto bone_mode = world::PhysicalBoneMode::Static;
     if (kind == Kind::Bone) {
         const auto link = bone_links_.find(entity);
@@ -899,9 +939,10 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
         }
     }
     ShapeKey shape_key;
-    if (csg != nullptr) {
+    if (made_shape != nullptr) {
         shape_key.scale = scale_of(registry, tree, entity);
-        shape_key.csg = csg->faces;
+        shape_key.csg = made_shape->faces;
+        shape_key.grid = made_shape->grid;
     } else {
         shape_key = shape_key_of(registry, tree, entity);
     }
@@ -914,7 +955,7 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
         made->entity = entity;
         made->name = world.id_of(entity);
         made->kind = kind;
-        made->csg = csg != nullptr;
+        made->generated = made_shape != nullptr;
         made->layer = fields.layer;
         made->mask = fields.mask;
         made->friction = fields.friction;
@@ -1075,14 +1116,22 @@ void Space::sync(world::World& world) {
 
 void Space::sync(world::World& world, const world::Tree3D& tree) {
     entt::registry& registry = world.ecs();
-    // CSG roots with use_collision, unless the entity is a body of its own.
+    // CSG roots with use_collision and GridMaps with shapes, unless the entity is a body of its
+    // own; a GridMap that is a CSG root too is left to the CSG.
     std::vector<scene3d::CsgBody> csg = scene3d::csg_bodies(world, tree);
     std::erase_if(csg, [&](const scene3d::CsgBody& body) {
         return kind_of(registry, body.entity).has_value();
     });
+    std::vector<scene3d::GridBody> grids = scene3d::grid_bodies(world);
+    std::erase_if(grids, [&](const scene3d::GridBody& body) {
+        return kind_of(registry, body.entity).has_value() ||
+               std::ranges::any_of(
+                   csg, [&](const scene3d::CsgBody& root) { return root.entity == body.entity; });
+    });
     if (system_ == nullptr) {
-        if (csg.empty() && !has_any<RigidBody3D, CharacterBody3D, AnimatableBody3D, StaticBody3D,
-                                    Area3D, PhysicalBone3D>(registry)) {
+        if (csg.empty() && grids.empty() &&
+            !has_any<RigidBody3D, CharacterBody3D, AnimatableBody3D, StaticBody3D, Area3D,
+                     PhysicalBone3D>(registry)) {
             return;
         }
         create_system();
@@ -1093,14 +1142,18 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
             bone_links_.insert_or_assign(entity, std::move(link));
         }
     }
-    std::vector<entt::entity> csg_roots;
-    csg_roots.reserve(csg.size());
+    std::vector<entt::entity> made;
+    made.reserve(csg.size() + grids.size());
     for (const scene3d::CsgBody& body : csg) {
-        csg_roots.push_back(body.entity);
+        made.push_back(body.entity);
     }
-    remove_stale(world, csg_roots);
+    for (const scene3d::GridBody& body : grids) {
+        made.push_back(body.entity);
+    }
+    remove_stale(world, made);
     // New bodies are made in the same order on every machine: by kind, then in each
-    // component's storage order, then CSG roots in tree order.
+    // component's storage order, then CSG roots in tree order, then GridMaps in the order they
+    // were made.
     const auto each = [&]<typename Component>(Kind kind) {
         for (const entt::entity entity : registry.view<Component>()) {
             if (kind_of(registry, entity) == kind) {
@@ -1114,9 +1167,23 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
     each.template operator()<StaticBody3D>(Kind::Static);
     each.template operator()<Area3D>(Kind::Area);
     each.template operator()<PhysicalBone3D>(Kind::Bone);
+    // A CSG root collides as a static body with no physics material: friction 1, no bounce.
     for (scene3d::CsgBody& body : csg) {
-        const CsgShape shape{
-            .layer = body.layer, .mask = body.mask, .faces = std::move(body.faces)};
+        const MadeShape shape{.layer = body.layer,
+                              .mask = body.mask,
+                              .friction = 1.0F,
+                              .bounce = 0.0F,
+                              .faces = std::move(body.faces),
+                              .grid = nullptr};
+        sync_body(world, tree, body.entity, Kind::Static, &shape);
+    }
+    for (scene3d::GridBody& body : grids) {
+        const MadeShape shape{.layer = body.layer,
+                              .mask = body.mask,
+                              .friction = body.friction,
+                              .bounce = body.bounce,
+                              .faces = nullptr,
+                              .grid = std::move(body.shapes)};
         sync_body(world, tree, body.entity, Kind::Static, &shape);
     }
     sync_joints(world, tree);

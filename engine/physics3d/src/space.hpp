@@ -1,6 +1,7 @@
 #pragma once
 
 #include "slash/physics3d/physics3d.hpp"
+#include "slash/scene3d/gridmap.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/physical_bones.hpp"
 #include "slash/world/tree3d.hpp"
@@ -201,6 +202,8 @@ struct ShapeKey {
     Vec3 scale{1.0F, 1.0F, 1.0F};
     // A CSG root's triangles, as scene3d keeps them: a new mesh is a new pointer.
     std::shared_ptr<const std::vector<Vec3>> csg;
+    // A GridMap's cells' shapes, the same way.
+    std::shared_ptr<const std::vector<scene3d::GridShape>> grid;
 
     friend bool operator==(const ShapeKey&, const ShapeKey&) = default;
 };
@@ -229,8 +232,9 @@ struct Body {
     entt::entity entity = entt::null;
     std::string name; // the entity's ID
     Kind kind = Kind::Static;
-    // A CSG root with use_collision: a static body of its triangles, as Godot's CSGShape3D's.
-    bool csg = false;
+    // A CSG root with use_collision, a static body of its triangles as Godot's CSGShape3D's, or
+    // a GridMap, a static body of its cells' shapes as its octants' bodies: what scene3d makes.
+    bool generated = false;
     // Physical bones: what their simulator makes of them.
     world::PhysicalBoneMode bone_mode = world::PhysicalBoneMode::Static;
     JPH::BodyID id;
@@ -238,6 +242,9 @@ struct Body {
     // Each built part's own shape, unscaled, with its index in shape_key.parts: motion tests
     // cast the convex ones one by one, as Godot's do.
     std::vector<std::pair<std::size_t, JPH::RefConst<JPH::Shape>>> parts;
+    // A GridMap with one shape: its index in shape_key.grid. With more, each is a sub-shape of
+    // the compound whose user data is its index.
+    std::optional<std::size_t> grid_part;
     ShapeKey shape_key;
     RigidKey rigid_key;
     std::uint32_t layer = 1;
@@ -448,6 +455,10 @@ public:
     [[nodiscard]] std::optional<RayHit> cast_ray(Vec3 from, Vec3 to, const QueryFilter& filter,
                                                  bool hit_back_faces) const;
 
+    // The cell of a GridMap's body a sub-shape is in; nothing for other bodies.
+    [[nodiscard]] static std::optional<Vec3i> grid_cell(const Body& body,
+                                                        const JPH::SubShapeID& id);
+
     // Whether a joint keeps two bodies from colliding, as Godot's collision exceptions.
     [[nodiscard]] bool excepted(entt::entity a, entt::entity b) const;
 
@@ -458,20 +469,24 @@ public:
     [[nodiscard]] world::MemoryPart memory() const;
 
 private:
-    // A CSG root's static body: its collision layer and mask and its triangles.
-    struct CsgShape {
+    // A static body scene3d makes: a CSG root's triangles or a GridMap's cells' shapes, with
+    // their collision layer and mask and physics material.
+    struct MadeShape {
         std::uint32_t layer = 1;
         std::uint32_t mask = 1;
+        float friction = 1.0F;
+        float bounce = 0.0F;
         std::shared_ptr<const std::vector<Vec3>> faces;
+        std::shared_ptr<const std::vector<scene3d::GridShape>> grid;
     };
 
     void create_system();
-    // Removes bodies whose entities are gone or are another kind now, and CSG bodies whose
-    // roots aren't in csg.
-    void remove_stale(world::World& world, const std::vector<entt::entity>& csg);
+    // Removes bodies whose entities are gone or are another kind now, and the bodies scene3d
+    // makes whose entities aren't in made.
+    void remove_stale(world::World& world, const std::vector<entt::entity>& made);
     void sync(world::World& world, const world::Tree3D& tree);
     void sync_body(world::World& world, const world::Tree3D& tree, entt::entity entity, Kind kind,
-                   const CsgShape* csg = nullptr);
+                   const MadeShape* made = nullptr);
     void create_body(Body& body, const world::Affine3D& global, const world::World& world);
     void build_shape(const world::World& world, Body& body, const ShapeKey& key);
     void destroy(Body& body);

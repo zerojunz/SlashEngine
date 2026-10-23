@@ -63,6 +63,8 @@ struct RayHit {
     Vec3 point;
     Vec3 normal;           // the surface's, toward the ray's start
     float fraction = 0.0F; // how far along the ray, from 0 to 1
+    // The cell hit, when the entity is a GridMap.
+    std::optional<Vec3i> cell{}; // NOLINT(readability-redundant-member-init)
 };
 
 // The first thing a ray from from to to hits, as Godot's intersect_ray. Shapes the ray starts

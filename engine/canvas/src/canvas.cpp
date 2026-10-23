@@ -10,6 +10,7 @@
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/render/image.hpp"
 #include "slash/scene3d/csg.hpp"
+#include "slash/scene3d/gridmap.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/path.hpp"
 
@@ -24,6 +25,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace slash::canvas {
@@ -303,6 +305,15 @@ struct TileShapeCache {
     }
 };
 
+// An asset as a pointer that also keeps its handle, so the asset stays loaded, and loading it
+// again gives the same pointer, for as long as anything holds it.
+template <typename T>
+std::shared_ptr<const T> held(const asset::Handle<T>& handle) {
+    auto holder = std::make_shared<std::pair<asset::Handle<T>, std::shared_ptr<const T>>>(
+        handle, handle.share());
+    return {holder, holder->second.get()};
+}
+
 void add_systems(world::World& world, asset::Assets& assets) {
     auto tiles = std::make_shared<TileShapeCache>();
     tiles->assets = &assets;
@@ -321,14 +332,25 @@ void add_systems(world::World& world, asset::Assets& assets) {
     world::add_path_systems(world);
     add_particles_system(world);
     add_gpu_particles_system(world, &assets);
-    // CSG roots keep their meshes until a shape changes, CSGMesh3D models read through assets.
-    scene3d::install_csg(
-        world, [&assets](const std::string& path) -> Result<std::shared_ptr<const scene3d::Model>> {
-            auto found = assets.load<scene3d::Model>(path);
+    // CSG roots and GridMaps keep their meshes until they change, models and mesh libraries
+    // read through assets.
+    const scene3d::ModelLoader models =
+        [&assets](const std::string& path) -> Result<std::shared_ptr<const scene3d::Model>> {
+        auto found = assets.load<scene3d::Model>(path);
+        if (!found) {
+            return found.error();
+        }
+        return held(found.value());
+    };
+    scene3d::install_csg(world, models);
+    scene3d::install_gridmap(
+        world, models,
+        [&assets](const std::string& path) -> Result<std::shared_ptr<const scene3d::MeshLibrary>> {
+            auto found = assets.load<scene3d::MeshLibrary>(path);
             if (!found) {
                 return found.error();
             }
-            return found.value().share();
+            return held(found.value());
         });
 }
 

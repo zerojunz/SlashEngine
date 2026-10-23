@@ -2139,6 +2139,37 @@ void register_csg_components(ComponentRegistry& registry) {
               .describe("flip_faces", flip_faces));
 }
 
+void register_gridmap_components(ComponentRegistry& registry) {
+    registry.add<GridMap>()
+        .set_doc("Items of a .meshlib.json mesh library in a grid of cells in the entity's space, "
+                 "as Godot's GridMap: each cell draws its item's mesh, collides as its shapes "
+                 "and, with bake_navigation, is a navigation region of its navigation mesh.")
+        .describe("mesh_library", {.doc = "Project path of a .meshlib.json file."})
+        .describe("cell_size", {.doc = "A cell's size in meters, as [x, y, z].", .min = 0.001})
+        .describe("cell_octant_size",
+                  {.doc = "Cells along each side of the blocks drawn and rebuilt together.",
+                   .min = 1,
+                   .max = 1024})
+        .describe("cell_center_x", {.doc = "Moves items half a cell along x, to cells' centers."})
+        .describe("cell_center_y", {.doc = "Moves items half a cell along y, to cells' centers."})
+        .describe("cell_center_z", {.doc = "Moves items half a cell along z, to cells' centers."})
+        .describe("cell_scale", {.doc = "Scales each cell's item."})
+        .describe("collision_layer", {.doc = "The physics layers its cells' shapes are in."})
+        .describe("collision_mask", {.doc = "The layers its shapes collide with."})
+        .describe("friction", {.doc = "Its physics material's friction.", .min = 0, .max = 1})
+        .describe("bounce", {.doc = "Its physics material's bounce.", .min = 0, .max = 1})
+        .describe("bake_navigation",
+                  {.doc = "Each cell whose item has a navigation mesh is a navigation region of "
+                          "it."})
+        .describe("legend", {.doc = "Key -> item: the item's name, then \":\" and one of "
+                                    "Godot's 24 orientations if it is turned, such as "
+                                    "\"wall:16\" (turned 90 degrees about y)."})
+        .describe("floors",
+                  {.doc = "Cells by height, each {\"y\", \"origin\": [x, z], \"rows\"}: rows of "
+                          "keys toward +x, each row one cell further toward +z, \".\" for an "
+                          "empty cell."});
+}
+
 void register_3d_components(ComponentRegistry& registry) {
     const FieldMeta flip_faces{.doc = "Turns its faces inside out, so its inside shows."};
     const FieldMeta subdivide{.doc = "Extra cuts across each face along this axis.", .min = 0};
@@ -2964,6 +2995,7 @@ void register_builtin_components(ComponentRegistry& registry) {
     register_3d_components(registry);
     register_path_components(registry);
     register_csg_components(registry);
+    register_gridmap_components(registry);
     register_physics_components(registry);
     register_physics_3d_components(registry);
     register_navigation_components(registry);

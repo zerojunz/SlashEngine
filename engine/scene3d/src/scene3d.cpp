@@ -4,6 +4,7 @@
 #include "slash/core/math.hpp"
 #include "slash/core/text.hpp"
 #include "slash/scene3d/csg.hpp"
+#include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/ik.hpp"
 #include "slash/world/path.hpp"
 #include "slash/world/serialize.hpp"
@@ -557,6 +558,9 @@ std::vector<Problem> check_meshes(const world::World& world) {
     for (world::PathProblem& problem : world::check_paths(world)) {
         problems.push_back({problem.entity, std::move(problem.path), std::move(problem.message)});
     }
+    for (Problem& problem : check_gridmaps(world)) {
+        problems.push_back(std::move(problem));
+    }
     return problems;
 }
 
@@ -916,6 +920,44 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
     }
 }
 
+render::Material3D Renderer::surface_material(const SurfaceMaterial& from, entt::entity entity,
+                                              const std::string& model_field) {
+    if (from.standard) {
+        return material(*from.standard, textures_, problems_, entity);
+    }
+    if (from.model == nullptr || from.model_material < 0 ||
+        static_cast<std::size_t>(from.model_material) >= from.model->materials.size()) {
+        return {};
+    }
+    // A model's own material, its images found as a MeshInstance3D's are.
+    const ModelMaterial& model_material =
+        from.model->materials[static_cast<std::size_t>(from.model_material)];
+    render::Material3D out = material(model_material.standard, textures_, problems_, from.entity);
+    // Its images are kept by the model's version where models load here.
+    SourceModel source{.model = from.model, .version = 0};
+    if (models_) {
+        if (auto loaded = models_(from.model_path); loaded && loaded.value().model == from.model) {
+            source.version = loaded.value().version;
+        }
+    }
+    const auto texture = [&](int image) {
+        return model_texture(from.model_path, source, image, model_material.standard, from.entity,
+                             model_field);
+    };
+    out.albedo_texture = texture(model_material.albedo_image);
+    out.metallic_texture = texture(model_material.metallic_image);
+    out.roughness_texture = model_material.roughness_image == model_material.metallic_image
+                                ? out.metallic_texture
+                                : texture(model_material.roughness_image);
+    if (model_material.standard.normal_enabled) {
+        out.normal_texture = texture(model_material.normal_image);
+    }
+    if (model_material.standard.emission_enabled) {
+        out.emission_texture = texture(model_material.emission_image);
+    }
+    return out;
+}
+
 void Renderer::add_csg(const world::World& world, const world::Tree3D& tree, entt::entity root,
                        const world::Affine3D& place, std::uint32_t cull_mask) {
     const std::optional<CsgShape> shape = csg_shape_of(world, root);
@@ -935,7 +977,7 @@ void Renderer::add_csg(const world::World& world, const world::Tree3D& tree, ent
     const std::array<float, 16> transform = place.matrix();
     const std::string prefix = "csg:" + std::to_string(mesh->version) + "/";
     for (std::size_t i = 0; i < mesh->surfaces.size(); ++i) {
-        const CsgSurface& surface = mesh->surfaces[i];
+        const MeshSurface& surface = mesh->surfaces[i];
         auto made = kept_mesh(prefix + std::to_string(i), surface.vertices, surface.indices);
         if (!made) {
             problems_.push_back({root, "/components", made.error().message});
@@ -944,44 +986,46 @@ void Renderer::add_csg(const world::World& world, const world::Tree3D& tree, ent
         Draw draw;
         draw.mesh = made.value();
         draw.transform = transform;
-        const CsgMaterial& from = surface.material;
-        if (from.standard) {
-            draw.material = material(*from.standard, textures_, problems_, root);
-        } else if (from.model != nullptr && from.model_material >= 0 &&
-                   static_cast<std::size_t>(from.model_material) < from.model->materials.size()) {
-            // A CSGMesh3D's model's own material, its images found as a MeshInstance3D's are.
-            const ModelMaterial& model_material =
-                from.model->materials[static_cast<std::size_t>(from.model_material)];
-            draw.material = material(model_material.standard, textures_, problems_, from.entity);
-            // Its images are kept by the model's version where models load here.
-            SourceModel source{.model = from.model, .version = 0};
-            if (models_) {
-                if (auto loaded = models_(from.model_path);
-                    loaded && loaded.value().model == from.model) {
-                    source.version = loaded.value().version;
-                }
-            }
-            const std::string field = "/components/CSGMesh3D/mesh";
-            const auto texture = [&](int image) {
-                return model_texture(from.model_path, source, image, model_material.standard,
-                                     from.entity, field);
-            };
-            draw.material.albedo_texture = texture(model_material.albedo_image);
-            draw.material.metallic_texture = texture(model_material.metallic_image);
-            draw.material.roughness_texture =
-                model_material.roughness_image == model_material.metallic_image
-                    ? draw.material.metallic_texture
-                    : texture(model_material.roughness_image);
-            if (model_material.standard.normal_enabled) {
-                draw.material.normal_texture = texture(model_material.normal_image);
-            }
-            if (model_material.standard.emission_enabled) {
-                draw.material.emission_texture = texture(model_material.emission_image);
-            }
-        }
+        draw.material = surface_material(surface.material, root, "/components/CSGMesh3D/mesh");
         draw.layers = settings.layers;
         draw.shadows = casting;
         draws_.push_back(draw);
+    }
+}
+
+void Renderer::add_gridmap(const world::World& world, entt::entity entity,
+                           const world::Affine3D& place, std::uint32_t cull_mask) {
+    // An octant's MultiMesh instances are on the first render layer, as Godot makes them.
+    constexpr std::uint32_t kLayers = 1;
+    const std::shared_ptr<const GridMesh> mesh = grid_mesh(world, entity);
+    problems_.insert(problems_.end(), mesh->problems.begin(), mesh->problems.end());
+    const std::array<float, 16> transform = place.matrix();
+    for (const std::shared_ptr<const GridOctant>& octant : mesh->octants) {
+        const std::string prefix = "grid:" + std::to_string(octant->version) + "/";
+        for (std::size_t i = 0; i < octant->surfaces.size(); ++i) {
+            const GridSurface& surface = octant->surfaces[i];
+            render::ShadowCasting casting = casting_of(surface.cast_shadow);
+            if ((kLayers & cull_mask) == 0) {
+                if (casting == render::ShadowCasting::Off) {
+                    continue;
+                }
+                casting = render::ShadowCasting::ShadowsOnly;
+            }
+            auto made =
+                kept_mesh(prefix + std::to_string(i), surface.mesh.vertices, surface.mesh.indices);
+            if (!made) {
+                problems_.push_back({entity, "/components/GridMap", made.error().message});
+                continue;
+            }
+            Draw draw;
+            draw.mesh = made.value();
+            draw.transform = transform;
+            draw.material =
+                surface_material(surface.mesh.material, entity, "/components/GridMap/mesh_library");
+            draw.layers = kLayers;
+            draw.shadows = casting;
+            draws_.push_back(draw);
+        }
     }
 }
 
@@ -1133,6 +1177,12 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
     for (const entt::entity root : csg_roots(world, tree)) {
         if (tree.visible(root)) {
             add_csg(world, tree, root, global(root), lens.cull_mask);
+        }
+    }
+    // GridMaps draw their octants.
+    for (const entt::entity entity : made<world::GridMap>(world)) {
+        if (tree.visible(entity)) {
+            add_gridmap(world, entity, global(entity), lens.cull_mask);
         }
     }
     // Meshes no entity drew this frame go, and so do the entities' records of them.
