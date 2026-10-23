@@ -483,7 +483,9 @@ layout or animation) is left out and reported, so one bad value can't stop a fil
 convert goes in `import/godot.json`, once per kind. `src/godot_bones.cpp` works out the
 `Skeleton3D` nodes Godot's importer makes of a model's skins, as its `SkinTool` does, so a
 scene's bone poses, IK modifiers, ragdolls and bone attachments under them convert onto the
-entity that draws the model. `docs/reference/godot-import.md` maps each
+entity that draws the model. `src/godot_terrain.cpp` reads the HTerrain plugin's
+`data.hterrain` and height maps, so its `HTerrain` nodes become SlashEngine's `HTerrain` with a
+`.height.png` file. `docs/reference/godot-import.md` maps each
 node and setting; `examples/import-godot` imports a small platformer and
 `examples/import-godot-scripts` ports a script from its skeleton.
 

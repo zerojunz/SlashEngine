@@ -3,6 +3,7 @@
 #include "common.hpp"
 #include "godot_binary.hpp"
 #include "godot_bones.hpp"
+#include "godot_terrain.hpp"
 #include "skeletons.hpp"
 
 #include "slash/animation/animation.hpp"
@@ -18,10 +19,12 @@
 #include "slash/importer/scripts.hpp"
 #include "slash/navigation/navigation.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/render/image.hpp"
 #include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/model.hpp"
+#include "slash/scene3d/terrain.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
@@ -30,6 +33,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cctype>
 #include <charconv>
 #include <cmath>
@@ -37,6 +41,7 @@
 #include <cstdint>
 #include <functional>
 #include <initializer_list>
+#include <limits>
 #include <map>
 #include <memory>
 #include <numbers>
@@ -60,6 +65,11 @@ constexpr std::string_view kFramesSuffix = ".frames.json";
 constexpr int kMaxInstanceDepth = 16;
 // A tile set's most animation frames per tile.
 constexpr std::int64_t kMaxAnimationFrames = 256;
+// HTerrain's Classic4 shader's textures, and its cast_shadow values (GeometryInstance3D's).
+constexpr std::size_t kTerrainTextures = 4;
+constexpr std::array<std::string_view, 4> kCastShadows{"off", "on", "double_sided", "shadows_only"};
+constexpr std::string_view kNoDetailLayers =
+    "grass and other detail layers (HTerrainDetailLayer) don't convert yet";
 
 // --- Paths and names ---------------------------------------------------------------------------
 
@@ -7439,6 +7449,416 @@ private:
         });
     }
 
+    // --- HTerrain, the heightmap terrain plugin for Godot (zylann.hterrain) ---
+
+    static bool is_hterrain_script(std::string_view script) {
+        return script.ends_with("zylann.hterrain/hterrain.gd");
+    }
+
+    static bool is_hterrain_detail_script(std::string_view script) {
+        return script.ends_with("zylann.hterrain/hterrain_detail_layer.gd");
+    }
+
+    // Whether a property is one of an HTerrain node's own, which convert with the node as a
+    // whole (convert_hterrain) rather than as one field each.
+    static bool hterrain_property(std::string_view name) {
+        constexpr std::array kNames{
+            std::string_view{"_terrain_data"},    std::string_view{"data_directory"},
+            std::string_view{"chunk_size"},       std::string_view{"collision_enabled"},
+            std::string_view{"collision_layer"},  std::string_view{"collision_mask"},
+            std::string_view{"physics_material"}, std::string_view{"shader_type"},
+            std::string_view{"custom_shader"},    std::string_view{"custom_globalmap_shader"},
+            std::string_view{"texture_set"},      std::string_view{"render_layers"},
+            std::string_view{"cast_shadow"},      std::string_view{"ambient_wind"},
+            std::string_view{"lod_scale"},        std::string_view{"map_scale"},
+            std::string_view{"centered"},
+        };
+        return contains(kNames, name) || name.starts_with("shader_params/") ||
+               name.starts_with("ground/");
+    }
+
+    // An HTerrain node's properties as the HTerrain component: its data's maps, its texture set
+    // and the Classic4 shader's parameters, as hterrain.gd and simple4.gdshader use them.
+    void convert_hterrain(const Node& node, json::Object& components) {
+        json::Value& terrain = components["HTerrain"];
+        terrain = json::Object{};
+        if (const Property* data = node.find("_terrain_data");
+            data != nullptr && data->value->kind != Value::Kind::Nil) {
+            convert_terrain_data(node, *data, terrain);
+        } else {
+            problems_.add("HTerrain._terrain_data", node.declared,
+                          "the terrain's data wasn't saved, so it is flat ground");
+        }
+        // The texture set first: the shader's parameters set each texture's fields.
+        std::vector<json::Value> textures;
+        const auto texture = [&](std::size_t slot) -> json::Value& {
+            while (textures.size() <= slot) {
+                textures.emplace_back(json::Object{});
+            }
+            return textures[slot];
+        };
+        for (const Property& property : node.properties) {
+            if (node.find(property.name) != &property || property.value->kind == Value::Kind::Nil) {
+                continue;
+            }
+            const std::string where = "HTerrain." + property.name;
+            if (property.name == "texture_set") {
+                convert_texture_set(node, property, texture);
+            } else if (property.name.starts_with("ground/")) {
+                // The plugin's version 1.4 named its textures on the node: ground/albedo_bump_0.
+                const std::string rest = property.name.substr(7);
+                const std::size_t underscore = rest.rfind('_');
+                const std::string kind = rest.substr(0, underscore);
+                const std::int64_t slot = underscore == std::string::npos
+                                              ? -1
+                                              : parse_int(rest.substr(underscore + 1)).value_or(-1);
+                std::string why;
+                // Version 1.4 had at most 16 textures.
+                const std::string path = slot < 0 || slot >= 16
+                                             ? std::string()
+                                             : resource_path(*property.value, *property.file, why);
+                if ((kind == "albedo_bump" || kind == "normal_roughness") && !path.empty()) {
+                    texture(static_cast<std::size_t>(slot))[kind] = path;
+                } else {
+                    problems_.add(where, node.declared, why);
+                }
+            }
+        }
+        for (const Property& property : node.properties) {
+            if (node.find(property.name) != &property || property.value->kind == Value::Kind::Nil ||
+                !property.name.starts_with("shader_params/")) {
+                continue;
+            }
+            convert_terrain_shader_param(node, property, terrain, textures, texture);
+        }
+        if (textures.size() > kTerrainTextures) {
+            problems_.add("HTerrain.texture_set", node.declared,
+                          "SlashEngine's HTerrain shades as Classic4, with 4 textures; the rest "
+                          "are left out");
+            textures.resize(kTerrainTextures);
+        }
+        if (!textures.empty()) {
+            json::Array list;
+            for (json::Value& item : textures) {
+                list.push_back(std::move(item));
+            }
+            terrain["textures"] = std::move(list);
+        }
+        for (const Property& property : node.properties) {
+            if (node.find(property.name) != &property || property.value->kind == Value::Kind::Nil) {
+                continue;
+            }
+            const Value& value = *property.value;
+            const std::string& name = property.name;
+            const std::string where = "HTerrain." + name;
+            // The node's other properties convert with it as a Node3D's.
+            if (!hterrain_property(name) || name == "_terrain_data" || name == "data_directory" ||
+                name == "texture_set" || name.starts_with("ground/") ||
+                name.starts_with("shader_params/")) {
+                continue;
+            }
+            if (name == "map_scale") {
+                if (auto scale = vector3(value)) {
+                    terrain["map_scale"] = std::move(*scale);
+                } else {
+                    problems_.add(where, node.declared);
+                }
+            } else if ((name == "centered" || name == "collision_enabled") &&
+                       value.kind == Value::Kind::Bool) {
+                terrain[name] = value.boolean;
+            } else if ((name == "chunk_size" || name == "collision_layer" ||
+                        name == "collision_mask" || name == "render_layers") &&
+                       value.kind == Value::Kind::Int) {
+                terrain[name] = value.integer;
+            } else if (name == "lod_scale" && value.is_number()) {
+                terrain["lod_scale"] = value.number();
+            } else if (name == "cast_shadow" && value.kind == Value::Kind::Int &&
+                       value.integer >= 0 &&
+                       static_cast<std::size_t>(value.integer) < kCastShadows.size()) {
+                terrain["cast_shadow"] =
+                    std::string(kCastShadows.at(static_cast<std::size_t>(value.integer)));
+            } else if (name == "shader_type" && value.is_string()) {
+                if (value.text != "Classic4" && value.text != "Classic4Lite") {
+                    problems_.add(where, node.declared,
+                                  "SlashEngine's HTerrain shades as Classic4, so a " + value.text +
+                                      " terrain draws as one");
+                }
+            } else if (name == "physics_material") {
+                convert_terrain_physics_material(node, property, terrain);
+            } else if (name == "ambient_wind") {
+                if (value.number() != 0.0) {
+                    problems_.add(where, node.declared, std::string(kNoDetailLayers));
+                }
+            } else {
+                // custom_shader and custom_globalmap_shader, or a value of the wrong type.
+                problems_.add(where, node.declared,
+                              name == "custom_shader" || name == "custom_globalmap_shader"
+                                  ? "SlashEngine's HTerrain shades as Classic4"
+                                  : std::string());
+            }
+        }
+    }
+
+    // The textures of a texture set (hterrain_texture_set.gd): textures[0] the albedo and bump
+    // of each slot, textures[1] its normal and roughness.
+    void convert_texture_set(const Node& node, const Property& property,
+                             const std::function<json::Value&(std::size_t)>& texture) {
+        const auto [section, file] = resource_section(*property.value, *property.file);
+        if (section == nullptr) {
+            problems_.add("HTerrain.texture_set", node.declared, "a missing resource");
+            return;
+        }
+        if (const Value* mode = section->property("mode");
+            mode != nullptr && mode->kind == Value::Kind::Int && mode->integer != 0) {
+            problems_.add("HTerrainTextureSet.mode", node.declared,
+                          "texture arrays don't convert; SlashEngine's HTerrain takes 4 textures, "
+                          "each its own image");
+            return;
+        }
+        const Value* lists = section->property("textures");
+        if (lists == nullptr || lists->kind != Value::Kind::Array) {
+            return;
+        }
+        constexpr std::array<std::string_view, 2> kKinds{"albedo_bump", "normal_roughness"};
+        for (std::size_t kind = 0; kind < kKinds.size() && kind < lists->items.size(); ++kind) {
+            const Value& list = lists->items[kind];
+            for (std::size_t slot = 0; slot < list.items.size(); ++slot) {
+                const Value& item = list.items[slot];
+                if (item.kind == Value::Kind::Nil) {
+                    (void)texture(slot); // the slot is there, its texture plain
+                    continue;
+                }
+                std::string why;
+                if (const std::string path = resource_path(item, *file, why); !path.empty()) {
+                    texture(slot)[std::string(kKinds.at(kind))] = path;
+                } else {
+                    problems_.add("HTerrainTextureSet.textures", node.declared, why);
+                }
+            }
+        }
+    }
+
+    // One of the Classic4 shader's parameters (simple4.gdshader and simple4_lite.gdshader).
+    void convert_terrain_shader_param(const Node& node, const Property& property,
+                                      json::Value& terrain,
+                                      const std::vector<json::Value>& textures,
+                                      const std::function<json::Value&(std::size_t)>& texture) {
+        const std::string name = property.name.substr(std::string_view("shader_params/").size());
+        const Value& value = *property.value;
+        const std::string where = "HTerrain." + property.name;
+        const auto numbers = value.numbers();
+        // A parameter for each texture: per texture in Classic4, one for all in Classic4Lite.
+        const auto per_texture = [&](std::string_view field) {
+            const std::size_t slots = std::max<std::size_t>(textures.size(), kTerrainTextures);
+            for (std::size_t slot = 0; slot < slots && numbers && slot < numbers->size(); ++slot) {
+                texture(slot)[std::string(field)] = numbers->at(slot);
+            }
+        };
+        if (name == "u_ground_uv_scale" && value.is_number()) {
+            for (std::size_t slot = 0; slot < std::max<std::size_t>(textures.size(), 1); ++slot) {
+                texture(slot)["uv_scale"] = value.number();
+            }
+        } else if (name == "u_ground_uv_scale_per_texture" && numbers && numbers->size() == 4) {
+            per_texture("uv_scale");
+        } else if (name == "u_colormap_opacity_per_texture" && numbers && numbers->size() == 4) {
+            per_texture("colormap_opacity");
+        } else if (name == "u_depth_blending" && value.kind == Value::Kind::Bool) {
+            terrain["depth_blending"] = value.boolean;
+        } else if (name == "u_specular" && value.is_number()) {
+            terrain["specular"] = value.number();
+        } else if (name == "u_triplanar" && value.kind == Value::Kind::Bool) {
+            if (value.boolean) {
+                problems_.add(where, node.declared,
+                              "triplanar mapping doesn't convert yet; steep slopes show the "
+                              "textures stretched");
+            }
+        } else if (name == "u_tile_reduction" && numbers) {
+            if (std::ranges::any_of(*numbers, [](double n) { return n != 0.0; })) {
+                problems_.add(where, node.declared,
+                              "tile reduction doesn't convert yet; textures repeat as they are");
+            }
+        } else if (name == "u_globalmap_blend_start" || name == "u_globalmap_blend_distance") {
+            problems_.add(where, node.declared,
+                          "SlashEngine's HTerrain draws its textures at every distance, with no "
+                          "global map");
+        } else {
+            problems_.add(where, node.declared);
+        }
+    }
+
+    // A PhysicsMaterial's friction and bounce, as the terrain's collider takes them.
+    void convert_terrain_physics_material(const Node& node, const Property& property,
+                                          json::Value& terrain) {
+        const auto [section, file] = resource_section(*property.value, *property.file);
+        if (section == nullptr) {
+            problems_.add("HTerrain.physics_material", node.declared, "a missing resource");
+            return;
+        }
+        for (const auto& [name, value] : section->properties) {
+            if ((name == "friction" || name == "bounce") && value.is_number()) {
+                terrain[name] = value.number();
+            } else if ((name == "rough" || name == "absorbent") &&
+                       value.kind == Value::Kind::Bool && value.boolean) {
+                problems_.add("PhysicsMaterial." + name, node.declared,
+                              "Godot's Jolt physics, which SlashEngine follows, ignores it");
+            }
+        }
+    }
+
+    // The maps of the HTerrainData an HTerrain node names: its heights become a .height.png
+    // file beside data.hterrain, and its first splat and color maps are used as they are.
+    void convert_terrain_data(const Node& node, const Property& property, json::Value& terrain) {
+        const Value& value = *property.value;
+        const auto ext = value.is_call("ExtResource")
+                             ? property.file->ext.find(value.string_argument().value_or(""))
+                             : property.file->ext.end();
+        if (ext == property.file->ext.end() || !ext->second.path.ends_with(".hterrain")) {
+            problems_.add("HTerrain._terrain_data", node.declared,
+                          "the terrain's data isn't a data.hterrain file");
+            return;
+        }
+        const std::string& path = ext->second.path;
+        const auto [cached, inserted] = terrain_data_.try_emplace(path);
+        if (inserted) {
+            cached->second = terrain_data_fields(path, node.declared);
+        }
+        for (const auto& [field, item] : cached->second.as_object()) {
+            terrain[field] = item;
+        }
+    }
+
+    // What an HTerrainData folder gives the HTerrain component, read and written once.
+    json::Value terrain_data_fields(const std::string& path, const std::string& where) {
+        json::Value out = json::Object{};
+        if (!std::ranges::binary_search(files_, path)) {
+            problems_.add("missing file", where, path);
+            return out;
+        }
+        auto text = read(path);
+        auto metadata = text ? godot::parse_terrain_metadata(text.value())
+                             : Result<godot::TerrainMetadata>(text.error());
+        if (!metadata) {
+            problems_.add("unreadable file", path, metadata.error().message);
+            return out;
+        }
+        const std::size_t slash = path.rfind('/');
+        const std::string folder = slash == std::string::npos ? "" : path.substr(0, slash + 1);
+        const auto maps = [&](godot::TerrainMap type) -> const std::vector<int>& {
+            return metadata.value().maps.at(static_cast<std::size_t>(type));
+        };
+        // The file of a map type's first map, if it was saved.
+        const auto first_file = [&](godot::TerrainMap type) -> std::string {
+            if (maps(type).empty()) {
+                return {};
+            }
+            const std::string file = folder + godot::terrain_map_file(type, maps(type).front());
+            return std::ranges::binary_search(files_, file) ? file : std::string();
+        };
+        if (auto heights = terrain_heights(folder, maps(godot::TerrainMap::Height), path)) {
+            const int resolution = heights->resolution;
+            float low = std::numeric_limits<float>::max();
+            float high = std::numeric_limits<float>::lowest();
+            for (const float h : heights->heights) {
+                low = std::min(low, h);
+                high = std::max(high, h);
+            }
+            // Whole meters that hold every height, as the terrain commands widen the range.
+            Vec2 range{std::floor(low), std::ceil(high)};
+            if (range.y <= range.x) {
+                range.y = range.x + 1.0F;
+            }
+            auto png = render::encode_gray16_png(
+                scene3d::encode_heights(heights->heights, resolution, range));
+            if (png) {
+                const std::string name =
+                    folder.empty() ? std::string("data")
+                                   : folder.substr(0, folder.size() - 1)
+                                         .substr(folder.rfind('/', folder.size() - 2) + 1);
+                const std::string heightmap = destination(folder + name + ".height.png");
+                add_file(heightmap, std::move(png).value());
+                out["heightmap"] = heightmap;
+                out["resolution"] = resolution;
+                out["height_range"] =
+                    json::Array{static_cast<double>(range.x), static_cast<double>(range.y)};
+                if (!is_terrain_resolution(resolution)) {
+                    problems_.add("HTerrainData resolution", path,
+                                  "a terrain is a power of two plus one heights across, 65 to "
+                                  "4097; this one is " +
+                                      std::to_string(resolution));
+                }
+            } else {
+                problems_.add("unreadable file", path, png.error().message);
+            }
+        }
+        if (const std::string splat = first_file(godot::TerrainMap::Splat); !splat.empty()) {
+            out["splatmap"] = destination(splat);
+        }
+        if (maps(godot::TerrainMap::Splat).size() > 1) {
+            problems_.add("HTerrainData splat maps", path,
+                          "SlashEngine's HTerrain mixes 4 textures by one splat map; the others "
+                          "are left out");
+        }
+        if (const std::string color = first_file(godot::TerrainMap::Color); !color.empty()) {
+            out["colormap"] = destination(color);
+        }
+        if (!maps(godot::TerrainMap::Detail).empty()) {
+            problems_.add("HTerrainData detail maps", path, std::string(kNoDetailLayers));
+        }
+        if (!maps(godot::TerrainMap::SplatIndex).empty() ||
+            !maps(godot::TerrainMap::SplatWeight).empty()) {
+            problems_.add("HTerrainData splat index maps", path,
+                          "texture arrays don't convert; SlashEngine's HTerrain takes 4 "
+                          "textures, each its own image");
+        }
+        return out;
+    }
+
+    // The heights of a terrain's height map: height.res, or the height.png of 8-bit channels
+    // the plugin's first Godot 4 versions saved.
+    std::optional<godot::TerrainHeights> terrain_heights(const std::string& folder,
+                                                         const std::vector<int>& ids,
+                                                         const std::string& path) {
+        if (ids.empty()) {
+            problems_.add("HTerrainData heights", path,
+                          "the data has no height map, so the terrain is flat ground");
+            return std::nullopt;
+        }
+        const std::string file =
+            folder + godot::terrain_map_file(godot::TerrainMap::Height, ids.front());
+        Result<godot::TerrainHeights> heights = Error{.code = ErrorCode::NotFound, .message = {}};
+        if (const auto it = text_files_.find(file);
+            it != text_files_.end() && it->second->resource != nullptr) {
+            resources_read_.insert(file);
+            const Value* data = it->second->resource->property("data");
+            heights = data != nullptr
+                          ? godot::terrain_heights_of_image(*data)
+                          : Result<godot::TerrainHeights>(Error{.code = ErrorCode::InvalidArgument,
+                                                                .message = "not an Image"});
+        } else if (const std::string png = without_extension(file) + ".png";
+                   std::ranges::binary_search(files_, png)) {
+            auto bytes = read(png);
+            auto image =
+                bytes ? render::decode_image(bytes.value()) : Result<render::Image>(bytes.error());
+            heights = image ? godot::terrain_heights_of_rgb8(static_cast<int>(image.value().width),
+                                                             static_cast<int>(image.value().height),
+                                                             image.value().pixels)
+                            : Result<godot::TerrainHeights>(image.error());
+        } else {
+            problems_.add("missing file", path, file);
+            return std::nullopt;
+        }
+        if (!heights) {
+            problems_.add("unreadable file", file, heights.error().message);
+            return std::nullopt;
+        }
+        return std::move(heights).value();
+    }
+
+    static bool is_terrain_resolution(int resolution) {
+        return resolution >= 65 && resolution <= 4097 &&
+               std::has_single_bit(static_cast<unsigned>(resolution - 1));
+    }
+
     // Why a kind of Godot track doesn't convert.
     static std::string track_why(std::string_view type) {
         if (type == "audio") {
@@ -9059,6 +9479,17 @@ private:
                     script = ext->second.path;
                 }
             }
+            // The HTerrain plugin's nodes are its scripts on Node3D nodes; they convert to
+            // components, not to gameplay code.
+            const bool terrain = is_hterrain_script(script);
+            const bool detail_layer = is_hterrain_detail_script(script);
+            if (terrain || detail_layer) {
+                script.clear();
+            }
+            if (detail_layer) {
+                problems_.add("node type HTerrainDetailLayer", node.declared,
+                              std::string(kNoDetailLayers));
+            }
             for (const Property& given : node.properties) {
                 if (ignored_property(given.name)) {
                     continue;
@@ -9067,6 +9498,9 @@ private:
                     continue; // a later value overrides it
                 }
                 if (bone_node_property(node, given.name)) {
+                    continue; // converted with the node, below
+                }
+                if (terrain && hterrain_property(given.name)) {
                     continue; // converted with the node, below
                 }
                 Property property = given;
@@ -9089,6 +9523,9 @@ private:
                     }
                     continue;
                 }
+                if (detail_layer) {
+                    continue; // reported with the node
+                }
                 if (!script.empty() && !built_in_property(property.name)) {
                     std::string ignored;
                     if (auto converted = guess(*property.value, *property.file, ignored)) {
@@ -9107,6 +9544,9 @@ private:
             }
             if (contains(kSkeletonChildTypes, node.type)) {
                 convert_bone_node(nodes, node, components);
+            }
+            if (terrain) {
+                convert_hterrain(node, components);
             }
             if (!node.model.empty()) {
                 convert_model_overrides(node, components);
@@ -9595,6 +10035,7 @@ private:
     std::map<std::string, LibraryFile> libraries_written_;   // by file name, without its suffix
     std::map<std::string, std::string> moved_players_;       // AnimationPlayer node to its model's
     std::map<std::string, std::optional<ModelInfo>> models_; // by path
+    std::map<std::string, json::Value> terrain_data_;        // HTerrain fields, by data.hterrain
     std::map<std::string, std::string> trees_written_;       // by resource, its file or ""
     std::map<std::string, ScriptRecord> scripts_;            // by res path
     std::optional<Skeletons> skeletons_;                     // by res path

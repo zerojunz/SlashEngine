@@ -677,7 +677,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Godot's 3D animation tracks, as node tracks on a model's bones and `Transform3D` tracks
         on a scene's 3D nodes
   - [x] Godot's skeletons: a model's bone poses, IK modifiers, ragdolls and bone attachments
-  - [ ] Godot's HTerrain data
+  - [x] Godot's HTerrain data: heights, splat and color maps, texture sets and shader settings
   - [ ] Unity 3D scenes
   - [ ] Unreal Engine levels and assets through the user's own Unreal Editor
 - [ ] 3D in the asset library and generator ([design](design.md#3d-assets))

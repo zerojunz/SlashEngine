@@ -514,6 +514,35 @@ reported as nodes in an imported model.
 [examples/import-godot-skeleton](../../examples/import-godot-skeleton/) imports an arm that
 reaches for a ball with a blade in its hand, and another that falls as a ragdoll.
 
+### Terrains
+
+Godot has no terrain node of its own; games use the HTerrain plugin (zylann.hterrain), and its
+`HTerrain` node, a `Node3D` with the plugin's script, becomes an entity with SlashEngine's
+[`HTerrain`](scene-format.md#heightmap-terrains), which follows the plugin. The plugin's
+scripts are its nodes rather than the game's code, so they get no C++ skeleton.
+
+- `_terrain_data` names the `data.hterrain` file that lists the terrain's maps. Its heights,
+  `height.res` (a Godot `Image` of 32-bit floats, as the plugin saves them) or the 8-bit red,
+  green and blue `height.png` of the plugin's first Godot 4 versions, become a 16-bit
+  `.height.png` file beside it, named after its folder, whose `height_range` is the whole
+  meters that hold every height. The first splat map and the color map are used as they are,
+  holes included. The normal map, which SlashEngine works out from the heights, and the global
+  albedo map, which it doesn't use, are left out.
+- The texture set's `textures` (one image per texture) give each texture's `albedo_bump` and
+  `normal_roughness`, as do the `ground/` textures of the plugin's older versions. The Classic4
+  and Classic4Lite shaders' `shader_params/` give `uv_scale` (one per texture, or one for all),
+  `colormap_opacity`, `depth_blending` and `specular`.
+- `map_scale`, `centered`, `chunk_size`, `lod_scale`, `collision_enabled`, `collision_layer`,
+  `collision_mask`, `render_layers` and `cast_shadow` carry over, and the physics material
+  gives `friction` and `bounce`.
+- Reported: other shaders (the terrain draws as Classic4), texture arrays, splat maps past the
+  first, triplanar mapping, tile reduction, the global map's blend distances, a resolution
+  HTerrain doesn't take, and detail layers: `HTerrainDetailLayer` nodes, the data's detail maps
+  and `ambient_wind`.
+
+[examples/import-godot-terrain](../../examples/import-godot-terrain/) imports a hill with rock
+on its top.
+
 ## Project settings
 
 | `project.godot` | `project.json` |
@@ -638,6 +667,7 @@ The report lists each of these once per kind, with how many and where it was fir
 | Surface overrides past surface 0, `material_overlay` and a material's `next_pass` | An entity draws its mesh with one material |
 | `ShaderMaterial` on a 3D mesh or a sky | A game's own 3D shaders aren't supported yet |
 | `HeightMapShape3D` | Use an [`HTerrain`](scene-format.md#heightmap-terrains), whose height field collides |
+| The HTerrain plugin's detail layers (`HTerrainDetailLayer`), texture arrays, splat maps past the first, triplanar mapping and tile reduction | Grass and other details aren't supported yet; a terrain mixes four textures by one splat map |
 | `GPUParticles3D`, `CPUParticles3D`, `Decal`, `ReflectionProbe`, `VoxelGI`, `LightmapGI` and other 3D nodes with no SlashEngine component | Not supported yet; their entities keep their place in the tree |
 | Audio and animation tracks | Play the sound or the other animation from gameplay code, on an event track's event |
 | Bezier handles, the capture update mode, blend times and markers | A bezier track plays cubic through its keys, a capture track as continuous, and animations switch without blending |

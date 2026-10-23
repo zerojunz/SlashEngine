@@ -9,6 +9,7 @@
 #include "slash/command/command.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
+#include "slash/core/text.hpp"
 #include "slash/gameplay/host.hpp"
 #include "slash/importer/commands.hpp"
 #include "slash/importer/godot_pack.hpp"
@@ -20,6 +21,7 @@
 #include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/scene3d/scene3d.hpp"
+#include "slash/scene3d/terrain.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -28,6 +30,8 @@
 
 #include <doctest/doctest.h>
 
+#include <bit>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <map>
@@ -2602,6 +2606,222 @@ TEST_CASE("importing a Godot level converts its CSG, paths, grid maps, joints an
           "a bake takes the region's entity and those under it");
     CHECK(unsupported(report, "NavigationAgent3D.debug_enabled").is_null());
     CHECK(unsupported(report, "invalid value").is_null());
+    fs::remove_all(project);
+}
+
+// A Godot project with two HTerrain nodes: one whose data the plugin saved as Godot 4 versions
+// from 1.7 do (height.res, an Image of 32-bit floats) with a texture set and a grass layer, and
+// one whose heights are the 8-bit red, green and blue height.png its first Godot 4 versions saved.
+fs::path make_terrain_project(const fs::path& folder) {
+    fs::remove_all(folder);
+    write(folder / "project.godot", R"(config_version=5
+
+[application]
+
+config/name="Hills"
+run/main_scene="res://level.tscn"
+)");
+    constexpr int kSize = 65;
+    // Heights from -1.5 to 8.1 meters, 32-bit floats in an Image's bytes.
+    {
+        std::string bytes;
+        for (int z = 0; z < kSize; ++z) {
+            for (int x = 0; x < kSize; ++x) {
+                const auto bits = std::bit_cast<std::uint32_t>(
+                    (static_cast<float>(x) * 0.1F) - 1.5F + (static_cast<float>(z) * 0.05F));
+                for (unsigned shift = 0; shift < 32; shift += 8) {
+                    bytes += static_cast<char>((bits >> shift) & 0xFFU);
+                }
+            }
+        }
+        auto sections = godot::parse_resource(
+            R"([gd_resource type="Image" format=3]
+
+[resource]
+data = {"data": PackedByteArray(")" +
+            slash::base64_encode(bytes) +
+            R"("), "format": "RFloat", "height": 65, "mipmaps": false, "width": 65}
+)");
+        REQUIRE(sections.ok());
+        auto binary =
+            godot::write_binary_resource(sections.value(), {.path = "res://terrain/height.res"});
+        REQUIRE(binary.ok());
+        write(folder / "terrain/height.res", binary.value());
+    }
+    write(folder / "terrain/data.hterrain",
+          R"({"version": "0.11", "maps": [[{"id": 0}], [{"id": 0}], [{"id": 0}, {"id": 1}],
+              [{"id": 0}], [{"id": 0}], [], [], []]})");
+    for (const char* map : {"normal", "splat", "splat2", "color", "detail"}) {
+        write_png(folder / "terrain" / (std::string(map) + ".png"), kSize, kSize);
+    }
+    for (const char* texture :
+         {"grass_albedo_bump", "grass_normal_roughness", "rock_albedo_bump"}) {
+        write_png(folder / "textures" / (std::string(texture) + ".png"), 8, 8);
+    }
+    write(folder / "textures/set.tres",
+          R"([gd_resource type="Resource" script_class="HTerrainTextureSet" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://addons/zylann.hterrain/hterrain_texture_set.gd" id="1_set"]
+[ext_resource type="Texture2D" path="res://textures/grass_albedo_bump.png" id="2_grass"]
+[ext_resource type="Texture2D" path="res://textures/grass_normal_roughness.png" id="3_grass"]
+[ext_resource type="Texture2D" path="res://textures/rock_albedo_bump.png" id="4_rock"]
+
+[resource]
+script = ExtResource("1_set")
+mode = 0
+textures = [[ExtResource("2_grass"), ExtResource("4_rock")], [ExtResource("3_grass"), null]]
+)");
+    // Heights x / 4 meters, as (r + g * 256 + b * 65536) / 1024 - 8192.
+    {
+        slash::render::Image image{.width = kSize, .height = kSize, .pixels = {}};
+        for (int z = 0; z < kSize; ++z) {
+            for (int x = 0; x < kSize; ++x) {
+                image.pixels.insert(image.pixels.end(),
+                                    {0, static_cast<std::uint8_t>(x), 128, 255});
+            }
+        }
+        write(folder / "old/height.png", slash::render::encode_png(image).value());
+    }
+    write(folder / "old/data.hterrain", R"({"version": "0.11", "maps": [[{"id": 0}]]})");
+    write(folder / "level.tscn", R"([gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://addons/zylann.hterrain/hterrain.gd" id="1_terrain"]
+[ext_resource type="Resource" path="res://terrain/data.hterrain" id="2_data"]
+[ext_resource type="Resource" path="res://textures/set.tres" id="3_set"]
+[ext_resource type="Script" path="res://addons/zylann.hterrain/hterrain_detail_layer.gd" id="4_grass"]
+[ext_resource type="Resource" path="res://old/data.hterrain" id="5_old"]
+
+[sub_resource type="PhysicsMaterial" id="ground"]
+friction = 0.8
+rough = true
+bounce = 0.25
+
+[node name="Level" type="Node3D"]
+
+[node name="Hills" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -2, 0)
+script = ExtResource("1_terrain")
+_terrain_data = ExtResource("2_data")
+chunk_size = 16
+collision_enabled = true
+collision_layer = 3
+collision_mask = 1
+physics_material = SubResource("ground")
+shader_type = "Classic4"
+custom_shader = null
+custom_globalmap_shader = null
+texture_set = ExtResource("3_set")
+render_layers = 1
+cast_shadow = 2
+ambient_wind = 0.0
+lod_scale = 2.0
+map_scale = Vector3(2, 1, 2)
+centered = true
+shader_params/u_ground_uv_scale_per_texture = Vector4(10, 20, 30, 40)
+shader_params/u_depth_blending = false
+shader_params/u_triplanar = true
+shader_params/u_tile_reduction = Vector4(0, 0, 0, 0)
+shader_params/u_globalmap_blend_start = null
+shader_params/u_globalmap_blend_distance = null
+shader_params/u_colormap_opacity_per_texture = Vector4(1, 1, 0.5, 1)
+shader_params/u_specular = 0.25
+
+[node name="Grass" type="Node3D" parent="Hills"]
+script = ExtResource("4_grass")
+layer_index = 0
+density = 4.0
+
+[node name="Dunes" type="Node3D" parent="."]
+script = ExtResource("1_terrain")
+_terrain_data = ExtResource("5_old")
+shader_type = "MultiSplat16"
+custom_shader = null
+)");
+    return folder;
+}
+
+TEST_CASE("importing Godot's HTerrain nodes writes their heightmaps and keeps their textures") {
+    const fs::path project = "import_godot_terrain";
+    make_terrain_project(project / "godot");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string level = "godot/level.scene.json";
+    REQUIRE(files.contains(level));
+
+    // The heights become a .height.png file over the whole meters that hold them; the first
+    // splat map and the color map are used as they are, and the texture set and the shader's
+    // parameters give the four textures.
+    const json::Value hills = entity(files, level, "hills");
+    CHECK(*hills.find("HTerrain") == parse(R"({
+        "heightmap": "godot/terrain/terrain.height.png", "resolution": 65,
+        "height_range": [-2.0, 9.0], "splatmap": "godot/terrain/splat.png",
+        "colormap": "godot/terrain/color.png",
+        "textures": [
+            {"albedo_bump": "godot/textures/grass_albedo_bump.png",
+             "normal_roughness": "godot/textures/grass_normal_roughness.png", "uv_scale": 10.0},
+            {"albedo_bump": "godot/textures/rock_albedo_bump.png"},
+            {"uv_scale": 30.0, "colormap_opacity": 0.5},
+            {"uv_scale": 40.0}],
+        "depth_blending": false, "specular": 0.25, "map_scale": [2.0, 1.0, 2.0],
+        "centered": true, "chunk_size": 16, "collision_layer": 3, "friction": 0.8,
+        "bounce": 0.25, "cast_shadow": "double_sided"})"));
+    CHECK(*hills.find("Transform3D") ==
+          parse(R"({"position": [0.0, -2.0, 0.0], "children": ["grass"]})"));
+    const auto heights_of = [&](const std::string& path, slash::Vec2 range) {
+        REQUIRE(files.contains(path));
+        auto gray = slash::render::decode_gray16(files.at(path));
+        REQUIRE(gray.ok());
+        CHECK(gray.value().width == 65);
+        return slash::scene3d::decode_heights(gray.value(), range);
+    };
+    const std::vector<float> heights =
+        heights_of("godot/terrain/terrain.height.png", slash::Vec2{-2.0F, 9.0F});
+    for (const auto& [x, z] :
+         {std::pair{0, 0}, std::pair{64, 0}, std::pair{10, 30}, std::pair{64, 64}}) {
+        const float expected =
+            (static_cast<float>(x) * 0.1F) - 1.5F + (static_cast<float>(z) * 0.05F);
+        CHECK(std::abs(heights.at(static_cast<std::size_t>((z * 65) + x)) - expected) < 0.001F);
+    }
+
+    // The heights of the plugin's first Godot 4 versions decode from their 8-bit channels.
+    const json::Value dunes = entity(files, level, "dunes");
+    CHECK(*dunes.find("HTerrain") == parse(R"({
+        "heightmap": "godot/old/old.height.png", "resolution": 65,
+        "height_range": [0.0, 16.0]})"));
+    const std::vector<float> old = heights_of("godot/old/old.height.png", slash::Vec2{0.0F, 16.0F});
+    CHECK(std::abs(old.at(40) - 10.0F) < 0.001F);
+    CHECK(std::abs(old.at((64 * 65) + 64) - 16.0F) < 0.001F);
+
+    // The grass layer is left out, and what the terrain can't keep is reported.
+    CHECK(dunes.find("HTerrainDetailLayer") == nullptr);
+    CHECK(entity(files, level, "grass").size() == 1); // its Transform3D
+    const json::Value& report = plan.report;
+    const auto why = [&](std::string_view what) {
+        const json::Value item = unsupported(report, what);
+        REQUIRE_MESSAGE(!item.is_null(), what);
+        return item.find("why")->as_string();
+    };
+    CHECK(why("node type HTerrainDetailLayer") ==
+          "grass and other detail layers (HTerrainDetailLayer) don't convert yet");
+    CHECK(why("HTerrainData detail maps") ==
+          "grass and other detail layers (HTerrainDetailLayer) don't convert yet");
+    CHECK(why("HTerrainData splat maps") ==
+          "SlashEngine's HTerrain mixes 4 textures by one splat map; the others are left out");
+    CHECK(why("HTerrain.shader_params/u_triplanar") ==
+          "triplanar mapping doesn't convert yet; steep slopes show the textures stretched");
+    CHECK(why("HTerrain.shader_type") ==
+          "SlashEngine's HTerrain shades as Classic4, so a MultiSplat16 terrain draws as one");
+    CHECK(why("PhysicsMaterial.rough") ==
+          "Godot's Jolt physics, which SlashEngine follows, ignores it");
+    for (const char* quiet :
+         {"HTerrain.script", "HTerrain.shader_params/u_tile_reduction", "HTerrain.ambient_wind",
+          "resource Image", "resource Resource", "Node3D.layer_index", "Node3D._terrain_data"}) {
+        CHECK_MESSAGE(unsupported(report, quiet).is_null(), quiet);
+    }
+    // The plugin's scripts are its nodes, not gameplay code to port.
+    for (const auto& [path, contents] : files) {
+        CHECK_MESSAGE(path.find("hterrain") == std::string::npos, path);
+    }
     fs::remove_all(project);
 }
 
