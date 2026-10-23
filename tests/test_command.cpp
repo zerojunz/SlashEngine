@@ -1307,7 +1307,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "doc": "Blends each AnimationTree's animations into its entity's components.",
          "priority": 910},
         {"name": "skeleton_modifiers",
-         "doc": "Steps the chains of FABRIK3D, CCDIK3D and JacobianIK3D modifiers that aren't deterministic toward their targets.",
+         "doc": "Steps the chains of FABRIK3D, CCDIK3D and JacobianIK3D modifiers that aren't deterministic toward their targets, and moves the physical bones that follow the pose.",
          "priority": 920},
         {"name": "physics2d",
          "doc": "Steps 2D physics: moves rigid and character bodies and reports contacts.",

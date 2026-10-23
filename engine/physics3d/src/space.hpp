@@ -2,6 +2,7 @@
 
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/physical_bones.hpp"
 #include "slash/world/tree3d.hpp"
 
 // Jolt's headers, which Jolt.h must come before.
@@ -23,6 +24,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
@@ -36,7 +38,8 @@ namespace slash::physics3d::detail {
 // Godot's CMP_EPSILON.
 inline constexpr float kEpsilon = 0.00001F;
 
-enum class Kind : std::uint8_t { Rigid, Character, Animatable, Static, Area };
+// Bone is a PhysicalBone3D: a rigid, kinematic or static body as its link says.
+enum class Kind : std::uint8_t { Rigid, Character, Animatable, Static, Area, Bone };
 
 // The broad phase layers: Godot's JoltBroadPhaseLayer, with its two static layers as one and
 // areas in their own. Areas take no part in Jolt's step; the space finds what is in them itself.
@@ -224,6 +227,8 @@ struct Body {
     entt::entity entity = entt::null;
     std::string name; // the entity's ID
     Kind kind = Kind::Static;
+    // Physical bones: what their simulator makes of them.
+    world::PhysicalBoneMode bone_mode = world::PhysicalBoneMode::Static;
     JPH::BodyID id;
     JPH::RefConst<JPH::Shape> shape; // the body's whole shape, as Jolt has it
     // Each built part's own shape, unscaled, with its index in shape_key.parts: motion tests
@@ -248,8 +253,8 @@ struct Body {
     Vec3 linear_velocity;
     Vec3 angular_velocity;
     bool sleeping = false;
-    // Rigid bodies: their gravity and total damping, set before each step from the areas they
-    // are in, as Godot's JoltBody3D.
+    // Rigid bodies and physical bones: their gravity and total damping, set before each step
+    // from the areas they are in, as Godot's JoltBody3D.
     Vec3 gravity;
     float total_linear_damp = 0.0F;
     float total_angular_damp = 0.0F;
@@ -333,6 +338,14 @@ struct Joint {
     // The bodies' centers of mass the constraint was built for; a new shape rebuilds it.
     Vec3 com_a;
     Vec3 com_b;
+};
+
+// A physical bone's joint to the bone above, as Godot's PhysicalBone3D::_reload_joint makes it:
+// in the frames the two bodies were in when it was made, again when its type, joint_rotation,
+// body offset or bodies change.
+struct BoneJoint {
+    Joint joint;
+    world::PhysicalBone3D made; // the component when its frames were made
 };
 
 // What a wheel's Transform3D was made from, so the next step tells the physics' own writes from
@@ -455,8 +468,9 @@ private:
     void move_characters(world::World& world, const world::Tree3D& tree, float seconds);
     void find_overlaps(const world::World& world);
     void emit_events(world::World& world);
-    // Makes the Jolt constraints match the joint components (joints.cpp).
+    // Makes the Jolt constraints match the joint components and physical bones (joints.cpp).
     void sync_joints(world::World& world, const world::Tree3D& tree);
+    void sync_bone_joints(world::World& world, const world::Tree3D& tree);
     // Takes the constraints off a body that is going; the next sync makes them again.
     void drop_joints(const JPH::BodyID& id);
     void remove_joint(Joint& joint);
@@ -482,6 +496,9 @@ private:
     std::unique_ptr<JPH::PhysicsSystem> system_;
     EntityMap<std::unique_ptr<Body>> bodies_;
     EntityMap<Joint> joints_;
+    EntityMap<BoneJoint> bone_joints_;
+    // What each physical bone's simulator makes of it, as the last sync found.
+    std::unordered_map<entt::entity, world::PhysicalBoneLink> bone_links_;
     // Pairs of bodies joints keep apart, the lower entity first.
     std::set<std::pair<entt::entity, entt::entity>> exceptions_;
     EntityMap<Wheel> wheels_;
@@ -500,6 +517,22 @@ private:
 // The space installed in a world, or nullptr.
 [[nodiscard]] Space* find_space(world::World& world);
 [[nodiscard]] const Space* find_space(const world::World& world);
+
+// What a moving body's own component says of its gravity and damping: a RigidBody3D's or a
+// PhysicalBone3D's; nothing for other kinds.
+struct OwnForces {
+    float gravity_scale = 1.0F;
+    std::string_view linear_damp_mode;
+    float linear_damp = 0.0F;
+    std::string_view angular_damp_mode;
+    float angular_damp = 0.0F;
+    Vec3 constant_force;
+    Vec3 constant_torque;
+};
+[[nodiscard]] std::optional<OwnForces> own_forces(const entt::registry& registry,
+                                                  entt::entity entity, Kind kind);
+// A body's total damping from the space's and its own, as Godot's _update_damp.
+[[nodiscard]] float with_own(float total, std::string_view mode, float own);
 
 // Sets Jolt up once per process: its allocator, factory and shape types.
 void set_up_jolt();

@@ -18,6 +18,7 @@ add_library(slash_scene3d
     src/model.cpp
     src/model_tools.cpp
     src/obj.cpp
+    src/physical_bones.cpp
     src/primitive.cpp
     src/scene3d.cpp
     src/skeleton.cpp)

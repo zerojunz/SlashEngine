@@ -896,8 +896,8 @@ pole entities by ID, which may be anywhere in the world.
 ```
 
 - They run in Godot's order: those on the drawing entity, then those on each of its children in
-  list order; on one entity, `TwoBoneIK3D`, `FABRIK3D`, `CCDIK3D`, then `JacobianIK3D`. Each
-  setting in `settings` is one limb or chain, solved in turn.
+  list order; on one entity, `TwoBoneIK3D`, `FABRIK3D`, `CCDIK3D`, `JacobianIK3D`, then
+  `PhysicalBoneSimulator3D`. Each setting in `settings` is one limb or chain, solved in turn.
 - `TwoBoneIK3D` bends two bones so the end reaches the target, with the middle joint on the
   pole's side, as Godot's: straight at the target when it is out of reach. It needs a target
   and a pole. `pole_direction` rolls the middle bone so that axis faces the pole.
@@ -950,6 +950,9 @@ pole entities by ID, which may be anywhere in the world.
 hasn't (with "did you mean"), bones that aren't one under the other, names of directions and
 axes, settings with no target or pole, and modifiers that turn no model's bones.
 [examples/ik](../../examples/ik/) reaches with an arm.
+
+A `PhysicalBoneSimulator3D` is a modifier too, run after the IK modifiers on its entity: it puts
+bones where their physics bodies are ([ragdolls](#ragdolls)).
 
 ### StandardMaterial3D
 
@@ -2524,6 +2527,64 @@ feel.
   wheel's `Transform3D` by hand mounts it there.
 - Godot's suspension defaults are soft for a car of four wheels resting on them; stiffer springs
   (`suspension_stiffness` around 30) hold it up.
+
+### Ragdolls
+
+Ragdolls follow Godot 4.6's `PhysicalBoneSimulator3D` and `PhysicalBone3D`. A
+`PhysicalBoneSimulator3D` is a [skeleton modifier](#ik-modifiers): it goes on the entity that
+draws a model or on one of its `Transform3D` children, and runs in its place among the other
+modifiers. Each entity in the simulator's entity's `Transform3D` `children` with a
+`PhysicalBone3D` is a body for the bone `bone_name` names, shaped by its `CollisionShape3D` as
+any body is. [examples/ragdoll](../../examples/ragdoll/) lets a waving arm go limp.
+
+```json
+"ragdoll": {"components": {
+  "Transform3D": {"children": ["upper_arm", "forearm"]},
+  "PhysicalBoneSimulator3D": {"simulated_bones": ["Elbow"]}
+}},
+"forearm": {"components": {
+  "Transform3D": {},
+  "PhysicalBone3D": {"bone_name": "Elbow", "body_offset_position": [0, 0.25, 0],
+                     "joint_type": "cone", "joint_rotation": [0, 0, 1.5707964],
+                     "swing_span": 2.4},
+  "CollisionShape3D": {"shape": "capsule", "radius": 0.05, "height": 0.3}
+}}
+```
+
+- A body sits at its bone times its body offset (`body_offset_position` and
+  `body_offset_rotation`, in the bone's space), so an offset half way along a bone puts the body
+  over it.
+- While the simulator is `active` and not `simulating`, the `skeleton_modifiers` system moves
+  each body to its bone every tick and physics moves it there as a kinematic body, so it pushes
+  what is in its way and other bodies land on it.
+- `simulating` (Godot's `physical_bones_start_simulation`) hands the bodies to physics as rigid
+  bodies, `top_level` so their parents no longer carry them, keeping the velocity they had; each
+  simulating bone then goes where its body is, after the modifiers before it and blended by
+  `influence`, and the bones under it follow. `simulated_bones` simulates only the bones it
+  names and those under them (all of them when it names none the model has), and the others
+  keep following the pose. Stopping puts the bodies back on the pose.
+- An inactive simulator neither moves bodies nor moves bones; its bodies don't collide unless
+  they simulate.
+- `joint_type` holds a body to the body of the nearest bone above its own that has one, at its
+  bone's origin, in the axes `joint_rotation` turns from the body's: `"pin"`, `"cone"` (a
+  `ConeTwistJoint3D` with `swing_span` and `twist_span`), `"hinge"` (about z, with its angular
+  limit), `"slider"` (along x, with its linear limit) or `"6dof"` (`x`, `y` and `z`, each with
+  Godot's linear and angular limits and springs); for a bone along y, a `joint_rotation` of
+  `[0, 0, 1.5707964]` turns a cone's or slider's x axis along it. Joined bodies collide with
+  each other, as on Godot's Jolt module, so leave room between their shapes. `"none"` holds
+  nothing.
+- `collision_exceptions` names bodies the simulator's bodies never collide with, such as the
+  character's own capsule.
+- A bone with no body, or a second body for one bone, is a body that never moves or collides;
+  a `PhysicalBone3D` outside any simulator's children is a static body.
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `PhysicalBoneSimulator3D` | `active` `true`, `influence` `1`, `simulating` `false`, `simulated_bones` `[]`, `collision_exceptions` `[]` (entity IDs) |
+| `PhysicalBone3D` | `bone_name` `""`, `body_offset_position` and `body_offset_rotation` `[0, 0, 0]`, `joint_type` `"none"`, `joint_rotation` `[0, 0, 0]`, `swing_span` `0.785398`, `twist_span` `3.14159`, `angular_limit_enabled` `false`, `angular_limit_upper` `1.5708`, `angular_limit_lower` `-1.5708`, `linear_limit_upper` `1`, `linear_limit_lower` `-1`, `x`, `y` and `z` (each with `linear_limit_enabled` and `angular_limit_enabled` `true`, their `_upper` and `_lower` `0`, `linear_spring_enabled` and `angular_spring_enabled` `false` with `_stiffness`, `_damping` and `_equilibrium_point` `0`), `collision_layer` `1`, `collision_mask` `1`, `mass` `1`, `friction` `1`, `bounce` `0`, `gravity_scale` `1`, `linear_damp_mode` and `angular_damp_mode` `"combine"`, `linear_damp` and `angular_damp` `0`, `can_sleep` `true`; written by each step while it simulates: `linear_velocity`, `angular_velocity` |
+
+`scene validate` reports `simulated_bones` and `bone_name`s the model hasn't (with "did you
+mean"), a bone with two bodies and a `PhysicalBone3D` no simulator holds.
 
 ## Particles
 

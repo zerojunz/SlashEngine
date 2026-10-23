@@ -379,6 +379,13 @@ reach a **target** entity with its elbow or knee toward a **pole**, while a `FAB
 turn the bones after the animations, so a character can walk and reach at once, and joints can
 be limited to an axis or a **cone**. The [IK example](../examples/ik/) reaches with an arm.
 
+**Ragdolls** follow Godot 4.6's `PhysicalBoneSimulator3D`: each `PhysicalBone3D` is a physics
+body for one bone of a model, held by a **joint** to the body of the bone above. While the
+simulator doesn't simulate, the bodies follow the animated bones, so they push things and things
+land on them; once it **simulates**, physics moves the bodies and the bones follow them, the
+whole skeleton or only the bones under one (`simulated_bones`), so a character goes limp when
+hit or an arm dangles. The [ragdoll example](../examples/ragdoll/) lets a waving arm go limp.
+
 **Tile maps** follow Godot's TileSet and TileMapLayer. A `.tileset.json` file cuts atlas
 textures into **tiles** and groups **terrains** (grass, water) into terrain sets; each terrain
 tile's **peering** says which terrain its sides and corners must touch. A `TileMapLayer` keeps
