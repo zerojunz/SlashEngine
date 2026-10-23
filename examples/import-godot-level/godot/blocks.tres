@@ -1,0 +1,32 @@
+[gd_resource type="MeshLibrary" load_steps=6 format=3 uid="uid://b4n2fortblk01"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_grass"]
+albedo_color = Color(0.3, 0.6, 0.25, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_grass"]
+material = SubResource("StandardMaterial3D_grass")
+size = Vector3(2, 0.5, 2)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_stone"]
+albedo_color = Color(0.6, 0.58, 0.55, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_stone"]
+material = SubResource("StandardMaterial3D_stone")
+size = Vector3(2, 0.5, 2)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_block"]
+size = Vector3(2, 0.5, 2)
+
+[resource]
+item/0/name = "Grass"
+item/0/mesh = SubResource("BoxMesh_grass")
+item/0/mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/0/shapes = [SubResource("BoxShape3D_block"), Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)]
+item/0/navigation_mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/0/navigation_layers = 1
+item/1/name = "Stone"
+item/1/mesh = SubResource("BoxMesh_stone")
+item/1/mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/1/shapes = [SubResource("BoxShape3D_block"), Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)]
+item/1/navigation_mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/1/navigation_layers = 1

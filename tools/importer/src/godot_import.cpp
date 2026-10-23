@@ -1,6 +1,7 @@
 #include "godot_import.hpp"
 
 #include "common.hpp"
+#include "godot_binary.hpp"
 #include "skeletons.hpp"
 
 #include "slash/animation/animation.hpp"
@@ -13,9 +14,11 @@
 #include "slash/core/text.hpp"
 #include "slash/importer/godot_text.hpp"
 #include "slash/importer/scripts.hpp"
+#include "slash/navigation/navigation.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/project.hpp"
+#include "slash/scene3d/gridmap.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
@@ -77,6 +80,13 @@ bool is_godot_texture(std::string_view extension) {
 bool is_model_file(std::string_view extension) {
     return extension == ".glb" || extension == ".gltf" || extension == ".obj" ||
            extension == ".fbx" || extension == ".blend";
+}
+
+// Resources Godot saves in its binary format by default, read as .tres files are: mesh libraries,
+// meshes, materials and any resource saved as .res.
+bool is_binary_resource(std::string_view extension) {
+    return extension == ".res" || extension == ".meshlib" || extension == ".mesh" ||
+           extension == ".material";
 }
 
 // Why a file Godot uses can't come along, by extension, or "".
@@ -588,6 +598,35 @@ constexpr std::array kNodeTypes{
     NodeType{"Area3D", Family::Node3D, "Area3D", ""},
     NodeType{"AudioStreamPlayer3D", Family::Node3D, "AudioStreamPlayer3D", ""},
     NodeType{"AudioListener3D", Family::Node3D, "AudioListener3D", ""},
+    NodeType{"VehicleBody3D", Family::Node3D, "RigidBody3D", "VehicleBody3D"},
+    NodeType{"VehicleWheel3D", Family::Node3D, "VehicleWheel3D", ""},
+    NodeType{"PinJoint3D", Family::Node3D, "PinJoint3D", ""},
+    NodeType{"HingeJoint3D", Family::Node3D, "HingeJoint3D", ""},
+    NodeType{"SliderJoint3D", Family::Node3D, "SliderJoint3D", ""},
+    NodeType{"ConeTwistJoint3D", Family::Node3D, "ConeTwistJoint3D", ""},
+    NodeType{"Generic6DOFJoint3D", Family::Node3D, "Generic6DOFJoint3D", ""},
+    NodeType{"CSGCombiner3D", Family::Node3D, "CSGCombiner3D", ""},
+    NodeType{"CSGBox3D", Family::Node3D, "CSGBox3D", ""},
+    NodeType{"CSGSphere3D", Family::Node3D, "CSGSphere3D", ""},
+    NodeType{"CSGCylinder3D", Family::Node3D, "CSGCylinder3D", ""},
+    NodeType{"CSGTorus3D", Family::Node3D, "CSGTorus3D", ""},
+    NodeType{"CSGPolygon3D", Family::Node3D, "CSGPolygon3D", ""},
+    NodeType{"CSGMesh3D", Family::Node3D, "CSGMesh3D", ""},
+    NodeType{"Path3D", Family::Node3D, "Path3D", ""},
+    NodeType{"PathFollow3D", Family::Node3D, "PathFollow3D", ""},
+    NodeType{"Path2D", Family::Node2D, "Path2D", ""},
+    NodeType{"PathFollow2D", Family::Node2D, "PathFollow2D", ""},
+    NodeType{"GridMap", Family::Node3D, "GridMap", ""},
+    NodeType{"NavigationRegion2D", Family::Node2D, "NavigationRegion2D", ""},
+    NodeType{"NavigationLink2D", Family::Node2D, "NavigationLink2D", ""},
+    NodeType{"NavigationObstacle2D", Family::Node2D, "NavigationObstacle2D", ""},
+    // Godot's agents are plain nodes that move with their parent; here they are entities at
+    // their parent's origin.
+    NodeType{"NavigationAgent2D", Family::Node2D, "NavigationAgent2D", ""},
+    NodeType{"NavigationRegion3D", Family::Node3D, "NavigationRegion3D", ""},
+    NodeType{"NavigationLink3D", Family::Node3D, "NavigationLink3D", ""},
+    NodeType{"NavigationObstacle3D", Family::Node3D, "NavigationObstacle3D", ""},
+    NodeType{"NavigationAgent3D", Family::Node3D, "NavigationAgent3D", ""},
 };
 
 const NodeType* find_node_type(std::string_view godot) {
@@ -654,6 +693,9 @@ std::array<double, 2> node_vector(const Node& node, std::string_view property,
 // ParallaxBackground's own default layer, behind the world.
 constexpr std::int64_t kParallaxBackgroundLayer = -100;
 
+// A VehicleBody3D's mass when its scene doesn't set one: Godot's VehicleBody3D sets its own.
+constexpr double kVehicleMass = 40.0;
+
 // A ParallaxLayer's Parallax2D, from it and the ParallaxBackground above it, as Godot's
 // ParallaxBackgroundEditorPlugin::convert_to_parallax2d makes it. Only fields that differ from
 // Parallax2D's defaults are set.
@@ -713,6 +755,87 @@ void convert_parallax_layer(const std::vector<Node>& nodes, const Node& layer,
     }
 }
 
+// A 3D joint's Godot property as the field it sets here ("linear_x/limit_upper" for a part of a
+// Generic6DOFJoint3D axis), "" for one Godot's Jolt module ignores, or nullopt for another
+// property.
+std::optional<std::string> joint_field(std::string_view type, std::string_view name) {
+    if (!type.ends_with("Joint3D")) {
+        return std::nullopt;
+    }
+    if (name == "solver_priority") {
+        return "";
+    }
+    static const std::map<std::string, std::string, std::less<>> kFields{
+        {"PinJoint3D params/bias", ""},
+        {"PinJoint3D params/damping", ""},
+        {"PinJoint3D params/impulse_clamp", ""},
+        {"HingeJoint3D params/bias", ""},
+        {"HingeJoint3D angular_limit/enable", "angular_limit_enabled"},
+        {"HingeJoint3D angular_limit/upper", "angular_limit_upper"},
+        {"HingeJoint3D angular_limit/lower", "angular_limit_lower"},
+        {"HingeJoint3D angular_limit/bias", ""},
+        {"HingeJoint3D angular_limit/softness", ""},
+        {"HingeJoint3D angular_limit/relaxation", ""},
+        {"HingeJoint3D motor/enable", "motor_enabled"},
+        {"HingeJoint3D motor/target_velocity", "motor_target_velocity"},
+        {"HingeJoint3D motor/max_impulse", "motor_max_impulse"},
+        {"SliderJoint3D linear_limit/upper_distance", "linear_limit_upper"},
+        {"SliderJoint3D linear_limit/lower_distance", "linear_limit_lower"},
+        {"ConeTwistJoint3D bias", ""},
+        {"ConeTwistJoint3D softness", ""},
+        {"ConeTwistJoint3D relaxation", ""},
+    };
+    const std::string key = std::string(type) + " " + std::string(name);
+    if (const auto it = kFields.find(key); it != kFields.end()) {
+        return it->second;
+    }
+    // The slider's other limits, motion and ortho settings, and its angular ones: Jolt's slider
+    // never turns.
+    if (type == "SliderJoint3D" && (name.starts_with("linear_") || name.starts_with("angular_"))) {
+        return "";
+    }
+    if (type != "Generic6DOFJoint3D") {
+        return std::nullopt;
+    }
+    // "linear_limit_x/upper_distance" is linear_x's limit_upper.
+    const std::size_t slash = name.find('/');
+    if (slash == std::string_view::npos || slash < 3 || name[slash - 2] != '_') {
+        return std::nullopt;
+    }
+    const std::string_view group = name.substr(0, slash - 2); // "linear_limit"
+    const char axis = name[slash - 1];
+    const std::string_view param = name.substr(slash + 1);
+    if (axis != 'x' && axis != 'y' && axis != 'z') {
+        return std::nullopt;
+    }
+    const bool linear = group.starts_with("linear_");
+    if (!linear && !group.starts_with("angular_")) {
+        return std::nullopt;
+    }
+    const std::string_view kind = group.substr(linear ? 7 : 8); // "limit", "motor" or "spring"
+    std::string field;
+    if (kind == "limit") {
+        if (param == "enabled") {
+            field = "limit_enabled";
+        } else if (param == (linear ? "upper_distance" : "upper_angle")) {
+            field = "limit_upper";
+        } else if (param == (linear ? "lower_distance" : "lower_angle")) {
+            field = "limit_lower";
+        } else {
+            return ""; // softness, restitution, damping, force_limit and erp
+        }
+    } else if (kind == "motor" &&
+               (param == "enabled" || param == "target_velocity" || param == "force_limit")) {
+        field = param == "enabled" ? "motor_enabled" : "motor_" + std::string(param);
+    } else if (kind == "spring" && (param == "enabled" || param == "stiffness" ||
+                                    param == "damping" || param == "equilibrium_point")) {
+        field = param == "enabled" ? "spring_enabled" : "spring_" + std::string(param);
+    } else {
+        return std::nullopt;
+    }
+    return std::string(linear ? "linear_" : "angular_") + axis + "/" + field;
+}
+
 // Why a node type doesn't convert.
 std::string unsupported_node(std::string_view type) {
     if (type == "Timer") {
@@ -733,7 +856,6 @@ bool ignored_property(std::string_view name) {
         std::string_view{"auto_translate_mode"},
         std::string_view{"layout_mode"},
         std::string_view{"anchors_preset"},
-        std::string_view{"debug_color"},
         std::string_view{"process_callback"},
         std::string_view{"_import_path"},
         std::string_view{"script"},
@@ -741,9 +863,14 @@ bool ignored_property(std::string_view name) {
         std::string_view{"cell_quadrant_size"},
         std::string_view{"collision_visibility_mode"},
         std::string_view{"navigation_visibility_mode"},
+        // A navigation agent's: Godot has one pathfinding algorithm, and the metadata only
+        // describes the path.
+        std::string_view{"pathfinding_algorithm"},
+        std::string_view{"path_metadata_flags"},
     };
     return name.starts_with("metadata/") || name.starts_with("editor_") ||
-           name.starts_with("process_thread_") || contains(kIgnored, name);
+           name.starts_with("debug_") || name.starts_with("process_thread_") ||
+           contains(kIgnored, name);
 }
 
 // Godot's built-in properties of CanvasItem, Node2D and Control, which a script's exported
@@ -1263,7 +1390,8 @@ private:
                 }
                 continue;
             }
-            if (extension != ".tscn" && extension != ".tres") {
+            const bool binary = is_binary_resource(extension);
+            if (extension != ".tscn" && extension != ".tres" && !binary) {
                 continue;
             }
             auto text = read(file);
@@ -1271,7 +1399,15 @@ private:
                 problems_.add("unreadable file", file, text.error().message);
                 continue;
             }
-            auto sections = godot::parse_resource(text.value());
+            Result<std::vector<Section>> sections = std::vector<Section>{};
+            if (binary) {
+                auto resource = godot::read_binary_resource(text.value());
+                sections = resource
+                               ? Result<std::vector<Section>>(std::move(resource.value().sections))
+                               : Result<std::vector<Section>>(resource.error());
+            } else {
+                sections = godot::parse_resource(text.value());
+            }
             if (!sections) {
                 problems_.add("unreadable file", file, sections.error().message);
                 continue;
@@ -2090,7 +2226,7 @@ private:
             if (extension == ".tscn") {
                 return destination(without_extension(path) + std::string(world::kSceneSuffix));
             }
-            if (extension == ".tres") {
+            if (extension == ".tres" || is_binary_resource(extension)) {
                 const auto it = text_files_.find(path);
                 if (it != text_files_.end() && it->second->resource != nullptr) {
                     return converted_resource(*it->second->resource, *it->second, why);
@@ -2145,6 +2281,12 @@ private:
                 why = "a " + type + " with no stream that converts";
             }
             return path;
+        }
+        if (type == "NavigationMesh" || type == "NavigationPolygon") {
+            return navigation_file(file, section, base, type == "NavigationMesh");
+        }
+        if (type == "MeshLibrary") {
+            return mesh_library_file(file, section, base);
         }
         why = type + " resources";
         return {};
@@ -4505,6 +4647,33 @@ private:
             convert_shape_3d(value, file, components["CollisionShape3D"], node);
             return true;
         }
+        if (name == "curve" && (components.contains("Path3D") || components.contains("Path2D"))) {
+            const bool three_d = components.contains("Path3D");
+            convert_curve(value, file, components[three_d ? "Path3D" : "Path2D"], node, three_d);
+            return true;
+        }
+        if (node.type.starts_with("CSG") && components.contains(node.type) &&
+            csg_property(node, property, components)) {
+            return true;
+        }
+        if (components.contains("GridMap")) {
+            if (name == "data") {
+                grid_cells(node, value, components["GridMap"]);
+                return true;
+            }
+            if (name == "physics_material") {
+                if (const auto [section, owner] = resource_section(value, file);
+                    section != nullptr) {
+                    for (const char* field : {"friction", "bounce"}) {
+                        if (const Value* number = section->property(field);
+                            number != nullptr && number->is_number()) {
+                            components["GridMap"][field] = number->number();
+                        }
+                    }
+                }
+                return true;
+            }
+        }
         // An OptionButton shows its selected option's text and icon.
         if (components.contains("OptionButton") && (name == "text" || name == "icon")) {
             return true;
@@ -4813,40 +4982,105 @@ private:
         if (name != "mesh" || node.type != "MeshInstance3D") {
             return false;
         }
-        if (value.kind == Value::Kind::Nil) {
+        std::string model;
+        MeshMaterial material;
+        if (convert_mesh(value, file, node, "MeshInstance3D.mesh", model, components, material,
+                         false) &&
+            !model.empty()) {
+            components["MeshInstance3D"]["mesh"] = std::move(model);
+        }
+        if (material.value != nullptr && !overridden && !surface) {
+            convert_material(*material.value, *material.file, components, node);
+        }
+        return true;
+    }
+
+    // A CSG shape's material and CSGMesh3D's mesh. The mesh's own material colors it unless the
+    // shape's material is set, as in Godot.
+    bool csg_property(const Node& node, const Property& property, json::Object& components) {
+        const std::string& name = property.name;
+        const Value& value = *property.value;
+        const TextFile& file = *property.file;
+        if (name == "material") {
+            convert_material(value, file, components, node);
             return true;
+        }
+        if (name == "material_override") {
+            if (value.kind != Value::Kind::Nil) {
+                problems_.add(node.type + ".material_override", node.declared,
+                              "it colors the whole result; give each shape its material instead");
+            }
+            return true;
+        }
+        // Godot's Manifold CSG no longer snaps, and neither does SlashEngine's.
+        if (name == "snap") {
+            return true;
+        }
+        if (name != "mesh" || node.type != "CSGMesh3D") {
+            return false;
+        }
+        std::string model;
+        MeshMaterial material;
+        if (convert_mesh(value, file, node, "CSGMesh3D.mesh", model, components, material, true) &&
+            !model.empty()) {
+            components["CSGMesh3D"]["mesh"] = std::move(model);
+        }
+        const Property* own = node.find("material");
+        if (material.value != nullptr && (own == nullptr || own->value->kind == Value::Kind::Nil)) {
+            convert_material(*material.value, *material.file, components, node);
+        }
+        return true;
+    }
+
+    // A primitive mesh's own material, and the file its reference is in.
+    struct MeshMaterial {
+        const Value* value = nullptr;
+        const TextFile* file = nullptr;
+    };
+
+    // A Mesh resource: a model file Godot imported as a mesh (an .obj file) as its path in model,
+    // or a primitive mesh as the component of its name in primitives, with the primitive's own
+    // material in material. closed takes only primitives that enclose a volume, as CSG needs.
+    // False, reporting why as `what`, for any other mesh.
+    bool convert_mesh(const Value& value, const TextFile& file, const Node& node,
+                      const std::string& what, std::string& model, json::Object& primitives,
+                      MeshMaterial& material, bool closed) {
+        if (value.kind == Value::Kind::Nil) {
+            return false;
         }
         if (value.is_call("ExtResource")) {
             if (const auto ext = file.ext.find(value.string_argument().value_or(""));
                 ext != file.ext.end() && is_model_file(extension_of(ext->second.path))) {
                 if (std::ranges::binary_search(files_, ext->second.path)) {
-                    components["MeshInstance3D"]["mesh"] = destination(ext->second.path);
-                } else {
-                    problems_.add("MeshInstance3D.mesh", node.declared,
-                                  "missing file " + ext->second.path);
+                    model = destination(ext->second.path);
+                    return true;
                 }
-                return true;
+                problems_.add(what, node.declared, "missing file " + ext->second.path);
+                return false;
             }
         }
         const auto [section, owner] = resource_section(value, file);
         const std::string type = section != nullptr ? resource_type(*section, *owner) : "";
-        if (!contains(kPrimitiveMeshes, std::string_view(type))) {
+        const bool open = type == "PlaneMesh" || type == "QuadMesh";
+        if (!contains(kPrimitiveMeshes, std::string_view(type)) || (closed && open)) {
             std::string why = type + " meshes";
             if (section == nullptr) {
-                why = "a mesh saved in Godot's binary format; save it as a glTF file";
+                why = "a missing mesh resource";
             } else if (type == "ArrayMesh") {
                 why = "a mesh saved in Godot's own format; export it as a glTF file";
+            } else if (closed && open) {
+                why = "a " + type + " encloses nothing, so it can't be a CSG shape";
             }
-            problems_.add("MeshInstance3D.mesh", node.declared, why);
-            return true;
+            problems_.add(what, node.declared, why);
+            return false;
         }
         resources_used_.insert(type);
-        json::Value& primitive = components[type];
+        json::Value& primitive = primitives[type];
         primitive = json::Object{};
         resource_fields(*section, *owner, type, primitive, node, {"material"});
-        if (const Value* material = section->property("material");
-            material != nullptr && !overridden && !surface) {
-            convert_material(*material, *owner, components, node);
+        if (const Value* own = section->property("material");
+            own != nullptr && own->kind != Value::Kind::Nil) {
+            material = {.value = own, .file = owner};
         }
         return true;
     }
@@ -5011,6 +5245,457 @@ private:
                 problems_.add(type + ".data", node.declared, why);
             }
         }
+    }
+
+    // A Transform3D value as an object of the position, rotation and scale that differ from
+    // none, or nullopt with why.
+    std::optional<json::Value> placement_object(const Value& value) {
+        const auto numbers = value.is_call("Transform3D") ? value.numbers() : std::nullopt;
+        const auto placement = numbers ? decompose_transform(*numbers) : std::nullopt;
+        if (!placement) {
+            return std::nullopt;
+        }
+        json::Value out = json::Object{};
+        const auto put = [&](const char* name, const std::array<double, 3>& xyz, double none) {
+            if (xyz[0] != none || xyz[1] != none || xyz[2] != none) {
+                out[name] = json::Array{xyz[0], xyz[1], xyz[2]};
+            }
+        };
+        put("position", placement->position, 0.0);
+        put("rotation", placement->rotation, 0.0);
+        put("scale", placement->scale, 1.0);
+        return out;
+    }
+
+    // A Path3D's Curve3D or a Path2D's Curve2D: its points, kept in _data as each one's in, out
+    // and position (and in "tilts" for 3D), and the curve's settings.
+    void convert_curve(const Value& reference, const TextFile& file, json::Value& path,
+                       const Node& node, bool three_d) {
+        if (reference.kind == Value::Kind::Nil) {
+            return;
+        }
+        const std::string expected = three_d ? "Curve3D" : "Curve2D";
+        const auto [section, owner] = resource_section(reference, file);
+        if (section == nullptr || resource_type(*section, *owner) != expected) {
+            problems_.add(node.type + ".curve", node.declared, "not a " + expected + " resource");
+            return;
+        }
+        resources_used_.insert(expected);
+        const std::size_t size = three_d ? 3 : 2;
+        for (const auto& [name, value] : section->properties) {
+            if (name == "_data") {
+                const Value* given = value.get("points");
+                const auto numbers = given != nullptr ? given->numbers() : std::nullopt;
+                if (!numbers || numbers->size() % (3 * size) != 0) {
+                    problems_.add(expected + " points", node.declared,
+                                  "points this importer can't read");
+                    continue;
+                }
+                const std::vector<double>& data = *numbers;
+                std::vector<double> tilts;
+                if (const Value* tilt = value.get("tilts"); tilt != nullptr) {
+                    tilts = tilt->numbers().value_or(std::vector<double>{});
+                }
+                json::Array points;
+                for (std::size_t i = 0; i * 3 * size < data.size(); ++i) {
+                    const auto vector = [&](std::size_t which) {
+                        json::Array out;
+                        for (std::size_t axis = 0; axis < size; ++axis) {
+                            out.emplace_back(data.at((i * 3 + which) * size + axis));
+                        }
+                        return out;
+                    };
+                    json::Value point;
+                    point["position"] = vector(2);
+                    point["in"] = vector(0);
+                    point["out"] = vector(1);
+                    if (three_d && i < tilts.size() && tilts[i] != 0.0) {
+                        point["tilt"] = tilts[i];
+                    }
+                    points.emplace_back(std::move(point));
+                }
+                path["points"] = std::move(points);
+            } else if (name == "bake_interval" && value.is_number()) {
+                path["bake_interval"] = value.number();
+            } else if (three_d && (name == "closed" || name == "up_vector_enabled") &&
+                       value.kind == Value::Kind::Bool) {
+                path[name] = value.boolean;
+            } else if (name != "point_count" && name != "resource_name" &&
+                       name != "resource_local_to_scene") {
+                std::string what = expected;
+                what += '.';
+                what += name;
+                problems_.add(what, node.declared);
+            }
+        }
+    }
+
+    // A GridMap's data: Godot's cells as three numbers each (the cell's x and y as the two
+    // halves of the first, its z in the second, its item and orientation in the third), written
+    // as the GridMap's legend and floors with its mesh library's item names.
+    void grid_cells(const Node& node, const Value& data, json::Value& grid) {
+        const Value* given = data.get("cells");
+        const auto numbers = given != nullptr ? given->numbers() : std::nullopt;
+        if (!numbers || numbers->size() % 3 != 0) {
+            problems_.add("GridMap.data", node.declared, "cells this importer can't read");
+            return;
+        }
+        if (numbers->empty()) {
+            return;
+        }
+        const std::map<std::int64_t, std::string>* names = nullptr;
+        if (const Property* library = node.find("mesh_library"); library != nullptr) {
+            std::string why;
+            const std::string path = resource_path(*library->value, *library->file, why);
+            if (const auto it = mesh_library_items_.find(path); it != mesh_library_items_.end()) {
+                names = &it->second;
+            }
+        }
+        if (names == nullptr) {
+            problems_.add("GridMap.data", node.declared,
+                          "cells with no mesh library that converts");
+            return;
+        }
+        constexpr std::uint32_t kHalf = 0xFFFFU;
+        constexpr std::uint32_t kOrientationBits = 0x1FU;
+        const auto bits = [](double number) {
+            return static_cast<std::uint32_t>(static_cast<std::int64_t>(number));
+        };
+        const auto half = [](std::uint32_t value) {
+            return static_cast<int>(static_cast<std::int16_t>(static_cast<std::uint16_t>(value)));
+        };
+        scene3d::GridCells cells;
+        std::set<std::int64_t> missing;
+        for (std::size_t i = 0; i < numbers->size(); i += 3) {
+            const std::uint32_t xy = bits(numbers->at(i));
+            const std::uint32_t z = bits(numbers->at(i + 1));
+            const std::uint32_t cell = bits(numbers->at(i + 2));
+            const auto item = static_cast<std::int64_t>(cell & kHalf);
+            const auto found = names->find(item);
+            if (found == names->end()) {
+                missing.insert(item);
+                continue;
+            }
+            const int orientation = static_cast<int>((cell >> 16U) & kOrientationBits);
+            cells[Vec3i{half(xy), half(xy >> 16U), half(z)}] = scene3d::GridItem{
+                .item = found->second,
+                .orientation = orientation < scene3d::kOrientations ? orientation : 0};
+        }
+        for (const std::int64_t item : missing) {
+            problems_.add("GridMap cells", node.declared,
+                          "item " + std::to_string(item) + " isn't in the mesh library");
+        }
+        world::GridMap map;
+        scene3d::encode_grid_cells(cells, map);
+        json::Value legend = json::Object{};
+        for (const auto& [key, item] : map.legend) {
+            legend[key] = item;
+        }
+        json::Array floors;
+        for (const world::GridFloor& floor : map.floors) {
+            json::Value out;
+            out["y"] = floor.y;
+            out["origin"] = json::Array{floor.origin.x, floor.origin.y};
+            json::Array rows;
+            for (const std::string& row : floor.rows) {
+                rows.emplace_back(row);
+            }
+            out["rows"] = std::move(rows);
+            floors.emplace_back(std::move(out));
+        }
+        grid["legend"] = std::move(legend);
+        grid["floors"] = std::move(floors);
+    }
+
+    // A MeshLibrary as a .meshlib.json file: each "item/<id>/" property set as an item named
+    // after its name, unique and without ':' (its ID when it has none), so GridMaps' cells can
+    // name it.
+    std::string mesh_library_file(const TextFile& file, const Section& library,
+                                  const std::string& base) {
+        const std::string key = file.path + "#" + base;
+        if (const auto done = mesh_libraries_written_.find(key);
+            done != mesh_libraries_written_.end()) {
+            return done->second;
+        }
+        const std::string path = destination(base + std::string(scene3d::kMeshLibrarySuffix));
+        mesh_libraries_written_[key] = path;
+        resources_used_.insert("MeshLibrary");
+        const std::string where = resource_where(library, file);
+        std::map<std::int64_t, std::map<std::string, const Value*>> items;
+        for (const auto& [name, value] : library.properties) {
+            const std::string_view rest = std::string_view(name).substr(
+                std::min(name.size(), std::string_view("item/").size()));
+            const std::size_t slash = rest.find('/');
+            const auto id = name.starts_with("item/") && slash != std::string_view::npos
+                                ? parse_int(rest.substr(0, slash))
+                                : std::nullopt;
+            if (!id) {
+                if (name != "resource_name" && name != "resource_local_to_scene") {
+                    problems_.add("MeshLibrary." + name, where);
+                }
+                continue;
+            }
+            items[*id][std::string(rest.substr(slash + 1))] = &value;
+        }
+        std::map<std::int64_t, std::string>& names = mesh_library_items_[path];
+        std::set<std::string> used;
+        constexpr std::size_t kMaxName = 64;
+        for (const auto& [id, properties] : items) {
+            std::string name;
+            if (const auto given = properties.find("name");
+                given != properties.end() && given->second->is_string()) {
+                name = given->second->text;
+            }
+            std::ranges::replace(name, ':', '_');
+            name.resize(std::min(name.size(), kMaxName));
+            if (name.empty() || used.contains(name)) {
+                name = (name.empty() ? std::string("item") : name.substr(0, kMaxName - 12)) + "_" +
+                       std::to_string(id);
+            }
+            used.insert(name);
+            names[id] = name;
+        }
+        json::Value out_items = json::Object{};
+        static constexpr std::array<std::string_view, 4> kShadows{"off", "on", "double_sided",
+                                                                  "shadows_only"};
+        for (const auto& [id, properties] : items) {
+            const std::string& name = names[id];
+            Node owner;
+            owner.type = "MeshLibrary";
+            owner.declared = where;
+            owner.declared += ": ";
+            owner.declared += name;
+            json::Value item = json::Object{};
+            for (const auto& [property, value] : properties) {
+                std::string why;
+                if (property == "name" || property == "preview") {
+                    continue; // previews are the editor's
+                }
+                if (property == "mesh") {
+                    std::string model;
+                    json::Object primitive;
+                    MeshMaterial material;
+                    if (convert_mesh(*value, file, owner, "MeshLibrary item mesh", model, primitive,
+                                     material, false)) {
+                        if (!model.empty()) {
+                            item["mesh"] = std::move(model);
+                        } else {
+                            item["primitive"] = std::move(primitive);
+                        }
+                    }
+                    if (material.value != nullptr) {
+                        json::Object converted;
+                        convert_material(*material.value, *material.file, converted, owner);
+                        if (const auto it = converted.find("StandardMaterial3D");
+                            it != converted.end()) {
+                            item["material"] = std::move(it->second);
+                        }
+                    }
+                } else if (property == "mesh_transform" ||
+                           property == "navigation_mesh_transform") {
+                    if (auto placed = placement_object(*value); placed) {
+                        if (placed->size() > 0) {
+                            item[property] = std::move(*placed);
+                        }
+                    } else {
+                        problems_.add("MeshLibrary item " + property, owner.declared,
+                                      "not a Transform3D");
+                    }
+                } else if (property == "mesh_cast_shadow" && value->kind == Value::Kind::Int &&
+                           value->integer >= 0 && std::cmp_less(value->integer, kShadows.size())) {
+                    item[property] = kShadows.at(static_cast<std::size_t>(value->integer));
+                } else if (property == "navigation_layers" && value->kind == Value::Kind::Int) {
+                    item[property] = value->integer;
+                } else if (property == "navigation_mesh") {
+                    if (value->kind != Value::Kind::Nil) {
+                        if (std::string mesh = resource_path(*value, file, why); !mesh.empty()) {
+                            item[property] = std::move(mesh);
+                        } else {
+                            problems_.add("MeshLibrary item navigation_mesh", owner.declared, why);
+                        }
+                    }
+                } else if (property == "shapes" && value->kind == Value::Kind::Array) {
+                    // Each shape, then the transform placing it in the cell.
+                    json::Array shapes;
+                    for (std::size_t i = 0; i + 1 < value->items.size(); i += 2) {
+                        json::Value shape = json::Object{};
+                        convert_shape_3d(value->items[i], file, shape, owner);
+                        if (shape.find("shape") == nullptr && shape.size() == 0) {
+                            continue;
+                        }
+                        if (auto placed = placement_object(value->items[i + 1]); placed) {
+                            for (const char* part : {"position", "rotation"}) {
+                                if (const json::Value* found = placed->find(part);
+                                    found != nullptr) {
+                                    shape[part] = *found;
+                                }
+                            }
+                            if (placed->find("scale") != nullptr) {
+                                problems_.add("MeshLibrary item shape scale", owner.declared,
+                                              "shapes are placed by position and rotation; set "
+                                              "the shape's size instead");
+                            }
+                        }
+                        shapes.emplace_back(std::move(shape));
+                    }
+                    if (!shapes.empty()) {
+                        item["shapes"] = std::move(shapes);
+                    }
+                } else {
+                    problems_.add("MeshLibrary item " + property, owner.declared);
+                }
+            }
+            out_items[name] = std::move(item);
+        }
+        json::Value doc;
+        doc["format"] = 1;
+        doc["items"] = std::move(out_items);
+        keep_valid(doc, path,
+                   [](const json::Value& d) { return scene3d::validate_mesh_library(d); });
+        add_file(path, json::write(doc) + "\n");
+        ++mesh_library_files_;
+        return path;
+    }
+
+    // A NavigationMesh as a .navmesh.json file, or a NavigationPolygon as a .navpoly.json file:
+    // its polygons and the settings that bake them, with Godot's names.
+    std::string navigation_file(const TextFile& file, const Section& section,
+                                const std::string& base, bool three_d) {
+        const std::string key = file.path + "#" + base;
+        if (const auto done = navigation_written_.find(key); done != navigation_written_.end()) {
+            return done->second;
+        }
+        const std::string path = destination(
+            base + std::string(three_d ? navigation::kMeshSuffix : navigation::kPolygonSuffix));
+        navigation_written_[key] = path;
+        const std::string type = three_d ? "NavigationMesh" : "NavigationPolygon";
+        resources_used_.insert(type);
+        const std::string where = resource_where(section, file);
+        static constexpr std::array<std::string_view, 3> kGeometry{"mesh_instances",
+                                                                   "static_colliders", "both"};
+        static constexpr std::array<std::string_view, 3> kPartition3D{"watershed", "monotone",
+                                                                      "layers"};
+        static constexpr std::array<std::string_view, 2> kPartition2D{"convex_partition",
+                                                                      "triangulate"};
+        static constexpr std::array<std::string_view, 17> kNumbers{"cell_size",
+                                                                   "cell_height",
+                                                                   "border_size",
+                                                                   "agent_height",
+                                                                   "agent_radius",
+                                                                   "agent_max_climb",
+                                                                   "agent_max_slope",
+                                                                   "region_min_size",
+                                                                   "region_merge_size",
+                                                                   "edge_max_length",
+                                                                   "edge_max_error",
+                                                                   "vertices_per_polygon",
+                                                                   "detail_sample_distance",
+                                                                   "detail_sample_max_error",
+                                                                   "geometry_collision_mask",
+                                                                   "parsed_collision_mask",
+                                                                   ""};
+        static constexpr std::array<std::string_view, 3> kFlags{"filter_low_hanging_obstacles",
+                                                                "filter_ledge_spans",
+                                                                "filter_walkable_low_height_spans"};
+        const std::size_t size = three_d ? 3 : 2;
+        const auto points = [&](const Value& value) {
+            json::Array out;
+            const auto numbers = value.numbers().value_or(std::vector<double>{});
+            for (std::size_t i = 0; i + size <= numbers.size(); i += size) {
+                json::Array point;
+                for (std::size_t axis = 0; axis < size; ++axis) {
+                    point.emplace_back(numbers[i + axis]);
+                }
+                out.emplace_back(std::move(point));
+            }
+            return out;
+        };
+        const auto named =
+            [](const Value& value,
+               std::span<const std::string_view> names) -> std::optional<std::string> {
+            if (value.kind != Value::Kind::Int || value.integer < 0 ||
+                std::cmp_greater_equal(value.integer, names.size())) {
+                return std::nullopt;
+            }
+            return std::string(names[static_cast<std::size_t>(value.integer)]);
+        };
+        json::Value doc;
+        doc["format"] = 1;
+        // Godot's NavigationMesh bakes only meshes unless told otherwise.
+        if (three_d) {
+            doc["geometry_parsed_geometry_type"] = "mesh_instances";
+        }
+        const std::string geometry_key =
+            three_d ? "geometry_parsed_geometry_type" : "parsed_geometry_type";
+        const std::string box_key = three_d ? "filter_baking_aabb" : "baking_rect";
+        for (const auto& [name, value] : section.properties) {
+            const std::vector<double> numbers = value.numbers().value_or(std::vector<double>{});
+            std::optional<std::string> choice;
+            if (name == geometry_key) {
+                choice = named(value, kGeometry);
+            } else if (name == "sample_partition_type") {
+                choice = named(value, three_d ? std::span<const std::string_view>(kPartition3D)
+                                              : std::span<const std::string_view>(kPartition2D));
+            }
+            std::string what = type;
+            what += '.';
+            what += name;
+            if (choice) {
+                doc[name] = *choice;
+            } else if (name == "vertices") {
+                doc["vertices"] = points(value);
+            } else if (name == "polygons" && value.kind == Value::Kind::Array) {
+                json::Array polygons;
+                for (const Value& polygon : value.items) {
+                    json::Array indices;
+                    for (const double index : polygon.numbers().value_or(std::vector<double>{})) {
+                        indices.emplace_back(static_cast<std::int64_t>(index));
+                    }
+                    polygons.emplace_back(std::move(indices));
+                }
+                doc["polygons"] = std::move(polygons);
+            } else if (!three_d && name == "outlines" && value.kind == Value::Kind::Array) {
+                json::Array outlines;
+                for (const Value& outline : value.items) {
+                    outlines.emplace_back(points(outline));
+                }
+                doc["outlines"] = std::move(outlines);
+            } else if (name == box_key && numbers.size() == 2 * size) {
+                json::Array position;
+                json::Array extent;
+                for (std::size_t axis = 0; axis < size; ++axis) {
+                    position.emplace_back(numbers[axis]);
+                    extent.emplace_back(numbers[size + axis]);
+                }
+                doc[box_key]["position"] = std::move(position);
+                doc[box_key]["size"] = std::move(extent);
+            } else if (name == box_key + "_offset" && numbers.size() == size) {
+                doc[name] = points(value).front();
+            } else if (contains(kNumbers, std::string_view(name)) && !name.empty() &&
+                       value.is_number()) {
+                doc[name] = value.kind == Value::Kind::Int ? json::Value(value.integer)
+                                                           : json::Value(value.number());
+            } else if (contains(kFlags, std::string_view(name)) &&
+                       value.kind == Value::Kind::Bool) {
+                doc[name] = value.boolean;
+            } else if (name.ends_with("source_geometry_mode") ||
+                       name.ends_with("source_group_name") ||
+                       name == "source_geometry_group_name") {
+                problems_.add(what, where, "a bake takes the region's entity and those under it");
+            } else if (name != "resource_name" && name != "resource_local_to_scene") {
+                problems_.add(what, where);
+            }
+        }
+        if (three_d) {
+            keep_valid(doc, path,
+                       [](const json::Value& d) { return navigation::validate_mesh(d); });
+        } else {
+            keep_valid(doc, path,
+                       [](const json::Value& d) { return navigation::validate_polygon(d); });
+        }
+        add_file(path, json::write(doc) + "\n");
+        ++navigation_files_;
+        return path;
     }
 
     void convert_shape(const Value& reference, const TextFile& file, json::Value& shape,
@@ -5782,6 +6467,9 @@ private:
             if (node.type == "ParallaxLayer") {
                 convert_parallax_layer(nodes, node, components["Parallax2D"]);
             }
+            if (node.type == "VehicleBody3D") {
+                components["RigidBody3D"]["mass"] = kVehicleMass;
+            }
             json::Value values = json::Object{};  // a script's exported variables
             json::Value unknown = json::Object{}; // what a node type that doesn't convert set
             std::string script;
@@ -5792,12 +6480,22 @@ private:
                     script = ext->second.path;
                 }
             }
-            for (const Property& property : node.properties) {
-                if (ignored_property(property.name)) {
+            for (const Property& given : node.properties) {
+                if (ignored_property(given.name)) {
                     continue;
                 }
-                if (node.find(property.name) != &property) {
+                if (node.find(given.name) != &given) {
                     continue; // a later value overrides it
+                }
+                Property property = given;
+                if (auto field = joint_field(node.type, given.name); field) {
+                    if (field->empty()) {
+                        problems_.add(
+                            node.type + "." + given.name, node.declared,
+                            "Godot's Jolt physics, which SlashEngine follows, ignores it");
+                        continue;
+                    }
+                    property.name = std::move(*field);
                 }
                 if (special_property(node, property, components)) {
                     continue;
@@ -6261,6 +6959,8 @@ private:
         out["converted"]["bus_layouts"] = bus_layout_files_;
         out["converted"]["animation_libraries"] = animation_files_;
         out["converted"]["process_materials"] = process_files_;
+        out["converted"]["mesh_libraries"] = mesh_library_files_;
+        out["converted"]["navigation_meshes"] = navigation_files_;
         out["converted"]["audio_streams"] = stream_files_;
         out["converted"]["input_actions"] = input_actions_;
         out["converted"]["assets"] = assets_;
@@ -6285,6 +6985,10 @@ private:
     std::set<std::string> resources_read_; // .tres files a converted value read
     std::map<std::string, std::string> frames_written_;
     std::map<std::string, std::string> process_written_;
+    std::map<std::string, std::string> mesh_libraries_written_;
+    std::map<std::string, std::string> navigation_written_;
+    // Each converted mesh library's item names by Godot's item IDs, by the library's path.
+    std::map<std::string, std::map<std::int64_t, std::string>> mesh_library_items_;
     std::map<std::string, Section> sound_settings_;      // .import [params], by sound
     std::map<std::string, std::string> sounds_written_;  // by sound
     std::map<std::string, std::string> streams_written_; // by file and resource
@@ -6314,6 +7018,8 @@ private:
     int bus_layout_files_ = 0;
     int animation_files_ = 0;
     int process_files_ = 0;
+    int mesh_library_files_ = 0;
+    int navigation_files_ = 0;
     int stream_files_ = 0;
     int input_actions_ = 0;
     int assets_ = 0;
