@@ -1,0 +1,163 @@
+{
+  "entities": {
+    "ball": {
+      "components": {
+        "CollisionShape3D": {
+          "radius": 0.3,
+          "shape": "sphere"
+        },
+        "RigidBody3D": {
+          "mass": 2.0
+        },
+        "Transform3D": {
+          "position": [2.6, 2.6, -4.0]
+        }
+      }
+    },
+    "belt": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [2.0, 0.2, 8.0]
+        },
+        "StaticBody3D": {
+          "constant_linear_velocity": [0.0, 0.0, 1.5]
+        },
+        "Transform3D": {
+          "position": [16.0, 0.1, 0.0]
+        }
+      }
+    },
+    "coin_1": {
+      "components": {
+        "Area3D": {
+          "collision_mask": 2
+        },
+        "CollisionShape3D": {
+          "radius": 0.3,
+          "shape": "sphere"
+        },
+        "Transform3D": {
+          "position": [3.0, 1.0, 0.0]
+        }
+      }
+    },
+    "coin_2": {
+      "components": {
+        "Area3D": {
+          "collision_mask": 2
+        },
+        "CollisionShape3D": {
+          "radius": 0.3,
+          "shape": "sphere"
+        },
+        "Transform3D": {
+          "position": [7.0, 1.0, 0.0]
+        }
+      }
+    },
+    "coin_3": {
+      "components": {
+        "Area3D": {
+          "collision_mask": 2
+        },
+        "CollisionShape3D": {
+          "radius": 0.3,
+          "shape": "sphere"
+        },
+        "Transform3D": {
+          "position": [11.0, 1.6, 0.0]
+        }
+      }
+    },
+    "crate_1": {
+      "components": {
+        "CollisionShape3D": {},
+        "RigidBody3D": {},
+        "Transform3D": {
+          "position": [6.0, 0.5, 3.0]
+        }
+      }
+    },
+    "crate_2": {
+      "components": {
+        "CollisionShape3D": {},
+        "RigidBody3D": {},
+        "Transform3D": {
+          "position": [6.0, 1.5, 3.0]
+        }
+      }
+    },
+    "crate_3": {
+      "components": {
+        "CollisionShape3D": {},
+        "RigidBody3D": {},
+        "Transform3D": {
+          "position": [6.0, 2.5, 3.0]
+        }
+      }
+    },
+    "floor": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [30.0, 1.0, 12.0]
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [10.0, -0.5, 0.0]
+        }
+      }
+    },
+    "hero": {
+      "components": {
+        "CharacterBody3D": {
+          "collision_layer": 2
+        },
+        "CollisionShape3D": {
+          "height": 1.8,
+          "radius": 0.4,
+          "shape": "capsule"
+        },
+        "Transform3D": {
+          "position": [0.0, 1.0, 0.0]
+        }
+      }
+    },
+    "parcel": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [0.6, 0.6, 0.6]
+        },
+        "RigidBody3D": {
+          "contact_monitor": true
+        },
+        "Transform3D": {
+          "position": [16.0, 0.6, -3.0]
+        }
+      }
+    },
+    "ramp": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [6.0, 0.4, 3.0]
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [5.0, 1.0, -4.0],
+          "rotation": [0.0, 0.0, -0.35]
+        }
+      }
+    },
+    "step": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [2.0, 0.5, 12.0]
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [11.0, 0.25, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

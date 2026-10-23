@@ -2114,6 +2114,65 @@ constant linear velocity. An `AnimatableBody2D` adds its constant velocities to 
 [examples/gravity-and-conveyors](../../examples/gravity-and-conveyors/) has a belt, a planet and
 a zone with no gravity.
 
+## 3D physics
+
+3D physics follows Godot 4.4's Jolt module, on [Jolt Physics](https://github.com/jrouwe/JoltPhysics).
+An entity is a body or an area by having one of `StaticBody3D`, `AnimatableBody3D`,
+`RigidBody3D`, `CharacterBody3D` or `Area3D`, placed by its `Transform3D`, and takes its shapes
+from its `CollisionShape3D`, then from its [children's](#parent-transforms) that have no body or
+area of their own, as Godot's shape nodes. Lengths are meters and y points up. The `physics3d`
+system steps the world each tick at priority 950, beside 2D physics; gravity and damping come
+from `physics_3d` in [`project.json`](project-format.md).
+[examples/physics-3d](../../examples/physics-3d/) has every kind of body and an area.
+
+```json
+"hero": {
+  "components": {
+    "CharacterBody3D": {"collision_layer": 2},
+    "CollisionShape3D": {"height": 1.8, "radius": 0.4, "shape": "capsule"},
+    "Transform3D": {"position": [0.0, 1.0, 0.0]}
+  }
+}
+```
+
+| Component | Fields (defaults) |
+| --- | --- |
+| `CollisionShape3D` | `shape` `"box"` (or `sphere`, `capsule`, `cylinder`, `convex_polygon`, `concave_polygon`, `world_boundary`), `size` `[1, 1, 1]`, `radius` `0.5`, `height` `2` (a capsule's end to end), `points` `[]` (a convex polygon's hull), `faces` `[]` (a concave polygon's triangles, three points each), `backface_collision` `false`, `plane` `[0, 1, 0, 0]` (a world boundary's normal and distance; below it is solid), `margin` `0.04`, `position` `[0, 0, 0]`, `rotation` `[0, 0, 0]`, `disabled` `false` |
+| `StaticBody3D` | `collision_layer` `1`, `collision_mask` `1`, `friction` `1`, `bounce` `0`, `constant_linear_velocity` `[0, 0, 0]`, `constant_angular_velocity` `[0, 0, 0]` |
+| `AnimatableBody3D` | as `StaticBody3D`, and `sync_to_physics` `true` |
+| `RigidBody3D` | `collision_layer`, `collision_mask`, `friction`, `bounce` as `StaticBody3D`; `mass` `1`, `inertia` `[0, 0, 0]` (0 computes that axis's), `gravity_scale` `1`, `linear_velocity` and `angular_velocity` `[0, 0, 0]`, `linear_damp_mode` and `angular_damp_mode` `"combine"`, `linear_damp` and `angular_damp` `0`, `constant_force` and `constant_torque` `[0, 0, 0]`, `lock_rotation` `false`, `axis_lock_linear_x/y/z` and `axis_lock_angular_x/y/z` `false`, `freeze` `false`, `freeze_mode` `"static"`, `continuous_cd` `false`, `can_sleep` `true`, `sleeping` `false`, `contact_monitor` `false` |
+| `CharacterBody3D` | `collision_layer`, `collision_mask`; `motion_mode` `"grounded"` (or `floating`), `up_direction` `[0, 1, 0]`, `velocity` `[0, 0, 0]`, `max_slides` `6`, `slide_on_ceiling` `true`, `wall_min_slide_angle` `0.261799`, `floor_stop_on_slope` `true`, `floor_constant_speed` `false`, `floor_block_on_wall` `true`, `floor_max_angle` `0.785398`, `floor_snap_length` `0.1`, `platform_on_leave` `"add_velocity"`, `platform_floor_layers` all, `platform_wall_layers` `0`, `safe_margin` `0.001`; written by each move: `on_floor`, `on_wall`, `on_ceiling`, `floor_normal`, `wall_normal`, `platform_velocity` |
+| `Area3D` | `collision_layer`, `collision_mask`, `monitoring` `true`, `monitorable` `true`, `priority` `0`, `gravity_space_override` `"disabled"`, `gravity_point` `false`, `gravity_point_unit_distance` `0`, `gravity_point_center` `[0, -1, 0]`, `gravity_direction` `[0, -1, 0]`, `gravity` `9.8`, `linear_damp_space_override` and `angular_damp_space_override` `"disabled"`, `linear_damp` and `angular_damp` `0.1` |
+
+- Bodies act as their 2D namesakes do ([2D physics](#2d-physics)): a static body stays put and
+  jumps where its `Transform3D` is set, an animatable body moves there during the step and
+  pushes what is in its way, the step writes a rigid body's `Transform3D`, velocities and
+  `sleeping` back, and setting them moves or wakes it.
+- A `CharacterBody3D` moves as Godot's `move_and_slide`, ported line for line onto Godot's Jolt
+  motion tests: gameplay code sets its `velocity`, then the step moves it, slides it along what
+  it hits, snaps it to the floor and writes what it found. Its options are Godot's, as the 2D
+  [character options](#character-options) describe. As Godot's, it stops at rigid bodies rather
+  than pushing them; gameplay code pushes them with `physics3d::apply_impulse`.
+- Shapes are built as Godot's Jolt module builds them: a box's, cylinder's and convex polygon's
+  `margin` rounds no more than 8% of its shortest half extent, a capsule shorter than twice its
+  radius is an error, a concave polygon is solid from the side its triangles wind clockwise
+  from, as Godot's, and from behind too with `backface_collision`, and a world boundary reaches 1000 meters
+  each way. A shape that can't be made, such as a hull of two points, is left out with a
+  warning. The entity's `Transform3D` scale scales its shapes; a sphere takes one scale.
+- An `Area3D` collides with nothing and detects the bodies and areas in its `collision_mask`,
+  emitting the 2D events. It leaves out static bodies unless `physics_3d`'s
+  `areas_detect_static_bodies` is on, as Godot's Jolt module does. Space overrides change the
+  gravity and damping of rigid bodies in it by `priority`, as the 2D
+  [zones](#gravity-and-damping-zones) do, with gravity in meters per second squared.
+- Static and animatable bodies' constant velocities carry what touches them, as in 2D.
+- Jolt is built cross-platform deterministic and steps on one thread, and bodies are added and
+  changed in entity order, so results are the same on every platform for the same scene and
+  ticks.
+- [`physics.raycast`](commands.md#physicsraycast), [`physics.overlap`](commands.md#physicsoverlap),
+  [`physics.contacts`](commands.md#physicscontacts) and [`physics.gravity`](commands.md#physicsgravity)
+  ask 3D physics when given three-number points, a 3D shape or a 3D body; C++ code calls
+  `physics3d::raycast`, `overlap_point`, `overlap_shape`, `contacts` and `gravity`.
+
 ## Particles
 
 Particles follow Godot's `CPUParticles2D`. Each tick, after physics, the `cpu_particles_2d`

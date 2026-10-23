@@ -865,6 +865,26 @@ must be the same on every platform: `physics2d` and the examples build with
 `examples/physics-2d` has every kind of body and `examples/gravity-and-conveyors` gravity zones and a
 conveyor.
 
+## 3D physics
+
+`engine/physics3d` is 3D physics on Jolt Physics, as Godot 4.4's Jolt module. Bodies and areas
+are components: `StaticBody3D`, `AnimatableBody3D`, `RigidBody3D`, `CharacterBody3D` and
+`Area3D`, with `CollisionShape3D` shapes (`box`, `sphere`, `capsule`, `cylinder`,
+`convex_polygon`, `concave_polygon`, `world_boundary`), built as Godot's `JoltShape3D`
+subclasses build them (`src/shapes.cpp`). As in 2D, the ECS holds the truth: the `physics3d`
+system (priority 950) brings Jolt's system up to date with the components, applies Godot's
+gravity and damping to rigid bodies, steps it on one thread, writes rigid bodies back, moves
+characters with Godot's `move_and_slide` (`src/character.cpp`, ported line for line onto
+Godot's Jolt `body_test_motion` in `src/motion.cpp`), finds what is in each area and emits the
+2D events. Object layers encode each body's collision layer and mask as Godot's `JoltLayers`
+does, so layers and masks collide when either mask matches. Areas take no part in Jolt's step:
+the space collides their shapes after it. `project.json`'s `physics_3d` sets gravity, damping
+and `areas_detect_static_bodies`; `physics3d::raycast`, `overlap_point`, `overlap_shape`,
+`contacts` and `gravity` answer queries, and the `physics.*` commands ask 3D physics when given
+three-number points, a 3D shape or a 3D body. Jolt is built with
+`CROSS_PLATFORM_DETERMINISTIC` and the space adds and changes bodies in entity order, so results
+are the same on every platform. `examples/physics-3d` has every kind of body.
+
 ## Particles
 
 `CPUParticles2D` is Godot's, with Godot's field names and angles in degrees. The
@@ -1320,7 +1340,7 @@ CI rejects unformatted code and any clang-tidy finding.
   (controls, containers and themes: layout, draw calls, buttons, focus and text fields), `animation` (`.anim.json` keyframe
   animations and the system that plays them),
   `scene3d` (3D nodes: primitive meshes, glTF, OBJ, FBX and Blender models, materials, cameras, lights and environments,
-  and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `library` (the asset library, its
+  and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `physics3d` (3D bodies, areas, character movement and queries on Jolt), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems, drafting cue sheets and arranging them),
   `command` (commands, sessions with undo, JSON-RPC and MCP),

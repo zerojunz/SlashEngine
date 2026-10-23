@@ -16,6 +16,6 @@ add_library(slash::command ALIAS slash_command)
 
 target_include_directories(slash_command PUBLIC include)
 target_link_libraries(slash_command PUBLIC slash::asset slash::core slash::world
-    PRIVATE slash::ai slash::animation slash::audio slash::canvas slash::gameplay slash::input slash::physics2d slash::platform slash::render
+    PRIVATE slash::ai slash::animation slash::audio slash::canvas slash::gameplay slash::input slash::physics2d slash::physics3d slash::platform slash::render
             slash::scene3d slash::services slash::soundtrack slash::storyboard slash::ui)
 slash_engine_target(slash_command)

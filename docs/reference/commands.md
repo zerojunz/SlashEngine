@@ -691,6 +691,10 @@ any bodies added, moved or removed since. The examples are the scene of
 [examples/physics-2d](../../examples/physics-2d/) after six seconds, with the hero standing at
 (420.3, 189) on the hill.
 
+The same commands ask [3D physics](scene-format.md#3d-physics) when given points of three
+numbers (`[x, y, z]`), a `CollisionShape3D` shape or an entity with a 3D body; their answers then
+have three-number points, normals and gravity, in meters.
+
 `physics.raycast` and `physics.overlap` take the same filter, as Godot's query parameters:
 
 | Param | Type | Default | Meaning |
@@ -710,8 +714,8 @@ hits a [tile map layer's](scene-format.md#tile-collision) tile also gives the `c
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `from` | `[x, y]` | required | Where the ray starts |
-| `to` | `[x, y]` | required | Where it ends |
+| `from` | `[x, y]` or `[x, y, z]` | required | Where the ray starts |
+| `to` | `[x, y]` or `[x, y, z]` | required | Where it ends, with as many numbers as `from` |
 
 Needs: `read`. Straight down from the hero:
 
@@ -730,6 +734,16 @@ Numbers are rounded to four decimals. A ray down onto a tile map layer, from
 {"hit":{"cell":[4,6],"fraction":0.75,"id":"level","normal":[0,-1],"point":[72,96]}}
 ```
 
+In 3D, a ray across a 1-meter crate at the origin, standing 2 meters up:
+
+```json
+{"from": [0, 2, 5], "to": [0, 2, -5]}
+```
+
+```json
+{"hit":{"fraction":0.45,"id":"crate","normal":[0,0,1],"point":[0,2,0.5]}}
+```
+
 ### physics.overlap
 
 Returns the IDs of the bodies (or areas) whose shapes contain a point, or overlap a shape placed
@@ -737,10 +751,10 @@ somewhere, sorted.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `point` | `[x, y]` | | Find shapes containing this point. Give `point` or `shape` |
-| `shape` | object | | `CollisionShape2D` fields, e.g. `{"shape": "circle", "radius": 8}`; fields left out take the component's defaults, so `{}` is a 20 by 20 rectangle |
-| `position` | `[x, y]` | `[0, 0]` | Where the shape goes |
-| `rotation` | number | `0` | The shape's rotation, in radians clockwise |
+| `point` | `[x, y]` or `[x, y, z]` | | Find shapes containing this point. Give `point` or `shape` |
+| `shape` | object | | `CollisionShape2D` fields, e.g. `{"shape": "circle", "radius": 8}`, or `CollisionShape3D` fields; fields left out take the component's defaults, so `{}` is a 20 by 20 rectangle |
+| `position` | `[x, y]` or `[x, y, z]` | `[0, 0]` | Where the shape goes |
+| `rotation` | number or `[x, y, z]` | `0` | The shape's rotation, in radians clockwise; in 3D, radians about each axis as `Transform3D`'s |
 | `max_results` | integer | `32` | At most this many IDs, 1 to 256 |
 
 Needs: `read`. A point in the crate, then a 40-pixel box over the ledge, areas included (the coin
@@ -762,7 +776,10 @@ that was there has been taken):
 {"ids":["ledge"]}
 ```
 
-A misspelled shape name fails at `/shape/shape` with a "did you mean".
+A misspelled shape name fails at `/shape/shape` with a "did you mean". A shape asks 3D physics
+when `position` has three numbers, `rotation` is an array, or the shape is one only 3D has
+(`box`, `sphere`, `cylinder`, `convex_polygon`, `concave_polygon`, `world_boundary`); a
+`capsule` with neither is a 2D one.
 
 ### physics.contacts
 
@@ -793,7 +810,8 @@ Returns the gravity and damping each body gets after the last step, from the
 [areas](scene-format.md#gravity-and-damping-zones) it is in and the project's settings, as
 Godot's `get_gravity`. A rigid body's `gravity_scale` and its own damping are applied. `areas`
 lists the areas that set them, highest priority first, and is left out when none do. A
-`CharacterBody2D` gets the gravity its gameplay code should add to its velocity.
+`CharacterBody2D` or `CharacterBody3D` gets the gravity its gameplay code should add to its
+velocity. A 3D body's gravity is `[x, y, z]` in meters per second squared.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |

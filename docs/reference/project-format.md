@@ -45,6 +45,11 @@ checks it.
 | `physics_2d.gravity_vector` | No | `[0, 1]` | Gravity's direction, as `[x, y]`; y points down |
 | `physics_2d.linear_damp` | No | `0.1` | How fast rigid bodies slow down, per second. A body's own `linear_damp` adds to it unless its `linear_damp_mode` is `replace` |
 | `physics_2d.angular_damp` | No | `1` | How fast rigid bodies stop turning, per second, combined the same way |
+| `physics_3d.gravity` | No | `9.8` | Gravity's strength in meters per second squared, as Godot's `physics/3d/default_gravity` |
+| `physics_3d.gravity_vector` | No | `[0, -1, 0]` | Gravity's direction, as `[x, y, z]`; y points up |
+| `physics_3d.linear_damp` | No | `0.1` | How fast 3D rigid bodies slow down, per second, combined with a body's own as in 2D |
+| `physics_3d.angular_damp` | No | `0.1` | How fast 3D rigid bodies stop turning, per second, combined the same way |
+| `physics_3d.areas_detect_static_bodies` | No | `false` | Whether `Area3D` reports static bodies, as Godot's `physics/jolt_physics_3d/simulation/areas_detect_static_bodies` |
 | `gui.theme` | No | | A [`.theme.json`](scene-format.md#themes) file every control uses after its own and its parents' themes, before Godot's default theme, as Godot's `gui/theme/custom`. `project validate` checks that it exists and `export` checks and ships it |
 | `gui.allow_system_fallback` | No | `true` | Let text take characters its fonts and their [fallbacks](scene-format.md#fonts) lack from fonts installed on the machine. Off, text lays out the same on every machine, as on the web, which has none; a `.font.json` file's `allow_system_fallback` turns them off for one font |
 | `gui.tooltip_delay_sec` | No | `0.5` | Seconds the pointer rests on a control before its [tooltip](scene-format.md#tooltips-and-drag-and-drop) shows, as Godot's `gui/timers/tooltip_delay_sec` |
