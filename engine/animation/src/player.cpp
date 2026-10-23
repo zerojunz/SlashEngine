@@ -1,4 +1,8 @@
+#include "internal.hpp"
+#include "tree_system.hpp"
+
 #include "slash/animation/animation.hpp"
+#include "slash/animation/tree.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
 #include "slash/core/text.hpp"
@@ -156,30 +160,9 @@ Step advance(world::AnimationPlayer& player, const Animation& animation, double 
 // models, the targets their tracks resolve to and the warnings already logged, so a world's
 // snapshot, undo or dry run is never out of step with it.
 struct PlayerState {
-    asset::Assets* assets = nullptr;
+    explicit PlayerState(asset::Assets& assets) : libraries(assets) {}
 
-    // A track's target, or why it has none.
-    struct Resolved {
-        std::optional<Target> target;
-        std::string error;
-    };
-    struct Cached {
-        asset::Handle<AnimationLibrary> file; // a .anim.json library
-        asset::Handle<scene3d::Model> model;  // or a model's animations
-        // The models its animations come from, by path.
-        std::map<std::string, asset::Handle<scene3d::Model>, std::less<>> models;
-        // The library, its animations from models given their lengths and loops, as of the
-        // versions of its files in versions.
-        AnimationLibrary library;
-        std::vector<std::uint64_t> versions;
-        std::uint64_t version = 0;  // counts rebuilds of the library
-        std::uint64_t resolved = 0; // the version targets were resolved for
-        std::uint64_t types = 0;    // the component registry's revision when targets resolved
-        // By animation name, one per track.
-        std::map<std::string, std::vector<Resolved>, std::less<>> targets;
-        bool used = false;
-    };
-    std::map<std::string, Cached, std::less<>> cache;
+    detail::LibraryCache libraries;
     std::set<std::string, std::less<>> warned;
 
     void warn_once(std::string_view id, const std::string& message) {
@@ -188,115 +171,12 @@ struct PlayerState {
         }
     }
 
-    Cached* library(const std::string& path, std::string_view id) {
-        auto it = cache.find(path);
-        if (it == cache.end()) {
-            Cached cached;
-            if (is_model_library(path)) {
-                auto loaded = assets->load<scene3d::Model>(path);
-                if (!loaded) {
-                    warn_once(id, path + ": " + loaded.error().message);
-                    return nullptr;
-                }
-                cached.model = std::move(loaded).value();
-            } else {
-                auto loaded = assets->load<AnimationLibrary>(path);
-                if (!loaded) {
-                    warn_once(id, path + ": " + loaded.error().message);
-                    return nullptr;
-                }
-                cached.file = std::move(loaded).value();
-            }
-            it = cache.emplace(path, std::move(cached)).first;
-        }
-        Cached& cached = it->second;
-        cached.used = true;
-        refresh(cached, path, id);
-        return &cached;
-    }
-
-    // The versions of a library's files: its own, then the models its animations come from.
-    static std::vector<std::uint64_t> versions_of(const Cached& cached) {
-        std::vector<std::uint64_t> out;
-        out.reserve(cached.models.size() + 1);
-        out.push_back(cached.file ? cached.file.version() : cached.model.version());
-        for (const auto& [path, model] : cached.models) {
-            out.push_back(model ? model.version() : 0);
-        }
-        return out;
-    }
-
-    // Rebuilds a library when one of its files changed: a model's animations, or a .anim.json
-    // file's with those from models given their lengths and loops.
-    void refresh(Cached& cached, const std::string& path, std::string_view id) {
-        if (!cached.versions.empty() && cached.versions == versions_of(cached)) {
-            return;
-        }
-        if (cached.model) {
-            cached.library = model_library(*cached.model, path);
-        } else {
-            cached.library = *cached.file;
-            for (auto& [name, animation] : cached.library.animations) {
-                if (animation.from.model.empty()) {
-                    continue;
-                }
-                auto found = cached.models.find(animation.from.model);
-                if (found == cached.models.end()) {
-                    auto loaded = assets->load<scene3d::Model>(animation.from.model);
-                    if (!loaded) {
-                        warn_once(id, animation.from.model + ": " + loaded.error().message);
-                    }
-                    found =
-                        cached.models
-                            .emplace(animation.from.model, loaded ? std::move(loaded).value()
-                                                                  : asset::Handle<scene3d::Model>())
-                            .first;
-                }
-                if (!found->second) {
-                    continue;
-                }
-                if (auto resolved = resolve_clip(animation, *found->second); !resolved) {
-                    warn_once(id, path + ": " + resolved.error().message);
-                }
-            }
-        }
-        cached.versions = versions_of(cached);
-        ++cached.version;
-    }
-
-    // The targets of an animation's tracks, resolved once per version of its library and of the
-    // component types, which change when a game's code is reloaded.
-    static const std::vector<Resolved>& targets(Cached& cached, const std::string& name,
-                                                const Animation& animation,
-                                                const world::ComponentRegistry& components) {
-        if (cached.version != cached.resolved || cached.types != components.revision()) {
-            cached.targets.clear();
-            cached.resolved = cached.version;
-            cached.types = components.revision();
-        }
-        auto [it, added] = cached.targets.try_emplace(name);
-        if (added) {
-            it->second.reserve(animation.tracks.size());
-            for (const Track& track : animation.tracks) {
-                Resolved resolved;
-                if (!track.path.empty()) {
-                    auto target = resolve_target(track.path, components);
-                    if (target) {
-                        resolved.target = std::move(target).value();
-                    } else {
-                        resolved.error = track.path + ": " + target.error().message;
-                    }
-                }
-                it->second.push_back(std::move(resolved));
-            }
-        }
-        return it->second;
+    detail::LibraryCache::Entry* library(const std::string& path, std::string_view id) {
+        return libraries.get(path, [&](const std::string& message) { warn_once(id, message); });
     }
 
     void run(world::World& world, double tick_seconds) {
-        for (auto& [path, cached] : cache) {
-            cached.used = false;
-        }
+        libraries.begin();
         auto& ecs = world.ecs();
         const auto view = ecs.view<world::AnimationPlayer>();
         const std::vector<entt::entity> entities(view.begin(), view.end());
@@ -306,7 +186,7 @@ struct PlayerState {
             }
             play(world, entity, tick_seconds);
         }
-        std::erase_if(cache, [](const auto& entry) { return !entry.second.used; });
+        libraries.end();
     }
 
     void play(world::World& world, entt::entity entity, double tick_seconds) {
@@ -318,7 +198,7 @@ struct PlayerState {
         }
         const std::string id(world.id_of(entity));
         // Loaded while paused too, since a paused player still poses its entity's model.
-        Cached* cached = library(player.library, id);
+        detail::LibraryCache::Entry* cached = library(player.library, id);
         if (cached == nullptr || !player.playing) {
             return;
         }
@@ -377,8 +257,8 @@ struct PlayerState {
 
         // Value tracks: continuous ones take their value at the new time, and discrete ones the
         // value of the last key playback passed, as Godot's update modes do.
-        const std::vector<Resolved>& resolved =
-            targets(*cached, found->first, animation, world.components());
+        const std::vector<detail::LibraryCache::Resolved>& resolved =
+            detail::LibraryCache::targets(*cached, found->first, animation, world.components());
         for (std::size_t i = 0; i < animation.tracks.size(); ++i) {
             const Track& track = animation.tracks[i];
             if (track.path.empty()) {
@@ -476,21 +356,34 @@ void add_asset_types(asset::Assets& assets) {
             }
             return parse_animation_library(doc.value());
         });
+    assets.add_type<AnimationTreeResource>(
+        "animation_tree", {std::string(kTreeSuffix)},
+        [](std::string_view text, std::string_view /*path*/) -> Result<AnimationTreeResource> {
+            auto doc = json::parse(text);
+            if (!doc) {
+                return doc.error();
+            }
+            return parse_tree(doc.value());
+        });
 }
 
 void add_systems(world::World& world, asset::Assets& assets) {
-    auto state = std::make_shared<PlayerState>();
-    state->assets = &assets;
-    // A player's animation from a model poses the nodes of the model its entity draws, playing
-    // or paused, as Godot's AnimationPlayer drives a Skeleton3D's bones.
-    scene3d::set_clip_source(world, [state](const world::World& w, entt::entity entity) {
+    auto state = std::make_shared<PlayerState>(assets);
+    auto trees = std::make_shared<detail::TreePlayer>(assets);
+    // A tree's animations from models pose the nodes of the model its entity draws, as Godot's
+    // AnimationTree drives a Skeleton3D's bones; without one, a player's animation does, playing
+    // or paused, as Godot's AnimationPlayer.
+    scene3d::set_clip_source(world, [state, trees](const world::World& w, entt::entity entity) {
+        if (auto clips = trees->clips(w, entity)) {
+            return std::move(*clips);
+        }
         std::vector<scene3d::ClipSample> out;
         const auto* player = w.ecs().try_get<const world::AnimationPlayer>(entity);
         if (player == nullptr || player->library.empty() || player->animation.empty()) {
             return out;
         }
         const std::string id(w.id_of(entity));
-        PlayerState::Cached* cached = state->library(player->library, id);
+        detail::LibraryCache::Entry* cached = state->library(player->library, id);
         if (cached == nullptr) {
             return out;
         }
@@ -511,6 +404,10 @@ void add_systems(world::World& world, asset::Assets& assets) {
                      [state](world::World& w, double tick_seconds) { state->run(w, tick_seconds); },
                      {.doc = "Plays each AnimationPlayer's animation on its entity's components.",
                       .priority = 900});
+    world.add_system("animation_tree",
+                     [trees](world::World& w, double tick_seconds) { trees->run(w, tick_seconds); },
+                     {.doc = "Blends each AnimationTree's animations into its entity's components.",
+                      .priority = 910});
 }
 
 void install(world::World& world, asset::Assets& assets) {

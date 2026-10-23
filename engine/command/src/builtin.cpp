@@ -5,6 +5,7 @@
 #include "selection.hpp"
 
 #include "slash/animation/animation.hpp"
+#include "slash/animation/tree.hpp"
 #include "slash/audio/analysis.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/audio/effects.hpp"
@@ -417,6 +418,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "animation") {
         return Reply::success(animation::animation_schema());
+    }
+    if (kind == "animtree") {
+        return Reply::success(animation::tree_schema());
     }
     if (kind == "tileset") {
         return Reply::success(canvas::tileset_schema());
@@ -1100,6 +1104,159 @@ Reply animation_eval(Session& session, const json::Value& params) {
     result["length"] = short_number(animation.length);
     result["loop"] = animation::loop_mode_name(animation.loop);
     result["tracks"] = std::move(tracks);
+    return Reply::success(std::move(result));
+}
+
+// An entity's AnimationTree and the tree its tree_root loads.
+struct TreeTarget {
+    entt::entity entity = entt::null;
+    asset::Handle<animation::AnimationTreeResource> tree;
+};
+
+std::optional<Reply> find_tree(Session& session, const std::string& id, TreeTarget& out) {
+    const world::World& world = session.world();
+    out.entity = world.find(id);
+    if (out.entity == entt::null) {
+        return unknown_entity(world, id, "/id");
+    }
+    const auto* tree = world.ecs().try_get<world::AnimationTree>(out.entity);
+    if (tree == nullptr || tree->tree_root.empty()) {
+        return param_error(code::kInvalidParams, "/id",
+                           quoted(id) + (tree == nullptr ? " has no AnimationTree"
+                                                         : "'s AnimationTree has no tree_root"));
+    }
+    auto loaded = session.assets().load<animation::AnimationTreeResource>(tree->tree_root);
+    if (!loaded) {
+        return param_error(code::kInvalidArgument, "/id",
+                           tree->tree_root + ": " + loaded.error().message);
+    }
+    out.tree = std::move(loaded).value();
+    return std::nullopt;
+}
+
+Reply animation_tree(Session& session, const json::Value& params) {
+    const std::string id = text(params, "id");
+    const std::string path = text(params, "path");
+    if (id.empty() == path.empty()) {
+        return param_error(code::kInvalidParams, "",
+                           "give id (an entity with an AnimationTree) or path (a .animtree.json "
+                           "file)");
+    }
+    TreeTarget target;
+    const world::AnimationTree* component = nullptr;
+    if (!id.empty()) {
+        if (auto failed = find_tree(session, id, target)) {
+            return std::move(*failed);
+        }
+        component = &session.world().ecs().get<world::AnimationTree>(target.entity);
+    } else {
+        auto loaded = session.assets().load<animation::AnimationTreeResource>(path);
+        if (!loaded) {
+            return param_error(loaded.error(), "/path");
+        }
+        target.tree = std::move(loaded).value();
+    }
+    json::Value inputs = json::Object{};
+    json::Value state = json::Object{};
+    for (const animation::TreeParameter& parameter : animation::tree_parameters(*target.tree)) {
+        const json::Object* values = nullptr;
+        if (component != nullptr) {
+            values = parameter.input ? &component->parameters : &component->state;
+        }
+        const json::Value* value = &parameter.default_value;
+        if (values != nullptr) {
+            if (const auto set = values->find(parameter.key); set != values->end()) {
+                value = &set->second;
+            }
+        }
+        if (!parameter.input) {
+            // Each node's timings are left out: playing has the animations' times.
+            if (component != nullptr && !parameter.name.starts_with("current_")) {
+                state[parameter.key] = rounded(*value);
+            }
+            continue;
+        }
+        json::Value each;
+        if (component != nullptr) {
+            each["value"] = rounded(*value);
+        }
+        each["default"] = rounded(parameter.default_value);
+        each["doc"] = parameter.doc;
+        inputs[parameter.key] = std::move(each);
+    }
+    json::Value result;
+    result["parameters"] = std::move(inputs);
+    if (component != nullptr) {
+        result["state"] = std::move(state);
+        json::Array playing;
+        for (const world::TreeAnimation& each : component->playing) {
+            json::Value item;
+            item["animation"] = each.animation;
+            item["time"] = rounded(each.time);
+            item["weight"] = rounded(static_cast<double>(each.weight));
+            playing.push_back(std::move(item));
+        }
+        result["playing"] = std::move(playing);
+        if (!component->invalid.empty()) {
+            result["invalid"] = component->invalid;
+        }
+    }
+    return Reply::success(std::move(result));
+}
+
+Reply animation_set_parameters(Session& session, const json::Value& params) {
+    const std::string id = text(params, "id");
+    TreeTarget target;
+    if (auto failed = find_tree(session, id, target)) {
+        return std::move(*failed);
+    }
+    const std::vector<animation::TreeParameter> parameters =
+        animation::tree_parameters(*target.tree);
+    std::vector<std::string_view> keys;
+    for (const animation::TreeParameter& parameter : parameters) {
+        if (parameter.input) {
+            keys.emplace_back(parameter.key);
+        }
+    }
+    // Checked first, so a bad value changes nothing.
+    const json::Object& given = params.find("parameters")->as_object();
+    for (const auto& [key, value] : given) {
+        const std::string at = member_path("/parameters", key);
+        const auto found = std::ranges::find(parameters, key, &animation::TreeParameter::key);
+        if (found == parameters.end()) {
+            std::string message = "the tree has no parameter " + quoted(key);
+            add_hint(message, key, keys);
+            return param_error(code::kNotFound, at, message);
+        }
+        if (!found->input) {
+            return param_error(code::kInvalidParams, at,
+                               quoted(key) + " is set by the tree as it plays, not by callers");
+        }
+        if (value.is_null()) {
+            continue;
+        }
+        if (const std::string error = animation::check_parameter(*target.tree, *found, value);
+            !error.empty()) {
+            return param_error(code::kInvalidParams, at, error);
+        }
+    }
+    auto& tree = session.world().ecs().get<world::AnimationTree>(target.entity);
+    json::Value changed = json::Object{};
+    for (const auto& [key, value] : given) {
+        const auto set = tree.parameters.find(key);
+        if (value.is_null()) {
+            if (set != tree.parameters.end()) {
+                tree.parameters.erase(set);
+                changed[key] = nullptr;
+            }
+        } else if (set == tree.parameters.end() || !(set->second == value)) {
+            tree.parameters[key] = value;
+            changed[key] = value;
+        }
+    }
+    json::Value result;
+    result["id"] = id;
+    result["changed"] = std::move(changed);
     return Reply::success(std::move(result));
 }
 
@@ -2515,6 +2672,10 @@ Reply skeleton_get(Session& session, const json::Value& params) {
             out["model"] = clip.model;
         }
         out["time"] = rounded(json::Value(clip.time));
+        // An AnimationTree blends several.
+        if (clip.weight != 1.0F) {
+            out["weight"] = rounded(json::Value(static_cast<double>(clip.weight)));
+        }
         result["clips"].push_back(std::move(out));
     }
     result["bones"] = json::Array{};
@@ -5436,7 +5597,8 @@ void register_builtin_commands(Registry& registry) {
 
     json::Value kind = property("string", "\"scene\", \"prefab\", \"frames\" (.frames.json), "
                                           "\"material\" (.material.json), \"animation\" "
-                                          "(.anim.json), \"process_material\" "
+                                          "(.anim.json), \"animtree\" (.animtree.json), "
+                                          "\"process_material\" "
                                           "(.process_material.json), \"tileset\" "
                                           "(.tileset.json), \"font\" "
                                           "(.font.json), \"theme\" (.theme.json), \"audio\" "
@@ -5445,17 +5607,18 @@ void register_builtin_commands(Registry& registry) {
                                           "or \"storyboard\" for those files, \"component\" for "
                                           "one component's fields, \"command\" for a command's "
                                           "params.");
-    kind["enum"] = json::Array{
-        "scene",   "prefab", "frames",     "material",  "animation",  "process_material",
-        "tileset", "font",   "theme",      "audio",     "bus_layout", "replay",
-        "test",    "score",  "storyboard", "component", "command"};
+    kind["enum"] = json::Array{"scene",      "prefab",           "frames",  "material", "animation",
+                               "animtree",   "process_material", "tileset", "font",     "theme",
+                               "audio",      "bus_layout",       "replay",  "test",     "score",
+                               "storyboard", "component",        "command"};
     registry.add({
         .name = "schema.get",
-        .description = "Returns a JSON Schema: for scene, prefab, .frames.json, .material.json, "
-                       ".anim.json, .process_material.json, .tileset.json, .font.json, "
-                       ".theme.json, .audio.json, "
-                       ".bus_layout.json, .replay.json, .test.json, .score.json or storyboard "
-                       "files, one component or one command.",
+        .description =
+            "Returns a JSON Schema: for scene, prefab, .frames.json, .material.json, "
+            ".anim.json, .animtree.json, .process_material.json, .tileset.json, .font.json, "
+            ".theme.json, .audio.json, "
+            ".bus_layout.json, .replay.json, .test.json, .score.json or storyboard "
+            "files, one component or one command.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(
@@ -5668,6 +5831,34 @@ void register_builtin_commands(Registry& registry) {
             },
             {"times"}),
         .handler = animation_eval,
+    });
+    registry.add({
+        .name = "animation.tree",
+        .description = "Returns an AnimationTree's parameters (value, default and doc), with id "
+                       "also the state its nodes keep and the animations it plays.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({
+            {"id", id_property("An entity with an AnimationTree. Or give path.")},
+            {"path", property("string", "A .animtree.json file. Or give id.")},
+        }),
+        .handler = animation_tree,
+    });
+    json::Value tree_values = property("object", "Values by parameter, as \"speed/blend_amount\" "
+                                                 "or \"shot/request\"; null resets one to its "
+                                                 "default.");
+    tree_values["minProperties"] = 1;
+    registry.add({
+        .name = "animation.set_parameters",
+        .description = "Sets parameters of an entity's AnimationTree, as Godot's "
+                       "set(\"parameters/...\"), checking each against its node. Returns those "
+                       "that changed.",
+        .capabilities = {Edit},
+        .effect = Effect::Edit,
+        .params = params_schema({{"id", id_property("An entity with an AnimationTree.")},
+                                 {"parameters", std::move(tree_values)}},
+                                {"id", "parameters"}),
+        .handler = animation_set_parameters,
     });
 
     // A cell is [column, row]; a rect is [column, row, width, height].

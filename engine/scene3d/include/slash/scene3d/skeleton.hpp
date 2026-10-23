@@ -10,6 +10,7 @@
 
 #include <array>
 #include <functional>
+#include <map>
 #include <memory>
 #include <span>
 #include <string>
@@ -46,9 +47,20 @@ struct ClipSample {
     std::string animation;
     double time = 0.0;
     float weight = 1.0F;
+    // How much it counts for some nodes, by name, in place of weight, as an AnimationTree's
+    // filters and root motion track leave them.
+    std::map<std::string, float> node_weights{}; // NOLINT(readability-redundant-member-init)
 
     friend bool operator==(const ClipSample&, const ClipSample&) = default;
 };
+
+// Godot's Quaternion operations: a turned after b (a * b), the inverse of a unit quaternion,
+// normalized, slerp and xform_inv, a vector turned back by a rotation.
+[[nodiscard]] Quat multiply(const Quat& a, const Quat& b);
+[[nodiscard]] Quat inverse(const Quat& q);
+[[nodiscard]] Quat normalized(const Quat& q);
+[[nodiscard]] Quat slerp(const Quat& from, const Quat& to, float weight);
+[[nodiscard]] Vec3 xform_inv(const Quat& q, Vec3 v);
 
 // Each node of a model at rest.
 [[nodiscard]] std::vector<NodePose> rest_pose(const Model& model);
@@ -72,6 +84,11 @@ struct ClipSample {
 // node_map(target, source), or empty when source is target.
 void blend_animation(const Model& target, const Model& source, const ModelAnimation& animation,
                      double time, float weight, std::span<const int> map,
+                     std::vector<NodePose>& pose);
+// The same with a weight for each of target's nodes; nodes whose weight is about 0 are left as
+// they are, as Godot's mixer skips them.
+void blend_animation(const Model& target, const Model& source, const ModelAnimation& animation,
+                     double time, std::span<const float> weights, std::span<const int> map,
                      std::vector<NodePose>& pose);
 
 // Puts the poses a Skeleton3D gives nodes by name into a pose; names the model hasn't are left
@@ -107,8 +124,8 @@ void skin_vertices(const ModelSurface& surface, std::span<const world::Affine3D>
                                                 std::span<const NodePose> b, float weight);
 
 // What an entity's model plays: its clips, which the animation module works out from the
-// entity's AnimationPlayer (animation::install sets it with set_clip_source). Without one set,
-// models stay at rest.
+// entity's AnimationTree or AnimationPlayer (animation::install sets it with set_clip_source).
+// Without one set, models stay at rest.
 using ClipSource =
     std::function<std::vector<ClipSample>(const world::World& world, entt::entity entity)>;
 void set_clip_source(world::World& world, ClipSource source);
@@ -118,9 +135,9 @@ void set_clip_source(world::World& world, ClipSource source);
 using ModelLoader = std::function<Result<std::shared_ptr<const Model>>(const std::string& path)>;
 
 // A model posed as an entity's MeshInstance3D draws it: at rest, then moved by its clips
-// (blend_animation), then by its Skeleton3D if it has one (apply_skeleton), or at rest with
-// show_rest_only. A clip whose model doesn't load, or that names an animation it hasn't, is left
-// out.
+// (blend_animation, with a clip's node_weights for the nodes it names), then by its Skeleton3D if
+// it has one (apply_skeleton), or at rest with show_rest_only. A clip whose model doesn't load,
+// or that names an animation it hasn't, is left out.
 [[nodiscard]] std::vector<NodePose> pose_of(const Model& model, std::span<const ClipSample> clips,
                                             const world::Skeleton3D* skeleton,
                                             const ModelLoader& load);

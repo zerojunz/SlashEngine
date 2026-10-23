@@ -361,6 +361,14 @@ animates any field of any component, a game's own included. `animation.eval` ret
 an animation sets at any times, so an agent checks it without stepping the game. The
 [keyframe animation example](../examples/keyframe-animation/) plays a walk cycle and a hit.
 
+**Animation trees** follow Godot's AnimationTree. A `.animtree.json` file is a tree of **nodes**:
+animations, blends, one-shots that fade in and out, transitions and blend spaces. An entity's
+`AnimationTree` plays it with the animations of its libraries, mixing them by weight into the
+entity's components and its model's skeleton as Godot's `AnimationMixer` does, and games steer
+it by its **parameters** (`"shot/request": "fire"`, a blend position). `animation.tree` lists the
+parameters and what plays, and `animation.set_parameters` sets them, checked against their
+nodes. The [animation tree example](../examples/animation-tree/) points a waving arm.
+
 **Tile maps** follow Godot's TileSet and TileMapLayer. A `.tileset.json` file cuts atlas
 textures into **tiles** and groups **terrains** (grass, water) into terrain sets; each terrain
 tile's **peering** says which terrain its sides and corners must touch. A `TileMapLayer` keeps
