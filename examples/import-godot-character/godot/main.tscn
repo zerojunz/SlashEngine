@@ -1,0 +1,131 @@
+[gd_scene load_steps=19 format=3 uid="uid://b2arm7tree0c1"]
+
+[ext_resource type="PackedScene" uid="uid://dq8armmodel01" path="res://models/arm.gltf" id="1_arm"]
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_wave"]
+animation = &"Wave"
+
+[sub_resource type="AnimationNodeTimeScale" id="AnimationNodeTimeScale_speed"]
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_point"]
+animation = &"Point"
+
+[sub_resource type="AnimationNodeOneShot" id="AnimationNodeOneShot_shot"]
+filter_enabled = true
+filters = ["Rig/Skeleton3D:Shoulder"]
+fadein_time = 0.2
+fadeout_time = 0.2
+
+[sub_resource type="AnimationNodeBlendTree" id="AnimationNodeBlendTree_arm"]
+graph_offset = Vector2(-120, 40)
+nodes/output/position = Vector2(600, 100)
+nodes/point/node = SubResource("AnimationNodeAnimation_point")
+nodes/point/position = Vector2(200, 260)
+nodes/shot/node = SubResource("AnimationNodeOneShot_shot")
+nodes/shot/position = Vector2(400, 100)
+nodes/speed/node = SubResource("AnimationNodeTimeScale_speed")
+nodes/speed/position = Vector2(200, 100)
+nodes/wave/node = SubResource("AnimationNodeAnimation_wave")
+nodes/wave/position = Vector2(0, 100)
+node_connections = [&"output", 0, &"shot", &"shot", 0, &"speed", &"shot", 1, &"point", &"speed", 0, &"wave"]
+
+[sub_resource type="Animation" id="Animation_bright"]
+resource_name = "bright"
+length = 0.5
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath(".:light_energy")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [4.0]
+}
+
+[sub_resource type="Animation" id="Animation_dim"]
+resource_name = "dim"
+length = 0.5
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath(".:light_energy")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [0.5]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_lamp"]
+_data = {
+&"bright": SubResource("Animation_bright"),
+&"dim": SubResource("Animation_dim")
+}
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_bright"]
+animation = &"bright"
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_dim"]
+animation = &"dim"
+
+[sub_resource type="AnimationNodeStateMachineTransition" id="AnimationNodeStateMachineTransition_start"]
+advance_mode = 2
+
+[sub_resource type="AnimationNodeStateMachineTransition" id="AnimationNodeStateMachineTransition_dusk"]
+xfade_time = 0.5
+advance_mode = 2
+advance_condition = &"night"
+
+[sub_resource type="AnimationNodeStateMachine" id="AnimationNodeStateMachine_lamp"]
+states/Start/position = Vector2(100, 100)
+states/bright/node = SubResource("AnimationNodeAnimation_bright")
+states/bright/position = Vector2(300, 100)
+states/dim/node = SubResource("AnimationNodeAnimation_dim")
+states/dim/position = Vector2(500, 100)
+transitions = [&"Start", &"bright", SubResource("AnimationNodeStateMachineTransition_start"), &"bright", &"dim", SubResource("AnimationNodeStateMachineTransition_dusk")]
+graph_offset = Vector2(0, 0)
+
+[sub_resource type="Environment" id="Environment_sky"]
+background_mode = 1
+background_color = Color(0.55, 0.72, 0.92, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.6, 0.6, 0.6, 1)
+
+[node name="Stage" type="Node3D"]
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_sky")
+
+[node name="Camera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, 1.6)
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 3, 3)
+
+[node name="Arm" parent="." instance=ExtResource("1_arm")]
+
+[node name="ArmTree" type="AnimationTree" parent="."]
+tree_root = SubResource("AnimationNodeBlendTree_arm")
+anim_player = NodePath("../Arm/AnimationPlayer")
+
+[node name="Lamp" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.8, 1.2, 1)
+light_color = Color(1, 0.8, 0.4, 1)
+light_energy = 4.0
+
+[node name="LampPlayer" type="AnimationPlayer" parent="Lamp"]
+libraries = {
+&"": SubResource("AnimationLibrary_lamp")
+}
+
+[node name="LampTree" type="AnimationTree" parent="Lamp"]
+tree_root = SubResource("AnimationNodeStateMachine_lamp")
+anim_player = NodePath("../LampPlayer")
+parameters/conditions/night = false

@@ -1,0 +1,15 @@
+{"jsonrpc":"2.0","id":1,"method":"project.import","params":{"source":"godot"}}
+{"jsonrpc":"2.0","id":2,"method":"scene.open","params":{"path":"godot/main.scene.json"}}
+{"jsonrpc":"2.0","id":3,"method":"world.query","params":{"with":["AnimationTree"],"include":["AnimationTree"],"omit_defaults":true}}
+{"jsonrpc":"2.0","id":4,"method":"animation.tree","params":{"path":"godot/main_lamp_tree.animtree.json"}}
+{"jsonrpc":"2.0","id":5,"method":"step","params":{"ticks":30}}
+{"jsonrpc":"2.0","id":6,"method":"animation.set_parameters","params":{"id":"arm","parameters":{"shot/request":"fire"}}}
+{"jsonrpc":"2.0","id":7,"method":"step","params":{"ticks":12}}
+{"jsonrpc":"2.0","id":8,"method":"skeleton.get","params":{"id":"arm","bones":["Shoulder","Hand"]}}
+{"jsonrpc":"2.0","id":9,"method":"animation.set_parameters","params":{"id":"lamp_tree","parameters":{"conditions/night":true}}}
+{"jsonrpc":"2.0","id":10,"method":"step","params":{"ticks":15}}
+{"jsonrpc":"2.0","id":11,"method":"entity.get","params":{"id":"lamp","components":["OmniLight3D"]}}
+{"jsonrpc":"2.0","id":12,"method":"step","params":{"ticks":30}}
+{"jsonrpc":"2.0","id":13,"method":"animation.tree","params":{"id":"lamp_tree"}}
+{"jsonrpc":"2.0","id":14,"method":"entity.get","params":{"id":"lamp","components":["OmniLight3D"]}}
+{"jsonrpc":"2.0","id":15,"method":"frame.capture","params":{"points":[[88,13],[82,36],[80,62],[20,20],[120,60]]}}
