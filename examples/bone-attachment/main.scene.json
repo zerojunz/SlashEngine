@@ -1,0 +1,119 @@
+{
+  "entities": {
+    "arm": {
+      "components": {
+        "AnimationPlayer": {
+          "animation": "Wave-loop",
+          "library": "models/arm.gltf"
+        },
+        "MeshInstance3D": {
+          "mesh": "models/arm.gltf"
+        },
+        "Transform3D": {
+          "children": ["grip"],
+          "position": [0.0, 0.6, 0.0]
+        }
+      }
+    },
+    "blade": {
+      "components": {
+        "AnimatableBody3D": {},
+        "BoxMesh": {
+          "size": [0.06, 0.9, 0.03]
+        },
+        "CollisionShape3D": {
+          "size": [0.06, 0.9, 0.03]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.85, 0.87, 0.9, 1.0],
+          "metallic": 0.6
+        },
+        "Transform3D": {
+          "position": [0.0, 0.95, 0.0]
+        }
+      }
+    },
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 60.0
+        },
+        "Transform3D": {
+          "position": [0.0, 1.6, 4.0]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.55, 0.62, 0.75, 1.0],
+          "ambient_light_energy": 0.5,
+          "ambient_light_source": "color",
+          "background_color": [0.55, 0.72, 0.92, 1.0],
+          "background_mode": "color"
+        }
+      }
+    },
+    "grip": {
+      "components": {
+        "BoneAttachment3D": {
+          "bone_name": "Hand"
+        },
+        "Transform3D": {
+          "children": ["blade", "hilt"]
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [20.0, 20.0]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.35, 0.58, 0.28, 1.0]
+        },
+        "Transform3D": {}
+      }
+    },
+    "hilt": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.26, 0.05, 0.05]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.55, 0.35, 0.12, 1.0]
+        },
+        "Transform3D": {
+          "position": [0.0, 0.5, 0.0]
+        }
+      }
+    },
+    "pedestal": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.3, 0.6, 0.3]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.6, 0.6, 0.65, 1.0]
+        },
+        "Transform3D": {
+          "position": [0.0, 0.3, 0.0]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {},
+        "Transform3D": {
+          "rotation": [-0.8, -0.5, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}
