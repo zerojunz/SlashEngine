@@ -5,6 +5,7 @@
 #include "slash/core/text.hpp"
 #include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/ik.hpp"
+#include "slash/world/path.hpp"
 #include "slash/world/serialize.hpp"
 #include "slash/world/world.hpp"
 
@@ -552,6 +553,9 @@ std::vector<Problem> check_meshes(const world::World& world) {
     }
     for (Problem& problem : check_csg(world)) {
         problems.push_back(std::move(problem));
+    }
+    for (world::PathProblem& problem : world::check_paths(world)) {
+        problems.push_back({problem.entity, std::move(problem.path), std::move(problem.message)});
     }
     return problems;
 }

@@ -1,0 +1,161 @@
+{
+  "entities": {
+    "body": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.5, 0.4, 0.8]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.8, 0.15, 0.1, 1.0]
+        },
+        "Transform3D": {
+          "position": [0.0, 0.1, 0.0]
+        }
+      }
+    },
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 60.0
+        },
+        "Transform3D": {
+          "position": [0.0, 6.0, 8.0],
+          "rotation": [-0.6, 0.0, 0.0]
+        }
+      }
+    },
+    "cart": {
+      "components": {
+        "AnimationPlayer": {
+          "animation": "lap",
+          "library": "cart.anim.json"
+        },
+        "PathFollow3D": {
+          "rotation_mode": "oriented"
+        },
+        "Transform3D": {
+          "children": ["body"]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.6, 0.7, 0.9, 1.0],
+          "ambient_light_energy": 0.5,
+          "ambient_light_source": "color",
+          "background_color": [0.45, 0.65, 0.9, 1.0],
+          "background_mode": "color"
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "CSGBox3D": {
+          "size": [14.0, 1.0, 10.0],
+          "use_collision": true
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.3, 0.45, 0.2, 1.0]
+        },
+        "Transform3D": {
+          "position": [0.0, -0.5, 0.0]
+        }
+      }
+    },
+    "guard": {
+      "components": {
+        "PathFollow2D": {
+          "loop": false
+        },
+        "Transform2D": {}
+      }
+    },
+    "patrol": {
+      "components": {
+        "Path2D": {
+          "points": [
+            {},
+            {
+              "out": [40.0, 0.0],
+              "position": [100.0, 0.0]
+            },
+            {
+              "in": [40.0, 0.0],
+              "position": [100.0, 100.0]
+            }
+          ]
+        },
+        "Transform2D": {
+          "children": ["guard"],
+          "position": [20.0, 20.0]
+        }
+      }
+    },
+    "rail": {
+      "components": {
+        "CSGPolygon3D": {
+          "mode": "path",
+          "path_interval": 0.25,
+          "path_joined": true,
+          "path_node": "track",
+          "polygon": [
+            [-0.35, -0.2],
+            [0.35, -0.2],
+            [0.35, -0.1],
+            [-0.35, -0.1]
+          ]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.55, 0.55, 0.6, 1.0],
+          "metallic": 0.7,
+          "roughness": 0.4
+        },
+        "Transform3D": {}
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {},
+        "Transform3D": {
+          "rotation": [-0.9, 0.5, 0.0]
+        }
+      }
+    },
+    "track": {
+      "components": {
+        "Path3D": {
+          "closed": true,
+          "points": [
+            {
+              "in": [2.0, 0.0, 0.0],
+              "out": [-2.0, 0.0, 0.0],
+              "position": [0.0, 0.3, 3.0]
+            },
+            {
+              "in": [0.0, 0.0, 2.0],
+              "out": [0.0, 0.0, -2.0],
+              "position": [-4.0, 0.3, 0.0]
+            },
+            {
+              "in": [-2.0, 0.0, 0.0],
+              "out": [2.0, 0.0, 0.0],
+              "position": [0.0, 1.5, -3.0]
+            },
+            {
+              "in": [0.0, 0.0, -2.0],
+              "out": [0.0, 0.0, 2.0],
+              "position": [4.0, 0.3, 0.0]
+            }
+          ]
+        },
+        "Transform3D": {
+          "children": ["cart"]
+        }
+      }
+    }
+  },
+  "format": 1
+}

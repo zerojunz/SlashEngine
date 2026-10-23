@@ -62,6 +62,7 @@ as `entity.get`, reject it as an unknown param.
 | Materials | [`material.eval`](#materialeval) |
 | Animations | [`animation.eval`](#animationeval) |
 | Models | [`model.inspect`](#modelinspect), [`skeleton.get`](#skeletonget), [`csg.get`](#csgget) |
+| Paths | [`path.get`](#pathget) |
 | Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity) |
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
@@ -688,6 +689,41 @@ Needs: `read`.
 
 A shape under a root fails at `/id`, naming the root to ask for instead, and so does an entity
 with no CSG shape.
+
+### path.get
+
+Returns a [`Path2D`'s or `Path3D`'s](scene-format.md#paths) curve, baked as Godot bakes it: its
+length, the position and rotation at offsets along it and the point of it nearest to another,
+so an agent can place things along a route without a follower.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with a `Path2D` or `Path3D` |
+| `offsets` | array of numbers | none | Distances along the curve to sample, kept on it |
+| `ratios` | array of numbers | none | Fractions of its length to sample, after `offsets` |
+| `closest_to` | `[x, y]` or `[x, y, z]` | none | Also return the curve's nearest point to this |
+| `cubic` | boolean | `false` | Cubic interpolation between baked points, as a follower's `cubic_interp` |
+| `global` | boolean | `false` | Positions, rotations and `closest_to` in the world's space rather than the path's |
+
+Needs: `read`.
+
+```json
+{"id": "road", "ratios": [0.5], "closest_to": [130, 20]}
+```
+
+```json
+{"points":2,"baked_points":15,"length":50,"samples":[{"offset":25,"position":[0,25],"rotation":1.5708}],"closest":{"offset":20,"position":[0,20]}}
+```
+
+- `points` is how many points the path has and `baked_points` how many it was baked into.
+- Each sample has its `offset` and `position`. A `Path2D`'s `rotation` is the angle in radians
+  of the way it goes, as a `PathFollow2D` that `rotates` turns. A `Path3D`'s is the Euler angles
+  of Godot's `sample_baked_with_rotation` with the tilt, as a `Transform3D`'s `rotation`, with
+  its `up` vector and `tilt`.
+- `closest` has the nearest point's `offset` along the curve and its `position`.
+
+An entity with neither path fails at `/id`, and a `closest_to` with the wrong number of
+coordinates at `/closest_to`.
 
 ### tilemap.paint
 
