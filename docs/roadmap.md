@@ -605,7 +605,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Static, animatable, rigid and character bodies, areas with gravity and damping
         overrides, every Godot shape, `move_and_slide` and the queries, as Godot 4.4's Jolt
         module
-  - [ ] Joints, ragdolls and vehicles
+  - [x] Pin, hinge, slider, cone twist and 6DOF joints, and `VehicleBody3D` with
+        `VehicleWheel3D`, as Godot 4.4's
+  - [ ] Ragdolls (physical bones, after skinned meshes)
 - [ ] Skinned meshes, animation blending, state machines, root motion, two-bone and FABRIK IK
 - [ ] Navigation on Recast and Detour, in 2D and 3D, with avoidance
 - [ ] 3D audio, as Godot's `AudioStreamPlayer3D` and `AudioListener3D`: attenuation models,

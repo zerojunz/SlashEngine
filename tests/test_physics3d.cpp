@@ -4,6 +4,7 @@
 #include "slash/physics3d/physics3d.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/tree3d.hpp"
 #include "slash/world/world.hpp"
 
 #include <doctest/doctest.h>
@@ -13,8 +14,10 @@
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <numbers>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <vector>
 
 namespace json = slash::json;
@@ -668,6 +671,8 @@ TEST_CASE("3D physics reports its memory") {
     Physics physics;
     physics.floor();
     physics.crate("crate", {0.0F, 2.0F, 0.0F});
+    const entt::entity pin = physics.add("pin", {0.0F, 3.0F, 0.0F});
+    physics.world.ecs().emplace<world::PinJoint3D>(pin).node_a = physics.world.find("crate");
     physics.step();
     const auto parts = physics.world.memory();
     const auto found = std::find_if(parts.begin(), parts.end(), [](const world::MemoryPart& part) {
@@ -677,4 +682,364 @@ TEST_CASE("3D physics reports its memory") {
     CHECK(found->bytes > 0);
     CHECK(found->counts.at("bodies") == 2);
     CHECK(found->counts.at("active") == 1);
+    CHECK(found->counts.at("joints") == 1);
+}
+
+namespace {
+
+// The angle between two directions.
+float angle_between(Vec3 a, Vec3 b) {
+    const float d = ((a.x * b.x) + (a.y * b.y) + (a.z * b.z)) / (length(a) * length(b));
+    return std::acos(std::clamp(d, -1.0F, 1.0F));
+}
+
+float distance(Vec3 a, Vec3 b) {
+    return length(a - b);
+}
+
+} // namespace
+
+TEST_CASE("a pin joint swings a body from the world and holds two bodies together") {
+    Physics physics;
+    // A pendulum: a ball a meter from a pin that holds it to the world.
+    const entt::entity ball = physics.crate("ball", {1.0F, 0.0F, 0.0F}, 0.2F);
+    const entt::entity pin = physics.add("pin", {});
+    physics.world.ecs().emplace<world::PinJoint3D>(pin).node_a = ball;
+    physics.step(30);
+    CHECK(physics.position("ball").y < -0.5F);
+    CHECK(distance(physics.position("ball"), {}) == doctest::Approx(1.0F).epsilon(0.02));
+    physics.step(30);
+    CHECK(distance(physics.position("ball"), {}) == doctest::Approx(1.0F).epsilon(0.02));
+
+    // Two crates pinned halfway between them move as one when one is pushed.
+    Physics weightless_physics(weightless(false));
+    const entt::entity a = weightless_physics.crate("a", {-1.0F, 0.0F, 0.0F}, 0.5F);
+    const entt::entity b = weightless_physics.crate("b", {1.0F, 0.0F, 0.0F}, 0.5F);
+    auto& joint = weightless_physics.world.ecs().emplace<world::PinJoint3D>(
+        weightless_physics.add("joint", {}));
+    joint.node_a = a;
+    joint.node_b = b;
+    weightless_physics.step();
+    physics3d::apply_impulse(weightless_physics.world, a, {1.0F, 0.0F, 0.0F});
+    weightless_physics.step(60);
+    CHECK(weightless_physics.position("b").x > 1.3F);
+    CHECK(distance(weightless_physics.position("a"), weightless_physics.position("b")) ==
+          doctest::Approx(2.0F).epsilon(0.02));
+}
+
+TEST_CASE("a hinge turns about its z axis within its limits, and its motor drives it") {
+    // A door: a slab whose hinge's z axis points up.
+    const auto door = [](Physics& physics) {
+        const entt::entity slab = physics.add("door", {0.5F, 0.0F, 0.0F});
+        physics.world.ecs().emplace<world::RigidBody3D>(slab);
+        physics.world.ecs().emplace<world::CollisionShape3D>(slab, box_shape({1.0F, 2.0F, 0.1F}));
+        const entt::entity hinge = physics.add("hinge", {});
+        physics.get<world::Transform3D>("hinge").rotation.x = -std::numbers::pi_v<float> / 2.0F;
+        auto& joint = physics.world.ecs().emplace<world::HingeJoint3D>(hinge);
+        joint.node_a = slab;
+        return &joint;
+    };
+    {
+        Physics physics(weightless(false));
+        door(physics);
+        physics.step();
+        physics3d::apply_impulse(physics.world, physics.world.find("door"), {0.0F, 0.0F, 1.0F},
+                                 {0.5F, 0.0F, 0.0F});
+        physics.step(30);
+        // It turned about the hinge: its middle stays half a meter from the axis, at its height.
+        const Vec3 p = physics.position("door");
+        CHECK(p.z > 0.2F);
+        CHECK(p.y == doctest::Approx(0.0F).epsilon(0.01));
+        CHECK(length({p.x, 0.0F, p.z}) == doctest::Approx(0.5F).epsilon(0.02));
+        const Vec3 spin = physics.get<world::RigidBody3D>("door").angular_velocity;
+        CHECK(std::abs(spin.x) < 0.01F);
+        CHECK(std::abs(spin.z) < 0.01F);
+    }
+    {
+        // Limited to half a radian either way, a hard push stops at the limit.
+        Physics physics(weightless(false));
+        world::HingeJoint3D* joint = door(physics);
+        joint->angular_limit_enabled = true;
+        joint->angular_limit_lower = -0.5F;
+        joint->angular_limit_upper = 0.5F;
+        physics.step();
+        physics3d::apply_impulse(physics.world, physics.world.find("door"), {0.0F, 0.0F, 3.0F},
+                                 {0.5F, 0.0F, 0.0F});
+        physics.step(60);
+        const Vec3 p = physics.position("door");
+        CHECK(angle_between({p.x, 0.0F, p.z}, {1.0F, 0.0F, 0.0F}) < 0.55F);
+    }
+    {
+        // Its motor turns it at its target velocity.
+        Physics physics(weightless(false));
+        world::HingeJoint3D* joint = door(physics);
+        joint->motor_enabled = true;
+        joint->motor_target_velocity = 2.0F;
+        joint->motor_max_impulse = 10.0F;
+        physics.step(30);
+        CHECK(std::abs(physics.get<world::RigidBody3D>("door").angular_velocity.y) ==
+              doctest::Approx(2.0F).epsilon(0.02));
+    }
+}
+
+TEST_CASE("a slider moves a body along its x axis within its limits and keeps it from turning") {
+    Physics physics(weightless(false));
+    const entt::entity crate = physics.crate("crate", {});
+    auto& joint = physics.world.ecs().emplace<world::SliderJoint3D>(physics.add("slider", {}));
+    joint.node_a = crate;
+    physics.step();
+    physics3d::apply_impulse(physics.world, crate, {0.5F, 0.5F, 0.5F}, {0.0F, 0.5F, 0.0F});
+    physics.step(30);
+    const Vec3 p = physics.position("crate");
+    CHECK(p.x > 0.2F);
+    CHECK(std::abs(p.y) < 0.01F);
+    CHECK(std::abs(p.z) < 0.01F);
+    CHECK(length(physics.get<world::RigidBody3D>("crate").angular_velocity) < 0.01F);
+    // Its limits are a meter either way.
+    physics.step(120);
+    CHECK(physics.position("crate").x == doctest::Approx(1.0F).epsilon(0.03));
+}
+
+TEST_CASE("a cone twist joint keeps a hanging body's swing within its span") {
+    Physics physics;
+    const entt::entity weight = physics.crate("weight", {0.0F, -1.0F, 0.0F}, 0.2F);
+    // Its twist axis, x, points down at the weight.
+    const entt::entity cone = physics.add("cone", {});
+    physics.get<world::Transform3D>("cone").rotation.z = -std::numbers::pi_v<float> / 2.0F;
+    auto& joint = physics.world.ecs().emplace<world::ConeTwistJoint3D>(cone);
+    joint.node_a = weight;
+    joint.swing_span = 0.3F;
+    physics.step();
+    physics3d::apply_impulse(physics.world, weight, {1.5F, 0.0F, 0.0F});
+    float widest = 0.0F;
+    physics.step(60, [&] {
+        widest = std::max(widest, angle_between(physics.position("weight"), {0.0F, -1.0F, 0.0F}));
+    });
+    // The limit gives a little under a push.
+    CHECK(widest > 0.2F);
+    CHECK(widest < 0.4F);
+    CHECK(distance(physics.position("weight"), {}) == doctest::Approx(1.0F).epsilon(0.02));
+}
+
+TEST_CASE("a 6DOF joint locks its axes, frees the ones without limits and drives them") {
+    {
+        // Every axis locked, it welds two crates together.
+        Physics physics(weightless(false));
+        const entt::entity a = physics.crate("a", {0.0F, 0.0F, 0.0F}, 0.5F);
+        const entt::entity b = physics.crate("b", {1.0F, 0.0F, 0.0F}, 0.5F);
+        auto& joint =
+            physics.world.ecs().emplace<world::Generic6DOFJoint3D>(physics.add("weld", {}));
+        joint.node_a = a;
+        joint.node_b = b;
+        physics.step();
+        physics3d::apply_impulse(physics.world, a, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 0.25F});
+        physics.step(60);
+        const Vec3 offset = physics.position("b") - physics.position("a");
+        CHECK(physics.position("a").y > 0.3F);
+        CHECK(length(offset) == doctest::Approx(1.0F).epsilon(0.02));
+        CHECK(
+            physics.get<world::RigidBody3D>("a").angular_velocity.x ==
+            doctest::Approx(physics.get<world::RigidBody3D>("b").angular_velocity.x).epsilon(0.02));
+    }
+    {
+        // With y free, a crate held to the world falls straight down.
+        Physics physics;
+        const entt::entity crate = physics.crate("crate", {});
+        auto& joint =
+            physics.world.ecs().emplace<world::Generic6DOFJoint3D>(physics.add("rail", {}));
+        joint.node_a = crate;
+        joint.linear_y.limit_enabled = false;
+        physics.step(30,
+                     [&] { physics.get<world::RigidBody3D>("crate").linear_velocity.x += 0.1F; });
+        CHECK(physics.position("crate").y < -0.5F);
+        CHECK(std::abs(physics.position("crate").x) < 0.01F);
+    }
+    {
+        // A motor on its free x axis drives it at its target velocity.
+        Physics physics(weightless(false));
+        const entt::entity crate = physics.crate("crate", {});
+        auto& joint =
+            physics.world.ecs().emplace<world::Generic6DOFJoint3D>(physics.add("drive", {}));
+        joint.node_a = crate;
+        joint.linear_x.limit_enabled = false;
+        joint.linear_x.motor_enabled = true;
+        joint.linear_x.motor_target_velocity = 1.5F;
+        joint.linear_x.motor_force_limit = 100.0F;
+        physics.step(30);
+        CHECK(std::abs(physics.get<world::RigidBody3D>("crate").linear_velocity.x) ==
+              doctest::Approx(1.5F).epsilon(0.02));
+    }
+}
+
+TEST_CASE("jointed bodies pass through each other unless the joint lets them collide") {
+    const auto run = [](bool exclude) {
+        Physics physics(weightless(false));
+        const entt::entity a = physics.crate("a", {0.0F, 0.0F, 0.0F});
+        const entt::entity b = physics.crate("b", {0.5F, 0.0F, 0.0F});
+        // A joint that only keeps them from turning.
+        auto& joint =
+            physics.world.ecs().emplace<world::Generic6DOFJoint3D>(physics.add("joint", {}));
+        joint.node_a = a;
+        joint.node_b = b;
+        joint.exclude_nodes_from_collision = exclude;
+        joint.linear_x.limit_enabled = false;
+        joint.linear_y.limit_enabled = false;
+        joint.linear_z.limit_enabled = false;
+        physics.step(60);
+        return distance(physics.position("a"), physics.position("b"));
+    };
+    CHECK(run(true) == doctest::Approx(0.5F).epsilon(0.01));
+    CHECK(run(false) > 0.95F);
+}
+
+TEST_CASE("a joint is made again when its transform or bodies change, and goes with them") {
+    Physics physics;
+    const entt::entity first = physics.crate("first", {0.0F, 5.0F, 0.0F}, 0.5F);
+    const entt::entity second = physics.crate("second", {3.0F, 5.0F, 0.0F}, 0.5F);
+    // Pinned at its center, the first stays where it is while the second falls.
+    const entt::entity pin = physics.add("pin", {0.0F, 5.0F, 0.0F});
+    physics.world.ecs().emplace<world::PinJoint3D>(pin).node_a = first;
+    physics.step(30);
+    CHECK(physics.position("first").y == doctest::Approx(5.0F).epsilon(0.01));
+    CHECK(physics.position("second").y < 4.5F);
+
+    // Moved to the second and naming it, the pin holds the second where it is now.
+    const float held = physics.position("second").y;
+    physics.get<world::Transform3D>("pin").position = physics.position("second");
+    physics.get<world::PinJoint3D>("pin").node_a = second;
+    physics.step(30);
+    CHECK(physics.position("second").y == doctest::Approx(held).epsilon(0.01));
+    CHECK(physics.position("first").y < 4.5F);
+
+    // Without the joint the second falls too.
+    physics.world.ecs().remove<world::PinJoint3D>(pin);
+    physics.step(30);
+    CHECK(physics.position("second").y < held - 0.5F);
+}
+
+namespace {
+
+// A car on a floor 400 meters across: a 40 kilogram body, as Godot's VehicleBody3D, with four
+// wheels, the rear ones driven and the front ones steering.
+struct Car {
+    Physics physics;
+
+    Car() {
+        physics.block("ground", {-200.0F, -1.0F, -200.0F}, {200.0F, 0.0F, 200.0F});
+        const entt::entity car = physics.add("car", {0.0F, 1.0F, 0.0F});
+        physics.world.ecs().emplace<world::RigidBody3D>(car).mass = 40.0F;
+        physics.world.ecs().emplace<world::VehicleBody3D>(car);
+        physics.world.ecs().emplace<world::CollisionShape3D>(car, box_shape({2.0F, 0.5F, 4.0F}));
+        for (const auto& [id, x, z] :
+             {std::tuple{"front_left", 1.0F, 1.5F}, std::tuple{"front_right", -1.0F, 1.5F},
+              std::tuple{"rear_left", 1.0F, -1.5F}, std::tuple{"rear_right", -1.0F, -1.5F}}) {
+            const entt::entity wheel = physics.add(id, {x, -0.3F, z});
+            auto& component = physics.world.ecs().emplace<world::VehicleWheel3D>(wheel);
+            component.use_as_steering = z > 0.0F;
+            component.use_as_traction = z < 0.0F;
+            component.wheel_radius = 0.4F;
+            component.wheel_rest_length = 0.3F;
+            component.suspension_travel = 0.3F;
+            component.suspension_stiffness = 30.0F;
+            physics.get<world::Transform3D>("car").children.push_back(wheel);
+        }
+    }
+
+    world::VehicleBody3D& controls() { return physics.get<world::VehicleBody3D>("car"); }
+    world::VehicleWheel3D& wheel(std::string_view id) {
+        return physics.get<world::VehicleWheel3D>(id);
+    }
+    Vec3 velocity() { return physics.get<world::RigidBody3D>("car").linear_velocity; }
+};
+
+} // namespace
+
+TEST_CASE("a vehicle settles on its suspension, drives, steers and brakes, as Godot's") {
+    Car car;
+    car.physics.step(120);
+    // It rests on its springs, which hold its weight.
+    for (const std::string_view id : {"front_left", "front_right", "rear_left", "rear_right"}) {
+        const world::VehicleWheel3D& wheel = car.wheel(id);
+        CHECK(wheel.in_contact);
+        CHECK(car.physics.world.id_of(wheel.contact_body) == "ground");
+        CHECK(wheel.contact_normal.y == doctest::Approx(1.0F));
+        CHECK(wheel.suspension_length > 0.0F);
+        CHECK(wheel.suspension_length < 0.3F);
+        CHECK(wheel.skid_info == doctest::Approx(1.0F));
+        // Its Transform3D shows it lowered by its suspension from where it is mounted.
+        CHECK(car.physics.position(id).y ==
+              doctest::Approx(-0.3F - wheel.suspension_length).epsilon(0.001));
+    }
+    // Where the springs balance its weight, 0.08 meters short of their rest length, or near.
+    const float resting = car.physics.position("car").y;
+    CHECK(resting > 0.85F);
+    CHECK(resting < 0.95F);
+    CHECK(length(car.velocity()) < 0.05F);
+
+    // The engine drives it toward +z, and the wheels roll.
+    car.controls().engine_force = 50.0F;
+    car.physics.step(120);
+    CHECK(car.wheel("rear_left").engine_force == 50.0F);
+    CHECK(car.wheel("front_left").engine_force == 0.0F);
+    CHECK(car.physics.position("car").z > 2.0F);
+    CHECK(car.velocity().z > 2.0F);
+    CHECK(std::abs(car.physics.position("car").x) < 0.05F);
+    CHECK(car.wheel("rear_left").rpm > 10.0F);
+    CHECK(car.wheel("front_left").rotation > 1.0F);
+
+    // Steering left turns it toward +x.
+    car.controls().steering = 0.3F;
+    car.physics.step(60);
+    CHECK(car.wheel("front_left").steering == doctest::Approx(0.3F));
+    CHECK(car.wheel("rear_left").steering == 0.0F);
+    CHECK(car.physics.position("car").x > 0.3F);
+    CHECK(car.physics.get<world::Transform3D>("car").rotation.y > 0.1F);
+    // The wheel turns with its steering about its suspension, rolling about its axle.
+    const Vec3 axle = world::affine(car.physics.get<world::Transform3D>("front_left")).x;
+    CHECK(axle.x == doctest::Approx(std::cos(0.3F)).epsilon(0.001));
+    CHECK(axle.y == doctest::Approx(0.0F).epsilon(0.001));
+    CHECK(axle.z == doctest::Approx(-std::sin(0.3F)).epsilon(0.001));
+
+    // Braking stops it.
+    car.controls().engine_force = 0.0F;
+    car.controls().steering = 0.0F;
+    car.controls().brake = 2.0F;
+    car.physics.step(120);
+    CHECK(car.wheel("rear_right").brake == 2.0F);
+    CHECK(length(car.velocity()) < 0.1F);
+    CHECK(car.physics.position("car").y > 0.85F);
+    CHECK(car.physics.position("car").y < 0.95F);
+}
+
+TEST_CASE("a vehicle asleep wakes when it is given throttle, and drives the same every time") {
+    const auto run = [] {
+        Car car;
+        car.physics.step(240);
+        car.controls().engine_force = 50.0F;
+        car.controls().steering = -0.2F;
+        car.physics.step(90);
+        CHECK(car.velocity().z > 1.0F);
+        CHECK(car.physics.position("car").x < -0.1F);
+        std::vector<std::uint32_t> bits;
+        for (const std::string_view id : {"car", "front_left", "rear_right"}) {
+            const world::Transform3D& transform = car.physics.get<world::Transform3D>(id);
+            for (const float f : {transform.position.x, transform.position.y, transform.position.z,
+                                  transform.rotation.x, transform.rotation.y}) {
+                bits.push_back(std::bit_cast<std::uint32_t>(f));
+            }
+        }
+        return bits;
+    };
+    CHECK(run() == run());
+}
+
+TEST_CASE("a wheel moved by hand is mounted where it was put") {
+    Car car;
+    car.physics.step(60);
+    // Raised by a meter, the front left wheel's ray no longer reaches the ground.
+    car.physics.get<world::Transform3D>("front_left").position.y += 1.0F;
+    car.physics.step(2);
+    CHECK_FALSE(car.wheel("front_left").in_contact);
+    CHECK(car.wheel("front_left").suspension_length == doctest::Approx(0.3F));
+    CHECK(car.wheel("rear_left").in_contact);
 }
