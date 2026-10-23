@@ -480,7 +480,7 @@ when nothing else on it faces a way (its children turn back), else on a `camera`
 | --- | --- |
 | `Transform` | `Transform3D`: position, rotation (Godot's YXZ Euler angles, in radians) and scale |
 | `MeshFilter` and `MeshRenderer` of Unity's cube, sphere, capsule, cylinder, plane and quad | `MeshInstance3D` with `BoxMesh`, `SphereMesh`, `CapsuleMesh`, `CylinderMesh`, `PlaneMesh` (10 by 10 meters) or `QuadMesh`; cast shadows as `cast_shadow`, the layer as `layers` |
-| An instance of a model file | `MeshInstance3D` whose `mesh` is the file, scaled by its import settings' scale factor on a `model` child entity; a material put in place of all of the model's is its `StandardMaterial3D` |
+| An instance of a model file | `MeshInstance3D` whose `mesh` is the file, scaled by its import settings' scale factor on a `model` child entity; a material put in place of all of the model's is its `StandardMaterial3D`; its posed nodes are its `Skeleton3D` (see [model nodes](#model-nodes-and-skinned-meshes)) |
 | `MeshFilter` and `MeshRenderer` of one mesh of a model file | `MeshInstance3D` whose `mesh` is a glTF file of that mesh alone (see below) |
 | A material of Unity's Standard shader or URP's Lit, Simple Lit or Unlit | `StandardMaterial3D`, converted once per material (see below) |
 | `Camera` (perspective or orthographic) | `Camera3D`: fov, `size` (twice Unity's orthographic size), near, far, the culling mask's first 20 layers; the `MainCamera` is `current` |
@@ -589,6 +589,43 @@ model's.
   `<controller>.animtree.json`. Root motion is reported either way: on a model's instance to say
   that gameplay code applies it, and on any other object because nothing takes it out.
 
+### Model nodes and skinned meshes
+
+A model's instance has an object for each node of the model file, with the node's name, under its
+top object. Unity folds a model's only top node into that top object unless the import settings
+preserve the hierarchy; the object's transform then places that node, and the `Skeleton3D` turns
+the node's own transform back to nothing, so it isn't applied twice. A node's objects aren't
+entities; what the scene does to them converts onto the model:
+
+- A node's position, rotation or scale changed in the instance becomes the model's `Skeleton3D`
+  pose: `bone_positions`, `bone_rotations` and `bone_scales` under the node's name in the file,
+  mirrored in x as the scene is, positions in the file's units (divided by the import settings'
+  scale factor). Skinned meshes bend with their bones and other meshes move with their node.
+- A node the instance's `Animator` moves keeps only what its clips leave alone, since the
+  animation poses the rest each tick.
+- Objects and components the scene adds under a node's object go on an entity with a
+  `BoneAttachment3D` for the node, named after the node's object (`torchbearer_hand`), placed where
+  the posed node is and holding the added objects. Its components convert as any object's: a
+  trigger collider on a hand is an `Area3D` that follows the hand. On a model imported at a scale
+  the attachments go under the `model` child entity, so they scale with the model, which is
+  reported.
+- A node's object made inactive, or its renderer disabled, is reported, since the model draws
+  whole, and so are other changes to the node's objects.
+
+A node's objects are found by the IDs Unity's model importer gives them: from the `.meta` file's
+`internalIDToNameTable` or `fileIDToRecycleName`, or the hash of their name, as meshes and clips
+are. The nodes of a `.blend` file aren't read, since Blender would have to run, so what a scene
+does to them is reported.
+
+A model unpacked in the scene, its objects the scene's own with a `SkinnedMeshRenderer` drawing one
+of the model's meshes, folds back into one model. The object at its top becomes a `MeshInstance3D`
+of the model file with the renderer's materials, nodes moved from their place in the file become
+its `Skeleton3D` pose, and objects holding only the model's own components (`Transform`,
+`MeshFilter`, `MeshRenderer`, `SkinnedMeshRenderer`) leave no entity. An object holding anything
+else, or holding objects the model hasn't, becomes a `BoneAttachment3D` as above. A node whose object the
+scene deleted is reported, since the model still draws it. A `SkinnedMeshRenderer` whose objects
+don't follow its model's nodes, or of a mesh that isn't a model's, is reported and doesn't draw.
+
 ### Terrains
 
 A `Terrain` becomes an `HTerrain`, the heightmap terrain that follows the HTerrain plugin for
@@ -611,7 +648,7 @@ a turned or scaled object are reported. The `TerrainCollider` gives the collisio
 from the object's layer, and its physic material's `friction` and `bounce`; one of another
 `TerrainData`, or on a `Rigidbody`, is reported. With no `TerrainCollider`, collision is off.
 
-Reported, for a later import: meshes saved as assets, skinned meshes, model clips starting past
+Reported, for a later import: meshes saved as assets, model clips starting past
 their take's start, mesh colliders of meshes saved as assets, 3D joints and wheels, navigation, reflection and light probes, line and trail
 renderers, area and baked lights, cookies and color temperature, cubemap skyboxes, a camera's
 viewport rect and render texture, and a `CharacterController`'s step offset.
