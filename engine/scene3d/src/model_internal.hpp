@@ -39,6 +39,7 @@ std::optional<std::string> normalized(std::string_view path);
 struct Triangles {
     std::vector<render::Vertex3D> vertices;
     std::vector<std::uint32_t> indices; // counter-clockwise, as glTF's and OBJ's
+    std::vector<VertexWeights> weights; // one per vertex for a skinned surface, else empty
 };
 
 // Each triangle's corners as vertices of their own.

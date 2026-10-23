@@ -786,12 +786,32 @@ public:
                         .indices = create_buffer(WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst,
                                                  indices.size_bytes()),
                         .index_count = static_cast<std::uint32_t>(indices.size()),
+                        .vertex_count = vertices.size(),
                         .bounds = mesh_bounds(vertices)};
         wgpuQueueWriteBuffer(queue_, mesh.vertices, 0, vertices.data(), vertices.size_bytes());
         wgpuQueueWriteBuffer(queue_, mesh.indices, 0, indices.data(), indices.size_bytes());
         const auto id = static_cast<MeshId>(next_mesh_++);
         meshes_[id] = mesh;
         return id;
+    }
+
+    Result<void> update_mesh(MeshId mesh, std::span<const Vertex3D> vertices) override {
+        if (in_frame_) {
+            return frame_in_progress("update_mesh");
+        }
+        const auto it = meshes_.find(mesh);
+        if (it == meshes_.end()) {
+            return unknown_mesh(mesh);
+        }
+        if (auto checked = check_mesh_update(vertices, it->second.vertex_count); !checked) {
+            return checked;
+        }
+        // Queue writes land after the command buffers sent before them, so frames already sent
+        // draw the old vertices.
+        wgpuQueueWriteBuffer(queue_, it->second.vertices, 0, vertices.data(),
+                             vertices.size_bytes());
+        it->second.bounds = mesh_bounds(vertices);
+        return {};
     }
 
     void destroy_mesh(MeshId mesh) override {
@@ -1269,6 +1289,7 @@ private:
         WGPUBuffer vertices = nullptr;
         WGPUBuffer indices = nullptr;
         std::uint32_t index_count = 0;
+        std::size_t vertex_count = 0;
         Bounds bounds;
     };
 

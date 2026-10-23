@@ -165,6 +165,7 @@ constexpr GLuint kInvalidIndex = 0xFFFFFFFF;
     X(BlitFramebuffer, blit_framebuffer, void,                                                     \
       (GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum))                \
     X(BufferData, buffer_data, void, (GLenum, GLsizeiptr, const void*, GLenum))                    \
+    X(BufferSubData, buffer_sub_data, void, (GLenum, GLintptr, GLsizeiptr, const void*))           \
     X(CheckFramebufferStatus, check_framebuffer_status, GLenum, (GLenum))                          \
     X(Clear, clear, void, (GLbitfield))                                                            \
     X(ClearBufferfv, clear_bufferfv, void, (GLenum, GLint, const GLfloat*))                        \
@@ -802,6 +803,7 @@ public:
         }
         make_current();
         GlMesh mesh{.index_count = static_cast<GLsizei>(indices.size()),
+                    .vertex_count = vertices.size(),
                     .bounds = mesh_bounds(vertices)};
         gl_.gen_vertex_arrays(1, &mesh.vertex_array);
         gl_.gen_buffers(1, &mesh.vertices);
@@ -836,6 +838,26 @@ public:
         const auto id = static_cast<MeshId>(next_mesh_++);
         meshes_[id] = mesh;
         return id;
+    }
+
+    Result<void> update_mesh(MeshId mesh, std::span<const Vertex3D> vertices) override {
+        if (in_frame_) {
+            return frame_in_progress("update_mesh");
+        }
+        const auto it = meshes_.find(mesh);
+        if (it == meshes_.end()) {
+            return unknown_mesh(mesh);
+        }
+        if (auto checked = check_mesh_update(vertices, it->second.vertex_count); !checked) {
+            return checked;
+        }
+        make_current();
+        gl_.bind_buffer(gl::kArrayBuffer, it->second.vertices);
+        gl_.buffer_sub_data(gl::kArrayBuffer, 0, static_cast<GLsizeiptr>(vertices.size_bytes()),
+                            vertices.data());
+        gl_.bind_buffer(gl::kArrayBuffer, 0);
+        it->second.bounds = mesh_bounds(vertices);
+        return check_errors("updating a mesh");
     }
 
     void destroy_mesh(MeshId mesh) override {
@@ -1257,6 +1279,7 @@ private:
         GLuint vertices = 0;
         GLuint indices = 0;
         GLsizei index_count = 0;
+        std::size_t vertex_count = 0;
         Bounds bounds;
     };
 

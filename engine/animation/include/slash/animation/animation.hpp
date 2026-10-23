@@ -4,6 +4,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/json_schema.hpp"
 #include "slash/core/result.hpp"
+#include "slash/scene3d/model.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/world.hpp"
 
@@ -39,6 +40,16 @@
 // values that field takes. An event track emits a world event when playback passes each key,
 // with the key's "data". A track with a "target" acts on the entity the AnimationPlayer's
 // targets map that name to, as a Godot track's node path does, rather than the player's own.
+//
+// An animation can come "from" a model file's, as Godot imports a glTF file's animations into an
+// AnimationLibrary: it moves the nodes of the model the entity's MeshInstance3D draws, takes the
+// model animation's length and loop unless it gives its own, and adds its tracks, here a footstep:
+//
+//   "walk": {"from": {"model": "models/hero.glb", "animation": "Walk"},
+//            "tracks": [{"event": "footstep", "keys": [{"time": 0.4}, {"time": 0.9}]}]}
+//
+// An AnimationPlayer's library can also be a model file itself, whose animations it plays as
+// they are.
 namespace slash::animation {
 
 inline constexpr std::string_view kAnimationSuffix = ".anim.json";
@@ -75,10 +86,20 @@ struct Track {
     std::vector<Key> keys; // by time, earliest first
 };
 
+// A model file's animation that an animation plays on the nodes of the entity's model.
+struct ModelClip {
+    std::string model;     // a project path; "" for none
+    std::string animation; // its name in the model
+};
+
 struct Animation {
     double length = 1.0; // seconds
     LoopMode loop = LoopMode::None;
     std::vector<Track> tracks;
+    ModelClip from;
+    // Whether length and loop were written, or are to come from the model's animation.
+    bool own_length = true;
+    bool own_loop = true;
 };
 
 struct AnimationLibrary {
@@ -100,6 +121,17 @@ validate_animation_library(const json::Value& doc,
 
 // The animations in a .anim.json document, or its first error.
 [[nodiscard]] Result<AnimationLibrary> parse_animation_library(const json::Value& doc);
+
+// Whether a library path names a model file, whose animations an AnimationPlayer plays as they are.
+[[nodiscard]] bool is_model_library(std::string_view path);
+
+// A model file's animations as a library: each from the model at path, with its length and its
+// loop (linear when the model's animation loops).
+[[nodiscard]] AnimationLibrary model_library(const scene3d::Model& model, std::string_view path);
+
+// Gives an animation from a model the length and loop its model's animation has, where it gives
+// none of its own; the error says the model has no such animation, with "did you mean".
+[[nodiscard]] Result<void> resolve_clip(Animation& animation, const scene3d::Model& model);
 
 // Where a value track's path leads: a component's field and the part of it.
 struct Target {
@@ -132,8 +164,10 @@ struct Target {
 // Asset type "animation" (.anim.json files as AnimationLibrary).
 void add_asset_types(asset::Assets& assets);
 
-// The "animation_player" system, which plays each AnimationPlayer's animation. It reads
-// .anim.json files through assets, which must outlive the world.
+// The "animation_player" system, which plays each AnimationPlayer's animation, and the clips
+// that pose models (scene3d::set_clip_source): a player's animation from a model poses its
+// entity's MeshInstance3D model, playing or paused. It reads .anim.json files and models through
+// assets, which must outlive the world.
 void add_systems(world::World& world, asset::Assets& assets);
 
 // Both of the above.

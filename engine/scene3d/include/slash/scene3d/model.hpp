@@ -54,12 +54,24 @@ struct ModelMaterial {
     int emission_image = -1;
 };
 
+// How a vertex of a skinned surface follows its skin's joints, as Godot's bone indices and
+// weights: up to eight joints (indices into the skin's joints) and how much each moves it, adding
+// up to 1. Unused places have a weight of 0.
+struct VertexWeights {
+    std::array<std::uint16_t, 8> joints{};
+    std::array<float, 8> weights{};
+
+    friend bool operator==(const VertexWeights&, const VertexWeights&) = default;
+};
+
 // One part of a mesh drawn with one material, as a glTF primitive or an OBJ material's faces
 // become a surface of Godot's ArrayMesh: triangles only, with Godot's clockwise front faces.
 struct ModelSurface {
     std::vector<render::Vertex3D> vertices;
     std::vector<std::uint32_t> indices;
     int material = -1; // into Model::materials, or -1 for Godot's default material
+    // One per vertex for a surface a skin deforms; empty for one that doesn't.
+    std::vector<VertexWeights> weights;
 };
 
 struct ModelMesh {
@@ -69,9 +81,56 @@ struct ModelMesh {
 
 // A mesh where a node of the model's scene puts it.
 struct ModelPart {
-    std::string node;     // the node's name
-    std::size_t mesh = 0; // into Model::meshes
-    world::Affine3D transform;
+    std::string node;          // the node's name
+    std::size_t mesh = 0;      // into Model::meshes
+    world::Affine3D transform; // where the node puts it at rest, in the model's space
+    int node_index = -1;       // into Model::nodes; -1 for a model without them (OBJ)
+    // Into Model::skins for a mesh a skin deforms, which its joints place instead of its node,
+    // as the glTF specification asks; -1 for none.
+    int skin = -1;
+};
+
+// A node of the model's scene, as Godot's importer makes it a Node3D or a skeleton's bone: its
+// name, unique in the model as Godot's importer makes it, its parent (into Model::nodes, or -1),
+// and where it is in its parent at rest.
+struct ModelNode {
+    std::string name;
+    int parent = -1;
+    Vec3 position;
+    Quat rotation;
+    Vec3 scale{1.0F, 1.0F, 1.0F};
+};
+
+// A skin, as glTF's and Godot's Skin: the nodes that are its joints, each with its inverse bind
+// matrix, which takes a vertex from the skinned mesh's space into the joint's at rest.
+struct ModelSkin {
+    std::string name;
+    std::vector<std::size_t> joints; // into Model::nodes
+    std::vector<world::Affine3D> inverse_binds;
+};
+
+// Which part of a node a track moves, as Godot's position_3d, rotation_3d and scale_3d tracks.
+enum class NodeProperty : std::uint8_t { Position, Rotation, Scale };
+
+// A track of a model's animation: one node's position, rotation or scale over time, as Godot's
+// importer makes a glTF channel a 3D track. Values are xyz, or a rotation's quaternion xyzw.
+// Keys interpolate linearly (rotations the shorter way round, as Godot's slerp), or hold until
+// the next with step set, as Godot's nearest interpolation.
+struct NodeTrack {
+    std::size_t node = 0; // into Model::nodes
+    NodeProperty property = NodeProperty::Position;
+    bool step = false;
+    std::vector<float> times; // seconds, earliest first
+    std::vector<std::array<float, 4>> values;
+};
+
+// An animation in a model file, as Godot's importer makes it an Animation: as long as its last
+// key, and looping (linearly) when its name ends with Godot's "-loop" or "-cycle" import hint.
+struct ModelAnimation {
+    std::string name;
+    double length = 0.0;
+    bool loop = false;
+    std::vector<NodeTrack> tracks;
 };
 
 struct Model {
@@ -80,6 +139,10 @@ struct Model {
     std::vector<ModelImage> images;
     // The meshes the model draws: those of its scene's nodes, in tree order.
     std::vector<ModelPart> parts;
+    // The scene's nodes in tree order, parents before children; empty for an OBJ model.
+    std::vector<ModelNode> nodes;
+    std::vector<ModelSkin> skins;
+    std::vector<ModelAnimation> animations;
 };
 
 // Whether a path names a model file: ".gltf", ".glb", ".obj", ".fbx" or ".blend".

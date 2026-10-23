@@ -70,6 +70,21 @@ struct MeshInstance3D {
 };
 SLASH_COMPONENT(MeshInstance3D, mesh, layers, cast_shadow)
 
+// Poses the skeleton of the model the entity's MeshInstance3D draws by hand, as Godot's Skeleton3D
+// bone poses: each bone, or other node of the model, named in these maps takes the position, the
+// rotation (radians about each axis, in Transform3D's order) or the scale given, in its parent's
+// space, in place of what its animation or its rest pose gives it.
+struct Skeleton3D {
+    std::map<std::string, Vec3> bone_positions;
+    std::map<std::string, Vec3> bone_rotations;
+    std::map<std::string, Vec3> bone_scales;
+    // Shows the rest pose, leaving out animations and these maps, as Godot's show_rest_only.
+    bool show_rest_only = false;
+
+    friend bool operator==(const Skeleton3D&, const Skeleton3D&) = default;
+};
+SLASH_COMPONENT(Skeleton3D, bone_positions, bone_rotations, bone_scales, show_rest_only)
+
 // Godot's BoxMesh: a box of size centered on the entity, each face cut into subdivisions + 1
 // strips along each axis.
 struct BoxMesh {
@@ -518,9 +533,11 @@ SLASH_COMPONENT(AnimatedSprite2D, sprite_frames, animation, playing, speed_scale
 
 // Plays keyframe animations from a .anim.json file, as Godot's AnimationPlayer: each tick it
 // moves the time on and sets every field the animation's tracks name, on the entity's own
-// components or, for a track with a target, on the entity targets maps that name to.
+// components or, for a track with a target, on the entity targets maps that name to. A model
+// file's animations, played from the file or from a .anim.json file that names them, pose the
+// skeleton of the model the entity's MeshInstance3D draws.
 struct AnimationPlayer {
-    std::string library; // project path of a .anim.json file
+    std::string library; // project path of a .anim.json file, or a model file
     std::string animation;
     bool playing = true;
     float speed_scale = 1.0F;

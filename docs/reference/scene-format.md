@@ -114,7 +114,7 @@ A reference must name an entity that exists in the same scene.
 | | `speed_scale` | `float` | `1` | Multiplies the animation's frames per second; negative plays backwards |
 | | `frame` | `int` | `0` | The animation's current frame, from 0 |
 | | `frame_progress` | `float` | `0` | How far through the current frame, from 0 to 1 |
-| `AnimationPlayer` | `library` | `std::string` | `""` | Project path of a [`.anim.json`](#animations) file |
+| `AnimationPlayer` | `library` | `std::string` | `""` | Project path of a [`.anim.json`](#animations) file, or of a model whose [animations](#skeletons-and-model-animations) it plays |
 | | `animation` | `std::string` | `""` | Name of the animation to play; `""` plays nothing |
 | | `playing` | `bool` | `true` | Advance the animation each tick |
 | | `speed_scale` | `float` | `1` | Multiplies the playback speed; negative plays backwards |
@@ -709,9 +709,11 @@ place of a primitive mesh, read as Godot's importers read them:
 - Models keep Godot's clockwise front faces, a primitive with no normals gets one per face, and
   one with texture coordinates but no tangents gets MikkTSpace's, as Godot's importer makes
   them. `KHR_mesh_quantization` attributes are read.
+- Skins deform their meshes and animations move the model's nodes, as
+  [skeletons and model animations](#skeletons-and-model-animations) says.
 - Points and lines are left out, since only triangles draw, and so are cameras, `KHR_lights_punctual`
-  lights, skins, morph targets and animations. A file that requires any other extension, such as
-  Draco or meshopt compression, is refused, naming it.
+  lights and morph targets. A file that requires any other extension, such as Draco or meshopt
+  compression, is refused, naming it.
 
 Images are PNG, JPEG, BMP or KTX2 files, as [textures](#textures) are. Entities drawing one model
 share its meshes and textures on the device, and the model reloads when its file changes.
@@ -800,6 +802,56 @@ with a game.
   `slash-cli scene validate` converts the files it checks.
 - Textures packed into the `.blend` file, or found where it names them, are carried inside the
   `.glb` file.
+
+#### Skeletons and model animations
+
+A glTF model's nodes are its bones, as Godot's importer makes a `Skeleton3D` of them: its skins
+deform their meshes, its animations move its nodes, and an entity's `AnimationPlayer` and
+`Skeleton3D` pose them. A `.blend` file's armatures and actions come through its glTF.
+
+```json
+"hero": {"components": {
+  "Transform3D": {},
+  "MeshInstance3D": {"mesh": "models/hero.glb"},
+  "AnimationPlayer": {"library": "models/hero.glb", "animation": "Walk-loop"},
+  "Skeleton3D": {"bone_rotations": {"Head": [0, 0.4, 0]}}
+}}
+```
+
+- Nodes are named as Godot names them: `.`, `:`, `@`, `/`, `"` and `%` become `_`, a name used
+  before gets a number from 2 (`Arm`, `Arm2`), and a node with no name is `Mesh` if it has a mesh,
+  else `Node`.
+- A mesh with a skin is moved by its joints, as Godot's skeleton shader moves it: each vertex by
+  up to eight joints (`JOINTS_0`, `JOINTS_1` and their weights, normalized), each joint by its
+  node's transform times its inverse bind matrix, with normals and tangents turned the same way.
+  It is placed by its joints, not by the node that holds it, as glTF says, and a vertex with no
+  weight stays where it is. A skin whose joints aren't all in the model's scene is left out.
+- Each animation is one Godot imports: as long as its last key, named as nodes are (`,` and `[`
+  also become `_`; one with no name is `Animation`), and looping linearly when its name begins or
+  ends with `loop` or `cycle` in any case (`Walk-loop`, `cycle_run`), as Godot's import hints.
+  Position, rotation and scale keys play with their interpolation (`STEP` holds each key,
+  `CUBICSPLINE` is sampled 30 times a second); morph target weights are left out.
+- An `AnimationPlayer` whose `library` is the model plays its animations by name, as Godot's
+  `AnimationPlayer` plays an imported scene's library. A [`.anim.json` animation](#animations) can
+  come `from` a model's animation and add tracks of its own, such as footsteps. An animation from
+  another model moves the nodes of the same names, so one rig's animations can play on every model
+  made from it. The pose follows the player's `time` while paused too.
+- A model is posed from its rest, then by its animation, then by its `Skeleton3D`, each time it
+  is drawn, so undo, snapshots and dry runs always draw what the components say. Between ticks it
+  is drawn part of the way from its last pose, as entities are.
+
+| `Skeleton3D` field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `bone_positions` | Map of `Vec3` | `{}` | A bone's position in its parent, by name, over its animation, as Godot's `set_bone_pose_position` |
+| `bone_rotations` | Map of `Vec3` | `{}` | A bone's rotation in its parent, in radians as `Transform3D`'s, by name |
+| `bone_scales` | Map of `Vec3` | `{}` | A bone's scale, by name |
+| `show_rest_only` | `bool` | `false` | Draw the model at rest, whatever plays |
+
+[`skeleton.get`](commands.md#skeletonget) lists a model's bones and where each is posed, and
+[`model.inspect`](commands.md#modelinspect) its skins and animations. `scene validate` reports a
+`Skeleton3D` bone the model hasn't (with "did you mean") and one on an entity that draws no
+model. FBX skins and animations are left out for now.
+[examples/skinned-meshes](../../examples/skinned-meshes/) waves a skinned arm.
 
 ### StandardMaterial3D
 
@@ -1458,8 +1510,9 @@ void fragment() {
 ## Animations
 
 A `.anim.json` file holds keyframe animations by name, like a Godot `AnimationLibrary` of
-`Animation` resources. An entity's `AnimationPlayer` names the file in `library` and plays one
-of them: each tick the `animation_player` system moves `time` on, sets every field the
+`Animation` resources. An entity's `AnimationPlayer` names the file (or a
+[model](#skeletons-and-model-animations), to play its animations as they are) in `library` and
+plays one of them: each tick the `animation_player` system moves `time` on, sets every field the
 animation's value tracks name on the entity's own components (adding a component it lacks), and
 emits the events its event tracks name. A track with a `target` acts on another entity instead,
 the one the player's `targets` maps that name to, as a Godot track names a node by its path from
@@ -1506,9 +1559,10 @@ and the entity that plays it, whose child `sword` the last track turns:
 | --- | --- | --- |
 | `format` | Yes | Format version. Must be `1` |
 | `animations` | Yes | Animations by name |
-| `animations/<name>/length` | Yes | Seconds, more than 0 |
-| `animations/<name>/loop` | No | What happens at the end, as Godot's loop modes: `none` (default) stops there, `linear` starts over, `pingpong` turns round |
-| `animations/<name>/tracks` | Yes | Value tracks and event tracks |
+| `animations/<name>/from` | No | A model's animation it plays on the nodes of the model the entity's `MeshInstance3D` draws: `{"model": "models/hero.glb", "animation": "Walk"}` ([model animations](#skeletons-and-model-animations)) |
+| `animations/<name>/length` | Unless `from` | Seconds, more than 0. Left out, the length of the model's animation it comes from |
+| `animations/<name>/loop` | No | What happens at the end, as Godot's loop modes: `none` stops there, `linear` starts over, `pingpong` turns round. Left out, the model animation's (`linear` if it loops), else `none` |
+| `animations/<name>/tracks` | Unless `from` | Value tracks and event tracks |
 | `tracks/<n>/path` | One of these | A value track: the field it sets, as a component, a field and optionally a part of the field |
 | `tracks/<n>/event` | One of these | An event track: the event kind it emits |
 | `tracks/<n>/target` | No | The entity it acts on: a name the `AnimationPlayer`'s `targets` maps to an entity. Left out, the player's own entity |
@@ -1546,8 +1600,9 @@ entity, so animate `Sprite2D/offset` to move a sprite around its entity instead.
   have, a key value the field doesn't take, a string or boolean on a continuous track, two
   tracks on one path, or an event kind the engine uses itself (`command`, `entity.*`).
   `slash-cli scene validate` and exports check all of these, and in a scene or prefab, that
-  each `AnimationPlayer`'s library loads and has its `animation` (with "did you mean") and that
-  its `targets` name every target its tracks use. A player whose file, animation or track can't
+  each `AnimationPlayer`'s library loads and has its `animation` (with "did you mean"), that
+  each animation `from` a model names one the model has, and that its `targets` name every target
+  its tracks use. A player whose file, animation or track can't
   be used logs one warning and plays what it can.
 - Animation files reload when they change, like every asset, and exports check and ship them.
 
