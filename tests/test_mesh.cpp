@@ -305,9 +305,17 @@ TEST_CASE("every device checks meshes, scenes and mesh draws") {
               "texture " + std::to_string(static_cast<std::uint32_t>(target.value())) +
                   " is this frame's target, so it can't be drawn with until the frame ends");
         CHECK(device->draw_mesh(mesh.value(), identity, {}).ok());
+        CHECK(error_of(device->update_mesh(mesh.value(), triangle)).starts_with("update_mesh"));
         REQUIRE(device->end_frame().ok());
         CHECK(error_of(device->draw_mesh(mesh.value(), identity, {})) ==
               "draw_mesh needs a frame; call begin_frame first");
+        // A mesh's vertices are replaced by as many, as a skinned mesh's are.
+        CHECK(error_of(device->update_mesh(mesh.value(), std::span(triangle).first(2))) ==
+              "a mesh's new vertices are as many as it has, 3, not 2");
+        CHECK(error_of(device->update_mesh(mesh.value(), broken)) ==
+              "vertex 1's numbers are finite");
+        CHECK(error_of(device->update_mesh(static_cast<MeshId>(99), triangle)) == "no mesh 99");
+        CHECK(device->update_mesh(mesh.value(), triangle).ok());
         // A destroyed mesh is gone.
         device->destroy_mesh(mesh.value());
         REQUIRE(

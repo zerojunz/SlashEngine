@@ -82,6 +82,9 @@ Triangles deindexed(const Triangles& in) {
     for (const std::uint32_t index : in.indices) {
         out.indices.push_back(static_cast<std::uint32_t>(out.vertices.size()));
         out.vertices.push_back(in.vertices[index]);
+        if (!in.weights.empty()) {
+            out.weights.push_back(in.weights[index]);
+        }
     }
     return out;
 }
@@ -89,18 +92,29 @@ Triangles deindexed(const Triangles& in) {
 void reindex(Triangles& triangles) {
     std::unordered_map<std::string, std::uint32_t> seen;
     std::vector<render::Vertex3D> vertices;
+    std::vector<VertexWeights> weights;
+    const bool skinned = !triangles.weights.empty();
     for (std::uint32_t& index : triangles.indices) {
         const render::Vertex3D& vertex = triangles.vertices[index];
-        std::string key(sizeof(render::Vertex3D), '\0');
+        // A vertex's weights are part of it: corners alike but for them stay apart.
+        std::string key(sizeof(render::Vertex3D) + (skinned ? sizeof(VertexWeights) : 0), '\0');
         std::memcpy(key.data(), &vertex, sizeof(vertex));
+        if (skinned) {
+            std::memcpy(key.data() + sizeof(vertex), &triangles.weights[index],
+                        sizeof(VertexWeights));
+        }
         const auto [it, added] =
             seen.emplace(std::move(key), static_cast<std::uint32_t>(vertices.size()));
         if (added) {
             vertices.push_back(vertex);
+            if (skinned) {
+                weights.push_back(triangles.weights[index]);
+            }
         }
         index = it->second;
     }
     triangles.vertices = std::move(vertices);
+    triangles.weights = std::move(weights);
 }
 
 Vec3 position_of(const render::Vertex3D& v) {
