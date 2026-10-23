@@ -257,7 +257,24 @@ playing its default state instead.
   `string` and `object` parameters as the key's `data`; gameplay code reads the event
   (`World::emit`'s events, as Godot's method tracks).
 - An override controller is its controller's states with its clips swapped, and its tree the
-  controller's. A blend tree plays its first motion.
+  controller's.
+- A blend tree is a blend space over its motions, as Godot's `BlendSpace1D` and `BlendSpace2D`,
+  with `sync` on so every motion keeps playing, as Unity's do. A 1D tree's thresholds and a 2D
+  tree's positions are its points' positions (beyond -1 to 1, `min_space` and `max_space` widen
+  to hold them), and a tree inside a tree is a blend space at its point. Each motion plays its
+  clip's animation at the state's speed times the motion's time scale; when another state
+  already plays the clip at another speed, the animation is named after the state and the clip
+  (`Walk Jump`). A tree with one motion is that motion's `Animation` node.
+- Godot's 2D blend spaces blend the three points around the position, in triangles, where
+  Unity's 2D types weigh every motion by gradient bands, so 2D trees are reported. Motions all in
+  one row or column blend in 1D along it, and ones on one slanted line, which make no triangles,
+  in a `discrete` blend space where the closest plays. A direct tree plays its first motion.
+- Unity's blend trees read their parameters themselves; a blend space's position is a tree
+  parameter of its own: `Walk/blend_position`, or `Walk/1/blend_position` for a blend space at
+  the second point of `Walk`'s. The controller's task says which parameter to set each from, and
+  the `AnimationTree`'s `parameters` start them at those parameters' defaults. Motions of
+  different lengths are reported: Unity stretches them to one cycle as it blends, and each plays
+  at its own length here.
 - Each controller is a storyboard task (`task/port-frog-anim`): with a tree, its parameters,
   which gameplay code sets as Unity's `SetFloat`, `SetInteger`, `SetBool` and `SetTrigger` did,
   with their types and defaults; with no tree, its states, parameters and transitions for
@@ -268,8 +285,9 @@ playing its default state instead.
 - Two transitions between the same states become one taking either's conditions, with the
   first's timing. Muted transitions don't convert, and a solo one mutes the state's others.
 - Layers other than the base layer, transitions to a state's own self, transition offsets and
-  interruption sources, state speed parameters, cycle offsets, root motion, animated script
-  values and fields SlashEngine has no counterpart for are reported. The legacy `Animation`
+  interruption sources, state speed parameters, cycle offsets (a state's or a blend tree
+  motion's), root motion, animated script values and fields SlashEngine has no counterpart for
+  are reported. The legacy `Animation`
   component doesn't convert.
 
 ## Cameras

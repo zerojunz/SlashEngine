@@ -3247,8 +3247,14 @@ TEST_CASE("Unity Animator controllers become animation libraries, their states a
         {"target": "Body#sprite", "path": "Sprite2D/flip_h",
          "keys": [{"time": 0.0, "value": false}, {"time": 0.125, "value": true}]}
     ]})"));
-    // A blend tree plays its first motion.
-    CHECK(*animations.find("Walk") == *animations.find("Idle"));
+    // Walk's blend tree blends Idle with the jump, which at Walk's speed is an animation of its
+    // own, its name put after the state's.
+    CHECK(*animations.find("Walk Jump") == parse(R"({"length": 0.5, "tracks": [
+        {"path": "Transform2D/rotation",
+         "keys": [{"time": 0.0, "value": 0.0}, {"time": 0.5, "value": -1.570796}]},
+        {"target": "Body#sprite", "path": "Sprite2D/flip_h",
+         "keys": [{"time": 0.0, "value": false}, {"time": 0.25, "value": true}]}
+    ]})"));
 
     // An override controller is its controller's states with its clips swapped.
     const json::Value toad = parse(files.at(toad_library));
@@ -3270,7 +3276,10 @@ TEST_CASE("Unity Animator controllers become animation libraries, their states a
         "root": {"type": "StateMachine",
             "states": {"Idle": {"node": {"type": "Animation", "animation": "Idle"}},
                        "Jump": {"node": {"type": "Animation", "animation": "Jump"}},
-                       "Walk": {"node": {"type": "Animation", "animation": "Walk"}}},
+                       "Walk": {"node": {"type": "BlendSpace1D", "sync": true, "points": [
+                           {"position": 0.0, "node": {"type": "Animation", "animation": "Idle"}},
+                           {"position": 1.0,
+                            "node": {"type": "Animation", "animation": "Walk Jump"}}]}}},
             "transitions": [
                 {"from": "Start", "to": "Idle", "advance_mode": "auto", "priority": 0},
                 {"from": "Idle", "to": "Jump", "advance_mode": "auto", "priority": 0,
@@ -3308,8 +3317,9 @@ TEST_CASE("Unity Animator controllers become animation libraries, their states a
           "unity/Assets/Animations/Frog.animtree.json plays the state machine with an "
           "AnimationTree. Gameplay code sets its parameters, as Unity's SetFloat, SetInteger, "
           "SetBool and SetTrigger did: Speed (float, 0.0); Jump (trigger); Grounded (bool, "
-          "true). Animation events: Croak at 0.5 s in Idle, Croak at 0.5 s in Walk. Played by "
-          "frog in unity/Assets/Scenes/Frogs.scene.json.");
+          "true). Unity's blend trees read their parameters themselves; set each blend "
+          "position with them: Walk/blend_position to Speed. Animation events: Croak at 0.5 s in "
+          "Idle. Played by frog in unity/Assets/Scenes/Frogs.scene.json.");
 
     const json::Value report = parse(files.at("import/unity.json"));
     CHECK(*report.find("animation_libraries")->find(frog_library) ==
@@ -3320,7 +3330,8 @@ TEST_CASE("Unity Animator controllers become animation libraries, their states a
     for (const auto& [what, where] : std::initializer_list<std::pair<std::string, std::string>>{
              {"Animator layers other than the base layer", "Assets/Animations/Frog.controller"},
              {"Animator exit time", "Assets/Animations/Frog.controller: Jump"},
-             {"blend tree", "Assets/Animations/Frog.controller: state Walk"},
+             {"Animator blend tree motions of different lengths",
+              "Assets/Animations/Frog.controller: state Walk"},
              {"animated script value", "Assets/Animations/Jump.anim: power"},
              {"animated object missing", "Assets/Scenes/Frogs.unity: Toad: Body"},
              {"Animator root motion", "Assets/Scenes/Frogs.unity: Toad"},
@@ -3607,6 +3618,232 @@ TEST_CASE("Unity Animator state machines become AnimationTree state machines, as
         CHECK(item.find("count")->as_int() == count);
     }
     CHECK(unsupported(report, "Animator exit time").is_null());
+}
+
+namespace {
+
+std::string blend_tree(std::int64_t object, int type, std::string_view x, std::string_view y,
+                       std::string_view children) {
+    return "--- !u!206 &" + id(object) + "\nBlendTree:\n" + std::string(kSource) +
+           "  m_Name: Blend Tree\n  m_Childs:" + std::string(children) +
+           "\n  m_BlendParameter: " + std::string(x) + "\n  m_BlendParameterY: " + std::string(y) +
+           "\n  m_MinThreshold: 0\n  m_MaxThreshold: 1\n  m_UseAutomaticThresholds: 0\n"
+           "  m_NormalizedBlendValues: 0\n  m_BlendType: " +
+           std::to_string(type) + "\n";
+}
+
+std::string blend_child(std::string_view motion, std::string_view threshold, std::string_view x,
+                        std::string_view y, std::string_view scale = "1") {
+    return "\n  - serializedVersion: 2\n    m_Motion: " + std::string(motion) +
+           "\n    m_Threshold: " + std::string(threshold) +
+           "\n    m_Position: {x: " + std::string(x) + ", y: " + std::string(y) +
+           "}\n    m_TimeScale: " + std::string(scale) +
+           "\n    m_CycleOffset: 0\n    m_DirectBlendParameter: Speed\n    m_Mirror: 0";
+}
+
+} // namespace
+
+TEST_CASE("Unity blend trees become blend spaces, nested and collapsed as Unity lays them out") {
+    const fs::path project = "import_unity_blend_trees";
+    fs::remove_all(project);
+    make_project(project / "unity");
+    const fs::path folder = project / "unity";
+    // Each clip holds the hero at its own x, so what plays shows in where the hero is.
+    const auto clip = [&](std::string_view name, std::string_view guid, std::string_view stop,
+                          std::string_view x) {
+        ClipCurves curves;
+        curves.position =
+            anim_curve(anim_key("0", "{x: " + std::string(x) + ", y: 0, z: 0}",
+                                "{x: 0, y: 0, z: 0}", "{x: 0, y: 0, z: 0}", kVectorWeight),
+                       "    path: \n");
+        write_clip(folder / ("Assets/Animations/" + std::string(name) + ".anim"), guid, stop, true,
+                   curves);
+    };
+    clip("Idle", "a3000000000000000000000000000001", "1", "0");
+    clip("Left", "a3000000000000000000000000000002", "1", "-1");
+    clip("Right", "a3000000000000000000000000000003", "1", "1");
+    clip("Back", "a3000000000000000000000000000004", "1", "-2");
+    clip("Walk", "a3000000000000000000000000000005", "1", "2");
+    clip("Run", "a3000000000000000000000000000006", "0.5", "4");
+    const auto motion = [](char n) {
+        return ref(7400000, std::string("a300000000000000000000000000000") + n, 2);
+    };
+
+    // Locomotion blends five motions on MoveX and MoveY, the one ahead a tree of its own that
+    // runs on Speed, the run at twice its speed. Strafe's motions are in a row, Climb's in a
+    // column and Dash's on a slant, and Mix is a direct blend tree.
+    std::string controller(kHeader);
+    controller += "--- !u!91 &9100000\nAnimatorController:\n" + std::string(kSource) +
+                  "  m_Name: Hero\n  serializedVersion: 5\n  m_AnimatorParameters:\n" +
+                  animator_parameter("MoveX", 1, "0") + animator_parameter("MoveY", 1, "0.5") +
+                  animator_parameter("Speed", 1, "0") +
+                  "  m_AnimatorLayers:\n  - serializedVersion: 5\n    m_Name: Base Layer\n"
+                  "    m_StateMachine: {fileID: 110700001}\n    m_Mask: {fileID: 0}\n";
+    controller += knight_machine(
+        110700001, "Base Layer",
+        {{110200001, 0}, {110200002, 300}, {110200003, 600}, {110200004, 900}, {110200005, 1200}},
+        " []", " []", " []", " []", 110200001);
+    controller += animator_state(110200001, "Locomotion", "1", " []", ref(20600001));
+    controller += animator_state(110200002, "Strafe", "1", " []", ref(20600003));
+    controller += animator_state(110200003, "Mix", "1", " []", ref(20600004));
+    controller += animator_state(110200004, "Climb", "1", " []", ref(20600005));
+    controller += animator_state(110200005, "Dash", "1", " []", ref(20600006));
+    controller += blend_tree(
+        20600001, 3, "MoveX", "MoveY",
+        blend_child(motion('1'), "0", "0", "0") + blend_child(motion('2'), "0", "-1", "0") +
+            blend_child(motion('3'), "0", "1", "0") + blend_child(motion('4'), "0", "0", "-1") +
+            blend_child(ref(20600002), "0", "0", "1"));
+    controller += blend_tree(20600002, 0, "Speed", "Speed",
+                             blend_child(motion('5'), "0", "0", "0") +
+                                 blend_child(motion('6'), "2", "0", "0", "2"));
+    controller += blend_tree(20600003, 1, "MoveX", "MoveY",
+                             blend_child(motion('2'), "0", "-1", "0") +
+                                 blend_child(motion('1'), "0", "0", "0") +
+                                 blend_child(motion('3'), "0", "2", "0"));
+    controller += blend_tree(20600004, 4, "Speed", "Speed",
+                             blend_child(motion('2'), "0", "0", "0") +
+                                 blend_child(motion('3'), "0", "0", "0"));
+    controller += blend_tree(20600005, 2, "MoveX", "MoveY",
+                             blend_child(motion('4'), "0", "0", "-1") +
+                                 blend_child(motion('1'), "0", "0", "0") +
+                                 blend_child(motion('5'), "0", "0", "1"));
+    controller += blend_tree(20600006, 3, "MoveX", "MoveY",
+                             blend_child(motion('1'), "0", "0", "0") +
+                                 blend_child(motion('3'), "0", "1", "1") +
+                                 blend_child(motion('5'), "0", "2", "2"));
+    write(folder / "Assets/Animations/Hero.controller", controller);
+    write(folder / "Assets/Animations/Hero.controller.meta",
+          meta("a3000000000000000000000000000010", "NativeFormatImporter",
+               "  mainObjectFileID: 9100000\n"));
+    std::string scene(kHeader);
+    scene += game_object(5000, "Hero", {5001, 5002});
+    scene += transform(5001, 5000, "{x: 0, y: 0, z: 0}");
+    scene += component(95, "Animator", 5002, 5000,
+                       "  m_Avatar: {fileID: 0}\n  m_Controller: " +
+                           ref(9100000, "a3000000000000000000000000000010", 2) +
+                           "\n  m_CullingMode: 0\n  m_UpdateMode: 0\n  m_ApplyRootMotion: 0\n");
+    write(folder / "Assets/Scenes/Arena.unity", scene);
+    write(folder / "Assets/Scenes/Arena.unity.meta", meta("a3000000000000000000000000000011"));
+
+    auto imported =
+        importer::import_project({.source = folder.string(), .destination = project.string()});
+    REQUIRE_MESSAGE(imported.ok(), (imported.ok() ? std::string() : imported.error().message));
+    const auto files = files_of(imported.value());
+    const json::Value tree = parse(files.at("unity/Assets/Animations/Hero.animtree.json"));
+    const json::Value library = parse(files.at("unity/Assets/Animations/Hero.anim.json"));
+
+    // An animation per clip, named after it, the run's at its time scale.
+    const json::Value& animations = *library.find("animations");
+    CHECK(animations.size() == 6);
+    CHECK(animations.find("Run")->find("length")->as_double() == 0.25);
+    // Locomotion is a 2D blend space whose point ahead is a 1D one; Strafe's row is 1D along
+    // MoveX, reaching 2; Mix plays its first motion. With no transitions, Start goes to the
+    // default state.
+    const auto point = [](const json::Value& position, std::string_view animation) {
+        json::Value out;
+        out["position"] = position;
+        out["node"]["type"] = "Animation";
+        out["node"]["animation"] = animation;
+        return out;
+    };
+    const auto xy = [](double x, double y) { return json::Value(json::Array{x, y}); };
+    json::Value ahead;
+    ahead["type"] = "BlendSpace1D";
+    ahead["points"] = json::Array{point(json::Value(0.0), "Walk"), point(json::Value(2.0), "Run")};
+    ahead["max_space"] = 2.0;
+    ahead["sync"] = true;
+    json::Value locomotion;
+    locomotion["type"] = "BlendSpace2D";
+    locomotion["points"] = json::Array{point(xy(0, 0), "Idle"), point(xy(-1, 0), "Left"),
+                                       point(xy(1, 0), "Right"), point(xy(0, -1), "Back")};
+    json::Value ahead_point;
+    ahead_point["position"] = xy(0, 1);
+    ahead_point["node"] = ahead;
+    locomotion["points"].as_array().push_back(std::move(ahead_point));
+    locomotion["sync"] = true;
+    const json::Value& states = *tree.find("root")->find("states");
+    CHECK(*states.find("Locomotion")->find("node") == locomotion);
+    json::Value strafe;
+    strafe["type"] = "BlendSpace1D";
+    strafe["points"] =
+        json::Array{point(json::Value(-1.0), "Left"), point(json::Value(0.0), "Idle"),
+                    point(json::Value(2.0), "Right")};
+    strafe["max_space"] = 2.0;
+    strafe["sync"] = true;
+    CHECK(*states.find("Strafe")->find("node") == strafe);
+    CHECK(*states.find("Mix")->find("node") ==
+          parse(R"({"type": "Animation", "animation": "Left"})"));
+    // Climb's column is 1D along MoveY; Dash's slant makes no triangles, so the closest plays.
+    CHECK(*states.find("Climb")->find("node") == parse(R"({"type": "BlendSpace1D", "points": [
+        {"position": -1.0, "node": {"type": "Animation", "animation": "Back"}},
+        {"position": 0.0, "node": {"type": "Animation", "animation": "Idle"}},
+        {"position": 1.0, "node": {"type": "Animation", "animation": "Walk"}}], "sync": true})"));
+    CHECK(*states.find("Dash")->find("node") == parse(R"({"type": "BlendSpace2D", "points": [
+        {"position": [0.0, 0.0], "node": {"type": "Animation", "animation": "Idle"}},
+        {"position": [1.0, 1.0], "node": {"type": "Animation", "animation": "Right"}},
+        {"position": [2.0, 2.0], "node": {"type": "Animation", "animation": "Walk"}}],
+        "max_space": [2.0, 2.0], "blend_mode": "discrete", "sync": true})"));
+    CHECK(
+        *tree.find("root")->find("transitions") ==
+        parse(R"([{"from": "Start", "to": "Locomotion", "advance_mode": "auto", "priority": 0}])"));
+
+    // The task says which blend position follows which parameter, and the tree starts where
+    // MoveY's default puts Locomotion.
+    const json::Value work = parse(files.at("storyboard/work.json"));
+    CHECK(work.find("entries")
+              ->find("task/port-hero-anim")
+              ->find("text")
+              ->as_string()
+              .find("Unity's blend trees read their parameters themselves; set each blend position "
+                    "with them: Locomotion/4/blend_position to Speed; Locomotion/blend_position to "
+                    "[MoveX, MoveY]; Strafe/blend_position to MoveX; Climb/blend_position to "
+                    "MoveY; Dash/blend_position to [MoveX, MoveY].") != std::string::npos);
+    const std::string arena = "unity/Assets/Scenes/Arena.scene.json";
+    CHECK(*entity(files, arena, "hero").find("AnimationTree")->find("parameters") ==
+          parse(R"({"Locomotion/blend_position": [0.0, 0.5], "Climb/blend_position": 0.5,
+                    "Dash/blend_position": [0.0, 0.5]})"));
+    const json::Value report = parse(files.at("import/unity.json"));
+    const std::string controller_path = "Assets/Animations/Hero.controller: state ";
+    for (const auto& [what, where] : std::initializer_list<std::pair<std::string, std::string>>{
+             {"Animator 2D blend tree", "Locomotion"},
+             {"Animator 2D blend tree on a slanted line", "Dash"},
+             {"Animator blend tree motions of different lengths", "Locomotion"},
+             {"Animator direct blend tree", "Mix"}}) {
+        const json::Value item = unsupported(report, what);
+        REQUIRE_MESSAGE(!item.is_null(), what);
+        CHECK(item.find("where")->as_string() == controller_path + where);
+    }
+
+    // It blends: halfway up to the walk at first, then halfway right, then all the way ahead
+    // at a run.
+    slash::world::ComponentRegistry components;
+    slash::world::register_builtin_components(components);
+    command::Registry commands;
+    command::register_builtin_commands(commands);
+    command::SessionOptions options;
+    options.project_root = project.string();
+    options.capture_logs = false;
+    command::Session session(components, commands, options);
+    const command::Reply opened =
+        session.call("scene.open", parse(R"({"path": ")" + arena + "\"}"));
+    REQUIRE_MESSAGE(opened.ok, opened.message);
+    const slash::world::World& world = session.world();
+    const auto hero_x = [&] {
+        return world.ecs().get<slash::world::Transform2D>(world.find("hero")).position.x;
+    };
+    REQUIRE(session.call("step", parse(R"({"ticks": 3})")).ok);
+    CHECK(hero_x() == doctest::Approx(16.0));
+    const auto blend = [&](std::string_view parameters) {
+        const command::Reply set =
+            session.call("animation.set_parameters",
+                         parse(R"({"id": "hero", "parameters": )" + std::string(parameters) + "}"));
+        REQUIRE_MESSAGE(set.ok, set.message);
+        REQUIRE(session.call("step", parse(R"({"ticks": 2})")).ok);
+    };
+    blend(R"({"Locomotion/blend_position": [0.5, 0]})");
+    CHECK(hero_x() == doctest::Approx(8.0));
+    blend(R"({"Locomotion/blend_position": [0, 1], "Locomotion/4/blend_position": 2})");
+    CHECK(hero_x() == doctest::Approx(64.0));
 }
 
 TEST_CASE("Unity audio mixers become a bus layout and 2D joints Godot's joints") {
