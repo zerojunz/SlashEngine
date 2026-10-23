@@ -137,6 +137,9 @@ struct ModelAnimation {
     double length = 0.0;
     bool loop = false;
     std::vector<NodeTrack> tracks;
+    // The frames a second of the file's timeline, which tools that count in frames go by: an FBX
+    // file's; 0 when the file counts in seconds only, as glTF files do.
+    double frame_rate = 0.0;
 };
 
 struct Model {

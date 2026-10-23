@@ -675,6 +675,7 @@ void FbxReader::animations() {
         const std::string named = text_of(stack->name);
         out.name = unique_name(taken, named.empty() ? "Animation" : named, true);
         out.loop = loops_by_name(named);
+        out.frame_rate = scene_->settings.frames_per_second;
         ufbx_bake_opts options{};
         options.resample_rate = kBakeRate;
         options.minimum_sample_rate = kBakeRate;
