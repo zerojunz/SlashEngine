@@ -269,6 +269,10 @@ if(Clipper2_ADDED)
         ${Clipper2_SOURCE_DIR}/CPP/Clipper2Lib/include)
     target_compile_options(slash_clipper2 PRIVATE
         $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)
+    # Its headers use std::back_inserter without including <iterator>, which newer libc++ (as in
+    # llvm-mingw) no longer brings in through <algorithm>.
+    target_compile_options(slash_clipper2 PUBLIC
+        "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:SHELL:-include iterator>")
 endif()
 slash_add_dependency(polypartition DOWNLOAD_ONLY TRUE)
 if(polypartition_ADDED)
