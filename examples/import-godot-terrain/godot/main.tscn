@@ -1,0 +1,63 @@
+[gd_scene load_steps=10 format=3 uid="uid://valley0main"]
+
+[ext_resource type="Script" path="res://addons/zylann.hterrain/hterrain.gd" id="1_terrain"]
+[ext_resource type="Resource" path="res://terrain/data.hterrain" id="2_data"]
+[ext_resource type="Resource" uid="uid://valley0texset" path="res://terrain/textures.tres" id="3_set"]
+[ext_resource type="Script" path="res://addons/zylann.hterrain/hterrain_detail_layer.gd" id="4_flowers"]
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_turf"]
+friction = 0.8
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_day"]
+sky_top_color = Color(0.25, 0.45, 0.8, 1)
+sky_horizon_color = Color(0.7, 0.78, 0.88, 1)
+
+[sub_resource type="Sky" id="Sky_day"]
+sky_material = SubResource("ProceduralSkyMaterial_day")
+
+[sub_resource type="Environment" id="Environment_day"]
+background_mode = 2
+sky = SubResource("Sky_day")
+tonemap_mode = 2
+
+[node name="Valley" type="Node3D"]
+
+[node name="Hill" type="Node3D" parent="."]
+script = ExtResource("1_terrain")
+lod_scale = 2.0
+centered = false
+_terrain_data = ExtResource("2_data")
+chunk_size = 16
+collision_enabled = true
+collision_layer = 1
+collision_mask = 1
+physics_material = SubResource("PhysicsMaterial_turf")
+shader_type = "Classic4Lite"
+custom_shader = null
+custom_globalmap_shader = null
+texture_set = ExtResource("3_set")
+render_layers = 1
+cast_shadow = 1
+shader_params/u_ground_uv_scale = 8.0
+shader_params/u_depth_blending = true
+shader_params/u_triplanar = null
+shader_params/u_tile_reduction = null
+shader_params/u_specular = 0.2
+
+[node name="Flowers" type="Node3D" parent="Hill"]
+script = ExtResource("4_flowers")
+layer_index = 0
+texture = null
+density = 4.0
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.642788, 0.766044, 0, -0.766044, 0.642788, 32, 20, 32)
+shadow_enabled = true
+
+[node name="Camera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.939693, 0.34202, 0, -0.34202, 0.939693, 32, 15, 62)
+current = true
+far = 300.0
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_day")
