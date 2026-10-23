@@ -444,6 +444,128 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("linear_damp", {.doc = "Slows movement in it, per second.", .min = 0})
         .describe("angular_damp_space_override", override_mode)
         .describe("angular_damp", {.doc = "Slows turning in it, per second.", .min = 0});
+
+    const FieldMeta node_a{.doc = "ID of the first body; null attaches node_b to the world."};
+    const FieldMeta node_b{.doc = "ID of the second body; null attaches node_a to the world."};
+    const FieldMeta exclude{.doc = "The two bodies don't collide with each other."};
+
+    registry.add<PinJoint3D>()
+        .set_doc("Pins two 3D bodies together at the entity's Transform3D, letting them turn "
+                 "every way.")
+        .describe("node_a", node_a)
+        .describe("node_b", node_b)
+        .describe("exclude_nodes_from_collision", exclude);
+
+    registry.add<HingeJoint3D>()
+        .set_doc("Lets two 3D bodies turn about the entity's z axis only, as a door's hinge.")
+        .describe("node_a", node_a)
+        .describe("node_b", node_b)
+        .describe("exclude_nodes_from_collision", exclude)
+        .describe("angular_limit_enabled", {.doc = "Limit how far node_b turns."})
+        .describe("angular_limit_upper",
+                  {.doc = "In radians.", .min = -std::numbers::pi, .max = std::numbers::pi})
+        .describe("angular_limit_lower",
+                  {.doc = "In radians.", .min = -std::numbers::pi, .max = std::numbers::pi})
+        .describe("motor_enabled", {.doc = "Turn node_b at motor_target_velocity."})
+        .describe("motor_target_velocity", {.doc = "In radians per second."})
+        .describe("motor_max_impulse", {.doc = "How hard the motor pushes each tick.", .min = 0});
+
+    registry.add<SliderJoint3D>()
+        .set_doc("Lets two 3D bodies slide along the entity's x axis only, between the limits.")
+        .describe("node_a", node_a)
+        .describe("node_b", node_b)
+        .describe("exclude_nodes_from_collision", exclude)
+        .describe("linear_limit_upper", {.doc = "How far it slides one way, in meters."})
+        .describe("linear_limit_lower", {.doc = "How far it slides the other way, in meters; "
+                                                "above upper it slides freely."});
+
+    registry.add<ConeTwistJoint3D>()
+        .set_doc("Lets two 3D bodies swing in a cone about the entity's x axis and twist about "
+                 "it, as a shoulder or a rope's links.")
+        .describe("node_a", node_a)
+        .describe("node_b", node_b)
+        .describe("exclude_nodes_from_collision", exclude)
+        .describe("swing_span", {.doc = "How far it swings from the x axis, in radians.",
+                                 .min = 0,
+                                 .max = std::numbers::pi})
+        .describe("twist_span", {.doc = "How far it twists about the x axis each way, in "
+                                        "radians.",
+                                 .min = 0,
+                                 .max = std::numbers::pi});
+
+    const FieldMeta linear_axis{
+        .doc = "Movement along this axis of the entity: {\"limit_enabled\" (true; false moves "
+               "freely), \"limit_upper\", \"limit_lower\" (meters, 0), \"motor_enabled\", "
+               "\"motor_target_velocity\" (meters per second), \"motor_force_limit\" (newtons, "
+               "0), \"spring_enabled\", \"spring_stiffness\", \"spring_damping\" (0.01), "
+               "\"spring_equilibrium_point\" (meters)}."};
+    const FieldMeta angular_axis{
+        .doc = "Turning about this axis of the entity: {\"limit_enabled\" (true; false turns "
+               "freely), \"limit_upper\", \"limit_lower\" (radians, 0), \"motor_enabled\", "
+               "\"motor_target_velocity\" (radians per second), \"motor_force_limit\" "
+               "(newton-meters, 300), \"spring_enabled\", \"spring_stiffness\", "
+               "\"spring_damping\" (0), \"spring_equilibrium_point\" (radians)}."};
+    registry.add<Generic6DOFJoint3D>()
+        .set_doc("Limits, drives or springs each way two 3D bodies move apart, along and about "
+                 "the entity's axes. By default every axis is locked.")
+        .describe("node_a", node_a)
+        .describe("node_b", node_b)
+        .describe("exclude_nodes_from_collision", exclude)
+        .describe("linear_x", linear_axis)
+        .describe("linear_y", linear_axis)
+        .describe("linear_z", linear_axis)
+        .describe("angular_x", angular_axis)
+        .describe("angular_y", angular_axis)
+        .describe("angular_z", angular_axis);
+
+    registry.add<VehicleBody3D>()
+        .set_doc("A car: the RigidBody3D on the same entity rolls on the VehicleWheel3D entities "
+                 "right under it, forward along its z axis. Changes go to the wheels.")
+        .describe("engine_force", {.doc = "Pushes forward through the wheels used as traction, "
+                                          "in newtons; negative reverses."})
+        .describe("brake", {.doc = "Slows every wheel."})
+        .describe("steering", {.doc = "Turns the wheels used as steering, in radians; positive "
+                                      "turns left."});
+
+    registry.add<VehicleWheel3D>()
+        .set_doc("A wheel of the VehicleBody3D right above it: its suspension is a ray down its "
+                 "y axis and its axle its x axis. The physics step rolls, steers and lifts it "
+                 "from where it is mounted and writes what it found.")
+        .describe("engine_force", {.doc = "Pushes forward, in newtons; set by the vehicle when "
+                                          "used as traction."})
+        .describe("brake", {.doc = "Slows the wheel; set by the vehicle."})
+        .describe("steering", {.doc = "In radians; set by the vehicle when used as steering."})
+        .describe("use_as_traction", {.doc = "Takes the vehicle's engine_force."})
+        .describe("use_as_steering", {.doc = "Takes the vehicle's steering."})
+        .describe("wheel_roll_influence", {.doc = "How much side forces roll the car: 0 none, "
+                                                  "1 as a real car.",
+                                           .min = 0})
+        .describe("wheel_radius", {.doc = "In meters.", .min = 0})
+        .describe("wheel_rest_length", {.doc = "How far the suspension reaches at rest, in "
+                                               "meters.",
+                                        .min = 0})
+        .describe("wheel_friction_slip", {.doc = "How much it grips before skidding; about 1 "
+                                                 "is realistic, higher grips more.",
+                                          .min = 0})
+        .describe("suspension_travel", {.doc = "How far the suspension compresses and extends "
+                                               "from rest, in meters.",
+                                        .min = 0})
+        .describe("suspension_stiffness", {.doc = "How hard the spring pushes back: about 50 "
+                                                  "for a race car, 200 for a rally car.",
+                                           .min = 0})
+        .describe("suspension_max_force",
+                  {.doc = "The most the spring pushes, in newtons.", .min = 0})
+        .describe("damping_compression",
+                  {.doc = "How much the spring resists compressing.", .min = 0})
+        .describe("damping_relaxation", {.doc = "How much the spring resists extending.", .min = 0})
+        .describe("in_contact", {.doc = "Touched the ground in the last step."})
+        .describe("contact_point", {.doc = "Where it touched, in the world."})
+        .describe("contact_normal", {.doc = "The ground's normal where it touched."})
+        .describe("contact_body", {.doc = "The body it stood on."})
+        .describe("suspension_length", {.doc = "How far the suspension reached, in meters."})
+        .describe("rotation", {.doc = "How far it has rolled, in radians."})
+        .describe("rpm", {.doc = "How fast it rolls, in turns per minute."})
+        .describe("skid_info", {.doc = "1 while it grips, toward 0 as it skids."});
 }
 
 } // namespace

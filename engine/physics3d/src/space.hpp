@@ -14,6 +14,7 @@
 #include <Jolt/Physics/Collision/ContactListener.h>
 #include <Jolt/Physics/Collision/ObjectLayer.h>
 #include <Jolt/Physics/Collision/Shape/Shape.h>
+#include <Jolt/Physics/Constraints/Constraint.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 // clang-format on
 
@@ -25,6 +26,7 @@
 #include <tuple>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 // The Jolt physics system behind a slash world, kept in step with its 3D physics components, as
@@ -305,14 +307,62 @@ struct MotionParameters {
     std::vector<entt::entity> exclude{}; // NOLINT(readability-redundant-member-init)
 };
 
+// The joint components, as a joint was made from one.
+using JointKey = std::variant<world::PinJoint3D, world::HingeJoint3D, world::SliderJoint3D,
+                              world::ConeTwistJoint3D, world::Generic6DOFJoint3D>;
+
+// A joint's Jolt constraint, as Godot's JoltJoint3D: made where its entity was then, it stays
+// there when a parent carries the entity away; moving the entity's own Transform3D or naming
+// other bodies makes it again.
+struct Joint {
+    JPH::Ref<JPH::Constraint> constraint;
+    JointKey key;
+    world::Transform3D own; // the entity's own Transform3D when it was made
+    entt::entity node_a = entt::null;
+    entt::entity node_b = entt::null;
+    // The bodies it joins as Godot's Joint3D passes them: body_a is always one, and body_b,
+    // when null, is the world.
+    entt::entity body_a = entt::null;
+    entt::entity body_b = entt::null;
+    JPH::BodyID id_a;
+    JPH::BodyID id_b;
+    // Godot's local_ref_a and local_ref_b: the joint's frame in each body's space, scale and
+    // all, or in the world's for no body.
+    world::Affine3D local_a;
+    world::Affine3D local_b;
+    // The bodies' centers of mass the constraint was built for; a new shape rebuilds it.
+    Vec3 com_a;
+    Vec3 com_b;
+};
+
+// What a wheel's Transform3D was made from, so the next step tells the physics' own writes from
+// edits, as Godot's VehicleWheel3D keeps where it entered the tree.
+struct Wheel {
+    world::Affine3D mount; // where it is mounted in its vehicle's unscaled space, orthonormal
+    Vec3 mount_scale{1.0F, 1.0F, 1.0F};
+    world::Transform3D written;  // the Transform3D the last step gave it
+    float delta_rotation = 0.0F; // how far it rolled in the last step, as Godot's m_deltaRotation
+};
+
+// A vehicle's engine force, brake and steering when they last went to its wheels.
+struct VehicleInputs {
+    float engine_force = 0.0F;
+    float brake = 0.0F;
+    float steering = 0.0F;
+};
+
 class Space;
 
-// Contact callbacks during a step, as Godot's JoltContactListener3D: constant velocities of
-// static and animatable bodies carry what touches them, and rigid bodies that monitor contacts
-// note what touches them.
+// Contact callbacks during a step, as Godot's JoltContactListener3D: bodies a joint keeps apart
+// don't touch, constant velocities of static and animatable bodies carry what touches them, and
+// rigid bodies that monitor contacts note what touches them.
 class ContactListener final : public JPH::ContactListener {
 public:
     explicit ContactListener(Space& space) : space_(&space) {}
+
+    JPH::ValidateResult OnContactValidate(const JPH::Body& a, const JPH::Body& b,
+                                          JPH::RVec3Arg base_offset,
+                                          const JPH::CollideShapeResult& result) override;
 
     void OnContactAdded(const JPH::Body& a, const JPH::Body& b,
                         const JPH::ContactManifold& manifold,
@@ -377,6 +427,13 @@ public:
     // JoltBody3D::get_velocity_at_position; nothing for a body Jolt no longer has.
     [[nodiscard]] std::optional<Vec3> velocity_at(const Body& body, Vec3 position) const;
 
+    // The first body or area a ray hits, as Godot's intersect_ray without hitting from inside.
+    [[nodiscard]] std::optional<RayHit> cast_ray(Vec3 from, Vec3 to, const QueryFilter& filter,
+                                                 bool hit_back_faces) const;
+
+    // Whether a joint keeps two bodies from colliding, as Godot's collision exceptions.
+    [[nodiscard]] bool excepted(entt::entity a, entt::entity b) const;
+
     // Contact callbacks call these, on the stepping thread.
     void note_contact(Body& a, Body& b);
 
@@ -398,6 +455,20 @@ private:
     void move_characters(world::World& world, const world::Tree3D& tree, float seconds);
     void find_overlaps(const world::World& world);
     void emit_events(world::World& world);
+    // Makes the Jolt constraints match the joint components (joints.cpp).
+    void sync_joints(world::World& world, const world::Tree3D& tree);
+    // Takes the constraints off a body that is going; the next sync makes them again.
+    void drop_joints(const JPH::BodyID& id);
+    void remove_joint(Joint& joint);
+    // Sets what joints take per tick, such as a hinge motor's torque from its impulse.
+    void pre_step_joints(float seconds);
+    // Notes where new or moved wheels are mounted and gives vehicles' wheels the inputs that
+    // changed (vehicle.cpp).
+    void pre_step_vehicles(world::World& world, const world::Tree3D& tree, float seconds);
+    // Godot's VehicleBody3D::_body_state_changed for each awake vehicle after the step: casts
+    // the wheels' rays, pushes the body with their suspension and friction, and rolls, steers
+    // and lifts the wheels.
+    void step_vehicles(world::World& world, const world::Tree3D& tree, float seconds);
     // The areas whose space overrides reach a body: those it is in that override something,
     // highest priority first, then in the order the areas were made.
     [[nodiscard]] std::vector<const Body*> override_areas(const world::World& world,
@@ -410,6 +481,11 @@ private:
     std::unique_ptr<JPH::JobSystem> jobs_;
     std::unique_ptr<JPH::PhysicsSystem> system_;
     EntityMap<std::unique_ptr<Body>> bodies_;
+    EntityMap<Joint> joints_;
+    // Pairs of bodies joints keep apart, the lower entity first.
+    std::set<std::pair<entt::entity, entt::entity>> exceptions_;
+    EntityMap<Wheel> wheels_;
+    EntityMap<VehicleInputs> vehicles_;
     std::vector<Impulse> impulses_;
     int added_ = 0; // bodies added since the broad phase was last optimized
     bool warned_full_ = false;
