@@ -47,7 +47,7 @@ struct PlayerState {
     bool paused = false;
     bool seen = false; // seen this tick
     std::string bus;   // where a new voice starts, at volume
-    Frame volume{};
+    Volumes volume{};
     std::vector<BusVolume> mix; // where its voices mix now
     float pitch = 1.0F;         // its voices' pitch, after doppler
     float highshelf = 0.0F;     // a 3D player's filter gain, linear; 0 for none
@@ -172,9 +172,10 @@ struct State {
     std::vector<Request> requests;
     std::vector<Snapshot::Recording> recordings;
     Sink sink;
+    SpeakerMode device_speakers = SpeakerMode::Stereo; // the sink's
     double carry = 0.0;
     std::vector<Frame> out;
-    std::vector<History> history; // per bus
+    std::vector<std::vector<History>> history; // per bus, per speaker pair
 
     // Microphone input: the device, tried once each time input turns on, and the stream agents
     // play in its place.
@@ -197,16 +198,26 @@ struct State {
         device_started = false;
     }
 
+    // The speakers mixed for: the project's, else the output device's.
+    [[nodiscard]] SpeakerMode speakers() const {
+        return settings.speaker_mode.value_or(device_speakers);
+    }
+
     // The buses' recent sound kept for capture, as items, and the buffers mixing uses. Sounds
     // are assets, counted with them.
     [[nodiscard]] world::MemoryPart memory() const {
         world::MemoryPart part{"audio", 0, {}, {}};
         for (std::size_t i = 0; i < history.size(); ++i) {
-            const std::uint64_t bytes = history[i].frames.capacity() * sizeof(Frame);
+            std::uint64_t bytes = 0;
+            std::size_t frames = 0;
+            for (const History& channel : history[i]) {
+                bytes += channel.frames.capacity() * sizeof(Frame);
+                frames += channel.frames.size();
+            }
             const std::string name = server != nullptr && i < server->layout().buses.size()
                                          ? server->layout().buses[i].name
                                          : std::to_string(i);
-            part.items.push_back({"history " + name, bytes, history[i].frames.size()});
+            part.items.push_back({"history " + name, bytes, frames});
             part.bytes += bytes;
         }
         part.bytes += (out.capacity() + input_frames.capacity()) * sizeof(Frame);
@@ -217,21 +228,25 @@ struct State {
     }
 
     void reset_history() {
-        history.assign(server->layout().buses.size(), History{});
+        history.assign(server->layout().buses.size(),
+                       std::vector<History>(static_cast<std::size_t>(server->channel_count())));
         const auto frames = static_cast<std::size_t>(settings.history_seconds * server->mix_rate());
-        for (History& bus : history) {
-            bus.frames.resize(frames);
+        for (std::vector<History>& bus : history) {
+            for (History& channel : bus) {
+                channel.frames.resize(frames);
+            }
         }
     }
 
     void apply_settings() {
         if (!server || server->mix_rate() != settings.mix_rate) {
-            server = std::make_unique<Server>(std::max(settings.mix_rate, 8000));
+            server = std::make_unique<Server>(std::max(settings.mix_rate, 8000), speakers());
             for (auto& [key, player] : players) {
                 player.voices.clear();
             }
             carry = 0.0;
         }
+        server->set_speaker_mode(speakers());
         layout = {};
         layout_version = 0;
         layout_error.clear();
@@ -241,9 +256,13 @@ struct State {
         reset_history();
         server->set_bus_listener(
             settings.history_seconds > 0
-                ? Server::BusListener([this](int bus, std::span<const Frame> frames) {
-                      if (bus >= 0 && static_cast<std::size_t>(bus) < history.size()) {
-                          history[static_cast<std::size_t>(bus)].push(frames, Server::kMixStep);
+                ? Server::BusListener([this](int bus, int channel, std::span<const Frame> frames) {
+                      if (bus >= 0 && static_cast<std::size_t>(bus) < history.size() &&
+                          channel >= 0 &&
+                          static_cast<std::size_t>(channel) <
+                              history[static_cast<std::size_t>(bus)].size()) {
+                          history[static_cast<std::size_t>(bus)][static_cast<std::size_t>(channel)]
+                              .push(frames, Server::kMixStep);
                       }
                   })
                 : Server::BusListener{});
@@ -566,30 +585,118 @@ Frame output_vol_stereo(Vec3 source_dir, float panning_strength) {
             static_cast<float>(std::sqrt((fcosx + 1.0) / 2.0))};
 }
 
-// Godot's AudioStreamPlayer3D::_calc_reverb_vol in stereo: the send to an area's reverb bus,
-// from the sound's direction or, with uniformity, from the area's nearest point around the
-// listener.
-Frame reverb_vol(const world::AudioStreamPlayer3D& player, const world::Area3D& area,
-                 Vec3 listener_area_pos, Frame direct_path_vol) {
+// Godot's Spcap (Speaker-Placement Correction Amplitude Panning, after Sadek and Kyriakakis,
+// 2004) over the main speakers of 3.1, 5.1 and 7.1, and _calc_output_vol, which lays them out by
+// speaker pair: front, center with the LFE at full volume, rear, side.
+Volumes output_vol(Vec3 source_dir, float tightness, SpeakerMode speakers) {
+    // Godot's speaker_directions: front left and right, center, rear left and right, side left
+    // and right.
+    const std::array<Vec3, 7> directions{unit({-1.0F, 0.0F, -1.0F}), unit({1.0F, 0.0F, -1.0F}),
+                                         unit({0.0F, 0.0F, -1.0F}),  unit({-1.0F, 0.0F, 1.0F}),
+                                         unit({1.0F, 0.0F, 1.0F}),   unit({-1.0F, 0.0F, 0.0F}),
+                                         unit({1.0F, 0.0F, 0.0F})};
+    std::size_t speaker_count = 2; // only the main speakers, no LFE
+    if (speakers == SpeakerMode::Surround31) {
+        speaker_count = 3;
+    } else if (speakers == SpeakerMode::Surround51) {
+        speaker_count = 5;
+    } else if (speakers == SpeakerMode::Surround71) {
+        speaker_count = 7;
+    }
+    // Godot keeps these as real_t and works the sums in double, as here.
+    std::array<float, 7> effective_number_of_speakers{};
+    for (std::size_t i = 0; i < speaker_count; ++i) {
+        for (std::size_t j = 0; j < speaker_count; ++j) {
+            effective_number_of_speakers.at(i) =
+                static_cast<float>(effective_number_of_speakers.at(i) +
+                                   (0.5 * (1.0 + dot3(directions.at(i), directions.at(j)))));
+        }
+    }
+    std::array<float, 7> squared_gains{};
+    float sum_squared_gains = 0.0F;
+    for (std::size_t i = 0; i < speaker_count; ++i) {
+        const auto initial_gain =
+            static_cast<float>(0.5 * std::pow(1.0 + dot3(directions.at(i), source_dir), tightness) /
+                               effective_number_of_speakers.at(i));
+        squared_gains.at(i) = initial_gain * initial_gain;
+        sum_squared_gains += squared_gains.at(i);
+    }
+    std::array<float, 7> volumes{};
+    for (std::size_t i = 0; i < speaker_count; ++i) {
+        volumes.at(i) = std::sqrt(squared_gains.at(i) / sum_squared_gains);
+    }
+    Volumes output{};
+    output[0] = {volumes[0], volumes[1]}; // front left and right
+    if (speaker_count >= 3) {
+        output[1] = {volumes[2], 1.0F}; // center, and the LFE always at full power
+    }
+    if (speaker_count >= 5) {
+        output[2] = {volumes[3], volumes[4]}; // rear left and right
+    }
+    if (speaker_count >= 7) {
+        output[3] = {volumes[5], volumes[6]}; // side left and right
+    }
+    return output;
+}
+
+Volumes scaled(const Volumes& volumes, float s) {
+    Volumes out{};
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        out.at(i) = scaled(volumes.at(i), s);
+    }
+    return out;
+}
+
+// Godot's AudioStreamPlayer3D::_calc_reverb_vol: the send to an area's reverb bus, from the
+// sound's direction or, with uniformity, from the area's nearest point around the listener,
+// spread over the speaker pairs.
+Volumes reverb_vol(const world::AudioStreamPlayer3D& player, const world::Area3D& area,
+                   Vec3 listener_area_pos, const Volumes& direct_path_vol, int channel_count) {
     const float uniformity = area.reverb_bus_uniformity;
     const float area_send = area.reverb_bus_amount;
     if (uniformity <= 0.0F) {
         return scaled(direct_path_vol, area_send);
     }
+    const auto channels = static_cast<std::size_t>(std::clamp(channel_count, 1, kMaxChannels));
     const float distance = length3(listener_area_pos);
     const float attenuation = db_to_linear(attenuation_db(player, distance));
-    // The share of the sound from each speaker if all were driven alike: half each in stereo.
-    const Frame center_frame{0.5F, 0.5F};
-    Frame reverb = center_frame;
+    // The share of the sound from each speaker if all were driven alike. Godot's table stops at
+    // three pairs, reading past its end for 7.1; the fourth follows it, 1 / (2 * pairs).
+    constexpr std::array<float, kMaxChannels> kCenterVal{0.5F, 0.25F, 0.16666F, 0.125F};
+    const Frame center_frame{kCenterVal.at(channels - 1), kCenterVal.at(channels - 1)};
+    Volumes reverb{};
     if (attenuation < 1.0F) {
         // Pan the uniform sound.
         Vec3 rev_pos = listener_area_pos;
         rev_pos.y = 0;
         rev_pos = unit(rev_pos);
         const auto c = static_cast<float>((rev_pos.x * 0.5) + 0.5);
-        reverb = lerp({1.0F - c, c}, center_frame, attenuation);
+        reverb[0] = {1.0F - c, c}; // the front pair
+        if (channels >= 3) {
+            // As Godot's, for the center and rear pairs.
+            const auto xl =
+                static_cast<float>((dot3(unit({-1.0F, 0.0F, -1.0F}), rev_pos) * 0.5) + 0.5);
+            const auto xr =
+                static_cast<float>((dot3(unit({1.0F, 0.0F, -1.0F}), rev_pos) * 0.5) + 0.5);
+            reverb[1] = {xl, xr};
+            reverb[2] = {1.0F - xr, 1.0F - xl};
+        }
+        if (channels >= 4) {
+            reverb[3] = {1.0F - c, c}; // the side pair, as Godot's
+        }
+        for (std::size_t i = 0; i < channels; ++i) {
+            reverb.at(i) = lerp(reverb.at(i), center_frame, attenuation);
+        }
+    } else {
+        for (std::size_t i = 0; i < channels; ++i) {
+            reverb.at(i) = center_frame;
+        }
     }
-    return scaled(lerp(direct_path_vol, scaled(reverb, attenuation), uniformity), area_send);
+    for (std::size_t i = 0; i < channels; ++i) {
+        reverb.at(i) = scaled(
+            lerp(direct_path_vol.at(i), scaled(reverb.at(i), attenuation), uniformity), area_send);
+    }
+    return reverb;
 }
 
 // Godot's AudioStreamPlayer3D::_get_overriding_area: the first area by ID under the player whose
@@ -617,11 +724,22 @@ float pitch_of(float pitch_scale) {
 }
 
 // Where a player's voices start and mix this tick, at what volume and pitch.
-void place(State& /*state*/, world::World& /*world*/, const Hearing& /*hearing*/,
+void place(State& state, world::World& /*world*/, const Hearing& /*hearing*/,
            const world::AudioStreamPlayer& player, entt::entity /*entity*/, PlayerState& out) {
+    // Godot's AudioStreamPlayer::_get_volume_vector: the mix target picks the speakers in
+    // surround. Godot gives the LFE 1.0 whatever volume_db is (marked to check there), so a
+    // muted player still played on it; here it follows the volume, as a 3D player's does.
     const float volume = db_to_linear(player.volume_db);
     out.bus = player.bus;
-    out.volume = {volume, volume};
+    out.volume = {};
+    const Frame both{volume, volume};
+    if (state.server->speaker_mode() == SpeakerMode::Stereo || player.mix_target == "stereo") {
+        out.volume[0] = both;
+    } else if (player.mix_target == "surround") {
+        out.volume = {both, both, both, both};
+    } else if (player.mix_target == "center") {
+        out.volume[1] = both; // the center and the LFE
+    }
     out.mix.assign(1, {out.bus, out.volume});
     out.pitch = pitch_of(player.pitch_scale);
 }
@@ -629,8 +747,9 @@ void place(State& /*state*/, world::World& /*world*/, const Hearing& /*hearing*/
 void place(State& state, world::World& world, const Hearing& hearing,
            const world::AudioStreamPlayer2D& player, entt::entity entity, PlayerState& out) {
     const Vec2 position = hearing.tree2d->global(entity).position;
-    out.volume = volume_2d(player, position, hearing.listener2d, hearing.screen,
-                           state.settings.panning_strength_2d);
+    // Only the front pair, as Godot's.
+    out.volume = {volume_2d(player, position, hearing.listener2d, hearing.screen,
+                            state.settings.panning_strength_2d)};
     // Godot's AudioStreamPlayer2D::_get_actual_bus: the first area by ID under the player whose
     // layer is in its area_mask and which overrides the bus, else its own bus. Godot takes the
     // areas in the physics server's order; ID order is the same on every run.
@@ -654,7 +773,7 @@ void place(State& state, world::World& world, const Hearing& hearing,
     out.pitch = pitch_of(player.pitch_scale);
 }
 
-// Godot's AudioStreamPlayer3D::_update_panning, for one listener, in stereo.
+// Godot's AudioStreamPlayer3D::_update_panning, for one listener.
 void place(State& state, world::World& world, const Hearing& hearing,
            const world::AudioStreamPlayer3D& player, entt::entity entity, PlayerState& out) {
     const float pitch_scale = pitch_of(player.pitch_scale);
@@ -721,12 +840,21 @@ void place(State& state, world::World& world, const Hearing& hearing,
     out.highshelf = db_to_linear(db_att);
     out.cutoff_hz = player.attenuation_filter_cutoff_hz;
 
-    const Frame output = scaled(
-        output_vol_stereo(local_pos, state.settings.panning_strength_3d * player.panning_strength),
-        multiplier);
+    Volumes output{};
+    const SpeakerMode speakers = state.server->speaker_mode();
+    if (speakers == SpeakerMode::Stereo) {
+        output[0] = output_vol_stereo(local_pos,
+                                      state.settings.panning_strength_3d * player.panning_strength);
+    } else {
+        // A constant factor lets the project's 2D and 3D panning strengths both default to 1.
+        float tightness = state.settings.panning_strength_3d * 2.0F;
+        tightness *= player.panning_strength;
+        output = output_vol(unit(local_pos), tightness, speakers);
+    }
+    output = scaled(output, multiplier);
     out.volume = output;
     // Godot's bus map: a bus named twice keeps the last volume, in the first one's place.
-    const auto set_bus = [&](const std::string& bus, Frame volume) {
+    const auto set_bus = [&](const std::string& bus, const Volumes& volume) {
         const auto found = std::ranges::find(out.mix, bus, &BusVolume::bus);
         if (found != out.mix.end()) {
             found->volume = volume;
@@ -741,7 +869,8 @@ void place(State& state, world::World& world, const Hearing& hearing,
         }
         if (area->reverb_bus_enabled) {
             set_bus(known_bus(*state.server, area->reverb_bus_name),
-                    reverb_vol(player, *area, listener_area_pos, output));
+                    reverb_vol(player, *area, listener_area_pos, output,
+                               state.server->channel_count()));
         }
     } else {
         set_bus(player.bus, output);
@@ -1077,10 +1206,10 @@ void run(State& state, world::World& world, double tick_seconds) {
     const auto frames = static_cast<std::size_t>(std::floor(exact));
     state.carry = exact - static_cast<double>(frames);
     feed_input(state, frames);
-    state.out.resize(frames);
+    state.out.resize(frames * static_cast<std::size_t>(state.server->channel_count()));
     state.server->mix(state.out);
     if (state.sink && frames > 0) {
-        state.sink(state.out);
+        state.sink(state.out, state.server->speaker_mode());
     }
     for (auto& [key, player] : state.players) {
         if (player.kind == kPlayer) {
@@ -1210,6 +1339,12 @@ json::Value settings_schema() {
         number_setting("How far AudioStreamPlayer3D sounds pan left and right, as Godot's "
                        "audio/general/3d_panning_strength.",
                        0, 4, Settings{}.panning_strength_3d);
+    properties["speaker_mode"]["enum"] =
+        json::Array{"auto", "stereo", "surround_31", "surround_51", "surround_71"};
+    properties["speaker_mode"]["default"] = "auto";
+    properties["speaker_mode"]["description"] =
+        "The speakers to mix for, as Godot's AudioServer speaker modes: auto is the output "
+        "device's (stereo headless), the others fix them, so headless runs can test surround.";
     properties["enable_input"]["type"] = "boolean";
     properties["enable_input"]["default"] = false;
     properties["enable_input"]["description"] =
@@ -1262,6 +1397,9 @@ Settings parse_settings(const json::Value& settings) {
     }
     if (const json::Value* panning = settings.find("panning_strength_3d"); panning != nullptr) {
         out.panning_strength_3d = static_cast<float>(panning->as_double());
+    }
+    if (const json::Value* speakers = settings.find("speaker_mode"); speakers != nullptr) {
+        out.speaker_mode = parse_speaker_mode(speakers->as_string());
     }
     if (const json::Value* input = settings.find("enable_input"); input != nullptr) {
         out.enable_input = input->as_bool();
@@ -1347,9 +1485,14 @@ const Server* server(const world::World& world) {
     return state != nullptr ? state->server.get() : nullptr;
 }
 
-void set_sink(world::World& world, Sink sink) {
+void set_sink(world::World& world, Sink sink, SpeakerMode speakers) {
     if (State* state = state_of(world); state != nullptr) {
         state->sink = std::move(sink);
+        state->device_speakers = speakers;
+        if (state->server->speaker_mode() != state->speakers()) {
+            state->server->set_speaker_mode(state->speakers());
+            state->reset_history();
+        }
     }
 }
 
@@ -1670,29 +1813,56 @@ Result<Capture> capture(const world::World& world, std::string_view bus, double 
         }
         return make_error(ErrorCode::NotFound, std::move(message));
     }
-    const History& history = state->history[static_cast<std::size_t>(index)];
+    const std::vector<History>& history = state->history[static_cast<std::size_t>(index)];
     const auto wanted =
         static_cast<std::size_t>(std::llround(std::max(seconds, 0.0) * state->server->mix_rate()));
-    std::vector<Frame> kept = history.last(wanted);
+    // Each speaker pair's frames, interleaved as a mix in surround writes them.
+    const std::size_t channels = std::max<std::size_t>(history.size(), 1);
+    std::vector<std::vector<Frame>> pairs;
+    pairs.reserve(history.size());
+    for (const History& channel : history) {
+        pairs.push_back(channel.last(wanted));
+    }
+    const std::size_t count = pairs.empty() ? 0 : pairs.front().size();
+    std::vector<Frame> kept(count * channels);
+    for (std::size_t k = 0; k < pairs.size(); ++k) {
+        for (std::size_t i = 0; i < count && i < pairs[k].size(); ++i) {
+            kept[(i * channels) + k] = pairs[k][i];
+        }
+    }
 
     Capture out;
-    out.seconds = static_cast<double>(kept.size()) / state->server->mix_rate();
+    out.channels = static_cast<int>(channels);
+    out.seconds = static_cast<double>(count) / state->server->mix_rate();
     float peak = 0.0F;
     double sum = 0.0;
-    for (const Frame& frame : kept) {
+    std::vector<double> speaker_sums(2 * channels);
+    for (std::size_t i = 0; i < kept.size(); ++i) {
+        const Frame& frame = kept[i];
         peak = std::max({peak, std::abs(frame.left), std::abs(frame.right)});
-        sum += static_cast<double>(frame.left) * frame.left +
-               static_cast<double>(frame.right) * frame.right;
+        const double left = static_cast<double>(frame.left) * frame.left;
+        const double right = static_cast<double>(frame.right) * frame.right;
+        sum += left + right;
+        speaker_sums[2 * (i % channels)] += left;
+        speaker_sums[(2 * (i % channels)) + 1] += right;
     }
+    const auto rms_db = [](double squares, std::size_t samples) {
+        return samples == 0 ? -200.0F
+                            : static_cast<float>(level_db(static_cast<float>(
+                                  std::sqrt(squares / static_cast<double>(samples)))));
+    };
     out.peak_db = static_cast<float>(level_db(peak));
-    out.rms_db = kept.empty() ? -200.0F
-                              : static_cast<float>(level_db(static_cast<float>(
-                                    std::sqrt(sum / (2.0 * static_cast<double>(kept.size()))))));
-    const auto count =
-        std::min<std::size_t>(static_cast<std::size_t>(std::max(slices, 0)), kept.size());
-    for (std::size_t s = 0; s < count; ++s) {
-        const std::size_t begin = s * kept.size() / count;
-        const std::size_t end = (s + 1) * kept.size() / count;
+    out.rms_db = rms_db(sum, 2 * kept.size());
+    if (channels > 1) {
+        for (const double squares : speaker_sums) {
+            out.speaker_rms_db.push_back(rms_db(squares, count));
+        }
+    }
+    const auto slices_count =
+        std::min<std::size_t>(static_cast<std::size_t>(std::max(slices, 0)), count);
+    for (std::size_t s = 0; s < slices_count; ++s) {
+        const std::size_t begin = s * count / slices_count * channels;
+        const std::size_t end = (s + 1) * count / slices_count * channels;
         float slice_peak = 0.0F;
         for (std::size_t i = begin; i < end; ++i) {
             slice_peak = std::max({slice_peak, std::abs(kept[i].left), std::abs(kept[i].right)});

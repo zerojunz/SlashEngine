@@ -248,22 +248,39 @@ Result<Sound> decode_sound(std::string_view data, std::string_view path) {
     return sound;
 }
 
-std::string encode_wav(std::span<const Frame> frames, int mix_rate, int bits) {
+std::string encode_wav(std::span<const Frame> frames, int mix_rate, int bits, int pairs) {
     const bool eight = bits == 8;
-    const std::uint32_t frame_size = eight ? 2 : 4;
-    const auto data_size = static_cast<std::uint32_t>(frames.size() * frame_size);
+    const auto channels = static_cast<std::uint16_t>(2 * std::max(pairs, 1));
+    const auto sample_size = static_cast<std::uint16_t>(eight ? 1 : 2);
+    const auto frame_size = static_cast<std::uint32_t>(channels * sample_size);
+    const auto data_size = static_cast<std::uint32_t>(frames.size() * 2 * sample_size);
+    // More than two channels name their speakers, as WAVE_FORMAT_EXTENSIBLE does: front left
+    // and right, center, LFE, back left and right (0x3F), then side left and right (0x600).
+    const bool extensible = channels > 2;
+    constexpr std::array<std::uint32_t, 4> kChannelMasks{0x3, 0xF, 0x3F, 0x63F};
+    const std::uint32_t fmt_size = extensible ? 40 : 16;
     std::string out;
-    out.reserve(44 + data_size);
+    out.reserve(28 + fmt_size + data_size);
     out += "RIFF";
-    put_u32(out, 36 + data_size);
+    put_u32(out, 20 + fmt_size + data_size);
     out += "WAVEfmt ";
-    put_u32(out, 16);
-    put_u16(out, 1); // PCM
-    put_u16(out, 2); // stereo
+    put_u32(out, fmt_size);
+    put_u16(out, extensible ? 0xFFFE : 1); // WAVE_FORMAT_EXTENSIBLE or PCM
+    put_u16(out, channels);
     put_u32(out, static_cast<std::uint32_t>(mix_rate));
     put_u32(out, static_cast<std::uint32_t>(mix_rate) * frame_size);
     put_u16(out, static_cast<std::uint16_t>(frame_size));
     put_u16(out, eight ? 8 : 16);
+    if (extensible) {
+        put_u16(out, 22);             // the extension's size
+        put_u16(out, eight ? 8 : 16); // valid bits per sample
+        put_u32(out, kChannelMasks.at(static_cast<std::size_t>(channels / 2) - 1));
+        // KSDATAFORMAT_SUBTYPE_PCM: 00000001-0000-0010-8000-00aa00389b71.
+        put_u32(out, 1);
+        put_u16(out, 0);
+        put_u16(out, 0x10);
+        out += std::string_view("\x80\x00\x00\xaa\x00\x38\x9b\x71", 8);
+    }
     out += "data";
     put_u32(out, data_size);
     const auto put = [&](float value) {
