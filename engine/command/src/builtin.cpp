@@ -3190,8 +3190,13 @@ json::Value bus_json(const world::World& world, audio::Server& server, int index
     json::Value item;
     item["name"] = bus.name;
     item["volume_db"] = decibels(bus.volume_db);
-    const audio::Frame peak = server.bus_peak_db(index);
-    item["peak_db"] = level(std::max(peak.left, peak.right));
+    // The loudest of its speakers.
+    float peak_db = -200.0F;
+    for (int channel = 0; channel < server.channel_count(); ++channel) {
+        const audio::Frame peak = server.bus_peak_db(index, channel);
+        peak_db = std::max({peak_db, peak.left, peak.right});
+    }
+    item["peak_db"] = level(peak_db);
     if (bus.solo) {
         item["solo"] = true;
     }
@@ -3255,10 +3260,32 @@ Result<int> find_bus(const audio::Server& server, std::string_view name) {
     return make_error(ErrorCode::NotFound, std::move(message));
 }
 
+// A player's gains on the speakers past the front pair, in surround: {"center", "lfe", "rear",
+// "side"}, those the speaker mode has; null in stereo.
+json::Value speakers_json(const audio::Volumes& volume, int channels) {
+    if (channels < 2) {
+        return {};
+    }
+    json::Value out;
+    out["center"] = rounded(volume[1].left);
+    out["lfe"] = rounded(volume[1].right);
+    if (channels >= 3) {
+        out["rear"] = rounded(json::Array{volume[2].left, volume[2].right});
+    }
+    if (channels >= 4) {
+        out["side"] = rounded(json::Array{volume[3].left, volume[3].right});
+    }
+    return out;
+}
+
 Reply audio_state(Session& session, const json::Value& params) {
     audio::Server& server = audio_server(session);
     json::Value result;
     result["mix_rate"] = server.mix_rate();
+    const int channels = server.channel_count();
+    if (channels > 1) {
+        result["speaker_mode"] = audio::speaker_mode_name(server.speaker_mode());
+    }
     json::Array buses;
     for (std::size_t i = 0; i < server.layout().buses.size(); ++i) {
         buses.push_back(bus_json(session.world(), server, static_cast<int>(i)));
@@ -3301,13 +3328,20 @@ Reply audio_state(Session& session, const json::Value& params) {
             item["polyphonic"]["playing"] = info.polyphonic->playing;
             item["polyphonic"]["polyphony"] = info.polyphonic->polyphony;
         }
-        item["volume"] = rounded(json::Array{info.volume.left, info.volume.right});
+        item["volume"] = rounded(json::Array{info.volume[0].left, info.volume[0].right});
+        if (json::Value speakers = speakers_json(info.volume, channels); !speakers.is_null()) {
+            item["speakers"] = std::move(speakers);
+        }
         if (!info.sends.empty()) {
             json::Array sends;
             for (const audio::BusVolume& send : info.sends) {
                 json::Value entry;
                 entry["bus"] = send.bus;
-                entry["volume"] = rounded(json::Array{send.volume.left, send.volume.right});
+                entry["volume"] = rounded(json::Array{send.volume[0].left, send.volume[0].right});
+                if (json::Value speakers = speakers_json(send.volume, channels);
+                    !speakers.is_null()) {
+                    entry["speakers"] = std::move(speakers);
+                }
                 sends.push_back(std::move(entry));
             }
             item["sends"] = std::move(sends);
@@ -3369,14 +3403,24 @@ Reply audio_capture(Session& session, const json::Value& params) {
         slices.push_back(level(peak));
     }
     result["slices"] = std::move(slices);
+    if (!capture.speaker_rms_db.empty()) {
+        // Each speaker's RMS level, to check where surround sound comes from.
+        constexpr std::array<std::string_view, 8> kSpeakers{
+            "front_left", "front_right", "center",    "lfe",
+            "rear_left",  "rear_right",  "side_left", "side_right"};
+        json::Value& speakers = result["speakers"];
+        for (std::size_t i = 0; i < capture.speaker_rms_db.size() && i < kSpeakers.size(); ++i) {
+            speakers[std::string(kSpeakers.at(i))] = level(capture.speaker_rms_db[i]);
+        }
+    }
     if (!path.empty()) {
         auto file = session.resolve_path(path);
         if (!file) {
             return param_error(file.error(), "/path");
         }
         if (!session.dry_running()) {
-            const std::string wav =
-                audio::encode_wav(capture.frames, audio_server(session).mix_rate());
+            const std::string wav = audio::encode_wav(
+                capture.frames, audio_server(session).mix_rate(), 16, capture.channels);
             if (auto written = session.write_file(file.value(), wav); !written) {
                 return Reply::failure(written.error());
             }
@@ -3538,7 +3582,10 @@ Reply audio_analyze(Session& session, const json::Value& params) {
         if (!captured) {
             return param_error(captured.error(), "/bus");
         }
-        frames = std::move(captured).value().frames;
+        // Surround is measured folded to stereo.
+        frames = captured.value().channels > 1
+                     ? audio::downmix_stereo(captured.value().frames, captured.value().channels)
+                     : std::move(captured).value().frames;
         mix_rate = audio_server(session).mix_rate();
     }
     return Reply::success(analysis_json(audio::analyze(frames, mix_rate, loop)));
@@ -6518,11 +6565,13 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "audio.state",
         .description = "Returns the buses (volume, peak dB over the last mix step, null if silent, "
-                       "flags, send, effects) and each player with an ID: stream, bus, voices, "
-                       "position and length in seconds, volume after 2D distance and panning, "
-                       "and a generator's free frames and skips or a polyphonic player's "
-                       "streams playing. With audio.enable_input, the microphone input: active, "
-                       "source and last tick's peak dB.",
+                       "flags, send, effects), the speaker mode if not stereo, and each player "
+                       "with an ID: stream, bus, voices, position and length in seconds, volume "
+                       "after 2D or 3D distance and panning (speakers: center, lfe, rear, side in "
+                       "surround), a 3D player's pitch, filter and sends, and a generator's free "
+                       "frames and skips or a polyphonic player's streams playing. With "
+                       "audio.enable_input, the microphone input: active, source and last tick's "
+                       "peak dB.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({{"ids", names_property("Only these players. Default: all.")}}),
@@ -6534,8 +6583,9 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "audio.capture",
         .description = "Measures what a bus played over the last seconds (up to 10): peak and RMS "
-                       "dB and the peak of each slice of that time, null if silent. Hear it with "
-                       "\"path\", a .wav file to write (needs the filesystem capability).",
+                       "dB, the peak of each slice of that time and, in surround, each speaker's "
+                       "RMS dB; null if silent. Hear it with \"path\", a .wav file to write "
+                       "(needs the filesystem capability).",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params =

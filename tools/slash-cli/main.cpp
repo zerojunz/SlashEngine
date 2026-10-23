@@ -632,7 +632,7 @@ int cmd_run(const std::vector<std::string>& args) {
         auto opened = slash::audio::SdlOutput::open(sound.mix_rate, sound.output_latency);
         if (opened) {
             audio_output = std::move(opened).value();
-            slash::audio::set_sink(game, audio_output->sink());
+            slash::audio::set_sink(game, audio_output->sink(), audio_output->speaker_mode());
         } else {
             slash::log::warn("no sound", {{"error", opened.error().message}});
         }
