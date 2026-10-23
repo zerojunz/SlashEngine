@@ -224,8 +224,11 @@ private:
     render::MaterialTexture model_texture(const std::string& path, const SourceModel& source,
                                           int image, const world::StandardMaterial3D& standard,
                                           entt::entity entity);
+    // place is where the entity is drawn, and global where others are, for its skeleton
+    // modifiers' targets.
     void add_model(const world::World& world, entt::entity entity,
                    const world::MeshInstance3D& instance, const world::Affine3D& place,
+                   const std::function<world::Affine3D(entt::entity)>& global,
                    render::ShadowCasting casting, float interpolation);
     // A skinned surface's vertices moved by joints, in its entity's mesh on the device.
     Result<render::MeshId> skinned_mesh(const std::string& key, const ModelSurface& surface,

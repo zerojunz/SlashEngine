@@ -1,0 +1,14 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"skeleton.get","params":{"id":"reacher","bones":["Shoulder","Elbow","Hand"]}}
+{"jsonrpc":"2.0","id":3,"method":"skeleton.get","params":{"id":"chain","bones":["Hand"]}}
+{"jsonrpc":"2.0","id":4,"method":"step","params":{"ticks":60}}
+{"jsonrpc":"2.0","id":5,"method":"skeleton.get","params":{"id":"chain","bones":["Elbow","Hand"]}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[60,65],[82,42],[100,65],[71,37],[20,20]]}}
+{"jsonrpc":"2.0","id":7,"method":"component.set","params":{"id":"ball","components":{"Transform3D":{"position":[0,0.5,0.4]}}}}
+{"jsonrpc":"2.0","id":8,"method":"step","params":{"ticks":1}}
+{"jsonrpc":"2.0","id":9,"method":"skeleton.get","params":{"id":"reacher","bones":["Hand"]}}
+{"jsonrpc":"2.0","id":10,"method":"skeleton.get","params":{"id":"chain","bones":["Hand"]}}
+{"jsonrpc":"2.0","id":11,"method":"step","params":{"ticks":60}}
+{"jsonrpc":"2.0","id":12,"method":"skeleton.get","params":{"id":"chain","bones":["Hand"]}}
+{"jsonrpc":"2.0","id":13,"method":"component.set","params":{"id":"reacher","components":{"TwoBoneIK3D":{"influence":0.5}}}}
+{"jsonrpc":"2.0","id":14,"method":"skeleton.get","params":{"id":"reacher","bones":["Hand"]}}
