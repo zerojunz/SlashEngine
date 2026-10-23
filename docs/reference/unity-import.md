@@ -6,7 +6,7 @@ sprites, tile maps, animation, cameras, 2D physics and joints, 2D lights and sha
 models, materials, lights, physics and skies (see [3D scenes](#3d-scenes)), sounds and audio
 mixers, UI, input and settings. Scripts don't convert,
 since SlashEngine games are plain C++: each becomes a storyboard task to port it, with what the
-port needs, as does each Animator controller's state machine.
+port needs, and each Animator controller's state machine a task to set its parameters.
 [examples/import-unity](../../examples/import-unity/) imports a small platformer, and
 [examples/import-unity-3d](../../examples/import-unity-3d/) a 3D courtyard.
 
@@ -218,8 +218,23 @@ is on, as URP's casters do only with Self Shadows on.
 
 Each Animator controller becomes an [animation library](scene-format.md#animations)
 beside it, `Frog.controller` becoming `Frog.anim.json`, with an animation per state of its base
-layer, named after the state. An `Animator` becomes an `AnimationPlayer` playing that library
-from the controller's default state.
+layer, named after the state. Its base layer's state machine becomes an
+[animation tree](scene-format.md#animation-trees), `Frog.animtree.json`, and an `Animator` an
+`AnimationTree` playing it over the library, not `deterministic`, as Unity's states set only what
+their clips animate. A controller whose states have no transitions becomes an `AnimationPlayer`
+playing its default state instead.
+
+| Unity | Becomes |
+| --- | --- |
+| A state | A state of the same name, an `Animation` node playing its animation, at its place in the graph |
+| A sub-state machine | Its states, in the same machine: a transition to it goes through its entry, one to its exit through the parent's transitions from it, then the parent's entry. The base layer's exit starts over at its entry |
+| The entry's transitions and default state | Auto transitions from `Start`, the conditional ones first |
+| Any State's transitions | A transition from every state, tried before the state's own, but not back to the state itself: that is reported when `Can Transition To Self` is on |
+| A transition's conditions | Its `advance_expression`, all of them joined with `and`: `Speed > 0.1 and not Grounded`, `Jump` for a bool or trigger |
+| Float, int and bool parameters, triggers | The tree's `variables` with their defaults, and `triggers`, which go back to false once a transition that reads them is taken, as Unity's do. A name expressions can't read is changed (`Is Grounded` becomes `Is_Grounded`), as the report says |
+| Exit time | `switch_mode` `at_end`, with `break_loop_at_end` for a looping state; Unity's default exit time (the cross-fade ending as the state does) matches exactly, others are reported |
+| Duration | `xfade_time`, a normalized one in seconds of the state's animation |
+| The order Unity tries a state's transitions in | `priority`, from 0 |
 
 - A clip's curves become value tracks, its events event tracks. Position and scale curves are
   `Transform2D` `position` and `scale` (in pixels, y down), a rotation about z `rotation`
@@ -241,17 +256,21 @@ from the controller's default state.
 - An event track is named after the function the event calls, with its `float`, `int`,
   `string` and `object` parameters as the key's `data`; gameplay code reads the event
   (`World::emit`'s events, as Godot's method tracks).
-- An override controller is its controller's states with its clips swapped. A blend tree plays
-  its first motion.
-- The state machine, which gameplay code drives, becomes a storyboard task per controller
-  (`task/port-frog-anim`) when it has parameters or transitions: its states, its parameters with
-  their types and defaults, each transition with its conditions and exit time, and the events
-  its clips raise. The report's `animation_libraries` names, for each library, its controller,
-  its first state, the entities using it and its task. Controllers no scene uses convert too,
-  since gameplay code may set them, and clips no controller plays are reported.
-- Layers other than the base layer, transitions' blending, state speed parameters, cycle
-  offsets, root motion, animated script values and fields SlashEngine has no counterpart for
-  are reported. The legacy `Animation` component doesn't convert.
+- An override controller is its controller's states with its clips swapped, and its tree the
+  controller's. A blend tree plays its first motion.
+- Each controller is a storyboard task (`task/port-frog-anim`): with a tree, its parameters,
+  which gameplay code sets as Unity's `SetFloat`, `SetInteger`, `SetBool` and `SetTrigger` did,
+  with their types and defaults; with no tree, its states, parameters and transitions for
+  gameplay code to play. Either way it lists the events its clips raise. The report's
+  `animation_libraries` names, for each library, its controller, its first state, its tree, the
+  entities using it and its task. Controllers no scene uses convert too, since gameplay code may
+  set them, and clips no controller plays are reported.
+- Two transitions between the same states become one taking either's conditions, with the
+  first's timing. Muted transitions don't convert, and a solo one mutes the state's others.
+- Layers other than the base layer, transitions to a state's own self, transition offsets and
+  interruption sources, state speed parameters, cycle offsets, root motion, animated script
+  values and fields SlashEngine has no counterpart for are reported. The legacy `Animation`
+  component doesn't convert.
 
 ## Cameras
 

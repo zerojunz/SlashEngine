@@ -31,6 +31,7 @@
 #include <map>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -3196,6 +3197,7 @@ TEST_CASE("Unity Animator controllers become animation libraries, their states a
     REQUIRE_MESSAGE(imported.ok(), (imported.ok() ? std::string() : imported.error().message));
     const json::Value& plan_report = imported.value().report;
     CHECK(plan_report.find("converted")->find("animation_libraries")->as_int() == 2);
+    CHECK(plan_report.find("converted")->find("animation_trees")->as_int() == 2);
     const auto files = files_of(imported.value());
     const std::string frogs = "unity/Assets/Scenes/Frogs.scene.json";
     const std::string frog_library = "unity/Assets/Animations/Frog.anim.json";
@@ -3259,44 +3261,65 @@ TEST_CASE("Unity Animator controllers become animation libraries, their states a
     ]})"));
     CHECK(*toad.find("animations")->find("Jump") == *animations.find("Jump"));
 
-    // Each Animator is an AnimationPlayer playing its first state, with the targets bound to
-    // the entities under it; the toad has no body.
-    const json::Value frog_player = *entity(files, frogs, "frog").find("AnimationPlayer");
-    CHECK(frog_player.find("library")->as_string() == frog_library);
-    CHECK(frog_player.find("animation")->as_string() == "Idle");
-    CHECK(frog_player.find("playing") == nullptr); // true, the default
-    CHECK(*frog_player.find("targets") == parse(R"({"Body": "body", "Body#sprite": "body"})"));
-    const json::Value toad_player = *entity(files, frogs, "toad").find("AnimationPlayer");
-    CHECK(toad_player.find("library")->as_string() == toad_library);
-    CHECK(*toad_player.find("targets") == parse(R"({"Body#sprite": null})"));
+    // The base layer's state machine is a tree over the library: Speed, Jump and Grounded are
+    // its variables and trigger, the transitions' conditions advance expressions, and Jump's
+    // exit time, the end of the state, ends its cross-fade there.
+    const std::string frog_tree = "unity/Assets/Animations/Frog.animtree.json";
+    CHECK(parse(files.at(frog_tree)) == parse(R"({"format": 1,
+        "variables": {"Speed": 0.0, "Grounded": true}, "triggers": ["Jump"],
+        "root": {"type": "StateMachine",
+            "states": {"Idle": {"node": {"type": "Animation", "animation": "Idle"}},
+                       "Jump": {"node": {"type": "Animation", "animation": "Jump"}},
+                       "Walk": {"node": {"type": "Animation", "animation": "Walk"}}},
+            "transitions": [
+                {"from": "Start", "to": "Idle", "advance_mode": "auto", "priority": 0},
+                {"from": "Idle", "to": "Jump", "advance_mode": "auto", "priority": 0,
+                 "xfade_time": 0.25, "advance_expression": "Jump"},
+                {"from": "Idle", "to": "Walk", "advance_mode": "auto", "priority": 1,
+                 "xfade_time": 0.25, "advance_expression": "Speed > 0.1"},
+                {"from": "Jump", "to": "Idle", "advance_mode": "auto", "priority": 0,
+                 "xfade_time": 0.25, "switch_mode": "at_end"}]}})"));
+    // The toad's tree is the frog's, over its own library.
+    CHECK(parse(files.at("unity/Assets/Animations/Toad.animtree.json")) ==
+          parse(files.at(frog_tree)));
 
-    // The state machine, which gameplay code now drives, is a storyboard task per controller.
+    // Each Animator is an AnimationTree playing its controller's tree, with the targets bound to
+    // the entities under it; the toad has no body.
+    const json::Value frog_tree_player = *entity(files, frogs, "frog").find("AnimationTree");
+    CHECK(frog_tree_player == parse(R"({"tree_root": "unity/Assets/Animations/Frog.animtree.json",
+        "libraries": {"": "unity/Assets/Animations/Frog.anim.json"}, "deterministic": false,
+        "targets": {"Body": "body", "Body#sprite": "body"}})"));
+    const json::Value toad_tree_player = *entity(files, frogs, "toad").find("AnimationTree");
+    CHECK(*toad_tree_player.find("libraries") == parse(R"({"": ")" + toad_library + "\"}"));
+    CHECK(*toad_tree_player.find("targets") == parse(R"({"Body#sprite": null})"));
+
+    // Gameplay code sets the tree's parameters, which a storyboard task per controller lists.
     const json::Value work = parse(files.at("storyboard/work.json"));
     CHECK(slash::storyboard::validate_file("work", work).empty());
     const json::Value& task = *work.find("entries")->find("task/port-frog-anim");
     CHECK(task.find("name")->as_string() ==
           "Port the state machine of Assets/Animations/Frog.controller");
+    CHECK(task.find("summary")->as_string() ==
+          "Unity Animator controller: set its parameters from gameplay code.");
     CHECK(*task.find("links") == parse(R"(["unity/Assets/Animations/Frog.anim.json",
+                                           "unity/Assets/Animations/Frog.animtree.json",
                                            "unity/Assets/Scenes/Frogs.scene.json"])"));
-    const std::string& text = task.find("text")->as_string();
-    CHECK(text.find("States, each an animation in the library: Idle, Jump, Walk.") !=
-          std::string::npos);
-    CHECK(text.find("Parameters: Speed (float, 0); Jump (trigger); Grounded (bool, true).") !=
-          std::string::npos);
-    CHECK(text.find("Transitions: Idle to Jump when Jump; Idle to Walk when Speed > 0.1; Jump "
-                    "to Idle when its animation reaches exit time 1.") != std::string::npos);
-    CHECK(text.find("Animation events: Croak at 0.5 s in Idle, Croak at 0.5 s in Walk.") !=
-          std::string::npos);
-    CHECK(text.find("Played by frog in unity/Assets/Scenes/Frogs.scene.json.") !=
-          std::string::npos);
+    CHECK(task.find("text")->as_string() ==
+          "unity/Assets/Animations/Frog.animtree.json plays the state machine with an "
+          "AnimationTree. Gameplay code sets its parameters, as Unity's SetFloat, SetInteger, "
+          "SetBool and SetTrigger did: Speed (float, 0.0); Jump (trigger); Grounded (bool, "
+          "true). Animation events: Croak at 0.5 s in Idle, Croak at 0.5 s in Walk. Played by "
+          "frog in unity/Assets/Scenes/Frogs.scene.json.");
 
     const json::Value report = parse(files.at("import/unity.json"));
     CHECK(*report.find("animation_libraries")->find(frog_library) ==
           parse(R"({"controller": "Assets/Animations/Frog.controller", "first": "Idle",
+                    "tree": "unity/Assets/Animations/Frog.animtree.json",
                     "used_by": ["frog in unity/Assets/Scenes/Frogs.scene.json"],
                     "task": "task/port-frog-anim"})"));
     for (const auto& [what, where] : std::initializer_list<std::pair<std::string, std::string>>{
              {"Animator layers other than the base layer", "Assets/Animations/Frog.controller"},
+             {"Animator exit time", "Assets/Animations/Frog.controller: Jump"},
              {"blend tree", "Assets/Animations/Frog.controller: state Walk"},
              {"animated script value", "Assets/Animations/Jump.anim: power"},
              {"animated object missing", "Assets/Scenes/Frogs.unity: Toad: Body"},
@@ -3307,8 +3330,9 @@ TEST_CASE("Unity Animator controllers become animation libraries, their states a
         CHECK(item.find("where")->as_string() == where);
     }
 
-    // It plays: 33 ticks in, the body is on its way down from the top of its bob, faded, on its
-    // second frame, and has croaked.
+    // It plays: 34 ticks in (the tree spends its first seeking to its states' starts, as
+    // Godot's does), the body is on its way down from the top of its bob, faded, on its second
+    // frame, and has croaked.
     slash::world::ComponentRegistry components;
     slash::world::register_builtin_components(components);
     command::Registry commands;
@@ -3321,7 +3345,7 @@ TEST_CASE("Unity Animator controllers become animation libraries, their states a
         session.call("scene.open", parse(R"({"path": ")" + frogs + "\"}"));
     REQUIRE_MESSAGE(opened.ok, opened.message);
     REQUIRE(session.call("events.subscribe", parse(R"({"kinds": ["Croak"]})")).ok);
-    REQUIRE(session.call("step", parse(R"({"ticks": 33})")).ok);
+    REQUIRE(session.call("step", parse(R"({"ticks": 34})")).ok);
     const slash::world::World& world = session.world();
     const entt::entity body = world.find("body");
     const auto& moved = world.ecs().get<slash::world::Transform2D>(body);
@@ -3338,6 +3362,251 @@ TEST_CASE("Unity Animator controllers become animation libraries, their states a
     REQUIRE(croaks.find("events")->size() == 1);
     CHECK(croaks.find("events")->as_array()[0].find("id")->as_string() == "frog");
     CHECK(*croaks.find("events")->as_array()[0].find("data") == parse(R"({"int": 2})"));
+
+    // SetTrigger("Jump"): the frog cross-fades into its jump, which alone turns it, and the
+    // trigger goes back to false once taken.
+    const command::Reply jumped = session.call(
+        "animation.set_parameters", parse(R"({"id": "frog", "parameters": {"Jump": true}})"));
+    REQUIRE_MESSAGE(jumped.ok, jumped.message);
+    REQUIRE(session.call("step", parse(R"({"ticks": 9})")).ok);
+    const json::Value state = session.call("animation.tree", parse(R"({"id": "frog"})")).value;
+    CHECK(state.find("parameters")->find("Jump")->find("value")->as_bool() == false);
+    const json::Value& playback = *state.find("state")->find("playback");
+    CHECK(playback.find("current")->as_string() == "Jump");
+    CHECK(playback.find("fading_from")->as_string() == "Idle");
+    CHECK(world.ecs().get<slash::world::Transform2D>(world.find("frog")).rotation ==
+          doctest::Approx(-1.570796 * 7.0 / 15.0));
+}
+
+namespace {
+
+// An Animator transition with the fields the knight's controller varies.
+struct KnightTransition {
+    std::int64_t object = 0;
+    std::string conditions = " []";
+    std::int64_t state = 0;
+    std::int64_t machine = 0;
+    bool exit = false;
+    bool exit_time = false;
+    std::string exit_at = "0.75";
+    std::string duration = "0.1";
+    bool fixed = true;
+    bool mute = false;
+    bool solo = false;
+    bool to_self = true;
+};
+
+std::string knight_transition(const KnightTransition& t) {
+    return "--- !u!1101 &" + id(t.object) + "\nAnimatorStateTransition:\n" + std::string(kSource) +
+           "  m_Name: \n  m_Conditions:" + t.conditions +
+           "\n  m_DstStateMachine: " + ref(t.machine) + "\n  m_DstState: " + ref(t.state) +
+           "\n  m_Solo: " + (t.solo ? "1" : "0") + "\n  m_Mute: " + (t.mute ? "1" : "0") +
+           "\n  m_IsExit: " + (t.exit ? "1" : "0") +
+           "\n  serializedVersion: 3\n  m_TransitionDuration: " + t.duration +
+           "\n  m_TransitionOffset: 0\n  m_ExitTime: " + t.exit_at +
+           "\n  m_HasExitTime: " + (t.exit_time ? "1" : "0") +
+           "\n  m_HasFixedDuration: " + (t.fixed ? "1" : "0") +
+           "\n  m_InterruptionSource: 0\n  m_OrderedInterruption: 1\n"
+           "  m_CanTransitionToSelf: " +
+           (t.to_self ? "1" : "0") + "\n";
+}
+
+// An entry or state machine transition, which has no timing.
+std::string knight_entry(std::int64_t object, std::string_view conditions, std::int64_t state,
+                         std::int64_t machine) {
+    return "--- !u!1109 &" + id(object) + "\nAnimatorTransition:\n" + std::string(kSource) +
+           "  m_Name: \n  m_Conditions:" + std::string(conditions) +
+           "\n  m_DstStateMachine: " + ref(machine) + "\n  m_DstState: " + ref(state) +
+           "\n  m_Solo: 0\n  m_Mute: 0\n  m_IsExit: 0\n  serializedVersion: 1\n";
+}
+
+std::string knight_machine(std::int64_t object, std::string_view name,
+                           std::initializer_list<std::pair<std::int64_t, int>> states,
+                           std::string_view machines, std::string_view any,
+                           std::string_view entries, std::string_view machine_transitions,
+                           std::int64_t first) {
+    std::string out = "--- !u!1107 &" + id(object) +
+                      "\nAnimatorStateMachine:\n  serializedVersion: 6\n" + std::string(kSource) +
+                      "  m_Name: " + std::string(name) + "\n  m_ChildStates:\n";
+    for (const auto& [state, x] : states) {
+        out += "  - serializedVersion: 1\n    m_State: " + ref(state) +
+               "\n    m_Position: {x: " + std::to_string(x) + ", y: 120, z: 0}\n";
+    }
+    return out + "  m_ChildStateMachines:" + std::string(machines) +
+           "\n  m_AnyStateTransitions:" + std::string(any) +
+           "\n  m_EntryTransitions:" + std::string(entries) +
+           "\n  m_StateMachineTransitions:" + std::string(machine_transitions) +
+           "\n  m_DefaultState: " + ref(first) + "\n";
+}
+
+} // namespace
+
+TEST_CASE("Unity Animator state machines become AnimationTree state machines, as Unity plays "
+          "them") {
+    const fs::path project = "import_unity_state_machines";
+    fs::remove_all(project);
+    make_project(project / "unity");
+    const fs::path folder = project / "unity";
+    // Idle and Block loop over a second, Run over half of one; Swing plays once over 0.4.
+    const auto clip = [&](std::string_view name, std::string_view guid, std::string_view stop,
+                          bool loop, std::string_view x) {
+        ClipCurves curves;
+        curves.position =
+            anim_curve(anim_key("0", "{x: " + std::string(x) + ", y: 0, z: 0}",
+                                "{x: 0, y: 0, z: 0}", "{x: 0, y: 0, z: 0}", kVectorWeight),
+                       "    path: \n");
+        write_clip(folder / ("Assets/Animations/" + std::string(name) + ".anim"), guid, stop, loop,
+                   curves);
+    };
+    clip("Idle", "a2000000000000000000000000000001", "1", true, "1");
+    clip("Run", "a2000000000000000000000000000002", "0.5", true, "2");
+    clip("Swing", "a2000000000000000000000000000003", "0.4", false, "3");
+    clip("Block", "a2000000000000000000000000000004", "1", true, "4");
+    const auto motion = [](std::string_view guid) { return ref(7400000, guid, 2); };
+
+    // The root machine has Idle and Run and the Combat sub-state machine, Swing and Block;
+    // Combat's entry picks Block when the knight has been hit three times, and Swing leaves it
+    // through its exit, to Run when running, else through the root's entry.
+    std::string controller(kHeader);
+    controller += "--- !u!91 &9100000\nAnimatorController:\n" + std::string(kSource) +
+                  "  m_Name: Knight\n  serializedVersion: 5\n  m_AnimatorParameters:\n" +
+                  animator_parameter("Is Grounded", 4, "1") + animator_parameter("Hits", 3, "0") +
+                  animator_parameter("Attack", 9, "0") + animator_parameter("Speed", 1, "0") +
+                  "  m_AnimatorLayers:\n  - serializedVersion: 5\n    m_Name: Base Layer\n"
+                  "    m_StateMachine: {fileID: 110700001}\n    m_Mask: {fileID: 0}\n";
+    controller += knight_machine(
+        110700001, "Base Layer", {{110200001, 0}, {110200002, 300}},
+        "\n  - serializedVersion: 1\n    m_StateMachine: {fileID: 110700002}\n"
+        "    m_Position: {x: 600, y: 120, z: 0}",
+        "\n  - {fileID: 110100009}", "\n  - {fileID: 110900001}",
+        "\n  - first: {fileID: 110700002}\n    second:\n    - {fileID: 110900003}", 110200001);
+    controller += knight_machine(110700002, "Combat", {{110200003, 0}, {110200004, 300}}, " []",
+                                 " []", "\n  - {fileID: 110900002}", " []", 110200003);
+    controller += knight_entry(110900001, animator_condition(1, "Attack", "0"), 0, 110700002);
+    controller += knight_entry(110900002, animator_condition(6, "Hits", "3"), 110200004, 0);
+    controller += knight_entry(110900003, animator_condition(3, "Speed", "0.5"), 110200002, 0);
+    controller +=
+        animator_state(110200001, "Idle", "1", "\n  - {fileID: 110100001}\n  - {fileID: 110100002}",
+                       motion("a2000000000000000000000000000001"));
+    controller += animator_state(
+        110200002, "Run", "1",
+        "\n  - {fileID: 110100003}\n  - {fileID: 110100004}\n  - {fileID: 110100005}",
+        motion("a2000000000000000000000000000002"));
+    controller += animator_state(110200003, "Swing", "1", "\n  - {fileID: 110100006}",
+                                 motion("a2000000000000000000000000000003"));
+    controller += animator_state(110200004, "Block", "1", "\n  - {fileID: 110100007}",
+                                 motion("a2000000000000000000000000000004"));
+    // Idle runs past half speed, cross-fading over a quarter of itself, or when it leaves the
+    // ground.
+    controller += knight_transition({.object = 110100001,
+                                     .conditions = animator_condition(3, "Speed", "0.5"),
+                                     .state = 110200002,
+                                     .duration = "0.25",
+                                     .fixed = false});
+    controller += knight_transition({.object = 110100002,
+                                     .conditions = animator_condition(2, "Is Grounded", "0"),
+                                     .state = 110200002});
+    // Run's muted way back to Idle doesn't count, and its solo attack mutes the one at its end.
+    controller += knight_transition({.object = 110100003,
+                                     .conditions = animator_condition(4, "Speed", "0.5"),
+                                     .state = 110200001,
+                                     .mute = true});
+    controller += knight_transition({.object = 110100004,
+                                     .conditions = animator_condition(1, "Attack", "0"),
+                                     .machine = 110700002,
+                                     .solo = true});
+    controller += knight_transition({.object = 110100005, .state = 110200001, .exit_time = true});
+    // Swing leaves Combat at Unity's default exit time, as its cross-fade ends with it.
+    controller += knight_transition(
+        {.object = 110100006, .exit = true, .exit_time = true, .duration = "0.25", .fixed = false});
+    // Block's way to Swing has no conditions and no exit time, so Unity never takes it.
+    controller += knight_transition({.object = 110100007, .state = 110200003});
+    // From any state, more than four hits block, but not from Block itself.
+    controller += knight_transition({.object = 110100009,
+                                     .conditions = animator_condition(3, "Hits", "4"),
+                                     .state = 110200004,
+                                     .to_self = false});
+    write(folder / "Assets/Animations/Knight.controller", controller);
+    write(folder / "Assets/Animations/Knight.controller.meta",
+          meta("a2000000000000000000000000000010", "NativeFormatImporter",
+               "  mainObjectFileID: 9100000\n"));
+
+    auto imported =
+        importer::import_project({.source = folder.string(), .destination = project.string()});
+    REQUIRE_MESSAGE(imported.ok(), (imported.ok() ? std::string() : imported.error().message));
+    CHECK(imported.value().report.find("converted")->find("animation_trees")->as_int() == 1);
+    const auto files = files_of(imported.value());
+    const json::Value tree = parse(files.at("unity/Assets/Animations/Knight.animtree.json"));
+
+    // Parameters are the tree's variables and triggers, under names an expression reads.
+    CHECK(*tree.find("variables") == parse(R"({"Hits": 0, "Is_Grounded": true, "Speed": 0.0})"));
+    CHECK(*tree.find("triggers") == parse(R"(["Attack"])"));
+    // Combat's states join the layer's, each where Unity drew it in its own machine.
+    CHECK(*tree.find("root")->find("states") == parse(R"({
+        "Block": {"node": {"type": "Animation", "animation": "Block"}, "position": [300, 120]},
+        "Idle": {"node": {"type": "Animation", "animation": "Idle"}, "position": [0, 120]},
+        "Run": {"node": {"type": "Animation", "animation": "Run"}, "position": [300, 120]},
+        "Swing": {"node": {"type": "Animation", "animation": "Swing"}, "position": [0, 120]}
+    })"));
+    // Start goes through the entries: into Combat on Attack, to Block there after three hits,
+    // else Idle. Any State's transition comes first from every state but Block. Idle's two ways
+    // to Run are one; Run's muted way back is gone and its solo attack mutes its exit time.
+    // Swing leaves Combat as it ends, to Run when running, else back through the entries; a way
+    // back into Swing itself and Block's way out, which has neither conditions nor exit time,
+    // are dropped.
+    CHECK(*tree.find("root")->find("transitions") == parse(R"json([
+        {"from": "Start", "to": "Block", "advance_mode": "auto", "priority": 0,
+         "advance_expression": "Attack and Hits == 3"},
+        {"from": "Start", "to": "Swing", "advance_mode": "auto", "priority": 1,
+         "advance_expression": "Attack"},
+        {"from": "Start", "to": "Idle", "advance_mode": "auto", "priority": 2},
+        {"from": "Idle", "to": "Block", "advance_mode": "auto", "priority": 0,
+         "xfade_time": 0.1, "advance_expression": "Hits > 4"},
+        {"from": "Idle", "to": "Run", "advance_mode": "auto", "priority": 1,
+         "xfade_time": 0.25, "advance_expression": "(Speed > 0.5) or (not Is_Grounded)"},
+        {"from": "Run", "to": "Block", "advance_mode": "auto", "priority": 0,
+         "xfade_time": 0.1, "advance_expression": "(Hits > 4) or (Attack and Hits == 3)"},
+        {"from": "Run", "to": "Swing", "advance_mode": "auto", "priority": 2,
+         "xfade_time": 0.1, "advance_expression": "Attack"},
+        {"from": "Swing", "to": "Block", "advance_mode": "auto", "priority": 0,
+         "xfade_time": 0.1, "advance_expression": "(Hits > 4) or (Attack and Hits == 3)"},
+        {"from": "Swing", "to": "Run", "advance_mode": "auto", "priority": 1,
+         "xfade_time": 0.1, "switch_mode": "at_end", "advance_expression": "Speed > 0.5"},
+        {"from": "Swing", "to": "Idle", "advance_mode": "auto", "priority": 4,
+         "xfade_time": 0.1, "switch_mode": "at_end"}
+    ])json"));
+
+    // The task says what to set from gameplay code, and links the tree.
+    const json::Value work = parse(files.at("storyboard/work.json"));
+    const json::Value& task = *work.find("entries")->find("task/port-knight-anim");
+    CHECK(task.find("summary")->as_string() ==
+          "Unity Animator controller: set its parameters from gameplay code.");
+    CHECK(*task.find("links") == parse(R"(["unity/Assets/Animations/Knight.anim.json",
+                                           "unity/Assets/Animations/Knight.animtree.json"])"));
+    CHECK(task.find("text")->as_string() ==
+          "unity/Assets/Animations/Knight.animtree.json plays the state machine with an "
+          "AnimationTree. Gameplay code sets its parameters, as Unity's SetFloat, SetInteger, "
+          "SetBool and SetTrigger did: Is Grounded as Is_Grounded (bool, true); Hits (int, 0); "
+          "Attack (trigger); Speed (float, 0.0).");
+
+    const json::Value report = parse(files.at("import/unity.json"));
+    CHECK(report.find("animation_libraries")
+              ->find("unity/Assets/Animations/Knight.anim.json")
+              ->find("tree")
+              ->as_string() == "unity/Assets/Animations/Knight.animtree.json");
+    const std::string controller_path = "Assets/Animations/Knight.controller: ";
+    for (const auto& [what, where, count] :
+         std::initializer_list<std::tuple<std::string, std::string, int>>{
+             {"Animator parameter name", "Is Grounded", 1},
+             {"Animator transitions between the same states", "Idle", 3},
+             {"Animator transition to its own state", "Swing", 1},
+             {"Animator transition with no conditions or exit time", "Block", 1}}) {
+        const json::Value item = unsupported(report, what);
+        REQUIRE_MESSAGE(!item.is_null(), what);
+        CHECK(item.find("where")->as_string() == controller_path + where);
+        CHECK(item.find("count")->as_int() == count);
+    }
+    CHECK(unsupported(report, "Animator exit time").is_null());
 }
 
 TEST_CASE("Unity audio mixers become a bus layout and 2D joints Godot's joints") {
