@@ -17,6 +17,7 @@
 #include "slash/render/image.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/scene3d/model.hpp"
+#include "slash/scene3d/skeleton.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/world/component_registry.hpp"
@@ -1042,11 +1043,16 @@ private:
             if (errors.empty()) {
                 return;
             }
+            std::vector<std::string> removed;
             for (const json::ValidationError& error : errors) {
                 problems_.add("invalid value", path + ": " + error.path, error.message);
+                if (pointer_within(removed, error.path)) {
+                    continue;
+                }
                 if (!remove_pointer(doc, error.path)) {
                     return;
                 }
+                removed.push_back(error.path);
             }
         }
     }
@@ -7940,7 +7946,8 @@ private:
         std::string name;
         json::Value animation;                              // its length, loop and tracks
         std::vector<std::pair<std::string, double>> events; // functions and times, for tasks
-        bool offsets = false; // whether its sprites' pivots are off their middles
+        bool offsets = false;    // whether its sprites' pivots are off their middles
+        bool retargeted = false; // a humanoid clip of another model, made for the one playing it
     };
 
     // The class names of components clips animate, for reports.
@@ -7974,8 +7981,10 @@ private:
 
     const ClipOut& clip(const ObjectRef& ref, const std::string& where, ClipSpace space) {
         static constexpr std::array<std::string_view, 3> kSpaces{"", ":3d", ":model"};
+        // A model's clips are made for the model whose instance plays them.
         const std::string key = ref.guid + ":" + std::to_string(ref.file_id) +
-                                std::string(kSpaces.at(static_cast<std::size_t>(space)));
+                                std::string(kSpaces.at(static_cast<std::size_t>(space))) +
+                                (space == ClipSpace::Model ? ":" + clip_target_ : std::string());
         auto [it, inserted] = clips_.try_emplace(key);
         ClipOut& out = it->second;
         if (!inserted) {
@@ -8569,6 +8578,439 @@ private:
         }
     }
 
+    // --- Humanoid animation ---
+
+    // A model's Avatar, as its import settings describe it: for a humanoid model, its node for
+    // each human bone it maps ("Hips", "LeftUpperLeg"), and those bones' rotations in their
+    // parents in the T-pose the Avatar keeps, mirrored back into the model's axes; for a generic
+    // one, the node its root motion comes from, if it names one.
+    struct Avatar {
+        std::map<std::string, int> bones; // the model's node, by human name
+        std::map<int, Quaternion> pose;   // a human bone's T-pose rotation, by node
+        int motion_node = -1;
+        [[nodiscard]] bool humanoid() const { return bones.contains("Hips"); }
+    };
+
+    // The node of a model a Unity name names: as the model names it, or with the characters
+    // Godot's importer changes made "_".
+    static int node_named(const scene3d::Model& model, std::string name) {
+        if (const int found = scene3d::find_node(model, name); found >= 0) {
+            return found;
+        }
+        for (char& c : name) {
+            if (std::string_view(".:@/\"%").find(c) != std::string_view::npos) {
+                c = '_';
+            }
+        }
+        return scene3d::find_node(model, name);
+    }
+
+    const Avatar* avatar_of(const Asset& asset, const std::string& where) {
+        auto [it, inserted] = avatars_.try_emplace(asset.path);
+        std::optional<Avatar>& cached = it->second;
+        if (!inserted) {
+            return cached ? &*cached : nullptr;
+        }
+        const scene3d::Model* model = model_file(asset, where);
+        if (model == nullptr) {
+            return nullptr;
+        }
+        Avatar avatar;
+        // An Avatar copied from another model's describes the same bones by the same names.
+        constexpr int kHuman = 3;
+        constexpr int kCopied = 2;
+        constexpr int kMostCopies = 4;
+        const Asset* described = &asset;
+        for (int copies = 0; copies < kMostCopies &&
+                             described->meta.integer_at("ModelImporter.avatarSetup", 1) == kCopied;
+             ++copies) {
+            const auto source = ref_at(described->meta, "ModelImporter.sourceAvatar");
+            const Asset* next = source && !source->null() ? asset_of(source->guid) : nullptr;
+            if (next == nullptr) {
+                break;
+            }
+            described = next;
+        }
+        if (asset.meta.integer_at("ModelImporter.animationType", 2) == kHuman) {
+            if (const Node* human = described->meta.path("ModelImporter.humanDescription.human")) {
+                for (const Node& bone : human->items) {
+                    if (const int node = node_named(*model, bone.string_at("boneName"));
+                        node >= 0) {
+                        avatar.bones[bone.string_at("humanName")] = node;
+                    }
+                }
+            }
+            std::set<int> human_nodes;
+            for (const auto& [human, node] : avatar.bones) {
+                human_nodes.insert(node);
+            }
+            if (const Node* skeleton =
+                    described->meta.path("ModelImporter.humanDescription.skeleton")) {
+                for (const Node& bone : skeleton->items) {
+                    const int node = node_named(*model, bone.string_at("name"));
+                    const Node* rotation = bone.get("rotation");
+                    if (node < 0 || rotation == nullptr || !human_nodes.contains(node)) {
+                        continue;
+                    }
+                    avatar.pose[node] =
+                        normalized({rotation->number_at("x", 0.0), -rotation->number_at("y", 0.0),
+                                    -rotation->number_at("z", 0.0), rotation->number_at("w", 1.0)});
+                }
+            }
+        }
+        std::string motion = asset.meta.string_at("ModelImporter.motionNodeName");
+        if (const auto slash = motion.find_last_of("/\\"); slash != std::string::npos) {
+            motion = motion.substr(slash + 1);
+        }
+        if (!motion.empty() && motion.front() != '<') {
+            avatar.motion_node = node_named(*model, motion);
+        }
+        return &cached.emplace(std::move(avatar));
+    }
+
+    static Quaternion normalized(const Quaternion& q) {
+        const double length =
+            std::sqrt((q[0] * q[0]) + (q[1] * q[1]) + (q[2] * q[2]) + (q[3] * q[3]));
+        if (length <= 0.0) {
+            return {0.0, 0.0, 0.0, 1.0};
+        }
+        return {q[0] / length, q[1] / length, q[2] / length, q[3] / length};
+    }
+
+    static Quaternion inverse(const Quaternion& q) { return {-q[0], -q[1], -q[2], q[3]}; }
+
+    // v turned by q.
+    static std::array<double, 3> rotated(const Quaternion& q, const std::array<double, 3>& v) {
+        const Quaternion turned = multiply(multiply(q, {v[0], v[1], v[2], 0.0}), inverse(q));
+        return {turned[0], turned[1], turned[2]};
+    }
+
+    // The angle between two rotations, in radians, from the turn between them, which keeps small
+    // angles exact as acos wouldn't.
+    static double angle_between(const Quaternion& a, const Quaternion& b) {
+        const Quaternion turn = multiply(inverse(a), b);
+        return 2.0 * std::atan2(std::hypot(turn[0], turn[1], turn[2]), std::abs(turn[3]));
+    }
+
+    // The rotation weight of the way from a to b, the shorter way, as Godot's slerp.
+    static Quaternion slerp(const Quaternion& a, Quaternion b, double weight) {
+        double dot = (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]) + (a[3] * b[3]);
+        if (dot < 0.0) {
+            dot = -dot;
+            for (double& part : b) {
+                part = -part;
+            }
+        }
+        double from = 1.0 - weight;
+        double to = weight;
+        constexpr double kNearlyParallel = 0.9999;
+        if (dot < kNearlyParallel) {
+            const double omega = std::acos(dot);
+            const double sine = std::sin(omega);
+            from = std::sin(from * omega) / sine;
+            to = std::sin(weight * omega) / sine;
+        }
+        return normalized({(from * a[0]) + (to * b[0]), (from * a[1]) + (to * b[1]),
+                           (from * a[2]) + (to * b[2]), (from * a[3]) + (to * b[3])});
+    }
+
+    // A model's nodes posed: each one's rotation, position and scale in its parent, and once
+    // placed, in the model's space.
+    struct Pose {
+        std::vector<Quaternion> rotations;
+        std::vector<std::array<double, 3>> positions;
+        std::vector<std::array<double, 3>> scales;
+    };
+
+    static Pose rest_pose(const scene3d::Model& model) {
+        Pose pose;
+        for (const scene3d::ModelNode& node : model.nodes) {
+            pose.rotations.push_back(
+                {node.rotation.x, node.rotation.y, node.rotation.z, node.rotation.w});
+            pose.positions.push_back({node.position.x, node.position.y, node.position.z});
+            pose.scales.push_back({node.scale.x, node.scale.y, node.scale.z});
+        }
+        return pose;
+    }
+
+    // Each node's parent before it.
+    static std::vector<std::size_t> parents_first(const scene3d::Model& model) {
+        std::vector<std::size_t> order;
+        std::vector<bool> placed(model.nodes.size(), false);
+        while (order.size() < model.nodes.size()) {
+            const std::size_t before = order.size();
+            for (std::size_t i = 0; i < model.nodes.size(); ++i) {
+                const int parent = model.nodes[i].parent;
+                if (!placed[i] && (parent < 0 || placed[static_cast<std::size_t>(parent)])) {
+                    placed[i] = true;
+                    order.push_back(i);
+                }
+            }
+            if (order.size() == before) {
+                break; // a cycle, which no loaded model has
+            }
+        }
+        return order;
+    }
+
+    // A pose in the model's space. Where turns names a node's rotation in the model's space, the
+    // node takes it, and its rotation in its parent is set to match.
+    static Pose placed(const scene3d::Model& model, const std::vector<std::size_t>& order,
+                       Pose& local, const std::map<std::size_t, Quaternion>& turns = {}) {
+        Pose out = local;
+        for (const std::size_t i : order) {
+            const int parent = model.nodes[i].parent;
+            if (parent < 0) {
+                if (const auto turn = turns.find(i); turn != turns.end()) {
+                    out.rotations[i] = turn->second;
+                    local.rotations[i] = turn->second;
+                }
+                continue;
+            }
+            const auto p = static_cast<std::size_t>(parent);
+            const std::array<double, 3>& scale = out.scales[p];
+            const std::array<double, 3>& at = local.positions[i];
+            const std::array<double, 3> offset =
+                rotated(out.rotations[p], {at[0] * scale[0], at[1] * scale[1], at[2] * scale[2]});
+            out.positions[i] = {out.positions[p][0] + offset[0], out.positions[p][1] + offset[1],
+                                out.positions[p][2] + offset[2]};
+            out.scales[i] = {scale[0] * local.scales[i][0], scale[1] * local.scales[i][1],
+                             scale[2] * local.scales[i][2]};
+            if (const auto turn = turns.find(i); turn != turns.end()) {
+                out.rotations[i] = turn->second;
+                local.rotations[i] = multiply(inverse(out.rotations[p]), turn->second);
+            } else {
+                out.rotations[i] = multiply(out.rotations[p], local.rotations[i]);
+            }
+        }
+        return out;
+    }
+
+    // The keys worth keeping of values at times: the first and last, and between them only those
+    // that interpolating from the last kept key to the next doesn't reach within a tolerance,
+    // with a key at least every 64 frames.
+    static std::vector<std::size_t>
+    kept_keys(std::size_t count,
+              const std::function<double(std::size_t, std::size_t, std::size_t)>& error) {
+        constexpr double kTolerance = 1e-4;
+        constexpr std::size_t kLongest = 64;
+        std::vector<std::size_t> kept{0};
+        std::size_t from = 0;
+        for (std::size_t to = 2; to < count; ++to) {
+            bool fits = to - from <= kLongest;
+            for (std::size_t middle = from + 1; fits && middle < to; ++middle) {
+                fits = error(from, to, middle) <= kTolerance;
+            }
+            if (!fits) {
+                kept.push_back(to - 1);
+                from = to - 1;
+            }
+        }
+        if (count > 1) {
+            kept.push_back(count - 1);
+        }
+        return kept;
+    }
+
+    // A humanoid take of one model retargeted onto another, as Unity's Avatars let any humanoid
+    // model play it: each of the target's human bones turns from its T-pose as the source's turns
+    // from its own, in the models' space, and the hips move as far for the target's hips height.
+    // Its node tracks, keyed every frame from start to stop and thinned where keys add nothing;
+    // human bones the source lacks hold their T-pose.
+    json::Array retarget(const scene3d::Model& source, const Avatar& from,
+                         const scene3d::ModelAnimation& take, double start, double stop,
+                         const scene3d::Model& target, const Avatar& to) {
+        const std::vector<std::size_t> source_order = parents_first(source);
+        const std::vector<std::size_t> target_order = parents_first(target);
+        const Pose source_rest = rest_pose(source);
+        Pose source_t_pose = source_rest;
+        for (const auto& [node, rotation] : from.pose) {
+            source_t_pose.rotations[static_cast<std::size_t>(node)] = rotation;
+        }
+        const Pose source_zero = placed(source, source_order, source_t_pose);
+        const Pose target_rest = rest_pose(target);
+        Pose target_t_pose = target_rest;
+        for (const auto& [node, rotation] : to.pose) {
+            target_t_pose.rotations[static_cast<std::size_t>(node)] = rotation;
+        }
+        const Pose target_zero = placed(target, target_order, target_t_pose);
+
+        std::vector<std::pair<std::size_t, std::size_t>> pairs; // target node, source node
+        std::set<std::size_t> held;                             // human bones the source lacks
+        for (const auto& [human, node] : to.bones) {
+            const auto found = from.bones.find(human);
+            if (found != from.bones.end()) {
+                pairs.emplace_back(node, found->second);
+            } else {
+                held.insert(static_cast<std::size_t>(node));
+            }
+        }
+        const auto hips_target = static_cast<std::size_t>(to.bones.at("Hips"));
+        const auto hips_source = static_cast<std::size_t>(from.bones.at("Hips"));
+        constexpr double kLowest = 1e-6;
+        const double source_height = source_zero.positions[hips_source][1];
+        const double target_height = target_zero.positions[hips_target][1];
+        const double ratio = source_height > kLowest && target_height > kLowest
+                                 ? target_height / source_height
+                                 : 1.0;
+
+        constexpr double kRate = 30.0;
+        const double rate = take.frame_rate > 0.0 ? take.frame_rate : kRate;
+        const auto frames =
+            static_cast<std::size_t>(std::max(1L, std::lround((stop - start) * rate)));
+        std::vector<double> times;
+        std::map<std::size_t, std::vector<Quaternion>> turns; // by target node
+        std::vector<std::array<double, 3>> hips;
+        for (std::size_t frame = 0; frame <= frames; ++frame) {
+            const double t =
+                start + ((stop - start) * static_cast<double>(frame) / static_cast<double>(frames));
+            Pose source_local = source_rest;
+            for (const scene3d::NodeTrack& track : take.tracks) {
+                const std::array<float, 4> value =
+                    scene3d::sample_track(track, t, take.length, false);
+                switch (track.property) {
+                case scene3d::NodeProperty::Position:
+                    source_local.positions[track.node] = {value[0], value[1], value[2]};
+                    break;
+                case scene3d::NodeProperty::Rotation:
+                    source_local.rotations[track.node] =
+                        normalized({value[0], value[1], value[2], value[3]});
+                    break;
+                case scene3d::NodeProperty::Scale:
+                    source_local.scales[track.node] = {value[0], value[1], value[2]};
+                    break;
+                }
+            }
+            const Pose source_now = placed(source, source_order, source_local);
+            std::map<std::size_t, Quaternion> globals;
+            for (const auto& [target_node, source_node] : pairs) {
+                const Quaternion change = multiply(source_now.rotations[source_node],
+                                                   inverse(source_zero.rotations[source_node]));
+                globals[target_node] =
+                    normalized(multiply(change, target_zero.rotations[target_node]));
+            }
+            Pose target_local = target_rest;
+            for (const std::size_t node : held) {
+                target_local.rotations[node] = target_t_pose.rotations[node];
+            }
+            const Pose target_now = placed(target, target_order, target_local, globals);
+            times.push_back(t - start);
+            for (const auto& [human, node] : to.bones) {
+                turns[static_cast<std::size_t>(node)].push_back(
+                    target_local.rotations[static_cast<std::size_t>(node)]);
+            }
+            // The hips move as far as the source's, for the target's height, in its parent.
+            std::array<double, 3> hips_at = target_zero.positions[hips_target];
+            for (std::size_t i = 0; i < 3; ++i) {
+                hips_at.at(i) += (source_now.positions[hips_source].at(i) -
+                                  source_zero.positions[hips_source].at(i)) *
+                                 ratio;
+            }
+            const int parent = target.nodes[hips_target].parent;
+            if (parent >= 0) {
+                const auto p = static_cast<std::size_t>(parent);
+                std::array<double, 3> offset = rotated(inverse(target_now.rotations[p]),
+                                                       {hips_at[0] - target_now.positions[p][0],
+                                                        hips_at[1] - target_now.positions[p][1],
+                                                        hips_at[2] - target_now.positions[p][2]});
+                for (std::size_t i = 0; i < 3; ++i) {
+                    const double scale = target_now.scales[p].at(i);
+                    offset.at(i) = std::abs(scale) > kLowest ? offset.at(i) / scale : offset.at(i);
+                }
+                hips_at = offset;
+            }
+            hips.push_back(hips_at);
+        }
+
+        json::Array tracks;
+        constexpr double kStill = 1e-5;
+        const auto key_time = [&](std::size_t i) { return tidy(times[i]); };
+        for (const auto& [node, values] : turns) {
+            const Quaternion& rest = target_rest.rotations[node];
+            if (std::ranges::all_of(
+                    values, [&](const Quaternion& q) { return angle_between(q, rest) < kStill; })) {
+                continue;
+            }
+            json::Array keys;
+            for (const std::size_t i :
+                 kept_keys(values.size(), [&](std::size_t a, std::size_t b, std::size_t m) {
+                     const double weight = (times[m] - times[a]) / (times[b] - times[a]);
+                     return angle_between(slerp(values[a], values[b], weight), values[m]);
+                 })) {
+                const std::array<double, 3> angles = quaternion_euler(values[i]);
+                json::Value key;
+                key["time"] = key_time(i);
+                key["value"] = json::Array{angles[0], angles[1], angles[2]};
+                keys.push_back(std::move(key));
+            }
+            json::Value track;
+            track["node"] = target.nodes[node].name;
+            track["property"] = "rotation";
+            track["keys"] = std::move(keys);
+            tracks.push_back(std::move(track));
+        }
+        const std::array<double, 3>& rest = target_rest.positions[hips_target];
+        if (std::ranges::any_of(hips, [&](const std::array<double, 3>& at) {
+                return std::abs(at[0] - rest[0]) + std::abs(at[1] - rest[1]) +
+                           std::abs(at[2] - rest[2]) >=
+                       kStill;
+            })) {
+            json::Array keys;
+            for (const std::size_t i :
+                 kept_keys(hips.size(), [&](std::size_t a, std::size_t b, std::size_t m) {
+                     const double weight = (times[m] - times[a]) / (times[b] - times[a]);
+                     double error = 0.0;
+                     for (std::size_t axis = 0; axis < 3; ++axis) {
+                         const double between =
+                             hips[a].at(axis) + ((hips[b].at(axis) - hips[a].at(axis)) * weight);
+                         error = std::max(error, std::abs(between - hips[m].at(axis)));
+                     }
+                     return error;
+                 })) {
+                json::Value key;
+                key["time"] = key_time(i);
+                key["value"] = json::Array{tidy(hips[i][0]), tidy(hips[i][1]), tidy(hips[i][2])};
+                keys.push_back(std::move(key));
+            }
+            json::Value track;
+            track["node"] = target.nodes[hips_target].name;
+            track["property"] = "position";
+            track["keys"] = std::move(keys);
+            tracks.insert(tracks.begin(), std::move(track));
+        }
+        return tracks;
+    }
+
+    // Whether a humanoid take of one model plays on another as it is: the same human bones by
+    // the same names, in the same T-pose, at rest the same way, and the hips as high.
+    static bool same_rig(const scene3d::Model& source, const Avatar& from,
+                         const scene3d::Model& target, const Avatar& to) {
+        constexpr double kClose = 1e-4;
+        if (from.bones.size() != to.bones.size()) {
+            return false;
+        }
+        return std::ranges::all_of(to.bones, [&](const auto& bone) {
+            const int node = bone.second;
+            const auto found = from.bones.find(bone.first);
+            if (found == from.bones.end()) {
+                return false;
+            }
+            const scene3d::ModelNode& a = source.nodes[static_cast<std::size_t>(found->second)];
+            const scene3d::ModelNode& b = target.nodes[static_cast<std::size_t>(node)];
+            const Quaternion rest_a{a.rotation.x, a.rotation.y, a.rotation.z, a.rotation.w};
+            const Quaternion rest_b{b.rotation.x, b.rotation.y, b.rotation.z, b.rotation.w};
+            const auto pose_a = from.pose.find(found->second);
+            const auto pose_b = to.pose.find(node);
+            const Quaternion t_a = pose_a != from.pose.end() ? pose_a->second : rest_a;
+            const Quaternion t_b = pose_b != to.pose.end() ? pose_b->second : rest_b;
+            return a.name == b.name && angle_between(rest_a, rest_b) <= kClose &&
+                   angle_between(t_a, t_b) <= kClose &&
+                   std::abs(a.position.x - b.position.x) + std::abs(a.position.y - b.position.y) +
+                           std::abs(a.position.z - b.position.z) <=
+                       kClose;
+        });
+    }
+
     // A clip of a model, as its import settings make it of one of the model's takes. A clip's ID
     // names it in the settings' tables, else it is Unity's ID for the clip of each take's name.
     struct ModelClip {
@@ -8677,26 +9119,59 @@ private:
             return;
         }
         out.name = settings.name;
-        out.animation["from"]["model"] = destination(asset.path);
-        out.animation["from"]["animation"] = take->name;
         out.animation["loop"] = settings.loop ? "linear" : "none";
-        double length = take->length;
+        constexpr double kClose = 0.001;
+        double start = 0.0;
+        double stop = take->length;
+        double first_frame = 0.0;
         if (settings.frames && take->frame_rate > 0.0) {
-            constexpr double kClose = 0.001;
-            const double start = (*settings.frames)[0] / take->frame_rate;
-            const double stop = (*settings.frames)[1] / take->frame_rate;
+            first_frame = (*settings.frames)[0];
+            start = std::clamp(first_frame / take->frame_rate, 0.0, take->length);
+            stop = std::clamp((*settings.frames)[1] / take->frame_rate, start, take->length);
+            if (stop - start < kClose) {
+                stop = take->length;
+            }
+        }
+        // A humanoid take of another model plays on this one retargeted through both Avatars;
+        // any other plays from its model, moving the nodes of the same names.
+        const Asset* target_asset = clip_target_.empty() ? nullptr : asset_of(clip_target_);
+        const scene3d::Model* target = target_asset != nullptr && target_asset->path != asset.path
+                                           ? model_file(*target_asset, where)
+                                           : nullptr;
+        const Avatar* from = target != nullptr ? avatar_of(asset, where) : nullptr;
+        const Avatar* to = target != nullptr ? avatar_of(*target_asset, where) : nullptr;
+        json::Array tracks;
+        double length = take->length;
+        if (from != nullptr && to != nullptr && from->humanoid() && to->humanoid() &&
+            !same_rig(*model, *from, *target, *to)) {
+            tracks = retarget(*model, *from, *take, start, stop, *target, *to);
+            length = stop - start;
+            out.retargeted = true;
+        } else {
+            if (target != nullptr) {
+                const std::vector<int> map = scene3d::node_map(*target, *model);
+                if (!take->tracks.empty() &&
+                    std::ranges::none_of(take->tracks, [&](const scene3d::NodeTrack& track) {
+                        return map[track.node] >= 0;
+                    })) {
+                    problems_.add("animation clip of another model", where,
+                                  settings.name + " moves nodes of " + asset.path + " that " +
+                                      target_asset->path + " hasn't");
+                }
+            }
+            out.animation["from"]["model"] = destination(asset.path);
+            out.animation["from"]["animation"] = take->name;
             if (start > kClose) {
                 std::ostringstream frame;
-                frame << (*settings.frames)[0];
+                frame << first_frame;
                 problems_.add("animation clip of part of a model's take", where,
                               settings.name + " plays " + take->name +
                                   " from its start; Unity starts it at frame " + frame.str());
-            } else if (stop > kClose && stop < length - kClose) {
+            } else if (stop < length - kClose) {
                 length = stop;
             }
         }
         out.animation["length"] = tidy(length);
-        json::Array tracks;
         const std::vector<Node> none;
         add_events(
             settings.events != nullptr ? settings.events->items : none,
@@ -8739,6 +9214,9 @@ private:
         std::string tree;        // the base layer's state machine as a .animtree.json file, or ""
         json::Object parameters; // the tree's parameters that start other than at their defaults
         ClipSpace space = ClipSpace::Flat; // what its clips converted for
+        std::string model;                 // for a model's instance, the model's GUID
+        bool retargeted = false;           // whether some clip is retargeted to that model
+        std::string motion_tree; // a tree playing its first animation, for root motion, or ""
     };
 
     // The objects of a controller file, by file ID.
@@ -8817,10 +9295,17 @@ private:
                 problems_.add("Animator controller played by different kinds of objects", where,
                               "its clips converted for " + std::string(space_name(out.space)) +
                                   ", so its tracks may not move this one as in Unity");
+            } else if (out.retargeted && out.model != clip_target_) {
+                const Asset* model = asset_of(out.model);
+                problems_.add("Animator controller played by different humanoid models", where,
+                              "its humanoid clips are retargeted to " +
+                                  (model != nullptr ? model->path : out.model) +
+                                  ", so they may not fit this model");
             }
             return out;
         }
         out.space = space;
+        out.model = space == ClipSpace::Model ? clip_target_ : std::string();
         auto file = read_controller(ref.guid, where);
         if (!file) {
             return out;
@@ -8947,6 +9432,7 @@ private:
             if (!converted.ok) {
                 return std::string();
             }
+            out.retargeted = out.retargeted || converted.retargeted;
             // A model's take plays at its own speed.
             const bool from_model = converted.animation.find("from") != nullptr;
             const double rate = from_model ? 1.0 : speed;
@@ -8957,7 +9443,8 @@ private:
             json::Value animation = at_speed(converted.animation, rate);
             std::string chosen = name;
             if (const Asset* asset = asset_of(motion.guid); asset != nullptr && chosen.empty()) {
-                chosen = from_model ? converted.name : file_stem(asset->path);
+                chosen = is_model_file(extension_of(asset->path)) ? converted.name
+                                                                  : file_stem(asset->path);
             }
             if (!prefix.empty()) {
                 for (const auto& [existing, value] : animations) {
@@ -9884,7 +10371,10 @@ private:
             return std::nullopt;
         }
         const GameObject& go = file.objects[static_cast<std::size_t>(index)];
-        LibraryOut& converted = library(*controller, where, clip_space(file, go));
+        const ClipSpace space = clip_space(file, go);
+        const Asset* model = space == ClipSpace::Model ? model_of(go) : nullptr;
+        clip_target_ = clip_target(go, space);
+        LibraryOut& converted = library(*controller, where, space);
         if (converted.path.empty()) {
             return std::nullopt;
         }
@@ -9892,11 +10382,26 @@ private:
         if (!contains(converted.scenes, file.scene)) {
             converted.scenes.push_back(file.scene);
         }
+        // Root motion on a model's instance comes from its hips, or the node its import settings
+        // name, which a tree takes out of the pose for gameplay code to move the object by.
+        std::string root_node;
         if (body.flag_at("m_ApplyRootMotion")) {
-            problems_.add("Animator root motion", where,
-                          file.three_d ? "the animation moves the object's Transform3D and its "
-                                         "model's nodes in place, not the object by its root"
-                                       : "the animation moves the object's Transform2D directly");
+            root_node = model != nullptr && !converted.first.empty()
+                            ? root_motion_node(*model, where)
+                            : std::string();
+            if (root_node.empty()) {
+                problems_.add("Animator root motion", where,
+                              file.three_d
+                                  ? "the animation moves the object's Transform3D and its "
+                                    "model's nodes in place, not the object by its root"
+                                  : "the animation moves the object's Transform2D directly");
+            } else {
+                problems_.add("Animator root motion", where,
+                              "the AnimationTree takes the " + root_node +
+                                  " node's motion out of the pose into root_motion_position and "
+                                  "root_motion_rotation, as Godot's does; gameplay code moves "
+                                  "the object by them, as Unity's Animator did");
+            }
         }
         json::Value player;
         player["library"] = converted.path;
@@ -9932,9 +10437,9 @@ private:
                 }
             }
         }
-        if (!converted.tree.empty()) {
+        if (!converted.tree.empty() || !root_node.empty()) {
             json::Value tree;
-            tree["tree_root"] = converted.tree;
+            tree["tree_root"] = converted.tree.empty() ? motion_tree(converted) : converted.tree;
             tree["libraries"][""] = converted.path;
             tree["deterministic"] = false;
             if (!body.flag_at("m_Enabled", true) || !object_active) {
@@ -9945,6 +10450,9 @@ private:
             }
             if (!converted.parameters.empty()) {
                 tree["parameters"] = converted.parameters;
+            }
+            if (!root_node.empty()) {
+                tree["root_motion_track"] = root_node;
             }
             return std::pair{std::string("AnimationTree"), std::move(tree)};
         }
@@ -9963,6 +10471,59 @@ private:
         const bool model = std::ranges::any_of(
             go.components, [](const Component& c) { return c.class_id == kModelInstance; });
         return model ? ClipSpace::Model : ClipSpace::Objects;
+    }
+
+    // The model an object is an instance of, or null.
+    [[nodiscard]] const Asset* model_of(const GameObject& go) const {
+        const std::string guid = go_model_guid(go);
+        return guid.empty() ? nullptr : asset_of(guid);
+    }
+
+    // The model whose instance plays an Animator's clips, which a model's clips are made for.
+    [[nodiscard]] std::string clip_target(const GameObject& go, ClipSpace space) const {
+        return space == ClipSpace::Model && model_of(go) != nullptr ? go_model_guid(go)
+                                                                    : std::string();
+    }
+
+    static std::string go_model_guid(const GameObject& go) {
+        for (const Component& component : go.components) {
+            if (component.class_id == kModelInstance) {
+                return component.body.string_at("guid");
+            }
+        }
+        return {};
+    }
+
+    // The node of a model whose motion is an Animator's root motion: a humanoid model's hips, or
+    // the node a generic model's import settings name; "" for neither.
+    std::string root_motion_node(const Asset& model, const std::string& where) {
+        const Avatar* avatar = avatar_of(model, where);
+        const scene3d::Model* loaded = model_file(model, where);
+        if (avatar == nullptr || loaded == nullptr) {
+            return {};
+        }
+        const int node = avatar->humanoid() ? avatar->bones.at("Hips") : avatar->motion_node;
+        return node >= 0 ? loaded->nodes[static_cast<std::size_t>(node)].name : std::string();
+    }
+
+    // A tree playing a library's first animation, for root motion where its controller has no
+    // transitions to make one.
+    const std::string& motion_tree(LibraryOut& library) {
+        if (!library.motion_tree.empty()) {
+            return library.motion_tree;
+        }
+        json::Value doc;
+        doc["format"] = 1;
+        doc["root"]["type"] = "Animation";
+        doc["root"]["animation"] = library.first;
+        library.motion_tree =
+            library.path.substr(0, library.path.size() - animation::kAnimationSuffix.size()) +
+            std::string(animation::kTreeSuffix);
+        keep_valid(doc, library.motion_tree,
+                   [](const json::Value& value) { return animation::validate_tree(value); });
+        add_file(library.motion_tree, json::write(doc) + "\n");
+        ++animation_trees_;
+        return library.motion_tree;
     }
 
     // The object at a path of names below an object ("" for the object itself), or -1.
@@ -10001,8 +10562,10 @@ private:
                     continue;
                 }
                 const int self = static_cast<int>(index);
-                const LibraryOut& converted = library(
-                    *controller, file.path + ": " + object_path(file, self), clip_space(file, go));
+                const ClipSpace space = clip_space(file, go);
+                clip_target_ = clip_target(go, space);
+                const LibraryOut& converted =
+                    library(*controller, file.path + ": " + object_path(file, self), space);
                 mark(self);
                 for (const std::string& name : converted.targets) {
                     mark(object_at(file, self, name.substr(0, name.rfind('#'))));
@@ -10354,12 +10917,17 @@ private:
             if (errors.empty()) {
                 break;
             }
+            std::vector<std::string> removed;
             for (const json::ValidationError& error : errors) {
                 problems_.add("invalid value", file.path + ": " + error.path, error.message);
+                if (pointer_within(removed, error.path)) {
+                    continue;
+                }
                 if (!remove_pointer(converted, error.path)) {
                     converted["entities"] = json::Object{};
                     break;
                 }
+                removed.push_back(error.path);
             }
         }
         auto text = world::format_scene(components_, json::write(converted), reader);
@@ -13306,6 +13874,10 @@ private:
     int three_d_files_ = 0;
     // Model files read for meshes picked out of them, by path; nullopt for one that doesn't load.
     std::map<std::string, std::optional<scene3d::Model>> models_;
+    // Models' Avatars, by the model's path; nullopt for a model with none that loads.
+    std::map<std::string, std::optional<Avatar>> avatars_;
+    // The GUID of the model whose instance plays the clips being converted for a model, or "".
+    std::string clip_target_;
     // glTF files written for meshes picked out of models: by model, mesh and materials, and all.
     std::map<std::string, std::string> picked_;
     std::set<std::string> picked_paths_;
