@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <map>
+#include <optional>
 #include <unordered_map>
 #include <utility>
 
@@ -25,48 +26,6 @@ Vec3 normalized(Vec3 v) {
 
 float dot(const Quat& a, const Quat& b) {
     return (a.x * b.x) + (a.y * b.y) + (a.z * b.z) + (a.w * b.w);
-}
-
-Quat normalized(const Quat& q) {
-    const float length = std::sqrt(dot(q, q));
-    if (length == 0.0F) {
-        return {};
-    }
-    const float inverse = 1.0F / length;
-    return {q.x * inverse, q.y * inverse, q.z * inverse, q.w * inverse};
-}
-
-// Godot's Quaternion::operator*: this rotation after o.
-Quat multiply(const Quat& a, const Quat& b) {
-    return {(a.w * b.x) + (a.x * b.w) + (a.y * b.z) - (a.z * b.y),
-            (a.w * b.y) + (a.y * b.w) + (a.z * b.x) - (a.x * b.z),
-            (a.w * b.z) + (a.z * b.w) + (a.x * b.y) - (a.y * b.x),
-            (a.w * b.w) - (a.x * b.x) - (a.y * b.y) - (a.z * b.z)};
-}
-
-// The inverse of a unit quaternion.
-Quat conjugate(const Quat& q) {
-    return {-q.x, -q.y, -q.z, q.w};
-}
-
-// Godot's Quaternion::slerp, with angles worked out the same way on every platform.
-Quat slerp(const Quat& from, const Quat& to, float weight) {
-    float cosom = dot(from, to);
-    Quat target = to;
-    if (cosom < 0.0F) {
-        cosom = -cosom;
-        target = {-to.x, -to.y, -to.z, -to.w};
-    }
-    float scale0 = 1.0F - weight;
-    float scale1 = weight;
-    if (1.0F - cosom > 0.00001F) { // Godot's CMP_EPSILON
-        const float sinom = std::sqrt(std::max(0.0F, 1.0F - (cosom * cosom)));
-        const float omega = atan2(sinom, cosom);
-        scale0 = cos_sin((1.0F - weight) * omega).y / sinom;
-        scale1 = cos_sin(weight * omega).y / sinom;
-    }
-    return {(scale0 * from.x) + (scale1 * target.x), (scale0 * from.y) + (scale1 * target.y),
-            (scale0 * from.z) + (scale1 * target.z), (scale0 * from.w) + (scale1 * target.w)};
 }
 
 Vec3 lerp(Vec3 a, Vec3 b, float t) {
@@ -130,6 +89,54 @@ struct ClipSourceHolder {
 };
 
 } // namespace
+
+Quat normalized(const Quat& q) {
+    const float length = std::sqrt(dot(q, q));
+    if (length == 0.0F) {
+        return {};
+    }
+    const float inverse = 1.0F / length;
+    return {q.x * inverse, q.y * inverse, q.z * inverse, q.w * inverse};
+}
+
+Quat multiply(const Quat& a, const Quat& b) {
+    return {(a.w * b.x) + (a.x * b.w) + (a.y * b.z) - (a.z * b.y),
+            (a.w * b.y) + (a.y * b.w) + (a.z * b.x) - (a.x * b.z),
+            (a.w * b.z) + (a.z * b.w) + (a.x * b.y) - (a.y * b.x),
+            (a.w * b.w) - (a.x * b.x) - (a.y * b.y) - (a.z * b.z)};
+}
+
+Quat inverse(const Quat& q) {
+    return {-q.x, -q.y, -q.z, q.w};
+}
+
+Quat slerp(const Quat& from, const Quat& to, float weight) {
+    float cosom = dot(from, to);
+    Quat target = to;
+    if (cosom < 0.0F) {
+        cosom = -cosom;
+        target = {-to.x, -to.y, -to.z, -to.w};
+    }
+    float scale0 = 1.0F - weight;
+    float scale1 = weight;
+    if (1.0F - cosom > 0.00001F) { // Godot's CMP_EPSILON
+        const float sinom = std::sqrt(std::max(0.0F, 1.0F - (cosom * cosom)));
+        const float omega = atan2(sinom, cosom);
+        scale0 = cos_sin((1.0F - weight) * omega).y / sinom;
+        scale1 = cos_sin(weight * omega).y / sinom;
+    }
+    return {(scale0 * from.x) + (scale1 * target.x), (scale0 * from.y) + (scale1 * target.y),
+            (scale0 * from.z) + (scale1 * target.z), (scale0 * from.w) + (scale1 * target.w)};
+}
+
+Vec3 xform_inv(const Quat& q, Vec3 v) {
+    // Godot's Quaternion::xform on the inverse.
+    const Vec3 u{-q.x, -q.y, -q.z};
+    const Vec3 uv{(u.y * v.z) - (u.z * v.y), (u.z * v.x) - (u.x * v.z), (u.x * v.y) - (u.y * v.x)};
+    const Vec3 uuv{(u.y * uv.z) - (u.z * uv.y), (u.z * uv.x) - (u.x * uv.z),
+                   (u.x * uv.y) - (u.y * uv.x)};
+    return v + (((uv * q.w) + uuv) * 2.0F);
+}
 
 std::vector<NodePose> rest_pose(const Model& model) {
     std::vector<NodePose> out;
@@ -220,9 +227,14 @@ std::array<float, 4> sample_track(const NodeTrack& track, double time, double le
     return {v.x, v.y, v.z, 0.0F};
 }
 
-void blend_animation(const Model& target, const Model& source, const ModelAnimation& animation,
-                     double time, float weight, std::span<const int> map,
-                     std::vector<NodePose>& pose) {
+namespace {
+
+// Godot's mixer on a model animation's tracks: each position and scale moves its node's weight of
+// the way from rest to the track's value, and each rotation turns that much of the way.
+template <typename WeightOf>
+void blend_tracks(const Model& target, const Model& source, const ModelAnimation& animation,
+                  double time, const WeightOf& weight_of, std::span<const int> map,
+                  std::vector<NodePose>& pose) {
     const bool same = map.empty();
     for (const NodeTrack& track : animation.tracks) {
         int node = static_cast<int>(track.node);
@@ -235,6 +247,11 @@ void blend_animation(const Model& target, const Model& source, const ModelAnimat
             static_cast<std::size_t>(node) >= target.nodes.size()) {
             continue;
         }
+        const std::optional<float> found = weight_of(static_cast<std::size_t>(node));
+        if (!found) {
+            continue;
+        }
+        const float weight = *found;
         const ModelNode& rest = target.nodes[static_cast<std::size_t>(node)];
         NodePose& posed = pose[static_cast<std::size_t>(node)];
         const std::array<float, 4> value =
@@ -244,8 +261,9 @@ void blend_animation(const Model& target, const Model& source, const ModelAnimat
             posed.position = posed.position + ((vec_of(value) - rest.position) * weight);
             break;
         case NodeProperty::Rotation: {
-            const Quat turn = multiply(conjugate(rest.rotation), quat_of(value));
-            posed.rotation = normalized(multiply(posed.rotation, slerp(Quat{}, turn, weight)));
+            const Quat turn = multiply(inverse(rest.rotation), quat_of(value));
+            posed.rotation =
+                scene3d::normalized(multiply(posed.rotation, slerp(Quat{}, turn, weight)));
             break;
         }
         case NodeProperty::Scale:
@@ -253,6 +271,30 @@ void blend_animation(const Model& target, const Model& source, const ModelAnimat
             break;
         }
     }
+}
+
+} // namespace
+
+void blend_animation(const Model& target, const Model& source, const ModelAnimation& animation,
+                     double time, float weight, std::span<const int> map,
+                     std::vector<NodePose>& pose) {
+    blend_tracks(
+        target, source, animation, time,
+        [weight](std::size_t /*node*/) -> std::optional<float> { return weight; }, map, pose);
+}
+
+void blend_animation(const Model& target, const Model& source, const ModelAnimation& animation,
+                     double time, std::span<const float> weights, std::span<const int> map,
+                     std::vector<NodePose>& pose) {
+    blend_tracks(
+        target, source, animation, time,
+        [weights](std::size_t node) -> std::optional<float> {
+            if (node >= weights.size() || std::abs(weights[node]) < 0.00001F) { // CMP_EPSILON
+                return std::nullopt;
+            }
+            return weights[node];
+        },
+        map, pose);
 }
 
 void apply_skeleton(const Model& model, const world::Skeleton3D& skeleton,
@@ -407,7 +449,17 @@ std::vector<NodePose> pose_of(const Model& model, std::span<const ClipSample> cl
             continue;
         }
         const std::vector<int> map = &from == &model ? std::vector<int>{} : node_map(model, from);
-        blend_animation(model, from, *found, clip.time, clip.weight, map, pose);
+        if (clip.node_weights.empty()) {
+            blend_animation(model, from, *found, clip.time, clip.weight, map, pose);
+            continue;
+        }
+        std::vector<float> weights(model.nodes.size(), clip.weight);
+        for (const auto& [name, weight] : clip.node_weights) {
+            if (const int node = find_node(model, name); node >= 0) {
+                weights[static_cast<std::size_t>(node)] = weight;
+            }
+        }
+        blend_animation(model, from, *found, clip.time, weights, map, pose);
     }
     if (skeleton != nullptr) {
         apply_skeleton(model, *skeleton, pose);

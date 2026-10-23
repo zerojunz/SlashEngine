@@ -161,13 +161,15 @@ struct Target {
 [[nodiscard]] std::vector<json::ValidationError> check_players(const json::Value& doc,
                                                                const world::FileReader& reader);
 
-// Asset type "animation" (.anim.json files as AnimationLibrary).
+// Asset types "animation" (.anim.json files as AnimationLibrary) and "animation_tree"
+// (.animtree.json files as AnimationTreeResource, in tree.hpp).
 void add_asset_types(asset::Assets& assets);
 
-// The "animation_player" system, which plays each AnimationPlayer's animation, and the clips
-// that pose models (scene3d::set_clip_source): a player's animation from a model poses its
-// entity's MeshInstance3D model, playing or paused. It reads .anim.json files and models through
-// assets, which must outlive the world.
+// The "animation_player" system, which plays each AnimationPlayer's animation, the
+// "animation_tree" system, which blends each AnimationTree's (tree.hpp), and the clips that pose
+// models (scene3d::set_clip_source): a tree's animations from models, or else a player's, playing
+// or paused, pose its entity's MeshInstance3D model. They read .anim.json, .animtree.json and
+// model files through assets, which must outlive the world.
 void add_systems(world::World& world, asset::Assets& assets);
 
 // Both of the above.

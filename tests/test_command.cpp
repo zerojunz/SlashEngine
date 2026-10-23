@@ -1288,7 +1288,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     // run at the same time.
     CHECK(*engine.ok("engine.describe").find("systems") ==
           parse(R"(["input", "gui", "services", "controls", "movement", "animation_player",
-                    "physics2d", "physics3d", "animated_sprite_2d", "camera_2d", "parallax_2d",
+                    "animation_tree", "physics2d", "physics3d", "animated_sprite_2d", "camera_2d", "parallax_2d",
                     "cpu_particles_2d", "gpu_particles_2d", "ai", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
@@ -1303,6 +1303,9 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         {"name": "animation_player",
          "doc": "Plays each AnimationPlayer's animation on its entity's components.",
          "priority": 900},
+        {"name": "animation_tree",
+         "doc": "Blends each AnimationTree's animations into its entity's components.",
+         "priority": 910},
         {"name": "physics2d",
          "doc": "Steps 2D physics: moves rigid and character bodies and reports contacts.",
          "priority": 950},
@@ -1319,10 +1322,10 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "priority": 1060},
         {"name": "cpu_particles_2d",
          "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100,
-         "threaded": true, "stage": 11, "reads": ["Transform2D"], "writes": ["CPUParticles2D"]},
+         "threaded": true, "stage": 12, "reads": ["Transform2D"], "writes": ["CPUParticles2D"]},
         {"name": "gpu_particles_2d",
          "doc": "Steps each GPUParticles2D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 11,
+         "threaded": true, "stage": 12,
          "reads": ["Transform2D", "LightOccluder2D", "TileMapLayer", "CanvasLayer", "Control",
                    "Camera2D"],
          "writes": ["GPUParticles2D", "assets"]},
@@ -2502,6 +2505,105 @@ TEST_CASE("animation.eval returns the values an animation's tracks set, and step
                          command::code::kNotFound);
     CHECK(reply.data.find("path")->as_string() == "/path");
     engine.fails("animation.eval", R"({"id": "hero", "times": []})", command::code::kInvalidParams);
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("animation.tree lists a tree's parameters and animation.set_parameters checks and sets "
+          "them") {
+    const std::string root = "animation_tree_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    REQUIRE(slash::platform::write_file(root + "/hero.anim.json", R"({"format": 1, "animations": {
+        "RESET": {"length": 1, "tracks": [{"path": "Transform2D/position/x",
+                                           "keys": [{"time": 0, "value": 0}]}]},
+        "walk": {"length": 1, "loop": "linear", "tracks": [{"path": "Transform2D/position/x",
+            "keys": [{"time": 0, "value": 0}, {"time": 1, "value": 10}]}]},
+        "wave": {"length": 0.5, "tracks": [{"path": "Transform2D/position/y",
+            "keys": [{"time": 0, "value": 5}]}]}}})")
+                .ok());
+    REQUIRE(slash::platform::write_file(root + "/hero.animtree.json", R"({"format": 1,
+        "root": {"type": "BlendTree", "nodes": {
+            "walk": {"type": "Animation", "animation": "walk"},
+            "wave": {"type": "Animation", "animation": "wave"},
+            "speed": {"type": "TimeScale", "inputs": {"in": "walk"}},
+            "shot": {"type": "OneShot", "inputs": {"in": "speed", "shot": "wave"}}},
+        "output": "shot"}})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create", R"({"id": "hero", "components": {"Transform2D": {},
+        "AnimationTree": {"tree_root": "hero.animtree.json", "libraries": {"": "hero.anim.json"}}}})");
+    engine.ok("entity.create", R"({"id": "empty", "components": {"Transform2D": {}}})");
+
+    // A file's parameters: what callers set, with defaults and docs.
+    const json::Value file = engine.ok("animation.tree", R"({"path": "hero.animtree.json"})");
+    CHECK(*file.find("parameters") == parse(R"({
+        "shot/request": {"default": "none",
+            "doc": "\"fire\" plays the shot, \"abort\" stops it, \"fade_out\" fades it out; the tree sets it back to \"none\"."},
+        "speed/scale": {"default": 1.0,
+            "doc": "How fast its input plays; negative plays backward."}})"));
+    CHECK(file.find("state") == nullptr);
+
+    // An entity's: their values, the state the tree keeps and what plays.
+    CHECK(engine.ok("animation.set_parameters", R"({"id": "hero", "parameters": {
+              "speed/scale": 2}})") == parse(R"({"id": "hero", "changed": {"speed/scale": 2}})"));
+    engine.ok("step", R"({"ticks": 2})");
+    json::Value tree = engine.ok("animation.tree", R"({"id": "hero"})");
+    CHECK(*tree.find("parameters")->find("speed/scale")->find("value") == parse("2"));
+    CHECK(*tree.find("playing") ==
+          parse(R"([{"animation": "walk", "time": 0.0333, "weight": 1}])"));
+    CHECK_FALSE(tree.find("state")->find("shot/active")->as_bool());
+    CHECK(tree.find("invalid") == nullptr);
+    // The tree acts on a request and sets it back.
+    engine.ok("animation.set_parameters",
+              R"({"id": "hero", "parameters": {"shot/request": "fire"}})");
+    engine.ok("step");
+    tree = engine.ok("animation.tree", R"({"id": "hero"})");
+    CHECK(*tree.find("parameters")->find("shot/request")->find("value") == parse(R"("none")"));
+    CHECK(tree.find("state")->find("shot/active")->as_bool());
+    CHECK(*tree.find("playing") == parse(R"([{"animation": "walk", "time": 0.0333, "weight": 0},
+                                             {"animation": "wave", "time": 0, "weight": 1}])"));
+    // Setting a value it already has changes nothing; null resets one to its default.
+    CHECK(
+        *engine
+             .ok("animation.set_parameters", R"({"id": "hero", "parameters": {"speed/scale": 2}})")
+             .find("changed") == parse("{}"));
+    CHECK(*engine
+               .ok("animation.set_parameters",
+                   R"({"id": "hero", "parameters": {"speed/scale": null}})")
+               .find("changed") == parse(R"({"speed/scale": null})"));
+
+    auto reply = engine.fails("animation.set_parameters",
+                              R"({"id": "hero", "parameters": {"speed/scal": 1}})",
+                              command::code::kNotFound);
+    CHECK(reply.message ==
+          "/parameters/speed~1scal: the tree has no parameter \"speed/scal\"; did you mean "
+          "\"speed/scale\"?");
+    reply =
+        engine.fails("animation.set_parameters",
+                     R"({"id": "hero", "parameters": {"speed/scale": 3, "shot/request": "go"}})",
+                     command::code::kInvalidParams);
+    CHECK(reply.message ==
+          R"(/parameters/shot~1request: expected "none", "fire", "abort" or "fade_out")");
+    // A bad value changes nothing, the good ones included.
+    CHECK(engine.ok("animation.tree", R"({"id": "hero"})")
+              .find("parameters")
+              ->find("speed/scale")
+              ->find("value")
+              ->as_double() == 1.0);
+    reply = engine.fails("animation.set_parameters",
+                         R"({"id": "hero", "parameters": {"shot/active": true}})",
+                         command::code::kInvalidParams);
+    CHECK(reply.message ==
+          "/parameters/shot~1active: \"shot/active\" is set by the tree as it plays, not by "
+          "callers");
+    reply = engine.fails("animation.tree", R"({"id": "empty"})", command::code::kInvalidParams);
+    CHECK(reply.message == "/id: \"empty\" has no AnimationTree");
+    reply = engine.fails("animation.tree", "{}", command::code::kInvalidParams);
+    CHECK(contains(reply.message, "give id"));
+    engine.fails("animation.set_parameters", R"({"id": "hero", "parameters": {}})",
+                 command::code::kInvalidParams);
     std::filesystem::remove_all(root);
 }
 

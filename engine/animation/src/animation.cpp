@@ -1,5 +1,7 @@
 #include "slash/animation/animation.hpp"
 
+#include "internal.hpp"
+
 #include "slash/core/text.hpp"
 
 #include <algorithm>
@@ -598,65 +600,7 @@ std::vector<json::ValidationError> check_players(const json::Value& doc,
     if (!reader) {
         return errors;
     }
-    std::map<std::string, Result<scene3d::Model>, std::less<>> models;
-    const auto model = [&](const std::string& path) -> const Result<scene3d::Model>& {
-        if (const auto it = models.find(path); it != models.end()) {
-            return it->second;
-        }
-        const auto read = [&]() -> Result<scene3d::Model> {
-            auto bytes = reader(path);
-            if (!bytes) {
-                return bytes.error();
-            }
-            return scene3d::load_model(bytes.value(), path, reader);
-        };
-        return models.emplace(path, read()).first->second;
-    };
-    std::map<std::string, Result<AnimationLibrary>, std::less<>> loaded;
-    const auto load = [&](const std::string& path) -> const Result<AnimationLibrary>& {
-        if (const auto it = loaded.find(path); it != loaded.end()) {
-            return it->second;
-        }
-        const auto parse = [&]() -> Result<AnimationLibrary> {
-            if (is_model_library(path)) {
-                const Result<scene3d::Model>& found = model(path);
-                if (!found) {
-                    return found.error();
-                }
-                return model_library(found.value(), path);
-            }
-            auto text = reader(path);
-            if (!text) {
-                return text.error();
-            }
-            auto parsed = json::parse(text.value());
-            if (!parsed) {
-                return parsed.error();
-            }
-            auto library = parse_animation_library(parsed.value());
-            if (!library) {
-                return library;
-            }
-            // Animations from models take their lengths and loops from them.
-            for (auto& [name, animation] : library.value().animations) {
-                if (animation.from.model.empty()) {
-                    continue;
-                }
-                const std::string at = "/animations/" + json::pointer_escape(name) + "/from";
-                const Result<scene3d::Model>& found = model(animation.from.model);
-                if (!found) {
-                    return make_error(found.error().code, at + "/model: " + animation.from.model +
-                                                              ": " + found.error().message);
-                }
-                if (auto resolved = resolve_clip(animation, found.value()); !resolved) {
-                    return make_error(resolved.error().code,
-                                      at + "/animation: " + resolved.error().message);
-                }
-            }
-            return library;
-        };
-        return loaded.emplace(path, parse()).first->second;
-    };
+    detail::CheckedFiles files(reader);
     const auto check = [&](const json::Value& components, const std::string& at, bool extends) {
         const json::Value* player = components.find("AnimationPlayer");
         if (player == nullptr || !player->is_object()) {
@@ -675,7 +619,7 @@ std::vector<json::ValidationError> check_players(const json::Value& doc,
                                                "\"models/hero.glb\""});
             return;
         }
-        const Result<AnimationLibrary>& library = load(path);
+        const Result<AnimationLibrary>& library = files.library(path);
         if (!library) {
             errors.push_back({at + "/library", path + ": " + library.error().message});
             return;

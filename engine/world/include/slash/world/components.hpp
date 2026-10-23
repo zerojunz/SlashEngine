@@ -549,6 +549,57 @@ struct AnimationPlayer {
 };
 SLASH_COMPONENT(AnimationPlayer, library, animation, playing, speed_scale, time, backwards, targets)
 
+// An animation an AnimationTree played on its last tick: how far in it was and how much it
+// counted, as the most any of its tracks did, and the model nodes that counted otherwise, as
+// filters leave them.
+struct TreeAnimation {
+    std::string animation; // its name in the tree: "Walk", or "library/Walk"
+    double time = 0.0;
+    float weight = 0.0F;
+    std::map<std::string, float> node_weights{}; // NOLINT(readability-redundant-member-init)
+};
+SLASH_REFLECT(TreeAnimation, animation, time, weight, node_weights)
+
+// Blends animations as a .animtree.json file's tree of animation nodes says, as Godot's
+// AnimationTree: each tick it works out how much each animation of its libraries counts, track by
+// track, and mixes them into the components their tracks name and the pose of the model the
+// entity's MeshInstance3D draws. Games set its parameters (a Blend2's blend_amount, a OneShot's
+// request); the tree keeps the rest of what it needs as it plays in state.
+struct AnimationTree {
+    std::string tree_root; // project path of a .animtree.json file
+    // The .anim.json files or models its animations come from, by library name. The tree names
+    // the animations of the library named "" by themselves and others' as "library/animation".
+    std::map<std::string, std::string> libraries;
+    std::map<std::string, entt::entity> targets; // as AnimationPlayer's
+    bool active = true;
+    // Tracks no animation plays go back to their RESET values; otherwise each track's weights
+    // are scaled to add up to 1, as Godot's deterministic.
+    bool deterministic = true;
+    // A model node whose motion is reported in root_motion_* rather than posed.
+    std::string root_motion_track;
+    bool root_motion_local = false; // report root motion position in the node's own frame
+    // Parameters set by the game, by their names in the tree, as "speed/blend_amount"; the tree
+    // sets requests back to their defaults once it has acted on them.
+    json::Object parameters;
+    // Parameters the tree keeps as it plays: times, fades, the current input. Empty starts the
+    // tree over.
+    json::Object state;
+    std::vector<TreeAnimation> playing; // what the last tick played
+    std::string invalid;                // why the last tick played nothing; "" when it played
+    // The root motion track's motion on the last tick, and where its animations put the node.
+    Vec3 root_motion_position;
+    Quat root_motion_rotation;
+    Vec3 root_motion_scale; // the change from 1
+    Vec3 root_motion_position_accumulator;
+    Quat root_motion_rotation_accumulator;
+    Vec3 root_motion_scale_accumulator{1.0F, 1.0F, 1.0F};
+};
+SLASH_COMPONENT(AnimationTree, tree_root, libraries, targets, active, deterministic,
+                root_motion_track, root_motion_local, parameters, state, playing, invalid,
+                root_motion_position, root_motion_rotation, root_motion_scale,
+                root_motion_position_accumulator, root_motion_rotation_accumulator,
+                root_motion_scale_accumulator)
+
 // A grid of tiles from a .tileset.json file, as Godot's TileMapLayer, drawn at the entity's
 // Transform2D with cell [0, 0]'s top left corner there. Its cells are text: each row is a string
 // of keys, each key standing for the tile the legend names, and "." for an empty cell. The

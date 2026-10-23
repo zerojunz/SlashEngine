@@ -1111,11 +1111,20 @@ std::string pascal_case(std::string_view name) {
 }
 
 bool is_engine_system(std::string_view name) {
-    static constexpr std::array<std::string_view, 13> kSystems{
-        "ai",        "animated_sprite_2d", "animation_player", "audio",
-        "camera_2d", "cpu_particles_2d",   "gpu_particles_2d", "gui",
-        "input",     "parallax_2d",        "physics2d",        "physics3d",
-        "services"};
+    static constexpr std::array<std::string_view, 14> kSystems{"ai",
+                                                               "animated_sprite_2d",
+                                                               "animation_player",
+                                                               "animation_tree",
+                                                               "audio",
+                                                               "camera_2d",
+                                                               "cpu_particles_2d",
+                                                               "gpu_particles_2d",
+                                                               "gui",
+                                                               "input",
+                                                               "parallax_2d",
+                                                               "physics2d",
+                                                               "physics3d",
+                                                               "services"};
     return contains(kSystems, name);
 }
 

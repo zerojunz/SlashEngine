@@ -442,7 +442,7 @@ The report lists each of these once per kind, with how many and where it was fir
 
 | What | Why, and when |
 | --- | --- |
-| `AnimationTree` | Blend trees and state machines come with milestone 7; its animations play through an `AnimationPlayer` |
+| `AnimationTree` | Not converted yet, though an [`AnimationTree`](scene-format.md#animation-trees) plays blend trees; its animations play through an `AnimationPlayer` |
 | Audio and animation tracks | Play the sound or the other animation from gameplay code, on an event track's event |
 | Bezier handles, the capture update mode, blend times and markers | A bezier track plays cubic through its keys, a capture track as continuous, and animations switch without blending |
 | Tracks on a control's `position` or `size` | Animate its offsets instead |
