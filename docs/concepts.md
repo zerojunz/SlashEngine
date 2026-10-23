@@ -288,7 +288,8 @@ Sound follows Godot's AudioServer. **Sounds** are `.wav`, `.ogg` and `.mp3` file
 want. **Players** are components: an `AudioStreamPlayer` plays everywhere at once, as music
 does, and an `AudioStreamPlayer2D` fades with distance from the `AudioListener2D` and pans left
 or right by where it is. An `AudioStreamPlayer3D` does the same in 3D from the `AudioListener3D`
-or camera, muffled with distance and pitched by the Doppler effect. Each player mixes into a **bus**, and each bus runs its **effects**
+or camera, muffled with distance and pitched by the Doppler effect, on two speakers or up to
+7.1. Each player mixes into a **bus**, and each bus runs its **effects**
 (filters, EQs, delay, reverb, compression and the rest of Godot's) and sends to another bus,
 down to Master, which plays on the speakers. The project's `.bus_layout.json` file lists the
 buses, so music and sound effects get their own volumes, as in an options menu. An `Area2D` or

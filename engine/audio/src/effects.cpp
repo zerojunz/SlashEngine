@@ -1068,8 +1068,8 @@ public:
         const float mix = mix_;
 
         const Frame* src = src_frames;
-        if (!sidechain_.empty()) {
-            src = context_.bus_buffer(sidechain_);
+        if (!sidechain_.empty() && current_channel_ != -1) {
+            src = context_.bus_buffer(sidechain_, current_channel_);
         }
         for (int i = 0; i < frames; ++i) {
             const float peak = std::max(std::abs(src[i].left), std::abs(src[i].right));
@@ -1096,8 +1096,12 @@ public:
         }
     }
 
+    // The speaker pair it runs on, as Godot's set_current_channel; -1 ignores the sidechain.
+    void set_current_channel(int channel) { current_channel_ = channel; }
+
 private:
     MixContext& context_;
+    int current_channel_ = -1;
     float threshold_;
     float ratio_;
     float gain_;
@@ -2029,20 +2033,21 @@ Sound RecordInstance::recording() const {
     return sound;
 }
 
-SpectrumAnalyzerInstance* spectrum_analyzer(Server& server, int bus, int effect) {
+SpectrumAnalyzerInstance* spectrum_analyzer(Server& server, int bus, int effect, int channel) {
     return static_cast<SpectrumAnalyzerInstance*>(
-        server.effect_instance(bus, effect, "spectrum_analyzer"));
+        server.effect_instance(bus, effect, "spectrum_analyzer", channel));
 }
 
-CaptureInstance* capture_effect(Server& server, int bus, int effect) {
-    return static_cast<CaptureInstance*>(server.effect_instance(bus, effect, "capture"));
+CaptureInstance* capture_effect(Server& server, int bus, int effect, int channel) {
+    return static_cast<CaptureInstance*>(server.effect_instance(bus, effect, "capture", channel));
 }
 
-RecordInstance* record_effect(Server& server, int bus, int effect) {
-    return static_cast<RecordInstance*>(server.effect_instance(bus, effect, "record"));
+RecordInstance* record_effect(Server& server, int bus, int effect, int channel) {
+    return static_cast<RecordInstance*>(server.effect_instance(bus, effect, "record", channel));
 }
 
-Result<std::unique_ptr<EffectInstance>> make_effect(const EffectSlot& slot, MixContext& context) {
+Result<std::unique_ptr<EffectInstance>> make_effect(const EffectSlot& slot, MixContext& context,
+                                                    int channel) {
     const auto index = static_cast<std::size_t>(
         std::ranges::find(kTypes, slot.type, &EffectType::name) - kTypes.begin());
     if (index == kTypes.size()) {
@@ -2051,7 +2056,12 @@ Result<std::unique_ptr<EffectInstance>> make_effect(const EffectSlot& slot, MixC
     }
     const EffectType& type = kTypes.at(index);
     const Params params(slot.params, type.settings);
-    return type.make(params, context);
+    std::unique_ptr<EffectInstance> made = type.make(params, context);
+    if (type.name == "compressor") {
+        // As Godot's add_bus_effect: a compressor reads its sidechain's same speaker pair.
+        static_cast<Compressor&>(*made).set_current_channel(channel);
+    }
+    return made;
 }
 
 } // namespace slash::audio

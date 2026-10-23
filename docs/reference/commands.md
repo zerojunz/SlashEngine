@@ -1772,8 +1772,12 @@ Needs: `read`. With the footsteps playing:
 
 - A bus lists `solo`, `mute` and `bypass_effects` when they are on, `send` when it isn't
   Master, and its effects in order, with `"enabled": false` for those turned off.
-- `peak_db` is the louder channel's peak over the last mix step, after the bus's volume and
+- `peak_db` is the loudest speaker's peak over the last mix step, after the bus's volume and
   effects, or `null` when the bus was silent.
+- In 3.1, 5.1 or 7.1 ([surround](scene-format.md#surround-sound)), `speaker_mode` names the
+  speakers (`surround_31`, `surround_51` or `surround_71`; left out in stereo), and each player
+  and send adds `speakers`: its gain on the `center` speaker and the `lfe`, and `[left, right]`
+  on the `rear` and `side` speakers that mode has. `volume` stays the front pair's.
 - `voices` is how many playbacks of the player are mixing (up to its `max_polyphony`);
   `position` (of the newest one) and `length` are in seconds. A randomizer's `length` is that
   of the sound playing, and a player that hasn't played one has none. A playlist's `position`
@@ -1833,6 +1837,16 @@ second:
 {"peak_db":-7.6,"rms_db":-11.4,"seconds":0.05,"slices":[-7.6,-7.9,-8.8,-9.9,-11.1]}
 ```
 
+In surround, the peak and RMS are over every speaker, and `speakers` gives each speaker's RMS
+level: `front_left`, `front_right`, `center`, `lfe`, then `rear_left` and `rear_right` in 5.1
+and `side_left` and `side_right` in 7.1. The `.wav` file then has a channel for each speaker,
+named as `WAVE_FORMAT_EXTENSIBLE` names them. From
+[examples/surround-sound](../../examples/surround-sound/), a bee on the listener's right:
+
+```json
+{"peak_db":-3.7,"rms_db":-13.1,"seconds":0.1,"slices":[],"speakers":{"center":-10.8,"front_left":-17.9,"front_right":-15,"lfe":-8.3,"rear_left":-17.9,"rear_right":-14.3,"side_left":-18,"side_right":-13.9}}
+```
+
 Sessions keep the last 10 seconds of each bus; `seconds` in the reply is how much there was,
 which is less right after a scene opens. A name that is no bus is an error with the closest one,
 and so is a `path` that doesn't end in `.wav`. In a dry-run `batch`, `path` writes nothing.
@@ -1848,7 +1862,7 @@ played. From [examples/music-analysis](../../examples/music-analysis/).
 | --- | --- | --- | --- |
 | `path` | string | | A sound (`.wav`, `.ogg`, `.mp3`) or a `.audio.json` file with a `source` |
 | `bus` | string | | A bus to measure instead of a file |
-| `seconds` | number, 0 to 10 | `10` | With `bus`, how far back |
+| `seconds` | number, 0 to 10 | `10` | With `bus`, how far back; surround is measured folded to stereo |
 | `loop` | boolean | the file's settings | Measure the loop's join; `true` loops a plain sound whole |
 
 Needs: `read`. A four-bar groove's `.audio.json` file, which loops it every 16 beats:

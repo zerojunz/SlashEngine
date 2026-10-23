@@ -1290,8 +1290,13 @@ matches to its `audio_bus_name`, as Godot's `_get_actual_bus`. A 3D player fades
 attenuation models, pans, is muffled by a high shelf with distance and outside its emission
 angle, shifts pitch with the Doppler effect (velocity tracked by ticks) and follows an `Area3D`'s
 bus and reverb bus, as Godot's `_update_panning`: each playback mixes into several buses at once
-(`Server::set_bus_volumes`) through one high shelf (`Server::set_highshelf`), as Godot's mixer. Sessions keep ten seconds of each bus for `audio.capture`, which measures it (peak, RMS and
-slices in dB) or writes a `.wav` file; `audio.spectrum` reads a bus's `spectrum_analyzer` in
+(`Server::set_bus_volumes`) through one high shelf (`Server::set_highshelf`), as Godot's mixer.
+Sound mixes for project.json's `audio.speaker_mode` (Godot's speaker modes, up to 7.1; `auto`
+follows the sink's device, `SdlOutput::speaker_mode()`): each bus has a buffer and its own
+effects per speaker pair (`audio::Volumes`, a gain per pair), 3D players pan by Godot's Spcap,
+an `AudioStreamPlayer`'s `mix_target` picks its speakers, and mixes and sinks interleave the
+pairs. Sessions keep ten seconds of each bus for `audio.capture`, which measures it (peak, RMS,
+slices and each speaker in dB) or writes a `.wav` file; `audio.spectrum` reads a bus's `spectrum_analyzer` in
 frequency bands, `audio.record` starts and stops its `record` effect and writes the take, and
 `audio.state`, `audio.play`, `audio.stop` and `audio.set_bus` do the rest. Sessions put the
 buses back with the world when a command fails or is a dry run. `audio.analyze`
@@ -1301,7 +1306,8 @@ clicks where it joins, for a sound, a `.audio.json` sound as it loops or what a 
 `examples/music-analysis` measures a groove. Example sounds are made in code
 without libm, so outputs match everywhere. `examples/audio` plays music and footsteps panned
 around a listener, `examples/audio-areas-and-analysis` a bat in a cave's reverb, measured
-by its spectrum and recorded, and `examples/interactive-music` a score that follows a fight.
+by its spectrum and recorded, `examples/interactive-music` a score that follows a fight and
+`examples/surround-sound` a bee flying round a listener in 7.1.
 
 ## Soundtracks
 

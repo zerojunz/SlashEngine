@@ -22,7 +22,7 @@ step {"ticks":45}
 audio.state {"ids":["score"]}
 {"buses":[{"name":"Master","peak_db":-8.3,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","clip":"victory","id":"score","kind":"AudioStreamPlayer","position":0.2554,"stream":"audio/score.audio.json","voices":1,"volume":[1,1]}]}
 entity.get {"components":["AudioStreamPlayer"],"id":"score"}
-{"components":{"AudioStreamPlayer":{"autoplay":true,"bus":"Master","max_polyphony":1,"parameters":{"switch_to_clip":"explore"},"pitch_scale":1.0,"playing":true,"stream":"audio/score.audio.json","stream_paused":false,"volume_db":0.0}},"id":"score"}
+{"components":{"AudioStreamPlayer":{"autoplay":true,"bus":"Master","max_polyphony":1,"mix_target":"stereo","parameters":{"switch_to_clip":"explore"},"pitch_scale":1.0,"playing":true,"stream":"audio/score.audio.json","stream_paused":false,"volume_db":0.0}},"id":"score"}
 step {"ticks":75}
 {"music":[{"automatic":true,"clip":"explore","from":"victory","id":"score","tick":239,"transition":2,"waited":1.0}],"tick":270,"ticks":75}
 audio.state {"ids":["score"]}
