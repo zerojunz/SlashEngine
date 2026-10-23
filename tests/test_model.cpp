@@ -650,6 +650,235 @@ f -5//1 -4//1 -3//1 -2//1 -1//1
             .empty());
 }
 
+TEST_CASE("models write as glTF files that load back as written") {
+    MemoryFiles files;
+    files.files["textures/wood grain.png"] = render::encode_png(checker()).value();
+    scene3d::Model model;
+    // An image beside the model, in another folder, and one inside it.
+    model.images.push_back({.path = "textures/wood grain.png", .image = {}});
+    model.images.push_back({.path = "", .image = checker()});
+
+    scene3d::ModelMaterial wood;
+    wood.name = "Wood";
+    wood.standard.albedo_color = {0.8F, 0.5F, 0.25F, 1.0F};
+    wood.standard.metallic = 0.25F;
+    wood.standard.roughness = 0.75F;
+    wood.standard.uv1_scale = {2.0F, 3.0F, 1.0F};
+    wood.standard.uv1_offset = {0.5F, 0.25F, 0.0F};
+    wood.standard.texture_filter = "nearest";
+    wood.standard.texture_repeat = false;
+    wood.standard.metallic_texture_channel = "blue";
+    wood.standard.roughness_texture_channel = "green";
+    wood.standard.normal_enabled = true;
+    wood.standard.normal_scale = 0.5F;
+    wood.standard.cull_mode = "disabled";
+    wood.albedo_image = 0;
+    wood.metallic_image = 1;
+    wood.roughness_image = 1;
+    wood.normal_image = 1;
+    scene3d::ModelMaterial glow;
+    glow.name = "Glow";
+    glow.standard.albedo_color = {1.0F, 1.0F, 1.0F, 0.5F};
+    glow.standard.emission_enabled = true;
+    glow.standard.emission = {1.0F, 0.5F, 0.0F, 1.0F};
+    glow.standard.emission_energy_multiplier = 4.0F;
+    glow.standard.shading_mode = "unshaded";
+    glow.standard.transparency = "alpha";
+    glow.standard.vertex_color_use_as_albedo = true;
+    // A material naming its texture by path, as the importers make them.
+    scene3d::ModelMaterial cutout;
+    cutout.name = "Cutout";
+    cutout.standard.albedo_texture = "textures/wood grain.png";
+    cutout.standard.transparency = "alpha_scissor";
+    cutout.standard.alpha_scissor_threshold = 0.25F;
+    model.materials = {wood, glow, cutout};
+
+    // A board of two triangles, and a gem: a colored triangle in the glow and one of the cutout.
+    const auto vertex = [](float x, float y, float z) {
+        render::Vertex3D v;
+        v.position = {x, y, z};
+        v.normal = {0.0F, 0.0F, 1.0F};
+        v.tangent = {1.0F, 0.0F, 0.0F, -1.0F};
+        v.uv = {x, y};
+        return v;
+    };
+    scene3d::ModelSurface board{
+        .vertices = {vertex(0, 0, 0), vertex(1, 0, 0), vertex(1, 1, 0), vertex(0, 1, 0)},
+        .indices = {0, 2, 1, 0, 3, 2},
+        .material = 0,
+        .weights = {}};
+    scene3d::ModelSurface gem{.vertices = {vertex(0, 0, 1), vertex(1, 0, 1), vertex(0, 1, 1)},
+                              .indices = {0, 2, 1},
+                              .material = 1,
+                              .weights = {}};
+    gem.vertices[1].rgba = {255, 0, 0, 128};
+    scene3d::ModelSurface facet = gem;
+    facet.material = 2;
+    facet.vertices[1].rgba = {255, 255, 255, 255};
+    // A surface of more corners than 16-bit indices reach.
+    scene3d::ModelSurface big;
+    big.vertices.resize(70000, vertex(0, 0, 0));
+    big.vertices.back() = vertex(2, 2, 2);
+    big.indices = {0, 69999, 1};
+    model.meshes = {{.name = "Board", .surfaces = {board}},
+                    {.name = "Gem", .surfaces = {gem, facet}},
+                    {.name = "Big", .surfaces = {big}},
+                    {.name = "Empty", .surfaces = {}}};
+    model.nodes = {{.name = "Root",
+                    .parent = -1,
+                    .position = {1.0F, 2.0F, 3.0F},
+                    .rotation = {0.0F, 0.70710677F, 0.0F, 0.70710677F},
+                    .scale = {2.0F, 2.0F, 2.0F},
+                    .file_index = 0},
+                   {.name = "Board",
+                    .parent = 0,
+                    .position = {},
+                    .rotation = {},
+                    .scale = {1.0F, 1.0F, 1.0F},
+                    .file_index = 1},
+                   {.name = "Gem",
+                    .parent = 0,
+                    .position = {0.0F, 1.0F, 0.0F},
+                    .rotation = {},
+                    .scale = {1.0F, 1.0F, 1.0F},
+                    .file_index = 2}};
+    const std::vector<world::Affine3D> globals = scene3d::node_globals(
+        model, std::vector<scene3d::NodePose>{
+                   {model.nodes[0].position, model.nodes[0].rotation, model.nodes[0].scale},
+                   {},
+                   {model.nodes[2].position, {}, {1.0F, 1.0F, 1.0F}}});
+    model.parts = {{.node = "Board", .mesh = 0, .transform = globals[1], .node_index = 1},
+                   {.node = "Gem", .mesh = 1, .transform = globals[2], .node_index = 2},
+                   {.node = "Gem", .mesh = 2, .transform = globals[2], .node_index = 2},
+                   {.node = "Root", .mesh = 3, .transform = globals[0], .node_index = 0}};
+
+    auto written = scene3d::write_gltf(model, "models/props/board.gltf");
+    REQUIRE_MESSAGE(written.ok(), error_of(written));
+    const json::Value document = parse(written.value());
+    // The value at a JSON Pointer of the file.
+    const auto at = [&](std::string_view pointer) -> const json::Value& {
+        const json::Value* value = &document;
+        std::size_t start = 1;
+        while (start <= pointer.size() && value != nullptr) {
+            const std::size_t slash = std::min(pointer.find('/', start), pointer.size());
+            const std::string key(pointer.substr(start, slash - start));
+            value = value->is_array() ? &value->as_array().at(std::stoul(key)) : value->find(key);
+            start = slash + 1;
+        }
+        REQUIRE(value != nullptr);
+        return *value;
+    };
+    CHECK(at("/images/0/uri").as_string() == "../../textures/wood%20grain.png");
+    CHECK(at("/images/1/uri").as_string().starts_with("data:image/png;base64,"));
+    CHECK(at("/images").size() == 2); // the cutout's path is the wood's image
+    CHECK(at("/extensionsUsed") ==
+          parse(R"(["KHR_texture_transform", "KHR_materials_emissive_strength",
+                    "KHR_materials_unlit"])"));
+    CHECK(at("/buffers/0/uri").as_string().starts_with("data:application/octet-stream;base64,"));
+    // A node has one mesh, so the gem's second goes on a child; the empty mesh is left out.
+    CHECK(at("/meshes").size() == 3);
+    CHECK(at("/nodes").size() == 4);
+    CHECK(at("/nodes/2/children") == parse("[3]"));
+    CHECK(at("/nodes/3/name").as_string() == "Gem_2");
+
+    files.files["models/props/board.gltf"] = written.value();
+    auto loaded = load(files, "models/props/board.gltf");
+    REQUIRE_MESSAGE(loaded.ok(), error_of(loaded));
+    const scene3d::Model& m = loaded.value();
+    REQUIRE(m.images.size() == 2);
+    CHECK(m.images[0].path == "textures/wood grain.png");
+    CHECK(m.images[1].path.empty());
+    CHECK(m.images[1].image.pixels == checker().pixels);
+
+    REQUIRE(m.materials.size() == 3);
+    const auto same_material = [](const scene3d::ModelMaterial& read,
+                                  const scene3d::ModelMaterial& wrote) {
+        // Colors go through linear and back.
+        CHECK(near(read.standard.albedo_color.x, wrote.standard.albedo_color.x));
+        CHECK(near(read.standard.albedo_color.y, wrote.standard.albedo_color.y));
+        CHECK(near(read.standard.albedo_color.z, wrote.standard.albedo_color.z));
+        CHECK(near(read.standard.emission.x, wrote.standard.emission.x));
+        CHECK(near(read.standard.emission.y, wrote.standard.emission.y));
+        world::StandardMaterial3D standard = read.standard;
+        standard.albedo_color = wrote.standard.albedo_color;
+        standard.emission = wrote.standard.emission;
+        CHECK(standard == wrote.standard);
+        CHECK(read.name == wrote.name);
+        CHECK(read.albedo_image == wrote.albedo_image);
+        CHECK(read.metallic_image == wrote.metallic_image);
+        CHECK(read.roughness_image == wrote.roughness_image);
+        CHECK(read.normal_image == wrote.normal_image);
+        CHECK(read.emission_image == wrote.emission_image);
+    };
+    same_material(m.materials[0], wood);
+    same_material(m.materials[1], glow);
+    scene3d::ModelMaterial read_cutout = cutout;
+    read_cutout.standard.albedo_texture.clear();
+    read_cutout.albedo_image = 0;
+    same_material(m.materials[2], read_cutout);
+
+    // Every corner as written, and the triangles in Godot's order again.
+    const auto same_surface = [](const scene3d::ModelSurface& read,
+                                 const scene3d::ModelSurface& wrote) {
+        CHECK(read.indices == wrote.indices);
+        CHECK(read.material == wrote.material);
+        REQUIRE(read.vertices.size() == wrote.vertices.size());
+        std::size_t differ = 0;
+        for (std::size_t i = 0; i < read.vertices.size(); ++i) {
+            const render::Vertex3D& a = read.vertices[i];
+            const render::Vertex3D& b = wrote.vertices[i];
+            if (a.position != b.position || a.normal != b.normal || a.tangent != b.tangent ||
+                a.uv != b.uv || a.rgba != b.rgba) {
+                ++differ;
+            }
+        }
+        CHECK(differ == 0);
+    };
+    REQUIRE(m.meshes.size() == 3);
+    CHECK(m.meshes[0].name == "Board");
+    same_surface(m.meshes[0].surfaces.at(0), board);
+    same_surface(m.meshes[1].surfaces.at(0), gem);
+    same_surface(m.meshes[1].surfaces.at(1), facet);
+    same_surface(m.meshes[2].surfaces.at(0), big);
+
+    // The nodes, and the parts where they put them.
+    REQUIRE(m.nodes.size() == 4);
+    CHECK(m.nodes[0].name == "Root");
+    CHECK(near(m.nodes[0].position, {1.0F, 2.0F, 3.0F}));
+    CHECK(m.nodes[2].parent == 0);
+    CHECK(m.nodes[3].name == "Gem_2");
+    CHECK(m.nodes[3].parent == 2);
+    REQUIRE(m.parts.size() == 3);
+    CHECK(m.parts[0].node == "Board");
+    CHECK(near(m.parts[0].transform.origin, globals[1].origin));
+    CHECK(near(m.parts[1].transform.x, globals[2].x));
+    CHECK(m.parts[2].mesh == 2);
+    CHECK(near(m.parts[2].transform.origin, globals[2].origin));
+
+    // A model without nodes, as an OBJ model: a node for each part.
+    files.files["models/shapes.obj"] = std::string(kObjQuad) + R"(f 1/1/1 2/2/1 3/3/1 4/4/1
+o Pentagon
+v 0 0 1
+v 1 0 1
+v 1 1 1
+v 0.5 1.5 1
+v 0 1 1
+f -5//1 -4//1 -3//1 -2//1 -1//1
+)";
+    auto obj = load(files, "models/shapes.obj");
+    REQUIRE(obj.ok());
+    auto obj_gltf = scene3d::write_gltf(obj.value(), "models/shapes.gltf");
+    REQUIRE(obj_gltf.ok());
+    files.files["models/shapes.gltf"] = obj_gltf.value();
+    auto again = load(files, "models/shapes.gltf");
+    REQUIRE_MESSAGE(again.ok(), error_of(again));
+    REQUIRE(again.value().parts.size() == 2);
+    CHECK(again.value().parts[1].node == "Pentagon");
+    CHECK(again.value().meshes.at(1).name == "Pentagon");
+    same_surface(again.value().meshes[0].surfaces.at(0), obj.value().meshes[0].surfaces.at(0));
+    same_surface(again.value().meshes[1].surfaces.at(0), obj.value().meshes[1].surfaces.at(0));
+}
+
 TEST_CASE("OBJ files without normals get smooth ones by Godot's smoothing groups") {
     MemoryFiles files;
     // Two faces at a right angle, sharing an edge: one facing +z, one -y.
