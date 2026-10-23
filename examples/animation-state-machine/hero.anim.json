@@ -1,0 +1,164 @@
+{
+  "animations": {
+    "RESET": {
+      "length": 1,
+      "tracks": [
+        {
+          "keys": [
+            {
+              "time": 0,
+              "value": 48
+            }
+          ],
+          "path": "Transform2D/position/y"
+        },
+        {
+          "keys": [
+            {
+              "time": 0,
+              "value": 0
+            }
+          ],
+          "path": "Transform2D/rotation"
+        },
+        {
+          "keys": [
+            {
+              "time": 0,
+              "value": [1, 1]
+            }
+          ],
+          "path": "Transform2D/scale"
+        }
+      ]
+    },
+    "idle": {
+      "length": 1,
+      "loop": "linear",
+      "tracks": [
+        {
+          "keys": [
+            {
+              "time": 0,
+              "value": [1, 1]
+            },
+            {
+              "time": 0.5,
+              "value": [1.05, 0.95]
+            },
+            {
+              "time": 1,
+              "value": [1, 1]
+            }
+          ],
+          "path": "Transform2D/scale"
+        }
+      ]
+    },
+    "jump": {
+      "length": 0.6,
+      "tracks": [
+        {
+          "keys": [
+            {
+              "time": 0,
+              "value": 48
+            },
+            {
+              "time": 0.3,
+              "value": 24
+            },
+            {
+              "time": 0.6,
+              "value": 48
+            }
+          ],
+          "path": "Transform2D/position/y"
+        }
+      ]
+    },
+    "run": {
+      "length": 0.4,
+      "loop": "linear",
+      "tracks": [
+        {
+          "keys": [
+            {
+              "time": 0,
+              "value": -0.25
+            },
+            {
+              "time": 0.2,
+              "value": 0.25
+            },
+            {
+              "time": 0.4,
+              "value": -0.25
+            }
+          ],
+          "path": "Transform2D/rotation"
+        }
+      ]
+    },
+    "strike": {
+      "length": 0.2,
+      "tracks": [
+        {
+          "keys": [
+            {
+              "time": 0,
+              "value": -0.6
+            },
+            {
+              "time": 0.2,
+              "value": 1
+            }
+          ],
+          "path": "Transform2D/rotation"
+        }
+      ]
+    },
+    "walk": {
+      "length": 0.5,
+      "loop": "linear",
+      "tracks": [
+        {
+          "keys": [
+            {
+              "time": 0,
+              "value": -0.1
+            },
+            {
+              "time": 0.25,
+              "value": 0.1
+            },
+            {
+              "time": 0.5,
+              "value": -0.1
+            }
+          ],
+          "path": "Transform2D/rotation"
+        }
+      ]
+    },
+    "windup": {
+      "length": 0.3,
+      "tracks": [
+        {
+          "keys": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 0.3,
+              "value": -0.6
+            }
+          ],
+          "path": "Transform2D/rotation"
+        }
+      ]
+    }
+  },
+  "format": 1
+}

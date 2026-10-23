@@ -616,7 +616,8 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Blend trees, one-shots, transitions and blend spaces with root motion (`AnimationTree`
         and `.animtree.json`), as Godot's `AnimationTree` and `AnimationMixer`;
         `animation.tree` and `animation.set_parameters`
-  - [ ] State machines (`AnimationNodeStateMachine`)
+  - [x] State machines with travel, conditions and grouped and nested machines, as Godot's
+        `AnimationNodeStateMachine`
   - [ ] Two-bone and FABRIK IK
 - [ ] Navigation on Recast and Detour, in 2D and 3D, with avoidance
 - [ ] 3D audio, as Godot's `AudioStreamPlayer3D` and `AudioListener3D`: attenuation models,
