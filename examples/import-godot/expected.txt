@@ -53,7 +53,7 @@ project.import {"dry_run":true,"source":"godot"}
       "count": 1,
       "what": "file type .svg",
       "where": "icon.svg",
-      "why": "textures are PNG or BMP files; save it as PNG"
+      "why": "textures are PNG, JPEG or BMP files; save it as PNG"
     },
     {
       "count": 1,
@@ -117,7 +117,7 @@ project.import {"source":"godot"}
       "count": 1,
       "what": "file type .svg",
       "where": "icon.svg",
-      "why": "textures are PNG or BMP files; save it as PNG"
+      "why": "textures are PNG, JPEG or BMP files; save it as PNG"
     },
     {
       "count": 1,

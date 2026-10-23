@@ -26,8 +26,9 @@ from its `.pck` file or executable: see [Exported games](#exported-games).
 | `storyboard/work.json` | A task per script, merged into the project's own tasks |
 | `import/godot.json` | The full report: every node's entity, what each script needs and everything that didn't convert |
 
-Textures (`.png`, `.bmp`), sounds (`.wav`, `.ogg`, `.mp3`), fonts (`.ttf`, `.otf`) and data files
-(`.json`, `.txt`, `.csv`) are used as they are. When the Godot folder is inside the project,
+Textures (`.png`, `.jpg`, `.bmp`), sounds (`.wav`, `.ogg`, `.mp3`), fonts (`.ttf`, `.otf`), 3D
+models (`.glb`, `.gltf`, `.obj`, `.fbx`, `.blend`, with a `.gltf` file's buffers and images and an
+`.obj` file's `.mtl` library) and data files (`.json`, `.txt`, `.csv`) are used as they are. When the Godot folder is inside the project,
 they stay where they are and the converted files go beside the originals (`res://art/a.png` in
 `godot/` is `godot/art/a.png`). When it is anywhere else, they and the scripts are copied in at
 their `res://` paths. Godot's hidden folders (`.godot/`), `addons/` and `build/` are skipped.
@@ -84,8 +85,10 @@ brings keep their IDs from that scene's own `.scene.json` file under the instanc
 (`Player/Camera2D` from `player.tscn` is `player/camera2d`). The report maps every node path to
 its entity.
 
-Node2D nodes nest through their parent's `Transform2D` `children` and controls through their
-parent's `Control` `children`, in Godot's order, so they draw in Godot's order. A root that is a
+Node2D nodes nest through their parent's `Transform2D` `children`, controls through their
+parent's `Control` `children` and Node3D nodes through their parent's `Transform3D` `children`, in
+Godot's order, so they draw in Godot's order. A plain `Node` between two Node3D nodes breaks the
+chain, as it does in Godot: the nodes under it are placed in the world. A root that is a
 plain `Node`, and plain nodes under it or under a `CanvasLayer`, get a `Transform2D` to hold
 their children in place. A `CanvasLayer` lists in its `children` the nodes that draw at the top
 of its canvas, so they draw in it as in Godot. Controls in no `CanvasLayer` draw on the screen
@@ -116,6 +119,13 @@ above the world.
 | `HScrollBar`, `VScrollBar` | `Control` and `ScrollBar` |
 | `TileMapLayer` | `Transform2D` and `TileMapLayer` |
 | `TileMap` | `Transform2D` and `TileMapLayer`, and an entity per layer (see [tile maps](#tile-sets-and-tile-maps)) |
+| `Node3D`, `Marker3D` | `Transform3D` |
+| `MeshInstance3D` | `Transform3D`, `MeshInstance3D`, and its mesh's and material's components (see [3D](#3d)) |
+| `Camera3D`, `DirectionalLight3D`, `OmniLight3D`, `SpotLight3D`, `AudioStreamPlayer3D`, `AudioListener3D` | `Transform3D` and the component of the same name |
+| `StaticBody3D`, `AnimatableBody3D`, `RigidBody3D`, `CharacterBody3D`, `Area3D` | `Transform3D` and the body; its `CollisionShape3D` children are its shapes |
+| `CollisionShape3D` | `Transform3D` and `CollisionShape3D`, with its shape's fields (see [3D](#3d)) |
+| `WorldEnvironment` | `WorldEnvironment`, with its environment's fields, and its sky's material (see [3D](#3d)) |
+| An instance of a model file (`.glb`, `.gltf`, `.fbx`, `.blend`) | `Transform3D` and `MeshInstance3D` drawing the model |
 
 Each property goes to the field of the same name: `position`, `rotation`, `scale`, `skew` and
 `top_level` to `Transform2D` (or `Control` on a control), `offset_left` to `Control`, `texture`
@@ -338,6 +348,41 @@ file that its `process_material` names:
   doesn't have them yet.
   `report.converted.process_materials` counts the files written.
 
+## 3D
+
+Godot's 3D nodes keep their names and fields here, so most of a 3D scene converts as a 2D one
+does. [examples/import-godot-3d](../../examples/import-godot-3d/) imports a courtyard.
+
+- A node's `transform = Transform3D(...)` becomes its `Transform3D`'s `position`, `rotation` (in
+  radians, in Godot's YXZ order) and `scale`, split as Godot's `Basis::get_euler` and
+  `get_scale` split it: a mirrored basis gets a negative scale. `rotation_edit_mode` and
+  `rotation_order`, which only change how Godot's inspector shows it, are left out.
+- A `MeshInstance3D`'s `BoxMesh`, `SphereMesh`, `CylinderMesh`, `CapsuleMesh`, `PlaneMesh`,
+  `QuadMesh`, `PrismMesh` or `TorusMesh` becomes the [component](scene-format.md#3d-nodes) of the
+  same name with the mesh's fields. A mesh that is a model file (an `.obj` file Godot imports as a
+  mesh) becomes `MeshInstance3D.mesh`, the file's path.
+- The material that wins in Godot becomes the entity's `StandardMaterial3D`: `material_override`,
+  then `surface_material_override/0`, then the mesh's own `material`. `StandardMaterial3D` and
+  `ORMMaterial3D` properties keep their names. `transparency` is named; alpha hash cuts at
+  `alpha_scissor_threshold` and depth pre-pass blends as alpha, and both are reported. An
+  `ORMMaterial3D`'s `orm_texture` is its `roughness_texture` read from green and its
+  `metallic_texture` read from blue.
+- An instance of a `.glb`, `.gltf`, `.fbx` or `.blend` file, Godot's imported scene, becomes a
+  `Transform3D` and a `MeshInstance3D` whose `mesh` is the file, which draws its nodes, meshes and
+  materials as Godot imports them (see [models](scene-format.md#models)). The instance keeps the
+  transform the scene gave it. The model's own nodes can't be changed from the scene, so
+  editable children and nodes added under them are reported. A model's `.import` file with a
+  `nodes/root_scale` or a `nodes/root_type` other than `Node3D` is reported too: scale the
+  entities that draw it, or add the component to them.
+- A `WorldEnvironment`'s `Environment` sets its `WorldEnvironment`'s fields of the same names,
+  its `Sky`'s `radiance_size` is `sky_radiance_size` (`3` is `256`), and the sky's
+  `ProceduralSkyMaterial`, `PhysicalSkyMaterial` or `PanoramaSkyMaterial` becomes the component
+  of the same name on its entity.
+- A `CollisionShape3D`'s `BoxShape3D`, `SphereShape3D`, `CapsuleShape3D`, `CylinderShape3D`,
+  `ConvexPolygonShape3D`, `ConcavePolygonShape3D` (its `data` as `faces`) or
+  `WorldBoundaryShape3D` becomes its `shape` and the fields it sets. A body's
+  `physics_material_override` gives its `friction` and `bounce`, as a 2D body's does.
+
 ## Project settings
 
 | `project.godot` | `project.json` |
@@ -350,6 +395,8 @@ file that its `process_material` names:
 | `display/display_server/driver.linuxbsd` | `window.linux_display_driver` when it is `wayland` |
 | `physics/common/physics_ticks_per_second` | `tick_hz` |
 | `physics/2d/default_gravity`, `default_gravity_vector`, `default_linear_damp`, `default_angular_damp` | `physics_2d` |
+| `physics/3d/default_gravity`, `default_gravity_vector`, `default_linear_damp`, `default_angular_damp` | `physics_3d` |
+| `physics/jolt_physics_3d/simulation/areas_detect_static_bodies` | `physics_3d.areas_detect_static_bodies` |
 | `rendering/environment/defaults/default_clear_color` | `rendering.clear_color` |
 | `rendering/textures/canvas_textures/default_texture_filter` | `rendering.texture_filter` |
 | `rendering/renderer/rendering_method` | `rendering.driver` `opengl` when it is `gl_compatibility`, or `opengl_es` when `rendering/gl_compatibility/driver` is `opengl3_es` |
@@ -358,6 +405,7 @@ file that its `process_material` names:
 | `audio/buses/default_bus_layout` | `audio.bus_layout`, the layout's `.bus_layout.json` file |
 | `audio/driver/mix_rate`, `audio/driver/output_latency` | `audio.mix_rate`, `audio.output_latency` |
 | `audio/general/2d_panning_strength` | `audio.panning_strength_2d` |
+| `audio/general/3d_panning_strength` | `audio.panning_strength_3d` |
 | `audio/driver/enable_input` | `audio.enable_input` |
 | `[input]` | `input` |
 
@@ -448,7 +496,14 @@ The report lists each of these once per kind, with how many and where it was fir
 
 | What | Why, and when |
 | --- | --- |
-| `AnimationTree` | Not converted yet, though an [`AnimationTree`](scene-format.md#animation-trees) plays blend trees and state machines; its animations play through an `AnimationPlayer` |
+| `AnimationTree`, and the other 3D nodes SlashEngine has components for: CSG shapes, `Path3D` and `PathFollow3D`, `GridMap`, joints, `VehicleBody3D`, `Skeleton3D` and its modifiers, `PhysicalBone3D` | Not converted yet; add SlashEngine's component of the same name by hand |
+| 3D tracks (`position_3d`, `rotation_3d`, `scale_3d`, `blend_shape`) | Not converted yet; a model's own animations play from the model file |
+| A model's own nodes changed from a scene (editable children), and its `.import` file's root scale and root type | The model draws as its file has it; place, scale and add components to the entity that draws it |
+| `ArrayMesh` resources and meshes saved in Godot's binary format | Export the mesh as a glTF file |
+| Surface overrides past surface 0, `material_overlay` and a material's `next_pass` | An entity draws its mesh with one material |
+| `ShaderMaterial` on a 3D mesh or a sky | A game's own 3D shaders aren't supported yet |
+| `HeightMapShape3D` | Use an [`HTerrain`](scene-format.md#heightmap-terrains), whose height field collides |
+| `GPUParticles3D`, `CPUParticles3D`, `Decal`, `ReflectionProbe`, `VoxelGI`, `LightmapGI` and other 3D nodes with no SlashEngine component | Not supported yet; their entities keep their place in the tree |
 | Audio and animation tracks | Play the sound or the other animation from gameplay code, on an event track's event |
 | Bezier handles, the capture update mode, blend times and markers | A bezier track plays cubic through its keys, a capture track as continuous, and animations switch without blending |
 | Tracks on a control's `position` or `size` | Animate its offsets instead |
@@ -462,5 +517,5 @@ The report lists each of these once per kind, with how many and where it was fir
 | Timers and other gameplay nodes | Gameplay code: their values are kept in the report |
 | `display/window/stretch/mode` | Stretching isn't supported yet |
 | Shaders (`.gdshader`) and `ShaderMaterial` | A game's own shaders are on the roadmap; canvas materials are `.material.json` graphs |
-| SVG, JPEG and WebP textures | Textures are PNG or BMP files |
-| 3D nodes and resources | Milestone 7 |
+| SVG and WebP textures | Textures are PNG, JPEG or BMP files |
+| COLLADA (`.dae`) and other model formats | Models are glTF, OBJ, FBX or `.blend` files; export it as glTF |
