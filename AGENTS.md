@@ -529,9 +529,9 @@ and fields), settings and both input systems merged into `project.json`, and a t
 script and per state machine. A file with more 3D components than 2D ones (`is_3d`, the project's
 count breaking ties) converts in 3D (`convert_object_3d`): mirrored in x into Godot's
 right-handed axes (`place_of`), cameras, lights and quads turned half a turn about y
-(`place_turned`), built-in meshes, model instances (`instantiate_model`), `.mat` files as
-`StandardMaterial3D` (`convert_surface`), 3D bodies and colliders, and `RenderSettings` as an
-`environment` entity. Each script's skeleton takes its serialized fields, which scenes
+(`place_turned`), built-in meshes, model instances (`instantiate_model`), meshes picked out of
+models as glTF files of their own (`picked_mesh`), `.mat` files as `StandardMaterial3D`
+(`convert_surface`), 3D bodies and colliders, and `RenderSettings` as an `environment` entity. Each script's skeleton takes its serialized fields, which scenes
 fill in; its trigger and collision messages make the importer set `contact_monitor` on the
 object's `RigidBody2D`, and UI events' persistent calls connect to its methods.
 Objects a prefab brings are written whole, so `format_scene` keeps only what differs.
@@ -767,9 +767,12 @@ file into a `scene3d::Model` of meshes in Godot's winding, with MikkTSpace tange
 file has none, materials made `StandardMaterial3D`s as Godot's importer makes them, images and
 the parts its scene's nodes place. `scene3d::add_asset_types` loads them as assets, so they
 reload, and `check_model` backs `scene validate`, exports and `model.inspect`; a
-`StandardMaterial3D` on the entity is Godot's `material_override`. JPEG textures decode with
-stb_image's integer decoder (`engine/render/src/jpeg.c`). `tests/gltf.hpp` writes test models
-in code, so none is committed; `examples/models-3d` is a house from a `.gltf` file.
+`StandardMaterial3D` on the entity is Godot's `material_override`. `write_gltf`
+(`src/gltf_writer.cpp`) writes a `Model` back out as a `.gltf` file that loads as written (its
+buffer embedded, images by their paths or embedded as PNGs), which importers use to pick one mesh
+out of a model. JPEG textures decode with stb_image's integer decoder
+(`engine/render/src/jpeg.c`). `tests/gltf.hpp` writes test models in code, so none is committed;
+`examples/models-3d` is a house from a `.gltf` file.
 
 OBJ models are read as Godot's OBJ importer reads them as a scene (`src/obj.cpp`, which ports
 `_parse_obj` and `_parse_material_library`, Godot's quirks included: `Ns` sets the metallic and

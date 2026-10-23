@@ -21,6 +21,11 @@ the scene, lets the crate fall and looks at the frame, as an agent would over MC
   `StandardMaterial3D`s: their colors, and roughness as 1 minus their smoothness.
 - The lamp post is an instance of the OBJ model, so it becomes a `MeshInstance3D` whose `mesh` is
   the file; the `Glow` object Unity added under it stays under it, an `OmniLight3D`.
+- The `Post` object names the lamp's mesh out of the OBJ file, as objects of a prefab made from a
+  model's parts do, so the import writes that mesh to a glTF file of its own,
+  `Lamp_Post.gltf`, which its `MeshInstance3D` names. Its one material, the crate's, is its
+  `StandardMaterial3D`, and its convex mesh collider becomes a `convex_polygon` of the post's
+  eight corners on a `StaticBody3D`.
 - The crate's `Rigidbody` and `BoxCollider` become a `RigidBody3D` and its shape, with Unity's
   default friction of 0.6. The plane's mesh collider, with no `Rigidbody`, becomes a
   `StaticBody3D` of the plane's two triangles.
@@ -31,5 +36,5 @@ the scene, lets the crate fall and looks at the frame, as an agent would over MC
   skybox, which is approximated.
 
 After 120 ticks the crate rests on the grass, its center about half a meter (`0.48`) above the
-ground. `frame.capture` reads the sky, the grass, the crate, the lamp post and the sky's ground
-beyond the plane from the frame the camera sees.
+ground. `frame.capture` reads the sky, the grass, the crate, the lamp post, the sky's ground
+beyond the plane and the post in the crate's colors from the frame the camera sees.

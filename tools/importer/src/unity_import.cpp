@@ -15,6 +15,7 @@
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
 #include "slash/runtime/project.hpp"
+#include "slash/scene3d/model.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -442,6 +443,74 @@ std::optional<std::uint32_t> hex_word(std::string_view text) {
         value |= bits << (8U * byte);
     }
     return value;
+}
+
+// xxHash64 with a seed of 0, from its specification (XXH64 in Cyan4973's xxHash).
+std::uint64_t xxh64(std::string_view data) {
+    constexpr std::uint64_t kP1 = 11400714785074694791ULL;
+    constexpr std::uint64_t kP2 = 14029467366897019727ULL;
+    constexpr std::uint64_t kP3 = 1609587929392839161ULL;
+    constexpr std::uint64_t kP4 = 9650029242287828579ULL;
+    constexpr std::uint64_t kP5 = 2870177450012600261ULL;
+    const auto rotl = [](std::uint64_t x, unsigned r) { return (x << r) | (x >> (64U - r)); };
+    const auto read = [&](std::size_t at, std::size_t bytes) {
+        std::uint64_t value = 0;
+        for (std::size_t i = 0; i < bytes; ++i) {
+            value |= std::uint64_t{static_cast<unsigned char>(data[at + i])} << (8U * i);
+        }
+        return value;
+    };
+    const auto mix = [&](std::uint64_t acc, std::uint64_t input) {
+        return rotl(acc + (input * kP2), 31) * kP1;
+    };
+    const auto merge = [&](std::uint64_t acc, std::uint64_t value) {
+        return ((acc ^ mix(0, value)) * kP1) + kP4;
+    };
+    const std::size_t size = data.size();
+    std::size_t at = 0;
+    std::uint64_t h = 0;
+    if (size >= 32) {
+        std::uint64_t v1 = kP1 + kP2;
+        std::uint64_t v2 = kP2;
+        std::uint64_t v3 = 0;
+        std::uint64_t v4 = 0 - kP1;
+        for (; at + 32 <= size; at += 32) {
+            v1 = mix(v1, read(at, 8));
+            v2 = mix(v2, read(at + 8, 8));
+            v3 = mix(v3, read(at + 16, 8));
+            v4 = mix(v4, read(at + 24, 8));
+        }
+        h = rotl(v1, 1) + rotl(v2, 7) + rotl(v3, 12) + rotl(v4, 18);
+        h = merge(merge(merge(merge(h, v1), v2), v3), v4);
+    } else {
+        h = kP5;
+    }
+    h += size;
+    for (; at + 8 <= size; at += 8) {
+        h = (rotl(h ^ mix(0, read(at, 8)), 27) * kP1) + kP4;
+    }
+    if (at + 4 <= size) {
+        h = (rotl(h ^ (read(at, 4) * kP1), 23) * kP2) + kP3;
+        at += 4;
+    }
+    for (; at < size; ++at) {
+        h = rotl(h ^ (read(at, 1) * kP5), 11) * kP1;
+    }
+    h ^= h >> 33U;
+    h *= kP2;
+    h ^= h >> 29U;
+    h *= kP3;
+    h ^= h >> 32U;
+    return h;
+}
+
+// The ID Unity gives an object an importer adds to an asset, as a model's mesh: xxHash64 of
+// "Type:<its class>-><its name><index>", read as signed, index counting objects of the same
+// class and name from 0.
+std::int64_t import_id(std::string_view type, std::string_view name, int index) {
+    const std::string key =
+        "Type:" + std::string(type) + "->" + std::string(name) + std::to_string(index);
+    return static_cast<std::int64_t>(xxh64(key));
 }
 
 // --- Input -------------------------------------------------------------------------------------
@@ -9381,6 +9450,248 @@ private:
         return std::int64_t{1} << layer;
     }
 
+    // --- Meshes picked out of model files ---
+
+    // A model file, read as the engine reads it, for the meshes picked out of it; null, reported,
+    // for one that doesn't load.
+    const scene3d::Model* model_file(const Asset& asset, const std::string& where) {
+        auto [it, inserted] = models_.try_emplace(asset.path);
+        std::optional<scene3d::Model>& model = it->second;
+        if (!inserted) {
+            return model ? &*model : nullptr;
+        }
+        if (extension_of(asset.path) == ".blend") {
+            problems_.add("mesh picked out of a .blend file", where,
+                          "a .blend file's meshes are read through Blender as the game runs; "
+                          "instance the model itself, or export it as FBX or glTF");
+            return nullptr;
+        }
+        const scene3d::ModelReader read = [this](std::string_view path) {
+            return platform::read_file(source_ + std::string(path));
+        };
+        auto bytes = read(asset.path);
+        if (!bytes) {
+            problems_.add("unreadable model", where, asset.path + ": " + bytes.error().message);
+            return nullptr;
+        }
+        auto loaded = scene3d::load_model(bytes.value(), asset.path, read);
+        if (!loaded) {
+            problems_.add("model that doesn't load", where,
+                          asset.path + ": " + loaded.error().message);
+            return nullptr;
+        }
+        model = std::move(loaded).value();
+        return &*model;
+    }
+
+    // The mesh of a model a file ID names: by the name the model's import settings give that ID,
+    // else by Unity's ID for a mesh of each name the model has (the name of the node that places
+    // it, then its own).
+    static std::optional<std::size_t> model_mesh(const Asset& asset, const scene3d::Model& model,
+                                                 std::int64_t file_id) {
+        std::string named;
+        if (const Node* table = asset.meta.path("ModelImporter.internalIDToNameTable")) {
+            for (const Node& entry : table->items) {
+                const Node* first = entry.get("first");
+                if (const Node* id = first != nullptr ? first->get("43") : nullptr;
+                    id != nullptr && id->integer() == file_id) {
+                    named = entry.string_at("second");
+                }
+            }
+        }
+        if (const Node* table = asset.meta.path("ModelImporter.fileIDToRecycleName")) {
+            for (const auto& [id, name] : table->entries) {
+                if (parse_int(id) == file_id) {
+                    named = name.string();
+                }
+            }
+        }
+        std::map<std::string, int, std::less<>> seen; // how many meshes had each name before
+        for (std::size_t i = 0; i < model.meshes.size(); ++i) {
+            std::vector<std::string> names;
+            for (const scene3d::ModelPart& part : model.parts) {
+                if (part.mesh == i) {
+                    names.push_back(part.node);
+                }
+            }
+            names.push_back(model.meshes[i].name);
+            for (const std::string& name : names) {
+                if (name.empty()) {
+                    continue;
+                }
+                if (name == named || import_id("Mesh", name, seen[name]) == file_id) {
+                    return i;
+                }
+            }
+            for (const std::string& name : names) {
+                ++seen[name];
+            }
+        }
+        return std::nullopt;
+    }
+
+    // A name made safe for a file's: letters, digits, '-' and '_'.
+    static std::string file_name_part(std::string_view name) {
+        std::string out;
+        for (const char c : name) {
+            out += std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '-' ? c : '_';
+        }
+        return out.empty() ? "mesh" : out;
+    }
+
+    struct PickedMesh {
+        std::string path;                    // the glTF file written for it
+        std::optional<json::Value> material; // the entity's StandardMaterial3D, for one material
+    };
+
+    // A mesh picked out of a model file, as a MeshFilter and its renderer's materials draw it:
+    // written as a glTF file of that mesh alone, at the MeshInstance3D's origin and sized by the
+    // model's import scale. One material for all its parts goes on the entity, keeping the file
+    // for every user of the mesh; several are written into a file of their own. Unity draws only
+    // as many of the mesh's parts as there are materials.
+    std::optional<PickedMesh> picked_mesh(const Asset& asset, std::int64_t file_id,
+                                          const Node* materials, const std::string& where) {
+        const scene3d::Model* model = model_file(asset, where);
+        if (model == nullptr) {
+            return std::nullopt;
+        }
+        const std::optional<std::size_t> index = model_mesh(asset, *model, file_id);
+        if (!index) {
+            problems_.add("mesh from a model", where,
+                          asset.path + " has no mesh with the ID " + std::to_string(file_id));
+            return std::nullopt;
+        }
+        const scene3d::ModelMesh& mesh = model->meshes[*index];
+        std::vector<std::optional<ObjectRef>> refs;
+        if (materials != nullptr) {
+            for (const Node& item : materials->items) {
+                const auto ref = unity::object_ref(item);
+                refs.push_back(ref && !ref->null() ? ref : std::nullopt);
+            }
+        }
+        std::size_t kept = mesh.surfaces.size();
+        if (!refs.empty()) {
+            kept = std::min(kept, refs.size());
+            if (refs.size() > mesh.surfaces.size()) {
+                problems_.add("more materials than the mesh has parts", where,
+                              "each part draws once, with its own material");
+            }
+        }
+        // One material for every part drawn goes on the entity.
+        PickedMesh picked;
+        bool one = !refs.empty() && refs.front().has_value();
+        for (std::size_t i = 1; i < kept && one; ++i) {
+            one = refs[i].has_value() && refs[i]->guid == refs.front()->guid &&
+                  refs[i]->file_id == refs.front()->file_id;
+        }
+        const json::Value* shared = one ? surface_material(*refs.front(), where) : nullptr;
+        if (shared != nullptr) {
+            picked.material = *shared;
+        }
+        // The file: the mesh's parts that draw, with the model's materials or the renderer's.
+        scene3d::Model out;
+        out.images = model->images;
+        for (scene3d::ModelImage& image : out.images) {
+            if (!image.path.empty()) {
+                image.path = destination(image.path);
+            }
+        }
+        std::string key = asset.path + "\n" + std::to_string(*index) + "\n" + std::to_string(kept);
+        scene3d::ModelMesh part{.name = mesh.name, .surfaces = {}};
+        std::map<int, int> own; // the model's materials, by their index there
+        world::World scratch(components_);
+        for (std::size_t i = 0; i < kept; ++i) {
+            scene3d::ModelSurface surface = mesh.surfaces[i];
+            const json::Value* given = shared == nullptr && i < refs.size() && refs[i]
+                                           ? surface_material(*refs[i], where)
+                                           : nullptr;
+            if (given != nullptr) {
+                scene3d::ModelMaterial material;
+                const Asset* source = asset_of(refs[i]->guid);
+                material.name = source != nullptr ? file_stem(source->path) : "Default-Material";
+                std::string at;
+                if (world::from_json(scratch, *given, material.standard, at)) {
+                    surface.material = static_cast<int>(out.materials.size());
+                    out.materials.push_back(std::move(material));
+                    key += "\n" + refs[i]->guid;
+                    part.surfaces.push_back(std::move(surface));
+                    continue;
+                }
+            }
+            if (surface.material >= 0) {
+                const auto [found, added] =
+                    own.try_emplace(surface.material, static_cast<int>(out.materials.size()));
+                if (added) {
+                    out.materials.push_back(
+                        model->materials[static_cast<std::size_t>(surface.material)]);
+                }
+                surface.material = found->second;
+            }
+            key += "\n-";
+            part.surfaces.push_back(std::move(surface));
+        }
+        if (const double scale = asset.meta.number_at("ModelImporter.meshes.globalScale", 1.0);
+            scale != 1.0) {
+            for (scene3d::ModelSurface& surface : part.surfaces) {
+                for (render::Vertex3D& v : surface.vertices) {
+                    for (float& c : v.position) {
+                        c = static_cast<float>(c * scale);
+                    }
+                }
+            }
+        }
+        const std::string name = !mesh.name.empty() ? mesh.name : "Mesh" + std::to_string(*index);
+        out.meshes.push_back(std::move(part));
+        out.parts.push_back({.node = name, .mesh = 0, .transform = {}, .node_index = -1});
+        if (const auto it = picked_.find(key); it != picked_.end()) {
+            picked.path = it->second;
+            return picked;
+        }
+        const std::string extension = extension_of(asset.path);
+        const std::string base =
+            destination(asset.path.substr(0, asset.path.size() - extension.size())) + "_" +
+            file_name_part(name);
+        std::string path = base + ".gltf";
+        for (int n = 2; picked_paths_.contains(path); ++n) {
+            path = base + "_" + std::to_string(n) + ".gltf";
+        }
+        auto written = scene3d::write_gltf(out, path);
+        if (!written) {
+            problems_.add("mesh from a model", where, asset.path + ": " + written.error().message);
+            return std::nullopt;
+        }
+        add_file(path, std::move(written).value());
+        picked_paths_.insert(path);
+        picked_.emplace(key, path);
+        picked.path = path;
+        return picked;
+    }
+
+    // The triangles of a mesh picked out of a model, sized by the model's import scale.
+    std::optional<std::vector<std::array<float, 3>>>
+    model_triangles(const Asset& asset, std::int64_t file_id, const std::string& where) {
+        const scene3d::Model* model = model_file(asset, where);
+        if (model == nullptr) {
+            return std::nullopt;
+        }
+        const std::optional<std::size_t> index = model_mesh(asset, *model, file_id);
+        if (!index) {
+            problems_.add("mesh from a model", where,
+                          asset.path + " has no mesh with the ID " + std::to_string(file_id));
+            return std::nullopt;
+        }
+        const auto scale =
+            static_cast<float>(asset.meta.number_at("ModelImporter.meshes.globalScale", 1.0));
+        std::vector<std::array<float, 3>> corners;
+        for (const scene3d::ModelSurface& surface : model->meshes[*index].surfaces) {
+            for (const std::uint32_t i : surface.indices) {
+                const std::array<float, 3>& p = surface.vertices[i].position;
+                corners.push_back({p[0] * scale, p[1] * scale, p[2] * scale});
+            }
+        }
+        return corners;
+    }
+
     // A MeshFilter and its MeshRenderer, or a model instance: a MeshInstance3D with its mesh and
     // material.
     void mesh_3d(const Context& ctx, const Parts3D& parts, Converted& out, Turned& turned) {
@@ -9407,6 +9718,7 @@ private:
         }
         json::Object mesh;
         bool quad = false;
+        std::optional<PickedMesh> picked;
         if (ref->guid == kBuiltinExtraGuid) {
             switch (ref->file_id) {
             case kCubeMesh:
@@ -9440,18 +9752,21 @@ private:
                               "meshes saved in a scene, as ProBuilder saves them, don't convert "
                               "yet");
             } else if (asset != nullptr && is_model_file(extension_of(asset->path))) {
-                problems_.add("mesh from a model on a MeshFilter", ctx.where,
-                              "meshes picked out of a model file convert in a later import; "
-                              "instance the model itself");
+                picked = picked_mesh(*asset, ref->file_id, renderer.get("m_Materials"), ctx.where);
             } else {
                 problems_.add("mesh asset", ctx.where,
                               asset != nullptr
                                   ? asset->path + ": meshes saved as Unity assets don't convert"
                                   : "a mesh from outside the project's Assets folder");
             }
-            return;
+            if (!picked) {
+                return;
+            }
         }
         json::Value instance = json::Object{};
+        if (picked) {
+            instance["mesh"] = picked->path;
+        }
         if (const std::int64_t layer = go.body.integer_at("m_Layer", 0); layer != 0) {
             instance["layers"] = render_layers(layer, ctx.where);
         }
@@ -9462,8 +9777,12 @@ private:
             instance["cast_shadow"] = std::string(kShadows.at(static_cast<std::size_t>(shadows)));
         }
         mesh["MeshInstance3D"] = std::move(instance);
-        if (const Node* materials = renderer.get("m_Materials");
-            materials != nullptr && !materials->items.empty()) {
+        if (picked) {
+            if (picked->material) {
+                mesh["StandardMaterial3D"] = *std::move(picked->material);
+            }
+        } else if (const Node* materials = renderer.get("m_Materials");
+                   materials != nullptr && !materials->items.empty()) {
             if (const auto material = unity::object_ref(materials->items.front());
                 material && !material->null()) {
                 if (const json::Value* surface = surface_material(*material, ctx.where)) {
@@ -9711,12 +10030,33 @@ private:
                     body.integer_at("m_Direction", 1));
             center();
             break;
-        default: { // a MeshCollider: Unity's built-in meshes become shapes
+        default: { // a MeshCollider: Unity's built-in meshes become shapes, a model's its faces
             const auto mesh = ref_at(body, "m_Mesh");
+            const Asset* asset = mesh && !mesh->guid.empty() ? asset_of(mesh->guid) : nullptr;
+            if (mesh && asset != nullptr && is_model_file(extension_of(asset->path))) {
+                const auto corners = model_triangles(*asset, mesh->file_id, ctx.where);
+                if (!corners) {
+                    return std::nullopt;
+                }
+                // Convex, its points' hull, as Unity's convex colliders; else its triangles.
+                const bool convex = body.flag_at("m_Convex");
+                std::set<std::array<double, 3>> seen;
+                json::Array points;
+                for (const std::array<float, 3>& p : *corners) {
+                    const std::array<double, 3> at{tidy_number(p[0]), tidy_number(p[1]),
+                                                   tidy_number(p[2])};
+                    if (!convex || seen.insert(at).second) {
+                        points.emplace_back(json::Array{at[0], at[1], at[2]});
+                    }
+                }
+                shape["shape"] = convex ? "convex_polygon" : "concave_polygon";
+                shape[convex ? "points" : "faces"] = std::move(points);
+                break;
+            }
             if (!mesh || mesh->guid != kBuiltinExtraGuid) {
-                problems_.add("MeshCollider of a model's or a saved mesh", ctx.where,
-                              "mesh colliders of meshes besides Unity's built-in ones convert in "
-                              "a later import");
+                problems_.add("MeshCollider of a saved mesh", ctx.where,
+                              "mesh colliders of Unity's built-in meshes and of models' meshes "
+                              "convert; meshes saved as Unity assets don't");
                 return std::nullopt;
             }
             // A plane and a quad are one-sided in Unity; here both their sides collide.
@@ -11131,6 +11471,11 @@ private:
     double sky_rotation_ = 0.0;
     int three_d_files_ = 0;
     std::set<std::string> controllers_3d_; // by GUID: controllers of 3D Animators, not converted
+    // Model files read for meshes picked out of them, by path; nullopt for one that doesn't load.
+    std::map<std::string, std::optional<scene3d::Model>> models_;
+    // glTF files written for meshes picked out of models: by model, mesh and materials, and all.
+    std::map<std::string, std::string> picked_;
+    std::set<std::string> picked_paths_;
 };
 
 } // namespace
