@@ -611,6 +611,160 @@ SLASH_COMPONENT(WorldEnvironment, background_mode, background_color, background_
                 adjustment_enabled, adjustment_brightness, adjustment_contrast,
                 adjustment_saturation, adjustment_color_correction)
 
+// ---- CSG shapes, as Godot's CSG nodes (engine/scene3d/src/csg.cpp) ----
+//
+// An entity with one of the components below is a CSG shape. A shape whose Transform3D parent is
+// a CSG shape too is combined into it, and the outermost one, the root, draws the result. Each
+// child, in its parent's children order and placed by its own Transform3D, is added to what
+// comes before it (union), keeps only where they overlap (intersection) or is cut out of it
+// (subtraction); hidden children are left out. A shape's StandardMaterial3D colors its faces, as
+// Godot's material property, wherever they end up. Every CSG component ends with Godot's
+// CSGShape3D fields: operation, calculate_tangents (tangents for normal maps), use_collision,
+// collision_layer and collision_mask (the root is a static body of its triangles), and
+// MeshInstance3D's layers and cast_shadow; only the root's collision and drawing fields count.
+
+// Godot's CSGCombiner3D: no shape of its own, only its children's.
+struct CSGCombiner3D {
+    std::string operation = "union";
+    bool calculate_tangents = true;
+    bool use_collision = false;
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    std::uint32_t layers = 1;
+    std::string cast_shadow = "on";
+
+    friend bool operator==(const CSGCombiner3D&, const CSGCombiner3D&) = default;
+};
+SLASH_COMPONENT(CSGCombiner3D, operation, calculate_tangents, use_collision, collision_layer,
+                collision_mask, layers, cast_shadow)
+
+// Godot's CSGBox3D: a box of size centered on the entity.
+struct CSGBox3D {
+    Vec3 size{1.0F, 1.0F, 1.0F};
+    bool flip_faces = false; // its faces point in, as Godot's CSGPrimitive3D.flip_faces
+    std::string operation = "union";
+    bool calculate_tangents = true;
+    bool use_collision = false;
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    std::uint32_t layers = 1;
+    std::string cast_shadow = "on";
+
+    friend bool operator==(const CSGBox3D&, const CSGBox3D&) = default;
+};
+SLASH_COMPONENT(CSGBox3D, size, flip_faces, operation, calculate_tangents, use_collision,
+                collision_layer, collision_mask, layers, cast_shadow)
+
+// Godot's CSGSphere3D: a sphere around the entity, radial_segments around y and rings from pole
+// to pole.
+struct CSGSphere3D {
+    float radius = 0.5F;
+    int radial_segments = 12;
+    int rings = 6;
+    bool smooth_faces = true;
+    bool flip_faces = false;
+    std::string operation = "union";
+    bool calculate_tangents = true;
+    bool use_collision = false;
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    std::uint32_t layers = 1;
+    std::string cast_shadow = "on";
+
+    friend bool operator==(const CSGSphere3D&, const CSGSphere3D&) = default;
+};
+SLASH_COMPONENT(CSGSphere3D, radius, radial_segments, rings, smooth_faces, flip_faces, operation,
+                calculate_tangents, use_collision, collision_layer, collision_mask, layers,
+                cast_shadow)
+
+// Godot's CSGCylinder3D: a cylinder of height along y centered on the entity, or a cone with its
+// point up.
+struct CSGCylinder3D {
+    float radius = 0.5F;
+    float height = 2.0F;
+    int sides = 8;
+    bool cone = false;
+    bool smooth_faces = true;
+    bool flip_faces = false;
+    std::string operation = "union";
+    bool calculate_tangents = true;
+    bool use_collision = false;
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    std::uint32_t layers = 1;
+    std::string cast_shadow = "on";
+
+    friend bool operator==(const CSGCylinder3D&, const CSGCylinder3D&) = default;
+};
+SLASH_COMPONENT(CSGCylinder3D, radius, height, sides, cone, smooth_faces, flip_faces, operation,
+                calculate_tangents, use_collision, collision_layer, collision_mask, layers,
+                cast_shadow)
+
+// Godot's CSGTorus3D: a ring around y between inner_radius and outer_radius.
+struct CSGTorus3D {
+    float inner_radius = 0.5F;
+    float outer_radius = 1.0F;
+    int sides = 8;
+    int ring_sides = 6;
+    bool smooth_faces = true;
+    bool flip_faces = false;
+    std::string operation = "union";
+    bool calculate_tangents = true;
+    bool use_collision = false;
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    std::uint32_t layers = 1;
+    std::string cast_shadow = "on";
+
+    friend bool operator==(const CSGTorus3D&, const CSGTorus3D&) = default;
+};
+SLASH_COMPONENT(CSGTorus3D, inner_radius, outer_radius, sides, ring_sides, smooth_faces, flip_faces,
+                operation, calculate_tangents, use_collision, collision_layer, collision_mask,
+                layers, cast_shadow)
+
+// Godot's CSGPolygon3D: a polygon in the entity's xy plane, pushed depth along -z ("depth") or
+// turned spin_degrees around y in spin_sides steps ("spin").
+struct CSGPolygon3D {
+    std::vector<Vec2> polygon{{0.0F, 0.0F}, {0.0F, 1.0F}, {1.0F, 1.0F}, {1.0F, 0.0F}};
+    std::string mode = "depth"; // "depth" or "spin"
+    float depth = 1.0F;
+    float spin_degrees = 360.0F;
+    int spin_sides = 8;
+    bool smooth_faces = false;
+    bool flip_faces = false;
+    std::string operation = "union";
+    bool calculate_tangents = true;
+    bool use_collision = false;
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    std::uint32_t layers = 1;
+    std::string cast_shadow = "on";
+
+    friend bool operator==(const CSGPolygon3D&, const CSGPolygon3D&) = default;
+};
+SLASH_COMPONENT(CSGPolygon3D, polygon, mode, depth, spin_degrees, spin_sides, smooth_faces,
+                flip_faces, operation, calculate_tangents, use_collision, collision_layer,
+                collision_mask, layers, cast_shadow)
+
+// Godot's CSGMesh3D: a closed mesh as a shape, a model's meshes or the entity's primitive mesh.
+struct CSGMesh3D {
+    // A .gltf, .glb, .obj, .fbx or .blend file's meshes, placed as its nodes place them at rest;
+    // "" for the entity's BoxMesh, SphereMesh, CylinderMesh, CapsuleMesh, PrismMesh or TorusMesh.
+    std::string mesh;
+    bool flip_faces = false;
+    std::string operation = "union";
+    bool calculate_tangents = true;
+    bool use_collision = false;
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    std::uint32_t layers = 1;
+    std::string cast_shadow = "on";
+
+    friend bool operator==(const CSGMesh3D&, const CSGMesh3D&) = default;
+};
+SLASH_COMPONENT(CSGMesh3D, mesh, flip_faces, operation, calculate_tangents, use_collision,
+                collision_layer, collision_mask, layers, cast_shadow)
+
 // Ties an entity to the storyboard entries it stands for, such as the character it plays or the
 // place it is, so a brief for the scene includes them and checks catch a misspelled ID.
 struct StoryRef {

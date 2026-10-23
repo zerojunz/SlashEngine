@@ -1779,6 +1779,44 @@ TEST_CASE("model.inspect returns a model's meshes, materials, images and parts")
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("csg.get returns the mesh a CSG root makes") {
+    Engine engine;
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "door", "components": {
+            "Transform3D": {}, "CSGBox3D": {"size": [1, 1, 4], "operation": "subtraction"}}}},
+        {"command": "entity.create", "params": {"id": "wall", "components": {
+            "Transform3D": {"position": [5, 0, 0], "children": ["door"]},
+            "CSGBox3D": {"size": [2, 2, 2]},
+            "StandardMaterial3D": {"albedo_color": [1, 0, 0, 1]}}}}]})");
+    const json::Value wall = engine.ok("csg.get", R"({"id": "wall"})");
+    // In the root's space, with the hole cut through it.
+    CHECK(*wall.find("aabb") == parse(R"({"max": [1, 1, 1], "min": [-1, -1, -1]})"));
+    CHECK(*wall.find("volume") == parse("6"));
+    const json::Array& surfaces = wall.find("surfaces")->as_array();
+    REQUIRE(surfaces.size() == 2);
+    CHECK(*surfaces[0].find("material") == parse(R"({"albedo_color": [1, 0, 0, 1]})"));
+    CHECK(surfaces[1].find("material") == nullptr); // the door's faces: the default material
+    const std::int64_t triangles = wall.find("triangles")->as_int();
+    CHECK(triangles ==
+          surfaces[0].find("triangles")->as_int() + surfaces[1].find("triangles")->as_int());
+    CHECK(triangles > 12);
+    CHECK(wall.find("problems") == nullptr);
+
+    auto reply = engine.fails("csg.get", R"({"id": "door"})", command::code::kInvalidParams);
+    CHECK(contains(reply.message, "ask for \"wall\""));
+    engine.ok("entity.create", R"({"id": "lamp", "components": {"Transform3D": {}}})");
+    reply = engine.fails("csg.get", R"({"id": "lamp"})", command::code::kInvalidParams);
+    CHECK(contains(reply.message, "has no CSG shape"));
+
+    // A shape that leaves nothing says so.
+    engine.ok("component.set",
+              R"({"id": "door", "components": {"CSGBox3D": {"size": [3, 3, 3]}}})");
+    const json::Value empty = engine.ok("csg.get", R"({"id": "wall"})");
+    CHECK(*empty.find("triangles") == parse("0"));
+    REQUIRE(empty.find("problems") != nullptr);
+    CHECK(contains(json::write(*empty.find("problems")), "makes an empty shape"));
+}
+
 TEST_CASE("skeleton.get returns a model's bones, posed as its entity draws them") {
     const std::string root = "skeleton_test_project";
     std::filesystem::remove_all(root);

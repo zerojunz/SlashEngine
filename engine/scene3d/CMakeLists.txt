@@ -13,6 +13,7 @@ target_compile_definitions(slash_ufbx PRIVATE $<$<C_COMPILER_ID:MSVC>:_CRT_SECUR
 
 add_library(slash_scene3d
     src/blend.cpp
+    src/csg.cpp
     src/fbx.cpp
     src/ik.cpp
     src/model.cpp
@@ -25,8 +26,9 @@ add_library(slash_scene3d
 add_library(slash::scene3d ALIAS slash_scene3d)
 
 target_include_directories(slash_scene3d PUBLIC include)
+# CSG shapes (src/csg.cpp) combine on Manifold, built in cmake/Dependencies.cmake.
 target_link_libraries(slash_scene3d PUBLIC slash::asset slash::core slash::render slash::world
-    PRIVATE slash::platform slash_cgltf slash_ufbx)
+    PRIVATE slash::platform slash_cgltf slash_manifold slash_ufbx)
 slash_engine_target(slash_scene3d)
 # Meshes and cameras are the same bits on every platform: no fused multiply-adds, which arm64
 # compilers would otherwise emit and x86-64 ones not.
