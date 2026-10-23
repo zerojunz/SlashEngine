@@ -47,6 +47,7 @@ add_executable(slash_tests
     test_audio_analysis.cpp
     test_bench.cpp
     test_blend.cpp
+    test_bone_attachment.cpp
     test_camera2d.cpp
     test_canvas_layer.cpp
     test_canvas.cpp

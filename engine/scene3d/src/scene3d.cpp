@@ -3,6 +3,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/math.hpp"
 #include "slash/core/text.hpp"
+#include "slash/scene3d/bone_attachment.hpp"
 #include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/ik.hpp"
@@ -16,8 +17,10 @@
 #include <bit>
 #include <cmath>
 #include <functional>
+#include <map>
 #include <numbers>
 #include <ranges>
+#include <set>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -493,6 +496,15 @@ std::vector<Problem> check_meshes(const world::World& world) {
                 {problem.entity, std::move(problem.path), std::move(problem.message)});
         }
     };
+    // The entities bone attachments follow, and the models they draw, loaded for their checks.
+    std::set<entt::entity> followed;
+    {
+        const world::Tree3D tree(world);
+        for (const entt::entity entity : world.ecs().view<const world::BoneAttachment3D>()) {
+            followed.insert(attachment_skeleton(world, tree, entity));
+        }
+    }
+    std::map<entt::entity, Model> loaded;
     for (const entt::entity entity : made<world::MeshInstance3D>(world)) {
         const std::string& path = world.ecs().get<const world::MeshInstance3D>(entity).mesh;
         if (path.empty()) {
@@ -522,15 +534,22 @@ std::vector<Problem> check_meshes(const world::World& world) {
                                     (error.path.empty() ? "" : " at " + error.path) + ": " +
                                     error.message});
         }
-        if (errors.empty() &&
-            (world.ecs().all_of<world::Skeleton3D>(entity) || has_modifiers(world, entity))) {
+        if (errors.empty() && (world.ecs().all_of<world::Skeleton3D>(entity) ||
+                               has_modifiers(world, entity) || followed.contains(entity))) {
             if (auto model = load_model(bytes.value(), path, reader); model) {
                 check_bones(entity, &model.value());
                 check_ik(entity, &model.value());
+                loaded.emplace(entity, std::move(model.value()));
             }
         }
     }
     for (ModifierProblem& problem : check_stray_modifiers(world)) {
+        problems.push_back({problem.entity, std::move(problem.path), std::move(problem.message)});
+    }
+    for (ModifierProblem& problem : check_attachments(world, [&](entt::entity entity) {
+             const auto found = loaded.find(entity);
+             return found != loaded.end() ? &found->second : nullptr;
+         })) {
         problems.push_back({problem.entity, std::move(problem.path), std::move(problem.message)});
     }
     for (const entt::entity entity : made<world::Skeleton3D>(world)) {

@@ -388,6 +388,11 @@ land on them; once it **simulates**, physics moves the bodies and the bones foll
 whole skeleton or only the bones under one (`simulated_bones`), so a character goes limp when
 hit or an arm dangles. The [ragdoll example](../examples/ragdoll/) lets a waving arm go limp.
 
+**Bone attachments** follow Godot's `BoneAttachment3D`: an entity that goes where a bone of a
+model is posed each tick, after its animations and IK, so a sword hangs in a hand or a hit box
+rides on a head. The [bone attachment example](../examples/bone-attachment/) puts a sword in a
+waving hand.
+
 **CSG shapes** build level geometry the way Godot 4.6's CSG nodes do: boxes, spheres,
 cylinders, tori and polygons, each adding to, cutting from or **intersecting** the shape above
 it in the tree. The shape at the top, the **root**, makes one mesh of everything under it, which

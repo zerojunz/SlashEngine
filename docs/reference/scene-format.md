@@ -1006,6 +1006,45 @@ axes, settings with no target or pole, and modifiers that turn no model's bones.
 A `PhysicalBoneSimulator3D` is a modifier too, run after the IK modifiers on its entity: it puts
 bones where their physics bodies are ([ragdolls](#ragdolls)).
 
+#### Bone attachments
+
+A `BoneAttachment3D` is Godot's: an entity that goes where a bone of a model is posed, so what
+hangs under it in its `Transform3D` `children` moves with the bone, such as a sword in a hand or
+a hit box on a head. Put it in the `Transform3D` `children` of the entity that draws the model,
+or name that entity in `external_skeleton` to follow a model from anywhere in the world.
+
+```json
+"arm": {"components": {
+  "Transform3D": {"children": ["grip"]},
+  "MeshInstance3D": {"mesh": "models/arm.gltf"}
+}},
+"grip": {"components": {
+  "Transform3D": {"children": ["sword"]},
+  "BoneAttachment3D": {"bone_name": "Hand"}
+}},
+"sword": {"components": {
+  "Transform3D": {"position": [0, 0.4, 0]},
+  "MeshInstance3D": {},
+  "BoxMesh": {"size": [0.05, 0.8, 0.05]}
+}}
+```
+
+- Each tick, after the animations and skeleton modifiers (in the `skeleton_modifiers` system,
+  before physics), its `Transform3D` becomes what puts it at the drawing entity's transform times
+  the bone's, scale included, as Godot's `BoneAttachment3D`. Bodies and areas under it move with
+  it, so hit boxes follow the animation.
+- Godot's `override_pose`, which poses the bone from the attachment, isn't there yet: pose a
+  bone with `Skeleton3D` or an IK modifier.
+
+| `BoneAttachment3D` field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `bone_name` | string | `""` | The bone (or other node) of the model it follows |
+| `external_skeleton` | entity ID | none | The entity drawing the model, in place of its `Transform3D` parent |
+
+`scene validate` reports a bone the model hasn't (with "did you mean") and an attachment whose
+`Transform3D` parent or `external_skeleton` draws no model file.
+[examples/bone-attachment](../../examples/bone-attachment/) puts a sword in a waving hand.
+
 ### CSG shapes
 
 Seven components are Godot 4.6's CSG nodes: shapes that add to, cut from or intersect each other

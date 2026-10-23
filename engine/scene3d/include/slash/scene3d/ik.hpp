@@ -44,8 +44,9 @@ void apply_modifiers(const world::World& world, entt::entity entity, const Model
 // Adds the skeleton_modifiers system (priority 920, after the animation systems and before
 // physics), which steps each iterating modifier that isn't deterministic once a tick, on a pose
 // of the model load gives for its entity's MeshInstance3D, makes simulated physical bones
-// top_level and puts the others where the pose has their bones. It also sets the world's
-// physical bone linker (physical_bones.hpp) on the same models.
+// top_level and puts the others where the pose has their bones, then puts bone attachments where
+// their bones are (bone_attachment.hpp). It also sets the world's physical bone linker
+// (physical_bones.hpp) on the same models.
 void add_modifier_system(world::World& world, ModelLoader load);
 
 // The problems with the modifiers of an entity that draws model (null when it draws none): bone
