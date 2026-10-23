@@ -612,7 +612,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] glTF skins skinning meshes, model animations played by `AnimationPlayer` (alone or
         `from` a `.anim.json` animation) and `Skeleton3D` bone poses, as Godot's importer,
         skeleton and `AnimationMixer`; `skeleton.get`
-  - [ ] FBX skins and animations
+  - [x] FBX skins and animation stacks, as Godot's FBX importer
   - [ ] Blend trees and state machines (`AnimationTree`), root motion
   - [ ] Two-bone and FABRIK IK
 - [ ] Navigation on Recast and Detour, in 2D and 3D, with avoidance
@@ -764,7 +764,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Post-processing | Tonemap, bloom, SSAO, SSR, DoF, auto exposure, color grading | 7 | Planned |
 | Materials and shaders | HLSL shaders plus a JSON material graph | 5, 7 | In part: canvas material graphs, a game's own HLSL canvas shaders and `StandardMaterial3D`'s inputs on meshes are done; 3D shaders and material files in 7 |
 | Keyframe animation | Keyframe tracks on any reflected property | 5 | Done |
-| Skeletal animation | Skinned meshes, blending, root motion | 7 | In part: glTF skins, model animations on `AnimationPlayer` and `Skeleton3D` poses are done; FBX skins, blending and root motion in 7 |
+| Skeletal animation | Skinned meshes, blending, root motion | 7 | In part: glTF and FBX skins, model animations on `AnimationPlayer` and `Skeleton3D` poses are done; blending and root motion in 7 |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Planned |
 | Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials, particle graphs, turbulence, collision, sub-emitters and trails are done; attractors with 3D in 7 |
 | Soundtracks | Music planned in the storyboard, written as scores or generated, arranged into interactive music and checked by analysis, all through commands | 6 | Done |

@@ -177,6 +177,98 @@ struct Fbx {
         return objects.children.back();
     }
 
+    // A bone: a LimbNode model with the node attribute that makes it one.
+    FbxNode& bone(std::int64_t id, std::int64_t attribute, std::string name,
+                  std::vector<double> translation = {}) {
+        object("NodeAttribute", attribute, "NodeAttribute", name, "LimbNode")
+            .add("TypeFlags", {std::string("Skeleton")});
+        connect(attribute, id);
+        FbxNode& node = model(id, std::move(name), std::move(translation));
+        node.properties[2] = std::string("LimbNode");
+        return node;
+    }
+
+    // A skin deforming a geometry.
+    void skin(std::int64_t id, std::int64_t geometry, std::string name) {
+        FbxNode& node = object("Deformer", id, "Deformer", std::move(name), "Skin");
+        node.add("Version", {std::int64_t{101}});
+        node.add("Link_DeformAcuracy", {50.0});
+        connect(id, geometry);
+    }
+
+    // A cluster of a skin: the vertices a bone moves and how much, with the mesh in the bone's
+    // space and the bone in the world's when they were bound (4x4 matrices, a column at a time),
+    // as Blender's exporter writes them.
+    void cluster(std::int64_t id, std::int64_t skin, std::int64_t bone,
+                 std::vector<std::int32_t> indexes, std::vector<double> weights,
+                 std::vector<double> transform, std::vector<double> link) {
+        FbxNode& node = object("Deformer", id, "SubDeformer", "", "Cluster");
+        node.add("Version", {std::int64_t{100}});
+        node.add("UserData", {std::string(), std::string()});
+        node.add("Indexes", {std::move(indexes)});
+        node.add("Weights", {std::move(weights)});
+        node.add("Transform", {std::move(transform)});
+        node.add("TransformLink", {std::move(link)});
+        connect(id, skin);
+        connect(bone, id);
+    }
+
+    // FBX's time unit: ticks a second.
+    static constexpr std::int64_t kTicks = 46186158000;
+
+    // An animation stack from start to stop seconds, with one layer.
+    void animation_stack(std::int64_t id, std::int64_t layer, std::string name, double start,
+                         double stop) {
+        FbxNode& properties =
+            object("AnimationStack", id, "AnimStack", std::move(name)).add("Properties70");
+        const auto ticks = [](double seconds) {
+            return static_cast<std::int64_t>(seconds * static_cast<double>(kTicks));
+        };
+        fbx_property(properties, "LocalStart", "KTime", {ticks(start)}, "");
+        fbx_property(properties, "LocalStop", "KTime", {ticks(stop)}, "");
+        fbx_property(properties, "ReferenceStart", "KTime", {ticks(start)}, "");
+        fbx_property(properties, "ReferenceStop", "KTime", {ticks(stop)}, "");
+        object("AnimationLayer", layer, "AnimLayer", "BaseLayer");
+        connect(layer, id);
+    }
+
+    // Animates a model's property ("Lcl Translation", "Lcl Rotation" in degrees or
+    // "Lcl Scaling") in a layer: a curve node holding its value, and for each axis given ("X",
+    // "Y" or "Z") a linear curve through values at times in seconds.
+    void animate(
+        std::int64_t id, std::int64_t layer, std::int64_t model, std::string property,
+        const std::vector<double>& value,
+        const std::vector<std::pair<std::string, std::vector<std::pair<double, double>>>>& curves) {
+        FbxNode& properties =
+            object("AnimationCurveNode", id, "AnimCurveNode", property.substr(4, 1)) // T, R or S
+                .add("Properties70");
+        fbx_property(properties, "d|X", "Number", {value.at(0)});
+        fbx_property(properties, "d|Y", "Number", {value.at(1)});
+        fbx_property(properties, "d|Z", "Number", {value.at(2)});
+        connect(id, layer);
+        connect(id, model, std::move(property));
+        std::int64_t curve_id = id;
+        for (const auto& [axis, keys] : curves) {
+            ++curve_id;
+            FbxNode& curve = object("AnimationCurve", curve_id, "AnimCurve", "");
+            std::vector<double> times;
+            std::vector<double> values;
+            for (const auto& [time, v] : keys) {
+                times.push_back(time * static_cast<double>(kTicks));
+                values.push_back(v);
+            }
+            curve.add("Default", {values.empty() ? 0.0 : values.front()});
+            curve.add("KeyVer", {std::int64_t{4009}});
+            curve.add("KeyTime", {std::move(times)});
+            curve.add("KeyValueFloat", {std::move(values)});
+            curve.add("KeyAttrFlags", {std::vector<std::int32_t>{4}}); // linear
+            curve.add("KeyAttrDataFloat", {std::vector<std::int32_t>{0, 0, 0, 0}});
+            curve.add("KeyAttrRefCount",
+                      {std::vector<std::int32_t>{static_cast<std::int32_t>(keys.size())}});
+            connect(curve_id, id, "d|" + axis);
+        }
+    }
+
     [[nodiscard]] std::vector<FbxNode> records() const {
         FbxNode header{.name = "FBXHeaderExtension", .properties = {}, .children = {}};
         header.add("FBXHeaderVersion", {std::int64_t{1003}});
@@ -349,5 +441,41 @@ private:
         set_word(out, start, out.size());
     }
 };
+
+// The arm of tests/gltf.hpp as an FBX file, with y up and units_per_meter units to a meter (100
+// for centimeters, as Blender writes): a strip from y 0 to 2 meters, half a meter either side of
+// x 0, whose bottom row follows the bone "Upper" (at the origin), its top row the bone "Lower" (at
+// y 1) and its middle row both, half each. Its animation stacks are "Bend", which turns Lower a
+// quarter turn about z over a second, and "Idle-loop", which raises Upper by 0.25 and back.
+inline Fbx fbx_arm(double units_per_meter = 1.0) {
+    const double u = units_per_meter;
+    Fbx file;
+    file.unit_scale = 100.0 / u;
+    file.geometry(10, "Arm",
+                  {-0.5 * u, 0.0, 0.0, 0.5 * u, 0.0, 0.0, -0.5 * u, u, 0.0, 0.5 * u, u, 0.0,
+                   -0.5 * u, 2.0 * u, 0.0, 0.5 * u, 2.0 * u, 0.0},
+                  {0, 1, 3, -3, 2, 3, 5, -5});
+    file.model(20, "Armature").properties[2] = std::string("Null");
+    file.bone(21, 31, "Upper");
+    file.bone(22, 32, "Lower", {0.0, u, 0.0});
+    file.model(23, "Arm");
+    file.connect(20, 0);
+    file.connect(21, 20);
+    file.connect(22, 21);
+    file.connect(23, 20);
+    file.connect(10, 23);
+    const std::vector<double> identity{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+    const std::vector<double> up{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, u, 0, 1};
+    const std::vector<double> down{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, -u, 0, 1};
+    file.skin(40, 10, "ArmSkin");
+    file.cluster(41, 40, 21, {0, 1, 2, 3}, {1.0, 1.0, 0.5, 0.5}, identity, identity);
+    file.cluster(42, 40, 22, {2, 3, 4, 5}, {0.5, 0.5, 1.0, 1.0}, down, up);
+    file.animation_stack(50, 51, "Bend", 0.0, 1.0);
+    file.animate(52, 51, 22, "Lcl Rotation", {0.0, 0.0, 0.0}, {{"Z", {{0.0, 0.0}, {1.0, 90.0}}}});
+    file.animation_stack(60, 61, "Idle-loop", 0.0, 1.0);
+    file.animate(62, 61, 21, "Lcl Translation", {0.0, 0.0, 0.0},
+                 {{"Y", {{0.0, 0.0}, {0.5, 0.25 * u}, {1.0, 0.0}}}});
+    return file;
+}
 
 } // namespace slash::test
