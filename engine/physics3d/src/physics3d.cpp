@@ -10,7 +10,9 @@
 #include <Jolt/Physics/Collision/CollideShape.h>
 #include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
 #include <Jolt/Physics/Collision/RayCast.h>
+#include <Jolt/Physics/Collision/Shape/CompoundShape.h>
 #include <Jolt/Physics/Collision/Shape/ConvexShape.h>
+#include <Jolt/Physics/Collision/Shape/DecoratedShape.h>
 #include <Jolt/Physics/Collision/TransformedShape.h>
 #include <algorithm>
 #include <cfloat>
@@ -415,7 +417,30 @@ std::optional<RayHit> Space::cast_ray(Vec3 from, Vec3 to, const QueryFilter& fil
     return RayHit{.entity = found->entity,
                   .point = from_jolt(JPH::Vec3(position)),
                   .normal = from_jolt(normal),
-                  .fraction = hit.mFraction};
+                  .fraction = hit.mFraction,
+                  .cell = grid_cell(*found, hit.mSubShapeID2)};
+}
+
+std::optional<Vec3i> Space::grid_cell(const Body& body, const JPH::SubShapeID& id) {
+    if (!body.generated || body.shape_key.grid == nullptr) {
+        return std::nullopt;
+    }
+    // Scaling and placing a shape keep its sub-shape IDs, so the compound under them names the
+    // part, as its user data.
+    const JPH::Shape* shape = body.shape.GetPtr();
+    while (shape->GetType() == JPH::EShapeType::Decorated) {
+        shape = static_cast<const JPH::DecoratedShape*>(shape)->GetInnerShape();
+    }
+    std::optional<std::size_t> part = body.grid_part;
+    if (shape->GetType() == JPH::EShapeType::Compound) {
+        const auto* compound = static_cast<const JPH::CompoundShape*>(shape);
+        JPH::SubShapeID remainder;
+        part = compound->GetCompoundUserData(compound->GetSubShapeIndexFromID(id, remainder));
+    }
+    if (!part || *part >= body.shape_key.grid->size()) {
+        return std::nullopt;
+    }
+    return (*body.shape_key.grid)[*part].cell;
 }
 
 } // namespace detail

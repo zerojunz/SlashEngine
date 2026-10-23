@@ -4,6 +4,7 @@
 #include "rvo2.hpp"
 
 #include "slash/canvas/tilemap.hpp"
+#include "slash/scene3d/gridmap.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/tree2d.hpp"
 #include "slash/world/tree3d.hpp"
@@ -226,6 +227,20 @@ struct TileLayerRegions {
     }
 };
 
+// A GridMap's regions as last gathered, and what they were gathered from, so a GridMap that is
+// as it was isn't gathered again each tick.
+struct GridMapRegions {
+    std::shared_ptr<const scene3d::GridMesh> mesh;
+    std::array<float, 12> transform{}; // the GridMap's
+    // Each navigation mesh its cells name, loaded, so a reload gathers anew; kept loaded while
+    // the GridMap uses it.
+    std::vector<std::pair<std::string, asset::Handle<NavigationMesh>>> files;
+    std::vector<std::string> failed; // files that didn't load, with why, in the same order
+    std::vector<RegionInput> regions;
+    std::vector<MapError> errors;
+    bool used = false;
+};
+
 // What avoidance keeps of an obstacle between ticks: its RVO agent's velocity.
 struct ObstacleState {
     Vec3 rvo_velocity;
@@ -293,6 +308,7 @@ struct State {
     std::map<entt::entity, ObstacleState> obstacles_3d;
     std::map<const void*, TileBakes> tile_bakes; // by loaded tile set
     std::map<entt::entity, TileLayerRegions> tile_layers;
+    std::map<entt::entity, GridMapRegions> gridmaps;
 
     MapState& map(Map kind) { return kind == Map::TwoD ? map_2d : map_3d; }
     std::map<entt::entity, AgentState>& agents(Map kind) {
@@ -312,6 +328,7 @@ struct State {
         obstacles_3d.clear();
         tile_bakes.clear();
         tile_layers.clear();
+        gridmaps.clear();
     }
 };
 
@@ -578,6 +595,86 @@ void gather_tile_regions(const world::World& world, State& state, const Trees& t
     });
 }
 
+// GridMap::_octant_update with bake_navigation: a region for each cell whose item has a
+// navigation mesh, at the GridMap's global transform times the cell's, in the item's navigation
+// layers.
+void gather_gridmap_regions(const world::World& world, State& state, const Trees& trees,
+                            std::vector<RegionInput>& out, std::vector<MapError>& errors) {
+    for (auto& [entity, cached] : state.gridmaps) {
+        cached.used = false;
+    }
+    for (const Order& order : ordered<world::GridMap>(world)) {
+        if (!world.ecs().get<const world::GridMap>(order.entity).bake_navigation) {
+            continue;
+        }
+        const std::shared_ptr<const scene3d::GridMesh> mesh =
+            scene3d::grid_mesh(world, order.entity);
+        if (mesh->regions.empty()) {
+            continue;
+        }
+        const Placement placement = trees.placement(Map::ThreeD, order.entity);
+        const std::array<float, 12> key = placement.key();
+        std::set<std::string, std::less<>> paths;
+        for (const scene3d::GridRegion& region : mesh->regions) {
+            paths.insert(region.navigation_mesh);
+        }
+        std::vector<std::pair<std::string, asset::Handle<NavigationMesh>>> files;
+        std::vector<std::string> failed;
+        for (const std::string& path : paths) {
+            auto loaded = state.assets->load<NavigationMesh>(path);
+            if (!loaded) {
+                failed.push_back(path + ": " + loaded.error().message);
+            } else {
+                files.emplace_back(path, std::move(loaded).value());
+            }
+        }
+        GridMapRegions& cached = state.gridmaps[order.entity];
+        cached.used = true;
+        const bool same_files =
+            std::ranges::equal(files, cached.files, [](const auto& a, const auto& b) {
+                return a.first == b.first && a.second.share() == b.second.share();
+            });
+        const bool same_transform = std::ranges::equal(
+            key, cached.transform, [](float a, float b) { return bits_of(a) == bits_of(b); });
+        if (cached.mesh != mesh || !same_transform || !same_files || cached.failed != failed) {
+            cached = GridMapRegions{.mesh = mesh,
+                                    .transform = key,
+                                    .files = std::move(files),
+                                    .failed = std::move(failed),
+                                    .regions = {},
+                                    .errors = {},
+                                    .used = true};
+            for (const std::string& message : cached.failed) {
+                cached.errors.push_back({order.id, message});
+            }
+            for (const scene3d::GridRegion& region : mesh->regions) {
+                const auto file = std::ranges::find(cached.files, region.navigation_mesh,
+                                                    [](const auto& each) { return each.first; });
+                if (file == cached.files.end()) {
+                    continue;
+                }
+                Placement cell = placement;
+                cell.affine_3d = placement.affine_3d * region.local;
+                cached.regions.push_back({.id = order.id,
+                                          .entity = order.entity,
+                                          .path = region.navigation_mesh,
+                                          .enabled = true,
+                                          .use_edge_connections = true,
+                                          .navigation_layers = region.navigation_layers,
+                                          .enter_cost = 0.0F,
+                                          .travel_cost = 1.0F,
+                                          .transform = cell.key(),
+                                          .file = file->second.share(),
+                                          .mesh = file->second,
+                                          .polygon = {}});
+            }
+        }
+        out.insert(out.end(), cached.regions.begin(), cached.regions.end());
+        errors.insert(errors.end(), cached.errors.begin(), cached.errors.end());
+    }
+    std::erase_if(state.gridmaps, [](const auto& entry) { return !entry.second.used; });
+}
+
 template <typename Component>
 void gather_links(const world::World& world, const Trees& trees, Map kind,
                   std::vector<LinkInput>& out) {
@@ -647,6 +744,7 @@ void sync_map(const world::World& world, State& state, const Trees& trees, MapSt
     if (m.kind == Map::ThreeD) {
         gather_regions<NavigationRegion3D, NavigationMesh>(world, state, trees, m.kind, regions,
                                                            errors);
+        gather_gridmap_regions(world, state, trees, regions, errors);
         gather_links<NavigationLink3D>(world, trees, m.kind, links);
     } else {
         gather_regions<NavigationRegion2D, NavigationPolygon>(world, state, trees, m.kind, regions,

@@ -24,10 +24,10 @@
 // Conversions between reflected C++ values and JSON, plus the JSON Schema of each type.
 //
 // Supported field types: bool, integers, float, double, std::string, Vec2, Vec3, Vec4 and Quat
-// (written as arrays of numbers), Vec2i (an array of two integers), entt::entity (written as the
-// target's ID, or null), std::vector of a supported type, std::map from std::string to a supported
-// type (written as an object, and replaced whole when read), json::Value (any JSON, as written),
-// and structs declared with SLASH_REFLECT or SLASH_COMPONENT (written as objects).
+// (written as arrays of numbers), Vec2i and Vec3i (arrays of integers), entt::entity (written as
+// the target's ID, or null), std::vector of a supported type, std::map from std::string to a
+// supported type (written as an object, and replaced whole when read), json::Value (any JSON, as
+// written), and structs declared with SLASH_REFLECT or SLASH_COMPONENT (written as objects).
 namespace slash::world {
 
 namespace detail {
@@ -78,6 +78,10 @@ struct IntArray;
 template <>
 struct IntArray<Vec2i> {
     static constexpr std::array<int Vec2i::*, 2> kMembers{&Vec2i::x, &Vec2i::y};
+};
+template <>
+struct IntArray<Vec3i> {
+    static constexpr std::array<int Vec3i::*, 3> kMembers{&Vec3i::x, &Vec3i::y, &Vec3i::z};
 };
 
 template <typename T>

@@ -4,6 +4,7 @@ add_library(slash_world
     src/component_registry.cpp
     src/components.cpp
     src/game_module.cpp
+    src/legend.cpp
     src/path.cpp
     src/physical_bones.cpp
     src/scene.cpp

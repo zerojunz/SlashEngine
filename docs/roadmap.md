@@ -645,7 +645,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] `Path2D`, `Path3D`, `PathFollow2D`, `PathFollow3D` and `CSGPolygon3D`'s path mode, as
         Godot's: curves baked with up vectors and tilt, followers placed each tick, and
         `path.get`
-  - [ ] `GridMap` and `MeshLibrary` for grid-based tile placement, as Godot's
+  - [x] `GridMap` and `MeshLibrary` for grid-based tile placement, as Godot 4.6's: items of a
+        `.meshlib.json` library in cells written as rows of legend keys, turned Godot's 24
+        ways, drawn and colliding by octant, navigation regions per cell, with `gridmap.set`,
+        `gridmap.get` and the cell a ray hits
   - [ ] Heightmap terrain with splat materials and LOD
 - [x] glTF 2.0 models (`.gltf` and `.glb`: meshes, materials and textures) on `MeshInstance3D`,
       and JPEG textures, as Godot's importer reads them
@@ -813,7 +816,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Decals | Clustered decals | 7 | Planned |
 | Networking | ENet transport, replication driven by reflection, WebSocket for web | 8 | Planned |
 | Terrain | Heightmap terrain with splat materials and LOD | 7 | Planned |
-| Level geometry | CSG and grid-based tile placement | 7 | In progress: CSG shapes and paths done; `GridMap` planned |
+| Level geometry | CSG and grid-based tile placement | 7 | In progress: CSG shapes, paths and `GridMap` done; heightmap terrain planned |
 | LOD and culling | Generated LODs with meshoptimizer, occlusion culling | 7 | Planned |
 | XR | OpenXR | 8 | Planned |
 | Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | Planned |

@@ -6,6 +6,7 @@
 #include "slash/core/result.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/world/components.hpp"
+#include "slash/world/legend.hpp"
 #include "slash/world/world.hpp"
 
 #include <array>
@@ -421,9 +422,8 @@ inline constexpr int kMaxCell = 32767;
 [[nodiscard]] std::vector<json::ValidationError> validate_cells(const world::TileMapLayer& layer,
                                                                 const TileSet& set);
 
-// The characters legend keys are made of: printable ASCII but space, '.', '"' and backslash.
-inline constexpr std::string_view kKeyCharacters =
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#$%&'()*+,-/:;<=>?@[]^_`{|}~!";
+// The characters legend keys are made of (world/legend.hpp).
+inline constexpr std::string_view kKeyCharacters = world::kLegendKeyCharacters;
 
 // Writes cells into a layer's origin, legend and rows in canonical form: the origin is the top
 // left of the cells in use, rows end at their last tile, keys keep standing for the tiles they
