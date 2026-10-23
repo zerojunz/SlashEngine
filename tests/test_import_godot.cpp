@@ -8,6 +8,7 @@
 #include "slash/core/json.hpp"
 #include "slash/gameplay/host.hpp"
 #include "slash/importer/commands.hpp"
+#include "slash/importer/godot_pack.hpp"
 #include "slash/importer/godot_text.hpp"
 #include "slash/importer/import.hpp"
 #include "slash/importer/scripts.hpp"
@@ -963,8 +964,8 @@ TEST_CASE("importing Godot tile maps, themes and bus layouts writes their SlashE
     CHECK(*plan.report.find("converted") ==
           parse(R"({"scenes": 2, "sprite_frames": 0, "tile_sets": 1, "themes": 1,
                     "bus_layouts": 1, "animation_libraries": 0, "process_materials": 0,
-                    "audio_streams": 0, "input_actions": 1,
-                    "assets": 3})"));
+                    "mesh_libraries": 0, "navigation_meshes": 0, "audio_streams": 0,
+                    "input_actions": 1, "assets": 3})"));
     const std::string level = "godot/scenes/level.scene.json";
 
     // The tile set: its terrains by set, and each tile's terrain and the terrain each side must
@@ -1959,7 +1960,7 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
 amount = 16
 
-[node name="Hut" type="CSGBox3D" parent="."]
+[node name="Rig" type="Skeleton3D" parent="."]
 )");
     write_png(folder / "art/bricks.jpg", 8, 8);
     write(folder / "models/rock.obj", "mtllib rock.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
@@ -1994,7 +1995,7 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     // Transforms decompose as Godot's Node3D does, and Node3D children nest.
     CHECK(*entity(files, level, "level").find("Transform3D") == parse(R"({
         "children": ["wall", "rock", "blob", "cart", "camera", "sun", "lamp", "torch", "crate",
-                     "ground", "hero", "mirror", "sparks", "hut"]})"));
+                     "ground", "hero", "mirror", "sparks", "rig"]})"));
     CHECK(*entity(files, level, "wall").find("Transform3D") ==
           parse(R"({"position": [3.0, 1.0, -2.0], "rotation": [0.0, 1.570796, 0.0],
                     "children": ["ball"]})"));
@@ -2101,8 +2102,8 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     CHECK(!unsupported(report, "Environment.ssao_enabled").is_null());
     CHECK(!unsupported(report, "SpotLight3D.light_indirect_energy").is_null());
     CHECK(why("node type GPUParticles3D") == "no SlashEngine component for it yet");
-    CHECK(why("node type CSGBox3D") ==
-          "the importer doesn't convert it yet; add SlashEngine's CSGBox3D component by hand");
+    CHECK(why("node type Skeleton3D") ==
+          "the importer doesn't convert it yet; add SlashEngine's Skeleton3D component by hand");
     CHECK(why("file type .dae") == "models are glTF, OBJ, FBX or .blend files; export it as glTF");
     CHECK(unsupported(report, "file type .jpg").is_null());
     CHECK(unsupported(report, "Sky.process_mode").is_null());
@@ -2123,6 +2124,480 @@ TEST_CASE("a Godot 3D project outside the destination brings its models along") 
     CHECK_FALSE(fs::exists(destination / "models/statue.dae"));
     fs::remove_all(source);
     fs::remove_all(destination);
+}
+
+// A Godot 3D level built from CSG, a path, grid maps, joints, a vehicle and navigation, and a 2D
+// map with a path and navigation.
+fs::path make_level_project(const fs::path& folder) {
+    fs::remove_all(folder);
+    write(folder / "project.godot", R"(config_version=5
+
+[application]
+
+config/name="Fort"
+run/main_scene="res://level.tscn"
+)");
+    write(folder / "blocks.tres", R"([gd_resource type="MeshLibrary" load_steps=6 format=3]
+
+[sub_resource type="StandardMaterial3D" id="stone"]
+albedo_color = Color(0.5, 0.5, 0.45, 1)
+
+[sub_resource type="BoxMesh" id="block"]
+material = SubResource("stone")
+size = Vector3(2, 2, 2)
+
+[sub_resource type="PrismMesh" id="ramp"]
+size = Vector3(2, 2, 2)
+
+[sub_resource type="BoxShape3D" id="block_shape"]
+size = Vector3(2, 2, 2)
+
+[resource]
+item/0/name = "Floor"
+item/0/mesh = SubResource("block")
+item/0/mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+item/0/mesh_cast_shadow = 0
+item/0/shapes = [SubResource("block_shape"), Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)]
+item/0/navigation_mesh = ExtResource("1_nav")
+item/0/navigation_mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+item/0/navigation_layers = 3
+item/1/name = "Ramp:steep"
+item/1/mesh = SubResource("ramp")
+item/1/mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/1/preview = null
+item/2/name = "Floor"
+item/2/mesh = ExtResource("2_rock")
+item/2/shapes = [SubResource("block_shape"), Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0)]
+item/3/mesh = SubResource("block")
+)");
+    // The ExtResources the library names, declared as Godot declares them.
+    {
+        std::string text = read(folder / "blocks.tres");
+        text.insert(text.find("\n\n") + 2,
+                    "[ext_resource type=\"NavigationMesh\" path=\"res://nav/square.tres\" "
+                    "id=\"1_nav\"]\n[ext_resource type=\"ArrayMesh\" path=\"res://rock.obj\" "
+                    "id=\"2_rock\"]\n\n");
+        write(folder / "blocks.tres", text);
+    }
+    write(folder / "rock.obj", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+    write(folder / "rock.obj.import", R"([remap]
+
+importer="wavefront_obj"
+type="Mesh"
+)");
+    write(folder / "nav/square.tres", R"([gd_resource type="NavigationMesh" format=3]
+
+[resource]
+vertices = PackedVector3Array(-1, 0, -1, 1, 0, -1, 1, 0, 1, -1, 0, 1)
+polygons = [PackedInt32Array(3, 2, 1, 0)]
+cell_size = 0.1
+agent_radius = 0.25
+)");
+    // A mesh library saved in Godot's binary form.
+    {
+        const std::string text = R"([gd_resource type="MeshLibrary" load_steps=2 format=3]
+
+[sub_resource type="CylinderMesh" id="pillar"]
+top_radius = 0.4
+bottom_radius = 0.4
+height = 4.0
+
+[resource]
+item/5/name = "Pillar"
+item/5/mesh = SubResource("pillar")
+)";
+        auto sections = godot::parse_resource(text);
+        REQUIRE(sections.ok());
+        auto binary =
+            godot::write_binary_resource(sections.value(), {.path = "res://ruins.meshlib"});
+        REQUIRE(binary.ok());
+        write(folder / "ruins.meshlib", binary.value());
+    }
+    write(folder / "level.tscn", R"([gd_scene load_steps=12 format=3]
+
+[ext_resource type="MeshLibrary" path="res://blocks.tres" id="1_blocks"]
+[ext_resource type="MeshLibrary" path="res://ruins.meshlib" id="2_ruins"]
+[ext_resource type="NavigationMesh" path="res://nav/square.tres" id="3_square"]
+
+[sub_resource type="StandardMaterial3D" id="brick"]
+albedo_color = Color(0.7, 0.3, 0.2, 1)
+
+[sub_resource type="StandardMaterial3D" id="gold"]
+metallic = 1.0
+
+[sub_resource type="PrismMesh" id="roof"]
+material = SubResource("gold")
+size = Vector3(4, 1, 4)
+
+[sub_resource type="PlaneMesh" id="rug"]
+
+[sub_resource type="Curve3D" id="track"]
+bake_interval = 0.5
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, -2, 0, 0, 0, 10, 0, 0),
+"tilts": PackedFloat32Array(0, 0.5)
+}
+point_count = 2
+
+[sub_resource type="PhysicsMaterial" id="grip"]
+friction = 0.5
+bounce = 0.25
+
+[sub_resource type="NavigationMesh" id="yard"]
+vertices = PackedVector3Array(-8, 0, -8, 8, 0, -8, 8, 0, 8, -8, 0, 8)
+polygons = [PackedInt32Array(3, 2, 1, 0)]
+geometry_parsed_geometry_type = 1
+geometry_source_geometry_mode = 1
+sample_partition_type = 2
+filter_baking_aabb = AABB(-10, -1, -10, 20, 5, 20)
+agent_max_slope = 30.0
+filter_ledge_spans = true
+border_size = 1.5
+
+[node name="Level" type="Node3D"]
+
+[node name="House" type="CSGCombiner3D" parent="."]
+use_collision = true
+snap = 0.001
+
+[node name="Walls" type="CSGBox3D" parent="House"]
+size = Vector3(4, 3, 4)
+material = SubResource("brick")
+
+[node name="Door" type="CSGBox3D" parent="House"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 2)
+operation = 2
+size = Vector3(1, 2, 1)
+
+[node name="Chimney" type="CSGCylinder3D" parent="House"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 2, 1)
+radius = 0.3
+sides = 12
+cone = true
+
+[node name="Dome" type="CSGSphere3D" parent="House"]
+radius = 1.0
+rings = 8
+material_override = SubResource("gold")
+
+[node name="Ring" type="CSGTorus3D" parent="House"]
+inner_radius = 0.2
+outer_radius = 0.5
+
+[node name="Roof" type="CSGMesh3D" parent="House"]
+mesh = SubResource("roof")
+
+[node name="Rug" type="CSGMesh3D" parent="House"]
+mesh = SubResource("rug")
+
+[node name="Track" type="Path3D" parent="."]
+curve = SubResource("track")
+
+[node name="Cart" type="PathFollow3D" parent="Track"]
+progress = 2.0
+rotation_mode = 4
+loop = false
+
+[node name="Rail" type="CSGPolygon3D" parent="."]
+polygon = PackedVector2Array(0, 0, 0, 0.2, 0.2, 0.2, 0.2, 0)
+mode = 2
+path_node = NodePath("../Track")
+path_interval_type = 1
+path_rotation = 1
+
+[node name="Blocks" type="GridMap" parent="."]
+mesh_library = ExtResource("1_blocks")
+physics_material = SubResource("grip")
+cell_size = Vector3(2, 1, 2)
+data = {
+"cells": PackedInt32Array(0, 0, 0, 1, 0, 0, 2, 0, 1048577, 65535, 1, 2, 65536, 0, 3, -65536, 0, 0, 0, 65534, 0, 5, 5, 7)
+}
+
+[node name="Ruins" type="GridMap" parent="."]
+mesh_library = ExtResource("2_ruins")
+data = {
+"cells": PackedInt32Array(3, 3, 5)
+}
+
+[node name="Post" type="StaticBody3D" parent="."]
+
+[node name="Gate" type="RigidBody3D" parent="."]
+
+[node name="Hinge" type="HingeJoint3D" parent="."]
+node_a = NodePath("../Post")
+node_b = NodePath("../Gate")
+solver_priority = 2
+angular_limit/enable = true
+angular_limit/upper = 1.2
+angular_limit/softness = 0.5
+motor/enable = true
+motor/target_velocity = 2.0
+
+[node name="Hitch" type="Generic6DOFJoint3D" parent="."]
+node_a = NodePath("../Gate")
+linear_limit_x/upper_distance = 0.5
+linear_limit_x/softness = 0.3
+angular_spring_y/enabled = true
+angular_spring_y/stiffness = 20.0
+angular_motor_z/enabled = true
+angular_motor_z/target_velocity = 1.5
+
+[node name="Slide" type="SliderJoint3D" parent="."]
+linear_limit/upper_distance = 2.0
+linear_motion/softness = 0.5
+
+[node name="Shoulder" type="ConeTwistJoint3D" parent="."]
+swing_span = 0.5
+twist_span = 1.0
+bias = 0.4
+
+[node name="Buggy" type="VehicleBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 10)
+engine_force = 50.0
+
+[node name="Wheel" type="VehicleWheel3D" parent="Buggy"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1.5)
+use_as_steering = true
+wheel_radius = 0.4
+
+[node name="Yard" type="NavigationRegion3D" parent="."]
+navigation_mesh = SubResource("yard")
+travel_cost = 2.0
+
+[node name="Square" type="NavigationRegion3D" parent="."]
+navigation_mesh = ExtResource("3_square")
+
+[node name="Walker" type="CharacterBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, 3)
+
+[node name="Guide" type="NavigationAgent3D" parent="Walker"]
+target_position = Vector3(5, 0, 5)
+max_speed = 4.0
+avoidance_enabled = true
+debug_enabled = true
+
+[node name="Pillar" type="NavigationObstacle3D" parent="."]
+vertices = PackedVector3Array(0, 0, 0, 1, 0, 0, 1, 0, 1)
+radius = 0.5
+
+[node name="Ladder" type="NavigationLink3D" parent="."]
+start_position = Vector3(0, 0, 0)
+end_position = Vector3(0, 3, 1)
+bidirectional = false
+)");
+    write(folder / "map.tscn", R"([gd_scene load_steps=3 format=3]
+
+[sub_resource type="Curve2D" id="road"]
+_data = {
+"points": PackedVector2Array(0, 0, 0, 0, 0, 0, -20, 0, 20, 0, 100, 50)
+}
+point_count = 2
+
+[sub_resource type="NavigationPolygon" id="ground"]
+vertices = PackedVector2Array(0, 0, 100, 0, 100, 100, 0, 100)
+polygons = [PackedInt32Array(0, 1, 2, 3)]
+outlines = [PackedVector2Array(0, 0, 100, 0, 100, 100, 0, 100)]
+parsed_geometry_type = 1
+source_geometry_mode = 2
+baking_rect = Rect2(0, 0, 200, 200)
+agent_radius = 8.0
+
+[node name="Map" type="Node2D"]
+
+[node name="Road" type="Path2D" parent="."]
+curve = SubResource("road")
+
+[node name="Car" type="PathFollow2D" parent="Road"]
+progress = 30.0
+rotates = false
+
+[node name="Ground" type="NavigationRegion2D" parent="."]
+navigation_polygon = SubResource("ground")
+
+[node name="Bot" type="CharacterBody2D" parent="."]
+position = Vector2(10, 10)
+
+[node name="Brain" type="NavigationAgent2D" parent="Bot"]
+path_desired_distance = 4.0
+max_speed = 120.0
+
+[node name="Rock" type="NavigationObstacle2D" parent="."]
+vertices = PackedVector2Array(40, 40, 60, 40, 50, 60)
+affect_navigation_mesh = true
+
+[node name="Bridge" type="NavigationLink2D" parent="."]
+end_position = Vector2(50, 0)
+bidirectional = false
+)");
+    return folder;
+}
+
+TEST_CASE("importing a Godot level converts its CSG, paths, grid maps, joints and navigation") {
+    const fs::path project = "import_godot_level";
+    make_level_project(project / "godot");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string level = "godot/level.scene.json";
+    REQUIRE(files.contains(level));
+    CHECK(*plan.report.find("converted")->find("mesh_libraries") == 2);
+    CHECK(*plan.report.find("converted")->find("navigation_meshes") == 3);
+
+    // CSG shapes keep their fields and materials; a CSGMesh3D's primitive mesh is the entity's,
+    // colored by the mesh's own material.
+    CHECK(*entity(files, level, "house").find("CSGCombiner3D") ==
+          parse(R"({"use_collision": true})"));
+    const json::Value walls = entity(files, level, "walls");
+    CHECK(*walls.find("CSGBox3D") == parse(R"({"size": [4.0, 3.0, 4.0]})"));
+    CHECK(*walls.find("StandardMaterial3D") == parse(R"({"albedo_color": [0.7, 0.3, 0.2, 1.0]})"));
+    CHECK(*entity(files, level, "door").find("CSGBox3D") ==
+          parse(R"({"operation": "subtraction", "size": [1.0, 2.0, 1.0]})"));
+    CHECK(*entity(files, level, "chimney").find("CSGCylinder3D") ==
+          parse(R"({"radius": 0.3, "sides": 12, "cone": true})"));
+    CHECK(*entity(files, level, "dome").find("CSGSphere3D") ==
+          parse(R"({"radius": 1.0, "rings": 8})"));
+    CHECK(*entity(files, level, "ring").find("CSGTorus3D") ==
+          parse(R"({"inner_radius": 0.2, "outer_radius": 0.5})"));
+    const json::Value roof = entity(files, level, "roof");
+    CHECK(roof.find("CSGMesh3D")->size() == 0);
+    CHECK(*roof.find("PrismMesh") == parse(R"({"size": [4.0, 1.0, 4.0]})"));
+    CHECK(*roof.find("StandardMaterial3D") == parse(R"({"metallic": 1.0})"));
+    CHECK(entity(files, level, "rug").find("PlaneMesh") == nullptr);
+
+    // Paths keep their points, the follower its settings, and the polygon pushed along one names
+    // its entity.
+    CHECK(*entity(files, level, "track").find("Path3D") == parse(R"({
+        "bake_interval": 0.5,
+        "points": [{"out": [0.0, 0.0, 2.0]},
+                   {"position": [10.0, 0.0, 0.0], "in": [0.0, 0.0, -2.0], "tilt": 0.5}]})"));
+    CHECK(*entity(files, level, "cart").find("PathFollow3D") ==
+          parse(R"({"progress": 2.0, "rotation_mode": "oriented", "loop": false})"));
+    CHECK(*entity(files, level, "rail").find("CSGPolygon3D") == parse(R"({
+        "polygon": [[0.0, 0.0], [0.0, 0.2], [0.2, 0.2], [0.2, 0.0]], "mode": "path",
+        "path_node": "track", "path_interval_type": "subdivide", "path_rotation": "path"})"));
+
+    // Grid maps: Godot's cells, x and y in one number and z in the next, become floors of keys
+    // for the library's items, turned items keep their orientation, and the physics material
+    // gives friction and bounce.
+    CHECK(*entity(files, level, "blocks").find("GridMap") == parse(R"({
+        "mesh_library": "godot/blocks.meshlib.json", "cell_size": [2.0, 1.0, 2.0],
+        "friction": 0.5, "bounce": 0.25,
+        "legend": {"F": "Floor", "R": "Ramp_steep:16", "a": "Floor_2", "i": "item_3"},
+        "floors": [{"y": -1, "rows": ["F"]},
+                   {"origin": [-1, -2], "rows": [".F", "", ".FFR", "a"]},
+                   {"y": 1, "rows": ["i"]}]})"));
+    CHECK(parse(files.at("godot/blocks.meshlib.json")) == parse(R"({"format": 1, "items": {
+        "Floor": {
+            "primitive": {"BoxMesh": {"size": [2.0, 2.0, 2.0]}},
+            "material": {"albedo_color": [0.5, 0.5, 0.45, 1.0]},
+            "mesh_transform": {"position": [0.0, -0.5, 0.0]}, "mesh_cast_shadow": "off",
+            "shapes": [{"shape": "box", "size": [2.0, 2.0, 2.0], "position": [0.0, -0.5, 0.0]}],
+            "navigation_mesh": "godot/nav/square.navmesh.json",
+            "navigation_mesh_transform": {"position": [0.0, 0.5, 0.0]}, "navigation_layers": 3},
+        "Ramp_steep": {"primitive": {"PrismMesh": {"size": [2.0, 2.0, 2.0]}}},
+        "Floor_2": {"mesh": "godot/rock.obj", "shapes": [{"shape": "box", "size": [2.0, 2.0, 2.0]}]},
+        "item_3": {"primitive": {"BoxMesh": {"size": [2.0, 2.0, 2.0]}},
+                   "material": {"albedo_color": [0.5, 0.5, 0.45, 1.0]}}}})"));
+    // A library saved in Godot's binary form converts the same way.
+    CHECK(*entity(files, level, "ruins").find("GridMap") == parse(R"({
+        "mesh_library": "godot/ruins.meshlib.json", "legend": {"P": "Pillar"},
+        "floors": [{"origin": [3, 3], "rows": ["P"]}]})"));
+    CHECK(parse(files.at("godot/ruins.meshlib.json")) == parse(R"({"format": 1, "items": {
+        "Pillar": {"primitive": {"CylinderMesh": {
+            "top_radius": 0.4, "bottom_radius": 0.4, "height": 4.0}}}}})"));
+
+    // Joints take Godot's parameters under SlashEngine's names; vehicles weigh Godot's 40 kg.
+    CHECK(*entity(files, level, "hinge").find("HingeJoint3D") == parse(R"({
+        "node_a": "post", "node_b": "gate", "angular_limit_enabled": true,
+        "angular_limit_upper": 1.2, "motor_enabled": true, "motor_target_velocity": 2.0})"));
+    CHECK(*entity(files, level, "hitch").find("Generic6DOFJoint3D") == parse(R"({
+        "node_a": "gate", "linear_x": {"limit_upper": 0.5},
+        "angular_y": {"spring_enabled": true, "spring_stiffness": 20.0},
+        "angular_z": {"motor_enabled": true, "motor_target_velocity": 1.5}})"));
+    CHECK(*entity(files, level, "slide").find("SliderJoint3D") ==
+          parse(R"({"linear_limit_upper": 2.0})"));
+    CHECK(*entity(files, level, "shoulder").find("ConeTwistJoint3D") ==
+          parse(R"({"swing_span": 0.5, "twist_span": 1.0})"));
+    const json::Value buggy = entity(files, level, "buggy");
+    CHECK(*buggy.find("RigidBody3D") == parse(R"({"mass": 40.0})"));
+    CHECK(*buggy.find("VehicleBody3D") == parse(R"({"engine_force": 50.0})"));
+    CHECK(*entity(files, level, "wheel").find("VehicleWheel3D") ==
+          parse(R"({"use_as_steering": true, "wheel_radius": 0.4})"));
+
+    // Navigation: regions name the files their meshes become, and an agent is an entity at its
+    // parent's origin.
+    CHECK(*entity(files, level, "yard").find("NavigationRegion3D") == parse(R"({
+        "navigation_mesh": "godot/level_yard.navmesh.json", "travel_cost": 2.0})"));
+    CHECK(parse(files.at("godot/level_yard.navmesh.json")) == parse(R"({
+        "format": 1, "vertices": [[-8.0, 0.0, -8.0], [8.0, 0.0, -8.0], [8.0, 0.0, 8.0],
+                                  [-8.0, 0.0, 8.0]],
+        "polygons": [[3, 2, 1, 0]], "geometry_parsed_geometry_type": "static_colliders",
+        "sample_partition_type": "layers", "agent_max_slope": 30.0, "border_size": 1.5,
+        "filter_ledge_spans": true,
+        "filter_baking_aabb": {"position": [-10.0, -1.0, -10.0], "size": [20.0, 5.0, 20.0]}})"));
+    // Godot's navigation meshes bake only meshes unless told otherwise.
+    CHECK(*entity(files, level, "square").find("NavigationRegion3D") ==
+          parse(R"({"navigation_mesh": "godot/nav/square.navmesh.json"})"));
+    CHECK(parse(files.at("godot/nav/square.navmesh.json")) == parse(R"({
+        "format": 1, "vertices": [[-1.0, 0.0, -1.0], [1.0, 0.0, -1.0], [1.0, 0.0, 1.0],
+                                  [-1.0, 0.0, 1.0]],
+        "polygons": [[3, 2, 1, 0]], "cell_size": 0.1, "agent_radius": 0.25,
+        "geometry_parsed_geometry_type": "mesh_instances"})"));
+    CHECK(*entity(files, level, "walker").find("Transform3D") ==
+          parse(R"({"position": [3.0, 0.0, 3.0], "children": ["guide"]})"));
+    CHECK(*entity(files, level, "guide").find("NavigationAgent3D") == parse(R"({
+        "target_position": [5.0, 0.0, 5.0], "max_speed": 4.0, "avoidance_enabled": true})"));
+    CHECK(*entity(files, level, "pillar").find("NavigationObstacle3D") == parse(R"({
+        "vertices": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0]], "radius": 0.5})"));
+    CHECK(*entity(files, level, "ladder").find("NavigationLink3D") ==
+          parse(R"({"end_position": [0.0, 3.0, 1.0], "bidirectional": false})"));
+
+    // The same in 2D.
+    const std::string map = "godot/map.scene.json";
+    CHECK(*entity(files, map, "road").find("Path2D") == parse(R"({"points": [
+        {}, {"position": [100.0, 50.0], "in": [-20.0, 0.0], "out": [20.0, 0.0]}]})"));
+    CHECK(*entity(files, map, "car").find("PathFollow2D") ==
+          parse(R"({"progress": 30.0, "rotates": false})"));
+    CHECK(*entity(files, map, "ground").find("NavigationRegion2D") ==
+          parse(R"({"navigation_polygon": "godot/map_ground.navpoly.json"})"));
+    CHECK(parse(files.at("godot/map_ground.navpoly.json")) == parse(R"({
+        "format": 1, "vertices": [[0.0, 0.0], [100.0, 0.0], [100.0, 100.0], [0.0, 100.0]],
+        "polygons": [[0, 1, 2, 3]],
+        "outlines": [[[0.0, 0.0], [100.0, 0.0], [100.0, 100.0], [0.0, 100.0]]],
+        "parsed_geometry_type": "static_colliders", "agent_radius": 8.0,
+        "baking_rect": {"position": [0.0, 0.0], "size": [200.0, 200.0]}})"));
+    CHECK(*entity(files, map, "brain").find("NavigationAgent2D") ==
+          parse(R"({"path_desired_distance": 4.0, "max_speed": 120.0})"));
+    CHECK(*entity(files, map, "rock").find("NavigationObstacle2D") == parse(R"({
+        "vertices": [[40.0, 40.0], [60.0, 40.0], [50.0, 60.0]], "affect_navigation_mesh": true})"));
+    CHECK(*entity(files, map, "bridge").find("NavigationLink2D") ==
+          parse(R"({"end_position": [50.0, 0.0], "bidirectional": false})"));
+
+    const json::Value& report = plan.report;
+    const auto why = [&](std::string_view what) {
+        const json::Value item = unsupported(report, what);
+        REQUIRE_MESSAGE(!item.is_null(), what);
+        return item.find("why")->as_string();
+    };
+    CHECK(why("CSGMesh3D.mesh") == "a PlaneMesh encloses nothing, so it can't be a CSG shape");
+    CHECK(why("CSGSphere3D.material_override") ==
+          "it colors the whole result; give each shape its material instead");
+    CHECK(unsupported(report, "CSGCombiner3D.snap").is_null());
+    CHECK(why("GridMap cells") == "item 7 isn't in the mesh library");
+    CHECK(why("MeshLibrary item shape scale") ==
+          "shapes are placed by position and rotation; set the shape's size instead");
+    for (const char* ignored :
+         {"HingeJoint3D.solver_priority", "HingeJoint3D.angular_limit/softness",
+          "Generic6DOFJoint3D.linear_limit_x/softness", "SliderJoint3D.linear_motion/softness",
+          "ConeTwistJoint3D.bias"}) {
+        CHECK(why(ignored) == "Godot's Jolt physics, which SlashEngine follows, ignores it");
+    }
+    CHECK(why("NavigationMesh.geometry_source_geometry_mode") ==
+          "a bake takes the region's entity and those under it");
+    CHECK(why("NavigationPolygon.source_geometry_mode") ==
+          "a bake takes the region's entity and those under it");
+    CHECK(unsupported(report, "NavigationAgent3D.debug_enabled").is_null());
+    CHECK(unsupported(report, "invalid value").is_null());
+    fs::remove_all(project);
 }
 
 TEST_CASE("importing Godot's top_level and z_as_relative keeps them") {
