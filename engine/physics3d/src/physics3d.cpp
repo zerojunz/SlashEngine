@@ -101,10 +101,6 @@ std::vector<entt::entity> entities_of(const Space& space, const Hits& hits) {
     return out;
 }
 
-float with_own(float total, const std::string& mode, float own) {
-    return mode == "replace" ? own : total + own;
-}
-
 } // namespace
 
 json::Value settings_schema() {
@@ -285,12 +281,13 @@ std::optional<Gravity> gravity(world::World& world, entt::entity entity) {
                 .linear_damp = forces.linear_damp,
                 .angular_damp = forces.angular_damp,
                 .areas = std::move(forces.areas)};
-    if (const auto* rigid = world.ecs().try_get<world::RigidBody3D>(entity);
-        rigid != nullptr && body->kind == Kind::Rigid) {
-        out.gravity = out.gravity * rigid->gravity_scale;
-        out.linear_damp = with_own(out.linear_damp, rigid->linear_damp_mode, rigid->linear_damp);
+    if (const std::optional<detail::OwnForces> own =
+            detail::own_forces(world.ecs(), entity, body->kind)) {
+        out.gravity = out.gravity * own->gravity_scale;
+        out.linear_damp =
+            detail::with_own(out.linear_damp, own->linear_damp_mode, own->linear_damp);
         out.angular_damp =
-            with_own(out.angular_damp, rigid->angular_damp_mode, rigid->angular_damp);
+            detail::with_own(out.angular_damp, own->angular_damp_mode, own->angular_damp);
     }
     return out;
 }
@@ -299,7 +296,7 @@ bool has_body(const world::World& world, entt::entity entity) {
     return world.valid(entity) &&
            world.ecs()
                .any_of<world::RigidBody3D, world::CharacterBody3D, world::AnimatableBody3D,
-                       world::StaticBody3D, world::Area3D>(entity);
+                       world::StaticBody3D, world::Area3D, world::PhysicalBone3D>(entity);
 }
 
 void apply_impulse(world::World& world, entt::entity entity, Vec3 impulse, Vec3 offset) {

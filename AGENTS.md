@@ -882,6 +882,16 @@ tick and `apply_modifiers` only shows. Angles go through `slash::atan2` and `cos
 scene3d builds with `-ffp-contract=off`, so chains converge the same everywhere.
 `check_modifiers` backs `scene validate`; `examples/ik` reaches with an arm.
 
+Ragdolls follow Godot 4.6's `PhysicalBoneSimulator3D` and `PhysicalBone3D`
+(`engine/scene3d/src/physical_bones.cpp`, `run_simulator` in `ik.cpp`, and the `Kind::Bone`
+bodies and `sync_bone_joints` in `engine/physics3d`). The simulator is a skeleton modifier.
+`physical_bone_links` works out each physical bone's mode (follow, simulate or off) and the body
+its joint holds it to, and reaches physics3d through `world::set_physical_bone_linker`, since
+physics3d doesn't depend on scene3d. The `skeleton_modifiers` system makes simulating bodies
+`top_level` and moves following ones to their bones before the physics step moves them as
+kinematic bodies; `apply_modifiers` puts simulating bones where their bodies are.
+`examples/ragdoll` lets a waving arm go limp.
+
 ## 2D physics
 
 `engine/physics2d` is 2D physics on Box2D v3, as Godot's. Bodies and areas are components:

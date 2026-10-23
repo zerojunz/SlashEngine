@@ -11,7 +11,8 @@
 
 // Skeleton modifiers: bones of a model turned after its animations and Skeleton3D, as Godot 4.6's
 // SkeletonModifier3D children of a Skeleton3D, by TwoBoneIK3D, FABRIK3D, CCDIK3D and JacobianIK3D
-// components (Godot's IK modifiers; src/ik.cpp follows their code):
+// components (Godot's IK modifiers; src/ik.cpp follows their code) and PhysicalBoneSimulator3D
+// (ragdolls, physical_bones.hpp):
 //
 //   std::vector<scene3d::NodePose> pose = scene3d::pose_of(model, clips, skeleton, load);
 //   scene3d::apply_modifiers(world, entity, model, place, global, pose);
@@ -27,21 +28,24 @@ namespace slash::scene3d {
 // ticks.
 using Placer = std::function<world::Affine3D(entt::entity)>;
 
-// Whether modifiers turn the bones of an entity's model: a TwoBoneIK3D, FABRIK3D, CCDIK3D or
-// JacobianIK3D on it or on an entity in its Transform3D children.
+// Whether modifiers turn the bones of an entity's model: a TwoBoneIK3D, FABRIK3D, CCDIK3D,
+// JacobianIK3D or PhysicalBoneSimulator3D on it or on an entity in its Transform3D children.
 [[nodiscard]] bool has_modifiers(const world::World& world, entt::entity entity);
 
 // Runs the modifiers of an entity, placed at place, on a pose of the model it draws, in the order
 // Godot runs a Skeleton3D's modifier children: those on the entity, then those on each entity in
-// its Transform3D children, in list order; on each, TwoBoneIK3D, FABRIK3D, CCDIK3D, then
-// JacobianIK3D. Targets and poles are where global puts them.
+// its Transform3D children, in list order; on each, TwoBoneIK3D, FABRIK3D, CCDIK3D, JacobianIK3D,
+// then PhysicalBoneSimulator3D. Targets, poles and the bodies of simulated bones are where global
+// puts them.
 void apply_modifiers(const world::World& world, entt::entity entity, const Model& model,
                      const world::Affine3D& place, const Placer& global,
                      std::vector<NodePose>& pose);
 
-// Adds the skeleton_modifiers system (priority 920, after the animation systems), which steps
-// each iterating modifier that isn't deterministic once a tick, on a pose of the model load
-// gives for its entity's MeshInstance3D.
+// Adds the skeleton_modifiers system (priority 920, after the animation systems and before
+// physics), which steps each iterating modifier that isn't deterministic once a tick, on a pose
+// of the model load gives for its entity's MeshInstance3D, makes simulated physical bones
+// top_level and puts the others where the pose has their bones. It also sets the world's
+// physical bone linker (physical_bones.hpp) on the same models.
 void add_modifier_system(world::World& world, ModelLoader load);
 
 // The problems with the modifiers of an entity that draws model (null when it draws none): bone
@@ -56,7 +60,7 @@ struct ModifierProblem {
 [[nodiscard]] std::vector<ModifierProblem> check_modifiers(const world::World& world,
                                                            entt::entity entity, const Model* model);
 // Modifiers on entities that neither draw a model nor are in the Transform3D children of one that
-// does, so turn nothing.
+// does, so turn nothing, and physical bones no simulator holds.
 [[nodiscard]] std::vector<ModifierProblem> check_stray_modifiers(const world::World& world);
 
 } // namespace slash::scene3d
