@@ -2,13 +2,18 @@
 
 #include "space.hpp"
 
+#include <Jolt/Geometry/ConvexSupport.h>
+#include <Jolt/Geometry/GJKClosestPoint.h>
 #include <Jolt/Physics/Body/BodyLockInterface.h>
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/CollidePointResult.h>
 #include <Jolt/Physics/Collision/CollideShape.h>
 #include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
 #include <Jolt/Physics/Collision/RayCast.h>
+#include <Jolt/Physics/Collision/Shape/ConvexShape.h>
+#include <Jolt/Physics/Collision/TransformedShape.h>
 #include <algorithm>
+#include <cfloat>
 #include <memory>
 #include <optional>
 #include <string>
@@ -258,6 +263,73 @@ std::vector<entt::entity> overlap_shape(world::World& world, const world::Collis
         scaled.GetPtr(), JPH::Vec3::sOne(), detail::matrix_of(transform_com), settings,
         JPH::RVec3::sZero(), collector, filters, filters, filters);
     return sorted(world, entities_of(*space, collector.mHits), max_results);
+}
+
+std::optional<Vec3> closest_point(world::World& world, entt::entity entity, Vec3 point) {
+    Space* space = synced(world);
+    const detail::Body* owner = space != nullptr ? space->body(entity) : nullptr;
+    const JPH::Body* body =
+        owner != nullptr ? space->system()->GetBodyLockInterfaceNoLock().TryGetBody(owner->id)
+                         : nullptr;
+    if (body == nullptr) {
+        return std::nullopt;
+    }
+    // Godot's JoltPhysicsDirectSpaceState3D::get_closest_point_to_object_volume: GJK from the
+    // point to each convex shape, at most 32 of them.
+    class Shapes final : public JPH::TransformedShapeCollector {
+    public:
+        void AddHit(const JPH::TransformedShape& shape) override {
+            hits.push_back(shape);
+            if (hits.size() >= 32) {
+                ForceEarlyOut();
+            }
+        }
+        std::vector<JPH::TransformedShape> hits;
+    };
+    // Read before the shapes are collected: clang-analyzer can't tell the body keeps its shape.
+    const JPH::RVec3 position = body->GetPosition();
+    const JPH::TransformedShape body_shape = body->GetTransformedShape();
+    Shapes shapes;
+    body_shape.CollectTransformedShapes(body->GetWorldSpaceBounds(), shapes);
+    const JPH::RVec3 at = to_jolt(point);
+    float closest_distance_sq = FLT_MAX;
+    JPH::RVec3 closest = JPH::RVec3::sZero();
+    bool found = false;
+    for (const JPH::TransformedShape& transformed : shapes.hits) {
+        const JPH::Shape& shape = *transformed.mShape;
+        if (shape.GetType() != JPH::EShapeType::Convex) {
+            continue;
+        }
+        const auto& convex = static_cast<const JPH::ConvexShape&>(shape);
+        JPH::GJKClosestPoint gjk;
+        JPH::ConvexShape::SupportBuffer buffer{};
+        const JPH::ConvexShape::Support* support =
+            convex.GetSupportFunction(JPH::ConvexShape::ESupportMode::IncludeConvexRadius, buffer,
+                                      transformed.GetShapeScale());
+        const JPH::RMat44 rotation = JPH::RMat44::sRotation(transformed.mShapeRotation);
+        const JPH::Vec3 com = rotation.Multiply3x3(shape.GetCenterOfMass());
+        const JPH::RVec3 shape_position = transformed.mShapePositionCOM - JPH::RVec3(com);
+        const JPH::RMat44 placed = rotation.PostTranslated(shape_position);
+        const JPH::PointConvexSupport point_support{
+            .mPoint = JPH::Vec3(placed.InversedRotationTranslation() * at)};
+        JPH::Vec3 separating_axis = JPH::Vec3::sAxisX();
+        JPH::Vec3 point_on_a = JPH::Vec3::sZero();
+        JPH::Vec3 point_on_b = JPH::Vec3::sZero();
+        const float distance_sq =
+            gjk.GetClosestPoints(*support, point_support, JPH::cDefaultCollisionTolerance, FLT_MAX,
+                                 separating_axis, point_on_a, point_on_b);
+        if (distance_sq == 0.0F) {
+            closest = at;
+            found = true;
+            break;
+        }
+        if (distance_sq < closest_distance_sq) {
+            closest_distance_sq = distance_sq;
+            closest = placed * point_on_a;
+            found = true;
+        }
+    }
+    return from_jolt(found ? closest : position);
 }
 
 Contacts contacts(world::World& world, entt::entity entity) {

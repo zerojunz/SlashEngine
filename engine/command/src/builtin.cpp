@@ -3302,6 +3302,20 @@ Reply audio_state(Session& session, const json::Value& params) {
             item["polyphonic"]["polyphony"] = info.polyphonic->polyphony;
         }
         item["volume"] = rounded(json::Array{info.volume.left, info.volume.right});
+        if (!info.sends.empty()) {
+            json::Array sends;
+            for (const audio::BusVolume& send : info.sends) {
+                json::Value entry;
+                entry["bus"] = send.bus;
+                entry["volume"] = rounded(json::Array{send.volume.left, send.volume.right});
+                sends.push_back(std::move(entry));
+            }
+            item["sends"] = std::move(sends);
+        }
+        if (info.kind == "AudioStreamPlayer3D") {
+            item["pitch_scale"] = rounded(info.pitch_scale);
+            item["filter_db"] = level(info.filter_db);
+        }
         if (!info.error.empty()) {
             item["error"] = info.error;
         }
@@ -3702,9 +3716,12 @@ Result<entt::entity> audio_player(const world::World& world, std::string_view id
     if (entity == entt::null) {
         return make_error(ErrorCode::NotFound, "");
     }
-    if (!world.ecs().any_of<world::AudioStreamPlayer, world::AudioStreamPlayer2D>(entity)) {
-        return make_error(ErrorCode::InvalidArgument,
-                          quoted(id) + " has no AudioStreamPlayer or AudioStreamPlayer2D");
+    if (!world.ecs()
+             .any_of<world::AudioStreamPlayer, world::AudioStreamPlayer2D,
+                     world::AudioStreamPlayer3D>(entity)) {
+        return make_error(
+            ErrorCode::InvalidArgument,
+            quoted(id) + " has no AudioStreamPlayer, AudioStreamPlayer2D or AudioStreamPlayer3D");
     }
     return entity;
 }
@@ -6563,8 +6580,9 @@ void register_builtin_commands(Registry& registry) {
     play_pitch["maximum"] = 16;
     registry.add({
         .name = "audio.play",
-        .description = "Plays an AudioStreamPlayer or AudioStreamPlayer2D at the next tick, as "
-                       "Godot's play(): it restarts, or adds a voice up to max_polyphony. With "
+        .description = "Plays an AudioStreamPlayer, AudioStreamPlayer2D or AudioStreamPlayer3D at "
+                       "the next tick, as Godot's play(): it restarts, or adds a voice up to "
+                       "max_polyphony. With "
                        "stream, plays that sound or .audio.json file on a polyphonic player "
                        "instead, as Godot's play_stream, starting the player if needed. Returns "
                        "the tick it plays at.",
@@ -6585,8 +6603,8 @@ void register_builtin_commands(Registry& registry) {
     });
     registry.add({
         .name = "audio.stop",
-        .description = "Stops an AudioStreamPlayer or AudioStreamPlayer2D at the next tick, as "
-                       "Godot's stop(). Returns the tick it stops at.",
+        .description = "Stops an AudioStreamPlayer, AudioStreamPlayer2D or AudioStreamPlayer3D at "
+                       "the next tick, as Godot's stop(). Returns the tick it stops at.",
         .capabilities = {Run},
         .effect = Effect::Read,
         .params = params_schema({{"id", id_property("The player's entity.")}}, {"id"}),
