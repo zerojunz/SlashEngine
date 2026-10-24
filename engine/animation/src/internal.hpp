@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -90,6 +91,8 @@ public:
         std::map<std::string, asset::Handle<scene3d::Model>, std::less<>> models;
         // The library, as of the versions of its files in versions.
         AnimationLibrary library;
+        // Its node tracks as a model's animations (node_animations), or null for none.
+        std::shared_ptr<const scene3d::Model> nodes;
         std::vector<std::uint64_t> versions;
         // Which build of the library this is: no two builds of any library share one.
         std::uint64_t version = 0;
@@ -106,8 +109,10 @@ public:
     // The library at a path, loading it the first time, or null (with a warning) when it doesn't
     // load. Marks it used.
     Entry* get(const std::string& path, const Warn& warn);
-    // A model loaded through the assets, or null (with a warning). Marks it used.
-    [[nodiscard]] const scene3d::Model* model(const std::string& path, const Warn& warn);
+    // A model loaded through the assets, or null (with a warning), and its version. Marks it
+    // used.
+    [[nodiscard]] const scene3d::Model* model(const std::string& path, const Warn& warn,
+                                              std::uint64_t* version = nullptr);
     // The targets of an animation's tracks, resolved once per version of its library and of the
     // component types, which change when a game's code is reloaded.
     static const std::vector<Resolved>& targets(Entry& entry, const std::string& name,

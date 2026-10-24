@@ -110,8 +110,8 @@ above the world.
 | `StaticBody2D`, `AnimatableBody2D`, `RigidBody2D`, `CharacterBody2D`, `Area2D` | `Transform2D` and the body, with its constant velocities, an area's gravity, damping and audio bus overrides and a character's floor, wall and platform options; its `CollisionShape2D` children are its shapes |
 | `PinJoint2D`, `DampedSpringJoint2D`, `GrooveJoint2D` | `Transform2D` and the joint |
 | `AudioStreamPlayer` | `AudioStreamPlayer` |
-| `AnimationPlayer` | `AnimationPlayer` (see [animations](#animations)) |
-| `AnimationTree` | `AnimationTree`, on the entity that draws the model when it plays a model's own animations (see [animation trees](#animation-trees)) |
+| `AnimationPlayer` | `AnimationPlayer`, on the entity that draws the model when its tracks move a model's bones (see [animations](#animations)) |
+| `AnimationTree` | `AnimationTree`, on the entity that draws the model when it plays a model's own animations or moves its bones (see [animation trees](#animation-trees)) |
 | `Control` | `Control` |
 | `Label`, `ColorRect`, `Panel`, `TextureRect`, `NinePatchRect`, `ProgressBar`, `Button`, `CheckBox`, `CheckButton`, `TextureButton`, `LineEdit`, `TextEdit`, `ScrollContainer`, `MarginContainer`, `CenterContainer`, `PanelContainer`, `GridContainer` | `Control` and the component of the same name |
 | `CodeEdit` | `Control`, `TextEdit` and `CodeEdit`: its text, gutters and guidelines |
@@ -323,9 +323,19 @@ An instance of the scene has the same library, with its targets under the instan
 | Value track | A value track on the field the property converts to, as a node's property does (`.:position` is `Transform2D/position`, `Sprite2D:texture` a texture path); a part such as `modulate:a` or `position:y` is the field's part. Interpolation, easing (`transitions`), `loop_wrap` and discrete or continuous update modes carry over |
 | Bezier track | A value track through its keys' values, with cubic interpolation; its handles are reported |
 | Method track | An event track per method it calls, named after the method, with `{"args": [...]}` as each key's data when it passes arguments. The node's script becomes C++ that handles the event |
+| `position_3d`, `rotation_3d` or `scale_3d` track on a bone or node of an instanced model | A [node track](scene-format.md#node-tracks) on the model's node of that name, rotations as Euler angles. The player goes on the entity that draws the model, since node tracks move the model their entity draws, and the report says so |
+| `position_3d`, `rotation_3d` or `scale_3d` track on a 3D node of the scene | A value track on `Transform3D/position`, `rotation` or `scale`, with easing and `loop_wrap` |
 
 Each animation keeps its `length` and loop mode (`loop_mode` 1 is `linear`, 2 is `pingpong`).
 Keys past the end, which Godot never plays, are left out, and so are disabled tracks.
+
+Godot slerps a rotation track from key to key. A node track does too; a `Transform3D/rotation`
+track turns each Euler angle the shorter way round (`linear_angle`), so where that would stray
+from the slerp by more than a twentieth of a degree, the converter adds keys in between, the
+turn from the last key round the loop to the first included. A rotation that turns through
+straight up or down can stray further, as the report says. Node tracks interpolate in straight
+lines or not at all, so cubic interpolation and easing on them play as straight lines, as the
+report says, and a library's node tracks move one model's nodes.
 
 ## Animation trees
 
@@ -342,10 +352,11 @@ is `OneShot`), with Godot's property names and values, enums by name (`play_mode
 | A `Transition`'s `input_<n>/name`, `auto_advance`, `break_loop_at_end` and `reset` | Its `inputs`, each with the blend tree node connected to it |
 | A state machine's `states/<name>/node` and `position`, and `transitions` | Its `states`, and a transition for each triple, with its switch and advance modes, condition, priority and cross-fade |
 | `fadein_curve`, `fadeout_curve`, `xfade_curve` | `[offset, value]` points joined by straight lines, as the report says |
-| `filters` | The tracks they name: a bone or node of a model by its name, a converted track as `<target>:<component>/<field>`, and a node's method tracks as its event tracks |
+| `filters` | The tracks they name: a bone or node of a model by its name, a converted track as `<target>:<component>/<field>`, and a node's method tracks and 3D tracks as its event tracks and `Transform3D` tracks |
 
 The tree plays the animations of the `AnimationPlayer` its `anim_player` names, with that
-player's library and `targets`, or its own `libraries` from its `root_node`. The player Godot's
+player's library and `targets`, or its own `libraries` from its `root_node`. When their tracks
+move a model's bones, the tree goes on the entity that draws the model, with the player. The player Godot's
 importer gives a model with animations is the model itself: the library is the model file and
 the component goes on the entity that draws it, since a tree poses the model its own entity
 draws, and the report says so. Godot drops a `-loop` or `_loop`, `-cycle` or `_cycle`, or a
@@ -353,8 +364,8 @@ draws, and the report says so. Godot drops a `-loop` or `_loop`, `-cycle` or `_c
 
 `active`, `deterministic`, `root_motion_track` (the model node it names) and `root_motion_local`
 carry over. A deterministic tree starts each value track from its key in the library's `RESET`
-animation, or from zero, as Godot's does, so a converted library without one gets `RESET` keys at
-zero, as the report says. `parameters/` values that callers set (`request`, `blend_amount`,
+animation, or from zero (a 3D node's scale from one), as Godot's does, so a converted library
+without one gets `RESET` keys there, as the report says. `parameters/` values that callers set (`request`, `blend_amount`,
 `blend_position`, `transition_request`, a state machine's `conditions/`) become the component's
 `parameters`, a `OneShot` request by name; what the tree keeps as it plays is left for it.
 
@@ -577,7 +588,7 @@ The report lists each of these once per kind, with how many and where it was fir
 | --- | --- |
 | `Skeleton3D` and its modifiers, `PhysicalBone3D` | Not converted yet; add SlashEngine's component of the same name by hand |
 | A state machine transition's `advance_expression`, `AnimationNodeExtension` and `AnimationNodeOutput` subclasses, and a tree's manual `callback_mode_process` | Set a condition from gameplay code; the tree plays every tick |
-| 3D tracks (`position_3d`, `rotation_3d`, `scale_3d`, `blend_shape`) | Not converted yet; a model's own animations play from the model file |
+| `blend_shape` tracks, 3D tracks on the bones of a `Skeleton3D` in a scene, and compressed animations | Models have no blend shapes yet, and scenes' own skeletons don't convert yet; turn off an animation's compression in Godot |
 | A model's own nodes changed from a scene (editable children), and its `.import` file's root scale and root type | The model draws as its file has it; place, scale and add components to the entity that draws it |
 | `ArrayMesh` resources, the meshes Godot saves from imported models | Export the mesh as a glTF file |
 | A CSG root's `material_override`, a mesh library item's shape scale | Give each shape its material; set the shape's size |

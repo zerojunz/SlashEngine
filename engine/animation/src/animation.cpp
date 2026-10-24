@@ -3,6 +3,8 @@
 #include "internal.hpp"
 
 #include "slash/core/text.hpp"
+#include "slash/scene3d/skeleton.hpp"
+#include "slash/world/tree3d.hpp"
 
 #include <algorithm>
 #include <array>
@@ -12,6 +14,7 @@
 #include <cstdint>
 #include <limits>
 #include <map>
+#include <memory>
 #include <numbers>
 #include <optional>
 #include <set>
@@ -26,6 +29,7 @@ constexpr std::array<std::string_view, 3> kLoopModes = {"none", "linear", "pingp
 constexpr std::array<std::string_view, 5> kInterpolations = {"nearest", "linear", "cubic",
                                                              "linear_angle", "cubic_angle"};
 constexpr std::array<std::string_view, 3> kUpdateModes = {"auto", "continuous", "discrete"};
+constexpr std::array<std::string_view, 3> kNodeProperties = {"position", "rotation", "scale"};
 
 template <std::size_t N>
 json::Value names(const std::array<std::string_view, N>& list) {
@@ -55,7 +59,8 @@ json::Value schema() {
     key["required"] = json::Array{"time"};
     key["properties"]["time"] = property("number", "Seconds from the animation's start.");
     key["properties"]["time"]["minimum"] = 0;
-    key["properties"]["value"]["description"] = "A value track's value: one the field takes.";
+    key["properties"]["value"]["description"] =
+        "A value track's value: one the field takes. A node track's: [x, y, z].";
     key["properties"]["data"]["description"] = "An event track's event data: any JSON.";
     key["properties"]["transition"] =
         property("number", "Easing to the next key, as Godot's: 1 linear, above 1 eases in, "
@@ -66,12 +71,20 @@ json::Value schema() {
     track["type"] = "object";
     track["additionalProperties"] = false;
     track["required"] = json::Array{"keys"};
-    track["description"] = "A value track (path) or an event track (event).";
+    track["description"] = "A value track (path), an event track (event) or a node track (node).";
     track["properties"]["path"] =
         property("string", "The value it sets: a component, its field and optionally a part, "
                            "as \"Transform2D/position\" or \"Sprite2D/modulate/a\".");
     track["properties"]["event"] =
         property("string", "The event kind it emits when playback passes each key.");
+    track["properties"]["node"] =
+        property("string", "The node of the entity's model it moves, by name, as a Godot 3D "
+                           "track moves a bone.");
+    track["properties"]["node"]["minLength"] = 1;
+    track["properties"]["property"] =
+        property("string", "What a node track moves: its keys' values are [x, y, z], a "
+                           "rotation's Euler angles in radians, turning the shorter way round.");
+    track["properties"]["property"]["enum"] = names(kNodeProperties);
     track["properties"]["target"] =
         property("string", "The entity it acts on: a name in the AnimationPlayer's targets, "
                            "as a Godot track's node path. Left out, the player's own entity.");
@@ -311,18 +324,25 @@ private:
         std::set<std::string, std::less<>> paths;
         const json::Array& list = tracks->as_array();
         for (std::size_t i = 0; i < list.size(); ++i) {
-            check_track(list[i], at + "/tracks/" + std::to_string(i), end, paths);
+            check_track(list[i], at + "/tracks/" + std::to_string(i), end, from != nullptr, paths);
         }
     }
 
     void check_track(const json::Value& track, const std::string& at, double length,
-                     std::set<std::string, std::less<>>& paths) {
+                     bool from_model, std::set<std::string, std::less<>>& paths) {
         const json::Value* path = track.find("path");
         const json::Value* event = track.find("event");
-        if ((path == nullptr) == (event == nullptr)) {
-            fail(at, path == nullptr ? R"(a track has a "path", for a value track, or an "event")"
-                                     : R"(a track has a "path" or an "event", not both)");
+        const json::Value* node = track.find("node");
+        const int kinds = static_cast<int>(path != nullptr) + static_cast<int>(event != nullptr) +
+                          static_cast<int>(node != nullptr);
+        if (kinds != 1) {
+            fail(at, kinds == 0
+                         ? R"(a track has a "path", for a value track, an "event" or a "node")"
+                         : R"(a track has one of "path", "event" and "node", not more)");
             return;
+        }
+        if (node == nullptr && track.find("property") != nullptr) {
+            fail(at + "/property", "only node tracks have property");
         }
         const json::Array& keys = track.find("keys")->as_array();
         for (std::size_t j = 0; j < keys.size(); ++j) {
@@ -340,8 +360,63 @@ private:
         }
         if (event != nullptr) {
             check_event_track(track, *event, at);
+        } else if (node != nullptr) {
+            check_node_track(track, node->as_string(), at, from_model, paths);
         } else {
             check_value_track(track, path->as_string(), at, paths);
+        }
+    }
+
+    void check_node_track(const json::Value& track, const std::string& node, const std::string& at,
+                          bool from_model, std::set<std::string, std::less<>>& moved) {
+        if (from_model) {
+            fail(at, "an animation from a model moves its nodes by the model's tracks; give "
+                     "node tracks an animation of their own");
+        }
+        if (track.find("target") != nullptr) {
+            fail(at + "/target", "node tracks move the nodes of the model the entity draws, so "
+                                 "they have no target");
+        }
+        if (track.find("update") != nullptr) {
+            fail(at + "/update", R"(node tracks change smoothly, or jump from key to key with )"
+                                 R"("interpolation": "nearest", so they have no update)");
+        }
+        if (const json::Value* interpolation = track.find("interpolation");
+            interpolation != nullptr && interpolation->as_string() != "nearest" &&
+            interpolation->as_string() != "linear") {
+            fail(at + "/interpolation",
+                 R"(node tracks interpolate "nearest" or "linear", as model animations do)");
+        }
+        const json::Value* what = track.find("property");
+        if (what == nullptr) {
+            fail(at, R"(a node track needs a "property": "position", "rotation" or "scale")");
+        } else if (!moved.insert(node + "\n" + what->as_string()).second) {
+            fail(at + "/node",
+                 "another track already moves \"" + node + "\"'s " + what->as_string());
+        }
+        const json::Array& keys = track.find("keys")->as_array();
+        for (std::size_t j = 0; j < keys.size(); ++j) {
+            const std::string key_at = at + "/keys/" + std::to_string(j);
+            if (keys[j].find("data") != nullptr) {
+                fail(key_at + "/data", R"(a node track's keys carry "value", not "data")");
+            }
+            const json::Value* value = keys[j].find("value");
+            if (value == nullptr) {
+                fail(key_at, R"(a node track's keys need a "value", [x, y, z])");
+            } else if (!value->is_array() || value->size() != 3 || !numeric(*value)) {
+                std::string got = kind_of(*value);
+                if (value->is_number()) {
+                    got = "a number";
+                } else if (numeric(*value)) {
+                    got = std::to_string(value->size()) + " numbers";
+                }
+                fail(key_at + "/value", "a node track's value is [x, y, z], not " + got);
+            }
+            if (const json::Value* transition = keys[j].find("transition");
+                transition != nullptr && transition->as_double() != 1.0) {
+                fail(key_at + "/transition", "node tracks go straight from key to key, so their "
+                                             "keys have no transition");
+            }
         }
     }
 
@@ -460,6 +535,34 @@ Interpolation parse_interpolation(std::string_view name) {
     return static_cast<Interpolation>(index_of(kInterpolations, name));
 }
 
+// A node track as a model animation's track of a node.
+scene3d::NodeTrack node_track(const Track& track, std::size_t node) {
+    scene3d::NodeTrack out;
+    out.node = node;
+    out.property = track.property;
+    out.step = track.interpolation == Interpolation::Nearest;
+    out.loop_wrap = track.loop_wrap;
+    out.times.reserve(track.keys.size());
+    out.values.reserve(track.keys.size());
+    for (const Key& key : track.keys) {
+        out.times.push_back(static_cast<float>(key.time));
+        Vec3 value;
+        if (key.value.is_array() && key.value.size() == 3) {
+            const json::Array& xyz = key.value.as_array();
+            value =
+                Vec3{static_cast<float>(xyz[0].as_double()), static_cast<float>(xyz[1].as_double()),
+                     static_cast<float>(xyz[2].as_double())};
+        }
+        if (track.property == scene3d::NodeProperty::Rotation) {
+            const Quat turn = world::quaternion(value);
+            out.values.push_back({turn.x, turn.y, turn.z, turn.w});
+        } else {
+            out.values.push_back({value.x, value.y, value.z, 0.0F});
+        }
+    }
+    return out;
+}
+
 } // namespace
 
 std::string_view loop_mode_name(LoopMode mode) {
@@ -468,6 +571,57 @@ std::string_view loop_mode_name(LoopMode mode) {
 
 std::string_view interpolation_name(Interpolation interpolation) {
     return kInterpolations.at(static_cast<std::size_t>(interpolation));
+}
+
+std::string_view node_property_name(scene3d::NodeProperty property) {
+    return kNodeProperties.at(static_cast<std::size_t>(property));
+}
+
+bool has_node_tracks(const Animation& animation) {
+    return std::ranges::any_of(animation.tracks,
+                               [](const Track& track) { return !track.node.empty(); });
+}
+
+std::shared_ptr<const scene3d::Model> node_animations(const AnimationLibrary& library) {
+    auto model = std::make_shared<scene3d::Model>();
+    std::map<std::string, std::size_t, std::less<>> nodes;
+    for (const auto& [name, animation] : library.animations) {
+        if (!has_node_tracks(animation)) {
+            continue;
+        }
+        scene3d::ModelAnimation clip;
+        clip.name = name;
+        clip.length = animation.length;
+        clip.loop = animation.loop != LoopMode::None;
+        for (const Track& track : animation.tracks) {
+            if (track.node.empty()) {
+                continue;
+            }
+            const auto [it, added] = nodes.try_emplace(track.node, model->nodes.size());
+            if (added) {
+                scene3d::ModelNode node;
+                node.name = track.node;
+                model->nodes.push_back(std::move(node));
+            }
+            clip.tracks.push_back(node_track(track, it->second));
+        }
+        model->animations.push_back(std::move(clip));
+    }
+    if (model->animations.empty()) {
+        return nullptr;
+    }
+    return model;
+}
+
+json::Value sample_node(const Animation& animation, const Track& track, double time) {
+    const std::array<float, 4> value = scene3d::sample_track(
+        node_track(track, 0), time, animation.length, animation.loop != LoopMode::None);
+    Vec3 out{value[0], value[1], value[2]};
+    if (track.property == scene3d::NodeProperty::Rotation) {
+        out = world::euler(world::rotation_basis(Quat{value[0], value[1], value[2], value[3]}));
+    }
+    return json::Array{static_cast<double>(out.x), static_cast<double>(out.y),
+                       static_cast<double>(out.z)};
 }
 
 json::Value animation_schema() {
@@ -563,6 +717,13 @@ Result<AnimationLibrary> parse_animation_library(const json::Value& doc) {
             if (const json::Value* event = json_track.find("event"); event != nullptr) {
                 track.event = event->as_string();
             }
+            if (const json::Value* node = json_track.find("node"); node != nullptr) {
+                track.node = node->as_string();
+            }
+            if (const json::Value* property = json_track.find("property"); property != nullptr) {
+                track.property = static_cast<scene3d::NodeProperty>(
+                    index_of(kNodeProperties, property->as_string()));
+            }
             if (const json::Value* target = json_track.find("target"); target != nullptr) {
                 track.target = target->as_string();
             }
@@ -578,7 +739,8 @@ Result<AnimationLibrary> parse_animation_library(const json::Value& doc) {
             for (const json::Value& json_key : json_track.find("keys")->as_array()) {
                 Key key;
                 key.time = json_key.find("time")->as_double();
-                if (const json::Value* value = json_key.find(track.path.empty() ? "data" : "value");
+                if (const json::Value* value =
+                        json_key.find(track.event.empty() ? "value" : "data");
                     value != nullptr) {
                     key.value = *value;
                 }
@@ -601,6 +763,53 @@ std::vector<json::ValidationError> check_players(const json::Value& doc,
         return errors;
     }
     detail::CheckedFiles files(reader);
+    // Node tracks move the nodes of the model the entity draws.
+    const auto check_nodes = [&](const json::Value& components, const AnimationLibrary& library,
+                                 const std::string& path, const std::string& at, bool extends) {
+        std::set<std::string, std::less<>> moved;
+        for (const auto& [name, animation] : library.animations) {
+            for (const Track& track : animation.tracks) {
+                if (!track.node.empty()) {
+                    moved.insert(track.node);
+                }
+            }
+        }
+        if (moved.empty()) {
+            return;
+        }
+        const json::Value* instance = components.find("MeshInstance3D");
+        const json::Value* mesh = instance != nullptr ? instance->find("mesh") : nullptr;
+        if (mesh == nullptr || !mesh->is_string() || !scene3d::is_model_path(mesh->as_string())) {
+            if (!extends) {
+                errors.push_back({at, path + "'s node tracks move the nodes of the model the "
+                                             "entity draws, but it draws none: give it a "
+                                             "MeshInstance3D whose mesh is a model file"});
+            }
+            return;
+        }
+        const Result<scene3d::Model>& model = files.model(mesh->as_string());
+        if (!model) {
+            return; // the MeshInstance3D's own check says why
+        }
+        std::vector<std::string_view> names;
+        names.reserve(model.value().nodes.size());
+        for (const scene3d::ModelNode& node : model.value().nodes) {
+            names.emplace_back(node.name);
+        }
+        for (const std::string& node : moved) {
+            if (std::ranges::find(names, node) != names.end()) {
+                continue;
+            }
+            std::string message = "\"" + node + "\", which ";
+            message.append(path)
+                .append("'s node tracks move, isn't a node of ")
+                .append(mesh->as_string());
+            if (const std::string_view hint = closest_match(node, names); !hint.empty()) {
+                message += "; did you mean \"" + std::string(hint) + "\"?";
+            }
+            errors.push_back({at, std::move(message)});
+        }
+    };
     const auto check = [&](const json::Value& components, const std::string& at, bool extends) {
         const json::Value* player = components.find("AnimationPlayer");
         if (player == nullptr || !player->is_object()) {
@@ -640,6 +849,7 @@ std::vector<json::ValidationError> check_players(const json::Value& doc,
             }
             errors.push_back({at + "/animation", std::move(message)});
         }
+        check_nodes(components, library.value(), path, at, extends);
         const json::Value* targets = player->find("targets");
         if (extends && targets == nullptr) {
             return;

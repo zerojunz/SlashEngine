@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -50,6 +51,16 @@
 //
 // An AnimationPlayer's library can also be a model file itself, whose animations it plays as
 // they are.
+//
+// A node track moves a node of the model the entity's MeshInstance3D draws, by its name, as a
+// Godot position_3d, rotation_3d or scale_3d track moves a bone: its keys' values are positions,
+// rotations (Euler angles in radians, as Transform3D's) or scales, which turn the shorter way
+// round between keys, as Godot's rotation tracks do:
+//
+//   "wave": {"length": 1, "loop": "linear",
+//            "tracks": [{"node": "Elbow", "property": "rotation",
+//                        "keys": [{"time": 0, "value": [0, 0, 0]},
+//                                 {"time": 0.5, "value": [0, 0, 0.8]}]}]}
 namespace slash::animation {
 
 inline constexpr std::string_view kAnimationSuffix = ".anim.json";
@@ -78,7 +89,10 @@ struct Key {
 struct Track {
     std::string path;   // a value track's "Component/field[/part...]"
     std::string event;  // an event track's event kind
+    std::string node;   // a node track's model node
     std::string target; // a name in AnimationPlayer::targets; "" for the player's own entity
+    // What a node track moves; its keys' values are [x, y, z].
+    scene3d::NodeProperty property = scene3d::NodeProperty::Position;
     Interpolation interpolation = Interpolation::Linear;
     UpdateMode update = UpdateMode::Auto;
     // In a looping animation, move from the last key to the first across the loop's end.
@@ -108,6 +122,21 @@ struct AnimationLibrary {
 
 [[nodiscard]] std::string_view loop_mode_name(LoopMode mode);
 [[nodiscard]] std::string_view interpolation_name(Interpolation interpolation);
+[[nodiscard]] std::string_view node_property_name(scene3d::NodeProperty property);
+
+// Whether an animation has node tracks.
+[[nodiscard]] bool has_node_tracks(const Animation& animation);
+
+// The node tracks of a library's animations as the animations of a model with no meshes, whose
+// nodes are those the tracks name: how they pose the model an entity draws
+// (scene3d::ClipSample::source), each animation with node tracks by its name. Null for a library
+// with none.
+[[nodiscard]] std::shared_ptr<const scene3d::Model>
+node_animations(const AnimationLibrary& library);
+
+// A node track's value at a time, from 0 to the animation's length, as [x, y, z]: a rotation as
+// Euler angles in radians.
+[[nodiscard]] json::Value sample_node(const Animation& animation, const Track& track, double time);
 
 // JSON Schema for .anim.json files.
 [[nodiscard]] json::Value animation_schema();
@@ -156,8 +185,9 @@ struct Target {
                                  const json::Value& value);
 
 // Every error in a scene's or prefab's AnimationPlayers, each with the JSON Pointer of the bad
-// value: a library that doesn't load, an animation it doesn't have, with "did you mean", and a
-// track target the player's targets leave out. Libraries are read through reader.
+// value: a library that doesn't load, an animation it doesn't have, with "did you mean", a track
+// target the player's targets leave out, and a node track's node the entity's model hasn't.
+// Libraries and models are read through reader.
 [[nodiscard]] std::vector<json::ValidationError> check_players(const json::Value& doc,
                                                                const world::FileReader& reader);
 

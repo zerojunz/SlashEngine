@@ -1075,10 +1075,12 @@ Reply animation_eval(Session& session, const json::Value& params) {
     const auto track_name = [](const animation::Track& track) {
         return track.target.empty() ? track.path : track.target + ":" + track.path;
     };
-    std::vector<std::string> paths;
+    std::vector<std::string> paths; // and node tracks' nodes
     for (const animation::Track& track : animation.tracks) {
         if (!track.path.empty()) {
             paths.push_back(track_name(track));
+        } else if (!track.node.empty() && std::ranges::find(paths, track.node) == paths.end()) {
+            paths.push_back(track.node);
         }
     }
     std::set<std::string, std::less<>> wanted;
@@ -1087,7 +1089,7 @@ Reply animation_eval(Session& session, const json::Value& params) {
         for (std::size_t i = 0; i < items.size(); ++i) {
             const std::string& track = items[i].as_string();
             if (std::ranges::find(paths, track) == paths.end()) {
-                std::string message = name + " has no value track " + quoted(track);
+                std::string message = name + " has no value or node track " + quoted(track);
                 add_hint(message, track, paths);
                 return param_error(code::kNotFound, "/tracks/" + std::to_string(i), message);
             }
@@ -1096,7 +1098,18 @@ Reply animation_eval(Session& session, const json::Value& params) {
     }
 
     json::Value tracks = json::Object{};
+    json::Value nodes = json::Object{};
     for (const animation::Track& track : animation.tracks) {
+        if (!track.node.empty() && (wanted.empty() || wanted.contains(track.node))) {
+            json::Array values;
+            values.reserve(times.size());
+            for (const double time : times) {
+                values.push_back(rounded(animation::sample_node(animation, track, time)));
+            }
+            nodes[track.node][std::string(animation::node_property_name(track.property))] =
+                std::move(values);
+            continue;
+        }
         if (track.path.empty() || (!wanted.empty() && !wanted.contains(track_name(track)))) {
             continue;
         }
@@ -1120,6 +1133,9 @@ Reply animation_eval(Session& session, const json::Value& params) {
     result["length"] = short_number(animation.length);
     result["loop"] = animation::loop_mode_name(animation.loop);
     result["tracks"] = std::move(tracks);
+    if (!nodes.as_object().empty()) {
+        result["nodes"] = std::move(nodes);
+    }
     return Reply::success(std::move(result));
 }
 
@@ -6316,14 +6332,14 @@ void register_builtin_commands(Registry& registry) {
     times["minItems"] = 1;
     times["maxItems"] = 100;
     json::Value only_tracks = property("array", "Value tracks to return, by path, or "
-                                                "\"target:path\" for a track with a target. "
-                                                "Default: all.");
+                                                "\"target:path\" for a track with a target, "
+                                                "and node tracks, by node. Default: all.");
     only_tracks["items"]["type"] = "string";
     only_tracks["minItems"] = 1;
     registry.add({
         .name = "animation.eval",
         .description = "Returns the values an animation's tracks set at times, as AnimationPlayer "
-                       "sets them: a check without playing it.",
+                       "sets them, and its node tracks' under nodes: a check without playing it.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(

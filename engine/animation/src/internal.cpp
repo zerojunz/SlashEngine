@@ -373,7 +373,8 @@ LibraryCache::Entry* LibraryCache::get(const std::string& path, const Warn& warn
     return &entry;
 }
 
-const scene3d::Model* LibraryCache::model(const std::string& path, const Warn& warn) {
+const scene3d::Model* LibraryCache::model(const std::string& path, const Warn& warn,
+                                          std::uint64_t* version) {
     auto it = models_.find(path);
     if (it == models_.end()) {
         auto loaded = assets_->load<scene3d::Model>(path);
@@ -384,6 +385,9 @@ const scene3d::Model* LibraryCache::model(const std::string& path, const Warn& w
         it = models_.emplace(path, UsedModel{std::move(loaded).value()}).first;
     }
     it->second.used = true;
+    if (version != nullptr) {
+        *version = it->second.handle ? it->second.handle.version() : 0;
+    }
     return it->second.handle ? &*it->second.handle : nullptr;
 }
 
@@ -408,10 +412,12 @@ void LibraryCache::refresh(Entry& entry, const std::string& path, const Warn& wa
     if (!entry.versions.empty() && entry.versions == versions_of(entry)) {
         return;
     }
+    entry.nodes = nullptr;
     if (entry.model) {
         entry.library = model_library(*entry.model, path);
     } else {
         entry.library = *entry.file;
+        entry.nodes = node_animations(entry.library);
         for (auto& [name, animation] : entry.library.animations) {
             if (animation.from.model.empty()) {
                 continue;

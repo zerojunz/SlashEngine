@@ -122,6 +122,25 @@ struct Placement3D {
     std::array<double, 3> scale{1.0, 1.0, 1.0};
 };
 
+// The Euler angles of an orthonormal basis, given by rows, as Godot's Basis::get_euler for
+// EulerOrder::YXZ.
+std::array<double, 3> basis_euler(const std::array<std::array<double, 3>, 3>& m) {
+    constexpr double kEpsilon = 0.00001; // CMP_EPSILON
+    constexpr double kHalfPi = std::numbers::pi / 2.0;
+    const double m12 = m[1][2];
+    if (m12 >= 1.0 - kEpsilon) {
+        return {-kHalfPi, -std::atan2(m[0][1], m[0][0]), 0.0};
+    }
+    if (m12 <= -(1.0 - kEpsilon)) {
+        return {kHalfPi, std::atan2(m[0][1], m[0][0]), 0.0};
+    }
+    if (m[1][0] == 0.0 && m[0][1] == 0.0 && m[0][2] == 0.0 && m[2][0] == 0.0 && m[0][0] == 1.0) {
+        // A turn about x alone, in its simplest form.
+        return {std::atan2(-m12, m[1][1]), 0.0, 0.0};
+    }
+    return {std::asin(-m12), std::atan2(m[0][2], m[2][2]), std::atan2(m[1][0], m[1][1])};
+}
+
 // A Transform3D's twelve numbers (its basis by rows, then its origin) as position, rotation and
 // scale, as Node3D::_update_rotation_and_scale finds them: the scale is the basis's column
 // lengths signed by its determinant (Basis::get_scale), and the rotation the YXZ Euler angles of
@@ -199,31 +218,169 @@ std::optional<Placement3D> decompose_transform(const std::vector<double>& number
             }
         }
     }
-    // Basis::get_euler for EulerOrder::YXZ.
-    constexpr double kEpsilon = 0.00001; // CMP_EPSILON
-    constexpr double kHalfPi = std::numbers::pi / 2.0;
-    Vec euler{};
-    const double m12 = m[1][2];
-    if (m12 < 1.0 - kEpsilon) {
-        if (m12 > -(1.0 - kEpsilon)) {
-            if (m[1][0] == 0.0 && m[0][1] == 0.0 && m[0][2] == 0.0 && m[2][0] == 0.0 &&
-                m[0][0] == 1.0) {
-                // A turn about x alone, in its simplest form.
-                euler = {std::atan2(-m12, m[1][1]), 0.0, 0.0};
-            } else {
-                euler = {std::asin(-m12), std::atan2(m[0][2], m[2][2]),
-                         std::atan2(m[1][0], m[1][1])};
-            }
-        } else {
-            euler = {kHalfPi, std::atan2(m[0][1], m[0][0]), 0.0};
-        }
-    } else {
-        euler = {-kHalfPi, -std::atan2(m[0][1], m[0][0]), 0.0};
-    }
+    const Vec euler = basis_euler(m);
     for (std::size_t i = 0; i < 3; ++i) {
         out.rotation.at(i) = tidy_number(euler.at(i));
     }
     return out;
+}
+
+// A rotation as Godot's Quaternion keeps it: x, y, z and w.
+using Quaternion = std::array<double, 4>;
+
+// The YXZ Euler angles of a rotation's quaternion, as Godot's Basis(Quaternion) then
+// Basis::get_euler find them, tidied.
+std::array<double, 3> quaternion_euler(const Quaternion& q) {
+    const auto [x, y, z, w] = q;
+    const double length = (x * x) + (y * y) + (z * z) + (w * w);
+    const double s = length > 0.0 ? 2.0 / length : 0.0;
+    const double xs = x * s;
+    const double ys = y * s;
+    const double zs = z * s;
+    const double wx = w * xs;
+    const double wy = w * ys;
+    const double wz = w * zs;
+    const double xx = x * xs;
+    const double xy = x * ys;
+    const double xz = x * zs;
+    const double yy = y * ys;
+    const double yz = y * zs;
+    const double zz = z * zs;
+    const std::array<std::array<double, 3>, 3> rows{{{1.0 - (yy + zz), xy - wz, xz + wy},
+                                                     {xy + wz, 1.0 - (xx + zz), yz - wx},
+                                                     {xz - wy, yz + wx, 1.0 - (xx + yy)}}};
+    std::array<double, 3> euler = basis_euler(rows);
+    for (double& angle : euler) {
+        angle = tidy_number(angle);
+    }
+    return euler;
+}
+
+// The quaternion of YXZ Euler angles, as Godot's Quaternion::from_euler.
+Quaternion euler_quaternion(const std::array<double, 3>& euler) {
+    const double c1 = std::cos(euler[1] * 0.5);
+    const double s1 = std::sin(euler[1] * 0.5);
+    const double c2 = std::cos(euler[0] * 0.5);
+    const double s2 = std::sin(euler[0] * 0.5);
+    const double c3 = std::cos(euler[2] * 0.5);
+    const double s3 = std::sin(euler[2] * 0.5);
+    return {(s1 * c2 * s3) + (c1 * s2 * c3), (s1 * c2 * c3) - (c1 * s2 * s3),
+            (c1 * c2 * s3) - (s1 * s2 * c3), (s1 * s2 * s3) + (c1 * c2 * c3)};
+}
+
+double quaternion_dot(const Quaternion& a, const Quaternion& b) {
+    return (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]) + (a[3] * b[3]);
+}
+
+// weight of the way from a to b, the shorter way round, as Godot's Quaternion::slerp.
+Quaternion slerp(const Quaternion& a, Quaternion b, double weight) {
+    double cosom = quaternion_dot(a, b);
+    if (cosom < 0.0) {
+        cosom = -cosom;
+        for (double& part : b) {
+            part = -part;
+        }
+    }
+    double from = 1.0 - weight;
+    double to = weight;
+    constexpr double kEpsilon = 0.00001; // CMP_EPSILON
+    if (1.0 - cosom > kEpsilon) {
+        const double omega = std::acos(cosom);
+        const double sinom = std::sin(omega);
+        from = std::sin((1.0 - weight) * omega) / sinom;
+        to = std::sin(weight * omega) / sinom;
+    }
+    Quaternion out{};
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        out.at(i) = (from * a.at(i)) + (to * b.at(i));
+    }
+    return out;
+}
+
+// The angle between two rotations, in radians.
+double rotation_between(const Quaternion& a, const Quaternion& b) {
+    const double length = std::sqrt(quaternion_dot(a, a) * quaternion_dot(b, b));
+    const double cosine = length > 0.0 ? std::abs(quaternion_dot(a, b)) / length : 1.0;
+    return 2.0 * std::acos(std::min(cosine, 1.0));
+}
+
+// Godot's ease curve, as Math::ease: the weight x, from 0 to 1, shaped by c.
+double ease(double x, double c) {
+    x = std::clamp(x, 0.0, 1.0);
+    if (c > 0.0) {
+        return c < 1.0 ? 1.0 - std::pow(1.0 - x, 1.0 / c) : std::pow(x, c);
+    }
+    if (c < 0.0) {
+        if (x < 0.5) {
+            return std::pow(x * 2.0, -c) * 0.5;
+        }
+        return ((1.0 - std::pow(1.0 - ((x - 0.5) * 2.0), -c)) * 0.5) + 0.5;
+    }
+    return 0.0;
+}
+
+// A key of a Transform3D/rotation value track: its time, Euler angles and transition.
+struct EulerKey {
+    double time = 0.0;
+    std::array<double, 3> angles{};
+    double transition = 1.0;
+};
+
+// Keys from time a to time b (b's own left out) of a track that turns as truth says, which
+// gives the rotation at each fraction of the way: one at a, carrying transition, if turning
+// each Euler angle the shorter way round (linear_angle interpolation) stays within a twentieth
+// of a degree of it, else as many as that takes, up to 64. False if 64 aren't enough, as can
+// happen turning through straight up or down.
+bool euler_keys(double a, double b, const std::function<Quaternion(double)>& truth,
+                double transition, std::vector<EulerKey>& out) {
+    if (b <= a) {
+        out.push_back({a, quaternion_euler(truth(0.0)), transition});
+        return true;
+    }
+    constexpr double kTolerance = 0.001;
+    constexpr std::array<int, 12> kCounts{1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64};
+    const auto lerp_angles = [](const std::array<double, 3>& from, const std::array<double, 3>& to,
+                                double weight) {
+        constexpr double kTau = 2.0 * std::numbers::pi;
+        std::array<double, 3> between{};
+        for (std::size_t i = 0; i < between.size(); ++i) {
+            const double turn =
+                std::fmod(std::fmod(to.at(i) - from.at(i) + std::numbers::pi, kTau) + kTau, kTau) -
+                std::numbers::pi;
+            between.at(i) = from.at(i) + (turn * weight);
+        }
+        return between;
+    };
+    std::vector<std::array<double, 3>> angles;
+    bool close = false;
+    for (const int count : kCounts) {
+        angles.clear();
+        for (int k = 0; k <= count; ++k) {
+            angles.push_back(quaternion_euler(truth(static_cast<double>(k) / count)));
+        }
+        close = true;
+        for (int k = 0; k < count && close; ++k) {
+            for (const double part : {0.25, 0.5, 0.75}) {
+                const double weight = count == 1 ? ease(part, transition) : part;
+                const auto between = lerp_angles(angles[static_cast<std::size_t>(k)],
+                                                 angles[static_cast<std::size_t>(k) + 1], weight);
+                if (rotation_between(euler_quaternion(between),
+                                     truth((static_cast<double>(k) + part) / count)) > kTolerance) {
+                    close = false;
+                    break;
+                }
+            }
+        }
+        if (close) {
+            break;
+        }
+    }
+    const std::size_t count = angles.size() - 1;
+    for (std::size_t k = 0; k < count; ++k) {
+        const double time = a + ((b - a) * static_cast<double>(k) / static_cast<double>(count));
+        out.push_back({time, angles[k], count == 1 ? transition : 1.0});
+    }
+    return close;
 }
 
 // --- Tile data ---------------------------------------------------------------------------------
@@ -5860,6 +6017,11 @@ private:
     struct LibraryFile {
         std::string path;
         std::set<std::string> targets;
+        // The node path, from the root node, of the instanced model whose nodes its node tracks
+        // move, or "" if none do.
+        std::string model;
+        // "<target>:Transform3D/scale" for each scale_3d track, which Godot starts at one.
+        std::set<std::string> scales;
     };
 
     // One track of a Godot Animation: its "tracks/<n>/..." properties by name.
@@ -5903,9 +6065,11 @@ private:
     using OrderOf = std::function<std::vector<std::string>(const Node&)>;
 
     // Fills an AnimationPlayer from its node: its animation libraries as one .anim.json file, and
-    // the entity each node path its tracks name stands for, from the player's root node.
+    // the entity each node path its tracks name stands for, from the player's root node. A
+    // player whose libraries move an instanced model's nodes goes on the entity that draws it.
     void convert_player(const std::vector<Node>& nodes, const Node& node, const OrderOf& order_of,
-                        const SceneContext& scene, json::Value& player) {
+                        const SceneContext& scene, json::Object& entities) {
+        json::Value& player = entities[node.id]["components"]["AnimationPlayer"];
         const Property* libraries = node.find("libraries");
         if (libraries == nullptr || libraries->value->kind != Value::Kind::Dictionary ||
             libraries->value->entries.empty()) {
@@ -5930,6 +6094,24 @@ private:
         if (!targets.empty()) {
             player["targets"] = std::move(targets);
         }
+        const Node* model =
+            library->model.empty() ? nullptr : find_node(nodes, *root, library->model);
+        if (model == nullptr || model->id == node.id) {
+            return;
+        }
+        json::Value& components = entities[model->id]["components"];
+        if (components.find("AnimationPlayer") != nullptr) {
+            problems_.add("AnimationPlayer", node.declared,
+                          model->id + " already has an AnimationPlayer, so its node tracks move "
+                                      "nothing");
+            return;
+        }
+        components["AnimationPlayer"] = std::move(player);
+        entities[node.id]["components"].as_object().erase("AnimationPlayer");
+        moved_players_[node.id] = model->id;
+        problems_.add("AnimationPlayer", node.declared,
+                      "it plays on " + model->id +
+                          ", the entity that draws the model whose nodes its tracks move");
     }
 
     // The entity each node path a library's tracks name stands for, from the root node.
@@ -6008,7 +6190,7 @@ private:
         json::Object converted;
         for (const Source& source : animations) {
             converted.emplace(source.name, convert_animation(*source.section, *source.file, nodes,
-                                                             root, order_of, scene, out.targets));
+                                                             root, order_of, scene, out));
         }
         json::Value doc;
         doc["format"] = 1;
@@ -6024,7 +6206,7 @@ private:
     json::Value convert_animation(const Section& section, const TextFile& file,
                                   const std::vector<Node>& nodes, const Node& root,
                                   const OrderOf& order_of, const SceneContext& scene,
-                                  std::set<std::string>& targets) {
+                                  LibraryFile& library) {
         const std::string where = resource_where(section, file);
         json::Value out;
         double length = 1.0; // Godot's default
@@ -6041,13 +6223,313 @@ private:
         if (section.property("marker_names") != nullptr) {
             problems_.add("animation markers", where, "play from a marker's time in gameplay code");
         }
+        const bool loops = out.find("loop") != nullptr && out["loop"].as_string() == "linear";
         json::Array tracks;
         for (const auto& [index, track] : animation_tracks(section)) {
-            convert_track(track, where + " track " + std::to_string(index), length, file, nodes,
-                          root, order_of, scene, tracks, targets);
+            const std::string at = where + " track " + std::to_string(index);
+            const Value* type = track.get("type");
+            if (type != nullptr && type->is_string() &&
+                (type->text == "position_3d" || type->text == "rotation_3d" ||
+                 type->text == "scale_3d")) {
+                if (!disabled(track, at)) {
+                    convert_transform_track(track, type->text, at, length, loops, nodes, root,
+                                            order_of, tracks, library);
+                }
+                continue;
+            }
+            convert_track(track, at, length, file, nodes, root, order_of, scene, tracks,
+                          library.targets);
         }
         out["tracks"] = std::move(tracks);
         return out;
+    }
+
+    // Whether a track is turned off, which Godot doesn't play, reporting it if so.
+    bool disabled(const GodotTrack& track, const std::string& where) {
+        const Value* enabled = track.get("enabled");
+        if (enabled != nullptr && enabled->kind == Value::Kind::Bool && !enabled->boolean) {
+            problems_.add("disabled animation track", where, "Godot doesn't play it either");
+            return true;
+        }
+        return false;
+    }
+
+    // Adds a Godot position_3d, rotation_3d or scale_3d track's equivalent to tracks: for a node
+    // or bone of an instanced model, a node track, which the player plays on the entity that
+    // draws the model; for a 3D node of the scene, a Transform3D value track.
+    void convert_transform_track(const GodotTrack& track, const std::string& type,
+                                 const std::string& where, double length, bool loops,
+                                 const std::vector<Node>& nodes, const Node& root,
+                                 const OrderOf& order_of, json::Array& tracks,
+                                 LibraryFile& library) {
+        const std::string what = "animation " + type + " track";
+        const Value* path_value = track.get("path");
+        const std::string path = path_value != nullptr ? path_text(*path_value) : std::string();
+        const std::size_t colon = path.find(':');
+        std::string node_path = path.substr(0, colon);
+        if (node_path.empty()) {
+            node_path = ".";
+        }
+        const std::string bone =
+            colon == std::string::npos ? std::string() : path.substr(colon + 1);
+        const auto [target, rest] = find_in_model(nodes, root, node_path);
+        if (target == nullptr) {
+            problems_.add("animation track target", where,
+                          "node path " + node_path + " names no node under the root node");
+            return;
+        }
+        if (track.get("compressed_track") != nullptr) {
+            problems_.add(what, where,
+                          "compressed tracks don't convert; turn off the animation's "
+                          "compression in Godot");
+            return;
+        }
+        const std::string property = type.substr(0, type.size() - 3); // without "_3d"
+        const bool rotation = property == "rotation";
+        const std::size_t stride = rotation ? 6 : 5;
+        const Value* keys = track.get("keys");
+        const auto numbers =
+            keys != nullptr ? keys->numbers() : std::optional<std::vector<double>>{};
+        if (!numbers || numbers->size() % stride != 0) {
+            problems_.add(what, where,
+                          rotation ? "its keys aren't [time, transition, x, y, z, w] numbers"
+                                   : "its keys aren't [time, transition, x, y, z] numbers");
+            return;
+        }
+        struct Key {
+            double time = 0.0;
+            double transition = 1.0;
+            Quaternion value{}; // a position or scale's x, y and z, or a rotation
+        };
+        std::vector<Key> read;
+        constexpr double kPastEnd = 1.0e-9; // keys past the end never play
+        for (std::size_t i = 0; i < numbers->size(); i += stride) {
+            const std::span<const double> key(numbers->data() + i, stride);
+            if (key[0] <= length + kPastEnd) {
+                read.push_back({key[0], key[1], {key[2], key[3], key[4], rotation ? key[5] : 0.0}});
+            }
+        }
+        if (read.empty()) {
+            return;
+        }
+        std::int64_t interpolation = 1; // Godot's default, linear
+        if (const Value* value = track.get("interp");
+            value != nullptr && value->kind == Value::Kind::Int) {
+            interpolation = value->integer;
+        }
+        bool loop_wrap = true;
+        if (const Value* wrap = track.get("loop_wrap");
+            wrap != nullptr && wrap->kind == Value::Kind::Bool) {
+            loop_wrap = wrap->boolean;
+        }
+        // Godot's angle interpolations turn 3D values as its others do.
+        const bool nearest = interpolation == 0;
+        const bool cubic = interpolation == 2 || interpolation == 4;
+        const auto value_of = [rotation](const Quaternion& value) {
+            if (rotation) {
+                const std::array<double, 3> euler = quaternion_euler(value);
+                return json::Value(json::Array{euler[0], euler[1], euler[2]});
+            }
+            return json::Value(json::Array{value[0], value[1], value[2]});
+        };
+        json::Value out;
+        json::Array out_keys;
+
+        if (!rest.empty()) {
+            // A node or bone of an instanced model: a node track.
+            const std::vector<std::string_view> parts = split_path(rest);
+            const std::string name = bone.empty() ? std::string(parts.back()) : bone;
+            const std::vector<std::string>* model = model_nodes(target->model);
+            if (model == nullptr) {
+                problems_.add(what, where, "couldn't read the model " + target->model);
+                return;
+            }
+            const std::string node = model_node_name(*model, name);
+            if (!contains(*model, node)) {
+                std::string why = "\"" + name + "\" isn't a node of " + target->model;
+                if (const std::string_view near = closest_match(name, *model); !near.empty()) {
+                    why.append("; did you mean \"").append(near).append("\"?");
+                }
+                problems_.add(what, where, why);
+                return;
+            }
+            const std::vector<std::string_view> all = split_path(node_path);
+            std::string instance;
+            for (std::size_t i = 0; i + parts.size() < all.size(); ++i) {
+                if (!instance.empty()) {
+                    instance += '/';
+                }
+                instance += all[i];
+            }
+            if (library.model.empty()) {
+                library.model = instance;
+            } else if (find_node(nodes, root, library.model) != target) {
+                problems_.add(what, where,
+                              "the library's node tracks move " + library.model +
+                                  "'s nodes, and a player moves one model's");
+                return;
+            }
+            for (const json::Value& other : tracks) {
+                const json::Value* moved = other.find("node");
+                const json::Value* moves = other.find("property");
+                if (moved != nullptr && moves != nullptr && moved->as_string() == node &&
+                    moves->as_string() == property) {
+                    std::string why = "another track already moves \"";
+                    why.append(node).append("\"'s ").append(property);
+                    problems_.add(what, where, why);
+                    return;
+                }
+            }
+            if (cubic) {
+                problems_.add(what, where, "node tracks interpolate linearly, so it does");
+            }
+            if (!nearest &&
+                std::ranges::any_of(read, [](const Key& key) { return key.transition != 1.0; })) {
+                problems_.add(what, where, "its keys' easing plays as straight lines");
+            }
+            for (const Key& key : read) {
+                json::Value converted;
+                converted["time"] = key.time;
+                converted["value"] = value_of(key.value);
+                out_keys.push_back(std::move(converted));
+            }
+            out["node"] = node;
+            out["property"] = property;
+            if (nearest) {
+                out["interpolation"] = "nearest";
+            }
+            if (!loop_wrap) {
+                out["loop_wrap"] = false;
+            }
+            out["keys"] = std::move(out_keys);
+            tracks.push_back(std::move(out));
+            return;
+        }
+
+        // A node of the scene: a Transform3D value track.
+        if (!bone.empty()) {
+            problems_.add(what, where,
+                          "bones of a Skeleton3D in a scene don't convert yet; a model's do");
+            return;
+        }
+        if (!contains(order_of(*target), std::string("Transform3D"))) {
+            problems_.add(what, where, node_path + " is a " + target->type + ", not a 3D node");
+            return;
+        }
+        out["target"] = node_path;
+        out["path"] = "Transform3D/" + property;
+        if (nearest) {
+            out["interpolation"] = "nearest";
+        } else if (rotation) {
+            // Godot slerps from key to key; turning each Euler angle the shorter way round
+            // comes close, with keys in between where it would stray.
+            out["interpolation"] = "linear_angle";
+            if (cubic) {
+                problems_.add(what, where, "its rotations interpolate linearly, as slerps");
+            }
+        } else if (cubic) {
+            out["interpolation"] = "cubic";
+        }
+        if (!loop_wrap) {
+            out["loop_wrap"] = false;
+        }
+        std::vector<EulerKey> turned;
+        if (rotation && !nearest) {
+            bool close = true;
+            for (std::size_t i = 0; i + 1 < read.size(); ++i) {
+                const Key& a = read[i];
+                const Key& b = read[i + 1];
+                close =
+                    euler_keys(
+                        a.time, b.time,
+                        [&](double s) { return slerp(a.value, b.value, ease(s, a.transition)); },
+                        a.transition, turned) &&
+                    close;
+            }
+            const Key& first = read.front();
+            const Key& last = read.back();
+            const double before = length - last.time; // of the turn from the last key to the first
+            const double gap = before + first.time;
+            if (loops && loop_wrap && read.size() > 1 && gap > 0.0) {
+                // Keys at the start and the end, so the turn round the loop slerps too.
+                const auto round = [&](double s) {
+                    return slerp(last.value, first.value, ease(s, last.transition));
+                };
+                std::vector<EulerKey> start;
+                if (first.time > 0.0) {
+                    close = euler_keys(
+                                0.0, first.time,
+                                [&](double s) { return round((before + (s * first.time)) / gap); },
+                                1.0, start) &&
+                            close;
+                }
+                if (before > 0.0) {
+                    close =
+                        euler_keys(
+                            last.time, length, [&](double s) { return round(s * before / gap); },
+                            first.time > 0.0 ? 1.0 : last.transition, turned) &&
+                        close;
+                    turned.push_back({length, quaternion_euler(round(before / gap)), 1.0});
+                } else {
+                    turned.push_back({last.time, quaternion_euler(last.value), 1.0});
+                }
+                turned.insert(turned.begin(), start.begin(), start.end());
+            } else {
+                turned.push_back({last.time, quaternion_euler(last.value), last.transition});
+            }
+            if (!close) {
+                problems_.add(what, where,
+                              "it turns through straight up or down, where its Euler angles "
+                              "stray from Godot's rotation by more than a twentieth of a degree");
+            }
+        } else {
+            for (const Key& key : read) {
+                const json::Value value = value_of(key.value);
+                const auto& angles = value.as_array();
+                turned.push_back(
+                    {key.time,
+                     {angles[0].as_double(), angles[1].as_double(), angles[2].as_double()},
+                     nearest ? 1.0 : key.transition});
+            }
+        }
+        for (const EulerKey& key : turned) {
+            json::Value converted;
+            converted["time"] = tidy_number(key.time);
+            converted["value"] = json::Array{key.angles[0], key.angles[1], key.angles[2]};
+            if (key.transition != 1.0) {
+                converted["transition"] = key.transition;
+            }
+            out_keys.push_back(std::move(converted));
+        }
+        out["keys"] = std::move(out_keys);
+        tracks.push_back(std::move(out));
+        library.targets.insert(node_path);
+        if (property == "scale") {
+            library.scales.insert(node_path + ":Transform3D/scale");
+        }
+    }
+
+    // The nodes of a model a scene instances, by its path in the Godot project, read once; null
+    // if it can't be read.
+    const std::vector<std::string>* model_nodes(const std::string& model) {
+        const std::string path = destination(model);
+        if (const auto done = model_nodes_.find(path); done != model_nodes_.end()) {
+            const std::optional<std::vector<std::string>>& known = done->second;
+            return known ? &*known : nullptr;
+        }
+        std::optional<std::vector<std::string>>& names = model_nodes_[path];
+        const world::FileReader reader = asset_files();
+        auto bytes = reader(path);
+        auto loaded = bytes ? scene3d::load_model(bytes.value(), path, reader)
+                            : Result<scene3d::Model>(bytes.error());
+        if (!loaded) {
+            return nullptr;
+        }
+        names.emplace();
+        for (const scene3d::ModelNode& node : loaded.value().nodes) {
+            names->push_back(node.name);
+        }
+        return &*names;
     }
 
     // Why a kind of Godot track doesn't convert.
@@ -6058,8 +6540,8 @@ private:
         if (type == "animation") {
             return "start the other AnimationPlayer from gameplay code, on an event track's event";
         }
-        if (type.ends_with("_3d") || type == "blend_shape") {
-            return "3D tracks don't convert yet";
+        if (type == "blend_shape") {
+            return "SlashEngine models have no blend shapes yet";
         }
         return "no SlashEngine track of this kind";
     }
@@ -6073,9 +6555,7 @@ private:
         const Value* type_value = track.get("type");
         const std::string type =
             type_value != nullptr && type_value->is_string() ? type_value->text : "value";
-        if (const Value* enabled = track.get("enabled");
-            enabled != nullptr && enabled->kind == Value::Kind::Bool && !enabled->boolean) {
-            problems_.add("disabled animation track", where, "Godot doesn't play it either");
+        if (disabled(track, where)) {
             return;
         }
         if (type != "value" && type != "bezier" && type != "method") {
@@ -6394,8 +6874,13 @@ private:
         for (const auto& [name, animation] : library.value().animations) {
             source.animations.insert(name);
             for (const animation::Track& track : animation.tracks) {
-                source.tracks.insert(track.path.empty() ? animation::event_track_name(track)
-                                                        : animation::value_track_name(track));
+                if (!track.node.empty()) {
+                    source.tracks.insert(track.node);
+                    source.moved.insert(track.node);
+                } else {
+                    source.tracks.insert(track.path.empty() ? animation::event_track_name(track)
+                                                            : animation::value_track_name(track));
+                }
             }
         }
         source.checked = true;
@@ -6426,6 +6911,14 @@ private:
                     }
                 }
             }
+            // Godot starts a 3D scale at one.
+            std::set<std::string> scales;
+            for (const auto& [base, written] : libraries_written_) {
+                if (written.path == library) {
+                    scales = written.scales;
+                }
+            }
+            bool scaled = false;
             json::Array added;
             std::set<std::string> taken = keyed;
             for (const auto& [name, animation] : animations.as_object()) {
@@ -6443,6 +6936,10 @@ private:
                     key += track.find("path")->as_string();
                     if (zero.is_null() || !taken.insert(key).second) {
                         continue;
+                    }
+                    if (scales.contains(key)) {
+                        zero = json::Array{1.0, 1.0, 1.0};
+                        scaled = true;
                     }
                     json::Value reset;
                     reset["target"] = *track.find("target");
@@ -6465,8 +6962,9 @@ private:
                 reset["tracks"].push_back(std::move(track));
             }
             problems_.add("RESET animation", where,
-                          library + " gets RESET keys at zero for tracks it had none for, which "
-                                    "is where Godot's deterministic blending starts them");
+                          library + " gets RESET keys at zero for tracks it had none for" +
+                              (scaled ? " (at one for 3D scales)" : "") +
+                              ", which is where Godot's deterministic blending starts them");
             contents = json::write(doc.value()) + "\n";
             return;
         }
@@ -6496,11 +6994,12 @@ private:
 
     // A model's node for a bone or node name in a Godot path, as Godot's importer names bones:
     // ':' and '/' become '_'.
-    static std::string model_node_name(const TreeSource& source, const std::string& name) {
-        if (contains(source.nodes, name)) {
+    static std::string model_node_name(const std::vector<std::string>& nodes,
+                                       const std::string& name) {
+        if (contains(nodes, name)) {
             return name;
         }
-        for (const std::string& node : source.nodes) {
+        for (const std::string& node : nodes) {
             std::string sanitized = node;
             std::ranges::replace(sanitized, ':', '_');
             std::ranges::replace(sanitized, '/', '_');
@@ -6516,7 +7015,7 @@ private:
     [[nodiscard]] std::vector<std::string> filter_names(const std::string& path,
                                                         const TreeSource& source,
                                                         const std::vector<Node>& nodes,
-                                                        const OrderOf& order_of) const {
+                                                        const OrderOf& order_of) {
         const std::size_t colon = path.find(':');
         if (source.model) {
             std::string name = colon == std::string::npos ? path : path.substr(colon + 1);
@@ -6525,18 +7024,32 @@ private:
                     name = name.substr(slash + 1);
                 }
             }
-            return {model_node_name(source, name)};
+            return {model_node_name(source.nodes, name)};
         }
         std::string node_path = path.substr(0, colon);
         if (node_path.empty()) {
             node_path = ".";
         }
+        if (source.root != nullptr) {
+            // A node or bone of the model the library's node tracks move.
+            const auto [model, rest] = find_in_model(nodes, *source.root, node_path);
+            if (model != nullptr && !rest.empty()) {
+                const std::string name = colon != std::string::npos
+                                             ? path.substr(colon + 1)
+                                             : std::string(split_path(rest).back());
+                const std::vector<std::string>* names = model_nodes(model->model);
+                return {names != nullptr ? model_node_name(*names, name) : name};
+            }
+        }
         if (colon == std::string::npos) {
-            // A node's method tracks, as event tracks.
+            // A node's method tracks, as event tracks, and the Transform3D tracks its 3D tracks
+            // became.
             std::vector<std::string> out;
             const std::string prefix = node_path + ":@";
             for (const std::string& track : source.tracks) {
-                if (track.starts_with(prefix)) {
+                if (track.starts_with(prefix) || track == node_path + ":Transform3D/position" ||
+                    track == node_path + ":Transform3D/rotation" ||
+                    track == node_path + ":Transform3D/scale") {
                     out.push_back(track);
                 }
             }
@@ -7164,7 +7677,20 @@ private:
                                   ", not an AnimationPlayer");
                 return;
             } else {
-                const json::Value& player = entities[found->id]["components"]["AnimationPlayer"];
+                // A player whose node tracks move a model plays on the entity that draws it, and
+                // the tree, which poses the same nodes, goes there too.
+                std::string player_entity = found->id;
+                if (const auto moved = moved_players_.find(found->id);
+                    moved != moved_players_.end()) {
+                    player_entity = moved->second;
+                    host = moved->second;
+                    problems_.add("AnimationTree", node.declared,
+                                  "it plays on " + host +
+                                      ", the entity that draws the model whose nodes its "
+                                      "animations move");
+                }
+                const json::Value& player =
+                    entities[player_entity]["components"]["AnimationPlayer"];
                 const json::Value* library = player.find("library");
                 if (library == nullptr || library->as_string().empty()) {
                     problems_.add("AnimationTree.anim_player", node.declared,
@@ -7202,6 +7728,16 @@ private:
             json::Object bound = library_targets(nodes, node, *source.root, library->targets);
             if (!bound.empty()) {
                 targets = std::move(bound);
+            }
+            if (const Node* model = library->model.empty()
+                                        ? nullptr
+                                        : find_node(nodes, *source.root, library->model);
+                model != nullptr && model->id != node.id) {
+                host = model->id;
+                problems_.add("AnimationTree", node.declared,
+                              "it plays on " + host +
+                                  ", the entity that draws the model whose nodes its "
+                                  "animations move");
             }
         } else {
             problems_.add("AnimationTree", node.declared,
@@ -7250,15 +7786,17 @@ private:
                 if (path.empty()) {
                     continue;
                 }
-                const std::vector<std::string> names =
-                    source.model ? filter_names(path, source, nodes, order_of)
-                                 : std::vector<std::string>{};
-                if (names.empty() || (source.checked && !source.moved.contains(names.front()))) {
+                const std::vector<std::string> names = filter_names(path, source, nodes, order_of);
+                const bool into_model =
+                    source.model ||
+                    (!names.empty() && names.front().find(':') == std::string::npos);
+                if (names.empty() || (source.checked && !source.moved.contains(names.front())) ||
+                    !into_model) {
                     problems_.add("AnimationTree.root_motion_track", node.declared,
-                                  source.model ? "no animation of the model moves " + path
-                                               : "root motion comes from a model's animations, "
-                                                 "not from " +
-                                                     path);
+                                  into_model ? "no animation of the model moves " + path
+                                             : "root motion comes from a model's nodes, not "
+                                               "from " +
+                                                   path);
                     continue;
                 }
                 tree["root_motion_track"] = names.front();
@@ -7742,8 +8280,7 @@ private:
         };
         for (const Node& node : nodes) {
             if (node.type == "AnimationPlayer") {
-                convert_player(nodes, node, order_of, scene,
-                               entities[node.id]["components"]["AnimationPlayer"]);
+                convert_player(nodes, node, order_of, scene, entities);
             }
         }
         // AnimationTrees, which play the libraries of those players or of models.
@@ -8132,10 +8669,12 @@ private:
     std::map<std::string, std::string> themes_written_;
     std::set<std::string> bus_layouts_written_;
     std::map<std::string, LibraryFile> libraries_written_; // by file name, without its suffix
-    std::map<std::string, std::string> trees_written_;     // by resource, its file or ""
-    std::map<std::string, ScriptRecord> scripts_;          // by res path
-    std::optional<Skeletons> skeletons_;                   // by res path
-    std::string module_;                                   // the game module written, or ""
+    std::map<std::string, std::string> moved_players_;     // AnimationPlayer node to its model's
+    std::map<std::string, std::optional<std::vector<std::string>>> model_nodes_; // by path
+    std::map<std::string, std::string> trees_written_; // by resource, its file or ""
+    std::map<std::string, ScriptRecord> scripts_;      // by res path
+    std::optional<Skeletons> skeletons_;               // by res path
+    std::string module_;                               // the game module written, or ""
     std::map<std::string, std::string> task_of_;
     std::map<std::string, std::string> autoloads_;
     std::map<std::string, std::vector<std::string>> groups_;
