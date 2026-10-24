@@ -66,8 +66,9 @@ struct MeshInstance3D {
     // "double_sided" (with no faces culled) or "shadows_only" (it casts but isn't seen).
     std::string cast_shadow = "on";
     // How it takes part in global illumination, as Godot's GeometryInstance3D.gi_mode: "static"
-    // meshes are baked into a LightmapGI's lightmap (and lit by it), "dynamic" and "disabled"
-    // ones are not. gi_lightmap_texel_scale scales its lightmap's texels across.
+    // meshes are baked into a LightmapGI's lightmap (and lit by it), "dynamic" ones take their
+    // ambient light from its light probes, and "disabled" ones from neither.
+    // gi_lightmap_texel_scale scales its lightmap's texels across.
     std::string gi_mode = "static";
     float gi_lightmap_texel_scale = 1.0F;
 
@@ -623,6 +624,8 @@ struct LightmapGI {
     int bounces = 3;
     float bounce_indirect_energy = 1.0F;
     bool use_texture_for_bounces = true; // bounces take direct light from the lightmap
+    // Moving meshes inside its light probes take only interior lightmaps' light, as Godot's.
+    bool interior = false;
     bool use_denoiser = true;
     float denoiser_strength = 0.1F;
     int denoiser_range = 10;
@@ -637,15 +640,27 @@ struct LightmapGI {
     // The entity whose CameraAttributesPractical's exposure_multiplier the light is baked with,
     // or "" for 1.
     std::string camera_attributes;
+    // Light probes for moving meshes, as Godot's: "disabled" for 8 at the bounds' corners, or
+    // "4", "8", "16" or "32" cells along the longest side of an octree over the static meshes.
+    std::string generate_probes_subdiv = "8";
     // The .lightmap.json file lightmap.bake writes, project path; "" before a bake.
     std::string light_data;
 
     friend bool operator==(const LightmapGI&, const LightmapGI&) = default;
 };
 SLASH_COMPONENT(LightmapGI, quality, supersampling, supersampling_factor, bounces,
-                bounce_indirect_energy, use_texture_for_bounces, use_denoiser, denoiser_strength,
-                denoiser_range, bias, texel_scale, max_texture_size, environment_mode,
-                environment_custom_color, environment_custom_energy, camera_attributes, light_data)
+                bounce_indirect_energy, use_texture_for_bounces, interior, use_denoiser,
+                denoiser_strength, denoiser_range, bias, texel_scale, max_texture_size,
+                environment_mode, environment_custom_color, environment_custom_energy,
+                camera_attributes, generate_probes_subdiv, light_data)
+
+// A place a LightmapGI bakes a light probe, besides those it places itself, as Godot's
+// LightmapProbe: where moving meshes' light changes quickly, as in a doorway. It counts under the
+// LightmapGI's parent, as meshes do.
+struct LightmapProbe {
+    friend bool operator==(const LightmapProbe&, const LightmapProbe&) = default;
+};
+SLASH_COMPONENT(LightmapProbe)
 
 // The 3D world's background, ambient light, tonemap, reflections, ambient occlusion, glow, fog and
 // adjustments,

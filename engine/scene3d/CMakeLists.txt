@@ -29,6 +29,7 @@ add_library(slash_scene3d
     src/gridmap.cpp
     src/ik.cpp
     src/lightmap.cpp
+    src/lightmap_probes.cpp
     src/lightmapper.cpp
     src/model.cpp
     src/model_tools.cpp

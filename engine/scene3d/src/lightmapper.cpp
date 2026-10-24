@@ -63,6 +63,8 @@ constexpr float kPi = std::numbers::pi_v<float>; // as lm_compute.glsl's PI
 // Godot's project settings for baking: rendering/lightmapping/bake_performance/
 // max_rays_per_pass and max_transparency_rays.
 constexpr std::uint32_t kMaxRaysPerPass = 32;
+// rendering/lightmapping/bake_performance/max_rays_per_probe_pass.
+constexpr std::uint32_t kMaxRaysPerProbePass = 64;
 constexpr std::uint32_t kTransparencyRays = 8;
 // Godot's AA_SAMPLES: texel samples a light's shadow is traced from.
 constexpr std::uint32_t kAaSamples = 16;
@@ -128,6 +130,14 @@ Vec3 hemisphere_cosine_weighted_direction(std::uint32_t& noise) {
     const float noise2 = randomize(noise) * 2.0F * kPi;
     const Vec2 cs = slash::cos_sin(noise2);
     return {std::sqrt(noise1) * cs.x, std::sqrt(noise1) * cs.y, std::sqrt(1.0F - noise1)};
+}
+
+Vec3 sphere_uniform_direction(std::uint32_t& noise) {
+    const float theta = 2.0F * kPi * randomize(noise);
+    const float z = 1.0F - (2.0F * randomize(noise)); // cos(phi), phi = acos(z)
+    const float sin_phi = std::sqrt(std::max(0.0F, (1.0F - z) * (1.0F + z)));
+    const Vec2 cs = slash::cos_sin(theta);
+    return {sin_phi * cs.x, sin_phi * cs.y, z};
 }
 
 Vec3 ray_dir_from_normal(Vec3 normal, std::uint32_t& noise) {
@@ -765,8 +775,10 @@ public:
 
     Result<LightmapBake> bake(const std::vector<LightmapMesh>& meshes,
                               const std::vector<LightmapLight>& lights,
-                              const render::HdrImage& environment) {
+                              const render::HdrImage& environment,
+                              const LightmapProbeRequest& probes) {
         LightmapBake out;
+        probes_ = &probes;
         if (meshes.empty()) {
             return make_error(ErrorCode::InvalidArgument, "there are no static meshes to bake");
         }
@@ -788,6 +800,7 @@ public:
         if (settings_.bounces > 0) {
             bounce_light();
         }
+        out.probe_sh = light_probes();
         if (settings_.use_denoiser) {
             denoise();
         }
@@ -1074,6 +1087,11 @@ private:
                 }
                 triangles_.push_back(t);
             }
+        }
+        // The light probes count too, as Godot's.
+        for (const std::array<float, 3>& point : probes_->points) {
+            lo = {std::min(lo.x, point[0]), std::min(lo.y, point[1]), std::min(lo.z, point[2])};
+            hi = {std::max(hi.x, point[0]), std::max(hi.y, point[1]), std::max(hi.z, point[2])};
         }
         // Grown a little against rounding, as Godot's.
         lo = lo - Vec3{0.1F, 0.1F, 0.1F};
@@ -1655,6 +1673,51 @@ private:
         });
     }
 
+    // MODE_LIGHT_PROBES: each probe's light as spherical harmonics, from rays in every direction,
+    // in passes of kMaxRaysPerProbePass seeded afresh as Godot's. The rays leave in the probes'
+    // space, turned into the world's, so the harmonics are kept in the probes' space.
+    std::vector<LightmapSh> light_probes() {
+        const std::vector<std::array<float, 3>>& points = probes_->points;
+        std::vector<LightmapSh> out(points.size());
+        if (points.empty()) {
+            return out;
+        }
+        const std::uint32_t ray_count = std::clamp(probes_->rays, 16U, 8192U);
+        const world::Affine3D space = world::orthonormalized(probes_->space);
+        for_each(pool_, points.size(), [&](std::size_t probe) {
+            const Vec3 position{points[probe][0], points[probe][1], points[probe][2]};
+            std::array<Vec3, 9> accum{};
+            for (std::uint32_t from = 0; from < ray_count; from += kMaxRaysPerProbePass) {
+                const std::uint32_t to = std::min(from + kMaxRaysPerProbePass, ray_count);
+                std::uint32_t noise =
+                    random_seed(from, static_cast<std::uint32_t>(probe), 49502741U);
+                for (std::uint32_t i = from; i < to; ++i) {
+                    const Vec3 d = sphere_uniform_direction(noise);
+                    const Vec3 ray_dir = space.basis(d);
+                    const Vec3 light = indirect_light(position, ray_dir, noise, 0.0F);
+                    const std::array<float, 9> c{0.282095F,
+                                                 0.488603F * d.y,
+                                                 0.488603F * d.z,
+                                                 0.488603F * d.x,
+                                                 1.092548F * d.x * d.y,
+                                                 1.092548F * d.y * d.z,
+                                                 0.315392F * ((3.0F * d.z * d.z) - 1.0F),
+                                                 1.092548F * d.x * d.z,
+                                                 0.546274F * ((d.x * d.x) - (d.y * d.y))};
+                    for (std::size_t j = 0; j < 9; ++j) {
+                        accum.at(j) = accum.at(j) + (light * c.at(j));
+                    }
+                }
+            }
+            const float scale = 4.0F / static_cast<float>(ray_count);
+            for (std::size_t j = 0; j < 9; ++j) {
+                out[probe].at(j) = {accum.at(j).x * scale, accum.at(j).y * scale,
+                                    accum.at(j).z * scale};
+            }
+        });
+        return out;
+    }
+
     // MODE_DENOISE: Godot's joint non-local means filter, each texel a weighted mean of those
     // within denoiser_range whose neighborhoods, albedo and normals look like its own. The
     // patches' distances are box sums here, each offset's over the whole slice at once.
@@ -1969,6 +2032,7 @@ private:
     std::vector<Seam> seams_;
     std::unique_ptr<Bvh> bvh_;
     float world_size_ = 0.0F;
+    const LightmapProbeRequest* probes_ = nullptr;
     Layers<Rgba> position_;
     Layers<Vec3> normal_;
     Layers<Rgba> unocclude_;
@@ -1981,9 +2045,10 @@ private:
 Result<LightmapBake> bake_lightmap(const std::vector<LightmapMesh>& meshes,
                                    const std::vector<LightmapLight>& lights,
                                    const render::HdrImage& environment,
-                                   const LightmapSettings& settings, jobs::Pool* pool) {
+                                   const LightmapSettings& settings, jobs::Pool* pool,
+                                   const LightmapProbeRequest& probes) {
     Baker baker(settings, pool);
-    return baker.bake(meshes, lights, environment);
+    return baker.bake(meshes, lights, environment, probes);
 }
 
 } // namespace slash::scene3d

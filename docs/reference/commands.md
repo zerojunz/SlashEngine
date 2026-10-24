@@ -1480,17 +1480,20 @@ torch and one behind the crate from it:
 
 ### lightmap.bake
 
-Bakes a [`LightmapGI`'s](scene-format.md#baked-lightmaps) light, as Godot's LightmapGI bake: the
+Bakes a [`LightmapGI`'s](scene-format.md#baked-lightmaps) light and [light
+probes](scene-format.md#light-probes), as Godot's LightmapGI bake: the
 `MeshInstance3D`s whose `gi_mode` is `"static"` under its parent (the whole world for a root),
 lit by the lights there whose `light_bake_mode` isn't `"disabled"` and by its environment, with
-shadows and bounces. It unwraps the meshes into lightmap UVs, traces their light on the CPU, then
-writes a `.lightmap.json` file and its texels in an `.hdr` file beside it, and sets the
-LightmapGI's `light_data` to the file. It returns the files, how many meshes and lights it baked,
-the size of a slice, how many slices and `problems` when there are any: models or textures that
+shadows and bounces. It unwraps the meshes into lightmap UVs, traces their light and the probes'
+on the CPU, then writes a `.lightmap.json` file and its texels in an `.hdr` file beside it, and
+sets the LightmapGI's `light_data` to the file. It returns the files, how many meshes and lights
+it baked, how many `probes`, the size of a slice, how many slices and `problems` when there are
+any: models or textures that
 don't load, meshes with no entity ID and model parts with a skin, which it leaves out. A bake that comes out the same
 reports `"unchanged": true` and records no undo step. Undo puts both files back as they were,
 removing them if the bake made them, and sets `light_data` back; redo writes the bake again.
-Meshes draw with the new lightmap at the next command or tick.
+Meshes draw with the new lightmap, and moving meshes with the new probes, at the next command or
+tick.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -1505,7 +1508,7 @@ Needs: `edit` and `filesystem`. Takes `dry_run`. The courtyard of
 ```
 
 ```json
-{"file":"main.lightmap.json","lights":1,"meshes":3,"size":[128,64],"slices":1,"texture":"main.lightmap.hdr"}
+{"file":"main.lightmap.json","lights":1,"meshes":3,"probes":234,"size":[128,64],"slices":1,"texture":"main.lightmap.hdr"}
 ```
 
 An unknown ID fails at `/id` with a "did you mean"; so does an entity with no `LightmapGI`. A

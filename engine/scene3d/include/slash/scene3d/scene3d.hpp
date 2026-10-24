@@ -184,7 +184,8 @@ struct Frame3D {
 // Draws a world's meshes through a render device, keeping their meshes on the device between
 // frames: meshes of equal settings share one, each model's meshes and images are made once, and
 // a mesh no entity used last frame goes. Static meshes a LightmapGI baked take their ambient
-// light, and their baked lights' light, from its lightmap, as Godot's lightmapped instances.
+// light, and their baked lights' light, from its lightmap, as Godot's lightmapped instances, and
+// dynamic ones their ambient light from its light probes, eased as they move.
 class Renderer {
 public:
     Renderer(render::RenderDevice& device, TextureSource textures, ModelSource models = {},
@@ -234,6 +235,7 @@ private:
     struct Shared {
         render::MeshId id = render::MeshId::None;
         std::uint64_t used = 0; // the last frame that drew it
+        Vec3 center;            // the middle of its vertices' bounds, in its own space
     };
     struct Cached {
         Primitive primitive;
@@ -334,6 +336,20 @@ private:
         render::LightmapShading shading;
         bool reported = false; // that its mesh changed since, this frame
     };
+    // A lightmap whose light probes light moving meshes this frame: its LightmapGI's place, and
+    // the camera's exposure over the one it was baked with.
+    struct ProbeSource {
+        std::shared_ptr<const LightmapData> data;
+        world::Affine3D transform;
+        float exposure = 1.0F;
+    };
+    // The light probes' light a moving mesh took, eased toward where it is as Godot's
+    // lightmap_probe_update_speed eases it.
+    struct Captured {
+        std::array<std::array<float, 3>, 9> sh{};
+        double time = 0.0;
+        std::uint64_t used = 0;
+    };
     struct KeptLightmap {
         SourceLightmap source;
         render::TextureId texture = render::TextureId::None;
@@ -352,8 +368,12 @@ private:
         std::function<void(std::vector<render::Vertex3D>&, std::vector<std::uint32_t>&)> make;
     };
     // Loads the lightmaps the world's LightmapGIs name, makes their textures where they changed
-    // and finds each lit mesh's place, for a camera of this exposure.
-    void find_lightmaps(const world::World& world, float exposure);
+    // and finds each lit mesh's place and the probes, for a camera of this exposure.
+    void find_lightmaps(const world::World& world, float exposure,
+                        const std::function<world::Affine3D(entt::entity)>& global);
+    // The light probes' light for the entity's moving mesh, centered at center in the world:
+    // set at once the first frame, then eased toward it; nothing where no probes hold it.
+    render::LightmapCapture capture(entt::entity entity, const Vec3& center);
     // The lightmap of the entity's part, and its triangles from first, count of them, as a mesh
     // on the device with their lightmap UVs, made once; nullptr when it has none, or its mesh
     // changed since the bake, with a problem.
@@ -370,6 +390,11 @@ private:
     std::map<std::pair<entt::entity, std::uint32_t>, Lit> lit_;
     std::unordered_map<std::string, MeshHash> mesh_hashes_;
     std::uint64_t lightmap_versions_ = 0;
+    std::vector<ProbeSource> probe_sources_;
+    std::unordered_map<entt::entity, Captured> captured_;
+    // The middle of each model's bounds, by model and version, and the last frame that used it.
+    std::unordered_map<std::string, std::pair<Vec3, std::uint64_t>> model_centers_;
+    double capture_time_ = 0.0;
     std::unordered_map<std::string, Embedded> embedded_;
     std::unordered_map<entt::entity, Local> before_;
     std::unordered_map<entt::entity, PoseKey> before_poses_;

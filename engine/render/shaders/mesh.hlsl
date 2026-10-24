@@ -103,6 +103,7 @@ static const uint kSideCheck = 32u;
 static const uint kHasAlpha = 64u;
 static const uint kDisableFog = 128u;
 static const uint kLightmap = 256u;
+static const uint kLightmapCapture = 512u;
 // Terrain flags, in options.w.
 static const uint kTerrain = 1u;
 static const uint kTerrainDepthBlending = 2u;
@@ -120,6 +121,7 @@ cbuffer Surface : register(b0, space3) {
     float4 terrain_uv;      // each ground layer's tiling: the maps' resolution over its uv_scale
     float4 terrain_opacity; // how much the color map tints each ground layer
     float4 lightmap;        // the lightmap's exposure, then 1 for the bicubic filter
+    float4 capture[9];      // the light probes' spherical harmonics, RGB
 };
 
 struct Light {
@@ -679,13 +681,26 @@ float3 lightmap_light(float2 uv) {
     return light * lightmap.x;
 }
 
+// The light probes' light along a world normal, as Godot's scene_forward_clustered.glsl evaluates
+// a lightmap capture's spherical harmonics.
+float3 capture_light(float3 n) {
+    return 0.886227 * capture[0].rgb + 1.023327 * capture[1].rgb * n.y +
+           1.023327 * capture[2].rgb * n.z + 1.023327 * capture[3].rgb * n.x +
+           0.858086 * capture[4].rgb * (n.x * n.y) + 0.858086 * capture[5].rgb * (n.y * n.z) +
+           0.247708 * capture[6].rgb * (3.0 * n.z * n.z - 1.0) +
+           0.858086 * capture[7].rgb * (n.x * n.z) +
+           0.429043 * capture[8].rgb * (n.x * n.x - n.y * n.y);
+}
+
 // A lit pixel's color, linear: its lights, reflections, emission and ambient light on base, the
 // albedo, with the shading normal and the one shadows offset along (geometry), its ambient light
 // darkened by ao and its direct light by ao_direct. A lightmapped pixel's ambient light is its
-// lightmap's, which stands in for the scene's and the probes', as Godot's USE_LIGHTMAP.
+// lightmap's, and a captured one's its light probes', either standing in for the scene's and the
+// probes', as Godot's USE_LIGHTMAP.
 float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry, float metallic,
                  float roughness, float3 emitted, float ao, float ao_direct, float4 ssr) {
     bool lightmapped = (options.x & kLightmap) != 0u;
+    bool captured = (options.x & kLightmapCapture) != 0u;
     float specular = surface.z;
     float3 view = normalize(camera.xyz - input.world);
     float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic);
@@ -721,7 +736,9 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
 
     // Light from the sky's radiance, as Godot's scene.glsl takes it: reflections by roughness
     // and ambient light by the normal, then specular occlusion and Lazarov's environment BRDF.
-    float3 ambient_light = lightmapped ? lightmap_light(input.uv2) : ambient.rgb;
+    float3 ambient_light = lightmapped ? lightmap_light(input.uv2)
+                           : captured  ? capture_light(normal)
+                                       : ambient.rgb;
     float3 reflected = (float3)0.0;
     if (sky.y != 0.0) {
         float3 ray = reflect(-view, normal);
@@ -733,7 +750,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
                                                 sqrt(roughness) * kRadianceMaxLevel).rgb;
         reflected = srgb_to_linear(texel) * horizon * horizon * sky.z;
     }
-    if (sky.x != 0.0 && !lightmapped) {
+    if (sky.x != 0.0 && !lightmapped && !captured) {
         float3 turned = float3(dot(sky_rows[0].xyz, normal), dot(sky_rows[1].xyz, normal),
                                dot(sky_rows[2].xyz, normal));
         float3 texel = radiance_map.SampleLevel(radiance_sampler, turned, kRadianceMaxLevel).rgb;
@@ -754,7 +771,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
                             ? reflected * (1.0 - reflection_accum.a) + reflection_accum.rgb
                             : reflection_accum.rgb;
         }
-        if (ambient_accum.a > 0.0 && !lightmapped) {
+        if (ambient_accum.a > 0.0 && !lightmapped && !captured) {
             ambient_light = ambient_accum.a < 1.0
                                 ? ambient_light * (1.0 - ambient_accum.a) + ambient_accum.rgb
                                 : ambient_accum.rgb;
