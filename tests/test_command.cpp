@@ -14,6 +14,7 @@
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
 #include "slash/scene3d/lightmap.hpp"
+#include "slash/scene3d/voxel_gi.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 
@@ -2419,6 +2420,78 @@ TEST_CASE("lightmap.bake writes a LightmapGI's lightmap and texels, and undo tak
     reply = engine.fails("lightmap.bake", R"({"id": "floor"})", command::code::kInvalidParams);
     CHECK(reply.message == "/id: \"floor\" has no LightmapGI");
     reply = engine.fails("lightmap.bake", R"({"id": "g"})", command::code::kNotFound);
+    CHECK(reply.message == "/id: no entity has the id \"g\"; did you mean \"gi\"?");
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("voxel_gi.bake writes a VoxelGI's cells, and undo takes them back") {
+    const std::string root = "voxel_gi_bake_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "floor", "components": {
+            "Transform3D": {"position": [0, -0.5, 0]}, "MeshInstance3D": {},
+            "PlaneMesh": {"size": [3, 3]}}}},
+        {"command": "entity.create", "params": {"id": "ball", "components": {
+            "Transform3D": {}, "MeshInstance3D": {"gi_mode": "dynamic"}, "SphereMesh": {}}}},
+        {"command": "entity.create", "params": {"id": "gi", "components": {
+            "Transform3D": {}, "VoxelGI": {"size": [4, 2, 4], "subdiv": "64"}}}}]})");
+    const auto read = [&](const std::string& path) -> std::optional<std::string> {
+        if (!std::filesystem::exists(root + "/" + path)) {
+            return std::nullopt;
+        }
+        return slash::platform::read_file(root + "/" + path).value();
+    };
+
+    // A dry run says what it would bake and writes nothing.
+    const json::Value dry = engine.ok("voxel_gi.bake", R"({"id": "gi", "dry_run": true})");
+    const json::Value baked = *dry.find("result");
+    CHECK(*baked.find("file") == "gi.voxelgi.json");
+    CHECK(*baked.find("meshes") == 1); // the ball is dynamic
+    CHECK(*baked.find("size") == parse("[64, 32, 64]"));
+    CHECK(*baked.find("levels") == 7);
+    CHECK(*dry.find("changes") ==
+          parse(R"({"changed": {"gi": {"VoxelGI": {"data": "gi.voxelgi.json"}}}})"));
+    CHECK_FALSE(read("gi.voxelgi.json"));
+
+    // An unsaved scene's VoxelGI bakes beside the project's root, named after itself, and keeps
+    // the file in data; the file loads as the cells.
+    CHECK(engine.ok("voxel_gi.bake", R"({"id": "gi"})") == baked);
+    const std::optional<std::string> data = read("gi.voxelgi.json");
+    REQUIRE(data);
+    const scene3d::VoxelGIData cells = scene3d::parse_voxel_gi(parse(*data)).value();
+    CHECK(baked.find("cells")->as_int() == static_cast<std::int64_t>(cells.cells.size()));
+    CHECK(cells.cells.size() > 64 * 64);
+    const auto data_path = [&] {
+        world::World& world = engine.session->world();
+        return world.ecs().get<world::VoxelGI>(world.find("gi")).data;
+    };
+    CHECK(data_path() == "gi.voxelgi.json");
+    // Baking again changes nothing.
+    CHECK(*engine.ok("voxel_gi.bake", R"({"id": "gi"})").find("unchanged") == true);
+
+    // Undo takes the file and data back.
+    engine.ok("undo");
+    CHECK_FALSE(read("gi.voxelgi.json"));
+    CHECK(data_path().empty());
+
+    // A saved scene's VoxelGI bakes beside it, named after it and the entity; file names
+    // another, which must be a .voxelgi.json file.
+    engine.ok("scene.save", R"({"path": "levels/yard.scene.json"})");
+    CHECK(*engine.ok("voxel_gi.bake", R"({"id": "gi"})").find("file") ==
+          "levels/yard.gi.voxelgi.json");
+    CHECK(*engine.ok("voxel_gi.bake", R"({"id": "gi", "file": "light/yard.voxelgi.json"})")
+               .find("file") == "light/yard.voxelgi.json");
+    CHECK(read("light/yard.voxelgi.json"));
+    auto reply = engine.fails("voxel_gi.bake", R"({"id": "gi", "file": "yard.json"})",
+                              command::code::kInvalidArgument);
+    CHECK(reply.message == "/file: \"yard.json\" is not a .voxelgi.json file");
+    reply = engine.fails("voxel_gi.bake", R"({"id": "floor"})", command::code::kInvalidParams);
+    CHECK(reply.message == "/id: \"floor\" has no VoxelGI");
+    reply = engine.fails("voxel_gi.bake", R"({"id": "g"})", command::code::kNotFound);
     CHECK(reply.message == "/id: no entity has the id \"g\"; did you mean \"gi\"?");
     std::filesystem::remove_all(root);
 }

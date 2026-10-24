@@ -79,7 +79,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, meshlib, lightmap, sdk)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, meshlib, lightmap, voxel_gi, sdk)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -89,7 +89,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.meshlib.json` and `.lightmap.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.meshlib.json`, `.lightmap.json` and `.voxelgi.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -816,6 +816,19 @@ everywhere), `lightmap_bsp_tree`,
 renderer eases each `"dynamic"` mesh's capture and draws it with `Material3D::capture`, which
 `mesh.hlsl`'s `capture_light` and its CPU twin evaluate per pixel. `examples/lightmaps-3d` bakes a
 courtyard.
+
+VoxelGI is Godot 4.6's (`slash/scene3d/voxel_gi.hpp`, `src/voxel_gi.cpp`). `voxelize` follows
+Godot's `Voxelizer` (an octree down to `subdiv` cells, each with albedo, emission and normal), and
+`voxel_gi.bake` (`engine/command/src/lightmap.cpp`) writes the `.voxelgi.json` file
+(`$cli schema voxel_gi`), Godot's `VoxelGIData`. `light_voxel_gi` injects lights on the CPU on the
+job pool, following `voxel_gi.glsl`'s passes (direct light with shadows marched through the
+distance field, mipmaps, the second bounce), and `voxel_gi_atlas` lays its 3D texture's levels
+out as z slices in one RGBA8 atlas. `scene3d::Renderer::trace_voxel_gis` injects again when the
+lights or settings change, stacks every VoxelGI's atlas into one texture and gives each draw the
+VoxelGIs its bounds touch as `Material3D::voxel_gi` (`render::VoxelGIShading`, texture slot 5);
+`mesh.hlsl`'s `trace_voxel_gis` follows `gi.glsl`'s `voxel_gi_compute` with manual trilinear
+sampling of the slices, and `render::detail::trace_voxel_gis` (`engine/render/src/voxel_gi.cpp`)
+is its CPU twin. `examples/voxel-gi-3d` bounces a sun around a room.
 
 Compatibility's post-processing: without glow or adjustments, `mesh.hlsl` tonemaps as it draws.
 With either, each device draws the meshes into an RGBA8 texture at `end_frame` and runs

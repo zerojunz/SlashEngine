@@ -32,7 +32,7 @@ Rules that apply to every command (see [concepts.md](../concepts.md#sessions)):
 
 Add `"dry_run": true` to the params of any command that changes the world (`scene.new`,
 `scene.open`, `entity.create`, `entity.destroy`, `component.set`, `component.remove`, `step`,
-`run.until`, `world.restore`, `storyboard.edit`, `navigation.bake`, `lightmap.bake`, `replay.run`, `replay.seek` and `batch`) to see what it would do. The command runs, then
+`run.until`, `world.restore`, `storyboard.edit`, `navigation.bake`, `lightmap.bake`, `voxel_gi.bake`, `replay.run`, `replay.seek` and `batch`) to see what it would do. The command runs, then
 the world, the scene's path, the next generated ID and the tick counter are put back, and no undo
 step is recorded. An error is returned as usual. The result holds the command's own result and the
 changes, in the same form as [`world.diff`](#worlddiff):
@@ -47,7 +47,7 @@ changes, in the same form as [`world.diff`](#worlddiff):
 
 A batch takes `dry_run` itself; the commands inside it cannot. In a dry-run batch, `scene.save`
 and `prefab.save` check everything and return their usual result but write no file, and
-`storyboard.edit` returns the versions it would write and `navigation.bake` and `lightmap.bake` what they would bake. Commands that change nothing, such
+`storyboard.edit` returns the versions it would write and `navigation.bake`, `lightmap.bake` and `voxel_gi.bake` what they would bake. Commands that change nothing, such
 as `entity.get`, reject it as an unknown param.
 
 ## Contents
@@ -70,7 +70,7 @@ as `entity.get`, reject it as an unknown param.
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
 | Particles | [`particles.eval`](#particleseval) |
 | Lights | [`light.sample`](#lightsample) |
-| Lightmaps | [`lightmap.bake`](#lightmapbake) |
+| Global illumination | [`lightmap.bake`](#lightmapbake), [`voxel_gi.bake`](#voxel_gibake) |
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.analyze`](#audioanalyze), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord), [`audio.input`](#audioinput) |
@@ -157,7 +157,7 @@ command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"meshlib"`, `"lightmap"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -1476,7 +1476,7 @@ torch and one behind the crate from it:
 - A light that can't shine, such as one whose texture doesn't load, is left out and listed in
   `warnings` with its entity's ID and why.
 
-## Lightmaps
+## Global illumination
 
 ### lightmap.bake
 
@@ -1513,6 +1513,38 @@ Needs: `edit` and `filesystem`. Takes `dry_run`. The courtyard of
 
 An unknown ID fails at `/id` with a "did you mean"; so does an entity with no `LightmapGI`. A
 file that doesn't end in `.lightmap.json` fails at `/file` (or `/id`, for its `light_data`).
+
+### voxel_gi.bake
+
+Bakes a [`VoxelGI`'s](scene-format.md#voxelgi) cells, as Godot's VoxelGI bake: the
+`MeshInstance3D`s whose `gi_mode` is `"static"` under its parent (the whole world for a root)
+that touch its box, voxelized at its `subdiv` with their albedo, emission and normals. It writes
+a `.voxelgi.json` file and sets the VoxelGI's `data` to it. Lights aren't baked: the renderer
+injects them into the cells as the game runs. It returns the file, how many meshes it voxelized,
+how many `cells` it made, the cells along each axis (`size`), the octree's `levels`, and
+`problems` when there are any: models or textures that don't load, which it leaves out. A bake
+that comes out the same reports `"unchanged": true` and records no undo step. Undo puts the file
+back as it was, removing it if the bake made it, and sets `data` back; redo writes the bake
+again. Meshes draw with the new cells at the next command or tick.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with a `VoxelGI` |
+| `file` | string | its `data`, else beside the scene, named after it and the entity | The `.voxelgi.json` file to write, project path |
+
+Needs: `edit` and `filesystem`. Takes `dry_run`. The room of
+[examples/voxel-gi-3d](../../examples/voxel-gi-3d/):
+
+```json
+{"id": "gi"}
+```
+
+```json
+{"cells":12104,"file":"main.gi.voxelgi.json","levels":7,"meshes":4,"size":[64,32,64]}
+```
+
+An unknown ID fails at `/id` with a "did you mean"; an entity with no `VoxelGI` fails at `/id`. A
+file that doesn't end in `.voxelgi.json` fails at `/file` (or `/id`, for its `data`).
 
 ## UI and text
 

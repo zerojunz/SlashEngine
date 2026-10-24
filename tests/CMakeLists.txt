@@ -143,6 +143,7 @@ add_executable(slash_tests
     test_ui_scroll.cpp
     test_unity_build.cpp
     test_upscaler.cpp
+    test_voxel_gi.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE
     slash::ai slash::ai_commands slash::animation slash::asset slash::audio slash::bench slash::canvas slash::command slash::core slash::debug slash::exporter slash::importer slash::input slash::library slash::library_commands slash::navigation slash::physics2d slash::physics3d

@@ -43,6 +43,7 @@
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/skeleton.hpp"
+#include "slash/scene3d/voxel_gi.hpp"
 #include "slash/soundtrack/score.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/text/text.hpp"
@@ -457,6 +458,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "lightmap") {
         return Reply::success(scene3d::lightmap_schema());
+    }
+    if (kind == "voxel_gi") {
+        return Reply::success(scene3d::voxel_gi_schema());
     }
     if (kind == "replay") {
         return Reply::success(replay_schema());
@@ -6128,16 +6132,17 @@ void register_builtin_commands(Registry& registry) {
                                           "(.audio.json), \"bus_layout\" (.bus_layout.json), "
                                           "\"navmesh\" (.navmesh.json), \"navpoly\" "
                                           "(.navpoly.json), \"meshlib\" (.meshlib.json), "
-                                          "\"lightmap\" (.lightmap.json), "
+                                          "\"lightmap\" (.lightmap.json), \"voxel_gi\" "
+                                          "(.voxelgi.json), "
                                           "\"replay\" (.replay.json), \"score\" (.score.json) "
                                           "or \"storyboard\" for those files, \"component\" for "
                                           "one component's fields, \"command\" for a command's "
                                           "params.");
-    kind["enum"] = json::Array{"scene",     "prefab",           "frames",  "material", "animation",
-                               "animtree",  "process_material", "tileset", "font",     "theme",
-                               "audio",     "bus_layout",       "navmesh", "navpoly",  "meshlib",
-                               "lightmap",  "replay",           "test",    "score",    "storyboard",
-                               "component", "command"};
+    kind["enum"] = json::Array{"scene",      "prefab",           "frames",  "material", "animation",
+                               "animtree",   "process_material", "tileset", "font",     "theme",
+                               "audio",      "bus_layout",       "navmesh", "navpoly",  "meshlib",
+                               "lightmap",   "voxel_gi",         "replay",  "test",     "score",
+                               "storyboard", "component",        "command"};
     registry.add({
         .name = "schema.get",
         .description =
@@ -6145,6 +6150,7 @@ void register_builtin_commands(Registry& registry) {
             ".anim.json, .animtree.json, .process_material.json, .tileset.json, .font.json, "
             ".theme.json, .audio.json, "
             ".bus_layout.json, .navmesh.json, .navpoly.json, .meshlib.json, .lightmap.json, "
+            ".voxelgi.json, "
             ".replay.json, "
             ".test.json, "
             ".score.json or storyboard "

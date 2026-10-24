@@ -254,6 +254,25 @@ json::Value reflections_schema() {
     return out;
 }
 
+// rendering.global_illumination, as Godot's rendering/global_illumination settings.
+json::Value global_illumination_schema() {
+    json::Value quality;
+    quality["enum"] = json::Array{"low", "high"};
+    quality["default"] = "low";
+    quality["description"] =
+        "How VoxelGIs trace ambient light: four wide cones, or six narrower ones for high.";
+    json::Value voxel_gi;
+    voxel_gi["type"] = "object";
+    voxel_gi["additionalProperties"] = false;
+    voxel_gi["properties"]["quality"] = std::move(quality);
+    json::Value out;
+    out["type"] = "object";
+    out["additionalProperties"] = false;
+    out["description"] = "Global illumination, as Godot's rendering/global_illumination settings.";
+    out["properties"]["voxel_gi"] = std::move(voxel_gi);
+    return out;
+}
+
 // rendering.lights_and_shadows, as Godot's rendering/lights_and_shadows settings.
 json::Value lights_and_shadows_schema() {
     const render::ShadowSettings defaults;
@@ -430,6 +449,7 @@ json::Value project_schema() {
     rendering["properties"]["camera"] = camera_schema();
     rendering["properties"]["environment"] = environment_schema();
     rendering["properties"]["reflections"] = reflections_schema();
+    rendering["properties"]["global_illumination"] = global_illumination_schema();
     json::Value compress_mode;
     compress_mode["enum"] = json::Array{"lossless", "vram_compressed", "vram_uncompressed"};
     compress_mode["description"] =
@@ -764,6 +784,7 @@ Result<Project> parse_project(const json::Value& project) {
                 out.reflection_atlas = render::reflection_atlas_settings_from_json(*atlas);
             }
         }
+        out.voxel_gi_high_quality = render::voxel_gi_high_quality(*rendering);
         if (const json::Value* textures = rendering->find("textures"); textures != nullptr) {
             if (const json::Value* mode = textures->find("compress_mode"); mode != nullptr) {
                 out.texture_import.compress_mode = mode->as_string();
