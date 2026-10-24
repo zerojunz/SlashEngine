@@ -20,7 +20,7 @@ The sky lights the meshes too, as the `WorldEnvironment`'s default `ambient_ligh
 
 ```text
 frame.capture {"points":[[160,4],[20,76],[228,17],[150,92],[160,172]],"path":"shots/day.png"}
-{"colors":[[0.267,0.463,0.788,1],[0.667,0.761,0.886,1],[1,1,1,1],[0.318,0.431,0.353,1],
+{"colors":[[0.271,0.459,0.792,1],[0.667,0.761,0.886,1],[1,1,1,1],[0.318,0.427,0.353,1],
  [0.247,0.404,0.282,1]],"drawn":{"meshes":6},"height":180,"path":"shots/day.png","width":320}
 ```
 

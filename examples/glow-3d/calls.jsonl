@@ -1,0 +1,8 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[130,60],[130,45],[200,70],[215,70],[20,160]]}}
+{"jsonrpc":"2.0","id":3,"method":"component.set","params":{"id":"environment","components":{"WorldEnvironment":{"glow_blend_mode":"softlight"}}}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"points":[[130,45],[215,70]]}}
+{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"environment","components":{"WorldEnvironment":{"glow_blend_mode":"screen","glow_levels":[0,0,0,0,0,1,0]}}}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[130,45],[60,60]],"path":"shots/soft.png"}}
+{"jsonrpc":"2.0","id":7,"method":"component.set","params":{"id":"environment","components":{"WorldEnvironment":{"glow_hdr_threshold":8.0}}}}
+{"jsonrpc":"2.0","id":8,"method":"frame.capture","params":{"points":[[130,45],[215,70]]}}

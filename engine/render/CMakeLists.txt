@@ -41,6 +41,7 @@ target_compile_options(slash_image_codecs PRIVATE
 add_library(slash_render
     src/clusters.cpp
     src/device.cpp
+    src/forward_post.cpp
     src/gl_device.cpp
     src/gpu_device.cpp
     src/hlsl_compiler.cpp
@@ -89,9 +90,9 @@ endif()
 # The software device draws the same pixels, and particles and their graphs move the same, on
 # every platform: no fused multiply-adds, which arm64 compilers would otherwise emit and x86-64
 # ones not.
-set_source_files_properties(src/clusters.cpp src/device.cpp src/material.cpp src/mesh.cpp
-    src/particles.cpp src/post.cpp src/resize.cpp src/shader_vm.cpp src/shadow.cpp src/sky.cpp
-    src/software_device.cpp src/upscaler.cpp
+set_source_files_properties(src/clusters.cpp src/device.cpp src/forward_post.cpp src/material.cpp
+    src/mesh.cpp src/particles.cpp src/post.cpp src/resize.cpp src/shader_vm.cpp src/shadow.cpp
+    src/sky.cpp src/software_device.cpp src/upscaler.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
@@ -105,11 +106,13 @@ set(slash_shader_headers "")
 # depth for the shadow pass shader, whose varyings GLSL names apart from the canvas shaders' and
 # whose depth it maps to OpenGL's, and post for the post passes, the sky and the radiance filter,
 # which have no varyings. The mesh shader's code is long enough to come in pieces, and its fourteen
-# textures put its WGSL samplers 16 bindings after them instead of 8. clustered is the mesh
-# shader's Forward+ fragment stage, which reads storage buffers.
+# textures put its WGSL samplers 16 bindings after them instead of 8, as the nine textures of the
+# Forward+ post passes (post16) do. clustered is the mesh shader's Forward+ fragment stage, which
+# reads storage buffers.
 set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
     mesh_clustered:MeshClustered:clustered shadow:Shadow:depth post:Post:post sky:Sky:post
-    radiance:Radiance:post particles_process:ParticlesProcess:compute
+    forward_post:ForwardPost:post16 radiance:Radiance:post
+    particles_process:ParticlesProcess:compute
     particles_emit:ParticlesEmit:compute particles_draw:ParticlesDraw:compute)
 foreach(entry IN LISTS slash_shaders)
     string(REPLACE ":" ";" parts ${entry})
@@ -133,9 +136,12 @@ foreach(entry IN LISTS slash_shaders)
             set(include shadow)
             set(interface v_uv,v_color)
             set(fixup ON)
-        elseif(kind STREQUAL "post")
+        elseif(kind STREQUAL "post" OR kind STREQUAL "post16")
             set(include tonemap)
             set(interface v_uv)
+            if(kind STREQUAL "post16")
+                set(sampler_shift 16)
+            endif()
         else()
             set(include mesh)
             set(interface v_world,v_normal,v_tangent,v_binormal,v_uv,v_color)

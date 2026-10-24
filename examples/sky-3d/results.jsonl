@@ -1,11 +1,11 @@
 {"id":1,"jsonrpc":"2.0","result":{"entities":9,"path":"main.scene.json"}}
-{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.267,0.463,0.788,1],[0.667,0.761,0.886,1],[1,1,1,1],[0.318,0.431,0.353,1],[0.247,0.404,0.282,1]],"drawn":{"meshes":6},"height":180,"path":"shots/day.png","width":320}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.271,0.459,0.792,1],[0.667,0.761,0.886,1],[1,1,1,1],[0.318,0.427,0.353,1],[0.247,0.404,0.282,1]],"drawn":{"meshes":6},"height":180,"path":"shots/day.png","width":320}}
 {"id":3,"jsonrpc":"2.0","result":{"changed":{"WorldEnvironment":{"fog_height":0.6,"fog_height_density":0.8}},"id":"environment"}}
 {"id":4,"jsonrpc":"2.0","result":{"colors":[[0.518,0.604,0.635,1],[0.498,0.596,0.62,1],[0.478,0.537,0.62,1]],"drawn":{"meshes":6},"height":180,"width":320}}
 {"id":5,"jsonrpc":"2.0","result":{"id":"environment","removed":["ProceduralSkyMaterial"]}}
 {"id":6,"jsonrpc":"2.0","result":{"added":["PhysicalSkyMaterial"],"changed":{"PhysicalSkyMaterial":{"energy_multiplier":6.0},"WorldEnvironment":{"fog_height_density":0.0}},"id":"environment"}}
 {"id":7,"jsonrpc":"2.0","result":{"changed":{"Transform3D":{"rotation":[-0.12,2.74,0.0]}},"id":"sun"}}
-{"id":8,"jsonrpc":"2.0","result":{"colors":[[0.259,0.278,0.29,1],[0.596,0.565,0.514,1],[0.192,0.196,0.196,1]],"drawn":{"meshes":6},"height":180,"width":320}}
+{"id":8,"jsonrpc":"2.0","result":{"colors":[[0.263,0.278,0.29,1],[0.596,0.561,0.518,1],[0.192,0.196,0.196,1]],"drawn":{"meshes":6},"height":180,"width":320}}
 {"id":9,"jsonrpc":"2.0","result":{"id":"environment","removed":["PhysicalSkyMaterial"]}}
 {"id":10,"jsonrpc":"2.0","result":{"added":["PanoramaSkyMaterial"],"changed":{"PanoramaSkyMaterial":{"panorama":"shots/day.png"},"WorldEnvironment":{"fog_enabled":false}},"id":"environment"}}
-{"id":11,"jsonrpc":"2.0","result":{"colors":[[0.584,0.694,0.867,1],[0.525,0.522,0.522,1]],"drawn":{"meshes":6},"height":180,"width":320}}
+{"id":11,"jsonrpc":"2.0","result":{"colors":[[0.58,0.694,0.867,1],[0.522,0.522,0.522,1]],"drawn":{"meshes":6},"height":180,"width":320}}

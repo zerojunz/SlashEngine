@@ -43,8 +43,13 @@ struct PostUniforms {
 };
 static_assert(sizeof(PostUniforms) == 80);
 
-// Whether a scene draws through the post passes: with glow or adjustments.
+// Whether a Compatibility scene draws through the post passes: with glow or adjustments.
 [[nodiscard]] bool post_processes(const PostProcess& post);
+
+// How a scene's sky and meshes finish their colors, the w of their tonemap uniforms: 1 exposed,
+// tonemapped and as sRGB; 0 as sRGB for post.hlsl to tonemap; 2 linear for forward_post.hlsl,
+// which draws every Forward+ frame.
+[[nodiscard]] float color_stage(const Scene3D& scene);
 
 struct PostSize {
     std::uint32_t width = 0;
@@ -77,22 +82,31 @@ struct PostSize {
 void run_post_pass(const PostUniforms& uniforms, const Image& source, const Image& glow,
                    const Image& lut, Image& target);
 
-// Checks a scene's post-processing: a tonemapper that is one, finite numbers, and a color
-// correction texture the device has (known) and that is a lookup texture (size_of gives its
-// width and height).
+// Checks a scene's post-processing: a tonemapper and glow blend mode that are one, finite
+// numbers, glow levels of at least 0, and a color correction texture the device has (known) and
+// that is a lookup texture (size_of gives its width and height).
 template <typename Known, typename SizeOf>
 [[nodiscard]] Result<void> check_post(const PostProcess& post, const Known& known,
                                       const SizeOf& size_of) {
     if (static_cast<std::size_t>(post.tonemapper) >= kTonemapperNames.size()) {
         return make_error(ErrorCode::InvalidArgument, "a scene's tonemapper is one of five");
     }
+    if (static_cast<std::size_t>(post.glow_blend_mode) >= kGlowBlendModeNames.size()) {
+        return make_error(ErrorCode::InvalidArgument, "a scene's glow blend mode is one of five");
+    }
     for (const float value :
-         {post.exposure, post.white, post.glow_intensity, post.glow_bloom, post.glow_hdr_threshold,
-          post.glow_hdr_scale, post.glow_hdr_luminance_cap, post.brightness, post.contrast,
-          post.saturation}) {
+         {post.exposure, post.white, post.agx_contrast, post.glow_intensity, post.glow_strength,
+          post.glow_mix, post.glow_bloom, post.glow_hdr_threshold, post.glow_hdr_scale,
+          post.glow_hdr_luminance_cap, post.brightness, post.contrast, post.saturation}) {
         if (!std::isfinite(value)) {
             return make_error(ErrorCode::InvalidArgument,
                               "a scene's tonemap, glow and adjustment numbers are finite");
+        }
+    }
+    for (const float level : post.glow_levels) {
+        if (!std::isfinite(level) || level < 0.0F) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a scene's glow levels are finite and at least 0");
         }
     }
     if (post.color_correction == TextureId::None) {

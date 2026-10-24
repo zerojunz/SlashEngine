@@ -628,7 +628,7 @@ MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
                    srgb_to_linear_exact(scene.ambient[1]) * energy,
                    srgb_to_linear_exact(scene.ambient[2]) * energy, 0.0F};
     out.tonemap = {scene.post.exposure, scene.post.white, static_cast<float>(scene.post.tonemapper),
-                   post_processes(scene.post) ? 0.0F : 1.0F};
+                   color_stage(scene)};
     if (const Fog3D& fog = scene.fog; fog.enabled) {
         out.fog_color = {srgb_to_linear_exact(fog.light_color[0]) * fog.light_energy,
                          srgb_to_linear_exact(fog.light_color[1]) * fog.light_energy,
@@ -914,12 +914,15 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         }
         alpha = 1.0F;
     }
-    // Fogged unless the material disables it, times the exposure, tonemapped unless the post pass
-    // does it, and as sRGB.
+    // Fogged unless the material disables it, then linear for Forward+, or times the exposure,
+    // tonemapped unless the post pass does it, and as sRGB.
     const auto finish = [&](Float3 lit) {
         if (scene.fog_color[3] != 0.0F && (flags & kMeshDisableFog) == 0) {
             const Float4 fogged = fog_process(scene, pixel.world);
             lit = lerp3(lit, {fogged[0], fogged[1], fogged[2]}, fogged[3]);
+        }
+        if (scene.tonemap[3] == 2.0F) {
+            return Float4{lit[0], lit[1], lit[2], alpha};
         }
         Float3 exposed = scale(lit, scene.tonemap[0]);
         if (scene.tonemap[3] != 0.0F) {
