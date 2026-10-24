@@ -184,12 +184,16 @@ public:
     // shown at time seconds of game time, over which auto exposure adapts and from which depth of
     // field's jitter is seeded, its depth of field blurred as depth_of_field says, its ambient
     // occlusion worked out as ssao says and its reflections as ssr says: nullopt when the world
-    // has no camera, and nothing 3D draws. The mesh draws wait for draw().
+    // has no camera, and nothing 3D draws. The mesh draws wait for draw(). In Forward+ (method),
+    // the ReflectionProbes' cubes that need it are drawn here, in frames of their own on the
+    // device, into an atlas as reflection_atlas says; so call it before the frame begins.
     [[nodiscard]] std::optional<Frame3D>
     prepare(const world::World& world, float width, float height, double interpolation,
             render::Color clear, const render::ShadowSettings& shadows = {}, double time = 0.0,
             const render::DepthOfFieldSettings& depth_of_field = {},
-            const render::SsaoSettings& ssao = {}, const render::SsrSettings& ssr = {});
+            const render::SsaoSettings& ssao = {}, const render::SsrSettings& ssr = {},
+            const render::ReflectionAtlasSettings& reflection_atlas = {},
+            render::RenderMethod method = render::RenderMethod::ForwardPlus);
     // Draws the meshes prepare found into the frame begun with its scene.
     [[nodiscard]] Result<void> draw();
 
@@ -221,6 +225,28 @@ private:
         std::uint32_t layers = 1;
         render::ShadowCasting shadows = render::ShadowCasting::On;
     };
+
+    // What a probe's cube was drawn from: it is drawn again when this changes.
+    struct ProbeKey {
+        std::array<float, 16> transform{};
+        Vec3 size;
+        Vec3 origin_offset;
+        float max_distance = 0.0F;
+        std::uint32_t cull_mask = 0;
+        bool interior = false;
+        bool enable_shadows = false;
+
+        friend bool operator==(const ProbeKey&, const ProbeKey&) = default;
+    };
+    struct ProbeSlot {
+        std::uint32_t cube = 0;
+        std::optional<ProbeKey> drawn;
+    };
+    // Gives the frame its probes, drawing their cubes first where they need it.
+    [[nodiscard]] Result<void> reflect(const world::World& world, Frame3D& frame,
+                                       render::Color clear,
+                                       const render::ReflectionAtlasSettings& settings,
+                                       render::RenderMethod method);
 
     struct Embedded {
         render::TextureId id = render::TextureId::None;
@@ -290,6 +316,11 @@ private:
     std::unordered_map<std::string, Shared> shared_;
     std::vector<Draw> draws_;
     std::vector<Problem> problems_;
+    // The reflection probes' atlas, its cubes' size and count, and each probe's cube.
+    render::TextureId atlas_ = render::TextureId::None;
+    std::uint32_t atlas_size_ = 0;
+    std::uint32_t atlas_cubes_ = 0;
+    std::unordered_map<entt::entity, ProbeSlot> probe_slots_;
     std::uint64_t frame_ = 0;
     std::size_t lights_ = 0;
     // Auto exposure, as Godot's auto exposure version: the attributes it follows, the version of

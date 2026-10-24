@@ -114,9 +114,22 @@ struct MeshSceneUniforms {
     // 1 when the frame draws SSAO, its light affect and its AO channel affect.
     Float4 ssao{};
     std::array<Float4, 3> view_rows{}; // the world to the camera's space, a row each, for normals
+    // Forward+'s reflection probes: how many, the level the roughest surfaces read, the exposure.
+    Float4 reflections{};
     // Every light drawn in Compatibility; in Forward+, only the directional ones.
     std::array<MeshLightUniforms, kMaxLights3D> lights{};
 };
+
+// A probe as mesh.hlsl's probes buffer holds it: t18 in space2 (t5 in Metal, t2 in WebGPU's group
+// 0).
+struct MeshProbeUniforms {
+    std::array<Float4, 3> rows{}; // the world to the probe's space, a row each
+    Float4 extents{};             // half the box's size, then the intensity
+    Float4 offset{};              // origin_offset, then the blend distance
+    Float4 ambient{};             // the ambient color, linear, times its energy; then the mode
+    Float4 options{};             // 1 to box project, the cube, the reflection mask, 0
+};
+static_assert(sizeof(MeshProbeUniforms) == 112);
 
 // The shadows the fragment stage samples: b2 in space3. Matrices take a point in the world to its
 // shadow atlas: x and y its texture coordinate there, z the depth to compare.
@@ -151,7 +164,7 @@ struct MeshShadowPassUniforms {
 
 static_assert(sizeof(MeshInstanceUniforms) == 144);
 static_assert(sizeof(MeshSurfaceUniforms) == 128);
-static_assert(sizeof(MeshSceneUniforms) == 240 + (80 * kMaxLights3D));
+static_assert(sizeof(MeshSceneUniforms) == 256 + (80 * kMaxLights3D));
 static_assert(sizeof(MeshDirectionalShadowUniforms) == 320);
 static_assert(sizeof(MeshPositionalShadowUniforms) == 576);
 static_assert(sizeof(MeshShadowUniforms) ==
@@ -360,6 +373,10 @@ struct MeshMaps {
     std::span<const float> ao;
     std::span<const float> ssr;
     std::uint32_t ao_width = 0; // the target's width, for both
+    // Forward+'s reflection probes, when the scene's uniforms say the frame has some, and each
+    // atlas cube's levels.
+    std::span<const MeshProbeUniforms> probes;
+    const std::vector<CubeImage>* probe_cubes = nullptr;
 };
 
 // The pixel's color, as fs_main gives it, or nullopt where it discards the pixel.

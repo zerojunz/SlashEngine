@@ -113,11 +113,24 @@ struct TextureDesc {
     // The texels create_texture and update_texture take. A device that can't sample a
     // compressed format (supports) decodes it, and keeps the texture as RGBA8.
     TextureFormat format = TextureFormat::Rgba8;
+    // Above 0, a reflection atlas instead (Reflections3D): that many cubes of half-float RGBA
+    // faces width texels across (a power of two from 32 to 2048, and height the same), each with
+    // the levels of a radiance cube that size, at most kMaxReflectionCubes. Only frames that
+    // capture into it (ProbeCapture) draw into it, and nothing else reads it: it takes no texels
+    // and can't be read back. The OpenGL devices, which draw no probes, keep none.
+    std::uint32_t cubes = 0;
 };
 
 // The bytes a texture's texels take: 4 a texel in RGBA8, 1 in the compressed formats. Textures
-// have no mipmaps.
+// have no mipmaps; a reflection atlas's cubes take 8 bytes a texel at each of their levels.
 [[nodiscard]] constexpr std::uint64_t texture_bytes(const TextureDesc& desc) noexcept {
+    if (desc.cubes > 0) {
+        std::uint64_t texels = 0;
+        for (std::uint32_t n = desc.width; n >= 4; n /= 2) {
+            texels += std::uint64_t{n} * n;
+        }
+        return texels * 6 * 8 * desc.cubes;
+    }
     const std::uint64_t texels = std::uint64_t{desc.width} * desc.height;
     return is_compressed(desc.format) ? texels : texels * 4;
 }

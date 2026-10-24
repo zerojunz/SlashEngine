@@ -146,10 +146,13 @@ cbuffer Scene : register(b1, space3) {
     // Forward+'s clusters: tiles across, a tile's words of light bits, depth slices per unit of
     // view depth (how many over the far plane's distance).
     float4 cluster;
-    // 1 when ao_texture holds the frame's SSAO, its light affect and its AO channel affect, then
-    // 1 when ssr_texture holds its SSR.
+    // 1 when screen_texture's layer 0 holds the frame's SSAO, its light affect and its AO channel
+    // affect, then 1 when its layer 1 holds its SSR.
     float4 ssao;
     float4 view_rows[3]; // the world to the camera's space, a row each, for normals
+    // Forward+'s reflection probes: how many in probes, the level the roughest surfaces read, and
+    // the exposure their light is multiplied by.
+    float4 reflections;
     // Every light in Compatibility; in Forward+, only the directional ones.
     Light lights[64];
 };
@@ -185,23 +188,34 @@ cbuffer Shadows : register(b2, space3) {
 // each light that reaches it, then for each of kClusterSlices depth slices the first of those
 // lights in the slice and one past the last (src/clusters.cpp). SDL binds a fragment stage's
 // storage buffers after its textures, and in Metal after its uniforms; WebGPU binds them as a
-// group of their own, the mesh pipeline's otherwise empty group 0. The screen-space ambient
-// occlusion is a texture of the frame's size, white when the frame draws none, and so are the
-// screen-space reflections: each pixel's reflection in RGB, premultiplied by how much of the
-// sky's it replaces, in A.
-Texture2D<float4> ao_texture : register(t14, space2);
-Texture2D<float4> ssr_texture : register(t15, space2);
-SamplerState ao_sampler : register(s14, space2);
-SamplerState ssr_sampler : register(s15, space2);
+// group of their own, the mesh pipeline's otherwise empty group 0. The screen's layers are the
+// frame's size, white when the frame draws neither: layer 0 the screen-space ambient occlusion,
+// layer 1 the screen-space reflections (each pixel's reflection in RGB, premultiplied by how much
+// of the sky's it replaces, in A). The reflection probes' cubes are in probe_atlas, mirrored along
+// z (src/reflection.cpp), each linear, its levels filtered as radiance.hlsl filters the sky's.
+Texture2DArray<float4> screen_texture : register(t14, space2);
+TextureCubeArray<float4> probe_atlas : register(t15, space2);
+SamplerState screen_sampler : register(s14, space2);
+SamplerState probe_sampler : register(s15, space2);
+struct Probe {
+    float4 rows[3]; // the world to the probe's space, a row each
+    float4 extents; // half the box's size, then the intensity
+    float4 offset;  // origin_offset, then the blend distance
+    float4 ambient; // the ambient color, linear, times its energy; then the mode
+    float4 options; // 1 to box project, the cube, the reflection mask, 0
+};
 #if defined(SLASH_MSL)
 StructuredBuffer<Light> clustered_lights : register(t3, space2);
 StructuredBuffer<uint> clusters : register(t4, space2);
+StructuredBuffer<Probe> probes : register(t5, space2);
 #elif defined(SLASH_WGSL)
 StructuredBuffer<Light> clustered_lights : register(t0, space0);
 StructuredBuffer<uint> clusters : register(t1, space0);
+StructuredBuffer<Probe> probes : register(t2, space0);
 #else
 StructuredBuffer<Light> clustered_lights : register(t16, space2);
 StructuredBuffer<uint> clusters : register(t17, space2);
+StructuredBuffer<Probe> probes : register(t18, space2);
 #endif
 static const uint kClusterSize = 32u;
 static const uint kClusterSlices = 32u;
@@ -528,6 +542,81 @@ uint range_mask(uint word, uint first, uint end) {
 }
 #endif
 
+#ifdef CLUSTERED
+// A probe's cube read along a direction in its space: the cube holds it mirrored along z.
+float3 sample_probe(Probe probe, float3 direction, float level) {
+    return probe_atlas
+        .SampleLevel(probe_sampler, float4(direction.xy, -direction.z, probe.options.y), level)
+        .rgb;
+}
+
+// Godot's reflection_process (scene_forward_lights_inc.glsl) for each probe, as its clustered
+// scene shader walks them: each word of 32 from its highest bit, the frame's probes being largest
+// first. reflect_probes in src/reflection.cpp is its CPU twin.
+void reflect_probes(float3 world, float3 ray, float3 normal, float roughness,
+                    inout float4 reflection_accum, inout float4 ambient_accum) {
+    uint count = (uint)reflections.x;
+    for (uint index = 0u; index < ((count + 31u) / 32u) * 32u; ++index) {
+        uint at = (index / 32u) * 32u + (31u - index % 32u);
+        if (at >= count) {
+            continue;
+        }
+        Probe probe = probes[at];
+        if (((uint)probe.options.z & options.z) == 0u) {
+            continue;
+        }
+        if (reflection_accum.a >= 1.0 && ambient_accum.a >= 1.0) {
+            break;
+        }
+        float3 extents = probe.extents.xyz;
+        float3 local_pos = float3(dot(probe.rows[0], float4(world, 1.0)),
+                                  dot(probe.rows[1], float4(world, 1.0)),
+                                  dot(probe.rows[2], float4(world, 1.0)));
+        if (any(abs(local_pos) > extents)) {
+            continue;
+        }
+        float blend = 1.0;
+        if (probe.offset.w != 0.0) {
+            float3 axis = min((float3)probe.offset.w, extents);
+            float3 axes = saturate(1.0 - (abs(local_pos) - extents + axis) / axis);
+            float product = axes.x * axes.y * axes.z;
+            blend = product * product;
+        }
+        if (probe.extents.w > 0.0 && reflection_accum.a < 1.0) {
+            float3 local_ray = float3(dot(probe.rows[0].xyz, ray), dot(probe.rows[1].xyz, ray),
+                                      dot(probe.rows[2].xyz, ray));
+            if (probe.options.x != 0.0) {
+                float3 nrdir = normalize(local_ray);
+                float3 rbmax = (extents - local_pos) / nrdir;
+                float3 rbmin = (-extents - local_pos) / nrdir;
+                float3 rbminmax = nrdir > 0.0 ? rbmax : rbmin;
+                // A direction along an axis's walls never meets them: Godot divides by zero
+                // there, and the zero times infinity after it is not a number.
+                rbminmax = nrdir == 0.0 ? 3.402823e38 : rbminmax;
+                float fa = min(min(rbminmax.x, rbminmax.y), rbminmax.z);
+                local_ray = local_pos + nrdir * fa - probe.offset.xyz;
+            }
+            float weight = max(0.0, blend - reflection_accum.a);
+            float3 texel = sample_probe(probe, local_ray, sqrt(roughness) * reflections.y);
+            reflection_accum += float4(texel * reflections.z * probe.extents.w * weight, weight);
+        }
+        if (ambient_accum.a >= 1.0) {
+            continue;
+        }
+        float weight = max(0.0, blend - ambient_accum.a);
+        if (probe.ambient.w == 1.0) {
+            float3 local_normal =
+                float3(dot(probe.rows[0].xyz, normal), dot(probe.rows[1].xyz, normal),
+                       dot(probe.rows[2].xyz, normal));
+            float3 texel = sample_probe(probe, local_normal, reflections.y);
+            ambient_accum += float4(texel * reflections.z * weight, weight);
+        } else if (probe.ambient.w == 2.0) {
+            ambient_accum += float4(probe.ambient.rgb * weight, weight);
+        }
+    }
+}
+#endif
+
 // A lit pixel's color, linear: its lights, reflections, emission and ambient light on base, the
 // albedo, with the shading normal and the one shadows offset along (geometry), its ambient light
 // darkened by ao and its direct light by ao_direct.
@@ -586,6 +675,28 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
         float3 texel = radiance_map.SampleLevel(radiance_sampler, turned, kRadianceMaxLevel).rgb;
         ambient_light = lerp(ambient_light, srgb_to_linear(texel) * sky.z, sky.w);
     }
+#ifdef CLUSTERED
+    if (reflections.x > 0.0) {
+        // Forward+'s reflection probes, as Godot's scene_forward_clustered.glsl takes them: where
+        // they reach, their reflections and ambient light go over the sky's by how much they
+        // cover.
+        float4 reflection_accum = (float4)0.0;
+        float4 ambient_accum = (float4)0.0;
+        float3 ray = normalize(reflect(-view, normal));
+        ray = lerp(ray, normal, roughness * roughness * roughness * roughness);
+        reflect_probes(input.world, ray, normal, roughness, reflection_accum, ambient_accum);
+        if (reflection_accum.a > 0.0) {
+            reflected = reflection_accum.a < 1.0
+                            ? reflected * (1.0 - reflection_accum.a) + reflection_accum.rgb
+                            : reflection_accum.rgb;
+        }
+        if (ambient_accum.a > 0.0) {
+            ambient_light = ambient_accum.a < 1.0
+                                ? ambient_light * (1.0 - ambient_accum.a) + ambient_accum.rgb
+                                : ambient_accum.rgb;
+        }
+    }
+#endif
     ambient_light *= ao;
     float occlusion =
         (ambient_light.r * 0.3 + ambient_light.g * 0.59 + ambient_light.b * 0.11) * 2.0;
@@ -720,11 +831,11 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
 #ifdef CLUSTERED
     bool opaque = (flags & kHasAlpha) == 0u || (flags & kAlphaScissor) != 0u;
     if (ssao.x != 0.0 && opaque) {
-        ao = ao_texture.Load(int3((int2)input.position.xy, 0)).r;
+        ao = screen_texture.Load(int4((int2)input.position.xy, 0, 0)).r;
         ao_direct = lerp(1.0, ao, lerp(0.0, max(0.0, ssao.y), ssao.z));
     }
     if (ssao.w != 0.0 && opaque) {
-        ssr = ssr_texture.Load(int3((int2)input.position.xy, 0));
+        ssr = screen_texture.Load(int4((int2)input.position.xy, 1, 0));
     }
 #endif
     float3 lit = base;

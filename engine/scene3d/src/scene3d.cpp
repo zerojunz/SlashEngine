@@ -1354,7 +1354,9 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
                                          const render::ShadowSettings& shadows, double time,
                                          const render::DepthOfFieldSettings& depth_of_field,
                                          const render::SsaoSettings& ssao,
-                                         const render::SsrSettings& ssr) {
+                                         const render::SsrSettings& ssr,
+                                         const render::ReflectionAtlasSettings& reflection_atlas,
+                                         render::RenderMethod method) {
     ++frame_;
     draws_.clear();
     problems_.clear();
@@ -1578,7 +1580,182 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
             ++it;
         }
     }
+    if (auto reflected = reflect(world, frame, clear, reflection_atlas, method); !reflected) {
+        problems_.push_back(
+            {.entity = camera, .path = "ReflectionProbe", .message = reflected.error().message});
+    }
     return frame;
+}
+
+namespace {
+
+render::ReflectionAmbient reflection_ambient(const std::string& mode) {
+    if (mode == "color") {
+        return render::ReflectionAmbient::Color;
+    }
+    return mode == "disabled" ? render::ReflectionAmbient::Disabled
+                              : render::ReflectionAmbient::Environment;
+}
+
+} // namespace
+
+Result<void> Renderer::reflect(const world::World& world, Frame3D& frame, render::Color clear,
+                               const render::ReflectionAtlasSettings& settings,
+                               render::RenderMethod method) {
+    const auto& ecs = world.ecs();
+    const world::Tree3D tree(world);
+    // The probes, largest first as Godot sorts them, then in the order they were made.
+    struct Found {
+        entt::entity entity;
+        const world::ReflectionProbe* probe;
+        world::Affine3D place;
+        float extent;
+    };
+    std::vector<Found> found;
+    if (method == render::RenderMethod::ForwardPlus) {
+        for (const auto [entity, probe] : ecs.view<const world::ReflectionProbe>().each()) {
+            if (!ecs.all_of<world::Transform3D>(entity) || !tree.visible(entity)) {
+                continue;
+            }
+            const Vec3 half = scaled(probe.size, 0.5F);
+            found.push_back(
+                {.entity = entity,
+                 .probe = &probe,
+                 .place = orthonormalized(tree.global(entity)),
+                 .extent = std::sqrt((half.x * half.x) + (half.y * half.y) + (half.z * half.z))});
+        }
+    }
+    std::ranges::sort(found, [](const Found& a, const Found& b) {
+        return a.extent != b.extent ? a.extent > b.extent
+                                    : entt::to_integral(a.entity) < entt::to_integral(b.entity);
+    });
+    const std::uint32_t most = std::min(settings.reflection_count, render::kMaxReflectionCubes);
+    const auto wanted = static_cast<std::uint32_t>(std::min<std::size_t>(found.size(), most));
+    const std::uint32_t cubes = wanted == 0 ? 0 : std::min(std::bit_ceil(wanted), most);
+    if (cubes != atlas_cubes_ || (cubes > 0 && settings.reflection_size != atlas_size_)) {
+        if (atlas_ != render::TextureId::None) {
+            device_->destroy_texture(atlas_);
+        }
+        atlas_ = render::TextureId::None;
+        atlas_cubes_ = 0;
+        probe_slots_.clear();
+        if (cubes > 0) {
+            auto made = device_->create_texture({.width = settings.reflection_size,
+                                                 .height = settings.reflection_size,
+                                                 .cubes = cubes},
+                                                {});
+            if (!made) {
+                return made.error();
+            }
+            atlas_ = made.value();
+            atlas_size_ = settings.reflection_size;
+            atlas_cubes_ = cubes;
+        }
+    }
+    // Probes no longer drawn free their cubes; new ones take the first free cube.
+    std::erase_if(probe_slots_, [&](const auto& entry) {
+        return std::ranges::none_of(found, [&](const Found& f) { return f.entity == entry.first; });
+    });
+    std::vector<bool> taken(atlas_cubes_, false);
+    for (const auto& [entity, slot] : probe_slots_) {
+        taken.at(slot.cube) = true;
+    }
+    for (const Found& f : found) {
+        if (probe_slots_.contains(f.entity)) {
+            continue;
+        }
+        const auto free = std::ranges::find(taken, false);
+        if (free == taken.end()) {
+            continue; // past the atlas's cubes: no reflection
+        }
+        *free = true;
+        probe_slots_[f.entity] = {
+            .cube = static_cast<std::uint32_t>(std::distance(taken.begin(), free)), .drawn = {}};
+    }
+
+    render::Reflections3D& reflections = frame.scene.reflections;
+    reflections = {.atlas = atlas_, .probes = {}, .exposure = 1.0F};
+    for (const Found& f : found) {
+        const auto slot = probe_slots_.find(f.entity);
+        if (slot == probe_slots_.end()) {
+            continue;
+        }
+        const world::ReflectionProbe& p = *f.probe;
+        const std::array<float, 16> transform = f.place.matrix();
+        const ProbeKey key{.transform = transform,
+                           .size = p.size,
+                           .origin_offset = p.origin_offset,
+                           .max_distance = p.max_distance,
+                           .cull_mask = p.cull_mask,
+                           .interior = p.interior,
+                           .enable_shadows = p.enable_shadows};
+        if (p.update_mode == "always" || slot->second.drawn != key) {
+            // Godot's _render_reflection_probe_step: the world from origin_offset through each
+            // face, linear and unprocessed, with no SSAO, SSR or probes.
+            render::Scene3D scene = frame.scene;
+            scene.method = render::RenderMethod::ForwardPlus;
+            scene.ssao.enabled = false;
+            scene.ssr.enabled = false;
+            scene.reflections = {};
+            scene.post = {};
+            for (render::Light3D& light : scene.lights) {
+                light.shadow = light.shadow && p.enable_shadows;
+            }
+            render::Color background = frame.clear;
+            if (p.interior) {
+                scene.sky = {};
+                scene.fog = {};
+                scene.radiance = {};
+                scene.ambient = {0.0F, 0.0F, 0.0F};
+                background = clear;
+            }
+            const std::array<float, 3> size{p.size.x, p.size.y, p.size.z};
+            const std::array<float, 3> offset{p.origin_offset.x, p.origin_offset.y,
+                                              p.origin_offset.z};
+            for (std::uint32_t face = 0; face < 6; ++face) {
+                scene.camera = render::probe_face_view(transform, offset, face);
+                scene.projection =
+                    render::probe_face_projection(size, offset, p.max_distance, face);
+                scene.capture =
+                    render::ProbeCapture{.atlas = atlas_, .cube = slot->second.cube, .face = face};
+                render::Frame capture;
+                capture.clear = background;
+                capture.scene = scene;
+                auto began = device_->begin_frame(capture);
+                if (!began) {
+                    return began.error();
+                }
+                for (const Draw& draw : draws_) {
+                    if ((draw.layers & p.cull_mask) == 0) {
+                        continue;
+                    }
+                    if (auto drawn = device_->draw_mesh(draw.mesh, draw.transform, draw.material,
+                                                        draw.layers, draw.shadows);
+                        !drawn) {
+                        (void)device_->end_frame();
+                        return drawn;
+                    }
+                }
+                if (auto ended = device_->end_frame(); !ended) {
+                    return ended;
+                }
+            }
+            slot->second.drawn = key;
+        }
+        reflections.probes.push_back(
+            {.transform = transform,
+             .size = {p.size.x, p.size.y, p.size.z},
+             .origin_offset = {p.origin_offset.x, p.origin_offset.y, p.origin_offset.z},
+             .intensity = p.intensity,
+             .blend_distance = p.blend_distance,
+             .box_projection = p.box_projection,
+             .reflection_mask = p.reflection_mask,
+             .ambient_mode = reflection_ambient(p.ambient_mode),
+             .ambient_color = {p.ambient_color.x, p.ambient_color.y, p.ambient_color.z},
+             .ambient_color_energy = p.ambient_color_energy,
+             .cube = slot->second.cube});
+    }
+    return {};
 }
 
 Result<void> Renderer::draw() {
