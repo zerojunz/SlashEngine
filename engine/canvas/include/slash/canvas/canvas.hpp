@@ -448,6 +448,8 @@ struct Settings {
     render::RenderMethod rendering_method = render::RenderMethod::ForwardPlus;
     // rendering.lights_and_shadows: the 3D shadow atlases.
     render::ShadowSettings shadows;
+    // rendering.camera.depth_of_field: depth of field's blur.
+    render::DepthOfFieldSettings depth_of_field{};
 };
 void set_settings(world::World& world, const Settings& settings);
 // The settings given to the world, or the defaults.

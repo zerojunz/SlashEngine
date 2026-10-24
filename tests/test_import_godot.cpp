@@ -1813,6 +1813,12 @@ general/3d_panning_strength=0.75
 3d/default_gravity_vector=Vector3(0, -1, 0)
 3d/default_linear_damp=0.2
 jolt_physics_3d/simulation/areas_detect_static_bodies=true
+
+[rendering]
+
+camera/depth_of_field/depth_of_field_bokeh_shape=2
+camera/depth_of_field/depth_of_field_bokeh_quality=3
+camera/depth_of_field/depth_of_field_use_jitter=true
 )");
     write(folder / "level.tscn", R"([gd_scene load_steps=16 format=3]
 
@@ -1873,6 +1879,8 @@ exposure_multiplier = 1.5
 auto_exposure_enabled = true
 auto_exposure_speed = 2.0
 dof_blur_far_enabled = true
+dof_blur_far_distance = 20.0
+dof_blur_amount = 0.2
 
 [sub_resource type="CameraAttributesPhysical" id="CameraAttributesPhysical_1"]
 
@@ -2079,7 +2087,8 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     CHECK(*environment.find("ProceduralSkyMaterial") ==
           parse(R"({"sky_top_color": [0.2, 0.4, 0.8, 1.0], "sun_angle_max": 20.0})"));
     CHECK(*environment.find("CameraAttributesPractical") == parse(R"({
-        "exposure_multiplier": 1.5, "auto_exposure_enabled": true, "auto_exposure_speed": 2.0})"));
+        "exposure_multiplier": 1.5, "auto_exposure_enabled": true, "auto_exposure_speed": 2.0,
+        "dof_blur_far_enabled": true, "dof_blur_far_distance": 20.0, "dof_blur_amount": 0.2})"));
     CHECK(entity(files, level, "camera").find("CameraAttributesPractical") == nullptr);
 
     // Bodies and their shapes.
@@ -2107,6 +2116,9 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
         "gravity": 12.0, "gravity_vector": [0.0, -1.0, 0.0], "linear_damp": 0.2,
         "areas_detect_static_bodies": true})"));
     CHECK(project_file.find("audio")->find("panning_strength_3d")->as_double() == 0.75);
+    CHECK(*project_file.find("rendering")->find("camera") == parse(R"({"depth_of_field": {
+        "depth_of_field_bokeh_shape": "circle", "depth_of_field_bokeh_quality": "high",
+        "depth_of_field_use_jitter": true}})"));
 
     const json::Value& report = plan.report;
     const auto why = [&](std::string_view what) {
@@ -2127,7 +2139,7 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
                                     "VehicleBody3D component to them by hand");
     CHECK(unsupported(report, "Environment.glow_levels").is_null());
     CHECK(why("Camera3D.attributes") == "physical camera attributes aren't supported yet");
-    CHECK(!unsupported(report, "CameraAttributesPractical.dof_blur_far_enabled").is_null());
+    CHECK(unsupported(report, "CameraAttributesPractical.dof_blur_far_enabled").is_null());
     CHECK(!unsupported(report, "Environment.ssao_enabled").is_null());
     CHECK(!unsupported(report, "SpotLight3D.light_indirect_energy").is_null());
     CHECK(why("node type GPUParticles3D") == "no SlashEngine component for it yet");

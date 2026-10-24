@@ -952,7 +952,8 @@ public:
         frame_texture_ = target;
         frame_format_ = format;
         if (frame.scene && frame.scene->method == RenderMethod::ForwardPlus) {
-            prepare_forward(width, height, frame.scene->post.glow, frame.scene->post.auto_exposure);
+            prepare_forward(width, height, frame.scene->post.glow, frame.scene->post.auto_exposure,
+                            uses_dof(frame.scene->post));
         } else if (frame.scene && post_processes(frame.scene->post)) {
             prepare_post(width, height);
         }
@@ -1083,6 +1084,11 @@ public:
         const bool forward = frame_.scene && frame_.scene->method == RenderMethod::ForwardPlus;
         const bool post = !forward && frame_.scene && post_processes(frame_.scene->post);
         const bool sky = frame_.scene && sky_draws(*frame_.scene);
+        // Depth of field needs the depth buffer cleared, even with nothing drawn over it.
+        const bool dof = forward && uses_dof(frame_.scene->post);
+        if (dof) {
+            make_depth_target(frame_width_, frame_height_);
+        }
         std::optional<std::uint32_t> sky_uniforms_at;
         if (sky) {
             SkyUniforms uniforms = sky_uniforms(*frame_.scene, frame_width_, frame_height_);
@@ -1092,7 +1098,7 @@ public:
         }
         std::vector<PostDraw> post_draws;
         if (forward) {
-            post_draws = forward_draws_for(frame_.scene->post);
+            post_draws = forward_draws_for(*frame_.scene);
         } else if (post) {
             post_draws = post_draws_for(frame_.scene->post);
         }
@@ -1110,7 +1116,7 @@ public:
         if (radiance_draws_) {
             encode_radiance(encoder, *frame_.scene, radiance_offsets);
         }
-        if (!mesh_draws_.empty() || sky) {
+        if (!mesh_draws_.empty() || sky || dof) {
             encode_meshes(encoder, mesh_uniforms, sky_uniforms_at);
         }
         if (forward || post) {
@@ -1291,6 +1297,9 @@ private:
         GpuTexture brightness;
         bool measured = false;
         std::uint64_t version = 0;
+        // Depth of field's textures, as DofTexture after World, made with the first frame that
+        // uses it.
+        std::array<GpuTexture, 5> dof{};
         std::uint32_t width = 0;
         std::uint32_t height = 0;
     };
@@ -1698,12 +1707,12 @@ private:
         const std::array post_uniforms{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(PostUniforms))};
         post_uniforms_layout_ = layout(post_uniforms);
-        // Forward+'s post passes bind eleven textures, so their samplers come 16 after them. The
-        // brightness and luminance textures are floats, which they load unfiltered.
+        // Forward+'s post passes bind thirteen textures, so their samplers come 16 after them.
+        // The brightness, luminance and depth textures are floats, which they load unfiltered.
         std::array<WGPUBindGroupLayoutEntry, kForwardPostTextures * 2> forward_textures{};
         for (std::uint32_t slot = 0; slot < kForwardPostTextures; ++slot) {
             forward_textures.at(slot) = texture_entry(slot);
-            if (slot == kBrightnessSlot || slot == kLuminanceSourceSlot) {
+            if (slot == kBrightnessSlot || slot == kLuminanceSourceSlot || slot == kDepthSlot) {
                 forward_textures.at(slot).texture.sampleType =
                     WGPUTextureSampleType_UnfilterableFloat;
             }
@@ -2597,7 +2606,8 @@ private:
             pending_textures_.push_back(std::exchange(depth_, {}));
         }
         WGPUTextureDescriptor info = WGPU_TEXTURE_DESCRIPTOR_INIT;
-        info.usage = WGPUTextureUsage_RenderAttachment;
+        // Depth of field loads it.
+        info.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
         info.size = {.width = width, .height = height, .depthOrArrayLayers = 1};
         info.format = kDepthFormat;
         WGPUTexture texture = wgpuDeviceCreateTexture(device_, &info);
@@ -2734,7 +2744,11 @@ private:
         WGPURenderPassDepthStencilAttachment depth = WGPU_RENDER_PASS_DEPTH_STENCIL_ATTACHMENT_INIT;
         depth.view = depth_.view;
         depth.depthLoadOp = WGPULoadOp_Clear;
-        depth.depthStoreOp = WGPUStoreOp_Discard;
+        // Kept for depth of field, which reads it after.
+        depth.depthStoreOp =
+            frame_.scene->method == RenderMethod::ForwardPlus && uses_dof(frame_.scene->post)
+                ? WGPUStoreOp_Store
+                : WGPUStoreOp_Discard;
         depth.depthClearValue = 0.0F;
         WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
         descriptor.colorAttachmentCount = 1;
@@ -2861,8 +2875,9 @@ private:
     }
 
     // The world's texture of half floats at the frame's size and, with glow, glow's seven levels,
-    // and with auto exposure the luminance textures.
-    void prepare_forward(std::uint32_t width, std::uint32_t height, bool glow, bool auto_exposure) {
+    // with auto exposure the luminance textures, and with depth of field its textures.
+    void prepare_forward(std::uint32_t width, std::uint32_t height, bool glow, bool auto_exposure,
+                         bool dof) {
         const auto made = [&](std::uint32_t w, std::uint32_t h,
                               WGPUTextureFormat format = kHdrFormat) {
             WGPUTextureDescriptor info = WGPU_TEXTURE_DESCRIPTOR_INIT;
@@ -2895,6 +2910,16 @@ private:
             forward_targets_.brightness = made(1, 1, kLuminanceFormat);
             forward_targets_.measured = false;
         }
+        if (dof && forward_targets_.dof[0].texture == nullptr) {
+            // Sized, Secondary, Half0, Half1 and Out, as DofTexture after World
+            const std::uint32_t half_width = std::max(width >> 1U, 1U);
+            const std::uint32_t half_height = std::max(height >> 1U, 1U);
+            for (std::size_t i = 0; i < forward_targets_.dof.size(); ++i) {
+                const bool half = i == 2 || i == 3;
+                forward_targets_.dof.at(i) =
+                    made(half ? half_width : width, half ? half_height : height);
+            }
+        }
     }
 
     void release_forward_targets() {
@@ -2912,6 +2937,9 @@ private:
         }
         forward_targets_.luminance.clear();
         release(forward_targets_.brightness);
+        for (GpuTexture& texture : forward_targets_.dof) {
+            release(texture);
+        }
         forward_targets_.measured = false;
         forward_targets_.width = 0;
         forward_targets_.height = 0;
@@ -2943,21 +2971,25 @@ private:
         return pipeline;
     }
 
-    // forward_post.hlsl's passes, as the GPU device draws them: with auto exposure the luminance
-    // passes, then glow's levels, each from the one before, then the tonemap pass from the world's
-    // texture over the frame's target. Their uniforms are added to the frame's.
-    std::vector<PostDraw> forward_draws_for(const PostProcess& post) {
+    // forward_post.hlsl's passes, as the GPU device draws them: depth of field's, whose result the
+    // rest read for the world; with auto exposure the luminance passes, then glow's levels, each
+    // from the one before, then the tonemap pass from the world's texture over the frame's
+    // target. Their uniforms are added to the frame's.
+    std::vector<PostDraw> forward_draws_for(const Scene3D& scene) {
+        const PostProcess& post = scene.post;
         std::vector<PostDraw> draws;
+        // The world's texture, or after depth of field its result.
+        WGPUTextureView scene_world = forward_targets_.world.view;
         // A glow pass reads only its source; the tonemap pass reads glow's levels too. A
         // luminance pass after the first loads the level before from a slot of its own. Passes
         // read the measured brightness given them, or white.
         const auto add = [&](WGPUTextureView target, WGPUTextureFormat format,
                              const ForwardPostUniforms& uniforms, WGPUTextureView source,
-                             bool levels, WGPUTextureView lut, WGPUTextureView measured = nullptr) {
+                             bool levels, WGPUTextureView lut, WGPUTextureView measured = nullptr,
+                             WGPUTextureView depth = nullptr, WGPUTextureView world = nullptr) {
             std::vector<WGPUTextureView> textures(kForwardPostTextures, white_.view);
-            const bool from_level =
-                format == kLuminanceFormat && source != forward_targets_.world.view;
-            textures.front() = from_level ? forward_targets_.world.view : source;
+            const bool from_level = format == kLuminanceFormat && source != scene_world;
+            textures.front() = from_level ? scene_world : source;
             for (std::size_t i = 0; i < kMaxGlowLevels; ++i) {
                 if (levels && forward_targets_.glow.at(i).view != nullptr) {
                     textures.at(1 + i) = forward_targets_.glow.at(i).view;
@@ -2970,11 +3002,28 @@ private:
             if (from_level) {
                 textures.at(kLuminanceSourceSlot) = source;
             }
+            if (depth != nullptr) {
+                textures.at(kDepthSlot) = depth;
+                textures.at(kDofWorldSlot) = world;
+            }
             draws.push_back({.target = target,
                              .pipeline = forward_pipeline_for(format),
                              .textures = std::move(textures),
                              .uniforms = uniforms_.add(uniforms)});
         };
+        if (uses_dof(post)) {
+            const auto texture = [&](DofTexture which) {
+                return which == DofTexture::World
+                           ? forward_targets_.world.view
+                           : forward_targets_.dof.at(static_cast<std::size_t>(which) - 1).view;
+            };
+            for (const DofStep& step : dof_plan(post, frame_width_, frame_height_)) {
+                add(texture(step.target), kHdrFormat, dof_uniforms(post, step, scene.projection),
+                    texture(step.source), false, white_.view, nullptr, depth_.view,
+                    forward_targets_.world.view);
+            }
+            scene_world = texture(DofTexture::Out);
+        }
         WGPUTextureView brightness = nullptr;
         if (post.auto_exposure) {
             // As Godot's Luminance::luminance_reduction: the last pass moves from the last
@@ -2991,8 +3040,8 @@ private:
                 }
                 add(levels.at(i).view, kLuminanceFormat,
                     luminance_uniforms(post, kind, source, plan.at(i)),
-                    i == 0 ? forward_targets_.world.view : levels.at(i - 1).view, false,
-                    white_.view, forward_targets_.brightness.view);
+                    i == 0 ? scene_world : levels.at(i - 1).view, false, white_.view,
+                    forward_targets_.brightness.view);
                 source = plan.at(i);
             }
             std::swap(forward_targets_.brightness, levels.back());
@@ -3008,8 +3057,8 @@ private:
                     forward_post_uniforms(post,
                                           i == 0 ? ForwardPass::GlowFirst : ForwardPass::GlowNext,
                                           size.width, size.height, frame_width_, frame_height_),
-                    i == 0 ? forward_targets_.world.view : forward_targets_.glow.at(i - 1).view,
-                    false, white_.view, brightness);
+                    i == 0 ? scene_world : forward_targets_.glow.at(i - 1).view, false, white_.view,
+                    brightness);
             }
         }
         WGPUTextureView lut = white_.view;
@@ -3022,7 +3071,7 @@ private:
         add(frame_view_, frame_format_,
             forward_post_uniforms(post, ForwardPass::Tonemap, frame_width_, frame_height_,
                                   frame_width_, frame_height_, lut_desc.width, lut_desc.height),
-            forward_targets_.world.view, post.glow, lut, brightness);
+            scene_world, post.glow, lut, brightness);
         return draws;
     }
 

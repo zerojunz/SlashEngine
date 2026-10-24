@@ -179,11 +179,13 @@ public:
 
     // Works out the frame for a target of width by height pixels, interpolation of the way from
     // the transforms before the last tick to the current ones, its shadows drawn with shadows,
-    // shown at time seconds of game time, over which auto exposure adapts: nullopt when the world
-    // has no camera, and nothing 3D draws. The mesh draws wait for draw().
+    // shown at time seconds of game time, over which auto exposure adapts and from which depth of
+    // field's jitter is seeded, its depth of field blurred as depth_of_field says: nullopt when
+    // the world has no camera, and nothing 3D draws. The mesh draws wait for draw().
     [[nodiscard]] std::optional<Frame3D>
     prepare(const world::World& world, float width, float height, double interpolation,
-            render::Color clear, const render::ShadowSettings& shadows = {}, double time = 0.0);
+            render::Color clear, const render::ShadowSettings& shadows = {}, double time = 0.0,
+            const render::DepthOfFieldSettings& depth_of_field = {});
     // Draws the meshes prepare found into the frame begun with its scene.
     [[nodiscard]] Result<void> draw();
 

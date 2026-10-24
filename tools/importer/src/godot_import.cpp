@@ -1806,6 +1806,25 @@ private:
             fallback != nullptr && fallback->kind == Value::Kind::Bool) {
             project["rendering"]["fallback_to_opengl"] = fallback->boolean;
         }
+        // Depth of field's blur, whose enums count as Godot's do.
+        const auto choice = [&](std::string_view key, const auto& names) {
+            if (const Value* value = number("rendering", key)) {
+                const auto index = static_cast<std::int64_t>(value->number());
+                if (index >= 0 && static_cast<std::size_t>(index) < names.size()) {
+                    project["rendering"]["camera"]["depth_of_field"]
+                           [std::string(key.substr(key.rfind('/') + 1))] =
+                               std::string(names.at(static_cast<std::size_t>(index)));
+                }
+            }
+        };
+        choice("camera/depth_of_field/depth_of_field_bokeh_shape", render::kBokehShapeNames);
+        choice("camera/depth_of_field/depth_of_field_bokeh_quality", render::kBokehQualityNames);
+        if (const Value* jitter =
+                setting("rendering", "camera/depth_of_field/depth_of_field_use_jitter");
+            jitter != nullptr && jitter->kind == Value::Kind::Bool) {
+            project["rendering"]["camera"]["depth_of_field"]["depth_of_field_use_jitter"] =
+                jitter->boolean;
+        }
         if (const Value* gravity = number("physics", "2d/default_gravity")) {
             project["physics_2d"]["gravity"] = gravity->number();
         }
