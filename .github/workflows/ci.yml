@@ -13,6 +13,14 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # Compiles go through ccache, set on the command line so the builds exports run with other
+  # compilers are left alone. ccache can't keep compiles that use precompiled headers (SDL's and
+  # Jolt's), so those are off.
+  CCACHE_CMAKE_ARGS: >-
+    -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+    -DCMAKE_OBJC_COMPILER_LAUNCHER=ccache -DCMAKE_OBJCXX_COMPILER_LAUNCHER=ccache
+    -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON
+  CCACHE_MAX_SIZE: 1G
   LINUX_SDL_DEPS: >-
     ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev
     libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev libegl-dev libgl-dev libdrm-dev
@@ -62,8 +70,20 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
+      # ccache keeps compiled objects between runs. Pushes to main save the cache and pull requests
+      # start from main's. MSVC's debug info goes in the objects (/Z7), which ccache can keep.
+      - name: Cache compiled objects
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ci-${{ matrix.os }}
+          max-size: ${{ env.CCACHE_MAX_SIZE }}
+          save: ${{ github.event_name == 'push' }}
+          evict-old-files: job
+
       - name: Configure
-        run: cmake --preset ci
+        run: >-
+          cmake --preset ci ${{ env.CCACHE_CMAKE_ARGS }}
+          ${{ runner.os == 'Windows' && '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded' || '' }}
 
       - name: Build
         run: cmake --build --preset ci
@@ -88,8 +108,16 @@ jobs:
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y $LINUX_SDL_DEPS
 
+      - name: Cache compiled objects
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: tracy
+          max-size: ${{ env.CCACHE_MAX_SIZE }}
+          save: ${{ github.event_name == 'push' }}
+          evict-old-files: job
+
       - name: Configure
-        run: cmake --preset tracy -DSLASH_WARNINGS_AS_ERRORS=ON
+        run: cmake --preset tracy -DSLASH_WARNINGS_AS_ERRORS=ON ${{ env.CCACHE_CMAKE_ARGS }}
 
       - name: Build two examples
         run: cmake --build --preset tracy --target example-job-system example-profiling
@@ -155,9 +183,19 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
+      # Every export job on a runner builds the same slash-cli; the one exporting for that
+      # runner's own platform saves the cache.
+      - name: Cache compiled objects
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: release-${{ matrix.os }}
+          max-size: ${{ env.CCACHE_MAX_SIZE }}
+          save: ${{ github.event_name == 'push' && contains(fromJSON('["macos", "linux", "windows"]'), matrix.platform) }}
+          evict-old-files: job
+
       - name: Build slash-cli
         run: |
-          cmake --preset release
+          cmake --preset release ${{ env.CCACHE_CMAKE_ARGS }}
           cmake --build --preset release --target slash-cli
 
       - name: Export an empty game and run it headless
@@ -403,9 +441,16 @@ jobs:
       - name: Install tools
         run: brew install ninja pkgconf
 
+      - name: Cache compiled objects
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: release-macos-14
+          max-size: ${{ env.CCACHE_MAX_SIZE }}
+          save: false
+
       - name: Build slash-cli
         run: |
-          cmake --preset release
+          cmake --preset release ${{ env.CCACHE_CMAKE_ARGS }}
           cmake --build --preset release --target slash-cli
 
       - name: Export Windows, Linux, Linux arm64 and web games
@@ -557,8 +602,32 @@ jobs:
       - name: Check licenses
         run: ctest --preset ci -R licenses
 
+      # Files clang-tidy passed before with the same preprocessed source, flags and configuration
+      # are skipped (see the script). Every run saves the hashes it used, failed runs too, so a
+      # fix pushed after one checks only what changed; a pull request's first run starts from
+      # main's.
+      - name: Restore clang-tidy results
+        uses: actions/cache/restore@v4
+        with:
+          path: .clang-tidy-cache
+          key: clang-tidy-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: clang-tidy-
+
       - name: Run clang-tidy
-        # One clang-tidy per core: run one after another, the files take over half an hour.
+        # One clang-tidy per core: run one after another, the files take over an hour.
         run: |
+          touch build/clang-tidy-start
           find engine tools examples -name '*.cpp' \
-            | xargs -P "$(nproc)" -n 8 clang-tidy-18 -p build/ci --quiet
+            | xargs -P "$(nproc)" -n 8 python3 .github/scripts/clang-tidy-cached.py \
+                --cache .clang-tidy-cache -p build/ci --clang-tidy clang-tidy-18
+
+      - name: Drop the results this run didn't use
+        if: ${{ !cancelled() && hashFiles('build/clang-tidy-start') != '' }}
+        run: find .clang-tidy-cache -type f ! -newer build/clang-tidy-start -delete
+
+      - name: Save clang-tidy results
+        if: ${{ !cancelled() && hashFiles('build/clang-tidy-start') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .clang-tidy-cache
+          key: clang-tidy-${{ github.run_id }}-${{ github.run_attempt }}

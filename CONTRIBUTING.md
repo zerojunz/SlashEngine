@@ -65,7 +65,11 @@ runs clang-tidy. Run the same checks locally first:
 cmake --preset ci && cmake --build --preset ci && ctest --preset ci
 find engine tools tests examples -name '*.cpp' -o -name '*.hpp' | xargs clang-format -i
 find engine tools examples -name '*.cpp' | xargs clang-tidy -p build/dev
+.github/scripts/check-libcxx.py   # changed files against libc++, as the web and Android builds
 ```
+
+AGENTS.md's [cheat sheet](AGENTS.md#cheat-sheet) has the commands for each platform, and for
+checking only the files you changed.
 
 If you edited a scene file by hand, validate it and rewrite it in canonical form:
 
