@@ -12,6 +12,7 @@
 #include "post_shading.hpp"
 #include "sky_shading.hpp"
 #include "ssao.hpp"
+#include "ssr.hpp"
 
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
@@ -155,6 +156,14 @@ struct WorldTarget {
     }
 };
 
+// A target's frame before, which SSR reflects: at SSR's size, the camera it was seen from, and
+// whether it holds one yet.
+struct SsrHistory {
+    detail::SsrImage image;
+    detail::SsrCamera camera;
+    bool primed = false;
+};
+
 // The GPU device's blend states (gpu_device.cpp), on a straight-alpha source color clamped to 0
 // to 1 and the target's color.
 Float4 blend(BlendMode mode, const Float4& src, const Float4& dst) {
@@ -259,6 +268,7 @@ public:
             retired_[texture] = std::move(it->second);
         }
         textures_.erase(it);
+        forget_ssr_history(texture);
     }
 
     Result<ShaderId> create_shader(const CompiledShader& shader) override {
@@ -418,6 +428,10 @@ public:
                 });
             !checked) {
             return checked.error();
+        }
+        // The frame before is kept only while the target's frames draw SSR.
+        if (!frame.scene || !detail::uses_ssr(*frame.scene)) {
+            forget_ssr_history(frame.target);
         }
         frame_ = frame;
         in_frame_ = true;
@@ -1345,8 +1359,9 @@ private:
     }
 
     // Draws the frame's meshes over target and returns the depth buffer: a float a pixel, rows
-    // top to bottom. With SSAO, Forward+'s prepass draws the opaque meshes' depth and normals
-    // first, and the SSAO passes make the occlusion the meshes are shaded with.
+    // top to bottom. With SSAO or SSR, Forward+'s prepass draws the opaque meshes' depth and
+    // normals first, from which the SSAO passes make the occlusion the meshes are shaded with
+    // and the SSR passes their reflections of the frame before.
     std::vector<float> draw_meshes(const Scene3D& scene, const WorldTarget& target) {
         const detail::ShadowPlan plan = detail::plan_shadows(scene, kMaxTextureSize);
         std::vector<float> directional(std::size_t{plan.directional_size} * plan.directional_size,
@@ -1366,7 +1381,8 @@ private:
                               .positional = {.depths = positional, .size = plan.positional_size},
                               .radiance = radiance(scene),
                               .clusters = clustered ? &clusters : nullptr,
-                              .ao = {}};
+                              .ao = {},
+                              .ssr = {}};
 
         std::vector<float> depth(std::size_t{target.width()} * target.height(), 0.0F);
         const detail::MeshCameraUniforms camera = detail::mesh_camera_uniforms(scene);
@@ -1392,8 +1408,26 @@ private:
                 draw_mesh(draw, camera, *lights, maps, buffer, target, shade, corners);
             }
         };
+        // The color pass: the meshes' colors over the target.
+        const auto shade_color = [&](const MeshShader& shader, const MeshFragment& fragment,
+                                     std::size_t at) {
+            const Material3D& material = *shader.material;
+            const bool blended = material.transparency == Transparency::Alpha;
+            const auto color = shade_mesh_pixel(shader, fragment.varyings(), fragment.front,
+                                                {static_cast<std::uint32_t>(at % target.width()),
+                                                 static_cast<std::uint32_t>(at / target.width())});
+            if (!color) {
+                return false; // discarded, as by the alpha scissor
+            }
+            write_mesh_pixel(material, blended, *color, target, at);
+            return !blended;
+        };
+        const bool ssr = target.hdr != nullptr && detail::uses_ssr(scene);
         detail::SsaoImage ao;
-        if (lights->ssao[0] != 0.0F) {
+        detail::SsrImage reflections;
+        SsrHistory* history = nullptr;
+        const detail::SsrCamera seen = detail::ssr_camera(scene);
+        if (lights->ssao[0] != 0.0F || ssr) {
             const std::size_t pixels = std::size_t{target.width()} * target.height();
             std::vector<float> prepass_depth(pixels, 0.0F);
             detail::SsaoImage normals{.width = target.width(),
@@ -1420,26 +1454,74 @@ private:
                          }
                          return true;
                      });
-            ao = detail::run_ssao(scene.ssao, scene.projection, target.width(), target.height(),
-                                  {.depth = prepass_depth, .normals = &normals});
-            maps.ao = ao.values;
-            maps.ao_width = target.width();
+            if (lights->ssao[0] != 0.0F) {
+                ao = detail::run_ssao(scene.ssao, scene.projection, target.width(), target.height(),
+                                      {.depth = prepass_depth, .normals = &normals});
+                maps.ao = ao.values;
+                maps.ao_width = target.width();
+            }
+            if (ssr) {
+                // SSR reflects the frame before, which a target's first frame draws first
+                // without it, over the sky alone.
+                history = &ssr_history(frame_.target, scene.ssr.settings, target.width(),
+                                       target.height());
+                if (!history->primed) {
+                    const detail::HdrImage sky = *target.hdr;
+                    lights->ssao[3] = 0.0F;
+                    std::vector<float> primed(pixels, 0.0F);
+                    draw_all(primed, false, shade_color);
+                    keep_last_frame(scene, *target.hdr, *history, seen);
+                    *target.hdr = sky;
+                    lights->ssao[3] = 1.0F;
+                }
+                const detail::SsrImage ssr_normals{.width = normals.width,
+                                                   .height = normals.height,
+                                                   .channels = 4,
+                                                   .values = normals.values};
+                reflections = detail::run_ssr(scene.ssr, seen, history->camera, target.width(),
+                                              target.height(),
+                                              {.depth = prepass_depth,
+                                               .normals = &ssr_normals,
+                                               .last_frame = &history->image,
+                                               .world = nullptr});
+                maps.ssr = reflections.values;
+                maps.ao_width = target.width();
+            }
         }
-        draw_all(depth, false,
-                 [&](const MeshShader& shader, const MeshFragment& fragment, std::size_t at) {
-                     const Material3D& material = *shader.material;
-                     const bool blended = material.transparency == Transparency::Alpha;
-                     const auto color =
-                         shade_mesh_pixel(shader, fragment.varyings(), fragment.front,
-                                          {static_cast<std::uint32_t>(at % target.width()),
-                                           static_cast<std::uint32_t>(at / target.width())});
-                     if (!color) {
-                         return false; // discarded, as by the alpha scissor
-                     }
-                     write_mesh_pixel(material, blended, *color, target, at);
-                     return !blended;
-                 });
+        draw_all(depth, false, shade_color);
+        if (history != nullptr) {
+            keep_last_frame(scene, *target.hdr, *history, seen);
+        }
         return depth;
+    }
+
+    // target's frame before for SSR with settings at width x height, made empty when it has
+    // none or it was kept at another size.
+    SsrHistory& ssr_history(TextureId target, const SsrSettings& settings, std::uint32_t width,
+                            std::uint32_t height) {
+        const detail::PostSize size = detail::ssr_plan(settings, width, height).size;
+        for (auto& [id, history] : ssr_histories_) {
+            if (id == target) {
+                if (history.image.width != size.width || history.image.height != size.height) {
+                    history = SsrHistory{};
+                }
+                return history;
+            }
+        }
+        return ssr_histories_.emplace_back(target, SsrHistory{}).second;
+    }
+
+    void forget_ssr_history(TextureId target) {
+        std::erase_if(ssr_histories_, [&](const auto& entry) { return entry.first == target; });
+    }
+
+    // Keeps world's colors, seen from camera, as history for the next frame's reflections.
+    static void keep_last_frame(const Scene3D& scene, const detail::HdrImage& world,
+                                SsrHistory& history, const detail::SsrCamera& camera) {
+        history.image =
+            detail::ssr_last_frame(scene.ssr.settings, world.width, world.height, world.pixels);
+        history.camera = camera;
+        history.primed = true;
     }
 
     // Draws one mesh over buffer, as draw_meshes' passes do, with shade(shader, fragment, at) for
@@ -1743,6 +1825,8 @@ private:
     std::vector<detail::MeshDraw> mesh_draws_;
     std::optional<detail::RadianceKey> radiance_key_;
     detail::CubeImage radiance_;
+    // Each target's frame before, which SSR reflects.
+    std::vector<std::pair<TextureId, SsrHistory>> ssr_histories_;
     std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> shaders_;
     std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> retired_shaders_;
     std::uint32_t next_shader_ = 1;

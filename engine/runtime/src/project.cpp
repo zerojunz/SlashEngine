@@ -160,7 +160,7 @@ json::Value camera_schema() {
 }
 
 // rendering.environment, as Godot's rendering/environment settings: screen-space ambient
-// occlusion's quality.
+// occlusion's quality and screen-space reflections' resolution.
 json::Value environment_schema() {
     const render::SsaoSettings defaults;
     const auto number = [](double value, double min, double max, std::string description) {
@@ -212,6 +212,17 @@ json::Value environment_schema() {
     out["additionalProperties"] = false;
     out["description"] = "3D environments, as Godot's rendering/environment settings.";
     out["properties"]["ssao"] = std::move(ssao);
+    json::Value ssr_half_size;
+    ssr_half_size["type"] = "boolean";
+    ssr_half_size["default"] = render::SsrSettings{}.half_size;
+    ssr_half_size["description"] =
+        "Traces at half the frame's resolution, then resolves to its size along the depths.";
+    json::Value ssr;
+    ssr["type"] = "object";
+    ssr["additionalProperties"] = false;
+    ssr["description"] = "Screen-space reflections, for every WorldEnvironment with ssr_enabled.";
+    ssr["properties"]["half_size"] = std::move(ssr_half_size);
+    out["properties"]["screen_space_reflection"] = std::move(ssr);
     return out;
 }
 
@@ -711,6 +722,10 @@ Result<Project> parse_project(const json::Value& project) {
             environment != nullptr) {
             if (const json::Value* ssao = environment->find("ssao"); ssao != nullptr) {
                 out.ssao = render::ssao_settings_from_json(*ssao);
+            }
+            if (const json::Value* ssr = environment->find("screen_space_reflection");
+                ssr != nullptr) {
+                out.ssr = render::ssr_settings_from_json(*ssr);
             }
         }
         if (const json::Value* textures = rendering->find("textures"); textures != nullptr) {

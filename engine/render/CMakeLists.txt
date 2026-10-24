@@ -59,6 +59,7 @@ add_library(slash_render
     src/sky.cpp
     src/software_device.cpp
     src/ssao.cpp
+    src/ssr.cpp
     src/texture_codec.cpp
     src/uniforms.cpp
     src/upscaler.cpp)
@@ -93,7 +94,8 @@ endif()
 # ones not.
 set_source_files_properties(src/clusters.cpp src/device.cpp src/forward_post.cpp src/material.cpp
     src/mesh.cpp src/particles.cpp src/post.cpp src/resize.cpp src/shader_vm.cpp src/shadow.cpp
-    src/sky.cpp src/software_device.cpp src/ssao.cpp src/upscaler.cpp
+    src/sky.cpp src/software_device.cpp src/ssao.cpp src/ssr.cpp
+    src/upscaler.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
@@ -110,11 +112,13 @@ set(slash_shader_headers "")
 # textures put its WGSL samplers 16 bindings after them instead of 8, as the thirteen textures of
 # the Forward+ post passes (post16) do. clustered is the mesh shader's Forward+ fragment stage,
 # which reads storage buffers, and normal its fragment stage for Forward+'s normal-roughness
-# prepass. The SSAO passes (ssao) are post passes with twelve textures whose code comes in pieces.
+# prepass. The SSAO and SSR passes (ssao) are post passes with twelve and eight textures whose
+# code comes in pieces; ssr_trace is the SSR trace's fragment stage, which draws with ssr's vertex
+# stage.
 set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
     mesh_clustered:MeshClustered:clustered mesh_normal:MeshNormal:normal shadow:Shadow:depth
-    post:Post:post sky:Sky:post forward_post:ForwardPost:post16 ssao:Ssao:ssao
-    radiance:Radiance:post
+    post:Post:post sky:Sky:post forward_post:ForwardPost:post16 ssao:Ssao:ssao ssr:Ssr:ssao
+    ssr_trace:SsrTrace:ssr_trace radiance:Radiance:post
     particles_process:ParticlesProcess:compute
     particles_emit:ParticlesEmit:compute particles_draw:ParticlesDraw:compute)
 foreach(entry IN LISTS slash_shaders)
@@ -139,7 +143,8 @@ foreach(entry IN LISTS slash_shaders)
             set(include shadow)
             set(interface v_uv,v_color)
             set(fixup ON)
-        elseif(kind STREQUAL "post" OR kind STREQUAL "post16" OR kind STREQUAL "ssao")
+        elseif(kind STREQUAL "post" OR kind STREQUAL "post16" OR kind STREQUAL "ssao"
+               OR kind STREQUAL "ssr_trace")
             set(include tonemap)
             set(interface v_uv)
             if(NOT kind STREQUAL "post")
@@ -147,6 +152,10 @@ foreach(entry IN LISTS slash_shaders)
             endif()
             if(kind STREQUAL "ssao")
                 set(pieces ON)
+            elseif(kind STREQUAL "ssr_trace")
+                set(include ssr)
+                set(pieces ON)
+                set(fragment_only ON)
             endif()
         else()
             set(include mesh)

@@ -367,6 +367,14 @@ Environment world_environment(const world::World& world, render::Color clear) {
         fog.depth_begin = env.fog_depth_begin;
         fog.depth_end = env.fog_depth_end;
     }
+    if (env.ssr_enabled) {
+        out.ssr = {.enabled = true,
+                   .max_steps = env.ssr_max_steps,
+                   .fade_in = env.ssr_fade_in,
+                   .fade_out = env.ssr_fade_out,
+                   .depth_tolerance = env.ssr_depth_tolerance,
+                   .settings = {}};
+    }
     if (env.ssao_enabled) {
         out.ssao = {.enabled = true,
                     .radius = env.ssao_radius,
@@ -1345,7 +1353,8 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
                                          double interpolation, render::Color clear,
                                          const render::ShadowSettings& shadows, double time,
                                          const render::DepthOfFieldSettings& depth_of_field,
-                                         const render::SsaoSettings& ssao) {
+                                         const render::SsaoSettings& ssao,
+                                         const render::SsrSettings& ssr) {
     ++frame_;
     draws_.clear();
     problems_.clear();
@@ -1430,6 +1439,8 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
     frame.scene.post.depth_of_field = depth_of_field;
     frame.scene.ssao = env.ssao;
     frame.scene.ssao.settings = ssao;
+    frame.scene.ssr = env.ssr;
+    frame.scene.ssr.settings = ssr;
     if (depth_of_field.use_jitter) {
         // Godot seeds the jitter at random each frame; the game time keeps frames repeatable.
         frame.scene.post.dof_jitter_seed = static_cast<float>(time - std::floor(time)) * 1000.0F;

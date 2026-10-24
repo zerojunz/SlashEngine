@@ -2602,6 +2602,24 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("tonemap_agx_white", {.doc = "agx's white with Forward+, at least 2.", .min = 0})
         .describe("tonemap_agx_contrast",
                   {.doc = "How steep agx's curve is with Forward+.", .min = 0})
+        .describe("ssr_enabled",
+                  {.doc = "Forward+: screen-space reflections reflect what is on the screen in "
+                          "opaque surfaces less rough than 0.7, over the sky's reflections. "
+                          "Project.json's rendering.environment.screen_space_reflection sets "
+                          "their resolution."})
+        .describe("ssr_max_steps",
+                  {.doc = "How many steps a reflected ray takes at most.", .min = 1, .max = 512})
+        .describe("ssr_fade_in",
+                  {.doc = "How reflections fade in where they leave the surface, as an easing "
+                          "curve.",
+                   .min = 0})
+        .describe("ssr_fade_out",
+                  {.doc = "How reflections fade out toward the screen's edges, as an easing curve.",
+                   .min = 0})
+        .describe("ssr_depth_tolerance",
+                  {.doc = "How far behind what is on the screen a ray still hits it, in meters.",
+                   .min = 0.01,
+                   .max = 128})
         .describe("ssao_enabled",
                   {.doc = "Forward+: screen-space ambient occlusion darkens the ambient light of "
                           "creases, corners and what is close to a surface. Project.json's "

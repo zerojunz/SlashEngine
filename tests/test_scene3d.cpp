@@ -959,6 +959,69 @@ TEST_CASE("a captured frame darkens a wall where a slab stands against it, with 
     CHECK(occluded.at(62) >= plain.at(62) - 2);
 }
 
+TEST_CASE("the WorldEnvironment's SSR fields and the project's settings reach the frame") {
+    Scene scene;
+    scene.create("camera", R"({"Transform3D": {}, "Camera3D": {}})");
+    scene.create("env", R"({"WorldEnvironment": {"ssr_enabled": true, "ssr_max_steps": 32,
+        "ssr_fade_in": 0.5, "ssr_fade_out": 3, "ssr_depth_tolerance": 0.25}})");
+    const scene3d::Environment read = scene3d::environment(scene.world, {});
+    CHECK(read.ssr == render::Ssr3D{.enabled = true,
+                                    .max_steps = 32,
+                                    .fade_in = 0.5F,
+                                    .fade_out = 3.0F,
+                                    .depth_tolerance = 0.25F});
+    const auto device = render::create_null_device();
+    scene3d::Renderer renderer(*device, nullptr);
+    const render::SsrSettings settings{.half_size = false};
+    auto frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}, {}, 0.0, {}, {}, settings);
+    REQUIRE(frame.has_value());
+    CHECK(frame->scene.ssr.enabled);
+    CHECK(frame->scene.ssr.max_steps == 32);
+    CHECK(frame->scene.ssr.settings == settings);
+    // With ssr_enabled off, the frame has none.
+    scene.world.ecs().get<world::WorldEnvironment>(scene.world.find("env")).ssr_enabled = false;
+    frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}, {}, 0.0, {}, {}, settings);
+    CHECK_FALSE(frame->scene.ssr.enabled);
+}
+
+TEST_CASE("a captured frame reflects a glowing cube in a polished floor, with SSR") {
+    Scene scene;
+    scene.create("camera", R"({"Transform3D": {"position": [0, 1, 3], "rotation": [-0.3, 0, 0]},
+        "Camera3D": {}})");
+    const entt::entity env = scene.create("env", R"({"WorldEnvironment": {
+        "background_mode": "color", "background_color": [0, 0, 0, 1],
+        "ambient_light_source": "color", "ambient_light_color": [1, 1, 1, 1],
+        "ambient_light_energy": 0.3}})");
+    scene.create("floor", R"({"Transform3D": {"position": [0, -0.1, 0]}, "MeshInstance3D": {},
+        "BoxMesh": {"size": [8, 0.2, 8]},
+        "StandardMaterial3D": {"metallic": 1, "roughness": 0.05}})");
+    scene.create("cube", R"({"Transform3D": {"position": [0, 0.5, -1]}, "MeshInstance3D": {},
+        "BoxMesh": {}, "StandardMaterial3D": {"albedo_color": [0, 0, 0, 1],
+        "emission_enabled": true, "emission": [1, 0, 0, 1]}})");
+    const auto column = [&] {
+        const auto captured = canvas::capture(scene.world, scene.assets, {});
+        REQUIRE(captured.ok());
+        std::array<int, 64> red{};
+        for (std::uint32_t y = 0; y < red.size(); ++y) {
+            red.at(y) = pixel(captured.value().image, 32, y)[0];
+        }
+        return red;
+    };
+    const std::array<int, 64> plain = column();
+    // The cube's bottom edge: the last red pixel down the middle column.
+    std::size_t edge = 63;
+    while (edge > 0 && plain.at(edge) < 200) {
+        --edge;
+    }
+    REQUIRE(edge > 16);
+    REQUIRE(edge < 56);
+    scene.world.ecs().get<world::WorldEnvironment>(env).ssr_enabled = true;
+    const std::array<int, 64> reflected = column();
+    // Below the cube the floor shows its reflection, and the cube itself is as it was.
+    CHECK(reflected.at(edge + 3) > plain.at(edge + 3) + 40);
+    CHECK(reflected.at(edge - 2) == plain.at(edge - 2));
+}
+
 TEST_CASE("a captured frame adapts to the 3D world's brightness over game time") {
     Scene scene;
     scene.create("camera", R"({"Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}})");
@@ -1202,6 +1265,19 @@ TEST_CASE("project.json's rendering.environment.ssao is read and checked") {
     const auto errors = slash::runtime::validate_project(project);
     REQUIRE(errors.size() == 1);
     CHECK(errors.front().path == "/rendering/environment/ssao/blur_passes");
+}
+
+TEST_CASE("project.json's rendering.environment.screen_space_reflection is read and checked") {
+    json::Value project = parse(R"({"format": 1, "name": "Mirror", "version": "1.0.0",
+        "main_scene": "main.scene.json",
+        "rendering": {"environment": {"screen_space_reflection": {"half_size": false}}}})");
+    CHECK(slash::runtime::validate_project(project).empty());
+    CHECK(slash::runtime::parse_project(project).value().ssr ==
+          render::SsrSettings{.half_size = false});
+    project["rendering"]["environment"]["screen_space_reflection"]["half_size"] = 1;
+    const auto errors = slash::runtime::validate_project(project);
+    REQUIRE(errors.size() == 1);
+    CHECK(errors.front().path == "/rendering/environment/screen_space_reflection/half_size");
 }
 
 TEST_CASE("project.json's rendering.camera.depth_of_field is read and checked") {

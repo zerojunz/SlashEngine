@@ -23,6 +23,9 @@
 #include "sprite_shaders.hpp"
 #include "ssao.hpp"
 #include "ssao_shaders.hpp"
+#include "ssr.hpp"
+#include "ssr_shaders.hpp"
+#include "ssr_trace_shaders.hpp"
 #include "uniforms.hpp"
 
 #include "slash/core/log.hpp"
@@ -87,6 +90,32 @@ constexpr std::size_t ssao_shader_group(SsaoPass pass) {
     }
     return group;
 }
+
+constexpr SDL_GPUTextureFormat ssr_gpu_format(SsrFormat format) {
+    switch (format) {
+    case SsrFormat::RGBA8:
+        return SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+    case SsrFormat::RGBA16F:
+        return SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT;
+    case SsrFormat::RGBA32F:
+        return SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT;
+    case SsrFormat::R8:
+        return SDL_GPU_TEXTUREFORMAT_R8_UNORM;
+    case SsrFormat::R32F:
+        break;
+    }
+    return SDL_GPU_TEXTUREFORMAT_R32_FLOAT;
+}
+
+// A target's frame before, which SSR reflects: at SSR's size, the camera it was seen from, and
+// whether it holds one yet.
+struct SsrHistory {
+    SDL_GPUTexture* texture = nullptr;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    SsrCamera camera;
+    bool primed = false;
+};
 
 constexpr SDL_GPUTextureFormat gpu_format(TextureFormat format) {
     switch (format) {
@@ -341,6 +370,25 @@ public:
             }
         }
         release_ssao_targets();
+        for (SDL_GPUShader* shader : ssr_shaders_) {
+            if (shader != nullptr) {
+                SDL_ReleaseGPUShader(device_, shader);
+            }
+        }
+        for (const auto& [format, pipeline] : ssr_pipelines_) {
+            SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+        }
+        if (ssr_trace_shader_ != nullptr) {
+            SDL_ReleaseGPUShader(device_, ssr_trace_shader_);
+        }
+        if (ssr_trace_pipeline_ != nullptr) {
+            SDL_ReleaseGPUGraphicsPipeline(device_, ssr_trace_pipeline_);
+        }
+        release_ssr_targets();
+        for (auto& [target, history] : ssr_histories_) {
+            pending_release_.push_back(std::exchange(history.texture, nullptr));
+        }
+        release_prepass();
         for (SDL_GPUShader* shader : shadow_shaders_) {
             if (shader != nullptr) {
                 SDL_ReleaseGPUShader(device_, shader);
@@ -517,6 +565,7 @@ public:
             SDL_ReleaseGPUTexture(device_, it->second.gpu);
         }
         textures_.erase(it);
+        forget_ssr_history(texture);
     }
 
     Result<ShaderId> create_shader(const CompiledShader& shader) override {
@@ -1000,8 +1049,22 @@ public:
                     return depth.error();
                 }
             }
+            if (uses_prepass(*frame.scene)) {
+                if (auto ready = prepare_prepass(width, height); !ready) {
+                    SDL_CancelGPUCommandBuffer(commands);
+                    return ready.error();
+                }
+            }
             if (uses_ssao(*frame.scene)) {
                 if (auto ready = prepare_ssao(width, height, frame.scene->ssao.settings); !ready) {
+                    SDL_CancelGPUCommandBuffer(commands);
+                    return ready.error();
+                }
+            }
+            if (uses_ssr(*frame.scene)) {
+                if (auto ready =
+                        prepare_ssr(frame.target, width, height, frame.scene->ssr.settings);
+                    !ready) {
                     SDL_CancelGPUCommandBuffer(commands);
                     return ready.error();
                 }
@@ -1019,6 +1082,10 @@ public:
                 SDL_CancelGPUCommandBuffer(commands);
                 return ready.error();
             }
+        }
+        // The frame before is kept only while the target's frames draw SSR.
+        if (!frame.scene || !uses_ssr(*frame.scene)) {
+            forget_ssr_history(frame.target);
         }
         start_frame(frame, commands, target, width, height);
         frame_format_ = format;
@@ -1091,8 +1158,8 @@ public:
                         .index_count = it->second.index_count,
                         .bounds = it->second.bounds,
                         .pipeline = pipeline.value()};
-        // SSAO's prepass draws the opaque meshes' normals.
-        if (uses_ssao(*frame_.scene) && material.transparency != Transparency::Alpha) {
+        // SSAO's and SSR's prepass draws the opaque meshes' normals.
+        if (uses_prepass(*frame_.scene) && material.transparency != Transparency::Alpha) {
             auto normal = normal_pipeline_for(material.cull);
             if (!normal) {
                 return normal.error();
@@ -1842,9 +1909,9 @@ private:
                               .vertex_msl = {},
                               .fragment_msl = fragment_msl,
                               .hlsl = shaders::kMeshClusteredHlsl};
-        // The material's textures, the shadow atlases, the radiance and the SSAO.
+        // The material's textures, the shadow atlases, the radiance, the SSAO and the SSR.
         auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code,
-                                        static_cast<std::uint32_t>(kMeshTextures) + 4, 3, 2);
+                                        static_cast<std::uint32_t>(kMeshTextures) + 5, 3, 2);
         if (!fragment) {
             return fragment.error();
         }
@@ -2247,9 +2314,10 @@ private:
             lights->cluster = clusters_.uniform();
         }
         const bool ssao = plan != nullptr && uses_ssao(scene);
+        const bool ssr = plan != nullptr && uses_ssr(scene);
         // What every draw samples besides its material's textures: the shadow atlases, the
-        // radiance and, in Forward+, the SSAO.
-        std::array<SDL_GPUTextureSamplerBinding, kMeshTextures + 4> samplers{};
+        // radiance and, in Forward+, the SSAO and the SSR.
+        std::array<SDL_GPUTextureSamplerBinding, kMeshTextures + 5> samplers{};
         std::vector<std::size_t> order;
         if (plan != nullptr) {
             for (std::size_t atlas = 0; atlas < 2; ++atlas) {
@@ -2265,10 +2333,13 @@ private:
             samplers.at(kMeshTextures +
                         3) = {.texture = ssao ? ssao_targets_.textures.at(kSsaoFinal) : white_,
                               .sampler = samplers_.at(sampler_index(Filter::Nearest, false))};
+            samplers.at(kMeshTextures +
+                        4) = {.texture = ssr ? ssr_targets_.textures.at(kSsrFinal) : white_,
+                              .sampler = samplers_.at(sampler_index(Filter::Nearest, false))};
             order = mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), scene,
                                     [&](std::size_t at) { return mesh_batches_[at].bounds; });
         }
-        // Draws the meshes in pass, with their prepass pipelines (the opaque ones') for SSAO's
+        // Draws the meshes in pass, with their prepass pipelines (the opaque ones') for the
         // prepass.
         const auto draw_batches = [&](SDL_GPURenderPass* pass, bool prepass) {
             SDL_PushGPUVertexUniformData(commands, 0, &camera,
@@ -2278,7 +2349,7 @@ private:
             SDL_PushGPUFragmentUniformData(commands, 2, plan->uniforms.get(),
                                            static_cast<std::uint32_t>(sizeof(MeshShadowUniforms)));
             const std::size_t bound_samplers =
-                clustered && !prepass ? kMeshTextures + 4 : kMeshTextures + 3;
+                clustered && !prepass ? kMeshTextures + 5 : kMeshTextures + 3;
             SDL_GPUGraphicsPipeline* bound = nullptr;
             for (const std::size_t i : order) {
                 const MeshDraw& draw = mesh_draws_[i];
@@ -2310,16 +2381,16 @@ private:
                 SDL_DrawGPUIndexedPrimitives(pass, batch.index_count, 1, 0, 0, 0);
             }
         };
-        if (ssao) {
-            // SSAO's prepass draws the opaque meshes' normals and depth, from which its passes
-            // make the occlusion the meshes are then lit with.
+        if (ssao || ssr) {
+            // The prepass draws the opaque meshes' normals and depth, from which SSAO's passes
+            // make the occlusion the meshes are then lit with, and SSR's their reflections.
             SDL_GPUColorTargetInfo normals{};
-            normals.texture = ssao_targets_.normals;
+            normals.texture = prepass_.normals;
             normals.clear_color = {0.0F, 0.0F, 0.0F, 0.0F};
             normals.load_op = SDL_GPU_LOADOP_CLEAR;
             normals.store_op = SDL_GPU_STOREOP_STORE;
             SDL_GPUDepthStencilTargetInfo prepass_depth{};
-            prepass_depth.texture = ssao_targets_.depth;
+            prepass_depth.texture = prepass_.depth;
             prepass_depth.clear_depth = 0.0F;
             prepass_depth.load_op = SDL_GPU_LOADOP_CLEAR;
             prepass_depth.store_op = SDL_GPU_STOREOP_STORE;
@@ -2329,46 +2400,67 @@ private:
             SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(commands, &normals, 1, &prepass_depth);
             draw_batches(pass, true);
             SDL_EndGPURenderPass(pass);
-            draw_ssao(commands, scene);
+            if (ssao) {
+                draw_ssao(commands, scene);
+            }
         }
-        SDL_GPUColorTargetInfo color{};
-        color.texture = world_texture(scene);
-        color.clear_color = world_clear(scene);
-        color.load_op = SDL_GPU_LOADOP_CLEAR;
-        color.store_op = SDL_GPU_STOREOP_STORE;
-        SDL_GPUDepthStencilTargetInfo depth{};
-        depth.texture = depth_;
-        depth.clear_depth = 0.0F;
-        depth.load_op = SDL_GPU_LOADOP_CLEAR;
-        // Kept for depth of field, which reads it after.
-        depth.store_op = scene.method == RenderMethod::ForwardPlus && uses_dof(scene.post)
-                             ? SDL_GPU_STOREOP_STORE
-                             : SDL_GPU_STOREOP_DONT_CARE;
-        depth.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
-        depth.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
-        depth.cycle = true;
-        SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(commands, &color, 1, &depth);
-        if (sky_draws(scene)) {
-            const SDL_GPUTextureFormat format = world_format(scene, frame_format_);
-            const SkyUniforms sky = sky_uniforms(scene, frame_width_, frame_height_);
-            SDL_PushGPUFragmentUniformData(commands, 0, &sky,
-                                           static_cast<std::uint32_t>(sizeof(sky)));
-            const SDL_GPUTextureSamplerBinding texture = binding(sky_texture(scene.sky), true);
-            SDL_BindGPUGraphicsPipeline(pass, sky_pipeline(format));
-            SDL_BindGPUFragmentSamplers(pass, 0, &texture, 1);
-            SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
-        }
-        if (plan == nullptr) {
+        // The sky, then the meshes over it.
+        const auto draw_color = [&] {
+            SDL_GPUColorTargetInfo color{};
+            color.texture = world_texture(scene);
+            color.clear_color = world_clear(scene);
+            color.load_op = SDL_GPU_LOADOP_CLEAR;
+            color.store_op = SDL_GPU_STOREOP_STORE;
+            SDL_GPUDepthStencilTargetInfo depth{};
+            depth.texture = depth_;
+            depth.clear_depth = 0.0F;
+            depth.load_op = SDL_GPU_LOADOP_CLEAR;
+            // Kept for depth of field, which reads it after.
+            depth.store_op = scene.method == RenderMethod::ForwardPlus && uses_dof(scene.post)
+                                 ? SDL_GPU_STOREOP_STORE
+                                 : SDL_GPU_STOREOP_DONT_CARE;
+            depth.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
+            depth.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+            depth.cycle = true;
+            SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(commands, &color, 1, &depth);
+            if (sky_draws(scene)) {
+                const SDL_GPUTextureFormat format = world_format(scene, frame_format_);
+                const SkyUniforms sky = sky_uniforms(scene, frame_width_, frame_height_);
+                SDL_PushGPUFragmentUniformData(commands, 0, &sky,
+                                               static_cast<std::uint32_t>(sizeof(sky)));
+                const SDL_GPUTextureSamplerBinding texture = binding(sky_texture(scene.sky), true);
+                SDL_BindGPUGraphicsPipeline(pass, sky_pipeline(format));
+                SDL_BindGPUFragmentSamplers(pass, 0, &texture, 1);
+                SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
+            }
+            if (plan == nullptr) {
+                SDL_EndGPURenderPass(pass);
+                return;
+            }
+            if (clustered) {
+                const std::array storage{cluster_lights_.buffer, cluster_cells_.buffer};
+                SDL_BindGPUFragmentStorageBuffers(pass, 0, storage.data(),
+                                                  static_cast<std::uint32_t>(storage.size()));
+            }
+            draw_batches(pass, false);
             SDL_EndGPURenderPass(pass);
+        };
+        if (!ssr) {
+            draw_color();
             return;
         }
-        if (clustered) {
-            const std::array storage{cluster_lights_.buffer, cluster_cells_.buffer};
-            SDL_BindGPUFragmentStorageBuffers(pass, 0, storage.data(),
-                                              static_cast<std::uint32_t>(storage.size()));
+        // SSR reflects the frame before, which a target's first frame draws first without it.
+        SsrHistory& history = ssr_history(frame_.target);
+        const SsrCamera seen = ssr_camera(scene);
+        if (!history.primed) {
+            lights->ssao[3] = 0.0F;
+            draw_color();
+            keep_last_frame(commands, scene, history, seen);
+            lights->ssao[3] = 1.0F;
         }
-        draw_batches(pass, false);
-        SDL_EndGPURenderPass(pass);
+        draw_ssr(commands, scene, seen, history);
+        draw_color();
+        keep_last_frame(commands, scene, history, seen);
     }
 
     // A cube texture of the radiance's format, size texels across with levels levels, that can be
@@ -2773,15 +2865,71 @@ private:
         forward_targets_.height = 0;
     }
 
-    // SSAO's shaders, their pipeline for each texture format they draw, and the textures a frame
-    // of width x height with settings draws: the prepass's normals and depth, and those of
-    // ssao_plan. Made at the start of a frame that needs them.
-    Result<void> prepare_ssao(std::uint32_t width, std::uint32_t height,
-                              const SsaoSettings& settings) {
+    // A texture of width x height in format that passes draw into and sample, for what.
+    Result<SDL_GPUTexture*> pass_texture(std::uint32_t width, std::uint32_t height,
+                                         SDL_GPUTextureFormat format,
+                                         SDL_GPUTextureUsageFlags usage, std::uint32_t levels,
+                                         const char* what) {
+        SDL_GPUTextureCreateInfo info{};
+        info.type = SDL_GPU_TEXTURETYPE_2D;
+        info.format = format;
+        info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | usage;
+        info.width = width;
+        info.height = height;
+        info.layer_count_or_depth = 1;
+        info.num_levels = levels;
+        SDL_GPUTexture* texture = SDL_CreateGPUTexture(device_, &info);
+        if (texture == nullptr) {
+            return sdl_error("creating a " + std::to_string(width) + "x" + std::to_string(height) +
+                             " texture for " + what + " failed");
+        }
+        return texture;
+    }
+
+    // The normal-roughness prepass's normals and depth for a frame of width x height, which
+    // SSAO and SSR read. Made at the start of a frame that needs them.
+    Result<void> prepare_prepass(std::uint32_t width, std::uint32_t height) {
         // The prepass's depth buffer is made as the color pass's is.
         if (auto depth = depth_target(width, height); !depth) {
             return depth.error();
         }
+        if (prepass_.normals != nullptr && prepass_.width == width && prepass_.height == height) {
+            return {};
+        }
+        release_prepass();
+        auto normals = pass_texture(width, height, kNormalFormat, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
+                                    1, "the prepass");
+        if (!normals) {
+            return normals.error();
+        }
+        prepass_.normals = normals.value();
+        auto depth = pass_texture(width, height, depth_format_,
+                                  SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET, 1, "the prepass");
+        if (!depth) {
+            release_prepass();
+            return depth.error();
+        }
+        prepass_.depth = depth.value();
+        prepass_.width = width;
+        prepass_.height = height;
+        return {};
+    }
+
+    void release_prepass() {
+        for (SDL_GPUTexture** texture : {&prepass_.normals, &prepass_.depth}) {
+            if (*texture != nullptr) {
+                pending_release_.push_back(std::exchange(*texture, nullptr));
+            }
+        }
+        prepass_.width = 0;
+        prepass_.height = 0;
+    }
+
+    // SSAO's shaders, their pipeline for each texture format they draw, and the textures a frame
+    // of width x height with settings draws: those of ssao_plan. Made at the start of a frame
+    // that needs them, after the prepass's.
+    Result<void> prepare_ssao(std::uint32_t width, std::uint32_t height,
+                              const SsaoSettings& settings) {
         if (ssao_shaders_[0] == nullptr) {
             const std::string vertex_msl = joined(shaders::kSsaoVertexMsl);
             const std::string fragment_msl = joined(shaders::kSsaoFragmentMsl);
@@ -2827,47 +2975,19 @@ private:
                 return pipeline.error();
             }
         }
-        if (ssao_targets_.normals != nullptr && ssao_targets_.width == width &&
+        if (ssao_targets_.textures.at(kSsaoFinal) != nullptr && ssao_targets_.width == width &&
             ssao_targets_.height == height && ssao_targets_.settings == settings) {
             return {};
         }
         release_ssao_targets();
-        const auto made = [&](std::uint32_t w, std::uint32_t h, SDL_GPUTextureFormat format,
-                              SDL_GPUTextureUsageFlags usage) -> Result<SDL_GPUTexture*> {
-            SDL_GPUTextureCreateInfo info{};
-            info.type = SDL_GPU_TEXTURETYPE_2D;
-            info.format = format;
-            info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | usage;
-            info.width = w;
-            info.height = h;
-            info.layer_count_or_depth = 1;
-            info.num_levels = 1;
-            SDL_GPUTexture* texture = SDL_CreateGPUTexture(device_, &info);
-            if (texture == nullptr) {
-                return sdl_error("creating a " + std::to_string(w) + "x" + std::to_string(h) +
-                                 " texture for SSAO failed");
-            }
-            return texture;
-        };
-        auto normals = made(width, height, kNormalFormat, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET);
-        if (!normals) {
-            return normals.error();
-        }
-        ssao_targets_.normals = normals.value();
-        auto depth = made(width, height, depth_format_, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET);
-        if (!depth) {
-            release_ssao_targets();
-            return depth.error();
-        }
-        ssao_targets_.depth = depth.value();
         const SsaoPlan plan = ssao_plan(settings, width, height);
         for (std::uint32_t i = 0; i < kSsaoTextures; ++i) {
             const PostSize size = plan.sizes.at(i);
             if (size.width == 0) {
                 continue;
             }
-            auto texture = made(size.width, size.height, ssao_gpu_format(ssao_format(i)),
-                                SDL_GPU_TEXTUREUSAGE_COLOR_TARGET);
+            auto texture = pass_texture(size.width, size.height, ssao_gpu_format(ssao_format(i)),
+                                        SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, 1, "SSAO");
             if (!texture) {
                 release_ssao_targets();
                 return texture.error();
@@ -2886,8 +3006,6 @@ private:
                 pending_release_.push_back(std::exchange(texture, nullptr));
             }
         };
-        release(ssao_targets_.normals);
-        release(ssao_targets_.depth);
         for (SDL_GPUTexture*& texture : ssao_targets_.textures) {
             release(texture);
         }
@@ -2929,9 +3047,9 @@ private:
                 const std::uint32_t index = step.slots.at(slot);
                 SDL_GPUTexture* texture = white_;
                 if (index == kSsaoDepthBuffer) {
-                    texture = ssao_targets_.depth;
+                    texture = prepass_.depth;
                 } else if (index == kSsaoNormals) {
-                    texture = ssao_targets_.normals;
+                    texture = prepass_.normals;
                 } else if (index < kSsaoTextures && ssao_targets_.textures.at(index) != nullptr) {
                     texture = ssao_targets_.textures.at(index);
                 }
@@ -2942,6 +3060,258 @@ private:
             SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
             SDL_EndGPURenderPass(render);
         }
+    }
+
+    // SSR's shaders, their pipeline for each texture format they draw and the trace's, which draws
+    // into two, the textures a frame of width x height with settings draws (those of ssr_plan, and
+    // Hi-Z's and the reflections' levels copied into one texture each with mipmaps) and target's
+    // frame before. Made at the start of a frame that needs them, after the prepass's.
+    Result<void> prepare_ssr(TextureId target, std::uint32_t width, std::uint32_t height,
+                             const SsrSettings& settings) {
+        if (ssr_shaders_[0] == nullptr) {
+            const std::string vertex_msl = joined(shaders::kSsrVertexMsl);
+            const std::string fragment_msl = joined(shaders::kSsrFragmentMsl);
+            const ShaderCode code{.vertex_spirv = shaders::kSsrVertexSpirv,
+                                  .fragment_spirv = shaders::kSsrFragmentSpirv,
+                                  .vertex_msl = vertex_msl,
+                                  .fragment_msl = fragment_msl,
+                                  .hlsl = shaders::kSsrHlsl};
+            auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 0);
+            if (!vertex) {
+                return vertex.error();
+            }
+            auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, kSsrSlots, 1);
+            if (!fragment) {
+                SDL_ReleaseGPUShader(device_, vertex.value());
+                return fragment.error();
+            }
+            ssr_shaders_ = {vertex.value(), fragment.value()};
+        }
+        if (ssr_trace_shader_ == nullptr) {
+            const std::string fragment_msl = joined(shaders::kSsrTraceFragmentMsl);
+            const ShaderCode code{.vertex_spirv = {},
+                                  .fragment_spirv = shaders::kSsrTraceFragmentSpirv,
+                                  .vertex_msl = {},
+                                  .fragment_msl = fragment_msl,
+                                  .hlsl = shaders::kSsrTraceHlsl};
+            auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, kSsrSlots, 1);
+            if (!fragment) {
+                return fragment.error();
+            }
+            ssr_trace_shader_ = fragment.value();
+        }
+        for (const SsrFormat format :
+             {SsrFormat::R32F, SsrFormat::RGBA8, SsrFormat::RGBA16F, SsrFormat::RGBA32F}) {
+            if (auto pipeline =
+                    fullscreen_pipeline(ssr_pipelines_, ssr_shaders_, ssr_gpu_format(format));
+                !pipeline) {
+                return pipeline.error();
+            }
+        }
+        if (ssr_trace_pipeline_ == nullptr) {
+            std::array<SDL_GPUColorTargetDescription, 2> colors{};
+            colors[0].format = ssr_gpu_format(SsrFormat::RGBA16F);
+            colors[1].format = ssr_gpu_format(SsrFormat::R8);
+            SDL_GPUGraphicsPipelineCreateInfo info{};
+            info.vertex_shader = ssr_shaders_[0];
+            info.fragment_shader = ssr_trace_shader_;
+            info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+            info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+            info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+            info.target_info.color_target_descriptions = colors.data();
+            info.target_info.num_color_targets = static_cast<std::uint32_t>(colors.size());
+            ssr_trace_pipeline_ = SDL_CreateGPUGraphicsPipeline(device_, &info);
+            if (ssr_trace_pipeline_ == nullptr) {
+                return sdl_error("creating the SSR trace pipeline failed");
+            }
+        }
+        const SsrPlan plan = ssr_plan(settings, width, height);
+        if (ssr_targets_.textures.at(kSsrFinal) == nullptr || ssr_targets_.width != width ||
+            ssr_targets_.height != height || !(ssr_targets_.settings == settings)) {
+            release_ssr_targets();
+            for (std::uint32_t i = 0; i < kSsrTextures; ++i) {
+                const PostSize size = plan.sizes.at(i);
+                if (size.width == 0) {
+                    continue;
+                }
+                auto texture = pass_texture(size.width, size.height, ssr_gpu_format(ssr_format(i)),
+                                            SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, 1, "SSR");
+                if (!texture) {
+                    release_ssr_targets();
+                    return texture.error();
+                }
+                ssr_targets_.textures.at(i) = texture.value();
+            }
+            // The passes' levels are copied in, never drawn into.
+            for (const auto& [mips, index] : {std::pair{&ssr_targets_.hiz_mips, kSsrHiz},
+                                              std::pair{&ssr_targets_.color_mips, kSsrColor}}) {
+                auto texture =
+                    pass_texture(plan.size.width, plan.size.height,
+                                 ssr_gpu_format(ssr_format(index)), 0, plan.levels, "SSR");
+                if (!texture) {
+                    release_ssr_targets();
+                    return texture.error();
+                }
+                *mips = texture.value();
+            }
+            ssr_targets_.width = width;
+            ssr_targets_.height = height;
+            ssr_targets_.settings = settings;
+        }
+        SsrHistory& history = ssr_history(target);
+        if (history.texture == nullptr || history.width != plan.size.width ||
+            history.height != plan.size.height) {
+            if (history.texture != nullptr) {
+                pending_release_.push_back(std::exchange(history.texture, nullptr));
+            }
+            auto texture =
+                pass_texture(plan.size.width, plan.size.height, ssr_gpu_format(SsrFormat::RGBA16F),
+                             SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, 1, "SSR's frame before");
+            if (!texture) {
+                return texture.error();
+            }
+            history = {.texture = texture.value(),
+                       .width = plan.size.width,
+                       .height = plan.size.height,
+                       .camera = {},
+                       .primed = false};
+        }
+        return {};
+    }
+
+    void release_ssr_targets() {
+        const auto release = [this](SDL_GPUTexture*& texture) {
+            if (texture != nullptr) {
+                pending_release_.push_back(std::exchange(texture, nullptr));
+            }
+        };
+        for (SDL_GPUTexture*& texture : ssr_targets_.textures) {
+            release(texture);
+        }
+        release(ssr_targets_.hiz_mips);
+        release(ssr_targets_.color_mips);
+        ssr_targets_.width = 0;
+        ssr_targets_.height = 0;
+    }
+
+    // target's frame before, made empty when it has none.
+    SsrHistory& ssr_history(TextureId target) {
+        for (auto& [id, history] : ssr_histories_) {
+            if (id == target) {
+                return history;
+            }
+        }
+        return ssr_histories_.emplace_back(target, SsrHistory{}).second;
+    }
+
+    void forget_ssr_history(TextureId target) {
+        const auto it = std::ranges::find_if(
+            ssr_histories_, [&](const auto& entry) { return entry.first == target; });
+        if (it == ssr_histories_.end()) {
+            return;
+        }
+        if (it->second.texture != nullptr) {
+            pending_release_.push_back(it->second.texture);
+        }
+        ssr_histories_.erase(it);
+    }
+
+    // ssr.hlsl's passes, from the prepass's depth and normals and the frame before, seen from
+    // history's camera, to the reflections at the frame's size, in the order ssr_plan gives.
+    void draw_ssr(SDL_GPUCommandBuffer* commands, const Scene3D& scene, const SsrCamera& camera,
+                  const SsrHistory& history) {
+        const SsrPlan plan = ssr_plan(scene.ssr.settings, frame_width_, frame_height_);
+        for (const SsrStep& step : plan.steps) {
+            if (step.pass != SsrPass::CopyLevels) {
+                draw_ssr_step(commands, step,
+                              ssr_uniforms(scene.ssr, step, camera, history.camera, frame_width_,
+                                           frame_height_),
+                              history);
+                continue;
+            }
+            // GPUs can't draw into one level of a texture while sampling another, so each level
+            // is drawn into a texture of its own and copied into one with mipmaps for the passes
+            // that read them all.
+            const bool hiz = step.target == kSsrHizMips;
+            SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+            for (std::uint32_t level = 0; level < plan.levels; ++level) {
+                const std::uint32_t index = (hiz ? kSsrHiz : kSsrColor) + level;
+                const PostSize size = plan.sizes.at(index);
+                SDL_GPUTextureLocation from{};
+                from.texture = ssr_targets_.textures.at(index);
+                SDL_GPUTextureLocation to{};
+                to.texture = hiz ? ssr_targets_.hiz_mips : ssr_targets_.color_mips;
+                to.mip_level = level;
+                SDL_CopyGPUTextureToTexture(copy, &from, &to, size.width, size.height, 1, false);
+            }
+            SDL_EndGPUCopyPass(copy);
+        }
+    }
+
+    // One of SSR's passes, other than a copy, drawn with uniforms over its target: the trace's
+    // over the reflections' first level and the mip levels, the last frame's over history's
+    // texture.
+    void draw_ssr_step(SDL_GPUCommandBuffer* commands, const SsrStep& step,
+                       const SsrUniforms& uniforms, const SsrHistory& history) {
+        SDL_GPUGraphicsPipeline* pipeline = ssr_trace_pipeline_;
+        if (step.pass != SsrPass::Trace) {
+            // Made in prepare_ssr, at the start of the frame.
+            auto made = fullscreen_pipeline(ssr_pipelines_, ssr_shaders_,
+                                            ssr_gpu_format(ssr_format(step.target)));
+            if (!made) {
+                return;
+            }
+            pipeline = made.value();
+        }
+        std::array<SDL_GPUColorTargetInfo, 2> colors{};
+        colors[0].texture =
+            step.target == kSsrLastFrame ? history.texture : ssr_targets_.textures.at(step.target);
+        colors[0].load_op = SDL_GPU_LOADOP_DONT_CARE;
+        colors[0].store_op = SDL_GPU_STOREOP_STORE;
+        colors[1] = colors[0];
+        colors[1].texture = ssr_targets_.textures.at(kSsrMipLevel);
+        const std::uint32_t count = step.pass == SsrPass::Trace ? 2 : 1;
+        SDL_GPURenderPass* render = SDL_BeginGPURenderPass(commands, colors.data(), count, nullptr);
+        SDL_BindGPUGraphicsPipeline(render, pipeline);
+        SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
+                                       static_cast<std::uint32_t>(sizeof(uniforms)));
+        SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
+        std::array<SDL_GPUTextureSamplerBinding, kSsrSlots> bindings{};
+        for (std::size_t slot = 0; slot < kSsrSlots; ++slot) {
+            const std::uint32_t index = step.slots.at(slot);
+            SDL_GPUTexture* texture = white_;
+            if (index == kSsrDepthBuffer) {
+                texture = prepass_.depth;
+            } else if (index == kSsrNormals) {
+                texture = prepass_.normals;
+            } else if (index == kSsrHizMips) {
+                texture = ssr_targets_.hiz_mips;
+            } else if (index == kSsrColorMips) {
+                texture = ssr_targets_.color_mips;
+            } else if (index == kSsrLastFrame) {
+                texture = history.texture;
+            } else if (index == kSsrWorld) {
+                texture = forward_targets_.world;
+            } else if (index < kSsrTextures && ssr_targets_.textures.at(index) != nullptr) {
+                texture = ssr_targets_.textures.at(index);
+            }
+            bindings.at(slot) = {.texture = texture, .sampler = nearest};
+        }
+        SDL_BindGPUFragmentSamplers(render, 0, bindings.data(),
+                                    static_cast<std::uint32_t>(bindings.size()));
+        SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
+        SDL_EndGPURenderPass(render);
+    }
+
+    // Keeps the world's colors, seen from camera, as history for the next frame's reflections.
+    void keep_last_frame(SDL_GPUCommandBuffer* commands, const Scene3D& scene, SsrHistory& history,
+                         const SsrCamera& camera) {
+        const SsrStep step = ssr_last_frame_step();
+        draw_ssr_step(commands, step,
+                      ssr_uniforms(scene.ssr, step, camera, camera, frame_width_, frame_height_),
+                      history);
+        history.camera = camera;
+        history.primed = true;
     }
 
     // forward_post.hlsl's passes: depth of field's, whose result the rest read for the world; with
@@ -3738,11 +4108,17 @@ private:
     std::array<SDL_GPUShader*, 2> forward_shaders_{}; // vertex, then fragment
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> forward_pipelines_;
     ForwardTargets forward_targets_;
-    // SSAO's textures for the frame's size and settings: the normal-roughness prepass's normals
-    // and depth, and those ssao_plan sizes (null for those it doesn't draw).
-    struct SsaoTargets {
+    // The normal-roughness prepass's normals and depth at the frame's size, for SSAO and SSR.
+    struct PrepassTargets {
         SDL_GPUTexture* normals = nullptr;
         SDL_GPUTexture* depth = nullptr;
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+    };
+    PrepassTargets prepass_;
+    // SSAO's textures for the frame's size and settings: those ssao_plan sizes (null for those it
+    // doesn't draw).
+    struct SsaoTargets {
         std::array<SDL_GPUTexture*, kSsaoTextures> textures{};
         std::uint32_t width = 0;
         std::uint32_t height = 0;
@@ -3758,6 +4134,23 @@ private:
         ssao_pipelines_;
     bool ssao_split_ = false;
     SsaoTargets ssao_targets_;
+    // SSR's textures for the frame's size and settings: those ssr_plan sizes (null for those it
+    // doesn't draw), and Hi-Z's and the reflections' levels copied into one texture each with
+    // mipmaps.
+    struct SsrTargets {
+        std::array<SDL_GPUTexture*, kSsrTextures> textures{};
+        SDL_GPUTexture* hiz_mips = nullptr;
+        SDL_GPUTexture* color_mips = nullptr;
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+        SsrSettings settings;
+    };
+    std::array<SDL_GPUShader*, 2> ssr_shaders_{}; // vertex, then fragment
+    SDL_GPUShader* ssr_trace_shader_ = nullptr;   // the trace's fragment stage
+    std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> ssr_pipelines_;
+    SDL_GPUGraphicsPipeline* ssr_trace_pipeline_ = nullptr;
+    SsrTargets ssr_targets_;
+    std::vector<std::pair<TextureId, SsrHistory>> ssr_histories_;
     // The radiance meshes are lit by: the raw cube the sky draws into and the one filtered from
     // it, and what they hold (nullopt to draw them again).
     struct RadianceCubes {

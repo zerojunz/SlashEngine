@@ -270,6 +270,37 @@ struct Ssao3D {
     bool operator==(const Ssao3D&) const = default;
 };
 
+// Godot's rendering/environment/screen_space_reflection settings.
+struct SsrSettings {
+    // Traces at half the frame's resolution in each direction, then resolves the reflections to
+    // its size along the depths and normals.
+    bool half_size = true;
+
+    bool operator==(const SsrSettings&) const = default;
+};
+// Reads project.json's rendering.environment.screen_space_reflection: {"half_size"}. What is
+// missing or not valid keeps its default.
+[[nodiscard]] SsrSettings ssr_settings_from_json(const json::Value& value);
+
+// Forward+: screen-space reflections, as Godot 4.6's Environment.ssr_* with its Forward+
+// renderer. From the prepass's depth and normals, each opaque pixel's reflected ray is traced
+// across a pyramid of the frame's nearest depths (Hi-Z) until it hits something on the screen,
+// which is read from the frame before, as it lands now; rougher pixels read blurrier levels of the
+// reflections. The meshes' color pass puts them over the reflections from the sky's radiance.
+// What the ray hits must be on the screen: things off it, or behind what is in front, are not
+// reflected. Transparent meshes take none, and pixels from roughness 0.7 up none either, as in
+// Godot. Compatibility has no SSR.
+struct Ssr3D {
+    bool enabled = false;
+    std::uint32_t max_steps = 64; // how many steps a ray takes at most
+    float fade_in = 0.15F;        // how reflections fade in near where they leave the surface
+    float fade_out = 2.0F;        // and fade out toward the screen's edges, as an easing curve
+    float depth_tolerance = 0.5F; // how far behind a surface a ray still hits it, in world units
+    SsrSettings settings{};
+
+    bool operator==(const Ssr3D&) const = default;
+};
+
 // What happens to the 3D world's colors after it is lit, as Godot's Environment's tonemap, glow
 // and adjustments.
 //
@@ -510,6 +541,7 @@ struct Scene3D {
     Fog3D fog;
     Radiance3D radiance;
     Ssao3D ssao;
+    Ssr3D ssr;
 
     // Godot's default Camera3D: 75 degrees across a square target, from 0.05 to 4000.
     static std::array<float, 16> perspective_default();

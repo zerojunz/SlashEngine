@@ -255,6 +255,8 @@ struct ShadowPlan {
 };
 // The plan for a scene, its atlases at most max_size texels across.
 [[nodiscard]] ShadowPlan plan_shadows(const Scene3D& scene, std::uint32_t max_size);
+// The inverse of a matrix, in doubles; the identity for one that has none.
+[[nodiscard]] std::array<double, 16> inverse_matrix(const Mat4& m);
 
 // Whether a pass draws a mesh: one that casts, isn't blended, is on a layer its light's casters
 // are, and whose box isn't wholly outside the pass's view (past its sides or far plane; casters
@@ -353,9 +355,11 @@ struct MeshMaps {
     const CubeImage* radiance = nullptr;
     const LightClusters* clusters = nullptr;
     // Forward+'s screen-space ambient occlusion, a value a pixel of the target in rows from the
-    // top, when the scene's uniforms say the frame draws it.
+    // top, when the scene's uniforms say the frame draws it, and its screen-space reflections, four
+    // (RGB premultiplied, then how much of the sky's they replace) when they say it draws them.
     std::span<const float> ao;
-    std::uint32_t ao_width = 0;
+    std::span<const float> ssr;
+    std::uint32_t ao_width = 0; // the target's width, for both
 };
 
 // The pixel's color, as fs_main gives it, or nullopt where it discards the pixel.
