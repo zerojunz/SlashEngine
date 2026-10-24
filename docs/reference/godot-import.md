@@ -197,6 +197,12 @@ occlusion layers, occluders, custom data and alternative tiles:
   become its [`occlusion`](scene-format.md#tile-occluders-and-custom-data), with `closed` and
   `cull_mode`. Polygons on a layer the tile set lacks go, as Godot drops them, and so do closed
   ones of fewer than three points, which cast no shadow.
+- Each navigation layer keeps its `layers`. A tile's `NavigationPolygon` on it
+  (`navigation_layer_0/polygon`) becomes its
+  [`navigation`](scene-format.md#tile-navigation) outlines, as the tile set editor drew them, or
+  its polygons when it has no outlines, which cover the same area. Polygons on a layer the tile
+  set lacks go, as Godot drops them; outlines with no area are left out and reported. A
+  `TileMapLayer`'s `navigation_enabled`, or an old `TileMap` layer's, carries over.
 - Each custom data layer of type `bool`, `int`, `float`, `String`, `StringName`, `Vector2`,
   `Vector2i` or `Color` keeps its name and becomes a layer of that type (`StringName` is
   `string`). Other types, such as `Dictionary`, or `Any`, are left out and reported. A tile's
@@ -447,7 +453,8 @@ The report lists each of these once per kind, with how many and where it was fir
 | Bezier handles, the capture update mode, blend times and markers | A bezier track plays cubic through its keys, a capture track as continuous, and animations switch without blending |
 | Tracks on a control's `position` or `size` | Animate its offsets instead |
 | Animation libraries no `AnimationPlayer` plays | A track's fields depend on the node it animates |
-| Tile navigation layers, custom data of other types, and tiles' constant velocities | Navigation comes with 2D navigation; custom data holds the types listed above; move a layer rather than give its tiles a velocity |
+| Custom data of other types, and tiles' constant velocities | Custom data holds the types listed above; move a layer rather than give its tiles a velocity |
+| Navigation nodes: `NavigationRegion2D`, `NavigationLink2D`, `NavigationAgent2D`, `NavigationObstacle2D` and their 3D twins | Not converted yet; add the [navigation](scene-format.md#navigation) components of the same names. Tiles' navigation polygons convert |
 | Tiles' other properties, such as `z_index` and `y_sort_origin`, a base tile's flips and `modulate`, and scene collection sources | Tiles keep their texture origin, collision, occluders and custom data, and alternatives their flips and color too; place scenes as entities |
 | Y-sorting tile map layers | Layers draw in order, by `z_index` |
 | `gui/theme/custom_font` | Set `default_font` in the project's theme |

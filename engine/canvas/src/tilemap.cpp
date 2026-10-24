@@ -117,6 +117,10 @@ json::Value schema() {
     tile["properties"]["occlusion"] =
         property("array", "Polygons that cast shadows from 2D lights, each in an occlusion layer.");
     tile["properties"]["occlusion"]["items"]["$ref"] = "#/$defs/occluder";
+    tile["properties"]["navigation"] =
+        property("array", "Outlines of where agents can go, each in a navigation layer; each "
+                          "layer's are merged into the tile's navigation polygons.");
+    tile["properties"]["navigation"]["items"]["$ref"] = "#/$defs/navigation_outline";
     tile["properties"]["custom_data"] =
         property("object", "Values in the tile set's custom data layers, by layer name; the "
                            "others have their type's default.");
@@ -173,6 +177,9 @@ json::Value schema() {
     alternative["properties"]["occlusion"] =
         property("array", "Its own occluders, as the tile's; none if left out.");
     alternative["properties"]["occlusion"]["items"]["$ref"] = "#/$defs/occluder";
+    alternative["properties"]["navigation"] =
+        property("array", "Its own navigation outlines, as the tile's; none if left out.");
+    alternative["properties"]["navigation"]["items"]["$ref"] = "#/$defs/navigation_outline";
     alternative["properties"]["custom_data"] =
         property("object", "Its own custom data, as the tile's; the layers' defaults if left out.");
 
@@ -195,6 +202,29 @@ json::Value schema() {
     occluder["properties"]["cull_mode"]["enum"] =
         json::Array{kTileCullNames[0], kTileCullNames[1], kTileCullNames[2]};
     occluder["properties"]["cull_mode"]["default"] = kTileCullNames[0];
+
+    json::Value navigation_outline;
+    navigation_outline["type"] = "object";
+    navigation_outline["additionalProperties"] = false;
+    navigation_outline["required"] = json::Array{"points"};
+    navigation_outline["properties"]["points"] =
+        property("array", "Corners in pixels from the tile's center, x right and y down.");
+    navigation_outline["properties"]["points"]["items"] = point;
+    navigation_outline["properties"]["points"]["minItems"] = 3;
+    navigation_outline["properties"]["layer"] =
+        property("integer", "Its navigation layer, from 0.");
+    navigation_outline["properties"]["layer"]["minimum"] = 0;
+    navigation_outline["properties"]["layer"]["default"] = 0;
+
+    json::Value navigation_layer;
+    navigation_layer["type"] = "object";
+    navigation_layer["additionalProperties"] = false;
+    navigation_layer["properties"]["layers"] =
+        property("integer", "The navigation layers its tiles' regions are in, as bits; agents "
+                            "and queries pick them with navigation_layers.");
+    navigation_layer["properties"]["layers"]["minimum"] = 0;
+    navigation_layer["properties"]["layers"]["maximum"] = std::int64_t{UINT32_MAX};
+    navigation_layer["properties"]["layers"]["default"] = 1;
 
     json::Value occlusion_layer;
     occlusion_layer["type"] = "object";
@@ -343,6 +373,10 @@ json::Value schema() {
     out["properties"]["occlusion_layers"] = property(
         "array", "Occlusion layers by number from 0: which lights tiles' occluders shadow.");
     out["properties"]["occlusion_layers"]["items"]["$ref"] = "#/$defs/occlusion_layer";
+    out["properties"]["navigation_layers"] =
+        property("array", "Navigation layers by number from 0: the navigation layers tiles' "
+                          "regions are in.");
+    out["properties"]["navigation_layers"]["items"]["$ref"] = "#/$defs/navigation_layer";
     out["properties"]["custom_data_layers"] = property(
         "array", "Values every tile has, each with a name and a type, as Godot's custom data.");
     out["properties"]["custom_data_layers"]["items"]["$ref"] = "#/$defs/custom_data_layer";
@@ -360,6 +394,8 @@ json::Value schema() {
     out["$defs"]["physics_layer"] = std::move(physics_layer);
     out["$defs"]["occluder"] = std::move(occluder);
     out["$defs"]["occlusion_layer"] = std::move(occlusion_layer);
+    out["$defs"]["navigation_outline"] = std::move(navigation_outline);
+    out["$defs"]["navigation_layer"] = std::move(navigation_layer);
     out["$defs"]["custom_data_layer"] = std::move(custom_data_layer);
     return out;
 }
@@ -621,6 +657,9 @@ public:
         if (const json::Value* layers = doc_.find("occlusion_layers"); layers != nullptr) {
             occlusion_layers_ = layers->as_array().size();
         }
+        if (const json::Value* layers = doc_.find("navigation_layers"); layers != nullptr) {
+            navigation_layers_ = layers->as_array().size();
+        }
         if (const json::Value* layers = doc_.find("custom_data_layers"); layers != nullptr) {
             for (std::size_t i = 0; i < layers->as_array().size(); ++i) {
                 const json::Value& layer = layers->as_array()[i];
@@ -808,6 +847,31 @@ private:
         }
     }
 
+    void check_navigation(const json::Value& outlines, const std::string& at) {
+        const json::Array& items = outlines.as_array();
+        for (std::size_t i = 0; i < items.size(); ++i) {
+            const std::string outline_at = at + "/" + std::to_string(i);
+            const json::Value* layer = items[i].find("layer");
+            if (static_cast<std::uint64_t>(layer != nullptr ? layer->as_int() : 0) >=
+                navigation_layers_) {
+                fail(outline_at + "/layer",
+                     navigation_layers_ == 0
+                         ? std::string("the tile set has no navigation layers; add one to "
+                                       "navigation_layers")
+                         : "the tile set has navigation layers 0 to " +
+                               std::to_string(navigation_layers_ - 1));
+            }
+            std::vector<Vec2> points;
+            for (const json::Value& point : items[i].find("points")->as_array()) {
+                points.push_back({static_cast<float>(point.as_array()[0].as_double()),
+                                  static_cast<float>(point.as_array()[1].as_double())});
+            }
+            if (triangulate(points).empty()) {
+                fail(outline_at + "/points", "the outline has no area or crosses itself");
+            }
+        }
+    }
+
     // Each value against its layer's type, as Godot's custom data layers hold one type each.
     void check_custom_data(const json::Value& data, const std::string& at) {
         for (const auto& [name, value] : data.as_object()) {
@@ -885,6 +949,9 @@ private:
         if (const json::Value* occlusion = tile.find("occlusion"); occlusion != nullptr) {
             check_occluders(*occlusion, at + "/occlusion");
         }
+        if (const json::Value* navigation = tile.find("navigation"); navigation != nullptr) {
+            check_navigation(*navigation, at + "/navigation");
+        }
         if (const json::Value* data = tile.find("custom_data"); data != nullptr) {
             check_custom_data(*data, at + "/custom_data");
         }
@@ -903,6 +970,10 @@ private:
                 if (const json::Value* occlusion = alternative.find("occlusion");
                     occlusion != nullptr) {
                     check_occluders(*occlusion, alternative_at + "/occlusion");
+                }
+                if (const json::Value* navigation = alternative.find("navigation");
+                    navigation != nullptr) {
+                    check_navigation(*navigation, alternative_at + "/navigation");
                 }
                 if (const json::Value* data = alternative.find("custom_data"); data != nullptr) {
                     check_custom_data(*data, alternative_at + "/custom_data");
@@ -966,6 +1037,7 @@ private:
     TileSet shape_; // only its shape, layout and offset axis
     std::size_t physics_layers_ = 0;
     std::size_t occlusion_layers_ = 0;
+    std::size_t navigation_layers_ = 0;
     std::map<std::string, CustomDataType, std::less<>> custom_data_;
     std::map<std::string, TerrainInfo, std::less<>> terrains_;
     std::map<std::string, std::string, std::less<>> names_; // tile name -> "source:x,y"
@@ -1164,6 +1236,22 @@ std::vector<TileOccluder> occluders_of(const json::Value& occluders) {
                 std::ranges::find(kTileCullNames, value->as_string()) - kTileCullNames.begin());
         }
         out.push_back(std::move(occluder));
+    }
+    return out;
+}
+
+std::vector<TileNavigation> navigation_of(const json::Value& outlines) {
+    std::vector<TileNavigation> out;
+    for (const json::Value& item : outlines.as_array()) {
+        TileNavigation outline;
+        for (const json::Value& point : item.find("points")->as_array()) {
+            outline.points.push_back({static_cast<float>(point.as_array()[0].as_double()),
+                                      static_cast<float>(point.as_array()[1].as_double())});
+        }
+        if (const json::Value* value = item.find("layer"); value != nullptr) {
+            outline.layer = static_cast<int>(value->as_int());
+        }
+        out.push_back(std::move(outline));
     }
     return out;
 }
@@ -1630,6 +1718,15 @@ Result<TileSet> parse_tileset(const json::Value& doc) {
             set.occlusion_layers.push_back(layer);
         }
     }
+    if (const json::Value* layers = doc.find("navigation_layers"); layers != nullptr) {
+        for (const json::Value& json_layer : layers->as_array()) {
+            NavigationLayer layer;
+            if (const json::Value* value = json_layer.find("layers"); value != nullptr) {
+                layer.layers = static_cast<std::uint32_t>(value->as_int());
+            }
+            set.navigation_layers.push_back(layer);
+        }
+    }
     if (const json::Value* layers = doc.find("custom_data_layers"); layers != nullptr) {
         for (const json::Value& json_layer : layers->as_array()) {
             const std::string& type = json_layer.find("type")->as_string();
@@ -1733,6 +1830,9 @@ Result<TileSet> parse_tileset(const json::Value& doc) {
                 if (const json::Value* value = json_tile.find("occlusion"); value != nullptr) {
                     tile.occlusion = occluders_of(*value);
                 }
+                if (const json::Value* value = json_tile.find("navigation"); value != nullptr) {
+                    tile.navigation = navigation_of(*value);
+                }
                 if (const json::Value* value = json_tile.find("custom_data"); value != nullptr) {
                     tile.custom_data = custom_data_of(set, *value);
                 }
@@ -1759,6 +1859,10 @@ Result<TileSet> parse_tileset(const json::Value& doc) {
                         if (const json::Value* occlusion = json_alternative.find("occlusion");
                             occlusion != nullptr) {
                             alternative.occlusion = occluders_of(*occlusion);
+                        }
+                        if (const json::Value* navigation = json_alternative.find("navigation");
+                            navigation != nullptr) {
+                            alternative.navigation = navigation_of(*navigation);
                         }
                         if (const json::Value* data = json_alternative.find("custom_data");
                             data != nullptr) {
@@ -1997,6 +2101,36 @@ std::vector<TileOccluder> tile_occluders(const TileSet& set, const TileRef& tile
         if (mirrored && occluder.cull != TileCull::Disabled) {
             occluder.cull = occluder.cull == TileCull::Clockwise ? TileCull::CounterClockwise
                                                                  : TileCull::Clockwise;
+        }
+    }
+    return out;
+}
+
+std::vector<TileNavigation> tile_navigation(const TileSet& set, const TileRef& tile) {
+    const TileData* data = set.find(tile);
+    if (data == nullptr) {
+        return {};
+    }
+    const AlternativeTile* alternative = set.alternative(tile);
+    std::vector<TileNavigation> out =
+        alternative != nullptr ? alternative->navigation : data->navigation;
+    // TileData::get_transformed_vertices with p_preserve_winding_order: an odd number of flips
+    // and transposes mirrors the points, so they go in reverse.
+    const bool mirrored = (tile.flip_h != tile.flip_v) != tile.transpose;
+    for (TileNavigation& outline : out) {
+        for (Vec2& point : outline.points) {
+            if (tile.transpose) {
+                point = {point.y, point.x};
+            }
+            if (tile.flip_h) {
+                point.x = -point.x;
+            }
+            if (tile.flip_v) {
+                point.y = -point.y;
+            }
+        }
+        if (mirrored) {
+            std::ranges::reverse(outline.points);
         }
     }
     return out;

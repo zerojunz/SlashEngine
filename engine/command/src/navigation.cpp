@@ -464,10 +464,11 @@ Reply navigation_bake(Session& session, const json::Value& params) {
             settings = std::move(parsed).value();
         }
         const navigation::SourceGeometry2D geometry =
-            navigation::parse_source_geometry(world, entity, settings);
+            navigation::parse_source_geometry(world, session.assets(), entity, settings, &warnings);
         if (settings.outlines.empty() && geometry.traversable_outlines.empty()) {
             warnings.emplace_back("nothing to bake: give the file outlines of where agents can "
-                                  "go");
+                                  "go, or put TileMapLayer entities whose tiles have navigation "
+                                  "outlines under the region in Transform2D children");
         }
         auto baked = navigation::bake(settings, geometry);
         if (!baked) {
@@ -599,8 +600,9 @@ void register_navigation_commands(Registry& registry) {
         .description = "Bakes a region's navigation_mesh or navigation_polygon file from the "
                        "geometry under it, as Godot's bake_navigation_mesh and "
                        "bake_navigation_polygon, keeping the file's settings. Obstacles with "
-                       "affect_navigation_mesh are cut out. Returns the polygon count and "
-                       "warnings.",
+                       "affect_navigation_mesh are cut out; tile map layers add their tiles' "
+                       "navigation outlines and collision polygons. Returns the polygon count "
+                       "and warnings.",
         .capabilities = {Edit, Filesystem},
         .effect = Effect::Edit,
         .params = params_schema({{"id", std::move(region_id)}}, {"id"}),

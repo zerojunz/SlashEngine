@@ -1,0 +1,9 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"navigation.map","params":{"map":"2d"}}
+{"jsonrpc":"2.0","id":3,"method":"navigation.path","params":{"from":[24,88],"to":[104,88],"metadata":true}}
+{"jsonrpc":"2.0","id":4,"method":"navigation.path","params":{"from":[56,56],"to":[104,72],"navigation_layers":2}}
+{"jsonrpc":"2.0","id":5,"method":"navigation.path","params":{"from":[56,56],"to":[136,88],"navigation_layers":2}}
+{"jsonrpc":"2.0","id":6,"method":"tilemap.set","params":{"id":"maze","cells":[[5,5]],"tile":"floor"}}
+{"jsonrpc":"2.0","id":7,"method":"navigation.path","params":{"from":[24,88],"to":[104,88],"simplify_epsilon":0.5}}
+{"jsonrpc":"2.0","id":8,"method":"navigation.bake","params":{"id":"lawn"}}
+{"jsonrpc":"2.0","id":9,"method":"navigation.path","params":{"from":[204,24],"to":[276,24]}}

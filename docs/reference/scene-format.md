@@ -146,6 +146,7 @@ A reference must name an entity that exists in the same scene.
 | | `light_mask` | `int` | `1` | [Lit](#2d-lights) by lights whose `range_item_cull_mask` shares a bit |
 | | `collision_enabled` | `bool` | `true` | Its tiles' [collision polygons](#tile-collision) make it a static body in 2D physics |
 | | `occlusion_enabled` | `bool` | `true` | Its tiles' [occluders](#tile-occluders-and-custom-data) cast shadows |
+| | `navigation_enabled` | `bool` | `true` | Each cell is a [region](#tile-navigation) of the 2D navigation map in its tile's navigation polygons |
 | `PointLight2D` | `enabled` | `bool` | `true` | Shine |
 | | `texture` | `std::string` | `""` | Project path of a PNG, BMP or KTX2 file whose color and alpha shape the light; `""` is a soft round light 256 pixels across |
 | | `texture_scale` | `float` | `1` | Scales the texture |
@@ -1896,6 +1897,8 @@ its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene valida
 | `occlusion_layers` | No | Occlusion layers, as Godot's: each tile's [occluders](#tile-occluders-and-custom-data) are on one, by index from 0 |
 | `occlusion_layers/<n>/light_mask` | No | Lights whose `shadow_item_cull_mask` shares a bit take shadows from its occluders; default `1` |
 | `occlusion_layers/<n>/sdf_collision` | No | [GPU particles](#gpu-particle-collision) collide with its occluders; default `false` |
+| `navigation_layers` | No | Navigation layers, as Godot's: each tile's [navigation outlines](#tile-navigation) are on one, by index from 0 |
+| `navigation_layers/<n>/layers` | No | The `navigation_layers` bits of the regions its outlines make; default `1` |
 | `custom_data_layers` | No | Values every tile has, as Godot's custom data layers, each with a `name` (unique in the file) and a `type`: `bool`, `int`, `float`, `string`, `vector2`, `vector2i` or `color` |
 | `sources` | Yes | Atlas sources by name, at least one |
 | `sources/<name>/texture` | Yes | Project path of a PNG, BMP or KTX2 file |
@@ -1920,6 +1923,7 @@ its tiles. `slash-cli schema tileset` prints the schema, `slash-cli scene valida
 | `tiles/<cell>/animation_mode` | No | `default`, every cell in step, or `random_start_times`, each cell from its own point of the loop |
 | `tiles/<cell>/collision` | No | Its [collision polygons](#tile-collision) |
 | `tiles/<cell>/occlusion` | No | Its [occluders](#tile-occluders-and-custom-data) |
+| `tiles/<cell>/navigation` | No | Its [navigation outlines](#tile-navigation) |
 | `tiles/<cell>/custom_data` | No | Its [values](#tile-occluders-and-custom-data) by custom data layer name |
 | `tiles/<cell>/alternatives` | No | [Alternative tiles](#alternative-tiles-and-turned-cells) by number, from `"1"` to `"4095"` |
 
@@ -2045,13 +2049,14 @@ one after the tile: `"rock:1"` or `"ground:3,2:1"`.
 | `alternatives/<n>/collision` | No | Its own collision polygons, as a tile's; an alternative without them has none |
 | `alternatives/<n>/texture_origin` | No | Its own texture origin, as a tile's; `[0, 0]` if left out, whatever the tile's is |
 | `alternatives/<n>/occlusion` | No | Its own occluders, as a tile's; an alternative without them has none |
+| `alternatives/<n>/navigation` | No | Its own navigation outlines, as a tile's; an alternative without them has none |
 | `alternatives/<n>/custom_data` | No | Its own custom data, as a tile's; a layer it leaves out has the type's default, whatever the tile's is |
 
 A cell can also turn whatever tile it holds, as Godot's cell transform flags: after the tile, and
 its alternative if any, `:h` flips it left to right, `:v` top to bottom and `:t` swaps its axes,
 written in that order (`"slope:h"`, `"rock:1:hv"`, `"ground:3,2:vt"`). A quarter turn clockwise
-is `:ht`, counterclockwise `:vt`. The tile draws turned, its collision polygons and occluders
-turn with it, and an alternative's own flips combine with the cell's. Commands give each turned or alternative tile
+is `:ht`, counterclockwise `:vt`. The tile draws turned, its collision polygons, occluders and
+navigation polygons turn with it, and an alternative's own flips combine with the cell's. Commands give each turned or alternative tile
 a legend key of its own.
 
 ### Animated and large tiles
@@ -2119,6 +2124,50 @@ whose walls cast shadows and whose lava does damage.
 - An occluder on an occlusion layer the tile set doesn't have, a value of the wrong type and a
   value for a layer it doesn't have fail validation; a misspelled layer name gets the closest
   one.
+
+### Tile navigation
+
+Tiles carry navigation outlines, as Godot's tile set navigation layers: each cell of a
+`TileMapLayer` is a region of the 2D [navigation](#navigation) map, so agents find paths over a
+tile map with no navigation file of its own.
+[examples/navigation-tiles](../../examples/navigation-tiles/) sends a mouse through a maze of
+tiles and a duck across its pond.
+
+```json
+"navigation_layers": [{}, {"layers": 2}],
+"sources": {"maze": {"texture": "maze.png", "tiles": {
+  "0,0": {"name": "floor",
+          "navigation": [{"points": [[-8, -8], [8, -8], [8, 8], [-8, 8]]}]},
+  "1,0": {"name": "water",
+          "navigation": [{"layer": 1, "points": [[-8, -8], [8, -8], [8, 8], [-8, 8]]}]}}}}
+```
+
+| Key | Required | Meaning |
+| --- | --- | --- |
+| `navigation/<n>/points` | Yes | The outline's corners as `[x, y]` in pixels around the tile's center: three or more, with area, not crossing itself |
+| `navigation/<n>/layer` | No | The navigation layer it is on, by index; default `0` |
+
+- A tile's outlines on each navigation layer bake into polygons the first time a cell needs
+  them, as Godot's tile set editor bakes the outlines drawn in it: merged, with no agent radius.
+- Each cell whose tile has polygons on a navigation layer is a region there, at the cell's
+  center moved by the layer's `Transform2D`, with the navigation layer's `layers` as its
+  `navigation_layers`, as Godot's `TileMapLayer` makes them. Regions join where their edges meet,
+  so outlines that reach a tile's edges join the cells beside it.
+- A cell's turns turn its polygons, and those a turn mirrors are reversed so they wind as
+  before, as Godot's turned copies are.
+- Navigation layers only filter paths: polygons that share an edge join whatever their layers,
+  and an edge three polygons share joins none, as in Godot. A tile with outlines on two layers
+  that reach the same side of its cell can cut paths off there, so keep each cell to one
+  layer's polygons where it meets its neighbors.
+- Paths and [`navigation.closest`](commands.md#navigationclosest) name the layer's entity as a
+  cell's owner, and [`navigation.map`](commands.md#navigationmap) counts each cell's region.
+  The map is rebuilt when a layer's cells, tile set or transform change, not each tick.
+- A layer whose `navigation_enabled` is `false` has no regions. A tile set that doesn't load
+  leaves its layers out, and `navigation.map` reports why under `errors`.
+- [Baking](#baking) a region takes the layers under it: their tiles' outlines are where agents
+  may walk and their collision polygons are cut out.
+- An outline on a navigation layer the tile set doesn't have, or with no area, fails
+  validation.
 
 ## 2D camera
 
@@ -2682,12 +2731,18 @@ merges the outlines and the obstructions, takes one from the other and shrinks t
 `agent_radius`, then PolyPartition splits it into convex polygons or triangles. An obstacle with
 `carve_navigation_mesh` is taken out after the shrink, so it cuts only its own shape.
 
+A `TileMapLayer` under the region adds its cells' tiles, as Godot's parser takes them: each
+tile's [navigation outlines](#tile-navigation) on every navigation layer are outlines agents may
+walk, and its collision polygons on physics layers whose `collision_layer` shares a bit with
+`parsed_collision_mask` are cut out, both turned with the cell. A region whose file has no
+`outlines` can bake from its tile map layers alone.
+
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `outlines` | `[]` | Closed outlines of where agents may walk, each three or more `[x, y]` points |
 | `sample_partition_type` | `"convex_partition"` | `"convex_partition"` or `"triangulate"` |
-| `parsed_geometry_type` | `"both"` | What bakes: `"mesh_instances"`, `"static_colliders"` or `"both"`; only static bodies bake so far |
-| `parsed_collision_mask` | `4294967295` | Static bodies bake when their `collision_layer` shares a bit with this |
+| `parsed_geometry_type` | `"both"` | What bakes: `"mesh_instances"`, `"static_colliders"` or `"both"`. Static bodies and tile collision polygons bake with the last two, tiles' navigation outlines with any |
+| `parsed_collision_mask` | `4294967295` | Static bodies, and tiles on physics layers, bake when their `collision_layer` shares a bit with this |
 | `border_size` | `0` | Space kept free inside `baking_rect`, in pixels |
 | `agent_radius` | `10` | How far agents keep from walls and obstructions, in pixels |
 | `baking_rect_position`, `baking_rect_size`, `baking_rect_offset` | `[0, 0]` | Bake only what is in this rect, when it has area |
@@ -2718,6 +2773,8 @@ A `NavigationRegion3D` places a `.navmesh.json` file on the 3D map at the entity
   as Godot's `map_get_closest_point` does.
 - A file that doesn't load, or is of the wrong kind, leaves the region out of the map, and
   `navigation.map` reports why under `errors`.
+- A `TileMapLayer`'s cells are regions too, of its tiles' navigation polygons: see
+  [tile navigation](#tile-navigation).
 
 ### Links
 
