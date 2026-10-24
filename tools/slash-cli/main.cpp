@@ -49,6 +49,7 @@
 #include "slash/runtime/project.hpp"
 #include "slash/scene3d/blend.hpp"
 #include "slash/scene3d/gridmap.hpp"
+#include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/server/server.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
@@ -120,8 +121,9 @@ Usage:
                                      .material.json, .process_material.json, .anim.json,
                                      .animtree.json, .tileset.json, .font.json, .theme.json,
                                      .audio.json, .bus_layout.json, .navmesh.json,
-                                     .navpoly.json, .meshlib.json, .replay.json, .test.json or
-                                     .score.json file; lists every error
+                                     .navpoly.json, .meshlib.json, .lightmap.json,
+                                     .replay.json, .test.json or .score.json file; lists every
+                                     error
   slash-cli scene format <file>      Rewrite one of those files in canonical form
       --check                        Only report whether it is canonical; change nothing
   slash-cli schema <name>            Print a JSON Schema: scene, prefab, frames (.frames.json),
@@ -130,7 +132,8 @@ Usage:
                                      animtree (.animtree.json), tileset (.tileset.json), font (.font.json), theme
                                      (.theme.json), audio (.audio.json), bus_layout
                                      (.bus_layout.json), navmesh (.navmesh.json), navpoly
-                                     (.navpoly.json), meshlib (.meshlib.json), replay
+                                     (.navpoly.json), meshlib (.meshlib.json), lightmap
+                                     (.lightmap.json), replay
                                      (.replay.json), test (.test.json), score
                                      (.score.json), storyboard, project
                                      (project.json), presets (export_presets.json), sdk
@@ -915,6 +918,7 @@ int cmd_scene_validate(const std::string& path) {
     const bool navmesh = path.ends_with(slash::navigation::kMeshSuffix);
     const bool navpoly = path.ends_with(slash::navigation::kPolygonSuffix);
     const bool meshlib = path.ends_with(slash::scene3d::kMeshLibrarySuffix);
+    const bool lightmap = path.ends_with(slash::scene3d::kLightmapSuffix);
     const bool replay = path.ends_with(command::kReplaySuffix);
     const bool test = path.ends_with(command::kTestSuffix);
     const bool score = path.ends_with(slash::soundtrack::kScoreSuffix);
@@ -952,6 +956,8 @@ int cmd_scene_validate(const std::string& path) {
         errors = slash::navigation::validate_polygon(parsed.value());
     } else if (meshlib) {
         errors = slash::scene3d::validate_mesh_library(parsed.value());
+    } else if (lightmap) {
+        errors = slash::scene3d::validate_lightmap(parsed.value());
     } else if (replay) {
         errors = command::validate_replay(parsed.value());
     } else if (test) {
@@ -985,8 +991,8 @@ int cmd_scene_validate(const std::string& path) {
         }
     }
     if (parsed && !frames && !material && !process && !animation && !tree && !tileset && !font &&
-        !theme && !stream && !buses && !navmesh && !navpoly && !meshlib && !replay && !test &&
-        !score) {
+        !theme && !stream && !buses && !navmesh && !navpoly && !meshlib && !lightmap && !replay &&
+        !test && !score) {
         check_story_refs(path, parsed.value(), errors);
     }
     result["valid"] = errors.empty();
@@ -1049,6 +1055,8 @@ int cmd_scene_validate(const std::string& path) {
             counted = "polygons";
         } else if (meshlib) {
             counted = "items";
+        } else if (lightmap) {
+            counted = "users";
         } else if (test) {
             counted = "tests";
         } else if (frames || animation) {
@@ -1136,6 +1144,9 @@ int cmd_scene_format(const std::string& path, bool check) {
         if (path.ends_with(slash::scene3d::kMeshLibrarySuffix)) {
             return format_checked(text.value(), slash::scene3d::parse_mesh_library);
         }
+        if (path.ends_with(slash::scene3d::kLightmapSuffix)) {
+            return format_checked(text.value(), slash::scene3d::parse_lightmap);
+        }
         const auto checked_by = [](auto validate) {
             return [validate](const json::Value& doc) -> slash::Result<void> {
                 const auto errors = validate(doc);
@@ -1214,15 +1225,17 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 24> kKinds = {
-        "scene",   "prefab",    "frames", "material", "process_material", "animation", "animtree",
-        "tileset", "font",      "theme",  "audio",    "bus_layout",       "navmesh",   "navpoly",
-        "meshlib", "replay",    "test",   "score",    "storyboard",       "project",   "presets",
-        "sdk",     "providers", "bench"};
+    constexpr std::array<std::string_view, 25> kKinds = {
+        "scene",     "prefab",     "frames",  "material",  "process_material",
+        "animation", "animtree",   "tileset", "font",      "theme",
+        "audio",     "bus_layout", "navmesh", "navpoly",   "meshlib",
+        "lightmap",  "replay",     "test",    "score",     "storyboard",
+        "project",   "presets",    "sdk",     "providers", "bench"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error("schema takes one argument: scene, prefab, frames, material, "
                            "process_material, animation, animtree, tileset, font, theme, audio, "
-                           "bus_layout, navmesh, navpoly, meshlib, replay, test, score, "
+                           "bus_layout, navmesh, navpoly, meshlib, lightmap, replay, test, "
+                           "score, "
                            "storyboard, "
                            "project, presets, sdk, providers or bench");
     }
@@ -1257,6 +1270,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::navigation::polygon_schema();
     } else if (args[0] == "meshlib") {
         schema = slash::scene3d::mesh_library_schema();
+    } else if (args[0] == "lightmap") {
+        schema = slash::scene3d::lightmap_schema();
     } else if (args[0] == "replay") {
         schema = command::replay_schema();
     } else if (args[0] == "test") {

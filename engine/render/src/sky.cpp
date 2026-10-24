@@ -4,6 +4,7 @@
 #include "sky_shading.hpp"
 
 #include "slash/core/math.hpp"
+#include "slash/render/image.hpp"
 
 #include <algorithm>
 #include <array>
@@ -773,3 +774,52 @@ CubeImage filter_cube(const CubeImage& raw, bool linear) {
 }
 
 } // namespace slash::render::detail
+
+namespace slash::render {
+
+HdrImage ambient_panorama(
+    const Scene3D& scene, std::uint32_t width, std::uint32_t height,
+    const std::function<std::array<float, 4>(const std::array<float, 2>&)>& sky_texel) {
+    using detail::Float3;
+    using detail::Float4;
+    HdrImage out{.width = width, .height = height, .rgb = {}};
+    out.rgb.resize(std::size_t{width} * height * 3);
+    const float energy = scene.ambient_energy;
+    const Float3 ambient{detail::srgb_to_linear_exact(scene.ambient[0]) * energy,
+                         detail::srgb_to_linear_exact(scene.ambient[1]) * energy,
+                         detail::srgb_to_linear_exact(scene.ambient[2]) * energy};
+    const bool sky = detail::radiance_used(scene) && scene.radiance.ambient;
+    const detail::CubeImage cube =
+        sky ? detail::make_radiance(scene, sky_texel) : detail::CubeImage{};
+    const std::array<float, 16>& o = scene.sky.orientation;
+    for (std::uint32_t y = 0; y < height; ++y) {
+        const float polar =
+            std::numbers::pi_v<float> * (static_cast<float>(y) + 0.5F) / static_cast<float>(height);
+        const Vec2 polar_cs = cos_sin(polar);
+        for (std::uint32_t x = 0; x < width; ++x) {
+            const float around = 2.0F * std::numbers::pi_v<float> * (static_cast<float>(x) + 0.5F) /
+                                 static_cast<float>(width);
+            const Vec2 around_cs = cos_sin(around);
+            const Float3 d{polar_cs.y * around_cs.y, polar_cs.x, polar_cs.y * around_cs.x};
+            Float3 light = ambient;
+            if (sky) {
+                // Into the sky's space, as the devices turn a normal (sky_rows).
+                const Float3 turned{(o[0] * d[0]) + (o[4] * d[1]) + (o[8] * d[2]),
+                                    (o[1] * d[0]) + (o[5] * d[1]) + (o[9] * d[2]),
+                                    (o[2] * d[0]) + (o[6] * d[1]) + (o[10] * d[2])};
+                const Float4 texel = cube.sample(turned, detail::kRadianceMaxLevel);
+                light = detail::lerp3(
+                    light,
+                    detail::scale(detail::srgb_to_linear(detail::rgb(texel)), scene.sky.energy),
+                    scene.radiance.ambient_mix);
+            }
+            float* at = &out.rgb[((std::size_t{y} * width) + x) * 3];
+            at[0] = light[0];
+            at[1] = light[1];
+            at[2] = light[2];
+        }
+    }
+    return out;
+}
+
+} // namespace slash::render

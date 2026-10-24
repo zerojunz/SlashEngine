@@ -13,6 +13,7 @@
 #include "slash/platform/run.hpp"
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
+#include "slash/scene3d/lightmap.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 
@@ -49,6 +50,7 @@ namespace json = slash::json;
 namespace world = slash::world;
 namespace command = slash::command;
 namespace render = slash::render;
+namespace scene3d = slash::scene3d;
 using command::Capability;
 
 namespace {
@@ -2358,6 +2360,76 @@ TEST_CASE("navigation.bake bakes a region's file from what is under it, and undo
     reply = engine.fails("navigation.bake", R"({"id": "level"})", command::code::kInvalidArgument);
     CHECK(reply.message == "/id: its navigation_mesh \"nav/yard.navpoly.json\" is not a "
                            ".navmesh.json file");
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("lightmap.bake writes a LightmapGI's lightmap and texels, and undo takes them back") {
+    const std::string root = "lightmap_bake_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "floor", "components": {
+            "Transform3D": {}, "MeshInstance3D": {}, "PlaneMesh": {"size": [4, 4]}}}},
+        {"command": "entity.create", "params": {"id": "sun", "components": {
+            "Transform3D": {"rotation": [-1, 0.6, 0]},
+            "DirectionalLight3D": {"light_bake_mode": "static"}}}},
+        {"command": "entity.create", "params": {"id": "gi", "components": {
+            "LightmapGI": {"quality": "low", "bounces": 1, "environment_mode": "disabled"}}}}]})");
+    const auto read = [&](const std::string& path) -> std::optional<std::string> {
+        if (!std::filesystem::exists(root + "/" + path)) {
+            return std::nullopt;
+        }
+        return slash::platform::read_file(root + "/" + path).value();
+    };
+    const json::Value baked = parse(R"({"file": "gi.lightmap.json", "texture": "gi.lightmap.hdr",
+        "meshes": 1, "lights": 1, "size": [32, 32], "slices": 1})");
+
+    // A dry run says what it would bake and writes nothing.
+    const json::Value dry = engine.ok("lightmap.bake", R"({"id": "gi", "dry_run": true})");
+    CHECK(*dry.find("result") == baked);
+    CHECK(*dry.find("changes") ==
+          parse(R"({"changed": {"gi": {"LightmapGI": {"light_data": "gi.lightmap.json"}}}})"));
+    CHECK_FALSE(read("gi.lightmap.json"));
+
+    // An unsaved scene's LightmapGI bakes beside the project's root, named after itself, and
+    // keeps the file in light_data; the files load as a lightmap and its texels.
+    CHECK(engine.ok("lightmap.bake", R"({"id": "gi"})") == baked);
+    const std::optional<std::string> data = read("gi.lightmap.json");
+    REQUIRE(data);
+    const scene3d::LightmapData lightmap = scene3d::parse_lightmap(parse(*data)).value();
+    CHECK(lightmap.texture == "gi.lightmap.hdr");
+    REQUIRE(lightmap.users.size() == 1);
+    CHECK(lightmap.users[0].entity == "floor");
+    const render::HdrImage texels = render::decode_hdr(*read("gi.lightmap.hdr")).value();
+    CHECK(texels.width == lightmap.width);
+    const auto light_data = [&] {
+        world::World& world = engine.session->world();
+        return world.ecs().get<world::LightmapGI>(world.find("gi")).light_data;
+    };
+    CHECK(light_data() == "gi.lightmap.json");
+    // Baking again changes nothing.
+    CHECK(*engine.ok("lightmap.bake", R"({"id": "gi"})").find("unchanged") == true);
+
+    // Undo takes both files and light_data back.
+    engine.ok("undo");
+    CHECK_FALSE(read("gi.lightmap.json"));
+    CHECK_FALSE(read("gi.lightmap.hdr"));
+    CHECK(light_data().empty());
+
+    // file names another, which must be a .lightmap.json file.
+    CHECK(*engine.ok("lightmap.bake", R"({"id": "gi", "file": "light/yard.lightmap.json"})")
+               .find("texture") == "light/yard.lightmap.hdr");
+    CHECK(read("light/yard.lightmap.hdr"));
+    auto reply = engine.fails("lightmap.bake", R"({"id": "gi", "file": "yard.json"})",
+                              command::code::kInvalidArgument);
+    CHECK(reply.message == "/file: \"yard.json\" is not a .lightmap.json file");
+    reply = engine.fails("lightmap.bake", R"({"id": "floor"})", command::code::kInvalidParams);
+    CHECK(reply.message == "/id: \"floor\" has no LightmapGI");
+    reply = engine.fails("lightmap.bake", R"({"id": "g"})", command::code::kNotFound);
+    CHECK(reply.message == "/id: no entity has the id \"g\"; did you mean \"gi\"?");
     std::filesystem::remove_all(root);
 }
 

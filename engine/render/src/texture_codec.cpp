@@ -5,9 +5,11 @@
 
 #include "slash/render/image.hpp"
 
+#include <algorithm>
 #include <array>
 #include <astcenc.h>
 #include <bc7decomp.h>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -186,6 +188,17 @@ std::string data_format_descriptor(TextureFormat format) {
     return out;
 }
 
+// Half-float RGBA as RGBA8: each channel clamped to 0..1, rounded to the nearest of 255 steps.
+std::vector<std::uint8_t> decode_half(std::span<const std::uint8_t> texels) {
+    std::vector<std::uint8_t> rgba(texels.size() / 2);
+    for (std::size_t i = 0; i < rgba.size(); ++i) {
+        const auto bits = static_cast<std::uint16_t>(texels[i * 2] | (texels[(i * 2) + 1] << 8U));
+        const float value = std::clamp(half_to_float(bits), 0.0F, 1.0F);
+        rgba[i] = static_cast<std::uint8_t>(std::lround(value * 255.0F));
+    }
+    return rgba;
+}
+
 } // namespace
 
 std::string_view texture_format_name(TextureFormat format) {
@@ -196,13 +209,15 @@ std::string_view texture_format_name(TextureFormat format) {
         return "bc7";
     case TextureFormat::Astc4x4:
         return "astc_4x4";
+    case TextureFormat::Rgba16F:
+        return "rgba16f";
     }
     return "rgba8";
 }
 
 std::optional<TextureFormat> parse_texture_format(std::string_view name) {
-    for (const TextureFormat format :
-         {TextureFormat::Rgba8, TextureFormat::Bc7, TextureFormat::Astc4x4}) {
+    for (const TextureFormat format : {TextureFormat::Rgba8, TextureFormat::Bc7,
+                                       TextureFormat::Astc4x4, TextureFormat::Rgba16F}) {
         if (name == texture_format_name(format)) {
             return format;
         }
@@ -231,6 +246,8 @@ Result<std::vector<std::uint8_t>> decode_texels(TextureFormat format, std::uint3
         return decode_bc7(width, height, texels);
     case TextureFormat::Astc4x4:
         return decode_astc(width, height, texels);
+    case TextureFormat::Rgba16F:
+        return decode_half(texels);
     }
     return std::vector<std::uint8_t>(texels.begin(), texels.end());
 }

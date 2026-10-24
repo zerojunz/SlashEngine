@@ -16,6 +16,7 @@ cbuffer Instance : register(b1, space1) {
     float4x4 model;
     float4x4 normal_model;
     float4 uv1;
+    float4 lightmap_uv;
 };
 
 struct VertexInput {
@@ -24,6 +25,7 @@ struct VertexInput {
     float4 tangent : TEXCOORD2;
     float2 uv : TEXCOORD3;
     float4 color : TEXCOORD4;
+    float2 uv2 : TEXCOORD5;
 };
 
 struct VertexOutput {

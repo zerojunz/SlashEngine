@@ -88,20 +88,22 @@ enum class Filter : std::uint8_t {
 
 // How a texture's texels are stored. The compressed formats are blocks of 4x4 texels in 16 bytes,
 // which GPUs sample as they are, so they take a quarter of RGBA8's memory: BC7 on desktop GPUs,
-// ASTC on phones' and Apple's. Their textures are 4, 8, 12... texels wide and high.
+// ASTC on phones' and Apple's. Their textures are 4, 8, 12... texels wide and high. Half-float
+// RGBA holds light beyond 1, such as a lightmap's, linear, and every device samples it.
 enum class TextureFormat : std::uint8_t {
     Rgba8,   // straight-alpha RGBA, 4 bytes a texel
     Bc7,     // BC7 (BPTC), RGBA
     Astc4x4, // ASTC LDR, RGBA, in 4x4 blocks
+    Rgba16F, // RGBA as IEEE half floats, little-endian, 8 bytes a texel
 };
 
-// "rgba8", "bc7" or "astc_4x4".
+// "rgba8", "bc7", "astc_4x4" or "rgba16f".
 [[nodiscard]] std::string_view texture_format_name(TextureFormat format);
 // The format with this name, or nullopt.
 [[nodiscard]] std::optional<TextureFormat> parse_texture_format(std::string_view name);
 
 [[nodiscard]] constexpr bool is_compressed(TextureFormat format) noexcept {
-    return format != TextureFormat::Rgba8;
+    return format == TextureFormat::Bc7 || format == TextureFormat::Astc4x4;
 }
 
 struct TextureDesc {
@@ -121,8 +123,9 @@ struct TextureDesc {
     std::uint32_t cubes = 0;
 };
 
-// The bytes a texture's texels take: 4 a texel in RGBA8, 1 in the compressed formats. Textures
-// have no mipmaps; a reflection atlas's cubes take 8 bytes a texel at each of their levels.
+// The bytes a texture's texels take: 4 a texel in RGBA8, 1 in the compressed formats and 8 in
+// half-float RGBA. Textures have no mipmaps; a reflection atlas's cubes take 8 bytes a texel at
+// each of their levels.
 [[nodiscard]] constexpr std::uint64_t texture_bytes(const TextureDesc& desc) noexcept {
     if (desc.cubes > 0) {
         std::uint64_t texels = 0;
@@ -132,8 +135,17 @@ struct TextureDesc {
         return texels * 6 * 8 * desc.cubes;
     }
     const std::uint64_t texels = std::uint64_t{desc.width} * desc.height;
+    if (desc.format == TextureFormat::Rgba16F) {
+        return texels * 8;
+    }
     return is_compressed(desc.format) ? texels : texels * 4;
 }
+
+// A float as an IEEE half float's bits, rounded to the nearest (ties to even), as GPUs convert;
+// beyond the largest half it is infinity, and NaN stays NaN.
+[[nodiscard]] std::uint16_t float_to_half(float value) noexcept;
+// A half float's bits as a float, exactly.
+[[nodiscard]] float half_to_float(std::uint16_t bits) noexcept;
 
 // A texture a material samples in slot 1, 2 or 3.
 struct MaterialTexture {
@@ -244,6 +256,21 @@ struct TerrainShading {
     bool operator==(const TerrainShading&) const = default;
 };
 
+// A mesh's baked light, as Godot's LightmapGI gives an instance: a half-float RGBA texture
+// (TextureFormat::Rgba16F) of the light reaching each texel, linear, sampled at the mesh's second
+// texture coordinate (Vertex3D::uv2) times uv_rect's scale (zw) plus its offset (xy), as Godot's
+// lightmap_uv_scale, with Godot's bicubic filter or bilinearly, and times exposure (the camera's
+// exposure over the one it was baked with). It is the mesh's ambient light: the scene's ambient
+// light and the probes' leave it alone, and so do baked lights. Terrains take none.
+struct LightmapShading {
+    TextureId texture = TextureId::None; // None: no lightmap
+    std::array<float, 4> uv_rect{0.0F, 0.0F, 1.0F, 1.0F};
+    float exposure = 1.0F;
+    bool bicubic = true; // Godot's rendering/lightmapping/lightmap_gi/use_bicubic_filter
+
+    bool operator==(const LightmapShading&) const = default;
+};
+
 // A StandardMaterial3D: what each pixel of a mesh is, with Godot's parameters and defaults.
 // Colors are sRGB; textures are sampled at the mesh's texture coordinate times uv1_scale plus
 // uv1_offset, and None samples white.
@@ -278,6 +305,8 @@ struct Material3D {
     // With terrain.enabled, the terrain's maps and layers give the albedo, roughness, normal and
     // holes, in place of the textures above; albedo, metallic, specular and the rest still count.
     TerrainShading terrain{}; // NOLINT(readability-redundant-member-init): may be left out
+    // A baked lightmap, which stands in for the ambient light (and Light3D::baked lights).
+    LightmapShading lightmap{}; // NOLINT(readability-redundant-member-init): may be left out
 
     bool operator==(const Material3D&) const = default;
 };
