@@ -566,10 +566,15 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 
 ### Milestone 7: 3D feature set (In progress)
 
-- [ ] Clustered forward+ renderer with PBR materials, plus a low-end path for web and mobile
+- [x] Clustered forward+ renderer with PBR materials, plus a low-end path for web and mobile
   - [x] Meshes, a depth buffer and `StandardMaterial3D`'s PBR inputs lit by up to 64
         directional, omni and spot lights in every render device, as Godot's Compatibility
         renderer (the low-end path), with the software device's CPU twin
+  - [x] Forward+'s clustered lights, as Godot's: 8 directional and 512 omni and spot lights
+        sorted into screen tiles and depth slices on the CPU, read from storage buffers on
+        Vulkan, Metal, Direct3D 12 and WebGPU and by the software device's twin;
+        `rendering.rendering_method` picks `forward_plus` or `gl_compatibility`, which the
+        OpenGL drivers always draw
   - [x] 3D nodes in scenes, as Godot's: `Transform3D` trees, `MeshInstance3D` with Godot's
         eight primitive meshes, `StandardMaterial3D`, `Camera3D`, `DirectionalLight3D`,
         `OmniLight3D`, `SpotLight3D` and `WorldEnvironment`, drawn under the canvas by every
@@ -828,7 +833,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | 2D lighting | 2D lights, occluders, normal-mapped sprites | 5 | Done |
 | 2D physics | Box2D v3: bodies, areas, joints, character movement and queries | 5 | In part: tile collision is done; area overrides in 5 |
 | 3D physics | Jolt: rigid bodies, joints, character controller, vehicles | 7 | In part: bodies, areas, shapes, character movement and queries are done; joints and vehicles in 7 |
-| 3D renderer | Clustered forward+ with PBR, plus a low-end path for web and mobile | 7 | In part: meshes, depth and PBR lighting in every render device, as Godot's Compatibility renderer, are done |
+| 3D renderer | Clustered forward+ with PBR, plus a low-end path for web and mobile | 7 | Done |
 | Shadows | Cascaded, omni and spot shadow maps | 7 | Done |
 | Post-processing | Tonemap, bloom, SSAO, SSR, DoF, auto exposure, color grading | 7 | Planned |
 | Materials and shaders | HLSL shaders plus a JSON material graph | 5, 7 | In part: canvas material graphs, a game's own HLSL canvas shaders and `StandardMaterial3D`'s inputs on meshes are done; 3D shaders and material files in 7 |

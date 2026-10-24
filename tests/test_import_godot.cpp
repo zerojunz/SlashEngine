@@ -772,6 +772,7 @@ TEST_CASE("importing a Godot project converts its settings and input map") {
     CHECK(settings.find("tick_hz")->as_double() == 30.0);
     CHECK(settings.find("rendering")->find("texture_filter")->as_string() == "linear");
     CHECK(settings.find("rendering")->find("driver")->as_string() == "opengl");
+    CHECK(settings.find("rendering")->find("rendering_method")->as_string() == "gl_compatibility");
     CHECK_FALSE(settings.find("rendering")->find("fallback_to_opengl")->as_bool());
     CHECK(settings.find("physics_2d")->find("gravity")->as_double() == 490.0);
     CHECK(settings.find("physics_2d")->find("linear_damp")->as_double() == 0.5);

@@ -6,6 +6,7 @@
 
 #include "checks.hpp"
 #include "material_shaders.hpp"
+#include "mesh_clustered_shaders.hpp"
 #include "mesh_shaders.hpp"
 #include "mesh_shading.hpp"
 #include "particle_layout.hpp"
@@ -203,10 +204,11 @@ WGPUBindGroupLayoutEntry uniform_entry(std::uint32_t binding, WGPUShaderStage st
     return entry;
 }
 
-WGPUBindGroupLayoutEntry storage_entry(std::uint32_t binding, bool read_only) {
+WGPUBindGroupLayoutEntry storage_entry(std::uint32_t binding, bool read_only,
+                                       WGPUShaderStage stage = WGPUShaderStage_Compute) {
     WGPUBindGroupLayoutEntry entry = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
     entry.binding = binding;
-    entry.visibility = WGPUShaderStage_Compute;
+    entry.visibility = stage;
     entry.buffer.type =
         read_only ? WGPUBufferBindingType_ReadOnlyStorage : WGPUBufferBindingType_Storage;
     return entry;
@@ -369,11 +371,14 @@ public:
             destroy_buffer(system.buffer);
             destroy_buffer(system.emissions);
         }
-        for (WGPUBuffer buffer :
-             {no_source_, no_target_, particle_data_, vertex_buffer_, uniform_buffer_}) {
+        for (WGPUBuffer buffer : {no_source_, no_target_, particle_data_, vertex_buffer_,
+                                  uniform_buffer_, cluster_lights_.buffer, cluster_cells_.buffer}) {
             destroy_buffer(buffer);
         }
         release_uniform_groups();
+        if (cluster_group_ != nullptr) {
+            wgpuBindGroupRelease(cluster_group_);
+        }
         for (WGPUBindGroupLayout layout : {empty_layout_,
                                            vertex_uniforms_layout_,
                                            sprite_textures_layout_,
@@ -388,6 +393,7 @@ public:
                                            mesh_vertex_layout_,
                                            mesh_textures_layout_,
                                            mesh_fragment_layout_,
+                                           mesh_clusters_layout_,
                                            shadow_vertex_layout_,
                                            shadow_fragment_layout_,
                                            post_textures_layout_,
@@ -987,14 +993,14 @@ public:
         make_depth_target(frame_width_, frame_height_);
         prepare_shadows(*frame_.scene);
         prepare_radiance(*frame_.scene);
-        MeshBatch batch{
-            .vertices = it->second.vertices,
-            .indices = it->second.indices,
-            .index_count = it->second.index_count,
-            .bounds = it->second.bounds,
-            .pipeline = mesh_pipeline_for(
-                post_processes(frame_.scene->post) ? kTextureFormat : frame_format_, material),
-            .bindings = {}};
+        MeshBatch batch{.vertices = it->second.vertices,
+                        .indices = it->second.indices,
+                        .index_count = it->second.index_count,
+                        .bounds = it->second.bounds,
+                        .pipeline = mesh_pipeline_for(
+                            post_processes(frame_.scene->post) ? kTextureFormat : frame_format_,
+                            material, frame_.scene->method == RenderMethod::ForwardPlus),
+                        .bindings = {}};
         const std::array<MaterialTexture, kMeshTextures> slots = mesh_texture_slots(material);
         for (std::size_t slot = 0; slot < kMeshTextures; ++slot) {
             batch.bindings.at(slot) = binding(slots.at(slot).texture, slots.at(slot).repeat);
@@ -1309,7 +1315,14 @@ private:
         CullMode cull = CullMode::Back;
         bool blended = false;             // an Alpha material's, which writes no depth
         BlendMode blend = BlendMode::Mix; // when blended
+        bool clustered = false;           // Forward+'s, which reads the clusters
         WGPURenderPipeline pipeline = nullptr;
+    };
+
+    // A storage buffer the frame's data is written to, grown when it doesn't fit.
+    struct StorageBuffer {
+        WGPUBuffer buffer = nullptr;
+        std::uint64_t capacity = 0;
     };
 
     // Where the frame's mesh uniforms are: the camera's, the scene's and the shadows', each
@@ -1629,6 +1642,10 @@ private:
             uniform_entry(1, WGPUShaderStage_Fragment, sizeof(MeshSceneUniforms)),
             uniform_entry(2, WGPUShaderStage_Fragment, sizeof(MeshShadowUniforms))};
         mesh_fragment_layout_ = layout(mesh_fragment);
+        // Forward+'s clusters: the lights, then each tile's words.
+        const std::array mesh_clusters{storage_entry(0, true, WGPUShaderStage_Fragment),
+                                       storage_entry(1, true, WGPUShaderStage_Fragment)};
+        mesh_clusters_layout_ = layout(mesh_clusters);
         const std::array shadow_vertex{
             uniform_entry(0, WGPUShaderStage_Vertex, sizeof(MeshShadowPassUniforms)),
             uniform_entry(1, WGPUShaderStage_Vertex, sizeof(MeshInstanceUniforms))};
@@ -1674,6 +1691,9 @@ private:
             pipeline_layout({empty_layout_, emit_outputs_layout_, compute_uniforms_layout_});
         pipeline_layouts_.at(kMeshLayout) = pipeline_layout(
             {empty_layout_, mesh_vertex_layout_, mesh_textures_layout_, mesh_fragment_layout_});
+        pipeline_layouts_.at(kMeshClusteredLayout) =
+            pipeline_layout({mesh_clusters_layout_, mesh_vertex_layout_, mesh_textures_layout_,
+                             mesh_fragment_layout_});
         pipeline_layouts_.at(kShadowLayout) =
             pipeline_layout({empty_layout_, shadow_vertex_layout_, sprite_textures_layout_,
                              shadow_fragment_layout_});
@@ -2454,13 +2474,14 @@ private:
 
     // The pipeline drawing a material's meshes into a target format, made the first time a frame
     // needs it: it culls as the material says, and an Alpha material's blends and writes no
-    // depth.
-    WGPURenderPipeline mesh_pipeline_for(WGPUTextureFormat format, const Material3D& material) {
+    // depth. A clustered one lights them with Forward+'s clusters.
+    WGPURenderPipeline mesh_pipeline_for(WGPUTextureFormat format, const Material3D& material,
+                                         bool clustered) {
         const bool blended = material.transparency == Transparency::Alpha;
         const BlendMode blend = blended ? material.blend : BlendMode::Mix;
         for (const MeshPipeline& made : mesh_pipelines_) {
             if (made.format == format && made.cull == material.cull && made.blended == blended &&
-                made.blend == blend) {
+                made.blend == blend && made.clustered == clustered) {
                 return made.pipeline;
             }
         }
@@ -2476,7 +2497,10 @@ private:
         color.format = format;
         color.blend = blended ? &blending : nullptr;
         WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
-        fragment.module = module(kMeshFragmentModule, joined(shaders::kMeshFragmentWgsl));
+        fragment.module =
+            clustered
+                ? module(kMeshClusteredFragmentModule, joined(shaders::kMeshClusteredFragmentWgsl))
+                : module(kMeshFragmentModule, joined(shaders::kMeshFragmentWgsl));
         fragment.entryPoint = text_view("fs_main");
         fragment.targetCount = 1;
         fragment.targets = &color;
@@ -2487,7 +2511,7 @@ private:
         depth.depthCompare = WGPUCompareFunction_Greater;
 
         WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
-        info.layout = pipeline_layouts_.at(kMeshLayout);
+        info.layout = pipeline_layouts_.at(clustered ? kMeshClusteredLayout : kMeshLayout);
         info.vertex.module = module(kMeshVertexModule, joined(shaders::kMeshVertexWgsl));
         info.vertex.entryPoint = text_view("vs_main");
         info.vertex.bufferCount = 1;
@@ -2503,6 +2527,7 @@ private:
                                    .cull = material.cull,
                                    .blended = blended,
                                    .blend = blend,
+                                   .clustered = clustered,
                                    .pipeline = pipeline});
         return pipeline;
     }
@@ -2561,6 +2586,10 @@ private:
         camera.view_projection = transposed(camera.view_projection);
         at.camera = uniforms_.add(camera);
         const auto lights = std::make_unique<MeshSceneUniforms>(mesh_scene_uniforms(scene));
+        if (scene.method == RenderMethod::ForwardPlus) {
+            upload_clusters();
+            lights->cluster = clusters_.uniform();
+        }
         at.scene = uniforms_.add(*lights);
         const ShadowPlan& plan = *shadow_plan_;
         auto shadows = std::make_unique<MeshShadowUniforms>(*plan.uniforms);
@@ -2591,6 +2620,48 @@ private:
                                   uniforms_.add(mesh_surface_uniforms(draw.material, draw.layers)));
         }
         return at;
+    }
+
+    // Builds the frame's Forward+ clusters, copies them to the GPU and binds them as a group, made
+    // again when a buffer grows.
+    void upload_clusters() {
+        clusters_ = build_clusters(*frame_.scene, frame_width_, frame_height_);
+        if (clusters_.lights.empty()) {
+            clusters_.lights.emplace_back(); // a storage buffer is never empty
+        }
+        const bool lights_grew =
+            upload_storage(cluster_lights_, std::as_bytes(std::span(clusters_.lights)));
+        const bool cells_grew =
+            upload_storage(cluster_cells_, std::as_bytes(std::span(clusters_.cells)));
+        if (cluster_group_ != nullptr && !lights_grew && !cells_grew) {
+            return;
+        }
+        if (cluster_group_ != nullptr) {
+            wgpuBindGroupRelease(cluster_group_);
+        }
+        std::array<WGPUBindGroupEntry, 2> entries{};
+        for (std::uint32_t binding = 0; binding < entries.size(); ++binding) {
+            const StorageBuffer& storage = binding == 0 ? cluster_lights_ : cluster_cells_;
+            entries.at(binding) = WGPU_BIND_GROUP_ENTRY_INIT;
+            entries.at(binding).binding = binding;
+            entries.at(binding).buffer = storage.buffer;
+            entries.at(binding).size = storage.capacity;
+        }
+        cluster_group_ = bind_group(mesh_clusters_layout_, entries);
+    }
+
+    // Writes bytes to a storage buffer, growing it first if they don't fit; says if it grew.
+    bool upload_storage(StorageBuffer& storage, std::span<const std::byte> bytes) {
+        const std::uint64_t size = bytes.size();
+        const bool grows = size > storage.capacity;
+        if (grows) {
+            destroy_buffer(storage.buffer);
+            storage.capacity = std::max({size, storage.capacity * 2, kMinVertexBytes});
+            storage.buffer =
+                create_buffer(WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst, storage.capacity);
+        }
+        wgpuQueueWriteBuffer(queue_, storage.buffer, 0, bytes.data(), bytes.size());
+        return grows;
     }
 
     // Records the frame's sky, when it has one (its uniforms at sky), then its meshes, in the
@@ -2632,6 +2703,9 @@ private:
             wgpuRenderPassEncoderSetBindGroup(pass, 3, sky_uniforms_group_, 1, &*sky);
             wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
             wgpuBindGroupRelease(texture);
+        }
+        if (!mesh_draws_.empty() && frame_.scene->method == RenderMethod::ForwardPlus) {
+            wgpuRenderPassEncoderSetBindGroup(pass, 0, cluster_group_, 0, nullptr);
         }
         WGPURenderPipeline bound = nullptr;
         for (const std::size_t i :
@@ -3046,6 +3120,7 @@ private:
     static constexpr std::size_t kSkyFragmentModule = 14;
     static constexpr std::size_t kRadianceVertexModule = 15;
     static constexpr std::size_t kRadianceFragmentModule = 16;
+    static constexpr std::size_t kMeshClusteredFragmentModule = 17;
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
@@ -3056,6 +3131,7 @@ private:
     static constexpr std::size_t kPostLayout = 7;
     static constexpr std::size_t kSkyLayout = 8;
     static constexpr std::size_t kRadianceLayout = 9;
+    static constexpr std::size_t kMeshClusteredLayout = 10;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -3068,7 +3144,7 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 3> sampled_{true, false, false};
-    std::array<WGPUShaderModule, 17> modules_{};
+    std::array<WGPUShaderModule, 18> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -3087,6 +3163,7 @@ private:
     WGPUBindGroupLayout mesh_vertex_layout_ = nullptr;
     WGPUBindGroupLayout mesh_textures_layout_ = nullptr;
     WGPUBindGroupLayout mesh_fragment_layout_ = nullptr;
+    WGPUBindGroupLayout mesh_clusters_layout_ = nullptr;
     WGPUBindGroupLayout shadow_vertex_layout_ = nullptr;
     WGPUBindGroupLayout shadow_fragment_layout_ = nullptr;
     WGPUBindGroupLayout post_textures_layout_ = nullptr;
@@ -3094,7 +3171,7 @@ private:
     WGPUBindGroupLayout sky_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout cube_texture_layout_ = nullptr;
     WGPUBindGroupLayout filter_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, 10> pipeline_layouts_{};
+    std::array<WGPUPipelineLayout, 11> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -3133,6 +3210,11 @@ private:
     std::unordered_map<MeshId, Mesh> meshes_;
     std::uint32_t next_mesh_ = 1;
     std::vector<MeshPipeline> mesh_pipelines_;
+    // The frame's Forward+ clusters, the buffers they are copied to and the group binding them.
+    LightClusters clusters_;
+    StorageBuffer cluster_lights_;
+    StorageBuffer cluster_cells_;
+    WGPUBindGroup cluster_group_ = nullptr;
     GpuTexture depth_;
     std::uint32_t depth_width_ = 0;
     std::uint32_t depth_height_ = 0;

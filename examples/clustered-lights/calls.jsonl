@@ -1,0 +1,4 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[96,33],[131,107],[150,107],[263,167],[160,115]]}}
+{"jsonrpc":"2.0","id":3,"method":"component.set","params":{"id":"lantern100","components":{"OmniLight3D":{"light_color":[1,0.15,0.1,1]}}}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"points":[[263,167],[160,115]],"path":"shots/plaza.png"}}

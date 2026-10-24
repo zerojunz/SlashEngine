@@ -36,6 +36,7 @@ checks it.
 | `rendering.clear_color` | No | `[0.3, 0.3, 0.3, 1]` | What the window shows behind everything, as `[r, g, b, a]` from 0 to 1. The default is Godot's gray |
 | `rendering.driver` | No | `auto` | The GPU backend. `auto` takes the first that works: Metal on Apple platforms, Direct3D 12 then Vulkan on Windows, Vulkan on Linux and Android, and on the web WebGPU where the browser has it, else WebGL 2. `vulkan`, `metal` or `d3d12` asks for one, and `webgpu` asks for the browser's WebGPU (web exports only). The OpenGL drivers are Godot's compatibility renderer: `opengl` is OpenGL 3.3 on Windows, macOS and Linux, and OpenGL ES 3.0 where that doesn't start; `opengl_es` is OpenGL ES 3.0, as Godot's `opengl3_es`, which is all the web (WebGL 2), Android and iOS have, so there both drivers are it. `null` draws nothing. If none starts, the game logs a warning and runs with the null device |
 | `rendering.fallback_to_opengl` | No | `true` | Draw with `opengl` where the driver's GPU backend (`auto`'s, or the one `vulkan`, `metal` or `d3d12` names) doesn't work, as Godot's `rendering_device/fallback_to_opengl3`: an old GPU or driver, a virtual machine, a remote desktop. The game asks before it makes the window, logs a warning when it falls back, and reports `opengl` (or `opengl_es`) as its `renderer` |
+| `rendering.rendering_method` | No | `forward_plus` | How 3D meshes are lit, as Godot's `rendering/renderer/rendering_method`: see [Rendering methods](#rendering-methods) |
 | `rendering.texture_filter` | No | `linear` | How sprites whose `texture_filter` is `inherit` are sampled when scaled: `linear` is smooth, `nearest` keeps pixel art sharp |
 | `rendering.scaling` | No | no scaling | Draw the world at another size and scale it to the window, under controls drawn at full size: see [Render scale](#render-scale) |
 | `rendering.lights_and_shadows` | No | 4096-texel atlases, `soft_low` | The 3D shadow atlases' sizes and edge filters: see [Shadows](#shadows) |
@@ -126,6 +127,20 @@ made on the device. `render::UpscalerInfo::supports` says which devices one runs
 vendor's on its own GPUs. One that is `temporal` (DLSS, XeSS, FSR 2 and later) needs depth,
 motion vectors and a jittered camera, so `add_upscaler` refuses it until the 3D renderer makes
 them.
+
+## Rendering methods
+
+`rendering.rendering_method` picks how 3D [lights](scene-format.md#lights) reach meshes, as
+Godot's renderers do:
+
+| Method | Lights | How |
+| --- | --- | --- |
+| `forward_plus` | 8 directional and 512 omni and spot | Godot's Forward+ clusters: each frame, the CPU sorts the omni and spot lights nearest first and marks the 32-pixel tiles of the screen, and the 32 slices of depth out to the camera's far plane, that each light's range reaches. A pixel adds the directional lights, then only the lights of its tile and slice, so a plaza of hundreds of lanterns costs each pixel the few near it |
+| `gl_compatibility` | The first 64 of any kind, the directional ones first | Godot's Compatibility renderer: every pixel adds each light |
+
+The OpenGL drivers (`opengl`, `opengl_es`, and WebGL 2 on the web) always draw as
+`gl_compatibility`, as Godot's do. Every other device, and `frame.capture`, draws as the project
+says; both methods light a pixel the same where a scene has 64 lights or fewer.
 
 ## Shadows
 
