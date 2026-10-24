@@ -557,8 +557,8 @@ struct PanoramaSkyMaterial {
 };
 SLASH_COMPONENT(PanoramaSkyMaterial, panorama, filter, energy_multiplier)
 
-// The 3D world's background, ambient light, tonemap, glow, fog and adjustments, as Godot's
-// WorldEnvironment and its Environment. The first one made applies;
+// The 3D world's background, ambient light, tonemap, ambient occlusion, glow, fog and adjustments,
+// as Godot's WorldEnvironment and its Environment. The first one made applies;
 // without one the background is the project's clear color, there is no ambient light and colors
 // are left as they are. A "sky" background is the sky material on the same entity: a
 // ProceduralSkyMaterial, PhysicalSkyMaterial or PanoramaSkyMaterial, or Godot's default
@@ -587,6 +587,17 @@ struct WorldEnvironment {
     float tonemap_white = 1.0F;
     float tonemap_agx_white = 16.29F;   // agx's white with Forward+, as Blender's AgX
     float tonemap_agx_contrast = 1.25F; // how steep agx's curve is with Forward+
+    // Forward+: screen-space ambient occlusion, which darkens creases, corners and what is close to
+    // a surface.
+    bool ssao_enabled = false;
+    float ssao_radius = 1.0F;
+    float ssao_intensity = 2.0F;
+    float ssao_power = 1.5F;
+    float ssao_detail = 0.5F;
+    float ssao_horizon = 0.06F;
+    float ssao_sharpness = 0.98F;
+    float ssao_light_affect = 0.0F;
+    float ssao_ao_channel_affect = 0.0F;
     bool glow_enabled = false;
     // Forward+: how much each of glow's seven levels adds, from the sharpest; Godot's
     // glow_levels/1 to glow_levels/7.
@@ -626,14 +637,15 @@ SLASH_COMPONENT(WorldEnvironment, background_mode, background_color, background_
                 sky_custom_fov, sky_rotation, sky_radiance_size, ambient_light_source,
                 ambient_light_color, ambient_light_sky_contribution, ambient_light_energy,
                 reflected_light_source, tonemap_mode, tonemap_exposure, tonemap_white,
-                tonemap_agx_white, tonemap_agx_contrast, glow_enabled, glow_levels, glow_normalized,
-                glow_intensity, glow_strength, glow_mix, glow_blend_mode, glow_bloom,
-                glow_hdr_threshold, glow_hdr_scale, glow_hdr_luminance_cap, fog_enabled, fog_mode,
-                fog_light_color, fog_light_energy, fog_sun_scatter, fog_density,
-                fog_aerial_perspective, fog_sky_affect, fog_height, fog_height_density,
-                fog_depth_curve, fog_depth_begin, fog_depth_end, adjustment_enabled,
-                adjustment_brightness, adjustment_contrast, adjustment_saturation,
-                adjustment_color_correction)
+                tonemap_agx_white, tonemap_agx_contrast, ssao_enabled, ssao_radius, ssao_intensity,
+                ssao_power, ssao_detail, ssao_horizon, ssao_sharpness, ssao_light_affect,
+                ssao_ao_channel_affect, glow_enabled, glow_levels, glow_normalized, glow_intensity,
+                glow_strength, glow_mix, glow_blend_mode, glow_bloom, glow_hdr_threshold,
+                glow_hdr_scale, glow_hdr_luminance_cap, fog_enabled, fog_mode, fog_light_color,
+                fog_light_energy, fog_sun_scatter, fog_density, fog_aerial_perspective,
+                fog_sky_affect, fog_height, fog_height_density, fog_depth_curve, fog_depth_begin,
+                fog_depth_end, adjustment_enabled, adjustment_brightness, adjustment_contrast,
+                adjustment_saturation, adjustment_color_correction)
 
 // How the 3D world is exposed and focused, as Godot's CameraAttributesPractical: on a Camera3D's
 // entity for that camera, or on the WorldEnvironment's entity for cameras without their own.

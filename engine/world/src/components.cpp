@@ -2602,6 +2602,32 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("tonemap_agx_white", {.doc = "agx's white with Forward+, at least 2.", .min = 0})
         .describe("tonemap_agx_contrast",
                   {.doc = "How steep agx's curve is with Forward+.", .min = 0})
+        .describe("ssao_enabled",
+                  {.doc = "Forward+: screen-space ambient occlusion darkens the ambient light of "
+                          "creases, corners and what is close to a surface. Project.json's "
+                          "rendering.environment.ssao sets its quality."})
+        .describe("ssao_radius",
+                  {.doc = "How far around a pixel occludes it, in meters.", .min = 0.01, .max = 16})
+        .describe("ssao_intensity", {.doc = "How dark the occlusion is.", .min = 0, .max = 16})
+        .describe("ssao_power", {.doc = "The occlusion's curve.", .min = 0.01, .max = 10})
+        .describe(
+            "ssao_detail",
+            {.doc = "How much the pixels right beside a pixel occlude it.", .min = 0, .max = 5})
+        .describe("ssao_horizon",
+                  {.doc = "Surfaces at less than this angle above a pixel's don't occlude it.",
+                   .min = 0,
+                   .max = 1})
+        .describe("ssao_sharpness",
+                  {.doc = "How much the blur keeps to edges.", .min = 0, .max = 1})
+        .describe("ssao_light_affect",
+                  {.doc = "How much the occlusion darkens direct light too, times "
+                          "ssao_ao_channel_affect.",
+                   .min = 0,
+                   .max = 1})
+        .describe("ssao_ao_channel_affect",
+                  {.doc = "How much ssao_light_affect applies, as Godot 4.6 mixes the two.",
+                   .min = 0,
+                   .max = 1})
         .describe("glow_enabled", {.doc = "Bright colors bleed into what is around them."})
         .describe("glow_levels",
                   {.doc = "Forward+: how much each of glow's seven levels adds, from the "

@@ -594,6 +594,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Depth of field, as Godot 4.6's: `CameraAttributesPractical`'s far and near blur by
         depth, with the box, hexagon and circle bokeh shapes at every quality, on every Forward+
         device
+  - [x] SSAO, as Godot 4.6's Forward+: a normal prepass and Intel's ASSAO passes at every
+        quality (deinterleaved depth, adaptive samples at ultra, edge-aware blur), set by
+        `WorldEnvironment` and `rendering.environment.ssao`, on every Forward+ device
 - [ ] Baked lightmaps and probe-based global illumination
 - [ ] Render scale and upscalers, as Godot's `scaling_3d` setting: bilinear, FSR 1 and FSR 2/3
       (AMD's FidelityFX code, MIT) on every backend and MetalFX on Apple, set in `project.json`
