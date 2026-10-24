@@ -588,6 +588,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         through up to seven levels with Godot's weights, strength, normalization and five blend
         modes, Godot 4.6's tonemappers and whites (AgX's own white and contrast), on Vulkan,
         Metal, Direct3D 12, WebGPU and the software device
+  - [x] Auto exposure and the exposure multiplier, as Godot 4.6's `CameraAttributesPractical`
+        on a camera or `WorldEnvironment`: Forward+ frames measured in blocks of 8 down to one
+        brightness, adapting over game time, on every Forward+ device
 - [ ] Baked lightmaps and probe-based global illumination
 - [ ] Render scale and upscalers, as Godot's `scaling_3d` setting: bilinear, FSR 1 and FSR 2/3
       (AMD's FidelityFX code, MIT) on every backend and MetalFX on Apple, set in `project.json`

@@ -1,10 +1,11 @@
 // Post-processing for a frame's 3D world, as Godot's Forward+ renderer does it
-// (servers/rendering/renderer_rd/shaders/effects/copy.glsl's gaussian glow and tonemap.glsl): the
-// sky and meshes draw linear into a texture of half floats, glow's passes blur its bright parts
-// into up to seven textures, the first half the target's size and each next one half the last, and
-// the tonemap pass exposes the colors, blends the glow in, tonemaps, adjusts and corrects them as
-// it draws over the frame's target. Every pass draws one triangle over its whole target. Keep it in
-// step with src/forward_post.cpp, its CPU twin.
+// (servers/rendering/renderer_rd/shaders/effects/copy.glsl's gaussian glow, luminance_reduce.glsl
+// and tonemap.glsl): the sky and meshes draw linear into a texture of half floats; with auto
+// exposure, the luminance passes average its brightness down to one texel; glow's passes blur its
+// bright parts into up to seven textures, the first half the target's size and each next one half
+// the last; and the tonemap pass exposes the colors, blends the glow in, tonemaps, adjusts and
+// corrects them as it draws over the frame's target. Every pass draws one triangle over its whole
+// target. Keep it in step with src/forward_post.cpp, its CPU twin.
 
 float4 vs_main(uint id : SV_VertexID) : SV_Position {
     float2 corner = float2((float)((id << 1u) & 2u), (float)(id & 2u));
@@ -21,6 +22,11 @@ Texture2D<float4> glow4 : register(t5, space2);
 Texture2D<float4> glow5 : register(t6, space2);
 Texture2D<float4> glow6 : register(t7, space2);
 Texture2D<float4> lut : register(t8, space2);
+// The measured brightness, in one texel of floats: the last frame's in the last luminance pass.
+// It and the luminance texture a luminance pass reads are only loaded, never filtered, since
+// WebGPU filters no floats.
+Texture2D<float4> brightness : register(t9, space2);
+Texture2D<float4> luminance_source : register(t10, space2);
 SamplerState source_sampler : register(s0, space2);
 SamplerState glow0_sampler : register(s1, space2);
 SamplerState glow1_sampler : register(s2, space2);
@@ -30,12 +36,19 @@ SamplerState glow4_sampler : register(s5, space2);
 SamplerState glow5_sampler : register(s6, space2);
 SamplerState glow6_sampler : register(s7, space2);
 SamplerState lut_sampler : register(s8, space2);
+SamplerState brightness_sampler : register(s9, space2);
+SamplerState luminance_source_sampler : register(s10, space2);
 
 static const uint kGlowFirst = 0u;
 static const uint kGlowNext = 1u;
+static const uint kLuminanceFirst = 3u;
+static const uint kLuminance = 4u;
+static const uint kLuminanceFinal = 5u;
 
 static const uint kUseGlow = 1u;
 static const uint kUseAdjustments = 2u;
+static const uint kUseAutoExposure = 16u;
+static const float kMinLuminance = 0.0001;
 static const uint kCorrection1D = 1u;
 static const uint kCorrection3D = 2u;
 
@@ -59,11 +72,56 @@ cbuffer ForwardPost : register(b0, space3) {
     float4 tonemap;     // exposure, white, the 3D LUT's size
     float4 tonemapper;  // the tonemapper's parameters, as Godot's tonemapper_params
     float4 adjust;      // brightness, contrast, saturation
-    // The pass (the glow passes, or 2 for the tonemap pass), the tonemapper, 1 to blend glow in
-    // | 2 to adjust | the color correction (0, kCorrection1D or kCorrection3D) times 4, and the
-    // glow blend mode.
+    // Auto exposure's scale, the brightness's least and most, and how far it moves this frame
+    float4 exposure;
+    float4 source_size; // a luminance pass's source's width and height
+    // The pass (the glow passes, 2 for the tonemap pass, or the luminance passes), the
+    // tonemapper, 1 to blend glow in | 2 to adjust | the color correction (0, kCorrection1D or
+    // kCorrection3D) times 4 | kUseAutoExposure, and the glow blend mode.
     uint4 options;
 };
+
+// The measured brightness over auto exposure's scale, which the colors are divided by.
+float exposure_divisor() {
+    return max(brightness.Load(int3(0, 0, 0)).r, kMinLuminance) / exposure.x;
+}
+
+// --- Auto exposure's luminance, as luminance_reduce.glsl ---
+
+// A pixel's 8 x 8 block of its source averaged, summed in the work group's order: each of the
+// first half of the block's 64 values adds the one half a block on, then the first quarter the
+// one a quarter on, down to one. The first pass takes the world's brightest channel, and the
+// rest the luminance texture before. Texels past the source's edge count 0, and the sum is divided
+// by those inside. The last pass moves from the last frame's brightness by exposure.w and keeps
+// it from exposure.y to exposure.z.
+float luminance_pass(int2 pixel, uint kind) {
+    float block[64];
+    int2 origin = pixel * 8;
+    int2 size = (int2)source_size.xy;
+    for (int t = 0; t < 64; ++t) {
+        int2 at = origin + int2(t & 7, t >> 3);
+        float value = 0.0;
+        if (at.x < size.x && at.y < size.y && kind == kLuminanceFirst) {
+            float4 texel = source.Load(int3(at, 0));
+            value = max(texel.r, max(texel.g, texel.b));
+        } else if (at.x < size.x && at.y < size.y) {
+            value = luminance_source.Load(int3(at, 0)).r;
+        }
+        block[t] = value;
+    }
+    for (int half_block = 32; half_block >= 1; half_block >>= 1) {
+        for (int i = 0; i < half_block; ++i) {
+            block[i] += block[i + half_block];
+        }
+    }
+    int2 inside = min(size - origin, int2(8, 8));
+    float average = block[0] / (float)(inside.x * inside.y);
+    if (kind == kLuminanceFinal) {
+        float previous = brightness.Load(int3(0, 0, 0)).r;
+        average = min(max(previous + (average - previous) * exposure.w, exposure.y), exposure.z);
+    }
+    return average;
+}
 
 // --- Glow, as copy.glsl's MODE_GAUSSIAN_GLOW ---
 
@@ -112,6 +170,9 @@ float4 glow_pass(int2 pixel, bool first) {
         color /= 1.0 - dot(color.rgb, float3(0.299, 0.587, 0.114) / max(glow_first.y, 6.0));
     }
     color *= glow.x;
+    if (first && (options.z & kUseAutoExposure) != 0u) {
+        color /= exposure_divisor();
+    }
     if (first) {
         color *= glow_first.x;
         float luminance = max(color.r, max(color.g, color.b));
@@ -350,8 +411,12 @@ float3 lut_3d(float3 color) {
 float4 tonemap_pass(float4 position) {
     float2 uv = position.xy * target.zw;
     float4 color = source.Load(int3((int2)position.xy, 0));
-    color.rgb *= tonemap.x;
     uint flags = options.z;
+    float exposed = tonemap.x;
+    if ((flags & kUseAutoExposure) != 0u) {
+        exposed *= 1.0 / exposure_divisor();
+    }
+    color.rgb *= exposed;
     uint mode = options.w;
     bool glowing = (flags & kUseGlow) != 0u;
     float intensity = levels_high.w;
@@ -377,7 +442,7 @@ float4 tonemap_pass(float4 position) {
         color.rgb = linear_to_srgb(color.rgb);
         color.rgb = lerp((float3)0.5, color.rgb, adjust.y);
         color.rgb = lerp((float3)(dot((float3)1.0, color.rgb) * (1.0 / 3.0)), color.rgb, adjust.z);
-        uint correction = flags >> 2u;
+        uint correction = (flags >> 2u) & 3u;
         if (correction != 0u) {
             color.rgb = clamp(color.rgb, 0.0, 1.0);
         }
@@ -398,6 +463,9 @@ float4 fs_main(float4 position : SV_Position) : SV_Target0 {
     uint pass_kind = options.x;
     if (pass_kind == kGlowFirst || pass_kind == kGlowNext) {
         return glow_pass((int2)position.xy, pass_kind == kGlowFirst);
+    }
+    if (pass_kind >= kLuminanceFirst) {
+        return (float4)luminance_pass((int2)position.xy, pass_kind);
     }
     return tonemap_pass(position);
 }

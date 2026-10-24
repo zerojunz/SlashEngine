@@ -439,6 +439,9 @@ does. [examples/import-godot-3d](../../examples/import-godot-3d/) imports a cour
   its `Sky`'s `radiance_size` is `sky_radiance_size` (`3` is `256`), and the sky's
   `ProceduralSkyMaterial`, `PhysicalSkyMaterial` or `PanoramaSkyMaterial` becomes the component
   of the same name on its entity.
+- A `WorldEnvironment`'s `camera_attributes` and a `Camera3D`'s `attributes`, when they are a
+  `CameraAttributesPractical`, become the component of the same name on its entity. A
+  `CameraAttributesPhysical` and the depth of field fields are reported.
 - A `CollisionShape3D`'s `BoxShape3D`, `SphereShape3D`, `CapsuleShape3D`, `CylinderShape3D`,
   `ConvexPolygonShape3D`, `ConcavePolygonShape3D` (its `data` as `faces`) or
   `WorldBoundaryShape3D` becomes its `shape` and the fields it sets. A body's
