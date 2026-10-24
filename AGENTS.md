@@ -816,6 +816,19 @@ triangles as a concave shape), navigation bakes take roots as Godot's
 for `scene validate`, and `csg.get` returns a root's size, surfaces and problems.
 `examples/csg-shapes` builds a hamlet.
 
+Paths are Godot's `Path2D` and `Path3D` with their curves, and the `PathFollow2D` and
+`PathFollow3D` that ride them (`engine/world/src/path.cpp`, after `scene/resources/curve.cpp`
+and `scene/2d/path_2d.cpp` and `scene/3d/path_3d.cpp`). A curve is baked as Godot bakes it,
+each Bézier segment halved until its pieces are no longer than `bake_interval`, with the way it
+goes at each point and, in 3D, its tilt and an up vector carried along as a parallel transport
+frame; `world::Curve2D` and `Curve3D` sample it. The `path_follow` system (priority 930, after
+animations and before physics; added by `canvas::install`) wraps each follower's `progress` and
+places it on its parent's curve, turned as its `rotates` or `rotation_mode` says, so an
+`AnimationPlayer` track on `progress` moves it. `CSGPolygon3D`'s `"path"` mode pushes its
+polygon along the `Path3D` its `path_node` names, as Godot's `MODE_PATH`. `path.get` samples a
+curve and finds its nearest point, `check_paths` (run from `check_meshes`) reports followers
+whose parent has no path, and `examples/paths` laps a cart round a rail.
+
 Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V, MSL, GLSL ES and WGSL are committed
 in `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang,
 SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`

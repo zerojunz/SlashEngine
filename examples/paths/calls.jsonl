@@ -1,0 +1,15 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"path.get","params":{"id":"track","ratios":[0,0.25,0.5,0.75],"closest_to":[0,0,-5]}}
+{"jsonrpc":"2.0","id":3,"method":"csg.get","params":{"id":"rail"}}
+{"jsonrpc":"2.0","id":4,"method":"step","params":{"ticks":30}}
+{"jsonrpc":"2.0","id":5,"method":"entity.get","params":{"id":"cart","components":["PathFollow3D","Transform3D"]}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[60,61],[80,65],[80,29],[80,50],[5,5]]}}
+{"jsonrpc":"2.0","id":7,"method":"component.set","params":{"id":"track","components":{"Path3D":{"points":[{"position":[0,0.3,3],"in":[2,0,0],"out":[-2,0,0]},{"position":[-4,0.3,0],"in":[0,0,2],"out":[0,0,-2]},{"position":[0,3,-3],"in":[-2,0,0],"out":[2,0,0]},{"position":[4,0.3,0],"in":[0,0,-2],"out":[0,0,2]}]}}}}
+{"jsonrpc":"2.0","id":8,"method":"csg.get","params":{"id":"rail"}}
+{"jsonrpc":"2.0","id":9,"method":"step","params":{"ticks":1}}
+{"jsonrpc":"2.0","id":10,"method":"entity.get","params":{"id":"cart","components":["PathFollow3D","Transform3D"]}}
+{"jsonrpc":"2.0","id":11,"method":"frame.capture","params":{"points":[[80,29],[80,20]]}}
+{"jsonrpc":"2.0","id":12,"method":"component.set","params":{"id":"guard","components":{"PathFollow2D":{"progress":120}}}}
+{"jsonrpc":"2.0","id":13,"method":"step","params":{"ticks":1}}
+{"jsonrpc":"2.0","id":14,"method":"entity.get","params":{"id":"guard"}}
+{"jsonrpc":"2.0","id":15,"method":"path.get","params":{"id":"patrol","offsets":[50],"global":true}}
