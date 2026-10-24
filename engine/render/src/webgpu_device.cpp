@@ -9,6 +9,7 @@
 #include "forward_post_shaders.hpp"
 #include "material_shaders.hpp"
 #include "mesh_clustered_shaders.hpp"
+#include "mesh_normal_shaders.hpp"
 #include "mesh_shaders.hpp"
 #include "mesh_shading.hpp"
 #include "particle_layout.hpp"
@@ -23,6 +24,8 @@
 #include "sky_shaders.hpp"
 #include "sky_shading.hpp"
 #include "sprite_shaders.hpp"
+#include "ssao.hpp"
+#include "ssao_shaders.hpp"
 #include "uniforms.hpp"
 
 #include "slash/core/log.hpp"
@@ -89,6 +92,8 @@ constexpr WGPUTextureFormat kLuminanceFormat = WGPUTextureFormat_R32Float;
 constexpr WGPUTextureFormat kRadianceFormat = WGPUTextureFormat_RGB10A2Unorm;
 // Meshes draw over 32-bit float depth, which every WebGPU device has and suits reversed depth.
 constexpr WGPUTextureFormat kDepthFormat = WGPUTextureFormat_Depth32Float;
+// Forward+'s normal-roughness prepass draws into bytes.
+constexpr WGPUTextureFormat kNormalFormat = WGPUTextureFormat_RGBA8Unorm;
 // The largest shadow atlas: WebGPU's default maxTextureDimension2D.
 constexpr std::uint32_t kMaxShadowAtlas = 8192;
 
@@ -102,6 +107,20 @@ constexpr WGPUTextureFormat gpu_format(TextureFormat format) {
         break;
     }
     return kTextureFormat;
+}
+
+constexpr WGPUTextureFormat ssao_gpu_format(SsaoFormat format) {
+    switch (format) {
+    case SsaoFormat::R16F:
+        return WGPUTextureFormat_R16Float;
+    case SsaoFormat::RG8:
+        return WGPUTextureFormat_RG8Unorm;
+    case SsaoFormat::R8:
+        return WGPUTextureFormat_R8Unorm;
+    case SsaoFormat::R32F:
+        break;
+    }
+    return WGPUTextureFormat_R32Float;
 }
 
 // The vertex buffer's first size: 3,276 vertices.
@@ -120,14 +139,15 @@ constexpr std::uint64_t kLargestUniforms = std::max<std::uint64_t>(
     {sizeof(Mat4), sizeof(VertexProgramUniforms), sizeof(ProgramUniforms), sizeof(LightsUniforms),
      kComputeUniformBytes, sizeof(MeshInstanceUniforms), sizeof(MeshSurfaceUniforms),
      sizeof(MeshSceneUniforms), sizeof(MeshShadowUniforms), sizeof(MeshShadowPassUniforms),
-     sizeof(PostUniforms), sizeof(SkyUniforms), sizeof(RadianceUniforms)});
+     sizeof(PostUniforms), sizeof(SkyUniforms), sizeof(RadianceUniforms), sizeof(SsaoUniforms)});
 // The bind groups are SDL's GPU API's, which the HLSL's registers name and the WGSL keeps
 // (cmake/compile_shaders.cmake): a vertex stage's uniforms in group 1, a fragment stage's
 // textures in group 2 (samplers kSamplerBinding after their textures) and its uniforms in group
 // 3; a compute shader's read-only buffers in group 0, read-write ones in 1 and uniforms in 2. The
-// mesh shader's are the same: its camera and instance, its eleven textures, two shadow atlases and
-// the radiance, with their samplers kMeshSamplerBinding after them, its surface, scene and
-// shadows; and the shadow shader's: its pass and instance, its albedo texture and its surface.
+// mesh shader's are the same: its camera and instance, its eleven textures, two shadow atlases,
+// the radiance and the SSAO, with their samplers kMeshSamplerBinding after them, its surface,
+// scene and shadows; and the shadow shader's: its pass and instance, its albedo texture and its
+// surface.
 constexpr std::uint32_t kSamplerBinding = 8;
 constexpr std::uint32_t kMeshSamplerBinding = 16;
 
@@ -350,8 +370,17 @@ public:
         if (radiance_sampler_ != nullptr) {
             wgpuSamplerRelease(radiance_sampler_);
         }
+        for (WGPURenderPipeline pipeline : normal_pipelines_) {
+            if (pipeline != nullptr) {
+                wgpuRenderPipelineRelease(pipeline);
+            }
+        }
+        for (const auto& [format, pipeline] : ssao_pipelines_) {
+            wgpuRenderPipelineRelease(pipeline);
+        }
         release_post_targets();
         release_forward_targets();
+        release_ssao_targets();
         release_pending();
         for (const GpuTexture& atlas :
              {shadow_atlases_[0].gpu, shadow_atlases_[1].gpu, no_shadows_}) {
@@ -954,6 +983,9 @@ public:
         if (frame.scene && frame.scene->method == RenderMethod::ForwardPlus) {
             prepare_forward(width, height, frame.scene->post.glow, frame.scene->post.auto_exposure,
                             uses_dof(frame.scene->post));
+            if (uses_ssao(*frame.scene)) {
+                prepare_ssao(width, height, frame.scene->ssao.settings);
+            }
         } else if (frame.scene && post_processes(frame.scene->post)) {
             prepare_post(width, height);
         }
@@ -1016,7 +1048,12 @@ public:
                         .pipeline =
                             mesh_pipeline_for(world_format(*frame_.scene, frame_format_), material,
                                               frame_.scene->method == RenderMethod::ForwardPlus),
+                        .normal_pipeline = nullptr,
                         .bindings = {}};
+        // SSAO's prepass draws the opaque meshes' normals.
+        if (uses_ssao(*frame_.scene) && material.transparency != Transparency::Alpha) {
+            batch.normal_pipeline = normal_pipeline_for(material.cull);
+        }
         const std::array<MaterialTexture, kMeshTextures> slots = mesh_texture_slots(material);
         for (std::size_t slot = 0; slot < kMeshTextures; ++slot) {
             batch.bindings.at(slot) = binding(slots.at(slot).texture, slots.at(slot).repeat);
@@ -1104,6 +1141,17 @@ public:
         }
         const RadianceOffsets radiance_offsets =
             radiance_draws_ ? add_radiance_uniforms(*frame_.scene) : RadianceOffsets{};
+        // SSAO's passes and their uniforms, in a frame with meshes to light.
+        std::optional<SsaoPlan> ssao;
+        std::vector<std::uint32_t> ssao_uniforms_at;
+        if (forward && !mesh_draws_.empty() && uses_ssao(*frame_.scene)) {
+            ssao = ssao_plan(frame_.scene->ssao.settings, frame_width_, frame_height_);
+            for (const SsaoStep& step : ssao->steps) {
+                ssao_uniforms_at.push_back(
+                    uniforms_.add(ssao_uniforms(frame_.scene->ssao, step, frame_.scene->projection,
+                                                frame_width_, frame_height_)));
+            }
+        }
         upload_frame();
 
         WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
@@ -1116,8 +1164,11 @@ public:
         if (radiance_draws_) {
             encode_radiance(encoder, *frame_.scene, radiance_offsets);
         }
+        if (ssao) {
+            encode_ssao(encoder, mesh_uniforms, *ssao, ssao_uniforms_at);
+        }
         if (!mesh_draws_.empty() || sky || dof) {
-            encode_meshes(encoder, mesh_uniforms, sky_uniforms_at);
+            encode_meshes(encoder, mesh_uniforms, sky_uniforms_at, ssao.has_value());
         }
         if (forward || post) {
             encode_post(encoder, post_draws);
@@ -1247,7 +1298,7 @@ private:
 
     // The textures and samplers a batch binds: a key for the group that binds them.
     using TextureBindings = std::array<std::pair<WGPUTextureView, WGPUSampler>,
-                                       std::max(kMaterialSamplers, kMeshTextures + 3)>;
+                                       std::max(kMaterialSamplers, kMeshTextures + 4)>;
     struct BindingsHash {
         std::size_t operator()(const TextureBindings& bindings) const {
             std::size_t hash = 0;
@@ -1311,13 +1362,13 @@ private:
         std::uint32_t height = 0;
     };
 
-    // A mesh draw's textures and samplers, in mesh.hlsl's order, then the shadow atlases and the
-    // radiance.
-    using MeshBindings = std::array<std::pair<WGPUTextureView, WGPUSampler>, kMeshTextures + 3>;
-    // They share texture_groups_ with batches: a mesh's key binds a cube texture in its last slot,
-    // past every slot a material batch's binds.
-    static_assert(kMeshTextures + 3 > kMaterialSamplers);
-    static_assert(kMeshTextures + 3 <= kMeshSamplerBinding);
+    // A mesh draw's textures and samplers, in mesh.hlsl's order, then the shadow atlases, the
+    // radiance and the SSAO.
+    using MeshBindings = std::array<std::pair<WGPUTextureView, WGPUSampler>, kMeshTextures + 4>;
+    // They share texture_groups_ with batches: a mesh's key binds a cube texture past every slot a
+    // material batch's binds.
+    static_assert(kMeshTextures + 2 >= kMaterialSamplers);
+    static_assert(kMeshTextures + 4 <= kMeshSamplerBinding);
 
     // A cube texture of the radiance's format: a view of every level, which meshes and the
     // filter sample, a view of each level alone, which each next level's mipmaps are drawn from,
@@ -1352,6 +1403,8 @@ private:
         std::uint32_t index_count = 0;
         Bounds bounds;
         WGPURenderPipeline pipeline = nullptr;
+        // SSAO's prepass's, for an opaque mesh in a frame with SSAO.
+        WGPURenderPipeline normal_pipeline = nullptr;
         MeshBindings bindings{};
     };
 
@@ -1670,17 +1723,16 @@ private:
             uniform_entry(0, WGPUShaderStage_Vertex, sizeof(MeshCameraUniforms)),
             uniform_entry(1, WGPUShaderStage_Vertex, sizeof(MeshInstanceUniforms))};
         mesh_vertex_layout_ = layout(mesh_vertex);
-        std::array<WGPUBindGroupLayoutEntry, (kMeshTextures + 3) * 2> mesh_textures{};
-        for (std::uint32_t slot = 0; slot < kMeshTextures + 2; ++slot) {
-            const bool atlas = slot >= kMeshTextures;
+        constexpr std::uint32_t kMeshSlots = kMeshTextures + 4;
+        std::array<WGPUBindGroupLayoutEntry, kMeshSlots * 2> mesh_textures{};
+        for (std::uint32_t slot = 0; slot < kMeshSlots; ++slot) {
+            const bool atlas = slot == kMeshTextures || slot == kMeshTextures + 1;
             mesh_textures.at(slot) = atlas ? depth_entry(slot) : texture_entry(slot);
-            mesh_textures.at(kMeshTextures + 3 + slot) =
-                atlas ? comparison_entry(kMeshSamplerBinding + slot)
-                      : sampler_entry(kMeshSamplerBinding + slot);
+            mesh_textures.at(kMeshSlots + slot) = atlas
+                                                      ? comparison_entry(kMeshSamplerBinding + slot)
+                                                      : sampler_entry(kMeshSamplerBinding + slot);
         }
         mesh_textures.at(kMeshTextures + 2) = cube_entry(kMeshTextures + 2);
-        mesh_textures.at(((kMeshTextures + 3) * 2) - 1) =
-            sampler_entry(kMeshSamplerBinding + kMeshTextures + 2);
         mesh_textures_layout_ = layout(mesh_textures);
         const std::array mesh_fragment{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(MeshSurfaceUniforms)),
@@ -1728,6 +1780,17 @@ private:
         sky_uniforms_layout_ = layout(sky_entries);
         const std::array cube{cube_entry(0), sampler_entry(kSamplerBinding)};
         cube_texture_layout_ = layout(cube);
+        // The SSAO passes load every texture: the depth buffer, its levels and the load counter
+        // are floats, which WebGPU doesn't filter.
+        std::array<WGPUBindGroupLayoutEntry, kSsaoSlots> ssao_textures{};
+        for (std::uint32_t slot = 0; slot < kSsaoSlots; ++slot) {
+            ssao_textures.at(slot) = texture_entry(slot);
+            ssao_textures.at(slot).texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
+        }
+        ssao_textures_layout_ = layout(ssao_textures);
+        const std::array ssao_entries{
+            uniform_entry(0, WGPUShaderStage_Fragment, sizeof(SsaoUniforms))};
+        ssao_uniforms_layout_ = layout(ssao_entries);
         const std::array filter{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(RadianceUniforms))};
         filter_uniforms_layout_ = layout(filter);
@@ -1766,6 +1829,8 @@ private:
             {empty_layout_, empty_layout_, sprite_textures_layout_, sky_uniforms_layout_});
         pipeline_layouts_.at(kRadianceLayout) = pipeline_layout(
             {empty_layout_, empty_layout_, cube_texture_layout_, filter_uniforms_layout_});
+        pipeline_layouts_.at(kSsaoLayout) = pipeline_layout(
+            {empty_layout_, empty_layout_, ssao_textures_layout_, ssao_uniforms_layout_});
     }
 
     WGPUShaderModule create_module(std::string_view wgsl) {
@@ -1985,6 +2050,8 @@ private:
         sky_uniforms_group_ = bind_group(sky_uniforms_layout_, sky);
         const std::array filter{buffer_entry(0, uniform_buffer_, sizeof(RadianceUniforms))};
         filter_uniforms_group_ = bind_group(filter_uniforms_layout_, filter);
+        const std::array ssao{buffer_entry(0, uniform_buffer_, sizeof(SsaoUniforms))};
+        ssao_uniforms_group_ = bind_group(ssao_uniforms_layout_, ssao);
     }
 
     void release_uniform_groups() {
@@ -1992,7 +2059,7 @@ private:
              {&vertex_uniforms_group_, &fragment_uniforms_group_, &compute_uniforms_group_,
               &mesh_vertex_group_, &mesh_fragment_group_, &shadow_vertex_group_,
               &shadow_fragment_group_, &post_uniforms_group_, &forward_uniforms_group_,
-              &sky_uniforms_group_, &filter_uniforms_group_}) {
+              &sky_uniforms_group_, &filter_uniforms_group_, &ssao_uniforms_group_}) {
             if (*group != nullptr) {
                 wgpuBindGroupRelease(*group);
                 *group = nullptr;
@@ -2625,13 +2692,14 @@ private:
         if (const auto it = texture_groups_.find(key); it != texture_groups_.end()) {
             return it->second;
         }
-        std::array<WGPUBindGroupEntry, (kMeshTextures + 3) * 2> entries{};
-        for (std::uint32_t slot = 0; slot < kMeshTextures + 3; ++slot) {
+        constexpr std::uint32_t kMeshSlots = kMeshTextures + 4;
+        std::array<WGPUBindGroupEntry, kMeshSlots * 2> entries{};
+        for (std::uint32_t slot = 0; slot < kMeshSlots; ++slot) {
             WGPUBindGroupEntry& texture = entries.at(slot);
             texture = WGPU_BIND_GROUP_ENTRY_INIT;
             texture.binding = slot;
             texture.textureView = bindings.at(slot).first;
-            WGPUBindGroupEntry& sampler = entries.at(kMeshTextures + 3 + slot);
+            WGPUBindGroupEntry& sampler = entries.at(kMeshSlots + slot);
             sampler = WGPU_BIND_GROUP_ENTRY_INIT;
             sampler.binding = kMeshSamplerBinding + slot;
             sampler.sampler = bindings.at(slot).second;
@@ -2730,11 +2798,11 @@ private:
         return grows;
     }
 
-    // Records the frame's sky, when it has one (its uniforms at sky), then its meshes, in the
-    // order mesh_draw_order gives, in a pass that clears the target and the depth buffer to the
-    // far plane.
+    // Records the frame's sky, when it has one (its uniforms at sky), then its meshes, in a pass
+    // that clears the target and the depth buffer to the far plane. With ssao they are lit with
+    // its occlusion.
     void encode_meshes(WGPUCommandEncoder encoder, const MeshUniforms& at,
-                       std::optional<std::uint32_t> sky) {
+                       std::optional<std::uint32_t> sky, bool ssao) {
         WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
         // A scene that post-processes draws its meshes into a texture the post passes read.
         color.view = world_view(*frame_.scene);
@@ -2775,17 +2843,27 @@ private:
         if (!mesh_draws_.empty() && frame_.scene->method == RenderMethod::ForwardPlus) {
             wgpuRenderPassEncoderSetBindGroup(pass, 0, cluster_group_, 0, nullptr);
         }
+        encode_mesh_draws(pass, at, false, ssao);
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+    }
+
+    // Records the frame's meshes in pass, in the order mesh_draw_order gives: with their prepass
+    // pipelines (the opaque ones') for SSAO's prepass, or lit, with ssao's occlusion if it drew.
+    void encode_mesh_draws(WGPURenderPassEncoder pass, const MeshUniforms& at, bool prepass,
+                           bool ssao) {
         WGPURenderPipeline bound = nullptr;
         for (const std::size_t i :
              mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), *frame_.scene,
                              [&](std::size_t draw) { return mesh_batches_[draw].bounds; })) {
             const MeshBatch& batch = mesh_batches_[i];
-            if (mesh_draws_[i].shadows == ShadowCasting::ShadowsOnly) {
+            WGPURenderPipeline pipeline = prepass ? batch.normal_pipeline : batch.pipeline;
+            if (mesh_draws_[i].shadows == ShadowCasting::ShadowsOnly || pipeline == nullptr) {
                 continue;
             }
-            if (batch.pipeline != bound) {
-                wgpuRenderPassEncoderSetPipeline(pass, batch.pipeline);
-                bound = batch.pipeline;
+            if (pipeline != bound) {
+                wgpuRenderPassEncoderSetPipeline(pass, pipeline);
+                bound = pipeline;
             }
             const std::array<std::uint32_t, 2> vertex_offsets{at.camera, at.draws[i].first};
             wgpuRenderPassEncoderSetBindGroup(pass, 1, mesh_vertex_group_, vertex_offsets.size(),
@@ -2800,6 +2878,9 @@ private:
             bindings.at(kMeshTextures + 2) = {radiance_used(*frame_.scene) ? radiance_.filtered.view
                                                                            : no_radiance_.view,
                                               radiance_sampler_};
+            bindings.at(kMeshTextures + 3) = {
+                ssao && !prepass ? ssao_targets_.textures.at(kSsaoFinal).view : white_.view,
+                samplers_.at(sampler_index(Filter::Nearest, false))};
             wgpuRenderPassEncoderSetBindGroup(pass, 2, mesh_texture_group(bindings), 0, nullptr);
             const std::array<std::uint32_t, 3> fragment_offsets{at.draws[i].second, at.scene,
                                                                 at.shadows};
@@ -2810,8 +2891,182 @@ private:
                                                 WGPU_WHOLE_SIZE);
             wgpuRenderPassEncoderDrawIndexed(pass, batch.index_count, 1, 0, 0, 0);
         }
+    }
+
+    // The pipeline drawing opaque meshes that cull as cull says into SSAO's normal-roughness
+    // prepass, made the first time a frame needs it.
+    WGPURenderPipeline normal_pipeline_for(CullMode cull) {
+        WGPURenderPipeline& made = normal_pipelines_.at(static_cast<std::size_t>(cull));
+        if (made != nullptr) {
+            return made;
+        }
+        const std::array attributes = mesh_attributes();
+        WGPUVertexBufferLayout buffer = WGPU_VERTEX_BUFFER_LAYOUT_INIT;
+        buffer.stepMode = WGPUVertexStepMode_Vertex;
+        buffer.arrayStride = sizeof(Vertex3D);
+        buffer.attributeCount = attributes.size();
+        buffer.attributes = attributes.data();
+        WGPUColorTargetState color = WGPU_COLOR_TARGET_STATE_INIT;
+        color.format = kNormalFormat;
+        WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
+        fragment.module =
+            module(kMeshNormalFragmentModule, joined(shaders::kMeshNormalFragmentWgsl));
+        fragment.entryPoint = text_view("fs_main");
+        fragment.targetCount = 1;
+        fragment.targets = &color;
+        WGPUDepthStencilState depth = WGPU_DEPTH_STENCIL_STATE_INIT;
+        depth.format = kDepthFormat;
+        depth.depthWriteEnabled = WGPUOptionalBool_True;
+        depth.depthCompare = WGPUCompareFunction_Greater;
+        WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
+        info.layout = pipeline_layouts_.at(kMeshLayout);
+        info.vertex.module = module(kMeshVertexModule, joined(shaders::kMeshVertexWgsl));
+        info.vertex.entryPoint = text_view("vs_main");
+        info.vertex.bufferCount = 1;
+        info.vertex.buffers = &buffer;
+        info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        info.primitive.frontFace = WGPUFrontFace_CW;
+        info.primitive.cullMode = gpu_cull(cull);
+        info.depthStencil = &depth;
+        info.fragment = &fragment;
+        made = wgpuDeviceCreateRenderPipeline(device_, &info);
+        return made;
+    }
+
+    // SSAO's pipeline for a target format, made the first time a frame needs it.
+    WGPURenderPipeline ssao_pipeline_for(WGPUTextureFormat format) {
+        for (const auto& [made, pipeline] : ssao_pipelines_) {
+            if (made == format) {
+                return pipeline;
+            }
+        }
+        WGPUColorTargetState color = WGPU_COLOR_TARGET_STATE_INIT;
+        color.format = format;
+        WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
+        fragment.module = module(kSsaoFragmentModule, joined(shaders::kSsaoFragmentWgsl));
+        fragment.entryPoint = text_view("fs_main");
+        fragment.targetCount = 1;
+        fragment.targets = &color;
+        WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
+        info.layout = pipeline_layouts_.at(kSsaoLayout);
+        info.vertex.module = module(kSsaoVertexModule, joined(shaders::kSsaoVertexWgsl));
+        info.vertex.entryPoint = text_view("vs_main");
+        info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        info.primitive.cullMode = WGPUCullMode_None;
+        info.fragment = &fragment;
+        WGPURenderPipeline pipeline = wgpuDeviceCreateRenderPipeline(device_, &info);
+        ssao_pipelines_.emplace_back(format, pipeline);
+        return pipeline;
+    }
+
+    // The textures a frame of width x height with settings draws SSAO with: the prepass's
+    // normals and depth, and those ssao_plan sizes. Made again when either changes.
+    void prepare_ssao(std::uint32_t width, std::uint32_t height, const SsaoSettings& settings) {
+        if (ssao_targets_.normals.texture != nullptr && ssao_targets_.width == width &&
+            ssao_targets_.height == height && ssao_targets_.settings == settings) {
+            return;
+        }
+        release_ssao_targets();
+        const auto made = [&](std::uint32_t w, std::uint32_t h, WGPUTextureFormat format) {
+            WGPUTextureDescriptor info = WGPU_TEXTURE_DESCRIPTOR_INIT;
+            info.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment;
+            info.size = {.width = w, .height = h, .depthOrArrayLayers = 1};
+            info.format = format;
+            WGPUTexture texture = wgpuDeviceCreateTexture(device_, &info);
+            return GpuTexture{.texture = texture,
+                              .view = wgpuTextureCreateView(texture, nullptr),
+                              .filter = Filter::Nearest};
+        };
+        ssao_targets_.normals = made(width, height, kNormalFormat);
+        ssao_targets_.depth = made(width, height, kDepthFormat);
+        const SsaoPlan plan = ssao_plan(settings, width, height);
+        for (std::uint32_t i = 0; i < kSsaoTextures; ++i) {
+            const PostSize size = plan.sizes.at(i);
+            if (size.width != 0) {
+                ssao_targets_.textures.at(i) =
+                    made(size.width, size.height, ssao_gpu_format(ssao_format(i)));
+            }
+        }
+        ssao_targets_.width = width;
+        ssao_targets_.height = height;
+        ssao_targets_.settings = settings;
+    }
+
+    void release_ssao_targets() {
+        const auto release = [this](GpuTexture& texture) {
+            if (texture.texture != nullptr) {
+                forget_texture_groups(texture.view);
+                pending_textures_.push_back(std::exchange(texture, {}));
+            }
+        };
+        release(ssao_targets_.normals);
+        release(ssao_targets_.depth);
+        for (GpuTexture& texture : ssao_targets_.textures) {
+            release(texture);
+        }
+        ssao_targets_.width = 0;
+        ssao_targets_.height = 0;
+    }
+
+    // SSAO's prepass, which draws the opaque meshes' normals and depth, then ssao.hlsl's passes
+    // from them to the occlusion at the frame's size, in the order plan gives, their uniforms at
+    // uniforms.
+    void encode_ssao(WGPUCommandEncoder encoder, const MeshUniforms& at, const SsaoPlan& plan,
+                     std::span<const std::uint32_t> uniforms) {
+        WGPURenderPassColorAttachment normals = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+        normals.view = ssao_targets_.normals.view;
+        normals.loadOp = WGPULoadOp_Clear;
+        normals.storeOp = WGPUStoreOp_Store;
+        normals.clearValue = {.r = 0.0, .g = 0.0, .b = 0.0, .a = 0.0};
+        WGPURenderPassDepthStencilAttachment depth = WGPU_RENDER_PASS_DEPTH_STENCIL_ATTACHMENT_INIT;
+        depth.view = ssao_targets_.depth.view;
+        depth.depthLoadOp = WGPULoadOp_Clear;
+        depth.depthStoreOp = WGPUStoreOp_Store;
+        depth.depthClearValue = 0.0F;
+        WGPURenderPassDescriptor prepass = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+        prepass.colorAttachmentCount = 1;
+        prepass.colorAttachments = &normals;
+        prepass.depthStencilAttachment = &depth;
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &prepass);
+        encode_mesh_draws(pass, at, true, false);
         wgpuRenderPassEncoderEnd(pass);
         wgpuRenderPassEncoderRelease(pass);
+        for (std::size_t i = 0; i < plan.steps.size(); ++i) {
+            const SsaoStep& step = plan.steps[i];
+            std::array<WGPUBindGroupEntry, kSsaoSlots> entries{};
+            for (std::uint32_t slot = 0; slot < kSsaoSlots; ++slot) {
+                const std::uint32_t index = step.slots.at(slot);
+                WGPUTextureView view = white_.view;
+                if (index == kSsaoDepthBuffer) {
+                    view = ssao_targets_.depth.view;
+                } else if (index == kSsaoNormals) {
+                    view = ssao_targets_.normals.view;
+                } else if (index < kSsaoTextures &&
+                           ssao_targets_.textures.at(index).view != nullptr) {
+                    view = ssao_targets_.textures.at(index).view;
+                }
+                entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
+                entries.at(slot).binding = slot;
+                entries.at(slot).textureView = view;
+            }
+            WGPUBindGroup textures = bind_group(ssao_textures_layout_, entries);
+            WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+            color.view = ssao_targets_.textures.at(step.target).view;
+            color.loadOp = WGPULoadOp_Clear;
+            color.storeOp = WGPUStoreOp_Store;
+            WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+            descriptor.colorAttachmentCount = 1;
+            descriptor.colorAttachments = &color;
+            WGPURenderPassEncoder draw = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+            wgpuRenderPassEncoderSetPipeline(
+                draw, ssao_pipeline_for(ssao_gpu_format(ssao_format(step.target))));
+            wgpuRenderPassEncoderSetBindGroup(draw, 2, textures, 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(draw, 3, ssao_uniforms_group_, 1, &uniforms[i]);
+            wgpuRenderPassEncoderDraw(draw, 3, 1, 0, 0);
+            wgpuRenderPassEncoderEnd(draw);
+            wgpuRenderPassEncoderRelease(draw);
+            wgpuBindGroupRelease(textures);
+        }
     }
 
     // The textures the meshes and glow draw into, at the frame's size, made again when it
@@ -3423,6 +3678,9 @@ private:
     static constexpr std::size_t kMeshClusteredFragmentModule = 17;
     static constexpr std::size_t kForwardPostVertexModule = 18;
     static constexpr std::size_t kForwardPostFragmentModule = 19;
+    static constexpr std::size_t kMeshNormalFragmentModule = 20;
+    static constexpr std::size_t kSsaoVertexModule = 21;
+    static constexpr std::size_t kSsaoFragmentModule = 22;
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
@@ -3435,6 +3693,7 @@ private:
     static constexpr std::size_t kRadianceLayout = 9;
     static constexpr std::size_t kMeshClusteredLayout = 10;
     static constexpr std::size_t kForwardPostLayout = 11;
+    static constexpr std::size_t kSsaoLayout = 12;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -3447,7 +3706,7 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 3> sampled_{true, false, false};
-    std::array<WGPUShaderModule, 20> modules_{};
+    std::array<WGPUShaderModule, 23> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -3476,7 +3735,9 @@ private:
     WGPUBindGroupLayout sky_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout cube_texture_layout_ = nullptr;
     WGPUBindGroupLayout filter_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, 12> pipeline_layouts_{};
+    WGPUBindGroupLayout ssao_textures_layout_ = nullptr;
+    WGPUBindGroupLayout ssao_uniforms_layout_ = nullptr;
+    std::array<WGPUPipelineLayout, 13> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -3501,6 +3762,7 @@ private:
     WGPUBindGroup forward_uniforms_group_ = nullptr;
     WGPUBindGroup sky_uniforms_group_ = nullptr;
     WGPUBindGroup filter_uniforms_group_ = nullptr;
+    WGPUBindGroup ssao_uniforms_group_ = nullptr;
     std::unordered_map<ParticlesId, ParticleSystem> particle_systems_;
     std::uint32_t next_particles_ = 1;
     std::vector<WGPUBuffer> pending_buffers_;
@@ -3535,6 +3797,19 @@ private:
     PostTargets post_targets_;
     std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> forward_pipelines_;
     ForwardTargets forward_targets_;
+    // SSAO's textures for the frame's size and settings: the normal-roughness prepass's normals
+    // and depth, and those ssao_plan sizes (none for those it doesn't draw).
+    struct SsaoTargets {
+        GpuTexture normals;
+        GpuTexture depth;
+        std::array<GpuTexture, kSsaoTextures> textures{};
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+        SsaoSettings settings;
+    };
+    std::array<WGPURenderPipeline, 3> normal_pipelines_{}; // by CullMode
+    std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> ssao_pipelines_;
+    SsaoTargets ssao_targets_;
     // The radiance meshes are lit by: the raw cube the sky draws into and the one filtered from
     // it, and what they hold (nullopt to draw them again).
     struct RadianceCubes {

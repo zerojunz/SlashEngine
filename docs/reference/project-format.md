@@ -41,6 +41,7 @@ checks it.
 | `rendering.scaling` | No | no scaling | Draw the world at another size and scale it to the window, under controls drawn at full size: see [Render scale](#render-scale) |
 | `rendering.lights_and_shadows` | No | 4096-texel atlases, `soft_low` | The 3D shadow atlases' sizes and edge filters: see [Shadows](#shadows) |
 | `rendering.camera.depth_of_field` | No | `hexagon`, `low`, no jitter | The bokeh shape and quality of 3D [depth of field](scene-format.md#cameraattributespractical): see [Depth of field](#depth-of-field) |
+| `rendering.environment.ssao` | No | `medium`, half size, 2 blur passes | The quality and cost of 3D [ambient occlusion](scene-format.md#ambient-occlusion): see [SSAO](#ssao) |
 | `rendering.textures` | No | `lossless` | How exports ship textures: as their files, or compressed for each platform's GPUs: see [Texture forms](#texture-forms) |
 | `rendering.interpolation` | No | `true` | Draw sprites part of the way between fixed ticks, from where they were before the last tick to where they are, so motion looks smooth when the display refreshes faster than the game ticks. Drawing lags the simulation by up to one tick; set `false` to draw exactly where things are |
 | `physics_2d.gravity` | No | `980` | Gravity's strength in pixels per second squared, as Godot's `physics/2d/default_gravity` |
@@ -186,6 +187,24 @@ atlas into quadrants of different tile sizes; here every tile is the same size.
 | `depth_of_field_bokeh_shape` | `hexagon` | The shape out-of-focus lights spread into: `box` blurs across then down, `hexagon` along three directions, and `circle` gathers a spiral of samples, the softest and the slowest |
 | `depth_of_field_bokeh_quality` | `low` | `very_low`, `low`, `medium` or `high`: more samples each pass (6, 12, 12 and 24). The box and hexagon blur at half size at `very_low` and `low`, and the circle always does |
 | `depth_of_field_use_jitter` | `false` | Turns the samples a little each frame by game time, trading banding for noise |
+
+## SSAO
+
+`rendering.environment.ssao` says how a `WorldEnvironment`'s
+[ambient occlusion](scene-format.md#ambient-occlusion) is worked out, as Godot's
+`rendering/environment/ssao` settings.
+
+```json
+"rendering": {"environment": {"ssao": {"quality": "high", "half_size": false}}}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `quality` | `medium` | `very_low`, `low`, `medium`, `high` or `ultra`: more samples each pixel. From `high` on, samples further out read depth at lower resolutions, and `ultra` takes up to 32 where an importance map says occlusion changes |
+| `half_size` | `true` | Works at a quarter of the frame's resolution in each direction, rather than half, and blurs the result back up: faster, and softer |
+| `adaptive_target` | `0.5` | `ultra`: how many of the extra samples to take, from 0 to 1 |
+| `blur_passes` | `2` | Edge-aware blurs of the occlusion, from 0 to 6; `very_low` always blurs once |
+| `fadeout_from`, `fadeout_to` | `50`, `300` | Occlusion fades out from this distance and is gone at that one, in meters |
 
 ## Texture forms
 

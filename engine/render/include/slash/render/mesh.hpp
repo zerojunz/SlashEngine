@@ -222,6 +222,54 @@ struct DepthOfFieldSettings {
 // its default.
 [[nodiscard]] DepthOfFieldSettings depth_of_field_settings_from_json(const json::Value& value);
 
+// How many samples screen-space ambient occlusion takes and how it smooths them, as Godot's
+// RS::EnvironmentSSAOQuality: very_low takes 3 samples in half its slices and blurs plainly,
+// low 5, medium 12, high 12 with depth mipmaps and edges from normals, and ultra 5 to 32 where
+// an importance map asks for them.
+enum class SsaoQuality : std::uint8_t { VeryLow, Low, Medium, High, Ultra };
+inline constexpr std::array<std::string_view, 5> kSsaoQualityNames{"very_low", "low", "medium",
+                                                                   "high", "ultra"};
+
+// Godot's rendering/environment/ssao settings.
+struct SsaoSettings {
+    SsaoQuality quality = SsaoQuality::Medium;
+    // Works at half the resolution in each direction again: a quarter of the frame's, rather
+    // than half.
+    bool half_size = true;
+    float adaptive_target = 0.5F;  // ultra: how many of the extra samples to take, from 0 to 1
+    std::uint32_t blur_passes = 2; // from 0 to 6; very_low always blurs once
+    float fadeout_from = 50.0F;    // the distance where occlusion starts fading out
+    float fadeout_to = 300.0F;     // and where it is gone
+
+    bool operator==(const SsaoSettings&) const = default;
+};
+// Reads project.json's rendering.environment.ssao: {"quality", "half_size", "adaptive_target",
+// "blur_passes", "fadeout_from", "fadeout_to"}. What is missing or not valid keeps its default.
+[[nodiscard]] SsaoSettings ssao_settings_from_json(const json::Value& value);
+
+// Forward+: screen-space ambient occlusion, as Godot's Environment.ssao_* with its Forward+
+// renderer. A prepass draws the opaque meshes' depth and view-space normals, the occlusion of
+// each pixel is worked out from the depths around it by Intel's ASSAO, as Godot's ssao.glsl,
+// blurred along edges and put back together at the frame's size, and the meshes' color pass
+// darkens their ambient light by it (and their direct light, by light_affect). Transparent meshes
+// take none, as in Godot. Compatibility has no SSAO.
+struct Ssao3D {
+    bool enabled = false;
+    float radius = 1.0F;     // how far around a pixel occludes it, in world units
+    float intensity = 2.0F;  // how dark the occlusion is
+    float power = 1.5F;      // the occlusion's curve
+    float detail = 0.5F;     // how much the pixels right beside a pixel occlude it
+    float horizon = 0.06F;   // samples below this angle above the surface don't occlude
+    float sharpness = 0.98F; // how much the blur keeps to edges
+    // How much it darkens direct light, from 0 to 1: light_affect times ao_channel_affect, as
+    // Godot 4.6's scene shader mixes the two.
+    float light_affect = 0.0F;
+    float ao_channel_affect = 0.0F;
+    SsaoSettings settings{};
+
+    bool operator==(const Ssao3D&) const = default;
+};
+
 // What happens to the 3D world's colors after it is lit, as Godot's Environment's tonemap, glow
 // and adjustments.
 //
@@ -461,6 +509,7 @@ struct Scene3D {
     Sky3D sky; // drawn behind the meshes, over the clear color
     Fog3D fog;
     Radiance3D radiance;
+    Ssao3D ssao;
 
     // Godot's default Camera3D: 75 degrees across a square target, from 0.05 to 4000.
     static std::array<float, 16> perspective_default();

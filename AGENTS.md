@@ -763,6 +763,16 @@ from depth, the box, hexagon or circle blur, and the composite into the world. `
 `run_dof_blur_pass` and `run_dof_composite_pass` are the CPU twins. `examples/depth-of-field-3d`
 racks focus across a garden.
 
+SSAO is Godot 4.6's Forward+ SSAO (Intel's ASSAO): `WorldEnvironment`'s `ssao_*` fields set
+`Scene3D::ssao` (`render::Ssao3D`), and project.json's `rendering.environment.ssao` its quality,
+size, blur and fade (`render::SsaoSettings`). Forward+ devices draw the opaque meshes' depth and
+normals in a prepass (`mesh_normal.hlsl`), then `ssao.hlsl`'s passes as `ssao_plan` lists them
+(`src/ssao.hpp`): linear depth in four deinterleaved slices, the gather (ultra's base pass,
+importance map and adaptive gather), the edge-aware blur and the interleave. `mesh.hlsl` applies
+the result as Godot's scene shader does. The passes load texels and filter in code, so
+`run_ssao_pass`, their CPU twin, matches every device. `examples/ssao-3d` darkens a room's
+corners.
+
 Compatibility's post-processing: without glow or adjustments, `mesh.hlsl` tonemaps as it draws.
 With either, each device draws the meshes into an RGBA8 texture at `end_frame` and runs
 `shaders/post.hlsl`'s passes: glow's filter, three downsamples and three upsamples through four

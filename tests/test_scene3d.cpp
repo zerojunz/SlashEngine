@@ -893,6 +893,72 @@ TEST_CASE("a captured frame blurs what is past dof_blur_far_distance") {
     CHECK(behind.at(edge + 2) < blurred.at(edge + 2));
 }
 
+TEST_CASE("the WorldEnvironment's SSAO fields and the project's settings reach the frame") {
+    Scene scene;
+    scene.create("camera", R"({"Transform3D": {}, "Camera3D": {}})");
+    scene.create("env", R"({"WorldEnvironment": {"ssao_enabled": true, "ssao_radius": 2,
+        "ssao_intensity": 3, "ssao_power": 2, "ssao_detail": 1, "ssao_horizon": 0.1,
+        "ssao_sharpness": 0.5, "ssao_light_affect": 0.25, "ssao_ao_channel_affect": 0.5}})");
+    const scene3d::Environment read = scene3d::environment(scene.world, {});
+    CHECK(read.ssao == render::Ssao3D{.enabled = true,
+                                      .radius = 2.0F,
+                                      .intensity = 3.0F,
+                                      .power = 2.0F,
+                                      .detail = 1.0F,
+                                      .horizon = 0.1F,
+                                      .sharpness = 0.5F,
+                                      .light_affect = 0.25F,
+                                      .ao_channel_affect = 0.5F});
+    const auto device = render::create_null_device();
+    scene3d::Renderer renderer(*device, nullptr);
+    const render::SsaoSettings settings{
+        .quality = render::SsaoQuality::Ultra, .half_size = false, .blur_passes = 4};
+    auto frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}, {}, 0.0, {}, settings);
+    REQUIRE(frame.has_value());
+    CHECK(frame->scene.ssao.enabled);
+    CHECK(frame->scene.ssao.radius == 2.0F);
+    CHECK(frame->scene.ssao.settings == settings);
+    // With ssao_enabled off, the frame has none.
+    scene.world.ecs().get<world::WorldEnvironment>(scene.world.find("env")).ssao_enabled = false;
+    frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}, {}, 0.0, {}, settings);
+    CHECK_FALSE(frame->scene.ssao.enabled);
+}
+
+TEST_CASE("a captured frame darkens a wall where a slab stands against it, with SSAO") {
+    Scene scene;
+    scene.create("camera", R"({"Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}})");
+    const entt::entity env = scene.create("env", R"({"WorldEnvironment": {
+        "background_mode": "color", "background_color": [0, 0, 0, 1],
+        "ambient_light_source": "color", "ambient_light_color": [1, 1, 1, 1],
+        "ambient_light_energy": 0.5}})");
+    scene.create("wall", R"({"Transform3D": {"position": [0, 0, -1]}, "MeshInstance3D": {},
+        "BoxMesh": {"size": [8, 8, 0.2]}, "StandardMaterial3D": {}})");
+    // A slab 0.3 meters deep, standing against the wall.
+    scene.create("slab", R"({"Transform3D": {"position": [0, 0, -0.75]}, "MeshInstance3D": {},
+        "BoxMesh": {"size": [1, 1, 0.3]},
+        "StandardMaterial3D": {"albedo_color": [0.5, 0.5, 0.5, 1]}})");
+    const auto row = [&] {
+        const auto captured = canvas::capture(scene.world, scene.assets, {});
+        REQUIRE(captured.ok());
+        std::array<int, 64> red{};
+        for (std::uint32_t x = 0; x < red.size(); ++x) {
+            red.at(x) = pixel(captured.value().image, x, 32)[0];
+        }
+        return red;
+    };
+    const std::array<int, 64> plain = row();
+    std::size_t edge = 32; // the first pixel of wall right of the slab
+    while (edge < 60 && plain.at(edge) == plain.at(32)) {
+        ++edge;
+    }
+    REQUIRE(plain.at(edge) > plain.at(32));
+    scene.world.ecs().get<world::WorldEnvironment>(env).ssao_enabled = true;
+    const std::array<int, 64> occluded = row();
+    CHECK(occluded.at(edge + 1) < plain.at(edge + 1) - 4);
+    // Far from the slab the wall keeps its light.
+    CHECK(occluded.at(62) >= plain.at(62) - 2);
+}
+
 TEST_CASE("a captured frame adapts to the 3D world's brightness over game time") {
     Scene scene;
     scene.create("camera", R"({"Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}})");
@@ -1114,6 +1180,28 @@ TEST_CASE("project.json's rendering.lights_and_shadows is read and checked") {
     CHECK(first_error(R"({"positional_shadow": {"soft_shadow_filter_quality": "soft"}})") ==
           "/rendering/lights_and_shadows/positional_shadow/soft_shadow_filter_quality");
     CHECK(first_error(R"({"omni_shadow": {}})") == "/rendering/lights_and_shadows/omni_shadow");
+}
+
+TEST_CASE("project.json's rendering.environment.ssao is read and checked") {
+    json::Value project = parse(R"({"format": 1, "name": "Corners", "version": "1.0.0",
+        "main_scene": "main.scene.json",
+        "rendering": {"environment": {"ssao": {"quality": "ultra", "half_size": false,
+            "adaptive_target": 0.75, "blur_passes": 3, "fadeout_from": 10,
+            "fadeout_to": 20}}}})");
+    CHECK(slash::runtime::validate_project(project).empty());
+    CHECK(slash::runtime::parse_project(project).value().ssao ==
+          render::SsaoSettings{.quality = render::SsaoQuality::Ultra,
+                               .half_size = false,
+                               .adaptive_target = 0.75F,
+                               .blur_passes = 3,
+                               .fadeout_from = 10.0F,
+                               .fadeout_to = 20.0F});
+    CHECK(render::ssao_settings_from_json(parse(R"({"quality": "extreme"})")) ==
+          render::SsaoSettings{});
+    project["rendering"]["environment"]["ssao"]["blur_passes"] = 7;
+    const auto errors = slash::runtime::validate_project(project);
+    REQUIRE(errors.size() == 1);
+    CHECK(errors.front().path == "/rendering/environment/ssao/blur_passes");
 }
 
 TEST_CASE("project.json's rendering.camera.depth_of_field is read and checked") {

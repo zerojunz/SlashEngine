@@ -95,6 +95,8 @@ struct Project {
     render::ShadowSettings shadows;
     // Depth of field's blur, as Godot's rendering/camera/depth_of_field.
     render::DepthOfFieldSettings depth_of_field{};
+    // Screen-space ambient occlusion's quality, as Godot's rendering/environment/ssao.
+    render::SsaoSettings ssao{};
     // How exports ship textures.
     TextureImport texture_import;
     // Gravity and default damping for 2D physics.

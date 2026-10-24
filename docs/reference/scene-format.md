@@ -1422,6 +1422,14 @@ there is no ambient light and colors stay as they are.
 | `adjustment_enabled` | `false` | Brightness, contrast, saturation and color correction apply |
 | `adjustment_brightness`, `adjustment_contrast`, `adjustment_saturation` | `1`, `1`, `1` | Multiply colors; contrast 0 is flat gray, saturation 0 gray |
 | `adjustment_color_correction` | `""` | A lookup texture colors pass through: 1 pixel tall, or as wide as its height squared |
+| `ssao_enabled` | `false` | `forward_plus`: [screen-space ambient occlusion](#ambient-occlusion) darkens corners and what is close to a surface |
+| `ssao_radius` | `1` | How far around a pixel occludes it, in meters, from 0.01 to 16 |
+| `ssao_intensity` | `2` | How dark occlusion is, from 0 to 16 |
+| `ssao_power` | `1.5` | The occlusion's curve: higher darkens only what is most occluded, from 0.01 to 10 |
+| `ssao_detail` | `0.5` | How much the pixels right beside a pixel occlude it, for small creases, from 0 to 5 |
+| `ssao_horizon` | `0.06` | Samples below this angle above a surface don't occlude it, from 0 to 1 |
+| `ssao_sharpness` | `0.98` | How much the blur keeps to edges, from 0 to 1 |
+| `ssao_light_affect`, `ssao_ao_channel_affect` | `0`, `0` | How much occlusion darkens direct light too: their product, as Godot 4.6 mixes them, each from 0 to 1 |
 | `fog_enabled` | `false` | [Fog](#fog) fades what is far away, or low down, into its color |
 | `fog_mode` | `"exponential"` | `"exponential"` thickens with distance by `fog_density`; `"depth"` from `fog_depth_begin` to `fog_depth_end` |
 | `fog_light_color`, `fog_light_energy` | `[0.518, 0.553, 0.608, 1]`, `1` | The fog's color, sRGB, and how bright it is |
@@ -1570,6 +1578,20 @@ the fog's color by distance (exponential fog, or depth fog between its begin and
 fades by `fog_sky_affect`, after `fog_aerial_perspective` mixes its colors into the fog's. A
 `"color"` or `"clear_color"` background is fogged as a sky of that color, which the background's
 energy multiplies twice, as Godot's does. A material's `disable_fog` leaves it clear.
+
+### Ambient occlusion
+
+With `forward_plus`, `ssao_enabled` darkens what light can't easily reach (corners, creases and
+what is close to a surface) as Godot 4.6's Forward+ renderer does with Intel's ASSAO. Before the
+meshes' color pass, a prepass draws the opaque meshes' depth and view-space normals. The depth is
+made linear and split into four slices of every other pixel; each slice's occlusion is gathered
+from the depth within `ssao_radius` of each pixel, blurred along edges by `ssao_sharpness`, and the
+slices are put back together at the frame's size. The color pass multiplies each opaque mesh's
+ambient light by the occlusion, which dims its reflections too, as Godot's specular occlusion
+does, and its direct light by `ssao_light_affect` times `ssao_ao_channel_affect` of it. Occlusion fades out with distance, and the project's
+`rendering.environment.ssao` ([project-format.md](project-format.md#ssao)) sets its quality, size,
+blur and fade. Transparent meshes get none, and `gl_compatibility` has no SSAO, as in Godot. The
+software device draws the same passes on the CPU, so `frame.capture` shows it too.
 
 ### Checks
 
