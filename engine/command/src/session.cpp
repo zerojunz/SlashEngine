@@ -223,6 +223,7 @@ canvas::Settings canvas_settings(const json::Value& project) {
                 settings.reflection_atlas = render::reflection_atlas_settings_from_json(*atlas);
             }
         }
+        settings.voxel_gi_high_quality = render::voxel_gi_high_quality(*rendering);
     }
     const json::Value* tick_hz = project.find("tick_hz");
     if (tick_hz != nullptr && tick_hz->is_number() && tick_hz->as_double() > 0.0) {

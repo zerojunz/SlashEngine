@@ -6,6 +6,8 @@
 // Akenine-Möller's and its spherical harmonics rotation John Hable's, and the exact in-sphere test
 // uses Jonathan Shewchuk's expansion arithmetic, all public domain.
 
+#include "geometry.hpp"
+
 #include "slash/core/jobs.hpp"
 #include "slash/core/math.hpp"
 #include "slash/scene3d/lightmap.hpp"
@@ -29,76 +31,12 @@ namespace slash::scene3d {
 
 namespace {
 
-// Godot's CMP_EPSILON.
-constexpr float kEpsilon = 0.00001F;
+using namespace detail;
 
 using Point = std::array<float, 3>;
 
 Vec3 vec(const Point& p) {
     return {p[0], p[1], p[2]};
-}
-
-float component(Vec3 v, int axis) {
-    if (axis == 0) {
-        return v.x;
-    }
-    return axis == 1 ? v.y : v.z;
-}
-
-void set_component(Vec3& v, int axis, float value) {
-    if (axis == 0) {
-        v.x = value;
-    } else if (axis == 1) {
-        v.y = value;
-    } else {
-        v.z = value;
-    }
-}
-
-float dot(Vec3 a, Vec3 b) {
-    return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
-}
-
-Vec3 cross(Vec3 a, Vec3 b) {
-    return {(a.y * b.z) - (a.z * b.y), (a.z * b.x) - (a.x * b.z), (a.x * b.y) - (a.y * b.x)};
-}
-
-float length(Vec3 v) {
-    return std::sqrt(dot(v, v));
-}
-
-// As Godot's Vector3::normalize: zero stays zero.
-Vec3 normalized(Vec3 v) {
-    const float squared = dot(v, v);
-    if (squared == 0.0F) {
-        return {};
-    }
-    const float l = std::sqrt(squared);
-    return {v.x / l, v.y / l, v.z / l};
-}
-
-Vec3 divide(Vec3 a, Vec3 b) {
-    return {a.x / b.x, a.y / b.y, a.z / b.z};
-}
-
-Vec3 multiply(Vec3 a, Vec3 b) {
-    return {a.x * b.x, a.y * b.y, a.z * b.z};
-}
-
-// As Godot's Math::is_equal_approx.
-bool equal_approx(float a, float b) {
-    if (a == b) {
-        return true;
-    }
-    float tolerance = kEpsilon * std::abs(a);
-    if (tolerance < kEpsilon) {
-        tolerance = kEpsilon;
-    }
-    return std::abs(a - b) < tolerance;
-}
-
-bool equal_approx(Vec3 a, Vec3 b) {
-    return equal_approx(a.x, b.x) && equal_approx(a.y, b.y) && equal_approx(a.z, b.z);
 }
 
 // Godot's Vector3i(Vector3): each component truncated toward zero. Values no int holds, which
@@ -113,149 +51,7 @@ int truncate(float v) {
     return static_cast<int>(v);
 }
 
-// ---- Planes, as Godot's
-
-struct Plane {
-    Vec3 normal;
-    float d = 0.0F;
-
-    // Plane(p1, p2, p3), clockwise, as Godot's.
-    static Plane through(Vec3 a, Vec3 b, Vec3 c) {
-        Plane out;
-        out.normal = normalized(cross(a - c, a - b));
-        out.d = dot(out.normal, a);
-        return out;
-    }
-
-    [[nodiscard]] float distance_to(Vec3 p) const { return dot(normal, p) - d; }
-    [[nodiscard]] bool is_point_over(Vec3 p) const { return dot(normal, p) > d; }
-    [[nodiscard]] bool has_point(Vec3 p, float tolerance) const {
-        return std::abs(dot(normal, p) - d) <= tolerance;
-    }
-    [[nodiscard]] bool equal_approx_any_side(const Plane& o) const {
-        return (equal_approx(normal, o.normal) && equal_approx(d, o.d)) ||
-               (equal_approx(normal, o.normal * -1.0F) && equal_approx(d, -o.d));
-    }
-    [[nodiscard]] bool empty() const { return normal == Vec3{} && d == 0.0F; }
-};
-
 // ---- Placing probes: LightmapGI::bake's octree
-
-// An AABB, as Godot's.
-struct Box {
-    Vec3 position;
-    Vec3 size;
-
-    void expand_to(Vec3 p) {
-        Vec3 begin = position;
-        Vec3 end = position + size;
-        begin = {std::min(begin.x, p.x), std::min(begin.y, p.y), std::min(begin.z, p.z)};
-        end = {std::max(end.x, p.x), std::max(end.y, p.y), std::max(end.z, p.z)};
-        position = begin;
-        size = end - begin;
-    }
-    void grow_by(float amount) {
-        position = position - Vec3{amount, amount, amount};
-        size = size + Vec3{2.0F * amount, 2.0F * amount, 2.0F * amount};
-    }
-    [[nodiscard]] int longest_axis() const {
-        int axis = 0;
-        float most = size.x;
-        if (size.y > most) {
-            axis = 1;
-            most = size.y;
-        }
-        if (size.z > most) {
-            axis = 2;
-        }
-        return axis;
-    }
-    [[nodiscard]] Vec3 endpoint(int i) const {
-        return {(i & 4) != 0 ? position.x + size.x : position.x,
-                (i & 2) != 0 ? position.y + size.y : position.y,
-                (i & 1) != 0 ? position.z + size.z : position.z};
-    }
-    [[nodiscard]] bool has_point(Vec3 p) const {
-        return p.x >= position.x && p.y >= position.y && p.z >= position.z &&
-               p.x <= position.x + size.x && p.y <= position.y + size.y &&
-               p.z <= position.z + size.z;
-    }
-};
-
-// Geometry3D::planeBoxOverlap.
-bool plane_box_overlap(Vec3 normal, float d, Vec3 max_box) {
-    Vec3 vmin;
-    Vec3 vmax;
-    for (int q = 0; q < 3; ++q) {
-        const float m = component(max_box, q);
-        if (component(normal, q) > 0.0F) {
-            set_component(vmin, q, -m);
-            set_component(vmax, q, m);
-        } else {
-            set_component(vmin, q, m);
-            set_component(vmax, q, -m);
-        }
-    }
-    if (dot(normal, vmin) + d > 0.0F) {
-        return false;
-    }
-    return dot(normal, vmax) + d >= 0.0F;
-}
-
-// Geometry3D::triangle_box_overlap: Tomas Akenine-Möller's separating axis test.
-bool triangle_box_overlap(Vec3 center, Vec3 half, const std::array<Vec3, 3>& triangle) {
-    const Vec3 v0 = triangle[0] - center;
-    const Vec3 v1 = triangle[1] - center;
-    const Vec3 v2 = triangle[2] - center;
-    const Vec3 e0 = v1 - v0;
-    const Vec3 e1 = v2 - v1;
-    const Vec3 e2 = v0 - v2;
-    // A test along one edge's cross product with an axis: pa and pb are the two vertices'
-    // projections, r the box's.
-    const auto separated = [](float pa, float pb, float r) {
-        const float lo = std::min(pa, pb);
-        const float hi = std::max(pa, pb);
-        return lo > r || hi < -r;
-    };
-    const auto x_test = [&](float a, float b, float fa, float fb, Vec3 p, Vec3 q) {
-        return separated((a * p.y) - (b * p.z), (a * q.y) - (b * q.z),
-                         (fa * half.y) + (fb * half.z));
-    };
-    const auto y_test = [&](float a, float b, float fa, float fb, Vec3 p, Vec3 q) {
-        return separated((-a * p.x) + (b * p.z), (-a * q.x) + (b * q.z),
-                         (fa * half.x) + (fb * half.z));
-    };
-    const auto z_test = [&](float a, float b, float fa, float fb, Vec3 p, Vec3 q) {
-        return separated((a * p.x) - (b * p.y), (a * q.x) - (b * q.y),
-                         (fa * half.x) + (fb * half.y));
-    };
-    Vec3 f{std::abs(e0.x), std::abs(e0.y), std::abs(e0.z)};
-    if (x_test(e0.z, e0.y, f.z, f.y, v0, v2) || y_test(e0.z, e0.x, f.z, f.x, v0, v2) ||
-        z_test(e0.y, e0.x, f.y, f.x, v1, v2)) {
-        return false;
-    }
-    f = {std::abs(e1.x), std::abs(e1.y), std::abs(e1.z)};
-    if (x_test(e1.z, e1.y, f.z, f.y, v0, v2) || y_test(e1.z, e1.x, f.z, f.x, v0, v2) ||
-        z_test(e1.y, e1.x, f.y, f.x, v0, v1)) {
-        return false;
-    }
-    f = {std::abs(e2.x), std::abs(e2.y), std::abs(e2.z)};
-    if (x_test(e2.z, e2.y, f.z, f.y, v0, v1) || y_test(e2.z, e2.x, f.z, f.x, v0, v1) ||
-        z_test(e2.y, e2.x, f.y, f.x, v1, v2)) {
-        return false;
-    }
-    for (int axis = 0; axis < 3; ++axis) {
-        const float a = component(v0, axis);
-        const float b = component(v1, axis);
-        const float c = component(v2, axis);
-        const float h = component(half, axis);
-        if (std::min({a, b, c}) > h || std::max({a, b, c}) < -h) {
-            return false;
-        }
-    }
-    const Vec3 normal = cross(e0, e1);
-    return plane_box_overlap(normal, -dot(normal, v0), half);
-}
 
 // LightmapGI::GenProbesOctree: a cube of size cells at offset, its touched children made.
 struct Octree {

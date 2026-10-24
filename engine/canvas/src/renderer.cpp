@@ -341,6 +341,17 @@ CanvasRenderer::CanvasRenderer(render::RenderDevice& device, asset::Assets& asse
               }
               return scene3d::SourceLightmap{.data = entry.data.share(),
                                              .texels = entry.texels.share()};
+          },
+          [this](const std::string& path) -> Result<std::shared_ptr<const scene3d::VoxelGIData>> {
+              auto it = voxel_gis_.find(path);
+              if (it == voxel_gis_.end()) {
+                  auto loaded = assets_->load<scene3d::VoxelGIData>(path);
+                  if (!loaded) {
+                      return loaded.error();
+                  }
+                  it = voxel_gis_.emplace(path, std::move(loaded).value()).first;
+              }
+              return it->second.share();
           }) {}
 
 CanvasRenderer::~CanvasRenderer() {
@@ -1121,7 +1132,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     std::optional<scene3d::Frame3D> scene = scene3d_.prepare(
         world, viewport.x, viewport.y, options.interpolation, options.clear,
         settings(world).shadows, options.time, settings(world).depth_of_field, settings(world).ssao,
-        settings(world).ssr, settings(world).reflection_atlas, settings(world).rendering_method);
+        settings(world).ssr, settings(world).reflection_atlas, settings(world).rendering_method,
+        settings(world).voxel_gi_high_quality);
     if (scene) {
         scene->scene.method = settings(world).rendering_method;
     }
