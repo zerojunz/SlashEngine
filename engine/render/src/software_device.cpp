@@ -1079,11 +1079,7 @@ private:
         detail::MeshSurfaceUniforms surface;
         const detail::MeshSceneUniforms* scene = nullptr;
         const detail::MeshMaps* maps = nullptr;
-        Bound albedo;
-        Bound metallic;
-        Bound roughness;
-        Bound emission;
-        Bound normal;
+        std::array<Bound, detail::kMeshTextures> slots{}; // mesh_texture_slots' textures
     };
 
     // Where a pass rasterizes: a rect of a depth buffer stride texels across, onto which clip
@@ -1237,19 +1233,15 @@ private:
             }
             const Material3D& material = draw.material;
             const SoftwareMesh& mesh = find_mesh(draw.mesh);
-            const MeshShader shader{
-                .material = &material,
-                .surface = detail::mesh_surface_uniforms(material, draw.layers),
-                .scene = lights.get(),
-                .maps = &maps,
-                .albedo = bound(material.albedo_texture.texture, material.albedo_texture.repeat),
-                .metallic =
-                    bound(material.metallic_texture.texture, material.metallic_texture.repeat),
-                .roughness =
-                    bound(material.roughness_texture.texture, material.roughness_texture.repeat),
-                .emission =
-                    bound(material.emission_texture.texture, material.emission_texture.repeat),
-                .normal = bound(material.normal_texture.texture, material.normal_texture.repeat)};
+            MeshShader shader{.material = &material,
+                              .surface = detail::mesh_surface_uniforms(material, draw.layers),
+                              .scene = lights.get(),
+                              .maps = &maps};
+            const std::array<MaterialTexture, detail::kMeshTextures> slots =
+                detail::mesh_texture_slots(material);
+            for (std::size_t slot = 0; slot < detail::kMeshTextures; ++slot) {
+                shader.slots.at(slot) = bound(slots.at(slot).texture, slots.at(slot).repeat);
+            }
             const detail::MeshInstanceUniforms instance =
                 detail::mesh_instance_uniforms(draw.transform, material);
             corners.clear();
@@ -1307,8 +1299,8 @@ private:
             const detail::MeshSurfaceUniforms surface =
                 detail::mesh_surface_uniforms(material, draw.layers);
             const bool scissor = (surface.options[0] & detail::kMeshAlphaScissor) != 0;
-            const Bound albedo =
-                bound(material.albedo_texture.texture, material.albedo_texture.repeat);
+            const MaterialTexture first = detail::mesh_texture_slots(material)[0];
+            const Bound albedo = bound(first.texture, first.repeat);
             corners.clear();
             for (const Vertex3D& vertex : mesh.vertices) {
                 ClipVertex& out = corners.emplace_back();
@@ -1495,22 +1487,17 @@ private:
         const auto take3 = [&](std::size_t at) {
             return detail::Float3{varying.at(at), varying.at(at + 1), varying.at(at + 2)};
         };
-        const float u = varying[12];
-        const float v = varying[13];
-        const auto rgb = [](const Float4& texel) {
-            return detail::Float3{texel[0], texel[1], texel[2]};
-        };
-        const detail::MeshPixel pixel{.world = take3(0),
-                                      .normal = take3(3),
-                                      .tangent = take3(6),
-                                      .binormal = take3(9),
-                                      .color = {varying[14], varying[15], varying[16], varying[17]},
-                                      .front = front,
-                                      .albedo_texel = shader.albedo.sample(u, v),
-                                      .metallic_texel = shader.metallic.sample(u, v),
-                                      .roughness_texel = shader.roughness.sample(u, v),
-                                      .emission_texel = rgb(shader.emission.sample(u, v)),
-                                      .normal_texel = rgb(shader.normal.sample(u, v))};
+        detail::MeshPixel pixel{.world = take3(0),
+                                .normal = take3(3),
+                                .tangent = take3(6),
+                                .binormal = take3(9),
+                                .color = {varying[14], varying[15], varying[16], varying[17]},
+                                .front = front};
+        for (std::size_t slot = 0; slot < detail::kMeshTextures; ++slot) {
+            const std::array<float, 2> uv =
+                detail::mesh_texture_uv(shader.surface, slot, {varying[12], varying[13]});
+            pixel.texels.at(slot) = shader.slots.at(slot).sample(uv[0], uv[1]);
+        }
         return detail::shade_mesh(shader.surface, *shader.scene, *shader.maps, pixel);
     }
 

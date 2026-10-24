@@ -287,8 +287,10 @@ constexpr std::array<std::string_view, kMaterialSamplers> kMaterialSamplerNames{
     "texture0",   "texture1",     "texture2",    "texture3",
     "normal_map", "specular_map", "light_atlas", "shadow_map"};
 constexpr std::array<std::string_view, kMeshTextures + 3> kMeshSamplerNames{
-    "albedo_texture", "metallic_texture",  "roughness_texture", "emission_texture",
-    "normal_texture", "directional_atlas", "positional_atlas",  "radiance_map"};
+    "albedo_texture",   "metallic_texture", "roughness_texture", "emission_texture",
+    "normal_texture",   "ground_texture_2", "ground_texture_3",  "ground_normal_0",
+    "ground_normal_1",  "ground_normal_2",  "ground_normal_3",   "directional_atlas",
+    "positional_atlas", "radiance_map"};
 constexpr std::array<std::string_view, 3> kPostSamplerNames{"source", "glow_texture", "lut"};
 constexpr std::array<std::string_view, 1> kSkySamplerNames{"sky_texture"};
 constexpr std::array<std::string_view, 1> kRadianceSamplerNames{"source_cube"};
@@ -905,11 +907,9 @@ public:
             return ready;
         }
         MeshBatch batch{.mesh = it->second, .units = {}};
-        const std::array<const MaterialTexture*, kMeshTextures> slots{
-            &material.albedo_texture, &material.metallic_texture, &material.roughness_texture,
-            &material.emission_texture, &material.normal_texture};
+        const std::array<MaterialTexture, kMeshTextures> slots = mesh_texture_slots(material);
         for (std::size_t slot = 0; slot < kMeshTextures; ++slot) {
-            batch.units.at(slot) = binding(slots.at(slot)->texture, slots.at(slot)->repeat);
+            batch.units.at(slot) = binding(slots.at(slot).texture, slots.at(slot).repeat);
         }
         mesh_draws_.push_back({.mesh = mesh,
                                .transform = transform,

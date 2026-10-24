@@ -412,6 +412,15 @@ each cell's navigation mesh joins its neighbors', so laying out a level is writi
 of text, and changing it is `gridmap.set`. The [GridMap example](../examples/gridmap/) lays out
 a room with a ramp up to a platform.
 
+**Terrains** follow the HTerrain plugin for Godot, as Godot has none of its own: an `HTerrain`
+is a grid of heights read from a 16-bit `.height.png` heightmap, with a **splat map** weighing
+up to four ground textures and a **color map** tinting them and cutting holes. It draws in
+chunks that get coarser with distance, collides as a height field and is walked on by navigation
+bakes. Agents don't paint the maps by hand: `terrain.generate` makes hills, islands and canyons
+from noise, `terrain.brush` raises, smooths, flattens, paints and cuts holes along a list of
+points, and `terrain.get` reads the height, slope and textures at points. The
+[terrain example](../examples/terrain/) makes an island and paints its slopes.
+
 **Navigation** follows Godot 4.6's navigation servers: each world has a 2D and a 3D **map**,
 made of **regions** of navigation mesh (convex polygons, in `.navmesh.json` and `.navpoly.json`
 files) that join where their edges meet, and **links** between places the regions don't join,

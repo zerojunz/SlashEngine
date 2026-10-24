@@ -23,9 +23,9 @@
 # whose code is longer than a string literal may be (the mesh shader's).
 #
 # WGSL keeps SDL's bind groups, which the HLSL's register spaces name: a vertex stage's uniforms in
-# group 1, a fragment stage's textures in group 2 with their samplers 8 bindings after them
-# (glslang's --shift-sampler-binding) and its uniforms in group 3; a compute shader's read-only
-# buffers in group 0, read-write ones in 1 and uniforms in 2.
+# group 1, a fragment stage's textures in group 2 with their samplers SAMPLER_SHIFT (8 by default)
+# bindings after them (glslang's --shift-sampler-binding) and its uniforms in group 3; a compute
+# shader's read-only buffers in group 0, read-write ones in 1 and uniforms in 2.
 #
 # With CHECK, nothing is compiled: it fails if the HLSL in OUTPUT differs from SOURCE, which means
 # the shader changed and the header wasn't regenerated. It needs no shader tools, so every build
@@ -38,6 +38,10 @@
 # literals in a row, split after a line, which the compiler joins.
 
 cmake_minimum_required(VERSION 3.25)
+
+if(NOT SAMPLER_SHIFT)
+    set(SAMPLER_SHIFT 8)
+endif()
 
 # The most bytes in one raw string literal, well under MSVC's limit.
 set(max_literal 12000)
@@ -217,7 +221,8 @@ foreach(stage IN LISTS stages)
         ${renames} ${fixup} "${spirv}" --output "${glsl}")
     set(wgsl_spirv "${WORKDIR}/${base}.${stage}.wgsl.spv")
     set(wgsl "${WORKDIR}/${base}.${stage}.wgsl")
-    run(glslang "${GLSLANG}" -D -V -S ${stage} -e ${entry} --shift-sampler-binding 8
+    run(glslang "${GLSLANG}" -D -V -S ${stage} -e ${entry}
+        --shift-sampler-binding ${SAMPLER_SHIFT}
         "${standalone}" -o "${wgsl_spirv}")
     run(tint "${TINT}" --input-format spirv --format wgsl "${wgsl_spirv}" -o "${wgsl}")
     hex_array("${spirv}" bytes)

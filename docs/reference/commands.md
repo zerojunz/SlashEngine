@@ -64,6 +64,7 @@ as `entity.get`, reject it as an unknown param.
 | Models | [`model.inspect`](#modelinspect), [`skeleton.get`](#skeletonget), [`csg.get`](#csgget) |
 | Paths | [`path.get`](#pathget) |
 | Grid maps | [`gridmap.set`](#gridmapset), [`gridmap.get`](#gridmapget) |
+| Terrains | [`terrain.generate`](#terraingenerate), [`terrain.brush`](#terrainbrush), [`terrain.get`](#terrainget) |
 | Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity) |
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
@@ -794,6 +795,127 @@ Needs: `read`.
   reports them.
 - Each cell or point has its `cell`, its `item` (`null` for an empty cell) and its
   `orientation` when it isn't `0`. A cell asked for by `cells` has its `center`.
+
+### terrain.generate
+
+Makes a [heightmap terrain's](scene-format.md#heightmap-terrains) heights from fractal Perlin
+noise, as HTerrain's generator: curved, shaped into an island or a canyon and eroded, or added to
+the heights it has. Heights are in the heightmap's meters, before `map_scale.y`. Writes the
+heightmap, widening `height_range` to whole meters that hold the heights, and returns the lowest
+and highest.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with an `HTerrain` |
+| `seed` | integer | `0` | The noise's seed |
+| `offset` | `[x, z]` | `[0, 0]` | Moves the noise by cells |
+| `base_height` | number | `-50` | The lowest the noise goes |
+| `height_range` | number | `150` | How far above `base_height` it reaches |
+| `scale` | number | `100` | About how many cells one hill spans |
+| `roughness` | number | `0.4` | How much each finer octave adds, `0` to `1` |
+| `curve` | number | `1` | Raises heights from 0 to 1 to this power, so over 1 flattens valleys |
+| `octaves` | integer | `6` | Layers of finer noise, `1` to `10` |
+| `erosion_steps` | integer | `0` | Passes of erosion, wearing peaks down |
+| `erosion_weight` | number | `0.5` | How much each pass wears |
+| `erosion_slope_factor`, `erosion_slope_direction`, `erosion_slope_invert` | | `0`, `[0, 0]`, `false` | Erosion that runs one way, `[x, z]`, or against it |
+| `dilation` | number | `0` | Grows plateaus instead of wearing peaks, `0` to `1` |
+| `island_weight` | number | `0` | How much the edges fall away into an island |
+| `island_sharpness` | number | `0` | How sharply its shore falls |
+| `island_height_ratio` | number | `-1` | The edges' height, `-1` (lowest) to `1` (highest, a canyon) |
+| `island_shape` | number | `0` | `0` round to `1` square |
+| `additive` | boolean | `false` | Add the noise to the current heights |
+
+Needs: `edit`, `filesystem`. The same seed makes the same heights on every machine. From
+[examples/terrain](../../examples/terrain/):
+
+```json
+{"id": "land", "seed": 4, "base_height": -6, "height_range": 40, "scale": 50, "island_weight": 1, "island_sharpness": 0.4}
+```
+
+```json
+{"files":["terrain/land.height.png"],"heights":[-6,26.6482],"id":"land"}
+```
+
+`height_range` is in the reply only when it widened. A terrain that can't be made (a map that
+doesn't load, or a resolution HTerrain refuses) fails at `/id` saying why, as
+[`scene validate`](cli.md#scene-validate) reports it.
+
+### terrain.brush
+
+Paints a [heightmap terrain](scene-format.md#heightmap-terrains) with a round brush at each point
+in turn, as HTerrain's painter. Writes the heightmap, splat map or color map it changes and
+returns how many cells changed.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with an `HTerrain` |
+| `mode` | string | required | `raise` or `lower` by `amount`, `smooth`, `flatten` to `height`, `level` to the mean under the brush, `splat` a texture, `color`, `hole` cuts holes and `unhole` fills them |
+| `points` | array of `[x, z]` | required | Where each dab goes, up to 1024 |
+| `radius` | number | `8` | From the middle to the edge |
+| `falloff` | number | `0.5` | The outer part that eases to nothing, `0` to `1` |
+| `opacity` | number | `1` | How strong each dab is, `0` to `1` |
+| `amount` | number | `1` | `raise` and `lower`: meters at the middle |
+| `height` | number | `0` | `flatten`: the height to go to |
+| `texture` | integer | `0` | `splat`: which texture, `0` to `3` |
+| `color` | `[r, g, b]` | `[1, 1, 1]` | `color`: from `0` to `1` |
+| `slope` | `[min, max]` | `[0, 90]` | `splat` and `color`: only where the ground slopes between these degrees, easing off past them as HTerrain's slope limit does |
+| `global` | boolean | `false` | Points and lengths in the world's space rather than the terrain's entity's, for a terrain not tilted |
+
+Needs: `edit`, `filesystem`. Leveling a plot at 5 meters:
+
+```json
+{"id": "land", "mode": "flatten", "points": [[40, 80], [48, 84]], "radius": 10, "height": 5}
+```
+
+```json
+{"changed":128,"files":["terrain/land.height.png"],"heights":[-5.9998,26.6484],"id":"land"}
+```
+
+- Points and lengths are in the entity's space, so `map_scale` stretches them into cells.
+- A height change returns the lowest and highest `heights` and widens `height_range` as
+  [`terrain.generate`](#terraingenerate) does; heights are kept to the heightmap's 65536 steps.
+- A dab that changes nothing returns `"unchanged": true` and writes nothing.
+
+A misspelled `mode` fails at `/mode` with the modes it takes, and an entity with no `HTerrain`
+at `/id`.
+
+### terrain.get
+
+Returns a [heightmap terrain's](scene-format.md#heightmap-terrains) resolution, bounds, holes
+and problems; or, with `points`, what the ground is at each.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with an `HTerrain` |
+| `points` | array of `[x, z]` | | Up to 1024 points over the ground |
+| `global` | boolean | `false` | Points and results in the world's space rather than the terrain's entity's, for a terrain not tilted |
+
+Needs: `read`.
+
+```json
+{"id": "land"}
+```
+
+```json
+{"aabb":{"max":[128,-10,128],"min":[0,-10,0]},"resolution":65}
+```
+
+```json
+{"id": "land", "points": [[64, 60], [44, 82]]}
+```
+
+```json
+{"points":[{"color":[0.302,0.2706,0.2392],"normal":[-0.6823,0.4357,0.587],"position":[64,17.1946,60],"splat":[0,1,0,0]},{"color":[0.1765,0.3137,0.1059],"normal":[0,1,0],"position":[44,5.0004,82],"splat":[0.8235,0.1765,0,0]}]}
+```
+
+- `aabb` holds the terrain's heights in the entity's space (or the world's with `global`).
+  `holes` counts the cells cut, and `problems` are there only when it can't be drawn, each with
+  the `path` of the bad field and a `message`, as [`scene validate`](cli.md#scene-validate)
+  reports them.
+- Each point has the ground's `position` (its height between cells, as HTerrain's
+  `get_interpolated_height_at`) and `normal`, and, from the nearest cell, the four textures'
+  `splat` weights (with more than one texture or a splat map), the `color` (with a color map),
+  `hole: true` over a hole and `outside: true` past the edge, where it reads the nearest edge.
 
 ### tilemap.paint
 
@@ -3822,6 +3944,7 @@ to what the allocator handed out but not exactly it, and they vary by platform.
 | `text` | The glyph atlas pages text draws from |
 | `csg` | The meshes CSG roots keep (`meshes`) and their `triangles` |
 | `gridmap` | The octant meshes and shapes GridMaps keep (`gridmaps`, `octants`, `cells` and `triangles`) |
+| `terrain` | The heights and range maps HTerrains keep (`terrains` and `cells`) |
 
 A part that grows from one report to the next while the game keeps doing the same thing is the
 place to look for a leak, and its items name what grew

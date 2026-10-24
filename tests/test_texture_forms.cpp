@@ -238,6 +238,18 @@ TEST_CASE("exports ship textures in the forms project.json asks for, in place of
     write("odd.png", png_of(gradient(6, 6)));
     write("ui/button.png", png_of(gradient(8, 8)));
     write("ui/atlas.png", png_of(gradient(8, 8)));
+    // A terrain's heightmap is data, and its splat and color maps ship as they are, since
+    // terrains read their pixels.
+    write("land.scene.json", R"({"format": 1, "entities": {"land": {"components": {"HTerrain": {
+        "heightmap": "land.height.png", "splatmap": "land.splat.png",
+        "colormap": "land.color.png"}}}}})");
+    render::Gray16 heights{.width = 16, .height = 16, .values = {}};
+    heights.values.assign(256, 1000);
+    auto heightmap = render::encode_gray16_png(heights);
+    REQUIRE(heightmap.ok());
+    write("land.height.png", heightmap.value());
+    write("land.splat.png", png_of(gradient(16, 16)));
+    write("land.color.png", png_of(gradient(16, 16)));
 
     // Desktops ship BC7. (A web export, which ships ASTC too, needs Emscripten before it stages.)
 #if defined(__APPLE__)
@@ -268,6 +280,11 @@ TEST_CASE("exports ship textures in the forms project.json asks for, in place of
     CHECK_FALSE(std::filesystem::exists(data / "ui" / "button.png.bc7.ktx2"));
     CHECK(std::filesystem::exists(data / "ui" / "atlas.png.rgba8.ktx2"));
     CHECK_FALSE(std::filesystem::exists(data / "ui" / "atlas.png"));
+    for (const char* map : {"land.height.png", "land.splat.png", "land.color.png"}) {
+        CAPTURE(map);
+        CHECK(std::filesystem::exists(data / map));
+        CHECK_FALSE(std::filesystem::exists(data / (std::string(map) + ".bc7.ktx2")));
+    }
     // The forms were kept in the library for the next export.
     CHECK(std::filesystem::exists(library / "forms"));
     std::filesystem::remove_all(folder);

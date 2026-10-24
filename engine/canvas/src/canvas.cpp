@@ -11,6 +11,7 @@
 #include "slash/render/image.hpp"
 #include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/gridmap.hpp"
+#include "slash/scene3d/terrain.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/path.hpp"
 
@@ -347,6 +348,23 @@ void add_systems(world::World& world, asset::Assets& assets) {
         world, models,
         [&assets](const std::string& path) -> Result<std::shared_ptr<const scene3d::MeshLibrary>> {
             auto found = assets.load<scene3d::MeshLibrary>(path);
+            if (!found) {
+                return found.error();
+            }
+            return held(found.value());
+        });
+    // Terrains keep their data until a map changes, the maps read through assets.
+    scene3d::install_terrain(
+        world,
+        [&assets](const std::string& path) -> Result<std::shared_ptr<const render::Gray16>> {
+            auto found = assets.load<render::Gray16>(path);
+            if (!found) {
+                return found.error();
+            }
+            return held(found.value());
+        },
+        [&assets](const std::string& path) -> Result<std::shared_ptr<const render::Image>> {
+            auto found = assets.load<render::Image>(path);
             if (!found) {
                 return found.error();
             }

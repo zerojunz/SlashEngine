@@ -1942,6 +1942,180 @@ TEST_CASE("gridmap commands set and read a GridMap's cells, and rays name the ce
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("terrain commands make, paint and read an HTerrain's maps") {
+    const std::string root = "terrain_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create", R"({"id": "land", "components": {
+        "Transform3D": {"position": [100, 0, 0]},
+        "HTerrain": {"heightmap": "terrain/land.height.png", "resolution": 65,
+                     "height_range": [0, 10], "splatmap": "terrain/land.splat.png",
+                     "colormap": "terrain/land.color.png", "map_scale": [2, 1, 2],
+                     "textures": [{}, {}]}}})");
+    engine.ok("entity.create", R"({"id": "rock", "components": {"Transform3D": {}}})");
+    const auto file = [&](const std::string& path) {
+        auto text = slash::platform::read_file(root + "/" + path);
+        return text.ok() ? text.value() : std::string();
+    };
+    const auto height_at = [&](std::string_view point) {
+        const json::Value got =
+            engine.ok("terrain.get", R"({"id": "land", "points": [)" + std::string(point) + "]}");
+        return got.find("points")->as_array()[0].find("position")->as_array()[1].as_double();
+    };
+    const auto height_range = [&] {
+        return *engine.ok("entity.get", R"({"id": "land", "components": ["HTerrain"]})")
+                    .find("components")
+                    ->find("HTerrain")
+                    ->find("height_range");
+    };
+
+    // Maps that don't exist yet read as flat ground at the bottom of height_range.
+    CHECK(engine.ok("terrain.get", R"({"id": "land"})") ==
+          parse(R"({"resolution": 65, "aabb": {"min": [0, 0, 0], "max": [128, 0, 128]}})"));
+    // Slope limits keep paint off ground flatter or steeper than they allow.
+    CHECK(engine.ok("terrain.brush", R"({"id": "land", "mode": "splat", "points": [[64, 64]],
+                                         "texture": 1, "slope": [45, 90]})") ==
+          parse(R"({"id": "land", "changed": 0, "unchanged": true})"));
+
+    // terrain.generate writes the heightmap, widening height_range to whole meters that hold
+    // the heights.
+    CHECK(engine.ok("terrain.generate", R"({"id": "land", "seed": 7, "base_height": -2,
+                                            "height_range": 30, "scale": 20})") ==
+          parse(R"({"id": "land", "files": ["terrain/land.height.png"],
+                    "heights": [3.4562, 22.341], "height_range": [0, 23]})"));
+    CHECK(height_range() == parse("[0.0, 23.0]"));
+    CHECK(std::filesystem::exists(root + "/terrain/land.height.png"));
+    CHECK(engine.ok("terrain.get", R"({"id": "land"})") == parse(R"({"resolution": 65,
+                    "aabb": {"min": [0, 3.4562, 0], "max": [128, 22.3409, 128]}})"));
+
+    // Points read the ground's height, normal and texture weights there, those off the map at
+    // its edge; with global, in the world's space.
+    CHECK(engine.ok("terrain.get", R"({"id": "land", "points": [[20, 20], [-4, 300]]})") ==
+          parse(R"({"points": [
+              {"position": [20, 12.3207, 20], "normal": [-0.4988, 0.2985, 0.8137],
+               "splat": [1, 0, 0, 0]},
+              {"position": [0, 9.0182, 128], "normal": [-0.1808, 0.4769, 0.8601],
+               "splat": [1, 0, 0, 0], "outside": true}]})"));
+    CHECK(engine.ok("terrain.get", R"({"id": "land", "points": [[120, 20]], "global": true})") ==
+          parse(R"({"points": [{"position": [120, 12.3207, 20],
+                                "normal": [-0.4988, 0.2985, 0.8137], "splat": [1, 0, 0, 0]}]})"));
+
+    // A brush raises the ground by amount at its middle, its radius in the terrain's space; rays
+    // hit the new ground.
+    CHECK(height_at("[64, 64]") == doctest::Approx(14.272).epsilon(1.0e-4));
+    CHECK(engine.ok("terrain.brush", R"({"id": "land", "mode": "raise", "points": [[64, 64]],
+                                         "amount": 2})") ==
+          parse(R"({"id": "land", "changed": 45, "files": ["terrain/land.height.png"],
+                    "heights": [3.4562, 22.3409]})"));
+    CHECK(height_at("[64, 64]") == doctest::Approx(16.272).epsilon(1.0e-4));
+    const json::Value hit =
+        engine.ok("physics.raycast", R"({"from": [164, 50, 64], "to": [164, -50, 64]})");
+    CHECK(*hit.find("hit")->find("id") == parse(R"("land")"));
+    CHECK(hit.find("hit")->find("point")->as_array()[1].as_double() ==
+          doctest::Approx(16.272).epsilon(1.0e-3));
+
+    // Splat, color and hole brushes paint the other maps, which terrain.get then reads.
+    CHECK(engine.ok("terrain.brush", R"({"id": "land", "mode": "splat", "points": [[20, 20]],
+                                         "texture": 1, "radius": 6})") ==
+          parse(R"({"id": "land", "changed": 25, "files": ["terrain/land.splat.png"]})"));
+    engine.ok("terrain.brush", R"({"id": "land", "mode": "color", "points": [[20, 20]],
+                                   "color": [1, 0.5, 0], "opacity": 0.5})");
+    CHECK(engine.ok("terrain.brush", R"({"id": "land", "mode": "hole", "points": [[40, 40]],
+                                         "radius": 4})") ==
+          parse(R"({"id": "land", "changed": 9, "files": ["terrain/land.color.png"]})"));
+    CHECK(engine.ok("terrain.get", R"({"id": "land", "points": [[20, 20], [40, 40]]})") ==
+          parse(R"({"points": [
+              {"position": [20, 12.3207, 20], "normal": [-0.4988, 0.2985, 0.8137],
+               "splat": [0, 1, 0, 0], "color": [1, 0.749, 0.502]},
+              {"position": [40, 11.0225, 40], "normal": [0.6411, 0.422, -0.641],
+               "splat": [1, 0, 0, 0], "color": [1, 1, 1], "hole": true}]})"));
+    CHECK(*engine.ok("terrain.get", R"({"id": "land"})").find("holes") == parse("9"));
+    // A brush that misses the map changes nothing.
+    CHECK(engine.ok("terrain.brush", R"({"id": "land", "mode": "raise", "points": [[500, 9]]})") ==
+          parse(R"({"id": "land", "changed": 0, "unchanged": true})"));
+
+    // Each command is one undo step: undo puts the files back as they were, removing maps it
+    // made, and redo writes them again.
+    const std::string with_hole = file("terrain/land.color.png");
+    engine.ok("undo");
+    CHECK(engine.ok("terrain.get", R"({"id": "land"})").find("holes") == nullptr);
+    engine.ok("undo");
+    engine.ok("undo");
+    CHECK_FALSE(std::filesystem::exists(root + "/terrain/land.color.png"));
+    CHECK_FALSE(std::filesystem::exists(root + "/terrain/land.splat.png"));
+    engine.ok("redo");
+    engine.ok("redo");
+    engine.ok("redo");
+    CHECK(file("terrain/land.color.png") == with_hole);
+    CHECK(*engine.ok("terrain.get", R"({"id": "land"})").find("holes") == parse("9"));
+    // Heights added past height_range widen it, and undo narrows it again.
+    const std::string heights = file("terrain/land.height.png");
+    const json::Value added = engine.ok("terrain.generate", R"({"id": "land", "base_height": 20,
+                                                               "height_range": 5,
+                                                               "additive": true})");
+    REQUIRE(added.find("height_range") != nullptr);
+    CHECK(added.find("height_range")->as_array()[1].as_double() > 40.0);
+    engine.ok("undo");
+    CHECK(height_range() == parse("[0.0, 23.0]"));
+    CHECK(file("terrain/land.height.png") == heights);
+
+    // A dry run writes nothing.
+    engine.ok("terrain.brush", R"({"id": "land", "mode": "lower", "points": [[64, 64]],
+                                   "dry_run": true})");
+    CHECK(file("terrain/land.height.png") == heights);
+    // In a batch, each brush paints what the one before it staged; global points are in the
+    // world's space.
+    engine.ok("batch", R"({"commands": [
+        {"command": "terrain.brush",
+         "params": {"id": "land", "mode": "raise", "points": [[64, 64]], "amount": 1}},
+        {"command": "terrain.brush",
+         "params": {"id": "land", "mode": "raise", "points": [[164, 64]], "amount": 1,
+                    "global": true}}]})");
+    CHECK(height_at("[64, 64]") == doctest::Approx(18.272).epsilon(1.0e-4));
+
+    // Settings HTerrain refuses come back as problems.
+    engine.ok("component.set", R"({"id": "land", "components": {"HTerrain": {"chunk_size": 20}}})");
+    CHECK(*engine.ok("terrain.get", R"({"id": "land"})").find("problems") ==
+          parse(R"([{"path": "/components/HTerrain/chunk_size",
+                     "message": "is 16, 32 or 64, not 20"}])"));
+
+    auto reply = engine.fails("terrain.get", R"({"id": "lnd"})", command::code::kNotFound);
+    CHECK(reply.message == "/id: no entity has the id \"lnd\"; did you mean \"land\"?");
+    reply = engine.fails("terrain.get", R"({"id": "rock"})", command::code::kInvalidParams);
+    CHECK(reply.message == "/id: \"rock\" has no HTerrain");
+    engine.fails("terrain.brush", R"({"id": "land", "mode": "dig", "points": [[0, 0]]})",
+                 command::code::kInvalidParams);
+    // The maps a command writes must be named, and be files of their kind.
+    engine.ok("entity.create", R"({"id": "bare", "components": {"HTerrain": {"resolution": 65}}})");
+    reply = engine.fails("terrain.generate", R"({"id": "bare"})", command::code::kInvalidArgument);
+    CHECK(reply.message == "/id: \"bare\"'s HTerrain names no heightmap to write: set heightmap "
+                           "to a path such as \"terrain/land.height.png\"");
+    reply = engine.fails("terrain.brush", R"({"id": "bare", "mode": "hole", "points": [[0, 0]]})",
+                         command::code::kInvalidArgument);
+    CHECK(reply.message == "/id: \"bare\"'s HTerrain names no colormap to write: set colormap to "
+                           "a path such as \"terrain/land.color.png\"");
+    engine.ok("component.set",
+              R"({"id": "bare", "components": {"HTerrain": {"heightmap": "terrain/bare.png"}}})");
+    reply = engine.fails("terrain.generate", R"({"id": "bare"})", command::code::kInvalidArgument);
+    CHECK(reply.message ==
+          "/id: \"bare\"'s heightmap \"terrain/bare.png\" is not a .height.png file");
+    // Maps of another size than the resolution, and resolutions HTerrain refuses.
+    engine.ok("component.set", R"({"id": "bare", "components": {"HTerrain": {
+        "heightmap": "terrain/land.height.png", "resolution": 129}}})");
+    reply = engine.fails("terrain.get", R"({"id": "bare"})", command::code::kInvalidArgument);
+    CHECK(reply.message == "/id: \"bare\"'s heightmap \"terrain/land.height.png\" is 65x65 "
+                           "pixels, but its resolution makes the maps 129x129");
+    engine.ok("component.set",
+              R"({"id": "bare", "components": {"HTerrain": {"resolution": 100}}})");
+    reply = engine.fails("terrain.get", R"({"id": "bare"})", command::code::kInvalidArgument);
+    CHECK(reply.message == "/id: \"bare\"'s HTerrain resolution is a power of two plus one from "
+                           "65 to 4097, such as 513, not 100");
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("skeleton.get returns a model's bones, posed as its entity draws them") {
     const std::string root = "skeleton_test_project";
     std::filesystem::remove_all(root);

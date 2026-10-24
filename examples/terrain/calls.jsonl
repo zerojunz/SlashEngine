@@ -1,0 +1,16 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"terrain.get","params":{"id":"land"}}
+{"jsonrpc":"2.0","id":3,"method":"terrain.generate","params":{"id":"land","seed":4,"base_height":-6,"height_range":40,"scale":50,"island_weight":1,"island_sharpness":0.4}}
+{"jsonrpc":"2.0","id":4,"method":"terrain.brush","params":{"id":"land","mode":"flatten","points":[[40,80],[48,84]],"radius":10,"height":5}}
+{"jsonrpc":"2.0","id":5,"method":"terrain.brush","params":{"id":"land","mode":"color","points":[[64,64]],"radius":200,"color":[0.15,0.32,0.08]}}
+{"jsonrpc":"2.0","id":6,"method":"terrain.brush","params":{"id":"land","mode":"color","points":[[64,64]],"radius":200,"color":[0.3,0.27,0.24],"slope":[25,90]}}
+{"jsonrpc":"2.0","id":7,"method":"terrain.brush","params":{"id":"land","mode":"splat","points":[[64,64]],"radius":200,"texture":1,"slope":[25,90]}}
+{"jsonrpc":"2.0","id":8,"method":"terrain.get","params":{"id":"land","points":[[64,60],[44,82],[10,10]]}}
+{"jsonrpc":"2.0","id":9,"method":"frame.capture","params":{"points":[[57,60],[75,50],[90,45],[20,70],[5,5]]}}
+{"jsonrpc":"2.0","id":10,"method":"physics.raycast","params":{"from":[80,50,84],"to":[80,-50,84]}}
+{"jsonrpc":"2.0","id":11,"method":"terrain.brush","params":{"id":"land","mode":"hole","points":[[80,84]],"radius":10}}
+{"jsonrpc":"2.0","id":12,"method":"physics.raycast","params":{"from":[80,50,84],"to":[80,-50,84]}}
+{"jsonrpc":"2.0","id":13,"method":"frame.capture","params":{"points":[[90,45]]}}
+{"jsonrpc":"2.0","id":14,"method":"terrain.get","params":{"id":"land"}}
+{"jsonrpc":"2.0","id":15,"method":"undo"}
+{"jsonrpc":"2.0","id":16,"method":"physics.raycast","params":{"from":[80,50,84],"to":[80,-50,84]}}
