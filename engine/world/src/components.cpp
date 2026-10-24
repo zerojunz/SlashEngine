@@ -1980,6 +1980,57 @@ void register_audio_components(ComponentRegistry& registry) {
 }
 
 // Godot's CSG nodes. Every one ends with CSGShape3D's fields, added by shape().
+void register_path_components(ComponentRegistry& registry) {
+    const FieldMeta progress{.doc = "How far along the curve, wrapped round it with loop or kept "
+                                    "on it; the path_follow system writes back where it ends up."};
+    const FieldMeta cubic_interp{.doc = "Moves between baked points on a curve rather than a "
+                                        "line."};
+    const FieldMeta loop{.doc = "Progress past either end goes round to the other."};
+    registry.add<Path2D>()
+        .set_doc("A curve of Bezier segments in the entity's space, as Godot's Path2D with its "
+                 "Curve2D; PathFollow2D children move along it.")
+        .describe("points", {.doc = "Points as {\"position\", \"in\", \"out\"} in pixels, in "
+                                    "and out the control handles before and after each, "
+                                    "relative to it."})
+        .describe("bake_interval",
+                  {.doc = "Pixels between the points the curve is baked into.", .min = 0.01});
+    registry.add<PathFollow2D>()
+        .set_doc("Places the entity on its Transform2D parent's Path2D curve each tick, as "
+                 "Godot's PathFollow2D.")
+        .describe("progress", progress)
+        .describe("h_offset", {.doc = "Pixels along the curve."})
+        .describe("v_offset", {.doc = "Pixels across the curve."})
+        .describe("rotates", {.doc = "Turns it so +x faces the way the curve goes."})
+        .describe("cubic_interp", cubic_interp)
+        .describe("loop", loop);
+    registry.add<Path3D>()
+        .set_doc("A curve of Bezier segments in the entity's space, as Godot's Path3D with its "
+                 "Curve3D; PathFollow3D children and CSGPolygon3D's path mode use it.")
+        .describe("points", {.doc = "Points as {\"position\", \"in\", \"out\", \"tilt\"} in "
+                                    "meters, in and out the control handles before and after "
+                                    "each, relative to it, and tilt the radians it rolls there."})
+        .describe("closed", {.doc = "Adds a segment from the last point back to the first."})
+        .describe("bake_interval",
+                  {.doc = "Meters between the points the curve is baked into.", .min = 0.01})
+        .describe("up_vector_enabled",
+                  {.doc = "Carries an up vector along the curve, for \"oriented\" followers "
+                          "and rolling along it."});
+    registry.add<PathFollow3D>()
+        .set_doc("Places the entity on its Transform3D parent's Path3D curve each tick, as "
+                 "Godot's PathFollow3D.")
+        .describe("progress", progress)
+        .describe("h_offset", {.doc = "Meters to the side of the curve."})
+        .describe("v_offset", {.doc = "Meters up from the curve."})
+        .describe("rotation_mode",
+                  {.doc = "Which ways it turns with the curve: not at all, about y, about x and "
+                          "y, every way, or every way with the curve's up vectors.",
+                   .choices = {"none", "y", "xy", "xyz", "oriented"}})
+        .describe("use_model_front", {.doc = "Faces +z along the curve instead of -z."})
+        .describe("cubic_interp", cubic_interp)
+        .describe("loop", loop)
+        .describe("tilt_enabled", {.doc = "Rolls it by the curve's tilt."});
+}
+
 void register_csg_components(ComponentRegistry& registry) {
     const auto shape = [](ComponentType& type) {
         type.describe("operation",
@@ -2029,22 +2080,53 @@ void register_csg_components(ComponentRegistry& registry) {
               .describe("ring_sides", {.doc = "Faces around its tube.", .min = 3})
               .describe("smooth_faces", smooth_faces)
               .describe("flip_faces", flip_faces));
-    shape(registry.add<CSGPolygon3D>()
-              .set_doc("A polygon in the entity's xy plane pushed along -z or turned around y, as "
-                       "Godot's CSGPolygon3D.")
-              .describe("polygon",
-                        {.doc = "Corners in meters, as [[x, y], ...]; at least 3, its edges not "
-                                "crossing."})
-              .describe("mode", {.doc = "\"depth\" pushes it depth along -z; \"spin\" turns it "
-                                        "spin_degrees around y.",
-                                 .choices = {"depth", "spin"}})
-              .describe("depth", {.doc = "Meters along -z, in depth mode.", .min = 0.001})
-              .describe("spin_degrees", {.doc = "How far it turns, in spin mode; 360 closes it.",
-                                         .min = 0.01,
-                                         .max = 360})
-              .describe("spin_sides", {.doc = "Steps it turns in, in spin mode.", .min = 3})
-              .describe("smooth_faces", smooth_faces)
-              .describe("flip_faces", flip_faces));
+    shape(
+        registry.add<CSGPolygon3D>()
+            .set_doc("A polygon in the entity's xy plane pushed along -z, turned around y or "
+                     "pushed along a Path3D, as Godot's CSGPolygon3D.")
+            .describe("polygon",
+                      {.doc = "Corners in meters, as [[x, y], ...]; at least 3, its edges not "
+                              "crossing."})
+            .describe("mode", {.doc = "\"depth\" pushes it depth along -z; \"spin\" turns it "
+                                      "spin_degrees around y; \"path\" pushes it along "
+                                      "path_node's curve.",
+                               .choices = {"depth", "spin", "path"}})
+            .describe("depth", {.doc = "Meters along -z, in depth mode.", .min = 0.001})
+            .describe(
+                "spin_degrees",
+                {.doc = "How far it turns, in spin mode; 360 closes it.", .min = 0.01, .max = 360})
+            .describe("spin_sides", {.doc = "Steps it turns in, in spin mode.", .min = 3})
+            .describe("path_node", {.doc = "ID of the entity whose Path3D it follows, in path "
+                                           "mode."})
+            .describe("path_interval_type",
+                      {.doc = "Cuts the path every path_interval meters (\"distance\") or "
+                              "every path_interval of its points (\"subdivide\").",
+                       .choices = {"distance", "subdivide"}})
+            .describe("path_interval", {.doc = "Meters or points between cuts.", .min = 0.01})
+            .describe(
+                "path_simplify_angle",
+                {.doc = "Joins cuts that turn less than this many degrees.", .min = 0, .max = 180})
+            .describe("path_rotation",
+                      {.doc = "\"polygon\" keeps it facing -z; \"path\" turns it with the "
+                              "path; \"path_follow\" also rolls it with the path's up vectors "
+                              "and tilt.",
+                       .choices = {"polygon", "path", "path_follow"}})
+            .describe("path_rotation_accurate",
+                      {.doc = "Turns it by the curve's own directions instead of the line "
+                              "between cuts."})
+            .describe("path_local",
+                      {.doc = "Starts at the CSGPolygon3D instead of where the path is in the "
+                              "world."})
+            .describe("path_continuous_u",
+                      {.doc = "Texture u runs along the whole path instead of 0 to 1 on each "
+                              "piece."})
+            .describe("path_u_distance",
+                      {.doc = "Meters of path per texture repeat with path_continuous_u; 0 "
+                              "stretches it over the path.",
+                       .min = 0})
+            .describe("path_joined", {.doc = "Joins the end to the start instead of capping both."})
+            .describe("smooth_faces", smooth_faces)
+            .describe("flip_faces", flip_faces));
     shape(registry.add<CSGMesh3D>()
               .set_doc("A closed mesh as a CSG shape, as Godot's CSGMesh3D: a model's meshes, or "
                        "the entity's primitive mesh.")
@@ -2880,6 +2962,7 @@ void register_builtin_components(ComponentRegistry& registry) {
                           "middle of the screen in the world less half the screen."});
 
     register_3d_components(registry);
+    register_path_components(registry);
     register_csg_components(registry);
     register_physics_components(registry);
     register_physics_3d_components(registry);
