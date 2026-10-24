@@ -1072,6 +1072,110 @@ radii are equal, or a root whose result is empty. An entity has at most one CSG 
 `MeshInstance3D` beside it, since the shape draws itself.
 [examples/csg-shapes](../../examples/csg-shapes/) builds a hamlet.
 
+### Grid maps
+
+A `GridMap` is Godot 4.6's: items of a mesh library placed in a grid of cells, one item per
+cell, to build levels from blocks. Cells are in the entity's `Transform3D` space. Like a
+[tile map layer](#tile-map-layers), it writes its cells as text: a `legend` of short keys, and
+`floors`, each the rows of keys at one height `y`. A row is a string of keys for the cells from
+the floor's `origin` (`[x, z]`) toward +x, and each row after the first is one cell further
+toward +z.
+
+```json
+"level": {"components": {
+  "Transform3D": {},
+  "GridMap": {
+    "mesh_library": "blocks.meshlib.json",
+    "bake_navigation": true,
+    "legend": {"f": "floor", "p": "platform", "r": "ramp:10", "w": "wall"},
+    "floors": [{"y": 0, "origin": [0, 0], "rows": ["ffffpp", "ffffrp", "ffwfff", "ffwfff"]}]
+  }
+}}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `mesh_library` | `""` | A [`.meshlib.json`](#mesh-libraries) file, below |
+| `cell_size` | `[2, 2, 2]` | Meters along x, y and z |
+| `cell_octant_size` | `8` | Cells along each side of the blocks drawn, collided and remade together |
+| `cell_center_x`, `cell_center_y`, `cell_center_z` | `true` | Moves items half a cell along that axis, to the cell's center; without it the item sits on the cell's corner |
+| `cell_scale` | `1` | Scales each cell's item |
+| `collision_layer`, `collision_mask` | `1` | As a [static body's](#3d-physics) |
+| `friction`, `bounce` | `1`, `0` | Its physics material |
+| `bake_navigation` | `false` | Each cell whose item has a navigation mesh is a [navigation region](#regions) |
+| `legend` | `{}` | key to item: the item's name, then `:` and an orientation, `1` to `23`, when it is turned |
+| `floors` | `[]` | `y` `0`, `origin` `[0, 0]` and `rows` |
+
+- **Keys and rows** are as a tile map layer's: one to three characters, all the same length,
+  `.` an empty cell. Cells are from -32768 to 32767 on each axis, as in Godot. Commands write
+  the map in canonical form: a floor for each `y` in use, lowest first, its origin the corner of
+  its cells nearest -x and -z, rows ending at their last item, keys kept for what they stood for
+  and new keys going to the most used items first, each the first letter of the item's name
+  where that is free.
+- **Orientation** is Godot's orthogonal index: one of the 24 ways a cell's item can face, as
+  Godot's `GridMap::get_basis_with_orthogonal_index`. `0` is unturned; `16`, `10` and `22` turn
+  it 90, 180 and 270 degrees about y.
+- **Where a cell is.** A cell's item is turned by its orientation, scaled by `cell_scale` and
+  placed at `cell × cell_size`, moved half a cell along each centered axis, as Godot's
+  `map_to_local`. A point is in the cell `floor(point / cell_size)`.
+- **Drawing.** Cells are grouped into octants of `cell_octant_size` cells a side, as Godot
+  groups them, and each octant's items draw as one mesh per material and `mesh_cast_shadow`. A
+  change to some cells remakes only their octants.
+- **Collision.** With any item shapes, the GridMap is one static body of every cell's shapes, on
+  its `collision_layer` and `collision_mask`. [`physics.raycast`](commands.md#physicsraycast)
+  returns the `cell` it hit and its `item`.
+- **Navigation.** With `bake_navigation`, each cell whose item has a `navigation_mesh` is a
+  region on the item's `navigation_layers`, and neighboring cells join where their edges meet.
+  [Baking](#baking) a navigation mesh takes the GridMap's meshes, or its shapes, as Godot's
+  `GridMap::navmesh_parse_source_geometry` does.
+- **Commands.** [`gridmap.set`](commands.md#gridmapset) places or erases an item in cells or a
+  box of them, and [`gridmap.get`](commands.md#gridmapget) reads the map, cells or the cells
+  points are in.
+- **Checks.** `scene validate` and exports report rows that don't decode, legend items the
+  library doesn't have (with the closest name), cells but no library, a library that doesn't
+  load, item meshes that can't be made, a `cell_size` under 0.001 meters and a GridMap on a
+  physics body's entity, each at its JSON Pointer.
+
+#### Mesh libraries
+
+A `.meshlib.json` file is Godot's `MeshLibrary`: items by name (1 to 64 characters, no `:`),
+each what a cell holding it draws, collides as and walks on, in the cell's space.
+`slash-cli schema meshlib` prints its JSON Schema, and `scene validate` and `scene format` take
+it.
+
+```json
+{
+  "format": 1,
+  "items": {
+    "wall": {
+      "primitive": {"BoxMesh": {"size": [2, 2, 2]}},
+      "material": {"albedo_color": [0.4, 0.42, 0.5, 1]},
+      "shapes": [{"shape": "box", "size": [2, 2, 2]}]
+    },
+    "floor": {
+      "primitive": {"BoxMesh": {"size": [2, 0.2, 2]}},
+      "mesh_transform": {"position": [0, -0.9, 0]},
+      "navigation_mesh": "nav/square.navmesh.json",
+      "navigation_mesh_transform": {"position": [0, -0.8, 0]}
+    }
+  }
+}
+```
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `mesh` | `""` | A `.gltf`, `.glb`, `.obj`, `.fbx` or `.blend` file's meshes, as they are at rest |
+| `primitive` | none | Or one [primitive mesh](#meshes) by its component's name, such as `{"BoxMesh": {}}` |
+| `material` | none | `StandardMaterial3D` fields: takes the place of the model's materials, or colors the primitive; Godot's default material without one |
+| `mesh_transform` | none | `position`, `rotation` and `scale` placing the mesh in the cell |
+| `mesh_cast_shadow` | `"on"` | As a `MeshInstance3D`'s `cast_shadow` |
+| `shapes` | `[]` | `CollisionShape3D` fields, each placed by its `position` and `rotation`; not `world_boundary` |
+| `navigation_mesh` | `""` | A [`.navmesh.json`](#navigation-meshes-and-polygons) file |
+| `navigation_mesh_transform` | none | Places the navigation mesh in the cell |
+| `navigation_layers` | `1` | The navigation layers its regions are in |
+
+[examples/gridmap](../../examples/gridmap/) lays out a room with a ramp up to a platform.
+
 ### StandardMaterial3D
 
 Godot's `StandardMaterial3D`, as the mesh's material override. Colors are sRGB; textures are
@@ -1291,7 +1395,8 @@ energy multiplies twice, as Godot's does. A material's `disable_fog` leaves it c
 `/entities/<id>/components`), a `MeshInstance3D` with none (at its `MeshInstance3D`), a
 `TorusMesh` whose radii are equal, and a `mesh` that isn't a `.gltf`, `.glb`, `.obj` or `.fbx` file in the
 project, doesn't load, or sits beside a primitive mesh (at its `mesh`), as drawing would, and
-[CSG shapes](#csg-shapes) that can't be made and [path followers](#paths) that can't follow.
+[CSG shapes](#csg-shapes) that can't be made, [grid maps](#grid-maps) whose cells can't
+be made and [path followers](#paths) that can't follow.
 Exports
 check every `.gltf`, `.glb`, `.obj` and `.fbx` file as `scene validate` does, and ship them with their
 `.bin` buffers, `.mtl` libraries and images. `frame.summary` doesn't describe 3D meshes

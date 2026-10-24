@@ -855,6 +855,48 @@ struct CSGMesh3D {
 SLASH_COMPONENT(CSGMesh3D, mesh, flip_faces, operation, calculate_tangents, use_collision,
                 collision_layer, collision_mask, layers, cast_shadow)
 
+// ---- Grid maps, as Godot's GridMap (engine/scene3d/src/gridmap.cpp) ----
+
+// One floor of a GridMap's cells: the rows of legend keys at height y, as TileMapLayer's rows.
+// Each row is a string of keys for the cells from origin's x toward +x, and each row after the
+// first is one cell further toward +z.
+struct GridFloor {
+    int y = 0;
+    Vec2i origin; // [x, z] of the cell the first key of the first row stands for
+    std::vector<std::string> rows;
+
+    friend bool operator==(const GridFloor&, const GridFloor&) = default;
+};
+SLASH_REFLECT(GridFloor, y, origin, rows)
+
+// Godot's GridMap: items of a .meshlib.json mesh library placed in a grid of cells in the
+// entity's Transform3D space, one item per cell, each turned one of Godot's 24 ways. Cells draw
+// their items' meshes, collide as a static body of their shapes and, with bake_navigation, are
+// navigation regions of their items' navigation meshes. A cell's center is cell_size times the
+// cell, moved half a cell along the axes cell_center_* name.
+struct GridMap {
+    std::string mesh_library; // project path of a .meshlib.json file
+    Vec3 cell_size{2.0F, 2.0F, 2.0F};
+    int cell_octant_size = 8; // cells along each side of the blocks drawn and rebuilt together
+    bool cell_center_x = true;
+    bool cell_center_y = true;
+    bool cell_center_z = true;
+    float cell_scale = 1.0F; // scales each cell's item
+    std::uint32_t collision_layer = 1;
+    std::uint32_t collision_mask = 1;
+    float friction = 1.0F; // its physics material's
+    float bounce = 0.0F;
+    bool bake_navigation = false;
+    // key -> item: the item's name, then ":orientation" (0 to 23) if it is turned
+    std::map<std::string, std::string> legend;
+    std::vector<GridFloor> floors;
+
+    friend bool operator==(const GridMap&, const GridMap&) = default;
+};
+SLASH_COMPONENT(GridMap, mesh_library, cell_size, cell_octant_size, cell_center_x, cell_center_y,
+                cell_center_z, cell_scale, collision_layer, collision_mask, friction, bounce,
+                bake_navigation, legend, floors)
+
 // Ties an entity to the storyboard entries it stands for, such as the character it plays or the
 // place it is, so a brief for the scene includes them and checks catch a misspelled ID.
 struct StoryRef {

@@ -8,6 +8,7 @@
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/primitive.hpp"
 #include "slash/scene3d/skeleton.hpp"
+#include "slash/scene3d/surface.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/scene.hpp"
@@ -119,7 +120,8 @@ using ModelSource = std::function<Result<SourceModel>(const std::string& path)>;
 // more than one primitive mesh, a MeshInstance3D with none or with both a model and a primitive
 // mesh, and settings Godot refuses (a torus whose radii are equal). With the world's file reader
 // set, each model is read and checked as check_model does. CSG shapes that can't be made
-// (check_csg) and path followers that can't follow (world::check_paths) come after.
+// (check_csg), path followers that can't follow (world::check_paths) and GridMaps whose cells
+// can't be made (check_gridmaps) come after.
 [[nodiscard]] std::vector<Problem> check_meshes(const world::World& world);
 
 // The same in a parsed scene file, each at its JSON Pointer in the file. Prefabs and instanced
@@ -219,7 +221,8 @@ private:
 
     Result<render::MeshId> mesh_for(const world::World& world, entt::entity entity,
                                     const Primitive& primitive);
-    // A model's surface, or a CSG root's, as a mesh on the device, made once per key.
+    // A model's surface, a CSG root's or a GridMap octant's, as a mesh on the device, made once
+    // per key.
     Result<render::MeshId> kept_mesh(const std::string& key,
                                      const std::vector<render::Vertex3D>& vertices,
                                      const std::vector<std::uint32_t>& indices);
@@ -234,9 +237,16 @@ private:
                    const world::MeshInstance3D& instance, const world::Affine3D& place,
                    const std::function<world::Affine3D(entt::entity)>& global,
                    render::ShadowCasting casting, float interpolation);
+    // What a made mesh's surface is drawn with: its StandardMaterial3D, or its model's own
+    // material, whose images that can't load are problems at the entity's model_field.
+    render::Material3D surface_material(const SurfaceMaterial& from, entt::entity entity,
+                                        const std::string& model_field);
     // A CSG root's result, drawn as Godot draws its root shape's mesh.
     void add_csg(const world::World& world, const world::Tree3D& tree, entt::entity root,
                  const world::Affine3D& place, std::uint32_t cull_mask);
+    // A GridMap's octants, drawn as Godot draws their MultiMeshes.
+    void add_gridmap(const world::World& world, entt::entity entity, const world::Affine3D& place,
+                     std::uint32_t cull_mask);
     // A skinned surface's vertices moved by joints, in its entity's mesh on the device.
     Result<render::MeshId> skinned_mesh(const std::string& key, const ModelSurface& surface,
                                         const std::vector<world::Affine3D>& joints);

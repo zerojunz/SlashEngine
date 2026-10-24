@@ -130,7 +130,7 @@ double volume(const scene3d::CsgMesh& mesh) {
     return sum / 6.0;
 }
 
-std::size_t surface_triangles(const scene3d::CsgSurface& surface) {
+std::size_t surface_triangles(const scene3d::MeshSurface& surface) {
     return surface.indices.size() / 3;
 }
 
@@ -163,7 +163,7 @@ TEST_CASE("a CSG box is Godot's: 12 triangles, flat normals, clockwise faces") {
     CHECK(mesh->max == Vec3{1.0F, 0.5F, 2.0F});
     CHECK(volume(*mesh) == doctest::Approx(8.0));
     REQUIRE(mesh->surfaces.size() == 1);
-    const scene3d::CsgSurface& surface = mesh->surfaces[0];
+    const scene3d::MeshSurface& surface = mesh->surfaces[0];
     CHECK_FALSE(surface.material.standard);
     CHECK(surface_triangles(surface) == 12);
     // Every corner's normal points out of its face, and faces wind clockwise seen from outside.
@@ -255,7 +255,7 @@ TEST_CASE("CSG faces keep their shape's material wherever they end up") {
     REQUIRE(mesh->surfaces[1].material.standard);
     CHECK(mesh->surfaces[1].material.standard->albedo_color == slash::Vec4{1.0F, 0.0F, 0.0F, 1.0F});
     // The hole's walls face into it, toward its axis.
-    const scene3d::CsgSurface& walls = mesh->surfaces[1];
+    const scene3d::MeshSurface& walls = mesh->surfaces[1];
     for (const auto& vertex : walls.vertices) {
         const Vec3 p = vec(vertex.position);
         const Vec3 n = vec(vertex.normal);

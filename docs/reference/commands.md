@@ -63,6 +63,7 @@ as `entity.get`, reject it as an unknown param.
 | Animations | [`animation.eval`](#animationeval) |
 | Models | [`model.inspect`](#modelinspect), [`skeleton.get`](#skeletonget), [`csg.get`](#csgget) |
 | Paths | [`path.get`](#pathget) |
+| Grid maps | [`gridmap.set`](#gridmapset), [`gridmap.get`](#gridmapget) |
 | Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity) |
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
@@ -148,12 +149,13 @@ Returns a JSON Schema: for scene, prefab, [`.frames.json`](scene-format.md#sprit
 [`.theme.json`](scene-format.md#themes), [`.audio.json`](scene-format.md#audio-streams),
 [`.bus_layout.json`](scene-format.md#bus-layouts), [`.replay.json`](scene-format.md#replays),
 [`.test.json`](scene-format.md#tests),
-[`.navmesh.json` or `.navpoly.json`](scene-format.md#navigation-meshes-and-polygons) or storyboard
-files, one component or one command.
+[`.navmesh.json` or `.navpoly.json`](scene-format.md#navigation-meshes-and-polygons),
+[`.meshlib.json`](scene-format.md#mesh-libraries) or storyboard files, one component or one
+command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"meshlib"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -725,6 +727,74 @@ Needs: `read`.
 An entity with neither path fails at `/id`, and a `closest_to` with the wrong number of
 coordinates at `/closest_to`.
 
+### gridmap.set
+
+Places one item of a [`GridMap`'s](scene-format.md#grid-maps) mesh library in cells, turned by
+an orientation, or erases them with `null`, as Godot's `set_cell_item`. Writes the map in
+canonical form and returns how many cells changed.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with a `GridMap` |
+| `cells` | array of `[x, y, z]` | | The cells, up to 4096. Give `cells` or `box` |
+| `box` | `[x, y, z, width, height, depth]` | | Every cell in it, up to 65536 |
+| `item` | string or `null` | required | An item of the library, or `null` to erase |
+| `orientation` | integer | `0` | One of Godot's 24 orthogonal indices, `0` to `23`: `16`, `10` and `22` turn the item 90, 180 and 270 degrees about y |
+
+Needs: `edit`. Walling off a room, from [examples/gridmap](../../examples/gridmap/):
+
+```json
+{"id": "level", "box": [2, 0, 0, 1, 1, 2], "item": "wall"}
+```
+
+```json
+{"changed":2,"id":"level"}
+```
+
+An item the library doesn't have fails at `/item` with the closest name; a GridMap with no
+library at `/id`; and cells past -32768 to 32767 at `/cells` or `/box`.
+
+```json
+{"code":-32001,"data":{"path":"/item"},"message":"/item: the mesh library has no item \"wal\"; did you mean \"wall\"?"}
+```
+
+### gridmap.get
+
+Returns a [`GridMap`'s](scene-format.md#grid-maps) cells as its legend and floors of rows, the
+names of its library's items and any `problems`; or, with `cells`, what each given cell holds and
+its center; or, with `points`, the cells points are in and what they hold.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with a `GridMap` |
+| `cells` | array of `[x, y, z]` | | Up to 1024 cells |
+| `points` | array of `[x, y, z]` | | Up to 1024 points |
+| `global` | boolean | `false` | Centers and points in the world's space rather than the GridMap's |
+
+Needs: `read`.
+
+```json
+{"id": "level"}
+```
+
+```json
+{"cells":24,"floors":[{"origin":[0,0],"rows":["ffffpp","ffffrp","ffwfff","ffwfff"],"y":0}],"items":["floor","platform","ramp","wall"],"legend":{"f":"floor","p":"platform","r":"ramp:10","w":"wall"}}
+```
+
+```json
+{"id": "level", "points": [[5, 1, 1], [9, 1.5, 3]]}
+```
+
+```json
+{"points":[{"cell":[2,0,0],"item":"wall"},{"cell":[4,0,1],"item":"ramp","orientation":10}]}
+```
+
+- `cells` counts the cells in use. `problems` are there only when cells can't be made, each with
+  the `path` of the bad field and a `message`, as [`scene validate`](cli.md#scene-validate)
+  reports them.
+- Each cell or point has its `cell`, its `item` (`null` for an empty cell) and its
+  `orientation` when it isn't `0`. A cell asked for by `cells` has its `center`.
+
 ### tilemap.paint
 
 Paints a terrain on cells and picks tiles for them and the terrain cells around them so their
@@ -876,7 +946,8 @@ Returns the first body (or area, with `collide_with_areas`) that a ray from `fro
 hits: its ID, the point, the surface normal there and the fraction of the way the ray got. `hit`
 is `null` if it hits nothing. A ray that starts inside a shape doesn't hit that shape. A ray that
 hits a [tile map layer's](scene-format.md#tile-collision) tile also gives the `cell` it hit, as
-`[column, row]`.
+`[column, row]`, and one that hits a [`GridMap`](scene-format.md#grid-maps) gives the `cell` as
+`[x, y, z]` and the `item` in it.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -908,6 +979,12 @@ In 3D, a ray across a 1-meter crate at the origin, standing 2 meters up:
 
 ```json
 {"hit":{"fraction":0.45,"id":"crate","normal":[0,0,1],"point":[0,2,0.5]}}
+```
+
+Straight down onto a GridMap's ramp, from [examples/gridmap](../../examples/gridmap/):
+
+```json
+{"hit":{"cell":[4,0,1],"fraction":0.6667,"id":"level","item":"ramp","normal":[-0.7071,0.7071,0],"point":[9,1,3]}}
 ```
 
 ### physics.overlap
@@ -3744,6 +3821,7 @@ to what the allocator handed out but not exactly it, and they vary by platform.
 | `cpu_particles_2d`, `gpu_particles_2d` | Each emitter's particles, or the steps GPU particles replay |
 | `text` | The glyph atlas pages text draws from |
 | `csg` | The meshes CSG roots keep (`meshes`) and their `triangles` |
+| `gridmap` | The octant meshes and shapes GridMaps keep (`gridmaps`, `octants`, `cells` and `triangles`) |
 
 A part that grows from one report to the next while the game keeps doing the same thing is the
 place to look for a leak, and its items name what grew

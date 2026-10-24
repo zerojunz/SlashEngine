@@ -1,4 +1,4 @@
-perf.stats {"memory": true} reports 11 parts: assets, audio, components, cpu_particles_2d, csg, gpu_particles_2d, navigation, physics2d, physics3d, text, world
+perf.stats {"memory": true} reports 12 parts: assets, audio, components, cpu_particles_2d, csg, gpu_particles_2d, gridmap, navigation, physics2d, physics3d, text, world
   and the process's, whose peak is at least what it uses now: yes
 over 600 ticks, the part that grew the most: components
   and its item that grew the most: Trail

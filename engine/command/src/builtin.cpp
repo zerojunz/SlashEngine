@@ -36,6 +36,7 @@
 #include "slash/render/image.hpp"
 #include "slash/render/light.hpp"
 #include "slash/scene3d/csg.hpp"
+#include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/ik.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/skeleton.hpp"
@@ -447,6 +448,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "navpoly") {
         return Reply::success(navigation::polygon_schema());
+    }
+    if (kind == "meshlib") {
+        return Reply::success(scene3d::mesh_library_schema());
     }
     if (kind == "replay") {
         return Reply::success(replay_schema());
@@ -1643,6 +1647,16 @@ Reply physics_raycast_3d(Session& session, const json::Value& params) {
     found["point"] = point_value(hit->point);
     found["normal"] = point_value(hit->normal);
     found["fraction"] = rounded(hit->fraction);
+    // A GridMap's cell hit and the item in it.
+    if (hit->cell) {
+        found["cell"] = json::Array{hit->cell->x, hit->cell->y, hit->cell->z};
+        const auto* map = world.ecs().try_get<const world::GridMap>(hit->entity);
+        auto cells = map != nullptr ? scene3d::decode_grid_cells(*map)
+                                    : make_error(ErrorCode::NotFound, "no GridMap");
+        if (cells && cells.value().contains(*hit->cell)) {
+            found["item"] = cells.value().at(*hit->cell).item;
+        }
+    }
     return Reply::success(std::move(result));
 }
 
@@ -2759,7 +2773,7 @@ Reply csg_get(Session& session, const json::Value& params) {
     const std::shared_ptr<const scene3d::CsgMesh> mesh = scene3d::csg_mesh(world, tree, root);
     json::Value result;
     std::size_t vertices = 0;
-    for (const scene3d::CsgSurface& surface : mesh->surfaces) {
+    for (const scene3d::MeshSurface& surface : mesh->surfaces) {
         vertices += surface.vertices.size();
     }
     result["triangles"] = mesh->triangles;
@@ -2786,10 +2800,10 @@ Reply csg_get(Session& session, const json::Value& params) {
     // CSGMesh3D model's material, or none for Godot's default material.
     const json::Value defaults = world::to_json(world, world::StandardMaterial3D{});
     result["surfaces"] = json::Array{};
-    for (const scene3d::CsgSurface& surface : mesh->surfaces) {
+    for (const scene3d::MeshSurface& surface : mesh->surfaces) {
         json::Value out;
         out["triangles"] = surface.indices.size() / 3;
-        const scene3d::CsgMaterial& material = surface.material;
+        const scene3d::SurfaceMaterial& material = surface.material;
         if (material.standard) {
             json::Value standard = world::to_json(world, *material.standard);
             json::Object changed;
@@ -2909,6 +2923,235 @@ Reply path_get(Session& session, const json::Value& params) {
         const Vec3 to = place.inverse().apply(vec3_of(*closest_to));
         result["closest"]["offset"] = rounded(curve->closest_offset(to));
         result["closest"]["position"] = point_value(place.apply(curve->closest_point(to)));
+    }
+    return Reply::success(std::move(result));
+}
+
+// ---- Grid maps ----
+
+// The most cells one gridmap command takes.
+constexpr std::int64_t kMaxGridCells = 65536;
+
+// An entity's GridMap, its mesh library (if it names one) and its cells.
+struct GridTarget {
+    entt::entity entity = entt::null;
+    asset::Handle<scene3d::MeshLibrary> library;
+    scene3d::GridCells cells;
+};
+
+std::optional<Reply> find_gridmap(Session& session, const std::string& id, GridTarget& out) {
+    world::World& world = session.world();
+    out.entity = world.find(id);
+    if (out.entity == entt::null) {
+        return unknown_entity(world, id, "/id");
+    }
+    const auto* map = world.ecs().try_get<world::GridMap>(out.entity);
+    if (map == nullptr) {
+        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no GridMap");
+    }
+    if (!map->mesh_library.empty()) {
+        auto library = session.assets().load<scene3d::MeshLibrary>(map->mesh_library);
+        if (!library) {
+            return param_error(library.error(), "/id");
+        }
+        out.library = std::move(library).value();
+    }
+    auto cells = scene3d::decode_grid_cells(*map);
+    if (!cells) {
+        return param_error(code::kInvalidArgument, "/id",
+                           quoted(id) + "'s GridMap" + cells.error().message);
+    }
+    out.cells = std::move(cells).value();
+    return std::nullopt;
+}
+
+Vec3i grid_cell(const json::Value& value) {
+    const json::Array& xyz = value.as_array();
+    return {static_cast<int>(xyz[0].as_int()), static_cast<int>(xyz[1].as_int()),
+            static_cast<int>(xyz[2].as_int())};
+}
+
+// The cells a gridmap command names, as "cells" or "box".
+std::optional<Reply> target_grid_cells(const json::Value& params, std::vector<Vec3i>& out) {
+    const json::Value* cells = params.find("cells");
+    const json::Value* box = params.find("box");
+    if ((cells == nullptr) == (box == nullptr)) {
+        return param_error(code::kInvalidParams, "",
+                           "give cells, a list of [x, y, z], or box, [x, y, z, width, height, "
+                           "depth]");
+    }
+    if (cells != nullptr) {
+        for (const json::Value& cell : cells->as_array()) {
+            out.push_back(grid_cell(cell));
+        }
+        return std::nullopt;
+    }
+    std::array<std::int64_t, 6> extent{};
+    for (std::size_t i = 0; i < extent.size(); ++i) {
+        extent[i] = box->as_array()[i].as_int();
+    }
+    const auto [x, y, z, width, height, depth] = extent;
+    if (width * height * depth > kMaxGridCells) {
+        return param_error(code::kInvalidParams, "/box",
+                           "covers " + std::to_string(width * height * depth) +
+                               " cells; the most is " + std::to_string(kMaxGridCells));
+    }
+    if (x + width - 1 > scene3d::kMaxGridCell || y + height - 1 > scene3d::kMaxGridCell ||
+        z + depth - 1 > scene3d::kMaxGridCell) {
+        return param_error(code::kInvalidParams, "/box",
+                           "reaches past 32767, the last cell along each axis");
+    }
+    for (std::int64_t floor = y; floor < y + height; ++floor) {
+        for (std::int64_t row = z; row < z + depth; ++row) {
+            for (std::int64_t column = x; column < x + width; ++column) {
+                out.push_back(
+                    {static_cast<int>(column), static_cast<int>(floor), static_cast<int>(row)});
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+// Sets cells to one item, as Godot's GridMap::set_cell_item, or erases them.
+Reply gridmap_set(Session& session, const json::Value& params) {
+    const std::string id = text(params, "id");
+    GridTarget target;
+    if (auto failed = find_gridmap(session, id, target)) {
+        return std::move(*failed);
+    }
+    std::vector<Vec3i> cells;
+    if (auto failed = target_grid_cells(params, cells)) {
+        return std::move(*failed);
+    }
+    std::optional<scene3d::GridItem> placed;
+    if (const json::Value& item = *params.find("item"); !item.is_null()) {
+        const std::string& name = item.as_string();
+        if (!target.library) {
+            return param_error(code::kInvalidParams, "/id",
+                               quoted(id) + "'s GridMap has no mesh_library to place items from");
+        }
+        const auto& items = target.library->items;
+        if (!items.contains(name)) {
+            std::vector<std::string_view> names;
+            names.reserve(items.size());
+            for (const auto& [each, unused] : items) {
+                names.emplace_back(each);
+            }
+            std::string message = "the mesh library has no item " + quoted(name);
+            add_hint(message, name, names);
+            return param_error(code::kNotFound, "/item", message);
+        }
+        placed = scene3d::GridItem{.item = name, .orientation = 0};
+        if (const json::Value* orientation = params.find("orientation"); orientation != nullptr) {
+            placed->orientation = static_cast<int>(orientation->as_int());
+        }
+    }
+    std::size_t changed = 0;
+    for (const Vec3i cell : cells) {
+        if (!placed) {
+            changed += target.cells.erase(cell);
+            continue;
+        }
+        const auto it = target.cells.find(cell);
+        if (it == target.cells.end() || !(it->second == *placed)) {
+            target.cells.insert_or_assign(cell, *placed);
+            ++changed;
+        }
+    }
+    if (changed > 0) {
+        auto& map = session.world().ecs().get<world::GridMap>(target.entity);
+        scene3d::encode_grid_cells(target.cells, map);
+    }
+    return Reply::success(changed_json(id, changed));
+}
+
+// A GridMap's cells as its legend and floors, with its library's items and the problems making
+// them; or given cells' items and centers, as Godot's get_cell_item and map_to_local; or the
+// cells points are in, as local_to_map.
+Reply gridmap_get(Session& session, const json::Value& params) {
+    const std::string id = text(params, "id");
+    GridTarget target;
+    if (auto failed = find_gridmap(session, id, target)) {
+        return std::move(*failed);
+    }
+    const world::World& world = session.world();
+    const auto& map = world.ecs().get<world::GridMap>(target.entity);
+    const world::Affine3D place =
+        flag(params, "global") ? world::Tree3D(world).global(target.entity) : world::Affine3D{};
+    const auto held = [&](Vec3i cell, json::Value& out) {
+        out["cell"] = json::Array{cell.x, cell.y, cell.z};
+        const auto it = target.cells.find(cell);
+        if (it == target.cells.end()) {
+            out["item"] = nullptr;
+            return;
+        }
+        out["item"] = it->second.item;
+        if (it->second.orientation != 0) {
+            out["orientation"] = it->second.orientation;
+        }
+    };
+    json::Value result;
+    const json::Value* cells = params.find("cells");
+    const json::Value* points = params.find("points");
+    if (cells != nullptr) {
+        json::Array out;
+        for (const json::Value& cell : cells->as_array()) {
+            const Vec3i at = grid_cell(cell);
+            json::Value each;
+            held(at, each);
+            each["center"] = point_value(place.apply(scene3d::map_to_local(map, at)));
+            out.push_back(std::move(each));
+        }
+        result["cells"] = std::move(out);
+    }
+    if (points != nullptr) {
+        const world::Affine3D to_map = place.inverse();
+        json::Array out;
+        for (const json::Value& point : points->as_array()) {
+            json::Value each;
+            held(scene3d::local_to_map(map, to_map.apply(vec3_of(point))), each);
+            out.push_back(std::move(each));
+        }
+        result["points"] = std::move(out);
+    }
+    if (cells != nullptr || points != nullptr) {
+        return Reply::success(std::move(result));
+    }
+    result["cells"] = target.cells.size();
+    result["legend"] = json::Object{};
+    for (const auto& [key, item] : map.legend) {
+        result["legend"][key] = item;
+    }
+    json::Array floors;
+    for (const world::GridFloor& floor : map.floors) {
+        json::Value out;
+        out["y"] = floor.y;
+        out["origin"] = json::Array{floor.origin.x, floor.origin.y};
+        json::Array rows;
+        for (const std::string& row : floor.rows) {
+            rows.emplace_back(row);
+        }
+        out["rows"] = std::move(rows);
+        floors.push_back(std::move(out));
+    }
+    result["floors"] = std::move(floors);
+    if (target.library) {
+        json::Array items;
+        for (const auto& [name, unused] : target.library->items) {
+            items.emplace_back(name);
+        }
+        result["items"] = std::move(items);
+    }
+    const std::shared_ptr<const scene3d::GridMesh> mesh = scene3d::grid_mesh(world, target.entity);
+    if (!mesh->problems.empty()) {
+        json::Array problems;
+        for (const scene3d::Problem& problem : mesh->problems) {
+            json::Value item;
+            item["path"] = problem.path;
+            item["message"] = problem.message;
+            problems.push_back(std::move(item));
+        }
+        result["problems"] = std::move(problems);
     }
     return Reply::success(std::move(result));
 }
@@ -5862,22 +6105,23 @@ void register_builtin_commands(Registry& registry) {
                                           "(.font.json), \"theme\" (.theme.json), \"audio\" "
                                           "(.audio.json), \"bus_layout\" (.bus_layout.json), "
                                           "\"navmesh\" (.navmesh.json), \"navpoly\" "
-                                          "(.navpoly.json), "
+                                          "(.navpoly.json), \"meshlib\" (.meshlib.json), "
                                           "\"replay\" (.replay.json), \"score\" (.score.json) "
                                           "or \"storyboard\" for those files, \"component\" for "
                                           "one component's fields, \"command\" for a command's "
                                           "params.");
     kind["enum"] = json::Array{
-        "scene",   "prefab", "frames", "material",   "animation",  "animtree", "process_material",
-        "tileset", "font",   "theme",  "audio",      "bus_layout", "navmesh",  "navpoly",
-        "replay",  "test",   "score",  "storyboard", "component",  "command"};
+        "scene",   "prefab", "frames", "material", "animation",  "animtree",  "process_material",
+        "tileset", "font",   "theme",  "audio",    "bus_layout", "navmesh",   "navpoly",
+        "meshlib", "replay", "test",   "score",    "storyboard", "component", "command"};
     registry.add({
         .name = "schema.get",
         .description =
             "Returns a JSON Schema: for scene, prefab, .frames.json, .material.json, "
             ".anim.json, .animtree.json, .process_material.json, .tileset.json, .font.json, "
             ".theme.json, .audio.json, "
-            ".bus_layout.json, .navmesh.json, .navpoly.json, .replay.json, .test.json, "
+            ".bus_layout.json, .navmesh.json, .navpoly.json, .meshlib.json, .replay.json, "
+            ".test.json, "
             ".score.json or storyboard "
             "files, one component or one command.",
         .capabilities = {Read},
@@ -6377,8 +6621,8 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "physics.raycast",
         .description = "Returns the first body (or area) a ray from from to to hits: its id, the "
-                       "point, the surface normal, how far along and, for a tile map layer, the "
-                       "cell. hit is null if none.",
+                       "point, the surface normal, how far along and, for a tile map layer or "
+                       "GridMap, the cell (and a GridMap's item). hit is null if none.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params =
@@ -6746,6 +6990,81 @@ void register_builtin_commands(Registry& registry) {
                                                     "isn't one.")}},
                                 {"id"}),
         .handler = csg_get,
+    });
+
+    // A grid cell is [x, y, z]; a box is [x, y, z, width, height, depth].
+    json::Value grid_coordinate;
+    grid_coordinate["type"] = "integer";
+    grid_coordinate["minimum"] = scene3d::kMinGridCell;
+    grid_coordinate["maximum"] = scene3d::kMaxGridCell;
+    json::Value grid_extent;
+    grid_extent["type"] = "integer";
+    grid_extent["minimum"] = 1;
+    grid_extent["maximum"] = kMaxGridCells;
+    json::Value grid_cell = property("array", "[x, y, z]");
+    grid_cell["items"] = grid_coordinate;
+    grid_cell["minItems"] = 3;
+    grid_cell["maxItems"] = 3;
+    json::Value grid_cells = property("array", "Cells as [x, y, z]. Or give box.");
+    grid_cells["items"] = grid_cell;
+    grid_cells["minItems"] = 1;
+    grid_cells["maxItems"] = 4096;
+    json::Value grid_box =
+        property("array", "[x, y, z, width, height, depth]: every cell in it. Or give cells.");
+    grid_box["prefixItems"] = json::Array{grid_coordinate, grid_coordinate, grid_coordinate,
+                                          grid_extent,     grid_extent,     grid_extent};
+    grid_box["minItems"] = 6;
+    grid_box["maxItems"] = 6;
+    json::Value grid_item = any_property("An item of the GridMap's mesh library; null erases.");
+    grid_item["type"] = json::Array{"string", "null"};
+    json::Value orientation =
+        property("integer", "One of Godot's 24 orientations: 0 none; 16, 10 and 22 turn the "
+                            "item 90, 180 and 270 degrees about y. Default 0.");
+    orientation["minimum"] = 0;
+    orientation["maximum"] = scene3d::kOrientations - 1;
+    const json::Value gridmap_id = id_property("An entity with a GridMap.");
+    registry.add({
+        .name = "gridmap.set",
+        .description = "Sets cells of an entity's GridMap to one item of its mesh library, "
+                       "turned by orientation, or erases them. Returns how many changed.",
+        .capabilities = {Edit},
+        .effect = Effect::Edit,
+        .params = params_schema({{"id", gridmap_id},
+                                 {"cells", grid_cells},
+                                 {"box", std::move(grid_box)},
+                                 {"item", std::move(grid_item)},
+                                 {"orientation", std::move(orientation)}},
+                                {"id", "item"}),
+        .handler = gridmap_set,
+    });
+    grid_cells["description"] = "Cells as [x, y, z]: returns each one's item and center.";
+    grid_cells["maxItems"] = 1024;
+    json::Value grid_point = property("array", "[x, y, z]");
+    grid_point["items"]["type"] = "number";
+    grid_point["minItems"] = 3;
+    grid_point["maxItems"] = 3;
+    json::Value grid_points =
+        property("array", "Points as [x, y, z]: returns the cells they are in and their items.");
+    grid_points["items"] = std::move(grid_point);
+    grid_points["minItems"] = 1;
+    grid_points["maxItems"] = 1024;
+    registry.add({
+        .name = "gridmap.get",
+        .description = "Returns a GridMap's cells as floors of rows of legend keys, its "
+                       "library's items and problems; or given cells' items and centers; or the "
+                       "cells points are in.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema(
+            {
+                {"id", gridmap_id},
+                {"cells", std::move(grid_cells)},
+                {"points", std::move(grid_points)},
+                {"global", property("boolean", "Centers and points in the world's space, not "
+                                               "the GridMap's. Default false.")},
+            },
+            {"id"}),
+        .handler = gridmap_get,
     });
 
     json::Value inject_events = property("array", "Events in order. Mouse and finger positions "

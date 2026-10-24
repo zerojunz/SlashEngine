@@ -79,7 +79,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, sdk)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, meshlib, sdk)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -89,7 +89,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json` and `.navpoly.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json` and `.meshlib.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -829,6 +829,24 @@ polygon along the `Path3D` its `path_node` names, as Godot's `MODE_PATH`. `path.
 curve and finds its nearest point, `check_paths` (run from `check_meshes`) reports followers
 whose parent has no path, and `examples/paths` laps a cart round a rail.
 
+Grid maps are Godot 4.6's `GridMap` and `MeshLibrary` (`engine/scene3d/src/gridmap.cpp`, after
+`modules/gridmap/grid_map.cpp`). A `.meshlib.json` file (`$cli schema meshlib`) holds items by
+name, each a model's meshes or a primitive, a material, shapes and a navigation mesh in one
+cell's space. A `GridMap` writes its cells as a `TileMapLayer` does, a `legend` of keys
+(`world/legend.hpp`, shared with tile maps) and `floors` of rows; `decode_grid_cells` and
+`encode_grid_cells` read and write them in canonical form, and an item's legend value is its
+name, then `:` and one of Godot's 24 orthogonal indices when it is turned
+(`orientation_basis`). Cells are grouped into octants as Godot groups them: `grid_mesh` merges
+each octant's items into one surface per material, `install_gridmap` (called by
+`canvas::install`) keeps it until the cells, the library or a model change and keeps octants
+whose cells didn't, `Renderer` draws them, physics3d makes the GridMap one static body of every
+cell's shapes (each sub-shape tagged with its cell, so `physics.raycast` returns the cell it
+hit), with `bake_navigation` each cell whose item has a navigation mesh is a region, and
+navigation bakes take its meshes and shapes as Godot's `GridMap::navmesh_parse_source_geometry`.
+`gridmap.set` fills cells or a box of them, `gridmap.get` reads cells and points, and
+`check_gridmaps` reports items the library doesn't have for `scene validate` and exports.
+`examples/gridmap` lays out a room with a ramp.
+
 Shaders are HLSL in `engine/render/shaders/`. Their SPIR-V, MSL, GLSL ES and WGSL are committed
 in `engine/render/src/*_shaders.hpp`, so only someone changing a shader needs glslang,
 SPIRV-Cross (`glslang-tools` and `spirv-cross` on Debian and Ubuntu, `glslang` and `spirv-cross`
@@ -1501,7 +1519,7 @@ CI rejects unformatted code and any clang-tidy finding.
   particles, GPU particles' steps and drawing them), `text` (fonts, shaping, line breaking, carets and selections, and glyph atlases), `ui`
   (controls, containers and themes: layout, draw calls, buttons, focus and text fields), `animation` (`.anim.json` keyframe
   animations, `.animtree.json` animation trees and the systems that play them),
-  `scene3d` (3D nodes: primitive meshes, glTF, OBJ, FBX and Blender models, CSG shapes, materials, cameras, lights and environments,
+  `scene3d` (3D nodes: primitive meshes, glTF, OBJ, FBX and Blender models, CSG shapes, grid maps, materials, cameras, lights and environments,
   and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `physics3d` (3D bodies, areas, character movement and queries on Jolt), `navigation` (navigation meshes, maps, paths and agents), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems, drafting cue sheets and arranging them),

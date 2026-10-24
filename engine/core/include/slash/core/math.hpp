@@ -26,6 +26,18 @@ struct Vec2i {
     friend constexpr Vec2i operator-(Vec2i a, Vec2i b) { return {a.x - b.x, a.y - b.y}; }
 };
 
+// Three integers, such as a cell of a GridMap, written to JSON as [x, y, z], as Godot's
+// Vector3i.
+struct Vec3i {
+    int x = 0;
+    int y = 0;
+    int z = 0;
+
+    friend constexpr bool operator==(const Vec3i&, const Vec3i&) = default;
+    friend constexpr Vec3i operator+(Vec3i a, Vec3i b) { return {a.x + b.x, a.y + b.y, a.z + b.z}; }
+    friend constexpr Vec3i operator-(Vec3i a, Vec3i b) { return {a.x - b.x, a.y - b.y, a.z - b.z}; }
+};
+
 struct Vec3 {
     float x = 0.0F;
     float y = 0.0F;

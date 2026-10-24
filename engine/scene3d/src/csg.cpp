@@ -193,7 +193,7 @@ struct Face {
 
 struct Brush {
     std::vector<Face> faces;
-    std::vector<CsgMaterial> materials;
+    std::vector<SurfaceMaterial> materials;
 };
 
 // The shapes under a root as read from the world, compared to tell when its mesh must be made
@@ -226,7 +226,7 @@ Brush primitive_brush(std::vector<Face> faces, const CsgNode& node, bool flip) {
     Brush brush;
     const int index = node.material ? 0 : -1;
     if (node.material) {
-        CsgMaterial material;
+        SurfaceMaterial material;
         material.standard = node.material;
         brush.materials.push_back(std::move(material));
     }
@@ -692,7 +692,7 @@ std::vector<Face> polygon_faces(const world::CSGPolygon3D& polygon, const std::s
 // CSGMesh3D's faces: smooth where a triangle's corners have different normals.
 Brush mesh_brush(const CsgNode& node, bool flip) {
     Brush brush;
-    const auto material_index = [&](const CsgMaterial& material) {
+    const auto material_index = [&](const SurfaceMaterial& material) {
         if (!material.standard && !material.model) {
             return -1;
         }
@@ -726,7 +726,7 @@ Brush mesh_brush(const CsgNode& node, bool flip) {
     if (node.primitive) {
         auto made = make_mesh(*node.primitive);
         if (made) {
-            CsgMaterial material;
+            SurfaceMaterial material;
             material.standard = node.material;
             add(made.value().vertices, made.value().indices, {}, material_index(material));
         }
@@ -740,7 +740,7 @@ Brush mesh_brush(const CsgNode& node, bool flip) {
         // A skin's surfaces are where its joints put them, which is where they are at rest.
         const world::Affine3D place = part.skin >= 0 ? world::Affine3D{} : part.transform;
         for (const ModelSurface& surface : model.meshes[part.mesh].surfaces) {
-            CsgMaterial material;
+            SurfaceMaterial material;
             if (node.material) {
                 material.standard = node.material;
             } else if (surface.material >= 0) {
@@ -791,7 +791,7 @@ Brush own_brush(const CsgNode& node, std::vector<Problem>& problems) {
 
 enum Property : std::uint8_t { PositionX, PositionY, PositionZ, Invert, Smooth, UvX, UvY, Count };
 constexpr std::array<std::size_t, 3> kOrder = {0, 2, 1};
-using Materials = std::unordered_map<std::uint32_t, CsgMaterial>;
+using Materials = std::unordered_map<std::uint32_t, SurfaceMaterial>;
 
 manifold::Manifold pack(const Brush& brush, Materials& materials) {
     // A run of triangles per material, in the order the materials first appear.
@@ -815,7 +815,7 @@ manifold::Manifold pack(const Brush& brush, Materials& materials) {
         mesh.runIndex.push_back(mesh.triVerts.size());
         const std::uint32_t id = manifold::Manifold::ReserveIDs(1);
         mesh.runOriginalID.push_back(id);
-        materials[id] = key < brush.materials.size() ? brush.materials[key] : CsgMaterial{};
+        materials[id] = key < brush.materials.size() ? brush.materials[key] : SurfaceMaterial{};
         for (const Face* face : faces) {
             for (const std::size_t i : kOrder) {
                 mesh.triVerts.push_back(mesh.vertProperties.size() / Property::Count);
@@ -844,7 +844,7 @@ Brush unpack(const manifold::Manifold& result, const Materials& materials) {
         return mesh.vertProperties[(vertex * mesh.numProp) + p];
     };
     for (std::size_t run = 0; run + 1 < mesh.runIndex.size(); ++run) {
-        CsgMaterial material;
+        SurfaceMaterial material;
         if (run < mesh.runOriginalID.size()) {
             if (const auto found = materials.find(mesh.runOriginalID[run]);
                 found != materials.end()) {
@@ -1018,9 +1018,10 @@ CsgMesh mesh_of(const Brush& brush, const CsgSettings& settings) {
             dummy_tangents(surface);
             reindex(surface);
         }
-        out.surfaces.push_back({.vertices = std::move(surface.vertices),
-                                .indices = std::move(surface.indices),
-                                .material = i + 1 < count ? brush.materials[i] : CsgMaterial{}});
+        out.surfaces.push_back(
+            {.vertices = std::move(surface.vertices),
+             .indices = std::move(surface.indices),
+             .material = i + 1 < count ? brush.materials[i] : SurfaceMaterial{}});
     }
     auto collision = std::make_shared<std::vector<Vec3>>();
     collision->reserve(brush.faces.size() * 3);
@@ -1050,7 +1051,7 @@ std::atomic<std::uint64_t> next_version{1};
 
 std::size_t bytes_of(const CsgMesh& mesh) {
     std::size_t bytes = sizeof(CsgMesh);
-    for (const CsgSurface& surface : mesh.surfaces) {
+    for (const MeshSurface& surface : mesh.surfaces) {
         bytes += (surface.vertices.size() * sizeof(render::Vertex3D)) +
                  (surface.indices.size() * sizeof(std::uint32_t));
     }
