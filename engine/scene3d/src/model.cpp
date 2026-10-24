@@ -10,6 +10,7 @@
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/scene3d/terrain.hpp"
+#include "slash/scene3d/voxel_gi.hpp"
 
 #include <algorithm>
 #include <array>
@@ -973,6 +974,7 @@ void add_asset_types(asset::Assets& assets) {
     add_mesh_library_type(assets);
     add_heightmap_type(assets);
     add_lightmap_types(assets);
+    add_voxel_gi_types(assets);
 }
 
 } // namespace slash::scene3d

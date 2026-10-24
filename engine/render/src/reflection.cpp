@@ -129,6 +129,14 @@ ReflectionAtlasSettings reflection_atlas_settings_from_json(const json::Value& v
     return out;
 }
 
+bool voxel_gi_high_quality(const json::Value& rendering) {
+    const json::Value* found =
+        rendering.is_object() ? rendering.find("global_illumination") : nullptr;
+    found = found != nullptr && found->is_object() ? found->find("voxel_gi") : nullptr;
+    found = found != nullptr && found->is_object() ? found->find("quality") : nullptr;
+    return found != nullptr && found->is_string() && found->as_string() == "high";
+}
+
 } // namespace slash::render
 
 namespace slash::render::detail {

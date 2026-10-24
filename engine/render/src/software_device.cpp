@@ -1212,6 +1212,7 @@ private:
         const detail::MeshMaps* maps = nullptr;
         std::array<Bound, detail::kMeshTextures> slots{}; // mesh_texture_slots' textures
         const detail::FloatImage* lightmap = nullptr;     // the material's lightmap, if any
+        const Image* voxel_gi = nullptr; // its VoxelGIs' atlas, when it traces some
     };
 
     // Where a pass rasterizes: a rect of a depth buffer stride texels across, onto which clip
@@ -1668,6 +1669,9 @@ private:
                 shader.lightmap = &found->floats;
             }
         }
+        if (shader.surface.voxel_gi[0] > 0.0F) {
+            shader.voxel_gi = shader.slots[5].image;
+        }
         const detail::MeshInstanceUniforms instance =
             detail::mesh_instance_uniforms(draw.transform, material);
         corners.clear();
@@ -1926,6 +1930,7 @@ private:
             pixel.lightmap = detail::lightmap_light(shader.surface, *shader.lightmap,
                                                     {varying[18], varying[19]});
         }
+        pixel.voxel_gi = shader.voxel_gi;
         return pixel;
     }
 

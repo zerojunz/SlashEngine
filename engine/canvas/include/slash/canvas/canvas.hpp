@@ -11,6 +11,7 @@
 #include "slash/render/upscaler.hpp"
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/scene3d.hpp"
+#include "slash/scene3d/voxel_gi.hpp"
 #include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/camera2d.hpp"
@@ -401,6 +402,8 @@ private:
         asset::Handle<render::HdrImage> texels;
     };
     std::map<std::string, LightmapEntry, std::less<>> lightmaps_;
+    // The cells VoxelGIs name.
+    std::map<std::string, asset::Handle<scene3d::VoxelGIData>, std::less<>> voxel_gis_;
     ShadowCache shadow_cache_;
     // The light atlas, and the textures and versions it was packed from.
     render::TextureId atlas_ = render::TextureId::None;
@@ -463,6 +466,8 @@ struct Settings {
     render::SsrSettings ssr{};
     // rendering.reflections.reflection_atlas: the size and number of reflection probes' cubes.
     render::ReflectionAtlasSettings reflection_atlas{};
+    // rendering.global_illumination.voxel_gi.quality "high": VoxelGIs' narrower cones.
+    bool voxel_gi_high_quality = false;
 };
 void set_settings(world::World& world, const Settings& settings);
 // The settings given to the world, or the defaults.

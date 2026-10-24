@@ -662,6 +662,33 @@ struct LightmapProbe {
 };
 SLASH_COMPONENT(LightmapProbe)
 
+// Light bounced around a box of the world in real time, as Godot's VoxelGI and its VoxelGIData:
+// voxel_gi.bake voxelizes the static MeshInstance3Ds under its entity's parent (the whole world
+// for a root) that touch the box of size centered on it into data, and the lights are then
+// injected into those cells whenever they change, so lights may move while the meshes stay put.
+// Meshes in the box take their ambient light and reflections from the cells, in place of the
+// environment's, unless they are lightmapped.
+struct VoxelGI {
+    std::string subdiv = "128"; // cells along the box's longest side: "64", "128", "256" or "512"
+    Vec3 size{20.0F, 20.0F, 20.0F};
+    // The entity whose CameraAttributesPractical's exposure_multiplier emission is baked with,
+    // or "" for 1.
+    std::string camera_attributes;
+    // The .voxelgi.json file voxel_gi.bake writes, project path; "" before a bake.
+    std::string data;
+    float dynamic_range = 2.0F; // the brightest light the cells hold
+    float energy = 1.0F;
+    float bias = 1.5F;        // cells a surface's cone starts out from, against self-lighting
+    float normal_bias = 0.0F; // cells a surface's cones start out along its normal
+    float propagation = 0.5F; // how much light spreads up into bigger cells
+    bool use_two_bounces = true;
+    bool interior = false; // the environment's light doesn't come in
+
+    friend bool operator==(const VoxelGI&, const VoxelGI&) = default;
+};
+SLASH_COMPONENT(VoxelGI, subdiv, size, camera_attributes, data, dynamic_range, energy, bias,
+                normal_bias, propagation, use_two_bounces, interior)
+
 // The 3D world's background, ambient light, tonemap, reflections, ambient occlusion, glow, fog and
 // adjustments,
 // as Godot's WorldEnvironment and its Environment. The first one made applies;

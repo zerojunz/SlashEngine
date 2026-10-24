@@ -523,6 +523,29 @@ MeshInstanceUniforms mesh_instance_uniforms(const Mat4& transform, const Materia
     return out;
 }
 
+namespace {
+
+// A VoxelGI as mesh.hlsl's Surface holds it.
+MeshVoxelGIUniforms voxel_gi_uniforms(const VoxelGIProbe& probe) {
+    MeshVoxelGIUniforms out;
+    const std::array<float, 12>& m = probe.to_cell;
+    out.rows = {Float4{m[0], m[1], m[2], m[3]}, Float4{m[4], m[5], m[6], m[7]},
+                Float4{m[8], m[9], m[10], m[11]}};
+    const std::uint32_t levels =
+        std::clamp<std::uint32_t>(probe.levels, 1, static_cast<std::uint32_t>(kMaxVoxelGILevels));
+    out.size = {static_cast<float>(probe.size[0]), static_cast<float>(probe.size[1]),
+                static_cast<float>(probe.size[2]), static_cast<float>(levels)};
+    out.params = {probe.energy, probe.bias, probe.normal_bias, probe.blend_ambient ? 1.0F : 0.0F};
+    for (std::size_t i = 0; i < levels; ++i) {
+        const std::array<std::uint32_t, 3>& place = probe.placement.at(i);
+        out.levels.at(i) = {static_cast<float>(place[0]), static_cast<float>(place[1]),
+                            static_cast<float>(std::max<std::uint32_t>(place[2], 1)), 0.0F};
+    }
+    return out;
+}
+
+} // namespace
+
 std::array<MaterialTexture, kMeshTextures> mesh_texture_slots(const Material3D& material) {
     std::array<MaterialTexture, kMeshTextures> slots{};
     if (!material.terrain.enabled) {
@@ -531,6 +554,7 @@ std::array<MaterialTexture, kMeshTextures> mesh_texture_slots(const Material3D& 
         slots[2] = material.roughness_texture;
         slots[3] = material.emission_texture;
         slots[4] = material.normal_texture;
+        slots[5] = {.texture = material.voxel_gi.atlas, .repeat = false};
         slots[10] = {.texture = material.lightmap.texture, .repeat = false};
         return slots;
     }
@@ -597,6 +621,13 @@ MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material, std::uint3
             const std::array<float, 3>& c = material.capture.sh.at(i);
             out.capture.at(i) = {c[0], c[1], c[2], 0.0F};
         }
+    } else if (const VoxelGIShading& gi = material.voxel_gi;
+               gi.atlas != TextureId::None && !material.terrain.enabled) {
+        const std::uint32_t count = std::min<std::uint32_t>(gi.count, 2);
+        out.voxel_gi = {static_cast<float>(count), 0.0F, 0.0F, 0.0F};
+        for (std::size_t i = 0; i < count; ++i) {
+            out.voxel_gis.at(i) = voxel_gi_uniforms(gi.probes.at(i));
+        }
     }
     float threshold = material.alpha_scissor_threshold;
     std::uint32_t terrain = 0;
@@ -648,6 +679,7 @@ MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
     }
     if (scene.method == RenderMethod::ForwardPlus && !scene.capture) {
         out.reflections = reflections_uniform(scene.reflections);
+        out.voxel_gi = {1.0F, scene.voxel_gi_high_quality ? 1.0F : 0.0F, 0.0F, 0.0F};
     }
     const float energy = scene.ambient_energy;
     out.ambient = {srgb_to_linear_exact(scene.ambient[0]) * energy,
@@ -1256,6 +1288,15 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
             ambient_light =
                 lerp3(ambient_light, scale(srgb_to_linear(xyz(texel)), scene.sky[2]), scene.sky[3]);
         }
+    }
+    // Forward+'s VoxelGIs, as Godot's GI buffers light a pixel: their ambient light and
+    // reflections go over the sky's by how much of their cones met something.
+    if (scene.voxel_gi[0] != 0.0F && surface.voxel_gi[0] > 0.0F && pixel.voxel_gi != nullptr &&
+        !lightmapped && !captured) {
+        const VoxelGILight gi = trace_voxel_gis(surface, scene.voxel_gi[1] != 0.0F, *pixel.voxel_gi,
+                                                pixel.world, normal, view, roughness);
+        ambient_light = lerp3(ambient_light, xyz(gi.ambient), gi.ambient[3]);
+        reflected = lerp3(reflected, xyz(gi.reflection), gi.reflection[3]);
     }
     // Forward+'s reflection probes, as Godot's scene_forward_clustered.glsl takes them: where
     // they reach, their reflections and ambient light go over the sky's by how much they cover.
