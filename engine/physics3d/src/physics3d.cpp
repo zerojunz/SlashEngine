@@ -286,8 +286,11 @@ std::optional<Vec3> closest_point(world::World& world, entt::entity entity, Vec3
         }
         std::vector<JPH::TransformedShape> hits;
     };
+    // Read before the shapes are collected: clang-analyzer can't tell the body keeps its shape.
+    const JPH::RVec3 position = body->GetPosition();
+    const JPH::TransformedShape body_shape = body->GetTransformedShape();
     Shapes shapes;
-    body->GetTransformedShape().CollectTransformedShapes(body->GetWorldSpaceBounds(), shapes);
+    body_shape.CollectTransformedShapes(body->GetWorldSpaceBounds(), shapes);
     const JPH::RVec3 at = to_jolt(point);
     float closest_distance_sq = FLT_MAX;
     JPH::RVec3 closest = JPH::RVec3::sZero();
@@ -326,7 +329,7 @@ std::optional<Vec3> closest_point(world::World& world, entt::entity entity, Vec3
             found = true;
         }
     }
-    return from_jolt(found ? closest : body->GetPosition());
+    return from_jolt(found ? closest : position);
 }
 
 Contacts contacts(world::World& world, entt::entity entity) {
