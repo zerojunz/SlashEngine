@@ -35,6 +35,7 @@
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/light.hpp"
+#include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/ik.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/skeleton.hpp"
@@ -2728,6 +2729,91 @@ Reply skeleton_get(Session& session, const json::Value& params) {
         out["scale"] = point_value(local.scale);
         out["world_position"] = point_value((place * globals[node]).origin);
         result["bones"].push_back(std::move(out));
+    }
+    return Reply::success(std::move(result));
+}
+
+// What a CSG root makes, as Godot's root shape's mesh: its size, its surfaces by material and
+// what couldn't be made.
+Reply csg_get(Session& session, const json::Value& params) {
+    const world::World& world = session.world();
+    const std::string id = text(params, "id");
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        return unknown_entity(world, id, "/id");
+    }
+    if (!scene3d::csg_shape_of(world, entity)) {
+        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no CSG shape");
+    }
+    const world::Tree3D tree(world);
+    entt::entity root = entity;
+    while (!scene3d::is_csg_root(world, tree, root)) {
+        root = tree.parent(root);
+    }
+    if (root != entity) {
+        return param_error(code::kInvalidParams, "/id",
+                           quoted(id) + " is part of the CSG shape " + quoted(world.id_of(root)) +
+                               ", which makes the mesh: ask for " + quoted(world.id_of(root)));
+    }
+    const std::shared_ptr<const scene3d::CsgMesh> mesh = scene3d::csg_mesh(world, tree, root);
+    json::Value result;
+    std::size_t vertices = 0;
+    for (const scene3d::CsgSurface& surface : mesh->surfaces) {
+        vertices += surface.vertices.size();
+    }
+    result["triangles"] = mesh->triangles;
+    result["vertices"] = vertices;
+    result["aabb"]["min"] = rounded(json::Array{mesh->min.x, mesh->min.y, mesh->min.z});
+    result["aabb"]["max"] = rounded(json::Array{mesh->max.x, mesh->max.y, mesh->max.z});
+    // The volume its faces enclose, from the triangles use_collision would collide with.
+    double volume = 0.0;
+    const std::vector<Vec3>& faces = *mesh->collision;
+    for (std::size_t i = 0; i + 2 < faces.size(); i += 3) {
+        const Vec3 a = faces[i];
+        const Vec3 b = faces[i + 1];
+        const Vec3 c = faces[i + 2];
+        volume -= ((static_cast<double>(a.x) *
+                    ((static_cast<double>(b.y) * c.z) - (static_cast<double>(b.z) * c.y))) +
+                   (static_cast<double>(a.y) *
+                    ((static_cast<double>(b.z) * c.x) - (static_cast<double>(b.x) * c.z))) +
+                   (static_cast<double>(a.z) *
+                    ((static_cast<double>(b.x) * c.y) - (static_cast<double>(b.y) * c.x)))) /
+                  6.0;
+    }
+    result["volume"] = rounded(json::Value(volume));
+    // Each surface's material: the StandardMaterial3D fields that differ from the defaults, a
+    // CSGMesh3D model's material, or none for Godot's default material.
+    const json::Value defaults = world::to_json(world, world::StandardMaterial3D{});
+    result["surfaces"] = json::Array{};
+    for (const scene3d::CsgSurface& surface : mesh->surfaces) {
+        json::Value out;
+        out["triangles"] = surface.indices.size() / 3;
+        const scene3d::CsgMaterial& material = surface.material;
+        if (material.standard) {
+            json::Value standard = world::to_json(world, *material.standard);
+            json::Object changed;
+            for (auto& [field, value] : standard.as_object()) {
+                if (value != *defaults.find(field)) {
+                    changed.emplace(field, std::move(value));
+                }
+            }
+            out["material"] = rounded(json::Value(std::move(changed)));
+        } else if (material.model != nullptr) {
+            out["model"] = material.model_path;
+            out["model_material"] = material.model_material;
+        }
+        result["surfaces"].push_back(std::move(out));
+    }
+    if (!mesh->problems.empty()) {
+        json::Array problems;
+        for (const scene3d::Problem& problem : mesh->problems) {
+            json::Value item;
+            item["id"] = world.id_of(problem.entity);
+            item["path"] = problem.path;
+            item["message"] = problem.message;
+            problems.push_back(std::move(item));
+        }
+        result["problems"] = std::move(problems);
     }
     return Reply::success(std::move(result));
 }
@@ -6519,6 +6605,18 @@ void register_builtin_commands(Registry& registry) {
             },
             {"id"}),
         .handler = skeleton_get,
+    });
+    registry.add({
+        .name = "csg.get",
+        .description = "Returns the mesh a CSG root makes from the shapes under it: triangles, "
+                       "vertices, aabb and volume in its space, surfaces by material, and "
+                       "shapes that couldn't be made.",
+        .capabilities = {Read},
+        .effect = Effect::Read,
+        .params = params_schema({{"id", id_property("A CSG root: a CSG shape whose parent "
+                                                    "isn't one.")}},
+                                {"id"}),
+        .handler = csg_get,
     });
 
     json::Value inject_events = property("array", "Events in order. Mouse and finger positions "

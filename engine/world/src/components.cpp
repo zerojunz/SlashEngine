@@ -1979,6 +1979,84 @@ void register_audio_components(ComponentRegistry& registry) {
         .describe("doppler_tracking", doppler);
 }
 
+// Godot's CSG nodes. Every one ends with CSGShape3D's fields, added by shape().
+void register_csg_components(ComponentRegistry& registry) {
+    const auto shape = [](ComponentType& type) {
+        type.describe("operation",
+                      {.doc = "How it combines with what comes before it in its CSG parent: "
+                              "added to it, only where they overlap, or cut out of it.",
+                       .choices = {"union", "intersection", "subtraction"}})
+            .describe("calculate_tangents", {.doc = "Makes tangents, which normal maps need."})
+            .describe("use_collision",
+                      {.doc = "A root shape is a static body of its triangles, as Godot's."})
+            .describe("collision_layer", {.doc = "The root's physics layers."})
+            .describe("collision_mask", {.doc = "The layers the root's body collides with."})
+            .describe("layers", {.doc = "The root's render layers, as MeshInstance3D's."})
+            .describe("cast_shadow", {.doc = "Which shadows the root casts, as MeshInstance3D's.",
+                                      .choices = {"off", "on", "double_sided", "shadows_only"}});
+    };
+    const FieldMeta flip_faces{.doc = "Its faces point in, so its inside shows."};
+    const FieldMeta smooth_faces{.doc = "Shades smoothly across its faces' edges."};
+    const FieldMeta sides{.doc = "Faces around its axis.", .min = 3};
+    shape(registry.add<CSGCombiner3D>().set_doc(
+        "A CSG shape with no shape of its own, only its children's, as Godot's CSGCombiner3D."));
+    shape(
+        registry.add<CSGBox3D>()
+            .set_doc("A box centered on the entity, as Godot's CSGBox3D.")
+            .describe("size", {.doc = "Width, height and depth in meters, as [x, y, z].", .min = 0})
+            .describe("flip_faces", flip_faces));
+    shape(registry.add<CSGSphere3D>()
+              .set_doc("A sphere centered on the entity, as Godot's CSGSphere3D.")
+              .describe("radius", {.doc = "Meters.", .min = 0.001})
+              .describe("radial_segments", {.doc = "Faces around y.", .min = 4})
+              .describe("rings", {.doc = "Rows of faces from pole to pole.", .min = 1})
+              .describe("smooth_faces", smooth_faces)
+              .describe("flip_faces", flip_faces));
+    shape(registry.add<CSGCylinder3D>()
+              .set_doc("A cylinder along y centered on the entity, or a cone pointing up, as "
+                       "Godot's CSGCylinder3D.")
+              .describe("radius", {.doc = "Meters.", .min = 0.001})
+              .describe("height", {.doc = "Meters along y.", .min = 0.001})
+              .describe("sides", sides)
+              .describe("cone", {.doc = "Its top is a point."})
+              .describe("smooth_faces", smooth_faces)
+              .describe("flip_faces", flip_faces));
+    shape(registry.add<CSGTorus3D>()
+              .set_doc("A ring around y, as Godot's CSGTorus3D.")
+              .describe("inner_radius", {.doc = "Meters from the center to its inside.", .min = 0})
+              .describe("outer_radius", {.doc = "Meters from the center to its outside.", .min = 0})
+              .describe("sides", sides)
+              .describe("ring_sides", {.doc = "Faces around its tube.", .min = 3})
+              .describe("smooth_faces", smooth_faces)
+              .describe("flip_faces", flip_faces));
+    shape(registry.add<CSGPolygon3D>()
+              .set_doc("A polygon in the entity's xy plane pushed along -z or turned around y, as "
+                       "Godot's CSGPolygon3D.")
+              .describe("polygon",
+                        {.doc = "Corners in meters, as [[x, y], ...]; at least 3, its edges not "
+                                "crossing."})
+              .describe("mode", {.doc = "\"depth\" pushes it depth along -z; \"spin\" turns it "
+                                        "spin_degrees around y.",
+                                 .choices = {"depth", "spin"}})
+              .describe("depth", {.doc = "Meters along -z, in depth mode.", .min = 0.001})
+              .describe("spin_degrees", {.doc = "How far it turns, in spin mode; 360 closes it.",
+                                         .min = 0.01,
+                                         .max = 360})
+              .describe("spin_sides", {.doc = "Steps it turns in, in spin mode.", .min = 3})
+              .describe("smooth_faces", smooth_faces)
+              .describe("flip_faces", flip_faces));
+    shape(registry.add<CSGMesh3D>()
+              .set_doc("A closed mesh as a CSG shape, as Godot's CSGMesh3D: a model's meshes, or "
+                       "the entity's primitive mesh.")
+              .describe("mesh",
+                        {.doc = "Project path of a .gltf, .glb, .obj, .fbx or .blend model, its "
+                                "meshes placed as its nodes place them at rest, with its "
+                                "materials unless the entity has a StandardMaterial3D; \"\" for "
+                                "the entity's BoxMesh, SphereMesh, CylinderMesh, CapsuleMesh, "
+                                "PrismMesh or TorusMesh."})
+              .describe("flip_faces", flip_faces));
+}
+
 void register_3d_components(ComponentRegistry& registry) {
     const FieldMeta flip_faces{.doc = "Turns its faces inside out, so its inside shows."};
     const FieldMeta subdivide{.doc = "Extra cuts across each face along this axis.", .min = 0};
@@ -2802,6 +2880,7 @@ void register_builtin_components(ComponentRegistry& registry) {
                           "middle of the screen in the world less half the screen."});
 
     register_3d_components(registry);
+    register_csg_components(registry);
     register_physics_components(registry);
     register_physics_3d_components(registry);
     register_navigation_components(registry);

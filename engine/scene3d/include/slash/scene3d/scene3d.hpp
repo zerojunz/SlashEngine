@@ -218,18 +218,24 @@ private:
 
     Result<render::MeshId> mesh_for(const world::World& world, entt::entity entity,
                                     const Primitive& primitive);
-    // A model's surface as a mesh on the device, made once per version of the model.
-    Result<render::MeshId> model_mesh(const std::string& key, const ModelSurface& surface);
+    // A model's surface, or a CSG root's, as a mesh on the device, made once per key.
+    Result<render::MeshId> kept_mesh(const std::string& key,
+                                     const std::vector<render::Vertex3D>& vertices,
+                                     const std::vector<std::uint32_t>& indices);
     // A texture a model's material samples: a file through textures_, or an image inside it.
+    // What can't be made is a problem at the entity's field.
     render::MaterialTexture model_texture(const std::string& path, const SourceModel& source,
                                           int image, const world::StandardMaterial3D& standard,
-                                          entt::entity entity);
+                                          entt::entity entity, const std::string& field);
     // place is where the entity is drawn, and global where others are, for its skeleton
     // modifiers' targets.
     void add_model(const world::World& world, entt::entity entity,
                    const world::MeshInstance3D& instance, const world::Affine3D& place,
                    const std::function<world::Affine3D(entt::entity)>& global,
                    render::ShadowCasting casting, float interpolation);
+    // A CSG root's result, drawn as Godot draws its root shape's mesh.
+    void add_csg(const world::World& world, const world::Tree3D& tree, entt::entity root,
+                 const world::Affine3D& place, std::uint32_t cull_mask);
     // A skinned surface's vertices moved by joints, in its entity's mesh on the device.
     Result<render::MeshId> skinned_mesh(const std::string& key, const ModelSurface& surface,
                                         const std::vector<world::Affine3D>& joints);

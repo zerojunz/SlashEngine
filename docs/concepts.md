@@ -388,6 +388,13 @@ land on them; once it **simulates**, physics moves the bodies and the bones foll
 whole skeleton or only the bones under one (`simulated_bones`), so a character goes limp when
 hit or an arm dangles. The [ragdoll example](../examples/ragdoll/) lets a waving arm go limp.
 
+**CSG shapes** build level geometry the way Godot 4.6's CSG nodes do: boxes, spheres,
+cylinders, tori and polygons, each adding to, cutting from or **intersecting** the shape above
+it in the tree. The shape at the top, the **root**, makes one mesh of everything under it, which
+draws, collides when `use_collision` is on and bakes into navigation meshes, so an agent can
+block out a level, cut doors in it and walk it without a modeling tool. The
+[CSG example](../examples/csg-shapes/) builds a hamlet.
+
 **Navigation** follows Godot 4.6's navigation servers: each world has a 2D and a 3D **map**,
 made of **regions** of navigation mesh (convex polygons, in `.navmesh.json` and `.navpoly.json`
 files) that join where their edges meet, and **links** between places the regions don't join,
