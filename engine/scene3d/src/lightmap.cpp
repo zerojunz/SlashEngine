@@ -12,6 +12,8 @@
 
 #include <algorithm>
 #include <bit>
+#include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <numbers>
@@ -94,6 +96,41 @@ json::Value make_schema() {
     user["properties"]["uv_rect"]["description"] =
         "Where its texels are in the slice: offset x, y, then scale x, y.";
 
+    json::Value probes;
+    probes["type"] = "object";
+    probes["additionalProperties"] = false;
+    probes["required"] = json::Array{"bounds", "points", "sh", "tetrahedra", "bsp"};
+    probes["description"] =
+        "Its light probes, as Godot's LightmapGIData capture data, which meshes that move take "
+        "their light from; all in the LightmapGI's space.";
+    probes["properties"]["bounds"]["type"] = "array";
+    probes["properties"]["bounds"]["items"]["type"] = "number";
+    probes["properties"]["bounds"]["minItems"] = 6;
+    probes["properties"]["bounds"]["maxItems"] = 6;
+    probes["properties"]["bounds"]["description"] =
+        "The box the probes fill: position x, y, z, then size x, y, z.";
+    probes["properties"]["interior"]["type"] = "boolean";
+    probes["properties"]["interior"]["default"] = false;
+    probes["properties"]["interior"]["description"] =
+        "Meshes inside take only interior lightmaps' light, as Godot's interior.";
+    probes["properties"]["points"]["type"] = "string";
+    probes["properties"]["points"]["description"] =
+        "Each probe's place (x, y, z), as base64 of little-endian 32-bit floats.";
+    probes["properties"]["sh"]["type"] = "string";
+    probes["properties"]["sh"]["description"] =
+        "Each probe's light: nine spherical harmonics coefficients (l0; l1 y, z, x; l2 xy, yz, "
+        "3z²-1, xz, x²-y²), each linear RGB, as base64 of little-endian 32-bit floats.";
+    probes["properties"]["tetrahedra"]["type"] = "string";
+    probes["properties"]["tetrahedra"]["description"] =
+        "The Delaunay tetrahedra between the probes, four probes each, as base64 of "
+        "little-endian 32-bit integers.";
+    probes["properties"]["bsp"]["type"] = "string";
+    probes["properties"]["bsp"]["description"] =
+        "The BSP tree that finds a point's tetrahedron, as Godot's: each node a plane (normal x, "
+        "y, z, then d; a point with normal·p > d goes over) as 32-bit floats, then over and under "
+        "as 32-bit integers (a later node, -(tetrahedron + 1), or -2147483648 for none), as "
+        "base64 of little-endian values.";
+
     json::Value keys;
     keys["pattern"] = "^[0-9a-f]{16}$";
 
@@ -130,6 +167,7 @@ json::Value make_schema() {
     properties["users"]["type"] = "array";
     properties["users"]["items"] = std::move(user);
     properties["users"]["description"] = "The meshes it lights.";
+    properties["probes"] = std::move(probes);
     return schema;
 }
 
@@ -157,6 +195,99 @@ std::optional<std::vector<T>> decode_values(const std::string& text) {
     if (!out.empty()) {
         std::memcpy(out.data(), bytes->data(), bytes->size());
     }
+    return out;
+}
+
+static_assert(sizeof(LightmapBspNode) == 24, "BSP nodes are kept as their bytes");
+
+// The light probes of a document the schema passed, each error into errors.
+LightmapProbes read_probes(const json::Value& doc, std::vector<json::ValidationError>& errors) {
+    LightmapProbes out;
+    const json::Array& bounds = doc.find("bounds")->as_array();
+    for (std::size_t i = 0; i < 3; ++i) {
+        out.bounds_position.at(i) = static_cast<float>(bounds[i].as_double());
+        out.bounds_size.at(i) = static_cast<float>(bounds[i + 3].as_double());
+        if (out.bounds_size.at(i) < 0.0F) {
+            errors.push_back({"/probes/bounds/" + std::to_string(i + 3), "is negative"});
+        }
+    }
+    if (const json::Value* interior = doc.find("interior")) {
+        out.interior = interior->as_bool();
+    }
+    const auto finite = [](const std::vector<float>& values) {
+        return std::ranges::all_of(values, [](float v) { return std::isfinite(v); });
+    };
+    auto points = decode_values<float>(doc.find("points")->as_string());
+    auto sh = decode_values<float>(doc.find("sh")->as_string());
+    auto tetrahedra = decode_values<std::uint32_t>(doc.find("tetrahedra")->as_string());
+    auto bsp = decode_values<LightmapBspNode>(doc.find("bsp")->as_string());
+    if (!points || points->size() % 3 != 0 || !finite(*points)) {
+        errors.push_back({"/probes/points", "isn't base64 of finite 32-bit floats, three each"});
+        return out;
+    }
+    const std::vector<float> positions = std::move(*points);
+    const std::size_t count = positions.size() / 3;
+    if (!sh || sh->size() != count * 27 || !finite(*sh)) {
+        errors.push_back({"/probes/sh", "expected base64 of 27 finite 32-bit floats for each of " +
+                                            std::to_string(count) + " probes"});
+        return out;
+    }
+    const std::vector<float> coefficients = std::move(*sh);
+    if (!tetrahedra || tetrahedra->size() % 4 != 0) {
+        errors.push_back({"/probes/tetrahedra", "isn't base64 of 32-bit integers, four each"});
+        return out;
+    }
+    const std::vector<std::uint32_t> corners = std::move(*tetrahedra);
+    const auto bad =
+        std::ranges::find_if(corners, [&](std::uint32_t index) { return index >= count; });
+    if (bad != corners.end()) {
+        errors.push_back({"/probes/tetrahedra",
+                          "names probe " + std::to_string(*bad) + " of " + std::to_string(count)});
+        return out;
+    }
+    if (!bsp) {
+        errors.push_back({"/probes/bsp", "isn't base64 of 24-byte nodes"});
+        return out;
+    }
+    std::vector<LightmapBspNode> nodes = std::move(*bsp);
+    const std::size_t tetrahedron_count = corners.size() / 4;
+    for (std::size_t i = 0; i < nodes.size(); ++i) {
+        const LightmapBspNode& node = nodes[i];
+        const bool plane_ok =
+            std::ranges::all_of(node.plane, [](float v) { return std::isfinite(v); });
+        const auto side_ok = [&](std::int32_t side) {
+            if (side == kLightmapBspEmpty) {
+                return true;
+            }
+            if (side >= 0) {
+                return static_cast<std::size_t>(side) > i &&
+                       static_cast<std::size_t>(side) < nodes.size();
+            }
+            return static_cast<std::size_t>(-(static_cast<std::int64_t>(side) + 1)) <
+                   tetrahedron_count;
+        };
+        if (!plane_ok || !side_ok(node.over) || !side_ok(node.under)) {
+            errors.push_back({"/probes/bsp", "node " + std::to_string(i) +
+                                                 " has a plane that isn't finite or a side that "
+                                                 "isn't a later node, a tetrahedron or none"});
+            return out;
+        }
+    }
+    for (std::size_t i = 0; i < count; ++i) {
+        out.points.push_back({positions[i * 3], positions[(i * 3) + 1], positions[(i * 3) + 2]});
+        LightmapSh light{};
+        for (std::size_t j = 0; j < 9; ++j) {
+            for (std::size_t c = 0; c < 3; ++c) {
+                light.at(j).at(c) = coefficients[(i * 27) + (j * 3) + c];
+            }
+        }
+        out.sh.push_back(light);
+    }
+    for (std::size_t i = 0; i < tetrahedron_count; ++i) {
+        out.tetrahedra.push_back(
+            {corners[i * 4], corners[(i * 4) + 1], corners[(i * 4) + 2], corners[(i * 4) + 3]});
+    }
+    out.bsp = std::move(nodes);
     return out;
 }
 
@@ -254,6 +385,9 @@ void read_lightmap(const json::Value& doc, LightmapData* data,
             out.users.push_back(std::move(user));
         }
     }
+    if (const json::Value* probes = doc.find("probes")) {
+        out.probes = read_probes(*probes, errors);
+    }
     if (data != nullptr) {
         *data = std::move(out);
     }
@@ -266,6 +400,11 @@ std::size_t lightmap_bytes(const LightmapData& data) {
                  (unwrap.uv2.capacity() * sizeof(std::array<float, 2>)) +
                  (unwrap.indices.capacity() * sizeof(std::uint32_t));
     }
+    const LightmapProbes& probes = data.probes;
+    bytes += (probes.points.capacity() * sizeof(std::array<float, 3>)) +
+             (probes.sh.capacity() * sizeof(LightmapSh)) +
+             (probes.tetrahedra.capacity() * sizeof(std::array<std::uint32_t, 4>)) +
+             (probes.bsp.capacity() * sizeof(LightmapBspNode));
     return bytes;
 }
 
@@ -433,6 +572,18 @@ public:
                 .emission = standard.emission_enabled ? image(standard.emission_texture, entity,
                                                               field + "emission_texture")
                                                       : nullptr};
+    }
+
+    // The LightmapProbes under scope, in the order they were made, as places in space (a
+    // LightmapGI's), as LightmapGI::_find_meshes_and_lights finds them.
+    void add_probes(entt::entity scope, const world::Affine3D& space,
+                    std::vector<std::array<float, 3>>& probes) const {
+        for (const entt::entity entity : made<world::LightmapProbe>(world_)) {
+            if (under(tree_, entity, scope)) {
+                const Vec3 at = space.apply(tree_.global(entity).origin);
+                probes.push_back({at.x, at.y, at.z});
+            }
+        }
     }
 
     void add_meshes(entt::entity scope, std::vector<LightmapMesh>& meshes) {
@@ -836,6 +987,39 @@ json::Value lightmap_json(const LightmapData& data) {
         }
         doc["users"] = std::move(users);
     }
+    const LightmapProbes& probes = data.probes;
+    if (!probes.points.empty()) {
+        json::Value& entry = doc["probes"];
+        json::Array bounds;
+        for (const float v : probes.bounds_position) {
+            bounds.emplace_back(v);
+        }
+        for (const float v : probes.bounds_size) {
+            bounds.emplace_back(v);
+        }
+        entry["bounds"] = std::move(bounds);
+        if (probes.interior) {
+            entry["interior"] = true;
+        }
+        std::vector<float> points;
+        for (const std::array<float, 3>& point : probes.points) {
+            points.insert(points.end(), point.begin(), point.end());
+        }
+        entry["points"] = encode_values(points);
+        std::vector<float> sh;
+        for (const LightmapSh& light : probes.sh) {
+            for (const std::array<float, 3>& coefficient : light) {
+                sh.insert(sh.end(), coefficient.begin(), coefficient.end());
+            }
+        }
+        entry["sh"] = encode_values(sh);
+        std::vector<std::uint32_t> tetrahedra;
+        for (const std::array<std::uint32_t, 4>& tetrahedron : probes.tetrahedra) {
+            tetrahedra.insert(tetrahedra.end(), tetrahedron.begin(), tetrahedron.end());
+        }
+        entry["tetrahedra"] = encode_values(tetrahedra);
+        entry["bsp"] = encode_values(probes.bsp);
+    }
     return doc;
 }
 
@@ -904,11 +1088,57 @@ Result<LightmapBake> bake_lightmap(const world::World& world, entt::entity entit
     std::vector<LightmapLight> lights;
     gatherer.add_lights(scope, lights);
     const render::HdrImage environment = environment_of(world, gatherer.tree(), gi, gatherer);
-    auto baked = bake_lightmap(meshes, lights, environment, settings, &world.pool());
+
+    // The light probes, placed in the LightmapGI's space as LightmapGI::bake places them, from
+    // the meshes' triangles and the LightmapProbes.
+    const world::Affine3D space = gatherer.tree().global(entity);
+    const world::Affine3D to_space = space.inverse();
+    std::vector<std::array<float, 3>> triangles;
+    for (const LightmapMesh& mesh : meshes) {
+        const world::Affine3D to_gi = to_space * mesh.transform;
+        for (const std::uint32_t index : mesh.indices) {
+            if (index < mesh.vertices.size()) {
+                const std::array<float, 3>& p = mesh.vertices[index].position;
+                const Vec3 at = to_gi.apply({p[0], p[1], p[2]});
+                triangles.push_back({at.x, at.y, at.z});
+            }
+        }
+    }
+    std::vector<std::array<float, 3>> user;
+    gatherer.add_probes(scope, to_space, user);
+    int subdiv = 0;
+    if (gi.generate_probes_subdiv != "disabled") {
+        subdiv = std::max(std::atoi(gi.generate_probes_subdiv.c_str()), 4);
+    }
+    LightmapProbes probes = place_lightmap_probes(triangles, user, subdiv);
+    LightmapProbeRequest request;
+    request.space = space;
+    for (const std::array<float, 3>& point : probes.points) {
+        const Vec3 at = space.apply({point[0], point[1], point[2]});
+        request.points.push_back({at.x, at.y, at.z});
+    }
+    // rendering/lightmapping/bake_quality/*_quality_probe_ray_count.
+    if (gi.quality == "low") {
+        request.rays = 64;
+    } else if (gi.quality == "high") {
+        request.rays = 512;
+    } else if (gi.quality == "ultra") {
+        request.rays = 2048;
+    } else {
+        request.rays = 256;
+    }
+
+    auto baked = bake_lightmap(meshes, lights, environment, settings, &world.pool(), request);
     if (!baked) {
         return baked.error();
     }
     LightmapBake out = std::move(baked).value();
+    probes.sh = std::move(out.probe_sh);
+    out.probe_sh.clear();
+    probes.tetrahedra = tetrahedralize(probes.points);
+    probes.bsp = lightmap_bsp_tree(probes.points, probes.tetrahedra, &world.pool());
+    probes.interior = gi.interior;
+    out.data.probes = std::move(probes);
     out.problems.insert(out.problems.begin(), gathered.problems.begin(), gathered.problems.end());
     return out;
 }
