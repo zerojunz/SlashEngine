@@ -755,6 +755,14 @@ textures down to a 1x1 brightness they keep between frames, moving `auto_exposur
 way each frame, which `prepare` works out from game time; `auto_exposure_version` starts the
 measure over. `examples/auto-exposure-3d` walks out of a tunnel.
 
+Depth of field is Godot 4.6's too: `CameraAttributesPractical`'s `dof_blur_*` fields set
+`PostProcess::dof_*`, and project.json's `rendering.camera.depth_of_field` the bokeh shape,
+quality and jitter (`render::DepthOfFieldSettings`). Forward+ devices keep the depth buffer and
+run `forward_post.hlsl`'s depth of field passes before glow, as `dof_plan` lists them: blur sizes
+from depth, the box, hexagon or circle blur, and the composite into the world. `run_dof_size_pass`,
+`run_dof_blur_pass` and `run_dof_composite_pass` are the CPU twins. `examples/depth-of-field-3d`
+racks focus across a garden.
+
 Compatibility's post-processing: without glow or adjustments, `mesh.hlsl` tonemaps as it draws.
 With either, each device draws the meshes into an RGBA8 texture at `end_frame` and runs
 `shaders/post.hlsl`'s passes: glow's filter, three downsamples and three upsamples through four

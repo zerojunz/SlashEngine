@@ -200,6 +200,12 @@ canvas::Settings canvas_settings(const json::Value& project) {
             shadows != nullptr) {
             settings.shadows = render::shadow_settings_from_json(*shadows);
         }
+        if (const json::Value* camera = rendering->find("camera");
+            camera != nullptr && camera->is_object()) {
+            if (const json::Value* dof = camera->find("depth_of_field"); dof != nullptr) {
+                settings.depth_of_field = render::depth_of_field_settings_from_json(*dof);
+            }
+        }
     }
     const json::Value* tick_hz = project.find("tick_hz");
     if (tick_hz != nullptr && tick_hz->is_number() && tick_hz->as_double() > 0.0) {

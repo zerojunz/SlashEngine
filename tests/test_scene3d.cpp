@@ -818,6 +818,81 @@ TEST_CASE("camera attributes expose the 3D world, as Godot's CameraAttributesPra
     CHECK(frame->scene.post.auto_exposure_version != environment);
 }
 
+TEST_CASE("camera attributes blur near and far, as Godot's depth of field") {
+    Scene scene;
+    const entt::entity camera = scene.create("camera", R"({"Transform3D": {}, "Camera3D": {},
+        "CameraAttributesPractical": {"dof_blur_far_enabled": true, "dof_blur_far_distance": 6,
+            "dof_blur_far_transition": -1, "dof_blur_near_enabled": true,
+            "dof_blur_near_distance": 1.5, "dof_blur_near_transition": 0.5,
+            "dof_blur_amount": 0.3}})");
+    const scene3d::Environment read = scene3d::environment(scene.world, {}, camera);
+    CHECK(read.post.dof_far);
+    CHECK(read.post.dof_far_distance == 6.0F);
+    CHECK(read.post.dof_far_transition == -1.0F);
+    CHECK(read.post.dof_near);
+    CHECK(read.post.dof_near_distance == 1.5F);
+    CHECK(read.post.dof_near_transition == 0.5F);
+    CHECK(read.post.dof_amount == 0.3F);
+    CHECK_FALSE(read.post.auto_exposure);
+    // The project's settings shape the blur, and with jitter the game time seeds it.
+    const auto device = render::create_null_device();
+    scene3d::Renderer renderer(*device, nullptr);
+    const render::DepthOfFieldSettings settings{.bokeh_shape = render::BokehShape::Circle,
+                                                .bokeh_quality = render::BokehQuality::High,
+                                                .use_jitter = true};
+    auto frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}, {}, 3.25, settings);
+    REQUIRE(frame.has_value());
+    CHECK(frame->scene.post.depth_of_field == settings);
+    CHECK(frame->scene.post.dof_jitter_seed == 250.0F);
+    frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}, {}, 3.25);
+    CHECK(frame->scene.post.depth_of_field == render::DepthOfFieldSettings{});
+    CHECK(frame->scene.post.dof_jitter_seed == 0.0F);
+}
+
+TEST_CASE("a captured frame blurs what is past dof_blur_far_distance") {
+    Scene scene;
+    scene.create("camera", R"({"Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}})");
+    const entt::entity env = scene.create("env", R"({"WorldEnvironment": {
+        "background_mode": "color", "background_color": [0, 0, 0, 1]}})");
+    scene.create("cube", R"({"Transform3D": {}, "MeshInstance3D": {}, "BoxMesh": {},
+        "StandardMaterial3D": {"albedo_color": [0, 0, 0, 1], "emission_enabled": true,
+        "emission": [1, 0, 0, 1]}})");
+    // The red across the middle row of the frame. The cube's front is 2.5 meters away, and the
+    // black background is at the far plane.
+    const auto row = [&] {
+        const auto captured = canvas::capture(scene.world, scene.assets, {});
+        REQUIRE(captured.ok());
+        std::array<int, 64> red{};
+        for (std::uint32_t x = 0; x < red.size(); ++x) {
+            red.at(x) = pixel(captured.value().image, x, 32)[0];
+        }
+        return red;
+    };
+    const std::array<int, 64> sharp = row();
+    std::size_t edge = 32; // the first pixel of background right of the cube
+    while (edge < 63 && sharp.at(edge) > 0) {
+        ++edge;
+    }
+    REQUIRE(sharp.at(edge - 1) == 255);
+    REQUIRE(sharp.at(edge + 2) == 0);
+    // Far blur from 1 meter blurs the cube into the background.
+    scene.world.ecs().emplace<world::CameraAttributesPractical>(
+        env, world::CameraAttributesPractical{.dof_blur_far_enabled = true,
+                                              .dof_blur_far_distance = 1.0F,
+                                              .dof_blur_far_transition = 1.0F});
+    const std::array<int, 64> blurred = row();
+    CHECK(blurred.at(edge - 1) < 255);
+    CHECK(blurred.at(edge + 2) > 0);
+    // From 5 meters it blurs only the background: the cube stays sharp, and as in Godot the
+    // background beside it takes a trace of its light.
+    scene.world.ecs().get<world::CameraAttributesPractical>(env).dof_blur_far_distance = 5.0F;
+    const std::array<int, 64> behind = row();
+    for (std::size_t x = 32; x < edge; ++x) {
+        CHECK(behind.at(x) == sharp.at(x));
+    }
+    CHECK(behind.at(edge + 2) < blurred.at(edge + 2));
+}
+
 TEST_CASE("a captured frame adapts to the 3D world's brightness over game time") {
     Scene scene;
     scene.create("camera", R"({"Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}})");
@@ -1039,4 +1114,22 @@ TEST_CASE("project.json's rendering.lights_and_shadows is read and checked") {
     CHECK(first_error(R"({"positional_shadow": {"soft_shadow_filter_quality": "soft"}})") ==
           "/rendering/lights_and_shadows/positional_shadow/soft_shadow_filter_quality");
     CHECK(first_error(R"({"omni_shadow": {}})") == "/rendering/lights_and_shadows/omni_shadow");
+}
+
+TEST_CASE("project.json's rendering.camera.depth_of_field is read and checked") {
+    json::Value project = parse(R"({"format": 1, "name": "Focus", "version": "1.0.0",
+        "main_scene": "main.scene.json",
+        "rendering": {"camera": {"depth_of_field": {"depth_of_field_bokeh_shape": "box",
+            "depth_of_field_bokeh_quality": "very_low", "depth_of_field_use_jitter": true}}}})");
+    CHECK(slash::runtime::validate_project(project).empty());
+    CHECK(slash::runtime::parse_project(project).value().depth_of_field ==
+          render::DepthOfFieldSettings{.bokeh_shape = render::BokehShape::Box,
+                                       .bokeh_quality = render::BokehQuality::VeryLow,
+                                       .use_jitter = true});
+    CHECK(render::depth_of_field_settings_from_json(parse(R"({"depth_of_field_bokeh_shape":
+        "star"})")) == render::DepthOfFieldSettings{});
+    project["rendering"]["camera"]["depth_of_field"]["depth_of_field_bokeh_quality"] = "ultra";
+    const auto errors = slash::runtime::validate_project(project);
+    REQUIRE(errors.size() == 1);
+    CHECK(errors.front().path == "/rendering/camera/depth_of_field/depth_of_field_bokeh_quality");
 }

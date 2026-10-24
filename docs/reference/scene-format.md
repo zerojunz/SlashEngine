@@ -1460,9 +1460,9 @@ can't load, is reported and left out.
 
 ### CameraAttributesPractical
 
-How a camera exposes the 3D world, as Godot's `CameraAttributesPractical`. A `Camera3D` uses the
-one on its own entity, as Godot's `Camera3D.attributes`, or else the one on the first
-`WorldEnvironment`'s, as `WorldEnvironment.camera_attributes`.
+How a camera exposes and focuses the 3D world, as Godot's `CameraAttributesPractical`. A
+`Camera3D` uses the one on its own entity, as Godot's `Camera3D.attributes`, or else the one on
+the first `WorldEnvironment`'s, as `WorldEnvironment.camera_attributes`.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
@@ -1472,6 +1472,11 @@ one on its own entity, as Godot's `Camera3D.attributes`, or else the one on the 
 | `auto_exposure_scale` | `0.4` | The brightness frames are exposed toward: higher is brighter |
 | `auto_exposure_speed` | `0.5` | How much of the way to a new brightness the exposure moves each second of game time |
 | `auto_exposure_min_sensitivity`, `auto_exposure_max_sensitivity` | `0`, `800` | The least and most brightness the exposure follows, in ISO: a scene darker than the least stays dark, and one brighter than the most stays bright |
+| `dof_blur_far_enabled` | `false` | `forward_plus`: blurs what is past `dof_blur_far_distance` |
+| `dof_blur_far_distance`, `dof_blur_far_transition` | `10`, `5` | Meters from the camera where the far blur starts, and over how many more it grows to full. A negative transition grows it as a lens does instead, by how far past the distance something is |
+| `dof_blur_near_enabled` | `false` | `forward_plus`: blurs what is nearer than `dof_blur_near_distance` |
+| `dof_blur_near_distance`, `dof_blur_near_transition` | `2`, `1` | Meters from the camera where the near blur starts, and over how many fewer it grows to full. A negative transition grows it as a lens does instead, by how far short of the distance something is |
+| `dof_blur_amount` | `0.1` | How much it blurs, from 0 to 1: the widest blur is 64 pixels times this |
 
 Auto exposure measures each frame as Godot's Forward+ renderer does: each pixel's brightest
 channel is averaged in blocks of 8 by 8, then the blocks' averages, down to one value, and the
@@ -1480,6 +1485,14 @@ new frame's by `auto_exposure_speed` per second of game time, so the same frames
 times expose the same way. It starts from the first frame's own brightness when auto exposure
 turns on, when the camera follows other attributes, or when game time goes back, as after a
 restore. `gl_compatibility` has no auto exposure, as in Godot.
+
+Depth of field blurs as Godot 4.6's Forward+ renderer does, by each pixel's distance in the depth
+buffer, between the sky and meshes and glow. Each pixel's blur size is worked out from the
+distances, then the frame is blurred by the project's bokeh shape (`rendering.camera.depth_of_field`
+in [project.json](project-format.md)) and mixed with the sharp frame by that size, so what is in
+focus stays sharp. The box and hexagon blur in two passes, at half size for the `very_low` and
+`low` qualities; the circle gathers a spiral of samples at half size. Frames smaller than 8 by 8
+aren't blurred, and `gl_compatibility` has no depth of field, as in Godot.
 
 ### Skies
 

@@ -1,0 +1,8 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[118,85],[50,123],[157,102]],"path":"shots/statue.png"}}
+{"jsonrpc":"2.0","id":3,"method":"component.set","params":{"id":"camera","components":{"CameraAttributesPractical":{"dof_blur_far_enabled":false,"dof_blur_near_distance":12.0,"dof_blur_near_transition":6.0}}}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"points":[[118,85],[50,123],[157,102]],"path":"shots/fence.png"}}
+{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"camera","components":{"CameraAttributesPractical":{"dof_blur_amount":0.4}}}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[118,85],[50,123],[157,102]]}}
+{"jsonrpc":"2.0","id":7,"method":"component.set","params":{"id":"camera","components":{"CameraAttributesPractical":{"dof_blur_near_enabled":false}}}}
+{"jsonrpc":"2.0","id":8,"method":"frame.capture","params":{"points":[[118,85],[50,123],[157,102]]}}

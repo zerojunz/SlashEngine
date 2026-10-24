@@ -1,0 +1,1 @@
+{"format": 1, "main_scene": "main.scene.json", "name": "Depth Of Field 3D", "rendering": {"camera": {"depth_of_field": {"depth_of_field_bokeh_quality": "medium"}}}, "version": "1.0.0", "window": {"height": 180, "width": 320}}

@@ -2665,9 +2665,9 @@ void register_3d_components(ComponentRegistry& registry) {
                           "squared (a 3D LUT of height slices side by side); \"\" for none."});
 
     registry.add<CameraAttributesPractical>()
-        .set_doc("How the 3D world is exposed, as Godot's CameraAttributesPractical: on a "
-                 "Camera3D's entity for that camera, or on the WorldEnvironment's for cameras "
-                 "without their own.")
+        .set_doc("How the 3D world is exposed and focused, as Godot's CameraAttributesPractical: "
+                 "on a Camera3D's entity for that camera, or on the WorldEnvironment's for "
+                 "cameras without their own.")
         .describe("exposure_sensitivity",
                   {.doc = "The camera's ISO, which the auto exposure sensitivities are over.",
                    .min = 0.1})
@@ -2685,7 +2685,23 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("auto_exposure_min_sensitivity",
                   {.doc = "The darkest scene it brightens, in ISO.", .min = 0})
         .describe("auto_exposure_max_sensitivity",
-                  {.doc = "The brightest scene it darkens, in ISO.", .min = 0});
+                  {.doc = "The brightest scene it darkens, in ISO.", .min = 0})
+        .describe("dof_blur_far_enabled",
+                  {.doc = "Forward+: blurs what is past dof_blur_far_distance."})
+        .describe("dof_blur_far_distance",
+                  {.doc = "Meters from the camera where far blur begins.", .min = 0.01})
+        .describe("dof_blur_far_transition",
+                  {.doc = "Meters over which far blur grows to full; below 0, the physical way.",
+                   .min = -1})
+        .describe("dof_blur_near_enabled",
+                  {.doc = "Forward+: blurs what is nearer than dof_blur_near_distance."})
+        .describe("dof_blur_near_distance",
+                  {.doc = "Meters from the camera where near blur begins.", .min = 0.01})
+        .describe("dof_blur_near_transition",
+                  {.doc = "Meters over which near blur grows to full; below 0, the physical way.",
+                   .min = -1})
+        .describe("dof_blur_amount",
+                  {.doc = "How far the blur reaches: 1 is 64 pixels.", .min = 0, .max = 1});
 }
 
 void register_builtin_components(ComponentRegistry& registry) {
