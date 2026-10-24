@@ -85,6 +85,7 @@ add_executable(slash_tests
     test_library_music.cpp
     test_library_team.cpp
     test_light.cpp
+    test_lightmap.cpp
     test_line_edit.cpp
     test_log.cpp
     test_material.cpp

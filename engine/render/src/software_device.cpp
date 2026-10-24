@@ -51,6 +51,7 @@ struct Texture {
     TextureDesc desc;
     Image image;
     std::vector<detail::CubeImage> cubes; // a reflection atlas's, which has no image
+    detail::FloatImage floats;            // a half-float texture's texels, beside image's bytes
 };
 
 // A run of draws with the same texture and material, as the GPU device batches them.
@@ -80,7 +81,7 @@ struct SoftwareMesh {
 // normal, tangent, binormal, texture coordinate and color.
 struct ClipVertex {
     Float4 clip{};
-    std::array<float, 18> varying{};
+    std::array<float, 20> varying{};
 };
 
 // The 3D corners are clipped to x and y within this many times w, where GPUs would use their
@@ -211,9 +212,9 @@ public:
 
     [[nodiscard]] Backend backend() const override { return Backend::Software; }
 
-    // It samples RGBA8 and decodes compressed texels as a GPU would.
+    // It samples RGBA8 and half floats, and decodes compressed texels as a GPU would.
     [[nodiscard]] bool supports(TextureFormat format) const override {
-        return format == TextureFormat::Rgba8;
+        return format == TextureFormat::Rgba8 || format == TextureFormat::Rgba16F;
     }
 
     Result<TextureId> create_texture(const TextureDesc& desc,
@@ -226,7 +227,8 @@ public:
         }
         Texture texture{.desc = desc,
                         .image = {.width = desc.width, .height = desc.height, .pixels = {}},
-                        .cubes = {}};
+                        .cubes = {},
+                        .floats = {}};
         if (desc.cubes > 0) {
             texture.cubes.assign(desc.cubes, empty_cube(desc.width));
         } else if (texels.empty()) {
@@ -238,6 +240,7 @@ public:
             }
             texture.image.pixels = std::move(pixels.value());
         }
+        keep_floats(texture, texels);
         const auto id = static_cast<TextureId>(next_texture_++);
         textures_[id] = std::move(texture);
         return id;
@@ -257,10 +260,29 @@ public:
             return pixels.error();
         }
         it->second.image.pixels = std::move(pixels.value());
+        keep_floats(it->second, texels);
         if (radiance_key_ && radiance_key_->texture == texture) {
             radiance_key_.reset(); // drawn from the old texels
         }
         return {};
+    }
+
+    // A half-float texture keeps its texels as floats too, which its lightmaps are sampled from.
+    static void keep_floats(Texture& texture, std::span<const std::uint8_t> texels) {
+        if (texture.desc.format != TextureFormat::Rgba16F) {
+            return;
+        }
+        detail::FloatImage& floats = texture.floats;
+        floats.width = texture.desc.width;
+        floats.height = texture.desc.height;
+        floats.rgba.assign(std::size_t{floats.width} * floats.height * 4, 0.0F);
+        if (texels.size() != floats.rgba.size() * 2) {
+            return; // made empty: transparent black
+        }
+        for (std::size_t i = 0; i < floats.rgba.size(); ++i) {
+            floats.rgba[i] = half_to_float(
+                static_cast<std::uint16_t>(texels[i * 2] | (texels[(i * 2) + 1] << 8U)));
+        }
     }
 
     void destroy_texture(TextureId texture) override {
@@ -1189,6 +1211,7 @@ private:
         const detail::MeshSceneUniforms* scene = nullptr;
         const detail::MeshMaps* maps = nullptr;
         std::array<Bound, detail::kMeshTextures> slots{}; // mesh_texture_slots' textures
+        const detail::FloatImage* lightmap = nullptr;     // the material's lightmap, if any
     };
 
     // Where a pass rasterizes: a rect of a depth buffer stride texels across, onto which clip
@@ -1215,8 +1238,8 @@ private:
                                        (shares[2] * corners[2]->varying.at(k))) /
                                       total);
         }
-        [[nodiscard]] std::array<float, 18> varyings() const {
-            std::array<float, 18> out{};
+        [[nodiscard]] std::array<float, 20> varyings() const {
+            std::array<float, 20> out{};
             for (std::size_t k = 0; k < out.size(); ++k) {
                 out.at(k) = varying(k);
             }
@@ -1640,6 +1663,11 @@ private:
         for (std::size_t slot = 0; slot < detail::kMeshTextures; ++slot) {
             shader.slots.at(slot) = bound(slots.at(slot).texture, slots.at(slot).repeat);
         }
+        if ((shader.surface.options[0] & detail::kMeshLightmap) != 0) {
+            if (const Texture* found = find(material.lightmap.texture); found != nullptr) {
+                shader.lightmap = &found->floats;
+            }
+        }
         const detail::MeshInstanceUniforms instance =
             detail::mesh_instance_uniforms(draw.transform, material);
         corners.clear();
@@ -1659,6 +1687,7 @@ private:
             put(corner.binormal);
             put(corner.uv);
             put(corner.color);
+            put(corner.uv2);
         }
         const MeshRaster raster{.depth = buffer,
                                 .stride = target.width(),
@@ -1875,7 +1904,7 @@ private:
     // fs_main in shaders/mesh.hlsl, through its CPU twin, at a pixel of the target.
     // What the fragment stage reads at a pixel of a draw.
     static detail::MeshPixel mesh_pixel(const MeshShader& shader,
-                                        const std::array<float, 18>& varying, bool front,
+                                        const std::array<float, 20>& varying, bool front,
                                         std::array<std::uint32_t, 2> at) {
         const auto take3 = [&](std::size_t k) {
             return detail::Float3{varying.at(k), varying.at(k + 1), varying.at(k + 2)};
@@ -1893,11 +1922,15 @@ private:
                 detail::mesh_texture_uv(shader.surface, slot, {varying[12], varying[13]});
             pixel.texels.at(slot) = shader.slots.at(slot).sample(uv[0], uv[1]);
         }
+        if (shader.lightmap != nullptr) {
+            pixel.lightmap = detail::lightmap_light(shader.surface, *shader.lightmap,
+                                                    {varying[18], varying[19]});
+        }
         return pixel;
     }
 
     static std::optional<Float4> shade_mesh_pixel(const MeshShader& shader,
-                                                  const std::array<float, 18>& varying, bool front,
+                                                  const std::array<float, 20>& varying, bool front,
                                                   std::array<std::uint32_t, 2> at) {
         return detail::shade_mesh(shader.surface, *shader.scene, *shader.maps,
                                   mesh_pixel(shader, varying, front, at));

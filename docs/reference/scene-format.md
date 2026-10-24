@@ -725,6 +725,10 @@ face; `"shadows_only"` casts but isn't drawn; `"off"` casts none. A mesh on laye
 doesn't see still casts, as in Godot. Alpha-blended meshes cast no shadow, and alpha scissor
 ones cast only where their pixels are kept.
 
+Its `gi_mode` (default `"static"`) and `gi_lightmap_texel_scale` (default `1`) are Godot's: a
+`"static"` mesh is baked into a [LightmapGI's lightmap](#baked-lightmaps) and lit by it, with
+`gi_lightmap_texel_scale` times the texels; `"dynamic"` and `"disabled"` meshes aren't.
+
 The primitive meshes are Godot's, made as Godot makes them: the same corners, normals, tangents
 and texture coordinates, so a texture wraps them as it does in Godot. An entity has at most one.
 Meshes of equal settings share one mesh on the GPU.
@@ -1379,6 +1383,10 @@ lights each pixel with only the omni and spot lights whose range reaches it, and
 | `directional_shadow_pancake_size` | `20` | directional | How far behind each cascade casters still cast, in meters |
 | `light_angular_distance` | `0` | directional | Degrees across its sun's radius in the [sky](#skies), 0 to 90 |
 | `sky_mode` | `"light_and_sky"` | directional | `"light_only"` lights meshes and shows no sun in the sky; `"sky_only"` shows a sun and lights nothing |
+| `light_bake_mode` | `"dynamic"` | all | How a [LightmapGI](#baked-lightmaps) bakes it: `"disabled"` leaves it out, `"dynamic"` bakes only its bounces and it lights live, `"static"` bakes it whole and it doesn't light lightmapped meshes live |
+| `light_indirect_energy` | `1` | all | Times its light in baked bounces |
+| `light_size` | `0` | omni, spot | Its radius when baked, for soft shadows (a directional light's is `light_angular_distance`) |
+| `shadow_blur` | `1` | all | How much its baked shadows soften |
 
 Shadows are Godot's Compatibility renderer's shadow maps, drawn on every device and by
 `frame.capture`. A directional light's cascades share the directional atlas with the other
@@ -1661,6 +1669,57 @@ frame draws (at most 42; the smallest past that reflect nothing). `gl_compatibil
 probes yet. The software device draws the same captures and reflections on the CPU, so
 `frame.capture` shows them too.
 
+### Baked lightmaps
+
+A `LightmapGI` bakes light into textures, as Godot 4.6's `LightmapGI`: light that bounces off
+walls and floors, soft shadows and sky light, worked out once rather than every frame.
+[`lightmap.bake`](commands.md#lightmapbake) traces it on the CPU, as Godot's `LightmapperRD`
+does on the GPU, and writes a `.lightmap.json` file and its `.hdr` texels, naming the file in
+`light_data`. It bakes the `MeshInstance3D`s whose `gi_mode` is `"static"`, visible under the
+entity's parent (the whole world for a root), lit by the lights there whose `light_bake_mode`
+isn't `"disabled"`:
+
+- Each mesh is unwrapped into lightmap UVs with xatlas, as Godot's `lightmap_unwrap`, at 0.2
+  meters a texel times `texel_scale` and its `gi_lightmap_texel_scale`. Meshes alike are
+  unwrapped once, and the unwraps are packed into slices no larger than `max_texture_size`.
+- Every texel takes the direct light of the lights, with shadows softened by their size, and
+  rays traced from it (`quality`: 32, 128, 512 or 2048) bring the light of `bounces` bounces
+  and of the environment. Emissive materials light their surroundings.
+- The denoiser smooths the noise, as Godot's JNLM, and seams between charts are blended.
+
+A bake is the same on every machine and for any number of threads, and takes seconds for a
+room at `"medium"`. A model part with a skin isn't baked, since its bones move it.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `quality` | `"medium"` | `"low"`, `"medium"`, `"high"` or `"ultra"`: 32, 128, 512 or 2048 rays a texel |
+| `supersampling`, `supersampling_factor` | `false`, `2` | Bakes at the factor times the texels, then shrinks them |
+| `bounces` | `3` | Times light bounces, 0 to 16 |
+| `bounce_indirect_energy` | `1` | Times the light each bounce carries |
+| `use_texture_for_bounces` | `true` | Bounces take direct light from the lightmap rather than tracing the lights again |
+| `use_denoiser`, `denoiser_strength`, `denoiser_range` | `true`, `0.1`, `10` | Smooths the noise |
+| `bias` | `0.0005` | How far rays start off surfaces, against self-shadowing |
+| `texel_scale` | `1` | Times every mesh's texels across |
+| `max_texture_size` | `16384` | The widest and tallest a slice may be |
+| `environment_mode` | `"scene"` | What rays that leave the world bring: `"disabled"`, `"scene"` (the [WorldEnvironment's](#worldenvironment) ambient light or sky) or `"custom_color"` |
+| `environment_custom_color`, `environment_custom_energy` | `[1, 1, 1, 1]`, `1` | The light for `"custom_color"` |
+| `camera_attributes` | `""` | An entity whose `CameraAttributesPractical`'s `exposure_multiplier` it bakes with |
+| `light_data` | `""` | The `.lightmap.json` file it bakes into and draws from |
+
+Each baked mesh then draws with its texels as its ambient light, in place of the
+WorldEnvironment's and the probes' (it still reflects the sky and probes), bicubically filtered
+and scaled by the camera's exposure over the one it was baked with. A `"static"` light isn't
+drawn on lightmapped meshes, since the lightmap holds its light; a `"dynamic"` one still is. A
+mesh that changed since the bake draws without its lightmap, with a problem saying to bake again.
+Every device draws lightmaps, including the software one, so `frame.capture` shows them.
+
+A `.lightmap.json` file is Godot's `LightmapGIData` in text (`slash-cli schema lightmap`): the
+`texture` (an `.hdr` file of the slices one above the other), each slice's `width` and `height`,
+the `slices`, the `baked_exposure`, the unwraps in `meshes` by a hash of each mesh (lightmap UVs,
+the vertices they came from and the triangles, as base64), and the `users`: each baked entity, the
+model `part`, its `mesh`, `slice` and `uv_rect`. `scene validate` checks a LightmapGI's
+`light_data` and `camera_attributes`, and exports ship both files.
+
 ### Checks
 
 `scene validate` and exports report an entity with two primitive meshes (at
@@ -1668,7 +1727,8 @@ probes yet. The software device draws the same captures and reflections on the C
 `TorusMesh` whose radii are equal, and a `mesh` that isn't a `.gltf`, `.glb`, `.obj` or `.fbx` file in the
 project, doesn't load, or sits beside a primitive mesh (at its `mesh`), as drawing would, and
 [CSG shapes](#csg-shapes) that can't be made, [grid maps](#grid-maps) whose cells can't
-be made and [path followers](#paths) that can't follow.
+be made, [path followers](#paths) that can't follow and [LightmapGIs](#baked-lightmaps) whose
+`light_data` doesn't load.
 Exports
 check every `.gltf`, `.glb`, `.obj` and `.fbx` file as `scene validate` does, and ship them with their
 `.bin` buffers, `.mtl` libraries and images. `frame.summary` doesn't describe 3D meshes
