@@ -2275,7 +2275,13 @@ void register_3d_components(ComponentRegistry& registry) {
                   {.doc = "Which shadows it casts: those of lights whose shadow_caster_mask "
                           "shares a bit with its layers, culled as its material culls; "
                           "double_sided culls no faces; shadows_only casts but isn't seen.",
-                   .choices = {"off", "on", "double_sided", "shadows_only"}});
+                   .choices = {"off", "on", "double_sided", "shadows_only"}})
+        .describe("gi_mode",
+                  {.doc = "\"static\" meshes are baked into a LightmapGI's lightmap and lit by "
+                          "it; \"dynamic\" and \"disabled\" ones are not.",
+                   .choices = {"disabled", "static", "dynamic"}})
+        .describe("gi_lightmap_texel_scale",
+                  {.doc = "Times the texels across its lightmap.", .min = 0.01, .max = 10.0});
     registry.add<Skeleton3D>()
         .set_doc("Poses bones of the model the entity's MeshInstance3D draws, by name, in place of "
                  "their animation or rest pose, as Godot's Skeleton3D bone poses.")
@@ -2421,6 +2427,18 @@ void register_3d_components(ComponentRegistry& registry) {
                           "tick.",
                    .choices = {"disabled", "idle_step", "physics_step"}});
 
+    // Baking into a LightmapGI, as Godot's Light3D.
+    const FieldMeta indirect_energy{
+        .doc = "Times its light in a lightmap's bounces.", .min = 0.0, .max = 16.0};
+    const FieldMeta bake_mode{
+        .doc = "How a LightmapGI bakes it: \"disabled\" leaves it out; \"dynamic\" bakes its "
+               "bounces only and it lights live; \"static\" bakes it whole and it doesn't light "
+               "lightmapped meshes live.",
+        .choices = {"disabled", "static", "dynamic"}};
+    const FieldMeta shadow_blur{
+        .doc = "How far its baked shadows blur, times the light's size.", .min = 0.0, .max = 10.0};
+    const FieldMeta light_size{
+        .doc = "Its radius in meters, for a lightmap's soft shadows.", .min = 0.0, .max = 64.0};
     registry.add<DirectionalLight3D>()
         .set_doc("Light from one direction everywhere, such as the sun, shining down the "
                  "entity's -z, as Godot's DirectionalLight3D.")
@@ -2464,7 +2482,10 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("sky_mode",
                   {.doc = "Whether it lights meshes and shows as a sun in the sky, only lights, "
                           "or only shows.",
-                   .choices = {"light_and_sky", "light_only", "sky_only"}});
+                   .choices = {"light_and_sky", "light_only", "sky_only"}})
+        .describe("light_indirect_energy", indirect_energy)
+        .describe("light_bake_mode", bake_mode)
+        .describe("shadow_blur", shadow_blur);
     registry.add<OmniLight3D>()
         .set_doc("Light from the entity in every direction, such as a lamp, as Godot's "
                  "OmniLight3D.")
@@ -2480,7 +2501,11 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("shadow_normal_bias", shadow_normal_bias)
         .describe("shadow_reverse_cull_face", shadow_reverse_cull_face)
         .describe("shadow_opacity", shadow_opacity)
-        .describe("shadow_caster_mask", shadow_caster_mask);
+        .describe("shadow_caster_mask", shadow_caster_mask)
+        .describe("light_indirect_energy", indirect_energy)
+        .describe("light_size", light_size)
+        .describe("light_bake_mode", bake_mode)
+        .describe("shadow_blur", shadow_blur);
     registry.add<SpotLight3D>()
         .set_doc("Light from the entity in a cone down its -z, such as a torch, as Godot's "
                  "SpotLight3D.")
@@ -2500,7 +2525,11 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("shadow_normal_bias", shadow_normal_bias)
         .describe("shadow_reverse_cull_face", shadow_reverse_cull_face)
         .describe("shadow_opacity", shadow_opacity)
-        .describe("shadow_caster_mask", shadow_caster_mask);
+        .describe("shadow_caster_mask", shadow_caster_mask)
+        .describe("light_indirect_energy", indirect_energy)
+        .describe("light_size", light_size)
+        .describe("light_bake_mode", bake_mode)
+        .describe("shadow_blur", shadow_blur);
 
     const FieldMeta curve{
         .doc = "How sharply it changes; smaller is sharper.", .min = 0.001, .max = 1};
@@ -2578,6 +2607,49 @@ void register_3d_components(ComponentRegistry& registry) {
                    .choices = {"disabled", "environment", "color"}})
         .describe("ambient_color", {.doc = "sRGB, for ambient_mode \"color\"."})
         .describe("ambient_color_energy", {.doc = "ambient_color's energy.", .min = 0.0});
+    registry.add<LightmapGI>()
+        .set_doc("Light baked into lightmaps, as Godot's LightmapGI: lightmap.bake traces the "
+                 "static MeshInstance3Ds and baked lights under its entity's parent (all of a "
+                 "root's world) into light_data, and those meshes then take ambient light from "
+                 "it.")
+        .describe("quality", {.doc = "Rays a texel: 32, 128, 512 or 2048, as Godot's.",
+                              .choices = {"low", "medium", "high", "ultra"}})
+        .describe("supersampling",
+                  {.doc = "Bakes supersampling_factor times the texels, then shrinks them."})
+        .describe("supersampling_factor",
+                  {.doc = "Times the texels across, while baking.", .min = 1, .max = 8})
+        .describe("bounces", {.doc = "Times light bounces.", .min = 0, .max = 16})
+        .describe("bounce_indirect_energy",
+                  {.doc = "Times the light each bounce carries.", .min = 0, .max = 2})
+        .describe("use_texture_for_bounces",
+                  {.doc = "Bounces take direct light from the lightmap rather than tracing "
+                          "lights again: faster, a little less exact."})
+        .describe("use_denoiser", {.doc = "Smooths the lightmap's noise, as Godot's JNLM."})
+        .describe("denoiser_strength",
+                  {.doc = "How much the denoiser smooths.", .min = 0.001, .max = 1})
+        .describe("denoiser_range",
+                  {.doc = "Texels the denoiser looks across.", .min = 1, .max = 20})
+        .describe("bias", {.doc = "How far rays start off surfaces, against self-shadowing.",
+                           .min = 0.00001,
+                           .max = 0.1})
+        .describe("texel_scale",
+                  {.doc = "Times every mesh's texels across.", .min = 0.01, .max = 100})
+        .describe("max_texture_size",
+                  {.doc = "The widest and tallest the lightmap's slices may be, in texels.",
+                   .min = 2048,
+                   .max = 16384})
+        .describe("environment_mode",
+                  {.doc = "The light rays leaving the world bring: none, the "
+                          "WorldEnvironment's ambient light or environment_custom_color.",
+                   .choices = {"disabled", "scene", "custom_color"}})
+        .describe("environment_custom_color", {.doc = "Linear RGB, for \"custom_color\"."})
+        .describe("environment_custom_energy",
+                  {.doc = "environment_custom_color's energy.", .min = 0, .max = 64})
+        .describe("camera_attributes",
+                  {.doc = "ID of the entity whose CameraAttributesPractical's exposure_multiplier "
+                          "light is baked with; \"\" for 1."})
+        .describe("light_data",
+                  {.doc = "Project path of the .lightmap.json file lightmap.bake writes."});
     registry.add<WorldEnvironment>()
         .set_doc("The 3D world's background, ambient and reflected light, tonemap, glow, fog and "
                  "adjustments, as Godot's WorldEnvironment. The first one applies; with none, the "

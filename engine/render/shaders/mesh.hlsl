@@ -2,7 +2,7 @@
 // (drivers/gles3/shaders/scene.glsl), with a StandardMaterial3D's albedo, metallic, roughness,
 // specular, emission and normal map, or a terrain's splat-mapped ground as the HTerrain plugin's
 // Classic4 shader blends it, shadowed by the lights' shadow maps (shadow.hlsl draws them) and lit
-// by the sky's radiance (radiance.hlsl filters it), then fogged. Colors are worked in linear,
+// by the sky's radiance (radiance.hlsl filters it) or a baked lightmap, then fogged. Colors are worked in linear,
 // tonemapped (tonemap.hlsl) and written as sRGB, with Godot's approximations of the two, or for
 // Forward+ written linear for forward_post.hlsl.
 // Keep it in step with shade_mesh in src/mesh.cpp, its CPU twin. Registers follow SDL's GPU
@@ -21,6 +21,7 @@ cbuffer Instance : register(b1, space1) {
     float4x4 model;        // the mesh's space to the world
     float4x4 normal_model; // the inverse transpose of model's upper 3x3, in its upper 3x3
     float4 uv1;            // xy scale and zw offset, as Godot's uv1_scale and uv1_offset
+    float4 lightmap_uv;    // the lightmap's rect: uv2's xy offset and zw scale
 };
 
 struct VertexInput {
@@ -29,6 +30,7 @@ struct VertexInput {
     float4 tangent : TEXCOORD2;
     float2 uv : TEXCOORD3;
     float4 color : TEXCOORD4;
+    float2 uv2 : TEXCOORD5;
 };
 
 struct VertexOutput {
@@ -38,6 +40,7 @@ struct VertexOutput {
     float3 binormal : TEXCOORD3;
     float2 uv : TEXCOORD4;
     float4 color : TEXCOORD5;
+    float2 uv2 : TEXCOORD6;
     float4 position : SV_Position;
 };
 
@@ -53,12 +56,13 @@ VertexOutput vs_main(VertexInput input) {
     output.binormal = normalize(mul((float3x3)normal_model, binormal));
     output.uv = input.uv * uv1.xy + uv1.zw;
     output.color = input.color;
+    output.uv2 = input.uv2 * lightmap_uv.zw + lightmap_uv.xy;
     return output;
 }
 
 // A terrain's textures take the first eleven slots: the color map, splat map and normal map in
 // albedo's, metallic's and roughness's, then its layers' albedo_bump in emission's, normal's and
-// ground 2 and 3's, then their normal_roughness.
+// ground 2 and 3's, then their normal_roughness. A lightmap, half floats, takes the last slot.
 Texture2D<float4> albedo_texture : register(t0, space2);
 Texture2D<float4> metallic_texture : register(t1, space2);
 Texture2D<float4> roughness_texture : register(t2, space2);
@@ -98,6 +102,7 @@ static const uint kNormalMap = 16u;
 static const uint kSideCheck = 32u;
 static const uint kHasAlpha = 64u;
 static const uint kDisableFog = 128u;
+static const uint kLightmap = 256u;
 // Terrain flags, in options.w.
 static const uint kTerrain = 1u;
 static const uint kTerrainDepthBlending = 2u;
@@ -114,6 +119,7 @@ cbuffer Surface : register(b0, space3) {
     uint4 options;
     float4 terrain_uv;      // each ground layer's tiling: the maps' resolution over its uv_scale
     float4 terrain_opacity; // how much the color map tints each ground layer
+    float4 lightmap;        // the lightmap's exposure, then 1 for the bicubic filter
 };
 
 struct Light {
@@ -121,7 +127,9 @@ struct Light {
     float4 direction; // toward a directional light, the way a spot light shines; then the type
     float4 color;     // linear, times energy and pi; then the specular amount
     float4 params;    // attenuation, the cone's cosine, 1 / spot attenuation, the cull mask
-    float4 shadow;    // its slot in directional_shadows or positional_shadows, or -1
+    // Its slot in directional_shadows or positional_shadows, or -1; then 1 when it is baked into
+    // lightmaps.
+    float4 shadow;
 };
 
 static const float kDirectional = 0.0;
@@ -507,6 +515,10 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
     if (((uint)light.params.w & options.z) == 0u) {
         return;
     }
+    // A baked light's light is in the lightmap already, as Godot skips BAKE_STATIC lights.
+    if (light.shadow.y != 0.0 && (options.x & kLightmap) != 0u) {
+        return;
+    }
     float type = light.direction.w;
     float slot = light.shadow.x;
     bool directional = type == kDirectional;
@@ -617,11 +629,63 @@ void reflect_probes(float3 world, float3 ray, float3 normal, float roughness,
 }
 #endif
 
+// Godot's textureArray_bicubic (scene_forward_clustered.glsl): a cubic B-spline over the 4x4
+// texels around uv, as four bilinear taps. w0 to w3 are its basis functions, g0 and g1 the taps'
+// amplitudes and h0 and h1 their offsets.
+float bicubic_w0(float a) {
+    return (1.0 / 6.0) * (a * (a * (-a + 3.0) - 3.0) + 1.0);
+}
+float bicubic_w1(float a) {
+    return (1.0 / 6.0) * (a * a * (3.0 * a - 6.0) + 4.0);
+}
+float bicubic_w2(float a) {
+    return (1.0 / 6.0) * (a * (a * (-3.0 * a + 3.0) + 3.0) + 1.0);
+}
+float bicubic_w3(float a) {
+    return (1.0 / 6.0) * (a * a * a);
+}
+
+// The lightmap's light at uv, linear, times its exposure: bicubic or bilinear, as Godot samples it.
+float3 lightmap_light(float2 uv) {
+    float3 light;
+    if (lightmap.y != 0.0) {
+        uint width;
+        uint height;
+        ground_normal_3.GetDimensions(width, height);
+        float2 size = float2((float)width, (float)height);
+        float2 texel = 1.0 / size;
+        float2 at = uv * size + 0.5;
+        float2 iuv = floor(at);
+        float2 fuv = at - iuv;
+        float2 w0 = float2(bicubic_w0(fuv.x), bicubic_w0(fuv.y));
+        float2 w1 = float2(bicubic_w1(fuv.x), bicubic_w1(fuv.y));
+        float2 w2 = float2(bicubic_w2(fuv.x), bicubic_w2(fuv.y));
+        float2 w3 = float2(bicubic_w3(fuv.x), bicubic_w3(fuv.y));
+        float2 g0 = w0 + w1;
+        float2 g1 = w2 + w3;
+        float2 h0 = -1.0 + w1 / g0;
+        float2 h1 = 1.0 + w3 / g1;
+        float2 p0 = (iuv + float2(h0.x, h0.y) - 0.5) * texel;
+        float2 p1 = (iuv + float2(h1.x, h0.y) - 0.5) * texel;
+        float2 p2 = (iuv + float2(h0.x, h1.y) - 0.5) * texel;
+        float2 p3 = (iuv + float2(h1.x, h1.y) - 0.5) * texel;
+        light = g0.y * (g0.x * ground_normal_3.SampleLevel(ground_normal_sampler_3, p0, 0.0).rgb +
+                        g1.x * ground_normal_3.SampleLevel(ground_normal_sampler_3, p1, 0.0).rgb) +
+                g1.y * (g0.x * ground_normal_3.SampleLevel(ground_normal_sampler_3, p2, 0.0).rgb +
+                        g1.x * ground_normal_3.SampleLevel(ground_normal_sampler_3, p3, 0.0).rgb);
+    } else {
+        light = ground_normal_3.SampleLevel(ground_normal_sampler_3, uv, 0.0).rgb;
+    }
+    return light * lightmap.x;
+}
+
 // A lit pixel's color, linear: its lights, reflections, emission and ambient light on base, the
 // albedo, with the shading normal and the one shadows offset along (geometry), its ambient light
-// darkened by ao and its direct light by ao_direct.
+// darkened by ao and its direct light by ao_direct. A lightmapped pixel's ambient light is its
+// lightmap's, which stands in for the scene's and the probes', as Godot's USE_LIGHTMAP.
 float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry, float metallic,
                  float roughness, float3 emitted, float ao, float ao_direct, float4 ssr) {
+    bool lightmapped = (options.x & kLightmap) != 0u;
     float specular = surface.z;
     float3 view = normalize(camera.xyz - input.world);
     float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic);
@@ -657,7 +721,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
 
     // Light from the sky's radiance, as Godot's scene.glsl takes it: reflections by roughness
     // and ambient light by the normal, then specular occlusion and Lazarov's environment BRDF.
-    float3 ambient_light = ambient.rgb;
+    float3 ambient_light = lightmapped ? lightmap_light(input.uv2) : ambient.rgb;
     float3 reflected = (float3)0.0;
     if (sky.y != 0.0) {
         float3 ray = reflect(-view, normal);
@@ -669,7 +733,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
                                                 sqrt(roughness) * kRadianceMaxLevel).rgb;
         reflected = srgb_to_linear(texel) * horizon * horizon * sky.z;
     }
-    if (sky.x != 0.0) {
+    if (sky.x != 0.0 && !lightmapped) {
         float3 turned = float3(dot(sky_rows[0].xyz, normal), dot(sky_rows[1].xyz, normal),
                                dot(sky_rows[2].xyz, normal));
         float3 texel = radiance_map.SampleLevel(radiance_sampler, turned, kRadianceMaxLevel).rgb;
@@ -690,7 +754,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
                             ? reflected * (1.0 - reflection_accum.a) + reflection_accum.rgb
                             : reflection_accum.rgb;
         }
-        if (ambient_accum.a > 0.0) {
+        if (ambient_accum.a > 0.0 && !lightmapped) {
             ambient_light = ambient_accum.a < 1.0
                                 ? ambient_light * (1.0 - ambient_accum.a) + ambient_accum.rgb
                                 : ambient_accum.rgb;

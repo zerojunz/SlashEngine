@@ -134,7 +134,8 @@ file, a [`.theme.json`](scene-format.md#themes) file, an
 [`.replay.json`](scene-format.md#replays) file, a [`.test.json`](scene-format.md#tests) file, a
 [`.score.json`](scene-format.md#scores) file, a
 [`.navmesh.json` or `.navpoly.json`](scene-format.md#navigation-meshes-and-polygons) file, a
-[`.meshlib.json`](scene-format.md#mesh-libraries) file, or a [model](scene-format.md#models)
+[`.meshlib.json`](scene-format.md#mesh-libraries) file, a
+[`.lightmap.json`](scene-format.md#baked-lightmaps) file, or a [model](scene-format.md#models)
 (`.gltf`, `.glb`, `.obj`, `.fbx` or `.blend`), and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
 [scenes](scene-format.md#instanced-scenes) a file extends, the tile sets its layers use, the animation libraries and trees its players and trees use, the navigation meshes and polygons its regions place, the mesh libraries its grid maps use, the maps its terrains read and the project's window size and theme are read from its
 project: the nearest folder above it with a `project.json`, else the current folder. A `.blend`
@@ -154,7 +155,7 @@ For a prefab the result counts its `components` instead of `entities`, for a `.f
 output node among them), for a `.tileset.json` file its `tiles`, for a `.theme.json`
 file its `types`, for a `.bus_layout.json` file its `buses`, for a `.replay.json` file the
 `ticks` it covers, for a `.test.json` file its `tests`, for a `.score.json` file its `bars`,
-`tracks` and `notes`, for a `.navmesh.json` or `.navpoly.json` file its `polygons`, for a `.meshlib.json` file its `items`, for a model its `meshes`, `materials`, `images` and `bounds` (the corners
+`tracks` and `notes`, for a `.navmesh.json` or `.navpoly.json` file its `polygons`, for a `.meshlib.json` file its `items`, for a `.lightmap.json` file its `users`, for a model its `meshes`, `materials`, `images` and `bounds` (the corners
 of the box its parts fill, in meters), for a `.font.json`, `.audio.json` or `.process_material.json` file nothing more, and for a `.material.json` file the
 `instructions` its graph compiles to, of the 64 a material can run. A material with a
 [shader](scene-format.md#shaders) has no graph: its shader is compiled, and each error in it is
@@ -242,7 +243,8 @@ When the project has a
 Rewrites a scene, prefab, `.frames.json`, `.material.json`, `.anim.json`, `.animtree.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json` or `.meshlib.json` file in [canonical form](scene-format.md#canonical-form).
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.meshlib.json` or `.lightmap.json` file in
+[canonical form](scene-format.md#canonical-form).
 
 ```bash
 slash-cli scene format <file>
@@ -270,7 +272,8 @@ for [`.theme.json` files](scene-format.md#themes), for
 [`.replay.json` files](scene-format.md#replays), for [`.test.json` files](scene-format.md#tests),
 for [`.score.json` files](scene-format.md#scores), for
 [`.navmesh.json` and `.navpoly.json` files](scene-format.md#navigation-meshes-and-polygons), for
-[`.meshlib.json` files](scene-format.md#mesh-libraries), for [storyboard files](storyboard-format.md),
+[`.meshlib.json` files](scene-format.md#mesh-libraries), for
+[`.lightmap.json` files](scene-format.md#baked-lightmaps), for [storyboard files](storyboard-format.md),
 for [`project.json`](project-format.md), for [`export_presets.json`](project-format.md#export-presets),
 for [`sdk.json`](sdk-format.md), for [`providers.json`](providers.md) or for a
 [benchmark task's `task.json`](benchmark.md#tasks).
@@ -294,6 +297,7 @@ slash-cli schema score
 slash-cli schema navmesh
 slash-cli schema navpoly
 slash-cli schema meshlib
+slash-cli schema lightmap
 slash-cli schema storyboard
 slash-cli schema project
 slash-cli schema presets

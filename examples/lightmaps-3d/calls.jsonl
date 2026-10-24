@@ -1,0 +1,9 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[60,42],[89,42],[85,45],[80,65]],"path":"shots/live.png"}}
+{"jsonrpc":"2.0","id":3,"method":"lightmap.bake","params":{"id":"lightmap"}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"points":[[60,42],[89,42],[85,45],[80,65]],"path":"shots/baked.png"}}
+{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"wall","components":{"StandardMaterial3D":{"albedo_color":[0.1,0.3,0.9,1]}}}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[60,42],[89,42]]}}
+{"jsonrpc":"2.0","id":7,"method":"lightmap.bake","params":{"id":"lightmap"}}
+{"jsonrpc":"2.0","id":8,"method":"frame.capture","params":{"points":[[60,42],[89,42]],"path":"shots/blue.png"}}
+{"jsonrpc":"2.0","id":9,"method":"lightmap.bake","params":{"id":"lightmap"}}

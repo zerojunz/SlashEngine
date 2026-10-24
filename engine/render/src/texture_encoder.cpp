@@ -121,6 +121,15 @@ Result<std::vector<std::uint8_t>> encode_texels(TextureFormat format, std::uint3
         return encode_bc7(width, height, rgba);
     case TextureFormat::Astc4x4:
         return encode_astc(width, height, rgba);
+    case TextureFormat::Rgba16F: {
+        std::vector<std::uint8_t> halves(rgba.size() * 2);
+        for (std::size_t i = 0; i < rgba.size(); ++i) {
+            const std::uint16_t bits = float_to_half(static_cast<float>(rgba[i]) / 255.0F);
+            halves[i * 2] = static_cast<std::uint8_t>(bits & 0xFFU);
+            halves[(i * 2) + 1] = static_cast<std::uint8_t>(bits >> 8U);
+        }
+        return halves;
+    }
     }
     return std::vector<std::uint8_t>(rgba.begin(), rgba.end());
 }

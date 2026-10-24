@@ -130,6 +130,7 @@ above the world.
 | `CollisionShape3D` | `Transform3D` and `CollisionShape3D`, with its shape's fields (see [3D](#3d)) |
 | `WorldEnvironment` | `WorldEnvironment`, with its environment's fields, and its sky's material (see [3D](#3d)) |
 | `ReflectionProbe` | `Transform3D` and `ReflectionProbe`, with its fields of the same names |
+| `LightmapGI` | `Transform3D` and `LightmapGI`, with its fields of the same names and its `camera_attributes` on an entity of their own; its baked `light_data` isn't read, so bake it again with [`lightmap.bake`](commands.md#lightmapbake) |
 | An instance of a model file (`.glb`, `.gltf`, `.fbx`, `.blend`) | `Transform3D` and `MeshInstance3D` drawing the model |
 | `CSGCombiner3D`, `CSGBox3D`, `CSGSphere3D`, `CSGCylinder3D`, `CSGTorus3D`, `CSGPolygon3D`, `CSGMesh3D` | `Transform3D` and the component of the same name, with its material (see [3D](#3d)) |
 | `Path3D`, `PathFollow3D` | `Transform3D` and the component of the same name; a path's `Curve3D` is its `points` |
@@ -443,6 +444,12 @@ does. [examples/import-godot-3d](../../examples/import-godot-3d/) imports a cour
 - A `WorldEnvironment`'s `camera_attributes` and a `Camera3D`'s `attributes`, when they are a
   `CameraAttributesPractical`, become the component of the same name on its entity, depth of
   field included. A `CameraAttributesPhysical` is reported.
+- A `GeometryInstance3D`'s `gi_mode` and `gi_lightmap_texel_scale` and a light's
+  `light_bake_mode`, `light_indirect_energy` and `light_size` keep their names (`gi_mode` `2` is
+  `"dynamic"`), so [`lightmap.bake`](commands.md#lightmapbake) bakes the meshes and lights Godot
+  would. A `LightmapGI` keeps its settings, its `camera_attributes` become a
+  `CameraAttributesPractical` on an entity of their own, and its `light_data`, Godot's own bake,
+  is reported.
 - A `CollisionShape3D`'s `BoxShape3D`, `SphereShape3D`, `CapsuleShape3D`, `CylinderShape3D`,
   `ConvexPolygonShape3D`, `ConcavePolygonShape3D` (its `data` as `faces`) or
   `WorldBoundaryShape3D` becomes its `shape` and the fields it sets. A body's
@@ -677,7 +684,7 @@ The report lists each of these once per kind, with how many and where it was fir
 | `ShaderMaterial` on a 3D mesh or a sky | A game's own 3D shaders aren't supported yet |
 | `HeightMapShape3D` | Use an [`HTerrain`](scene-format.md#heightmap-terrains), whose height field collides |
 | The HTerrain plugin's detail layers (`HTerrainDetailLayer`), texture arrays, splat maps past the first, triplanar mapping and tile reduction | Grass and other details aren't supported yet; a terrain mixes four textures by one splat map |
-| `GPUParticles3D`, `CPUParticles3D`, `Decal`, `VoxelGI`, `LightmapGI` and other 3D nodes with no SlashEngine component | Not supported yet; their entities keep their place in the tree |
+| `GPUParticles3D`, `CPUParticles3D`, `Decal`, `VoxelGI` and other 3D nodes with no SlashEngine component | Not supported yet; their entities keep their place in the tree |
 | Audio and animation tracks | Play the sound or the other animation from gameplay code, on an event track's event |
 | Bezier handles, the capture update mode, blend times and markers | A bezier track plays cubic through its keys, a capture track as continuous, and animations switch without blending |
 | Tracks on a control's `position` or `size` | Animate its offsets instead |

@@ -7,6 +7,7 @@
 #include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/ik.hpp"
+#include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/world/path.hpp"
 #include "slash/world/serialize.hpp"
@@ -18,6 +19,7 @@
 #include <bit>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <map>
 #include <numbers>
 #include <ranges>
@@ -30,6 +32,9 @@
 namespace slash::scene3d {
 
 namespace {
+
+// A lit surface's triangles to the end of its unwrap.
+constexpr std::uint32_t kAllIndices = std::numeric_limits<std::uint32_t>::max();
 
 constexpr float kDegrees = 180.0F / std::numbers::pi_v<float>;
 constexpr float kRadians = std::numbers::pi_v<float> / 180.0F;
@@ -93,6 +98,7 @@ render::Light3D light_base(const T& light, render::LightType type) {
     out.shadow_opacity = light.shadow_opacity;
     out.shadow_reverse_cull_face = light.shadow_reverse_cull_face;
     out.shadow_caster_mask = light.shadow_caster_mask;
+    out.baked = light.light_bake_mode == "static";
     return out;
 }
 
@@ -313,9 +319,6 @@ CameraView camera_view(const world::Camera3D& camera, const world::Affine3D& glo
     return out;
 }
 
-namespace {
-
-// The environment of the first WorldEnvironment made, before the camera's attributes.
 Environment world_environment(const world::World& world, render::Color clear) {
     Environment out;
     out.background = clear;
@@ -472,6 +475,8 @@ Environment world_environment(const world::World& world, render::Color clear) {
     out.color_correction = env.adjustment_color_correction;
     return out;
 }
+
+namespace {
 
 // Versions of auto exposure measures, unique across renderers, since a device keeps one
 // measure.
@@ -713,6 +718,9 @@ std::vector<Problem> check_meshes(const world::World& world) {
     for (Problem& problem : check_terrains(world)) {
         problems.push_back(std::move(problem));
     }
+    for (Problem& problem : check_lightmaps(world)) {
+        problems.push_back(std::move(problem));
+    }
     return problems;
 }
 
@@ -791,8 +799,10 @@ render::Material3D material(const world::StandardMaterial3D& standard,
     return out;
 }
 
-Renderer::Renderer(render::RenderDevice& device, TextureSource textures, ModelSource models)
-    : device_(&device), textures_(std::move(textures)), models_(std::move(models)) {}
+Renderer::Renderer(render::RenderDevice& device, TextureSource textures, ModelSource models,
+                   LightmapSource lightmaps)
+    : device_(&device), textures_(std::move(textures)), models_(std::move(models)),
+      lightmaps_(std::move(lightmaps)) {}
 
 Renderer::~Renderer() {
     for (const auto& [key, shared] : shared_) {
@@ -804,6 +814,197 @@ Renderer::~Renderer() {
     for (const auto& [key, texture] : embedded_) {
         device_->destroy_texture(texture.id);
     }
+    destroy_lightmaps(false);
+}
+
+void Renderer::destroy_lightmaps(bool unused_only) {
+    for (auto it = kept_lightmaps_.begin(); it != kept_lightmaps_.end();) {
+        if (unused_only && it->second.used == frame_) {
+            ++it;
+            continue;
+        }
+        if (it->second.texture != render::TextureId::None) {
+            device_->destroy_texture(it->second.texture);
+        }
+        it = kept_lightmaps_.erase(it);
+    }
+    std::erase_if(mesh_hashes_,
+                  [&](const auto& entry) { return !unused_only || entry.second.used != frame_; });
+}
+
+void Renderer::find_lightmaps(const world::World& world, float exposure) {
+    lit_.clear();
+    for (const entt::entity entity : made<world::LightmapGI>(world)) {
+        const auto& gi = world.ecs().get<const world::LightmapGI>(entity);
+        if (gi.light_data.empty()) {
+            continue;
+        }
+        const std::string field = "/components/LightmapGI/light_data";
+        if (!lightmaps_) {
+            problems_.push_back({entity, field, "lightmaps can't load here"});
+            continue;
+        }
+        auto loaded = lightmaps_(gi.light_data);
+        if (!loaded) {
+            problems_.push_back({entity, field, loaded.error().message});
+            continue;
+        }
+        KeptLightmap& kept = kept_lightmaps_[gi.light_data];
+        if (kept.source.data != loaded.value().data ||
+            kept.source.texels != loaded.value().texels) {
+            if (kept.texture != render::TextureId::None) {
+                device_->destroy_texture(kept.texture);
+            }
+            kept = KeptLightmap{.source = loaded.value(),
+                                .texture = render::TextureId::None,
+                                .problem = {},
+                                .version = ++lightmap_versions_,
+                                .used = 0};
+            const LightmapData& data = *kept.source.data;
+            const render::HdrImage& texels = *kept.source.texels;
+            if (texels.width != data.width || texels.height != data.height * data.slices) {
+                kept.problem = "its texture \"" + data.texture + "\" is " +
+                               std::to_string(texels.width) + "x" + std::to_string(texels.height) +
+                               ", not the " + std::to_string(data.width) + "x" +
+                               std::to_string(data.height * data.slices) +
+                               " its slices take: bake it again";
+            } else {
+                // Half floats, as Godot keeps lightmaps.
+                std::vector<std::uint8_t> bytes(std::size_t{texels.width} * texels.height * 8);
+                for (std::size_t i = 0; i < std::size_t{texels.width} * texels.height; ++i) {
+                    const std::array<std::uint16_t, 4> half{
+                        render::float_to_half(texels.rgb[i * 3]),
+                        render::float_to_half(texels.rgb[(i * 3) + 1]),
+                        render::float_to_half(texels.rgb[(i * 3) + 2]),
+                        render::float_to_half(1.0F)};
+                    for (std::size_t c = 0; c < 4; ++c) {
+                        bytes[(i * 8) + (c * 2)] = static_cast<std::uint8_t>(half.at(c) & 0xFFU);
+                        bytes[(i * 8) + (c * 2) + 1] = static_cast<std::uint8_t>(half.at(c) >> 8U);
+                    }
+                }
+                auto made = device_->create_texture({.width = texels.width,
+                                                     .height = texels.height,
+                                                     .filter = render::Filter::Linear,
+                                                     .render_target = false,
+                                                     .format = render::TextureFormat::Rgba16F},
+                                                    bytes);
+                if (!made) {
+                    kept.problem = "its texture \"" + data.texture + "\": " + made.error().message;
+                } else {
+                    kept.texture = made.value();
+                }
+            }
+        }
+        kept.used = frame_;
+        if (!kept.problem.empty()) {
+            problems_.push_back({entity, field, kept.problem});
+            continue;
+        }
+        const LightmapData& data = *kept.source.data;
+        const auto slices = static_cast<float>(std::max(data.slices, 1U));
+        for (const LightmapUser& user : data.users) {
+            const entt::entity lit = world.find(user.entity);
+            if (lit == entt::null) {
+                problems_.push_back(
+                    {entity, field,
+                     "lights \"" + user.entity + "\", which isn't in the world: bake it again"});
+                continue;
+            }
+            const auto unwrap = data.meshes.find(user.mesh);
+            if (unwrap == data.meshes.end()) {
+                continue;
+            }
+            // The slices lie one under another in the texture.
+            Lit place{
+                .data = kept.source.data,
+                .unwrap = &unwrap->second,
+                .mesh = user.mesh,
+                .key = gi.light_data + "@" + std::to_string(kept.version),
+                .shading = {.texture = kept.texture,
+                            .uv_rect = {user.uv_rect[0],
+                                        (static_cast<float>(user.slice) + user.uv_rect[1]) / slices,
+                                        user.uv_rect[2], user.uv_rect[3] / slices},
+                            .exposure = exposure / data.baked_exposure,
+                            .bicubic = true},
+                .reported = false};
+            lit_.emplace(std::pair{lit, user.part}, std::move(place));
+        }
+    }
+}
+
+const render::LightmapShading* Renderer::lit_surface(entt::entity entity, std::uint32_t part,
+                                                     const LitSource& source, std::uint32_t first,
+                                                     std::uint32_t count, render::MeshId& mesh) {
+    const auto found = lit_.find({entity, part});
+    if (found == lit_.end()) {
+        return nullptr;
+    }
+    Lit& lit = found->second;
+    std::vector<render::Vertex3D> vertices;
+    std::vector<std::uint32_t> indices;
+    bool made = false;
+    MeshHash& hash = mesh_hashes_[source.key];
+    if (hash.hash.empty()) {
+        source.make(vertices, indices);
+        made = true;
+        hash.hash = lightmap_mesh_hash(vertices, indices);
+    }
+    hash.used = frame_;
+    if (hash.hash != lit.mesh) {
+        if (!lit.reported) {
+            lit.reported = true;
+            problems_.push_back({entity, "/components/MeshInstance3D",
+                                 "has changed since its LightmapGI baked it, so it is drawn "
+                                 "without its lightmap: bake it again"});
+        }
+        return nullptr;
+    }
+    const std::string key = "lightmap:" + lit.key + ":" + lit.mesh + ":" + std::to_string(first) +
+                            "+" + std::to_string(count);
+    Shared& shared = shared_[key];
+    if (shared.id == render::MeshId::None) {
+        if (!made) {
+            source.make(vertices, indices);
+        }
+        // The unwrap's vertices of these triangles, with their lightmap UVs.
+        const LightmapUnwrap& unwrap = *lit.unwrap;
+        if (count == kAllIndices) {
+            count = static_cast<std::uint32_t>(unwrap.indices.size()) -
+                    std::min(first, static_cast<std::uint32_t>(unwrap.indices.size()));
+        }
+        std::vector<render::Vertex3D> lit_vertices;
+        std::vector<std::uint32_t> lit_indices;
+        std::unordered_map<std::uint32_t, std::uint32_t> remap;
+        bool fits = std::size_t{first} + count <= unwrap.indices.size();
+        for (std::uint32_t i = first; fits && i < first + count; ++i) {
+            const std::uint32_t v = unwrap.indices[i];
+            const auto [at, added] =
+                remap.try_emplace(v, static_cast<std::uint32_t>(lit_vertices.size()));
+            if (added) {
+                if (unwrap.xref[v] >= vertices.size()) {
+                    fits = false;
+                    break;
+                }
+                render::Vertex3D vertex = vertices[unwrap.xref[v]];
+                vertex.uv2 = unwrap.uv2[v];
+                lit_vertices.push_back(vertex);
+            }
+            lit_indices.push_back(at->second);
+        }
+        auto created = fits ? device_->create_mesh(lit_vertices, lit_indices)
+                            : Result<render::MeshId>(make_error(
+                                  ErrorCode::InvalidArgument,
+                                  "its lightmap's unwrap doesn't fit its mesh: bake it again"));
+        if (!created) {
+            shared_.erase(key);
+            problems_.push_back({entity, "/components/MeshInstance3D", created.error().message});
+            return nullptr;
+        }
+        shared.id = created.value();
+    }
+    shared.used = frame_;
+    mesh = shared.id;
+    return &lit.shading;
 }
 
 void Renderer::before_tick(const world::World& world) {
@@ -1022,8 +1223,25 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
             joints = joint_transforms(model.skins[static_cast<std::size_t>(part.skin)], globals);
         }
         const ModelMesh& mesh = model.meshes[part.mesh];
+        // A part's surfaces were unwrapped together for its lightmap, one after another.
+        const LitSource lit_source{.key = prefix + "part" + std::to_string(part.mesh),
+                                   .make = [&mesh](std::vector<render::Vertex3D>& vertices,
+                                                   std::vector<std::uint32_t>& indices) {
+                                       for (const ModelSurface& surface : mesh.surfaces) {
+                                           const auto base =
+                                               static_cast<std::uint32_t>(vertices.size());
+                                           vertices.insert(vertices.end(), surface.vertices.begin(),
+                                                           surface.vertices.end());
+                                           for (const std::uint32_t index : surface.indices) {
+                                               indices.push_back(base + index);
+                                           }
+                                       }
+                                   }};
+        std::uint32_t first_index = 0;
         for (std::size_t i = 0; i < mesh.surfaces.size(); ++i) {
             const ModelSurface& surface = mesh.surfaces[i];
+            const std::uint32_t first = first_index;
+            first_index += static_cast<std::uint32_t>(surface.indices.size());
             // A skin places its surfaces by its joints, leaving out its part's node.
             const bool skinned = !joints.empty() && !surface.weights.empty();
             auto made =
@@ -1064,6 +1282,15 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
                     made_material = out;
                 }
                 draw.material = *made_material;
+            }
+            render::MeshId lit = render::MeshId::None;
+            if (instance.gi_mode != "static" || skinned || part.skin >= 0) {
+                // Moving meshes aren't baked.
+            } else if (const render::LightmapShading* lightmap =
+                           lit_surface(entity, static_cast<std::uint32_t>(p), lit_source, first,
+                                       static_cast<std::uint32_t>(surface.indices.size()), lit)) {
+                draw.mesh = lit;
+                draw.material.lightmap = *lightmap;
             }
             draw.layers = instance.layers;
             draw.shadows = casting;
@@ -1379,6 +1606,8 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
             device_->destroy_mesh(skinned.id);
         }
         skinned_.clear();
+        lit_.clear();
+        destroy_lightmaps(false);
         exposure_version_ = 0;
         return std::nullopt;
     }
@@ -1492,6 +1721,7 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
     }
     frame.scene.shadows = shadows;
     lights_ = frame.scene.lights.size();
+    find_lightmaps(world, env.exposure);
 
     for (const entt::entity entity : made<world::MeshInstance3D>(world)) {
         const auto& instance = ecs.get<const world::MeshInstance3D>(entity);
@@ -1526,6 +1756,22 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
         if (const auto* standard = ecs.try_get<world::StandardMaterial3D>(entity);
             standard != nullptr) {
             draw.material = material(*standard, textures_, problems_, entity);
+        }
+        if (instance.gi_mode == "static") {
+            const LitSource source{.key = "primitive:" + cached_.at(entity).key,
+                                   .make = [&primitive](std::vector<render::Vertex3D>& vertices,
+                                                        std::vector<std::uint32_t>& indices) {
+                                       if (auto data = make_mesh(*primitive)) {
+                                           vertices = std::move(data.value().vertices);
+                                           indices = std::move(data.value().indices);
+                                       }
+                                   }};
+            render::MeshId lit = render::MeshId::None;
+            if (const render::LightmapShading* lightmap =
+                    lit_surface(entity, 0, source, 0, kAllIndices, lit)) {
+                draw.mesh = lit;
+                draw.material.lightmap = *lightmap;
+            }
         }
         draw.layers = instance.layers;
         draw.shadows = casting;
@@ -1580,6 +1826,7 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
             ++it;
         }
     }
+    destroy_lightmaps(true);
     if (auto reflected = reflect(world, frame, clear, reflection_atlas, method); !reflected) {
         problems_.push_back(
             {.entity = camera, .path = "ReflectionProbe", .message = reflected.error().message});

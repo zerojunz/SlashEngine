@@ -318,6 +318,29 @@ CanvasRenderer::CanvasRenderer(render::RenderDevice& device, asset::Assets& asse
               }
               return scene3d::SourceModel{.model = it->second.share(),
                                           .version = it->second.version()};
+          },
+          [this](const std::string& path) -> Result<scene3d::SourceLightmap> {
+              LightmapEntry& entry = lightmaps_[path];
+              if (!entry.data) {
+                  auto loaded = assets_->load<scene3d::LightmapData>(path);
+                  if (!loaded) {
+                      lightmaps_.erase(path);
+                      return loaded.error();
+                  }
+                  entry.data = std::move(loaded).value();
+              }
+              // Its texels' file, again when a reload names another.
+              const std::string& texture = entry.data->texture;
+              if (!entry.texels || entry.texels.path() != texture) {
+                  auto loaded = assets_->load<render::HdrImage>(texture);
+                  if (!loaded) {
+                      return make_error(loaded.error().code, "its texture \"" + texture +
+                                                                 "\": " + loaded.error().message);
+                  }
+                  entry.texels = std::move(loaded).value();
+              }
+              return scene3d::SourceLightmap{.data = entry.data.share(),
+                                             .texels = entry.texels.share()};
           }) {}
 
 CanvasRenderer::~CanvasRenderer() {

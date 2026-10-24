@@ -135,7 +135,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, meshlib, sdk)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, meshlib, lightmap, sdk)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -145,7 +145,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json` and `.meshlib.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.meshlib.json` and `.lightmap.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -851,6 +851,20 @@ device filters the cube's levels with `radiance.hlsl`, as it does the sky's. `Sc
 `reflection_process` over them, and `src/reflection.cpp` holds the checks, the uniforms and its
 CPU twin, `reflect_probes`. SSAO and SSR share one two-layer screen texture the mesh pass reads.
 `examples/reflection-probes-3d` reflects a lit room in a metal floor.
+
+Baked lightmaps are Godot 4.6's `LightmapGI` (`slash/scene3d/lightmap.hpp`). `bake_lightmap`
+gathers a LightmapGI's static meshes and baking lights (`src/lightmap.cpp`), unwraps each mesh
+with xatlas (`unwrap_lightmap`; `src/xatlas_build.cpp` builds xatlas and stb_rect_pack with the
+engine's sines and a stable sort, so charts are the same everywhere), then `src/lightmapper.cpp`
+packs them into an atlas's slices and traces them on the CPU, following Godot's `LightmapperRD`
+and its `lm_compute.glsl` pass by pass (direct light with soft shadows, bounces, the environment,
+JNLM denoising, seams) on the job pool; results don't depend on the thread count. A
+`.lightmap.json` file (`$cli schema lightmap`) is its `LightmapGIData`, with the texels in an
+`.hdr` beside it; `lightmap.bake` (`engine/command/src/lightmap.cpp`) writes both. `scene3d::Renderer::find_lightmaps` loads them, gives each lightmapped mesh its UVs (`uv2`)
+by the unwrap stored for its mesh's hash, and draws it with `Material3D::lightmap`
+(`render::LightmapShading`, texture slot 10); `mesh.hlsl`'s `lightmap_light` samples it
+bicubically, and `render::detail::lightmap_light` is its CPU twin. `examples/lightmaps-3d` bakes a
+courtyard.
 
 Compatibility's post-processing: without glow or adjustments, `mesh.hlsl` tonemaps as it draws.
 With either, each device draws the meshes into an RGBA8 texture at `end_frame` and runs

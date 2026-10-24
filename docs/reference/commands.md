@@ -32,7 +32,7 @@ Rules that apply to every command (see [concepts.md](../concepts.md#sessions)):
 
 Add `"dry_run": true` to the params of any command that changes the world (`scene.new`,
 `scene.open`, `entity.create`, `entity.destroy`, `component.set`, `component.remove`, `step`,
-`run.until`, `world.restore`, `storyboard.edit`, `navigation.bake`, `replay.run`, `replay.seek` and `batch`) to see what it would do. The command runs, then
+`run.until`, `world.restore`, `storyboard.edit`, `navigation.bake`, `lightmap.bake`, `replay.run`, `replay.seek` and `batch`) to see what it would do. The command runs, then
 the world, the scene's path, the next generated ID and the tick counter are put back, and no undo
 step is recorded. An error is returned as usual. The result holds the command's own result and the
 changes, in the same form as [`world.diff`](#worlddiff):
@@ -47,7 +47,7 @@ changes, in the same form as [`world.diff`](#worlddiff):
 
 A batch takes `dry_run` itself; the commands inside it cannot. In a dry-run batch, `scene.save`
 and `prefab.save` check everything and return their usual result but write no file, and
-`storyboard.edit` returns the versions it would write and `navigation.bake` what it would bake. Commands that change nothing, such
+`storyboard.edit` returns the versions it would write and `navigation.bake` and `lightmap.bake` what they would bake. Commands that change nothing, such
 as `entity.get`, reject it as an unknown param.
 
 ## Contents
@@ -70,6 +70,7 @@ as `entity.get`, reject it as an unknown param.
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
 | Particles | [`particles.eval`](#particleseval) |
 | Lights | [`light.sample`](#lightsample) |
+| Lightmaps | [`lightmap.bake`](#lightmapbake) |
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.analyze`](#audioanalyze), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord), [`audio.input`](#audioinput) |
@@ -156,7 +157,7 @@ command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"meshlib"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"meshlib"`, `"lightmap"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -1474,6 +1475,41 @@ torch and one behind the crate from it:
 - Normal maps aren't sampled: the pixel faces the viewer. Values are rounded to three decimals.
 - A light that can't shine, such as one whose texture doesn't load, is left out and listed in
   `warnings` with its entity's ID and why.
+
+## Lightmaps
+
+### lightmap.bake
+
+Bakes a [`LightmapGI`'s](scene-format.md#baked-lightmaps) light, as Godot's LightmapGI bake: the
+`MeshInstance3D`s whose `gi_mode` is `"static"` under its parent (the whole world for a root),
+lit by the lights there whose `light_bake_mode` isn't `"disabled"` and by its environment, with
+shadows and bounces. It unwraps the meshes into lightmap UVs, traces their light on the CPU, then
+writes a `.lightmap.json` file and its texels in an `.hdr` file beside it, and sets the
+LightmapGI's `light_data` to the file. It returns the files, how many meshes and lights it baked,
+the size of a slice, how many slices and `problems` when there are any: models or textures that
+don't load, meshes with no entity ID and model parts with a skin, which it leaves out. A bake that comes out the same
+reports `"unchanged": true` and records no undo step. Undo puts both files back as they were,
+removing them if the bake made them, and sets `light_data` back; redo writes the bake again.
+Meshes draw with the new lightmap at the next command or tick.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with a `LightmapGI` |
+| `file` | string | its `light_data`, else beside the scene, named after it | The `.lightmap.json` file to write, project path |
+
+Needs: `edit` and `filesystem`. Takes `dry_run`. The courtyard of
+[examples/lightmaps-3d](../../examples/lightmaps-3d/):
+
+```json
+{"id": "lightmap"}
+```
+
+```json
+{"file":"main.lightmap.json","lights":1,"meshes":3,"size":[128,64],"slices":1,"texture":"main.lightmap.hdr"}
+```
+
+An unknown ID fails at `/id` with a "did you mean"; so does an entity with no `LightmapGI`. A
+file that doesn't end in `.lightmap.json` fails at `/file` (or `/id`, for its `light_data`).
 
 ## UI and text
 
