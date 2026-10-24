@@ -22,12 +22,11 @@ the replies.
 - Bodies, collision shapes and lights keep Godot's names and fields: the ground's `BoxShape3D`
   becomes its `CollisionShape3D` `size`, and the glow's `OmniLight3D` keeps its color, energy and
   range.
-- The `WorldEnvironment`'s `Environment` and `Sky` become its `WorldEnvironment` fields and a
-  `ProceduralSkyMaterial` component; `project.godot`'s `3d/default_gravity` becomes
-  `project.json`'s `physics_3d` gravity.
-- Two things don't convert, and the reply lists them under `unsupported`: SSAO
-  (`Environment.ssao_enabled`) and the `GPUParticles3D` fireflies, whose entity keeps its place
-  in the tree with no particles.
+- The `WorldEnvironment`'s `Environment` (its SSAO included) and `Sky` become its
+  `WorldEnvironment` fields and a `ProceduralSkyMaterial` component; `project.godot`'s
+  `3d/default_gravity` becomes `project.json`'s `physics_3d` gravity.
+- One thing doesn't convert, and the reply lists it under `unsupported`: the `GPUParticles3D`
+  fireflies, whose entity keeps its place in the tree with no particles.
 
 After 120 ticks the crate rests on the grass, its center about half a meter (`0.48`) above the
 ground. `frame.capture` reads the sky, the grass, the crate and the statue from the frame the

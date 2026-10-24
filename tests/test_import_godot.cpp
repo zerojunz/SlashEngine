@@ -1819,6 +1819,10 @@ jolt_physics_3d/simulation/areas_detect_static_bodies=true
 camera/depth_of_field/depth_of_field_bokeh_shape=2
 camera/depth_of_field/depth_of_field_bokeh_quality=3
 camera/depth_of_field/depth_of_field_use_jitter=true
+environment/ssao/quality=3
+environment/ssao/half_size=false
+environment/ssao/blur_passes=3
+environment/ssao/fadeout_to=200.0
 )");
     write(folder / "level.tscn", R"([gd_scene load_steps=16 format=3]
 
@@ -1871,6 +1875,8 @@ glow_normalized = true
 glow_strength = 1.5
 glow_blend_mode = 4
 ssao_enabled = true
+ssao_intensity = 3.0
+ssao_light_affect = 0.25
 fog_enabled = true
 fog_density = 0.02
 
@@ -2083,6 +2089,7 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
         "background_mode": "sky", "ambient_light_source": "sky", "tonemap_mode": "aces",
         "glow_enabled": true, "glow_levels": [0.0, 0.5, 0.4, 0.1, 1.0, 0.0, 0.0],
         "glow_normalized": true, "glow_strength": 1.5, "glow_blend_mode": "mix",
+        "ssao_enabled": true, "ssao_intensity": 3.0, "ssao_light_affect": 0.25,
         "fog_enabled": true, "fog_density": 0.02, "sky_radiance_size": 128})"));
     CHECK(*environment.find("ProceduralSkyMaterial") ==
           parse(R"({"sky_top_color": [0.2, 0.4, 0.8, 1.0], "sun_angle_max": 20.0})"));
@@ -2119,6 +2126,8 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     CHECK(*project_file.find("rendering")->find("camera") == parse(R"({"depth_of_field": {
         "depth_of_field_bokeh_shape": "circle", "depth_of_field_bokeh_quality": "high",
         "depth_of_field_use_jitter": true}})"));
+    CHECK(*project_file.find("rendering")->find("environment") == parse(R"({"ssao": {
+        "quality": "high", "half_size": false, "blur_passes": 3, "fadeout_to": 200.0}})"));
 
     const json::Value& report = plan.report;
     const auto why = [&](std::string_view what) {
@@ -2140,7 +2149,7 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     CHECK(unsupported(report, "Environment.glow_levels").is_null());
     CHECK(why("Camera3D.attributes") == "physical camera attributes aren't supported yet");
     CHECK(unsupported(report, "CameraAttributesPractical.dof_blur_far_enabled").is_null());
-    CHECK(!unsupported(report, "Environment.ssao_enabled").is_null());
+    CHECK(unsupported(report, "Environment.ssao_enabled").is_null());
     CHECK(!unsupported(report, "SpotLight3D.light_indirect_energy").is_null());
     CHECK(why("node type GPUParticles3D") == "no SlashEngine component for it yet");
     CHECK(why("node type Skeleton3D") ==

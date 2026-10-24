@@ -11,6 +11,7 @@
 #include "mesh_shading.hpp"
 #include "post_shading.hpp"
 #include "sky_shading.hpp"
+#include "ssao.hpp"
 
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
@@ -1344,7 +1345,8 @@ private:
     }
 
     // Draws the frame's meshes over target and returns the depth buffer: a float a pixel, rows
-    // top to bottom.
+    // top to bottom. With SSAO, Forward+'s prepass draws the opaque meshes' depth and normals
+    // first, and the SSAO passes make the occlusion the meshes are shaded with.
     std::vector<float> draw_meshes(const Scene3D& scene, const WorldTarget& target) {
         const detail::ShadowPlan plan = detail::plan_shadows(scene, kMaxTextureSize);
         std::vector<float> directional(std::size_t{plan.directional_size} * plan.directional_size,
@@ -1359,12 +1361,12 @@ private:
         const detail::LightClusters clusters =
             clustered ? detail::build_clusters(scene, target.width(), target.height())
                       : detail::LightClusters{};
-        const detail::MeshMaps maps{
-            .uniforms = plan.uniforms.get(),
-            .directional = {.depths = directional, .size = plan.directional_size},
-            .positional = {.depths = positional, .size = plan.positional_size},
-            .radiance = radiance(scene),
-            .clusters = clustered ? &clusters : nullptr};
+        detail::MeshMaps maps{.uniforms = plan.uniforms.get(),
+                              .directional = {.depths = directional, .size = plan.directional_size},
+                              .positional = {.depths = positional, .size = plan.positional_size},
+                              .radiance = radiance(scene),
+                              .clusters = clustered ? &clusters : nullptr,
+                              .ao = {}};
 
         std::vector<float> depth(std::size_t{target.width()} * target.height(), 0.0F);
         const detail::MeshCameraUniforms camera = detail::mesh_camera_uniforms(scene);
@@ -1377,66 +1379,119 @@ private:
             std::span<const detail::MeshDraw>(mesh_draws_), scene,
             [&](std::size_t i) { return find_mesh(mesh_draws_[i].mesh).bounds; });
         std::vector<ClipVertex> corners;
-        for (const std::size_t index : order) {
-            const detail::MeshDraw& draw = mesh_draws_[index];
-            if (draw.shadows == ShadowCasting::ShadowsOnly) {
-                continue;
-            }
-            const Material3D& material = draw.material;
-            const SoftwareMesh& mesh = find_mesh(draw.mesh);
-            MeshShader shader{.material = &material,
-                              .surface = detail::mesh_surface_uniforms(material, draw.layers),
-                              .scene = lights.get(),
-                              .maps = &maps};
-            const std::array<MaterialTexture, detail::kMeshTextures> slots =
-                detail::mesh_texture_slots(material);
-            for (std::size_t slot = 0; slot < detail::kMeshTextures; ++slot) {
-                shader.slots.at(slot) = bound(slots.at(slot).texture, slots.at(slot).repeat);
-            }
-            const detail::MeshInstanceUniforms instance =
-                detail::mesh_instance_uniforms(draw.transform, material);
-            corners.clear();
-            for (const Vertex3D& vertex : mesh.vertices) {
-                const detail::MeshCorner corner = detail::mesh_vertex(camera, instance, vertex);
-                ClipVertex& out = corners.emplace_back();
-                out.clip = corner.clip;
-                std::size_t at = 0;
-                const auto put = [&](std::span<const float> values) {
-                    for (const float value : values) {
-                        out.varying.at(at++) = value;
-                    }
-                };
-                put(corner.world);
-                put(corner.normal);
-                put(corner.tangent);
-                put(corner.binormal);
-                put(corner.uv);
-                put(corner.color);
-            }
-            const MeshRaster raster{
-                .depth = depth,
-                .stride = target.width(),
-                .viewport = {.width = target.width(), .height = target.height()},
-                .cull = material.cull};
-            const bool blended = material.transparency == Transparency::Alpha;
-            const auto shade = [&](const MeshFragment& fragment, std::size_t at) {
-                const auto color =
-                    shade_mesh_pixel(shader, fragment.varyings(), fragment.front,
-                                     {static_cast<std::uint32_t>(at % target.width()),
-                                      static_cast<std::uint32_t>(at / target.width())});
-                if (!color) {
-                    return false; // discarded, as by the alpha scissor
+        // Draws the meshes in order over buffer, the opaque pass's alone for the prepass, with
+        // shade(shader, fragment, at) for each pixel nearer than the buffer, keeping its depth
+        // where shade returns true.
+        const auto draw_all = [&](std::span<float> buffer, bool prepass, const auto& shade) {
+            for (const std::size_t index : order) {
+                const detail::MeshDraw& draw = mesh_draws_[index];
+                const bool blended = draw.material.transparency == Transparency::Alpha;
+                if (draw.shadows == ShadowCasting::ShadowsOnly || (prepass && blended)) {
+                    continue;
                 }
-                write_mesh_pixel(material, blended, *color, target, at);
-                return !blended;
-            };
-            for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
-                clip_and_draw({corners[mesh.indices[i]], corners[mesh.indices[i + 1]],
-                               corners[mesh.indices[i + 2]]},
-                              raster, shade);
+                draw_mesh(draw, camera, *lights, maps, buffer, target, shade, corners);
             }
+        };
+        detail::SsaoImage ao;
+        if (lights->ssao[0] != 0.0F) {
+            const std::size_t pixels = std::size_t{target.width()} * target.height();
+            std::vector<float> prepass_depth(pixels, 0.0F);
+            detail::SsaoImage normals{.width = target.width(),
+                                      .height = target.height(),
+                                      .channels = 4,
+                                      .values = std::vector<float>(pixels * 4, 0.0F)};
+            draw_all(prepass_depth, true,
+                     [&](const MeshShader& shader, const MeshFragment& fragment, std::size_t at) {
+                         const detail::MeshPixel pixel =
+                             mesh_pixel(shader, fragment.varyings(), fragment.front,
+                                        {static_cast<std::uint32_t>(at % target.width()),
+                                         static_cast<std::uint32_t>(at / target.width())});
+                         const std::optional<Float4> value =
+                             detail::mesh_normal_roughness(shader.surface, *shader.scene, pixel);
+                         if (!value) {
+                             return false;
+                         }
+                         // As the GPU stores them in its RGBA bytes.
+                         for (std::size_t c = 0; c < 4; ++c) {
+                             normals.values[(at * 4) + c] =
+                                 static_cast<float>(
+                                     std::lround(std::clamp(value->at(c), 0.0F, 1.0F) * 255.0F)) /
+                                 255.0F;
+                         }
+                         return true;
+                     });
+            ao = detail::run_ssao(scene.ssao, scene.projection, target.width(), target.height(),
+                                  {.depth = prepass_depth, .normals = &normals});
+            maps.ao = ao.values;
+            maps.ao_width = target.width();
         }
+        draw_all(depth, false,
+                 [&](const MeshShader& shader, const MeshFragment& fragment, std::size_t at) {
+                     const Material3D& material = *shader.material;
+                     const bool blended = material.transparency == Transparency::Alpha;
+                     const auto color =
+                         shade_mesh_pixel(shader, fragment.varyings(), fragment.front,
+                                          {static_cast<std::uint32_t>(at % target.width()),
+                                           static_cast<std::uint32_t>(at / target.width())});
+                     if (!color) {
+                         return false; // discarded, as by the alpha scissor
+                     }
+                     write_mesh_pixel(material, blended, *color, target, at);
+                     return !blended;
+                 });
         return depth;
+    }
+
+    // Draws one mesh over buffer, as draw_meshes' passes do, with shade(shader, fragment, at) for
+    // each pixel nearer than the buffer.
+    template <typename Shade>
+    void draw_mesh(const detail::MeshDraw& draw, const detail::MeshCameraUniforms& camera,
+                   const detail::MeshSceneUniforms& lights, const detail::MeshMaps& maps,
+                   std::span<float> buffer, const WorldTarget& target, const Shade& shade,
+                   std::vector<ClipVertex>& corners) {
+        const Material3D& material = draw.material;
+        const SoftwareMesh& mesh = find_mesh(draw.mesh);
+        MeshShader shader{.material = &material,
+                          .surface = detail::mesh_surface_uniforms(material, draw.layers),
+                          .scene = &lights,
+                          .maps = &maps};
+        const std::array<MaterialTexture, detail::kMeshTextures> slots =
+            detail::mesh_texture_slots(material);
+        for (std::size_t slot = 0; slot < detail::kMeshTextures; ++slot) {
+            shader.slots.at(slot) = bound(slots.at(slot).texture, slots.at(slot).repeat);
+        }
+        const detail::MeshInstanceUniforms instance =
+            detail::mesh_instance_uniforms(draw.transform, material);
+        corners.clear();
+        for (const Vertex3D& vertex : mesh.vertices) {
+            const detail::MeshCorner corner = detail::mesh_vertex(camera, instance, vertex);
+            ClipVertex& out = corners.emplace_back();
+            out.clip = corner.clip;
+            std::size_t at = 0;
+            const auto put = [&](std::span<const float> values) {
+                for (const float value : values) {
+                    out.varying.at(at++) = value;
+                }
+            };
+            put(corner.world);
+            put(corner.normal);
+            put(corner.tangent);
+            put(corner.binormal);
+            put(corner.uv);
+            put(corner.color);
+        }
+        const MeshRaster raster{.depth = buffer,
+                                .stride = target.width(),
+                                .viewport = {.width = target.width(), .height = target.height()},
+                                .cull = material.cull};
+        const auto shade_pixel = [&](const MeshFragment& fragment, std::size_t at) {
+            return shade(shader, fragment, at);
+        };
+        for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+            clip_and_draw({corners[mesh.indices[i]], corners[mesh.indices[i + 1]],
+                           corners[mesh.indices[i + 2]]},
+                          raster, shade_pixel);
+        }
     }
 
     // A shadow pass: the meshes it draws, depth only, into its rect of an atlas size texels
@@ -1638,9 +1693,10 @@ private:
     }
 
     // fs_main in shaders/mesh.hlsl, through its CPU twin, at a pixel of the target.
-    static std::optional<Float4> shade_mesh_pixel(const MeshShader& shader,
-                                                  const std::array<float, 18>& varying, bool front,
-                                                  std::array<std::uint32_t, 2> at) {
+    // What the fragment stage reads at a pixel of a draw.
+    static detail::MeshPixel mesh_pixel(const MeshShader& shader,
+                                        const std::array<float, 18>& varying, bool front,
+                                        std::array<std::uint32_t, 2> at) {
         const auto take3 = [&](std::size_t k) {
             return detail::Float3{varying.at(k), varying.at(k + 1), varying.at(k + 2)};
         };
@@ -1657,7 +1713,14 @@ private:
                 detail::mesh_texture_uv(shader.surface, slot, {varying[12], varying[13]});
             pixel.texels.at(slot) = shader.slots.at(slot).sample(uv[0], uv[1]);
         }
-        return detail::shade_mesh(shader.surface, *shader.scene, *shader.maps, pixel);
+        return pixel;
+    }
+
+    static std::optional<Float4> shade_mesh_pixel(const MeshShader& shader,
+                                                  const std::array<float, 18>& varying, bool front,
+                                                  std::array<std::uint32_t, 2> at) {
+        return detail::shade_mesh(shader.surface, *shader.scene, *shader.maps,
+                                  mesh_pixel(shader, varying, front, at));
     }
 
     // Writes a mesh pixel as the GPU device's mesh pipelines do: opaque ones replace the pixel,
