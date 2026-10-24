@@ -1,0 +1,14 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"csg.get","params":{"id":"house"}}
+{"jsonrpc":"2.0","id":3,"method":"csg.get","params":{"id":"door"}}
+{"jsonrpc":"2.0","id":4,"method":"physics.raycast","params":{"from":[0,0.5,6],"to":[0,0.5,-6]}}
+{"jsonrpc":"2.0","id":5,"method":"physics.raycast","params":{"from":[0.6,0.5,6],"to":[0.6,0.5,-6]}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[75,25],[62,47],[72,46],[117,37],[120,10],[38,44],[52,42],[100,46],[5,5]]}}
+{"jsonrpc":"2.0","id":7,"method":"component.set","params":{"id":"door","components":{"CSGBox3D":{"size":[1.4,1.5,1]}}}}
+{"jsonrpc":"2.0","id":8,"method":"physics.raycast","params":{"from":[0.6,0.5,6],"to":[0.6,0.5,-6]}}
+{"jsonrpc":"2.0","id":9,"method":"csg.get","params":{"id":"house"}}
+{"jsonrpc":"2.0","id":10,"method":"entity.create","params":{"id":"hoop","components":{"Transform3D":{"position":[0,1,4]},"CSGTorus3D":{"inner_radius":1,"outer_radius":1}}}}
+{"jsonrpc":"2.0","id":11,"method":"csg.get","params":{"id":"hoop"}}
+{"jsonrpc":"2.0","id":12,"method":"undo"}
+{"jsonrpc":"2.0","id":13,"method":"undo"}
+{"jsonrpc":"2.0","id":14,"method":"physics.raycast","params":{"from":[0.6,0.5,6],"to":[0.6,0.5,-6]}}

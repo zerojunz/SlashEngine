@@ -199,6 +199,8 @@ struct Part {
 struct ShapeKey {
     std::vector<Part> parts; // the body's own first, then those under it in tree order
     Vec3 scale{1.0F, 1.0F, 1.0F};
+    // A CSG root's triangles, as scene3d keeps them: a new mesh is a new pointer.
+    std::shared_ptr<const std::vector<Vec3>> csg;
 
     friend bool operator==(const ShapeKey&, const ShapeKey&) = default;
 };
@@ -227,6 +229,8 @@ struct Body {
     entt::entity entity = entt::null;
     std::string name; // the entity's ID
     Kind kind = Kind::Static;
+    // A CSG root with use_collision: a static body of its triangles, as Godot's CSGShape3D's.
+    bool csg = false;
     // Physical bones: what their simulator makes of them.
     world::PhysicalBoneMode bone_mode = world::PhysicalBoneMode::Static;
     JPH::BodyID id;
@@ -454,10 +458,20 @@ public:
     [[nodiscard]] world::MemoryPart memory() const;
 
 private:
+    // A CSG root's static body: its collision layer and mask and its triangles.
+    struct CsgShape {
+        std::uint32_t layer = 1;
+        std::uint32_t mask = 1;
+        std::shared_ptr<const std::vector<Vec3>> faces;
+    };
+
     void create_system();
-    void remove_stale(world::World& world);
+    // Removes bodies whose entities are gone or are another kind now, and CSG bodies whose
+    // roots aren't in csg.
+    void remove_stale(world::World& world, const std::vector<entt::entity>& csg);
     void sync(world::World& world, const world::Tree3D& tree);
-    void sync_body(world::World& world, const world::Tree3D& tree, entt::entity entity, Kind kind);
+    void sync_body(world::World& world, const world::Tree3D& tree, entt::entity entity, Kind kind,
+                   const CsgShape* csg = nullptr);
     void create_body(Body& body, const world::Affine3D& global, const world::World& world);
     void build_shape(const world::World& world, Body& body, const ShapeKey& key);
     void destroy(Body& body);

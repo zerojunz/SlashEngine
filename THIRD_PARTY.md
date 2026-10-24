@@ -26,6 +26,7 @@ or license not allowed here, or whose license text changed without review.
 | [ufbx](https://github.com/ufbx/ufbx) | v0.23.1 | MIT or Unlicense (public domain), at the user's choice | Reading FBX models (`.fbx`, binary and ASCII) for `MeshInstance3D`, as Godot 4.3's importer reads them | Fetched, its one source file compiled in `engine/scene3d` |
 | [Recast Navigation](https://github.com/recastnavigation/recastnavigation) | v1.6.0 | Zlib | Baking 3D navigation meshes from scene geometry with Recast, as Godot does | Fetched, its Recast library compiled in `engine/navigation` |
 | [Clipper2](https://github.com/AngusJohnson/Clipper2) | Clipper2_1.5.4 | BSL-1.0 | Merging, cutting and shrinking outlines when 2D navigation polygons bake, as Godot does | Fetched, linked statically |
+| [Manifold](https://github.com/elalish/manifold) | v3.3.2 | Apache 2.0 | CSG shapes' booleans (union, intersection, subtraction), as Godot 4.6's CSG module uses it | Fetched, linked statically |
 | [PolyPartition](https://github.com/ivanfratric/polypartition) | 7bdffb428b2b19ad1c43aa44c714dcc104177e84 | MIT | Splitting baked 2D navigation outlines into convex polygons or triangles, as Godot does | Fetched, its one source file compiled in `engine/navigation` |
 | [msdfgen](https://github.com/Chlumsky/msdfgen) | v1.13 | MIT | Multichannel signed distance fields for fonts | Fetched, its core linked statically |
 | [Roboto](https://github.com/googlefonts/roboto) | v2.138 | Apache 2.0 | The default font | Fetched, Roboto Regular embedded in the engine |
