@@ -691,6 +691,7 @@ constexpr std::array kNodeTypes{
     NodeType{"WorldEnvironment", Family::Plain, "WorldEnvironment", ""},
     NodeType{"ReflectionProbe", Family::Node3D, "ReflectionProbe", ""},
     NodeType{"LightmapGI", Family::Node3D, "LightmapGI", ""},
+    NodeType{"LightmapProbe", Family::Node3D, "LightmapProbe", ""},
     NodeType{"CollisionShape3D", Family::Node3D, "CollisionShape3D", ""},
     NodeType{"StaticBody3D", Family::Node3D, "StaticBody3D", ""},
     NodeType{"AnimatableBody3D", Family::Node3D, "AnimatableBody3D", ""},

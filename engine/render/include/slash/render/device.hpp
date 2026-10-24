@@ -271,6 +271,19 @@ struct LightmapShading {
     bool operator==(const LightmapShading&) const = default;
 };
 
+// The light a moving mesh takes from a LightmapGI's light probes, as Godot's lightmap capture:
+// nine spherical harmonics coefficients in the world's space (l0; l1 for y, z and x; l2 for xy,
+// yz, 3z²-1, xz and x²-y²), linear RGB, already times the camera's exposure over the one they
+// were baked with. With enabled it is the mesh's ambient light, evaluated at each pixel's normal
+// as Godot's INSTANCE_FLAGS_USE_LIGHTMAP_CAPTURE does: the scene's ambient light and the probes'
+// leave it alone, but baked lights still light it. A lightmap goes before it; terrains take none.
+struct LightmapCapture {
+    bool enabled = false;
+    std::array<std::array<float, 3>, 9> sh{};
+
+    bool operator==(const LightmapCapture&) const = default;
+};
+
 // A StandardMaterial3D: what each pixel of a mesh is, with Godot's parameters and defaults.
 // Colors are sRGB; textures are sampled at the mesh's texture coordinate times uv1_scale plus
 // uv1_offset, and None samples white.
@@ -307,6 +320,8 @@ struct Material3D {
     TerrainShading terrain{}; // NOLINT(readability-redundant-member-init): may be left out
     // A baked lightmap, which stands in for the ambient light (and Light3D::baked lights).
     LightmapShading lightmap{}; // NOLINT(readability-redundant-member-init): may be left out
+    // Light probes' light, for a mesh that moves.
+    LightmapCapture capture{}; // NOLINT(readability-redundant-member-init): may be left out
 
     bool operator==(const Material3D&) const = default;
 };

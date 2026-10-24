@@ -806,7 +806,15 @@ JNLM denoising, seams) on the job pool; results don't depend on the thread count
 `.hdr` beside it; `lightmap.bake` (`engine/command/src/lightmap.cpp`) writes both. `scene3d::Renderer::find_lightmaps` loads them, gives each lightmapped mesh its UVs (`uv2`)
 by the unwrap stored for its mesh's hash, and draws it with `Material3D::lightmap`
 (`render::LightmapShading`, texture slot 10); `mesh.hlsl`'s `lightmap_light` samples it
-bicubically, and `render::detail::lightmap_light` is its CPU twin. `examples/lightmaps-3d` bakes a
+bicubically, and `render::detail::lightmap_light` is its CPU twin. Light probes for moving meshes
+are in `src/lightmap_probes.cpp`, each part a port of Godot's: `place_lightmap_probes`
+(`LightmapGI::bake`'s octree), `tetrahedralize` (`Delaunay3D`, with an exact in-sphere test on
+Shewchuk's expansion arithmetic so probes in flat layers don't overlap and tetrahedra are the same
+everywhere), `lightmap_bsp_tree`,
+`tap_lightmap_probes` (`lightmap_tap_sh_light`), `rotate_sh` and `lightmap_capture`
+(`_update_instance_lightmap_captures`); the lightmapper traces the probes after the bounces. The
+renderer eases each `"dynamic"` mesh's capture and draws it with `Material3D::capture`, which
+`mesh.hlsl`'s `capture_light` and its CPU twin evaluate per pixel. `examples/lightmaps-3d` bakes a
 courtyard.
 
 Compatibility's post-processing: without glow or adjustments, `mesh.hlsl` tonemaps as it draws.

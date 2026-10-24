@@ -591,6 +591,12 @@ MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material, std::uint3
         flags |= kMeshLightmap;
         out.lightmap = {material.lightmap.exposure, material.lightmap.bicubic ? 1.0F : 0.0F, 0.0F,
                         0.0F};
+    } else if (material.capture.enabled && !material.terrain.enabled) {
+        flags |= kMeshLightmapCapture;
+        for (std::size_t i = 0; i < 9; ++i) {
+            const std::array<float, 3>& c = material.capture.sh.at(i);
+            out.capture.at(i) = {c[0], c[1], c[2], 0.0F};
+        }
     }
     float threshold = material.alpha_scissor_threshold;
     std::uint32_t terrain = 0;
@@ -951,6 +957,25 @@ Float3 lightmap_light(const MeshSurfaceUniforms& surface, const FloatImage& imag
     return scale(light, surface.lightmap[0]);
 }
 
+Float3 capture_light(const MeshSurfaceUniforms& surface, const Float3& n) {
+    const std::array<Float4, 9>& c = surface.capture;
+    Float3 out{};
+    for (std::size_t i = 0; i < 3; ++i) {
+        // In the shader's order.
+        float sum = 0.886227F * c[0].at(i);
+        sum += 1.023327F * c[1].at(i) * n[1];
+        sum += 1.023327F * c[2].at(i) * n[2];
+        sum += 1.023327F * c[3].at(i) * n[0];
+        sum += 0.858086F * c[4].at(i) * (n[0] * n[1]);
+        sum += 0.858086F * c[5].at(i) * (n[1] * n[2]);
+        sum += 0.247708F * c[6].at(i) * ((3.0F * n[2] * n[2]) - 1.0F);
+        sum += 0.858086F * c[7].at(i) * (n[0] * n[2]);
+        sum += 0.429043F * c[8].at(i) * ((n[0] * n[0]) - (n[1] * n[1]));
+        out.at(i) = sum;
+    }
+    return out;
+}
+
 namespace {
 
 // range_mask in shaders/mesh.hlsl: the bits of a word of a tile's light bits for lights from
@@ -1151,6 +1176,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     LightSum light_sum;
     // add_light in shaders/mesh.hlsl.
     const bool lightmapped = (flags & kMeshLightmap) != 0;
+    const bool captured = (flags & kMeshLightmapCapture) != 0;
     const auto add_light = [&](const MeshLightUniforms& light) {
         if ((static_cast<std::uint32_t>(light.params[3]) & surface.options[2]) == 0) {
             return;
@@ -1203,10 +1229,14 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
 
     // Light from the sky's radiance, as Godot's scene.glsl takes it: reflections by roughness
     // and ambient light by the normal, then specular occlusion and Lazarov's environment BRDF.
-    // A lightmapped pixel's ambient light is its lightmap's, which stands in for the scene's and
-    // the probes', as Godot's USE_LIGHTMAP.
-    Float3 ambient_light =
-        lightmapped ? pixel.lightmap : Float3{scene.ambient[0], scene.ambient[1], scene.ambient[2]};
+    // A lightmapped pixel's ambient light is its lightmap's, and a captured one's its light
+    // probes', either standing in for the scene's and the probes', as Godot's USE_LIGHTMAP.
+    auto ambient_light = Float3{scene.ambient[0], scene.ambient[1], scene.ambient[2]};
+    if (lightmapped) {
+        ambient_light = pixel.lightmap;
+    } else if (captured) {
+        ambient_light = capture_light(surface, normal);
+    }
     Float3 reflected{};
     if (maps.radiance != nullptr) {
         const auto to_sky = [&](const Float3& v) {
@@ -1221,7 +1251,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
                 maps.radiance->sample(to_sky(ray), std::sqrt(roughness) * kRadianceMaxLevel);
             reflected = scale(srgb_to_linear(xyz(texel)), horizon * horizon * scene.sky[2]);
         }
-        if (scene.sky[0] != 0.0F && !lightmapped) {
+        if (scene.sky[0] != 0.0F && !lightmapped && !captured) {
             const Float4 texel = maps.radiance->sample(to_sky(normal), kRadianceMaxLevel);
             ambient_light =
                 lerp3(ambient_light, scale(srgb_to_linear(xyz(texel)), scene.sky[2]), scene.sky[3]);
@@ -1240,7 +1270,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
                 reflected.at(i) =
                     r[3] < 1.0F ? (reflected.at(i) * (1.0F - r[3])) + r.at(i) : r.at(i);
             }
-            if (a[3] > 0.0F && !lightmapped) {
+            if (a[3] > 0.0F && !lightmapped && !captured) {
                 ambient_light.at(i) =
                     a[3] < 1.0F ? (ambient_light.at(i) * (1.0F - a[3])) + a.at(i) : a.at(i);
             }

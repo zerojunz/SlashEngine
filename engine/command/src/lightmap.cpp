@@ -129,6 +129,7 @@ Reply lightmap_bake(Session& session, const json::Value& params) {
     result["lights"] = bake.lights;
     result["size"] = json::Array{bake.data.width, bake.data.height};
     result["slices"] = bake.data.slices;
+    result["probes"] = bake.data.probes.points.size();
     if (!bake.problems.empty()) {
         json::Array problems;
         for (const scene3d::Problem& problem : bake.problems) {
@@ -191,8 +192,8 @@ void register_lightmap_commands(Registry& registry) {
         .description = "Bakes a LightmapGI's light into a .lightmap.json file and its .hdr "
                        "texels, as Godot's LightmapGI bake: the static meshes under its parent, "
                        "lit by the lights whose light_bake_mode isn't disabled and its "
-                       "environment, with shadows and bounces. Sets light_data. Returns the "
-                       "files, counts, size and problems.",
+                       "environment, with shadows and bounces, and light probes for dynamic "
+                       "meshes. Sets light_data. Returns the files, counts, size and problems.",
         .capabilities = {Edit, Filesystem},
         .effect = Effect::Edit,
         .params = params_schema({{"id", std::move(id)}, {"file", std::move(file)}}, {"id"}),

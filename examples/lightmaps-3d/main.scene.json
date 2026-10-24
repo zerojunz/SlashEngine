@@ -1,5 +1,22 @@
 {
   "entities": {
+    "ball": {
+      "components": {
+        "MeshInstance3D": {
+          "gi_mode": "dynamic"
+        },
+        "SphereMesh": {
+          "height": 0.7,
+          "radius": 0.35
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.9, 0.9, 0.9, 1.0]
+        },
+        "Transform3D": {
+          "position": [-1.6, 0.35, 1.0]
+        }
+      }
+    },
     "camera": {
       "components": {
         "Camera3D": {

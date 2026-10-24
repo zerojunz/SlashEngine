@@ -38,6 +38,9 @@ constexpr std::uint32_t kAllIndices = std::numeric_limits<std::uint32_t>::max();
 
 constexpr float kDegrees = 180.0F / std::numbers::pi_v<float>;
 constexpr float kRadians = std::numbers::pi_v<float> / 180.0F;
+// rendering/lightmapping/probe_capture/update_speed: how fast moving meshes' light from light
+// probes follows them, a share per second.
+constexpr double kProbeUpdateSpeed = 15.0;
 
 Vec3 scaled(Vec3 v, float s) {
     return {v.x * s, v.y * s, v.z * s};
@@ -832,8 +835,10 @@ void Renderer::destroy_lightmaps(bool unused_only) {
                   [&](const auto& entry) { return !unused_only || entry.second.used != frame_; });
 }
 
-void Renderer::find_lightmaps(const world::World& world, float exposure) {
+void Renderer::find_lightmaps(const world::World& world, float exposure,
+                              const std::function<world::Affine3D(entt::entity)>& global) {
     lit_.clear();
+    probe_sources_.clear();
     for (const entt::entity entity : made<world::LightmapGI>(world)) {
         const auto& gi = world.ecs().get<const world::LightmapGI>(entity);
         if (gi.light_data.empty()) {
@@ -901,6 +906,11 @@ void Renderer::find_lightmaps(const world::World& world, float exposure) {
             continue;
         }
         const LightmapData& data = *kept.source.data;
+        if (!data.probes.points.empty()) {
+            probe_sources_.push_back({.data = kept.source.data,
+                                      .transform = global(entity),
+                                      .exposure = exposure / data.baked_exposure});
+        }
         const auto slices = static_cast<float>(std::max(data.slices, 1U));
         for (const LightmapUser& user : data.users) {
             const entt::entity lit = world.find(user.entity);
@@ -930,6 +940,48 @@ void Renderer::find_lightmaps(const world::World& world, float exposure) {
             lit_.emplace(std::pair{lit, user.part}, std::move(place));
         }
     }
+}
+
+render::LightmapCapture Renderer::capture(entt::entity entity, const Vec3& center) {
+    render::LightmapCapture out;
+    if (probe_sources_.empty()) {
+        return out;
+    }
+    std::vector<LightmapCaptureSource> sources;
+    sources.reserve(probe_sources_.size());
+    for (const ProbeSource& source : probe_sources_) {
+        sources.push_back({.probes = &source.data->probes,
+                           .transform = source.transform,
+                           .exposure = source.exposure});
+    }
+    const std::optional<LightmapSh> taken =
+        lightmap_capture(sources, {center.x, center.y, center.z});
+    if (!taken) {
+        captured_.erase(entity);
+        return out;
+    }
+    const LightmapSh& target = *taken;
+    // Godot eases a mesh's light by its lightmap_probe_update_speed, 15, times the frame's time;
+    // the first frame, and after game time goes back, it is set at once.
+    auto [found, made] = captured_.try_emplace(entity);
+    Captured& captured = found->second;
+    if (made || captured.used + 1 != frame_ || capture_time_ < captured.time) {
+        captured.sh = target;
+    } else {
+        const auto weight =
+            static_cast<float>(std::min(1.0, kProbeUpdateSpeed * (capture_time_ - captured.time)));
+        for (std::size_t j = 0; j < 9; ++j) {
+            for (std::size_t c = 0; c < 3; ++c) {
+                float& value = captured.sh.at(j).at(c);
+                value += (target.at(j).at(c) - value) * weight;
+            }
+        }
+    }
+    captured.time = capture_time_;
+    captured.used = frame_;
+    out.enabled = true;
+    out.sh = captured.sh;
+    return out;
 }
 
 const render::LightmapShading* Renderer::lit_surface(entt::entity entity, std::uint32_t part,
@@ -1059,6 +1111,18 @@ Result<render::MeshId> Renderer::mesh_for(const world::World& world, entt::entit
             return made.error();
         }
         shared.id = made.value();
+        if (!data.value().vertices.empty()) {
+            std::array<float, 3> lo = data.value().vertices.front().position;
+            std::array<float, 3> hi = lo;
+            for (const render::Vertex3D& vertex : data.value().vertices) {
+                for (std::size_t c = 0; c < 3; ++c) {
+                    lo.at(c) = std::min(lo.at(c), vertex.position.at(c));
+                    hi.at(c) = std::max(hi.at(c), vertex.position.at(c));
+                }
+            }
+            shared.center = {(lo[0] + hi[0]) * 0.5F, (lo[1] + hi[1]) * 0.5F,
+                             (lo[2] + hi[2]) * 0.5F};
+        }
     }
     shared.used = frame_;
     return shared.id;
@@ -1211,6 +1275,18 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
     }
     const std::string skin_prefix =
         "skin:" + std::to_string(entt::to_integral(entity)) + ":" + prefix;
+    // A moving mesh takes the light probes' light at its bounds' middle, as Godot's.
+    render::LightmapCapture captured;
+    if (instance.gi_mode == "dynamic") {
+        auto center = model_centers_.find(prefix);
+        if (center == model_centers_.end()) {
+            const Bounds box = bounds(model);
+            center =
+                model_centers_.emplace(prefix, std::pair{scaled(box.min + box.max, 0.5F), 0}).first;
+        }
+        center->second.second = frame_;
+        captured = capture(entity, place.apply(center->second.first));
+    }
     for (std::size_t p = 0; p < model.parts.size(); ++p) {
         const ModelPart& part = model.parts[p];
         const bool posed = !globals.empty() && part.node_index >= 0 &&
@@ -1285,7 +1361,8 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
             }
             render::MeshId lit = render::MeshId::None;
             if (instance.gi_mode != "static" || skinned || part.skin >= 0) {
-                // Moving meshes aren't baked.
+                // Moving meshes aren't baked; dynamic ones take the light probes'.
+                draw.material.capture = captured;
             } else if (const render::LightmapShading* lightmap =
                            lit_surface(entity, static_cast<std::uint32_t>(p), lit_source, first,
                                        static_cast<std::uint32_t>(surface.indices.size()), lit)) {
@@ -1608,6 +1685,9 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
         skinned_.clear();
         lit_.clear();
         destroy_lightmaps(false);
+        probe_sources_.clear();
+        captured_.clear();
+        model_centers_.clear();
         exposure_version_ = 0;
         return std::nullopt;
     }
@@ -1721,7 +1801,8 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
     }
     frame.scene.shadows = shadows;
     lights_ = frame.scene.lights.size();
-    find_lightmaps(world, env.exposure);
+    capture_time_ = time;
+    find_lightmaps(world, env.exposure, global);
 
     for (const entt::entity entity : made<world::MeshInstance3D>(world)) {
         const auto& instance = ecs.get<const world::MeshInstance3D>(entity);
@@ -1757,7 +1838,10 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
             standard != nullptr) {
             draw.material = material(*standard, textures_, problems_, entity);
         }
-        if (instance.gi_mode == "static") {
+        if (instance.gi_mode == "dynamic") {
+            const Shared& shared = shared_.at(cached_.at(entity).key);
+            draw.material.capture = capture(entity, global(entity).apply(shared.center));
+        } else if (instance.gi_mode == "static") {
             const LitSource source{.key = "primitive:" + cached_.at(entity).key,
                                    .make = [&primitive](std::vector<render::Vertex3D>& vertices,
                                                         std::vector<std::uint32_t>& indices) {
@@ -1827,6 +1911,8 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
         }
     }
     destroy_lightmaps(true);
+    std::erase_if(captured_, [&](const auto& entry) { return entry.second.used != frame_; });
+    std::erase_if(model_centers_, [&](const auto& entry) { return entry.second.second != frame_; });
     if (auto reflected = reflect(world, frame, clear, reflection_atlas, method); !reflected) {
         problems_.push_back(
             {.entity = camera, .path = "ReflectionProbe", .message = reflected.error().message});
