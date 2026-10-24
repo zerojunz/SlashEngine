@@ -10,11 +10,13 @@
 #include "slash/world/tree3d.hpp"
 
 #include <array>
+#include <climits>
 #include <cstdint>
 #include <entt/entity/entity.hpp>
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -80,9 +82,44 @@ struct LightmapUser {
     friend bool operator==(const LightmapUser&, const LightmapUser&) = default;
 };
 
+// The light reaching a point from every direction, as Godot's light probes keep it: nine
+// spherical harmonics coefficients (l0, then l1 for y, z and x, then l2 for xy, yz, 3z²-1, xz and
+// x²-y², Godot's order), each linear RGB.
+using LightmapSh = std::array<std::array<float, 3>, 9>;
+
+// A leaf of a probe BSP tree with no tetrahedron.
+inline constexpr std::int32_t kLightmapBspEmpty = INT32_MIN;
+
+// A node of the BSP tree that finds the tetrahedron of light probes around a point, as Godot's
+// LightmapGI::BSPNode: a point with normal·p > d goes over it, others under. Each side is another
+// node's index (always later), -(tetrahedron + 1) for a leaf or kLightmapBspEmpty.
+struct LightmapBspNode {
+    std::array<float, 4> plane{0.0F, 0.0F, 0.0F, 0.0F}; // normal x, y, z, then d
+    std::int32_t over = kLightmapBspEmpty;
+    std::int32_t under = kLightmapBspEmpty;
+
+    friend bool operator==(const LightmapBspNode&, const LightmapBspNode&) = default;
+};
+
+// A lightmap's light probes, as Godot's LightmapGIData capture data, which meshes that move take
+// their ambient light from: the probes' places and light in the LightmapGI's space, the Delaunay
+// tetrahedra between them, the BSP tree over those, and the bounds they fill. None when points is
+// empty.
+struct LightmapProbes {
+    std::array<float, 3> bounds_position{0.0F, 0.0F, 0.0F};
+    std::array<float, 3> bounds_size{0.0F, 0.0F, 0.0F};
+    bool interior = false; // meshes inside take only interior lightmaps' light, as Godot's
+    std::vector<std::array<float, 3>> points;
+    std::vector<LightmapSh> sh; // each point's light
+    std::vector<std::array<std::uint32_t, 4>> tetrahedra;
+    std::vector<LightmapBspNode> bsp;
+
+    friend bool operator==(const LightmapProbes&, const LightmapProbes&) = default;
+};
+
 // A .lightmap.json file, as Godot's LightmapGIData: the texels' file, the unwraps of the meshes it
-// lights by their hash (lightmap_mesh_hash; a model's parts' surfaces are unwrapped together) and
-// each mesh's place.
+// lights by their hash (lightmap_mesh_hash; a model's parts' surfaces are unwrapped together),
+// each mesh's place and its light probes.
 struct LightmapData {
     std::string texture; // its .hdr file: the slices, each width by height, top to bottom
     std::uint32_t width = 0;
@@ -91,6 +128,7 @@ struct LightmapData {
     float baked_exposure = 1.0F; // the exposure it was baked with
     std::map<std::string, LightmapUnwrap, std::less<>> meshes;
     std::vector<LightmapUser> users;
+    LightmapProbes probes;
 
     friend bool operator==(const LightmapData&, const LightmapData&) = default;
 };
@@ -98,7 +136,8 @@ struct LightmapData {
 // The JSON Schema for .lightmap.json files.
 [[nodiscard]] json::Value lightmap_schema();
 // Every error in a document, each with its JSON Pointer: those of the schema, and users whose
-// mesh, slice or rectangle isn't there, and unwraps whose vertices and triangles don't match.
+// mesh, slice or rectangle isn't there, unwraps whose vertices and triangles don't match, and
+// probes whose light, tetrahedra or BSP tree don't fit their points.
 [[nodiscard]] std::vector<json::ValidationError> validate_lightmap(const json::Value& doc);
 // The lightmap in a document, or its first error.
 [[nodiscard]] Result<LightmapData> parse_lightmap(const json::Value& doc);
@@ -173,24 +212,86 @@ struct LightmapLight {
 };
 
 // What a bake makes: the lightmap's data (its texture path left for the caller) and texels, the
-// meshes and lights it took, and what it left out.
+// meshes and lights it took, and what it left out. The low-level bake leaves the probes' places
+// to its caller and gives their light in probe_sh.
 struct LightmapBake {
     LightmapData data;
     render::HdrImage texels;
     std::size_t meshes = 0;
     std::size_t lights = 0;
+    std::vector<LightmapSh> probe_sh;
     std::vector<Problem> problems;
+};
+
+// Where a bake traces light probes, as LightmapperRD::add_probe, each traced with rays rays: the
+// points in the world, and the space their light is kept in (only its axes count, as a
+// LightmapGI's rotation), so that a probe's light turns with its LightmapGI.
+struct LightmapProbeRequest {
+    std::vector<std::array<float, 3>> points;
+    world::Affine3D space;
+    std::uint32_t rays = 256; // Godot's medium_quality_probe_ray_count
 };
 
 // Bakes meshes lit by lights and environment (a panorama as render::ambient_panorama makes, or
 // empty for none) with settings, as Godot's LightmapperRD::bake on the CPU: each mesh unwrapped
-// (meshes of equal hashes once), the unwraps packed into slices, and every texel traced, on pool's
-// threads where given. The same texels on every platform and for any number of threads.
-[[nodiscard]] Result<LightmapBake> bake_lightmap(const std::vector<LightmapMesh>& meshes,
-                                                 const std::vector<LightmapLight>& lights,
-                                                 const render::HdrImage& environment,
-                                                 const LightmapSettings& settings,
-                                                 jobs::Pool* pool = nullptr);
+// (meshes of equal hashes once), the unwraps packed into slices, and every texel traced, then the
+// probes, on pool's threads where given. The same texels and probes on every platform and for any
+// number of threads.
+[[nodiscard]] Result<LightmapBake>
+bake_lightmap(const std::vector<LightmapMesh>& meshes, const std::vector<LightmapLight>& lights,
+              const render::HdrImage& environment, const LightmapSettings& settings,
+              jobs::Pool* pool = nullptr, const LightmapProbeRequest& probes = {});
+
+// Where a LightmapGI's light probes go, as LightmapGI::bake places them, from its meshes'
+// triangles (three points each) and the LightmapProbes' places, all in its space: bounds around
+// both, grown a little; the LightmapProbes' places first, then the bounds' 8 corners, and when
+// subdiv isn't 0 the corners of the cells of an octree subdiv cells along its longest side that
+// triangles touch, leaving out those within half a cell of a LightmapProbe. The bounds come back
+// in probes' bounds_position and bounds_size, the places in its points.
+[[nodiscard]] LightmapProbes place_lightmap_probes(std::span<const std::array<float, 3>> triangles,
+                                                   std::span<const std::array<float, 3>> user,
+                                                   int subdiv);
+
+// The Delaunay tetrahedra between points, as Godot's Delaunay3D::tetrahedralize: Bowyer-Watson
+// over the points scaled into a unit cube and quantized, with its acceleration grid, flat
+// tetrahedra left out. Where Godot tests circumspheres in 128-bit fixed point with a tolerance,
+// which lets tetrahedra overlap when points lie in flat layers or on a grid, the test here is
+// exact. The same on every platform.
+[[nodiscard]] std::vector<std::array<std::uint32_t, 4>>
+tetrahedralize(std::span<const std::array<float, 3>> points);
+
+// The BSP tree that finds the tetrahedron around a point, as LightmapGI::_compute_bsp_tree: each
+// node split by the tetrahedra's face that divides them most evenly, scored on pool's threads
+// where given. Empty for fewer than two tetrahedra.
+[[nodiscard]] std::vector<LightmapBspNode>
+lightmap_bsp_tree(std::span<const std::array<float, 3>> points,
+                  std::span<const std::array<std::uint32_t, 4>> tetrahedra,
+                  jobs::Pool* pool = nullptr);
+
+// The light at a point in a LightmapGI's space, as LightStorage::lightmap_tap_sh_light: the
+// probes of the tetrahedron its BSP tree finds blended by the point's barycentric coordinates,
+// each clamped from 0 to 1, or nothing where the tree finds none.
+[[nodiscard]] LightmapSh tap_lightmap_probes(const LightmapProbes& probes,
+                                             std::array<float, 3> point);
+
+// sh turned by a rotation (only basis's axes, orthonormalized, count), with John Hable's code as
+// Godot's Basis::rotate_sh, its coefficients' signs matched to Godot's lightmapper.
+void rotate_sh(LightmapSh& sh, const world::Affine3D& basis);
+
+// A lightmap's probes where they are drawn, for lightmap_capture: its LightmapGI's place in the
+// world, and the camera's exposure over the one it was baked with.
+struct LightmapCaptureSource {
+    const LightmapProbes* probes = nullptr;
+    world::Affine3D transform;
+    float exposure = 1.0F;
+};
+
+// The light a moving mesh centered at center (in the world) takes, as Godot's
+// _update_instance_lightmap_captures: each lightmap's probes whose bounds hold it tapped and
+// turned into the world, blended by how far inside it is, interior lightmaps standing in for the
+// others. nullopt when no lightmap's bounds hold it.
+[[nodiscard]] std::optional<LightmapSh>
+lightmap_capture(std::span<const LightmapCaptureSource> lightmaps, std::array<float, 3> center);
 
 // The images and models a bake reads materials from, by project path.
 struct LightmapSources {
