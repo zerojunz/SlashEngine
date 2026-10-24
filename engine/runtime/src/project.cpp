@@ -270,6 +270,14 @@ json::Value project_schema() {
     rendering["properties"]["clear_color"] = std::move(clear_color);
     rendering["properties"]["driver"] = std::move(driver);
     rendering["properties"]["fallback_to_opengl"] = std::move(fallback);
+    json::Value method;
+    method["enum"] = json::Array{"forward_plus", "gl_compatibility"};
+    method["default"] = "forward_plus";
+    method["description"] =
+        "How 3D meshes are lit, as Godot's rendering_method: forward_plus sorts up to 8 "
+        "directional and 512 omni and spot lights into clusters of the screen; gl_compatibility "
+        "shades every pixel with the first 64 lights, as the OpenGL drivers always do.";
+    rendering["properties"]["rendering_method"] = std::move(method);
     json::Value texture_filter;
     texture_filter["enum"] = json::Array{"linear", "nearest"};
     texture_filter["default"] = Project{}.texture_filter;
@@ -579,6 +587,10 @@ Result<Project> parse_project(const json::Value& project) {
         if (const json::Value* fallback = rendering->find("fallback_to_opengl");
             fallback != nullptr) {
             out.fallback_to_opengl = fallback->as_bool();
+        }
+        if (const json::Value* method = rendering->find("rendering_method"); method != nullptr) {
+            out.rendering_method = render::parse_render_method(method->as_string())
+                                       .value_or(render::RenderMethod::ForwardPlus);
         }
         if (const json::Value* filter = rendering->find("texture_filter"); filter != nullptr) {
             out.texture_filter = filter->as_string();

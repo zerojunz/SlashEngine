@@ -1212,16 +1212,24 @@ private:
             draw_shadow_pass(pass, pass.positional ? positional : directional,
                              pass.positional ? plan.positional_size : plan.directional_size);
         }
+        const bool clustered = scene.method == RenderMethod::ForwardPlus;
+        const detail::LightClusters clusters =
+            clustered ? detail::build_clusters(scene, target.width, target.height)
+                      : detail::LightClusters{};
         const detail::MeshMaps maps{
             .uniforms = plan.uniforms.get(),
             .directional = {.depths = directional, .size = plan.directional_size},
             .positional = {.depths = positional, .size = plan.positional_size},
-            .radiance = radiance(scene)};
+            .radiance = radiance(scene),
+            .clusters = clustered ? &clusters : nullptr};
 
         std::vector<float> depth(std::size_t{target.width} * target.height, 0.0F);
         const detail::MeshCameraUniforms camera = detail::mesh_camera_uniforms(scene);
         const auto lights =
             std::make_unique<detail::MeshSceneUniforms>(detail::mesh_scene_uniforms(scene));
+        if (clustered) {
+            lights->cluster = clusters.uniform();
+        }
         const std::vector<std::size_t> order = detail::mesh_draw_order(
             std::span<const detail::MeshDraw>(mesh_draws_), scene,
             [&](std::size_t i) { return find_mesh(mesh_draws_[i].mesh).bounds; });
@@ -1268,7 +1276,10 @@ private:
                                     .cull = material.cull};
             const bool blended = material.transparency == Transparency::Alpha;
             const auto shade = [&](const MeshFragment& fragment, std::size_t at) {
-                const auto color = shade_mesh_pixel(shader, fragment.varyings(), fragment.front);
+                const auto color =
+                    shade_mesh_pixel(shader, fragment.varyings(), fragment.front,
+                                     {static_cast<std::uint32_t>(at % target.width),
+                                      static_cast<std::uint32_t>(at / target.width)});
                 if (!color) {
                     return false; // discarded, as by the alpha scissor
                 }
@@ -1481,13 +1492,16 @@ private:
         }
     }
 
-    // fs_main in shaders/mesh.hlsl, through its CPU twin.
-    static std::optional<Float4>
-    shade_mesh_pixel(const MeshShader& shader, const std::array<float, 18>& varying, bool front) {
-        const auto take3 = [&](std::size_t at) {
-            return detail::Float3{varying.at(at), varying.at(at + 1), varying.at(at + 2)};
+    // fs_main in shaders/mesh.hlsl, through its CPU twin, at a pixel of the target.
+    static std::optional<Float4> shade_mesh_pixel(const MeshShader& shader,
+                                                  const std::array<float, 18>& varying, bool front,
+                                                  std::array<std::uint32_t, 2> at) {
+        const auto take3 = [&](std::size_t k) {
+            return detail::Float3{varying.at(k), varying.at(k + 1), varying.at(k + 2)};
         };
-        detail::MeshPixel pixel{.world = take3(0),
+        detail::MeshPixel pixel{.x = at[0],
+                                .y = at[1],
+                                .world = take3(0),
                                 .normal = take3(3),
                                 .tangent = take3(6),
                                 .binormal = take3(9),

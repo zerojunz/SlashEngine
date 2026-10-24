@@ -1791,14 +1791,15 @@ private:
             project["rendering"]["texture_filter"] =
                 static_cast<std::int64_t>(filter->number()) % 2 == 0 ? "nearest" : "linear";
         }
-        // Godot's Compatibility renderer is the OpenGL device, and its fallback setting is the
-        // same.
+        // Godot's Compatibility renderer is the OpenGL device lighting as Compatibility does, and
+        // its fallback setting is the same.
         if (const Value* method = setting("rendering", "renderer/rendering_method");
             method != nullptr && method->is_string() && method->text == "gl_compatibility") {
             const Value* driver = setting("rendering", "gl_compatibility/driver");
             const bool es =
                 driver != nullptr && driver->is_string() && driver->text == "opengl3_es";
             project["rendering"]["driver"] = es ? "opengl_es" : "opengl";
+            project["rendering"]["rendering_method"] = "gl_compatibility";
         }
         if (const Value* fallback = setting("rendering", "rendering_device/fallback_to_opengl3");
             fallback != nullptr && fallback->kind == Value::Kind::Bool) {

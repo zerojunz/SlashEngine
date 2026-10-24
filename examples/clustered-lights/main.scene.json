@@ -1,0 +1,1252 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 50.0
+        },
+        "Transform3D": {
+          "position": [0.0, 10.5, 8.0],
+          "rotation": [-0.95, 0.0, 0.0]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.3, 0.35, 0.5, 1.0],
+          "ambient_light_energy": 0.2,
+          "ambient_light_source": "color",
+          "background_color": [0.02, 0.02, 0.05, 1.0],
+          "background_mode": "color"
+        }
+      }
+    },
+    "lantern001": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.55, 0.3, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-5.4, 0.3, -5.4]
+        }
+      }
+    },
+    "lantern002": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.933, 0.55, 0.378, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-4.2, 0.3, -5.4]
+        }
+      }
+    },
+    "lantern003": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.867, 0.55, 0.456, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-3.0, 0.3, -5.4]
+        }
+      }
+    },
+    "lantern004": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.8, 0.55, 0.533, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-1.8, 0.3, -5.4]
+        }
+      }
+    },
+    "lantern005": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.733, 0.55, 0.611, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-0.6, 0.3, -5.4]
+        }
+      }
+    },
+    "lantern006": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.667, 0.55, 0.689, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [0.6, 0.3, -5.4]
+        }
+      }
+    },
+    "lantern007": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.55, 0.767, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [1.8, 0.3, -5.4]
+        }
+      }
+    },
+    "lantern008": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.533, 0.55, 0.844, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [3.0, 0.3, -5.4]
+        }
+      }
+    },
+    "lantern009": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.467, 0.55, 0.922, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [4.2, 0.3, -5.4]
+        }
+      }
+    },
+    "lantern010": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.4, 0.55, 1.0, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [5.4, 0.3, -5.4]
+        }
+      }
+    },
+    "lantern011": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.583, 0.3, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-5.4, 0.3, -4.2]
+        }
+      }
+    },
+    "lantern012": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.933, 0.583, 0.378, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-4.2, 0.3, -4.2]
+        }
+      }
+    },
+    "lantern013": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.867, 0.583, 0.456, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-3.0, 0.3, -4.2]
+        }
+      }
+    },
+    "lantern014": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.8, 0.583, 0.533, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-1.8, 0.3, -4.2]
+        }
+      }
+    },
+    "lantern015": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.733, 0.583, 0.611, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-0.6, 0.3, -4.2]
+        }
+      }
+    },
+    "lantern016": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.667, 0.583, 0.689, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [0.6, 0.3, -4.2]
+        }
+      }
+    },
+    "lantern017": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.583, 0.767, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [1.8, 0.3, -4.2]
+        }
+      }
+    },
+    "lantern018": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.533, 0.583, 0.844, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [3.0, 0.3, -4.2]
+        }
+      }
+    },
+    "lantern019": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.467, 0.583, 0.922, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [4.2, 0.3, -4.2]
+        }
+      }
+    },
+    "lantern020": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.4, 0.583, 1.0, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [5.4, 0.3, -4.2]
+        }
+      }
+    },
+    "lantern021": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.617, 0.3, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-5.4, 0.3, -3.0]
+        }
+      }
+    },
+    "lantern022": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.933, 0.617, 0.378, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-4.2, 0.3, -3.0]
+        }
+      }
+    },
+    "lantern023": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.867, 0.617, 0.456, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-3.0, 0.3, -3.0]
+        }
+      }
+    },
+    "lantern024": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.8, 0.617, 0.533, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-1.8, 0.3, -3.0]
+        }
+      }
+    },
+    "lantern025": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.733, 0.617, 0.611, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-0.6, 0.3, -3.0]
+        }
+      }
+    },
+    "lantern026": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.667, 0.617, 0.689, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [0.6, 0.3, -3.0]
+        }
+      }
+    },
+    "lantern027": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.617, 0.767, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [1.8, 0.3, -3.0]
+        }
+      }
+    },
+    "lantern028": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.533, 0.617, 0.844, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [3.0, 0.3, -3.0]
+        }
+      }
+    },
+    "lantern029": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.467, 0.617, 0.922, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [4.2, 0.3, -3.0]
+        }
+      }
+    },
+    "lantern030": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.4, 0.617, 1.0, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [5.4, 0.3, -3.0]
+        }
+      }
+    },
+    "lantern031": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.65, 0.3, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-5.4, 0.3, -1.8]
+        }
+      }
+    },
+    "lantern032": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.933, 0.65, 0.378, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-4.2, 0.3, -1.8]
+        }
+      }
+    },
+    "lantern033": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.867, 0.65, 0.456, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-3.0, 0.3, -1.8]
+        }
+      }
+    },
+    "lantern034": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.8, 0.65, 0.533, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-1.8, 0.3, -1.8]
+        }
+      }
+    },
+    "lantern035": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.733, 0.65, 0.611, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-0.6, 0.3, -1.8]
+        }
+      }
+    },
+    "lantern036": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.667, 0.65, 0.689, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [0.6, 0.3, -1.8]
+        }
+      }
+    },
+    "lantern037": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.65, 0.767, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [1.8, 0.3, -1.8]
+        }
+      }
+    },
+    "lantern038": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.533, 0.65, 0.844, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [3.0, 0.3, -1.8]
+        }
+      }
+    },
+    "lantern039": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.467, 0.65, 0.922, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [4.2, 0.3, -1.8]
+        }
+      }
+    },
+    "lantern040": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.4, 0.65, 1.0, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [5.4, 0.3, -1.8]
+        }
+      }
+    },
+    "lantern041": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.683, 0.3, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-5.4, 0.3, -0.6]
+        }
+      }
+    },
+    "lantern042": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.933, 0.683, 0.378, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-4.2, 0.3, -0.6]
+        }
+      }
+    },
+    "lantern043": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.867, 0.683, 0.456, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-3.0, 0.3, -0.6]
+        }
+      }
+    },
+    "lantern044": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.8, 0.683, 0.533, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-1.8, 0.3, -0.6]
+        }
+      }
+    },
+    "lantern045": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.733, 0.683, 0.611, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-0.6, 0.3, -0.6]
+        }
+      }
+    },
+    "lantern046": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.667, 0.683, 0.689, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [0.6, 0.3, -0.6]
+        }
+      }
+    },
+    "lantern047": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.683, 0.767, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [1.8, 0.3, -0.6]
+        }
+      }
+    },
+    "lantern048": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.533, 0.683, 0.844, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [3.0, 0.3, -0.6]
+        }
+      }
+    },
+    "lantern049": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.467, 0.683, 0.922, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [4.2, 0.3, -0.6]
+        }
+      }
+    },
+    "lantern050": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.4, 0.683, 1.0, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [5.4, 0.3, -0.6]
+        }
+      }
+    },
+    "lantern051": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.717, 0.3, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-5.4, 0.3, 0.6]
+        }
+      }
+    },
+    "lantern052": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.933, 0.717, 0.378, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-4.2, 0.3, 0.6]
+        }
+      }
+    },
+    "lantern053": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.867, 0.717, 0.456, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-3.0, 0.3, 0.6]
+        }
+      }
+    },
+    "lantern054": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.8, 0.717, 0.533, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-1.8, 0.3, 0.6]
+        }
+      }
+    },
+    "lantern055": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.733, 0.717, 0.611, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-0.6, 0.3, 0.6]
+        }
+      }
+    },
+    "lantern056": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.667, 0.717, 0.689, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [0.6, 0.3, 0.6]
+        }
+      }
+    },
+    "lantern057": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.717, 0.767, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [1.8, 0.3, 0.6]
+        }
+      }
+    },
+    "lantern058": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.533, 0.717, 0.844, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [3.0, 0.3, 0.6]
+        }
+      }
+    },
+    "lantern059": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.467, 0.717, 0.922, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [4.2, 0.3, 0.6]
+        }
+      }
+    },
+    "lantern060": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.4, 0.717, 1.0, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [5.4, 0.3, 0.6]
+        }
+      }
+    },
+    "lantern061": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.75, 0.3, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-5.4, 0.3, 1.8]
+        }
+      }
+    },
+    "lantern062": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.933, 0.75, 0.378, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-4.2, 0.3, 1.8]
+        }
+      }
+    },
+    "lantern063": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.867, 0.75, 0.456, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-3.0, 0.3, 1.8]
+        }
+      }
+    },
+    "lantern064": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.8, 0.75, 0.533, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-1.8, 0.3, 1.8]
+        }
+      }
+    },
+    "lantern065": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.733, 0.75, 0.611, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-0.6, 0.3, 1.8]
+        }
+      }
+    },
+    "lantern066": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.667, 0.75, 0.689, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [0.6, 0.3, 1.8]
+        }
+      }
+    },
+    "lantern067": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.75, 0.767, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [1.8, 0.3, 1.8]
+        }
+      }
+    },
+    "lantern068": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.533, 0.75, 0.844, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [3.0, 0.3, 1.8]
+        }
+      }
+    },
+    "lantern069": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.467, 0.75, 0.922, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [4.2, 0.3, 1.8]
+        }
+      }
+    },
+    "lantern070": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.4, 0.75, 1.0, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [5.4, 0.3, 1.8]
+        }
+      }
+    },
+    "lantern071": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.783, 0.3, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-5.4, 0.3, 3.0]
+        }
+      }
+    },
+    "lantern072": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.933, 0.783, 0.378, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-4.2, 0.3, 3.0]
+        }
+      }
+    },
+    "lantern073": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.867, 0.783, 0.456, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-3.0, 0.3, 3.0]
+        }
+      }
+    },
+    "lantern074": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.8, 0.783, 0.533, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-1.8, 0.3, 3.0]
+        }
+      }
+    },
+    "lantern075": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.733, 0.783, 0.611, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-0.6, 0.3, 3.0]
+        }
+      }
+    },
+    "lantern076": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.667, 0.783, 0.689, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [0.6, 0.3, 3.0]
+        }
+      }
+    },
+    "lantern077": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.783, 0.767, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [1.8, 0.3, 3.0]
+        }
+      }
+    },
+    "lantern078": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.533, 0.783, 0.844, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [3.0, 0.3, 3.0]
+        }
+      }
+    },
+    "lantern079": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.467, 0.783, 0.922, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [4.2, 0.3, 3.0]
+        }
+      }
+    },
+    "lantern080": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.4, 0.783, 1.0, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [5.4, 0.3, 3.0]
+        }
+      }
+    },
+    "lantern081": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.817, 0.3, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-5.4, 0.3, 4.2]
+        }
+      }
+    },
+    "lantern082": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.933, 0.817, 0.378, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-4.2, 0.3, 4.2]
+        }
+      }
+    },
+    "lantern083": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.867, 0.817, 0.456, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-3.0, 0.3, 4.2]
+        }
+      }
+    },
+    "lantern084": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.8, 0.817, 0.533, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-1.8, 0.3, 4.2]
+        }
+      }
+    },
+    "lantern085": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.733, 0.817, 0.611, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-0.6, 0.3, 4.2]
+        }
+      }
+    },
+    "lantern086": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.667, 0.817, 0.689, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [0.6, 0.3, 4.2]
+        }
+      }
+    },
+    "lantern087": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.817, 0.767, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [1.8, 0.3, 4.2]
+        }
+      }
+    },
+    "lantern088": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.533, 0.817, 0.844, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [3.0, 0.3, 4.2]
+        }
+      }
+    },
+    "lantern089": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.467, 0.817, 0.922, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [4.2, 0.3, 4.2]
+        }
+      }
+    },
+    "lantern090": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.4, 0.817, 1.0, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [5.4, 0.3, 4.2]
+        }
+      }
+    },
+    "lantern091": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.85, 0.3, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-5.4, 0.3, 5.4]
+        }
+      }
+    },
+    "lantern092": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.933, 0.85, 0.378, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-4.2, 0.3, 5.4]
+        }
+      }
+    },
+    "lantern093": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.867, 0.85, 0.456, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-3.0, 0.3, 5.4]
+        }
+      }
+    },
+    "lantern094": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.8, 0.85, 0.533, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-1.8, 0.3, 5.4]
+        }
+      }
+    },
+    "lantern095": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.733, 0.85, 0.611, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [-0.6, 0.3, 5.4]
+        }
+      }
+    },
+    "lantern096": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.667, 0.85, 0.689, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [0.6, 0.3, 5.4]
+        }
+      }
+    },
+    "lantern097": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.6, 0.85, 0.767, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [1.8, 0.3, 5.4]
+        }
+      }
+    },
+    "lantern098": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.533, 0.85, 0.844, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [3.0, 0.3, 5.4]
+        }
+      }
+    },
+    "lantern099": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.467, 0.85, 0.922, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [4.2, 0.3, 5.4]
+        }
+      }
+    },
+    "lantern100": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.4, 0.85, 1.0, 1.0],
+          "light_energy": 0.8,
+          "omni_range": 0.9
+        },
+        "Transform3D": {
+          "position": [5.4, 0.3, 5.4]
+        }
+      }
+    },
+    "moon": {
+      "components": {
+        "DirectionalLight3D": {
+          "light_color": [0.6, 0.7, 1.0, 1.0],
+          "light_energy": 0.15
+        },
+        "Transform3D": {
+          "rotation": [-1.2, 0.5, 0.0]
+        }
+      }
+    },
+    "plaza": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [14.0, 12.0]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.7, 0.68, 0.62, 1.0],
+          "roughness": 0.8
+        },
+        "Transform3D": {}
+      }
+    }
+  },
+  "format": 1
+}
