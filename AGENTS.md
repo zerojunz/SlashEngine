@@ -33,6 +33,56 @@ The `ci` preset is what CI runs: same build with warnings as errors. Use it befo
 On Linux, SDL3 needs the X11/Wayland development packages listed in
 `.github/workflows/ci.yml`.
 
+### Cheat sheet
+
+Set up once per machine:
+
+| Platform | Setup |
+| --- | --- |
+| Linux | `sudo apt-get install` the `LINUX_SDL_DEPS` in `.github/workflows/ci.yml`, plus `mesa-vulkan-drivers libgl1 libgles2 libegl-mesa0 libgl1-mesa-dri` for the GPU tests and `ccache clang-format-18 clang-tidy-18` |
+| macOS | Xcode's command line tools, then `brew install ninja ccache` |
+| Windows | Visual Studio 2022's C++ tools, `choco install ninja`; run everything from a Developer PowerShell (x64) |
+| Claude Code cloud session | Nothing: `.claude/hooks/session-start.sh` installs the Linux packages, then configures and builds `dev` with ccache and installs the web toolchain in the background. Wait for it with `flock /tmp/slash-session-setup.lock true`; it logs to `.slash/session-setup.log` |
+
+The loop, the same everywhere (add `-DCMAKE_C_COMPILER_LAUNCHER=ccache
+-DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON` to a first configure
+to cache compiles):
+
+```bash
+cmake --preset dev && cmake --build --preset dev   # build
+ctest --preset dev                                 # every test
+ctest --preset dev -R 'unit_|example_physics-2d'   # some, by ctest name
+./build/dev/tests/slash_tests -tc='*tile*'         # unit test cases by name (doctest flags)
+./build/dev/tests/slash_tests -sf='*test_mesh*'    # a test file's cases
+cmake --build --preset dev --target slash-cli      # one target
+SLASH_UPDATE_EXAMPLES=1 ctest --preset dev -R example_  # rewrite examples' expected output
+```
+
+Before pushing:
+
+```bash
+cmake --preset ci && cmake --build --preset ci && ctest --preset ci   # warnings as errors
+git diff --name-only --diff-filter=d origin/main -- '*.cpp' '*.hpp' | xargs clang-format-18 -i
+.github/scripts/check-libcxx.py                    # changed files against libc++
+# clang-tidy as the lint job runs it: a build configured with Clang 18, then the changed files
+cmake --preset ci -B build/tidy -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
+cmake --build build/tidy --target slash_api_hash
+git diff --name-only --diff-filter=d origin/main -- '*.cpp' | grep -E '^(engine|tools|examples)/' \
+    | xargs clang-tidy-18 -p build/tidy --quiet
+```
+
+`check-libcxx.py` syntax-checks the `.cpp` files changed since `origin/main` (or the files it is
+given) with Emscripten's Clang against libc++, using the flags in `build/dev`'s
+`compile_commands.json`. The web, Android and llvm-mingw builds use libc++ and Windows builds use
+MSVC's STL; in both, `std::array`, `std::string_view` and `std::span` iterators are classes rather
+than pointers and headers include fewer others, so code GCC accepts can fail there. Run it before
+every push that changes C++. It needs `slash-cli toolchain install web`.
+
+The unit tests run as five ctest shards (`unit_1` to `unit_5`, by test file name). A test case
+that runs over five minutes is stuck: the watchdog in `tests/test_main.cpp` names it and stops
+the shard, and `tests/retry_stuck.cmake` runs the shard once more, so a hang that comes back
+still fails.
+
 ## Run the engine
 
 ```bash
