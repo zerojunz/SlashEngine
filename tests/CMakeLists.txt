@@ -61,6 +61,7 @@ add_executable(slash_tests
     test_godot_pack.cpp
     test_gpu_particles.cpp
     test_gpu_particles_2d.cpp
+    test_gridmap.cpp
     test_import_godot.cpp
     test_import_unity.cpp
     test_gui.cpp

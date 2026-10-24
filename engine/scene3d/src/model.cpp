@@ -6,6 +6,7 @@
 #include "slash/core/text.hpp"
 #include "slash/render/image.hpp"
 #include "slash/scene3d/blend.hpp"
+#include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/skeleton.hpp"
 
 #include <algorithm>
@@ -965,6 +966,7 @@ void add_asset_types(asset::Assets& assets) {
             });
         },
         model_bytes);
+    add_mesh_library_type(assets);
 }
 
 } // namespace slash::scene3d
