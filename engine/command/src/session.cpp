@@ -750,6 +750,8 @@ Result<void> Session::commit_files() {
         if (!resolved) {
             return resolved.error();
         }
+        // Assets reload what was written even when its stamp didn't change.
+        assets_.mark_changed(path);
         if (file.remove) {
             if (auto removed = platform::remove_file(resolved.value()); !removed) {
                 return removed.error();

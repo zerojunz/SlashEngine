@@ -139,6 +139,32 @@ TEST_CASE("poll reloads changed assets and keeps the last good version on failur
     CHECK(tuning->find("speed")->as_int() == 5);
 }
 
+TEST_CASE("mark_changed reloads a file whose stamp stayed the same") {
+    MemoryFiles files;
+    files.write("data/tuning.json", R"({"speed": 3})");
+    files.write("prefabs/enemy.prefab.json", "{}");
+    asset::Assets assets(files.source());
+    auto tuning = assets.load<json::Value>("data/tuning.json").value();
+    REQUIRE(assets.read("prefabs/enemy.prefab.json", "prefab").ok());
+
+    // Written again at the same size within one tick of the file system's clock, a file keeps
+    // its stamp.
+    files.files["data/tuning.json"] = R"({"speed": 5})";
+    files.files["prefabs/enemy.prefab.json"] = "[]";
+    CHECK(assets.poll().empty());
+    assets.mark_changed("data/tuning.json");
+    assets.mark_changed("prefabs/enemy.prefab.json");
+    assets.mark_changed("data/unloaded.json");
+    const auto changes = assets.poll();
+    REQUIRE(changes.size() == 2);
+    CHECK(changes[0].path == "data/tuning.json");
+    CHECK(changes[0].version == 2);
+    CHECK(tuning->find("speed")->as_int() == 5);
+    CHECK(changes[1].path == "prefabs/enemy.prefab.json");
+    CHECK(changes[1].version == 2);
+    CHECK(assets.poll().empty());
+}
+
 TEST_CASE("games add their own asset types") {
     MemoryFiles files;
     files.write("levels/one.level", "3");
