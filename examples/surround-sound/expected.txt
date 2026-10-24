@@ -1,0 +1,17 @@
+wrote buzz.wav, music.wav and voice.wav
+scene.open {"path":"main.scene.json"}
+{"entities":4,"path":"main.scene.json"}
+step {"ticks":60}
+{"tick":60,"ticks":60}
+audio.state {"ids":["bee"]}
+{"buses":[{"name":"Master","peak_db":-4.1,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","filter_db":0,"id":"bee","kind":"AudioStreamPlayer3D","length":5,"pitch_scale":1,"position":1.013,"speakers":{"center":0.2644,"lfe":1,"rear":[0.0984,0.5738],"side":[0,0.6043]},"stream":"buzz.wav","voices":1,"volume":[0.0804,0.4685]}],"speaker_mode":"surround_71"}
+audio.capture {"seconds":0.1,"slices":0}
+{"peak_db":-3.7,"rms_db":-13.1,"seconds":0.1,"slices":[],"speakers":{"center":-10.8,"front_left":-17.9,"front_right":-15,"lfe":-8.3,"rear_left":-17.9,"rear_right":-14.3,"side_left":-18,"side_right":-13.9}}
+step {"ticks":60}
+{"tick":120,"ticks":60}
+audio.state {"ids":["bee"]}
+{"buses":[{"name":"Master","peak_db":-4.1,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","filter_db":0,"id":"bee","kind":"AudioStreamPlayer3D","length":5,"pitch_scale":1,"position":2.0114,"speakers":{"center":0,"lfe":1,"rear":[0.6209,0.6209],"side":[0.327,0.327]},"stream":"buzz.wav","voices":1,"volume":[0.087,0.087]}],"speaker_mode":"surround_71"}
+audio.state {"ids":["music","announcer"]}
+{"buses":[{"name":"Master","peak_db":-4.1,"volume_db":0}],"mix_rate":44100,"players":[{"bus":"Master","id":"announcer","kind":"AudioStreamPlayer","length":5,"position":2.0114,"speakers":{"center":0.5012,"lfe":0.5012,"rear":[0,0],"side":[0,0]},"stream":"voice.wav","voices":1,"volume":[0,0]},{"bus":"Master","id":"music","kind":"AudioStreamPlayer","length":5,"position":2.0114,"speakers":{"center":0.2512,"lfe":0.2512,"rear":[0.2512,0.2512],"side":[0.2512,0.2512]},"stream":"music.wav","voices":1,"volume":[0.2512,0.2512]}],"speaker_mode":"surround_71"}
+audio.capture {"path":"surround.wav","seconds":0.5,"slices":0}
+{"path":"surround.wav","peak_db":-2.7,"rms_db":-12.5,"seconds":0.5,"slices":[],"speakers":{"center":-11,"front_left":-18,"front_right":-17.1,"lfe":-7.5,"rear_left":-13.9,"rear_right":-12.1,"side_left":-16.9,"side_right":-14.5}}

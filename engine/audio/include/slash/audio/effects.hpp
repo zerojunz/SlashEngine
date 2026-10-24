@@ -32,9 +32,9 @@ public:
     MixContext& operator=(MixContext&&) = delete;
 
     [[nodiscard]] virtual int mix_rate() const = 0;
-    // A bus's sound so far in this mix step (Master if there is no such bus), as Godot's
-    // thread_get_channel_mix_buffer, which also marks it in use.
-    [[nodiscard]] virtual Frame* bus_buffer(std::string_view bus) = 0;
+    // A bus's sound so far in this mix step for a speaker pair (Master if there is no such
+    // bus), as Godot's thread_get_channel_mix_buffer, which also marks it in use.
+    [[nodiscard]] virtual Frame* bus_buffer(std::string_view bus, int channel) = 0;
 };
 
 // An effect running on a bus, as Godot's AudioEffectInstance.
@@ -140,14 +140,17 @@ private:
 // JSON Schema for an effect in a .bus_layout.json file: one of the types and its settings.
 [[nodiscard]] json::Value effect_schema();
 
-// A running effect for a slot validated against effect_schema(). context must outlive it.
-[[nodiscard]] Result<std::unique_ptr<EffectInstance>> make_effect(const EffectSlot& slot,
-                                                                  MixContext& context);
+// A running effect for a slot validated against effect_schema(), for a bus's speaker pair (a
+// compressor's sidechain reads the same pair). context must outlive it.
+[[nodiscard]] Result<std::unique_ptr<EffectInstance>>
+make_effect(const EffectSlot& slot, MixContext& context, int channel = 0);
 
 // The running effect in a bus's slot, as Godot's AudioServer::get_bus_effect_instance, or
-// nullptr if that slot holds another type.
-[[nodiscard]] SpectrumAnalyzerInstance* spectrum_analyzer(Server& server, int bus, int effect);
-[[nodiscard]] CaptureInstance* capture_effect(Server& server, int bus, int effect);
-[[nodiscard]] RecordInstance* record_effect(Server& server, int bus, int effect);
+// nullptr if that slot holds another type. In surround each speaker pair runs its own; channel 0
+// is the front pair's, which audio.* commands read and record.
+[[nodiscard]] SpectrumAnalyzerInstance* spectrum_analyzer(Server& server, int bus, int effect,
+                                                          int channel = 0);
+[[nodiscard]] CaptureInstance* capture_effect(Server& server, int bus, int effect, int channel = 0);
+[[nodiscard]] RecordInstance* record_effect(Server& server, int bus, int effect, int channel = 0);
 
 } // namespace slash::audio

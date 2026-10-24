@@ -1880,6 +1880,10 @@ void register_audio_components(ComponentRegistry& registry) {
         .describe("stream_paused", paused)
         .describe("max_polyphony", polyphony)
         .describe("bus", bus)
+        .describe("mix_target",
+                  {.doc = "Which speakers play it in 3.1, 5.1 and 7.1: the front pair, every "
+                          "speaker, or the center and LFE. Stereo plays it on both.",
+                   .choices = {"stereo", "surround", "center"}})
         .describe("parameters", parameters);
     registry.add<AudioStreamPlayer2D>()
         .set_doc("Plays a sound at the entity's Transform2D, as Godot's AudioStreamPlayer2D: "

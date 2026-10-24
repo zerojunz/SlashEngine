@@ -6,6 +6,7 @@
 #include "slash/core/result.hpp"
 #include "slash/world/world.hpp"
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -54,6 +55,30 @@ struct Frame {
 
     friend bool operator==(const Frame&, const Frame&) = default;
 };
+
+// The speakers sound is mixed for, as Godot's AudioServer::SpeakerMode. Each bus mixes one
+// buffer per pair of speakers, as Godot's bus channels: front left and right, then center and
+// LFE, rear left and right, and side left and right, which is SDL's and WAV's channel order.
+enum class SpeakerMode : std::uint8_t { Stereo, Surround31, Surround51, Surround71 };
+
+// The most speaker pairs a bus mixes, as Godot's MAX_CHANNELS_PER_BUS.
+inline constexpr int kMaxChannels = 4;
+// A gain for each speaker pair, front first: a center pair's right is the LFE.
+using Volumes = std::array<Frame, kMaxChannels>;
+
+// The speaker pairs a mode mixes, as Godot's get_channel_count: 1 for stereo, 2 for 3.1, 3 for
+// 5.1 and 4 for 7.1.
+[[nodiscard]] int channel_count(SpeakerMode mode);
+// "stereo", "surround_31", "surround_51" or "surround_71".
+[[nodiscard]] std::string_view speaker_mode_name(SpeakerMode mode);
+[[nodiscard]] std::optional<SpeakerMode> parse_speaker_mode(std::string_view name);
+// The mode for an output device's channels, as Godot's get_speaker_mode_by_total_channels but
+// for SDL's layouts, where four channels are front and rear (quad), not 3.1: six are 5.1, eight
+// or more 7.1, and anything else stereo.
+[[nodiscard]] SpeakerMode speaker_mode_for_channels(int channels);
+// Frames interleaved by speaker pair, as a mix in that many pairs writes them, folded to stereo
+// as ITU-R BS.775 does: center and surrounds at -3 dB into each side, the LFE left out.
+[[nodiscard]] std::vector<Frame> downmix_stereo(std::span<const Frame> frames, int pairs);
 
 // Decibels to a linear gain and back, as Godot's Math::db_to_linear and linear_to_db.
 [[nodiscard]] float db_to_linear(float db);
@@ -393,23 +418,24 @@ struct LoadedStream {
 // Loads the stream a path names (a sound file or a .audio.json file) through assets.
 [[nodiscard]] Result<LoadedStream> load_stream(asset::Assets& assets, std::string_view path);
 
-// The mixer, as Godot's AudioServer: playbacks mix into buses, buses run their effects and mix
-// into the bus they send to, and the Master bus is what plays. Stereo only.
-// A bus a playback mixes into and its volume there.
+// A bus a playback mixes into and its volume there for each speaker pair.
 struct BusVolume {
     std::string bus;
-    Frame volume;
+    Volumes volume{};
 
     friend bool operator==(const BusVolume&, const BusVolume&) = default;
 };
 
+// The mixer, as Godot's AudioServer: playbacks mix into buses, buses run their effects and mix
+// into the bus they send to, and the Master bus is what plays. Each bus mixes a buffer per
+// speaker pair, and runs its own copy of each effect on each.
 class Server {
 public:
     using PlaybackId = std::uint32_t;
     // Frames in each mix step, as Godot's buffer_size.
     static constexpr int kMixStep = 512;
 
-    explicit Server(int mix_rate);
+    explicit Server(int mix_rate, SpeakerMode speakers = SpeakerMode::Stereo);
     ~Server();
     Server(const Server&) = delete;
     Server& operator=(const Server&) = delete;
@@ -417,6 +443,12 @@ public:
     Server& operator=(Server&&) = delete;
 
     [[nodiscard]] int mix_rate() const noexcept { return mix_rate_; }
+    [[nodiscard]] SpeakerMode speaker_mode() const noexcept { return speakers_; }
+    // The speaker pairs each bus mixes.
+    [[nodiscard]] int channel_count() const noexcept { return audio::channel_count(speakers_); }
+    // Mixes for other speakers from the next mix step, as Godot's init_channels_and_buffers
+    // when the output device changes: the buses and their effects start over, sounds play on.
+    void set_speaker_mode(SpeakerMode speakers);
 
     // Replaces the buses, as Godot's set_bus_layout. The first bus is always named "Master".
     // Effects the server can't make are left out and logged.
@@ -429,23 +461,24 @@ public:
     void set_bus_solo(int bus, bool solo);
     void set_bus_bypass_effects(int bus, bool bypass);
     void set_bus_effect_enabled(int bus, int effect, bool enabled);
-    // The running effect in a bus's slot, as Godot's get_bus_effect_instance, if it is of this
-    // type ("spectrum_analyzer", "capture", ...); otherwise nullptr. effects.hpp has typed
-    // versions.
-    [[nodiscard]] EffectInstance* effect_instance(int bus, int effect, std::string_view type);
-    // The bus's loudest sample over the last 512-frame mix step, in dB for left and right; -200
-    // when it is silent.
-    [[nodiscard]] Frame bus_peak_db(int bus) const;
+    // The running effect in a bus's slot for a speaker pair, as Godot's get_bus_effect_instance,
+    // if it is of this type ("spectrum_analyzer", "capture", ...); otherwise nullptr.
+    // effects.hpp has typed versions.
+    [[nodiscard]] EffectInstance* effect_instance(int bus, int effect, std::string_view type,
+                                                  int channel = 0);
+    // A speaker pair's loudest sample on the bus over the last 512-frame mix step, in dB for
+    // left and right; -200 when it is silent.
+    [[nodiscard]] Frame bus_peak_db(int bus, int channel = 0) const;
 
     // Starts a playback from a position in seconds, mixing into a bus (Master if it has no
     // such bus) at volume, as Godot's start_playback_stream; paused, it waits for
     // set_paused(id, false).
-    PlaybackId start(std::unique_ptr<Playback> playback, std::string bus, Frame volume,
+    PlaybackId start(std::unique_ptr<Playback> playback, std::string bus, const Volumes& volume,
                      double from_seconds, float pitch_scale, bool paused = false);
     // Fades a playback out over the next mix step and removes it.
     void stop(PlaybackId id);
     void set_paused(PlaybackId id, bool paused);
-    void set_bus_exclusive(PlaybackId id, std::string bus, Frame volume);
+    void set_bus_exclusive(PlaybackId id, std::string bus, const Volumes& volume);
     // The buses a playback mixes into and its volume in each, at most six, as Godot's
     // set_playback_bus_volumes_linear; none silences it. A bus it leaves fades out.
     void set_bus_volumes(PlaybackId id, std::vector<BusVolume> buses);
@@ -462,15 +495,17 @@ public:
     [[nodiscard]] const Playback* playback(PlaybackId id) const;
     [[nodiscard]] std::size_t playback_count() const;
 
-    // The next frames of the Master bus, from -1 to 1, as Godot's driver asks for them. Each 512
-    // frames run one mix step. Each bus's output also goes to the bus listener, if any.
+    // The next frames of the Master bus, from -1 to 1, as Godot's driver asks for them:
+    // channel_count() Frames for each, one per speaker pair, so out.size() / channel_count()
+    // frames. Each 512 frames run one mix step. Each bus's output also goes to the bus
+    // listener, if any.
     void mix(std::span<Frame> out);
     // Frames mixed so far.
     [[nodiscard]] std::uint64_t mixed_frames() const noexcept { return mixed_frames_; }
 
-    // Called with each bus's output of a mix step (kMixStep frames), after its effects and
-    // volume; no frames when the bus is silent and inactive.
-    using BusListener = std::function<void(int bus, std::span<const Frame> frames)>;
+    // Called with each bus's output of a mix step for each speaker pair (kMixStep frames), after
+    // its effects and volume; no frames when that pair is silent and inactive.
+    using BusListener = std::function<void(int bus, int channel, std::span<const Frame> frames)>;
     void set_bus_listener(BusListener listener) { bus_listener_ = std::move(listener); }
 
     // Microphone input, as Godot's AudioServer input calls. Input records only while it is on,
@@ -513,6 +548,7 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
     int mix_rate_;
+    SpeakerMode speakers_;
     BusLayout layout_;
     std::uint64_t mixed_frames_ = 0;
     BusListener bus_listener_;
@@ -534,6 +570,9 @@ struct Settings {
     float panning_strength_2d = 0.5F;
     // How far 3D sounds pan, as Godot's audio/general/3d_panning_strength.
     float panning_strength_3d = 0.5F;
+    // The speakers to mix for; none for the output device's, as Godot asks its driver, which is
+    // stereo where nothing plays the sound, as in headless runs.
+    std::optional<SpeakerMode> speaker_mode;
     // Seconds of each bus's output kept for capture(); sessions keep some, games none.
     double history_seconds = 0.0;
     // Whether microphone input can turn on, as Godot's audio/driver/enable_input. Exports then
@@ -570,9 +609,11 @@ void set_settings(world::World& world, const Settings& settings);
 [[nodiscard]] Server* server(world::World& world);
 [[nodiscard]] const Server* server(const world::World& world);
 
-// Where each tick's mixed sound goes, such as an SdlOutput; nullptr for nowhere.
-using Sink = std::function<void(std::span<const Frame> frames)>;
-void set_sink(world::World& world, Sink sink);
+// Where each tick's mixed sound goes, such as an SdlOutput; nullptr for nowhere. Its frames are
+// interleaved by speaker pair, channel_count(speakers) Frames for each.
+using Sink = std::function<void(std::span<const Frame> frames, SpeakerMode speakers)>;
+// speakers are the device's, which the project's speaker_mode, when it names none, mixes for.
+void set_sink(world::World& world, Sink sink, SpeakerMode speakers = SpeakerMode::Stereo);
 
 // Where microphone input comes from, such as an SdlInput. The audio system starts it when input
 // turns on, reads each tick's frames from it and stops it when input turns off.
@@ -672,7 +713,8 @@ struct PlayerInfo {
     bool paused = false; // stream_paused holds them
     double position = 0.0;
     double length = 0.0;
-    Frame volume{}; // the gain mixed in, after distance and panning for 2D and 3D players
+    // The gain mixed in for each speaker pair, after distance and panning for 2D and 3D players.
+    Volumes volume{};
     // A 3D player's other buses, such as an area's reverb bus, with its gain in each.
     std::vector<BusVolume> sends;
     float pitch_scale = 1.0F; // a 3D player's pitch, after doppler
@@ -721,19 +763,23 @@ private:
 };
 
 // Plays each tick's sound on the default output device through SDL, as Godot's audio driver,
-// keeping about output_latency milliseconds queued.
+// keeping about output_latency milliseconds queued. SDL turns what is mixed into what the device
+// has, so a 7.1 mix plays on stereo headphones too.
 class SdlOutput {
 public:
     // Fails where there is no output device, as on a machine with no sound card.
     [[nodiscard]] static Result<std::unique_ptr<SdlOutput>> open(int mix_rate,
                                                                  float output_latency_ms);
+    // The speakers the device has, for set_sink.
+    [[nodiscard]] SpeakerMode speaker_mode() const noexcept { return device_speakers_; }
     ~SdlOutput();
     SdlOutput(const SdlOutput&) = delete;
     SdlOutput& operator=(const SdlOutput&) = delete;
     SdlOutput(SdlOutput&&) = delete;
     SdlOutput& operator=(SdlOutput&&) = delete;
 
-    void push(std::span<const Frame> frames);
+    // Frames interleaved by speaker pair, channel_count(speakers) Frames for each.
+    void push(std::span<const Frame> frames, SpeakerMode speakers = SpeakerMode::Stereo);
     // A sink for set_sink that pushes here; this must outlive the world using it.
     [[nodiscard]] Sink sink();
 
@@ -742,22 +788,30 @@ private:
 
     void* stream_ = nullptr; // SDL_AudioStream
     int latency_frames_ = 0;
+    SpeakerMode device_speakers_ = SpeakerMode::Stereo;
+    SpeakerMode stream_speakers_ = SpeakerMode::Stereo; // what the stream is given
+    std::vector<Frame> expanded_;                       // 3.1 frames laid out as 5.1, which SDL has
 };
 
-// What a bus played over the last seconds.
+// What a bus played over the last seconds, over every speaker.
 struct Capture {
     double seconds = 0.0; // how much was kept, at most what was asked
     float peak_db = -200.0F;
     float rms_db = -200.0F;
     // The loudest sample in each equal slice of that time, oldest first.
     std::vector<float> slice_peaks_db;
-    std::vector<Frame> frames; // the samples, when asked for
+    int channels = 1; // the speaker pairs mixed
+    // In surround, each speaker's RMS level in dB, front left first, in SDL's order.
+    std::vector<float> speaker_rms_db;
+    std::vector<Frame> frames; // the samples, when asked for, interleaved by speaker pair
 };
 // What a bus played over the last seconds, kept for Settings::history_seconds.
 [[nodiscard]] Result<Capture> capture(const world::World& world, std::string_view bus,
                                       double seconds, int slices, bool frames = false);
 
-// A PCM .wav file of frames, at 16 bits or 8.
-[[nodiscard]] std::string encode_wav(std::span<const Frame> frames, int mix_rate, int bits = 16);
+// A PCM .wav file of frames, at 16 bits or 8. With more than one speaker pair the frames are
+// interleaved by pair and the file names its speakers, as WAVE_FORMAT_EXTENSIBLE does.
+[[nodiscard]] std::string encode_wav(std::span<const Frame> frames, int mix_rate, int bits = 16,
+                                     int pairs = 1);
 
 } // namespace slash::audio

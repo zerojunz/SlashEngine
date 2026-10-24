@@ -1916,13 +1916,16 @@ struct AudioStreamPlayer {
     bool stream_paused = false; // hold the sound where it is
     int max_polyphony = 1;      // sounds it may play at once
     std::string bus = "Master";
+    // Which speakers play it in surround, as Godot's mix_target: "stereo" (the front pair),
+    // "surround" (every speaker) or "center".
+    std::string mix_target = "stereo";
     // The stream's parameters, as Godot's parameters/*: "switch_to_clip" for interactive music.
     std::map<std::string, json::Value> parameters;
 
     friend bool operator==(const AudioStreamPlayer&, const AudioStreamPlayer&) = default;
 };
 SLASH_COMPONENT(AudioStreamPlayer, stream, volume_db, pitch_scale, playing, autoplay, stream_paused,
-                max_polyphony, bus, parameters)
+                max_polyphony, bus, mix_target, parameters)
 
 // Plays a sound at the entity's Transform2D, as Godot's AudioStreamPlayer2D: quieter with
 // distance from the listener and panned by where it is on screen.

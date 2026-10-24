@@ -1,7 +1,7 @@
 // The mixer, following Godot's AudioServer (servers/audio/audio_server.cpp): _driver_process,
-// _mix_step and _mix_step_for_channel, the playback list's states and lookahead fade, and the
-// bus setters. Godot mixes on the audio driver's thread; here mix() runs on the game's, once per
-// tick, so the same ticks make the same sound.
+// _mix_step and _mix_step_for_channel over each speaker pair, the playback list's states and
+// lookahead fade, and the bus setters. Godot mixes on the audio driver's thread; here mix() runs on
+// the game's, once per tick, so the same ticks make the same sound.
 
 #include "filter.hpp"
 
@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <optional>
 #include <utility>
 
 namespace slash::audio {
@@ -38,13 +39,91 @@ Frame operator+(Frame a, Frame b) {
     return {a.left + b.left, a.right + b.right};
 }
 
+constexpr std::array<std::pair<std::string_view, SpeakerMode>, 4> kSpeakerModes{{
+    {"stereo", SpeakerMode::Stereo},
+    {"surround_31", SpeakerMode::Surround31},
+    {"surround_51", SpeakerMode::Surround51},
+    {"surround_71", SpeakerMode::Surround71},
+}};
+
 } // namespace
+
+int channel_count(SpeakerMode mode) {
+    switch (mode) {
+    case SpeakerMode::Stereo:
+        return 1;
+    case SpeakerMode::Surround31:
+        return 2;
+    case SpeakerMode::Surround51:
+        return 3;
+    case SpeakerMode::Surround71:
+        return 4;
+    }
+    return 1;
+}
+
+std::string_view speaker_mode_name(SpeakerMode mode) {
+    for (const auto& [name, each] : kSpeakerModes) {
+        if (each == mode) {
+            return name;
+        }
+    }
+    return "stereo";
+}
+
+std::optional<SpeakerMode> parse_speaker_mode(std::string_view name) {
+    for (const auto& [each, mode] : kSpeakerModes) {
+        if (each == name) {
+            return mode;
+        }
+    }
+    return std::nullopt;
+}
+
+SpeakerMode speaker_mode_for_channels(int channels) {
+    constexpr int k51 = 6;
+    constexpr int k71 = 8;
+    if (channels >= k71) {
+        return SpeakerMode::Surround71;
+    }
+    return channels >= k51 ? SpeakerMode::Surround51 : SpeakerMode::Stereo;
+}
+
+std::vector<Frame> downmix_stereo(std::span<const Frame> frames, int pairs) {
+    constexpr float kMinus3Db = 0.70710678F;
+    const auto cs = static_cast<std::size_t>(std::max(pairs, 1));
+    std::vector<Frame> out(frames.size() / cs);
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        const Frame* frame = &frames[i * cs];
+        Frame mixed = frame[0];
+        if (cs > 1) {
+            mixed.left += kMinus3Db * frame[1].left; // the center, into both; the LFE is left out
+            mixed.right += kMinus3Db * frame[1].left;
+        }
+        for (std::size_t k = 2; k < cs; ++k) { // rear, then side
+            mixed.left += kMinus3Db * frame[k].left;
+            mixed.right += kMinus3Db * frame[k].right;
+        }
+        out[i] = mixed;
+    }
+    return out;
+}
 
 struct Server::Impl final : MixContext {
     struct Effect {
         std::string type;
-        std::unique_ptr<EffectInstance> instance; // nullptr when it couldn't be made
         bool enabled = true;
+    };
+
+    // A speaker pair's buffer on a bus, as Godot's Bus::Channel: its own copy of each effect.
+    struct Channel {
+        std::vector<Frame> buffer = std::vector<Frame>(kBufferSize);
+        // One per effect slot; nullptr when it couldn't be made.
+        std::vector<std::unique_ptr<EffectInstance>> effect_instances;
+        bool used = false;
+        bool active = false;
+        Frame peak{kMinPeakDb, kMinPeakDb};
+        std::uint64_t last_mix_with_audio = 0;
     };
 
     struct Bus {
@@ -57,12 +136,7 @@ struct Server::Impl final : MixContext {
         bool soloed = false;
         int index_cache = 0;
         std::vector<Effect> effects;
-        // Godot keeps a buffer per speaker pair; stereo has one.
-        std::vector<Frame> buffer = std::vector<Frame>(kBufferSize);
-        bool used = false;
-        bool active = false;
-        Frame peak{kMinPeakDb, kMinPeakDb};
-        std::uint64_t last_mix_with_audio = 0;
+        std::vector<Channel> channels;
     };
 
     enum class State : std::uint8_t {
@@ -82,21 +156,23 @@ struct Server::Impl final : MixContext {
         std::vector<BusVolume> buses;
         std::vector<BusVolume> prev;
         float pitch_scale = 1.0F;
-        // A 3D player's high-shelf filter, one processor per channel, shared by its buses as
+        // A 3D player's high-shelf filter, one processor per speaker, shared by its buses as
         // Godot's filter_process is.
         float highshelf_gain = 0.0F;
         float attenuation_cutoff_hz = 0.0F;
-        std::array<Filter::Processor, 2> filter_process{};
+        std::array<Filter::Processor, 2 * static_cast<std::size_t>(kMaxChannels)> filter_process{};
         std::array<Frame, kLookahead> lookahead{};
     };
 
-    explicit Impl(int rate)
-        : rate_(rate),
+    Impl(int rate, int channel_count)
+        : rate_(rate), channels(channel_count),
           channel_disable_frames(static_cast<std::uint64_t>(kChannelDisableTime * rate)) {}
 
     [[nodiscard]] int mix_rate() const override { return rate_; }
 
-    Frame* bus_buffer(std::string_view name) override { return channel_mix_buffer(find_bus(name)); }
+    Frame* bus_buffer(std::string_view name, int channel) override {
+        return channel_mix_buffer(find_bus(name), std::clamp(channel, 0, channels - 1));
+    }
 
     // Godot's thread_find_bus_index: Master for a name it doesn't know.
     [[nodiscard]] int find_bus(std::string_view name) const {
@@ -118,15 +194,16 @@ struct Server::Impl final : MixContext {
     }
 
     // Godot's thread_get_channel_mix_buffer: the first use in a mix step clears it.
-    Frame* channel_mix_buffer(int index) {
-        Bus& bus = *buses[static_cast<std::size_t>(index)];
-        if (!bus.used) {
-            bus.used = true;
-            bus.active = true;
-            bus.last_mix_with_audio = mix_frames;
-            std::ranges::fill(bus.buffer, Frame{});
+    Frame* channel_mix_buffer(int index, int channel) {
+        Channel& out =
+            buses[static_cast<std::size_t>(index)]->channels[static_cast<std::size_t>(channel)];
+        if (!out.used) {
+            out.used = true;
+            out.active = true;
+            out.last_mix_with_audio = mix_frames;
+            std::ranges::fill(out.buffer, Frame{});
         }
-        return bus.buffer.data();
+        return out.buffer.data();
     }
 
     Node* find(PlaybackId id) {
@@ -139,9 +216,9 @@ struct Server::Impl final : MixContext {
     }
 
     // Godot's _mix_step_for_channel: the source into out at a volume ramping from vol_start to
-    // vol_final, through the node's high-shelf filter when it has one.
+    // vol_final, through the node's high-shelf filter for that speaker pair when it has one.
     void mix_step_for_channel(Frame* out, const Frame* source, Frame vol_start, Frame vol_final,
-                              Node& node) const {
+                              Node& node, int channel) const {
         if (node.highshelf_gain != 0.0F) {
             Filter filter;
             filter.set_mode(Filter::Mode::HighShelf);
@@ -151,18 +228,22 @@ struct Server::Impl final : MixContext {
             filter.set_stages(1);
             filter.set_gain(node.highshelf_gain);
             const bool is_just_started = vol_start.left == 0 && vol_start.right == 0;
-            for (Filter::Processor& processor : node.filter_process) {
-                processor.set_filter(&filter, is_just_started);
-                processor.update_coeffs(kBufferSize);
-            }
+            Filter::Processor& processor_l =
+                node.filter_process.at(static_cast<std::size_t>(channel) * 2);
+            Filter::Processor& processor_r =
+                node.filter_process.at((static_cast<std::size_t>(channel) * 2) + 1);
+            processor_l.set_filter(&filter, is_just_started);
+            processor_l.update_coeffs(kBufferSize);
+            processor_r.set_filter(&filter, is_just_started);
+            processor_r.update_coeffs(kBufferSize);
             for (int frame_idx = 0; frame_idx < kBufferSize; ++frame_idx) {
                 const float lerp_param =
                     static_cast<float>(frame_idx) / static_cast<float>(kBufferSize);
                 const Frame vol =
                     vol_final * lerp_param + Frame{1 - lerp_param, 1 - lerp_param} * vol_start;
                 Frame mixed = vol * source[frame_idx];
-                node.filter_process[0].process_one_interp(mixed.left);
-                node.filter_process[1].process_one_interp(mixed.right);
+                processor_l.process_one_interp(mixed.left);
+                processor_r.process_one_interp(mixed.right);
                 out[frame_idx] = out[frame_idx] + mixed;
             }
             return;
@@ -181,7 +262,9 @@ struct Server::Impl final : MixContext {
         for (std::size_t i = 0; i < buses.size(); ++i) {
             Bus* bus = buses[i].get();
             bus->index_cache = static_cast<int>(i);
-            bus->used = false;
+            for (Channel& channel : bus->channels) {
+                channel.used = false;
+            }
             if (!bus->solo) {
                 bus->soloed = false;
                 continue;
@@ -205,8 +288,8 @@ struct Server::Impl final : MixContext {
             }
         }
 
-        // Each playback mixes into its bus, keeping a lookahead buffer so a sudden end can
-        // fade out.
+        // Each playback mixes into its buses, each speaker pair at its volume, keeping a
+        // lookahead buffer so a sudden end can fade out.
         for (auto it = playbacks.begin(); it != playbacks.end();) {
             Node& node = *it;
             if (node.state == State::Paused) {
@@ -234,22 +317,32 @@ struct Server::Impl final : MixContext {
 
             std::vector<BusVolume> details = node.buses;
             for (BusVolume& target : details) {
-                Frame* channel = channel_mix_buffer(find_bus(target.bus));
-                if (fading_out) {
-                    target.volume = {};
-                }
-                // Starting at full volume keeps transients; a change ramps over the step.
+                const int bus_idx = find_bus(target.bus);
                 const auto was = std::ranges::find(node.prev, target.bus, &BusVolume::bus);
-                const Frame start = was != node.prev.end() ? was->volume : target.volume;
-                mix_step_for_channel(channel, buf, start, target.volume, node);
+                for (int k = 0; k < channels; ++k) {
+                    Frame* channel = channel_mix_buffer(bus_idx, k);
+                    Frame& volume = target.volume.at(static_cast<std::size_t>(k));
+                    if (fading_out) {
+                        volume = {};
+                    }
+                    // Starting at full volume keeps transients; a change ramps over the step.
+                    const Frame start = was != node.prev.end()
+                                            ? was->volume.at(static_cast<std::size_t>(k))
+                                            : volume;
+                    mix_step_for_channel(channel, buf, start, volume, node, k);
+                }
             }
             // Buses it left fade out.
             for (const BusVolume& left : node.prev) {
                 if (std::ranges::find(details, left.bus, &BusVolume::bus) != details.end()) {
                     continue;
                 }
-                Frame* channel = channel_mix_buffer(find_bus(left.bus));
-                mix_step_for_channel(channel, buf, left.volume, {}, node);
+                const int bus_idx = find_bus(left.bus);
+                for (int k = 0; k < channels; ++k) {
+                    Frame* channel = channel_mix_buffer(bus_idx, k);
+                    mix_step_for_channel(channel, buf, left.volume.at(static_cast<std::size_t>(k)),
+                                         {}, node, k);
+                }
             }
             node.prev = std::move(details);
 
@@ -271,18 +364,27 @@ struct Server::Impl final : MixContext {
         // Effects and sends, from the last bus to Master.
         for (int i = static_cast<int>(buses.size()) - 1; i >= 0; --i) {
             Bus& bus = *buses[static_cast<std::size_t>(i)];
-            if (bus.active && !bus.used) {
-                // Not mixed into, but still active, so it must be cleared.
-                std::ranges::fill(bus.buffer, Frame{});
+            for (Channel& channel : bus.channels) {
+                if (channel.active && !channel.used) {
+                    // Not mixed into, but still active, so it must be cleared.
+                    std::ranges::fill(channel.buffer, Frame{});
+                }
             }
             if (!bus.bypass) {
-                for (Effect& effect : bus.effects) {
-                    if (!effect.enabled || effect.instance == nullptr ||
-                        !(bus.active || effect.instance->process_silence())) {
+                for (std::size_t j = 0; j < bus.effects.size(); ++j) {
+                    if (!bus.effects[j].enabled) {
                         continue;
                     }
-                    effect.instance->process(bus.buffer.data(), temp_buffer.data(), kBufferSize);
-                    std::swap(bus.buffer, temp_buffer);
+                    for (std::size_t k = 0; k < bus.channels.size(); ++k) {
+                        Channel& channel = bus.channels[k];
+                        EffectInstance* effect = channel.effect_instances[j].get();
+                        if (effect == nullptr || !(channel.active || effect->process_silence())) {
+                            continue;
+                        }
+                        effect->process(channel.buffer.data(), temp_buffer[k].data(), kBufferSize);
+                        // Swap buffers, so the channel's always has the right sound.
+                        std::swap(channel.buffer, temp_buffer[k]);
+                    }
                 }
             }
 
@@ -294,49 +396,78 @@ struct Server::Impl final : MixContext {
                            : buses[static_cast<std::size_t>(named->index_cache)].get();
             }
 
-            if (!bus.active) {
-                bus.peak = {kMinPeakDb, kMinPeakDb};
-                if (listener) {
-                    listener(i, {});
-                }
-                continue;
-            }
-            Frame peak{};
             float volume = db_to_linear(bus.volume_db);
             if (solo_mode ? !bus.soloed : bus.mute) {
                 volume = 0.0F;
             }
-            for (Frame& frame : bus.buffer) {
-                frame = frame * volume;
-                peak.left = std::max(peak.left, std::abs(frame.left));
-                peak.right = std::max(peak.right, std::abs(frame.right));
-            }
-            bus.peak = {linear_to_db(peak.left + kPeakOffset),
-                        linear_to_db(peak.right + kPeakOffset)};
-            if (!bus.used) {
-                // See if any sound is left, since nothing was mixed in.
-                if (std::max(peak.right, peak.left) > db_to_linear(kChannelDisableThresholdDb)) {
-                    bus.last_mix_with_audio = mix_frames;
-                } else if (mix_frames - bus.last_mix_with_audio > channel_disable_frames) {
-                    bus.active = false;
+            for (int k = 0; k < static_cast<int>(bus.channels.size()); ++k) {
+                Channel& channel = bus.channels[static_cast<std::size_t>(k)];
+                if (!channel.active) {
+                    channel.peak = {kMinPeakDb, kMinPeakDb};
                     if (listener) {
-                        listener(i, {});
+                        listener(i, k, {});
                     }
-                    continue; // went inactive, don't mix
+                    continue;
                 }
-            }
-            if (listener) {
-                listener(i, bus.buffer);
-            }
-            if (send != nullptr) {
-                Frame* target = channel_mix_buffer(send->index_cache);
-                for (int j = 0; j < kBufferSize; ++j) {
-                    target[j] = target[j] + bus.buffer[static_cast<std::size_t>(j)];
+                Frame peak{};
+                for (Frame& frame : channel.buffer) {
+                    frame = frame * volume;
+                    peak.left = std::max(peak.left, std::abs(frame.left));
+                    peak.right = std::max(peak.right, std::abs(frame.right));
+                }
+                channel.peak = {linear_to_db(peak.left + kPeakOffset),
+                                linear_to_db(peak.right + kPeakOffset)};
+                if (!channel.used) {
+                    // See if any sound is left, since nothing was mixed in.
+                    if (std::max(peak.right, peak.left) >
+                        db_to_linear(kChannelDisableThresholdDb)) {
+                        channel.last_mix_with_audio = mix_frames;
+                    } else if (mix_frames - channel.last_mix_with_audio > channel_disable_frames) {
+                        channel.active = false;
+                        if (listener) {
+                            listener(i, k, {});
+                        }
+                        continue; // went inactive, don't mix
+                    }
+                }
+                if (listener) {
+                    listener(i, k, channel.buffer);
+                }
+                if (send != nullptr) {
+                    Frame* target = channel_mix_buffer(send->index_cache, k);
+                    for (int j = 0; j < kBufferSize; ++j) {
+                        target[j] = target[j] + channel.buffer[static_cast<std::size_t>(j)];
+                    }
                 }
             }
         }
         mix_frames += kBufferSize;
         to_mix = kBufferSize;
+    }
+
+    // Godot's _update_bus_effects: each speaker pair gets its own copy of each effect.
+    void update_bus_effects(Bus& bus, const BusSettings& settings) {
+        bus.effects.clear();
+        bus.channels.clear();
+        bus.channels.resize(static_cast<std::size_t>(channels));
+        for (const EffectSlot& slot : settings.effects) {
+            bus.effects.push_back({slot.type, slot.enabled});
+            for (int k = 0; k < channels; ++k) {
+                auto instance = make_effect(slot, *this, k);
+                if (!instance) {
+                    if (k == 0) {
+                        log::warn("an audio effect can't run",
+                                  {{"bus", bus.name},
+                                   {"type", slot.type},
+                                   {"error", instance.error().message}});
+                    }
+                    bus.channels[static_cast<std::size_t>(k)].effect_instances.emplace_back();
+                    continue;
+                }
+                bus.channels[static_cast<std::size_t>(k)].effect_instances.push_back(
+                    std::move(instance).value());
+            }
+        }
     }
 
     std::unique_ptr<Bus> make_bus(const BusSettings& settings, bool master) {
@@ -347,33 +478,39 @@ struct Server::Impl final : MixContext {
         bus->solo = settings.solo;
         bus->mute = settings.mute;
         bus->bypass = settings.bypass_effects;
-        for (const EffectSlot& slot : settings.effects) {
-            auto instance = make_effect(slot, *this);
-            if (!instance) {
-                log::warn(
-                    "an audio effect can't run",
-                    {{"bus", bus->name}, {"type", slot.type}, {"error", instance.error().message}});
-                bus->effects.push_back({slot.type, nullptr, slot.enabled});
-                continue;
-            }
-            bus->effects.push_back({slot.type, std::move(instance).value(), slot.enabled});
-        }
+        update_bus_effects(*bus, settings);
         return bus;
     }
 
     int rate_;
+    int channels; // speaker pairs
     std::vector<std::unique_ptr<Bus>> buses;
     std::vector<Node> playbacks;
     std::vector<Frame> mix_buffer = std::vector<Frame>(kBufferSize + kLookahead);
-    std::vector<Frame> temp_buffer = std::vector<Frame>(kBufferSize);
+    std::array<std::vector<Frame>, kMaxChannels> temp_buffer{
+        std::vector<Frame>(kBufferSize), std::vector<Frame>(kBufferSize),
+        std::vector<Frame>(kBufferSize), std::vector<Frame>(kBufferSize)};
     int to_mix = 0;
     std::uint64_t mix_frames = 0;
     std::uint64_t channel_disable_frames;
     PlaybackId next_id = 1;
 };
 
-Server::Server(int mix_rate) : impl_(std::make_unique<Impl>(mix_rate)), mix_rate_(mix_rate) {
+Server::Server(int mix_rate, SpeakerMode speakers)
+    : impl_(std::make_unique<Impl>(mix_rate, audio::channel_count(speakers))), mix_rate_(mix_rate),
+      speakers_(speakers) {
     set_layout(default_bus_layout());
+}
+
+void Server::set_speaker_mode(SpeakerMode speakers) {
+    if (speakers == speakers_) {
+        return;
+    }
+    speakers_ = speakers;
+    impl_->channels = audio::channel_count(speakers);
+    for (std::size_t i = 0; i < impl_->buses.size(); ++i) {
+        impl_->update_bus_effects(*impl_->buses[i], layout_.buses[i]);
+    }
 }
 
 Server::~Server() {
@@ -441,27 +578,37 @@ void Server::set_bus_effect_enabled(int bus, int effect, bool enabled) {
         enabled;
 }
 
-EffectInstance* Server::effect_instance(int bus, int effect, std::string_view type) {
+EffectInstance* Server::effect_instance(int bus, int effect, std::string_view type, int channel) {
     if (bus < 0 || bus >= static_cast<int>(impl_->buses.size())) {
         return nullptr;
     }
-    auto& effects = impl_->buses[static_cast<std::size_t>(bus)]->effects;
-    if (effect < 0 || effect >= static_cast<int>(effects.size())) {
+    const Impl::Bus& found = *impl_->buses[static_cast<std::size_t>(bus)];
+    if (effect < 0 || effect >= static_cast<int>(found.effects.size()) || channel < 0 ||
+        channel >= static_cast<int>(found.channels.size())) {
         return nullptr;
     }
-    const Impl::Effect& found = effects[static_cast<std::size_t>(effect)];
-    return found.type == type ? found.instance.get() : nullptr;
+    if (found.effects[static_cast<std::size_t>(effect)].type != type) {
+        return nullptr;
+    }
+    return found.channels[static_cast<std::size_t>(channel)]
+        .effect_instances[static_cast<std::size_t>(effect)]
+        .get();
 }
 
-Frame Server::bus_peak_db(int bus) const {
+Frame Server::bus_peak_db(int bus, int channel) const {
     if (bus < 0 || bus >= static_cast<int>(impl_->buses.size())) {
         return {kMinPeakDb, kMinPeakDb};
     }
-    return impl_->buses[static_cast<std::size_t>(bus)]->peak;
+    const auto& channels = impl_->buses[static_cast<std::size_t>(bus)]->channels;
+    if (channel < 0 || channel >= static_cast<int>(channels.size())) {
+        return {kMinPeakDb, kMinPeakDb};
+    }
+    return channels[static_cast<std::size_t>(channel)].peak;
 }
 
-Server::PlaybackId Server::start(std::unique_ptr<Playback> playback, std::string bus, Frame volume,
-                                 double from_seconds, float pitch_scale, bool paused) {
+Server::PlaybackId Server::start(std::unique_ptr<Playback> playback, std::string bus,
+                                 const Volumes& volume, double from_seconds, float pitch_scale,
+                                 bool paused) {
     Impl::Node node;
     node.id = impl_->next_id++;
     node.state = paused ? Impl::State::Paused : Impl::State::Playing;
@@ -505,7 +652,7 @@ void Server::set_paused(PlaybackId id, bool paused) {
     node->state = paused ? Impl::State::FadeOutToPause : Impl::State::Playing;
 }
 
-void Server::set_bus_exclusive(PlaybackId id, std::string bus, Frame volume) {
+void Server::set_bus_exclusive(PlaybackId id, std::string bus, const Volumes& volume) {
     if (Impl::Node* node = impl_->find(id); node != nullptr) {
         node->buses.assign(1, {std::move(bus), volume});
     }
@@ -657,28 +804,35 @@ Frame Server::input_frame(std::uint64_t index) const {
 }
 
 void Server::mix(std::span<Frame> out) {
+    // As Godot's _driver_process: each speaker pair of a frame after the one before.
+    const auto cs = static_cast<std::size_t>(impl_->channels);
+    const std::size_t frames = out.size() / cs;
     std::size_t done = 0;
-    while (done < out.size()) {
+    while (done < frames) {
         if (impl_->to_mix == 0) {
             impl_->mix_step(bus_listener_);
         }
         const auto to_copy =
-            std::min<std::size_t>(static_cast<std::size_t>(impl_->to_mix), out.size() - done);
+            std::min<std::size_t>(static_cast<std::size_t>(impl_->to_mix), frames - done);
         const Impl::Bus& master = *impl_->buses.front();
         const std::size_t from = kBufferSize - static_cast<std::size_t>(impl_->to_mix);
-        for (std::size_t j = 0; j < to_copy; ++j) {
-            if (master.active) {
-                const Frame& frame = master.buffer[from + j];
-                out[done + j] = {std::clamp(frame.left, -1.0F, 1.0F),
-                                 std::clamp(frame.right, -1.0F, 1.0F)};
-            } else {
-                out[done + j] = {};
+        for (std::size_t k = 0; k < cs; ++k) {
+            const Impl::Channel& channel = master.channels[k];
+            for (std::size_t j = 0; j < to_copy; ++j) {
+                Frame& dest = out[((done + j) * cs) + k];
+                if (channel.active) {
+                    const Frame& frame = channel.buffer[from + j];
+                    dest = {std::clamp(frame.left, -1.0F, 1.0F),
+                            std::clamp(frame.right, -1.0F, 1.0F)};
+                } else {
+                    dest = {};
+                }
             }
         }
         done += to_copy;
         impl_->to_mix -= static_cast<int>(to_copy);
     }
-    mixed_frames_ += out.size();
+    mixed_frames_ += frames;
 }
 
 } // namespace slash::audio

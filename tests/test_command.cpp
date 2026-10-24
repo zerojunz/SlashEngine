@@ -3276,6 +3276,65 @@ TEST_CASE("audio commands play players, report buses and capture what was heard"
     CHECK(reader.ok("audio.capture").find("seconds")->as_double() == 0.0);
 }
 
+TEST_CASE("in surround, audio.state and audio.capture report each speaker") {
+    const std::string root = "command_surround_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    REQUIRE(slash::platform::write_file(root + "/project.json",
+                                        R"({"format": 1, "name": "Surround", "version": "0.1.0",
+                                            "main_scene": "main.scene.json",
+                                            "audio": {"speaker_mode": "surround_51"}})")
+                .ok());
+    const std::vector<slash::audio::Frame> hum(44100, slash::audio::Frame{0.5F, 0.5F});
+    REQUIRE(
+        slash::platform::write_file(root + "/hum.wav", slash::audio::encode_wav(hum, 44100)).ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create", R"({"id": "voice", "components": {"AudioStreamPlayer":
+        {"stream": "hum.wav", "autoplay": true, "mix_target": "center"}}})");
+    engine.ok("entity.create", R"({"id": "ears", "components": {"AudioListener3D": {},
+        "Transform3D": {}}})");
+    engine.ok("entity.create", R"({"id": "buzz", "components": {"AudioStreamPlayer3D":
+        {"stream": "hum.wav", "autoplay": true}, "Transform3D": {"position": [0, 0, -10]}}})");
+    engine.ok("step", R"({"ticks": 10})");
+
+    const json::Value state = engine.ok("audio.state");
+    CHECK(state.find("speaker_mode")->as_string() == "surround_51");
+    const json::Value& voice = state.find("players")->as_array().at(1);
+    CHECK(voice.find("id")->as_string() == "voice");
+    CHECK(*voice.find("volume") == parse("[0, 0]"));
+    CHECK(*voice.find("speakers") == parse(R"({"center": 1, "lfe": 1, "rear": [0, 0]})"));
+    // Straight ahead, Godot's Spcap puts most of it on the center and front speakers.
+    const json::Value& buzz = state.find("players")->as_array().at(0);
+    CHECK(buzz.find("id")->as_string() == "buzz");
+    CHECK(*buzz.find("volume") == parse("[0.5467, 0.5467]"));
+    CHECK(*buzz.find("speakers") ==
+          parse(R"({"center": 0.6092, "lfe": 1, "rear": [0.1247, 0.1247]})"));
+    // The bus's peak is its loudest speaker's: both LFEs add up to full scale.
+    CHECK(state.find("buses")->as_array().at(0).find("peak_db")->as_double() == 0.0);
+
+    const json::Value heard = engine.ok("audio.capture", R"({"seconds": 0.02, "slices": 0})");
+    CHECK(*heard.find("speakers") == parse(R"({"front_left": -11.3, "front_right": -11.3,
+        "center": -1.9, "lfe": 0, "rear_left": -24.1, "rear_right": -24.1})"));
+    const json::Value written =
+        engine.ok("audio.capture", R"({"seconds": 0.1, "path": "surround.wav"})");
+    CHECK(written.find("path")->as_string() == "surround.wav");
+    const auto wav = slash::platform::read_file(root + "/surround.wav");
+    REQUIRE(wav.ok());
+    CHECK(static_cast<unsigned char>(wav.value().at(22)) == 6); // channels
+    // audio.analyze measures it folded to stereo.
+    const json::Value analyzed = engine.ok("audio.analyze", R"({"bus": "Master", "seconds": 0.1})");
+    CHECK(analyzed.find("peak_db") != nullptr);
+
+    // In stereo, audio.state leaves the speakers out.
+    command::SessionOptions plain;
+    plain.project_root = "command_audio_project";
+    REQUIRE(slash::platform::create_directories(plain.project_root).ok());
+    Engine stereo(plain);
+    CHECK(stereo.ok("audio.state").find("speaker_mode") == nullptr);
+}
+
 TEST_CASE("audio.spectrum reads a bus's analyzer and audio.record drives its recorder") {
     const std::string root = "command_audio_effects_project";
     std::filesystem::remove_all(root);

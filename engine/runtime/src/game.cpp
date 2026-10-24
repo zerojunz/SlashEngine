@@ -199,7 +199,7 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
             audio::SdlOutput::open(project_.audio.mix_rate, project_.audio.output_latency);
         if (output) {
             audio_output_ = std::move(output).value();
-            audio::set_sink(world_, audio_output_->sink());
+            audio::set_sink(world_, audio_output_->sink(), audio_output_->speaker_mode());
         } else {
             log::warn("no sound", {{"error", output.error().message}});
         }
