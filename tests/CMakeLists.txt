@@ -9,6 +9,7 @@ if(EMSCRIPTEN)
         test_light.cpp
         test_mesh.cpp
         test_post.cpp
+        test_reflection.cpp
         test_render.cpp
         test_shadow.cpp
         test_sky.cpp
@@ -102,6 +103,7 @@ add_executable(slash_tests
     test_project_map.cpp
     test_ragdoll.cpp
     test_reflect.cpp
+    test_reflection.cpp
     test_render.cpp
     test_render_scale.cpp
     test_replay.cpp

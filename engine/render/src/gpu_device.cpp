@@ -16,6 +16,7 @@
 #include "post_shaders.hpp"
 #include "post_shading.hpp"
 #include "radiance_shaders.hpp"
+#include "reflection.hpp"
 #include "shader_code.hpp"
 #include "shadow_shaders.hpp"
 #include "sky_shaders.hpp"
@@ -413,7 +414,11 @@ public:
                 SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
             }
         }
-        for (SDL_GPUTexture* cube : {radiance_.raw, radiance_.filtered, no_radiance_}) {
+        if (probe_pipeline_ != nullptr) {
+            SDL_ReleaseGPUGraphicsPipeline(device_, probe_pipeline_);
+        }
+        for (SDL_GPUTexture* cube : {radiance_.raw, radiance_.filtered, no_radiance_,
+                                     screen_.texture, no_screen_, no_probes_, probe_raw_}) {
             if (cube != nullptr) {
                 SDL_ReleaseGPUTexture(device_, cube);
             }
@@ -490,6 +495,15 @@ public:
         }
         if (auto checked = check_pixels(desc, texels, true); !checked) {
             return checked.error();
+        }
+        if (desc.cubes > 0) {
+            auto atlas = make_cube(desc.width, probe_levels(desc.width), kHdrFormat, desc.cubes);
+            if (!atlas) {
+                return atlas.error();
+            }
+            const auto id = static_cast<TextureId>(next_texture_++);
+            textures_[id] = Texture{.gpu = atlas.value(), .desc = desc, .stored = desc.format};
+            return id;
         }
         // A format the GPU doesn't sample is kept as RGBA8.
         TextureDesc stored = desc;
@@ -945,11 +959,26 @@ public:
             return frame_in_progress("begin_frame");
         }
         if (frame.scene) {
+            if (auto checked = check_reflections(*frame.scene,
+                                                 [&](TextureId id) {
+                                                     const auto found = textures_.find(id);
+                                                     return found == textures_.end()
+                                                                ? 0U
+                                                                : found->second.desc.cubes;
+                                                 });
+                !checked) {
+                return checked.error();
+            }
+            if (frame.scene->capture) {
+                return begin_capture(frame);
+            }
+        }
+        if (frame.scene) {
             if (auto checked = check_scene(*frame.scene); !checked) {
                 return checked.error();
             }
             if (auto checked = check_post(
-                    frame.scene->post, [&](TextureId id) { return textures_.contains(id); },
+                    frame.scene->post, [&](TextureId id) { return usable(id); },
                     [&](TextureId id) {
                         const TextureDesc& desc = textures_.at(id).desc;
                         return std::pair{desc.width, desc.height};
@@ -957,8 +986,7 @@ public:
                 !checked) {
                 return checked.error();
             }
-            if (auto checked =
-                    check_sky(*frame.scene, [&](TextureId id) { return textures_.contains(id); });
+            if (auto checked = check_sky(*frame.scene, [&](TextureId id) { return usable(id); });
                 !checked) {
                 return checked.error();
             }
@@ -986,7 +1014,7 @@ public:
             height = it->second.desc.height;
         }
         if (auto checked = check_lighting(
-                frame.lighting, frame.target, [&](TextureId id) { return textures_.contains(id); },
+                frame.lighting, frame.target, [&](TextureId id) { return usable(id); },
                 [&](TextureId id) {
                     const TextureDesc& desc = textures_.at(id).desc;
                     return std::pair{desc.width, desc.height};
@@ -1052,6 +1080,12 @@ public:
                     return ready.error();
                 }
             }
+            if (uses_ssao(*frame.scene) || uses_ssr(*frame.scene)) {
+                if (auto ready = prepare_screen(width, height); !ready) {
+                    SDL_CancelGPUCommandBuffer(commands);
+                    return ready.error();
+                }
+            }
         } else if (frame.scene && post_processes(frame.scene->post)) {
             if (auto ready = prepare_post(format, width, height); !ready) {
                 SDL_CancelGPUCommandBuffer(commands);
@@ -1073,6 +1107,140 @@ public:
         start_frame(frame, commands, target, width, height);
         frame_format_ = format;
         return true;
+    }
+
+    // A frame that draws a face of a reflection probe's cube: the world alone, linear, into the
+    // Forward+ world target at the atlas's size, which end_frame copies into the raw cube.
+    Result<bool> begin_capture(const Frame& frame) {
+        if (frame.target != TextureId::None) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a capture frame draws into its atlas; its target is None");
+        }
+        Frame captured = frame;
+        if (!captured.scene || !captured.scene->capture) {
+            return make_error(ErrorCode::InvalidArgument, "a capture frame needs its capture");
+        }
+        Scene3D& scene = *captured.scene;
+        const ProbeCapture capture = *scene.capture;
+        if (auto checked = check_scene(scene); !checked) {
+            return checked.error();
+        }
+        if (auto checked = check_sky(scene, [&](TextureId id) { return usable(id); }); !checked) {
+            return checked.error();
+        }
+        scene.method = RenderMethod::ForwardPlus;
+        scene.ssao.enabled = false;
+        scene.ssr.enabled = false;
+        scene.reflections.probes.clear();
+        scene.post = {};
+        captured.lighting = {};
+        const std::uint32_t size = textures_.at(capture.atlas).desc.width;
+        if (auto ready = prepare_forward(kTextureFormat, size, size, false, false, false); !ready) {
+            return ready.error();
+        }
+        if (sky_draws(scene)) {
+            if (auto ready = prepare_sky(kHdrFormat, size, size); !ready) {
+                return ready.error();
+            }
+        }
+        if (probe_raw_size_ != size) {
+            if (probe_raw_ != nullptr) {
+                pending_release_.push_back(std::exchange(probe_raw_, nullptr));
+            }
+            probe_raw_size_ = 0;
+            auto raw = make_cube(size, probe_levels(size), kHdrFormat);
+            if (!raw) {
+                return raw.error();
+            }
+            probe_raw_ = raw.value();
+            probe_raw_size_ = size;
+        }
+        SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+        if (commands == nullptr) {
+            return sdl_error("starting a frame failed");
+        }
+        start_frame(captured, commands, nullptr, size, size);
+        frame_format_ = kTextureFormat;
+        return true;
+    }
+
+    // After a capture's world is drawn: its face copied into the raw cube and, after the sixth,
+    // the raw cube's mipmaps and its filtered levels drawn into the atlas's cube.
+    Result<void> finish_capture(SDL_GPUCommandBuffer* commands, const ProbeCapture& capture) {
+        const std::uint32_t size = probe_raw_size_;
+        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+        const SDL_GPUTextureLocation from{
+            .texture = forward_targets_.world, .mip_level = 0, .layer = 0, .x = 0, .y = 0, .z = 0};
+        const SDL_GPUTextureLocation to{
+            .texture = probe_raw_, .mip_level = 0, .layer = capture.face, .x = 0, .y = 0, .z = 0};
+        SDL_CopyGPUTextureToTexture(copy, &from, &to, size, size, 1, false);
+        SDL_EndGPUCopyPass(copy);
+        if (capture.face + 1 < kCubeFaces) {
+            return {};
+        }
+        if (probe_pipeline_ == nullptr) {
+            if (auto made = make_radiance_shaders(); !made) {
+                return made;
+            }
+            auto pipeline = cube_pipeline(radiance_shaders_[0], radiance_shaders_[1], kHdrFormat);
+            if (!pipeline) {
+                return pipeline.error();
+            }
+            probe_pipeline_ = pipeline.value();
+        }
+        if (auto ready = prepare_radiance_sampler(); !ready) {
+            return ready;
+        }
+        SDL_GPUTexture* atlas = textures_.at(capture.atlas).gpu;
+        const std::uint32_t first = capture.cube * kCubeFaces;
+        const std::uint32_t levels = probe_levels(size);
+        const SDL_GPUTextureSamplerBinding source{.texture = probe_raw_,
+                                                  .sampler = radiance_sampler_};
+        const auto filter = [&](RadianceUniforms& uniforms, std::uint32_t level) {
+            uniforms.options = {1.0F, 0.0F, 0.0F, 0.0F};
+            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+                uniforms.params[0] = static_cast<float>(face);
+                SDL_PushGPUFragmentUniformData(
+                    commands, 0, &uniforms, static_cast<std::uint32_t>(sizeof(RadianceUniforms)));
+                SDL_GPURenderPass* pass = begin_cube_pass(commands, atlas, first + face, level);
+                SDL_BindGPUGraphicsPipeline(pass, probe_pipeline_);
+                SDL_BindGPUFragmentSamplers(pass, 0, &source, 1);
+                SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
+                SDL_EndGPURenderPass(pass);
+            }
+        };
+        // The raw cube's mipmaps, as draw_radiance makes the sky's: each level drawn into the
+        // atlas's cube and copied back.
+        for (std::uint32_t level = 1; level < levels; ++level) {
+            const std::uint32_t n = std::max(size >> level, 1U);
+            const auto mipmap = std::make_unique<RadianceUniforms>();
+            mipmap->params = {0.0F, 1.0F / static_cast<float>(n), static_cast<float>(level - 1),
+                              0.0F};
+            filter(*mipmap, level);
+            SDL_GPUCopyPass* back = SDL_BeginGPUCopyPass(commands);
+            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+                const SDL_GPUTextureLocation level_from{.texture = atlas,
+                                                        .mip_level = level,
+                                                        .layer = first + face,
+                                                        .x = 0,
+                                                        .y = 0,
+                                                        .z = 0};
+                const SDL_GPUTextureLocation level_to{.texture = probe_raw_,
+                                                      .mip_level = level,
+                                                      .layer = face,
+                                                      .x = 0,
+                                                      .y = 0,
+                                                      .z = 0};
+                SDL_CopyGPUTextureToTexture(back, &level_from, &level_to, n, n, 1, false);
+            }
+            SDL_EndGPUCopyPass(back);
+        }
+        for (std::uint32_t level = 0; level < levels; ++level) {
+            const auto uniforms =
+                std::make_unique<RadianceUniforms>(radiance_uniforms(size, levels, level));
+            filter(*uniforms, level);
+        }
+        return {};
     }
 
     Result<void> draw(TextureId texture, std::span<const Vertex2D> vertices,
@@ -1112,9 +1280,9 @@ public:
             return no_frame("draw_mesh");
         }
         const auto it = meshes_.find(mesh);
-        if (auto checked = check_mesh_draw(frame_.scene.has_value(), it != meshes_.end(), mesh,
-                                           transform, material, frame_.target,
-                                           [&](TextureId id) { return textures_.contains(id); });
+        if (auto checked =
+                check_mesh_draw(frame_.scene.has_value(), it != meshes_.end(), mesh, transform,
+                                material, frame_.target, [&](TextureId id) { return usable(id); });
             !checked) {
             return checked;
         }
@@ -1190,12 +1358,19 @@ public:
         // Mesh draws need a scene, so a frame with them has one.
         const bool meshes = frame_.scene && shadow_plan_ && !mesh_draws_.empty();
         const bool forward = frame_.scene && frame_.scene->method == RenderMethod::ForwardPlus;
+        const bool capture = frame_.scene && frame_.scene->capture;
         // Depth of field needs the depth buffer cleared, even with nothing drawn over it.
-        const bool world = meshes || (frame_.scene && sky_draws(*frame_.scene)) ||
+        const bool world = meshes || capture || (frame_.scene && sky_draws(*frame_.scene)) ||
                            (forward && uses_dof(frame_.scene->post));
         const bool post = !forward && frame_.scene && post_processes(frame_.scene->post);
         if (world) {
             draw_meshes(commands, *frame_.scene, meshes ? &*shadow_plan_ : nullptr);
+        }
+        if (frame_.scene && frame_.scene->capture) {
+            Result<void> captured = finish_capture(commands, *frame_.scene->capture);
+            SDL_SubmitGPUCommandBuffer(commands);
+            finish_frame();
+            return captured;
         }
         if (forward) {
             draw_forward_post(commands, *frame_.scene, !world);
@@ -1473,6 +1648,12 @@ private:
     }
 
     // A texture and its sampler; None is white. The texture must exist.
+    // Whether a texture can be drawn with or sampled: known, and not a reflection atlas.
+    [[nodiscard]] bool usable(TextureId id) const {
+        const auto it = textures_.find(id);
+        return it != textures_.end() && it->second.desc.cubes == 0;
+    }
+
     SDL_GPUTextureSamplerBinding binding(TextureId texture, bool repeat) const {
         if (texture == TextureId::None) {
             return {.texture = white_,
@@ -1509,13 +1690,12 @@ private:
             }
         }
         if (auto checked = check_material(
-                material, frame_.target, [&](TextureId id) { return textures_.contains(id); },
+                material, frame_.target, [&](TextureId id) { return usable(id); },
                 [&](ShaderId id) { return game_shaders_.contains(id); });
             !checked) {
             return checked;
         }
-        return check_lighting_textures(frame_.lighting,
-                                       [&](TextureId id) { return textures_.contains(id); });
+        return check_lighting_textures(frame_.lighting, [&](TextureId id) { return usable(id); });
     }
 
     // A batch drawing with a texture and a material from a first vertex, with no vertices yet.
@@ -1892,9 +2072,10 @@ private:
                               .vertex_msl = {},
                               .fragment_msl = fragment_msl,
                               .hlsl = shaders::kMeshClusteredHlsl};
-        // The material's textures, the shadow atlases, the radiance, the SSAO and the SSR.
+        // The material's textures, the shadow atlases, the radiance, the screen's SSAO and SSR,
+        // and the reflection probes' atlas; the lights, clusters and probes.
         auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code,
-                                        static_cast<std::uint32_t>(kMeshTextures) + 5, 3, 2);
+                                        static_cast<std::uint32_t>(kMeshTextures) + 5, 3, 3);
         if (!fragment) {
             return fragment.error();
         }
@@ -2314,11 +2495,12 @@ private:
                                                                               : no_radiance_,
                                               .sampler = radiance_sampler_};
             samplers.at(kMeshTextures +
-                        3) = {.texture = ssao ? ssao_targets_.textures.at(kSsaoFinal) : white_,
+                        3) = {.texture = ssao || ssr ? screen_.texture : no_screen_,
                               .sampler = samplers_.at(sampler_index(Filter::Nearest, false))};
-            samplers.at(kMeshTextures +
-                        4) = {.texture = ssr ? ssr_targets_.textures.at(kSsrFinal) : white_,
-                              .sampler = samplers_.at(sampler_index(Filter::Nearest, false))};
+            samplers.at(kMeshTextures + 4) = {
+                .texture = lights->reflections[0] > 0.0F ? textures_.at(scene.reflections.atlas).gpu
+                                                         : no_probes_,
+                .sampler = radiance_sampler_};
             order = mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), scene,
                                     [&](std::size_t at) { return mesh_batches_[at].bounds; });
         }
@@ -2385,6 +2567,7 @@ private:
             SDL_EndGPURenderPass(pass);
             if (ssao) {
                 draw_ssao(commands, scene);
+                copy_to_screen(commands, ssao_targets_.textures.at(kSsaoFinal), 0);
             }
         }
         // The sky, then the meshes over it.
@@ -2421,7 +2604,8 @@ private:
                 return;
             }
             if (clustered) {
-                const std::array storage{cluster_lights_.buffer, cluster_cells_.buffer};
+                const std::array storage{cluster_lights_.buffer, cluster_cells_.buffer,
+                                         probe_buffer_.buffer};
                 SDL_BindGPUFragmentStorageBuffers(pass, 0, storage.data(),
                                                   static_cast<std::uint32_t>(storage.size()));
             }
@@ -2442,20 +2626,23 @@ private:
             lights->ssao[3] = 1.0F;
         }
         draw_ssr(commands, scene, seen, history);
+        copy_to_screen(commands, ssr_targets_.textures.at(kSsrFinal), 1);
         draw_color();
         keep_last_frame(commands, scene, history, seen);
     }
 
-    // A cube texture of the radiance's format, size texels across with levels levels, that can be
-    // drawn into.
-    Result<SDL_GPUTexture*> make_cube(std::uint32_t size, std::uint32_t levels) {
+    // A cube texture of format (the radiance's by default), size texels across with levels
+    // levels, that can be drawn into; with cubes, an array of that many.
+    Result<SDL_GPUTexture*> make_cube(std::uint32_t size, std::uint32_t levels,
+                                      SDL_GPUTextureFormat format = kRadianceFormat,
+                                      std::uint32_t cubes = 0) {
         SDL_GPUTextureCreateInfo info{};
-        info.type = SDL_GPU_TEXTURETYPE_CUBE;
-        info.format = kRadianceFormat;
+        info.type = cubes > 0 ? SDL_GPU_TEXTURETYPE_CUBE_ARRAY : SDL_GPU_TEXTURETYPE_CUBE;
+        info.format = format;
         info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
         info.width = size;
         info.height = size;
-        info.layer_count_or_depth = kCubeFaces;
+        info.layer_count_or_depth = kCubeFaces * std::max(cubes, 1U);
         info.num_levels = levels;
         SDL_GPUTexture* texture = SDL_CreateGPUTexture(device_, &info);
         if (texture == nullptr) {
@@ -2478,10 +2665,12 @@ private:
         return SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
     }
 
-    // A pipeline drawing one triangle over an RGB10A2 target with no depth, with shaders.
-    Result<SDL_GPUGraphicsPipeline*> cube_pipeline(SDL_GPUShader* vertex, SDL_GPUShader* fragment) {
+    // A pipeline drawing one triangle over a target of format (RGB10A2 by default) with no
+    // depth, with shaders.
+    Result<SDL_GPUGraphicsPipeline*> cube_pipeline(SDL_GPUShader* vertex, SDL_GPUShader* fragment,
+                                                   SDL_GPUTextureFormat format = kRadianceFormat) {
         SDL_GPUColorTargetDescription color{};
-        color.format = kRadianceFormat;
+        color.format = format;
         SDL_GPUGraphicsPipelineCreateInfo info{};
         info.vertex_shader = vertex;
         info.fragment_shader = fragment;
@@ -2497,13 +2686,8 @@ private:
         return pipeline;
     }
 
-    // What the frame's meshes take the radiance from, made at its first mesh draw: the sampler
-    // and a black cube for meshes with none, and for a scene with radiance, its shaders,
-    // pipelines and cubes, drawn again at end_frame when what they are drawn from changed.
-    Result<void> prepare_radiance(const Scene3D& scene) {
-        if (radiance_prepared_) {
-            return {};
-        }
+    // The linear sampler with mipmaps that radiance and probe cubes are read with.
+    Result<void> prepare_radiance_sampler() {
         if (radiance_sampler_ == nullptr) {
             SDL_GPUSamplerCreateInfo info{};
             info.min_filter = SDL_GPU_FILTER_LINEAR;
@@ -2517,6 +2701,42 @@ private:
             if (radiance_sampler_ == nullptr) {
                 return sdl_error("creating the radiance sampler failed");
             }
+        }
+        return {};
+    }
+
+    // radiance.hlsl's shaders, which filter the sky's radiance and probes' cubes.
+    Result<void> make_radiance_shaders() {
+        if (radiance_shaders_[0] != nullptr) {
+            return {};
+        }
+        const ShaderCode code{.vertex_spirv = shaders::kRadianceVertexSpirv,
+                              .fragment_spirv = shaders::kRadianceFragmentSpirv,
+                              .vertex_msl = shaders::kRadianceVertexMsl,
+                              .fragment_msl = shaders::kRadianceFragmentMsl,
+                              .hlsl = shaders::kRadianceHlsl};
+        auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 0);
+        if (!vertex) {
+            return vertex.error();
+        }
+        auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, 1, 1);
+        if (!fragment) {
+            SDL_ReleaseGPUShader(device_, vertex.value());
+            return fragment.error();
+        }
+        radiance_shaders_ = {vertex.value(), fragment.value()};
+        return {};
+    }
+
+    // What the frame's meshes take the radiance from, made at its first mesh draw: the sampler
+    // and a black cube for meshes with none, and for a scene with radiance, its shaders,
+    // pipelines and cubes, drawn again at end_frame when what they are drawn from changed.
+    Result<void> prepare_radiance(const Scene3D& scene) {
+        if (radiance_prepared_) {
+            return {};
+        }
+        if (auto ready = prepare_radiance_sampler(); !ready) {
+            return ready;
         }
         if (no_radiance_ == nullptr) {
             auto made = make_cube(1, 1);
@@ -2534,23 +2754,41 @@ private:
             }
             SDL_SubmitGPUCommandBuffer(commands);
         }
+        if (no_probes_ == nullptr) {
+            // A black atlas of one cube for frames with no probes, and white screen layers for
+            // frames with no SSAO or SSR.
+            auto probes = make_cube(1, 1, kHdrFormat, 1);
+            if (!probes) {
+                return probes.error();
+            }
+            no_probes_ = probes.value();
+            auto screen =
+                pass_texture(1, 1, kHdrFormat, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, 1, "screen", 2);
+            if (!screen) {
+                return screen.error();
+            }
+            no_screen_ = screen.value();
+            SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+            if (commands == nullptr) {
+                return sdl_error("acquiring a command buffer failed");
+            }
+            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+                SDL_EndGPURenderPass(begin_cube_pass(commands, no_probes_, face, 0));
+            }
+            for (std::uint32_t layer = 0; layer < 2; ++layer) {
+                SDL_GPUColorTargetInfo color{};
+                color.texture = no_screen_;
+                color.layer_or_depth_plane = layer;
+                color.load_op = SDL_GPU_LOADOP_CLEAR;
+                color.clear_color = {1.0F, 1.0F, 1.0F, 1.0F};
+                color.store_op = SDL_GPU_STOREOP_STORE;
+                SDL_EndGPURenderPass(SDL_BeginGPURenderPass(commands, &color, 1, nullptr));
+            }
+            SDL_SubmitGPUCommandBuffer(commands);
+        }
         if (radiance_used(scene)) {
-            if (radiance_shaders_[0] == nullptr) {
-                const ShaderCode code{.vertex_spirv = shaders::kRadianceVertexSpirv,
-                                      .fragment_spirv = shaders::kRadianceFragmentSpirv,
-                                      .vertex_msl = shaders::kRadianceVertexMsl,
-                                      .fragment_msl = shaders::kRadianceFragmentMsl,
-                                      .hlsl = shaders::kRadianceHlsl};
-                auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 0);
-                if (!vertex) {
-                    return vertex.error();
-                }
-                auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, 1, 1);
-                if (!fragment) {
-                    SDL_ReleaseGPUShader(device_, vertex.value());
-                    return fragment.error();
-                }
-                radiance_shaders_ = {vertex.value(), fragment.value()};
+            if (auto made = make_radiance_shaders(); !made) {
+                return made;
             }
             // The sky draws into the raw cube with the sky pass's shaders.
             if (auto made = make_sky_shaders(); !made) {
@@ -2852,14 +3090,14 @@ private:
     Result<SDL_GPUTexture*> pass_texture(std::uint32_t width, std::uint32_t height,
                                          SDL_GPUTextureFormat format,
                                          SDL_GPUTextureUsageFlags usage, std::uint32_t levels,
-                                         const char* what) {
+                                         const char* what, std::uint32_t layers = 1) {
         SDL_GPUTextureCreateInfo info{};
-        info.type = SDL_GPU_TEXTURETYPE_2D;
+        info.type = layers > 1 ? SDL_GPU_TEXTURETYPE_2D_ARRAY : SDL_GPU_TEXTURETYPE_2D;
         info.format = format;
         info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | usage;
         info.width = width;
         info.height = height;
-        info.layer_count_or_depth = 1;
+        info.layer_count_or_depth = layers;
         info.num_levels = levels;
         SDL_GPUTexture* texture = SDL_CreateGPUTexture(device_, &info);
         if (texture == nullptr) {
@@ -2867,6 +3105,23 @@ private:
                              " texture for " + what + " failed");
         }
         return texture;
+    }
+
+    // The screen array the mesh pass reads the frame's SSAO and SSR from, at width x height.
+    Result<void> prepare_screen(std::uint32_t width, std::uint32_t height) {
+        if (screen_.texture != nullptr && screen_.width == width && screen_.height == height) {
+            return {};
+        }
+        if (screen_.texture != nullptr) {
+            pending_release_.push_back(std::exchange(screen_.texture, nullptr));
+        }
+        auto texture = pass_texture(width, height, kHdrFormat, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, 1,
+                                    "SSAO", 2);
+        if (!texture) {
+            return texture.error();
+        }
+        screen_ = {.texture = texture.value(), .width = width, .height = height};
+        return {};
     }
 
     // The normal-roughness prepass's normals and depth for a frame of width x height, which
@@ -2932,10 +3187,10 @@ private:
             }
             ssao_shaders_ = {vertex.value(), fragment.value()};
         }
-        for (const SsaoFormat format :
-             {SsaoFormat::R16F, SsaoFormat::RG8, SsaoFormat::R8, SsaoFormat::R32F}) {
-            if (auto pipeline =
-                    fullscreen_pipeline(ssao_pipelines_, ssao_shaders_, ssao_gpu_format(format));
+        for (const SDL_GPUTextureFormat format :
+             {ssao_gpu_format(SsaoFormat::R16F), ssao_gpu_format(SsaoFormat::RG8),
+              ssao_gpu_format(SsaoFormat::R32F), kHdrFormat}) {
+            if (auto pipeline = fullscreen_pipeline(ssao_pipelines_, ssao_shaders_, format);
                 !pipeline) {
                 return pipeline.error();
             }
@@ -2951,7 +3206,7 @@ private:
             if (size.width == 0) {
                 continue;
             }
-            auto texture = pass_texture(size.width, size.height, ssao_gpu_format(ssao_format(i)),
+            auto texture = pass_texture(size.width, size.height, ssao_target_format(i),
                                         SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, 1, "SSAO");
             if (!texture) {
                 release_ssao_targets();
@@ -2980,6 +3235,24 @@ private:
 
     // ssao.hlsl's passes, from the prepass's depth and normals to the occlusion at the frame's
     // size, in the order ssao_plan gives.
+    // An SSAO texture's format: the final one's is half floats, so that it copies into the screen
+    // array's first layer.
+    static SDL_GPUTextureFormat ssao_target_format(std::uint32_t texture) {
+        return texture == kSsaoFinal ? kHdrFormat : ssao_gpu_format(ssao_format(texture));
+    }
+
+    // Copies a texture of the frame's size into a layer of the screen array the mesh pass reads.
+    void copy_to_screen(SDL_GPUCommandBuffer* commands, SDL_GPUTexture* texture,
+                        std::uint32_t layer) const {
+        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+        const SDL_GPUTextureLocation from{
+            .texture = texture, .mip_level = 0, .layer = 0, .x = 0, .y = 0, .z = 0};
+        const SDL_GPUTextureLocation to{
+            .texture = screen_.texture, .mip_level = 0, .layer = layer, .x = 0, .y = 0, .z = 0};
+        SDL_CopyGPUTextureToTexture(copy, &from, &to, frame_width_, frame_height_, 1, false);
+        SDL_EndGPUCopyPass(copy);
+    }
+
     void draw_ssao(SDL_GPUCommandBuffer* commands, const Scene3D& scene) {
         SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
         const SsaoPlan plan = ssao_plan(scene.ssao.settings, frame_width_, frame_height_);
@@ -2988,7 +3261,7 @@ private:
                 ssao_uniforms(scene.ssao, step, scene.projection, frame_width_, frame_height_);
             // Made in prepare_ssao, at the start of the frame.
             auto pipeline = fullscreen_pipeline(ssao_pipelines_, ssao_shaders_,
-                                                ssao_gpu_format(ssao_format(step.target)));
+                                                ssao_target_format(step.target));
             if (!pipeline) {
                 return;
             }
@@ -3893,7 +4166,16 @@ private:
             !uploaded) {
             return uploaded;
         }
-        return upload_storage(copy, cluster_cells_, std::as_bytes(std::span(clusters_.cells)));
+        if (auto uploaded =
+                upload_storage(copy, cluster_cells_, std::as_bytes(std::span(clusters_.cells)));
+            !uploaded) {
+            return uploaded;
+        }
+        std::vector<MeshProbeUniforms> probes = probe_uniforms(scene.reflections);
+        if (probes.empty()) {
+            probes.emplace_back(); // a storage buffer is never empty
+        }
+        return upload_storage(copy, probe_buffer_, std::as_bytes(std::span(probes)));
     }
 
     // Copies bytes into a storage buffer, growing it first if they don't fit.
@@ -4020,6 +4302,22 @@ private:
     LightClusters clusters_;
     StorageBuffer cluster_lights_;
     StorageBuffer cluster_cells_;
+    StorageBuffer probe_buffer_; // the frame's reflection probes
+    // The frame's SSAO and SSR, as layers 0 and 1, for the mesh pass; and white layers for frames
+    // with neither.
+    struct Screen {
+        SDL_GPUTexture* texture = nullptr;
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+    };
+    Screen screen_;
+    SDL_GPUTexture* no_screen_ = nullptr;
+    // A black atlas for frames with no probes, and the cube captures draw into, before their
+    // levels are filtered into an atlas's cube.
+    SDL_GPUTexture* no_probes_ = nullptr;
+    SDL_GPUTexture* probe_raw_ = nullptr;
+    std::uint32_t probe_raw_size_ = 0;
+    SDL_GPUGraphicsPipeline* probe_pipeline_ = nullptr; // radiance.hlsl into half floats
     SDL_GPUTexture* depth_ = nullptr;
     SDL_GPUTextureFormat depth_format_ = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
     // The frame's shadow plan, made at its first mesh draw, and what its passes draw with.

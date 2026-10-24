@@ -5,6 +5,7 @@
 #include "gpu_device.hpp"
 #include "mesh_shading.hpp"
 #include "post_shading.hpp"
+#include "reflection.hpp"
 #include "sky_shading.hpp"
 #ifdef __EMSCRIPTEN__
 #include "webgpu_device.hpp"
@@ -28,6 +29,26 @@ namespace slash::render {
 namespace detail {
 
 Result<void> check_texture_desc(const TextureDesc& desc) {
+    if (desc.cubes > 0) {
+        if (desc.cubes > kMaxReflectionCubes) {
+            return make_error(ErrorCode::InvalidArgument, "a reflection atlas holds 1 to " +
+                                                              std::to_string(kMaxReflectionCubes) +
+                                                              " cubes, not " +
+                                                              std::to_string(desc.cubes));
+        }
+        if (desc.width != desc.height || desc.width < 32 || desc.width > 2048 ||
+            (desc.width & (desc.width - 1)) != 0) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a reflection atlas's faces are square, a power of two from 32 to "
+                              "2048 texels across, not " +
+                                  std::to_string(desc.width) + "x" + std::to_string(desc.height));
+        }
+        if (desc.render_target || desc.format != TextureFormat::Rgba8) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a reflection atlas is neither a render target nor compressed");
+        }
+        return {};
+    }
     if (desc.width == 0 || desc.height == 0 || desc.width > kMaxTextureSize ||
         desc.height > kMaxTextureSize) {
         return make_error(ErrorCode::InvalidArgument,
@@ -53,6 +74,13 @@ Result<void> check_texture_desc(const TextureDesc& desc) {
 
 Result<void> check_pixels(const TextureDesc& desc, std::span<const std::uint8_t> texels,
                           bool allow_empty) {
+    if (desc.cubes > 0) {
+        if (allow_empty && texels.empty()) {
+            return {};
+        }
+        return make_error(ErrorCode::InvalidArgument,
+                          "a reflection atlas takes no texels: captures draw its cubes");
+    }
     const std::uint64_t expected = texture_bytes(desc);
     if ((allow_empty && texels.empty() && !is_compressed(desc.format)) ||
         texels.size() == expected) {
@@ -505,7 +533,8 @@ public:
         if (in_frame_) {
             return detail::frame_in_progress("begin_frame");
         }
-        if (frame.target == TextureId::None) {
+        const bool capture = frame.scene && frame.scene->capture;
+        if (frame.target == TextureId::None && !capture) {
             return make_error(ErrorCode::InvalidArgument,
                               "the null device has no window; draw to a render-target texture");
         }
@@ -527,6 +556,30 @@ public:
                 !checked) {
                 return checked.error();
             }
+            if (auto checked = detail::check_reflections(*frame.scene,
+                                                         [&](TextureId id) {
+                                                             const auto found = textures_.find(id);
+                                                             return found == textures_.end()
+                                                                        ? 0U
+                                                                        : found->second.desc.cubes;
+                                                         });
+                !checked) {
+                return checked.error();
+            }
+        }
+        if (capture) {
+            // A capture checks its draws and draws nothing, like every frame here.
+            if (frame.target != TextureId::None) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "a capture frame draws into its atlas; its target is None");
+            }
+            lighting_ = {};
+            has_scene_ = true;
+            in_frame_ = true;
+            target_ = TextureId::None;
+            frame_vertices_ = 0;
+            last_texture_.reset();
+            return true;
         }
         const auto it = textures_.find(frame.target);
         if (it == textures_.end()) {

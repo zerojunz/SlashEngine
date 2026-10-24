@@ -19,6 +19,7 @@
 #include "post_shaders.hpp"
 #include "post_shading.hpp"
 #include "radiance_shaders.hpp"
+#include "reflection.hpp"
 #include "shader_code.hpp"
 #include "shadow_shaders.hpp"
 #include "sky_shaders.hpp"
@@ -384,8 +385,17 @@ public:
                 wgpuRenderPipelineRelease(pipeline);
             }
         }
-        for (const CubeTexture& cube : {radiance_.raw, radiance_.filtered, no_radiance_}) {
+        for (const CubeTexture& cube :
+             {radiance_.raw, radiance_.filtered, no_radiance_, probe_raw_, no_probes_}) {
             destroy_cube(cube);
+        }
+        for (const auto& [id, atlas] : atlases_) {
+            destroy_cube(atlas);
+        }
+        destroy_screen(screen_);
+        destroy_screen(no_screen_);
+        if (probe_pipeline_ != nullptr) {
+            wgpuRenderPipelineRelease(probe_pipeline_);
         }
         if (radiance_sampler_ != nullptr) {
             wgpuSamplerRelease(radiance_sampler_);
@@ -442,8 +452,9 @@ public:
             destroy_buffer(system.buffer);
             destroy_buffer(system.emissions);
         }
-        for (WGPUBuffer buffer : {no_source_, no_target_, particle_data_, vertex_buffer_,
-                                  uniform_buffer_, cluster_lights_.buffer, cluster_cells_.buffer}) {
+        for (WGPUBuffer buffer :
+             {no_source_, no_target_, particle_data_, vertex_buffer_, uniform_buffer_,
+              cluster_lights_.buffer, cluster_cells_.buffer, probe_buffer_.buffer}) {
             destroy_buffer(buffer);
         }
         release_uniform_groups();
@@ -577,6 +588,13 @@ public:
         if (auto checked = check_pixels(desc, texels, true); !checked) {
             return checked.error();
         }
+        if (desc.cubes > 0) {
+            // A reflection atlas: half floats, with the levels a probe's cube is filtered into.
+            const auto id = static_cast<TextureId>(next_texture_++);
+            atlases_[id] = make_cube(desc.width, probe_levels(desc.width), kHdrFormat, desc.cubes);
+            textures_[id] = Texture{.gpu = {}, .desc = desc, .stored = desc.format};
+            return id;
+        }
         // A format the GPU doesn't sample is kept as RGBA8. WebGPU starts textures as
         // transparent black.
         const TextureFormat stored = supports(desc.format) ? desc.format : TextureFormat::Rgba8;
@@ -612,6 +630,17 @@ public:
     void destroy_texture(TextureId texture) override {
         const auto it = textures_.find(texture);
         if (it == textures_.end()) {
+            return;
+        }
+        if (const auto atlas = atlases_.find(texture); atlas != atlases_.end()) {
+            forget_texture_groups(atlas->second.view);
+            if (in_frame_) {
+                pending_cubes_.push_back(atlas->second);
+            } else {
+                destroy_cube(atlas->second);
+            }
+            atlases_.erase(atlas);
+            textures_.erase(it);
             return;
         }
         forget_texture_groups(it->second.gpu.view);
@@ -911,6 +940,12 @@ public:
         meshes_.erase(it);
     }
 
+    // A texture draws can sample: one made, and not a reflection atlas.
+    [[nodiscard]] bool usable(TextureId id) const {
+        const auto it = textures_.find(id);
+        return it != textures_.end() && it->second.desc.cubes == 0;
+    }
+
     Result<bool> begin_frame(const Frame& frame) override {
         if (in_frame_) {
             return frame_in_progress("begin_frame");
@@ -923,7 +958,7 @@ public:
                 return checked.error();
             }
             if (auto checked = check_post(
-                    frame.scene->post, [&](TextureId id) { return textures_.contains(id); },
+                    frame.scene->post, [&](TextureId id) { return usable(id); },
                     [&](TextureId id) {
                         const TextureDesc& desc = textures_.at(id).desc;
                         return std::pair{desc.width, desc.height};
@@ -931,10 +966,22 @@ public:
                 !checked) {
                 return checked.error();
             }
-            if (auto checked =
-                    check_sky(*frame.scene, [&](TextureId id) { return textures_.contains(id); });
+            if (auto checked = check_sky(*frame.scene, [&](TextureId id) { return usable(id); });
                 !checked) {
                 return checked.error();
+            }
+            if (auto checked = check_reflections(*frame.scene,
+                                                 [&](TextureId id) {
+                                                     const auto found = textures_.find(id);
+                                                     return found == textures_.end()
+                                                                ? 0U
+                                                                : found->second.desc.cubes;
+                                                 });
+                !checked) {
+                return checked.error();
+            }
+            if (frame.scene->capture) {
+                return begin_capture(frame);
             }
         }
         WGPUTexture target = nullptr;
@@ -961,7 +1008,7 @@ public:
             height = it->second.desc.height;
         }
         if (auto checked = check_lighting(
-                frame.lighting, frame.target, [&](TextureId id) { return textures_.contains(id); },
+                frame.lighting, frame.target, [&](TextureId id) { return usable(id); },
                 [&](TextureId id) {
                     const TextureDesc& desc = textures_.at(id).desc;
                     return std::pair{desc.width, desc.height};
@@ -1028,6 +1075,9 @@ public:
             if (uses_ssr(*frame.scene)) {
                 prepare_ssr(frame.target, width, height, frame.scene->ssr.settings);
             }
+            if (uses_ssao(*frame.scene) || uses_ssr(*frame.scene)) {
+                prepare_screen(width, height);
+            }
         } else if (frame.scene && post_processes(frame.scene->post)) {
             prepare_post(width, height);
         }
@@ -1071,9 +1121,9 @@ public:
             return no_frame("draw_mesh");
         }
         const auto it = meshes_.find(mesh);
-        if (auto checked = check_mesh_draw(frame_.scene.has_value(), it != meshes_.end(), mesh,
-                                           transform, material, frame_.target,
-                                           [&](TextureId id) { return textures_.contains(id); });
+        if (auto checked =
+                check_mesh_draw(frame_.scene.has_value(), it != meshes_.end(), mesh, transform,
+                                material, frame_.target, [&](TextureId id) { return usable(id); });
             !checked) {
             return checked;
         }
@@ -1160,6 +1210,8 @@ public:
             batch_uniforms.push_back(at);
         }
         const MeshUniforms mesh_uniforms = add_mesh_uniforms();
+        const std::optional<ProbeCapture> capture =
+            frame_.scene ? frame_.scene->capture : std::nullopt;
         const bool forward = frame_.scene && frame_.scene->method == RenderMethod::ForwardPlus;
         const bool post = !forward && frame_.scene && post_processes(frame_.scene->post);
         const bool sky = frame_.scene && sky_draws(*frame_.scene);
@@ -1176,7 +1228,9 @@ public:
             make_depth_target(frame_width_, frame_height_);
         }
         std::vector<PostDraw> post_draws;
-        if (forward) {
+        if (capture) {
+            // drawn into the raw cube alone
+        } else if (forward) {
             post_draws = forward_draws_for(*frame_.scene);
         } else if (post) {
             post_draws = post_draws_for(frame_.scene->post);
@@ -1217,6 +1271,10 @@ public:
             last_frame_at = uniforms_.add(gpu_ssr_uniforms(ssr_uniforms(
                 scene.ssr, ssr_last_frame_step(), seen, seen, frame_width_, frame_height_)));
         }
+        std::optional<ProbeOffsets> probe_offsets;
+        if (capture && capture->face + 1 == kCubeFaces) {
+            probe_offsets = add_probe_uniforms();
+        }
         upload_frame();
 
         WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, nullptr);
@@ -1242,9 +1300,17 @@ public:
         if (ssr) {
             encode_ssr(encoder, *ssr, ssr_uniforms_at, *history);
         }
-        if (!mesh_draws_.empty() || sky || dof) {
+        if (!mesh_draws_.empty() || sky || dof || capture) {
             encode_meshes(encoder, mesh_uniforms, sky_uniforms_at, ssao.has_value(),
                           ssr.has_value());
+        }
+        if (capture) {
+            if (probe_offsets) {
+                encode_probe(encoder, *capture, *probe_offsets);
+            }
+            submit(encoder);
+            finish_frame();
+            return {};
         }
         if (ssr) {
             encode_ssr_step(encoder, ssr_last_frame_step(), last_frame_at, *history);
@@ -1453,12 +1519,28 @@ private:
 
     // A cube texture of the radiance's format: a view of every level, which meshes and the
     // filter sample, a view of each level alone, which each next level's mipmaps are drawn from,
-    // and a view of each face of each level to draw into (level * kCubeFaces + face).
+    // and a view of each face of each level to draw into (level * kCubeFaces + face). A
+    // reflection atlas has no level views, and its faces are each cube's (level * its layers +
+    // cube * kCubeFaces + face).
     struct CubeTexture {
         WGPUTexture texture = nullptr;
         WGPUTextureView view = nullptr;
         std::vector<WGPUTextureView> levels;
         std::vector<WGPUTextureView> faces;
+    };
+    // The array the mesh pass reads SSAO and SSR from: its view, and each layer's to draw into.
+    struct ScreenArray {
+        WGPUTexture texture = nullptr;
+        WGPUTextureView view = nullptr;
+        std::array<WGPUTextureView, 2> layers{};
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+    };
+    // Where a capture's filter uniforms are, for each level and face: its mipmaps' (from the
+    // second level), then its filters'.
+    struct ProbeOffsets {
+        std::vector<std::uint32_t> mipmaps;
+        std::vector<std::uint32_t> filters;
     };
     // Where the radiance passes' uniforms are: the sky's for each face, then for each level and
     // face, the mipmap's and the filter's.
@@ -1596,13 +1678,12 @@ private:
             }
         }
         if (auto checked = check_material(
-                material, frame_.target, [&](TextureId id) { return textures_.contains(id); },
+                material, frame_.target, [&](TextureId id) { return usable(id); },
                 [&](ShaderId id) { return game_shaders_.contains(id); });
             !checked) {
             return checked;
         }
-        return check_lighting_textures(frame_.lighting,
-                                       [&](TextureId id) { return textures_.contains(id); });
+        return check_lighting_textures(frame_.lighting, [&](TextureId id) { return usable(id); });
     }
 
     // A batch drawing with a texture and a material from a first vertex, with no vertices yet.
@@ -1826,15 +1907,21 @@ private:
                                                       : sampler_entry(kMeshSamplerBinding + slot);
         }
         mesh_textures.at(kMeshTextures + 2) = cube_entry(kMeshTextures + 2);
+        // The screen array of SSAO and SSR, and the reflection probes' cubes.
+        mesh_textures.at(kMeshTextures + 3).texture.viewDimension =
+            WGPUTextureViewDimension_2DArray;
+        mesh_textures.at(kMeshTextures + 4).texture.viewDimension =
+            WGPUTextureViewDimension_CubeArray;
         mesh_textures_layout_ = layout(mesh_textures);
         const std::array mesh_fragment{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(MeshSurfaceUniforms)),
             uniform_entry(1, WGPUShaderStage_Fragment, sizeof(MeshSceneUniforms)),
             uniform_entry(2, WGPUShaderStage_Fragment, sizeof(MeshShadowUniforms))};
         mesh_fragment_layout_ = layout(mesh_fragment);
-        // Forward+'s clusters: the lights, then each tile's words.
+        // Forward+'s clusters: the lights, then each tile's words, then the reflection probes.
         const std::array mesh_clusters{storage_entry(0, true, WGPUShaderStage_Fragment),
-                                       storage_entry(1, true, WGPUShaderStage_Fragment)};
+                                       storage_entry(1, true, WGPUShaderStage_Fragment),
+                                       storage_entry(2, true, WGPUShaderStage_Fragment)};
         mesh_clusters_layout_ = layout(mesh_clusters);
         const std::array shadow_vertex{
             uniform_entry(0, WGPUShaderStage_Vertex, sizeof(MeshShadowPassUniforms)),
@@ -2385,12 +2472,15 @@ private:
                 .filter = Filter::Linear};
     }
 
-    // A cube texture of the radiance's format, size texels across with levels levels.
-    CubeTexture make_cube(std::uint32_t size, std::uint32_t levels) {
+    // A cube texture of format, size texels across with levels levels: the radiance's, or with
+    // cubes, a reflection atlas's array of that many cubes.
+    CubeTexture make_cube(std::uint32_t size, std::uint32_t levels,
+                          WGPUTextureFormat format = kRadianceFormat, std::uint32_t cubes = 0) {
+        const std::uint32_t layers = kCubeFaces * std::max(cubes, 1U);
         WGPUTextureDescriptor info = WGPU_TEXTURE_DESCRIPTOR_INIT;
         info.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
-        info.size = {.width = size, .height = size, .depthOrArrayLayers = kCubeFaces};
-        info.format = kRadianceFormat;
+        info.size = {.width = size, .height = size, .depthOrArrayLayers = layers};
+        info.format = format;
         info.mipLevelCount = levels;
         CubeTexture cube;
         cube.texture = wgpuDeviceCreateTexture(device_, &info);
@@ -2405,11 +2495,15 @@ private:
             descriptor.arrayLayerCount = layer_count;
             return wgpuTextureCreateView(cube.texture, &descriptor);
         };
-        cube.view = view(WGPUTextureViewDimension_Cube, 0, levels, 0, kCubeFaces);
+        cube.view =
+            view(cubes > 0 ? WGPUTextureViewDimension_CubeArray : WGPUTextureViewDimension_Cube, 0,
+                 levels, 0, layers);
         for (std::uint32_t level = 0; level < levels; ++level) {
-            cube.levels.push_back(view(WGPUTextureViewDimension_Cube, level, 1, 0, kCubeFaces));
-            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
-                cube.faces.push_back(view(WGPUTextureViewDimension_2D, level, 1, face, 1));
+            if (cubes == 0) {
+                cube.levels.push_back(view(WGPUTextureViewDimension_Cube, level, 1, 0, kCubeFaces));
+            }
+            for (std::uint32_t layer = 0; layer < layers; ++layer) {
+                cube.faces.push_back(view(WGPUTextureViewDimension_2D, level, 1, layer, 1));
             }
         }
         return cube;
@@ -2435,12 +2529,24 @@ private:
     // (0) or the filter's (1), made the first time a frame needs them.
     WGPURenderPipeline radiance_pipeline(std::size_t index) {
         WGPURenderPipeline& made = radiance_pipelines_.at(index);
-        if (made != nullptr) {
-            return made;
+        if (made == nullptr) {
+            made = cube_pipeline(index == 0, kRadianceFormat);
         }
-        const bool sky = index == 0;
+        return made;
+    }
+
+    // The filter's pipeline into a reflection probe's half floats, made the first time a capture
+    // needs it.
+    WGPURenderPipeline probe_pipeline() {
+        if (probe_pipeline_ == nullptr) {
+            probe_pipeline_ = cube_pipeline(false, kHdrFormat);
+        }
+        return probe_pipeline_;
+    }
+
+    WGPURenderPipeline cube_pipeline(bool sky, WGPUTextureFormat format) {
         WGPUColorTargetState color = WGPU_COLOR_TARGET_STATE_INIT;
-        color.format = kRadianceFormat;
+        color.format = format;
         WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
         fragment.module = sky ? module(kSkyFragmentModule, shaders::kSkyFragmentWgsl)
                               : module(kRadianceFragmentModule, shaders::kRadianceFragmentWgsl);
@@ -2455,8 +2561,7 @@ private:
         info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
         info.primitive.cullMode = WGPUCullMode_None;
         info.fragment = &fragment;
-        made = wgpuDeviceCreateRenderPipeline(device_, &info);
-        return made;
+        return wgpuDeviceCreateRenderPipeline(device_, &info);
     }
 
     // What the frame's meshes take the radiance from, made at its first mesh draw: the sampler
@@ -2467,18 +2572,7 @@ private:
             return;
         }
         radiance_prepared_ = true;
-        if (radiance_sampler_ == nullptr) {
-            WGPUSamplerDescriptor info = WGPU_SAMPLER_DESCRIPTOR_INIT;
-            info.minFilter = WGPUFilterMode_Linear;
-            info.magFilter = WGPUFilterMode_Linear;
-            info.mipmapFilter = WGPUMipmapFilterMode_Linear;
-            info.addressModeU = WGPUAddressMode_ClampToEdge;
-            info.addressModeV = WGPUAddressMode_ClampToEdge;
-            info.addressModeW = WGPUAddressMode_ClampToEdge;
-            radiance_sampler_ = wgpuDeviceCreateSampler(device_, &info);
-            // WebGPU clears new textures, so this one is never read uninitialized.
-            no_radiance_ = make_cube(1, 1);
-        }
+        prepare_cube_sampler();
         if (!radiance_used(scene)) {
             return;
         }
@@ -2498,6 +2592,163 @@ private:
         const RadianceKey key = radiance_key(scene);
         radiance_draws_ = !radiance_.key || !(*radiance_.key == key);
         radiance_.key = key;
+    }
+
+    // The sampler cubes are read through, and what meshes bind with no radiance, probes or SSAO
+    // and SSR: made once.
+    void prepare_cube_sampler() {
+        if (radiance_sampler_ != nullptr) {
+            return;
+        }
+        WGPUSamplerDescriptor info = WGPU_SAMPLER_DESCRIPTOR_INIT;
+        info.minFilter = WGPUFilterMode_Linear;
+        info.magFilter = WGPUFilterMode_Linear;
+        info.mipmapFilter = WGPUMipmapFilterMode_Linear;
+        info.addressModeU = WGPUAddressMode_ClampToEdge;
+        info.addressModeV = WGPUAddressMode_ClampToEdge;
+        info.addressModeW = WGPUAddressMode_ClampToEdge;
+        radiance_sampler_ = wgpuDeviceCreateSampler(device_, &info);
+        // WebGPU clears new textures, so these are never read uninitialized.
+        no_radiance_ = make_cube(1, 1);
+        no_probes_ = make_cube(1, 1, kHdrFormat, 1);
+        no_screen_ = make_screen(1, 1);
+    }
+
+    // The 2-layer array the mesh pass reads SSAO (layer 0) and SSR (layer 1) from, which their
+    // last passes draw into, at width x height.
+    ScreenArray make_screen(std::uint32_t width, std::uint32_t height) {
+        WGPUTextureDescriptor info = WGPU_TEXTURE_DESCRIPTOR_INIT;
+        info.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
+        info.size = {.width = width, .height = height, .depthOrArrayLayers = 2};
+        info.format = kHdrFormat;
+        ScreenArray screen{.texture = wgpuDeviceCreateTexture(device_, &info),
+                           .view = nullptr,
+                           .layers = {},
+                           .width = width,
+                           .height = height};
+        WGPUTextureViewDescriptor descriptor = WGPU_TEXTURE_VIEW_DESCRIPTOR_INIT;
+        descriptor.dimension = WGPUTextureViewDimension_2DArray;
+        descriptor.arrayLayerCount = 2;
+        screen.view = wgpuTextureCreateView(screen.texture, &descriptor);
+        for (std::uint32_t layer = 0; layer < 2; ++layer) {
+            descriptor.dimension = WGPUTextureViewDimension_2D;
+            descriptor.baseArrayLayer = layer;
+            descriptor.arrayLayerCount = 1;
+            screen.layers.at(layer) = wgpuTextureCreateView(screen.texture, &descriptor);
+        }
+        return screen;
+    }
+
+    void destroy_screen(ScreenArray& screen) {
+        if (screen.texture == nullptr) {
+            return;
+        }
+        forget_texture_groups(screen.view);
+        wgpuTextureViewRelease(screen.view);
+        for (WGPUTextureView layer : screen.layers) {
+            wgpuTextureViewRelease(layer);
+        }
+        wgpuTextureDestroy(screen.texture);
+        wgpuTextureRelease(screen.texture);
+        screen = {};
+    }
+
+    // The frame's screen array, at its size, made at begin_frame (before anything is recorded)
+    // in a frame with SSAO or SSR.
+    void prepare_screen(std::uint32_t width, std::uint32_t height) {
+        if (screen_.texture != nullptr && screen_.width == width && screen_.height == height) {
+            return;
+        }
+        destroy_screen(screen_);
+        screen_ = make_screen(width, height);
+    }
+
+    // A capture's frame: the world alone, linear, drawn into a face of the raw cube, whose
+    // mipmaps and filtered levels go into the atlas's cube after the sixth face.
+    Result<bool> begin_capture(const Frame& frame) {
+        if (frame.target != TextureId::None) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a capture frame draws into its atlas; its target is None");
+        }
+        Frame captured = frame;
+        Scene3D& scene = *captured.scene;
+        scene.method = RenderMethod::ForwardPlus;
+        scene.ssao.enabled = false;
+        scene.ssr.enabled = false;
+        scene.reflections.probes.clear();
+        scene.post = {};
+        captured.lighting = {};
+        prepare_cube_sampler();
+        const std::uint32_t size = textures_.at(scene.capture->atlas).desc.width;
+        if (probe_raw_.texture == nullptr || probe_raw_size_ != size) {
+            if (probe_raw_.texture != nullptr) {
+                forget_texture_groups(probe_raw_.view);
+                pending_cubes_.push_back(std::exchange(probe_raw_, {}));
+            }
+            probe_raw_ = make_cube(size, probe_levels(size), kHdrFormat);
+            probe_raw_size_ = size;
+        }
+        start_frame(captured, nullptr, size, size, true);
+        frame_format_ = kTextureFormat;
+        return true;
+    }
+
+    // Adds a capture's filter uniforms: for each level past the first and face, its mipmap's,
+    // then for each level and face, its filter's, linear.
+    ProbeOffsets add_probe_uniforms() {
+        ProbeOffsets at;
+        const std::uint32_t size = probe_raw_size_;
+        const std::uint32_t levels = probe_levels(size);
+        for (std::uint32_t level = 1; level < levels; ++level) {
+            auto mipmap = std::make_unique<RadianceUniforms>();
+            mipmap->params[1] = 1.0F / static_cast<float>(std::max(size >> level, 1U));
+            mipmap->options = {1.0F, 0.0F, 0.0F, 0.0F};
+            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+                mipmap->params[0] = static_cast<float>(face);
+                at.mipmaps.push_back(uniforms_.add(*mipmap));
+            }
+        }
+        for (std::uint32_t level = 0; level < levels; ++level) {
+            const auto filter =
+                std::make_unique<RadianceUniforms>(radiance_uniforms(size, levels, level));
+            filter->options = {1.0F, 0.0F, 0.0F, 0.0F};
+            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+                filter->params[0] = static_cast<float>(face);
+                at.filters.push_back(uniforms_.add(*filter));
+            }
+        }
+        return at;
+    }
+
+    // Records the raw cube's mipmaps, each texel the mean of four, then each level of each face
+    // filtered from it into the capture's cube of its atlas.
+    void encode_probe(WGPUCommandEncoder encoder, const ProbeCapture& capture,
+                      const ProbeOffsets& at) {
+        const std::uint32_t levels = probe_levels(probe_raw_size_);
+        for (std::uint32_t level = 1; level < levels; ++level) {
+            WGPUBindGroup source = pass_textures(
+                cube_texture_layout_, probe_raw_.levels.at(level - 1), radiance_sampler_);
+            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+                encode_cube_pass(encoder,
+                                 probe_raw_.faces.at((std::size_t{level} * kCubeFaces) + face),
+                                 probe_pipeline(), source, filter_uniforms_group_,
+                                 at.mipmaps.at((std::size_t{level - 1} * kCubeFaces) + face));
+            }
+            wgpuBindGroupRelease(source);
+        }
+        const CubeTexture& atlas = atlases_.at(capture.atlas);
+        const std::size_t layers = atlas.faces.size() / levels;
+        WGPUBindGroup source =
+            pass_textures(cube_texture_layout_, probe_raw_.view, radiance_sampler_);
+        for (std::uint32_t level = 0; level < levels; ++level) {
+            for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
+                const std::size_t layer = (std::size_t{capture.cube} * kCubeFaces) + face;
+                encode_cube_pass(encoder, atlas.faces.at((level * layers) + layer),
+                                 probe_pipeline(), source, filter_uniforms_group_,
+                                 at.filters.at((std::size_t{level} * kCubeFaces) + face));
+            }
+        }
+        wgpuBindGroupRelease(source);
     }
 
     // Adds the radiance passes' uniforms. The sky's matrix goes in turned, as transposed says.
@@ -2868,8 +3119,8 @@ private:
         return at;
     }
 
-    // Builds the frame's Forward+ clusters, copies them to the GPU and binds them as a group, made
-    // again when a buffer grows.
+    // Builds the frame's Forward+ clusters and copies them and the frame's reflection probes to
+    // the GPU, bound as a group made again when a buffer grows.
     void upload_clusters() {
         clusters_ = build_clusters(*frame_.scene, frame_width_, frame_height_);
         if (clusters_.lights.empty()) {
@@ -2879,15 +3130,22 @@ private:
             upload_storage(cluster_lights_, std::as_bytes(std::span(clusters_.lights)));
         const bool cells_grew =
             upload_storage(cluster_cells_, std::as_bytes(std::span(clusters_.cells)));
-        if (cluster_group_ != nullptr && !lights_grew && !cells_grew) {
+        std::vector<MeshProbeUniforms> probes = probe_uniforms(frame_.scene->reflections);
+        if (probes.empty()) {
+            probes.emplace_back();
+        }
+        const bool probes_grew = upload_storage(probe_buffer_, std::as_bytes(std::span(probes)));
+        if (cluster_group_ != nullptr && !lights_grew && !cells_grew && !probes_grew) {
             return;
         }
         if (cluster_group_ != nullptr) {
             wgpuBindGroupRelease(cluster_group_);
         }
-        std::array<WGPUBindGroupEntry, 2> entries{};
+        std::array<WGPUBindGroupEntry, 3> entries{};
         for (std::uint32_t binding = 0; binding < entries.size(); ++binding) {
-            const StorageBuffer& storage = binding == 0 ? cluster_lights_ : cluster_cells_;
+            const std::array<const StorageBuffer*, 3> buffers{&cluster_lights_, &cluster_cells_,
+                                                              &probe_buffer_};
+            const StorageBuffer& storage = *buffers.at(binding);
             entries.at(binding) = WGPU_BIND_GROUP_ENTRY_INIT;
             entries.at(binding).binding = binding;
             entries.at(binding).buffer = storage.buffer;
@@ -2994,12 +3252,14 @@ private:
             bindings.at(kMeshTextures + 2) = {radiance_used(*frame_.scene) ? radiance_.filtered.view
                                                                            : no_radiance_.view,
                                               radiance_sampler_};
-            bindings.at(kMeshTextures + 3) = {
-                ssao && !prepass ? ssao_targets_.textures.at(kSsaoFinal).view : white_.view,
-                samplers_.at(sampler_index(Filter::Nearest, false))};
-            bindings.at(kMeshTextures + 4) = {
-                ssr && !prepass ? ssr_targets_.textures.at(kSsrFinal).view : white_.view,
-                samplers_.at(sampler_index(Filter::Nearest, false))};
+            bindings.at(kMeshTextures + 3) = {(ssao || ssr) && !prepass ? screen_.view
+                                                                        : no_screen_.view,
+                                              samplers_.at(sampler_index(Filter::Nearest, false))};
+            const Reflections3D& reflections = frame_.scene->reflections;
+            bindings.at(kMeshTextures + 4) = {!reflections.probes.empty() && !prepass
+                                                  ? atlases_.at(reflections.atlas).view
+                                                  : no_probes_.view,
+                                              radiance_sampler_};
             wgpuRenderPassEncoderSetBindGroup(pass, 2, mesh_texture_group(bindings), 0, nullptr);
             const std::array<std::uint32_t, 3> fragment_offsets{at.draws[i].second, scene,
                                                                 at.shadows};
@@ -3128,16 +3388,16 @@ private:
     // The textures a frame of width x height with settings draws SSAO with: those ssao_plan
     // sizes. Made again when either changes.
     void prepare_ssao(std::uint32_t width, std::uint32_t height, const SsaoSettings& settings) {
-        if (ssao_targets_.textures.at(kSsaoFinal).texture != nullptr &&
-            ssao_targets_.width == width && ssao_targets_.height == height &&
+        if (ssao_targets_.width == width && ssao_targets_.height == height &&
             ssao_targets_.settings == settings) {
             return;
         }
         release_ssao_targets();
         const SsaoPlan plan = ssao_plan(settings, width, height);
+        // The last pass draws into the screen array instead.
         for (std::uint32_t i = 0; i < kSsaoTextures; ++i) {
             const PostSize size = plan.sizes.at(i);
-            if (size.width != 0) {
+            if (size.width != 0 && i != kSsaoFinal) {
                 ssao_targets_.textures.at(i) =
                     pass_texture(size.width, size.height, ssao_gpu_format(ssao_format(i)));
             }
@@ -3200,8 +3460,10 @@ private:
                 entries.at(slot).textureView = view;
             }
             WGPUBindGroup textures = bind_group(ssao_textures_layout_, entries);
+            // The last pass draws into the screen array's first layer, which the mesh pass reads.
+            const bool last = step.target == kSsaoFinal;
             WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
-            color.view = ssao_targets_.textures.at(step.target).view;
+            color.view = last ? screen_.layers[0] : ssao_targets_.textures.at(step.target).view;
             color.loadOp = WGPULoadOp_Clear;
             color.storeOp = WGPUStoreOp_Store;
             WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
@@ -3209,7 +3471,8 @@ private:
             descriptor.colorAttachments = &color;
             WGPURenderPassEncoder draw = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
             wgpuRenderPassEncoderSetPipeline(
-                draw, ssao_pipeline_for(ssao_gpu_format(ssao_format(step.target))));
+                draw,
+                ssao_pipeline_for(last ? kHdrFormat : ssao_gpu_format(ssao_format(step.target))));
             wgpuRenderPassEncoderSetBindGroup(draw, 2, textures, 0, nullptr);
             wgpuRenderPassEncoderSetBindGroup(draw, 3, ssao_uniforms_group_, 1, &uniforms[i]);
             wgpuRenderPassEncoderDraw(draw, 3, 1, 0, 0);
@@ -3286,12 +3549,13 @@ private:
     void prepare_ssr(TextureId target, std::uint32_t width, std::uint32_t height,
                      const SsrSettings& settings) {
         const SsrPlan plan = ssr_plan(settings, width, height);
-        if (ssr_targets_.textures.at(kSsrFinal).texture == nullptr || ssr_targets_.width != width ||
-            ssr_targets_.height != height || !(ssr_targets_.settings == settings)) {
+        if (ssr_targets_.width != width || ssr_targets_.height != height ||
+            !(ssr_targets_.settings == settings)) {
             release_ssr_targets();
+            // The last pass draws into the screen array instead.
             for (std::uint32_t i = 0; i < kSsrTextures; ++i) {
                 const PostSize size = plan.sizes.at(i);
-                if (size.width != 0) {
+                if (size.width != 0 && i != kSsrFinal) {
                     ssr_targets_.textures.at(i) =
                         pass_texture(size.width, size.height, ssr_gpu_format(ssr_format(i)),
                                      WGPUTextureUsage_CopySrc);
@@ -3416,6 +3680,7 @@ private:
             color.storeOp = WGPUStoreOp_Store;
         }
         colors[0].view = step.target == kSsrLastFrame ? history.texture.view
+                         : step.target == kSsrFinal   ? screen_.layers[1]
                                                       : ssr_targets_.textures.at(step.target).view;
         colors[1].view = ssr_targets_.textures.at(kSsrMipLevel).view;
         WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
@@ -3480,6 +3745,9 @@ private:
     // The texture the sky and meshes draw into, and what it is cleared to: for Forward+ the
     // clear color made linear.
     [[nodiscard]] WGPUTextureView world_view(const Scene3D& scene) const {
+        if (scene.capture) {
+            return probe_raw_.faces.at(scene.capture->face);
+        }
         if (scene.method == RenderMethod::ForwardPlus) {
             return forward_targets_.world.view;
         }
@@ -4215,7 +4483,19 @@ private:
     std::vector<CubeTexture> pending_cubes_;
     std::array<WGPURenderPipeline, 2> radiance_pipelines_{}; // the sky's, then the filter's
     WGPUSampler radiance_sampler_ = nullptr;
-    CubeTexture no_radiance_;        // bound when the frame's meshes have none
+    CubeTexture no_radiance_; // bound when the frame's meshes have none
+    // Reflection probes: each atlas's cubes by its texture, the raw cube captures draw into and
+    // its size, the filter's pipeline into half floats, and what meshes bind with no probes.
+    std::unordered_map<TextureId, CubeTexture> atlases_;
+    CubeTexture probe_raw_;
+    std::uint32_t probe_raw_size_ = 0;
+    WGPURenderPipeline probe_pipeline_ = nullptr;
+    CubeTexture no_probes_;
+    StorageBuffer probe_buffer_; // the frame's probes, as the mesh pass reads them
+    // SSAO's and SSR's last passes draw into the screen array, which the mesh pass reads;
+    // no_screen_ is bound in frames with neither.
+    ScreenArray screen_;
+    ScreenArray no_screen_;
     bool radiance_prepared_ = false; // at the frame's first mesh draw
     bool radiance_draws_ = false;    // whether end_frame draws the radiance again
 

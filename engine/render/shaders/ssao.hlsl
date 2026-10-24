@@ -683,7 +683,9 @@ float4 fs_main(float4 position : SV_Position) : SV_Target0 {
     } else if (pass_kind <= kBlurWide) {
         result = blur_pass(p, pass_kind);
     } else {
-        result.x = interleave_pass(p, pass_kind);
+        // The occlusion as an 8-bit texture keeps it, as Godot's, though the mesh pass reads it
+        // from a 16-bit float layer of its screen array.
+        result.x = floor(saturate(interleave_pass(p, pass_kind)) * 255.0 + 0.5) / 255.0;
     }
     return float4(result, 0.0, 1.0);
 }

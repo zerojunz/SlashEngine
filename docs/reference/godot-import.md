@@ -129,6 +129,7 @@ above the world.
 | `StaticBody3D`, `AnimatableBody3D`, `RigidBody3D`, `CharacterBody3D`, `Area3D` | `Transform3D` and the body; its `CollisionShape3D` children are its shapes |
 | `CollisionShape3D` | `Transform3D` and `CollisionShape3D`, with its shape's fields (see [3D](#3d)) |
 | `WorldEnvironment` | `WorldEnvironment`, with its environment's fields, and its sky's material (see [3D](#3d)) |
+| `ReflectionProbe` | `Transform3D` and `ReflectionProbe`, with its fields of the same names |
 | An instance of a model file (`.glb`, `.gltf`, `.fbx`, `.blend`) | `Transform3D` and `MeshInstance3D` drawing the model |
 | `CSGCombiner3D`, `CSGBox3D`, `CSGSphere3D`, `CSGCylinder3D`, `CSGTorus3D`, `CSGPolygon3D`, `CSGMesh3D` | `Transform3D` and the component of the same name, with its material (see [3D](#3d)) |
 | `Path3D`, `PathFollow3D` | `Transform3D` and the component of the same name; a path's `Curve3D` is its `points` |
@@ -568,6 +569,7 @@ on its top.
 | `rendering/camera/depth_of_field/*` | `rendering.camera.depth_of_field` |
 | `rendering/environment/ssao/quality`, `half_size`, `adaptive_target`, `blur_passes`, `fadeout_from`, `fadeout_to` | `rendering.environment.ssao` |
 | `rendering/environment/screen_space_reflection/half_size` | `rendering.environment.screen_space_reflection` |
+| `rendering/reflections/reflection_atlas/reflection_size`, `reflection_count` | `rendering.reflections.reflection_atlas`; a size that isn't a power of two from 32 to 2048 is reported |
 | `gui/theme/custom` | `gui.theme`, the theme's `.theme.json` file |
 | `audio/buses/default_bus_layout` | `audio.bus_layout`, the layout's `.bus_layout.json` file |
 | `audio/driver/mix_rate`, `audio/driver/output_latency` | `audio.mix_rate`, `audio.output_latency` |
@@ -675,7 +677,7 @@ The report lists each of these once per kind, with how many and where it was fir
 | `ShaderMaterial` on a 3D mesh or a sky | A game's own 3D shaders aren't supported yet |
 | `HeightMapShape3D` | Use an [`HTerrain`](scene-format.md#heightmap-terrains), whose height field collides |
 | The HTerrain plugin's detail layers (`HTerrainDetailLayer`), texture arrays, splat maps past the first, triplanar mapping and tile reduction | Grass and other details aren't supported yet; a terrain mixes four textures by one splat map |
-| `GPUParticles3D`, `CPUParticles3D`, `Decal`, `ReflectionProbe`, `VoxelGI`, `LightmapGI` and other 3D nodes with no SlashEngine component | Not supported yet; their entities keep their place in the tree |
+| `GPUParticles3D`, `CPUParticles3D`, `Decal`, `VoxelGI`, `LightmapGI` and other 3D nodes with no SlashEngine component | Not supported yet; their entities keep their place in the tree |
 | Audio and animation tracks | Play the sound or the other animation from gameplay code, on an event track's event |
 | Bezier handles, the capture update mode, blend times and markers | A bezier track plays cubic through its keys, a capture track as continuous, and animations switch without blending |
 | Tracks on a control's `position` or `size` | Animate its offsets instead |
