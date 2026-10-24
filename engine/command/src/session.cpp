@@ -211,6 +211,10 @@ canvas::Settings canvas_settings(const json::Value& project) {
             if (const json::Value* ssao = environment->find("ssao"); ssao != nullptr) {
                 settings.ssao = render::ssao_settings_from_json(*ssao);
             }
+            if (const json::Value* ssr = environment->find("screen_space_reflection");
+                ssr != nullptr) {
+                settings.ssr = render::ssr_settings_from_json(*ssr);
+            }
         }
     }
     const json::Value* tick_hz = project.find("tick_hz");

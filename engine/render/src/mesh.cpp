@@ -629,6 +629,9 @@ MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
         ssao.enabled && scene.method == RenderMethod::ForwardPlus) {
         out.ssao = {1.0F, ssao.light_affect, ssao.ao_channel_affect, 0.0F};
     }
+    if (scene.ssr.enabled && scene.method == RenderMethod::ForwardPlus) {
+        out.ssao[3] = 1.0F;
+    }
     const float energy = scene.ambient_energy;
     out.ambient = {srgb_to_linear_exact(scene.ambient[0]) * energy,
                    srgb_to_linear_exact(scene.ambient[1]) * energy,
@@ -1031,6 +1034,12 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         const float affect = std::max(0.0F, scene.ssao[1]) * scene.ssao[2];
         ao_direct = 1.0F + ((ao - 1.0F) * affect);
     }
+    // Its SSR (alpha below 0 for none) goes over their reflections of the sky.
+    Float4 ssr{0.0F, 0.0F, 0.0F, -1.0F};
+    if (scene.ssao[3] != 0.0F && opaque && !maps.ssr.empty()) {
+        const std::size_t at = ((std::size_t{pixel.y} * maps.ao_width) + pixel.x) * 4;
+        ssr = {maps.ssr[at], maps.ssr[at + 1], maps.ssr[at + 2], maps.ssr[at + 3]};
+    }
     const float specular = surface.surface[2];
     Float3 emitted{surface.emission[0], surface.emission[1], surface.emission[2]};
     if ((flags & kMeshEmissionTexture) != 0) {
@@ -1134,8 +1143,21 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     const float env_x = (-1.04F * a004) + r[2];
     const float env_y = (1.04F * a004) + r[3];
     const float env_g = std::min(std::max(50.0F * f0[1], metallic), 1.0F);
-    for (std::size_t i = 0; i < 3; ++i) {
-        reflected.at(i) *= occlusion * ((env_x * f0.at(i)) + (env_y * env_g));
+    if (ssr[3] < 0.0F) {
+        for (std::size_t i = 0; i < 3; ++i) {
+            reflected.at(i) *= occlusion * ((env_x * f0.at(i)) + (env_y * env_g));
+        }
+    } else {
+        // Godot's SSR: the reflection, faded out toward the trace's roughness cutoff, put over
+        // the sky's by its premultiplied alpha.
+        const float fade =
+            smoothstep(0.0F, 1.0F, 1.0F - std::clamp((roughness - 0.6F) / 0.1F, 0.0F, 1.0F));
+        const float cover = ssr[3] * fade;
+        for (std::size_t i = 0; i < 3; ++i) {
+            reflected.at(i) *= occlusion;
+            reflected.at(i) = (reflected.at(i) * (1.0F - cover)) + (ssr.at(i) * fade);
+            reflected.at(i) *= (env_x * f0.at(i)) + (env_y * env_g);
+        }
     }
 
     ambient_light = scale(mul(ambient_light, base), 1.0F - metallic);

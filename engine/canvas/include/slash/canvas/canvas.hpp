@@ -452,6 +452,8 @@ struct Settings {
     render::DepthOfFieldSettings depth_of_field{};
     // rendering.environment.ssao: screen-space ambient occlusion's quality.
     render::SsaoSettings ssao{};
+    // rendering.environment.screen_space_reflection: screen-space reflections' resolution.
+    render::SsrSettings ssr{};
 };
 void set_settings(world::World& world, const Settings& settings);
 // The settings given to the world, or the defaults.

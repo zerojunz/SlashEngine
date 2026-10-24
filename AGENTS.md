@@ -773,6 +773,17 @@ the result as Godot's scene shader does. The passes load texels and filter in co
 `run_ssao_pass`, their CPU twin, matches every device. `examples/ssao-3d` darkens a room's
 corners.
 
+SSR is Godot 4.6's Forward+ screen-space reflections: `WorldEnvironment`'s `ssr_*` fields set
+`Scene3D::ssr` (`render::Ssr3D`), and project.json's `rendering.environment.screen_space_reflection`
+its size (`render::SsrSettings`). After the same prepass, Forward+ devices run `ssr.hlsl`'s passes
+as `ssr_plan` lists them (`src/ssr.hpp`): the depth (halved at half size) and a Hi-Z pyramid, the
+trace (`ssr_trace.hlsl`, the same file with two targets) reading the frame before, the filtered
+levels and the resolve. Each level is drawn into a texture of its own and copied into one with
+mipmaps. Each target keeps its frame before at SSR's size (`ssr_last_frame`), and its first frame
+with SSR is drawn once without it. `mesh.hlsl` puts the result over the sky's reflections as
+Godot's scene shader does. `run_ssr_pass` is the CPU twin. `examples/ssr-3d` reflects a room in a
+polished floor.
+
 Compatibility's post-processing: without glow or adjustments, `mesh.hlsl` tonemaps as it draws.
 With either, each device draws the meshes into an RGBA8 texture at `end_frame` and runs
 `shaders/post.hlsl`'s passes: glow's filter, three downsamples and three upsamples through four
