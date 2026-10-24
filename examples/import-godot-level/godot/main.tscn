@@ -1,0 +1,134 @@
+[gd_scene load_steps=14 format=3 uid="uid://c7fortmain01"]
+
+[ext_resource type="MeshLibrary" uid="uid://b4n2fortblk01" path="res://blocks.tres" id="1_blocks"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_tower"]
+albedo_color = Color(0.75, 0.35, 0.25, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_wall"]
+albedo_color = Color(0.85, 0.75, 0.5, 1)
+
+[sub_resource type="Curve3D" id="Curve3D_wall"]
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, 1, 0, -5, -1, 0, 0, 1, 0, 0, 3, 0, -3, 0, 0, 0, 0, 0, 0, 5, 0, -5),
+"tilts": PackedFloat32Array(0, 0, 0)
+}
+point_count = 3
+
+[sub_resource type="Curve3D" id="Curve3D_patrol"]
+closed = true
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, 2, 0.5, 2, 0, 0, 0, 0, 0, 0, 5, 0.5, 2, 0, 0, 0, 0, 0, 0, 5, 0.5, 5),
+"tilts": PackedFloat32Array(0, 0, 0)
+}
+point_count = 3
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_guard"]
+albedo_color = Color(0.2, 0.35, 0.8, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_guard"]
+material = SubResource("StandardMaterial3D_guard")
+size = Vector3(0.6, 1, 0.6)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_cart"]
+size = Vector3(1.2, 0.4, 1.8)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_cart"]
+albedo_color = Color(0.9, 0.8, 0.2, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_cart"]
+material = SubResource("StandardMaterial3D_cart")
+size = Vector3(1.2, 0.4, 1.8)
+
+[sub_resource type="NavigationMesh" id="NavigationMesh_yard"]
+vertices = PackedVector3Array(-6, 0, -6, -2, 0, -6, -2, 0, 2, -2, 0, 6, -6, 0, 6, 6, 0, 2, 6, 0, 6)
+polygons = [PackedInt32Array(0, 4, 3, 2, 1), PackedInt32Array(2, 3, 6, 5)]
+agent_radius = 0.4
+
+[node name="Fort" type="Node3D"]
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.642788, 0.766044, 0, -0.766044, 0.642788, 0, 10, 0)
+
+[node name="Camera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 10, 10)
+current = true
+
+[node name="Ground" type="GridMap" parent="."]
+mesh_library = ExtResource("1_blocks")
+cell_size = Vector3(2, 0.5, 2)
+data = {
+"cells": PackedInt32Array(-3, 65533, 0, -2, 65533, 0, -1, 65533, 0, -65536, 65533, 0, -65535, 65533, 0, -65534, 65533, 0, -3, 65534, 0, -2, 65534, 0, -1, 65534, 0, -65536, 65534, 0, -65535, 65534, 0, -65534, 65534, 0, -3, 65535, 0, -2, 65535, 0, -1, 65535, 0, -65536, 65535, 0, -65535, 65535, 0, -65534, 65535, 0, -3, 0, 1, -2, 0, 1, -1, 0, 1, -65536, 0, 1, -65535, 0, 1, -65534, 0, 1, -3, 1, 0, -2, 1, 0, -1, 1, 0, -65536, 1, 0, -65535, 1, 0, -65534, 1, 0, -3, 2, 0, -2, 2, 0, -1, 2, 0, -65536, 2, 0, -65535, 2, 0, -65534, 2, 0)
+}
+
+[node name="Tower" type="CSGCombiner3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0, -3)
+use_collision = true
+
+[node name="Body" type="CSGCylinder3D" parent="Tower"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0)
+radius = 1.2
+height = 4.0
+sides = 16
+material = SubResource("StandardMaterial3D_tower")
+
+[node name="Door" type="CSGBox3D" parent="Tower"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 1.2)
+operation = 2
+size = Vector3(0.8, 1.6, 1)
+
+[node name="WallLine" type="Path3D" parent="."]
+curve = SubResource("Curve3D_wall")
+
+[node name="Wall" type="CSGPolygon3D" parent="."]
+polygon = PackedVector2Array(0, 0, 0, 1, 0.3, 1, 0.3, 0)
+mode = 2
+path_node = NodePath("../WallLine")
+path_interval = 0.5
+material = SubResource("StandardMaterial3D_wall")
+
+[node name="Patrol" type="Path3D" parent="."]
+curve = SubResource("Curve3D_patrol")
+
+[node name="Guard" type="PathFollow3D" parent="Patrol"]
+progress = 3.0
+
+[node name="Body" type="MeshInstance3D" parent="Patrol/Guard"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+mesh = SubResource("BoxMesh_guard")
+
+[node name="Cart" type="VehicleBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+
+[node name="Shape" type="CollisionShape3D" parent="Cart"]
+shape = SubResource("BoxShape3D_cart")
+
+[node name="Box" type="MeshInstance3D" parent="Cart"]
+mesh = SubResource("BoxMesh_cart")
+
+[node name="FrontLeft" type="VehicleWheel3D" parent="Cart"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.7, -0.2, 0.8)
+use_as_steering = true
+wheel_radius = 0.3
+suspension_stiffness = 40.0
+
+[node name="FrontRight" type="VehicleWheel3D" parent="Cart"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.7, -0.2, 0.8)
+use_as_steering = true
+wheel_radius = 0.3
+suspension_stiffness = 40.0
+
+[node name="BackLeft" type="VehicleWheel3D" parent="Cart"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.7, -0.2, -0.8)
+use_as_traction = true
+wheel_radius = 0.3
+suspension_stiffness = 40.0
+
+[node name="BackRight" type="VehicleWheel3D" parent="Cart"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.7, -0.2, -0.8)
+use_as_traction = true
+wheel_radius = 0.3
+suspension_stiffness = 40.0
+
+[node name="Yard" type="NavigationRegion3D" parent="."]
+navigation_mesh = SubResource("NavigationMesh_yard")

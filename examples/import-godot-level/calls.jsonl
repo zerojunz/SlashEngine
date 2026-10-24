@@ -1,0 +1,9 @@
+{"jsonrpc":"2.0","id":1,"method":"project.import","params":{"source":"godot"}}
+{"jsonrpc":"2.0","id":2,"method":"scene.open","params":{"path":"godot/main.scene.json"}}
+{"jsonrpc":"2.0","id":3,"method":"gridmap.get","params":{"id":"ground"}}
+{"jsonrpc":"2.0","id":4,"method":"csg.get","params":{"id":"tower"}}
+{"jsonrpc":"2.0","id":5,"method":"navigation.path","params":{"from":[-4,0,-5],"to":[5,0,4]}}
+{"jsonrpc":"2.0","id":6,"method":"step","params":{"ticks":240}}
+{"jsonrpc":"2.0","id":7,"method":"world.query","params":{"with":["VehicleBody3D"],"include":["Transform3D","RigidBody3D"],"omit_defaults":true}}
+{"jsonrpc":"2.0","id":8,"method":"entity.get","params":{"id":"guard","components":["Transform3D"]}}
+{"jsonrpc":"2.0","id":9,"method":"frame.capture","params":{"points":[[63,30],[64,38],[71,50],[105,47],[95,62],[91,34],[80,43],[5,5]]}}
