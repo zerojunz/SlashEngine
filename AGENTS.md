@@ -998,6 +998,16 @@ obstructions in bakes (`SourceGeometry3D::projected_obstructions`), marked with
 area or, with `carve_navigation_mesh`, after. `examples/navigation-avoidance` has walkers
 weaving through a plaza.
 
+Tile navigation follows Godot's `TileMapLayer` and `TileData`: a tile set's
+`navigation_layers` and tiles' `navigation` outlines (`canvas::tile_navigation` turns them with
+the cell). `gather_tile_regions` in `src/navigation.cpp` makes a region of each cell with
+polygons on each navigation layer (`_navigation_update_cell`), bakes each tile's outlines once
+per turn and keeps them while a layer uses the set, and keeps each layer's regions and tile set
+handle until its cells, tile set or transform change, so an unchanged map isn't rebuilt. Bakes
+take a layer's outlines as traversable and its collision polygons as obstructions
+(`add_tiles` in `src/sources.cpp`, as `navmesh_parse_source_geometry`). `examples/navigation-tiles`
+sends a mouse through a maze of tiles.
+
 ## Particles
 
 `CPUParticles2D` is Godot's, with Godot's field names and angles in degrees. The

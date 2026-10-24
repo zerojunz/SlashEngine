@@ -1,0 +1,82 @@
+{
+  "format": 1,
+  "navigation_layers": [
+    {},
+    {
+      "layers": 2
+    }
+  ],
+  "physics_layers": [
+    {}
+  ],
+  "sources": {
+    "maze": {
+      "texture": "maze.png",
+      "tiles": {
+        "0,0": {
+          "name": "floor",
+          "navigation": [
+            {
+              "points": [
+                [-8, -8],
+                [8, -8],
+                [8, 8],
+                [-8, 8]
+              ]
+            }
+          ]
+        },
+        "1,0": {
+          "collision": [
+            {
+              "points": [
+                [-8, -8],
+                [8, -8],
+                [8, 8],
+                [-8, 8]
+              ]
+            }
+          ],
+          "name": "wall"
+        },
+        "2,0": {
+          "name": "water",
+          "navigation": [
+            {
+              "layer": 1,
+              "points": [
+                [-8, -8],
+                [8, -8],
+                [8, 8],
+                [-8, 8]
+              ]
+            }
+          ]
+        },
+        "3,0": {
+          "collision": [
+            {
+              "points": [
+                [0, -5],
+                [5, 0],
+                [0, 5],
+                [-5, 0]
+              ]
+            }
+          ],
+          "name": "rock",
+          "navigation": [
+            {
+              "points": [
+                [-8, -8],
+                [8, -8],
+                [8, 8],
+                [-8, 8]
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}
