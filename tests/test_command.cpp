@@ -2006,10 +2006,20 @@ TEST_CASE("terrain commands make, paint and read an HTerrain's maps") {
     // A brush raises the ground by amount at its middle, its radius in the terrain's space; rays
     // hit the new ground.
     CHECK(height_at("[64, 64]") == doctest::Approx(14.272).epsilon(1.0e-4));
+    CHECK(engine.ok("physics.raycast", R"({"from": [164, 50, 64], "to": [164, -50, 64]})")
+              .find("hit")
+              ->find("point")
+              ->as_array()[1]
+              .as_double() == doctest::Approx(14.272).epsilon(1.0e-3));
+    const std::filesystem::path heightmap = root + "/terrain/land.height.png";
+    const auto generated = std::filesystem::last_write_time(heightmap);
     CHECK(engine.ok("terrain.brush", R"({"id": "land", "mode": "raise", "points": [[64, 64]],
                                          "amount": 2})") ==
           parse(R"({"id": "land", "changed": 45, "files": ["terrain/land.height.png"],
                     "heights": [3.4562, 22.3409]})"));
+    // The new heightmap is the old one's size; written within one tick of the file system's
+    // clock, it would keep its stamp too, and the session still reloads it.
+    std::filesystem::last_write_time(heightmap, generated);
     CHECK(height_at("[64, 64]") == doctest::Approx(16.272).epsilon(1.0e-4));
     const json::Value hit =
         engine.ok("physics.raycast", R"({"from": [164, 50, 64], "to": [164, -50, 64]})");

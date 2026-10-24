@@ -665,6 +665,13 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
       imported through the user's own Unreal Editor: its project files are a closed binary
       format, so the editor exports the levels and assets and the importer converts what it
       writes. GameMaker and RPG Maker projects come after
+  - [x] Godot's 3D nodes: transforms, primitive meshes and materials, instanced and mesh model
+        files, cameras, lights, `WorldEnvironment` and skies, 3D bodies and collision shapes, 3D
+        sound and the 3D project settings
+  - [ ] Godot's CSG shapes, paths, `GridMap`, joints, vehicles, navigation, `AnimationTree`,
+        skeletons, HTerrain data and 3D animation tracks
+  - [ ] Unity 3D scenes
+  - [ ] Unreal Engine levels and assets through the user's own Unreal Editor
 - [ ] 3D in the asset library and generator ([design](design.md#3d-assets))
   - [ ] Parametric models: agents write a `.model.json` recipe of shapes, CSG on Manifold,
         extrusions, lathes, bevels and arrays, and the engine builds the mesh; the library keeps
