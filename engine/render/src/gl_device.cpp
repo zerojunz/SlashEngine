@@ -91,6 +91,7 @@ constexpr GLenum kPackAlignment = 0x0D05;
 constexpr GLenum kMaxTextureSize = 0x0D33;
 constexpr GLenum kTexture2D = 0x0DE1;
 constexpr GLenum kUnsignedByte = 0x1401;
+constexpr GLenum kHalfFloat = 0x140B;
 constexpr GLenum kUnsignedInt = 0x1405;
 constexpr GLenum kFloat = 0x1406;
 constexpr GLenum kDepth = 0x1801;
@@ -108,6 +109,7 @@ constexpr GLenum kTextureWrapT = 0x2803;
 constexpr GLenum kRepeat = 0x2901;
 constexpr GLbitfield kColorBufferBit = 0x4000;
 constexpr GLenum kRgba8 = 0x8058;
+constexpr GLenum kRgba16F = 0x881A;
 constexpr GLenum kRgb10A2 = 0x8059;
 constexpr GLenum kTextureWrapR = 0x8072;
 constexpr GLenum kTextureBaseLevel = 0x813C;
@@ -713,7 +715,7 @@ public:
                                             static_cast<GLsizei>(texels.size()), texels.data());
         } else {
             gl_.tex_sub_image_2d(gl::kTexture2D, 0, 0, 0, width, height, gl::kRgba,
-                                 gl::kUnsignedByte, texels.data());
+                                 texel_type(it->second.stored), texels.data());
         }
         return check_errors("updating a texture");
     }
@@ -829,7 +831,9 @@ public:
                                   offset(offsetof(Vertex3D, uv)));
         gl_.vertex_attrib_pointer(4, 4, gl::kUnsignedByte, gl::kTrue, kStride,
                                   offset(offsetof(Vertex3D, rgba)));
-        for (GLuint location = 0; location < 5; ++location) {
+        gl_.vertex_attrib_pointer(5, 2, gl::kFloat, gl::kFalse, kStride,
+                                  offset(offsetof(Vertex3D, uv2)));
+        for (GLuint location = 0; location < 6; ++location) {
             gl_.enable_vertex_attrib_array(location);
         }
         // The vertex array keeps the index buffer bound to it.
@@ -1235,6 +1239,11 @@ private:
         TextureFormat stored = TextureFormat::Rgba8;
     };
 
+    // The type of an uncompressed format's channels.
+    static GLenum texel_type(TextureFormat format) {
+        return format == TextureFormat::Rgba16F ? gl::kHalfFloat : gl::kUnsignedByte;
+    }
+
     static GLenum gl_format(TextureFormat format) {
         return format == TextureFormat::Bc7 ? gl::kCompressedRgbaBptcUnorm
                                             : gl::kCompressedRgbaAstc4x4;
@@ -1405,8 +1414,10 @@ private:
             gl_.compressed_tex_image_2d(gl::kTexture2D, 0, gl_format(desc.format), width, height, 0,
                                         static_cast<GLsizei>(texels.size()), texels.data());
         } else {
-            gl_.tex_image_2d(gl::kTexture2D, 0, static_cast<GLint>(gl::kRgba8), width, height, 0,
-                             gl::kRgba, gl::kUnsignedByte, texels.data());
+            const GLenum internal =
+                desc.format == TextureFormat::Rgba16F ? gl::kRgba16F : gl::kRgba8;
+            gl_.tex_image_2d(gl::kTexture2D, 0, static_cast<GLint>(internal), width, height, 0,
+                             gl::kRgba, texel_type(desc.format), texels.data());
         }
         if (auto checked = check_errors("creating a " + std::to_string(desc.width) + "x" +
                                         std::to_string(desc.height) + " texture");
@@ -2419,7 +2430,7 @@ private:
     std::string version_;
     GLint max_texture_size_ = 0;
     // Which formats the context samples, by TextureFormat.
-    std::array<bool, 3> sampled_{true, false, false};
+    std::array<bool, 4> sampled_{true, false, false, true};
     GLint uniform_alignment_ = 256;
     std::array<GLuint, 2> programs_{}; // by ShaderKind
     std::array<GLuint, 4> samplers_{}; // by sampler_index

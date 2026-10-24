@@ -2,6 +2,7 @@ add_library(slash_command
     src/builtin.cpp
     src/command.cpp
     src/cpp_outline.cpp
+    src/lightmap.cpp
     src/live.cpp
     src/mcp.cpp
     src/navigation.cpp

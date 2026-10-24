@@ -6,6 +6,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -13,6 +14,7 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace slash::render {
@@ -192,6 +194,196 @@ Result<std::string> encode_gray16_png(const Gray16& image) {
     }
     std::string bytes(reinterpret_cast<const char*>(png), static_cast<std::size_t>(size));
     std::free(png); // NOLINT(cppcoreguidelines-no-malloc): the C encoder allocates with malloc
+    return bytes;
+}
+
+namespace {
+
+// Greg Ward's float2rgbe: the largest component's exponent, shared, and each mantissa in 8 bits.
+std::array<std::uint8_t, 4> to_rgbe(float red, float green, float blue) {
+    const auto clean = [](float v) {
+        constexpr float kLargest = 1e38F;
+        return std::isnan(v) || v < 0.0F ? 0.0F : std::min(v, kLargest);
+    };
+    const double r = clean(red);
+    const double g = clean(green);
+    const double b = clean(blue);
+    const double largest = std::max({r, g, b});
+    if (largest < 1e-32) {
+        return {0, 0, 0, 0};
+    }
+    int exponent = 0;
+    const double scale = std::frexp(largest, &exponent) * 256.0 / largest;
+    return {static_cast<std::uint8_t>(r * scale), static_cast<std::uint8_t>(g * scale),
+            static_cast<std::uint8_t>(b * scale), static_cast<std::uint8_t>(exponent + 128)};
+}
+
+} // namespace
+
+Result<HdrImage> decode_hdr(std::string_view bytes) {
+    std::size_t at = 0;
+    const auto line = [&]() -> std::optional<std::string_view> {
+        const std::size_t end = bytes.find('\n', at);
+        if (end == std::string_view::npos) {
+            return std::nullopt;
+        }
+        const std::string_view text = bytes.substr(at, end - at);
+        at = end + 1;
+        return text;
+    };
+    const auto bad = [](const std::string& why) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "not a Radiance HDR file it can read: " + why);
+    };
+    const auto magic = line();
+    if (!magic || (*magic != "#?RADIANCE" && *magic != "#?RGBE")) {
+        return bad("it doesn't start with #?RADIANCE");
+    }
+    while (true) {
+        const auto header = line();
+        if (!header) {
+            return bad("its header doesn't end");
+        }
+        if (header->empty()) {
+            break;
+        }
+        if (header->starts_with("FORMAT=") && *header != "FORMAT=32-bit_rle_rgbe") {
+            return bad("its pixels are " + std::string(header->substr(7)) +
+                       ", not 32-bit_rle_rgbe");
+        }
+    }
+    const auto size = line();
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    {
+        // "-Y height +X width": rows from the top, pixels from the left.
+        std::string_view text = size.value_or("");
+        const auto number = [&text](std::string_view before) -> std::uint64_t {
+            if (!text.starts_with(before)) {
+                return 0;
+            }
+            text.remove_prefix(before.size());
+            std::uint64_t value = 0;
+            std::size_t digits = 0;
+            while (digits < text.size() && digits < 6 && text[digits] >= '0' &&
+                   text[digits] <= '9') {
+                value = (value * 10) + static_cast<std::uint64_t>(text[digits] - '0');
+                ++digits;
+            }
+            text.remove_prefix(digits);
+            return digits == 0 ? 0 : value;
+        };
+        const std::uint64_t h = number("-Y ");
+        const std::uint64_t w = number(" +X ");
+        if (w == 0 || h == 0 || !text.empty()) {
+            return bad("its size isn't \"-Y height +X width\"");
+        }
+        if (w > detail::kMaxTextureSize || h > detail::kMaxTextureSize) {
+            return bad("images are at most " + std::to_string(detail::kMaxTextureSize) +
+                       " pixels on each side");
+        }
+        width = static_cast<std::uint32_t>(w);
+        height = static_cast<std::uint32_t>(h);
+    }
+    HdrImage image{.width = width, .height = height, .rgb = {}};
+    image.rgb.resize(std::size_t{width} * height * 3);
+    std::vector<std::uint8_t> row(std::size_t{width} * 4);
+    const auto byte = [&]() -> std::optional<std::uint8_t> {
+        if (at >= bytes.size()) {
+            return std::nullopt;
+        }
+        return static_cast<std::uint8_t>(bytes[at++]);
+    };
+    for (std::uint32_t y = 0; y < height; ++y) {
+        const bool rle = width >= 8 && width < 32768 && at + 4 <= bytes.size() && bytes[at] == 2 &&
+                         bytes[at + 1] == 2 && static_cast<std::uint8_t>(bytes[at + 2]) < 128;
+        if (rle) {
+            const std::uint32_t length =
+                (static_cast<std::uint32_t>(static_cast<std::uint8_t>(bytes[at + 2])) << 8U) |
+                static_cast<std::uint8_t>(bytes[at + 3]);
+            if (length != width) {
+                return bad("a scanline is " + std::to_string(length) + " pixels, not " +
+                           std::to_string(width));
+            }
+            at += 4;
+            // Each component's run of the scanline in turn.
+            for (std::size_t channel = 0; channel < 4; ++channel) {
+                std::size_t x = 0;
+                while (x < width) {
+                    const auto count = byte();
+                    if (!count || *count == 0) {
+                        return bad("it ends early");
+                    }
+                    if (*count > 128) {
+                        const std::size_t run = *count - 128U;
+                        const auto value = byte();
+                        if (!value || x + run > width) {
+                            return bad("a run is past the end of its scanline");
+                        }
+                        for (std::size_t i = 0; i < run; ++i) {
+                            row[((x + i) * 4) + channel] = *value;
+                        }
+                        x += run;
+                    } else {
+                        if (x + *count > width) {
+                            return bad("a run is past the end of its scanline");
+                        }
+                        for (std::size_t i = 0; i < *count; ++i) {
+                            const auto value = byte();
+                            if (!value) {
+                                return bad("it ends early");
+                            }
+                            row[((x + i) * 4) + channel] = *value;
+                        }
+                        x += *count;
+                    }
+                }
+            }
+        } else {
+            if (at + row.size() > bytes.size()) {
+                return bad("it ends early");
+            }
+            for (std::size_t i = 0; i < row.size(); ++i) {
+                row[i] = static_cast<std::uint8_t>(bytes[at + i]);
+            }
+            at += row.size();
+        }
+        for (std::size_t x = 0; x < width; ++x) {
+            const std::uint8_t* rgbe = &row[x * 4];
+            float* out = &image.rgb[((std::size_t{y} * width) + x) * 3];
+            if (rgbe[3] == 0) {
+                out[0] = out[1] = out[2] = 0.0F;
+                continue;
+            }
+            const auto scale =
+                static_cast<float>(std::ldexp(1.0, static_cast<int>(rgbe[3]) - (128 + 8)));
+            out[0] = static_cast<float>(rgbe[0]) * scale;
+            out[1] = static_cast<float>(rgbe[1]) * scale;
+            out[2] = static_cast<float>(rgbe[2]) * scale;
+        }
+    }
+    return image;
+}
+
+Result<std::string> encode_hdr(const HdrImage& image) {
+    if (image.width == 0 || image.height == 0 || image.width > detail::kMaxTextureSize ||
+        image.height > detail::kMaxTextureSize ||
+        image.rgb.size() != std::size_t{image.width} * image.height * 3) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "the image needs width * height * 3 values, at most " +
+                              std::to_string(detail::kMaxTextureSize) + " on each side");
+    }
+    std::string bytes = "#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y " + std::to_string(image.height) +
+                        " +X " + std::to_string(image.width) + "\n";
+    const std::size_t header = bytes.size();
+    bytes.resize(header + (std::size_t{image.width} * image.height * 4));
+    for (std::size_t i = 0; i < std::size_t{image.width} * image.height; ++i) {
+        const std::array<std::uint8_t, 4> rgbe =
+            to_rgbe(image.rgb[i * 3], image.rgb[(i * 3) + 1], image.rgb[(i * 3) + 2]);
+        for (std::size_t c = 0; c < 4; ++c) {
+            bytes[header + (i * 4) + c] = static_cast<char>(rgbe[c]);
+        }
+    }
     return bytes;
 }
 

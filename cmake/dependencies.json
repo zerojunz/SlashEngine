@@ -266,6 +266,13 @@
       "repository": "https://gitlab.freedesktop.org/wayland/wayland.git",
       "tag": "1.18.0"
     },
+    "xatlas": {
+      "license": "MIT",
+      "license_file": "LICENSE",
+      "license_sha256": "2c16d5b1c2808277fe975b4f70f0fd9afc9b3bcf04e6c676665a82cb2d5579e3",
+      "repository": "https://github.com/jpcy/xatlas.git",
+      "tag": "f700c7790aaa030e794b52ba7791a05c085faf0c"
+    },
     "yyjson": {
       "license": "MIT",
       "license_file": "LICENSE",

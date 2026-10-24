@@ -17,6 +17,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -69,6 +71,10 @@ Result<void> check_texture_desc(const TextureDesc& desc) {
                               "only RGBA8 textures are render targets, not " + name + " ones");
         }
     }
+    if (desc.format == TextureFormat::Rgba16F && desc.render_target) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "only RGBA8 textures are render targets, not rgba16f ones");
+    }
     return {};
 }
 
@@ -86,9 +92,12 @@ Result<void> check_pixels(const TextureDesc& desc, std::span<const std::uint8_t>
         texels.size() == expected) {
         return {};
     }
-    const std::string what = is_compressed(desc.format)
-                                 ? std::string(texture_format_name(desc.format)) + " blocks"
-                                 : "RGBA";
+    std::string what = "RGBA";
+    if (is_compressed(desc.format)) {
+        what = std::string(texture_format_name(desc.format)) + " blocks";
+    } else if (desc.format == TextureFormat::Rgba16F) {
+        what = "half-float RGBA";
+    }
     return make_error(ErrorCode::InvalidArgument,
                       "a " + std::to_string(desc.width) + "x" + std::to_string(desc.height) +
                           " texture takes " + std::to_string(expected) + " bytes of " + what +
@@ -403,6 +412,66 @@ std::array<std::uint8_t, 4> to_rgba8(const Color& color) {
 }
 
 } // namespace detail
+
+std::uint16_t float_to_half(float value) noexcept {
+    std::uint32_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    const auto sign = static_cast<std::uint16_t>((bits >> 16U) & 0x8000U);
+    const std::uint32_t exponent = (bits >> 23U) & 0xFFU;
+    std::uint32_t mantissa = bits & 0x7FFFFFU;
+    if (exponent == 0xFFU) {
+        // Infinity, or NaN with a mantissa bit kept.
+        return static_cast<std::uint16_t>(sign | 0x7C00U | (mantissa != 0 ? 0x200U : 0U));
+    }
+    const int rebiased = static_cast<int>(exponent) - 127 + 15;
+    if (rebiased >= 31) {
+        return static_cast<std::uint16_t>(sign | 0x7C00U);
+    }
+    if (rebiased <= 0) {
+        // A subnormal half, or zero: the mantissa with its leading 1, shifted into place.
+        if (rebiased < -10) {
+            return sign;
+        }
+        mantissa |= 0x800000U;
+        const auto shift = static_cast<std::uint32_t>(14 - rebiased);
+        std::uint32_t half = mantissa >> shift;
+        const std::uint32_t rest = mantissa & ((1U << shift) - 1U);
+        const std::uint32_t halfway = 1U << (shift - 1U);
+        if (rest > halfway || (rest == halfway && (half & 1U) != 0)) {
+            ++half;
+        }
+        return static_cast<std::uint16_t>(sign | half);
+    }
+    std::uint32_t half = (static_cast<std::uint32_t>(rebiased) << 10U) | (mantissa >> 13U);
+    const std::uint32_t rest = mantissa & 0x1FFFU;
+    if (rest > 0x1000U || (rest == 0x1000U && (half & 1U) != 0)) {
+        ++half; // may carry into the exponent, up to infinity, as it should
+    }
+    return static_cast<std::uint16_t>(sign | half);
+}
+
+float half_to_float(std::uint16_t bits) noexcept {
+    const std::uint32_t sign = static_cast<std::uint32_t>(bits & 0x8000U) << 16U;
+    std::uint32_t exponent = (bits >> 10U) & 0x1FU;
+    std::uint32_t mantissa = bits & 0x3FFU;
+    std::uint32_t out = sign;
+    if (exponent == 0x1FU) {
+        out |= 0x7F800000U | (mantissa << 13U);
+    } else if (exponent != 0) {
+        out |= ((exponent + 127U - 15U) << 23U) | (mantissa << 13U);
+    } else if (mantissa != 0) {
+        // A subnormal half is a normal float: shift its mantissa up to the leading 1.
+        exponent = 127U - 15U + 1U;
+        while ((mantissa & 0x400U) == 0) {
+            mantissa <<= 1U;
+            --exponent;
+        }
+        out |= (exponent << 23U) | ((mantissa & 0x3FFU) << 13U);
+    }
+    float value = 0.0F;
+    std::memcpy(&value, &out, sizeof(value));
+    return value;
+}
 
 namespace {
 

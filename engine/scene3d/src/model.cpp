@@ -7,6 +7,7 @@
 #include "slash/render/image.hpp"
 #include "slash/scene3d/blend.hpp"
 #include "slash/scene3d/gridmap.hpp"
+#include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/scene3d/terrain.hpp"
 
@@ -971,6 +972,7 @@ void add_asset_types(asset::Assets& assets) {
         model_bytes);
     add_mesh_library_type(assets);
     add_heightmap_type(assets);
+    add_lightmap_types(assets);
 }
 
 } // namespace slash::scene3d

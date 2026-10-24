@@ -519,6 +519,7 @@ MeshInstanceUniforms mesh_instance_uniforms(const Mat4& transform, const Materia
     out.normal_model[15] = 1.0F;
     out.uv1 = {material.uv1_scale[0], material.uv1_scale[1], material.uv1_offset[0],
                material.uv1_offset[1]};
+    out.lightmap_uv = material.lightmap.uv_rect;
     return out;
 }
 
@@ -530,6 +531,7 @@ std::array<MaterialTexture, kMeshTextures> mesh_texture_slots(const Material3D& 
         slots[2] = material.roughness_texture;
         slots[3] = material.emission_texture;
         slots[4] = material.normal_texture;
+        slots[10] = {.texture = material.lightmap.texture, .repeat = false};
         return slots;
     }
     const TerrainShading& terrain = material.terrain;
@@ -584,6 +586,11 @@ MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material, std::uint3
     }
     if (material.disable_fog) {
         flags |= kMeshDisableFog;
+    }
+    if (material.lightmap.texture != TextureId::None && !material.terrain.enabled) {
+        flags |= kMeshLightmap;
+        out.lightmap = {material.lightmap.exposure, material.lightmap.bicubic ? 1.0F : 0.0F, 0.0F,
+                        0.0F};
     }
     float threshold = material.alpha_scissor_threshold;
     std::uint32_t terrain = 0;
@@ -697,7 +704,7 @@ MeshLightUniforms mesh_light_uniforms(const Light3D& light, int shadow_slot) {
     const Vec2 cone = slash::cos_sin(light.spot_angle * (kPi / 180.0F));
     packed.params = {light.attenuation, cone.x, 1.0F / light.spot_attenuation,
                      static_cast<float>(light.cull_mask & kRenderLayers)};
-    packed.shadow = {static_cast<float>(shadow_slot), 0.0F, 0.0F, 0.0F};
+    packed.shadow = {static_cast<float>(shadow_slot), light.baked ? 1.0F : 0.0F, 0.0F, 0.0F};
     return packed;
 }
 
@@ -860,7 +867,88 @@ MeshCorner mesh_vertex(const MeshCameraUniforms& camera, const MeshInstanceUnifo
     out.color = {
         static_cast<float>(vertex.rgba[0]) / kByte, static_cast<float>(vertex.rgba[1]) / kByte,
         static_cast<float>(vertex.rgba[2]) / kByte, static_cast<float>(vertex.rgba[3]) / kByte};
+    out.uv2 = {(vertex.uv2[0] * instance.lightmap_uv[2]) + instance.lightmap_uv[0],
+               (vertex.uv2[1] * instance.lightmap_uv[3]) + instance.lightmap_uv[1]};
     return out;
+}
+
+Float4 sample_linear(const FloatImage& image, std::array<float, 2> uv) {
+    if (image.width == 0 || image.height == 0 ||
+        image.rgba.size() != std::size_t{image.width} * image.height * 4) {
+        return {1.0F, 1.0F, 1.0F, 1.0F};
+    }
+    const auto texel = [&](float x, float y) {
+        const auto column =
+            static_cast<std::size_t>(std::clamp(x, 0.0F, static_cast<float>(image.width - 1)));
+        const auto row =
+            static_cast<std::size_t>(std::clamp(y, 0.0F, static_cast<float>(image.height - 1)));
+        const std::size_t at = ((row * image.width) + column) * 4;
+        return Float4{image.rgba[at], image.rgba[at + 1], image.rgba[at + 2], image.rgba[at + 3]};
+    };
+    // Texel centers are at half-texel coordinates, as on the GPU.
+    const float x = (uv[0] * static_cast<float>(image.width)) - 0.5F;
+    const float y = (uv[1] * static_cast<float>(image.height)) - 0.5F;
+    const float x0 = std::floor(x);
+    const float y0 = std::floor(y);
+    const float tx = x - x0;
+    const float ty = y - y0;
+    const Float4 top_left = texel(x0, y0);
+    const Float4 top_right = texel(x0 + 1.0F, y0);
+    const Float4 bottom_left = texel(x0, y0 + 1.0F);
+    const Float4 bottom_right = texel(x0 + 1.0F, y0 + 1.0F);
+    Float4 color{};
+    for (std::size_t channel = 0; channel < 4; ++channel) {
+        const float top =
+            top_left.at(channel) + ((top_right.at(channel) - top_left.at(channel)) * tx);
+        const float bottom =
+            bottom_left.at(channel) + ((bottom_right.at(channel) - bottom_left.at(channel)) * tx);
+        color.at(channel) = top + ((bottom - top) * ty);
+    }
+    return color;
+}
+
+Float3 lightmap_light(const MeshSurfaceUniforms& surface, const FloatImage& image,
+                      std::array<float, 2> uv) {
+    Float3 light{};
+    if (surface.lightmap[1] != 0.0F && image.width > 0 && image.height > 0) {
+        // Godot's textureArray_bicubic: a cubic B-spline as four bilinear taps.
+        const auto w0 = [](float a) {
+            return (1.0F / 6.0F) * ((a * ((a * (-a + 3.0F)) - 3.0F)) + 1.0F);
+        };
+        const auto w1 = [](float a) {
+            return (1.0F / 6.0F) * ((a * a * ((3.0F * a) - 6.0F)) + 4.0F);
+        };
+        const auto w2 = [](float a) {
+            return (1.0F / 6.0F) * ((a * ((a * ((-3.0F * a) + 3.0F)) + 3.0F)) + 1.0F);
+        };
+        const auto w3 = [](float a) { return (1.0F / 6.0F) * (a * a * a); };
+        const std::array<float, 2> size{static_cast<float>(image.width),
+                                        static_cast<float>(image.height)};
+        std::array<float, 2> iuv{};
+        std::array<float, 2> g0{};
+        std::array<float, 2> g1{};
+        std::array<float, 2> h0{};
+        std::array<float, 2> h1{};
+        for (std::size_t axis = 0; axis < 2; ++axis) {
+            const float at = (uv.at(axis) * size.at(axis)) + 0.5F;
+            iuv.at(axis) = std::floor(at);
+            const float f = at - iuv.at(axis);
+            g0.at(axis) = w0(f) + w1(f);
+            g1.at(axis) = w2(f) + w3(f);
+            h0.at(axis) = -1.0F + (w1(f) / g0.at(axis));
+            h1.at(axis) = 1.0F + (w3(f) / g1.at(axis));
+        }
+        const auto tap = [&](float hx, float hy) {
+            return xyz(sample_linear(
+                image, {(iuv[0] + hx - 0.5F) / size[0], (iuv[1] + hy - 0.5F) / size[1]}));
+        };
+        light = add(
+            scale(add(scale(tap(h0[0], h0[1]), g0[0]), scale(tap(h1[0], h0[1]), g1[0])), g0[1]),
+            scale(add(scale(tap(h0[0], h1[1]), g0[0]), scale(tap(h1[0], h1[1]), g1[0])), g1[1]));
+    } else {
+        light = xyz(sample_linear(image, uv));
+    }
+    return scale(light, surface.lightmap[0]);
 }
 
 namespace {
@@ -1062,8 +1150,13 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         terrain ? frame_direction(pixel, ground.shape) : normalize(pixel.normal);
     LightSum light_sum;
     // add_light in shaders/mesh.hlsl.
+    const bool lightmapped = (flags & kMeshLightmap) != 0;
     const auto add_light = [&](const MeshLightUniforms& light) {
         if ((static_cast<std::uint32_t>(light.params[3]) & surface.options[2]) == 0) {
+            return;
+        }
+        // A baked light's light is in the lightmap already, as Godot skips BAKE_STATIC lights.
+        if (light.shadow[1] != 0.0F && lightmapped) {
             return;
         }
         const float type = light.direction[3];
@@ -1110,7 +1203,10 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
 
     // Light from the sky's radiance, as Godot's scene.glsl takes it: reflections by roughness
     // and ambient light by the normal, then specular occlusion and Lazarov's environment BRDF.
-    Float3 ambient_light{scene.ambient[0], scene.ambient[1], scene.ambient[2]};
+    // A lightmapped pixel's ambient light is its lightmap's, which stands in for the scene's and
+    // the probes', as Godot's USE_LIGHTMAP.
+    Float3 ambient_light =
+        lightmapped ? pixel.lightmap : Float3{scene.ambient[0], scene.ambient[1], scene.ambient[2]};
     Float3 reflected{};
     if (maps.radiance != nullptr) {
         const auto to_sky = [&](const Float3& v) {
@@ -1125,7 +1221,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
                 maps.radiance->sample(to_sky(ray), std::sqrt(roughness) * kRadianceMaxLevel);
             reflected = scale(srgb_to_linear(xyz(texel)), horizon * horizon * scene.sky[2]);
         }
-        if (scene.sky[0] != 0.0F) {
+        if (scene.sky[0] != 0.0F && !lightmapped) {
             const Float4 texel = maps.radiance->sample(to_sky(normal), kRadianceMaxLevel);
             ambient_light =
                 lerp3(ambient_light, scale(srgb_to_linear(xyz(texel)), scene.sky[2]), scene.sky[3]);
@@ -1144,7 +1240,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
                 reflected.at(i) =
                     r[3] < 1.0F ? (reflected.at(i) * (1.0F - r[3])) + r.at(i) : r.at(i);
             }
-            if (a[3] > 0.0F) {
+            if (a[3] > 0.0F && !lightmapped) {
                 ambient_light.at(i) =
                     a[3] < 1.0F ? (ambient_light.at(i) * (1.0F - a[3])) + a.at(i) : a.at(i);
             }

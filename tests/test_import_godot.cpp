@@ -1914,6 +1914,8 @@ bounce = 0.5
 transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 3, 1, -2)
 mesh = SubResource("BoxMesh_wall")
 cast_shadow = 2
+gi_mode = 2
+gi_lightmap_texel_scale = 2.0
 
 [node name="Ball" type="MeshInstance3D" parent="Wall"]
 transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 1.5, 0)
@@ -1956,6 +1958,8 @@ omni_range = 8.0
 
 [node name="Torch" type="SpotLight3D" parent="."]
 light_indirect_energy = 2.0
+light_size = 0.5
+light_bake_mode = 1
 spot_angle = 30.0
 
 [node name="Probe" type="ReflectionProbe" parent="."]
@@ -1966,6 +1970,13 @@ origin_offset = Vector3(0, -1, 0)
 box_projection = true
 ambient_mode = 2
 ambient_color = Color(0.2, 0.3, 0.4, 1)
+
+[node name="Lightmap" type="LightmapGI" parent="."]
+quality = 2
+bounces = 2
+environment_mode = 3
+environment_custom_color = Color(0.1, 0.2, 0.3, 1)
+camera_attributes = SubResource("CameraAttributesPractical_1")
 
 [node name="Environment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_1")
@@ -2046,7 +2057,7 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     // Transforms decompose as Godot's Node3D does, and Node3D children nest.
     CHECK(*entity(files, level, "level").find("Transform3D") == parse(R"({
         "children": ["wall", "rock", "blob", "cart", "camera", "sun", "lamp", "torch", "probe",
-                     "crate", "ground", "hero", "mirror", "sparks", "rig"]})"));
+                     "lightmap", "crate", "ground", "hero", "mirror", "sparks", "rig"]})"));
     CHECK(*entity(files, level, "wall").find("Transform3D") ==
           parse(R"({"position": [3.0, 1.0, -2.0], "rotation": [0.0, 1.570796, 0.0],
                     "children": ["ball"]})"));
@@ -2067,7 +2078,8 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     // Primitive meshes and their materials; a surface override beats the mesh's own material.
     const json::Value wall = entity(files, level, "wall");
     CHECK(*wall.find("BoxMesh") == parse(R"({"size": [4.0, 2.0, 0.5]})"));
-    CHECK(*wall.find("MeshInstance3D") == parse(R"({"cast_shadow": "double_sided"})"));
+    CHECK(*wall.find("MeshInstance3D") == parse(R"({"cast_shadow": "double_sided",
+        "gi_mode": "dynamic", "gi_lightmap_texel_scale": 2.0})"));
     CHECK(*wall.find("StandardMaterial3D") == parse(R"({
         "transparency": "alpha_scissor", "albedo_color": [0.8, 0.4, 0.2, 1.0],
         "albedo_texture": "godot/art/bricks.jpg", "roughness": 0.6, "texture_filter": "nearest",
@@ -2096,12 +2108,20 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
         "directional_shadow_mode": "parallel_2_splits", "sky_mode": "light_only"})"));
     CHECK(*entity(files, level, "lamp").find("OmniLight3D") ==
           parse(R"({"light_color": [1.0, 0.8, 0.6, 1.0], "omni_range": 8.0})"));
-    CHECK(*entity(files, level, "torch").find("SpotLight3D") == parse(R"({"spot_angle": 30.0})"));
+    CHECK(*entity(files, level, "torch").find("SpotLight3D") == parse(R"({
+        "light_indirect_energy": 2.0, "light_size": 0.5, "light_bake_mode": "static",
+        "spot_angle": 30.0})"));
     const json::Value probe = entity(files, level, "probe");
     CHECK(*probe.find("Transform3D") == parse(R"({"position": [0.0, 2.0, 0.0]})"));
     CHECK(*probe.find("ReflectionProbe") == parse(R"({
         "update_mode": "always", "size": [10.0, 4.0, 10.0], "origin_offset": [0.0, -1.0, 0.0],
         "box_projection": true, "ambient_mode": "color", "ambient_color": [0.2, 0.3, 0.4, 1.0]})"));
+    // A LightmapGI bakes with its own camera attributes.
+    const json::Value lightmap = entity(files, level, "lightmap");
+    CHECK(*lightmap.find("LightmapGI") == parse(R"({
+        "quality": "high", "bounces": 2, "environment_mode": "custom_color",
+        "environment_custom_color": [0.1, 0.2, 0.3, 1.0], "camera_attributes": "lightmap"})"));
+    CHECK(lightmap.find("CameraAttributesPractical") != nullptr);
     const json::Value environment = entity(files, level, "environment");
     CHECK(environment.find("Transform2D") == nullptr);
     CHECK(*environment.find("WorldEnvironment") == parse(R"({
@@ -2174,7 +2194,7 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     CHECK(unsupported(report, "CameraAttributesPractical.dof_blur_far_enabled").is_null());
     CHECK(unsupported(report, "Environment.ssao_enabled").is_null());
     CHECK(unsupported(report, "Environment.ssr_enabled").is_null());
-    CHECK(!unsupported(report, "SpotLight3D.light_indirect_energy").is_null());
+    CHECK(unsupported(report, "SpotLight3D.light_indirect_energy").is_null());
     CHECK(why("node type GPUParticles3D") == "no SlashEngine component for it yet");
     CHECK(why("node type Skeleton3D") ==
           "a skeleton a scene builds itself doesn't convert yet; one "
