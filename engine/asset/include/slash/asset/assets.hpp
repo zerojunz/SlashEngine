@@ -55,6 +55,7 @@ struct Record {
     std::uint64_t version = 1;
     std::optional<FileStamp> stamp;
     std::size_t bytes = 0;
+    bool changed = false; // mark_changed: reload on the next poll, whatever the stamp says
 };
 
 } // namespace detail
@@ -140,6 +141,10 @@ public:
     // Reloads every loaded asset whose file changed since it was read, and returns what changed,
     // watched files included. Assets with no handles left are unloaded first.
     std::vector<Change> poll();
+    // Makes the next poll() reload the file, whatever its stamp says: a file written again at
+    // the same size within one tick of the file system's clock keeps its stamp. Sessions call it
+    // for the files their commands write.
+    void mark_changed(std::string_view path);
 
     struct Info {
         std::string path;
@@ -163,6 +168,7 @@ private:
         std::string type;
         std::optional<FileStamp> stamp;
         std::uint64_t version = 1;
+        bool changed = false;
     };
 
     void add_loader(std::string name, entt::id_type id, std::vector<std::string> suffixes,
