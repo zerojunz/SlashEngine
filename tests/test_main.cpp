@@ -28,8 +28,11 @@ namespace {
 // A test case that runs this long is stuck. The watchdog names it and ends the run, so CI fails
 // with the culprit instead of waiting for the job's time limit. The first case in a run to draw
 // on Metal compiles its shaders cold, which takes a slow macOS runner over three minutes; five
-// stays under ctest's ten.
+// stays under ctest's ten. It exits with kStuckExitCode, on which tests/retry_stuck.cmake runs the
+// shard once more: a GPU driver that hangs now and then doesn't fail the run, one that hangs every
+// time still does.
 constexpr auto kTestCaseLimit = std::chrono::minutes(5);
+constexpr int kStuckExitCode = 75; // EX_TEMPFAIL
 
 class Watchdog : public doctest::IReporter {
 public:
@@ -99,7 +102,7 @@ private:
                              name_.c_str(), file_.c_str(),
                              static_cast<long long>(std::chrono::seconds(kTestCaseLimit).count()));
                 std::fflush(stderr);
-                std::_Exit(EXIT_FAILURE);
+                std::_Exit(kStuckExitCode);
             }
         }
     }
