@@ -1,4 +1,7 @@
+#include "gltf.hpp"
+
 #include "slash/animation/animation.hpp"
+#include "slash/animation/tree.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/canvas/gpu_particles.hpp"
 #include "slash/canvas/tilemap.hpp"
@@ -963,9 +966,9 @@ TEST_CASE("importing Godot tile maps, themes and bus layouts writes their SlashE
     const auto files = files_of(plan);
     CHECK(*plan.report.find("converted") ==
           parse(R"({"scenes": 2, "sprite_frames": 0, "tile_sets": 1, "themes": 1,
-                    "bus_layouts": 1, "animation_libraries": 0, "process_materials": 0,
-                    "mesh_libraries": 0, "navigation_meshes": 0, "audio_streams": 0,
-                    "input_actions": 1, "assets": 3})"));
+                    "bus_layouts": 1, "animation_libraries": 0, "animation_trees": 0,
+                    "process_materials": 0, "mesh_libraries": 0, "navigation_meshes": 0,
+                    "audio_streams": 0, "input_actions": 1, "assets": 3})"));
     const std::string level = "godot/scenes/level.scene.json";
 
     // The tile set: its terrains by set, and each tile's terrain and the terrain each side must
@@ -3144,6 +3147,467 @@ autoplay = "extra/spin"
     CHECK(
         *entity(files, house, "hero2/animation_player").find("AnimationPlayer")->find("targets") ==
         parse(R"({".": "hero2", "Sprite2D": "hero2/sprite2d"})"));
+}
+
+// A Godot scene with four AnimationTrees: one playing a model's own animations through a blend
+// tree saved as its own resource, one playing its own libraries through a state machine, and two
+// whose anim_player names nothing they can play.
+fs::path make_tree_project(const fs::path& folder) {
+    fs::remove_all(folder);
+    write(folder / "project.godot", R"(config_version=5
+
+[application]
+
+config/name="Trees"
+run/main_scene="res://hero.tscn"
+)");
+    write(folder / "models/arm.glb", slash::test::arm().glb());
+    write(folder / "trees/moves.tres",
+          R"([gd_resource type="AnimationNodeBlendTree" load_steps=14 format=3]
+
+[sub_resource type="AnimationNodeAnimation" id="lean_idle"]
+animation = &"Idle"
+
+[sub_resource type="AnimationNodeAnimation" id="lean_bend"]
+animation = &"Bend"
+play_mode = 1
+use_custom_timeline = true
+timeline_length = 2.0
+loop_mode = 2
+
+[sub_resource type="AnimationNodeBlendSpace1D" id="lean"]
+blend_point_0/node = SubResource("lean_idle")
+blend_point_0/pos = -1.0
+blend_point_1/node = SubResource("lean_bend")
+blend_point_1/pos = 1.0
+min_space = -2.0
+snap = 0.5
+value_label = "lean"
+blend_mode = 1
+
+[sub_resource type="AnimationNodeAnimation" id="reach"]
+animation = &"Bend"
+
+[sub_resource type="AnimationNodeTimeSeek" id="seek"]
+explicit_elapse = false
+
+[sub_resource type="Curve" id="ease"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="AnimationNodeTransition" id="pick"]
+xfade_time = 0.3
+xfade_curve = SubResource("ease")
+input_count = 2
+input_0/name = "rest"
+input_0/auto_advance = false
+input_0/break_loop_at_end = false
+input_0/reset = true
+input_1/name = "move"
+input_1/auto_advance = true
+input_1/break_loop_at_end = false
+input_1/reset = false
+
+[sub_resource type="AnimationNodeAnimation" id="wave"]
+animation = &"Idle"
+
+[sub_resource type="AnimationNodeAnimation" id="aim_middle"]
+animation = &"Idle"
+
+[sub_resource type="AnimationNodeAnimation" id="aim_side"]
+animation = &"Bend"
+
+[sub_resource type="AnimationNodeAnimation" id="aim_up"]
+animation = &"Missing"
+
+[sub_resource type="AnimationNodeBlendSpace2D" id="aim"]
+blend_point_0/node = SubResource("aim_middle")
+blend_point_0/pos = Vector2(0, 0)
+blend_point_1/node = SubResource("aim_side")
+blend_point_1/pos = Vector2(1, 0)
+blend_point_2/node = SubResource("aim_up")
+blend_point_2/pos = Vector2(0, 1)
+triangles = PackedInt32Array(0, 1, 2)
+auto_triangles = false
+min_space = Vector2(-1, -1)
+snap = Vector2(0.1, 0.1)
+x_label = "yaw"
+y_label = "pitch"
+
+[sub_resource type="AnimationNodeAnimation" id="spare"]
+animation = &"Bend"
+
+[sub_resource type="AnimationNodeSub2" id="sub"]
+
+[sub_resource type="AnimationNodeAdd3" id="layer"]
+filter_enabled = true
+filters = ["Armature/Skeleton3D:Lower", "Armature/Skeleton3D:Elbow"]
+
+[sub_resource type="AnimationNodeExtension" id="custom"]
+
+[resource]
+graph_offset = Vector2(0, 0)
+nodes/aim/node = SubResource("aim")
+nodes/aim/position = Vector2(200, 300)
+nodes/custom/node = SubResource("custom")
+nodes/custom/position = Vector2(0, 500)
+nodes/layer/node = SubResource("layer")
+nodes/layer/position = Vector2(600, 100)
+nodes/lean/node = SubResource("lean")
+nodes/lean/position = Vector2(200, 0)
+nodes/output/position = Vector2(800, 100)
+nodes/pick/node = SubResource("pick")
+nodes/pick/position = Vector2(400, 100)
+nodes/reach/node = SubResource("reach")
+nodes/reach/position = Vector2(0, 200)
+nodes/seek/node = SubResource("seek")
+nodes/seek/position = Vector2(200, 200)
+nodes/spare/node = SubResource("spare")
+nodes/spare/position = Vector2(200, 400)
+nodes/sub/node = SubResource("sub")
+nodes/sub/position = Vector2(400, 400)
+nodes/wave/node = SubResource("wave")
+nodes/wave/position = Vector2(400, 0)
+node_connections = [&"output", 0, &"layer", &"layer", 0, &"wave", &"layer", 1, &"pick", &"layer", 2, &"aim", &"pick", 0, &"lean", &"pick", 1, &"seek", &"seek", 0, &"reach", &"sub", 0, &"spare", &"sub", 1, &"custom"]
+)");
+    write(folder / "hero.tscn", R"tscn([gd_scene load_steps=20 format=3]
+
+[ext_resource type="PackedScene" path="res://models/arm.glb" id="1_arm"]
+[ext_resource type="AnimationNodeBlendTree" path="res://trees/moves.tres" id="2_moves"]
+
+[sub_resource type="Animation" id="Animation_glow"]
+resource_name = "glow"
+length = 1.0
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Lamp:light_energy")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 1),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [1.0, 3.0]
+}
+tracks/1/type = "method"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Lamp")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0.5),
+"transitions": PackedFloat32Array(1),
+"values": [{
+"args": [],
+"method": &"flicker"
+}]
+}
+
+[sub_resource type="Animation" id="Animation_fade"]
+resource_name = "fade"
+length = 1.0
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Lamp:light_energy")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 1),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [3.0, 0.0]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_lamp"]
+_data = {
+&"fade": SubResource("Animation_fade"),
+&"glow": SubResource("Animation_glow")
+}
+
+[sub_resource type="AnimationNodeAnimation" id="glow"]
+animation = &"glow"
+
+[sub_resource type="AnimationNodeAnimation" id="fade"]
+animation = &"fade"
+
+[sub_resource type="Curve" id="slow"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.5, 0.2), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="AnimationNodeStateMachineTransition" id="into_glow"]
+advance_mode = 2
+
+[sub_resource type="AnimationNodeStateMachineTransition" id="glow_to_fade"]
+xfade_time = 0.25
+xfade_curve = SubResource("slow")
+switch_mode = 2
+advance_mode = 2
+advance_expression = "is_dark()"
+priority = 2
+
+[sub_resource type="AnimationNodeStateMachine" id="lit"]
+state_machine_type = 1
+states/Start/position = Vector2(0, 0)
+states/glow/node = SubResource("glow")
+states/glow/position = Vector2(200, 0)
+states/fade/node = SubResource("fade")
+states/fade/position = Vector2(400, 0)
+transitions = [&"Start", &"glow", SubResource("into_glow"), &"glow", &"fade", SubResource("glow_to_fade")]
+
+[sub_resource type="AnimationNodeAnimation" id="group_fade"]
+animation = &"fade"
+
+[sub_resource type="AnimationNodeStateMachineTransition" id="into_group_fade"]
+advance_mode = 2
+
+[sub_resource type="AnimationNodeStateMachine" id="group"]
+state_machine_type = 2
+states/group_fade/node = SubResource("group_fade")
+transitions = [&"Start", &"group_fade", SubResource("into_group_fade")]
+
+[sub_resource type="AnimationNodeAnimation" id="off"]
+animation = &"missing"
+
+[sub_resource type="AnimationNodeStateMachineTransition" id="into_lit"]
+advance_mode = 2
+
+[sub_resource type="AnimationNodeStateMachineTransition" id="lit_to_group"]
+advance_mode = 2
+advance_condition = &"dark"
+
+[sub_resource type="AnimationNodeStateMachineTransition" id="lit_to_off"]
+
+[sub_resource type="AnimationNodeStateMachine" id="machine"]
+allow_transition_to_self = true
+states/Start/position = Vector2(0, 0)
+states/lit/node = SubResource("lit")
+states/group/node = SubResource("group")
+states/off/node = SubResource("off")
+transitions = [&"Start", &"lit", SubResource("into_lit"), &"lit", &"group", SubResource("lit_to_group"), &"lit", &"off", SubResource("lit_to_off")]
+
+[sub_resource type="AnimationNodeAnimation" id="flash"]
+animation = &"glow"
+
+[sub_resource type="AnimationNodeAnimation" id="dim"]
+animation = &"fade"
+
+[sub_resource type="AnimationNodeAnimation" id="spark"]
+animation = &"glow"
+
+[sub_resource type="AnimationNodeBlend2" id="gate"]
+filter_enabled = true
+filters = ["Lamp:light_energy", "Lamp", "Ghost:visible"]
+
+[sub_resource type="AnimationNodeBlend3" id="mix"]
+filter_enabled = true
+sync = true
+
+[sub_resource type="AnimationNodeBlendTree" id="glow_tree"]
+nodes/machine/node = SubResource("machine")
+nodes/mix/node = SubResource("mix")
+nodes/flash/node = SubResource("flash")
+nodes/dim/node = SubResource("dim")
+nodes/gate/node = SubResource("gate")
+nodes/spark/node = SubResource("spark")
+node_connections = [&"output", 0, &"mix", &"mix", 0, &"dim", &"mix", 1, &"gate", &"mix", 2, &"flash", &"gate", 0, &"machine", &"gate", 1, &"spark"]
+
+[sub_resource type="AnimationNodeAnimation" id="lone"]
+animation = &"Bend"
+
+[node name="Hero" type="Node3D"]
+
+[node name="Arm" parent="." instance=ExtResource("1_arm")]
+
+[node name="ArmTree" type="AnimationTree" parent="."]
+tree_root = ExtResource("2_moves")
+anim_player = NodePath("../Arm/AnimationPlayer")
+active = false
+callback_mode_process = 2
+root_motion_track = NodePath("Armature/Skeleton3D:Upper")
+root_motion_local = true
+parameters/pick/transition_request = "move"
+parameters/pick/current_state = "rest"
+parameters/lean/blend_position = 0.5
+parameters/aim/blend_position = Vector2(0.25, 0.5)
+parameters/seek/seek_request = -1.0
+parameters/layer/add_amount = 1.5
+
+[node name="Lamp" type="OmniLight3D" parent="."]
+
+[node name="GlowTree" type="AnimationTree" parent="."]
+root_node = NodePath("..")
+libraries = {
+&"": SubResource("AnimationLibrary_lamp")
+}
+tree_root = SubResource("glow_tree")
+deterministic = false
+parameters/mix/blend_amount = 0.5
+parameters/machine/conditions/dark = true
+parameters/machine/playback = null
+parameters/machine/lit/playback = null
+parameters/mix/nonsense = 1
+
+[node name="LostTree" type="AnimationTree" parent="."]
+tree_root = SubResource("lone")
+anim_player = NodePath("../Nowhere")
+
+[node name="LampTree" type="AnimationTree" parent="."]
+tree_root = SubResource("lone")
+anim_player = NodePath("../Lamp")
+)tscn");
+    return folder;
+}
+
+TEST_CASE("importing Godot AnimationTrees writes their trees and plays them where Godot's do") {
+    const fs::path project = "import_godot_trees";
+    make_tree_project(project / "godot");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    CHECK(plan.report.find("converted")->find("animation_trees")->as_int() == 2);
+    const std::string hero = "godot/hero.scene.json";
+
+    // A tree that plays a model's own animations, through the AnimationPlayer Godot's importer
+    // gives the model, goes on the entity that draws the model, whose nodes it poses. Its
+    // parameters keep what callers set and leave what the tree keeps as it plays.
+    CHECK(*entry(files, hero, "arm").find("components")->find("AnimationTree") == parse(R"({
+        "tree_root": "godot/trees/moves.animtree.json",
+        "libraries": {"": "godot/models/arm.glb"}, "active": false,
+        "root_motion_track": "Upper", "root_motion_local": true,
+        "parameters": {"aim/blend_position": [0.25, 0.5], "layer/add_amount": 1.5,
+                       "lean/blend_position": 0.5, "pick/transition_request": "move"}})"));
+    CHECK(unsupported(plan.report, "AnimationTree").find("why")->as_string() ==
+          "it plays on arm, the entity that draws the model whose animations it plays");
+    CHECK(unsupported(plan.report, "AnimationTree.callback_mode_process") != nullptr);
+    CHECK(entry(files, hero, "arm_tree").find("components") == nullptr);
+
+    // The tree saved as its own resource becomes a file beside it. Godot's importer names the
+    // model's "Idle-loop" "Idle"; the file names it as the model does. Bones in filters and the
+    // root motion track become the model's nodes.
+    const std::string moves = "godot/trees/moves.animtree.json";
+    REQUIRE(files.contains(moves));
+    const json::Value moves_root = *parse(files.at(moves)).find("root");
+    CHECK(moves_root.find("output")->as_string() == "layer");
+    const json::Value& blend_nodes = *moves_root.find("nodes");
+    std::vector<std::string> names;
+    for (const auto& [name, node] : blend_nodes.as_object()) {
+        names.push_back(name);
+    }
+    CHECK(names == std::vector<std::string>{"aim", "layer", "lean", "pick", "reach", "seek",
+                                            "spare", "wave"});
+    CHECK(*blend_nodes.find("layer") == parse(R"({"type": "Add3", "filter_enabled": true,
+        "filters": ["Lower"], "inputs": {"-add": "wave", "in": "pick", "+add": "aim"}})"));
+    CHECK(*blend_nodes.find("wave") == parse(R"({"type": "Animation", "animation": "Idle-loop"})"));
+    CHECK(*blend_nodes.find("lean") == parse(R"({"type": "BlendSpace1D", "min_space": -2.0,
+        "snap": 0.5, "value_label": "lean", "blend_mode": "discrete", "points": [
+            {"position": -1.0, "node": {"type": "Animation", "animation": "Idle-loop"}},
+            {"position": 1.0, "node": {"type": "Animation", "animation": "Bend",
+                                       "play_mode": "backward", "use_custom_timeline": true,
+                                       "timeline_length": 2.0, "loop_mode": "pingpong"}}]})"));
+    CHECK(*blend_nodes.find("pick") == parse(R"({"type": "Transition", "xfade_time": 0.3,
+        "xfade_curve": [[0.0, 0.0], [1.0, 1.0]], "inputs": [
+            {"name": "rest", "node": "lean", "auto_advance": false, "break_loop_at_end": false,
+             "reset": true},
+            {"name": "move", "node": "seek", "auto_advance": true, "break_loop_at_end": false,
+             "reset": false}]})"));
+    CHECK(*blend_nodes.find("seek") ==
+          parse(R"({"type": "TimeSeek", "explicit_elapse": false, "inputs": {"in": "reach"}})"));
+    // An animation the model lacks plays nothing in Godot; its point goes, and the triangle
+    // through it.
+    CHECK(*blend_nodes.find("aim") == parse(R"({"type": "BlendSpace2D", "min_space": [-1.0, -1.0],
+        "snap": [0.1, 0.1], "x_label": "yaw", "y_label": "pitch", "auto_triangles": false,
+        "triangles": [], "points": [
+            {"position": [0.0, 0.0], "node": {"type": "Animation", "animation": "Idle-loop"}},
+            {"position": [1.0, 0.0], "node": {"type": "Animation", "animation": "Bend"}}]})"));
+    CHECK(unsupported(plan.report, "AnimationNodeAnimation.animation").find("why")->as_string() ==
+          "the libraries have no animation \"Missing\", so it plays nothing");
+    CHECK(unsupported(plan.report, "BlendSpace2D point").find("why")->as_string() ==
+          "point 2 didn't convert");
+    CHECK(unsupported(plan.report, "BlendSpace2D triangle").find("why")->as_string() ==
+          "triangle 0 has a point that didn't convert");
+    CHECK(unsupported(plan.report, "Add3.filters").find("why")->as_string() ==
+          "no converted animation has a track for Armature/Skeleton3D:Elbow");
+    // A node type that doesn't convert takes the node with an input it fed with it.
+    CHECK(unsupported(plan.report, "AnimationTree.tree_root/custom").find("why")->as_string() ==
+          "AnimationNodeExtension doesn't convert");
+    CHECK(unsupported(plan.report, "BlendTree node").find("why")->as_string() ==
+          "sub has nothing that converted connected to its input sub, so it plays nothing");
+    CHECK(unsupported(plan.report, "Transition.xfade_curve").find("why")->as_string() ==
+          "its points are joined by straight lines rather than Godot's curve");
+
+    // A tree with libraries of its own plays them from its root node, with their targets.
+    CHECK(*entry(files, hero, "glow_tree").find("components")->find("AnimationTree") ==
+          parse(R"({"tree_root": "godot/hero_glow_tree.animtree.json",
+                    "libraries": {"": "godot/hero_animation_library_lamp.anim.json"},
+                    "targets": {"Lamp": "lamp"}, "deterministic": false,
+                    "parameters": {"machine/conditions/dark": true, "mix/blend_amount": 0.5}})"));
+    CHECK(
+        unsupported(plan.report, "AnimationTree parameter mix/nonsense").find("why")->as_string() ==
+        "the tree has no such parameter");
+    // A tree that isn't deterministic leaves the library without a RESET animation.
+    CHECK(parse(files.at("godot/hero_animation_library_lamp.anim.json"))
+              .find("animations")
+              ->find("RESET") == nullptr);
+
+    const std::string glow = "godot/hero_glow_tree.animtree.json";
+    REQUIRE(files.contains(glow));
+    const json::Value glow_nodes = *parse(files.at(glow)).find("root")->find("nodes");
+    // Filters name converted tracks: a property's value track, a node's method tracks.
+    CHECK(*glow_nodes.find("gate") == parse(R"({"type": "Blend2", "filter_enabled": true,
+        "filters": ["Lamp:OmniLight3D/light_energy", "Lamp:@flicker"],
+        "inputs": {"in": "machine", "blend": "spark"}})"));
+    CHECK(unsupported(plan.report, "Blend2.filters").find("why")->as_string() ==
+          "no converted animation has a track for Ghost:visible");
+    CHECK(*glow_nodes.find("mix") == parse(R"({"type": "Blend3", "sync": true,
+        "inputs": {"-blend": "dim", "in": "gate", "+blend": "flash"}})"));
+    CHECK(unsupported(plan.report, "Blend3.filter_enabled").find("why")->as_string() ==
+          "Blend3 has no filters, as in Godot, where they do nothing");
+    // State machines nest and group; a state whose animation is missing goes with its
+    // transitions.
+    const json::Value& machine = *glow_nodes.find("machine");
+    CHECK(machine.find("allow_transition_to_self")->as_bool());
+    CHECK(machine.find("states")->find("off") == nullptr);
+    CHECK(*machine.find("transitions") == parse(R"([
+        {"from": "Start", "to": "lit", "advance_mode": "auto"},
+        {"from": "lit", "to": "group", "advance_mode": "auto", "advance_condition": "dark"}])"));
+    CHECK(unsupported(plan.report, "StateMachine transition").find("why")->as_string() ==
+          "from lit to off, a state that didn't convert");
+    const json::Value& lit = *machine.find("states")->find("lit")->find("node");
+    CHECK(lit.find("state_machine_type")->as_string() == "nested");
+    CHECK(lit.find("transitions")->as_array().at(1) == parse(R"({"from": "glow", "to": "fade",
+        "xfade_time": 0.25, "xfade_curve": [[0.0, 0.0], [0.5, 0.2], [1.0, 1.0]],
+        "switch_mode": "at_end", "advance_mode": "auto", "priority": 2})"));
+    CHECK(unsupported(plan.report, "StateMachine transition advance_expression")
+              .find("why")
+              ->as_string() ==
+          "expressions don't convert; set a condition from gameplay code instead");
+    // A grouped state machine's Start needn't be written out, as Godot's always has one.
+    const json::Value& group = *machine.find("states")->find("group")->find("node");
+    CHECK(group == parse(R"({"type": "StateMachine", "state_machine_type": "grouped",
+        "states": {"group_fade": {"node": {"type": "Animation", "animation": "fade"}}},
+        "transitions": [{"from": "Start", "to": "group_fade", "advance_mode": "auto"}]})"));
+
+    // Trees whose anim_player names nothing they can play don't convert.
+    const json::Value lost = unsupported(plan.report, "AnimationTree.anim_player");
+    CHECK(lost.find("count")->as_int() == 2);
+    CHECK(lost.find("why")->as_string() == "node path ../Nowhere names no node in the scene");
+    CHECK(entry(files, hero, "lost_tree").find("components") == nullptr);
+    CHECK(entry(files, hero, "lamp_tree").find("components") == nullptr);
+
+    // What converted checks out as a scene's trees do.
+    const slash::world::FileReader reader =
+        [&](std::string_view path) -> slash::Result<std::string> {
+        if (const auto it = files.find(std::string(path)); it != files.end()) {
+            return it->second;
+        }
+        return slash::platform::read_file((project / path).string());
+    };
+    for (const json::ValidationError& error :
+         slash::animation::check_trees(parse(files.at(hero)), reader)) {
+        FAIL_CHECK(error.path << ": " << error.message);
+    }
 }
 
 TEST_CASE("importing a Godot project turns each script into a storyboard task") {

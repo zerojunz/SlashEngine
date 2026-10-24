@@ -5,6 +5,7 @@
 #include "skeletons.hpp"
 
 #include "slash/animation/animation.hpp"
+#include "slash/animation/tree.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/canvas/debug_draw.hpp"
 #include "slash/canvas/gpu_particles.hpp"
@@ -19,6 +20,7 @@
 #include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/scene3d/gridmap.hpp"
+#include "slash/scene3d/model.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
@@ -27,6 +29,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <cstddef>
@@ -548,6 +551,7 @@ constexpr std::array kNodeTypes{
     NodeType{"AudioListener2D", Family::Node2D, "AudioListener2D", ""},
     NodeType{"AudioStreamPlayer", Family::Plain, "AudioStreamPlayer", ""},
     NodeType{"AnimationPlayer", Family::Plain, "AnimationPlayer", ""},
+    NodeType{"AnimationTree", Family::Plain, "", ""},
     NodeType{"TileMapLayer", Family::Node2D, "TileMapLayer", ""},
     NodeType{"TileMap", Family::Node2D, "TileMapLayer", ""},
     NodeType{"Control", Family::Control, "", ""},
@@ -4728,6 +4732,28 @@ private:
             }
             return true;
         }
+        // Read by convert_tree, or with no effect on what plays.
+        if (node.type == "AnimationTree") {
+            constexpr std::array kTaken{
+                std::string_view{"tree_root"},
+                std::string_view{"anim_player"},
+                std::string_view{"libraries"},
+                std::string_view{"root_node"},
+                std::string_view{"active"},
+                std::string_view{"deterministic"},
+                std::string_view{"root_motion_track"},
+                std::string_view{"root_motion_local"},
+                std::string_view{"callback_mode_process"},
+                std::string_view{"callback_mode_method"},
+                std::string_view{"callback_mode_discrete"},
+                std::string_view{"advance_expression_base_node"},
+                std::string_view{"audio_max_polyphony"},
+                std::string_view{"reset_on_save"},
+            };
+            if (contains(kTaken, std::string_view(name)) || name.starts_with("parameters/")) {
+                return true;
+            }
+        }
         if (components.contains("AnimationPlayer") && node.type == "AnimationPlayer") {
             json::Value& player = components["AnimationPlayer"];
             if (name == "autoplay") {
@@ -5900,9 +5926,18 @@ private:
             return;
         }
         player["library"] = library->path;
+        json::Object targets = library_targets(nodes, node, *root, library->targets);
+        if (!targets.empty()) {
+            player["targets"] = std::move(targets);
+        }
+    }
+
+    // The entity each node path a library's tracks name stands for, from the root node.
+    json::Object library_targets(const std::vector<Node>& nodes, const Node& node, const Node& root,
+                                 const std::set<std::string>& paths) {
         json::Object targets;
-        for (const std::string& target : library->targets) {
-            const Node* found = find_node(nodes, *root, target);
+        for (const std::string& target : paths) {
+            const Node* found = find_node(nodes, root, target);
             if (found == nullptr) {
                 problems_.add("animation track target", node.declared,
                               "node path " + target + " names no node under the root node");
@@ -5911,9 +5946,7 @@ private:
                 targets.emplace(target, found->id);
             }
         }
-        if (!targets.empty()) {
-            player["targets"] = std::move(targets);
-        }
+        return targets;
     }
 
     // Writes the animations of a player's libraries as one .anim.json file once: a library's
@@ -6254,6 +6287,1102 @@ private:
         out["keys"] = std::move(out_keys);
         tracks.push_back(std::move(out));
         targets.insert(node_path);
+    }
+
+    // --- Animation trees ---
+
+    // The converted files, then the Godot project's own files where they are used in place.
+    [[nodiscard]] world::FileReader asset_files() const {
+        return [this](std::string_view path) -> Result<std::string> {
+            auto planned = planned_files()(path);
+            if (planned || copy_assets_ || !path.starts_with(prefix_)) {
+                return planned;
+            }
+            return read(std::string(path.substr(prefix_.size())));
+        };
+    }
+
+    // A model animation's name as Godot's scene importer renames it: without the "-loop",
+    // "_loop", "-cycle" or "_cycle" at its end, or a "$loop" in it, that make it loop
+    // (ResourceImporterScene's _teststr and _fixstr).
+    static std::string godot_animation_name(std::string name) {
+        for (const std::string_view hint : {"loop_mode", "loop", "cycle"}) {
+            std::string what = name;
+            while (!what.empty() &&
+                   (std::isdigit(static_cast<unsigned char>(what.back())) != 0 ||
+                    static_cast<unsigned char>(what.back()) <= ' ' || what.back() == '_')) {
+                what.pop_back();
+            }
+            const std::string end = name.substr(what.size());
+            std::string lower = what;
+            std::ranges::transform(lower, lower.begin(), [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+            std::string dollar = "$";
+            dollar += hint;
+            if (lower.find(dollar) != std::string::npos) {
+                for (std::size_t at = what.find(dollar); at != std::string::npos;
+                     at = what.find(dollar, at)) {
+                    what.erase(at, dollar.size());
+                }
+                name = what + end;
+            } else if (lower.size() > hint.size() && lower.ends_with(hint) &&
+                       (lower[lower.size() - hint.size() - 1] == '-' ||
+                        lower[lower.size() - hint.size() - 1] == '_')) {
+                name = what.substr(0, what.size() - hint.size() - 1) + end;
+            }
+        }
+        return name;
+    }
+
+    // What an AnimationTree's animations come from: a model file's own, or a converted .anim.json
+    // library whose tracks name nodes from root. Its names say what the tree's filters, root
+    // motion track and Animation nodes can name.
+    struct TreeSource {
+        std::string library; // project path of the .anim.json file or model
+        bool model = false;
+        bool checked = false;         // the names below were read from the library
+        const Node* root = nullptr;   // for an .anim.json library
+        std::set<std::string> tracks; // track names filters can list
+        std::set<std::string> animations;
+        std::map<std::string, std::string> renamed; // Godot's name for a model animation, to its
+        std::set<std::string> moved;                // model nodes animations move
+        std::vector<std::string> nodes;             // the model's nodes
+    };
+
+    // Reads the names of the animations and tracks a tree can name from its library.
+    void read_tree_source(TreeSource& source, const std::string& where) {
+        const world::FileReader reader = asset_files();
+        auto bytes = reader(source.library);
+        if (!bytes) {
+            problems_.add("AnimationTree animations", where,
+                          "couldn't read " + source.library + " to check the names the tree uses");
+            return;
+        }
+        if (source.model) {
+            auto model = scene3d::load_model(bytes.value(), source.library, reader);
+            if (!model) {
+                problems_.add("AnimationTree animations", where,
+                              "couldn't load " + source.library +
+                                  " to check the names the tree "
+                                  "uses: " +
+                                  model.error().message);
+                return;
+            }
+            for (const scene3d::ModelNode& node : model.value().nodes) {
+                source.nodes.push_back(node.name);
+            }
+            for (const scene3d::ModelAnimation& animation : model.value().animations) {
+                source.animations.insert(animation.name);
+                source.renamed.emplace(godot_animation_name(animation.name), animation.name);
+                for (const scene3d::NodeTrack& track : animation.tracks) {
+                    if (track.node < model.value().nodes.size()) {
+                        source.moved.insert(model.value().nodes[track.node].name);
+                    }
+                }
+            }
+            source.tracks = source.moved;
+            source.checked = true;
+            return;
+        }
+        auto doc = json::parse(bytes.value());
+        auto library = doc ? animation::parse_animation_library(doc.value())
+                           : Result<animation::AnimationLibrary>(doc.error());
+        if (!library) {
+            return; // reported where the library was written
+        }
+        for (const auto& [name, animation] : library.value().animations) {
+            source.animations.insert(name);
+            for (const animation::Track& track : animation.tracks) {
+                source.tracks.insert(track.path.empty() ? animation::event_track_name(track)
+                                                        : animation::value_track_name(track));
+            }
+        }
+        source.checked = true;
+    }
+
+    // A deterministic tree starts each value track from its key in the library's RESET
+    // animation, or from zero, as Godot's does; SlashEngine asks for the RESET key, so a library
+    // without one for a track gets one, at zero.
+    void add_reset_keys(const std::string& library, const std::string& where) {
+        for (auto& [path, contents] : plan_.files) {
+            if (path != library) {
+                continue;
+            }
+            auto doc = json::parse(contents);
+            if (!doc || !doc.value().is_object() || doc.value().find("animations") == nullptr) {
+                return;
+            }
+            json::Value& animations = doc.value()["animations"];
+            std::set<std::string> keyed;
+            if (const json::Value* reset = animations.find("RESET"); reset != nullptr) {
+                if (const json::Value* tracks = reset->find("tracks"); tracks != nullptr) {
+                    for (const json::Value& track : tracks->as_array()) {
+                        const json::Value* keys = track.find("keys");
+                        if (track.find("path") != nullptr && keys != nullptr && keys->size() > 0) {
+                            keyed.insert(track.find("target")->as_string() + ":" +
+                                         track.find("path")->as_string());
+                        }
+                    }
+                }
+            }
+            json::Array added;
+            std::set<std::string> taken = keyed;
+            for (const auto& [name, animation] : animations.as_object()) {
+                const json::Value* tracks = animation.find("tracks");
+                for (const json::Value& track :
+                     tracks != nullptr ? tracks->as_array() : json::Array{}) {
+                    const json::Value* keys = track.find("keys");
+                    if (track.find("path") == nullptr || keys == nullptr || keys->size() == 0) {
+                        continue;
+                    }
+                    const json::Value* value = keys->as_array().front().find("value");
+                    json::Value zero = value != nullptr ? zero_of(*value) : json::Value();
+                    std::string key = track.find("target")->as_string();
+                    key += ':';
+                    key += track.find("path")->as_string();
+                    if (zero.is_null() || !taken.insert(key).second) {
+                        continue;
+                    }
+                    json::Value reset;
+                    reset["target"] = *track.find("target");
+                    reset["path"] = *track.find("path");
+                    json::Value first;
+                    first["time"] = 0.0;
+                    first["value"] = std::move(zero);
+                    reset["keys"].push_back(std::move(first));
+                    added.push_back(std::move(reset));
+                }
+            }
+            if (added.empty()) {
+                return;
+            }
+            json::Value& reset = animations["RESET"];
+            if (reset.find("length") == nullptr) {
+                reset["length"] = 0.001; // the length Godot gives a RESET animation
+            }
+            for (json::Value& track : added) {
+                reset["tracks"].push_back(std::move(track));
+            }
+            problems_.add("RESET animation", where,
+                          library + " gets RESET keys at zero for tracks it had none for, which "
+                                    "is where Godot's deterministic blending starts them");
+            contents = json::write(doc.value()) + "\n";
+            return;
+        }
+    }
+
+    // A value as zero, as a deterministic tree starts a track: 0 for numbers, false for
+    // booleans, an array of them for an array; null for anything else.
+    static json::Value zero_of(const json::Value& value) {
+        if (value.is_int()) {
+            return std::int64_t{0};
+        }
+        if (value.is_double()) {
+            return 0.0;
+        }
+        if (value.is_bool()) {
+            return false;
+        }
+        if (value.is_array()) {
+            json::Array out;
+            for (const json::Value& item : value.as_array()) {
+                out.push_back(zero_of(item));
+            }
+            return out;
+        }
+        return {};
+    }
+
+    // A model's node for a bone or node name in a Godot path, as Godot's importer names bones:
+    // ':' and '/' become '_'.
+    static std::string model_node_name(const TreeSource& source, const std::string& name) {
+        if (contains(source.nodes, name)) {
+            return name;
+        }
+        for (const std::string& node : source.nodes) {
+            std::string sanitized = node;
+            std::ranges::replace(sanitized, ':', '_');
+            std::ranges::replace(sanitized, '/', '_');
+            if (sanitized == name) {
+                return node;
+            }
+        }
+        return name;
+    }
+
+    // The track names a Godot filter path stands for: a model node's name, or a converted
+    // track's target and path.
+    [[nodiscard]] std::vector<std::string> filter_names(const std::string& path,
+                                                        const TreeSource& source,
+                                                        const std::vector<Node>& nodes,
+                                                        const OrderOf& order_of) const {
+        const std::size_t colon = path.find(':');
+        if (source.model) {
+            std::string name = colon == std::string::npos ? path : path.substr(colon + 1);
+            if (colon == std::string::npos) {
+                if (const std::size_t slash = name.rfind('/'); slash != std::string::npos) {
+                    name = name.substr(slash + 1);
+                }
+            }
+            return {model_node_name(source, name)};
+        }
+        std::string node_path = path.substr(0, colon);
+        if (node_path.empty()) {
+            node_path = ".";
+        }
+        if (colon == std::string::npos) {
+            // A node's method tracks, as event tracks.
+            std::vector<std::string> out;
+            const std::string prefix = node_path + ":@";
+            for (const std::string& track : source.tracks) {
+                if (track.starts_with(prefix)) {
+                    out.push_back(track);
+                }
+            }
+            return out;
+        }
+        const Node* target =
+            source.root != nullptr ? find_node(nodes, *source.root, node_path) : nullptr;
+        if (target == nullptr) {
+            return {};
+        }
+        std::vector<std::string> parts;
+        for (const std::string_view part :
+             split_path(std::string_view(path).substr(colon + 1), ':')) {
+            parts.emplace_back(part);
+        }
+        const std::optional<FieldOf> field =
+            parts.empty() ? std::nullopt : property_field(order_of(*target), parts.front());
+        if (!field || parts.size() > 2) {
+            return {};
+        }
+        std::string name = node_path;
+        name += ':';
+        name += field->component;
+        name += '/';
+        name += field->field;
+        if (parts.size() == 2) {
+            name += '/';
+            name += parts[1];
+        }
+        return {name};
+    }
+
+    // A Godot AnimationNode resource as a node of a .animtree.json file: its class without the
+    // "AnimationNode" prefix, with its properties under their own names.
+    std::optional<json::Value> tree_node(const Value& reference, const TextFile& file,
+                                         const std::string& what, const TreeSource& source,
+                                         const std::vector<Node>& nodes, const OrderOf& order_of) {
+        const auto [section, owner] = resource_section(reference, file);
+        if (section == nullptr) {
+            problems_.add(what, file.path, "a missing resource");
+            return std::nullopt;
+        }
+        const std::string type = resource_type(*section, *owner);
+        const std::string where = resource_where(*section, *owner);
+        constexpr std::string_view kPrefix = "AnimationNode";
+        const std::string name =
+            type.starts_with(kPrefix) ? type.substr(kPrefix.size()) : std::string();
+        const std::optional<animation::TreeNodeType> node_type = tree_node_type(name);
+        if (!node_type) {
+            problems_.add(what, where,
+                          type.starts_with(kPrefix) ? type + " doesn't convert"
+                                                    : "a " + type + ", not an AnimationNode");
+            return std::nullopt;
+        }
+        const bool two_d = name == "BlendSpace2D";
+        json::Value out;
+        out["type"] = name;
+        std::map<std::int64_t, std::map<std::string, const Value*, std::less<>>> numbered;
+        std::map<std::string, std::map<std::string, const Value*, std::less<>>> named;
+        std::vector<std::int64_t> triangles;
+        bool auto_triangles = true;
+        const Value* connections = nullptr;
+        const Value* transitions = nullptr;
+        std::int64_t input_count = 0;
+
+        const auto choice = [&](const std::string& property, const Value& value,
+                                std::span<const std::string_view> names) {
+            if (value.kind == Value::Kind::Int && value.integer >= 0 &&
+                std::cmp_less(value.integer, names.size())) {
+                out[property] = names[static_cast<std::size_t>(value.integer)];
+            } else {
+                problems_.add(name + "." + property, where, "an unknown value");
+            }
+        };
+        const auto pair = [](const Value& value) -> std::optional<json::Value> {
+            const auto xy = value.numbers();
+            if (!xy || xy->size() != 2) {
+                return std::nullopt;
+            }
+            return json::Value(json::Array{(*xy)[0], (*xy)[1]});
+        };
+        static constexpr std::array<std::string_view, 3> kLoopModes{"none", "linear", "pingpong"};
+        static constexpr std::array<std::string_view, 2> kPlayModes{"forward", "backward"};
+        static constexpr std::array<std::string_view, 3> kBlendModes{"interpolated", "discrete",
+                                                                     "discrete_carry"};
+        static constexpr std::array<std::string_view, 2> kMixModes{"blend", "add"};
+        static constexpr std::array<std::string_view, 3> kMachineTypes{"root", "nested", "grouped"};
+        static constexpr std::array kNumbers{
+            std::string_view{"timeline_length"},   std::string_view{"start_offset"},
+            std::string_view{"fadein_time"},       std::string_view{"fadeout_time"},
+            std::string_view{"autorestart_delay"}, std::string_view{"autorestart_random_delay"},
+            std::string_view{"xfade_time"}};
+        static constexpr std::array kBooleans{std::string_view{"use_custom_timeline"},
+                                              std::string_view{"stretch_time_scale"},
+                                              std::string_view{"advance_on_start"},
+                                              std::string_view{"sync"},
+                                              std::string_view{"autorestart"},
+                                              std::string_view{"break_loop_at_end"},
+                                              std::string_view{"filter_enabled"},
+                                              std::string_view{"explicit_elapse"},
+                                              std::string_view{"allow_transition_to_self"},
+                                              std::string_view{"reset_ends"}};
+        static constexpr std::array kIgnored{std::string_view{"resource_name"},
+                                             std::string_view{"resource_local_to_scene"},
+                                             std::string_view{"graph_offset"}};
+
+        for (const auto& [property, value] : section->properties) {
+            const std::string_view key = property;
+            if (contains(kIgnored, key)) {
+                continue;
+            }
+            if ((key == "filters" || key == "filter_enabled") &&
+                !animation::tree_node_has_filter(*node_type)) {
+                if (key == "filter_enabled" && value.kind == Value::Kind::Bool && value.boolean) {
+                    problems_.add(name + ".filter_enabled", where,
+                                  name + " has no filters, as in Godot, where they do nothing");
+                }
+                continue;
+            }
+            if (contains(kNumbers, key) && value.is_number()) {
+                out[property] = value.number();
+            } else if (contains(kBooleans, key) && value.kind == Value::Kind::Bool) {
+                out[property] = value.boolean;
+            } else if (key == "animation" && value.is_string()) {
+                const auto renamed = source.renamed.find(value.text);
+                out["animation"] = renamed != source.renamed.end() ? renamed->second : value.text;
+            } else if ((key == "value_label" || key == "x_label" || key == "y_label") &&
+                       value.is_string()) {
+                out[property] = value.text;
+            } else if (key == "play_mode") {
+                choice(property, value, kPlayModes);
+            } else if (key == "loop_mode") {
+                choice(property, value, kLoopModes);
+            } else if (key == "blend_mode") {
+                choice(property, value, kBlendModes);
+            } else if (key == "mix_mode") {
+                choice(property, value, kMixModes);
+            } else if (key == "state_machine_type") {
+                choice(property, value, kMachineTypes);
+            } else if (key == "min_space" || key == "max_space" || key == "snap") {
+                if (!two_d && value.is_number()) {
+                    out[property] = value.number();
+                } else if (auto xy = pair(value); two_d && xy) {
+                    out[property] = std::move(*xy);
+                } else {
+                    problems_.add(joined(name, '.', property), where, "an unknown value");
+                }
+            } else if (key == "fadein_curve" || key == "fadeout_curve" || key == "xfade_curve") {
+                curve_property(out, property, value, *owner, name, where);
+            } else if (key == "filters") {
+                json::Array filters;
+                for (const Value& item : value.items) {
+                    const std::string path = path_text(item);
+                    std::vector<std::string> found = filter_names(path, source, nodes, order_of);
+                    std::erase_if(found, [&](const std::string& track) {
+                        return source.checked && !source.tracks.contains(track);
+                    });
+                    if (found.empty()) {
+                        problems_.add(name + ".filters", where,
+                                      "no converted animation has a track for " + path);
+                    }
+                    for (std::string& track : found) {
+                        filters.emplace_back(std::move(track));
+                    }
+                }
+                if (!filters.empty()) {
+                    out["filters"] = std::move(filters);
+                }
+            } else if (key == "node_connections") {
+                connections = &value;
+            } else if (key == "transitions") {
+                transitions = &value;
+            } else if (key == "triangles") {
+                for (const double index : value.numbers().value_or(std::vector<double>{})) {
+                    triangles.push_back(static_cast<std::int64_t>(index));
+                }
+            } else if (key == "auto_triangles" && value.kind == Value::Kind::Bool) {
+                auto_triangles = value.boolean;
+                out["auto_triangles"] = value.boolean;
+            } else if (key == "input_count" && value.kind == Value::Kind::Int) {
+                input_count = value.integer;
+            } else if (key.starts_with("nodes/") || key.starts_with("states/")) {
+                // nodes/<name>/node and states/<name>/node or /position
+                const std::size_t first = key.find('/');
+                const std::size_t last = key.rfind('/');
+                if (last > first) {
+                    named[std::string(key.substr(first + 1, last - first - 1))].emplace(
+                        std::string(key.substr(last + 1)), &value);
+                }
+            } else if (key.starts_with("blend_point_") || key.starts_with("input_")) {
+                // blend_point_<i>/node and /pos, input_<i>/name and its options
+                const std::size_t underscore = key.rfind('_', key.find('/'));
+                const std::size_t slash = key.find('/');
+                const auto index =
+                    slash != std::string_view::npos
+                        ? parse_int(key.substr(underscore + 1, slash - underscore - 1))
+                        : std::nullopt;
+                if (index) {
+                    numbered[*index].emplace(std::string(key.substr(slash + 1)), &value);
+                } else {
+                    problems_.add(joined(name, '.', property), where);
+                }
+            } else {
+                problems_.add(joined(name, '.', property), where);
+            }
+        }
+
+        if (name == "Animation") {
+            // Godot's plays nothing for an animation its libraries lack; SlashEngine's tree
+            // refuses one, so the node goes, as if nothing were connected in its place.
+            const json::Value* animation = out.find("animation");
+            const std::string animation_name =
+                animation != nullptr ? animation->as_string() : std::string();
+            if (source.checked && !source.animations.contains(animation_name)) {
+                problems_.add(type + ".animation", where,
+                              animation_name.empty()
+                                  ? "it names no animation, so it plays nothing"
+                                  : "the libraries have no animation \"" + animation_name +
+                                        "\", so it plays nothing");
+                return std::nullopt;
+            }
+        }
+        if (name == "BlendTree") {
+            json::Object converted;
+            for (const auto& [node_name, fields] : named) {
+                const auto node = fields.find("node");
+                if (node_name == "output" || node == fields.end()) {
+                    continue;
+                }
+                if (auto child = tree_node(*node->second, *owner, joined(what, '/', node_name),
+                                           source, nodes, order_of)) {
+                    converted.emplace(node_name, std::move(*child));
+                }
+            }
+            out["nodes"] = std::move(converted);
+            const std::vector<Value> items =
+                connections != nullptr ? connections->items : std::vector<Value>{};
+            for (std::size_t i = 0; i + 2 < items.size(); i += 3) {
+                const std::string to = items[i].is_string() ? items[i].text : std::string();
+                const std::int64_t input =
+                    items[i + 1].kind == Value::Kind::Int ? items[i + 1].integer : std::int64_t{-1};
+                const std::string from =
+                    items[i + 2].is_string() ? items[i + 2].text : std::string();
+                if (out["nodes"].find(from) == nullptr) {
+                    problems_.add("BlendTree connection", where,
+                                  "from " + from + ", which didn't convert");
+                    continue;
+                }
+                if (to == "output") {
+                    out["output"] = from;
+                    continue;
+                }
+                json::Value* target = out["nodes"].find(to);
+                if (target == nullptr) {
+                    problems_.add("BlendTree connection", where,
+                                  "to " + to + ", which didn't convert");
+                    continue;
+                }
+                connect_input(*target, input, from, where);
+            }
+            // Godot's tree reports a node with nothing connected to one of its inputs as invalid
+            // and gets nothing from that input; SlashEngine's needs each input connected, so such
+            // a node goes, and with it those it fed, until what is left is whole.
+            json::Object& converted_nodes = out["nodes"].as_object();
+            for (bool removed = true; removed;) {
+                removed = false;
+                for (auto it = converted_nodes.begin(); it != converted_nodes.end();) {
+                    const std::string missing = missing_input(it->second, converted_nodes);
+                    if (missing.empty()) {
+                        ++it;
+                        continue;
+                    }
+                    problems_.add("BlendTree node", where,
+                                  it->first +
+                                      " has nothing that converted connected to its input " +
+                                      missing + ", so it plays nothing");
+                    it = converted_nodes.erase(it);
+                    removed = true;
+                }
+            }
+            const json::Value* output = out.find("output");
+            if (output == nullptr || !converted_nodes.contains(output->as_string())) {
+                problems_.add("BlendTree", where, "nothing that converted reaches its output");
+                return std::nullopt;
+            }
+        } else if (name == "BlendSpace1D" || name == "BlendSpace2D") {
+            json::Array points;
+            std::map<std::int64_t, std::int64_t> kept; // Godot's index for a point, to its own
+            for (const auto& [index, fields] : numbered) {
+                const auto node = fields.find("node");
+                const auto position = fields.find("pos");
+                if (node == fields.end() || position == fields.end()) {
+                    continue;
+                }
+                json::Value point;
+                if (two_d) {
+                    if (auto xy = pair(*position->second)) {
+                        point["position"] = std::move(*xy);
+                    }
+                } else if (position->second->is_number()) {
+                    point["position"] = position->second->number();
+                }
+                auto child =
+                    tree_node(*node->second, *owner, what + "/" + std::to_string(points.size()),
+                              source, nodes, order_of);
+                if (!child || point.find("position") == nullptr) {
+                    problems_.add(name + " point", where,
+                                  "point " + std::to_string(index) + " didn't convert");
+                    continue;
+                }
+                point["node"] = std::move(*child);
+                kept.emplace(index, static_cast<std::int64_t>(points.size()));
+                points.push_back(std::move(point));
+            }
+            out["points"] = std::move(points);
+            if (two_d && !auto_triangles) {
+                // Triangles keep the points that converted, under their new indices.
+                json::Array list;
+                for (std::size_t i = 0; i + 2 < triangles.size(); i += 3) {
+                    json::Array corners;
+                    for (std::size_t corner = i; corner < i + 3; ++corner) {
+                        if (const auto found = kept.find(triangles[corner]); found != kept.end()) {
+                            corners.emplace_back(found->second);
+                        }
+                    }
+                    if (corners.size() == 3) {
+                        list.emplace_back(std::move(corners));
+                    } else {
+                        problems_.add(name + " triangle", where,
+                                      "triangle " + std::to_string(i / 3) +
+                                          " has a point that didn't convert");
+                    }
+                }
+                out["triangles"] = std::move(list);
+            }
+        } else if (name == "Transition") {
+            json::Array inputs;
+            for (std::int64_t i = 0; i < input_count; ++i) {
+                json::Value input;
+                input["name"] = "state_" + std::to_string(i); // Godot's default
+                if (const auto found = numbered.find(i); found != numbered.end()) {
+                    for (const auto& [field, value] : found->second) {
+                        if (field == "name" && value->is_string()) {
+                            input["name"] = value->text;
+                        } else if ((field == "auto_advance" || field == "break_loop_at_end" ||
+                                    field == "reset") &&
+                                   value->kind == Value::Kind::Bool) {
+                            input[field] = value->boolean;
+                        } else {
+                            problems_.add("Transition.input_" + std::to_string(i) + "/" + field,
+                                          where);
+                        }
+                    }
+                }
+                inputs.push_back(std::move(input));
+            }
+            out["inputs"] = std::move(inputs);
+        } else if (name == "StateMachine") {
+            json::Object states;
+            for (const auto& [state, fields] : named) {
+                json::Value converted;
+                if (const auto position = fields.find("position"); position != fields.end()) {
+                    if (auto xy = pair(*position->second)) {
+                        converted["position"] = std::move(*xy);
+                    }
+                }
+                if (const auto node = fields.find("node"); node != fields.end()) {
+                    auto child = tree_node(*node->second, *owner, joined(what, '/', state), source,
+                                           nodes, order_of);
+                    if (!child) {
+                        continue;
+                    }
+                    converted["node"] = std::move(*child);
+                } else if (state != "Start" && state != "End") {
+                    continue;
+                }
+                states.emplace(state, std::move(converted));
+            }
+            json::Array list;
+            const std::vector<Value> items =
+                transitions != nullptr ? transitions->items : std::vector<Value>{};
+            for (std::size_t i = 0; i + 2 < items.size(); i += 3) {
+                const std::string from = items[i].is_string() ? items[i].text : std::string();
+                const std::string to = items[i + 1].is_string() ? items[i + 1].text : std::string();
+                const auto has = [&](const std::string& state) {
+                    return state == "Start" || state == "End" || states.contains(state);
+                };
+                if (!has(from) || !has(to)) {
+                    std::string message = "from ";
+                    message += from;
+                    message += " to ";
+                    message += to;
+                    message += ", a state that didn't convert";
+                    problems_.add("StateMachine transition", where, message);
+                    continue;
+                }
+                list.push_back(machine_transition(items[i + 2], *owner, from, to));
+            }
+            out["states"] = std::move(states);
+            out["transitions"] = std::move(list);
+        }
+        return out;
+    }
+
+    // The SlashEngine node type of a Godot AnimationNode class without its prefix.
+    // a, then separator, then b, without the temporary strings a chain of + makes.
+    static std::string joined(std::string_view a, char separator, std::string_view b) {
+        std::string out;
+        out.reserve(a.size() + 1 + b.size());
+        out += a;
+        out += separator;
+        out += b;
+        return out;
+    }
+
+    static std::optional<animation::TreeNodeType> tree_node_type(std::string_view name) {
+        for (int i = 0; i < static_cast<int>(animation::TreeNodeType::Output); ++i) {
+            const auto type = static_cast<animation::TreeNodeType>(i);
+            if (animation::tree_node_type_name(type) == name) {
+                return type;
+            }
+        }
+        return std::nullopt;
+    }
+
+    // The inputs of a blend tree node type with fixed ones, by Godot's index for them.
+    static std::vector<std::string> fixed_inputs(std::string_view type) {
+        const std::optional<animation::TreeNodeType> found = tree_node_type(type);
+        if (!found || *found == animation::TreeNodeType::Transition) {
+            return {};
+        }
+        animation::TreeNode node;
+        node.type = *found;
+        return animation::tree_node_input_names(node);
+    }
+
+    // The name of a blend tree node's first input with no node of nodes connected to it, or "".
+    static std::string missing_input(const json::Value& node, const json::Object& nodes) {
+        const json::Value* inputs = node.find("inputs");
+        const std::string type = node.find("type")->as_string();
+        if (type == "Transition") {
+            for (const json::Value& input :
+                 inputs != nullptr ? inputs->as_array() : json::Array{}) {
+                const json::Value* from = input.find("node");
+                if (from == nullptr || !nodes.contains(from->as_string())) {
+                    return input.find("name")->as_string();
+                }
+            }
+            return {};
+        }
+        for (const std::string& name : fixed_inputs(type)) {
+            const json::Value* from = inputs != nullptr ? inputs->find(name) : nullptr;
+            if (from == nullptr || !nodes.contains(from->as_string())) {
+                return name;
+            }
+        }
+        return {};
+    }
+
+    // Connects a blend tree node's input, by Godot's index for it, to the node from.
+    void connect_input(json::Value& node, std::int64_t input, const std::string& from,
+                       const std::string& where) {
+        const std::string type = node.find("type")->as_string();
+        if (type == "Transition") {
+            json::Value* inputs = node.find("inputs");
+            if (inputs == nullptr || input < 0 || std::cmp_greater_equal(input, inputs->size())) {
+                problems_.add("BlendTree connection", where, "to an input the Transition hasn't");
+                return;
+            }
+            inputs->as_array()[static_cast<std::size_t>(input)]["node"] = from;
+            return;
+        }
+        const std::vector<std::string> names = fixed_inputs(type);
+        if (input < 0 || std::cmp_greater_equal(input, names.size())) {
+            problems_.add("BlendTree connection", where, "to an input " + type + " hasn't");
+            return;
+        }
+        node["inputs"][names[static_cast<std::size_t>(input)]] = from;
+    }
+
+    // A Curve property of a tree node as [offset, value] points joined by straight lines.
+    void curve_property(json::Value& out, const std::string& property, const Value& value,
+                        const TextFile& file, const std::string& type, const std::string& where) {
+        if (value.kind == Value::Kind::Nil) {
+            return;
+        }
+        std::string why;
+        auto points = curve_points(value, file, why);
+        if (!points) {
+            problems_.add(type + "." + property, where, why);
+            return;
+        }
+        if (points->size() > 0) {
+            problems_.add(type + "." + property, where,
+                          "its points are joined by straight lines rather than Godot's curve");
+            out[property] = std::move(*points);
+        }
+    }
+
+    // A Godot AnimationNodeStateMachineTransition as a .animtree.json transition.
+    json::Value machine_transition(const Value& reference, const TextFile& file,
+                                   const std::string& from, const std::string& to) {
+        json::Value out;
+        out["from"] = from;
+        out["to"] = to;
+        const auto [section, owner] = resource_section(reference, file);
+        if (section == nullptr ||
+            resource_type(*section, *owner) != "AnimationNodeStateMachineTransition") {
+            problems_.add("StateMachine transition", file.path,
+                          "from " + from + " to " + to + ": not a transition resource");
+            return out;
+        }
+        const std::string where = resource_where(*section, *owner);
+        static constexpr std::array<std::string_view, 3> kSwitchModes{"immediate", "sync",
+                                                                      "at_end"};
+        static constexpr std::array<std::string_view, 3> kAdvanceModes{"disabled", "enabled",
+                                                                       "auto"};
+        const auto mode = [&out](const std::string& property, const Value& value,
+                                 std::span<const std::string_view> names) {
+            if (value.kind == Value::Kind::Int && value.integer >= 0 &&
+                std::cmp_less(value.integer, names.size())) {
+                out[property] = names[static_cast<std::size_t>(value.integer)];
+            }
+        };
+        for (const auto& [property, value] : section->properties) {
+            if (property == "xfade_time" && value.is_number()) {
+                out[property] = value.number();
+            } else if (property == "priority" && value.kind == Value::Kind::Int) {
+                out[property] = value.integer;
+            } else if ((property == "break_loop_at_end" || property == "reset") &&
+                       value.kind == Value::Kind::Bool) {
+                out[property] = value.boolean;
+            } else if (property == "switch_mode") {
+                mode(property, value, kSwitchModes);
+            } else if (property == "advance_mode") {
+                mode(property, value, kAdvanceModes);
+            } else if (property == "advance_condition" && value.is_string()) {
+                if (!value.text.empty()) {
+                    out[property] = value.text;
+                }
+            } else if (property == "advance_expression" && value.is_string()) {
+                if (!value.text.empty()) {
+                    problems_.add("StateMachine transition advance_expression", where,
+                                  "expressions don't convert; set a condition from gameplay "
+                                  "code instead");
+                }
+            } else if (property == "xfade_curve") {
+                curve_property(out, property, value, *owner, "StateMachine transition", where);
+            } else if (property != "resource_name" && property != "resource_local_to_scene") {
+                problems_.add("StateMachine transition " + property, where);
+            }
+        }
+        return out;
+    }
+
+    // Writes a tree's root node as a .animtree.json file once.
+    std::string tree_file(const Value& reference, const TextFile& file, const Node& node,
+                          const TreeSource& source, const std::vector<Node>& nodes,
+                          const OrderOf& order_of, const SceneContext& scene) {
+        const auto [section, owner] = resource_section(reference, file);
+        if (section == nullptr) {
+            problems_.add("AnimationTree.tree_root", node.declared, "a missing resource");
+            return {};
+        }
+        const std::string key = owner->path + "#" + section->field_string("id");
+        if (const auto done = trees_written_.find(key); done != trees_written_.end()) {
+            return done->second;
+        }
+        const std::string base = section->tag == "resource"
+                                     ? without_extension(owner->path)
+                                     : scene.stem + "_" + snake_case(node.name);
+        std::string path = destination(base + std::string(animation::kTreeSuffix));
+        auto root = tree_node(reference, file, "AnimationTree.tree_root", source, nodes, order_of);
+        trees_written_[key] = root ? path : std::string();
+        if (!root) {
+            return {};
+        }
+        json::Value doc;
+        doc["format"] = 1;
+        doc["root"] = std::move(*root);
+        keep_valid(doc, path,
+                   [](const json::Value& value) { return animation::validate_tree(value); });
+        if (doc.find("root") == nullptr) {
+            trees_written_[key].clear();
+            return {};
+        }
+        add_file(path, json::write(doc) + "\n");
+        ++tree_files_;
+        return path;
+    }
+
+    // Fills an AnimationTree from its node: its tree_root as a .animtree.json file, and its
+    // animations from the AnimationPlayer anim_player names, whose libraries and root node
+    // Godot's AnimationTree takes, or from its own libraries. A tree that plays a model's own
+    // animations goes on the entity that draws the model, whose nodes it poses.
+    void convert_tree(const std::vector<Node>& nodes, const Node& node, const OrderOf& order_of,
+                      const SceneContext& scene, json::Object& entities) {
+        TreeSource source;
+        std::string host = node.id;
+        json::Value targets;
+        std::string player_path;
+        if (const Property* player = node.find("anim_player"); player != nullptr) {
+            player_path = path_text(*player->value);
+        }
+        const Property* libraries = node.find("libraries");
+        if (!player_path.empty()) {
+            const auto [found, rest] = find_in_model(nodes, node, player_path);
+            if (found == nullptr) {
+                problems_.add("AnimationTree.anim_player", node.declared,
+                              "node path " + player_path + " names no node in the scene");
+                return;
+            }
+            if (!rest.empty()) {
+                // The AnimationPlayer Godot's importer gives a model with animations.
+                source.library = destination(found->model);
+                source.model = true;
+                host = found->id;
+                problems_.add("AnimationTree", node.declared,
+                              "it plays on " + host +
+                                  ", the entity that draws the model whose "
+                                  "animations it plays");
+            } else if (found->type != "AnimationPlayer") {
+                problems_.add("AnimationTree.anim_player", node.declared,
+                              "node path " + player_path + " names a " + found->type +
+                                  ", not an AnimationPlayer");
+                return;
+            } else {
+                const json::Value& player = entities[found->id]["components"]["AnimationPlayer"];
+                const json::Value* library = player.find("library");
+                if (library == nullptr || library->as_string().empty()) {
+                    problems_.add("AnimationTree.anim_player", node.declared,
+                                  "its AnimationPlayer has no animations that convert");
+                    return;
+                }
+                source.library = library->as_string();
+                if (const json::Value* bound = player.find("targets"); bound != nullptr) {
+                    targets = *bound;
+                }
+                std::string root_path = "..";
+                if (const Property* root = found->find("root_node"); root != nullptr) {
+                    root_path = path_text(*root->value);
+                }
+                source.root = find_node(nodes, *found, root_path);
+            }
+        } else if (libraries != nullptr && libraries->value->kind == Value::Kind::Dictionary &&
+                   !libraries->value->entries.empty()) {
+            std::string root_path = "..";
+            if (const Property* root = node.find("root_node"); root != nullptr) {
+                root_path = path_text(*root->value);
+            }
+            source.root = find_node(nodes, node, root_path);
+            if (source.root == nullptr) {
+                problems_.add("AnimationTree.root_node", node.declared,
+                              "node path " + root_path + " names no node in the scene");
+                return;
+            }
+            const LibraryFile* library =
+                library_file(nodes, node, *libraries, *source.root, order_of, scene);
+            if (library == nullptr) {
+                return;
+            }
+            source.library = library->path;
+            json::Object bound = library_targets(nodes, node, *source.root, library->targets);
+            if (!bound.empty()) {
+                targets = std::move(bound);
+            }
+        } else {
+            problems_.add("AnimationTree", node.declared,
+                          "no animations: it names no AnimationPlayer in anim_player");
+            return;
+        }
+        json::Value& components = entities[host]["components"];
+        if (components.find("AnimationTree") != nullptr) {
+            problems_.add("AnimationTree", node.declared,
+                          host + " already has an AnimationTree; only the first converts");
+            return;
+        }
+        read_tree_source(source, node.declared);
+
+        const Property* root = node.find("tree_root");
+        if (root == nullptr || root->value->kind == Value::Kind::Nil) {
+            problems_.add("AnimationTree.tree_root", node.declared, "no tree");
+            return;
+        }
+        const std::string tree_path =
+            tree_file(*root->value, *root->file, node, source, nodes, order_of, scene);
+        if (tree_path.empty()) {
+            return;
+        }
+        json::Value tree;
+        tree["tree_root"] = tree_path;
+        tree["libraries"][""] = source.library;
+        if (targets.is_object() && targets.size() > 0) {
+            tree["targets"] = std::move(targets);
+        }
+        bool deterministic = true; // Godot's default
+        for (const Property& property : node.properties) {
+            const Value& value = *property.value;
+            if (property.name == "active" && value.kind == Value::Kind::Bool && !value.boolean) {
+                tree["active"] = false;
+            } else if (property.name == "deterministic" && value.kind == Value::Kind::Bool) {
+                deterministic = value.boolean;
+                if (!value.boolean) {
+                    tree["deterministic"] = false;
+                }
+            } else if (property.name == "root_motion_local" && value.kind == Value::Kind::Bool &&
+                       value.boolean) {
+                tree["root_motion_local"] = true;
+            } else if (property.name == "root_motion_track") {
+                const std::string path = path_text(value);
+                if (path.empty()) {
+                    continue;
+                }
+                const std::vector<std::string> names =
+                    source.model ? filter_names(path, source, nodes, order_of)
+                                 : std::vector<std::string>{};
+                if (names.empty() || (source.checked && !source.moved.contains(names.front()))) {
+                    problems_.add("AnimationTree.root_motion_track", node.declared,
+                                  source.model ? "no animation of the model moves " + path
+                                               : "root motion comes from a model's animations, "
+                                                 "not from " +
+                                                     path);
+                    continue;
+                }
+                tree["root_motion_track"] = names.front();
+            } else if (property.name == "callback_mode_process" && value.kind == Value::Kind::Int &&
+                       value.integer == 2) {
+                problems_.add("AnimationTree.callback_mode_process", node.declared,
+                              "it plays every tick; drive a manual tree from gameplay code");
+            }
+        }
+        if (deterministic && !source.model) {
+            add_reset_keys(source.library, node.declared);
+        }
+        tree_parameters_of(node, tree_path, tree);
+        components["AnimationTree"] = std::move(tree);
+    }
+
+    // The input parameters a tree's node sets, "parameters/" and all, by their names in the
+    // tree; what the tree keeps as it plays is left for it.
+    void tree_parameters_of(const Node& node, const std::string& tree_path, json::Value& tree) {
+        std::optional<animation::AnimationTreeResource> resource;
+        for (const auto& [path, contents] : plan_.files) {
+            if (path == tree_path) {
+                if (auto doc = json::parse(contents); doc) {
+                    if (auto parsed = animation::parse_tree(doc.value()); parsed) {
+                        resource = std::move(parsed.value());
+                    }
+                }
+            }
+        }
+        if (!resource) {
+            return;
+        }
+        const std::vector<animation::TreeParameter> parameters =
+            animation::tree_parameters(*resource);
+        // What Godot's tree keeps as it plays, which SlashEngine's keeps in state.
+        static constexpr std::array kKept{
+            std::string_view{"playback"},        std::string_view{"time"},
+            std::string_view{"current_state"},   std::string_view{"current_index"},
+            std::string_view{"active"},          std::string_view{"internal_active"},
+            std::string_view{"current_delta"},   std::string_view{"current_length"},
+            std::string_view{"current_position"}};
+        constexpr std::string_view kPrefix = "parameters/";
+        for (const Property& property : node.properties) {
+            if (!property.name.starts_with(kPrefix)) {
+                continue;
+            }
+            const std::string key = property.name.substr(kPrefix.size());
+            const auto found = std::ranges::find(parameters, key, &animation::TreeParameter::key);
+            if (found == parameters.end()) {
+                const std::size_t slash = key.rfind('/');
+                if (!contains(kKept, std::string_view(key).substr(
+                                         slash == std::string::npos ? 0 : slash + 1))) {
+                    problems_.add("AnimationTree parameter " + key, node.declared,
+                                  "the tree has no such parameter");
+                }
+                continue;
+            }
+            if (!found->input) {
+                continue;
+            }
+            const Value& value = *property.value;
+            json::Value converted;
+            static constexpr std::array<std::string_view, 4> kRequests{"none", "fire", "abort",
+                                                                       "fade_out"};
+            if (found->name == "request" && value.kind == Value::Kind::Int && value.integer >= 0 &&
+                value.integer < 4) {
+                converted = kRequests.at(static_cast<std::size_t>(value.integer));
+            } else if (value.is_call("Vector2")) {
+                const auto xy = value.numbers().value_or(std::vector<double>{});
+                if (xy.size() == 2) {
+                    converted = json::Array{xy[0], xy[1]};
+                }
+            } else if (value.is_number()) {
+                converted = value.number();
+            } else if (value.kind == Value::Kind::Bool) {
+                converted = value.boolean;
+            } else if (value.is_string()) {
+                converted = value.text;
+            }
+            if (const std::string problem =
+                    animation::check_parameter(*resource, *found, converted);
+                !problem.empty() || converted.is_null()) {
+                problems_.add("AnimationTree parameter " + key, node.declared,
+                              problem.empty() ? "an unknown value" : problem);
+                continue;
+            }
+            if (converted != found->default_value) {
+                tree["parameters"][key] = std::move(converted);
+            }
+        }
+    }
+
+    // The node a path names from a node, or, for a path that goes on into an instanced model,
+    // the model's node and the rest of the path.
+    static std::pair<const Node*, std::string>
+    find_in_model(const std::vector<Node>& nodes, const Node& from, std::string_view path) {
+        if (const Node* found = find_node(nodes, from, path); found != nullptr) {
+            return {found, {}};
+        }
+        std::vector<std::string_view> parts = split_path(path);
+        for (std::size_t keep = parts.size(); keep-- > 1;) {
+            std::string head;
+            for (std::size_t i = 0; i < keep; ++i) {
+                if (i > 0) {
+                    head += '/';
+                }
+                head += parts[i];
+            }
+            const Node* found = find_node(nodes, from, head);
+            if (found != nullptr && !found->model.empty()) {
+                std::string rest;
+                for (std::size_t i = keep; i < parts.size(); ++i) {
+                    if (!rest.empty()) {
+                        rest += '/';
+                    }
+                    rest += parts[i];
+                }
+                return {found, rest};
+            }
+            if (found != nullptr) {
+                break;
+            }
+        }
+        return {nullptr, {}};
     }
 
     // What a Godot property of a node with these components becomes: a component's field and
@@ -6617,6 +7746,12 @@ private:
                                entities[node.id]["components"]["AnimationPlayer"]);
             }
         }
+        // AnimationTrees, which play the libraries of those players or of models.
+        for (const Node& node : nodes) {
+            if (node.type == "AnimationTree") {
+                convert_tree(nodes, node, order_of, scene, entities);
+            }
+        }
 
         // Connections, by entity.
         json::Array connections;
@@ -6958,6 +8093,7 @@ private:
         out["converted"]["themes"] = theme_files_;
         out["converted"]["bus_layouts"] = bus_layout_files_;
         out["converted"]["animation_libraries"] = animation_files_;
+        out["converted"]["animation_trees"] = tree_files_;
         out["converted"]["process_materials"] = process_files_;
         out["converted"]["mesh_libraries"] = mesh_library_files_;
         out["converted"]["navigation_meshes"] = navigation_files_;
@@ -6996,6 +8132,7 @@ private:
     std::map<std::string, std::string> themes_written_;
     std::set<std::string> bus_layouts_written_;
     std::map<std::string, LibraryFile> libraries_written_; // by file name, without its suffix
+    std::map<std::string, std::string> trees_written_;     // by resource, its file or ""
     std::map<std::string, ScriptRecord> scripts_;          // by res path
     std::optional<Skeletons> skeletons_;                   // by res path
     std::string module_;                                   // the game module written, or ""
@@ -7017,6 +8154,7 @@ private:
     int theme_files_ = 0;
     int bus_layout_files_ = 0;
     int animation_files_ = 0;
+    int tree_files_ = 0;
     int process_files_ = 0;
     int mesh_library_files_ = 0;
     int navigation_files_ = 0;

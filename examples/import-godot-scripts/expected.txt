@@ -2,6 +2,7 @@ project.import {"source":"godot"}
 {
   "converted": {
     "animation_libraries": 0,
+    "animation_trees": 0,
     "assets": 0,
     "audio_streams": 0,
     "bus_layouts": 0,
