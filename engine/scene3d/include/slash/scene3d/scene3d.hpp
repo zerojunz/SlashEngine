@@ -141,6 +141,13 @@ struct SourceLightmap {
 // The lightmaps LightmapGI's light_data names, loaded by project path.
 using LightmapSource = std::function<Result<SourceLightmap>(const std::string& path)>;
 
+struct VoxelGIData;
+
+// The cells a VoxelGI's data names (a .voxelgi.json file, voxel_gi.hpp), loaded by project path:
+// a reload gives new ones, and their light is injected again.
+using VoxelGISource =
+    std::function<Result<std::shared_ptr<const VoxelGIData>>(const std::string& path)>;
+
 // A model loaded by project path, and its version: a reload raises it, and its meshes are made
 // again.
 struct SourceModel {
@@ -185,11 +192,13 @@ struct Frame3D {
 // frames: meshes of equal settings share one, each model's meshes and images are made once, and
 // a mesh no entity used last frame goes. Static meshes a LightmapGI baked take their ambient
 // light, and their baked lights' light, from its lightmap, as Godot's lightmapped instances, and
-// dynamic ones their ambient light from its light probes, eased as they move.
+// dynamic ones their ambient light from its light probes, eased as they move. In Forward+, the
+// other meshes take ambient light and reflections from the VoxelGIs their bounds touch, whose
+// cells the lights are injected into again whenever they change.
 class Renderer {
 public:
     Renderer(render::RenderDevice& device, TextureSource textures, ModelSource models = {},
-             LightmapSource lightmaps = {});
+             LightmapSource lightmaps = {}, VoxelGISource voxel_gis = {});
     ~Renderer();
     Renderer(const Renderer&) = delete;
     Renderer& operator=(const Renderer&) = delete;
@@ -208,14 +217,17 @@ public:
     // occlusion worked out as ssao says and its reflections as ssr says: nullopt when the world
     // has no camera, and nothing 3D draws. The mesh draws wait for draw(). In Forward+ (method),
     // the ReflectionProbes' cubes that need it are drawn here, in frames of their own on the
-    // device, into an atlas as reflection_atlas says; so call it before the frame begins.
+    // device, into an atlas as reflection_atlas says; so call it before the frame begins. Its
+    // VoxelGIs' cones are traced as Godot's high quality setting traces them where
+    // voxel_gi_high_quality is set.
     [[nodiscard]] std::optional<Frame3D>
     prepare(const world::World& world, float width, float height, double interpolation,
             render::Color clear, const render::ShadowSettings& shadows = {}, double time = 0.0,
             const render::DepthOfFieldSettings& depth_of_field = {},
             const render::SsaoSettings& ssao = {}, const render::SsrSettings& ssr = {},
             const render::ReflectionAtlasSettings& reflection_atlas = {},
-            render::RenderMethod method = render::RenderMethod::ForwardPlus);
+            render::RenderMethod method = render::RenderMethod::ForwardPlus,
+            bool voxel_gi_high_quality = false);
     // Draws the meshes prepare found into the frame begun with its scene.
     [[nodiscard]] Result<void> draw();
 
@@ -236,6 +248,7 @@ private:
         render::MeshId id = render::MeshId::None;
         std::uint64_t used = 0; // the last frame that drew it
         Vec3 center;            // the middle of its vertices' bounds, in its own space
+        Bounds box;             // its vertices' bounds, in its own space
     };
     struct Cached {
         Primitive primitive;
@@ -287,6 +300,7 @@ private:
         render::MeshId id = render::MeshId::None;
         std::uint64_t used = 0;
         std::vector<world::Affine3D> joints; // what moved its vertices last
+        Bounds box;                          // its moved vertices' bounds
     };
 
     Result<render::MeshId> mesh_for(const world::World& world, entt::entity entity,
@@ -382,10 +396,28 @@ private:
                                                std::uint32_t count, render::MeshId& mesh);
     void destroy_lightmaps(bool unused_only);
 
+    // A VoxelGI's cells and the light injected into them, as an atlas (voxel_gi.cpp).
+    struct KeptVoxelGI;
+    // Loads the cells of the world's VoxelGIs, injects the lights into those whose lights or
+    // settings changed, puts their light in one atlas on the device and gives each draw the
+    // VoxelGIs its bounds touch, at most two, for a camera of env's exposure.
+    void trace_voxel_gis(const world::World& world, const world::Tree3D& tree,
+                         const std::function<world::Affine3D(entt::entity)>& global,
+                         const Environment& env);
+    void destroy_voxel_gis();
+
     render::RenderDevice* device_;
     TextureSource textures_;
     ModelSource models_;
     LightmapSource lightmaps_;
+    VoxelGISource voxel_gi_source_;
+    std::unordered_map<entt::entity, std::unique_ptr<KeptVoxelGI>> voxel_gis_;
+    // The atlas of this frame's VoxelGIs' light, its size, and the VoxelGIs and versions in it.
+    render::TextureId voxel_atlas_ = render::TextureId::None;
+    std::uint32_t voxel_atlas_width_ = 0;
+    std::uint32_t voxel_atlas_height_ = 0;
+    std::vector<std::pair<entt::entity, std::uint64_t>> voxel_atlas_key_;
+    std::uint64_t voxel_gi_versions_ = 0;
     std::unordered_map<std::string, KeptLightmap> kept_lightmaps_;
     std::map<std::pair<entt::entity, std::uint32_t>, Lit> lit_;
     std::unordered_map<std::string, MeshHash> mesh_hashes_;

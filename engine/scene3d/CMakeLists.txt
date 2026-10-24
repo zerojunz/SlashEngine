@@ -38,7 +38,8 @@ add_library(slash_scene3d
     src/primitive.cpp
     src/scene3d.cpp
     src/skeleton.cpp
-    src/terrain.cpp)
+    src/terrain.cpp
+    src/voxel_gi.cpp)
 add_library(slash::scene3d ALIAS slash_scene3d)
 
 target_include_directories(slash_scene3d PUBLIC include)

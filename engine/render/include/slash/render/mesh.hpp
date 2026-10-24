@@ -535,6 +535,9 @@ struct ReflectionAtlasSettings {
 // Reads project.json's rendering.reflections.reflection_atlas: {"reflection_size",
 // "reflection_count"}. What is missing or not valid keeps its default.
 [[nodiscard]] ReflectionAtlasSettings reflection_atlas_settings_from_json(const json::Value& value);
+// Whether project.json's rendering object asks for high quality VoxelGIs:
+// global_illumination.voxel_gi.quality "high" (Scene3D::voxel_gi_high_quality).
+[[nodiscard]] bool voxel_gi_high_quality(const json::Value& rendering);
 
 // How a reflection probe lights what is inside it, as Godot's ReflectionProbe.ambient_mode: not
 // at all, by the blurriest level of its cube along each pixel's normal, or by a color.
@@ -637,6 +640,10 @@ struct Scene3D {
     Ssao3D ssao;
     Ssr3D ssr;
     Reflections3D reflections;
+    // How meshes trace their VoxelGIs (Material3D::voxel_gi), as Godot's rendering/
+    // global_illumination/voxel_gi/quality: four cones of 45 degrees for their ambient light, or
+    // with high quality six narrower ones.
+    bool voxel_gi_high_quality = false;
     // Set for a frame that draws a face of a reflection probe (ProbeCapture).
     std::optional<ProbeCapture> capture{}; // NOLINT(readability-redundant-member-init)
 

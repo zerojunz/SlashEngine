@@ -1,0 +1,7 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":9,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.169,0.216,0.365,1],[0.255,0.282,0.396,1],[0.718,0.694,0.682,1],[0.718,0.694,0.682,1],[0.627,0.616,0.639,1]],"drawn":{"meshes":5},"height":90,"path":"shots/plain.png","width":160}}
+{"id":3,"jsonrpc":"2.0","result":{"cells":12104,"file":"main.gi.voxelgi.json","levels":7,"meshes":4,"size":[64,32,64]}}
+{"id":4,"jsonrpc":"2.0","result":{"colors":[[0.365,0.345,0.365,1],[0.439,0.412,0.412,1],[0.839,0.769,0.71,1],[0.827,0.788,0.729,1],[0.769,0.725,0.69,1]],"drawn":{"meshes":5},"height":90,"path":"shots/traced.png","width":160}}
+{"id":5,"jsonrpc":"2.0","result":{"changed":{"DirectionalLight3D":{"light_color":[1.0,0.6,0.3,1.0]}},"id":"sun"}}
+{"id":6,"jsonrpc":"2.0","result":{"colors":[[0.365,0.235,0.259,1],[0.439,0.275,0.251,1]],"drawn":{"meshes":5},"height":90,"path":"shots/sunset.png","width":160}}
+{"id":7,"jsonrpc":"2.0","result":{"cells":12104,"file":"main.gi.voxelgi.json","levels":7,"meshes":4,"size":[64,32,64],"unchanged":true}}
