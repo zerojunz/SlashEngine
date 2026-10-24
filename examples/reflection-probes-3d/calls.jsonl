@@ -1,0 +1,8 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[160,88],[160,150],[100,100],[250,110]],"path":"shots/room.png"}}
+{"jsonrpc":"2.0","id":3,"method":"component.set","params":{"id":"probe","components":{"ReflectionProbe":{"box_projection":true}}}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"points":[[160,88],[160,150],[100,100],[250,110]],"path":"shots/box.png"}}
+{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"floor","components":{"StandardMaterial3D":{"roughness":0.4}}}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[160,88],[160,150],[100,100],[250,110]]}}
+{"jsonrpc":"2.0","id":7,"method":"batch","params":{"commands":[{"command":"component.set","params":{"id":"floor","components":{"StandardMaterial3D":{"roughness":0.1}}}},{"command":"component.set","params":{"id":"probe","components":{"Transform3D":{"visible":false}}}}]}}
+{"jsonrpc":"2.0","id":8,"method":"frame.capture","params":{"points":[[160,88],[160,150],[100,100],[250,110]]}}

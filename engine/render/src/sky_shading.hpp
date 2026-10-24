@@ -106,10 +106,13 @@ struct RadianceUniforms {
     // The face, one over the level's size, the samples' weight, and how many samples (0 copies
     // the source's level params[2], counted from the level its view starts at).
     Float4 params{};
+    // 1 to filter a reflection probe's cube, linear in RGBA16F, rather than the sky's sRGB one;
+    // then 0, 0, 0.
+    Float4 options{};
     // GGX importance samples around +z: a direction, then the source level it is sampled at.
     std::array<Float4, kRadianceSamples> samples{};
 };
-static_assert(sizeof(RadianceUniforms) == 16 + (16 * kRadianceSamples));
+static_assert(sizeof(RadianceUniforms) == 32 + (16 * kRadianceSamples));
 
 // The filter pass's uniforms for a level of a radiance of size and levels, as Godot's
 // CubemapFilter::filter_radiance: level 0 copies the raw cube's, and each next one blurs it for a
@@ -140,6 +143,14 @@ struct CubeImage {
     // textures do, between the two levels around level.
     [[nodiscard]] Float4 sample(const Float3& direction, float level) const;
 };
+
+// A raw cube's mipmaps, each texel the mean of four, held as RGBA16F or (for the sky's radiance)
+// RGB10A2 holds them.
+void cube_mipmaps(CubeImage& cube, bool linear);
+// A cube's levels filtered as shaders/radiance.hlsl does: level 0 as it is, each next one blurred
+// from raw for a rougher surface. linear filters an RGBA16F cube without the sRGB conversions the
+// sky's radiance takes.
+[[nodiscard]] CubeImage filter_cube(const CubeImage& raw, bool linear);
 
 // A scene's radiance on the CPU, drawn as the GPU devices draw it: the sky into the raw cube's
 // faces (texel(coords) samples the sky's texture at a panorama coordinate), its mipmaps by

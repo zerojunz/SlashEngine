@@ -1095,10 +1095,10 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                               ? Vec2{options.width, options.height}
                               : ui::settings(world).viewport;
     // The 3D world, seen through its current Camera3D, which fills the viewport.
-    std::optional<scene3d::Frame3D> scene =
-        scene3d_.prepare(world, viewport.x, viewport.y, options.interpolation, options.clear,
-                         settings(world).shadows, options.time, settings(world).depth_of_field,
-                         settings(world).ssao, settings(world).ssr);
+    std::optional<scene3d::Frame3D> scene = scene3d_.prepare(
+        world, viewport.x, viewport.y, options.interpolation, options.clear,
+        settings(world).shadows, options.time, settings(world).depth_of_field, settings(world).ssao,
+        settings(world).ssr, settings(world).reflection_atlas, settings(world).rendering_method);
     if (scene) {
         scene->scene.method = settings(world).rendering_method;
     }

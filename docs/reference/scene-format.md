@@ -1618,6 +1618,49 @@ isn't, as in Godot. Surfaces from roughness 0.7 up and transparent meshes take n
 ([project-format.md](project-format.md#screen-space-reflections)) sets its resolution. The
 software device draws the same passes on the CPU, so `frame.capture` shows them too.
 
+### Reflection probes
+
+A `ReflectionProbe` is a box whose meshes reflect a cube drawn from inside it, as Godot 4.6's
+Forward+ `ReflectionProbe`: shiny floors and metal in a room reflect its walls instead of the sky.
+With `forward_plus`, the renderer draws the world into the probe's cube from `origin_offset`
+through six 90-degree views, out to the box's sides or `max_distance` if that is further, with
+the `cull_mask` layers' meshes, the frame's lights (shadows with `enable_shadows`), sky and fog,
+but no post-processing, SSAO, SSR or probes. The cube is filtered into blurrier levels as the
+[sky's light](#sky-light) is. `"once"` draws it when the probe first shows and again when it moves
+or its box, offset, distance, layers or shadows change; `"always"` draws it every frame, which
+costs six frames' worth of drawing. With `interior`, the cube shows no sky, fog or ambient light,
+only the project's clear color behind the meshes, as for a room.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `update_mode` | `"once"` | `"once"` or `"always"` |
+| `intensity` | `1` | How bright its reflections are |
+| `blend_distance` | `1` | How far in from the box's sides it fades in, in meters |
+| `max_distance` | `0` | How far the cube sees, when further than the box's sides |
+| `size` | `[20, 20, 20]` | The box, centered on the entity, in meters |
+| `origin_offset` | `[0, 0, 0]` | Where the cube is drawn from, inside the box |
+| `box_projection` | `false` | Aims reflections at the box's walls, for a room shaped like the box |
+| `interior` | `false` | Draws the cube without the sky, fog or ambient light |
+| `enable_shadows` | `false` | Draws shadows into the cube |
+| `cull_mask` | `1048575` | The layers whose meshes the cube shows |
+| `reflection_mask` | `1048575` | The layers whose meshes reflect it |
+| `mesh_lod_threshold` | `1` | Kept for Godot; meshes have no LOD here |
+| `ambient_mode` | `"environment"` | Ambient light inside it: `"disabled"` (the environment's), `"environment"` (the cube's blurriest level) or `"color"` |
+| `ambient_color` | `[0, 0, 0, 1]` | The ambient light for `"color"`, in sRGB |
+| `ambient_color_energy` | `1` | `ambient_color`'s energy |
+
+Each opaque pixel inside a probe's box, on a mesh in its `reflection_mask`, reflects the cube's
+level for its roughness in place of the sky's, times `intensity`, and with `ambient_mode` takes
+its ambient light from it too. Toward the box's sides the probe fades out over `blend_distance`.
+Where probes overlap they blend as Godot's `reflection_process` does: probes are sorted largest
+first, smaller ones take the pixel first and larger ones fill what is left, and the sky fills the
+rest. The probe's rotation turns its box; its scale is ignored, as Godot's. Probes share one atlas
+of cubes, `rendering.reflections.reflection_atlas` in project.json
+([project-format.md](project-format.md#reflection-probes)), which sets their size and how many a
+frame draws (at most 42; the smallest past that reflect nothing). `gl_compatibility` draws no
+probes yet. The software device draws the same captures and reflections on the CPU, so
+`frame.capture` shows them too.
+
 ### Checks
 
 `scene validate` and exports report an entity with two primitive meshes (at

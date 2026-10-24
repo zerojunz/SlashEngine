@@ -2199,6 +2199,22 @@ void write_hall(const fs::path& folder) {
     scene += transform_3d(131, 130, "{x: 0, y: 0, z: 0}", kNoTurn, kOne, 111);
     scene += mesh_filter(132, 130, 10202);
     scene += mesh_renderer(133, 130, default_material);
+    // Reflection probes: one baked over the hall, and one drawn every frame whose box is moved
+    // from where it is drawn from.
+    scene += game_object(150, "Hall Probe", {151, 152});
+    scene += transform_3d(151, 150, "{x: 0, y: 2, z: 0}", kNoTurn, kOne);
+    scene += component(215, "ReflectionProbe", 152, 150,
+                       "  m_Enabled: 1\n  serializedVersion: 2\n  m_Type: 0\n  m_Mode: 0\n"
+                       "  m_BoxSize: {x: 10, y: 10, z: 10}\n");
+    scene += game_object(155, "Mirror", {156, 157});
+    scene += transform_3d(156, 155, "{x: 2, y: 1, z: 3}", kNoTurn, kOne);
+    scene += component(215, "ReflectionProbe", 157, 155,
+                       "  m_Enabled: 1\n  serializedVersion: 2\n  m_Type: 0\n  m_Mode: 1\n"
+                       "  m_RefreshMode: 1\n  m_BoxSize: {x: 8, y: 4, z: 6}\n"
+                       "  m_BoxOffset: {x: 1, y: 1, z: 0}\n  m_FarClip: 50\n"
+                       "  m_ShadowDistance: 0\n  m_ClearFlags: 2\n  m_IntensityMultiplier: 0.5\n"
+                       "  m_BlendDistance: 0.5\n  m_BoxProjection: 1\n  m_CullingMask:\n"
+                       "    serializedVersion: 2\n    m_Bits: 1\n");
     // A sprite in a 3D scene doesn't convert.
     scene += game_object(140, "Sign", {141, 142});
     scene += transform_3d(141, 140, "{x: 0, y: 1, z: 4}", kNoTurn, kOne);
@@ -2206,7 +2222,8 @@ void write_hall(const fs::path& folder) {
     scene += "--- !u!1660057539 &9223372036854775807\nSceneRoots:\n  m_ObjectHideFlags: 0\n"
              "  m_Roots:\n  - {fileID: 11}\n  - {fileID: 31}\n  - {fileID: 41}\n"
              "  - {fileID: 51}\n  - {fileID: 61}\n  - {fileID: 66}\n  - {fileID: 71}\n"
-             "  - {fileID: 100}\n  - {fileID: 111}\n  - {fileID: 141}\n";
+             "  - {fileID: 100}\n  - {fileID: 111}\n  - {fileID: 141}\n  - {fileID: 151}\n"
+             "  - {fileID: 156}\n";
     write(folder / "Assets/Scenes/Hall.unity", scene);
     write(folder / "Assets/Scenes/Hall.unity.meta", meta("a4000000000000000000000000000007"));
 }
@@ -4819,6 +4836,22 @@ TEST_CASE("Unity 3D scenes convert mirrored in x: meshes, materials, cameras, li
     CHECK(*spot.find("Transform3D") ==
           parse(R"({"rotation": [0.0, 3.141593, 0.0], "visible": false})"));
     CHECK(*spot.find("SpotLight3D") == parse(R"({"spot_range": 12.0, "spot_angle": 20.0})"));
+    // A reflection probe lights only reflections, as Unity's; one whose box is moved from where
+    // it is drawn from goes on an entity of its own, moved by the offset.
+    const json::Value hall_probe = entity(files, hall, "hall_probe");
+    CHECK(*hall_probe.find("Transform3D") == parse(R"({"position": [0.0, 2.0, 0.0]})"));
+    CHECK(*hall_probe.find("ReflectionProbe") ==
+          parse(R"({"size": [10.0, 10.0, 10.0], "max_distance": 1000.0, "enable_shadows": true,
+                    "ambient_mode": "disabled"})"));
+    CHECK(*entity(files, hall, "mirror").find("Transform3D") ==
+          parse(R"({"position": [-2.0, 1.0, 3.0], "children": ["mirror_reflection_probe"]})"));
+    const json::Value mirror = entity(files, hall, "mirror_reflection_probe");
+    CHECK(*mirror.find("Transform3D") == parse(R"({"position": [-1.0, 1.0, 0.0]})"));
+    CHECK(*mirror.find("ReflectionProbe") ==
+          parse(R"({"update_mode": "always", "size": [8.0, 4.0, 6.0],
+                    "origin_offset": [1.0, -1.0, 0.0], "intensity": 0.5, "blend_distance": 0.5,
+                    "max_distance": 50.0, "box_projection": true, "cull_mask": 1,
+                    "ambient_mode": "disabled"})"));
 
     // A plane's mesh collider is its two triangles, solid from both sides; a collider with no
     // Rigidbody is static. URP's Lit shader converts as the Standard one does.
@@ -4897,6 +4930,9 @@ TEST_CASE("Unity 3D scenes convert mirrored in x: meshes, materials, cameras, li
     CHECK(!unsupported(report, "CharacterController step offset").is_null());
     CHECK(!unsupported(report, "procedural skybox").is_null());
     CHECK(!unsupported(report, "audio rolloff").is_null());
+    CHECK(unsupported(report, "reflection probe background color").find("where")->as_string() ==
+          "Assets/Scenes/Hall.unity: Mirror");
+    CHECK(unsupported(report, "component ReflectionProbe").is_null());
 }
 
 TEST_CASE("Unity meshes picked out of a model become glTF files of their own") {

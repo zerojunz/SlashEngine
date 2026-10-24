@@ -122,6 +122,7 @@ constexpr int kSkinnedMeshRenderer = 137;
 constexpr int kCharacterController = 143;
 constexpr int kTerrainCollider = 154;
 constexpr int kLodGroup = 205;
+constexpr int kReflectionProbe = 215;
 constexpr int kTerrain = 218;
 // Not one of Unity's: an instance of a model file, which the import makes for a PrefabInstance of
 // one.
@@ -3405,9 +3406,12 @@ private:
         if (type == "NavMeshAgent" || type == "NavMeshObstacle" || type == "OffMeshLink") {
             return "navigation converts in a later import";
         }
-        if (type == "ReflectionProbe" || type == "LightProbeGroup" ||
-            type == "LightProbeProxyVolume") {
-            return "probes don't convert; lit surfaces take their light from the sky and lights";
+        if (type == "ReflectionProbe") {
+            return std::string(k3DWhy);
+        }
+        if (type == "LightProbeGroup" || type == "LightProbeProxyVolume") {
+            return "light probes don't convert; lit surfaces take their light from the sky, "
+                   "lights and reflection probes";
         }
         if (type == "Skybox") {
             return "a camera's own skybox doesn't convert; the scene's skybox is the sky";
@@ -11324,6 +11328,7 @@ private:
         case kMeshRenderer:
         case kSkinnedMeshRenderer:
         case kLight:
+        case kReflectionProbe:
         case kRigidbody:
         case kBoxCollider:
         case kSphereCollider:
@@ -11447,6 +11452,7 @@ private:
         const Component* model = nullptr;
         const Component* camera = nullptr;
         const Component* light = nullptr;
+        const Component* probe = nullptr;
         const Component* listener = nullptr;
         const Component* rigidbody = nullptr;
         const Component* controller = nullptr;
@@ -11499,6 +11505,9 @@ private:
                 break;
             case kLight:
                 parts.light = &component;
+                break;
+            case kReflectionProbe:
+                parts.probe = &component;
                 break;
             case kAudioListener:
                 parts.listener = &component;
@@ -11580,6 +11589,9 @@ private:
         }
         if (parts.light != nullptr) {
             light_3d(*parts.light, ctx, out, turned);
+        }
+        if (parts.probe != nullptr) {
+            reflection_probe_3d(*parts.probe, ctx, place, out);
         }
         if (parts.listener != nullptr) {
             json::Object listener;
@@ -12947,6 +12959,89 @@ private:
                 out.components[name] = std::move(fields);
             }
         }
+    }
+
+    // A reflection probe, as a ReflectionProbe. Unity's box is centered at its object's position
+    // plus m_BoxOffset and drawn from the object's position; Godot's is centered on its node and
+    // drawn from origin_offset, so an offset box goes on an entity of its own, moved by the offset
+    // and drawing from back where the object is. Unity's probes light nothing but reflections.
+    void reflection_probe_3d(const Component& component, const Context& ctx, const Place3D& place,
+                             Converted& out) {
+        const Node& body = component.body;
+        json::Value probe = json::Object{};
+        const std::int64_t mode = body.integer_at("m_Mode", 0);
+        const std::int64_t refresh = body.integer_at("m_RefreshMode", 0);
+        if (mode == 1 && refresh == 1) {
+            probe["update_mode"] = "always";
+        } else if (mode == 1 && refresh == 2) {
+            problems_.add("reflection probe refreshed by scripts", ctx.where,
+                          "it draws its cube once, and again when it changes");
+        }
+        if (mode == 2) {
+            problems_.add("reflection probe custom cubemap", ctx.where,
+                          "it draws its cube from the scene");
+        }
+        probe["size"] = triple({std::abs(body.number_at("m_BoxSize.x", 10.0)),
+                                std::abs(body.number_at("m_BoxSize.y", 10.0)),
+                                std::abs(body.number_at("m_BoxSize.z", 10.0))});
+        const std::array<double, 3> offset{tidy_number(-body.number_at("m_BoxOffset.x")),
+                                           tidy_number(body.number_at("m_BoxOffset.y")),
+                                           tidy_number(body.number_at("m_BoxOffset.z"))};
+        const bool moved = offset != std::array<double, 3>{};
+        if (moved) {
+            probe["origin_offset"] = triple({-offset[0], -offset[1], -offset[2]});
+        }
+        if (const double intensity = body.number_at("m_IntensityMultiplier", 1.0);
+            intensity != 1.0) {
+            probe["intensity"] = intensity;
+        }
+        if (const double blend = body.number_at("m_BlendDistance", 1.0); blend != 1.0) {
+            probe["blend_distance"] = std::max(blend, 0.0);
+        }
+        // Unity's cube sees as far as its far clip; Godot's as far as its box's sides or
+        // max_distance.
+        probe["max_distance"] = std::max(body.number_at("m_FarClip", 1000.0), 0.0);
+        if (body.flag_at("m_BoxProjection")) {
+            probe["box_projection"] = true;
+        }
+        if (body.number_at("m_ShadowDistance", 100.0) > 0.0) {
+            probe["enable_shadows"] = true;
+        }
+        if (const auto mask =
+                static_cast<std::uint32_t>(body.integer_at("m_CullingMask.m_Bits", 0xFFFFFFFF)) &
+                0xFFFFFU;
+            mask != 0xFFFFFU) {
+            probe["cull_mask"] = std::int64_t{mask};
+        }
+        probe["ambient_mode"] = "disabled";
+        if (body.integer_at("m_ClearFlags", 1) == 2) {
+            problems_.add("reflection probe background color", ctx.where,
+                          "its cube shows the scene's background, or none when interior");
+        }
+        if (place.rotation != Quaternion{0.0, 0.0, 0.0, 1.0}) {
+            problems_.add("turned reflection probe", ctx.where,
+                          "Unity's box stays square to the world; Godot's turns with its node");
+        }
+        if (place.scale != std::array<double, 3>{1.0, 1.0, 1.0}) {
+            problems_.add("scaled reflection probe", ctx.where,
+                          "its box is m_BoxSize; Godot's probes aren't scaled with their node");
+        }
+        json::Object parts;
+        parts["ReflectionProbe"] = std::move(probe);
+        const bool enabled = body.flag_at("m_Enabled", true);
+        if (!moved && enabled) {
+            for (auto& [name, fields] : parts) {
+                out.components[name] = std::move(fields);
+            }
+            return;
+        }
+        if (moved) {
+            parts["Transform3D"]["position"] = triple(offset);
+        }
+        if (!enabled) {
+            parts["Transform3D"]["visible"] = false;
+        }
+        out.added.emplace_back("reflection_probe", std::move(parts));
     }
 
     // --- 3D physics ---

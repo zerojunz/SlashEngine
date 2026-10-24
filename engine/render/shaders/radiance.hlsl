@@ -2,7 +2,8 @@
 // (drivers/gles3/shaders/effects/cubemap_filter.glsl): each level of the radiance cube from the
 // raw cube the sky is drawn into, one face at a time. Level 0 is a copy of the raw cube's; each
 // next one blurs it for a rougher surface, by GGX importance samples around the texel's
-// direction, mixed in linear. Keep it in step with make_radiance in src/sky.cpp, its CPU twin.
+// direction, mixed in linear. Reflection probes' cubes are filtered the same way, but hold linear
+// colors in RGBA16F. Keep it in step with filter_cube in src/sky.cpp, its CPU twin.
 
 #include "tonemap.hlsl"
 
@@ -18,6 +19,7 @@ cbuffer Filter : register(b0, space3) {
     // The face, one over the level's size, the samples' weight, and how many samples (0 copies
     // the source's level z, counted from the level its view starts at).
     float4 params;
+    float4 options; // 1 for a reflection probe's linear cube
     float4 samples[128]; // around +z: a direction, then the source level it is sampled at
 };
 
@@ -56,7 +58,9 @@ float4 fs_main(float4 position : SV_Position) : SV_Target0 {
     for (uint i = 0u; i < count; ++i) {
         float4 s = samples[i];
         float3 l = tangent * s.x + bitangent * s.y + n * s.z;
-        sum += srgb_to_linear(source_cube.SampleLevel(source_sampler, l, s.w).rgb) * s.z;
+        float3 texel = source_cube.SampleLevel(source_sampler, l, s.w).rgb;
+        sum += (options.x != 0.0 ? texel : srgb_to_linear(texel)) * s.z;
     }
-    return float4(linear_to_srgb(sum / params.z), 1.0);
+    float3 mean = sum / params.z;
+    return float4(options.x != 0.0 ? mean : linear_to_srgb(mean), 1.0);
 }

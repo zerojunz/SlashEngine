@@ -32,8 +32,10 @@ the scene, lets the crate fall and looks at the frame, as an agent would over MC
 - Default-Skybox becomes a `ProceduralSkyMaterial` in the colors Unity's procedural sky has, and
   the camera clearing to it makes the `WorldEnvironment`'s background the sky, which lights the
   scene too.
-- The reflection probe doesn't convert, and the reply lists it under `unsupported`, with the
-  skybox, which is approximated.
+- The reflection probe becomes a `ReflectionProbe` with its 10-meter box, its shadows and its far
+  clip plane as `max_distance`; the crate's faint reflections now show the courtyard rather than
+  the sky. Unity's probes give no ambient light, so its `ambient_mode` is `"disabled"`. The
+  reply lists the skybox under `unsupported`, since it is approximated.
 
 After 120 ticks the crate rests on the grass, its center about half a meter (`0.48`) above the
 ground. `frame.capture` reads the sky, the grass, the crate, the lamp post, the sky's ground

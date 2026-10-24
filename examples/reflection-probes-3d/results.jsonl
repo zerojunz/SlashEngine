@@ -1,0 +1,8 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":11,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.608,0.275,0.176,1],[0.392,0.392,0.4,1],[0.259,0.286,0.42,1],[0.271,0.282,0.353,1]],"drawn":{"meshes":7},"height":180,"path":"shots/room.png","width":320}}
+{"id":3,"jsonrpc":"2.0","result":{"changed":{"ReflectionProbe":{"box_projection":true}},"id":"probe"}}
+{"id":4,"jsonrpc":"2.0","result":{"colors":[[0.631,0.251,0.114,1],[0.361,0.361,0.369,1],[0.247,0.267,0.349,1],[0.424,0.408,0.365,1]],"drawn":{"meshes":7},"height":180,"path":"shots/box.png","width":320}}
+{"id":5,"jsonrpc":"2.0","result":{"changed":{"StandardMaterial3D":{"roughness":0.4}},"id":"floor"}}
+{"id":6,"jsonrpc":"2.0","result":{"colors":[[0.631,0.251,0.114,1],[0.647,0.651,0.678,1],[0.29,0.318,0.345,1],[0.376,0.369,0.361,1]],"drawn":{"meshes":7},"height":180,"width":320}}
+{"id":7,"jsonrpc":"2.0","result":{"results":[{"changed":{"StandardMaterial3D":{"roughness":0.1}},"id":"floor"},{"changed":{"Transform3D":{"visible":false}},"id":"probe"}]}}
+{"id":8,"jsonrpc":"2.0","result":{"colors":[[0,0,0,1],[0.239,0.239,0.255,1],[0.208,0.208,0.22,1],[0.204,0.204,0.22,1]],"drawn":{"meshes":7},"height":180,"width":320}}

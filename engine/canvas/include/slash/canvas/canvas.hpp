@@ -454,6 +454,8 @@ struct Settings {
     render::SsaoSettings ssao{};
     // rendering.environment.screen_space_reflection: screen-space reflections' resolution.
     render::SsrSettings ssr{};
+    // rendering.reflections.reflection_atlas: the size and number of reflection probes' cubes.
+    render::ReflectionAtlasSettings reflection_atlas{};
 };
 void set_settings(world::World& world, const Settings& settings);
 // The settings given to the world, or the defaults.
