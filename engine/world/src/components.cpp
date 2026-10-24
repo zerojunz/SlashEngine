@@ -701,7 +701,8 @@ void register_ik_components(ComponentRegistry& registry) {
                                         "the Jacobian transpose, as Godot's JacobianIK3D.");
 }
 
-// The navigation components: Godot's NavigationRegion, NavigationLink and NavigationAgent nodes.
+// The navigation components: Godot's NavigationRegion, NavigationLink, NavigationAgent and
+// NavigationObstacle nodes.
 void register_navigation_components(ComponentRegistry& registry) {
     const FieldMeta enabled{.doc = "Whether paths can go through it."};
     const FieldMeta use_edge_connections{
@@ -792,20 +793,98 @@ void register_navigation_components(ComponentRegistry& registry) {
             .describe("path_search_max_polygons", max_polygons)
             .describe("path_search_max_distance", max_distance);
     };
-    agent(registry.add<NavigationAgent2D>(),
-          "Finds a path on the 2D map from the entity's Transform2D to target_position and "
-          "follows how far along it the entity is, as Godot's NavigationAgent2D. Gameplay code "
-          "moves the entity toward navigation::next_path_position; it emits path_changed, "
-          "waypoint_reached, link_reached, target_reached and navigation_finished events.",
-          "[x, y] pixels");
-    agent(registry.add<NavigationAgent3D>(),
-          "Finds a path on the 3D map from the entity's Transform3D to target_position and "
-          "follows how far along it the entity is, as Godot's NavigationAgent3D. Gameplay code "
-          "moves the entity toward navigation::next_path_position; it emits path_changed, "
-          "waypoint_reached, link_reached, target_reached and navigation_finished events.",
-          "[x, y, z] meters")
+    const FieldMeta avoidance_layers{.doc = "The avoidance layers it is on, as bits; agents "
+                                            "whose avoidance_mask shares one avoid it.",
+                                     .min = 0,
+                                     .max = 4294967295.0};
+    const FieldMeta avoidance_enabled{
+        .doc = "Turns velocity into a safe velocity each tick, emitted as velocity_computed."};
+    const auto avoidance = [&](ComponentType& added, const std::string& unit) -> ComponentType& {
+        return added.describe("avoidance_enabled", avoidance_enabled)
+            .describe("velocity", {.doc = "The velocity gameplay code wants it to move at, in " +
+                                          unit + " a second, while it follows a path."})
+            .describe("radius", {.doc = "How far it keeps from others.", .min = 0})
+            .describe("neighbor_distance",
+                      {.doc = "How far it looks for agents to avoid.", .min = 0})
+            .describe("max_neighbors", {.doc = "How many agents it avoids at most.", .min = 0})
+            .describe("time_horizon_agents",
+                      {.doc = "How many seconds ahead it avoids other agents.", .min = 0})
+            .describe("time_horizon_obstacles",
+                      {.doc = "How many seconds ahead it avoids obstacles' outlines.", .min = 0})
+            .describe("max_speed",
+                      {.doc = "The fastest its safe velocity can be, in " + unit + " a second.",
+                       .min = 0})
+            .describe("avoidance_layers", avoidance_layers)
+            .describe("avoidance_mask", {.doc = "The avoidance layers of the agents and "
+                                                "obstacles it avoids, as bits.",
+                                         .min = 0,
+                                         .max = 4294967295.0})
+            .describe("avoidance_priority",
+                      {.doc = "From 0 to 1: it leaves agents of a higher priority alone, so "
+                              "they don't make way for it.",
+                       .min = 0,
+                       .max = 1});
+    };
+    avoidance(agent(registry.add<NavigationAgent2D>(),
+                    "Finds a path on the 2D map from the entity's Transform2D to target_position "
+                    "and follows how far along it the entity is, as Godot's NavigationAgent2D. "
+                    "Gameplay code moves the entity toward navigation::next_path_position; it "
+                    "emits path_changed, waypoint_reached, link_reached, target_reached and "
+                    "navigation_finished events. With avoidance_enabled, it emits "
+                    "velocity_computed with a safe velocity near velocity.",
+                    "[x, y] pixels"),
+              "pixels");
+    avoidance(agent(registry.add<NavigationAgent3D>(),
+                    "Finds a path on the 3D map from the entity's Transform3D to target_position "
+                    "and follows how far along it the entity is, as Godot's NavigationAgent3D. "
+                    "Gameplay code moves the entity toward navigation::next_path_position; it "
+                    "emits path_changed, waypoint_reached, link_reached, target_reached and "
+                    "navigation_finished events. With avoidance_enabled, it emits "
+                    "velocity_computed with a safe velocity near velocity.",
+                    "[x, y, z] meters"),
+              "meters")
         .describe("path_height_offset",
-                  {.doc = "How far the entity's origin is above the navigation mesh."});
+                  {.doc = "How far the entity's origin is above the navigation mesh."})
+        .describe("height", {.doc = "How tall it is, for avoiding agents and obstacles above or "
+                                    "below it.",
+                             .min = 0})
+        .describe("use_3d_avoidance",
+                  {.doc = "Avoids in every direction, only agents and obstacles' spheres that "
+                          "use it too; false: on the ground, by height."})
+        .describe("keep_y_velocity",
+                  {.doc = "Without use_3d_avoidance, the safe velocity keeps velocity's y."});
+
+    const auto obstacle = [&](ComponentType& added, const std::string& doc,
+                              const std::string& unit) -> ComponentType& {
+        return added.set_doc(doc)
+            .describe("radius", {.doc = "The radius of the circle agents avoid; 0: none, though "
+                                        "they still keep from its center.",
+                                 .min = 0})
+            .describe("vertices",
+                      {.doc = "An outline agents keep out of, in the entity's space, as " + unit +
+                              "; wound the other way they keep in."})
+            .describe("avoidance_enabled", {.doc = "Whether agents avoid it."})
+            .describe("velocity",
+                      {.doc = "How fast its circle moves, so agents can see where it is going."})
+            .describe("avoidance_layers", avoidance_layers)
+            .describe("affect_navigation_mesh",
+                      {.doc = "navigation.bake takes it out of the regions it is under."})
+            .describe("carve_navigation_mesh",
+                      {.doc = "The bake takes it out exactly as it is, not shrunk around by the "
+                              "agent_radius."});
+    };
+    obstacle(registry.add<NavigationObstacle2D>(),
+             "Something agents keep clear of on the 2D map, at the entity's Transform2D, as "
+             "Godot's NavigationObstacle2D: a moving circle and an outline.",
+             "[x, y] pixels");
+    obstacle(registry.add<NavigationObstacle3D>(),
+             "Something agents keep clear of on the 3D map, at the entity's Transform3D, as "
+             "Godot's NavigationObstacle3D: a moving circle and an outline on the ground that "
+             "reaches height up. Only its turn about y counts.",
+             "[x, y, z] meters (y is not used)")
+        .describe("height", {.doc = "How far up from the entity it reaches.", .min = 0})
+        .describe("use_3d_avoidance",
+                  {.doc = "Its circle is a sphere, avoided by agents with use_3d_avoidance."});
 }
 
 } // namespace

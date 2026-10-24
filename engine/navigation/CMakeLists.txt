@@ -4,6 +4,8 @@ add_library(slash_navigation
     src/core.cpp
     src/files.cpp
     src/navigation.cpp
+    src/rvo2_2d.cpp
+    src/rvo2_3d.cpp
     src/sources.cpp)
 add_library(slash::navigation ALIAS slash_navigation)
 

@@ -1,7 +1,8 @@
 // Baking 2D navigation polygons, as Godot 4.6's NavMeshGenerator2D
 // (modules/navigation/2d/nav_mesh_generator_2d.cpp, generator_bake_from_source_geometry_data):
-// Clipper2 merges the traversable outlines, takes the obstructions out and shrinks the rest by
-// agent_radius, then polypartition splits it into convex polygons or triangles.
+// Clipper2 merges the traversable outlines, takes the obstructions out, shrinks the rest by
+// agent_radius and takes carving obstacles out, then polypartition splits it into convex polygons
+// or triangles.
 
 #include "slash/navigation/navigation.hpp"
 
@@ -77,8 +78,23 @@ Result<NavigationPolygon> bake(const NavigationPolygon& settings,
     for (const std::vector<Vec2>& outline : geometry.traversable_outlines) {
         traversable.push_back(path_of(outline));
     }
-    PathsD obstructions;
-    obstructions.reserve(geometry.obstruction_outlines.size());
+    // Projected obstructions that don't carve go with the others, turned counterclockwise.
+    const auto projected = [&](bool carve) {
+        PathsD paths;
+        for (const SourceGeometry2D::Obstruction& obstruction : geometry.projected_obstructions) {
+            if (obstruction.carve != carve || obstruction.vertices.empty()) {
+                continue;
+            }
+            PathD path = path_of(obstruction.vertices);
+            if (!Clipper2Lib::IsPositive(path)) {
+                std::reverse(path.begin(), path.end());
+            }
+            paths.push_back(std::move(path));
+        }
+        return paths;
+    };
+    PathsD obstructions = projected(false);
+    obstructions.reserve(obstructions.size() + geometry.obstruction_outlines.size());
     for (const std::vector<Vec2>& outline : geometry.obstruction_outlines) {
         obstructions.push_back(path_of(outline));
     }
@@ -108,6 +124,10 @@ Result<NavigationPolygon> bake(const NavigationPolygon& settings,
         solution =
             Clipper2Lib::InflatePaths(solution, -settings.agent_radius,
                                       Clipper2Lib::JoinType::Miter, Clipper2Lib::EndType::Polygon);
+    }
+    // Carving obstructions are taken out as they are, after the agent radius.
+    if (const PathsD carved = projected(true); !carved.empty()) {
+        solution = Clipper2Lib::Difference(solution, carved, FillRule::NonZero);
     }
     if (has_rect && settings.border_size > 0.0F) {
         solution =

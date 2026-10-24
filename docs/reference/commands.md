@@ -1050,8 +1050,9 @@ Needs: `read`.
 Returns how a [`NavigationAgent2D` or `NavigationAgent3D`](scene-format.md#agents) is doing, as
 Godot's `NavigationAgent` getters: its `next_position`, whether its `navigation_finished`, it
 `target_reached` and its target is `target_reachable`, the straight `distance_to_target`, and its
-`path` with the `path_index` of the point it is going to. Asking brings the path up to date
-first, as `get_next_path_position` does.
+`path` with the `path_index` of the point it is going to. An agent with `avoidance_enabled` also
+returns the [`safe_velocity`](scene-format.md#avoidance) avoidance gave it last tick. Asking
+brings the path up to date first, as `get_next_path_position` does.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -1067,6 +1068,13 @@ Needs: `read`. The guard, before it sets off:
 {"distance_to_target":10.2956,"navigation_finished":false,"next_position":[3,0,2],"path":[[1,0,1],[3,0,2],[9,0,2],[9.5,0,4],[10,0,6]],"path_index":1,"target_reachable":true,"target_reached":false}
 ```
 
+One of the walkers in [examples/navigation-avoidance](../../examples/navigation-avoidance/), as
+it passes the others:
+
+```json
+{"distance_to_target":201.4898,"navigation_finished":false,"next_position":[298.8978,280],"path":[[20,280],[87.5868,280],[101.1023,280],[114.684,280],[298.8978,280],[312.4132,280],[321.4111,280],[380,280]],"path_index":4,"safe_velocity":[78.6577,-8.9328],"target_reachable":true,"target_reached":false}
+```
+
 An unknown ID fails at `/id` with a "did you mean", and an entity with no agent fails there too.
 
 ### navigation.bake
@@ -1075,8 +1083,9 @@ Bakes a [region's](scene-format.md#regions) `.navmesh.json` or `.navpoly.json` f
 geometry under it, as Godot's `bake_navigation_mesh` and `bake_navigation_polygon`, with the
 [settings](scene-format.md#baking) in the file (Godot's defaults for a file that isn't there
 yet). It replaces the file's `vertices` and `polygons`, keeping everything else as written, and
-returns how many it wrote, how many obstructions a 2D bake cut out, and `warnings` when there
-are any: settings that don't fit whole cells, meshes that didn't load and a region with nothing
+returns how many it wrote, how many obstructions a 2D bake cut out, how many
+`obstacle_outlines` of [obstacles](scene-format.md#avoidance) with `affect_navigation_mesh` it
+cut out, and `warnings` when there are any: settings that don't fit whole cells, meshes that didn't load and a region with nothing
 under it to bake. A bake that comes out the same reports `"unchanged": true` and records no undo
 step. Undo puts the file back as it was, removing it if the bake made it, and redo writes the
 bake again; both fail if the file changed since. The map takes the new file at the next command

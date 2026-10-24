@@ -984,6 +984,20 @@ the file changed since. Recast, Clipper2 and PolyPartition build with `-ffp-cont
 the walkable slope's cosine comes from `slash::cos_sin`, so bakes are the same everywhere.
 `examples/navigation-baking` bakes a courtyard and a garden.
 
+Avoidance follows Godot 4.6's, on its changed RVO2 and RVO2-3D (`src/rvo2.hpp`,
+`rvo2_2d.cpp`, `rvo2_3d.cpp`; Apache 2.0, notice kept): last in each navigation step,
+`AvoidanceStep` in `src/navigation.cpp` puts every agent with `avoidance_enabled` and every
+`NavigationObstacle2D` and 3D into a simulation as Godot's `NavMap` does (3D agents on the ground
+by elevation and height unless `use_3d_avoidance`; obstacles as agents that avoid nothing, plus
+outlines), steps it, and emits `velocity_computed` with each agent's safe velocity, which
+`safe_velocity_2d` and `_3d` return. Agents submit their `velocity` only while they follow a
+path, as Godot's agent nodes do. Every agent's new velocity is computed before any moves, so
+results don't depend on order. Obstacles with `affect_navigation_mesh` are projected
+obstructions in bakes (`SourceGeometry3D::projected_obstructions`), marked with
+`rcMarkConvexPolyArea` in 3D and cut with Clipper2 in 2D, before the agent radius shrinks the
+area or, with `carve_navigation_mesh`, after. `examples/navigation-avoidance` has walkers
+weaving through a plaza.
+
 ## Particles
 
 `CPUParticles2D` is Godot's, with Godot's field names and angles in degrees. The

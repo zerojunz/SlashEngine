@@ -340,6 +340,14 @@ Reply navigation_agent(Session& session, const json::Value& params) {
     }
     result["path"] = std::move(points);
     result["path_index"] = static_cast<std::int64_t>(info.path_index);
+    const bool avoiding =
+        three_d ? world.ecs().get<const world::NavigationAgent3D>(entity).avoidance_enabled
+                : world.ecs().get<const world::NavigationAgent2D>(entity).avoidance_enabled;
+    if (avoiding) {
+        result["safe_velocity"] =
+            three_d ? point_value(info.safe_velocity)
+                    : point_value(Vec2{info.safe_velocity.x, info.safe_velocity.y});
+    }
     return Reply::success(std::move(result));
 }
 
@@ -443,6 +451,9 @@ Reply navigation_bake(Session& session, const json::Value& params) {
         after = json::write(navigation::with_polygons(std::move(file.doc), baked.value())) + "\n";
         result["vertices"] = baked.value().vertices.size();
         result["polygons"] = baked.value().polygons.size();
+        if (!geometry.projected_obstructions.empty()) {
+            result["obstacle_outlines"] = geometry.projected_obstructions.size();
+        }
     } else {
         navigation::NavigationPolygon settings;
         if (file.text) {
@@ -466,6 +477,9 @@ Reply navigation_bake(Session& session, const json::Value& params) {
         result["vertices"] = baked.value().vertices.size();
         result["polygons"] = baked.value().polygons.size();
         result["obstructions"] = geometry.obstruction_outlines.size();
+        if (!geometry.projected_obstructions.empty()) {
+            result["obstacle_outlines"] = geometry.projected_obstructions.size();
+        }
     }
     if (!warnings.empty()) {
         json::Array list;
@@ -570,8 +584,8 @@ void register_navigation_commands(Registry& registry) {
     registry.add({
         .name = "navigation.agent",
         .description = "Returns an agent's next position, whether it finished, reached or can "
-                       "reach its target, the distance to it and its path, as Godot's "
-                       "NavigationAgent getters.",
+                       "reach its target, the distance to it, its path and, with avoidance, its "
+                       "safe velocity, as Godot's NavigationAgent getters.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({{"id", std::move(agent_id)}}, {"id"}),
@@ -584,8 +598,9 @@ void register_navigation_commands(Registry& registry) {
         .name = "navigation.bake",
         .description = "Bakes a region's navigation_mesh or navigation_polygon file from the "
                        "geometry under it, as Godot's bake_navigation_mesh and "
-                       "bake_navigation_polygon, keeping the file's settings. Returns the "
-                       "polygon count and warnings.",
+                       "bake_navigation_polygon, keeping the file's settings. Obstacles with "
+                       "affect_navigation_mesh are cut out. Returns the polygon count and "
+                       "warnings.",
         .capabilities = {Edit, Filesystem},
         .effect = Effect::Edit,
         .params = params_schema({{"id", std::move(region_id)}}, {"id"}),
