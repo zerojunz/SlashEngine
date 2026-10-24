@@ -82,6 +82,13 @@ struct RayHit {
 overlap_shape(world::World& world, const world::CollisionShape3D& shape, Vec3 position,
               Vec3 rotation, const QueryFilter& filter = {}, std::size_t max_results = 32);
 
+// The point of an area's or body's shapes nearest to point, as Godot's
+// get_closest_point_to_object_volume: point itself when it is inside a convex shape, else the
+// nearest point on one; the entity's position when it has no convex shapes. nullopt when it is
+// no 3D body or area.
+[[nodiscard]] std::optional<Vec3> closest_point(world::World& world, entt::entity entity,
+                                                Vec3 point);
+
 // What touches an entity now, each sorted by ID: for a body, the bodies touching it (for a
 // character, what its last move slid along) and the areas it is in; for an area, the bodies and
 // areas in it.

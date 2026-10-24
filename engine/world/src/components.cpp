@@ -443,7 +443,24 @@ void register_physics_3d_components(ComponentRegistry& registry) {
         .describe("linear_damp_space_override", override_mode)
         .describe("linear_damp", {.doc = "Slows movement in it, per second.", .min = 0})
         .describe("angular_damp_space_override", override_mode)
-        .describe("angular_damp", {.doc = "Slows turning in it, per second.", .min = 0});
+        .describe("angular_damp", {.doc = "Slows turning in it, per second.", .min = 0})
+        .describe("audio_bus_override",
+                  {.doc = "AudioStreamPlayer3D sounds in it play through audio_bus_name, when "
+                          "its collision_layer is in their area_mask."})
+        .describe("audio_bus_name", {.doc = "The bus sounds in it play through, from the "
+                                            "project's bus layout."})
+        .describe("reverb_bus_enabled",
+                  {.doc = "Sounds in it send to reverb_bus_name. As in Godot, with no "
+                          "audio_bus_override they play only there."})
+        .describe("reverb_bus_name", {.doc = "The bus sounds in it send to, such as one with a "
+                                             "reverb effect."})
+        .describe("reverb_bus_amount",
+                  {.doc = "How much of a sound goes to the reverb bus.", .min = 0, .max = 1})
+        .describe("reverb_bus_uniformity",
+                  {.doc = "How much the reverb comes from the area all around the listener "
+                          "rather than from the sound.",
+                   .min = 0,
+                   .max = 1});
 
     const FieldMeta node_a{.doc = "ID of the first body; null attaches node_b to the world."};
     const FieldMeta node_b{.doc = "ID of the second body; null attaches node_a to the world."};
@@ -1893,6 +1910,69 @@ void register_audio_components(ComponentRegistry& registry) {
                  "at its Transform2D and turned with it. The first current one by ID is used; "
                  "with none, the middle of the viewport.")
         .describe("current", {.doc = "Whether it is the listener."});
+    const FieldMeta doppler{.doc = "Follows how fast it moves for doppler: \"idle_step\" and "
+                                   "\"physics_step\" both measure it each tick.",
+                            .choices = {"disabled", "idle_step", "physics_step"}};
+    registry.add<AudioStreamPlayer3D>()
+        .set_doc("Plays a sound at the entity's Transform3D, as Godot's AudioStreamPlayer3D, "
+                 "heard from the AudioListener3D or else the current Camera3D: quieter and "
+                 "muffled with distance, panned by where it is around the listener, muffled "
+                 "outside its emission cone, pitched by doppler, and routed by an Area3D it is "
+                 "in. Emits finished when a sound ends.")
+        .describe("stream", stream)
+        .describe(
+            "attenuation_model",
+            {.doc = "How it fades with distance: as 1 / distance, 1 / distance squared, "
+                    "by 20 dB each time the distance is multiplied by e, or not at all.",
+             .choices = {"inverse_distance", "inverse_square_distance", "logarithmic", "disabled"}})
+        .describe("volume_db", volume)
+        .describe("unit_size", {.doc = "Meters from the listener at which it is at volume_db; "
+                                       "larger carries farther.",
+                                .min = 0.01})
+        .describe("max_db",
+                  {.doc = "The loudest it gets close up, in decibels.", .min = -24, .max = 6})
+        .describe("pitch_scale", pitch)
+        .describe("playing", playing)
+        .describe("autoplay", autoplay)
+        .describe("stream_paused", paused)
+        .describe("max_distance",
+                  {.doc = "Meters from the listener beyond which it is silent, fading to it "
+                          "linearly; 0 for no limit.",
+                   .min = 0})
+        .describe("max_polyphony", polyphony)
+        .describe(
+            "panning_strength",
+            {.doc = "Times the project's audio.panning_strength_3d; 0 for no panning.", .min = 0})
+        .describe("bus", bus)
+        .describe("area_mask", {.doc = "Area3D layers, as bits, whose audio_bus_override and "
+                                       "reverb bus apply while it is inside; the first such "
+                                       "area by ID wins. 0 ignores areas."})
+        .describe("emission_angle_enabled",
+                  {.doc = "Muffles it for listeners outside a cone down the entity's -z."})
+        .describe("emission_angle_degrees",
+                  {.doc = "The cone's half angle, in degrees.", .min = 0.1, .max = 90})
+        .describe("emission_angle_filter_attenuation_db",
+                  {.doc = "How much the high-shelf filter takes off outside the cone, in "
+                          "decibels.",
+                   .min = -80,
+                   .max = 0})
+        .describe("attenuation_filter_cutoff_hz",
+                  {.doc = "Where the high-shelf filter that muffles it starts, in hertz.",
+                   .min = 1,
+                   .max = 20500})
+        .describe("attenuation_filter_db",
+                  {.doc = "How much the filter takes off as distance silences it, in "
+                          "decibels.",
+                   .min = -80,
+                   .max = 0})
+        .describe("doppler_tracking", doppler)
+        .describe("parameters", parameters);
+    registry.add<AudioListener3D>()
+        .set_doc("Where AudioStreamPlayer3D sounds are heard from, as Godot's AudioListener3D, "
+                 "at its Transform3D and turned with it, in place of the current Camera3D. The "
+                 "first current one by ID is used, else the first one.")
+        .describe("current", {.doc = "Makes it the listener."})
+        .describe("doppler_tracking", doppler);
 }
 
 void register_3d_components(ComponentRegistry& registry) {
@@ -2079,7 +2159,12 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("h_offset", {.doc = "Moves the view right, in meters."})
         .describe("v_offset", {.doc = "Moves the view up, in meters."})
         .describe("current", {.doc = "Makes it the camera the world is seen through."})
-        .describe("cull_mask", {.doc = "Sees meshes whose layers share a bit."});
+        .describe("cull_mask", {.doc = "Sees meshes whose layers share a bit."})
+        .describe("doppler_tracking",
+                  {.doc = "Follows how fast it moves for 3D sounds' doppler while it is the "
+                          "listener: \"idle_step\" and \"physics_step\" both measure it each "
+                          "tick.",
+                   .choices = {"disabled", "idle_step", "physics_step"}});
 
     registry.add<DirectionalLight3D>()
         .set_doc("Light from one direction everywhere, such as the sun, shining down the "

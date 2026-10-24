@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "car": {
+      "components": {
+        "AnimationPlayer": {
+          "animation": "drive",
+          "library": "car.anim.json"
+        },
+        "AudioStreamPlayer3D": {
+          "autoplay": true,
+          "bus": "Sfx",
+          "doppler_tracking": "physics_step",
+          "max_distance": 80.0,
+          "stream": "audio/engine.wav",
+          "unit_size": 5.0
+        },
+        "Transform3D": {
+          "position": [-40.0, 0.0, -10.0]
+        }
+      }
+    },
+    "cave": {
+      "components": {
+        "Area3D": {
+          "audio_bus_name": "Cave",
+          "audio_bus_override": true,
+          "reverb_bus_amount": 0.6,
+          "reverb_bus_enabled": true,
+          "reverb_bus_name": "Echo"
+        },
+        "CollisionShape3D": {
+          "size": [12.0, 6.0, 12.0]
+        },
+        "Transform3D": {
+          "position": [20.0, 3.0, 10.0]
+        }
+      }
+    },
+    "ears": {
+      "components": {
+        "AudioListener3D": {
+          "current": true
+        },
+        "Transform3D": {}
+      }
+    },
+    "trickle": {
+      "components": {
+        "AudioStreamPlayer3D": {
+          "autoplay": true,
+          "stream": "audio/trickle.wav"
+        },
+        "Transform3D": {
+          "position": [20.0, 1.0, 10.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

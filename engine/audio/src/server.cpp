@@ -3,6 +3,8 @@
 // bus setters. Godot mixes on the audio driver's thread; here mix() runs on the game's, once per
 // tick, so the same ticks make the same sound.
 
+#include "filter.hpp"
+
 #include "slash/audio/audio.hpp"
 #include "slash/audio/effects.hpp"
 #include "slash/core/log.hpp"
@@ -18,6 +20,7 @@ namespace {
 
 constexpr int kBufferSize = Server::kMixStep;
 constexpr int kLookahead = 64;                       // AuSC::LOOKAHEAD_BUFFER_SIZE
+constexpr std::size_t kMaxBusesPerPlayback = 6;      // AuSC::MAX_BUSES_PER_PLAYBACK
 constexpr float kPeakOffset = 1e-10F;                // AuSC::AUDIO_PEAK_OFFSET
 constexpr float kMinPeakDb = -200.0F;                // AuSC::AUDIO_MIN_PEAK_DB
 constexpr float kChannelDisableThresholdDb = -60.0F; // audio/buses/channel_disable_threshold_db
@@ -70,21 +73,20 @@ struct Server::Impl final : MixContext {
         AwaitingDeletion
     };
 
-    // The bus a playback mixes into and its volume there. Godot allows several per playback, for
-    // 3D areas; 2D players use one.
-    struct BusDetails {
-        std::string bus;
-        Frame volume;
-        bool active = false;
-    };
-
     struct Node {
         PlaybackId id = 0;
         std::unique_ptr<Playback> playback;
         State state = State::Playing;
-        BusDetails bus;
-        BusDetails prev;
+        // The buses it mixes into and its volume in each, as Godot's bus details: one for most
+        // players, more for a 3D player in an area with a reverb bus.
+        std::vector<BusVolume> buses;
+        std::vector<BusVolume> prev;
         float pitch_scale = 1.0F;
+        // A 3D player's high-shelf filter, one processor per channel, shared by its buses as
+        // Godot's filter_process is.
+        float highshelf_gain = 0.0F;
+        float attenuation_cutoff_hz = 0.0F;
+        std::array<Filter::Processor, 2> filter_process{};
         std::array<Frame, kLookahead> lookahead{};
     };
 
@@ -136,8 +138,35 @@ struct Server::Impl final : MixContext {
         return it != playbacks.end() ? &*it : nullptr;
     }
 
-    static void mix_step_for_channel(Frame* out, const Frame* source, Frame vol_start,
-                                     Frame vol_final) {
+    // Godot's _mix_step_for_channel: the source into out at a volume ramping from vol_start to
+    // vol_final, through the node's high-shelf filter when it has one.
+    void mix_step_for_channel(Frame* out, const Frame* source, Frame vol_start, Frame vol_final,
+                              Node& node) const {
+        if (node.highshelf_gain != 0.0F) {
+            Filter filter;
+            filter.set_mode(Filter::Mode::HighShelf);
+            filter.set_sampling_rate(static_cast<float>(rate_));
+            filter.set_cutoff(node.attenuation_cutoff_hz);
+            filter.set_resonance(1);
+            filter.set_stages(1);
+            filter.set_gain(node.highshelf_gain);
+            const bool is_just_started = vol_start.left == 0 && vol_start.right == 0;
+            for (Filter::Processor& processor : node.filter_process) {
+                processor.set_filter(&filter, is_just_started);
+                processor.update_coeffs(kBufferSize);
+            }
+            for (int frame_idx = 0; frame_idx < kBufferSize; ++frame_idx) {
+                const float lerp_param =
+                    static_cast<float>(frame_idx) / static_cast<float>(kBufferSize);
+                const Frame vol =
+                    vol_final * lerp_param + Frame{1 - lerp_param, 1 - lerp_param} * vol_start;
+                Frame mixed = vol * source[frame_idx];
+                node.filter_process[0].process_one_interp(mixed.left);
+                node.filter_process[1].process_one_interp(mixed.right);
+                out[frame_idx] = out[frame_idx] + mixed;
+            }
+            return;
+        }
         for (int frame_idx = 0; frame_idx < kBufferSize; ++frame_idx) {
             const float lerp_param =
                 static_cast<float>(frame_idx) / static_cast<float>(kBufferSize);
@@ -203,24 +232,26 @@ struct Server::Impl final : MixContext {
                           node.lookahead.begin());
             }
 
-            BusDetails details = node.bus;
-            if (details.active) {
-                Frame* channel = channel_mix_buffer(find_bus(details.bus));
+            std::vector<BusVolume> details = node.buses;
+            for (BusVolume& target : details) {
+                Frame* channel = channel_mix_buffer(find_bus(target.bus));
                 if (fading_out) {
-                    details.volume = {};
+                    target.volume = {};
                 }
                 // Starting at full volume keeps transients; a change ramps over the step.
-                const Frame start = node.prev.active && node.prev.bus == details.bus
-                                        ? node.prev.volume
-                                        : details.volume;
-                mix_step_for_channel(channel, buf, start, details.volume);
+                const auto was = std::ranges::find(node.prev, target.bus, &BusVolume::bus);
+                const Frame start = was != node.prev.end() ? was->volume : target.volume;
+                mix_step_for_channel(channel, buf, start, target.volume, node);
             }
-            // A bus it left fades out.
-            if (node.prev.active && !(details.active && details.bus == node.prev.bus)) {
-                Frame* channel = channel_mix_buffer(find_bus(node.prev.bus));
-                mix_step_for_channel(channel, buf, node.prev.volume, {});
+            // Buses it left fade out.
+            for (const BusVolume& left : node.prev) {
+                if (std::ranges::find(details, left.bus, &BusVolume::bus) != details.end()) {
+                    continue;
+                }
+                Frame* channel = channel_mix_buffer(find_bus(left.bus));
+                mix_step_for_channel(channel, buf, left.volume, {}, node);
             }
-            node.prev = details;
+            node.prev = std::move(details);
 
             switch (node.state) {
             case State::AwaitingDeletion:
@@ -437,7 +468,7 @@ Server::PlaybackId Server::start(std::unique_ptr<Playback> playback, std::string
     node.playback = std::move(playback);
     node.playback->attach(*this);
     node.playback->start(from_seconds);
-    node.bus = {std::move(bus), volume, true};
+    node.buses.push_back({std::move(bus), volume});
     node.pitch_scale = pitch_scale;
     impl_->playbacks.push_back(std::move(node));
     return impl_->playbacks.back().id;
@@ -476,7 +507,23 @@ void Server::set_paused(PlaybackId id, bool paused) {
 
 void Server::set_bus_exclusive(PlaybackId id, std::string bus, Frame volume) {
     if (Impl::Node* node = impl_->find(id); node != nullptr) {
-        node->bus = {std::move(bus), volume, true};
+        node->buses.assign(1, {std::move(bus), volume});
+    }
+}
+
+void Server::set_bus_volumes(PlaybackId id, std::vector<BusVolume> buses) {
+    if (Impl::Node* node = impl_->find(id); node != nullptr) {
+        if (buses.size() > kMaxBusesPerPlayback) {
+            buses.resize(kMaxBusesPerPlayback);
+        }
+        node->buses = std::move(buses);
+    }
+}
+
+void Server::set_highshelf(PlaybackId id, float linear_gain, float cutoff_hz) {
+    if (Impl::Node* node = impl_->find(id); node != nullptr) {
+        node->highshelf_gain = linear_gain;
+        node->attenuation_cutoff_hz = cutoff_hz;
     }
 }
 

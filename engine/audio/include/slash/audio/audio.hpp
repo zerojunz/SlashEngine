@@ -37,11 +37,11 @@
 //   {"format": 1, "polyphonic": {"polyphony": 16}}
 //   {"format": 1, "microphone": {}}
 //
-// AudioStreamPlayer and AudioStreamPlayer2D components play them through the buses a
-// .bus_layout.json file sets up, each bus with Godot's volume, mute, solo, effects and send.
-// Mixing follows the fixed ticks rather than the sound card, so the same ticks always make the
-// same sound: each tick, the "audio" system mixes that tick's share of samples and hands them to
-// whatever plays them (an SdlOutput in a window), and agents can read what was mixed.
+// AudioStreamPlayer, AudioStreamPlayer2D and AudioStreamPlayer3D components play them through
+// the buses a .bus_layout.json file sets up, each bus with Godot's volume, mute, solo, effects
+// and send. Mixing follows the fixed ticks rather than the sound card, so the same ticks always
+// make the same sound: each tick, the "audio" system mixes that tick's share of samples and hands
+// them to whatever plays them (an SdlOutput in a window), and agents can read what was mixed.
 namespace slash::audio {
 
 inline constexpr std::string_view kStreamSuffix = ".audio.json";
@@ -395,6 +395,14 @@ struct LoadedStream {
 
 // The mixer, as Godot's AudioServer: playbacks mix into buses, buses run their effects and mix
 // into the bus they send to, and the Master bus is what plays. Stereo only.
+// A bus a playback mixes into and its volume there.
+struct BusVolume {
+    std::string bus;
+    Frame volume;
+
+    friend bool operator==(const BusVolume&, const BusVolume&) = default;
+};
+
 class Server {
 public:
     using PlaybackId = std::uint32_t;
@@ -438,6 +446,12 @@ public:
     void stop(PlaybackId id);
     void set_paused(PlaybackId id, bool paused);
     void set_bus_exclusive(PlaybackId id, std::string bus, Frame volume);
+    // The buses a playback mixes into and its volume in each, at most six, as Godot's
+    // set_playback_bus_volumes_linear; none silences it. A bus it leaves fades out.
+    void set_bus_volumes(PlaybackId id, std::vector<BusVolume> buses);
+    // Muffles a playback through a high-shelf filter at cutoff_hz with linear_gain, as Godot's
+    // set_playback_highshelf_params does for 3D players; a gain of 0 turns it off.
+    void set_highshelf(PlaybackId id, float linear_gain, float cutoff_hz);
     void set_pitch_scale(PlaybackId id, float pitch_scale);
     // Playing, and not paused or fading out.
     [[nodiscard]] bool is_active(PlaybackId id) const;
@@ -518,6 +532,8 @@ struct Settings {
     float output_latency = 15.0F;
     // How far 2D sounds pan left and right, as Godot's audio/general/2d_panning_strength.
     float panning_strength_2d = 0.5F;
+    // How far 3D sounds pan, as Godot's audio/general/3d_panning_strength.
+    float panning_strength_3d = 0.5F;
     // Seconds of each bus's output kept for capture(); sessions keep some, games none.
     double history_seconds = 0.0;
     // Whether microphone input can turn on, as Godot's audio/driver/enable_input. Exports then
@@ -543,7 +559,7 @@ void add_asset_types(asset::Assets& assets);
 
 // Gives the world a Server, loads the bus layout through assets (which must outlive the world)
 // and adds the "audio" system (priority 1200, after everything else), which plays each
-// AudioStreamPlayer and AudioStreamPlayer2D and mixes each tick's sound.
+// AudioStreamPlayer, AudioStreamPlayer2D and AudioStreamPlayer3D and mixes each tick's sound.
 void install(world::World& world, asset::Assets& assets, const Settings& settings = {});
 // Applies new settings; a change starts the buses over from the layout, and a new mix rate
 // stops every sound.
@@ -592,8 +608,9 @@ struct InputInfo {
 };
 [[nodiscard]] InputInfo input_info(const world::World& world);
 
-// Plays an AudioStreamPlayer or AudioStreamPlayer2D from a position in seconds at the next
-// tick, as Godot's play(): with max_polyphony 1 it restarts, with more another voice joins.
+// Plays an AudioStreamPlayer, AudioStreamPlayer2D or AudioStreamPlayer3D from a position in
+// seconds at the next tick, as Godot's play(): with max_polyphony 1 it restarts, with more
+// another voice joins.
 void play(world::World& world, entt::entity entity, double from_seconds = 0.0);
 // Stops it at the next tick, as Godot's stop().
 void stop(world::World& world, entt::entity entity);
@@ -648,16 +665,20 @@ void restore(world::World& world, const Snapshot& snapshot);
 // A player as the audio system sees it.
 struct PlayerInfo {
     std::string id;
-    std::string kind; // "AudioStreamPlayer" or "AudioStreamPlayer2D"
+    std::string kind; // "AudioStreamPlayer", "AudioStreamPlayer2D" or "AudioStreamPlayer3D"
     std::string stream;
     std::string bus;
     int voices = 0;      // playbacks mixing
     bool paused = false; // stream_paused holds them
     double position = 0.0;
     double length = 0.0;
-    Frame volume{};    // the gain mixed in, after distance and panning for 2D players
-    std::string clip;  // the interactive music clip playing, if any
-    std::string error; // why its stream did not load
+    Frame volume{}; // the gain mixed in, after distance and panning for 2D and 3D players
+    // A 3D player's other buses, such as an area's reverb bus, with its gain in each.
+    std::vector<BusVolume> sends;
+    float pitch_scale = 1.0F; // a 3D player's pitch, after doppler
+    float filter_db = 0.0F;   // a 3D player's high-shelf filter gain, from distance and angle
+    std::string clip;         // the interactive music clip playing, if any
+    std::string error;        // why its stream did not load
     // A generator's frames that can be pushed and mixes that ran out of frames.
     struct Generator {
         int frames_available = 0;

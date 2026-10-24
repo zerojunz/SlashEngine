@@ -1786,11 +1786,17 @@ Needs: `read`. With the footsteps playing:
   player lists `"polyphonic": {"playing", "polyphony"}`: the streams it has going and how many it
   can.
 - `volume` is the `[left, right]` gain mixed in: the player's `volume_db`, then for an
-  `AudioStreamPlayer2D` its fade with distance and its pan from the listener.
+  `AudioStreamPlayer2D` or `AudioStreamPlayer3D` its fade with distance and its pan from the
+  listener.
+- An `AudioStreamPlayer3D` ([3D sound](scene-format.md#3d-sound)) also lists `pitch_scale`, the
+  pitch it plays at after the Doppler effect, and `filter_db`, the gain its high shelf takes off
+  for distance and its emission angle (as Godot's filter, the highest frequencies lose twice that). An `Area3D` with a reverb bus adds
+  `"sends": [{"bus", "volume"}]`, the buses it mixes into beside `bus`.
 - `paused` is listed when `stream_paused` holds the player, and `error` when its stream did not
   load, such as a missing or corrupt file.
 - A player's `bus` is the one it plays on now: an `Area2D` with `audio_bus_override` that holds
-  an `AudioStreamPlayer2D` sends it to its own bus ([buses by area](scene-format.md#buses-by-area)).
+  an `AudioStreamPlayer2D` sends it to its own bus ([buses by area](scene-format.md#buses-by-area)),
+  as an `Area3D` does an `AudioStreamPlayer3D`.
 - A `capture` effect lists `frames_available`, the frames its buffer holds, and
   `discarded_frames` once a full buffer has dropped some. A `record` effect lists
   `"recording": true` while it records and `seconds` once it holds a recording; both show the
@@ -1896,7 +1902,8 @@ an error too, since only a file loops.
 
 ### audio.play
 
-Plays an `AudioStreamPlayer` or `AudioStreamPlayer2D` at the next tick, as Godot's `play()`: with
+Plays an `AudioStreamPlayer`, `AudioStreamPlayer2D` or `AudioStreamPlayer3D` at the next tick, as
+Godot's `play()`: with
 `max_polyphony` 1 it starts over, with more another voice joins, up to that many. Music,
 generators, polyphonic streams and microphones always start over, as Godot's monophonic streams
 do. With
@@ -1924,8 +1931,8 @@ Needs: `run`. Changes no entities until the next `step`, so there is nothing to 
 ```
 
 `tick` is the tick it plays at, which the next `step` runs; the player's `playing` turns on then.
-An ID that names no entity is an error with the closest one, and so is an entity with neither
-player component. Setting `playing` to `true` with [`component.set`](#componentset) plays it
+An ID that names no entity is an error with the closest one, and so is an entity with none of
+the player components. Setting `playing` to `true` with [`component.set`](#componentset) plays it
 too.
 
 From [examples/generated-audio](../../examples/generated-audio/), a hit an octave up on the
@@ -1941,7 +1948,8 @@ the player's `polyphony` is playing, the new stream is dropped with a warning in
 
 ### audio.stop
 
-Stops an `AudioStreamPlayer` or `AudioStreamPlayer2D` at the next tick, as Godot's `stop()`,
+Stops an `AudioStreamPlayer`, `AudioStreamPlayer2D` or `AudioStreamPlayer3D` at the next tick, as
+Godot's `stop()`,
 fading every voice out over one mix step so it doesn't click.
 
 | Param | Type | Default | Meaning |

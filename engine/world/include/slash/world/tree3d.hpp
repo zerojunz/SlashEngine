@@ -84,4 +84,13 @@ private:
     std::vector<entt::entity> order_;
 };
 
+// The transform with its basis made orthonormal, as Godot's Transform3D::orthonormalized:
+// Gram-Schmidt on the columns, x first. The origin stays.
+[[nodiscard]] Affine3D orthonormalized(Affine3D transform);
+
+// The camera the 3D world is seen through, as Godot's Viewport::get_camera_3d: the first
+// Camera3D with current set in tree order, else the first one; cameras with no Transform3D come
+// after those in the tree, in the order they were made. Null with none.
+[[nodiscard]] entt::entity current_camera(const World& world, const Tree3D& tree);
+
 } // namespace slash::world
