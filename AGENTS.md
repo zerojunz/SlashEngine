@@ -42,7 +42,7 @@ Set up once per machine:
 | Linux | `sudo apt-get install` the `LINUX_SDL_DEPS` in `.github/workflows/ci.yml`, plus `mesa-vulkan-drivers libgl1 libgles2 libegl-mesa0 libgl1-mesa-dri` for the GPU tests and `ccache clang-format-18 clang-tidy-18` |
 | macOS | Xcode's command line tools, then `brew install ninja ccache` |
 | Windows | Visual Studio 2022's C++ tools, `choco install ninja`; run everything from a Developer PowerShell (x64) |
-| Claude Code cloud session | Nothing: `.claude/hooks/session-start.sh` installs the Linux packages, then configures `dev` with ccache, builds the tools and `slash_tests` and installs the web toolchain in the background. Wait for it with `flock /tmp/slash-session-setup.lock true`; it logs to `.slash/session-setup.log`. Build only the examples you need (`--target example-<folder>`): all of them take some 20 GB in a Debug build |
+| Claude Code cloud session | Nothing: `.claude/hooks/session-start.sh` installs the Linux packages, then configures `dev` with ccache, builds the tools and `slash_tests`, installs the web toolchain and, where dl.google.com is reachable, the Android SDK in the background (Wayland comes from Ubuntu's archive where gitlab.freedesktop.org is blocked). Wait for it with `flock /tmp/slash-session-setup.lock true`; it logs to `.slash/session-setup.log`. Build only the examples you need (`--target example-<folder>`): all of them take some 20 GB in a Debug build |
 
 The loop, the same everywhere (add `-DCMAKE_C_COMPILER_LAUNCHER=ccache
 -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON` to a first configure

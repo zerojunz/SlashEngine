@@ -1,7 +1,7 @@
 #!/bin/bash
 # The background half of session-start.sh, run from the project folder under its lock: configure
-# the dev preset to compile through ccache, build slash-cli, install the web toolchain, then build
-# the other tools and the unit tests. Writes running, done or failed to .slash/session-setup.status.
+# the dev preset to compile through ccache, build slash-cli, install the web toolchain, build the
+# other tools and the unit tests, then install the Android SDK where the network reaches Google's. Writes running, done or failed to .slash/session-setup.status.
 set -uo pipefail
 
 cli=./build/dev/tools/slash-cli/slash-cli
@@ -58,13 +58,21 @@ main() {
     step "configure the dev preset" cmake --preset dev "${configure[@]}"
     step "build slash-cli" cmake --build --preset dev --target slash-cli
     step "install the web toolchain" "$cli" toolchain install web
-    if [ "${SLASH_ACCEPT_ANDROID_SDK_LICENSE:-}" = 1 ]; then
-        step "install the Android SDK" "$cli" toolchain install android --accept-android-sdk-license
-    fi
     # Not the examples: in a Debug build each links the whole engine with its debug info, some
     # 20 GB in all, more than a session's disk can spare. Build the ones a task needs.
     step "build the tools and tests" cmake --build --preset dev \
         --target slash-cli slash-mcp slash-game slash_tests
+    # The Android SDK, NDK and JDK, accepting Google's Android SDK license for this project's
+    # sessions as its owner asked. Last and never fatal: dl.google.com is blocked on some networks,
+    # cloud sessions' default one included, and nothing but Android exports needs it.
+    if timeout 20 curl -sSfI -o /dev/null https://dl.google.com/android/repository/repository2-1.xml; then
+        echo "== install the Android SDK ($(date -u +%H:%M:%S))"
+        if ! "$cli" toolchain install android --accept-android-sdk-license; then
+            echo "== skipped the Android SDK: its install failed"
+        fi
+    else
+        echo "== skipped the Android SDK: dl.google.com is unreachable from this network"
+    fi
     echo "== done ($(date -u +%H:%M:%S))"
     echo done >"$status"
 }

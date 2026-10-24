@@ -6,9 +6,9 @@
 # clang-format and clang-tidy 18 as CI's lint job uses them. Then session-build.sh, in the
 # background, holding /tmp/slash-session-setup.lock: configure the dev preset to compile through
 # ccache (fetching the dependencies), build slash-cli, install the web toolchain (Emscripten, for
-# the libc++ portability check in AGENTS.md) and build the other tools and the unit tests.
-# SLASH_ACCEPT_ANDROID_SDK_LICENSE=1 in the environment also installs the Android SDK, which
-# accepts Google's license for whoever runs the session, so it is never done by default.
+# the libc++ portability check in AGENTS.md), build the other tools and the unit tests, then install
+# the Android SDK (accepting Google's license) when dl.google.com answers, and skip it when not.
+# Wayland, pinned from gitlab.freedesktop.org, comes from Ubuntu's archive where that is blocked.
 #
 # Safe to run again: installed packages, the configured build and installed toolchains are kept.
 set -euo pipefail
@@ -56,4 +56,5 @@ cat <<EOF
 SlashEngine session setup: the Linux packages, ccache and clang-format/clang-tidy 18 are installed.
 The dev build and the web toolchain are being set up in the background (log: .slash/session-setup.log,
 state: .slash/session-setup.status). Before building, wait for it: flock $lock true
+The Android SDK installs last when dl.google.com is reachable; the log says if it was skipped.
 EOF
