@@ -1390,8 +1390,8 @@ project's `rendering.lights_and_shadows` ([project-format.md](project-format.md#
 
 The first `WorldEnvironment` made sets the background a 3D frame clears to or the sky behind
 its meshes, the fog, the ambient light every lit surface gets and what happens to colors after,
-as Godot's `Environment` in its Compatibility renderer. Without one, the background is the
-project's `rendering.clear_color`, there is no ambient light and colors stay as they are.
+as Godot's `Environment`. Without one, the background is the project's `rendering.clear_color`,
+there is no ambient light and colors stay as they are.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
@@ -1407,9 +1407,15 @@ project's `rendering.clear_color`, there is no ambient light and colors stay as 
 | `reflected_light_source` | `"background"` | What lit surfaces reflect: `"background"` (the sky, if it is the background), `"sky"` or `"disabled"` |
 | `tonemap_mode` | `"linear"` | `"linear"`, `"reinhard"`, `"filmic"`, `"aces"` or `"agx"` |
 | `tonemap_exposure` | `1` | Multiplies lit colors before they are tonemapped |
-| `tonemap_white` | `1` | The color tonemapped to white (`"agx"` ignores it) |
+| `tonemap_white` | `1` | The color tonemapped to white, at least 1 with `forward_plus` (`"agx"` uses its own) |
+| `tonemap_agx_white`, `tonemap_agx_contrast` | `16.29`, `1.25` | `forward_plus`: `"agx"`'s white, at least 2, and how steep its curve is |
 | `glow_enabled` | `false` | Bright colors bleed into what is around them |
-| `glow_intensity` | `0.8` | How strong the glow is |
+| `glow_levels` | `[0, 0.8, 0.4, 0.1, 0, 0, 0]` | `forward_plus`: how much each of glow's seven levels adds, from the sharpest to the softest; Godot's `glow_levels/1` to `/7` |
+| `glow_normalized` | `false` | `forward_plus`: `glow_levels` are divided by their sum |
+| `glow_intensity` | `0.3` | How strong the glow is |
+| `glow_strength` | `1` | `forward_plus`: multiplies each level as it is blurred |
+| `glow_blend_mode` | `"screen"` | `forward_plus`: `"additive"`, `"screen"`, `"softlight"`, `"replace"` or `"mix"` |
+| `glow_mix` | `0.05` | `forward_plus`: how much glow replaces the colors with `"mix"` |
 | `glow_bloom` | `0` | How much of every color glows, from 0 to 1 |
 | `glow_hdr_threshold`, `glow_hdr_scale` | `1`, `2` | Colors glow from the threshold, fully at the threshold plus the scale |
 | `glow_hdr_luminance_cap` | `12` | The brightest glow |
@@ -1426,13 +1432,25 @@ project's `rendering.clear_color`, there is no ambient light and colors stay as 
 | `fog_height`, `fog_height_density` | `0`, `0` | Fog thickens below this height, by this much; `0` for none |
 | `fog_depth_curve`, `fog_depth_begin`, `fog_depth_end` | `1`, `10`, `100` | How depth fog grows, where it begins and where it is thickest; an end of `0` or less is the camera's `far` |
 
-Without glow or adjustments, meshes are exposed and tonemapped as they draw, and the background
-is left alone. With either, the meshes draw exposed but not tonemapped into a texture of the
-frame's size, and a pass over the frame blends glow in, tonemaps, adjusts and corrects every
-pixel, the background's too, before the 2D draws go over it. Glow blurs the texture's bright
-parts through four textures each half the size of the last. The textures hold 8 bits a channel,
-as the Compatibility renderer's do, so drawn colors reach 1 at most: glow needs
-`glow_hdr_threshold` below 1, or `glow_bloom`.
+How colors are finished depends on the project's
+[rendering method](project-format.md#rendering-methods), as in Godot.
+
+With `forward_plus`, as Godot's Forward+ renderer, the background and meshes draw linear into
+a texture of 16-bit floats the frame's size, so colors keep their brightness above 1. Glow
+blurs the parts above `glow_hdr_threshold` into up to seven textures, the first half the
+frame's size and each next one half the last, drawing only as far as the last level of more
+than 0.01. A pass over the frame then exposes every pixel, blends glow in by
+`glow_blend_mode`, tonemaps it, adjusts and corrects it, and turns it to sRGB, before the 2D
+draws go over it. Alpha blending happens in linear colors.
+
+With `gl_compatibility`, as Godot's Compatibility renderer, meshes are exposed and tonemapped
+as they draw when there is no glow and no adjustments, and the background is left alone. With
+either, the meshes draw exposed but not tonemapped into a texture of the frame's size, and a pass
+over the frame screens glow in, tonemaps, adjusts and corrects every pixel, the background's
+too. Glow blurs the texture's bright parts through four textures each half the size of the last.
+The textures hold 8 bits a channel, so drawn colors reach 1 at most: glow needs
+`glow_hdr_threshold` below 1, or `glow_bloom`, and `glow_levels`, `glow_strength`,
+`glow_blend_mode` and `glow_mix` do nothing.
 
 A color correction texture one pixel tall maps each channel by its value along x, as Godot's 1D
 LUTs (a `GradientTexture1D`) do. One as wide as its height squared is a 3D LUT: height slices of

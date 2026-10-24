@@ -3,7 +3,8 @@
   "main_scene": "main.scene.json",
   "name": "Post-processing 3D",
   "rendering": {
-    "clear_color": [0.0, 0.0, 0.0, 1.0]
+    "clear_color": [0.0, 0.0, 0.0, 1.0],
+    "rendering_method": "gl_compatibility"
   },
   "version": "1.0.0",
   "window": {

@@ -584,6 +584,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Godot's Compatibility renderer's tonemappers (linear, Reinhard, filmic, ACES, AgX),
         exposure, glow, brightness, contrast, saturation and 1D or 3D color correction LUTs in
         every render device, set by `WorldEnvironment`
+  - [x] Forward+'s HDR world, as Godot 4.6's: sky and meshes drawn linear in half floats, glow
+        through up to seven levels with Godot's weights, strength, normalization and five blend
+        modes, Godot 4.6's tonemappers and whites (AgX's own white and contrast), on Vulkan,
+        Metal, Direct3D 12, WebGPU and the software device
 - [ ] Baked lightmaps and probe-based global illumination
 - [ ] Render scale and upscalers, as Godot's `scaling_3d` setting: bilinear, FSR 1 and FSR 2/3
       (AMD's FidelityFX code, MIT) on every backend and MetalFX on Apple, set in `project.json`

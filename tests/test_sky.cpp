@@ -50,8 +50,10 @@ int byte(float value) {
     return static_cast<int>(std::lround(std::clamp(value, 0.0F, 1.0F) * 255.0F));
 }
 
-// The sky's color where it looks along eye, worked out on the CPU at the target's top left.
-Float3 sky_color(const Scene3D& scene, const Float3& eye) {
+// The sky's color where it looks along eye, worked out on the CPU at the target's top left, in
+// sRGB as Compatibility draws it (Forward+ leaves it linear for its post pass).
+Float3 sky_color(Scene3D scene, const Float3& eye) {
+    scene.method = render::RenderMethod::Compatibility;
     const detail::SkyUniforms uniforms = detail::sky_uniforms(scene, 8, 8);
     const detail::Float4 color =
         detail::shade_sky(uniforms, {.eye = eye, .coords = {0.0F, 0.0F}}, {}, 0.5F, 0.5F);

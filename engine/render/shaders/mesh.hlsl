@@ -3,7 +3,8 @@
 // specular, emission and normal map, or a terrain's splat-mapped ground as the HTerrain plugin's
 // Classic4 shader blends it, shadowed by the lights' shadow maps (shadow.hlsl draws them) and lit
 // by the sky's radiance (radiance.hlsl filters it), then fogged. Colors are worked in linear,
-// tonemapped (tonemap.hlsl) and written as sRGB, with Godot's approximations of the two.
+// tonemapped (tonemap.hlsl) and written as sRGB, with Godot's approximations of the two, or for
+// Forward+ written linear for forward_post.hlsl.
 // Keep it in step with shade_mesh in src/mesh.cpp, its CPU twin. Registers follow SDL's GPU
 // conventions: vertex uniforms in space1, fragment textures and samplers in space2, fragment
 // uniforms in space3. mesh_clustered.hlsl defines CLUSTERED and includes this file for Forward+,
@@ -129,7 +130,8 @@ static const float kRadianceMaxLevel = 5.0; // Godot's RADIANCE_MAX_LOD
 cbuffer Scene : register(b1, space3) {
     float4 camera;  // the camera's place, then how many lights
     float4 ambient; // linear
-    // Exposure, white, the tonemapper, and 1 to tonemap here (0 when post.hlsl does it after).
+    // Exposure, white, the tonemapper, and 1 to tonemap here (0 when post.hlsl does it after, 2
+    // to write linear colors for forward_post.hlsl).
     float4 tonemap;
     float4 fog_color; // linear, times its energy; then 0 for no fog, 1 exponential, 2 depth
     float4 fog;       // density, sun scatter, height, height density
@@ -223,12 +225,15 @@ float4 fog_process(float3 world) {
 }
 
 // A lit color at a point in the world, linear, as the frame's target takes it: fogged unless the
-// material disables it, times the exposure, tonemapped unless the post pass does it, and as sRGB,
-// as Godot's scene.glsl ends.
+// material disables it, then left linear for Forward+, or times the exposure, tonemapped unless
+// the post pass does it, and as sRGB, as Godot's scene.glsl ends.
 float4 finish(float3 color, float alpha, float3 world) {
     if (fog_color.w != 0.0 && (options.x & kDisableFog) == 0u) {
         float4 fogged = fog_process(world);
         color = lerp(color, fogged.rgb, fogged.a);
+    }
+    [branch] if (tonemap.w == 2.0) {
+        return float4(color, alpha);
     }
     color *= tonemap.x;
     [branch] if (tonemap.w != 0.0) {
