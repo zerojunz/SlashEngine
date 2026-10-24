@@ -1231,20 +1231,20 @@ alignas(4) inline constexpr unsigned char kMeshClusteredFragmentSpirv[] = {
     0xf9, 0x00, 0x02, 0x00, 0xb6, 0x0b, 0x00, 0x00, 0xf8, 0x00, 0x02, 0x00,
     0xb6, 0x0b, 0x00, 0x00, 0xf5, 0x00, 0x07, 0x00, 0x07, 0x00, 0x00, 0x00,
     0xea, 0x17, 0x00, 0x00, 0xad, 0x0b, 0x00, 0x00, 0xaa, 0x0b, 0x00, 0x00,
-    0xb5, 0x0b, 0x00, 0x00, 0xb1, 0x0b, 0x00, 0x00, 0x41, 0x00, 0x06, 0x00,
-    0x03, 0x02, 0x00, 0x00, 0xb8, 0x0b, 0x00, 0x00, 0x84, 0x02, 0x00, 0x00,
-    0x23, 0x02, 0x00, 0x00, 0xda, 0x01, 0x00, 0x00, 0x3d, 0x00, 0x04, 0x00,
-    0x06, 0x00, 0x00, 0x00, 0xb9, 0x0b, 0x00, 0x00, 0xb8, 0x0b, 0x00, 0x00,
-    0x8e, 0x00, 0x05, 0x00, 0x07, 0x00, 0x00, 0x00, 0xba, 0x0b, 0x00, 0x00,
-    0xea, 0x17, 0x00, 0x00, 0xb9, 0x0b, 0x00, 0x00, 0x8e, 0x00, 0x05, 0x00,
-    0x07, 0x00, 0x00, 0x00, 0x9f, 0x0c, 0x00, 0x00, 0xba, 0x0b, 0x00, 0x00,
+    0xb5, 0x0b, 0x00, 0x00, 0xb1, 0x0b, 0x00, 0x00, 0x8e, 0x00, 0x05, 0x00,
+    0x07, 0x00, 0x00, 0x00, 0x9f, 0x0c, 0x00, 0x00, 0xea, 0x17, 0x00, 0x00,
     0xb3, 0x00, 0x00, 0x00, 0x81, 0x00, 0x05, 0x00, 0x07, 0x00, 0x00, 0x00,
     0xa1, 0x0c, 0x00, 0x00, 0x9f, 0x0c, 0x00, 0x00, 0xce, 0x17, 0x00, 0x00,
     0x85, 0x00, 0x05, 0x00, 0x07, 0x00, 0x00, 0x00, 0xa2, 0x0c, 0x00, 0x00,
-    0xba, 0x0b, 0x00, 0x00, 0xa1, 0x0c, 0x00, 0x00, 0x81, 0x00, 0x05, 0x00,
+    0xea, 0x17, 0x00, 0x00, 0xa1, 0x0c, 0x00, 0x00, 0x81, 0x00, 0x05, 0x00,
     0x07, 0x00, 0x00, 0x00, 0xa4, 0x0c, 0x00, 0x00, 0xa2, 0x0c, 0x00, 0x00,
     0xcf, 0x17, 0x00, 0x00, 0x85, 0x00, 0x05, 0x00, 0x07, 0x00, 0x00, 0x00,
-    0xa5, 0x0c, 0x00, 0x00, 0xba, 0x0b, 0x00, 0x00, 0xa4, 0x0c, 0x00, 0x00,
+    0xa5, 0x0c, 0x00, 0x00, 0xea, 0x17, 0x00, 0x00, 0xa4, 0x0c, 0x00, 0x00,
+    0x41, 0x00, 0x06, 0x00, 0x03, 0x02, 0x00, 0x00, 0xb9, 0x0b, 0x00, 0x00,
+    0x84, 0x02, 0x00, 0x00, 0x23, 0x02, 0x00, 0x00, 0xda, 0x01, 0x00, 0x00,
+    0x3d, 0x00, 0x04, 0x00, 0x06, 0x00, 0x00, 0x00, 0xba, 0x0b, 0x00, 0x00,
+    0xb9, 0x0b, 0x00, 0x00, 0x8e, 0x00, 0x05, 0x00, 0x07, 0x00, 0x00, 0x00,
+    0xbb, 0x0b, 0x00, 0x00, 0xa5, 0x0c, 0x00, 0x00, 0xba, 0x0b, 0x00, 0x00,
     0x51, 0x00, 0x05, 0x00, 0x06, 0x00, 0x00, 0x00, 0xbe, 0x0b, 0x00, 0x00,
     0xec, 0x17, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x51, 0x00, 0x05, 0x00,
     0x06, 0x00, 0x00, 0x00, 0xc0, 0x0b, 0x00, 0x00, 0xee, 0x17, 0x00, 0x00,
@@ -3532,7 +3532,7 @@ alignas(4) inline constexpr unsigned char kMeshClusteredFragmentSpirv[] = {
     0x81, 0x00, 0x05, 0x00, 0x07, 0x00, 0x00, 0x00, 0x66, 0x0e, 0x00, 0x00,
     0x64, 0x0e, 0x00, 0x00, 0x55, 0x0e, 0x00, 0x00, 0x81, 0x00, 0x05, 0x00,
     0x07, 0x00, 0x00, 0x00, 0x68, 0x0e, 0x00, 0x00, 0x66, 0x0e, 0x00, 0x00,
-    0xa5, 0x0c, 0x00, 0x00, 0x81, 0x00, 0x05, 0x00, 0x07, 0x00, 0x00, 0x00,
+    0xbb, 0x0b, 0x00, 0x00, 0x81, 0x00, 0x05, 0x00, 0x07, 0x00, 0x00, 0x00,
     0x6a, 0x0e, 0x00, 0x00, 0x68, 0x0e, 0x00, 0x00, 0x5b, 0x0e, 0x00, 0x00,
     0xf9, 0x00, 0x02, 0x00, 0x1e, 0x0c, 0x00, 0x00, 0xf8, 0x00, 0x02, 0x00,
     0x1e, 0x0c, 0x00, 0x00, 0xf5, 0x00, 0x07, 0x00, 0x07, 0x00, 0x00, 0x00,
@@ -4235,7 +4235,6 @@ fragment fs_main_out fs_main(fs_main_in in [[stage_in]], constant Surface& _644 
         {
             _6122 = _644.emission.xyz;
         }
-        float3 _3002 = _6122 * _644.emission.w;
         float3 _3018 = fast::normalize(float3(_6124.x + _6126.x, _6124.y, _6124.z + _6126.z));
         float3 _3024 = select(in.input_normal, fast::normalize(((in.input_tangent * _3018.x) + (in.input_normal * _3018.y)) - (in.input_binormal * _3018.z)), bool3(_2736));
         float3 _6128;
@@ -4293,9 +4292,9 @@ fragment fs_main_out fs_main(fs_main_in in [[stage_in]], constant Surface& _644 
                 {
                     float _3756 = length(_3742);
                     float _3828 = _3756 * _498.lights[_6145].position.w;
+                    float _3831 = _3828 * _3828;
 )msl",
-R"msl(                    float _3831 = _3828 * _3828;
-                    float _3837 = fast::max(1.0 - (_3831 * _3831), 0.0);
+R"msl(                    float _3837 = fast::max(1.0 - (_3831 * _3831), 0.0);
                     float _3847 = (_3837 * _3837) * pow(fast::max(_3756, 9.9999997473787516355514526367188e-05), -_498.lights[_6145].params.x);
                     float _6423;
                     if (_498.lights[_6145].direction.w == 2.0)
@@ -4522,9 +4521,9 @@ R"msl(                    float _3831 = _3828 * _3828;
                                                 _6532 = _4260;
                                                 _6528 = true;
                                                 break;
+                                            }
 )msl",
-R"msl(                                            }
-                                        }
+R"msl(                                        }
                                         _6525 = _4260;
                                         _6522++;
                                         continue;
@@ -4754,9 +4753,9 @@ R"msl(                                            }
                                                 _6192 = (_5079 * _5079) * (3.0 - (2.0 * _5079));
                                                 break;
                                             } while(false);
+                                            _6209 = _6192;
 )msl",
-R"msl(                                            _6209 = _6192;
-                                        }
+R"msl(                                        }
                                         else
                                         {
                                             _6209 = 0.0;
@@ -4968,9 +4967,9 @@ R"msl(                                            _6209 = _6192;
                     float _5285 = fast::max(fast::min(dot(_6134, _4652), 1.0), 0.0);
                     float _5289 = fast::max(dot(_6134, _3345), 9.9999997473787516355514526367188e-05);
                     float3 _5293 = fast::normalize(_3345 + _4652);
+                    float _5297 = fast::clamp(dot(_6134, _5293), 0.0, 1.0);
 )msl",
-R"msl(                    float _5297 = fast::clamp(dot(_6134, _5293), 0.0, 1.0);
-                    float _5301 = fast::clamp(dot(_4652, _5293), 0.0, 1.0);
+R"msl(                    float _5301 = fast::clamp(dot(_4652, _5293), 0.0, 1.0);
                     float3 _6278;
                     if (_6138 < 1.0)
                     {
@@ -5031,7 +5030,7 @@ R"msl(                    float _5297 = fast::clamp(dot(_6134, _5293), 0.0, 1.0)
         float _3613 = fast::min((((_6148.x * 0.300000011920928955078125) + (_6148.y * 0.589999973773956298828125)) + (_6148.z * 0.10999999940395355224609375)) * 8.0, 1.0);
         float4 _3631 = (float4(-1.0, -0.0274999998509883880615234375, -0.572000026702880859375, 0.02199999988079071044921875) * _6142) + float4(1.0, 0.0425000004470348358154296875, 1.03999996185302734375, -0.039999999105930328369140625);
         float2 _3651 = (float2(-1.03999996185302734375, 1.03999996185302734375) * ((fast::min(_3631.x * _3631.x, exp2((-9.27999973297119140625) * fast::clamp(dot(_6134, _3345), 0.0, 1.0))) * _3631.x) + _3631.y)) + _3631.zw;
-        _6159 = ((((_6153 * (_6121 * (1.0 - _6138))) + _6157) + (_6150 * (((_3354 * _3651.x) + float3(_3651.y * fast::clamp(50.0 * _3354.y, _6138, 1.0))) * fast::max(fast::min((((1.0 - _6142) * _6138) * _3613) * 10.0, 1.0), _3613)))) + (_3002 * ((_3002 * ((_3002 * 0.305306017398834228515625) + float3(0.6821711063385009765625))) + float3(0.01252287812530994415283203125)))) + (_6148 * (_6121 * (1.0 - _6138)));
+        _6159 = ((((_6153 * (_6121 * (1.0 - _6138))) + _6157) + (_6150 * (((_3354 * _3651.x) + float3(_3651.y * fast::clamp(50.0 * _3354.y, _6138, 1.0))) * fast::max(fast::min((((1.0 - _6142) * _6138) * _3613) * 10.0, 1.0), _3613)))) + ((_6122 * ((_6122 * ((_6122 * 0.305306017398834228515625) + float3(0.6821711063385009765625))) + float3(0.01252287812530994415283203125))) * _644.emission.w)) + (_6148 * (_6121 * (1.0 - _6138)));
     }
     else
     {
@@ -5426,1184 +5425,1185 @@ fn fs_main_inner(v_4 : vec3<f32>, v_5 : vec3<f32>, v_6 : vec3<f32>, v_7 : vec3<f
     } else {
       v_84 = v_83;
     }
-    let v_85 = (v_84 * v_1.emission.w);
-    let v_86 = normalize(vec3<f32>((v_78.x + v_79.x), v_78.y, (v_78.z + v_79.z)));
-    let v_87 = select(v_5, normalize((((v_6 * v_86.x) + (v_5 * v_86.y)) - (v_7 * v_86.z))), vec3<bool>(v_18, v_18, v_18));
-    var v_88 : vec3<f32>;
+    let v_85 = v_84;
+    let v_86 = ((v_85 * ((v_85 * ((v_85 * 0.30530601739883422852f) + vec3<f32>(0.68217110633850097656f))) + vec3<f32>(0.01252287812530994415f))) * v_1.emission.w);
+    let v_87 = normalize(vec3<f32>((v_78.x + v_79.x), v_78.y, (v_78.z + v_79.z)));
+    let v_88 = select(v_5, normalize((((v_6 * v_87.x) + (v_5 * v_87.y)) - (v_7 * v_87.z))), vec3<bool>(v_18, v_18, v_18));
+    var v_89 : vec3<f32>;
     if ((((v_30 & 32u) != 0u) & !(front))) {
-      v_88 = -(v_87);
+      v_89 = -(v_88);
     } else {
-      v_88 = v_87;
+      v_89 = v_88;
     }
-    let v_89 = v_88;
-    var v_90 : vec3<f32>;
+    let v_90 = v_89;
+    var v_91 : vec3<f32>;
     if (((v_30 & 16u) != 0u)) {
-      let v_91 = ((v_23.xy * 2.0f) - vec2<f32>(1.0f));
-      let v_92 = v_91.x;
-      var v_93 : vec3<f32> = vec3<f32>();
-      v_93.x = v_92;
-      let v_94 = v_91.y;
-      var v_95 : vec3<f32> = v_93;
-      v_95.y = v_94;
-      let v_96 = v_95;
-      let v_97 = (((v_6 * v_92) + (v_7 * v_94)) + (v_89 * sqrt(max(0.0f, (1.0f - dot(v_96.xy, v_96.xy))))));
-      let v_98 = v_1.surface.w;
-      v_90 = normalize(mix(v_89, v_97, vec3<f32>(v_98, v_98, v_98)));
+      let v_92 = ((v_23.xy * 2.0f) - vec2<f32>(1.0f));
+      let v_93 = v_92.x;
+      var v_94 : vec3<f32> = vec3<f32>();
+      v_94.x = v_93;
+      let v_95 = v_92.y;
+      var v_96 : vec3<f32> = v_94;
+      v_96.y = v_95;
+      let v_97 = v_96;
+      let v_98 = (((v_6 * v_93) + (v_7 * v_95)) + (v_90 * sqrt(max(0.0f, (1.0f - dot(v_97.xy, v_97.xy))))));
+      let v_99 = v_1.surface.w;
+      v_91 = normalize(mix(v_90, v_98, vec3<f32>(v_99, v_99, v_99)));
     } else {
-      v_90 = normalize(v_89);
+      v_91 = normalize(v_90);
     }
-    let v_99 = v_90;
-    let v_100 = normalize((((v_6 * v_78.x) + (v_5 * v_78.y)) - (v_7 * v_78.z)));
-    let v_101 = select(normalize(v_5), v_100, vec3<bool>(v_18, v_18, v_18));
-    let v_102 = v_1.surface.z;
-    let v_103 = normalize((v.camera.xyz - v_4));
-    let v_104 = ((0.15999999642372131348f * v_102) * v_102);
-    let v_105 = mix(vec3<f32>(v_104, v_104, v_104), v_77, vec3<f32>(v_80, v_80, v_80));
-    let v_106 = u32(v.camera.w);
-    var v_107 : vec3<f32>;
+    let v_100 = v_91;
+    let v_101 = normalize((((v_6 * v_78.x) + (v_5 * v_78.y)) - (v_7 * v_78.z)));
+    let v_102 = select(normalize(v_5), v_101, vec3<bool>(v_18, v_18, v_18));
+    let v_103 = v_1.surface.z;
+    let v_104 = normalize((v.camera.xyz - v_4));
+    let v_105 = ((0.15999999642372131348f * v_103) * v_103);
+    let v_106 = mix(vec3<f32>(v_105, v_105, v_105), v_77, vec3<f32>(v_80, v_80, v_80));
+    let v_107 = u32(v.camera.w);
     var v_108 : vec3<f32>;
+    var v_109 : vec3<f32>;
     {
-      var v_109 : f32;
-      v_109 = 0.0f;
-      var v_110 : vec3<f32>;
-      v_110 = vec3<f32>();
+      var v_110 : f32;
+      v_110 = 0.0f;
       var v_111 : vec3<f32>;
       v_111 = vec3<f32>();
-      var v_112 : u32;
-      v_112 = 0u;
+      var v_112 : vec3<f32>;
+      v_112 = vec3<f32>();
+      var v_113 : u32;
+      v_113 = 0u;
       loop {
-        var v_113 : f32;
-        var v_114 : vec3<f32>;
+        var v_114 : f32;
         var v_115 : vec3<f32>;
-        let v_116 = v_112;
-        let v_117 = v_111;
-        let v_118 = v_110;
-        let v_119 = v_109;
-        if ((v_116 < v_106)) {
-          let v_120 = v.lights[v_116];
-          let v_121 = v_120.position;
-          let v_122 = v_120.direction;
-          let v_123 = v_120.color;
-          let v_124 = v_120.params;
-          var v_125 : f32;
-          var v_126 : vec3<f32>;
+        var v_116 : vec3<f32>;
+        let v_117 = v_113;
+        let v_118 = v_112;
+        let v_119 = v_111;
+        let v_120 = v_110;
+        if ((v_117 < v_107)) {
+          let v_121 = v.lights[v_117];
+          let v_122 = v_121.position;
+          let v_123 = v_121.direction;
+          let v_124 = v_121.color;
+          let v_125 = v_121.params;
+          var v_126 : f32;
           var v_127 : vec3<f32>;
+          var v_128 : vec3<f32>;
           switch(0u) {
             default: {
-              if (((u32(v_124.w) & v_1.options.z) == 0u)) {
-                v_125 = v_119;
-                v_126 = v_118;
-                v_127 = v_117;
+              if (((u32(v_125.w) & v_1.options.z) == 0u)) {
+                v_126 = v_120;
+                v_127 = v_119;
+                v_128 = v_118;
                 break;
               }
-              let v_128 = v_122.w;
-              let v_129 = v_120.shadow.x;
-              let v_130 = (v_128 == 0.0f);
-              let v_131 = (v_121.xyz - v_4);
-              let v_132 = normalize(v_122.xyz);
-              let v_133 = select(normalize(v_131), v_132, vec3<bool>(v_130, v_130, v_130));
-              var v_134 : f32;
-              if (!(v_130)) {
-                let v_135 = length(v_131);
-                let v_136 = (v_135 * v_121.w);
-                let v_137 = (v_136 * v_136);
-                let v_138 = max((1.0f - (v_137 * v_137)), 0.0f);
-                let v_139 = ((v_138 * v_138) * pow(max(v_135, 0.00009999999747378752f), -(v_124.x)));
-                var v_140 : f32;
-                if ((v_128 == 2.0f)) {
-                  let v_141 = v_124.y;
+              let v_129 = v_123.w;
+              let v_130 = v_121.shadow.x;
+              let v_131 = (v_129 == 0.0f);
+              let v_132 = (v_122.xyz - v_4);
+              let v_133 = normalize(v_123.xyz);
+              let v_134 = select(normalize(v_132), v_133, vec3<bool>(v_131, v_131, v_131));
+              var v_135 : f32;
+              if (!(v_131)) {
+                let v_136 = length(v_132);
+                let v_137 = (v_136 * v_122.w);
+                let v_138 = (v_137 * v_137);
+                let v_139 = max((1.0f - (v_138 * v_138)), 0.0f);
 )wgsl",
-R"wgsl(                  v_140 = (v_139 * (1.0f - pow(max(0.00009999999747378752f, ((1.0f - max(dot(-(normalize(v_131)), v_122.xyz), v_141)) / (1.0f - v_141))), v_124.z)));
+R"wgsl(                let v_140 = ((v_139 * v_139) * pow(max(v_136, 0.00009999999747378752f), -(v_125.x)));
+                var v_141 : f32;
+                if ((v_129 == 2.0f)) {
+                  let v_142 = v_125.y;
+                  v_141 = (v_140 * (1.0f - pow(max(0.00009999999747378752f, ((1.0f - max(dot(-(normalize(v_132)), v_123.xyz), v_142)) / (1.0f - v_142))), v_125.z)));
                 } else {
-                  v_140 = v_139;
+                  v_141 = v_140;
                 }
-                v_134 = v_140;
+                v_135 = v_141;
               } else {
-                v_134 = 1.0f;
+                v_135 = 1.0f;
               }
-              let v_142 = v_134;
-              var v_143 : f32;
+              let v_143 = v_135;
               var v_144 : f32;
-              if ((v_129 >= 0.0f)) {
-                let v_145 = u32(v_129);
-                var v_146 : f32;
+              var v_145 : f32;
+              if ((v_130 >= 0.0f)) {
+                let v_146 = u32(v_130);
                 var v_147 : f32;
+                var v_148 : f32;
                 switch(0u) {
                   default: {
-                    let v_148 = v_2.filters.y;
-                    var v_149 : f32;
-                    var v_150 : vec3<f32>;
-                    var v_151 : u32;
-                    var v_152 : vec3<f32>;
-                    var v_153 : u32;
-                    var v_154 : f32;
+                    let v_149 = v_2.filters.y;
+                    var v_150 : f32;
+                    var v_151 : vec3<f32>;
+                    var v_152 : u32;
+                    var v_153 : vec3<f32>;
+                    var v_154 : u32;
                     var v_155 : f32;
-                    var v_156 : u32;
-                    if (v_130) {
-                      let v_157 = (dot(v_4, v_2.camera_z.xyz) + v_2.camera_z.w);
-                      let v_158 = (v_101 * (1.0f - max(0.0f, -(dot(v_133, v_101)))));
-                      v_14 = v_2.directional_shadows[v_145].splits;
-                      let v_159 = u32(v_2.directional_shadows[v_145].params.w);
-                      let v_160 = -(v_157);
-                      let v_161 = v_2.filters.x;
-                      var v_162 : u32;
-                      var v_163 : f32;
-                      var v_164 : u32;
-                      if ((v_159 > 1u)) {
-                        var v_165 : u32;
-                        var v_166 : f32;
-                        var v_167 : u32;
-                        if (!((v_160 < v_14[(v_159 - 1u)]))) {
-                          v_165 = 0u;
-                          v_166 = 0.0f;
-                          v_167 = 0u;
+                    var v_156 : f32;
+                    var v_157 : u32;
+                    if (v_131) {
+                      let v_158 = (dot(v_4, v_2.camera_z.xyz) + v_2.camera_z.w);
+                      let v_159 = (v_102 * (1.0f - max(0.0f, -(dot(v_134, v_102)))));
+                      v_14 = v_2.directional_shadows[v_146].splits;
+                      let v_160 = u32(v_2.directional_shadows[v_146].params.w);
+                      let v_161 = -(v_158);
+                      let v_162 = v_2.filters.x;
+                      var v_163 : u32;
+                      var v_164 : f32;
+                      var v_165 : u32;
+                      if ((v_160 > 1u)) {
+                        var v_166 : u32;
+                        var v_167 : f32;
+                        var v_168 : u32;
+                        if (!((v_161 < v_14[(v_160 - 1u)]))) {
+                          v_166 = 0u;
+                          v_167 = 0.0f;
+                          v_168 = 0u;
                         } else {
-                          var v_168 : u32;
+                          var v_169 : u32;
                           {
-                            var v_169 : u32;
-                            v_169 = 0u;
+                            var v_170 : u32;
+                            v_170 = 0u;
                             loop {
-                              let v_170 = v_169;
-                              if ((((v_170 + 1u) < v_159) & !((v_160 < v_14[v_170])))) {
+                              let v_171 = v_170;
+                              if ((((v_171 + 1u) < v_160) & !((v_161 < v_14[v_171])))) {
                                 continue;
                               } else {
-                                v_168 = v_170;
+                                v_169 = v_171;
                                 break;
                               }
 
                               continuing {
-                                v_169 = (v_170 + bitcast<u32>(1i));
+                                v_170 = (v_171 + bitcast<u32>(1i));
                               }
                             }
                           }
-                          let v_171 = v_168;
-                          let v_172 = (!((v_2.directional_shadows[v_145].options.x == 0.0f)) & ((v_171 + 1u) < v_159));
-                          var v_173 : f32;
-                          if (v_172) {
-                            let v_174 = select(v_14[(v_171 - 1u)], 0.0f, (v_171 == 0u));
-                            let v_175 = v_14[v_171];
-                            var v_176 : f32;
+                          let v_172 = v_169;
+                          let v_173 = (!((v_2.directional_shadows[v_146].options.x == 0.0f)) & ((v_172 + 1u) < v_160));
+                          var v_174 : f32;
+                          if (v_173) {
+                            let v_175 = select(v_14[(v_172 - 1u)], 0.0f, (v_172 == 0u));
+                            let v_176 = v_14[v_172];
+                            var v_177 : f32;
                             switch(0u) {
                               default: {
-                                if ((v_174 == v_175)) {
-                                  v_176 = select(1.0f, 0.0f, (v_160 < v_174));
+                                if ((v_175 == v_176)) {
+                                  v_177 = select(1.0f, 0.0f, (v_161 < v_175));
                                   break;
                                 }
-                                let v_177 = clamp(((v_160 - v_174) / (v_175 - v_174)), 0.0f, 1.0f);
-                                v_176 = ((v_177 * v_177) * (3.0f - (2.0f * v_177)));
+                                let v_178 = clamp(((v_161 - v_175) / (v_176 - v_175)), 0.0f, 1.0f);
+                                v_177 = ((v_178 * v_178) * (3.0f - (2.0f * v_178)));
                               }
                             }
-                            v_173 = v_176;
+                            v_174 = v_177;
                           } else {
-                            v_173 = 0.0f;
+                            v_174 = 0.0f;
                           }
-                          let v_178 = v_173;
-                          let v_179 = select(1u, 2u, v_172);
-                          v_165 = v_171;
-                          v_166 = v_178;
+                          let v_179 = v_174;
+                          let v_180 = select(1u, 2u, v_173);
+                          v_166 = v_172;
                           v_167 = v_179;
+                          v_168 = v_180;
                         }
-                        let v_180 = v_167;
-                        let v_181 = v_166;
-                        v_162 = v_165;
-                        v_163 = v_181;
-                        v_164 = v_180;
+                        let v_181 = v_168;
+                        let v_182 = v_167;
+                        v_163 = v_166;
+                        v_164 = v_182;
+                        v_165 = v_181;
                       } else {
-                        v_162 = 0u;
-                        v_163 = 0.0f;
-                        v_164 = 1u;
+                        v_163 = 0u;
+                        v_164 = 0.0f;
+                        v_165 = 1u;
                       }
-                      let v_182 = v_164;
-                      let v_183 = v_163;
-                      let v_184 = v_162;
-                      v_149 = v_161;
-                      v_150 = v_158;
-                      v_151 = v_184;
-                      v_152 = v_4;
-                      v_153 = 0u;
-                      v_154 = v_157;
-                      v_155 = v_183;
-                      v_156 = v_182;
+                      let v_183 = v_165;
+                      let v_184 = v_164;
+                      let v_185 = v_163;
+                      v_150 = v_162;
+                      v_151 = v_159;
+                      v_152 = v_185;
+                      v_153 = v_4;
+                      v_154 = 0u;
+                      v_155 = v_158;
+                      v_156 = v_184;
+                      v_157 = v_183;
                     } else {
-                      let v_185 = v_2.positional_shadows[v_145].params;
-                      let v_186 = (v_2.positional_shadows[v_145].position.xyz - v_4);
-                      let v_187 = length(v_186);
-                      let v_188 = (v_4 + (v_101 * (((1.0f - abs(dot(v_101, (v_186 / vec3<f32>(v_187, v_187, v_187))))) * v_185.x) * v_187)));
-                      let v_189 = (v_185.w > 1.5f);
-                      var v_190 : u32;
-                      if (v_189) {
-                        let v_191 = (vec4<f32>(v_188.x, v_188.y, v_188.z, 1.0f) * v_2.positional_shadows[v_145].light);
-                        let v_192 = abs(v_191.xyz);
-                        var v_193 : u32;
-                        if (((v_192.x >= v_192.y) & (v_192.x >= v_192.z))) {
-                          v_193 = select(1u, 0u, (v_191.x > 0.0f));
+                      let v_186 = v_2.positional_shadows[v_146].params;
+                      let v_187 = (v_2.positional_shadows[v_146].position.xyz - v_4);
+                      let v_188 = length(v_187);
+                      let v_189 = (v_4 + (v_102 * (((1.0f - abs(dot(v_102, (v_187 / vec3<f32>(v_188, v_188, v_188))))) * v_186.x) * v_188)));
+                      let v_190 = (v_186.w > 1.5f);
+                      var v_191 : u32;
+                      if (v_190) {
+                        let v_192 = (vec4<f32>(v_189.x, v_189.y, v_189.z, 1.0f) * v_2.positional_shadows[v_146].light);
+                        let v_193 = abs(v_192.xyz);
+                        var v_194 : u32;
+                        if (((v_193.x >= v_193.y) & (v_193.x >= v_193.z))) {
+                          v_194 = select(1u, 0u, (v_192.x > 0.0f));
                         } else {
-                          var v_194 : u32;
-                          if ((v_192.y >= v_192.z)) {
-                            v_194 = select(3u, 2u, (v_191.y < 0.0f));
+                          var v_195 : u32;
+                          if ((v_193.y >= v_193.z)) {
+                            v_195 = select(3u, 2u, (v_192.y < 0.0f));
                           } else {
-                            v_194 = select(5u, 4u, (v_191.z > 0.0f));
+                            v_195 = select(5u, 4u, (v_192.z > 0.0f));
                           }
-                          v_193 = v_194;
+                          v_194 = v_195;
                         }
-                        v_190 = v_193;
+                        v_191 = v_194;
                       } else {
-                        v_190 = 0u;
+                        v_191 = 0u;
                       }
-                      let v_195 = v_190;
-                      v_149 = select(v_148, 1.0f, v_189);
-                      v_150 = vec3<f32>();
-                      v_151 = 0u;
-                      v_152 = v_188;
-                      v_153 = v_195;
-                      v_154 = 0.0f;
+                      let v_196 = v_191;
+                      v_150 = select(v_149, 1.0f, v_190);
+                      v_151 = vec3<f32>();
+                      v_152 = 0u;
+                      v_153 = v_189;
+                      v_154 = v_196;
                       v_155 = 0.0f;
-                      v_156 = 1u;
+                      v_156 = 0.0f;
+                      v_157 = 1u;
                     }
-                    let v_196 = v_156;
-                    let v_197 = v_155;
-                    let v_198 = v_154;
-                    let v_199 = v_153;
-                    let v_200 = v_152;
-                    let v_201 = v_151;
-                    let v_202 = v_150;
-                    let v_203 = v_149;
-                    var v_204 : f32;
+                    let v_197 = v_157;
+                    let v_198 = v_156;
+                    let v_199 = v_155;
+                    let v_200 = v_154;
+                    let v_201 = v_153;
+                    let v_202 = v_152;
+                    let v_203 = v_151;
+                    let v_204 = v_150;
                     var v_205 : f32;
                     var v_206 : f32;
+                    var v_207 : f32;
                     {
-                      var v_207 : f32;
-                      v_207 = v_119;
                       var v_208 : f32;
-                      v_208 = 1.0f;
+                      v_208 = v_120;
                       var v_209 : f32;
                       v_209 = 1.0f;
-                      var v_210 : u32;
-                      v_210 = 0u;
+                      var v_210 : f32;
+                      v_210 = 1.0f;
+                      var v_211 : u32;
+                      v_211 = 0u;
                       loop {
-                        var v_211 : f32;
                         var v_212 : f32;
                         var v_213 : f32;
-                        let v_214 = v_210;
-                        let v_215 = v_209;
-                        let v_216 = v_208;
-                        let v_217 = v_207;
-                        if ((v_214 < v_196)) {
-                          var v_218 : vec4<f32>;
-                          var v_219 : f32;
-                          var v_220 : vec3<f32>;
-                          var v_221 : mat4x4<f32>;
-                          if (v_130) {
-                            let v_222 = (v_201 + v_214);
-                            let v_223 = v_2.directional_shadows[v_145].matrices[v_222];
-                            let v_224 = (v_4 + (v_202 * v_2.directional_shadows[v_145].normal_bias[v_222]));
-                            let v_225 = v_2.directional_shadows[v_145].options.y;
-                            v_218 = vec4<f32>(-2.0f, -2.0f, 3.0f, 3.0f);
-                            v_219 = v_225;
-                            v_220 = v_224;
-                            v_221 = v_223;
+                        var v_214 : f32;
+                        let v_215 = v_211;
+                        let v_216 = v_210;
+                        let v_217 = v_209;
+                        let v_218 = v_208;
+                        if ((v_215 < v_197)) {
+                          var v_219 : vec4<f32>;
+                          var v_220 : f32;
+                          var v_221 : vec3<f32>;
+                          var v_222 : mat4x4<f32>;
+                          if (v_131) {
+                            let v_223 = (v_202 + v_215);
+                            let v_224 = v_2.directional_shadows[v_146].matrices[v_223];
+                            let v_225 = (v_4 + (v_203 * v_2.directional_shadows[v_146].normal_bias[v_223]));
+                            let v_226 = v_2.directional_shadows[v_146].options.y;
+                            v_219 = vec4<f32>(-2.0f, -2.0f, 3.0f, 3.0f);
+                            v_220 = v_226;
+                            v_221 = v_225;
+                            v_222 = v_224;
                           } else {
-                            let v_226 = v_2.positional_shadows[v_145].faces[v_199];
-                            let v_227 = v_2.positional_shadows[v_145].params.z;
-                            v_218 = v_2.positional_shadows[v_145].rects[v_199];
-                            v_219 = v_227;
-                            v_220 = v_200;
-                            v_221 = v_226;
+                            let v_227 = v_2.positional_shadows[v_146].faces[v_200];
+                            let v_228 = v_2.positional_shadows[v_146].params.z;
+                            v_219 = v_2.positional_shadows[v_146].rects[v_200];
+                            v_220 = v_228;
+                            v_221 = v_201;
+                            v_222 = v_227;
                           }
-                          let v_228 = v_221;
-                          let v_229 = v_220;
-                          let v_230 = v_219;
-                          let v_231 = v_218;
-                          var v_232 : f32;
+                          let v_229 = v_222;
+                          let v_230 = v_221;
+                          let v_231 = v_220;
+                          let v_232 = v_219;
+                          var v_233 : f32;
                           switch(0u) {
                             default: {
-                              let v_233 = (vec4<f32>(v_229.x, v_229.y, v_229.z, 1.0f) * v_228);
-                              let v_234 = v_233.w;
-                              let v_235 = clamp((v_233.z / v_233.w), 0.0f, 1.0f);
-                              let v_236 = select(select(1u, 5u, (v_203 > 4.0f)), 13u, (v_203 > 12.0f));
-                              var v_237 : f32;
+                              let v_234 = (vec4<f32>(v_230.x, v_230.y, v_230.z, 1.0f) * v_229);
+                              let v_235 = v_234.w;
+                              let v_236 = clamp((v_234.z / v_234.w), 0.0f, 1.0f);
+                              let v_237 = select(select(1u, 5u, (v_204 > 4.0f)), 13u, (v_204 > 12.0f));
                               var v_238 : f32;
-                              var v_239 : bool;
+                              var v_239 : f32;
+                              var v_240 : bool;
                               {
-                                var v_240 : f32;
-                                v_240 = 0.0f;
-                                var v_241 : u32;
-                                v_241 = 0u;
+                                var v_241 : f32;
+                                v_241 = 0.0f;
+                                var v_242 : u32;
+                                v_242 = 0u;
                                 loop {
-                                  var v_242 : f32;
-                                  let v_243 = v_241;
-                                  let v_244 = v_240;
-                                  if ((v_243 < v_236)) {
-                                    let v_245 = select(v_243, (v_243 + 4u), ((v_236 == 5u) & (v_243 > 0u)));
+                                  var v_243 : f32;
+                                  let v_244 = v_242;
+                                  let v_245 = v_241;
+                                  if ((v_244 < v_237)) {
+                                    let v_246 = select(v_244, (v_244 + 4u), ((v_237 == 5u) & (v_244 > 0u)));
                                     v_13 = array<vec2<f32>, 13u>(vec2<f32>(), vec2<f32>(2.0f, 0.0f), vec2<f32>(-2.0f, 0.0f), vec2<f32>(0.0f, 2.0f), vec2<f32>(0.0f, -2.0f), vec2<f32>(1.0f, 0.0f), vec2<f32>(-1.0f, 0.0f), vec2<f32>(0.0f, 1.0f), vec2<f32>(0.0f, -1.0f), vec2<f32>(1.0f), vec2<f32>(-1.0f, 1.0f), vec2<f32>(1.0f, -1.0f), vec2<f32>(-1.0f));
-                                    let v_246 = clamp(((v_233.xy / vec2<f32>(v_234, v_234)) + (v_13[v_245] * v_230)), v_231.xy, v_231.zw);
-                                    var v_247 : f32;
+                                    let v_247 = clamp(((v_234.xy / vec2<f32>(v_235, v_235)) + (v_13[v_246] * v_231)), v_232.xy, v_232.zw);
+                                    var v_248 : f32;
                                     switch(0u) {
                                       default: {
-                                        if (!(v_130)) {
-                                          v_247 = textureSampleCompareLevel(positional_atlas, positional_sampler, vec3<f32>(v_246.x, v_246.y, v_235).xy, v_235);
+                                        if (!(v_131)) {
+                                          v_248 = textureSampleCompareLevel(positional_atlas, positional_sampler, vec3<f32>(v_247.x, v_247.y, v_236).xy, v_236);
                                           break;
                                         }
-                                        v_247 = textureSampleCompareLevel(directional_atlas, directional_sampler, vec3<f32>(v_246.x, v_246.y, v_235).xy, v_235);
+                                        v_248 = textureSampleCompareLevel(directional_atlas, directional_sampler, vec3<f32>(v_247.x, v_247.y, v_236).xy, v_236);
                                       }
                                     }
-                                    let v_248 = (v_244 + v_247);
-                                    if (((v_236 == 13u) & (v_243 == 4u))) {
-                                      if ((v_248 <= 0.00000099999999747524f)) {
-                                        v_237 = 0.0f;
-                                        v_238 = v_248;
-                                        v_239 = true;
-                                        break;
-                                      }
+                                    let v_249 = (v_245 + v_248);
+                                    if (((v_237 == 13u) & (v_244 == 4u))) {
+                                      if ((v_249 <= 0.00000099999999747524f)) {
+                                        v_238 = 0.0f;
+                                        v_239 = v_249;
 )wgsl",
-R"wgsl(                                      if ((v_248 >= 4.99999904632568359375f)) {
-                                        v_237 = 1.0f;
-                                        v_238 = v_248;
-                                        v_239 = true;
+R"wgsl(                                        v_240 = true;
+                                        break;
+                                      }
+                                      if ((v_249 >= 4.99999904632568359375f)) {
+                                        v_238 = 1.0f;
+                                        v_239 = v_249;
+                                        v_240 = true;
                                         break;
                                       }
                                     }
-                                    v_242 = v_248;
+                                    v_243 = v_249;
                                     continue;
                                   } else {
-                                    v_237 = v_217;
-                                    v_238 = v_244;
-                                    v_239 = false;
+                                    v_238 = v_218;
+                                    v_239 = v_245;
+                                    v_240 = false;
                                     break;
                                   }
 
                                   continuing {
-                                    let v_249 = v_242;
-                                    let v_250 = (v_243 + bitcast<u32>(1i));
-                                    v_240 = v_249;
+                                    let v_250 = v_243;
+                                    let v_251 = (v_244 + bitcast<u32>(1i));
                                     v_241 = v_250;
+                                    v_242 = v_251;
                                   }
                                 }
                               }
-                              let v_251 = v_239;
-                              let v_252 = v_238;
-                              let v_253 = v_237;
-                              if (v_251) {
-                                v_232 = v_253;
+                              let v_252 = v_240;
+                              let v_253 = v_239;
+                              let v_254 = v_238;
+                              if (v_252) {
+                                v_233 = v_254;
                                 break;
                               }
-                              v_232 = select(select(v_252, (v_252 * 0.20000000298023223877f), (v_236 == 5u)), (v_252 * 0.07692307978868484497f), (v_236 == 13u));
+                              v_233 = select(select(v_253, (v_253 * 0.20000000298023223877f), (v_237 == 5u)), (v_253 * 0.07692307978868484497f), (v_237 == 13u));
                             }
                           }
-                          let v_254 = v_232;
-                          let v_255 = (v_214 == 0u);
-                          let v_256 = select(v_254, v_216, v_255);
-                          let v_257 = select(v_215, v_254, v_255);
-                          v_211 = v_254;
-                          v_212 = v_256;
+                          let v_255 = v_233;
+                          let v_256 = (v_215 == 0u);
+                          let v_257 = select(v_255, v_217, v_256);
+                          let v_258 = select(v_216, v_255, v_256);
+                          v_212 = v_255;
                           v_213 = v_257;
+                          v_214 = v_258;
                           continue;
                         } else {
-                          v_204 = v_215;
                           v_205 = v_216;
                           v_206 = v_217;
+                          v_207 = v_218;
                           break;
                         }
 
                         continuing {
-                          let v_258 = v_213;
-                          let v_259 = v_212;
-                          let v_260 = v_211;
-                          let v_261 = (v_214 + bitcast<u32>(1i));
-                          v_207 = v_260;
-                          v_208 = v_259;
-                          v_209 = v_258;
-                          v_210 = v_261;
+                          let v_259 = v_214;
+                          let v_260 = v_213;
+                          let v_261 = v_212;
+                          let v_262 = (v_215 + bitcast<u32>(1i));
+                          v_208 = v_261;
+                          v_209 = v_260;
+                          v_210 = v_259;
+                          v_211 = v_262;
                         }
                       }
                     }
-                    let v_262 = v_206;
-                    let v_263 = v_205;
-                    let v_264 = v_204;
-                    if (!(v_130)) {
-                      v_146 = mix(1.0f, v_264, v_2.positional_shadows[v_145].params.y);
-                      v_147 = v_262;
+                    let v_263 = v_207;
+                    let v_264 = v_206;
+                    let v_265 = v_205;
+                    if (!(v_131)) {
+                      v_147 = mix(1.0f, v_265, v_2.positional_shadows[v_146].params.y);
+                      v_148 = v_263;
                       break;
                     }
-                    var v_265 : f32;
-                    if ((v_196 == 2u)) {
-                      v_265 = mix(v_264, v_263, v_197);
+                    var v_266 : f32;
+                    if ((v_197 == 2u)) {
+                      v_266 = mix(v_265, v_264, v_198);
                     } else {
-                      v_265 = v_264;
+                      v_266 = v_265;
                     }
-                    let v_266 = v_265;
-                    let v_267 = v_2.directional_shadows[v_145].params;
-                    let v_268 = v_267.x;
-                    let v_269 = v_267.y;
-                    var v_270 : f32;
+                    let v_267 = v_266;
+                    let v_268 = v_2.directional_shadows[v_146].params;
+                    let v_269 = v_268.x;
+                    let v_270 = v_268.y;
+                    var v_271 : f32;
                     switch(0u) {
                       default: {
-                        if ((v_268 == v_269)) {
-                          v_270 = select(1.0f, 0.0f, (v_198 < v_268));
+                        if ((v_269 == v_270)) {
+                          v_271 = select(1.0f, 0.0f, (v_199 < v_269));
                           break;
                         }
-                        let v_271 = clamp(((v_198 - v_268) / (v_269 - v_268)), 0.0f, 1.0f);
-                        v_270 = ((v_271 * v_271) * (3.0f - (2.0f * v_271)));
+                        let v_272 = clamp(((v_199 - v_269) / (v_270 - v_269)), 0.0f, 1.0f);
+                        v_271 = ((v_272 * v_272) * (3.0f - (2.0f * v_272)));
                       }
                     }
-                    v_146 = mix(1.0f, mix(v_266, 1.0f, v_270), v_267.z);
-                    v_147 = v_262;
+                    v_147 = mix(1.0f, mix(v_267, 1.0f, v_271), v_268.z);
+                    v_148 = v_263;
                   }
                 }
-                let v_272 = v_147;
-                let v_273 = (v_142 * v_146);
-                v_143 = v_272;
+                let v_273 = v_148;
+                let v_274 = (v_143 * v_147);
                 v_144 = v_273;
+                v_145 = v_274;
               } else {
-                v_143 = v_119;
-                v_144 = v_142;
+                v_144 = v_120;
+                v_145 = v_143;
               }
-              let v_274 = v_144;
-              let v_275 = v_143;
-              let v_276 = v_123.xyz;
-              let v_277 = max(min(dot(v_99, v_133), 1.0f), 0.0f);
-              let v_278 = max(dot(v_99, v_103), 0.00009999999747378752f);
-              let v_279 = normalize((v_103 + v_133));
-              let v_280 = clamp(dot(v_99, v_279), 0.0f, 1.0f);
-              let v_281 = clamp(dot(v_133, v_279), 0.0f, 1.0f);
-              var v_282 : vec3<f32>;
+              let v_275 = v_145;
+              let v_276 = v_144;
+              let v_277 = v_124.xyz;
+              let v_278 = max(min(dot(v_100, v_134), 1.0f), 0.0f);
+              let v_279 = max(dot(v_100, v_104), 0.00009999999747378752f);
+              let v_280 = normalize((v_104 + v_134));
+              let v_281 = clamp(dot(v_100, v_280), 0.0f, 1.0f);
+              let v_282 = clamp(dot(v_134, v_280), 0.0f, 1.0f);
+              var v_283 : vec3<f32>;
               if ((v_80 < 1.0f)) {
-                let v_283 = ((((2.0f * v_281) * v_281) * v_81) - 0.5f);
-                let v_284 = (1.0f - v_278);
-                let v_285 = (v_284 * v_284);
-                let v_286 = (1.0f - v_277);
-                let v_287 = (v_286 * v_286);
-                v_282 = (v_117 + ((v_276 * (((0.31830987334251403809f * (1.0f + (v_283 * ((v_285 * v_285) * v_284)))) * (1.0f + (v_283 * ((v_287 * v_287) * v_286)))) * v_277)) * v_274));
+                let v_284 = ((((2.0f * v_282) * v_282) * v_81) - 0.5f);
+                let v_285 = (1.0f - v_279);
+                let v_286 = (v_285 * v_285);
+                let v_287 = (1.0f - v_278);
+                let v_288 = (v_287 * v_287);
+                v_283 = (v_118 + ((v_277 * (((0.31830987334251403809f * (1.0f + (v_284 * ((v_286 * v_286) * v_285)))) * (1.0f + (v_284 * ((v_288 * v_288) * v_287)))) * v_278)) * v_275));
               } else {
-                v_282 = v_117;
+                v_283 = v_118;
               }
-              let v_288 = v_282;
-              var v_289 : vec3<f32>;
+              let v_289 = v_283;
+              var v_290 : vec3<f32>;
               if ((v_81 > 0.0f)) {
-                let v_290 = (v_81 * v_81);
-                let v_291 = (v_280 * v_290);
-                let v_292 = (v_290 / ((1.0f - (v_280 * v_280)) + (v_291 * v_291)));
-                let v_293 = (0.5f / mix(((2.0f * v_277) * v_278), (v_277 + v_278), v_290));
-                let v_294 = (1.0f - v_281);
-                let v_295 = (v_294 * v_294);
-                let v_296 = clamp((50.0f * v_105.y), 0.0f, 1.0f);
-                v_289 = (v_118 + ((((((v_105 + ((vec3<f32>(v_296, v_296, v_296) - v_105) * ((v_295 * v_295) * v_294))) * (v_277 * ((v_292 * v_292) * 0.31830987334251403809f))) * v_293) * v_276) * v_274) * v_123.w));
+                let v_291 = (v_81 * v_81);
+                let v_292 = (v_281 * v_291);
+                let v_293 = (v_291 / ((1.0f - (v_281 * v_281)) + (v_292 * v_292)));
+                let v_294 = (0.5f / mix(((2.0f * v_278) * v_279), (v_278 + v_279), v_291));
+                let v_295 = (1.0f - v_282);
+                let v_296 = (v_295 * v_295);
+                let v_297 = clamp((50.0f * v_106.y), 0.0f, 1.0f);
+                v_290 = (v_119 + ((((((v_106 + ((vec3<f32>(v_297, v_297, v_297) - v_106) * ((v_296 * v_296) * v_295))) * (v_278 * ((v_293 * v_293) * 0.31830987334251403809f))) * v_294) * v_277) * v_275) * v_124.w));
               } else {
-                v_289 = v_118;
+                v_290 = v_119;
               }
-              let v_297 = v_289;
-              v_125 = v_275;
-              v_126 = v_297;
-              v_127 = v_288;
+              let v_298 = v_290;
+              v_126 = v_276;
+              v_127 = v_298;
+              v_128 = v_289;
             }
           }
-          let v_298 = v_127;
-          let v_299 = v_126;
-          v_113 = v_125;
-          v_114 = v_299;
-          v_115 = v_298;
+          let v_299 = v_128;
+          let v_300 = v_127;
+          v_114 = v_126;
+          v_115 = v_300;
+          v_116 = v_299;
           continue;
         } else {
-          v_107 = v_118;
-          v_108 = v_117;
+          v_108 = v_119;
+          v_109 = v_118;
           break;
         }
 
         continuing {
-          let v_300 = v_115;
-          let v_301 = v_114;
-          let v_302 = v_113;
-          let v_303 = (v_116 + bitcast<u32>(1i));
-          v_109 = v_302;
-          v_110 = v_301;
-          v_111 = v_300;
-          v_112 = v_303;
+          let v_301 = v_116;
+          let v_302 = v_115;
+          let v_303 = v_114;
+          let v_304 = (v_117 + bitcast<u32>(1i));
+          v_110 = v_303;
+          v_111 = v_302;
+          v_112 = v_301;
+          v_113 = v_304;
         }
       }
     }
-    let v_304 = v_108;
-    let v_305 = v_107;
-    let v_306 = (vec2<u32>(v_10.xy) / vec2<u32>(32u));
-    let v_307 = u32(v.cluster.y);
-    let v_308 = (((v_306.y * u32(v.cluster.x)) + v_306.x) * (v_307 + 32u));
-    let v_309 = clusters_1.m[((v_308 + v_307) + u32(clamp((-((dot(v_4, v_2.camera_z.xyz) + v_2.camera_z.w)) * v.cluster.z), 0.0f, 31.0f)))];
-    let v_310 = (v_309 & 65535u);
-    let v_311 = (v_309 >> 16u);
-    var v_312 : vec3<f32>;
+    let v_305 = v_109;
+    let v_306 = v_108;
+    let v_307 = (vec2<u32>(v_10.xy) / vec2<u32>(32u));
+    let v_308 = u32(v.cluster.y);
+    let v_309 = (((v_307.y * u32(v.cluster.x)) + v_307.x) * (v_308 + 32u));
+    let v_310 = clusters_1.m[((v_309 + v_308) + u32(clamp((-((dot(v_4, v_2.camera_z.xyz) + v_2.camera_z.w)) * v.cluster.z), 0.0f, 31.0f)))];
+    let v_311 = (v_310 & 65535u);
+    let v_312 = (v_310 >> 16u);
     var v_313 : vec3<f32>;
+    var v_314 : vec3<f32>;
     {
-      var v_314 : vec3<f32>;
-      v_314 = v_305;
       var v_315 : vec3<f32>;
-      v_315 = v_304;
-      var v_316 : u32;
-      v_316 = (v_310 >> 5u);
-      var v_317 : f32;
-      v_317 = 0.0f;
+      v_315 = v_306;
+      var v_316 : vec3<f32>;
+      v_316 = v_305;
+      var v_317 : u32;
+      v_317 = (v_311 >> 5u);
+      var v_318 : f32;
+      v_318 = 0.0f;
       loop {
-        var v_318 : vec3<f32>;
         var v_319 : vec3<f32>;
-        var v_320 : f32;
-        let v_321 = v_317;
-        let v_322 = v_316;
-        let v_323 = v_315;
-        let v_324 = v_314;
-        if ((v_322 < ((v_311 + 31u) >> 5u))) {
-          let v_325 = clusters_1.m[(v_308 + v_322)];
-          let v_326 = clamp((bitcast<i32>(v_310) - bitcast<i32>((v_322 * 32u))), 0i, 32i);
-          let v_327 = clamp((bitcast<i32>(v_311) - bitcast<i32>((v_322 * 32u))), 0i, 32i);
-          let v_328 = (v_325 & (select(((1u << bitcast<u32>(v_327)) - 1u), 4294967295u, (v_327 >= 32i)) & ~(select(((1u << bitcast<u32>(v_326)) - 1u), 4294967295u, (v_326 >= 32i)))));
-          var v_329 : vec3<f32>;
+        var v_320 : vec3<f32>;
+        var v_321 : f32;
+        let v_322 = v_318;
+        let v_323 = v_317;
+        let v_324 = v_316;
+        let v_325 = v_315;
+        if ((v_323 < ((v_312 + 31u) >> 5u))) {
+          let v_326 = clusters_1.m[(v_309 + v_323)];
+          let v_327 = clamp((bitcast<i32>(v_311) - bitcast<i32>((v_323 * 32u))), 0i, 32i);
+          let v_328 = clamp((bitcast<i32>(v_312) - bitcast<i32>((v_323 * 32u))), 0i, 32i);
+          let v_329 = (v_326 & (select(((1u << bitcast<u32>(v_328)) - 1u), 4294967295u, (v_328 >= 32i)) & ~(select(((1u << bitcast<u32>(v_327)) - 1u), 4294967295u, (v_327 >= 32i)))));
           var v_330 : vec3<f32>;
-          var v_331 : f32;
+          var v_331 : vec3<f32>;
+          var v_332 : f32;
           {
-            var v_332 : f32;
-            v_332 = v_321;
-            var v_333 : vec3<f32>;
-            v_333 = v_324;
+            var v_333 : f32;
+            v_333 = v_322;
             var v_334 : vec3<f32>;
-            v_334 = v_323;
-            var v_335 : u32;
-            v_335 = v_328;
+            v_334 = v_325;
+            var v_335 : vec3<f32>;
+            v_335 = v_324;
+            var v_336 : u32;
+            v_336 = v_329;
             loop {
-              var v_336 : f32;
-              var v_337 : vec3<f32>;
+              var v_337 : f32;
               var v_338 : vec3<f32>;
-              var v_339 : u32;
-              let v_340 = v_335;
-              let v_341 = v_334;
-              let v_342 = v_333;
-              let v_343 = v_332;
-              if ((v_340 != 0u)) {
-                let v_344 = clustered_lights_1.m_1[((v_322 * 32u) + firstTrailingBit(v_340))];
-                let v_345 = v_344.position;
-                let v_346 = v_344.direction;
-                let v_347 = v_344.color;
-                let v_348 = v_344.params;
-                var v_349 : f32;
-                var v_350 : vec3<f32>;
+              var v_339 : vec3<f32>;
+              var v_340 : u32;
+              let v_341 = v_336;
+              let v_342 = v_335;
+              let v_343 = v_334;
+              let v_344 = v_333;
+              if ((v_341 != 0u)) {
+                let v_345 = clustered_lights_1.m_1[((v_323 * 32u) + firstTrailingBit(v_341))];
+                let v_346 = v_345.position;
+                let v_347 = v_345.direction;
+                let v_348 = v_345.color;
+                let v_349 = v_345.params;
+                var v_350 : f32;
                 var v_351 : vec3<f32>;
+                var v_352 : vec3<f32>;
                 switch(0u) {
                   default: {
-                    if (((u32(v_348.w) & v_1.options.z) == 0u)) {
-                      v_349 = v_343;
-                      v_350 = v_342;
-                      v_351 = v_341;
+                    if (((u32(v_349.w) & v_1.options.z) == 0u)) {
+                      v_350 = v_344;
+                      v_351 = v_343;
+                      v_352 = v_342;
                       break;
                     }
-                    let v_352 = v_346.w;
-                    let v_353 = v_344.shadow.x;
-                    let v_354 = (v_352 == 0.0f);
-                    let v_355 = (v_345.xyz - v_4);
-                    let v_356 = normalize(v_346.xyz);
-                    let v_357 = select(normalize(v_355), v_356, vec3<bool>(v_354, v_354, v_354));
-                    var v_358 : f32;
-                    if (!(v_354)) {
-                      let v_359 = length(v_355);
-                      let v_360 = (v_359 * v_345.w);
-                      let v_361 = (v_360 * v_360);
-                      let v_362 = max((1.0f - (v_361 * v_361)), 0.0f);
-                      let v_363 = ((v_362 * v_362) * pow(max(v_359, 0.00009999999747378752f), -(v_348.x)));
-                      var v_364 : f32;
-                      if ((v_352 == 2.0f)) {
-                        let v_365 = v_348.y;
-                        v_364 = (v_363 * (1.0f - pow(max(0.00009999999747378752f, ((1.0f - max(dot(-(normalize(v_355)), v_346.xyz), v_365)) / (1.0f - v_365))), v_348.z)));
+                    let v_353 = v_347.w;
+                    let v_354 = v_345.shadow.x;
+                    let v_355 = (v_353 == 0.0f);
+                    let v_356 = (v_346.xyz - v_4);
+                    let v_357 = normalize(v_347.xyz);
+                    let v_358 = select(normalize(v_356), v_357, vec3<bool>(v_355, v_355, v_355));
+                    var v_359 : f32;
+                    if (!(v_355)) {
+                      let v_360 = length(v_356);
+                      let v_361 = (v_360 * v_346.w);
+                      let v_362 = (v_361 * v_361);
+                      let v_363 = max((1.0f - (v_362 * v_362)), 0.0f);
+                      let v_364 = ((v_363 * v_363) * pow(max(v_360, 0.00009999999747378752f), -(v_349.x)));
+                      var v_365 : f32;
+                      if ((v_353 == 2.0f)) {
+                        let v_366 = v_349.y;
+                        v_365 = (v_364 * (1.0f - pow(max(0.00009999999747378752f, ((1.0f - max(dot(-(normalize(v_356)), v_347.xyz), v_366)) / (1.0f - v_366))), v_349.z)));
                       } else {
-                        v_364 = v_363;
+                        v_365 = v_364;
                       }
-                      v_358 = v_364;
+                      v_359 = v_365;
                     } else {
-                      v_358 = 1.0f;
+                      v_359 = 1.0f;
                     }
-                    let v_366 = v_358;
-                    var v_367 : f32;
+                    let v_367 = v_359;
                     var v_368 : f32;
-                    if ((v_353 >= 0.0f)) {
-                      let v_369 = u32(v_353);
-                      var v_370 : f32;
+                    var v_369 : f32;
+                    if ((v_354 >= 0.0f)) {
+                      let v_370 = u32(v_354);
                       var v_371 : f32;
+                      var v_372 : f32;
                       switch(0u) {
                         default: {
-                          let v_372 = v_2.filters.y;
-                          var v_373 : f32;
-                          var v_374 : vec3<f32>;
-                          var v_375 : u32;
-                          var v_376 : vec3<f32>;
-                          var v_377 : u32;
-                          var v_378 : f32;
+                          let v_373 = v_2.filters.y;
+                          var v_374 : f32;
+                          var v_375 : vec3<f32>;
+                          var v_376 : u32;
+                          var v_377 : vec3<f32>;
+                          var v_378 : u32;
                           var v_379 : f32;
-                          var v_380 : u32;
-                          if (v_354) {
-                            let v_381 = (dot(v_4, v_2.camera_z.xyz) + v_2.camera_z.w);
-                            let v_382 = (v_101 * (1.0f - max(0.0f, -(dot(v_357, v_101)))));
-                            v_12 = v_2.directional_shadows[v_369].splits;
-                            let v_383 = u32(v_2.directional_shadows[v_369].params.w);
-                            let v_384 = -(v_381);
+                          var v_380 : f32;
+                          var v_381 : u32;
+                          if (v_355) {
+                            let v_382 = (dot(v_4, v_2.camera_z.xyz) + v_2.camera_z.w);
+                            let v_383 = (v_102 * (1.0f - max(0.0f, -(dot(v_358, v_102)))));
+                            v_12 = v_2.directional_shadows[v_370].splits;
 )wgsl",
-R"wgsl(                            let v_385 = v_2.filters.x;
-                            var v_386 : u32;
-                            var v_387 : f32;
-                            var v_388 : u32;
-                            if ((v_383 > 1u)) {
-                              var v_389 : u32;
-                              var v_390 : f32;
-                              var v_391 : u32;
-                              if (!((v_384 < v_12[(v_383 - 1u)]))) {
-                                v_389 = 0u;
-                                v_390 = 0.0f;
-                                v_391 = 0u;
+R"wgsl(                            let v_384 = u32(v_2.directional_shadows[v_370].params.w);
+                            let v_385 = -(v_382);
+                            let v_386 = v_2.filters.x;
+                            var v_387 : u32;
+                            var v_388 : f32;
+                            var v_389 : u32;
+                            if ((v_384 > 1u)) {
+                              var v_390 : u32;
+                              var v_391 : f32;
+                              var v_392 : u32;
+                              if (!((v_385 < v_12[(v_384 - 1u)]))) {
+                                v_390 = 0u;
+                                v_391 = 0.0f;
+                                v_392 = 0u;
                               } else {
-                                var v_392 : u32;
+                                var v_393 : u32;
                                 {
-                                  var v_393 : u32;
-                                  v_393 = 0u;
+                                  var v_394 : u32;
+                                  v_394 = 0u;
                                   loop {
-                                    let v_394 = v_393;
-                                    if ((((v_394 + 1u) < v_383) & !((v_384 < v_12[v_394])))) {
+                                    let v_395 = v_394;
+                                    if ((((v_395 + 1u) < v_384) & !((v_385 < v_12[v_395])))) {
                                       continue;
                                     } else {
-                                      v_392 = v_394;
+                                      v_393 = v_395;
                                       break;
                                     }
 
                                     continuing {
-                                      v_393 = (v_394 + bitcast<u32>(1i));
+                                      v_394 = (v_395 + bitcast<u32>(1i));
                                     }
                                   }
                                 }
-                                let v_395 = v_392;
-                                let v_396 = (!((v_2.directional_shadows[v_369].options.x == 0.0f)) & ((v_395 + 1u) < v_383));
-                                var v_397 : f32;
-                                if (v_396) {
-                                  let v_398 = select(v_12[(v_395 - 1u)], 0.0f, (v_395 == 0u));
-                                  let v_399 = v_12[v_395];
-                                  var v_400 : f32;
+                                let v_396 = v_393;
+                                let v_397 = (!((v_2.directional_shadows[v_370].options.x == 0.0f)) & ((v_396 + 1u) < v_384));
+                                var v_398 : f32;
+                                if (v_397) {
+                                  let v_399 = select(v_12[(v_396 - 1u)], 0.0f, (v_396 == 0u));
+                                  let v_400 = v_12[v_396];
+                                  var v_401 : f32;
                                   switch(0u) {
                                     default: {
-                                      if ((v_398 == v_399)) {
-                                        v_400 = select(1.0f, 0.0f, (v_384 < v_398));
+                                      if ((v_399 == v_400)) {
+                                        v_401 = select(1.0f, 0.0f, (v_385 < v_399));
                                         break;
                                       }
-                                      let v_401 = clamp(((v_384 - v_398) / (v_399 - v_398)), 0.0f, 1.0f);
-                                      v_400 = ((v_401 * v_401) * (3.0f - (2.0f * v_401)));
+                                      let v_402 = clamp(((v_385 - v_399) / (v_400 - v_399)), 0.0f, 1.0f);
+                                      v_401 = ((v_402 * v_402) * (3.0f - (2.0f * v_402)));
                                     }
                                   }
-                                  v_397 = v_400;
+                                  v_398 = v_401;
                                 } else {
-                                  v_397 = 0.0f;
+                                  v_398 = 0.0f;
                                 }
-                                let v_402 = v_397;
-                                let v_403 = select(1u, 2u, v_396);
-                                v_389 = v_395;
-                                v_390 = v_402;
+                                let v_403 = v_398;
+                                let v_404 = select(1u, 2u, v_397);
+                                v_390 = v_396;
                                 v_391 = v_403;
+                                v_392 = v_404;
                               }
-                              let v_404 = v_391;
-                              let v_405 = v_390;
-                              v_386 = v_389;
-                              v_387 = v_405;
-                              v_388 = v_404;
+                              let v_405 = v_392;
+                              let v_406 = v_391;
+                              v_387 = v_390;
+                              v_388 = v_406;
+                              v_389 = v_405;
                             } else {
-                              v_386 = 0u;
-                              v_387 = 0.0f;
-                              v_388 = 1u;
+                              v_387 = 0u;
+                              v_388 = 0.0f;
+                              v_389 = 1u;
                             }
-                            let v_406 = v_388;
-                            let v_407 = v_387;
-                            let v_408 = v_386;
-                            v_373 = v_385;
-                            v_374 = v_382;
-                            v_375 = v_408;
-                            v_376 = v_4;
-                            v_377 = 0u;
-                            v_378 = v_381;
-                            v_379 = v_407;
-                            v_380 = v_406;
+                            let v_407 = v_389;
+                            let v_408 = v_388;
+                            let v_409 = v_387;
+                            v_374 = v_386;
+                            v_375 = v_383;
+                            v_376 = v_409;
+                            v_377 = v_4;
+                            v_378 = 0u;
+                            v_379 = v_382;
+                            v_380 = v_408;
+                            v_381 = v_407;
                           } else {
-                            let v_409 = v_2.positional_shadows[v_369].params;
-                            let v_410 = (v_2.positional_shadows[v_369].position.xyz - v_4);
-                            let v_411 = length(v_410);
-                            let v_412 = (v_4 + (v_101 * (((1.0f - abs(dot(v_101, (v_410 / vec3<f32>(v_411, v_411, v_411))))) * v_409.x) * v_411)));
-                            let v_413 = (v_409.w > 1.5f);
-                            var v_414 : u32;
-                            if (v_413) {
-                              let v_415 = (vec4<f32>(v_412.x, v_412.y, v_412.z, 1.0f) * v_2.positional_shadows[v_369].light);
-                              let v_416 = abs(v_415.xyz);
-                              var v_417 : u32;
-                              if (((v_416.x >= v_416.y) & (v_416.x >= v_416.z))) {
-                                v_417 = select(1u, 0u, (v_415.x > 0.0f));
+                            let v_410 = v_2.positional_shadows[v_370].params;
+                            let v_411 = (v_2.positional_shadows[v_370].position.xyz - v_4);
+                            let v_412 = length(v_411);
+                            let v_413 = (v_4 + (v_102 * (((1.0f - abs(dot(v_102, (v_411 / vec3<f32>(v_412, v_412, v_412))))) * v_410.x) * v_412)));
+                            let v_414 = (v_410.w > 1.5f);
+                            var v_415 : u32;
+                            if (v_414) {
+                              let v_416 = (vec4<f32>(v_413.x, v_413.y, v_413.z, 1.0f) * v_2.positional_shadows[v_370].light);
+                              let v_417 = abs(v_416.xyz);
+                              var v_418 : u32;
+                              if (((v_417.x >= v_417.y) & (v_417.x >= v_417.z))) {
+                                v_418 = select(1u, 0u, (v_416.x > 0.0f));
                               } else {
-                                var v_418 : u32;
-                                if ((v_416.y >= v_416.z)) {
-                                  v_418 = select(3u, 2u, (v_415.y < 0.0f));
+                                var v_419 : u32;
+                                if ((v_417.y >= v_417.z)) {
+                                  v_419 = select(3u, 2u, (v_416.y < 0.0f));
                                 } else {
-                                  v_418 = select(5u, 4u, (v_415.z > 0.0f));
+                                  v_419 = select(5u, 4u, (v_416.z > 0.0f));
                                 }
-                                v_417 = v_418;
+                                v_418 = v_419;
                               }
-                              v_414 = v_417;
+                              v_415 = v_418;
                             } else {
-                              v_414 = 0u;
+                              v_415 = 0u;
                             }
-                            let v_419 = v_414;
-                            v_373 = select(v_372, 1.0f, v_413);
-                            v_374 = vec3<f32>();
-                            v_375 = 0u;
-                            v_376 = v_412;
-                            v_377 = v_419;
-                            v_378 = 0.0f;
+                            let v_420 = v_415;
+                            v_374 = select(v_373, 1.0f, v_414);
+                            v_375 = vec3<f32>();
+                            v_376 = 0u;
+                            v_377 = v_413;
+                            v_378 = v_420;
                             v_379 = 0.0f;
-                            v_380 = 1u;
+                            v_380 = 0.0f;
+                            v_381 = 1u;
                           }
-                          let v_420 = v_380;
-                          let v_421 = v_379;
-                          let v_422 = v_378;
-                          let v_423 = v_377;
-                          let v_424 = v_376;
-                          let v_425 = v_375;
-                          let v_426 = v_374;
-                          let v_427 = v_373;
-                          var v_428 : f32;
+                          let v_421 = v_381;
+                          let v_422 = v_380;
+                          let v_423 = v_379;
+                          let v_424 = v_378;
+                          let v_425 = v_377;
+                          let v_426 = v_376;
+                          let v_427 = v_375;
+                          let v_428 = v_374;
                           var v_429 : f32;
                           var v_430 : f32;
+                          var v_431 : f32;
                           {
-                            var v_431 : f32;
-                            v_431 = v_343;
                             var v_432 : f32;
-                            v_432 = 1.0f;
+                            v_432 = v_344;
                             var v_433 : f32;
                             v_433 = 1.0f;
-                            var v_434 : u32;
-                            v_434 = 0u;
+                            var v_434 : f32;
+                            v_434 = 1.0f;
+                            var v_435 : u32;
+                            v_435 = 0u;
                             loop {
-                              var v_435 : f32;
                               var v_436 : f32;
                               var v_437 : f32;
-                              let v_438 = v_434;
-                              let v_439 = v_433;
-                              let v_440 = v_432;
-                              let v_441 = v_431;
-                              if ((v_438 < v_420)) {
-                                var v_442 : vec4<f32>;
-                                var v_443 : f32;
-                                var v_444 : vec3<f32>;
-                                var v_445 : mat4x4<f32>;
-                                if (v_354) {
-                                  let v_446 = (v_425 + v_438);
-                                  let v_447 = v_2.directional_shadows[v_369].matrices[v_446];
-                                  let v_448 = (v_4 + (v_426 * v_2.directional_shadows[v_369].normal_bias[v_446]));
-                                  let v_449 = v_2.directional_shadows[v_369].options.y;
-                                  v_442 = vec4<f32>(-2.0f, -2.0f, 3.0f, 3.0f);
-                                  v_443 = v_449;
-                                  v_444 = v_448;
-                                  v_445 = v_447;
+                              var v_438 : f32;
+                              let v_439 = v_435;
+                              let v_440 = v_434;
+                              let v_441 = v_433;
+                              let v_442 = v_432;
+                              if ((v_439 < v_421)) {
+                                var v_443 : vec4<f32>;
+                                var v_444 : f32;
+                                var v_445 : vec3<f32>;
+                                var v_446 : mat4x4<f32>;
+                                if (v_355) {
+                                  let v_447 = (v_426 + v_439);
+                                  let v_448 = v_2.directional_shadows[v_370].matrices[v_447];
+                                  let v_449 = (v_4 + (v_427 * v_2.directional_shadows[v_370].normal_bias[v_447]));
+                                  let v_450 = v_2.directional_shadows[v_370].options.y;
+                                  v_443 = vec4<f32>(-2.0f, -2.0f, 3.0f, 3.0f);
+                                  v_444 = v_450;
+                                  v_445 = v_449;
+                                  v_446 = v_448;
                                 } else {
-                                  let v_450 = v_2.positional_shadows[v_369].faces[v_423];
-                                  let v_451 = v_2.positional_shadows[v_369].params.z;
-                                  v_442 = v_2.positional_shadows[v_369].rects[v_423];
-                                  v_443 = v_451;
-                                  v_444 = v_424;
-                                  v_445 = v_450;
+                                  let v_451 = v_2.positional_shadows[v_370].faces[v_424];
+                                  let v_452 = v_2.positional_shadows[v_370].params.z;
+                                  v_443 = v_2.positional_shadows[v_370].rects[v_424];
+                                  v_444 = v_452;
+                                  v_445 = v_425;
+                                  v_446 = v_451;
                                 }
-                                let v_452 = v_445;
-                                let v_453 = v_444;
-                                let v_454 = v_443;
-                                let v_455 = v_442;
-                                var v_456 : f32;
+                                let v_453 = v_446;
+                                let v_454 = v_445;
+                                let v_455 = v_444;
+                                let v_456 = v_443;
+                                var v_457 : f32;
                                 switch(0u) {
                                   default: {
-                                    let v_457 = (vec4<f32>(v_453.x, v_453.y, v_453.z, 1.0f) * v_452);
-                                    let v_458 = v_457.w;
-                                    let v_459 = clamp((v_457.z / v_457.w), 0.0f, 1.0f);
-                                    let v_460 = select(select(1u, 5u, (v_427 > 4.0f)), 13u, (v_427 > 12.0f));
-                                    var v_461 : f32;
+                                    let v_458 = (vec4<f32>(v_454.x, v_454.y, v_454.z, 1.0f) * v_453);
+                                    let v_459 = v_458.w;
+                                    let v_460 = clamp((v_458.z / v_458.w), 0.0f, 1.0f);
+                                    let v_461 = select(select(1u, 5u, (v_428 > 4.0f)), 13u, (v_428 > 12.0f));
                                     var v_462 : f32;
-                                    var v_463 : bool;
+                                    var v_463 : f32;
+                                    var v_464 : bool;
                                     {
-                                      var v_464 : f32;
-                                      v_464 = 0.0f;
-                                      var v_465 : u32;
-                                      v_465 = 0u;
+                                      var v_465 : f32;
+                                      v_465 = 0.0f;
+                                      var v_466 : u32;
+                                      v_466 = 0u;
                                       loop {
-                                        var v_466 : f32;
-                                        let v_467 = v_465;
-                                        let v_468 = v_464;
-                                        if ((v_467 < v_460)) {
-                                          let v_469 = select(v_467, (v_467 + 4u), ((v_460 == 5u) & (v_467 > 0u)));
+                                        var v_467 : f32;
+                                        let v_468 = v_466;
+                                        let v_469 = v_465;
+                                        if ((v_468 < v_461)) {
+                                          let v_470 = select(v_468, (v_468 + 4u), ((v_461 == 5u) & (v_468 > 0u)));
                                           v_11 = array<vec2<f32>, 13u>(vec2<f32>(), vec2<f32>(2.0f, 0.0f), vec2<f32>(-2.0f, 0.0f), vec2<f32>(0.0f, 2.0f), vec2<f32>(0.0f, -2.0f), vec2<f32>(1.0f, 0.0f), vec2<f32>(-1.0f, 0.0f), vec2<f32>(0.0f, 1.0f), vec2<f32>(0.0f, -1.0f), vec2<f32>(1.0f), vec2<f32>(-1.0f, 1.0f), vec2<f32>(1.0f, -1.0f), vec2<f32>(-1.0f));
-                                          let v_470 = clamp(((v_457.xy / vec2<f32>(v_458, v_458)) + (v_11[v_469] * v_454)), v_455.xy, v_455.zw);
-                                          var v_471 : f32;
+                                          let v_471 = clamp(((v_458.xy / vec2<f32>(v_459, v_459)) + (v_11[v_470] * v_455)), v_456.xy, v_456.zw);
+                                          var v_472 : f32;
                                           switch(0u) {
                                             default: {
-                                              if (!(v_354)) {
-                                                v_471 = textureSampleCompareLevel(positional_atlas, positional_sampler, vec3<f32>(v_470.x, v_470.y, v_459).xy, v_459);
+                                              if (!(v_355)) {
+                                                v_472 = textureSampleCompareLevel(positional_atlas, positional_sampler, vec3<f32>(v_471.x, v_471.y, v_460).xy, v_460);
                                                 break;
                                               }
-                                              v_471 = textureSampleCompareLevel(directional_atlas, directional_sampler, vec3<f32>(v_470.x, v_470.y, v_459).xy, v_459);
+                                              v_472 = textureSampleCompareLevel(directional_atlas, directional_sampler, vec3<f32>(v_471.x, v_471.y, v_460).xy, v_460);
                                             }
                                           }
-                                          let v_472 = (v_468 + v_471);
-                                          if (((v_460 == 13u) & (v_467 == 4u))) {
-                                            if ((v_472 <= 0.00000099999999747524f)) {
-                                              v_461 = 0.0f;
-                                              v_462 = v_472;
-                                              v_463 = true;
+                                          let v_473 = (v_469 + v_472);
+                                          if (((v_461 == 13u) & (v_468 == 4u))) {
+                                            if ((v_473 <= 0.00000099999999747524f)) {
+                                              v_462 = 0.0f;
+                                              v_463 = v_473;
+                                              v_464 = true;
                                               break;
                                             }
-                                            if ((v_472 >= 4.99999904632568359375f)) {
-                                              v_461 = 1.0f;
-                                              v_462 = v_472;
 )wgsl",
-R"wgsl(                                              v_463 = true;
+R"wgsl(                                            if ((v_473 >= 4.99999904632568359375f)) {
+                                              v_462 = 1.0f;
+                                              v_463 = v_473;
+                                              v_464 = true;
                                               break;
                                             }
                                           }
-                                          v_466 = v_472;
+                                          v_467 = v_473;
                                           continue;
                                         } else {
-                                          v_461 = v_441;
-                                          v_462 = v_468;
-                                          v_463 = false;
+                                          v_462 = v_442;
+                                          v_463 = v_469;
+                                          v_464 = false;
                                           break;
                                         }
 
                                         continuing {
-                                          let v_473 = v_466;
-                                          let v_474 = (v_467 + bitcast<u32>(1i));
-                                          v_464 = v_473;
+                                          let v_474 = v_467;
+                                          let v_475 = (v_468 + bitcast<u32>(1i));
                                           v_465 = v_474;
+                                          v_466 = v_475;
                                         }
                                       }
                                     }
-                                    let v_475 = v_463;
-                                    let v_476 = v_462;
-                                    let v_477 = v_461;
-                                    if (v_475) {
-                                      v_456 = v_477;
+                                    let v_476 = v_464;
+                                    let v_477 = v_463;
+                                    let v_478 = v_462;
+                                    if (v_476) {
+                                      v_457 = v_478;
                                       break;
                                     }
-                                    v_456 = select(select(v_476, (v_476 * 0.20000000298023223877f), (v_460 == 5u)), (v_476 * 0.07692307978868484497f), (v_460 == 13u));
+                                    v_457 = select(select(v_477, (v_477 * 0.20000000298023223877f), (v_461 == 5u)), (v_477 * 0.07692307978868484497f), (v_461 == 13u));
                                   }
                                 }
-                                let v_478 = v_456;
-                                let v_479 = (v_438 == 0u);
-                                let v_480 = select(v_478, v_440, v_479);
-                                let v_481 = select(v_439, v_478, v_479);
-                                v_435 = v_478;
-                                v_436 = v_480;
+                                let v_479 = v_457;
+                                let v_480 = (v_439 == 0u);
+                                let v_481 = select(v_479, v_441, v_480);
+                                let v_482 = select(v_440, v_479, v_480);
+                                v_436 = v_479;
                                 v_437 = v_481;
+                                v_438 = v_482;
                                 continue;
                               } else {
-                                v_428 = v_439;
                                 v_429 = v_440;
                                 v_430 = v_441;
+                                v_431 = v_442;
                                 break;
                               }
 
                               continuing {
-                                let v_482 = v_437;
-                                let v_483 = v_436;
-                                let v_484 = v_435;
-                                let v_485 = (v_438 + bitcast<u32>(1i));
-                                v_431 = v_484;
-                                v_432 = v_483;
-                                v_433 = v_482;
-                                v_434 = v_485;
+                                let v_483 = v_438;
+                                let v_484 = v_437;
+                                let v_485 = v_436;
+                                let v_486 = (v_439 + bitcast<u32>(1i));
+                                v_432 = v_485;
+                                v_433 = v_484;
+                                v_434 = v_483;
+                                v_435 = v_486;
                               }
                             }
                           }
-                          let v_486 = v_430;
-                          let v_487 = v_429;
-                          let v_488 = v_428;
-                          if (!(v_354)) {
-                            v_370 = mix(1.0f, v_488, v_2.positional_shadows[v_369].params.y);
-                            v_371 = v_486;
+                          let v_487 = v_431;
+                          let v_488 = v_430;
+                          let v_489 = v_429;
+                          if (!(v_355)) {
+                            v_371 = mix(1.0f, v_489, v_2.positional_shadows[v_370].params.y);
+                            v_372 = v_487;
                             break;
                           }
-                          var v_489 : f32;
-                          if ((v_420 == 2u)) {
-                            v_489 = mix(v_488, v_487, v_421);
+                          var v_490 : f32;
+                          if ((v_421 == 2u)) {
+                            v_490 = mix(v_489, v_488, v_422);
                           } else {
-                            v_489 = v_488;
+                            v_490 = v_489;
                           }
-                          let v_490 = v_489;
-                          let v_491 = v_2.directional_shadows[v_369].params;
-                          let v_492 = v_491.x;
-                          let v_493 = v_491.y;
-                          var v_494 : f32;
+                          let v_491 = v_490;
+                          let v_492 = v_2.directional_shadows[v_370].params;
+                          let v_493 = v_492.x;
+                          let v_494 = v_492.y;
+                          var v_495 : f32;
                           switch(0u) {
                             default: {
-                              if ((v_492 == v_493)) {
-                                v_494 = select(1.0f, 0.0f, (v_422 < v_492));
+                              if ((v_493 == v_494)) {
+                                v_495 = select(1.0f, 0.0f, (v_423 < v_493));
                                 break;
                               }
-                              let v_495 = clamp(((v_422 - v_492) / (v_493 - v_492)), 0.0f, 1.0f);
-                              v_494 = ((v_495 * v_495) * (3.0f - (2.0f * v_495)));
+                              let v_496 = clamp(((v_423 - v_493) / (v_494 - v_493)), 0.0f, 1.0f);
+                              v_495 = ((v_496 * v_496) * (3.0f - (2.0f * v_496)));
                             }
                           }
-                          v_370 = mix(1.0f, mix(v_490, 1.0f, v_494), v_491.z);
-                          v_371 = v_486;
+                          v_371 = mix(1.0f, mix(v_491, 1.0f, v_495), v_492.z);
+                          v_372 = v_487;
                         }
                       }
-                      let v_496 = v_371;
-                      let v_497 = (v_366 * v_370);
-                      v_367 = v_496;
+                      let v_497 = v_372;
+                      let v_498 = (v_367 * v_371);
                       v_368 = v_497;
+                      v_369 = v_498;
                     } else {
-                      v_367 = v_343;
-                      v_368 = v_366;
+                      v_368 = v_344;
+                      v_369 = v_367;
                     }
-                    let v_498 = v_368;
-                    let v_499 = v_367;
-                    let v_500 = v_347.xyz;
-                    let v_501 = max(min(dot(v_99, v_357), 1.0f), 0.0f);
-                    let v_502 = max(dot(v_99, v_103), 0.00009999999747378752f);
-                    let v_503 = normalize((v_103 + v_357));
-                    let v_504 = clamp(dot(v_99, v_503), 0.0f, 1.0f);
-                    let v_505 = clamp(dot(v_357, v_503), 0.0f, 1.0f);
-                    var v_506 : vec3<f32>;
+                    let v_499 = v_369;
+                    let v_500 = v_368;
+                    let v_501 = v_348.xyz;
+                    let v_502 = max(min(dot(v_100, v_358), 1.0f), 0.0f);
+                    let v_503 = max(dot(v_100, v_104), 0.00009999999747378752f);
+                    let v_504 = normalize((v_104 + v_358));
+                    let v_505 = clamp(dot(v_100, v_504), 0.0f, 1.0f);
+                    let v_506 = clamp(dot(v_358, v_504), 0.0f, 1.0f);
+                    var v_507 : vec3<f32>;
                     if ((v_80 < 1.0f)) {
-                      let v_507 = ((((2.0f * v_505) * v_505) * v_81) - 0.5f);
-                      let v_508 = (1.0f - v_502);
-                      let v_509 = (v_508 * v_508);
-                      let v_510 = (1.0f - v_501);
-                      let v_511 = (v_510 * v_510);
-                      v_506 = (v_341 + ((v_500 * (((0.31830987334251403809f * (1.0f + (v_507 * ((v_509 * v_509) * v_508)))) * (1.0f + (v_507 * ((v_511 * v_511) * v_510)))) * v_501)) * v_498));
+                      let v_508 = ((((2.0f * v_506) * v_506) * v_81) - 0.5f);
+                      let v_509 = (1.0f - v_503);
+                      let v_510 = (v_509 * v_509);
+                      let v_511 = (1.0f - v_502);
+                      let v_512 = (v_511 * v_511);
+                      v_507 = (v_342 + ((v_501 * (((0.31830987334251403809f * (1.0f + (v_508 * ((v_510 * v_510) * v_509)))) * (1.0f + (v_508 * ((v_512 * v_512) * v_511)))) * v_502)) * v_499));
                     } else {
-                      v_506 = v_341;
+                      v_507 = v_342;
                     }
-                    let v_512 = v_506;
-                    var v_513 : vec3<f32>;
+                    let v_513 = v_507;
+                    var v_514 : vec3<f32>;
                     if ((v_81 > 0.0f)) {
-                      let v_514 = (v_81 * v_81);
-                      let v_515 = (v_504 * v_514);
-                      let v_516 = (v_514 / ((1.0f - (v_504 * v_504)) + (v_515 * v_515)));
-                      let v_517 = (0.5f / mix(((2.0f * v_501) * v_502), (v_501 + v_502), v_514));
-                      let v_518 = (1.0f - v_505);
-                      let v_519 = (v_518 * v_518);
-                      let v_520 = clamp((50.0f * v_105.y), 0.0f, 1.0f);
-                      v_513 = (v_342 + ((((((v_105 + ((vec3<f32>(v_520, v_520, v_520) - v_105) * ((v_519 * v_519) * v_518))) * (v_501 * ((v_516 * v_516) * 0.31830987334251403809f))) * v_517) * v_500) * v_498) * v_347.w));
+                      let v_515 = (v_81 * v_81);
+                      let v_516 = (v_505 * v_515);
+                      let v_517 = (v_515 / ((1.0f - (v_505 * v_505)) + (v_516 * v_516)));
+                      let v_518 = (0.5f / mix(((2.0f * v_502) * v_503), (v_502 + v_503), v_515));
+                      let v_519 = (1.0f - v_506);
+                      let v_520 = (v_519 * v_519);
+                      let v_521 = clamp((50.0f * v_106.y), 0.0f, 1.0f);
+                      v_514 = (v_343 + ((((((v_106 + ((vec3<f32>(v_521, v_521, v_521) - v_106) * ((v_520 * v_520) * v_519))) * (v_502 * ((v_517 * v_517) * 0.31830987334251403809f))) * v_518) * v_501) * v_499) * v_348.w));
                     } else {
-                      v_513 = v_342;
+                      v_514 = v_343;
                     }
-                    let v_521 = v_513;
-                    v_349 = v_499;
-                    v_350 = v_521;
-                    v_351 = v_512;
+                    let v_522 = v_514;
+                    v_350 = v_500;
+                    v_351 = v_522;
+                    v_352 = v_513;
                   }
                 }
-                let v_522 = v_351;
-                let v_523 = v_350;
-                v_336 = v_349;
-                v_337 = v_523;
-                v_338 = v_522;
-                v_339 = (v_340 & (v_340 - 1u));
+                let v_523 = v_352;
+                let v_524 = v_351;
+                v_337 = v_350;
+                v_338 = v_524;
+                v_339 = v_523;
+                v_340 = (v_341 & (v_341 - 1u));
                 continue;
               } else {
-                v_329 = v_342;
-                v_330 = v_341;
-                v_331 = v_343;
+                v_330 = v_343;
+                v_331 = v_342;
+                v_332 = v_344;
                 break;
               }
 
               continuing {
-                let v_524 = v_339;
-                let v_525 = v_338;
-                let v_526 = v_337;
-                v_332 = v_336;
-                v_333 = v_526;
-                v_334 = v_525;
-                v_335 = v_524;
+                let v_525 = v_340;
+                let v_526 = v_339;
+                let v_527 = v_338;
+                v_333 = v_337;
+                v_334 = v_527;
+                v_335 = v_526;
+                v_336 = v_525;
               }
             }
           }
-          let v_527 = v_331;
-          let v_528 = v_330;
-          v_318 = v_329;
-          v_319 = v_528;
-          v_320 = v_527;
+          let v_528 = v_332;
+          let v_529 = v_331;
+          v_319 = v_330;
+          v_320 = v_529;
+          v_321 = v_528;
           continue;
         } else {
-          v_312 = v_323;
           v_313 = v_324;
+          v_314 = v_325;
           break;
         }
 
         continuing {
-          let v_529 = v_320;
-          let v_530 = v_319;
-          let v_531 = v_318;
-          let v_532 = (v_322 + bitcast<u32>(1i));
-          v_314 = v_531;
-          v_315 = v_530;
-          v_316 = v_532;
-          v_317 = v_529;
+          let v_530 = v_321;
+          let v_531 = v_320;
+          let v_532 = v_319;
+          let v_533 = (v_323 + bitcast<u32>(1i));
+          v_315 = v_532;
+          v_316 = v_531;
+          v_317 = v_533;
+          v_318 = v_530;
         }
       }
     }
-    let v_533 = v_313;
-    let v_534 = v_312;
-    let v_535 = v.ambient.xyz;
-    var v_536 : vec3<f32>;
+    let v_534 = v_314;
+    let v_535 = v_313;
+    let v_536 = v.ambient.xyz;
+    var v_537 : vec3<f32>;
     if (!((v.sky.y == 0.0f))) {
-      let v_537 = (v_81 * v_81);
-      let v_538 = mix(reflect(-(v_103), v_99), v_99, vec3<f32>(v_537, v_537, v_537));
-      let v_539 = min((1.0f + dot(v_538, v_99)), 1.0f);
-      let v_540 = vec3<f32>(dot(v.sky_rows[0i].xyz, v_538), dot(v.sky_rows[1i].xyz, v_538), dot(v.sky_rows[2i].xyz, v_538));
-      let v_541 = textureSampleLevel(radiance_map, radiance_sampler, v_540, (sqrt(v_81) * 5.0f)).xyz;
-      v_536 = ((((v_541 * ((v_541 * ((v_541 * 0.30530601739883422852f) + vec3<f32>(0.68217110633850097656f))) + vec3<f32>(0.01252287812530994415f))) * v_539) * v_539) * v.sky.z);
+      let v_538 = (v_81 * v_81);
+      let v_539 = mix(reflect(-(v_104), v_100), v_100, vec3<f32>(v_538, v_538, v_538));
+      let v_540 = min((1.0f + dot(v_539, v_100)), 1.0f);
+      let v_541 = vec3<f32>(dot(v.sky_rows[0i].xyz, v_539), dot(v.sky_rows[1i].xyz, v_539), dot(v.sky_rows[2i].xyz, v_539));
+      let v_542 = textureSampleLevel(radiance_map, radiance_sampler, v_541, (sqrt(v_81) * 5.0f)).xyz;
+      v_537 = ((((v_542 * ((v_542 * ((v_542 * 0.30530601739883422852f) + vec3<f32>(0.68217110633850097656f))) + vec3<f32>(0.01252287812530994415f))) * v_540) * v_540) * v.sky.z);
     } else {
-      v_536 = vec3<f32>();
+      v_537 = vec3<f32>();
     }
-    let v_542 = v_536;
-    var v_543 : vec3<f32>;
+    let v_543 = v_537;
+    var v_544 : vec3<f32>;
     if (!((v.sky.x == 0.0f))) {
-      let v_544 = vec3<f32>(dot(v.sky_rows[0i].xyz, v_99), dot(v.sky_rows[1i].xyz, v_99), dot(v.sky_rows[2i].xyz, v_99));
-      let v_545 = textureSampleLevel(radiance_map, radiance_sampler, v_544, 5.0f).xyz;
-      let v_546 = ((v_545 * ((v_545 * ((v_545 * 0.30530601739883422852f) + vec3<f32>(0.68217110633850097656f))) + vec3<f32>(0.01252287812530994415f))) * v.sky.z);
-      let v_547 = v.sky.w;
-      v_543 = mix(v_535, v_546, vec3<f32>(v_547, v_547, v_547));
+      let v_545 = vec3<f32>(dot(v.sky_rows[0i].xyz, v_100), dot(v.sky_rows[1i].xyz, v_100), dot(v.sky_rows[2i].xyz, v_100));
+      let v_546 = textureSampleLevel(radiance_map, radiance_sampler, v_545, 5.0f).xyz;
+      let v_547 = ((v_546 * ((v_546 * ((v_546 * 0.30530601739883422852f) + vec3<f32>(0.68217110633850097656f))) + vec3<f32>(0.01252287812530994415f))) * v.sky.z);
+      let v_548 = v.sky.w;
+      v_544 = mix(v_536, v_547, vec3<f32>(v_548, v_548, v_548));
     } else {
-      v_543 = v_535;
+      v_544 = v_536;
     }
-    let v_548 = v_543;
-    let v_549 = min(((((v_548.x * 0.30000001192092895508f) + (v_548.y * 0.58999997377395629883f)) + (v_548.z * 0.10999999940395355225f)) * 8.0f), 1.0f);
-    let v_550 = max(min(((((1.0f - v_81) * v_80) * v_549) * 10.0f), 1.0f), v_549);
-    let v_551 = ((vec4<f32>(-1.0f, -0.02749999985098838806f, -0.57200002670288085938f, 0.02199999988079071045f) * v_81) + vec4<f32>(1.0f, 0.04250000044703483582f, 1.03999996185302734375f, -0.03999999910593032837f));
-    let v_552 = ((vec2<f32>(-1.03999996185302734375f, 1.03999996185302734375f) * ((min((v_551.x * v_551.x), exp2((-9.27999973297119140625f * clamp(dot(v_99, v_103), 0.0f, 1.0f)))) * v_551.x) + v_551.y)) + v_551.zw);
-    let v_553 = (v_552.y * clamp((50.0f * v_105.y), v_80, 1.0f));
-    v_82 = (((((v_534 * (v_77 * (1.0f - v_80))) + v_533) + (v_542 * (((v_105 * v_552.x) + vec3<f32>(v_553, v_553, v_553)) * v_550))) + (v_85 * ((v_85 * ((v_85 * 0.30530601739883422852f) + vec3<f32>(0.68217110633850097656f))) + vec3<f32>(0.01252287812530994415f)))) + (v_548 * (v_77 * (1.0f - v_80))));
+    let v_549 = v_544;
+    let v_550 = min(((((v_549.x * 0.30000001192092895508f) + (v_549.y * 0.58999997377395629883f)) + (v_549.z * 0.10999999940395355225f)) * 8.0f), 1.0f);
+    let v_551 = max(min(((((1.0f - v_81) * v_80) * v_550) * 10.0f), 1.0f), v_550);
+    let v_552 = ((vec4<f32>(-1.0f, -0.02749999985098838806f, -0.57200002670288085938f, 0.02199999988079071045f) * v_81) + vec4<f32>(1.0f, 0.04250000044703483582f, 1.03999996185302734375f, -0.03999999910593032837f));
+    let v_553 = ((vec2<f32>(-1.03999996185302734375f, 1.03999996185302734375f) * ((min((v_552.x * v_552.x), exp2((-9.27999973297119140625f * clamp(dot(v_100, v_104), 0.0f, 1.0f)))) * v_552.x) + v_552.y)) + v_552.zw);
+    let v_554 = (v_553.y * clamp((50.0f * v_106.y), v_80, 1.0f));
+    v_82 = (((((v_535 * (v_77 * (1.0f - v_80))) + v_534) + (v_543 * (((v_106 * v_553.x) + vec3<f32>(v_554, v_554, v_554)) * v_551))) + v_86) + (v_549 * (v_77 * (1.0f - v_80))));
   } else {
     v_82 = v_77;
   }
-  let v_554 = v_82;
-  var v_555 : vec4<f32>;
+  let v_555 = v_82;
+  var v_556 : vec4<f32>;
   switch(0u) {
     default: {
-      var v_556 : vec3<f32>;
+      var v_557 : vec3<f32>;
       if ((!((v.fog_color.w == 0.0f)) & ((v_1.options.x & 128u) == 0u))) {
-        let v_557 = (v_4 - v.camera.xyz);
-        let v_558 = length(v_557);
-        let v_559 = v.fog_color.xyz;
-        var v_560 : vec3<f32>;
+        let v_558 = (v_4 - v.camera.xyz);
+        let v_559 = length(v_558);
+        let v_560 = v.fog_color.xyz;
+        var v_561 : vec3<f32>;
         if ((v.fog.y > 0.00100000004749745131f)) {
-          let v_561 = (v_558 > 0.0f);
-          let v_562 = select(vec3<f32>(), (v_557 / vec3<f32>(v_558, v_558, v_558)), vec3<bool>(v_561, v_561, v_561));
-          let v_563 = u32(v.camera.w);
-          var v_564 : vec3<f32>;
+          let v_562 = (v_559 > 0.0f);
+          let v_563 = select(vec3<f32>(), (v_558 / vec3<f32>(v_559, v_559, v_559)), vec3<bool>(v_562, v_562, v_562));
+          let v_564 = u32(v.camera.w);
+          var v_565 : vec3<f32>;
           {
-            var v_565 : vec3<f32>;
-            v_565 = v_559;
-            var v_566 : u32;
-            v_566 = 0u;
+            var v_566 : vec3<f32>;
+            v_566 = v_560;
+            var v_567 : u32;
+            v_567 = 0u;
             loop {
-              var v_567 : vec3<f32>;
-              let v_568 = v_566;
-              let v_569 = v_565;
-              if ((v_568 < v_563)) {
-                var v_570 : vec3<f32>;
-                if ((v.lights[v_568].direction.w == 0.0f)) {
-                  let v_571 = pow(max(dot(v_562, normalize(v.lights[v_568].direction.xyz)), 0.0f), 8.0f);
-                  v_570 = (v_569 + ((v.lights[v_568].color.xyz * v_571) * v.fog.y));
+              var v_568 : vec3<f32>;
+              let v_569 = v_567;
+              let v_570 = v_566;
+              if ((v_569 < v_564)) {
+                var v_571 : vec3<f32>;
+                if ((v.lights[v_569].direction.w == 0.0f)) {
+                  let v_572 = pow(max(dot(v_563, normalize(v.lights[v_569].direction.xyz)), 0.0f), 8.0f);
+                  v_571 = (v_570 + ((v.lights[v_569].color.xyz * v_572) * v.fog.y));
                 } else {
-                  v_570 = v_569;
+                  v_571 = v_570;
                 }
-                v_567 = v_570;
-                continue;
-              } else {
-                v_564 = v_569;
-                break;
+                v_568 = v_571;
 )wgsl",
-R"wgsl(              }
+R"wgsl(                continue;
+              } else {
+                v_565 = v_570;
+                break;
+              }
 
               continuing {
-                let v_572 = v_567;
-                let v_573 = (v_568 + bitcast<u32>(1i));
-                v_565 = v_572;
+                let v_573 = v_568;
+                let v_574 = (v_569 + bitcast<u32>(1i));
                 v_566 = v_573;
+                v_567 = v_574;
               }
             }
           }
-          v_560 = v_564;
+          v_561 = v_565;
         } else {
-          v_560 = v_559;
+          v_561 = v_560;
         }
-        let v_574 = v_560;
-        var v_575 : f32;
+        let v_575 = v_561;
+        var v_576 : f32;
         if ((v.fog_color.w == 2.0f)) {
-          v_575 = (pow(smoothstep(v.fog_depth.x, v.fog_depth.y, v_558), v.fog_depth.z) * v.fog.x);
+          v_576 = (pow(smoothstep(v.fog_depth.x, v.fog_depth.y, v_559), v.fog_depth.z) * v.fog.x);
         } else {
-          v_575 = (1.0f - exp(min(0.0f, (-(v_558) * v.fog.x))));
+          v_576 = (1.0f - exp(min(0.0f, (-(v_559) * v.fog.x))));
         }
-        let v_576 = v_575;
-        var v_577 : f32;
+        let v_577 = v_576;
+        var v_578 : f32;
         if ((abs(v.fog.w) >= 0.00009999999747378752f)) {
-          v_577 = max(v_576, (1.0f - exp(min(0.0f, ((v_4.y - v.fog.z) * v.fog.w)))));
+          v_578 = max(v_577, (1.0f - exp(min(0.0f, ((v_4.y - v.fog.z) * v.fog.w)))));
         } else {
-          v_577 = v_576;
+          v_578 = v_577;
         }
-        let v_578 = v_577;
-        v_556 = mix(v_554, vec4<f32>(v_574.x, v_574.y, v_574.z, v_578).xyz, vec3<f32>(v_578, v_578, v_578));
+        let v_579 = v_578;
+        v_557 = mix(v_555, vec4<f32>(v_575.x, v_575.y, v_575.z, v_579).xyz, vec3<f32>(v_579, v_579, v_579));
       } else {
-        v_556 = v_554;
+        v_557 = v_555;
       }
-      let v_579 = v_556;
+      let v_580 = v_557;
       if ((v.tonemap.w == 2.0f)) {
-        v_555 = vec4<f32>(v_579.x, v_579.y, v_579.z, v_36);
+        v_556 = vec4<f32>(v_580.x, v_580.y, v_580.z, v_36);
         break;
       }
-      let v_580 = (v_579 * v.tonemap.x);
-      var v_581 : vec3<f32>;
+      let v_581 = (v_580 * v.tonemap.x);
+      var v_582 : vec3<f32>;
       if (!((v.tonemap.w == 0.0f))) {
-        let v_582 = u32(v.tonemap.z);
-        let v_583 = v.tonemap.y;
-        var v_584 : vec3<f32>;
+        let v_583 = u32(v.tonemap.z);
+        let v_584 = v.tonemap.y;
+        var v_585 : vec3<f32>;
         switch(0u) {
           default: {
-            if ((v_582 == 0u)) {
-              v_584 = v_580;
+            if ((v_583 == 0u)) {
+              v_585 = v_581;
               break;
             }
-            if ((v_582 == 1u)) {
-              let v_585 = max(v_580, vec3<f32>());
-              let v_586 = (v_583 * v_583);
-              let v_587 = (v_585 * v_586);
-              v_584 = ((v_587 + (v_585 * v_585)) / (v_587 + vec3<f32>(v_586, v_586, v_586)));
+            if ((v_583 == 1u)) {
+              let v_586 = max(v_581, vec3<f32>());
+              let v_587 = (v_584 * v_584);
+              let v_588 = (v_586 * v_587);
+              v_585 = ((v_588 + (v_586 * v_586)) / (v_588 + vec3<f32>(v_587, v_587, v_587)));
               break;
             }
-            if ((v_582 == 2u)) {
-              let v_588 = max(v_580, vec3<f32>());
-              let v_589 = ((((v_583 * ((0.87999999523162841797f * v_583) + 0.05999999865889549255f)) + 0.00200000009499490261f) / ((v_583 * ((0.87999999523162841797f * v_583) + 0.60000002384185791016f)) + 0.05999999865889549255f)) - 0.03333333507180213928f);
-              v_584 = (((((v_588 * ((v_588 * 0.87999999523162841797f) + vec3<f32>(0.05999999865889549255f))) + vec3<f32>(0.00200000009499490261f)) / ((v_588 * ((v_588 * 0.87999999523162841797f) + vec3<f32>(0.60000002384185791016f))) + vec3<f32>(0.05999999865889549255f))) - vec3<f32>(0.03333333507180213928f)) / vec3<f32>(v_589, v_589, v_589));
+            if ((v_583 == 2u)) {
+              let v_589 = max(v_581, vec3<f32>());
+              let v_590 = ((((v_584 * ((0.87999999523162841797f * v_584) + 0.05999999865889549255f)) + 0.00200000009499490261f) / ((v_584 * ((0.87999999523162841797f * v_584) + 0.60000002384185791016f)) + 0.05999999865889549255f)) - 0.03333333507180213928f);
+              v_585 = (((((v_589 * ((v_589 * 0.87999999523162841797f) + vec3<f32>(0.05999999865889549255f))) + vec3<f32>(0.00200000009499490261f)) / ((v_589 * ((v_589 * 0.87999999523162841797f) + vec3<f32>(0.60000002384185791016f))) + vec3<f32>(0.05999999865889549255f))) - vec3<f32>(0.03333333507180213928f)) / vec3<f32>(v_590, v_590, v_590));
               break;
             }
-            if ((v_582 == 3u)) {
-              let v_590 = (max(v_580, vec3<f32>()) * mat3x3<f32>(vec3<f32>(1.07494199275970458984f, 0.6382439732551574707f, 0.08681400120258331299f), vec3<f32>(0.13680000603199005127f, 1.63501203060150146484f, 0.02818799950182437897f), vec3<f32>(0.05112000182271003723f, 0.2408940047025680542f, 1.50798594951629638672f)));
-              let v_591 = (v_583 * 1.79999995231628417969f);
-              let v_592 = (((v_591 * (v_591 + 0.02457859925925731659f)) - 0.00009053700341610238f) / ((v_591 * ((v_583 * 1.77071213722229003906f) + 0.4329510033130645752f)) + 0.23808099329471588135f));
-              v_584 = (((((v_590 * (v_590 + vec3<f32>(0.02457859925925731659f))) - vec3<f32>(0.00009053700341610238f)) / ((v_590 * ((v_590 * 0.98372900485992431641f) + vec3<f32>(0.4329510033130645752f))) + vec3<f32>(0.23808099329471588135f))) * mat3x3<f32>(vec3<f32>(1.60475003719329833984f, -0.53108000755310058594f, -0.07366999983787536621f), vec3<f32>(-0.10208000242710113525f, 1.10812997817993164062f, -0.00604999996721744537f), vec3<f32>(-0.00326999998651444912f, -0.07276000082492828369f, 1.07602000236511230469f))) / vec3<f32>(v_592, v_592, v_592));
+            if ((v_583 == 3u)) {
+              let v_591 = (max(v_581, vec3<f32>()) * mat3x3<f32>(vec3<f32>(1.07494199275970458984f, 0.6382439732551574707f, 0.08681400120258331299f), vec3<f32>(0.13680000603199005127f, 1.63501203060150146484f, 0.02818799950182437897f), vec3<f32>(0.05112000182271003723f, 0.2408940047025680542f, 1.50798594951629638672f)));
+              let v_592 = (v_584 * 1.79999995231628417969f);
+              let v_593 = (((v_592 * (v_592 + 0.02457859925925731659f)) - 0.00009053700341610238f) / ((v_592 * ((v_584 * 1.77071213722229003906f) + 0.4329510033130645752f)) + 0.23808099329471588135f));
+              v_585 = (((((v_591 * (v_591 + vec3<f32>(0.02457859925925731659f))) - vec3<f32>(0.00009053700341610238f)) / ((v_591 * ((v_591 * 0.98372900485992431641f) + vec3<f32>(0.4329510033130645752f))) + vec3<f32>(0.23808099329471588135f))) * mat3x3<f32>(vec3<f32>(1.60475003719329833984f, -0.53108000755310058594f, -0.07366999983787536621f), vec3<f32>(-0.10208000242710113525f, 1.10812997817993164062f, -0.00604999996721744537f), vec3<f32>(-0.00326999998651444912f, -0.07276000082492828369f, 1.07602000236511230469f))) / vec3<f32>(v_593, v_593, v_593));
               break;
             }
-            let v_593 = ((clamp(log2((mat3x3<f32>(vec3<f32>(0.54490816593170166016f, 0.14044006168842315674f, 0.08882740885019302368f), vec3<f32>(0.37377944588661193848f, 0.75410962104797363281f, 0.17887713015079498291f), vec3<f32>(0.08138497918844223022f, 0.10543358325958251953f, 0.73224997520446777344f)) * max(v_580, vec3<f32>(0.00000000020000000267f)))), vec3<f32>(-12.47393131256103515625f), vec3<f32>(4.02606868743896484375f)) - vec3<f32>(-12.47393131256103515625f)) * vec3<f32>(0.06060606241226196289f));
-            let v_594 = (v_593 * v_593);
+            let v_594 = ((clamp(log2((mat3x3<f32>(vec3<f32>(0.54490816593170166016f, 0.14044006168842315674f, 0.08882740885019302368f), vec3<f32>(0.37377944588661193848f, 0.75410962104797363281f, 0.17887713015079498291f), vec3<f32>(0.08138497918844223022f, 0.10543358325958251953f, 0.73224997520446777344f)) * max(v_581, vec3<f32>(0.00000000020000000267f)))), vec3<f32>(-12.47393131256103515625f), vec3<f32>(4.02606868743896484375f)) - vec3<f32>(-12.47393131256103515625f)) * vec3<f32>(0.06060606241226196289f));
             let v_595 = (v_594 * v_594);
-            v_584 = (mat3x3<f32>(vec3<f32>(1.96455097198486328125f, -0.29932242631912231445f, -0.1643683314323425293f), vec3<f32>(-0.85585844516754150391f, 1.32645106315612792969f, -0.23822464048862457275f), vec3<f32>(-0.10886710882186889648f, -0.02708402089774608612f, 1.40266537666320800781f)) * pow(((((((v_593 * 0.02099999971687793732f) + (v_594 * 4.01109981536865234375f)) - ((v_594 * 25.68199920654296875f) * v_593)) + (v_595 * 70.35900115966796875f)) - ((v_595 * 74.7779998779296875f) * v_593)) + ((v_595 * 27.069000244140625f) * v_594)), vec3<f32>(2.40000009536743164062f)));
+            let v_596 = (v_595 * v_595);
+            v_585 = (mat3x3<f32>(vec3<f32>(1.96455097198486328125f, -0.29932242631912231445f, -0.1643683314323425293f), vec3<f32>(-0.85585844516754150391f, 1.32645106315612792969f, -0.23822464048862457275f), vec3<f32>(-0.10886710882186889648f, -0.02708402089774608612f, 1.40266537666320800781f)) * pow(((((((v_594 * 0.02099999971687793732f) + (v_595 * 4.01109981536865234375f)) - ((v_595 * 25.68199920654296875f) * v_594)) + (v_596 * 70.35900115966796875f)) - ((v_596 * 74.7779998779296875f) * v_594)) + ((v_596 * 27.069000244140625f) * v_595)), vec3<f32>(2.40000009536743164062f)));
           }
         }
-        v_581 = v_584;
+        v_582 = v_585;
       } else {
-        v_581 = v_580;
+        v_582 = v_581;
       }
-      let v_596 = max(((pow(max(v_581, vec3<f32>()), vec3<f32>(0.4166666567325592041f)) * 1.05499994754791259766f) - vec3<f32>(0.05499999970197677612f)), vec3<f32>());
-      v_555 = vec4<f32>(v_596.x, v_596.y, v_596.z, v_36);
+      let v_597 = max(((pow(max(v_582, vec3<f32>()), vec3<f32>(0.4166666567325592041f)) * 1.05499994754791259766f) - vec3<f32>(0.05499999970197677612f)), vec3<f32>());
+      v_556 = vec4<f32>(v_597.x, v_597.y, v_597.z, v_36);
     }
   }
-  v_3 = v_555;
+  v_3 = v_556;
 }
 
 @fragment
-fn fs_main(@location(0u) v_597 : vec3<f32>, @location(1u) v_598 : vec3<f32>, @location(2u) v_599 : vec3<f32>, @location(3u) v_600 : vec3<f32>, @location(4u) v_601 : vec2<f32>, @location(5u) v_602 : vec4<f32>, @builtin(position) v_603 : vec4<f32>, @builtin(front_facing) front : bool) -> @location(0u) vec4<f32> {
-  fs_main_inner(v_597, v_598, v_599, v_600, v_601, v_602, v_603, front);
+fn fs_main(@location(0u) v_598 : vec3<f32>, @location(1u) v_599 : vec3<f32>, @location(2u) v_600 : vec3<f32>, @location(3u) v_601 : vec3<f32>, @location(4u) v_602 : vec2<f32>, @location(5u) v_603 : vec4<f32>, @builtin(position) v_604 : vec4<f32>, @builtin(front_facing) front : bool) -> @location(0u) vec4<f32> {
+  fs_main_inner(v_598, v_599, v_600, v_601, v_602, v_603, v_604, front);
   return v_3;
 }
 )wgsl"};
@@ -7394,7 +7394,7 @@ R"hlsl(        base = srgb_to_linear(color.rgb);
         if ((flags & kEmissionTexture) != 0u) {
             emitted += emission_texel.rgb;
         }
-        emitted = srgb_to_linear(emitted * emission.w);
+        emitted = srgb_to_linear(emitted) * emission.w;
         float3 normal = terrain
                             ? frame_direction(input, normalize(float3(shape.x + ground.x, shape.y,
                                                                       shape.z + ground.z)))

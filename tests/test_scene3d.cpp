@@ -723,6 +723,138 @@ TEST_CASE("the WorldEnvironment's sky and fog, and the suns its sky shows") {
     CHECK(lit[0].direction == std::array<float, 3>{0.0F, 0.0F, -1.0F});
 }
 
+TEST_CASE("camera attributes expose the 3D world, as Godot's CameraAttributesPractical") {
+    Scene scene;
+    const render::Color clear{.r = 0.1F, .g = 0.2F, .b = 0.3F, .a = 1.0F};
+    const entt::entity camera = scene.create("camera", R"({"Transform3D": {}, "Camera3D": {}})");
+    CHECK((scene3d::camera_attributes(scene.world, camera) == entt::null));
+    scene3d::Environment read = scene3d::environment(scene.world, clear, camera);
+    CHECK((read.attributes == entt::null));
+    CHECK(read.exposure == 1.0F);
+    CHECK_FALSE(read.post.auto_exposure);
+
+    // A camera with none uses the WorldEnvironment's. exposure_multiplier brightens the
+    // background and the sky, but not the ambient light from the background.
+    const entt::entity env = scene.create("env", R"({"WorldEnvironment": {
+        "background_mode": "color", "background_color": [0.5, 0.25, 1, 1],
+        "background_energy_multiplier": 2},
+        "CameraAttributesPractical": {"exposure_multiplier": 0.5, "auto_exposure_enabled": true,
+                                      "auto_exposure_scale": 0.2,
+                                      "auto_exposure_max_sensitivity": 1600}})");
+    CHECK((scene3d::camera_attributes(scene.world, camera) == env));
+    read = scene3d::environment(scene.world, clear, camera);
+    CHECK((read.attributes == env));
+    CHECK(read.exposure == 0.5F);
+    CHECK(read.background.r == 0.5F);
+    CHECK(read.background.g == 0.25F);
+    CHECK(read.background.b == 1.0F);
+    CHECK(read.sky.energy == 1.0F);
+    CHECK(read.ambient == std::array<float, 3>{0.5F, 0.25F, 1.0F});
+    CHECK(read.ambient_energy == 2.0F);
+    // Auto exposure's sensitivities over the camera's, ISO 100, as luminances.
+    CHECK(read.post.auto_exposure);
+    CHECK(read.post.auto_exposure_scale == 0.2F);
+    CHECK(read.post.auto_exposure_min == 0.0F);
+    CHECK(read.post.auto_exposure_max == 2.0F);
+    CHECK((scene3d::environment(scene.world, clear).attributes == env));
+    // Fog over the background is a sky the multiplier brightens twice, as the background's
+    // energy.
+    auto& settings = scene.world.ecs().get<world::WorldEnvironment>(env);
+    settings.fog_enabled = true;
+    read = scene3d::environment(scene.world, clear, camera);
+    CHECK(read.sky.kind == render::SkyKind::Color);
+    CHECK(read.sky.color == std::array<float, 3>{0.5F, 0.25F, 1.0F});
+    CHECK(read.sky.energy == 1.0F);
+    settings.fog_enabled = false;
+
+    // The camera's own come first.
+    scene.world.ecs().emplace<world::CameraAttributesPractical>(
+        camera, world::CameraAttributesPractical{.exposure_sensitivity = 200.0F,
+                                                 .exposure_multiplier = 2.0F,
+                                                 .auto_exposure_enabled = true});
+    CHECK((scene3d::camera_attributes(scene.world, camera) == camera));
+    read = scene3d::environment(scene.world, clear, camera);
+    CHECK(read.background.r == 2.0F);
+    CHECK(read.post.auto_exposure_max == 0.5F);
+    CHECK(read.problems.empty());
+    scene.world.ecs().get<world::CameraAttributesPractical>(camera).exposure_sensitivity = 0.0F;
+    read = scene3d::environment(scene.world, clear, camera);
+    CHECK_FALSE(read.post.auto_exposure);
+    REQUIRE(read.problems.size() == 1);
+    CHECK(read.problems[0].path == "/components/CameraAttributesPractical/exposure_sensitivity");
+
+    // Lights and the sky's suns take the multiplier too.
+    scene.world.ecs().get<world::CameraAttributesPractical>(camera).exposure_sensitivity = 100.0F;
+    scene.create("lamp", R"({"Transform3D": {}, "OmniLight3D": {"light_energy": 3}})");
+    const auto device = render::create_null_device();
+    scene3d::Renderer renderer(*device, nullptr);
+    auto frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}, {}, 1.0);
+    REQUIRE(frame.has_value());
+    REQUIRE(frame->scene.lights.size() == 1);
+    CHECK(frame->scene.lights[0].energy == 6.0F);
+
+    // Auto exposure moves auto_exposure_speed (0.5) of the way per second of game time, and starts
+    // over when time goes back, when it follows other attributes and when it turns on again.
+    CHECK(frame->scene.post.auto_exposure_adjust == 0.0F);
+    const std::uint64_t first = frame->scene.post.auto_exposure_version;
+    CHECK(first != 0);
+    frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}, {}, 1.5);
+    CHECK(frame->scene.post.auto_exposure_version == first);
+    CHECK(frame->scene.post.auto_exposure_adjust == 0.25F);
+    frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}, {}, 1.0);
+    const std::uint64_t back = frame->scene.post.auto_exposure_version;
+    CHECK(back != first);
+    CHECK(frame->scene.post.auto_exposure_adjust == 0.0F);
+    scene.world.ecs().remove<world::CameraAttributesPractical>(camera);
+    frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}, {}, 2.0);
+    CHECK(frame->scene.post.auto_exposure_version != back);
+    CHECK(frame->scene.post.auto_exposure_max == 2.0F);
+    const std::uint64_t environment = frame->scene.post.auto_exposure_version;
+    scene.world.ecs().get<world::CameraAttributesPractical>(env).auto_exposure_enabled = false;
+    frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}, {}, 3.0);
+    CHECK_FALSE(frame->scene.post.auto_exposure);
+    scene.world.ecs().get<world::CameraAttributesPractical>(env).auto_exposure_enabled = true;
+    frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}, {}, 4.0);
+    CHECK(frame->scene.post.auto_exposure_version != environment);
+}
+
+TEST_CASE("a captured frame adapts to the 3D world's brightness over game time") {
+    Scene scene;
+    scene.create("camera", R"({"Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}})");
+    const entt::entity env = scene.create("env", R"({"WorldEnvironment": {
+        "background_mode": "color", "background_color": [0, 0, 0, 1]}})");
+    const entt::entity cube = scene.create("cube", R"({"Transform3D": {}, "MeshInstance3D": {},
+        "BoxMesh": {}, "StandardMaterial3D": {"albedo_color": [0, 0, 0, 1],
+        "emission_enabled": true, "emission": [1, 0, 0, 1],
+        "emission_energy_multiplier": 0.2}})");
+    const auto red = [&](double time) {
+        const auto captured = canvas::capture(scene.world, scene.assets, {.time = time});
+        REQUIRE(captured.ok());
+        return int{pixel(captured.value().image, 32, 32)[0]};
+    };
+    // Emission of 0.2 shows as sRGB 124, and twice as bright with an exposure multiplier of 2.
+    CHECK(std::abs(red(0.0) - 124) <= 1);
+    scene.world.ecs().emplace<world::CameraAttributesPractical>(
+        env, world::CameraAttributesPractical{.exposure_multiplier = 2.0F});
+    CHECK(std::abs(red(0.0) - 170) <= 1);
+
+    // With auto exposure, the first capture is exposed by the frame's own brightness.
+    auto& attributes = scene.world.ecs().get<world::CameraAttributesPractical>(env);
+    attributes.auto_exposure_enabled = true;
+    attributes.auto_exposure_scale = 0.02F;
+    attributes.auto_exposure_max_sensitivity = 80000.0F;
+    const int adapted = red(0.0);
+    CHECK(adapted != 170);
+    // A cube ten times as bright saturates until game time passes: at a speed of 0.5 the
+    // brightness moves most of the way in 1.8 seconds, and all of it in the next 2.
+    scene.world.ecs().get<world::StandardMaterial3D>(cube).emission_energy_multiplier = 2.0F;
+    CHECK(red(0.0) == 255);
+    const int most = red(1.8);
+    CHECK(most < 255);
+    CHECK(most > adapted);
+    CHECK(std::abs(red(3.8) - adapted) <= 1);
+}
+
 TEST_CASE("the sky lights and is reflected in meshes by the WorldEnvironment's sources") {
     Scene scene;
     const render::Color clear{.r = 0.1F, .g = 0.2F, .b = 0.3F, .a = 1.0F};

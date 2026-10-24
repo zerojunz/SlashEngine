@@ -1199,9 +1199,10 @@ private:
                               world, post.glow ? levels[0] : none, *lut, target);
     }
 
-    // forward_post.hlsl's passes on the CPU: glow's levels, each from the one before, then the
-    // tonemap pass from world over target.
+    // forward_post.hlsl's passes on the CPU: with auto exposure the luminance passes, then glow's
+    // levels, each from the one before, then the tonemap pass from world over target.
     void forward_post(const PostProcess& post, const detail::HdrImage& world, Image& target) {
+        const float luminance = post.auto_exposure ? measure_brightness(post, world) : 1.0F;
         const Image none;
         const Image* lut = &none;
         if (post.adjustments && post.color_correction != TextureId::None) {
@@ -1219,14 +1220,47 @@ private:
                         post,
                         i == 0 ? detail::ForwardPass::GlowFirst : detail::ForwardPass::GlowNext,
                         size.width, size.height, target.width, target.height),
-                    i == 0 ? world : levels.at(i - 1), levels.at(i));
+                    i == 0 ? world : levels.at(i - 1), levels.at(i), luminance);
             }
         }
         detail::run_forward_tonemap_pass(
             detail::forward_post_uniforms(post, detail::ForwardPass::Tonemap, target.width,
                                           target.height, target.width, target.height, lut->width,
                                           lut->height),
-            world, levels, *lut, target);
+            world, levels, *lut, target, luminance);
+    }
+
+    // Auto exposure's luminance passes over the world, as the GPU devices draw them into their
+    // luminance textures: the frame's brightness, moved from the last frame's unless this is the
+    // first frame of its size or of its auto exposure version.
+    float measure_brightness(const PostProcess& post, const detail::HdrImage& world) {
+        const bool set = !brightness_ || brightness_->width != world.width ||
+                         brightness_->height != world.height ||
+                         brightness_->version != post.auto_exposure_version;
+        const float previous = brightness_ ? brightness_->value : 0.0F;
+        const std::vector<detail::PostSize> plan =
+            detail::luminance_plan(world.width, world.height);
+        detail::LuminanceImage level;
+        detail::run_luminance_pass(
+            detail::luminance_uniforms(post, detail::ForwardPass::LuminanceFirst,
+                                       {.width = world.width, .height = world.height}, plan[0]),
+            world, level);
+        for (std::size_t i = 1; i < plan.size(); ++i) {
+            const bool last = i + 1 == plan.size() && !set;
+            detail::LuminanceImage next;
+            detail::run_luminance_pass(
+                detail::luminance_uniforms(post,
+                                           last ? detail::ForwardPass::LuminanceFinal
+                                                : detail::ForwardPass::Luminance,
+                                           plan.at(i - 1), plan.at(i)),
+                level, previous, next);
+            level = std::move(next);
+        }
+        brightness_ = Brightness{.width = world.width,
+                                 .height = world.height,
+                                 .version = post.auto_exposure_version,
+                                 .value = level.values.at(0)};
+        return brightness_->value;
     }
 
     // sky.hlsl on the CPU: every pixel of the target, from its view direction, before the
@@ -1614,6 +1648,15 @@ private:
     std::uint32_t next_shader_ = 1;
     detail::CpuParticles particles_;
     std::vector<Vertex2D> particle_vertices_;
+    // Auto exposure's last measured brightness, for frames of its size and version, as the GPU
+    // devices keep it in a texture with their Forward+ textures.
+    struct Brightness {
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+        std::uint64_t version = 0;
+        float value = 0.0F;
+    };
+    std::optional<Brightness> brightness_;
     bool in_frame_ = false;
     Frame frame_;
     std::vector<Vertex2D> vertices_;

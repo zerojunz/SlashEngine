@@ -109,6 +109,13 @@ template <typename Known, typename SizeOf>
                               "a scene's glow levels are finite and at least 0");
         }
     }
+    for (const float value : {post.auto_exposure_scale, post.auto_exposure_min,
+                              post.auto_exposure_max, post.auto_exposure_adjust}) {
+        if (!std::isfinite(value)) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a scene's auto exposure numbers are finite");
+        }
+    }
     if (post.color_correction == TextureId::None) {
         return {};
     }
