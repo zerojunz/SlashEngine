@@ -1,0 +1,19 @@
+# A lamp post: a box 0.2 m wide and 2.5 m tall standing on the ground.
+mtllib lamp.mtl
+o Post
+v -0.1 0.0 -0.1
+v 0.1 0.0 -0.1
+v 0.1 0.0 0.1
+v -0.1 0.0 0.1
+v -0.1 2.5 -0.1
+v 0.1 2.5 -0.1
+v 0.1 2.5 0.1
+v -0.1 2.5 0.1
+usemtl iron
+s off
+f 1 2 3 4
+f 8 7 6 5
+f 4 3 7 8
+f 3 2 6 7
+f 2 1 5 6
+f 1 4 8 5
