@@ -26,8 +26,10 @@ namespace {
 }();
 
 // A test case that runs this long is stuck. The watchdog names it and ends the run, so CI fails
-// with the culprit instead of waiting for the job's time limit.
-constexpr auto kTestCaseLimit = std::chrono::minutes(3);
+// with the culprit instead of waiting for the job's time limit. The first case in a run to draw
+// on Metal compiles its shaders cold, which takes a slow macOS runner over three minutes; five
+// stays under ctest's ten.
+constexpr auto kTestCaseLimit = std::chrono::minutes(5);
 
 class Watchdog : public doctest::IReporter {
 public:
