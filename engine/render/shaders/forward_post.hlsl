@@ -5,7 +5,9 @@
 // bright parts into up to seven textures, the first half the target's size and each next one half
 // the last; and the tonemap pass exposes the colors, blends the glow in, tonemaps, adjusts and
 // corrects them as it draws over the frame's target. Every pass draws one triangle over its whole
-// target. Keep it in step with src/forward_post.cpp, its CPU twin.
+// target. Depth of field (bokeh_dof.glsl) comes first, as the world's texture is drawn: each
+// pixel's blur size from the depth buffer, the blur and a composite that blends it in. Keep it in
+// step with src/forward_post.cpp, its CPU twin.
 
 float4 vs_main(uint id : SV_VertexID) : SV_Position {
     float2 corner = float2((float)((id << 1u) & 2u), (float)(id & 2u));
@@ -27,6 +29,9 @@ Texture2D<float4> lut : register(t8, space2);
 // WebGPU filters no floats.
 Texture2D<float4> brightness : register(t9, space2);
 Texture2D<float4> luminance_source : register(t10, space2);
+// Depth of field's: the depth buffer (only loaded, as the brightness is) and the world.
+Texture2D<float4> depth_buffer : register(t11, space2);
+Texture2D<float4> dof_world : register(t12, space2);
 SamplerState source_sampler : register(s0, space2);
 SamplerState glow0_sampler : register(s1, space2);
 SamplerState glow1_sampler : register(s2, space2);
@@ -38,12 +43,28 @@ SamplerState glow6_sampler : register(s7, space2);
 SamplerState lut_sampler : register(s8, space2);
 SamplerState brightness_sampler : register(s9, space2);
 SamplerState luminance_source_sampler : register(s10, space2);
+SamplerState depth_buffer_sampler : register(s11, space2);
+SamplerState dof_world_sampler : register(s12, space2);
 
 static const uint kGlowFirst = 0u;
 static const uint kGlowNext = 1u;
 static const uint kLuminanceFirst = 3u;
 static const uint kLuminance = 4u;
 static const uint kLuminanceFinal = 5u;
+static const uint kDofSize = 6u;
+static const uint kDofBox = 7u;
+static const uint kDofHexagon = 8u;
+static const uint kDofCircle = 9u;
+static const uint kDofComposite = 10u;
+
+static const uint kDofFar = 1u;
+static const uint kDofNear = 2u;
+static const uint kDofPhysicalFar = 4u;
+static const uint kDofPhysicalNear = 8u;
+static const uint kDofHalf = 16u;
+static const uint kDofSecond = 32u;
+static const uint kDofToWorld = 64u;
+static const uint kDofJitter = 128u;
 
 static const uint kUseGlow = 1u;
 static const uint kUseAdjustments = 2u;
@@ -79,6 +100,12 @@ cbuffer ForwardPost : register(b0, space3) {
     // tonemapper, 1 to blend glow in | 2 to adjust | the color correction (0, kCorrection1D or
     // kCorrection3D) times 4 | kUseAutoExposure, and the glow blend mode.
     uint4 options;
+    float4 dof;        // where far blur begins and ends, then where near blur begins and ends
+    float4 dof_blur;   // the blur's size in pixels of the pass, the physical far and near sizes,
+                       // and the circle's step
+    float4 dof_depth;  // the projection's entries [10], [11], [14] and [15]
+    float4 dof_jitter; // the jitter's seed
+    uint4 dof_options; // the samples a side, then the kDof flags
 };
 
 // The measured brightness over auto exposure's scale, which the colors are divided by.
@@ -121,6 +148,130 @@ float luminance_pass(int2 pixel, uint kind) {
         average = min(max(previous + (average - previous) * exposure.w, exposure.y), exposure.z);
     }
     return average;
+}
+
+// --- Depth of field, as bokeh_dof.glsl ---
+
+static const float kGoldenAngle = 2.39996323;
+static const float kTwoPi = 6.28318531;
+
+// bokeh_dof_inc.glsl's hash12n: a number from 0 up to 1 for a place.
+float hash12n(float2 p) {
+    p = frac(p * float2(5.3987, 5.4421));
+    p += p.y * (p.x + 21.5351) + p.x * (p.y + 14.3137);
+    return frac(p.x * p.y * 95.4307);
+}
+
+// A pixel's blur size, as get_blur_size: from its distance from the camera along its view, which
+// comes from the depth buffer's value through the projection; negative for near blur.
+float dof_blur_size(int2 pixel) {
+    float depth = depth_buffer.Load(int3(pixel, 0)).r;
+    float distance = (dof_depth.z - depth * dof_depth.w) / (dof_depth.x - depth * dof_depth.y);
+    uint flags = dof_options.y;
+    if ((flags & kDofNear) != 0u && distance < dof.z) {
+        if ((flags & kDofPhysicalNear) != 0u) {
+            float d = abs(dof.z - distance);
+            return -(d / (dof.z - d)) * dof_blur.z;
+        }
+        return -(1.0 - smoothstep(dof.w, dof.z, distance)) * dof_blur.x;
+    }
+    if ((flags & kDofFar) != 0u && distance > dof.x) {
+        if ((flags & kDofPhysicalFar) != 0u) {
+            float d = abs(dof.x - distance);
+            return (d / (dof.x + d)) * dof_blur.y;
+        }
+        return smoothstep(dof.x, dof.y, distance) * dof_blur.x;
+    }
+    return 0.0;
+}
+
+// weighted_filter_dir: the source blurred along dir, in pixels of the pass, from uv. Each sample
+// counts as far as the smaller of its and the pixel's blur sizes reaches it.
+float4 weighted_filter_dir(float2 dir, float2 uv) {
+    dir *= target.zw;
+    float4 color = source.SampleLevel(source_sampler, uv, 0.0);
+    float4 accum = color;
+    float total = 1.0;
+    int steps = (int)dof_options.x;
+    float blur_scale = dof_blur.x / (float)steps;
+    if ((dof_options.y & kDofJitter) != 0u) {
+        uv += dir * (hash12n(uv + dof_jitter.x) - 0.5);
+    }
+    for (int i = -steps; i <= steps; ++i) {
+        if (i == 0) {
+            continue;
+        }
+        float radius = (float)i * blur_scale;
+        float4 sample_color = source.SampleLevel(source_sampler, uv + dir * radius, 0.0);
+        radius = abs(radius);
+        float limit = sample_color.a < color.a ? abs(sample_color.a) : abs(color.a);
+        float m = smoothstep(radius - 0.5, radius + 0.5, limit);
+        accum += lerp(color, sample_color, m);
+        total += 1.0;
+    }
+    return accum / total;
+}
+
+float4 dof_pass(int2 pixel, uint kind) {
+    uint flags = dof_options.y;
+    float4 world = dof_world.Load(int3(pixel, 0));
+    if (kind == kDofSize) {
+        return float4(world.rgb, dof_blur_size(pixel));
+    }
+    // The centers of the pass's pixels, or the full-size source's for a first pass at half size.
+    float offset = 0.5;
+    if ((flags & kDofHalf) != 0u && (kind == kDofCircle || (flags & kDofSecond) == 0u)) {
+        offset = 0.25;
+    }
+    float2 uv = ((float2)pixel + offset) * target.zw;
+    if (kind == kDofComposite) {
+        float size = dof_blur_size(pixel);
+        float4 bokeh = source.SampleLevel(source_sampler, uv, 0.0);
+        float amount = bokeh.a < size ? min(1.0, max(0.0, max(abs(size), abs(bokeh.a))))
+                                      : min(1.0, max(0.0, abs(size)));
+        return float4(lerp(world.rgb, bokeh.rgb, amount), world.a);
+    }
+    float4 color;
+    bool second = (flags & kDofSecond) != 0u;
+    if (kind == kDofBox) {
+        color = weighted_filter_dir(second ? float2(0.0, 1.0) : float2(1.0, 0.0), uv);
+    } else if (kind == kDofHexagon) {
+        color = weighted_filter_dir(second ? float2(0.866025404, 0.5) : float2(0.0, 1.0), uv);
+        if (second) {
+            float4 other = weighted_filter_dir(float2(-0.866025404, 0.5), uv);
+            color.rgb = min(color.rgb, other.rgb);
+            color.a = (color.a + other.a) * 0.5;
+        }
+    } else {
+        // MODE_BOKEH_CIRCULAR: samples on a spiral, in pixels of the full size
+        float2 pixel_size = target.zw * 0.5;
+        color = source.SampleLevel(source_sampler, uv, 0.0);
+        float initial_blur = color.a;
+        float accum = 1.0;
+        float radius = dof_blur.w;
+        float angle = 0.0;
+        [loop] while (radius < dof_blur.x) {
+            float2 suv = uv + float2(cos(angle), sin(angle)) * pixel_size * radius;
+            float4 sample_color = source.SampleLevel(source_sampler, suv, 0.0);
+            float sample_size = abs(sample_color.a);
+            if (sample_color.a > initial_blur) {
+                sample_size = clamp(sample_size, 0.0, abs(initial_blur) * 2.0);
+            }
+            float m = smoothstep(radius - 0.5, radius + 0.5, sample_size);
+            color += lerp(color / accum, sample_color, m);
+            accum += 1.0;
+            radius += dof_blur.w / radius;
+            angle += kGoldenAngle;
+            if (angle >= kTwoPi) {
+                angle -= kTwoPi;
+            }
+        }
+        color /= accum;
+    }
+    if ((flags & kDofToWorld) != 0u) {
+        color.a = world.a;
+    }
+    return color;
 }
 
 // --- Glow, as copy.glsl's MODE_GAUSSIAN_GLOW ---
@@ -463,6 +614,9 @@ float4 fs_main(float4 position : SV_Position) : SV_Target0 {
     uint pass_kind = options.x;
     if (pass_kind == kGlowFirst || pass_kind == kGlowNext) {
         return glow_pass((int2)position.xy, pass_kind == kGlowFirst);
+    }
+    if (pass_kind >= kDofSize) {
+        return dof_pass((int2)position.xy, pass_kind);
     }
     if (pass_kind >= kLuminanceFirst) {
         return (float4)luminance_pass((int2)position.xy, pass_kind);

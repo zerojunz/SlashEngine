@@ -494,6 +494,14 @@ Environment environment(const world::World& world, render::Color clear, entt::en
     if (out.sky.kind == render::SkyKind::Color) {
         out.sky.color = {out.background.r, out.background.g, out.background.b};
     }
+    // Depth of field, as Godot's CameraAttributesPractical::_update_dof_blur.
+    out.post.dof_far = attributes.dof_blur_far_enabled;
+    out.post.dof_far_distance = attributes.dof_blur_far_distance;
+    out.post.dof_far_transition = attributes.dof_blur_far_transition;
+    out.post.dof_near = attributes.dof_blur_near_enabled;
+    out.post.dof_near_distance = attributes.dof_blur_near_distance;
+    out.post.dof_near_transition = attributes.dof_blur_near_transition;
+    out.post.dof_amount = attributes.dof_blur_amount;
     if (!attributes.auto_exposure_enabled) {
         return out;
     }
@@ -1324,7 +1332,8 @@ void Renderer::add_terrain(const world::World& world, entt::entity entity,
 
 std::optional<Frame3D> Renderer::prepare(const world::World& world, float width, float height,
                                          double interpolation, render::Color clear,
-                                         const render::ShadowSettings& shadows, double time) {
+                                         const render::ShadowSettings& shadows, double time,
+                                         const render::DepthOfFieldSettings& depth_of_field) {
     ++frame_;
     draws_.clear();
     problems_.clear();
@@ -1405,6 +1414,11 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
         exposure_time_ = time;
     } else {
         exposure_version_ = 0;
+    }
+    frame.scene.post.depth_of_field = depth_of_field;
+    if (depth_of_field.use_jitter) {
+        // Godot seeds the jitter at random each frame; the game time keeps frames repeatable.
+        frame.scene.post.dof_jitter_seed = static_cast<float>(time - std::floor(time)) * 1000.0F;
     }
     if (env.post.adjustments && !env.color_correction.empty()) {
         // Sampled smoothly, as Godot samples its LUTs.

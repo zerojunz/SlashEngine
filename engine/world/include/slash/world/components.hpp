@@ -635,12 +635,14 @@ SLASH_COMPONENT(WorldEnvironment, background_mode, background_color, background_
                 adjustment_brightness, adjustment_contrast, adjustment_saturation,
                 adjustment_color_correction)
 
-// How the 3D world is exposed, as Godot's CameraAttributesPractical: on a Camera3D's entity for
-// that camera, or on the WorldEnvironment's entity for cameras without their own.
+// How the 3D world is exposed and focused, as Godot's CameraAttributesPractical: on a Camera3D's
+// entity for that camera, or on the WorldEnvironment's entity for cameras without their own.
 // exposure_multiplier brightens the lights, emission, background and the sky's light, as Godot's
 // exposure normalization does. With auto exposure, Forward+ measures each frame's brightness and
 // exposes it so that brightness comes out at auto_exposure_scale, moving toward it as an eye
-// adapts, at auto_exposure_speed.
+// adapts, at auto_exposure_speed. With far or near blur, Forward+ blurs what is past
+// dof_blur_far_distance or nearer than dof_blur_near_distance, up to dof_blur_amount times 64
+// pixels, as Godot's depth of field.
 struct CameraAttributesPractical {
     float exposure_sensitivity = 100.0F; // ISO; the auto exposure sensitivities are over it
     float exposure_multiplier = 1.0F;
@@ -651,13 +653,23 @@ struct CameraAttributesPractical {
     // sensitivity * 0.125 / exposure_sensitivity.
     float auto_exposure_min_sensitivity = 0.0F;
     float auto_exposure_max_sensitivity = 800.0F;
+    // Blur grows over the transition (in meters; below 0, the physical way) from the distance on.
+    bool dof_blur_far_enabled = false;
+    float dof_blur_far_distance = 10.0F;
+    float dof_blur_far_transition = 5.0F;
+    bool dof_blur_near_enabled = false;
+    float dof_blur_near_distance = 2.0F;
+    float dof_blur_near_transition = 1.0F;
+    float dof_blur_amount = 0.1F;
 
     friend bool operator==(const CameraAttributesPractical&,
                            const CameraAttributesPractical&) = default;
 };
 SLASH_COMPONENT(CameraAttributesPractical, exposure_sensitivity, exposure_multiplier,
                 auto_exposure_enabled, auto_exposure_scale, auto_exposure_speed,
-                auto_exposure_min_sensitivity, auto_exposure_max_sensitivity)
+                auto_exposure_min_sensitivity, auto_exposure_max_sensitivity, dof_blur_far_enabled,
+                dof_blur_far_distance, dof_blur_far_transition, dof_blur_near_enabled,
+                dof_blur_near_distance, dof_blur_near_transition, dof_blur_amount)
 
 // ---- Paths, as Godot's Path2D and Path3D with their curves (path.hpp) ----
 //

@@ -440,8 +440,8 @@ does. [examples/import-godot-3d](../../examples/import-godot-3d/) imports a cour
   `ProceduralSkyMaterial`, `PhysicalSkyMaterial` or `PanoramaSkyMaterial` becomes the component
   of the same name on its entity.
 - A `WorldEnvironment`'s `camera_attributes` and a `Camera3D`'s `attributes`, when they are a
-  `CameraAttributesPractical`, become the component of the same name on its entity. A
-  `CameraAttributesPhysical` and the depth of field fields are reported.
+  `CameraAttributesPractical`, become the component of the same name on its entity, depth of
+  field included. A `CameraAttributesPhysical` is reported.
 - A `CollisionShape3D`'s `BoxShape3D`, `SphereShape3D`, `CapsuleShape3D`, `CylinderShape3D`,
   `ConvexPolygonShape3D`, `ConcavePolygonShape3D` (its `data` as `faces`) or
   `WorldBoundaryShape3D` becomes its `shape` and the fields it sets. A body's

@@ -1,0 +1,8 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":14,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.647,0.667,0.678,1],[0.537,0.553,0.235,1],[0.675,0.125,0.09,1]],"drawn":{"meshes":11},"height":180,"path":"shots/statue.png","width":320}}
+{"id":3,"jsonrpc":"2.0","result":{"changed":{"CameraAttributesPractical":{"dof_blur_far_enabled":false,"dof_blur_near_distance":12.0,"dof_blur_near_transition":6.0}},"id":"camera"}}
+{"id":4,"jsonrpc":"2.0","result":{"colors":[[0.106,0.106,0.125,1],[0.537,0.553,0.235,1],[0.62,0.365,0.216,1]],"drawn":{"meshes":11},"height":180,"path":"shots/fence.png","width":320}}
+{"id":5,"jsonrpc":"2.0","result":{"changed":{"CameraAttributesPractical":{"dof_blur_amount":0.4}},"id":"camera"}}
+{"id":6,"jsonrpc":"2.0","result":{"colors":[[0.106,0.106,0.125,1],[0.604,0.584,0.286,1],[0.518,0.427,0.306,1]],"drawn":{"meshes":11},"height":180,"width":320}}
+{"id":7,"jsonrpc":"2.0","result":{"changed":{"CameraAttributesPractical":{"dof_blur_near_enabled":false}},"id":"camera"}}
+{"id":8,"jsonrpc":"2.0","result":{"colors":[[0.106,0.106,0.125,1],[0.329,0.49,0.247,1],[0.675,0.125,0.09,1]],"drawn":{"meshes":11},"height":180,"width":320}}
