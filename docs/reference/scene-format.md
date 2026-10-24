@@ -1422,6 +1422,11 @@ there is no ambient light and colors stay as they are.
 | `adjustment_enabled` | `false` | Brightness, contrast, saturation and color correction apply |
 | `adjustment_brightness`, `adjustment_contrast`, `adjustment_saturation` | `1`, `1`, `1` | Multiply colors; contrast 0 is flat gray, saturation 0 gray |
 | `adjustment_color_correction` | `""` | A lookup texture colors pass through: 1 pixel tall, or as wide as its height squared |
+| `ssr_enabled` | `false` | `forward_plus`: [screen-space reflections](#screen-space-reflections) reflect what is on the screen in shiny surfaces |
+| `ssr_max_steps` | `64` | How many steps a reflected ray takes at most, from 1 to 512 |
+| `ssr_fade_in` | `0.15` | How reflections fade in where they leave the surface, as an easing curve |
+| `ssr_fade_out` | `2` | How reflections fade out toward the screen's edges, as an easing curve |
+| `ssr_depth_tolerance` | `0.5` | How far behind what is on the screen a ray still hits it, in meters, from 0.01 to 128 |
 | `ssao_enabled` | `false` | `forward_plus`: [screen-space ambient occlusion](#ambient-occlusion) darkens corners and what is close to a surface |
 | `ssao_radius` | `1` | How far around a pixel occludes it, in meters, from 0.01 to 16 |
 | `ssao_intensity` | `2` | How dark occlusion is, from 0 to 16 |
@@ -1592,6 +1597,26 @@ does, and its direct light by `ssao_light_affect` times `ssao_ao_channel_affect`
 `rendering.environment.ssao` ([project-format.md](project-format.md#ssao)) sets its quality, size,
 blur and fade. Transparent meshes get none, and `gl_compatibility` has no SSAO, as in Godot. The
 software device draws the same passes on the CPU, so `frame.capture` shows it too.
+
+### Screen-space reflections
+
+With `forward_plus`, `ssr_enabled` reflects what is on the screen in shiny surfaces, as Godot
+4.6's Forward+ renderer does. From the prepass's depth and normals (halved first at half size,
+keeping the nearest of each 2x2 pixels), a pyramid of the nearest depths is made. Each opaque
+pixel's reflected ray steps across it, up to `ssr_max_steps` times, dropping a level where it
+might hit something and climbing one where it can't, and hits what it passes behind by no more
+than `ssr_depth_tolerance`. Where it lands it reads the frame before, moved to where it is now,
+fading in near the surface by `ssr_fade_in` and out toward the screen's edges by `ssr_fade_out`.
+Rougher pixels read blurrier levels of a pyramid of the reflections, and the result is resolved
+to the frame's size along its depths and normals. The color pass puts the reflections over the
+sky's (see [Sky light](#sky-light)), weighed by how much the ray found, and then the material's
+Fresnel. A target's first frame is drawn once without them, for the next to reflect.
+
+Only what is on the screen is reflected: what is off it, or hidden behind something nearer,
+isn't, as in Godot. Surfaces from roughness 0.7 up and transparent meshes take none, and
+`gl_compatibility` has no SSR. The project's `rendering.environment.screen_space_reflection`
+([project-format.md](project-format.md#screen-space-reflections)) sets its resolution. The
+software device draws the same passes on the CPU, so `frame.capture` shows them too.
 
 ### Checks
 

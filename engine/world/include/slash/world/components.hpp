@@ -557,7 +557,8 @@ struct PanoramaSkyMaterial {
 };
 SLASH_COMPONENT(PanoramaSkyMaterial, panorama, filter, energy_multiplier)
 
-// The 3D world's background, ambient light, tonemap, ambient occlusion, glow, fog and adjustments,
+// The 3D world's background, ambient light, tonemap, reflections, ambient occlusion, glow, fog and
+// adjustments,
 // as Godot's WorldEnvironment and its Environment. The first one made applies;
 // without one the background is the project's clear color, there is no ambient light and colors
 // are left as they are. A "sky" background is the sky material on the same entity: a
@@ -587,6 +588,12 @@ struct WorldEnvironment {
     float tonemap_white = 1.0F;
     float tonemap_agx_white = 16.29F;   // agx's white with Forward+, as Blender's AgX
     float tonemap_agx_contrast = 1.25F; // how steep agx's curve is with Forward+
+    // Forward+: screen-space reflections, which reflect what is on the screen in shiny surfaces.
+    bool ssr_enabled = false;
+    std::uint32_t ssr_max_steps = 64;
+    float ssr_fade_in = 0.15F;
+    float ssr_fade_out = 2.0F;
+    float ssr_depth_tolerance = 0.5F;
     // Forward+: screen-space ambient occlusion, which darkens creases, corners and what is close to
     // a surface.
     bool ssao_enabled = false;
@@ -637,7 +644,8 @@ SLASH_COMPONENT(WorldEnvironment, background_mode, background_color, background_
                 sky_custom_fov, sky_rotation, sky_radiance_size, ambient_light_source,
                 ambient_light_color, ambient_light_sky_contribution, ambient_light_energy,
                 reflected_light_source, tonemap_mode, tonemap_exposure, tonemap_white,
-                tonemap_agx_white, tonemap_agx_contrast, ssao_enabled, ssao_radius, ssao_intensity,
+                tonemap_agx_white, tonemap_agx_contrast, ssr_enabled, ssr_max_steps, ssr_fade_in,
+                ssr_fade_out, ssr_depth_tolerance, ssao_enabled, ssao_radius, ssao_intensity,
                 ssao_power, ssao_detail, ssao_horizon, ssao_sharpness, ssao_light_affect,
                 ssao_ao_channel_affect, glow_enabled, glow_levels, glow_normalized, glow_intensity,
                 glow_strength, glow_mix, glow_blend_mode, glow_bloom, glow_hdr_threshold,
