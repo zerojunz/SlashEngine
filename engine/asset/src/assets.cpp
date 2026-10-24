@@ -151,10 +151,11 @@ std::vector<Assets::Change> Assets::poll() {
         }
         ++it;
         const std::optional<FileStamp> stamp = source_.stamp(record->path);
-        if (stamp == record->stamp) {
+        if (stamp == record->stamp && !record->changed) {
             continue;
         }
         record->stamp = stamp;
+        record->changed = false;
         Change change{record->path, record->type, record->version, {}};
         if (!stamp) {
             change.error = "the file is missing";
@@ -172,15 +173,27 @@ std::vector<Assets::Change> Assets::poll() {
     }
     for (auto& [path, watched] : watched_) {
         const std::optional<FileStamp> stamp = source_.stamp(path);
-        if (stamp == watched.stamp) {
+        if (stamp == watched.stamp && !watched.changed) {
             continue;
         }
         watched.stamp = stamp;
+        watched.changed = false;
         changes.push_back({path, watched.type, ++watched.version,
                            stamp ? std::string() : std::string("the file is missing")});
     }
     std::ranges::sort(changes, {}, &Change::path);
     return changes;
+}
+
+void Assets::mark_changed(std::string_view path) {
+    if (const auto it = loaded_.find(path); it != loaded_.end()) {
+        if (const std::shared_ptr<detail::Record> record = it->second.lock(); record != nullptr) {
+            record->changed = true;
+        }
+    }
+    if (const auto it = watched_.find(path); it != watched_.end()) {
+        it->second.changed = true;
+    }
 }
 
 std::vector<Assets::Info> Assets::list() const {
