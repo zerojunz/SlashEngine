@@ -1,7 +1,7 @@
 #!/bin/bash
 # The background half of session-start.sh, run from the project folder under its lock: configure
 # the dev preset to compile through ccache, build slash-cli, install the web toolchain, then build
-# everything. Writes running, done or failed to .slash/session-setup.status.
+# the other tools and the unit tests. Writes running, done or failed to .slash/session-setup.status.
 set -uo pipefail
 
 cli=./build/dev/tools/slash-cli/slash-cli
@@ -25,8 +25,10 @@ main() {
     # ccache on the command line rather than in the environment, so the builds that exports and
     # build.check run with their own compilers are left alone. ccache can't keep compiles that use
     # precompiled headers (SDL's and Jolt's), so those are off.
+    # Debug links of slash_tests and the tools take GBs each, so a 16 GB machine links one at a
+    # time.
     configure=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-        -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON)
+        -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON -DCMAKE_JOB_POOLS=link=1 -DCMAKE_JOB_POOL_LINK=link)
 
     # Wayland is pinned from gitlab.freedesktop.org, which cloud sessions' default network blocks.
     # Ubuntu 20.04's source package is the same 1.18.0 release (its COPYING has the hash
@@ -59,7 +61,10 @@ main() {
     if [ "${SLASH_ACCEPT_ANDROID_SDK_LICENSE:-}" = 1 ]; then
         step "install the Android SDK" "$cli" toolchain install android --accept-android-sdk-license
     fi
-    step "build everything" cmake --build --preset dev
+    # Not the examples: in a Debug build each links the whole engine with its debug info, some
+    # 20 GB in all, more than a session's disk can spare. Build the ones a task needs.
+    step "build the tools and tests" cmake --build --preset dev \
+        --target slash-cli slash-mcp slash-game slash_tests
     echo "== done ($(date -u +%H:%M:%S))"
     echo done >"$status"
 }

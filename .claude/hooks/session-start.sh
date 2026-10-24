@@ -6,7 +6,7 @@
 # clang-format and clang-tidy 18 as CI's lint job uses them. Then session-build.sh, in the
 # background, holding /tmp/slash-session-setup.lock: configure the dev preset to compile through
 # ccache (fetching the dependencies), build slash-cli, install the web toolchain (Emscripten, for
-# the libc++ portability check in AGENTS.md) and build everything else.
+# the libc++ portability check in AGENTS.md) and build the other tools and the unit tests.
 # SLASH_ACCEPT_ANDROID_SDK_LICENSE=1 in the environment also installs the Android SDK, which
 # accepts Google's license for whoever runs the session, so it is never done by default.
 #
