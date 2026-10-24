@@ -2,6 +2,7 @@ project.import {"dry_run":true,"source":"godot"}
 {
   "converted": {
     "animation_libraries": 1,
+    "animation_trees": 0,
     "assets": 8,
     "audio_streams": 2,
     "bus_layouts": 1,
@@ -69,6 +70,7 @@ project.import {"source":"godot"}
 {
   "converted": {
     "animation_libraries": 1,
+    "animation_trees": 0,
     "assets": 8,
     "audio_streams": 2,
     "bus_layouts": 1,
