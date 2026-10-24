@@ -21,6 +21,8 @@ from its `.pck` file or executable: see [Exported games](#exported-games).
 | `<name>.bus_layout.json` | Each `AudioBusLayout` resource, such as `default_bus_layout.tres` |
 | `<name>.process_material.json` | Each `ParticleProcessMaterial` resource, named as frames are (see [particles](#particles)) |
 | `<name>.audio.json` | Each `AudioStreamRandomizer`, `AudioStreamPlaylist`, `AudioStreamSynchronized`, `AudioStreamInteractive`, `AudioStreamGenerator`, `AudioStreamPolyphonic` and `AudioStreamMicrophone` resource, named as frames are, and `<sound>.audio.json` beside a sound whose import settings loop it or give it beats (see [sounds and music](#sounds-and-music)) |
+| `<name>.meshlib.json` | Each `MeshLibrary` resource, text or binary (`.meshlib`, `.res`), named as frames are (see [3D](#3d)) |
+| `<name>.navmesh.json`, `<name>.navpoly.json` | Each `NavigationMesh` and `NavigationPolygon` resource, named as frames are |
 | `<name>.anim.json` | Each `AnimationPlayer`'s animation libraries: one library's named as above, several together as `<scene>_<player>.anim.json` |
 | `project.json` | `project.godot`'s settings and input map, merged into the project's own if it has one |
 | `storyboard/work.json` | A task per script, merged into the project's own tasks |
@@ -126,6 +128,14 @@ above the world.
 | `CollisionShape3D` | `Transform3D` and `CollisionShape3D`, with its shape's fields (see [3D](#3d)) |
 | `WorldEnvironment` | `WorldEnvironment`, with its environment's fields, and its sky's material (see [3D](#3d)) |
 | An instance of a model file (`.glb`, `.gltf`, `.fbx`, `.blend`) | `Transform3D` and `MeshInstance3D` drawing the model |
+| `CSGCombiner3D`, `CSGBox3D`, `CSGSphere3D`, `CSGCylinder3D`, `CSGTorus3D`, `CSGPolygon3D`, `CSGMesh3D` | `Transform3D` and the component of the same name, with its material (see [3D](#3d)) |
+| `Path3D`, `PathFollow3D` | `Transform3D` and the component of the same name; a path's `Curve3D` is its `points` |
+| `Path2D`, `PathFollow2D` | `Transform2D` and the component of the same name; a path's `Curve2D` is its `points` |
+| `GridMap` | `Transform3D` and `GridMap`, its cells as floors of keys for its mesh library's items |
+| `PinJoint3D`, `HingeJoint3D`, `SliderJoint3D`, `ConeTwistJoint3D`, `Generic6DOFJoint3D` | `Transform3D` and the joint (see [3D](#3d)) |
+| `VehicleBody3D`, `VehicleWheel3D` | `Transform3D`, `RigidBody3D` of Godot's 40 kg and `VehicleBody3D`; `Transform3D` and `VehicleWheel3D` |
+| `NavigationRegion2D`, `NavigationLink2D`, `NavigationObstacle2D` and their 3D twins | The transform and the component of the same name; a region's mesh or polygon is the file it converts to |
+| `NavigationAgent2D`, `NavigationAgent3D` | The component of the same name on an entity at its parent's origin |
 
 Each property goes to the field of the same name: `position`, `rotation`, `scale`, `skew` and
 `top_level` to `Transform2D` (or `Control` on a control), `offset_left` to `Control`, `texture`
@@ -383,6 +393,37 @@ does. [examples/import-godot-3d](../../examples/import-godot-3d/) imports a cour
   `WorldBoundaryShape3D` becomes its `shape` and the fields it sets. A body's
   `physics_material_override` gives its `friction` and `bounce`, as a 2D body's does.
 
+[examples/import-godot-level](../../examples/import-godot-level/) imports a fort built from these:
+
+- CSG shapes keep their fields; `operation` is named (`2` is `"subtraction"`) and a shape's
+  `material` is its `StandardMaterial3D`. A `CSGMesh3D`'s primitive mesh is the entity's, colored
+  by the mesh's own material unless the shape has one, and a model file is its `mesh`; a
+  `PlaneMesh` or `QuadMesh` encloses nothing and is reported. A `CSGPolygon3D`'s `path_node`
+  names its path's entity. `snap` is left out, as Godot's Manifold CSG no longer snaps, and a
+  `material_override`, which colors the whole result, is reported.
+- A `Path3D`'s `Curve3D` (or a `Path2D`'s `Curve2D`) becomes its `points`, each with its
+  `position`, `in` and `out` handles and, in 3D, `tilt`, and the curve's `bake_interval`, and in
+  3D `closed` and `up_vector_enabled`.
+- A `MeshLibrary` becomes a [`.meshlib.json` file](scene-format.md#grid-maps): each
+  `item/<id>/` an item named after its `name`, with `:` made `_` and a duplicate or missing one
+  given its ID (`Floor_2`, `item_3`), its mesh, the mesh's material, `mesh_transform`,
+  `mesh_cast_shadow`, `shapes` (placed by position and rotation; a scaled one is reported),
+  `navigation_mesh` and its transform and `navigation_layers`. Previews are the editor's.
+- A `GridMap`'s `data` is Godot's cells three numbers each: the cell's x and y as the two
+  halves of the first, z in the second, the item and its orientation in the third. They become
+  its floors of keys, a turned item keeping its orientation (`"Ramp:16"`), and cells of an item
+  the library doesn't have are reported. Its `physics_material` gives `friction` and `bounce`.
+- Joints keep Godot's parameters under the joint's own names: `angular_limit/upper` is a
+  hinge's `angular_limit_upper`, `linear_limit/upper_distance` a slider's `linear_limit_upper`
+  and `linear_limit_x/upper_distance` a 6DOF joint's `linear_x.limit_upper`. The softness,
+  bias, relaxation and damping parameters and `solver_priority`, which Godot's Jolt physics
+  ignores too, are reported.
+- A `NavigationMesh` becomes a `.navmesh.json` file and a `NavigationPolygon` a `.navpoly.json`
+  file with their polygons and baking settings, enums by name. Godot's navigation meshes bake
+  only meshes by default, so `geometry_parsed_geometry_type` is written as `"mesh_instances"`
+  unless it is set; a source geometry mode or group is reported, since a bake takes the
+  region's entity and those under it.
+
 ## Project settings
 
 | `project.godot` | `project.json` |
@@ -496,10 +537,12 @@ The report lists each of these once per kind, with how many and where it was fir
 
 | What | Why, and when |
 | --- | --- |
-| `AnimationTree`, and the other 3D nodes SlashEngine has components for: CSG shapes, `Path3D` and `PathFollow3D`, `GridMap`, joints, `VehicleBody3D`, `Skeleton3D` and its modifiers, `PhysicalBone3D` | Not converted yet; add SlashEngine's component of the same name by hand |
+| `AnimationTree`, `Skeleton3D` and its modifiers, `PhysicalBone3D` | Not converted yet; add SlashEngine's component of the same name by hand |
 | 3D tracks (`position_3d`, `rotation_3d`, `scale_3d`, `blend_shape`) | Not converted yet; a model's own animations play from the model file |
 | A model's own nodes changed from a scene (editable children), and its `.import` file's root scale and root type | The model draws as its file has it; place, scale and add components to the entity that draws it |
-| `ArrayMesh` resources and meshes saved in Godot's binary format | Export the mesh as a glTF file |
+| `ArrayMesh` resources, the meshes Godot saves from imported models | Export the mesh as a glTF file |
+| A CSG root's `material_override`, a mesh library item's shape scale | Give each shape its material; set the shape's size |
+| Joint softness, bias, relaxation and damping, and `solver_priority` | Godot's Jolt physics, which SlashEngine follows, ignores them |
 | Surface overrides past surface 0, `material_overlay` and a material's `next_pass` | An entity draws its mesh with one material |
 | `ShaderMaterial` on a 3D mesh or a sky | A game's own 3D shaders aren't supported yet |
 | `HeightMapShape3D` | Use an [`HTerrain`](scene-format.md#heightmap-terrains), whose height field collides |
@@ -509,7 +552,6 @@ The report lists each of these once per kind, with how many and where it was fir
 | Tracks on a control's `position` or `size` | Animate its offsets instead |
 | Animation libraries no `AnimationPlayer` plays | A track's fields depend on the node it animates |
 | Custom data of other types, and tiles' constant velocities | Custom data holds the types listed above; move a layer rather than give its tiles a velocity |
-| Navigation nodes: `NavigationRegion2D`, `NavigationLink2D`, `NavigationAgent2D`, `NavigationObstacle2D` and their 3D twins | Not converted yet; add the [navigation](scene-format.md#navigation) components of the same names. Tiles' navigation polygons convert |
 | Tiles' other properties, such as `z_index` and `y_sort_origin`, a base tile's flips and `modulate`, and scene collection sources | Tiles keep their texture origin, collision, occluders and custom data, and alternatives their flips and color too; place scenes as entities |
 | Y-sorting tile map layers | Layers draw in order, by `z_index` |
 | `gui/theme/custom_font` | Set `default_font` in the project's theme |

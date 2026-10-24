@@ -1,0 +1,9 @@
+{"id":1,"jsonrpc":"2.0","result":{"converted":{"animation_libraries":0,"assets":0,"audio_streams":0,"bus_layouts":0,"input_actions":0,"mesh_libraries":1,"navigation_meshes":1,"process_materials":0,"scenes":1,"sprite_frames":0,"themes":0,"tile_sets":0},"engine":"godot","files":5,"main_scene":"godot/main.scene.json","project":"Fort","report":"import/godot.json","scripts":[],"unsupported":[]}}
+{"id":2,"jsonrpc":"2.0","result":{"entities":20,"path":"godot/main.scene.json"}}
+{"id":3,"jsonrpc":"2.0","result":{"cells":36,"floors":[{"origin":[-3,-3],"rows":["GGGGGG","GGGGGG","GGGGGG","SSSSSS","GGGGGG","GGGGGG"],"y":-1}],"items":["Grass","Stone"],"legend":{"G":"Grass","S":"Stone"}}}
+{"id":4,"jsonrpc":"2.0","result":{"aabb":{"max":[1.2,4,1.2],"min":[-1.2,0,-1.2]},"surfaces":[{"material":{"albedo_color":[0.75,0.35,0.25,1]},"triangles":71},{"triangles":9}],"triangles":80,"vertices":148,"volume":17.045}}
+{"id":5,"jsonrpc":"2.0","result":{"length":14.5602,"points":[[-4,0,-5],[-2,0,2],[5,0,4]]}}
+{"id":6,"jsonrpc":"2.0","result":{"tick":240,"ticks":240}}
+{"id":7,"jsonrpc":"2.0","result":{"count":1,"entities":[{"components":{"RigidBody3D":{"mass":40.0,"sleeping":true},"Transform3D":{"children":["shape","box","front_left","front_right","back_left","back_right"],"position":[0.0,0.55059683,0.0]}},"id":"cart"}],"truncated":false}}
+{"id":8,"jsonrpc":"2.0","result":{"components":{"Transform3D":{"children":["guard_body"],"position":[5.0,0.5,2.0],"rotation":[0.0,-1.5707964,0.0],"scale":[1.0,1.0,1.0],"top_level":false,"visible":true}},"id":"guard"}}
+{"id":9,"jsonrpc":"2.0","result":{"colors":[[0.616,0.29,0.212,1],[0.827,0.827,0.827,1],[0.537,0.518,0.494,1],[0.192,0.318,0.714,1],[0.275,0.537,0.231,1],[0.765,0.678,0.455,1],[0.804,0.714,0.188,1],[0.302,0.302,0.302,1]],"drawn":{"meshes":11},"height":90,"width":160}}
