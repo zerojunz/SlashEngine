@@ -2,8 +2,8 @@
 // (drivers/gles3/shaders/sky.glsl): a ProceduralSkyMaterial, PhysicalSkyMaterial or
 // PanoramaSkyMaterial (scene/resources/3d/sky_material.cpp) worked out for each pixel's view
 // direction, or the background color when fog covers it, then fogged, exposed and tonemapped as
-// meshes are. It draws one triangle over the whole target, before the meshes. Keep it in step
-// with shade_sky in src/sky.cpp, its CPU twin.
+// meshes are, or for Forward+ left linear for forward_post.hlsl. It draws one triangle over the
+// whole target, before the meshes. Keep it in step with shade_sky in src/sky.cpp, its CPU twin.
 
 #include "tonemap.hlsl"
 
@@ -41,7 +41,7 @@ cbuffer Sky : register(b0, space3) {
     // direction it looks in.
     float4 projection;
     float4 pixel;   // one over the target's size, then the background's energy multiplier
-    float4 tonemap; // exposure, white, the tonemapper, and 1 to tonemap here
+    float4 tonemap; // exposure, white, the tonemapper, and 1 to tonemap here (2 to stay linear)
     float4 fog_color; // linear, times its energy; then 1 when fog is on
     float4 fog;       // aerial perspective, sun scatter, sky affect
     // The material's, by its kind: see sky_uniforms in src/sky.cpp.
@@ -204,6 +204,9 @@ float4 fs_main(float4 position : SV_Position) : SV_Target0 {
         color = lerp(color, fogged, fog.z);
     }
 
+    if (tonemap.w == 2.0) {
+        return float4(color, 1.0);
+    }
     color *= tonemap.x;
     if (tonemap.w != 0.0) {
         color = apply_tonemapping(color, tonemap.y, (uint)tonemap.z);

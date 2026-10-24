@@ -247,6 +247,13 @@ bool post_processes(const PostProcess& post) {
     return post.glow || post.adjustments;
 }
 
+float color_stage(const Scene3D& scene) {
+    if (scene.method == RenderMethod::ForwardPlus) {
+        return 2.0F;
+    }
+    return post_processes(scene.post) ? 0.0F : 1.0F;
+}
+
 std::array<PostSize, kGlowLevels> glow_sizes(std::uint32_t width, std::uint32_t height) {
     std::array<PostSize, kGlowLevels> out{};
     PostSize size{.width = width, .height = height};

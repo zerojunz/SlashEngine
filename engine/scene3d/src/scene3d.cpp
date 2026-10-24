@@ -407,9 +407,37 @@ Environment environment(const world::World& world, render::Color clear) {
         }
     }
     out.post.exposure = env.tonemap_exposure;
-    out.post.white = env.tonemap_white;
+    // As Godot's Environment::_update_tonemap: AgX has a white of its own.
+    out.post.white =
+        out.post.tonemapper == render::Tonemapper::Agx ? env.tonemap_agx_white : env.tonemap_white;
+    out.post.agx_contrast = env.tonemap_agx_contrast;
     out.post.glow = env.glow_enabled;
     out.post.glow_intensity = env.glow_intensity;
+    if (env.glow_levels.size() != render::kMaxGlowLevels) {
+        out.problems.push_back({out.entity, "/components/WorldEnvironment/glow_levels",
+                                "has 7 levels, not " + std::to_string(env.glow_levels.size()) +
+                                    "; the missing ones are 0 and the rest are left out"});
+    }
+    out.post.glow_levels = {};
+    float sum = 0.0F;
+    for (std::size_t i = 0; i < std::min(env.glow_levels.size(), render::kMaxGlowLevels); ++i) {
+        out.post.glow_levels.at(i) = env.glow_levels[i];
+        sum += env.glow_levels[i];
+    }
+    // As Godot's Environment::_update_glow. Where every level is 0 Godot divides by 0; here they
+    // stay 0.
+    if (env.glow_normalized && sum != 0.0F) {
+        for (float& level : out.post.glow_levels) {
+            level /= sum;
+        }
+    }
+    out.post.glow_strength = env.glow_strength;
+    out.post.glow_mix = env.glow_mix;
+    if (const auto* blend = std::ranges::find(render::kGlowBlendModeNames, env.glow_blend_mode);
+        blend != render::kGlowBlendModeNames.end()) {
+        out.post.glow_blend_mode = static_cast<render::GlowBlendMode>(
+            std::distance(render::kGlowBlendModeNames.begin(), blend));
+    }
     out.post.glow_bloom = env.glow_bloom;
     out.post.glow_hdr_threshold = env.glow_hdr_threshold;
     out.post.glow_hdr_scale = env.glow_hdr_scale;

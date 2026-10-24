@@ -358,7 +358,7 @@ SkyUniforms sky_uniforms(const Scene3D& scene, std::uint32_t width, std::uint32_
     out.pixel = {1.0F / static_cast<float>(std::max(width, 1U)),
                  1.0F / static_cast<float>(std::max(height, 1U)), sky.energy, 0.0F};
     out.tonemap = {scene.post.exposure, scene.post.white, static_cast<float>(scene.post.tonemapper),
-                   post_processes(scene.post) ? 0.0F : 1.0F};
+                   color_stage(scene)};
     const Fog3D& fog = scene.fog;
     out.fog_color = {srgb_to_linear_exact(fog.light_color[0]) * fog.light_energy,
                      srgb_to_linear_exact(fog.light_color[1]) * fog.light_energy,
@@ -492,6 +492,9 @@ Float4 shade_sky(const SkyUniforms& uniforms, const SkyRay& ray, const Float4& t
         color = lerp3(color, fogged, fog[2]);
     }
 
+    if (uniforms.tonemap[3] == 2.0F) {
+        return {color[0], color[1], color[2], 1.0F};
+    }
     color = scale(color, uniforms.tonemap[0]);
     if (uniforms.tonemap[3] != 0.0F) {
         color = tonemap(color, uniforms.tonemap[1],
