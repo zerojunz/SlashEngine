@@ -198,6 +198,39 @@ struct Material {
     bool operator==(const Material&) const = default;
 };
 
+// One of a terrain's four ground textures, as the HTerrain plugin's: an albedo with a bump in
+// alpha and a normal map (OpenGL style, green up) with roughness in alpha, tiled every uv_scale
+// cells, and how much the color map tints it.
+struct TerrainLayer {
+    // NOLINTBEGIN(readability-redundant-member-init)
+    MaterialTexture albedo_bump{};      // sRGB; None is white with a full bump
+    MaterialTexture normal_roughness{}; // None is flat, roughness 1
+    // NOLINTEND(readability-redundant-member-init)
+    float uv_scale = 20.0F;
+    float colormap_opacity = 1.0F;
+
+    bool operator==(const TerrainLayer&) const = default;
+};
+
+// Terrain shading, as the HTerrain plugin's Classic4 shader: four ground layers weighed by a
+// splat map, depth-blended by their bumps, tinted by a color map whose alpha under 0.5 cuts holes,
+// over a normal map of the terrain's shape. The maps cover the mesh's texture coordinates 0..1,
+// a texel a cell of resolution across, and the ground layers tile across them. Normals in the
+// normal map are in the mesh's space, packed as n * 0.5 + 0.5, and stand in for its own.
+struct TerrainShading {
+    bool enabled = false;
+    // NOLINTBEGIN(readability-redundant-member-init)
+    MaterialTexture colormap{};  // RGB tint, alpha the hole mask; None is white
+    MaterialTexture splatmap{};  // each layer's weight in a channel; None weighs them alike
+    MaterialTexture normalmap{}; // None faces up, along the mesh's +Y
+    // NOLINTEND(readability-redundant-member-init)
+    std::array<TerrainLayer, 4> layers{};
+    std::uint32_t resolution = 1; // the maps' texels across, 1 to 16384
+    bool depth_blending = true;
+
+    bool operator==(const TerrainShading&) const = default;
+};
+
 // A StandardMaterial3D: what each pixel of a mesh is, with Godot's parameters and defaults.
 // Colors are sRGB; textures are sampled at the mesh's texture coordinate times uv1_scale plus
 // uv1_offset, and None samples white.
@@ -229,6 +262,9 @@ struct Material3D {
     std::array<float, 2> uv1_scale{1.0F, 1.0F};
     std::array<float, 2> uv1_offset{0.0F, 0.0F};
     bool disable_fog = false; // the scene's fog leaves it alone
+    // With terrain.enabled, the terrain's maps and layers give the albedo, roughness, normal and
+    // holes, in place of the textures above; albedo, metallic, specular and the rest still count.
+    TerrainShading terrain{}; // NOLINT(readability-redundant-member-init): may be left out
 
     bool operator==(const Material3D&) const = default;
 };

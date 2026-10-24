@@ -336,6 +336,90 @@ float positional_shadow(const detail::MeshMaps& maps, std::size_t slot, const Fl
     return lerp(1.0F, shadow, s.params[1]);
 }
 
+// What terrain shading gives a pixel, as the HTerrain plugin's Classic4 shader: the ground's
+// albedo (linear), roughness, and normal and the terrain's own normal, in the mesh's space.
+struct TerrainTexel {
+    Float3 albedo{};
+    float roughness = 1.0F;
+    Float3 normal{0.0F, 1.0F, 0.0F};
+    Float3 shape{0.0F, 1.0F, 0.0F};
+};
+
+// get_depth_blended_weights in HTerrain's shader: the splat map's weights, sharpened where one
+// layer's bump stands above the others.
+Float4 depth_blended_weights(const Float4& splat, const Float4& bumps) {
+    constexpr float kDh = 0.2F;
+    Float4 h{};
+    for (std::size_t i = 0; i < 4; ++i) {
+        h.at(i) = (bumps.at(i) + splat.at(i)) * smoothstep(0.0F, 0.05F, splat.at(i));
+    }
+    Float4 d{};
+    for (std::size_t i = 0; i < 4; ++i) {
+        float highest = 0.0F;
+        bool first = true;
+        for (std::size_t j = 0; j < 4; ++j) {
+            if (j != i) {
+                highest = first ? h.at(j) : std::max(highest, h.at(j));
+                first = false;
+            }
+        }
+        d.at(i) = std::clamp(h.at(i) + kDh - highest, 0.0F, 1.0F);
+    }
+    return d;
+}
+
+TerrainTexel terrain_texel(const detail::MeshSurfaceUniforms& surface,
+                           const std::array<Float4, detail::kMeshTextures>& texels) {
+    const std::uint32_t flags = surface.options[3];
+    const Float3 tint = xyz(texels[0]);
+    const Float4& splat = texels[1];
+    std::array<Float3, 4> colors{};
+    std::array<Float3, 4> normals{};
+    Float4 bumps{};
+    Float4 roughness{};
+    for (std::size_t i = 0; i < 4; ++i) {
+        const Float4& albedo_bump = texels.at(3 + i);
+        // A layer without a normal_roughness texture is flat, with roughness 1.
+        const Float4 normal_roughness = (flags & (detail::kMeshTerrainNormals << i)) != 0
+                                            ? texels.at(7 + i)
+                                            : Float4{0.5F, 0.5F, 1.0F, 1.0F};
+        colors.at(i) = mul(detail::srgb_to_linear(xyz(albedo_bump)),
+                           lerp3({1.0F, 1.0F, 1.0F}, tint, surface.terrain_opacity.at(i)));
+        bumps.at(i) = albedo_bump[3];
+        roughness.at(i) = normal_roughness[3];
+        // unpack_normal: OpenGL style, its green along the terrain's -Z and blue its +Y.
+        normals.at(i) = {(normal_roughness[0] * 2.0F) - 1.0F, (normal_roughness[2] * 2.0F) - 1.0F,
+                         -((normal_roughness[1] * 2.0F) - 1.0F)};
+    }
+    const Float4 weights = (flags & detail::kMeshTerrainDepthBlending) != 0
+                               ? depth_blended_weights(splat, bumps)
+                               : splat;
+    // Splat weights that are all 0 leave the ground black rather than undefined.
+    const float sum = std::max(weights[0] + weights[1] + weights[2] + weights[3], 1.0e-6F);
+    TerrainTexel out;
+    out.albedo = {};
+    out.roughness = 0.0F;
+    Float3 ground{};
+    for (std::size_t i = 0; i < 4; ++i) {
+        const float share = weights.at(i) / sum;
+        out.albedo = add(out.albedo, scale(colors.at(i), share));
+        out.roughness += roughness.at(i) * share;
+        ground = add(ground, scale(normals.at(i), share));
+    }
+    const Float4& mapped = texels[2];
+    out.shape = normalize(
+        {(mapped[0] * 2.0F) - 1.0F, (mapped[1] * 2.0F) - 1.0F, (mapped[2] * 2.0F) - 1.0F});
+    out.normal = normalize({out.shape[0] + ground[0], out.shape[1], out.shape[2] + ground[2]});
+    return out;
+}
+
+// A direction in the mesh's space, in the world through the pixel's tangent frame: a terrain's
+// vertices have the normal +Y and the tangent +X, so its binormal is -Z.
+Float3 frame_direction(const detail::MeshPixel& pixel, const Float3& v) {
+    return normalize(add(add(scale(pixel.tangent, v[0]), scale(pixel.normal, v[1])),
+                         scale(pixel.binormal, -v[2])));
+}
+
 } // namespace
 
 std::array<float, 16> perspective(float fov_y, float aspect, float near, float far) {
@@ -427,6 +511,36 @@ MeshInstanceUniforms mesh_instance_uniforms(const Mat4& transform, const Materia
     return out;
 }
 
+std::array<MaterialTexture, kMeshTextures> mesh_texture_slots(const Material3D& material) {
+    std::array<MaterialTexture, kMeshTextures> slots{};
+    if (!material.terrain.enabled) {
+        slots[0] = material.albedo_texture;
+        slots[1] = material.metallic_texture;
+        slots[2] = material.roughness_texture;
+        slots[3] = material.emission_texture;
+        slots[4] = material.normal_texture;
+        return slots;
+    }
+    const TerrainShading& terrain = material.terrain;
+    slots[0] = terrain.colormap;
+    slots[1] = terrain.splatmap;
+    slots[2] = terrain.normalmap;
+    for (std::size_t i = 0; i < 4; ++i) {
+        slots.at(3 + i) = terrain.layers.at(i).albedo_bump;
+        slots.at(7 + i) = terrain.layers.at(i).normal_roughness;
+    }
+    return slots;
+}
+
+std::array<float, 2> mesh_texture_uv(const MeshSurfaceUniforms& surface, std::size_t slot,
+                                     std::array<float, 2> uv) {
+    if (slot < 3 || (surface.options[3] & kMeshTerrain) == 0) {
+        return uv;
+    }
+    const float tiles = surface.terrain_uv.at((slot - 3) % 4);
+    return {uv[0] * tiles, uv[1] * tiles};
+}
+
 MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material, std::uint32_t layers) {
     MeshSurfaceUniforms out;
     out.albedo = material.albedo;
@@ -460,7 +574,29 @@ MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material, std::uint3
     if (material.disable_fog) {
         flags |= kMeshDisableFog;
     }
-    out.options = {flags, same_bits<std::uint32_t>(material.alpha_scissor_threshold), layers, 0};
+    float threshold = material.alpha_scissor_threshold;
+    std::uint32_t terrain = 0;
+    if (material.terrain.enabled) {
+        // The color map's alpha cuts holes, in the mesh and its shadows, as HTerrain's shader
+        // discards pixels under 0.5. The emission and normal textures' slots hold ground layers.
+        flags |= kMeshAlphaScissor | kMeshHasAlpha;
+        flags &= ~(kMeshEmissionTexture | kMeshNormalMap);
+        threshold = 0.5F;
+        terrain = kMeshTerrain;
+        if (material.terrain.depth_blending) {
+            terrain |= kMeshTerrainDepthBlending;
+        }
+        const auto resolution = static_cast<float>(material.terrain.resolution);
+        for (std::size_t i = 0; i < 4; ++i) {
+            const TerrainLayer& layer = material.terrain.layers.at(i);
+            if (layer.normal_roughness.texture != TextureId::None) {
+                terrain |= kMeshTerrainNormals << i;
+            }
+            out.terrain_uv.at(i) = resolution / layer.uv_scale;
+            out.terrain_opacity.at(i) = layer.colormap_opacity;
+        }
+    }
+    out.options = {flags, same_bits<std::uint32_t>(threshold), layers, terrain};
     return out;
 }
 
@@ -687,7 +823,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     const std::uint32_t flags = surface.options[0];
     Float4 color{};
     for (std::size_t i = 0; i < 4; ++i) {
-        color.at(i) = surface.albedo.at(i) * pixel.albedo_texel.at(i);
+        color.at(i) = surface.albedo.at(i) * pixel.texels[0].at(i);
     }
     if ((flags & kMeshVertexColorAlbedo) != 0) {
         for (std::size_t i = 0; i < 4; ++i) {
@@ -717,7 +853,13 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         const Float3 out = linear_to_srgb(exposed);
         return Float4{out[0], out[1], out[2], alpha};
     };
-    const Float3 base = srgb_to_linear({color[0], color[1], color[2]});
+    const bool terrain = (surface.options[3] & kMeshTerrain) != 0;
+    TerrainTexel ground;
+    if (terrain) {
+        ground = terrain_texel(surface, pixel.texels);
+    }
+    const Float3 base = terrain ? mul(srgb_to_linear(xyz(surface.albedo)), ground.albedo)
+                                : srgb_to_linear({color[0], color[1], color[2]});
     if ((flags & kMeshUnshaded) != 0) {
         return finish(base);
     }
@@ -726,22 +868,24 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         return (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]) + (a[3] * b[3]);
     };
     const float metallic =
-        surface.surface[0] * dot4(pixel.metallic_texel, surface.metallic_channel);
+        terrain ? surface.surface[0]
+                : surface.surface[0] * dot4(pixel.texels[1], surface.metallic_channel);
     const float roughness =
-        surface.surface[1] * dot4(pixel.roughness_texel, surface.roughness_channel);
+        terrain ? surface.surface[1] * ground.roughness
+                : surface.surface[1] * dot4(pixel.texels[2], surface.roughness_channel);
     const float specular = surface.surface[2];
     Float3 emitted{surface.emission[0], surface.emission[1], surface.emission[2]};
     if ((flags & kMeshEmissionTexture) != 0) {
-        emitted = add(emitted, pixel.emission_texel);
+        emitted = add(emitted, xyz(pixel.texels[3]));
     }
     emitted = srgb_to_linear(scale(emitted, surface.emission[3]));
 
-    Float3 normal = pixel.normal;
+    Float3 normal = terrain ? frame_direction(pixel, ground.normal) : pixel.normal;
     if ((flags & kMeshSideCheck) != 0 && !pixel.front) {
         normal = scale(normal, -1.0F);
     }
     if ((flags & kMeshNormalMap) != 0) {
-        Float3 mapped = pixel.normal_texel;
+        Float3 mapped = xyz(pixel.texels[4]);
         mapped[0] = (mapped[0] * 2.0F) - 1.0F;
         mapped[1] = (mapped[1] * 2.0F) - 1.0F;
         mapped[2] =
@@ -758,8 +902,10 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     const float dielectric = 0.16F * specular * specular;
     const Float3 f0 = lerp3({dielectric, dielectric, dielectric}, base, metallic);
 
-    // Shadows offset the point they sample along the vertex normal, as Godot's normal_interp.
-    const Float3 geometry = normalize(pixel.normal);
+    // Shadows offset the point they sample along the vertex normal, as Godot's normal_interp; a
+    // terrain's along its shape's.
+    const Float3 geometry =
+        terrain ? frame_direction(pixel, ground.shape) : normalize(pixel.normal);
     LightSum light_sum;
     const auto count = static_cast<std::size_t>(scene.camera[3]);
     for (std::size_t i = 0; i < count && i < kMaxLights3D; ++i) {
