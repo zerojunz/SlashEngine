@@ -463,12 +463,11 @@ void plan_positional(const Scene3D& scene, std::size_t index, int slot, std::uin
 
 } // namespace
 
-std::array<int, kMaxLights3D> shadow_slots(const Scene3D& scene) {
-    std::array<int, kMaxLights3D> slots{};
-    slots.fill(-1);
+std::vector<int> shadow_slots(const Scene3D& scene) {
+    std::vector<int> slots(scene.lights.size(), -1);
     int directional = 0;
     int positional = 0;
-    for (std::size_t i = 0; i < scene.lights.size() && i < kMaxLights3D; ++i) {
+    for (std::size_t i = 0; i < lights_drawn(scene); ++i) {
         const Light3D& light = scene.lights[i];
         if (!light.shadow) {
             continue;
@@ -491,11 +490,11 @@ ShadowPlan plan_shadows(const Scene3D& scene, std::uint32_t max_size) {
     uniforms.camera_z = {c[2], c[6], c[10], c[14]};
     uniforms.filters = {taps(scene.shadows.directional_quality),
                         taps(scene.shadows.positional_quality), 0.0F, 0.0F};
-    const std::array<int, kMaxLights3D> slots = shadow_slots(scene);
+    const std::vector<int> slots = shadow_slots(scene);
     std::vector<std::size_t> directional;
     std::vector<std::size_t> positional;
     std::size_t tiles = 0;
-    for (std::size_t i = 0; i < scene.lights.size() && i < kMaxLights3D; ++i) {
+    for (std::size_t i = 0; i < slots.size(); ++i) {
         if (slots.at(i) < 0) {
             continue;
         }

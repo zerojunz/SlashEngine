@@ -10,6 +10,7 @@
 #include "slash/core/math.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -462,6 +463,15 @@ std::array<float, 16> look_at(const std::array<float, 3>& eye, const std::array<
     return m;
 }
 
+std::optional<RenderMethod> parse_render_method(std::string_view name) {
+    const auto index = static_cast<std::size_t>(std::ranges::find(kRenderMethodNames, name) -
+                                                kRenderMethodNames.begin());
+    if (index == kRenderMethodNames.size()) {
+        return std::nullopt;
+    }
+    return static_cast<RenderMethod>(index);
+}
+
 std::array<float, 16> Scene3D::perspective_default() {
     return perspective(75.0F, 1.0F, 0.05F, 4000.0F);
 }
@@ -612,9 +622,7 @@ MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
         const float squared = dot3(axis, axis);
         place = add(place, scale(axis, -c.at(12 + row) / squared));
     }
-    const std::size_t count = std::min(scene.lights.size(), kMaxLights3D);
-    out.camera = {place[0], place[1], place[2], static_cast<float>(count)};
-    const std::array<int, kMaxLights3D> slots = shadow_slots(scene);
+    out.camera = {place[0], place[1], place[2], 0.0F};
     const float energy = scene.ambient_energy;
     out.ambient = {srgb_to_linear_exact(scene.ambient[0]) * energy,
                    srgb_to_linear_exact(scene.ambient[1]) * energy,
@@ -628,9 +636,8 @@ MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
                          fog.depth ? 2.0F : 1.0F};
         out.fog = {fog.density, fog.sun_scatter, fog.height, fog.height_density};
         // As Godot's: depth fog ends at the far plane when its end is 0 or less, and begins
-        // before it ends. Both projections put the far plane at [14] / [10].
-        const Mat4& p = scene.projection;
-        const float far = p[10] != 0.0F ? p[14] / p[10] : 4000.0F;
+        // before it ends.
+        const float far = far_plane(scene.projection);
         const float end = fog.depth_end > 0.0F ? fog.depth_end : far;
         out.fog_depth = {std::min(fog.depth_begin, end - 0.001F), end, fog.depth_curve, 0.0F};
     }
@@ -642,31 +649,48 @@ MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
         out.sky_rows = {Float4{o[0], o[4], o[8], 0.0F}, Float4{o[1], o[5], o[9], 0.0F},
                         Float4{o[2], o[6], o[10], 0.0F}};
     }
-    for (std::size_t i = 0; i < count; ++i) {
+    // Every pixel takes these lights; Forward+'s omni and spot lights are in its clusters.
+    const std::vector<int> slots = shadow_slots(scene);
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < lights_drawn(scene); ++i) {
         const Light3D& light = scene.lights[i];
-        MeshLightUniforms& packed = out.lights.at(i);
-        packed.position = {light.position[0], light.position[1], light.position[2],
-                           1.0F / std::max(0.001F, light.range)};
-        Float3 direction = normalize(light.direction);
-        float type = 0.0F;
-        if (light.type == LightType::Directional) {
-            direction = scale(direction, -1.0F); // toward the light, as Godot's node's +Z
-        } else {
-            type = light.type == LightType::Omni ? 1.0F : 2.0F;
+        if (scene.method == RenderMethod::ForwardPlus && light.type != LightType::Directional) {
+            continue;
         }
-        packed.direction = {direction[0], direction[1], direction[2], type};
-        const float scaled = light.energy * kPi;
-        const float specular =
-            light.type == LightType::Directional ? light.specular : light.specular * 2.0F;
-        packed.color = {srgb_to_linear_exact(light.color[0]) * scaled,
-                        srgb_to_linear_exact(light.color[1]) * scaled,
-                        srgb_to_linear_exact(light.color[2]) * scaled, specular};
-        const Vec2 cone = slash::cos_sin(light.spot_angle * (kPi / 180.0F));
-        packed.params = {light.attenuation, cone.x, 1.0F / light.spot_attenuation,
-                         static_cast<float>(light.cull_mask & kRenderLayers)};
-        packed.shadow = {static_cast<float>(slots.at(i)), 0.0F, 0.0F, 0.0F};
+        out.lights.at(count++) = mesh_light_uniforms(light, slots.at(i));
     }
+    out.camera[3] = static_cast<float>(count);
     return out;
+}
+
+MeshLightUniforms mesh_light_uniforms(const Light3D& light, int shadow_slot) {
+    MeshLightUniforms packed;
+    packed.position = {light.position[0], light.position[1], light.position[2],
+                       1.0F / std::max(0.001F, light.range)};
+    Float3 direction = normalize(light.direction);
+    float type = 0.0F;
+    if (light.type == LightType::Directional) {
+        direction = scale(direction, -1.0F); // toward the light, as Godot's node's +Z
+    } else {
+        type = light.type == LightType::Omni ? 1.0F : 2.0F;
+    }
+    packed.direction = {direction[0], direction[1], direction[2], type};
+    const float scaled = light.energy * kPi;
+    const float specular =
+        light.type == LightType::Directional ? light.specular : light.specular * 2.0F;
+    packed.color = {srgb_to_linear_exact(light.color[0]) * scaled,
+                    srgb_to_linear_exact(light.color[1]) * scaled,
+                    srgb_to_linear_exact(light.color[2]) * scaled, specular};
+    const Vec2 cone = slash::cos_sin(light.spot_angle * (kPi / 180.0F));
+    packed.params = {light.attenuation, cone.x, 1.0F / light.spot_attenuation,
+                     static_cast<float>(light.cull_mask & kRenderLayers)};
+    packed.shadow = {static_cast<float>(shadow_slot), 0.0F, 0.0F, 0.0F};
+    return packed;
+}
+
+std::size_t lights_drawn(const Scene3D& scene) {
+    return scene.method == RenderMethod::Compatibility ? std::min(scene.lights.size(), kMaxLights3D)
+                                                       : scene.lights.size();
 }
 
 Bounds mesh_bounds(std::span<const Vertex3D> vertices) {
@@ -754,10 +778,18 @@ Result<void> check_scene(const Scene3D& scene) {
         return make_error(ErrorCode::InvalidArgument,
                           "a scene's camera, projection and ambient light are finite");
     }
-    if (scene.lights.size() > kMaxLights3D) {
+    const auto directional = static_cast<std::size_t>(
+        std::ranges::count(scene.lights, LightType::Directional, &Light3D::type));
+    if (directional > kMaxDirectionalLights3D) {
         return make_error(ErrorCode::InvalidArgument,
-                          "a scene takes up to " + std::to_string(kMaxLights3D) + " lights, not " +
-                              std::to_string(scene.lights.size()));
+                          "a scene takes up to " + std::to_string(kMaxDirectionalLights3D) +
+                              " directional lights, not " + std::to_string(directional));
+    }
+    if (scene.lights.size() - directional > kMaxClusteredLights3D) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a scene takes up to " + std::to_string(kMaxClusteredLights3D) +
+                              " omni and spot lights, not " +
+                              std::to_string(scene.lights.size() - directional));
     }
     for (std::size_t i = 0; i < scene.lights.size(); ++i) {
         const Light3D& l = scene.lights[i];
@@ -817,6 +849,51 @@ MeshCorner mesh_vertex(const MeshCameraUniforms& camera, const MeshInstanceUnifo
         static_cast<float>(vertex.rgba[2]) / kByte, static_cast<float>(vertex.rgba[3]) / kByte};
     return out;
 }
+
+namespace {
+
+// range_mask in shaders/mesh.hlsl: the bits of a word of a tile's light bits for lights from
+// first up to end.
+std::uint32_t range_mask(std::uint32_t word, std::uint32_t first, std::uint32_t end) {
+    const auto at = static_cast<std::int64_t>(word) * 32;
+    const std::int64_t low =
+        std::clamp(static_cast<std::int64_t>(first) - at, std::int64_t{0}, std::int64_t{32});
+    const std::int64_t high =
+        std::clamp(static_cast<std::int64_t>(end) - at, std::int64_t{0}, std::int64_t{32});
+    const std::uint32_t below_high = high >= 32 ? 0xFFFFFFFFU : (1U << high) - 1U;
+    const std::uint32_t below_low = low >= 32 ? 0xFFFFFFFFU : (1U << low) - 1U;
+    return below_high & ~below_low;
+}
+
+// The clustered loop of lit_color in shaders/mesh.hlsl: each of the pixel's tile's lights within
+// its slice's range, nearest first.
+template <typename AddLight>
+void add_cluster_lights(const LightClusters& clusters, const MeshShadowUniforms& shadows,
+                        const MeshPixel& pixel, const AddLight& add_light) {
+    const std::uint32_t tile_x = std::min(pixel.x / kClusterSize, clusters.tiles_across - 1);
+    const std::uint32_t tile_y = std::min(pixel.y / kClusterSize, clusters.tiles_down - 1);
+    const std::uint32_t words = clusters.words;
+    const std::size_t cell =
+        ((std::size_t{tile_y} * clusters.tiles_across) + tile_x) * (words + kClusterSlices);
+    const float depth =
+        -(dot3(pixel.world, {shadows.camera_z[0], shadows.camera_z[1], shadows.camera_z[2]}) +
+          shadows.camera_z[3]);
+    const auto slice = static_cast<std::uint32_t>(std::clamp(
+        depth * clusters.slices_per_depth, 0.0F, static_cast<float>(kClusterSlices - 1)));
+    const std::uint32_t range = clusters.cells[cell + words + slice];
+    const std::uint32_t first = range & 0xFFFFU;
+    const std::uint32_t end = range >> 16U;
+    for (std::uint32_t word = first >> 5U; word < (end + 31U) >> 5U; ++word) {
+        std::uint32_t mask = clusters.cells[cell + word] & range_mask(word, first, end);
+        while (mask != 0) {
+            const auto bit = static_cast<std::uint32_t>(std::countr_zero(mask));
+            mask &= mask - 1U;
+            add_light(clusters.lights[(word * 32U) + bit]);
+        }
+    }
+}
+
+} // namespace
 
 std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshSceneUniforms& scene,
                                  const MeshMaps& maps, const MeshPixel& pixel) {
@@ -907,11 +984,10 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     const Float3 geometry =
         terrain ? frame_direction(pixel, ground.shape) : normalize(pixel.normal);
     LightSum light_sum;
-    const auto count = static_cast<std::size_t>(scene.camera[3]);
-    for (std::size_t i = 0; i < count && i < kMaxLights3D; ++i) {
-        const MeshLightUniforms& light = scene.lights.at(i);
+    // add_light in shaders/mesh.hlsl.
+    const auto add_light = [&](const MeshLightUniforms& light) {
         if ((static_cast<std::uint32_t>(light.params[3]) & surface.options[2]) == 0) {
-            continue;
+            return;
         }
         const float type = light.direction[3];
         const Float3 light_color{light.color[0], light.color[1], light.color[2]};
@@ -925,7 +1001,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
                                      : 1.0F;
             light_compute(normal, toward, view, light_color, shadow, f0, roughness, metallic,
                           light.color[3], light_sum);
-            continue;
+            return;
         }
         const Float3 to_light =
             sub({light.position[0], light.position[1], light.position[2]}, pixel.world);
@@ -946,6 +1022,13 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         }
         light_compute(normal, normalize(to_light), view, light_color, attenuation, f0, roughness,
                       metallic, light.color[3], light_sum);
+    };
+    const auto count = static_cast<std::size_t>(scene.camera[3]);
+    for (std::size_t i = 0; i < count && i < kMaxLights3D; ++i) {
+        add_light(scene.lights.at(i));
+    }
+    if (maps.clusters != nullptr && maps.uniforms != nullptr) {
+        add_cluster_lights(*maps.clusters, *maps.uniforms, pixel, add_light);
     }
 
     // Light from the sky's radiance, as Godot's scene.glsl takes it: reflections by roughness

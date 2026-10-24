@@ -191,6 +191,11 @@ canvas::Settings canvas_settings(const json::Value& project) {
         if (const json::Value* scaling = rendering->find("scaling"); scaling != nullptr) {
             settings.scaling = render::scaling_from_json(*scaling);
         }
+        if (const json::Value* method = rendering->find("rendering_method");
+            method != nullptr && method->is_string()) {
+            settings.rendering_method = render::parse_render_method(method->as_string())
+                                            .value_or(render::RenderMethod::ForwardPlus);
+        }
         if (const json::Value* shadows = rendering->find("lights_and_shadows");
             shadows != nullptr) {
             settings.shadows = render::shadow_settings_from_json(*shadows);

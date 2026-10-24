@@ -444,6 +444,8 @@ struct Settings {
     double tick_seconds = 1.0 / 60.0;
     // rendering.scaling: the size the world draws at and how it scales to the screen.
     render::Scaling scaling;
+    // rendering.rendering_method: how 3D meshes are lit.
+    render::RenderMethod rendering_method = render::RenderMethod::ForwardPlus;
     // rendering.lights_and_shadows: the 3D shadow atlases.
     render::ShadowSettings shadows;
 };

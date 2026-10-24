@@ -1095,9 +1095,12 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                               ? Vec2{options.width, options.height}
                               : ui::settings(world).viewport;
     // The 3D world, seen through its current Camera3D, which fills the viewport.
-    const std::optional<scene3d::Frame3D> scene =
+    std::optional<scene3d::Frame3D> scene =
         scene3d_.prepare(world, viewport.x, viewport.y, options.interpolation, options.clear,
                          settings(world).shadows);
+    if (scene) {
+        scene->scene.method = settings(world).rendering_method;
+    }
     for (const scene3d::Problem& unseen : scene3d_.problems()) {
         problem(unseen.entity, unseen.path, unseen.message);
         warn_once(name_of(unseen.entity), unseen.message, "id", "a 3D node can't draw");
