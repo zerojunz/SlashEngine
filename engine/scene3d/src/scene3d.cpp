@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <bit>
 #include <cmath>
 #include <functional>
@@ -312,7 +313,10 @@ CameraView camera_view(const world::Camera3D& camera, const world::Affine3D& glo
     return out;
 }
 
-Environment environment(const world::World& world, render::Color clear) {
+namespace {
+
+// The environment of the first WorldEnvironment made, before the camera's attributes.
+Environment world_environment(const world::World& world, render::Color clear) {
     Environment out;
     out.background = clear;
     const auto environments = made<world::WorldEnvironment>(world);
@@ -447,6 +451,66 @@ Environment environment(const world::World& world, render::Color clear) {
     out.post.contrast = env.adjustment_contrast;
     out.post.saturation = env.adjustment_saturation;
     out.color_correction = env.adjustment_color_correction;
+    return out;
+}
+
+// Versions of auto exposure measures, unique across renderers, since a device keeps one
+// measure.
+std::atomic<std::uint64_t> exposure_versions{0};
+
+} // namespace
+
+entt::entity camera_attributes(const world::World& world, entt::entity camera) {
+    const auto& ecs = world.ecs();
+    if (camera != entt::null && world.valid(camera) &&
+        ecs.all_of<world::CameraAttributesPractical>(camera)) {
+        return camera;
+    }
+    const auto environments = made<world::WorldEnvironment>(world);
+    if (!environments.empty() &&
+        ecs.all_of<world::CameraAttributesPractical>(environments.front())) {
+        return environments.front();
+    }
+    return entt::null;
+}
+
+Environment environment(const world::World& world, render::Color clear, entt::entity camera) {
+    Environment out = world_environment(world, clear);
+    out.attributes = camera_attributes(world, camera);
+    if (out.attributes == entt::null) {
+        return out;
+    }
+    const auto& attributes =
+        world.ecs().get<const world::CameraAttributesPractical>(out.attributes);
+    // Godot's exposure normalization without physical light units is exposure_multiplier alone.
+    // As its bg_energy_multiplier, it brightens the background and the sky, and so the sky's
+    // light, but not ambient_light_color or fog; a fogged background's sky, which the background's
+    // energy multiplies twice, takes it twice.
+    out.exposure = attributes.exposure_multiplier;
+    out.background.r *= out.exposure;
+    out.background.g *= out.exposure;
+    out.background.b *= out.exposure;
+    out.sky.energy *= out.exposure;
+    if (out.sky.kind == render::SkyKind::Color) {
+        out.sky.color = {out.background.r, out.background.g, out.background.b};
+    }
+    if (!attributes.auto_exposure_enabled) {
+        return out;
+    }
+    if (!std::isfinite(attributes.exposure_sensitivity) ||
+        attributes.exposure_sensitivity <= 0.0F) {
+        out.problems.push_back({out.attributes,
+                                "/components/CameraAttributesPractical/exposure_sensitivity",
+                                "is above 0 for auto exposure; drawing without it"});
+        return out;
+    }
+    // As Godot's CameraAttributesPractical::_update_auto_exposure, which turns sensitivities into
+    // luminances.
+    const float luminance = 0.125F / attributes.exposure_sensitivity;
+    out.post.auto_exposure = true;
+    out.post.auto_exposure_scale = attributes.auto_exposure_scale;
+    out.post.auto_exposure_min = attributes.auto_exposure_min_sensitivity * luminance;
+    out.post.auto_exposure_max = attributes.auto_exposure_max_sensitivity * luminance;
     return out;
 }
 
@@ -1260,7 +1324,7 @@ void Renderer::add_terrain(const world::World& world, entt::entity entity,
 
 std::optional<Frame3D> Renderer::prepare(const world::World& world, float width, float height,
                                          double interpolation, render::Color clear,
-                                         const render::ShadowSettings& shadows) {
+                                         const render::ShadowSettings& shadows, double time) {
     ++frame_;
     draws_.clear();
     problems_.clear();
@@ -1283,6 +1347,7 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
             device_->destroy_mesh(skinned.id);
         }
         skinned_.clear();
+        exposure_version_ = 0;
         return std::nullopt;
     }
 
@@ -1319,11 +1384,28 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
     const CameraView view = camera_view(lens, global(camera), aspect);
     frame.scene.camera = view.view;
     frame.scene.projection = view.projection;
-    const Environment env = environment(world, clear);
+    const Environment env = environment(world, clear, camera);
     frame.clear = env.background;
     frame.scene.ambient = env.ambient;
     frame.scene.ambient_energy = env.ambient_energy;
     frame.scene.post = env.post;
+    if (env.post.auto_exposure) {
+        // As Godot's auto exposure version: the brightness is measured afresh when auto exposure
+        // turns on or follows other attributes, and here when game time goes back too, as after a
+        // restore; otherwise it moves toward the frame's by auto_exposure_speed per second.
+        if (exposure_version_ == 0 || env.attributes != exposure_entity_ || time < exposure_time_) {
+            exposure_version_ = ++exposure_versions;
+            exposure_entity_ = env.attributes;
+            exposure_time_ = time;
+        }
+        const float speed =
+            ecs.get<const world::CameraAttributesPractical>(env.attributes).auto_exposure_speed;
+        frame.scene.post.auto_exposure_adjust = speed * static_cast<float>(time - exposure_time_);
+        frame.scene.post.auto_exposure_version = exposure_version_;
+        exposure_time_ = time;
+    } else {
+        exposure_version_ = 0;
+    }
     if (env.post.adjustments && !env.color_correction.empty()) {
         // Sampled smoothly, as Godot samples its LUTs.
         auto lut = textures_(env.color_correction, render::Filter::Linear);
@@ -1347,6 +1429,9 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
     problems_.insert(problems_.end(), env.problems.begin(), env.problems.end());
     if (env.sky.kind != render::SkyKind::None || env.radiance.kind != render::SkyKind::None) {
         frame.scene.sky.lights = sky_lights(world, tree, global);
+        for (render::SkyLight& sun : frame.scene.sky.lights) {
+            sun.energy *= env.exposure;
+        }
     }
     if (!env.sky_texture.empty()) {
         auto texture = textures_(env.sky_texture, env.sky_filter);
@@ -1361,6 +1446,9 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
         }
     }
     frame.scene.lights = scene3d::lights(world, tree, global);
+    for (render::Light3D& light : frame.scene.lights) {
+        light.energy *= env.exposure;
+    }
     frame.scene.shadows = shadows;
     lights_ = frame.scene.lights.size();
 
@@ -1418,6 +1506,11 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
     for (const entt::entity entity : made<world::HTerrain>(world)) {
         if (tree.visible(entity)) {
             add_terrain(world, entity, global(entity), global(camera), lens);
+        }
+    }
+    if (env.exposure != 1.0F) {
+        for (Draw& draw : draws_) {
+            draw.material.emission_energy *= env.exposure;
         }
     }
     // Meshes no entity drew this frame go, and so do the entities' records of them.

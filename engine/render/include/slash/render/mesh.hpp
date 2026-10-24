@@ -239,6 +239,20 @@ struct PostProcess {
     // squared, height slices of height texels side by side for blue, x in each red and y green
     // (a 3D LUT). TextureId{} for none.
     TextureId color_correction{};
+    // Forward+: auto exposure, as Godot's CameraAttributes. Each frame's brightness is measured
+    // as Godot's luminance_reduce.glsl does, averaging each pixel's brightest channel in blocks of
+    // 8 x 8, then the blocks' averages, down to one value; it moves auto_exposure_adjust of the way
+    // from the last frame's to the new one and is kept from auto_exposure_min to
+    // auto_exposure_max. The colors are exposed by auto_exposure_scale over it (a brightness
+    // below 0.0001 counts as 0.0001), and so is the glow's first level. A frame whose
+    // auto_exposure_version isn't the last measured one's, or the first at its size, takes its own
+    // brightness as it is, as Godot does when auto exposure starts.
+    bool auto_exposure = false;
+    float auto_exposure_scale = 0.4F;
+    float auto_exposure_min = 0.0F;
+    float auto_exposure_max = 1.0F;
+    float auto_exposure_adjust = 1.0F; // from 0 (stays) to 1 (the new brightness)
+    std::uint64_t auto_exposure_version = 0;
 
     bool operator==(const PostProcess&) const = default;
 };

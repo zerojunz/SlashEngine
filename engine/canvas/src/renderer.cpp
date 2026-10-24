@@ -1097,7 +1097,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     // The 3D world, seen through its current Camera3D, which fills the viewport.
     std::optional<scene3d::Frame3D> scene =
         scene3d_.prepare(world, viewport.x, viewport.y, options.interpolation, options.clear,
-                         settings(world).shadows);
+                         settings(world).shadows, options.time);
     if (scene) {
         scene->scene.method = settings(world).rendering_method;
     }

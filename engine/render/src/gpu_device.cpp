@@ -51,6 +51,8 @@ constexpr SDL_GPUTextureFormat kTextureFormat = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_U
 constexpr SDL_GPUTextureFormat kRadianceFormat = SDL_GPU_TEXTUREFORMAT_R10G10B10A2_UNORM;
 // A Forward+ frame's world and glow's levels are half floats, as Godot's Forward+ buffers.
 constexpr SDL_GPUTextureFormat kHdrFormat = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT;
+// Auto exposure's luminance textures: one float a texel, as Godot's.
+constexpr SDL_GPUTextureFormat kLuminanceFormat = SDL_GPU_TEXTUREFORMAT_R32_FLOAT;
 
 constexpr SDL_GPUTextureFormat gpu_format(TextureFormat format) {
     switch (format) {
@@ -931,7 +933,8 @@ public:
             }
         }
         if (frame.scene && frame.scene->method == RenderMethod::ForwardPlus) {
-            if (auto ready = prepare_forward(format, width, height, frame.scene->post.glow);
+            if (auto ready = prepare_forward(format, width, height, frame.scene->post.glow,
+                                             frame.scene->post.auto_exposure);
                 !ready) {
                 SDL_CancelGPUCommandBuffer(commands);
                 return ready.error();
@@ -2461,10 +2464,11 @@ private:
     }
 
     // Forward+'s post passes: their shaders, their pipeline for each target format, the world's
-    // texture of half floats at the frame's size and, with glow, glow's seven levels. Made at the
-    // start of a frame that needs them.
+    // texture of half floats at the frame's size and, with glow, glow's seven levels, and with
+    // auto exposure the luminance textures of floats. Made at the start of a frame that needs
+    // them.
     Result<void> prepare_forward(SDL_GPUTextureFormat format, std::uint32_t width,
-                                 std::uint32_t height, bool glow) {
+                                 std::uint32_t height, bool glow, bool auto_exposure) {
         if (forward_shaders_[0] == nullptr) {
             const ShaderCode code{.vertex_spirv = shaders::kForwardPostVertexSpirv,
                                   .fragment_spirv = shaders::kForwardPostFragmentSpirv,
@@ -2483,16 +2487,18 @@ private:
             }
             forward_shaders_ = {vertex.value(), fragment.value()};
         }
-        for (const SDL_GPUTextureFormat needed : {kHdrFormat, format}) {
+        for (const SDL_GPUTextureFormat needed : {kHdrFormat, format, kLuminanceFormat}) {
             if (auto pipeline = fullscreen_pipeline(forward_pipelines_, forward_shaders_, needed);
                 !pipeline) {
                 return pipeline.error();
             }
         }
-        const auto made = [&](std::uint32_t w, std::uint32_t h) -> Result<SDL_GPUTexture*> {
+        const auto made = [&](std::uint32_t w, std::uint32_t h,
+                              SDL_GPUTextureFormat texture_format =
+                                  kHdrFormat) -> Result<SDL_GPUTexture*> {
             SDL_GPUTextureCreateInfo info{};
             info.type = SDL_GPU_TEXTURETYPE_2D;
-            info.format = kHdrFormat;
+            info.format = texture_format;
             info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
             info.width = w;
             info.height = h;
@@ -2501,7 +2507,7 @@ private:
             SDL_GPUTexture* texture = SDL_CreateGPUTexture(device_, &info);
             if (texture == nullptr) {
                 return sdl_error("creating a " + std::to_string(w) + "x" + std::to_string(h) +
-                                 " texture of half floats failed");
+                                 " texture for Forward+'s post passes failed");
             }
             return texture;
         };
@@ -2527,6 +2533,23 @@ private:
                 forward_targets_.glow.at(i) = level.value();
             }
         }
+        if (auto_exposure && forward_targets_.brightness == nullptr) {
+            for (const PostSize size : luminance_plan(width, height)) {
+                auto level = made(size.width, size.height, kLuminanceFormat);
+                if (!level) {
+                    release_forward_targets();
+                    return level.error();
+                }
+                forward_targets_.luminance.push_back(level.value());
+            }
+            auto brightness = made(1, 1, kLuminanceFormat);
+            if (!brightness) {
+                release_forward_targets();
+                return brightness.error();
+            }
+            forward_targets_.brightness = brightness.value();
+            forward_targets_.measured = false;
+        }
         return {};
     }
 
@@ -2540,13 +2563,20 @@ private:
         for (SDL_GPUTexture*& texture : forward_targets_.glow) {
             release(texture);
         }
+        for (SDL_GPUTexture*& texture : forward_targets_.luminance) {
+            release(texture);
+        }
+        forward_targets_.luminance.clear();
+        release(forward_targets_.brightness);
+        forward_targets_.measured = false;
         forward_targets_.width = 0;
         forward_targets_.height = 0;
     }
 
-    // forward_post.hlsl's passes: glow's levels, each from the one before, then the tonemap pass
-    // from the world's texture over the frame's target. A frame with no sky or mesh draws clears
-    // the world's texture first.
+    // forward_post.hlsl's passes: with auto exposure the luminance passes, from the world's texture
+    // down to one texel, then glow's levels, each from the one before, then the tonemap pass from
+    // the world's texture over the frame's target. A frame with no sky or mesh draws clears the
+    // world's texture first.
     void draw_forward_post(SDL_GPUCommandBuffer* commands, const PostProcess& post, bool clear) {
         if (clear) {
             SDL_GPUColorTargetInfo color{};
@@ -2558,10 +2588,13 @@ private:
             SDL_EndGPURenderPass(SDL_BeginGPURenderPass(commands, &color, 1, nullptr));
         }
         SDL_GPUSampler* sampler = samplers_.at(sampler_index(Filter::Linear, false));
-        // A glow pass reads only its source; the tonemap pass reads glow's levels too.
+        SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
+        // A glow pass reads only its source; the tonemap pass reads glow's levels too. Passes
+        // read the measured brightness given them, or white.
         const auto pass = [&](SDL_GPUTexture* target, SDL_GPUTextureFormat format,
                               const ForwardPostUniforms& uniforms, SDL_GPUTexture* source,
-                              bool levels, SDL_GPUTexture* lut) {
+                              bool levels, SDL_GPUTexture* lut,
+                              SDL_GPUTexture* measured = nullptr) {
             SDL_GPUColorTargetInfo color{};
             color.texture = target;
             color.load_op = SDL_GPU_LOADOP_DONT_CARE;
@@ -2576,18 +2609,51 @@ private:
             SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
                                            static_cast<std::uint32_t>(sizeof(uniforms)));
             std::array<SDL_GPUTextureSamplerBinding, kForwardPostTextures> bindings{};
-            bindings[0] = {.texture = source, .sampler = sampler};
+            // A luminance pass after the first loads the level before, a texture of floats, from
+            // a slot of its own.
+            const bool from_level = format == kLuminanceFormat && source != forward_targets_.world;
+            bindings[0] = {.texture = from_level ? forward_targets_.world : source,
+                           .sampler = sampler};
             for (std::size_t i = 0; i < kMaxGlowLevels; ++i) {
                 SDL_GPUTexture* level = forward_targets_.glow.at(i);
                 bindings.at(1 + i) = {.texture = levels && level != nullptr ? level : white_,
                                       .sampler = sampler};
             }
-            bindings.back() = {.texture = lut, .sampler = sampler};
+            bindings.at(1 + kMaxGlowLevels) = {.texture = lut, .sampler = sampler};
+            bindings.at(kBrightnessSlot) = {.texture = measured != nullptr ? measured : white_,
+                                            .sampler = nearest};
+            bindings.at(kLuminanceSourceSlot) = {.texture = from_level ? source : white_,
+                                                 .sampler = nearest};
             SDL_BindGPUFragmentSamplers(render, 0, bindings.data(),
                                         static_cast<std::uint32_t>(bindings.size()));
             SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
             SDL_EndGPURenderPass(render);
         };
+        SDL_GPUTexture* brightness = nullptr;
+        if (post.auto_exposure) {
+            // As Godot's Luminance::luminance_reduction: the last pass moves from the last
+            // frame's brightness, then the brightness texture and the last level swap.
+            const bool set = !forward_targets_.measured ||
+                             forward_targets_.version != post.auto_exposure_version;
+            std::vector<SDL_GPUTexture*>& levels = forward_targets_.luminance;
+            const std::vector<PostSize> plan = luminance_plan(frame_width_, frame_height_);
+            PostSize source{.width = frame_width_, .height = frame_height_};
+            for (std::size_t i = 0; i < levels.size(); ++i) {
+                ForwardPass kind = i == 0 ? ForwardPass::LuminanceFirst : ForwardPass::Luminance;
+                if (i > 0 && i + 1 == levels.size() && !set) {
+                    kind = ForwardPass::LuminanceFinal;
+                }
+                pass(levels.at(i), kLuminanceFormat,
+                     luminance_uniforms(post, kind, source, plan.at(i)),
+                     i == 0 ? forward_targets_.world : levels.at(i - 1), false, white_,
+                     forward_targets_.brightness);
+                source = plan.at(i);
+            }
+            std::swap(forward_targets_.brightness, levels.back());
+            forward_targets_.measured = true;
+            forward_targets_.version = post.auto_exposure_version;
+            brightness = forward_targets_.brightness;
+        }
         if (post.glow) {
             const GlowPlan plan = forward_glow_plan(post, frame_width_, frame_height_);
             for (std::size_t i = 0; i < plan.count; ++i) {
@@ -2597,7 +2663,7 @@ private:
                                            i == 0 ? ForwardPass::GlowFirst : ForwardPass::GlowNext,
                                            size.width, size.height, frame_width_, frame_height_),
                      i == 0 ? forward_targets_.world : forward_targets_.glow.at(i - 1), false,
-                     white_);
+                     white_, brightness);
             }
         }
         SDL_GPUTexture* lut = white_;
@@ -2610,7 +2676,7 @@ private:
         pass(frame_texture_, frame_format_,
              forward_post_uniforms(post, ForwardPass::Tonemap, frame_width_, frame_height_,
                                    frame_width_, frame_height_, lut_desc.width, lut_desc.height),
-             forward_targets_.world, post.glow, lut);
+             forward_targets_.world, post.glow, lut, brightness);
     }
 
     // The post passes' shaders, their pipeline for a target format, and their textures at the
@@ -3267,6 +3333,12 @@ private:
     struct ForwardTargets {
         SDL_GPUTexture* world = nullptr;
         std::array<SDL_GPUTexture*, kMaxGlowLevels> glow{};
+        // Auto exposure's luminance textures, made with the first frame that uses it, and the
+        // measured brightness: whether it holds one yet, and the version it was measured for.
+        std::vector<SDL_GPUTexture*> luminance;
+        SDL_GPUTexture* brightness = nullptr;
+        bool measured = false;
+        std::uint64_t version = 0;
         std::uint32_t width = 0;
         std::uint32_t height = 0;
     };

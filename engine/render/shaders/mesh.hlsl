@@ -666,7 +666,7 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         if ((flags & kEmissionTexture) != 0u) {
             emitted += emission_texel.rgb;
         }
-        emitted = srgb_to_linear(emitted * emission.w);
+        emitted = srgb_to_linear(emitted) * emission.w;
         float3 normal = terrain
                             ? frame_direction(input, normalize(float3(shape.x + ground.x, shape.y,
                                                                       shape.z + ground.z)))
