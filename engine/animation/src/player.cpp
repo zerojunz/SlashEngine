@@ -389,16 +389,25 @@ void add_systems(world::World& world, asset::Assets& assets) {
             return out;
         }
         const auto found = cached->library.animations.find(player->animation);
-        if (found == cached->library.animations.end() || found->second.from.model.empty()) {
+        if (found == cached->library.animations.end()) {
             return out;
         }
         const Animation& animation = found->second;
-        out.push_back({.model = animation.from.model,
-                       .animation = animation.from.animation,
-                       .time = std::isfinite(player->time)
-                                   ? std::clamp(player->time, 0.0, animation.length)
-                                   : 0.0,
-                       .weight = 1.0F});
+        const double time =
+            std::isfinite(player->time) ? std::clamp(player->time, 0.0, animation.length) : 0.0;
+        if (!animation.from.model.empty()) {
+            out.push_back({.model = animation.from.model,
+                           .animation = animation.from.animation,
+                           .time = time,
+                           .weight = 1.0F});
+        } else if (cached->nodes != nullptr && has_node_tracks(animation)) {
+            // Its node tracks, as the library's model of them has them.
+            out.push_back({.model = player->library,
+                           .animation = player->animation,
+                           .time = time,
+                           .weight = 1.0F,
+                           .source = cached->nodes});
+        }
         return out;
     });
     world.add_system("animation_player",

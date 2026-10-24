@@ -50,6 +50,9 @@ struct ClipSample {
     // How much it counts for some nodes, by name, in place of weight, as an AnimationTree's
     // filters and root motion track leave them.
     std::map<std::string, float> node_weights{}; // NOLINT(readability-redundant-member-init)
+    // The model to play it from in place of loading model: an animation library's node tracks
+    // as a model's animations (animation::node_animations).
+    std::shared_ptr<const Model> source{}; // NOLINT(readability-redundant-member-init)
 
     friend bool operator==(const ClipSample&, const ClipSample&) = default;
 };
@@ -74,7 +77,7 @@ struct ClipSample {
 
 // A track's value at a time, from 0 to the animation's length: xyz, or a rotation's xyzw. Before
 // its first key or after its last, a looping animation's track goes round from one to the other,
-// and another holds its first or last value, as Godot's tracks with loop wrap do.
+// and another, or one without loop_wrap, holds its first or last value, as Godot's tracks do.
 [[nodiscard]] std::array<float, 4> sample_track(const NodeTrack& track, double time, double length,
                                                 bool loop);
 
@@ -136,8 +139,9 @@ using ModelLoader = std::function<Result<std::shared_ptr<const Model>>(const std
 
 // A model posed as an entity's MeshInstance3D draws it: at rest, then moved by its clips
 // (blend_animation, with a clip's node_weights for the nodes it names), then by its Skeleton3D if
-// it has one (apply_skeleton), or at rest with show_rest_only. A clip whose model doesn't load,
-// or that names an animation it hasn't, is left out.
+// it has one (apply_skeleton), or at rest with show_rest_only. A clip plays from its source, or
+// else its model loaded; one whose model doesn't load, or that names an animation it hasn't, is
+// left out.
 [[nodiscard]] std::vector<NodePose> pose_of(const Model& model, std::span<const ClipSample> clips,
                                             const world::Skeleton3D* skeleton,
                                             const ModelLoader& load);
