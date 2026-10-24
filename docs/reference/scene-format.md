@@ -567,6 +567,7 @@ A reference must name an entity that exists in the same scene.
 | | `stream_paused` | `bool` | `false` | Holds its sounds where they are; clearing it resumes them |
 | | `max_polyphony` | `int` | `1` | Sounds it may play at once, 1 to 64; playing again past this stops the oldest |
 | | `bus` | `std::string` | `"Master"` | The bus it plays through, from the project's [bus layout](#bus-layouts); Master if there is no such bus |
+| | `mix_target` | `std::string` | `"stereo"` | Which speakers play it in [surround](#surround-sound): `stereo` (the front pair), `surround` (every speaker) or `center` (the center speaker and the LFE). Stereo plays it on both |
 | | `parameters` | `std::map<std::string, json::Value>` | `{}` | Its stream's [parameters](#stream-parameters), as Godot's `parameters/`: `switch_to_clip` for interactive music, `stream_<index>_volume_db` for a synchronized stream |
 | `AudioStreamPlayer2D` | `stream`, `volume_db`, `pitch_scale`, `playing`, `autoplay`, `stream_paused`, `max_polyphony`, `bus`, `parameters` | | | As `AudioStreamPlayer`'s; it plays at the entity's `Transform2D` |
 | | `max_distance` | `float` | `2000` | Pixels from the listener beyond which it is silent, 1 or more |
@@ -4152,8 +4153,9 @@ same wherever its entity is; an `AudioStreamPlayer2D` plays at its entity's `Tra
 from the current `AudioListener2D`, and an [`AudioStreamPlayer3D`](#3d-sound) at its
 `Transform3D`, heard from the current `AudioListener3D` or camera. Each plays through a bus of
 the project's [bus layout](#bus-layouts), and every bus mixes into Master, which is what plays.
-[examples/audio](../../examples/audio/) has music, footsteps and both kinds of bus change, and
-[examples/audio-3d](../../examples/audio-3d/) a car passing a listener and a cave's reverb.
+[examples/audio](../../examples/audio/) has music, footsteps and both kinds of bus change,
+[examples/audio-3d](../../examples/audio-3d/) a car passing a listener and a cave's reverb, and
+[examples/surround-sound](../../examples/surround-sound/) a bee flying round a listener in 7.1.
 
 ```json
 "music": {
@@ -4213,7 +4215,8 @@ player plays through. Godot's reverb bus overrides belong to [3D areas](#3d-soun
 ### 3D sound
 
 An `AudioStreamPlayer3D` plays at its entity's `Transform3D`, heard from the current
-`AudioListener3D`, as Godot's `AudioStreamPlayer3D` hears it, in stereo. Distances are meters.
+`AudioListener3D`, as Godot's `AudioStreamPlayer3D` hears it, in stereo or
+[surround](#surround-sound). Distances are meters.
 
 ```json
 "engine": {
@@ -4251,7 +4254,8 @@ An `AudioStreamPlayer3D` plays at its entity's `Transform3D`, heard from the cur
   its distance, at most `max_db`, then times (1 - distance / `max_distance`) when that is set.
   Each side gets the square root of (1 -+ *s* cos *a*) / 2 of that, where *a* is the angle from
   the listener's right to the sound, height left out, and *s* grows with `panning_strength`
-  times `audio.panning_strength_3d`, as Godot's `_calc_output_vol_stereo`.
+  times `audio.panning_strength_3d`, as Godot's `_calc_output_vol_stereo`. In surround it pans
+  over every speaker instead, by Godot's Spcap.
 - As distance fades it, a high shelf above `attenuation_filter_cutoff_hz` takes off the faded
   share of `attenuation_filter_db`, so far sounds are muffled, and with an emission angle
   `emission_angle_filter_attenuation_db` more while the listener is outside the cone. That is the
@@ -4287,6 +4291,40 @@ such area by ID:
   }
 }
 ```
+
+### Surround sound
+
+Sound mixes for the speakers of the project's `audio.speaker_mode`, as Godot's
+`AudioServer::SpeakerMode`: `stereo`, `surround_31`, `surround_51` or `surround_71`. Its default,
+`auto`, is the output device's (5.1 for six channels, 7.1 for eight or more, stereo otherwise),
+and stereo where nothing plays the sound, as in headless runs and sessions. SDL folds a mix for
+more speakers than the device has, so a 7.1 game plays on headphones too.
+[examples/surround-sound](../../examples/surround-sound/) has a bee flying round the listener.
+
+```json
+"audio": {"speaker_mode": "surround_71"}
+```
+
+- As in Godot, each bus mixes a buffer per speaker pair: front left and right, then center and
+  LFE (3.1 and up), rear left and right (5.1 and up) and side left and right (7.1). Each pair
+  runs its own copy of the bus's [effects](#effects), and a compressor's `sidechain` listens to
+  the same pair of its bus. Capture, record and spectrum effects that `audio.*` commands read
+  are the front pair's.
+- An `AudioStreamPlayer`'s `mix_target` picks its speakers: the front pair, every speaker or the
+  center and LFE, at its `volume_db`. Godot plays the LFE at full volume whatever `volume_db`
+  is; here it follows it, as a 3D player's does.
+- An `AudioStreamPlayer2D` plays on the front pair alone, as Godot's.
+- An `AudioStreamPlayer3D` pans over the speakers by Godot's Spcap (speaker-placement
+  correction amplitude panning): each speaker's gain is 0.5 (1 + cos *a*) ^ *t*, where *a* is
+  the angle from the speaker to the sound, height included, over how many speakers face the
+  same way, scaled so the gains keep the sound's power. The tightness *t* is twice
+  `panning_strength` times `audio.panning_strength_3d`, so 1 by default; the speakers face
+  45 degrees off ahead and behind, straight ahead (center) and to each side. The LFE gets all of
+  it, faded with distance as every speaker is. An `Area3D`'s reverb with uniformity spreads over
+  every speaker alike, as Godot's.
+- `audio.state` adds `speaker_mode` and each player's `speakers`, and
+  [`audio.capture`](commands.md#audiocapture) each speaker's level and `.wav` files with a
+  channel for each speaker.
 
 ### Bus layouts
 

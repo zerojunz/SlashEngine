@@ -1,0 +1,61 @@
+{
+  "animations": {
+    "circle": {
+      "length": 4,
+      "loop": "linear",
+      "tracks": [
+        {
+          "keys": [
+            {
+              "time": 0,
+              "value": 0
+            },
+            {
+              "time": 1,
+              "value": 10
+            },
+            {
+              "time": 2,
+              "value": 0
+            },
+            {
+              "time": 3,
+              "value": -10
+            },
+            {
+              "time": 4,
+              "value": 0
+            }
+          ],
+          "path": "Transform3D/position/x"
+        },
+        {
+          "keys": [
+            {
+              "time": 0,
+              "value": -10
+            },
+            {
+              "time": 1,
+              "value": 0
+            },
+            {
+              "time": 2,
+              "value": 10
+            },
+            {
+              "time": 3,
+              "value": 0
+            },
+            {
+              "time": 4,
+              "value": -10
+            }
+          ],
+          "path": "Transform3D/position/z"
+        }
+      ]
+    }
+  },
+  "format": 1
+}
