@@ -144,6 +144,13 @@ struct MeshSceneUniforms {
     // 1 when meshes trace their VoxelGIs (Forward+, and not a reflection probe's capture), then 1
     // for high quality.
     Float4 voxel_gi{};
+    // Forward+'s decals (set_cluster_uniforms): how many, the filter (DecalFilter), the atlas's
+    // width and height in texels.
+    Float4 decal_info{};
+    Float4 screen{}; // the target's width and height in pixels, then 0, 0
+    // The camera's view-projection without TAA's jitter: its x, y and w rows, from which decals
+    // work out how far their textures move across a pixel.
+    std::array<Float4, 3> clip_rows{};
     // Every light drawn in Compatibility; in Forward+, only the directional ones.
     std::array<MeshLightUniforms, kMaxLights3D> lights{};
 };
@@ -158,6 +165,22 @@ struct MeshProbeUniforms {
     Float4 options{};             // 1 to box project, the cube, the reflection mask, 0
 };
 static_assert(sizeof(MeshProbeUniforms) == 112);
+
+// A decal as mesh.hlsl's decals buffer holds it: t19 in space2 (t6 in Metal, t3 in WebGPU's group
+// 0). Its space runs x and z from 0 to 1 across its box and y from -1 to 1 up it.
+struct MeshDecalUniforms {
+    std::array<Float4, 3> rows{}; // the world to its space, a row each
+    // Its albedo, normal, ORM and emission textures' rects in the atlas: left, top, width and
+    // height, as fractions of its size; all 0 for none.
+    std::array<Float4, 4> rects{};
+    Float4 modulate{};                   // linear, its alpha times the distance fade
+    Float4 normal{};                     // its up in the world, then the normal fade
+    std::array<Float4, 3> normal_rows{}; // its turn, orthonormalized, a row each
+    Float4 params{}; // emission energy times the distance fade, albedo mix, upper and lower fade
+    std::array<std::uint32_t, 4> options{}; // its cull mask, then 0
+};
+static_assert(sizeof(MeshDecalUniforms) == 224);
+struct DecalAtlas; // in decal.hpp
 
 // The shadows the fragment stage samples: b2 in space3. Matrices take a point in the world to its
 // shadow atlas: x and y its texture coordinate there, z the depth to compare.
@@ -194,7 +217,7 @@ static_assert(sizeof(MeshCameraUniforms) == 144);
 static_assert(sizeof(MeshInstanceUniforms) == 224);
 static_assert(sizeof(MeshVoxelGIUniforms) == 240);
 static_assert(sizeof(MeshSurfaceUniforms) == 784);
-static_assert(sizeof(MeshSceneUniforms) == 272 + (80 * kMaxLights3D));
+static_assert(sizeof(MeshSceneUniforms) == 352 + (80 * kMaxLights3D));
 static_assert(sizeof(MeshDirectionalShadowUniforms) == 320);
 static_assert(sizeof(MeshPositionalShadowUniforms) == 576);
 static_assert(sizeof(MeshShadowUniforms) ==
@@ -204,6 +227,8 @@ static_assert(sizeof(MeshShadowPassUniforms) == 144);
 // Godot's Color::srgb_to_linear, for colors the CPU converts before the shader sees them.
 [[nodiscard]] float srgb_to_linear_exact(float value);
 
+// Where a camera matrix's camera is in the world: the inverse of the matrix applied to the origin.
+[[nodiscard]] Float3 camera_place(const Mat4& camera);
 // The scene's camera, with no jitter and as the frame before's.
 [[nodiscard]] MeshCameraUniforms mesh_camera_uniforms(const Scene3D& scene);
 // A draw's instance, which was at previous in the frame before (at transform without one).
@@ -227,27 +252,41 @@ mesh_instance_uniforms(const Mat4& transform, const Material3D& material, const 
 // kClusterSlices slices from the camera to the far plane. cells holds, for each tile in rows from
 // the top left, words words with bit i of word i / 32 set for each light that may reach the
 // tile, then for each slice the first of those lights in it in its low 16 bits and one past the
-// last in its high 16 bits (0 for none). The lights are the omni and spot ones, nearest the camera
-// first, so that each slice's lights are a short range.
+// last in its high 16 bits (0 for none); then, when the frame has decals, the same for them in
+// decal_words words. The lights are the omni and spot ones, nearest the camera first, so that each
+// slice's lights are a short range, and the decals in place_decals' order.
 inline constexpr std::uint32_t kClusterSize = 32;
 inline constexpr std::uint32_t kClusterSlices = 32;
 struct LightClusters {
+    std::uint32_t width = 0; // the target's size in pixels
+    std::uint32_t height = 0;
     std::uint32_t tiles_across = 0;
     std::uint32_t tiles_down = 0;
-    std::uint32_t words = 1; // the lights over 32, rounded up, and at least 1
+    std::uint32_t words = 1;       // the lights over 32, rounded up, and at least 1
+    std::uint32_t decal_words = 0; // the decals over 32, rounded up
     float slices_per_depth = 0.0F;
     std::vector<MeshLightUniforms> lights;
+    std::vector<MeshDecalUniforms> decals;
     std::vector<std::uint32_t> cells;
 
-    // MeshSceneUniforms::cluster.
+    // MeshSceneUniforms::cluster: tiles across, words, slices per unit of depth, decal words.
     [[nodiscard]] Float4 uniform() const;
+    // The words each tile takes in cells.
+    [[nodiscard]] std::uint32_t stride() const;
 };
 // The far plane's distance from the camera for a projection.
 [[nodiscard]] float far_plane(const Mat4& projection);
-// The clusters of a scene drawn to a target width by height pixels. A light reaches every tile and
-// slice its range's sphere could cover, rounded out, so that every pixel it lights finds it.
+// The clusters of a scene drawn to a target width by height pixels, with its decals when it has
+// an atlas of their textures. A light reaches every tile and slice its range's sphere could
+// cover, rounded out, and a decal those its box's corners could, so that every pixel either
+// reaches finds it.
 [[nodiscard]] LightClusters build_clusters(const Scene3D& scene, std::uint32_t width,
-                                           std::uint32_t height);
+                                           std::uint32_t height,
+                                           const DecalAtlas* decal_atlas = nullptr);
+
+// range_mask in shaders/mesh.hlsl: the bits of word of a tile's bits for the lights or decals from
+// first up to end.
+[[nodiscard]] std::uint32_t range_mask(std::uint32_t word, std::uint32_t first, std::uint32_t end);
 
 // The box around a mesh's positions, for sorting draws.
 struct Bounds {
@@ -428,6 +467,8 @@ struct MeshMaps {
     // atlas cube's levels.
     std::span<const MeshProbeUniforms> probes;
     const std::vector<CubeImage>* probe_cubes = nullptr;
+    // Forward+'s decals' atlas, when the clusters have decals.
+    const DecalAtlas* decal_atlas = nullptr;
 };
 
 // A half-float texture's texels, as floats: RGBA, in rows from the top.

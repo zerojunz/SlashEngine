@@ -8,9 +8,9 @@
 // Keep it in step with shade_mesh in src/mesh.cpp, its CPU twin. Registers follow SDL's GPU
 // conventions: vertex uniforms in space1, fragment textures and samplers in space2, fragment
 // uniforms in space3. mesh_clustered.hlsl defines CLUSTERED and includes this file for Forward+,
-// whose omni and spot lights come from clusters of the screen instead of the scene's uniforms,
-// and which reads screen-space ambient occlusion and reflections (ssao.hlsl and ssr.hlsl draw
-// them). mesh_normal.hlsl defines NORMAL_ROUGHNESS for Forward+'s prepass, which draws the normals
+// whose omni and spot lights and decals come from clusters of the screen instead of the scene's
+// uniforms, and which reads screen-space ambient occlusion and reflections (ssao.hlsl and ssr.hlsl
+// draw them). mesh_normal.hlsl defines NORMAL_ROUGHNESS for Forward+'s prepass, which draws the normals
 // and roughness that ssao.hlsl and ssr.hlsl read, and mesh_motion.hlsl MOTION_VECTORS too for
 // the prepass of a frame with TAA, which draws each pixel's motion vector into a second target.
 
@@ -197,6 +197,11 @@ cbuffer Scene : register(b1, space3) {
     // 1 when meshes trace their VoxelGIs (Forward+, and not a reflection probe's capture), then 1
     // for high quality.
     float4 scene_voxel_gi;
+    // Forward+'s decals: how many, the filter, the atlas's width and height in texels.
+    float4 decal_info;
+    float4 screen; // the target's width and height in pixels
+    // The camera's view-projection without TAA's jitter: its x, y and w rows.
+    float4 clip_rows[3];
     // Every light in Compatibility; in Forward+, only the directional ones.
     Light lights[64];
 };
@@ -230,7 +235,9 @@ cbuffer Shadows : register(b2, space3) {
 // Forward+'s omni and spot lights, nearest first, and the clusters that pick them, laid out as
 // Godot's cluster buffer: for each tile of kClusterSize pixels, cluster.y words with a bit for
 // each light that reaches it, then for each of kClusterSlices depth slices the first of those
-// lights in the slice and one past the last (src/clusters.cpp). SDL binds a fragment stage's
+// lights in the slice and one past the last, then the same for the decals in cluster.w words when
+// there are some (src/clusters.cpp). The decals' textures are in decal_atlas, a texel a word (RGBA8,
+// red lowest), its levels one after another (src/decal.cpp). SDL binds a fragment stage's
 // storage buffers after its textures, and in Metal after its uniforms; WebGPU binds them as a
 // group of their own, the mesh pipeline's otherwise empty group 0. The screen's layers are the
 // frame's size, white when the frame draws neither: layer 0 the screen-space ambient occlusion,
@@ -248,18 +255,34 @@ struct Probe {
     float4 ambient; // the ambient color, linear, times its energy; then the mode
     float4 options; // 1 to box project, the cube, the reflection mask, 0
 };
+// A decal: its space runs x and z from 0 to 1 across its box and y from -1 to 1 up it.
+struct Decal {
+    float4 rows[3];        // the world to its space, a row each
+    float4 rects[4];       // its albedo, normal, ORM and emission rects in the atlas, or 0
+    float4 modulate;       // linear, its alpha times the distance fade
+    float4 normal;         // its up in the world, then the normal fade
+    float4 normal_rows[3]; // its turn, orthonormalized, a row each
+    float4 params;         // emission energy, albedo mix, upper fade, lower fade
+    uint4 options;         // its cull mask
+};
 #if defined(SLASH_MSL)
 StructuredBuffer<Light> clustered_lights : register(t3, space2);
 StructuredBuffer<uint> clusters : register(t4, space2);
 StructuredBuffer<Probe> probes : register(t5, space2);
+StructuredBuffer<Decal> decals : register(t6, space2);
+StructuredBuffer<uint> decal_atlas : register(t7, space2);
 #elif defined(SLASH_WGSL)
 StructuredBuffer<Light> clustered_lights : register(t0, space0);
 StructuredBuffer<uint> clusters : register(t1, space0);
 StructuredBuffer<Probe> probes : register(t2, space0);
+StructuredBuffer<Decal> decals : register(t3, space0);
+StructuredBuffer<uint> decal_atlas : register(t4, space0);
 #else
 StructuredBuffer<Light> clustered_lights : register(t16, space2);
 StructuredBuffer<uint> clusters : register(t17, space2);
 StructuredBuffer<Probe> probes : register(t18, space2);
+StructuredBuffer<Decal> decals : register(t19, space2);
+StructuredBuffer<uint> decal_atlas : register(t20, space2);
 #endif
 static const uint kClusterSize = 32u;
 static const uint kClusterSlices = 32u;
@@ -587,6 +610,212 @@ uint range_mask(uint word, uint first, uint end) {
     uint below_high = high >= 32 ? 0xFFFFFFFFu : (1u << (uint)high) - 1u;
     uint below_low = low >= 32 ? 0xFFFFFFFFu : (1u << (uint)low) - 1u;
     return below_high & ~below_low;
+}
+
+// The words each tile takes in clusters: its lights' bits and ranges, then its decals'.
+uint cluster_stride() {
+    uint decal_words = (uint)cluster.w;
+    return (uint)cluster.y + kClusterSlices + (decal_words > 0u ? decal_words + kClusterSlices : 0u);
+}
+
+// A texel of the decal atlas at level's offset and size, clamped to its edges, decoded from sRGB for
+// the albedo and emission textures, as Godot's sRGB view of the atlas reads them.
+float4 decal_texel(uint offset, uint width, uint height, int2 at, bool srgb) {
+    at = clamp(at, int2(0, 0), int2((int)width - 1, (int)height - 1));
+    uint word = decal_atlas[offset + (uint)at.y * width + (uint)at.x];
+    float4 texel = float4((float)(word & 0xFFu), (float)((word >> 8u) & 0xFFu),
+                          (float)((word >> 16u) & 0xFFu), (float)(word >> 24u)) /
+                   255.0;
+    if (srgb) {
+        texel.rgb = srgb_to_linear(texel.rgb);
+    }
+    return texel;
+}
+
+// A level of the decal atlas at uv, by its nearest texel or between the four around uv.
+float4 decal_level(uint level, float2 uv, bool linear_filter, bool srgb) {
+    uint atlas_width = (uint)decal_info.z;
+    uint atlas_height = (uint)decal_info.w;
+    uint offset = 0u;
+    for (uint i = 0u; i < level; ++i) {
+        offset += max(atlas_width >> i, 1u) * max(atlas_height >> i, 1u);
+    }
+    uint width = max(atlas_width >> level, 1u);
+    uint height = max(atlas_height >> level, 1u);
+    float2 size = float2((float)width, (float)height);
+    // The texel under uv, or the four around it; in loops, so that the shader reads texels in one
+    // place.
+    float2 at = linear_filter ? uv * size - 0.5 : uv * size;
+    float2 low = floor(at);
+    float2 f = at - low;
+    int2 corner = (int2)clamp(low, -2.0, size + 1.0);
+    uint taps = linear_filter ? 4u : 1u;
+    float4 texels[4];
+    [loop] for (uint i = 0u; i < taps; ++i) {
+        texels[i] = decal_texel(offset, width, height, corner + int2(i & 1u, i >> 1u), srgb);
+    }
+    if (!linear_filter) {
+        return texels[0];
+    }
+    return lerp(lerp(texels[0], texels[1], f.x), lerp(texels[2], texels[3], f.x), f.y);
+}
+
+// The decal atlas at uv, which moves by dx and dy across a pixel, as the decals' filter samples it
+// (nearest, linear, then those with mipmaps, then the anisotropic ones, which filter as those with
+// mipmaps): with mipmaps, the level log2 of the farther the texture moves across a pixel in texels,
+// blended between the levels around it.
+float4 decal_sample(float2 uv, float2 dx, float2 dy, bool srgb) {
+    uint filter = (uint)decal_info.y;
+    bool linear_filter = filter == 1u || filter == 3u || filter == 5u;
+    uint level = 0u;
+    float blend = 0.0;
+    if (filter >= 2u) {
+        float2 size = decal_info.zw;
+        float rho = max(length(dx * size), length(dy * size));
+        float lambda = rho >= 16.0 ? 4.0 : log2(rho);
+        if (lambda > 0.0) {
+            lambda = min(lambda, 4.0);
+            float low = floor(lambda);
+            level = (uint)low;
+            blend = lambda - low;
+        }
+    }
+    float4 color = (float4)0.0;
+    uint levels = blend > 0.0 ? 2u : 1u;
+    [loop] for (uint i = 0u; i < levels; ++i) {
+        float4 sampled = decal_level(level + i, uv, linear_filter, srgb);
+        color = i == 0u ? sampled : lerp(color, sampled, blend);
+    }
+    return color;
+}
+
+// How far a point moves across a pixel to the right (dx) and down (dy), along the plane through it
+// facing geometry, from the camera's rows: what Godot takes from dFdx and dFdy of the vertex, worked
+// out so that every device picks the same atlas levels.
+void surface_steps(float3 world, float3 geometry, out float3 dx, out float3 dy) {
+    float3 helper = abs(geometry.y) < 0.999 ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
+    float3 t1 = normalize(cross(helper, geometry));
+    float3 t2 = cross(geometry, t1);
+    float4 p = float4(world, 1.0);
+    float x = dot(clip_rows[0], p);
+    float y = dot(clip_rows[1], p);
+    float w = dot(clip_rows[2], p);
+    float dw1 = dot(clip_rows[2].xyz, t1);
+    float dw2 = dot(clip_rows[2].xyz, t2);
+    float2 s1 = float2((dot(clip_rows[0].xyz, t1) * w - x * dw1) / (w * w) * (0.5 * screen.x),
+                       -((dot(clip_rows[1].xyz, t1) * w - y * dw1) / (w * w)) * (0.5 * screen.y));
+    float2 s2 = float2((dot(clip_rows[0].xyz, t2) * w - x * dw2) / (w * w) * (0.5 * screen.x),
+                       -((dot(clip_rows[1].xyz, t2) * w - y * dw2) / (w * w)) * (0.5 * screen.y));
+    float det = s1.x * s2.y - s2.x * s1.y;
+    if (!(abs(det) > 1.0e-20)) {
+        dx = t1 * 1.0e10;
+        dy = t2 * 1.0e10;
+        return;
+    }
+    dx = (t1 * s2.y - t2 * s1.y) / det;
+    dy = (t2 * s1.x - t1 * s2.x) / det;
+}
+
+// x to the power y, as Godot's fade takes it, with anything to the power 0 taken as 1 and 0 to any
+// other power as 0.
+float decal_fade(float x, float y) {
+    if (y == 0.0) {
+        return 1.0;
+    }
+    return x > 0.0 ? pow(x, y) : 0.0;
+}
+
+bool has_rect(float4 rect) {
+    return any(rect != (float4)0.0);
+}
+
+// One decal's textures over the surface, as the body of Godot's decal loop.
+void apply_decal(Decal decal, float3 world, float3 geometry, float3 dx, float3 dy,
+                 inout float3 base, inout float3 normal, inout float ao, inout float roughness,
+                 inout float metallic, inout float3 emitted) {
+    float4 p = float4(world, 1.0);
+    float3 local = float3(dot(decal.rows[0], p), dot(decal.rows[1], p), dot(decal.rows[2], p));
+    if (local.x < 0.0 || local.y < -1.0 || local.z < 0.0 || local.x > 1.0 || local.y > 1.0 ||
+        local.z > 1.0) {
+        return; // outside its box
+    }
+    float fade = decal_fade(1.0 - abs(local.y), local.y > 0.0 ? decal.params.z : decal.params.w);
+    if (decal.normal.w > 0.0) {
+        fade *= smoothstep(decal.normal.w, 1.0, dot(geometry, decal.normal.xyz) * 0.5 + 0.5);
+    }
+    float2 uv_dx = float2(dot(decal.rows[0].xyz, dx), dot(decal.rows[2].xyz, dx));
+    float2 uv_dy = float2(dot(decal.rows[0].xyz, dy), dot(decal.rows[2].xyz, dy));
+    // Its albedo, normal, ORM and emission textures, in a loop so that the shader samples in one
+    // place; the normal and ORM ones only with an albedo one, as Godot's.
+    bool albedo_used = has_rect(decal.rects[0]);
+    float4 texels[4];
+    [loop] for (uint k = 0u; k < 4u; ++k) {
+        float4 rect = decal.rects[k];
+        texels[k] = (float4)0.0;
+        if (has_rect(rect) && (albedo_used || k == 3u)) {
+            texels[k] = decal_sample(local.xz * rect.zw + rect.xy, uv_dx * rect.zw,
+                                     uv_dy * rect.zw, k == 0u || k == 3u);
+        }
+    }
+    if (albedo_used) {
+        float4 albedo = texels[0] * decal.modulate;
+        albedo.a *= fade;
+        base = lerp(base, albedo.rgb, albedo.a * decal.params.y);
+        if (has_rect(decal.rects[1])) {
+            // Y down, as most tools draw normal maps, and turned from the decal's space, whose up
+            // is y, by its xzy.
+            float3 n = texels[1].xyz;
+            n.xy = n.xy * float2(2.0, -2.0) - float2(1.0, -1.0);
+            n.z = sqrt(max(0.0, 1.0 - dot(n.xy, n.xy)));
+            float3 turned = float3(dot(decal.normal_rows[0].xyz, n.xzy),
+                                   dot(decal.normal_rows[1].xyz, n.xzy),
+                                   dot(decal.normal_rows[2].xyz, n.xzy));
+            normal = normalize(lerp(normal, turned, albedo.a));
+        }
+        if (has_rect(decal.rects[2])) {
+            float3 orm = texels[2].xyz;
+            ao = lerp(ao, orm.r, albedo.a);
+            roughness = lerp(roughness, orm.g, albedo.a);
+            metallic = lerp(metallic, orm.b, albedo.a);
+        }
+    }
+    if (has_rect(decal.rects[3])) {
+        // Emission adds, apart from the albedo.
+        emitted += texels[3].rgb * decal.modulate.rgb * (decal.params.x * fade);
+    }
+}
+
+// Godot's decals (scene_forward_clustered.glsl): those of the pixel's tile within its slice's
+// range, each word's from its highest bit, that share a layer with the mesh, over its surface
+// before it is lit; geometry is its vertex normal, turned to its side, as Godot's geo_normal.
+void apply_decals(VertexOutput input, float3 geometry, inout float3 base, inout float3 normal,
+                  inout float ao, inout float roughness, inout float metallic,
+                  inout float3 emitted) {
+    uint2 tile = (uint2)input.position.xy / kClusterSize;
+    uint words = (uint)cluster.y;
+    uint decal_words = (uint)cluster.w;
+    uint cell = (tile.y * (uint)cluster.x + tile.x) * cluster_stride() + words + kClusterSlices;
+    float depth = -(dot(input.world, camera_z.xyz) + camera_z.w);
+    uint slice = (uint)clamp(depth * cluster.z, 0.0, (float)(kClusterSlices - 1u));
+    uint range = clusters[cell + decal_words + slice];
+    uint first = range & 0xFFFFu;
+    uint end = range >> 16u;
+    float3 geo = normalize(geometry);
+    float3 dx;
+    float3 dy;
+    surface_steps(input.world, geo, dx, dy);
+    for (uint word = first >> 5u; word < (end + 31u) >> 5u; ++word) {
+        uint mask = clusters[cell + word] & range_mask(word, first, end);
+        while (mask != 0u) {
+            uint bit = firstbithigh(mask);
+            mask &= ~(1u << bit);
+            Decal decal = decals[word * 32u + bit];
+            if ((decal.options.x & options.z) != 0u) {
+                apply_decal(decal, input.world, geo, dx, dy, base, normal, ao, roughness,
+                            metallic, emitted);
+            }
+        }
+    }
 }
 #endif
 
@@ -928,7 +1157,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     // range, nearest first, as Godot's scene_forward_clustered.glsl walks them.
     uint2 tile = (uint2)input.position.xy / kClusterSize;
     uint words = (uint)cluster.y;
-    uint cell = (tile.y * (uint)cluster.x + tile.x) * (words + kClusterSlices);
+    uint cell = (tile.y * (uint)cluster.x + tile.x) * cluster_stride();
     float depth = -(dot(input.world, camera_z.xyz) + camera_z.w);
     uint slice = (uint)clamp(depth * cluster.z, 0.0, (float)(kClusterSlices - 1u));
     uint range = clusters[cell + words + slice];
@@ -1145,16 +1374,33 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     return normal_roughness;
 #endif
 #else
+    float3 emitted = (float3)0.0;
+    if ((flags & kUnshaded) == 0u) {
+        emitted = emission.rgb;
+        if ((flags & kEmissionTexture) != 0u) {
+            emitted += emission_texel.rgb;
+        }
+        emitted = srgb_to_linear(emitted) * emission.w;
+    }
+    // Shadows offset the point they sample along the vertex normal, as Godot's normal_interp; a
+    // terrain's along its shape's.
+    float3 geometry = terrain ? frame_direction(input, shape) : normalize(input.normal);
     // Godot's SSAO: the frame's occlusion at the pixel darkens the opaque meshes' ambient light,
-    // and their direct light by its light affect times its AO channel affect. Its SSR (alpha
-    // below 0 for none) goes over their reflections of the sky.
+    // with the decals' ambient occlusion, and their direct light by its light affect times its AO
+    // channel affect. Its SSR (alpha below 0 for none) goes over their reflections of the sky.
     float ao = 1.0;
     float ao_direct = 1.0;
     float4 ssr = float4(0.0, 0.0, 0.0, -1.0);
 #ifdef CLUSTERED
+    if (decal_info.x > 0.0) {
+        // Forward+'s decals change the surface before it is lit.
+        bool flipped = (flags & kSideCheck) != 0u && !front;
+        apply_decals(input, flipped ? -geometry : geometry, base, normal, ao, roughness, metallic,
+                     emitted);
+    }
     bool opaque = (flags & kHasAlpha) == 0u || (flags & kAlphaScissor) != 0u;
     if (ssao.x != 0.0 && opaque) {
-        ao = screen_texture.Load(int4((int2)input.position.xy, 0, 0)).r;
+        ao = min(ao, screen_texture.Load(int4((int2)input.position.xy, 0, 0)).r);
         ao_direct = lerp(1.0, ao, lerp(0.0, max(0.0, ssao.y), ssao.z));
     }
     if (ssao.w != 0.0 && opaque) {
@@ -1163,14 +1409,6 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
 #endif
     float3 lit = base;
     if ((flags & kUnshaded) == 0u) {
-        float3 emitted = emission.rgb;
-        if ((flags & kEmissionTexture) != 0u) {
-            emitted += emission_texel.rgb;
-        }
-        emitted = srgb_to_linear(emitted) * emission.w;
-        // Shadows offset the point they sample along the vertex normal, as Godot's
-        // normal_interp; a terrain's along its shape's.
-        float3 geometry = terrain ? frame_direction(input, shape) : normalize(input.normal);
         lit = lit_color(input, base, normal, geometry, metallic, roughness, emitted, ao,
                         ao_direct, ssr);
     }

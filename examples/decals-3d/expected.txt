@@ -1,0 +1,10 @@
+scene.open {"path":"main.scene.json"}
+{"entities":8,"path":"main.scene.json"}
+-- the line, the asphalt beside it, the puddle, a bar of the sign and the bare wall
+frame.capture {"path":"shots/street.png","points":[[96,120],[130,120],[214,128],[137,18],[60,40]]}
+{"colors":[[1,0.859,0.196,1],[0.392,0.392,0.42,1],[0.227,0.235,0.267,1],[0.612,1,1,1],[0.58,0.345,0.282,1]],"drawn":{"meshes":2},"height":180,"path":"shots/street.png","width":320}
+-- the line fades to 40%, the puddle projects only onto layer 2, where the street isn't, and the sign glows three times as bright
+batch {"commands":[{"command":"component.set","params":{"components":{"Decal":{"modulate":[1,1,1,0.4]}},"id":"paint"}},{"command":"component.set","params":{"components":{"Decal":{"cull_mask":2}},"id":"puddle"}},{"command":"component.set","params":{"components":{"Decal":{"emission_energy":6}},"id":"sign"}}]}
+{"results":[{"changed":{"Decal":{"modulate":[1.0,1.0,1.0,0.4]}},"id":"paint"},{"changed":{"Decal":{"cull_mask":2}},"id":"puddle"},{"changed":{"Decal":{"emission_energy":6.0}},"id":"sign"}]}
+frame.capture {"points":[[96,120],[130,120],[214,128],[137,18],[60,40]]}
+{"colors":[[0.737,0.635,0.353,1],[0.392,0.392,0.42,1],[0.392,0.392,0.42,1],[0.671,1,1,1],[0.58,0.345,0.282,1]],"drawn":{"meshes":2},"height":180,"width":320}

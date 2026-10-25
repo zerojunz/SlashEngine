@@ -92,6 +92,9 @@ struct Project {
     // rendering.anti_aliasing.quality.use_taa: temporal antialiasing of the 3D world in Forward+,
     // as Godot's.
     bool use_taa = false;
+    // rendering.textures.decals.filter: how decals' textures are filtered, as Godot's
+    // rendering/textures/decals/filter.
+    render::DecalFilter decal_filter = render::DecalFilter::LinearMipmaps;
     // The render scale and how the world scales to the screen, as Godot's scaling_3d.
     render::Scaling scaling;
     // How 3D meshes are lit, as Godot's rendering/renderer/rendering_method: Forward+'s clustered

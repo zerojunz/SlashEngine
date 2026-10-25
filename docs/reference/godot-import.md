@@ -132,6 +132,7 @@ above the world.
 | `ReflectionProbe` | `Transform3D` and `ReflectionProbe`, with its fields of the same names |
 | `LightmapGI` | `Transform3D` and `LightmapGI`, with its fields of the same names and its `camera_attributes` on an entity of their own; its baked `light_data` isn't read, so bake it again with [`lightmap.bake`](commands.md#lightmapbake) |
 | `LightmapProbe` | `Transform3D` and `LightmapProbe` |
+| `Decal` | `Transform3D` and `Decal`, with its fields of the same names; Godot 4.0's `extents` become a `size` twice as big |
 | `VoxelGI` | `Transform3D` and `VoxelGI`, with its fields and its data's of the same names, its `camera_attributes` on an entity of their own, and its baked cells as a `.voxelgi.json` file (see [3D](#3d)) |
 | An instance of a model file (`.glb`, `.gltf`, `.fbx`, `.blend`) | `Transform3D` and `MeshInstance3D` drawing the model |
 | `CSGCombiner3D`, `CSGBox3D`, `CSGSphere3D`, `CSGCylinder3D`, `CSGTorus3D`, `CSGPolygon3D`, `CSGMesh3D` | `Transform3D` and the component of the same name, with its material (see [3D](#3d)) |
@@ -589,6 +590,7 @@ on its top.
 | `rendering/environment/ssao/quality`, `half_size`, `adaptive_target`, `blur_passes`, `fadeout_from`, `fadeout_to` | `rendering.environment.ssao` |
 | `rendering/environment/screen_space_reflection/half_size` | `rendering.environment.screen_space_reflection` |
 | `rendering/reflections/reflection_atlas/reflection_size`, `reflection_count` | `rendering.reflections.reflection_atlas`; a size that isn't a power of two from 32 to 2048 is reported |
+| `rendering/textures/decals/filter` | `rendering.textures.decals.filter`: `0` is `"nearest"`, `1` `"linear"` and so on to `5`, `"linear_mipmaps_anisotropic"` |
 | `rendering/global_illumination/voxel_gi/quality` | `rendering.global_illumination.voxel_gi.quality`: `0` is `"low"`, `1` is `"high"` |
 | `rendering/anti_aliasing/quality/use_taa` | `rendering.anti_aliasing.quality.use_taa` |
 | `rendering/scaling_3d/mode`, `scale`, `fsr_sharpness` | `rendering.scaling`: `bilinear`, `fsr` or `fsr2`; MetalFX isn't built, so its spatial mode becomes `fsr` and its temporal mode `fsr2`, and both are reported |
@@ -699,7 +701,7 @@ The report lists each of these once per kind, with how many and where it was fir
 | `ShaderMaterial` on a 3D mesh or a sky | A game's own 3D shaders aren't supported yet |
 | `HeightMapShape3D` | Use an [`HTerrain`](scene-format.md#heightmap-terrains), whose height field collides |
 | The HTerrain plugin's detail layers (`HTerrainDetailLayer`), texture arrays, splat maps past the first, triplanar mapping and tile reduction | Grass and other details aren't supported yet; a terrain mixes four textures by one splat map |
-| `GPUParticles3D`, `CPUParticles3D`, `Decal` and other 3D nodes with no SlashEngine component | Not supported yet; their entities keep their place in the tree |
+| `GPUParticles3D`, `CPUParticles3D` and other 3D nodes with no SlashEngine component | Not supported yet; their entities keep their place in the tree |
 | Audio and animation tracks | Play the sound or the other animation from gameplay code, on an event track's event |
 | Bezier handles, the capture update mode, blend times and markers | A bezier track plays cubic through its keys, a capture track as continuous, and animations switch without blending |
 | Tracks on a control's `position` or `size` | Animate its offsets instead |

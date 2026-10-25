@@ -1073,6 +1073,123 @@ TEST_CASE("ReflectionProbes reach the frame largest first, with cubes in one atl
     CHECK(frame->scene.reflections.probes.size() == 3);
 }
 
+TEST_CASE("Decals reach the frame in Forward+, their textures by path") {
+    Scene scene;
+    std::map<std::string, std::shared_ptr<const render::Image>, std::less<>> images;
+    images["red.png"] = std::make_shared<const render::Image>(
+        render::Image{.width = 1, .height = 1, .pixels = {255, 0, 0, 255}});
+    images["flat.png"] = std::make_shared<const render::Image>(
+        render::Image{.width = 1, .height = 1, .pixels = {128, 128, 255, 255}});
+    const scene3d::ImageSource source =
+        [&images](const std::string& path) -> slash::Result<std::shared_ptr<const render::Image>> {
+        const auto it = images.find(path);
+        if (it == images.end()) {
+            return slash::make_error(slash::ErrorCode::NotFound, "no such file");
+        }
+        return it->second;
+    };
+    scene.create("camera", R"({"Transform3D": {}, "Camera3D": {"cull_mask": 3}})");
+    scene.create("decal", R"({"Transform3D": {"position": [1, 2, -5]},
+        "Decal": {"size": [4, 2, 4], "texture_albedo": "red.png", "texture_normal": "flat.png",
+        "emission_energy": 2, "modulate": [1, 0.5, 0.5, 1], "albedo_mix": 0.5,
+        "normal_fade": 2, "upper_fade": -1, "lower_fade": 0.5, "distance_fade_enabled": true,
+        "distance_fade_begin": 20, "distance_fade_length": 5, "cull_mask": 3, "layers": 2,
+        "sorting_offset": 1.5}})");
+    const entt::entity hidden = scene.create(
+        "hidden", R"({"Transform3D": {"visible": false}, "Decal": {"texture_albedo": "red.png"}})");
+    scene.create("masked", R"({"Transform3D": {}, "Decal": {"texture_albedo": "red.png",
+        "layers": 4}})");
+    const entt::entity missing =
+        scene.create("missing", R"({"Transform3D": {}, "Decal": {"texture_albedo": "gone.png"}})");
+    const auto device = render::create_null_device();
+    scene3d::Renderer renderer(*device, nullptr, {}, {}, {}, source);
+    auto frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}, {}, 0.0, {}, {}, {}, {},
+                                  render::RenderMethod::ForwardPlus, false, false, std::nullopt,
+                                  render::DecalFilter::Nearest);
+    REQUIRE(frame.has_value());
+    // The missing texture is reported and its decal left out; the hidden decal and the one on a
+    // layer the camera doesn't see are left out quietly.
+    REQUIRE(renderer.problems().size() == 1);
+    CHECK(renderer.problems()[0].entity == missing);
+    CHECK(renderer.problems()[0].path == "/components/Decal/texture_albedo");
+    CHECK(renderer.problems()[0].message == "no such file");
+    const render::Decals3D& decals = frame->scene.decals;
+    CHECK(decals.filter == render::DecalFilter::Nearest);
+    REQUIRE(decals.decals.size() == 1);
+    const render::Decal3D& decal = decals.decals[0];
+    CHECK(decal.transform.at(12) == 1.0F);
+    CHECK(decal.transform.at(13) == 2.0F);
+    CHECK(decal.transform.at(14) == -5.0F);
+    CHECK(decal.size == std::array{4.0F, 2.0F, 4.0F});
+    CHECK(decal.albedo == images["red.png"]);
+    CHECK(decal.normal == images["flat.png"]);
+    CHECK(decal.orm == nullptr);
+    CHECK(decal.emission == nullptr);
+    CHECK(decal.emission_energy == 2.0F);
+    CHECK(decal.modulate == std::array{1.0F, 0.5F, 0.5F, 1.0F});
+    CHECK(decal.albedo_mix == 0.5F);
+    // Fades are kept in Godot's ranges.
+    CHECK(decal.normal_fade == 1.0F);
+    CHECK(decal.upper_fade == 0.0F);
+    CHECK(decal.lower_fade == 0.5F);
+    CHECK(decal.distance_fade);
+    CHECK(decal.distance_fade_begin == 20.0F);
+    CHECK(decal.distance_fade_length == 5.0F);
+    CHECK(decal.cull_mask == 3U);
+    CHECK(decal.sorting_offset == 1.5F);
+    // Compatibility draws no decals, as Godot's.
+    frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}, {}, 0.0, {}, {}, {}, {},
+                             render::RenderMethod::Compatibility);
+    CHECK(frame->scene.decals.decals.empty());
+    // A shown decal takes part again.
+    scene.world.ecs().get<world::Transform3D>(hidden).visible = true;
+    frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {});
+    CHECK(frame->scene.decals.decals.size() == 2);
+    CHECK(frame->scene.decals.filter == render::DecalFilter::LinearMipmaps);
+}
+
+TEST_CASE("decals whose textures overflow the atlas are reported, and those before them kept") {
+    Scene scene;
+    std::map<std::string, std::shared_ptr<const render::Image>, std::less<>> images;
+    const scene3d::ImageSource source =
+        [&images](const std::string& path) -> slash::Result<std::shared_ptr<const render::Image>> {
+        const auto it = images.find(path);
+        if (it == images.end()) {
+            return slash::make_error(slash::ErrorCode::NotFound, "no such file");
+        }
+        return it->second;
+    };
+    scene.create("camera", R"({"Transform3D": {}, "Camera3D": {}})");
+    // Ten decals of four strips 16384 texels across each need more than an atlas holds.
+    constexpr std::size_t kDecals = 10;
+    constexpr std::uint32_t kWide = 16384;
+    for (std::size_t i = 0; i < kDecals; ++i) {
+        std::string fields;
+        for (const char* field : {"albedo", "normal", "orm", "emission"}) {
+            const std::string path = std::to_string(i) + field + ".png";
+            images[path] = std::make_shared<const render::Image>(render::Image{
+                .width = kWide, .height = 1, .pixels = std::vector<std::uint8_t>(kWide * 4)});
+            fields += std::string(fields.empty() ? "" : ", ") + "\"texture_" + field + "\": \"" +
+                      path + "\"";
+        }
+        scene.create("decal" + std::to_string(i),
+                     R"({"Transform3D": {}, "Decal": {)" + fields + "}}");
+    }
+    const auto device = render::create_null_device();
+    scene3d::Renderer renderer(*device, nullptr, {}, {}, {}, source);
+    const auto frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {});
+    REQUIRE(frame.has_value());
+    const std::size_t kept = frame->scene.decals.decals.size();
+    CHECK(kept > 0);
+    CHECK(kept < kDecals);
+    CHECK(render::check_decals(frame->scene.decals).ok());
+    REQUIRE(renderer.problems().size() == kDecals - kept);
+    for (const auto& problem : renderer.problems()) {
+        CHECK(problem.path == "/components/Decal");
+        CHECK(problem.message.find("past the 33554432 it holds") != std::string::npos);
+    }
+}
+
 TEST_CASE("a captured frame reflects a glowing cube in a polished floor, with a ReflectionProbe") {
     Scene scene;
     scene.create("camera", R"({"Transform3D": {"position": [0, 1, 3], "rotation": [-0.3, 0, 0]},
