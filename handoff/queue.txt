@@ -1,0 +1,45 @@
+# Queue after #148 (navigation, 746e4a5 on anim-tree = 8744c9c + 42fafe5 on the PR branch)
+932d0f1 nav bake         pr_navbake.md (PR #149, merged)
+13d4a9a avoidance        pr_avoidance.md (PR #150, merged)
+09bbba9 nav tiles        pr_navtiles.md (PR #151, merged)
+010d5a1 3D audio         pr_audio3d.md (PR #152, merged)
+55d3446 surround         pr_surround.md (PR #153, merged)
+7a6e65c CSG              pr_csg.md (PR #154, merged)
+6f32236 paths            pr_paths.md (PR #155, merged)
+432685f GridMap          pr_gridmap.md (PR #156, merged)
+d20fc31 terrain          pr_terrain.md (PR #158, a568003 = cherry-pick + include sort fix)
+1d2df1f Godot 3D 1       pr_godot3d.md (PR #159, c73b9ec on the PR branch, merged)
+188baff Godot 3D 2       pr_godot3d_2.md (PR #160, merged)
+be7854c Godot 3D 3       pr_godot3d_3.md (PR #161, b14a16b, merged)
+e9aa2d9 Godot 3D 4       pr_godot3d_4.md (PR #162, 7dc38e0, merged)
+5f0429f bone attachments pr_attachment.md (PR #163, merged)
+5394737 skeleton import  pr_godot3d_5.md (PR #164, 2ef4c7a, merged)
+5020999 HTerrain import  pr_godot_hterrain.md (PR #165, 714384f, merged)
+# skip 6c6d3bf (JPEG sign, already on main), 2d82e0b (state machine sync), 5c1a79d
+e569365 Unity 3D 1      pr_unity3d.md (PR #166, 97e8593 + 9bc0443 keyword lifetime fix in unity_import.cpp (not in work-text; keep main's on cherry-picks), merged)
+ed47bdf unity 3D 2 pr_unity3d_2.md (PR #167, 1b17423, open)
+3c03e9b advance expressions pr_expressions.md
+8378f35 unity animator trees pr_unity_tree.md
+9cbf27d Unity blend trees pr_unity_blend.md
+ad6eb19 Unity terrains pr_unity_terrain.md
+9fb5834 Unity 3D animation pr_unity_anim3d.md
+4e7a975 Unity humanoid pr_unity_humanoid.md
+bc609a3 Unity skinned meshes (pr_unity_skinned.md) + cbc2435 (test_model file_name fix; cherry-pick both into the one PR)
+559dc17 Forward+ clustered lights pr_forward_plus.md
+7930888 Forward+ HDR glow and tonemap pr_forward_post.md (title: Glow and tonemap Forward+ in HDR, as Godot 4.6)
+  NOTE: in scene3d.cpp keep main's index loop for kTonemapperNames, and turn `const auto* blend = std::ranges::find(kGlowBlendModeNames...)` into an index loop too: libc++ (Emscripten) std::array iterators are not pointers, so the web export fails to compile.
+393847f Auto exposure pr_auto_exposure.md (title: Auto exposure and the exposure multiplier, as Godot 4.6)
+13501bb Depth of field   pr_dof.md (title: Depth of field, as Godot 4.6)
+31e6ef1 closest_point tidy fix: already in #152 (b702ae6); skip when cherry-picking
+a409fa5 SSAO             pr_ssao.md (title: SSAO, as Godot 4.6)
+879a405 SSR              pr_ssr.md (title: Screen-space reflections, as Godot 4.6)
+baa4966 Reflection probes pr_probes.md (title: Reflection probes, as Godot 4.6)
+5a06223 Baked lightmaps   pr_lightmaps.md (title: Baked lightmaps, as Godot 4.6's LightmapGI)
+be7da5e Light probes      pr_light_probes.md (title: Light probes for moving meshes, as Godot 4.6's LightmapGI)
+8fcb815 VoxelGI          pr_voxel_gi.md (title: VoxelGI, as Godot 4.6's)
+1a0d4be VoxelGI dynamic pr_voxel_gi_dynamic.md (title: VoxelGI dynamic objects, as Godot 4.6's: moving meshes light the cells)
+624d4ee VoxelGI import pr_voxel_gi_import.md (title: Import Godot's VoxelGIs with their baked cells)
+33ec9a9 TAA             pr_taa.md
+57e78bf FSR 2           pr_fsr2.md (title: FSR 2 upscaling for the 3D world, as Godot 4.6's scaling_3d mode fsr2)
+
+3c03e9b expressions      pr_expressions.md (PR #169, open)
