@@ -601,6 +601,7 @@ void FbxReader::add_nodes(const ufbx_node& node, int parent, const ufbx_matrix& 
     ModelNode out;
     out.name = unique_name(names_, name);
     out.parent = parent;
+    out.file_index = static_cast<int>(node.typed_id);
     out.position = vec3_of(local.translation);
     out.rotation = {static_cast<float>(local.rotation.x), static_cast<float>(local.rotation.y),
                     static_cast<float>(local.rotation.z), static_cast<float>(local.rotation.w)};
