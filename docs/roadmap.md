@@ -678,7 +678,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         on a scene's 3D nodes
   - [x] Godot's skeletons: a model's bone poses, IK modifiers, ragdolls and bone attachments
   - [x] Godot's HTerrain data: heights, splat and color maps, texture sets and shader settings
-  - [ ] Unity 3D scenes
+  - [x] Unity's 3D scenes: transforms mirrored into Godot's axes, built-in meshes, model
+        instances, Standard and URP materials, cameras, lights, 3D bodies and colliders,
+        character controllers, 3D sound, LOD groups, skyboxes, ambient light and fog
+  - [ ] Unity's meshes picked out of models, skinned meshes and 3D animation, and terrains
   - [ ] Unreal Engine levels and assets through the user's own Unreal Editor
 - [ ] 3D in the asset library and generator ([design](design.md#3d-assets))
   - [ ] Parametric models: agents write a `.model.json` recipe of shapes, CSG on Manifold,

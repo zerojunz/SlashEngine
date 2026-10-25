@@ -520,7 +520,7 @@ slash-cli import ~/games/coin-run-godot --project coin-run
 ```
 
 ```json
-{"converted":{"assets":5,"input_actions":3,"scenes":2,"sprite_frames":2},"engine":"godot","files":15,"main_scene":"main.scene.json","project":"Coin Run","report":"import/godot.json","scripts":[{"entities":0,"script":"game_state.gd","task":"task/port-game-state"},{"entities":1,"script":"main.gd","task":"task/port-main"},{"entities":2,"script":"player.gd","task":"task/port-player"}],"unsupported":[{"count":1,"what":"autoload","where":"project.godot: GameState","why":"autoloads are gameplay code; see the storyboard task"},{"count":1,"what":"file type .svg","where":"icon.svg","why":"textures are PNG or BMP files; save it as PNG"},{"count":1,"what":"node type Timer","where":"main.tscn: Timer","why":"timers are gameplay code: count the ticks in a C++ system"}]}
+{"converted":{"assets":5,"input_actions":3,"scenes":2,"sprite_frames":2},"engine":"godot","files":15,"main_scene":"main.scene.json","project":"Coin Run","report":"import/godot.json","scripts":[{"entities":0,"script":"game_state.gd","task":"task/port-game-state"},{"entities":1,"script":"main.gd","task":"task/port-main"},{"entities":2,"script":"player.gd","task":"task/port-player"}],"unsupported":[{"count":1,"what":"autoload","where":"project.godot: GameState","why":"autoloads are gameplay code; see the storyboard task"},{"count":1,"what":"file type .svg","where":"icon.svg","why":"textures are PNG, JPEG or BMP files; save it as PNG"},{"count":1,"what":"node type Timer","where":"main.tscn: Timer","why":"timers are gameplay code: count the ticks in a C++ system"}]}
 ```
 
 `<file>` is a game exported with Godot 4: its `.pck` file, or its executable with the pack
