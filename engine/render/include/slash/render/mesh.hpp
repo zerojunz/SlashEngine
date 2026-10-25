@@ -538,6 +538,10 @@ struct ReflectionAtlasSettings {
 // Whether project.json's rendering object asks for high quality VoxelGIs:
 // global_illumination.voxel_gi.quality "high" (Scene3D::voxel_gi_high_quality).
 [[nodiscard]] bool voxel_gi_high_quality(const json::Value& rendering);
+// Whether project.json's rendering object turns on temporal antialiasing:
+// anti_aliasing.quality.use_taa, as Godot's rendering/anti_aliasing/quality/use_taa
+// (Scene3D::use_taa).
+[[nodiscard]] bool use_taa(const json::Value& rendering);
 
 // How a reflection probe lights what is inside it, as Godot's ReflectionProbe.ambient_mode: not
 // at all, by the blurriest level of its cube along each pixel's normal, or by a color.
@@ -644,6 +648,11 @@ struct Scene3D {
     // global_illumination/voxel_gi/quality: four cones of 45 degrees for their ambient light, or
     // with high quality six narrower ones.
     bool voxel_gi_high_quality = false;
+    // Temporal antialiasing, as Godot's use_taa (Forward+ only): the meshes are drawn with the
+    // camera moved across a pixel by the next of 16 points each frame, and each frame is blended
+    // with the target's frames before it, moved by how far its opaque meshes moved (draw_mesh's
+    // previous transform) and the camera turned. A target's first frame with it is drawn as it is.
+    bool use_taa = false;
     // Set for a frame that draws a face of a reflection probe (ProbeCapture).
     std::optional<ProbeCapture> capture{}; // NOLINT(readability-redundant-member-init)
 

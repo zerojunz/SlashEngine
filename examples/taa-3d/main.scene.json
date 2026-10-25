@@ -1,0 +1,39 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 60.0
+        },
+        "Transform3D": {
+          "position": [0.0, 0.0, 4.0]
+        }
+      }
+    },
+    "card": {
+      "components": {
+        "BoxMesh": {
+          "size": [1.6, 1.6, 0.1]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.95, 0.9, 0.8, 1.0],
+          "shading_mode": "unshaded"
+        },
+        "Transform3D": {
+          "rotation": [0.0, 0.0, 0.5]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "background_color": [0.05, 0.08, 0.15, 1.0],
+          "background_mode": "color"
+        }
+      }
+    }
+  },
+  "format": 1
+}

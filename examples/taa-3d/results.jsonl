@@ -1,0 +1,6 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":3,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.051,0.078,0.149,1],[0.051,0.078,0.149,1],[0.949,0.898,0.8,1],[0.051,0.078,0.149,1]],"drawn":{"meshes":1},"height":90,"path":"shots/first.png","width":160}}
+{"id":3,"jsonrpc":"2.0","result":{"colors":[[0.627,0.596,0.545,1],[0.71,0.675,0.608,1],[0.882,0.839,0.753,1],[0.298,0.294,0.29,1]],"drawn":{"meshes":1},"height":90,"path":"shots/smooth.png","width":160}}
+{"id":4,"jsonrpc":"2.0","result":{"changed":{"Transform3D":{"rotation":[0.0,0.0,0.6]}},"id":"card"}}
+{"id":5,"jsonrpc":"2.0","result":{"colors":[[0.937,0.886,0.788,1],[0.627,0.6,0.545,1],[0.949,0.898,0.8,1],[0.953,0.902,0.8,1]],"drawn":{"meshes":1},"height":90,"path":"shots/turned.png","width":160}}
+{"id":6,"jsonrpc":"2.0","result":{"colors":[[0.945,0.894,0.796,1],[0.435,0.42,0.396,1],[0.949,0.898,0.8,1],[0.953,0.902,0.8,1]],"drawn":{"meshes":1},"height":90,"path":"shots/settled.png","width":160}}

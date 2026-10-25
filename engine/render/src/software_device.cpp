@@ -14,6 +14,7 @@
 #include "sky_shading.hpp"
 #include "ssao.hpp"
 #include "ssr.hpp"
+#include "taa.hpp"
 
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
@@ -70,19 +71,27 @@ struct ScreenVertex {
     std::array<double, 8> varying{};
 };
 
-// A mesh on the CPU: its vertices, every three indices a triangle, and the box around it.
+// A mesh on the CPU: its vertices, every three indices a triangle, and the box around it. Once
+// update_mesh moves its vertices, previous holds them as the last frame with TAA that drew the
+// mesh saw them, until another such frame draws it.
 struct SoftwareMesh {
     std::vector<Vertex3D> vertices;
     std::vector<std::uint32_t> indices;
     detail::Bounds bounds;
+    std::vector<Vertex3D> previous;
+    bool moved = false;
 };
 
 // A mesh corner in clip space, with what the fragment stage reads from it: world position,
-// normal, tangent, binormal, texture coordinate and color.
+// normal, tangent, binormal, texture coordinate, color and lightmap coordinate (the first 20,
+// which shading reads), then where it is in clip space without TAA's jitter and where it was in
+// the frame before, which TAA's prepass reads.
 struct ClipVertex {
     Float4 clip{};
-    std::array<float, 20> varying{};
+    std::array<float, 28> varying{};
 };
+// Where TAA's prepass values start in ClipVertex::varying.
+constexpr std::size_t kMotionVaryings = 20;
 
 // The 3D corners are clipped to x and y within this many times w, where GPUs would use their
 // guard band, so that every corner lands near enough the target for edge() not to overflow.
@@ -164,6 +173,17 @@ struct WorldTarget {
 struct SsrHistory {
     detail::SsrImage image;
     detail::SsrCamera camera;
+    bool primed = false;
+};
+
+// A target's frames before for TAA: how many it drew with TAA, which picks the next jitter, the
+// last one's camera without its jitter, its result and its motion vectors, and whether it holds
+// one yet.
+struct TaaHistory {
+    std::uint64_t frames = 0;
+    Mat4 view_projection{};
+    detail::HdrImage color;
+    std::vector<float> velocity;
     bool primed = false;
 };
 
@@ -296,6 +316,7 @@ public:
         }
         textures_.erase(it);
         forget_ssr_history(texture);
+        forget_taa_history(texture);
     }
 
     Result<ShaderId> create_shader(const CompiledShader& shader) override {
@@ -373,7 +394,9 @@ public:
         }
         SoftwareMesh mesh{.vertices = {vertices.begin(), vertices.end()},
                           .indices = {indices.begin(), indices.end()},
-                          .bounds = detail::mesh_bounds(vertices)};
+                          .bounds = detail::mesh_bounds(vertices),
+                          .previous = {},
+                          .moved = false};
         if (mesh.indices.empty()) {
             mesh.indices.resize(vertices.size());
             std::iota(mesh.indices.begin(), mesh.indices.end(), 0U);
@@ -395,8 +418,13 @@ public:
             !checked) {
             return checked;
         }
-        it->second.vertices.assign(vertices.begin(), vertices.end());
-        it->second.bounds = detail::mesh_bounds(vertices);
+        SoftwareMesh& found = it->second;
+        if (!found.moved) {
+            found.previous = std::move(found.vertices);
+            found.moved = true;
+        }
+        found.vertices.assign(vertices.begin(), vertices.end());
+        found.bounds = detail::mesh_bounds(vertices);
         return {};
     }
 
@@ -487,9 +515,12 @@ public:
             !checked) {
             return checked.error();
         }
-        // The frame before is kept only while the target's frames draw SSR.
+        // The frames before are kept only while the target's frames draw SSR, or TAA.
         if (!frame.scene || !detail::uses_ssr(*frame.scene)) {
             forget_ssr_history(frame.target);
+        }
+        if (!frame.scene || !detail::uses_taa(*frame.scene)) {
+            forget_taa_history(frame.target);
         }
         frame_ = frame;
         in_frame_ = true;
@@ -500,7 +531,8 @@ public:
     }
 
     Result<void> draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
-                           std::uint32_t layers, ShadowCasting shadows) override {
+                           std::uint32_t layers, ShadowCasting shadows,
+                           const std::optional<Mat4>& previous) override {
         if (!in_frame_) {
             return detail::no_frame("draw_mesh");
         }
@@ -511,11 +543,15 @@ public:
             !checked) {
             return checked;
         }
+        if (auto checked = detail::check_previous_transform(previous); !checked) {
+            return checked;
+        }
         mesh_draws_.push_back({.mesh = mesh,
                                .transform = transform,
                                .material = material,
                                .layers = layers,
-                               .shadows = shadows});
+                               .shadows = shadows,
+                               .previous = previous.value_or(transform)});
         ++stats_.draws;
         stats_.triangles += it->second.indices.size() / 3;
         return {};
@@ -592,6 +628,13 @@ public:
             std::vector<float> depth;
             if (!mesh_draws_.empty()) {
                 depth = draw_meshes(*frame_.scene, {.bytes = nullptr, .hdr = &world});
+            } else if (detail::uses_taa(*frame_.scene)) {
+                // TAA blends frames that draw meshes; one without starts it again.
+                for (auto& [id, history] : taa_histories_) {
+                    if (id == frame_.target) {
+                        history.primed = false;
+                    }
+                }
             }
             if (detail::uses_dof(frame_.scene->post)) {
                 depth.resize(std::size_t{target.width} * target.height, 0.0F);
@@ -619,6 +662,15 @@ public:
             draw_batch(batch,
                        batch.material.transform ? multiply(view, *batch.material.transform) : view,
                        target);
+        }
+        // A frame with TAA saw its meshes' vertices as they are now.
+        if (frame_.scene && detail::uses_taa(*frame_.scene)) {
+            for (const detail::MeshDraw& draw : mesh_draws_) {
+                if (const auto found = meshes_.find(draw.mesh); found != meshes_.end()) {
+                    found->second.moved = false;
+                    found->second.previous.clear();
+                }
+            }
         }
         retired_.clear();
         retired_shaders_.clear();
@@ -1471,9 +1523,11 @@ private:
     }
 
     // Draws the frame's meshes over target and returns the depth buffer: a float a pixel, rows
-    // top to bottom. With SSAO or SSR, Forward+'s prepass draws the opaque meshes' depth and
+    // top to bottom. With SSAO, SSR or TAA, Forward+'s prepass draws the opaque meshes' depth and
     // normals first, from which the SSAO passes make the occlusion the meshes are shaded with
-    // and the SSR passes their reflections of the frame before.
+    // and the SSR passes their reflections of the frame before, and with TAA their motion
+    // vectors, with which the TAA pass blends the frame, drawn with its camera jittered, with the
+    // target's frames before.
     std::vector<float> draw_meshes(const Scene3D& scene, const WorldTarget& target) {
         const detail::ShadowPlan plan = detail::plan_shadows(scene, kMaxTextureSize);
         std::vector<float> directional(std::size_t{plan.directional_size} * plan.directional_size,
@@ -1500,7 +1554,18 @@ private:
                               .probe_cubes = nullptr};
 
         std::vector<float> depth(std::size_t{target.width()} * target.height(), 0.0F);
-        const detail::MeshCameraUniforms camera = detail::mesh_camera_uniforms(scene);
+        // TAA's frame: the next jitter, from the camera the target's frame before was seen from
+        // (this one's, for its first).
+        const bool taa = target.hdr != nullptr && detail::uses_taa(scene);
+        TaaHistory* taa_history = nullptr;
+        const Mat4 view_projection = multiply(scene.projection, scene.camera);
+        detail::MeshCameraUniforms camera = detail::mesh_camera_uniforms(scene);
+        if (taa) {
+            taa_history = &this->taa_history(frame_.target, target.width(), target.height());
+            camera = detail::taa_camera_uniforms(
+                scene, detail::taa_jitter(taa_history->frames, target.width(), target.height()),
+                taa_history->primed ? taa_history->view_projection : view_projection);
+        }
         const auto lights =
             std::make_unique<detail::MeshSceneUniforms>(detail::mesh_scene_uniforms(scene));
         if (clustered) {
@@ -1549,9 +1614,14 @@ private:
         detail::SsrImage reflections;
         SsrHistory* history = nullptr;
         const detail::SsrCamera seen = detail::ssr_camera(scene);
-        if (lights->ssao[0] != 0.0F || ssr) {
-            const std::size_t pixels = std::size_t{target.width()} * target.height();
-            std::vector<float> prepass_depth(pixels, 0.0F);
+        const std::size_t pixels = std::size_t{target.width()} * target.height();
+        std::vector<float> prepass_depth;
+        std::vector<float> velocity;
+        if (lights->ssao[0] != 0.0F || ssr || taa) {
+            prepass_depth.assign(pixels, 0.0F);
+            if (taa) {
+                velocity.assign(pixels * 2, 0.0F);
+            }
             detail::SsaoImage normals{.width = target.width(),
                                       .height = target.height(),
                                       .channels = 4,
@@ -1573,6 +1643,17 @@ private:
                                  static_cast<float>(
                                      std::lround(std::clamp(value->at(c), 0.0F, 1.0F) * 255.0F)) /
                                  255.0F;
+                         }
+                         if (taa) {
+                             // As the GPU stores them in its two half floats.
+                             const auto varying = [&](std::size_t k) {
+                                 return fragment.varying(kMotionVaryings + k);
+                             };
+                             const std::array<float, 2> motion = detail::motion_vector(
+                                 {varying(0), varying(1), varying(2), varying(3)},
+                                 {varying(4), varying(5), varying(6), varying(7)});
+                             velocity[at * 2] = detail::round_half(motion[0]);
+                             velocity[(at * 2) + 1] = detail::round_half(motion[1]);
                          }
                          return true;
                      });
@@ -1611,10 +1692,56 @@ private:
             }
         }
         draw_all(depth, false, shade_color);
+        if (taa_history != nullptr) {
+            resolve_taa(*target.hdr, prepass_depth, std::move(velocity), *taa_history,
+                        view_projection);
+        }
         if (history != nullptr) {
             keep_last_frame(scene, *target.hdr, *history, seen);
         }
         return depth;
+    }
+
+    // target's frames before for TAA at width x height, made empty when it has none or they were
+    // drawn at another size.
+    TaaHistory& taa_history(TextureId target, std::uint32_t width, std::uint32_t height) {
+        for (auto& [id, history] : taa_histories_) {
+            if (id == target) {
+                if (history.color.width != width || history.color.height != height) {
+                    history = TaaHistory{};
+                }
+                return history;
+            }
+        }
+        return taa_histories_.emplace_back(target, TaaHistory{}).second;
+    }
+
+    void forget_taa_history(TextureId target) {
+        std::erase_if(taa_histories_, [&](const auto& entry) { return entry.first == target; });
+    }
+
+    // TAA's pass: world, drawn with the frame's jitter, blended with the history by its depth and
+    // motion vectors (a target's first frame is kept as it is), then kept as the history with the
+    // camera it was seen from without the jitter.
+    static void resolve_taa(detail::HdrImage& world, std::span<const float> depth,
+                            std::vector<float> velocity, TaaHistory& history,
+                            const Mat4& view_projection) {
+        if (history.primed) {
+            std::vector<float> resolved(world.pixels.size(), 0.0F);
+            detail::run_taa(detail::taa_uniforms(world.width, world.height),
+                            {.color = world.pixels,
+                             .depth = depth,
+                             .velocity = velocity,
+                             .last_velocity = history.velocity,
+                             .history = history.color.pixels},
+                            resolved);
+            world.pixels = std::move(resolved);
+        }
+        history.color = world;
+        history.velocity = std::move(velocity);
+        history.view_projection = view_projection;
+        history.primed = true;
+        ++history.frames;
     }
 
     // target's frame before for SSR with settings at width x height, made empty when it has
@@ -1673,10 +1800,13 @@ private:
             shader.voxel_gi = shader.slots[5].image;
         }
         const detail::MeshInstanceUniforms instance =
-            detail::mesh_instance_uniforms(draw.transform, material);
+            detail::mesh_instance_uniforms(draw.transform, material, draw.previous);
         corners.clear();
-        for (const Vertex3D& vertex : mesh.vertices) {
-            const detail::MeshCorner corner = detail::mesh_vertex(camera, instance, vertex);
+        const bool moved = mesh.moved && mesh.previous.size() == mesh.vertices.size();
+        for (std::size_t i = 0; i < mesh.vertices.size(); ++i) {
+            const Vertex3D& vertex = mesh.vertices[i];
+            const detail::MeshCorner corner = detail::mesh_vertex(
+                camera, instance, vertex, moved ? mesh.previous[i].position : vertex.position);
             ClipVertex& out = corners.emplace_back();
             out.clip = corner.clip;
             std::size_t at = 0;
@@ -1692,6 +1822,8 @@ private:
             put(corner.uv);
             put(corner.color);
             put(corner.uv2);
+            put(corner.motion_clip);
+            put(corner.previous_clip);
         }
         const MeshRaster raster{.depth = buffer,
                                 .stride = target.width(),
@@ -1964,6 +2096,7 @@ private:
     detail::CubeImage capture_raw_; // the faces captured so far
     // Each target's frame before, which SSR reflects.
     std::vector<std::pair<TextureId, SsrHistory>> ssr_histories_;
+    std::vector<std::pair<TextureId, TaaHistory>> taa_histories_;
     std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> shaders_;
     std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> retired_shaders_;
     std::uint32_t next_shader_ = 1;
