@@ -76,6 +76,16 @@ std::vector<entt::entity> made(const world::World& world) {
     return out;
 }
 
+// A surface's LODs' indices, as create_mesh takes them.
+std::vector<std::span<const std::uint32_t>> lod_spans(const std::vector<SurfaceLod>& lods) {
+    std::vector<std::span<const std::uint32_t>> out;
+    out.reserve(lods.size());
+    for (const SurfaceLod& lod : lods) {
+        out.emplace_back(lod.indices);
+    }
+    return out;
+}
+
 // The bounds of vertices, in their own space.
 Bounds bounds_of(std::span<const render::Vertex3D> vertices) {
     if (vertices.empty()) {
@@ -1046,7 +1056,9 @@ render::LightmapCapture Renderer::capture(entt::entity entity, const Vec3& cente
 
 const render::LightmapShading* Renderer::lit_surface(entt::entity entity, std::uint32_t part,
                                                      const LitSource& source, std::uint32_t first,
-                                                     std::uint32_t count, render::MeshId& mesh) {
+                                                     std::uint32_t count, render::MeshId& mesh,
+                                                     bool with_lods,
+                                                     const std::vector<SurfaceLod>** lods) {
     const auto found = lit_.find({entity, part});
     if (found == lit_.end()) {
         return nullptr;
@@ -1103,9 +1115,17 @@ const render::LightmapShading* Renderer::lit_surface(entt::entity entity, std::u
             }
             lit_indices.push_back(at->second);
         }
-        auto created = fits ? device_->create_mesh(lit_vertices, lit_indices)
-                            : Result<render::MeshId>(make_error(
-                                  ErrorCode::InvalidArgument,
+        // Godot's importer makes a mesh's LODs after its unwrap, from the unwrapped vertices.
+        ModelSurface unwrapped;
+        if (fits && with_lods) {
+            unwrapped.vertices = lit_vertices;
+            unwrapped.indices = lit_indices;
+            generate_lods(unwrapped);
+        }
+        auto created =
+            fits ? device_->create_mesh(lit_vertices, lit_indices, lod_spans(unwrapped.lods))
+                 : Result<render::MeshId>(
+                       make_error(ErrorCode::InvalidArgument,
                                   "its lightmap's unwrap doesn't fit its mesh: bake it again"));
         if (!created) {
             shared_.erase(key);
@@ -1113,9 +1133,14 @@ const render::LightmapShading* Renderer::lit_surface(entt::entity entity, std::u
             return nullptr;
         }
         shared.id = created.value();
+        shared.box = bounds_of(lit_vertices);
+        shared.lods = std::move(unwrapped.lods);
     }
     shared.used = frame_;
     mesh = shared.id;
+    if (lods != nullptr) {
+        *lods = &shared.lods;
+    }
     return &lit.shading;
 }
 
@@ -1180,16 +1205,18 @@ Result<render::MeshId> Renderer::mesh_for(const world::World& world, entt::entit
 
 Result<render::MeshId> Renderer::kept_mesh(const std::string& key,
                                            const std::vector<render::Vertex3D>& vertices,
-                                           const std::vector<std::uint32_t>& indices) {
+                                           const std::vector<std::uint32_t>& indices,
+                                           const std::vector<SurfaceLod>& lods) {
     Shared& shared = shared_[key];
     if (shared.id == render::MeshId::None) {
-        auto made = device_->create_mesh(vertices, indices);
+        auto made = device_->create_mesh(vertices, indices, lod_spans(lods));
         if (!made) {
             shared_.erase(key);
             return made.error();
         }
         shared.id = made.value();
         shared.box = bounds_of(vertices);
+        shared.lods = lods;
     }
     shared.used = frame_;
     return shared.id;
@@ -1204,12 +1231,14 @@ Result<render::MeshId> Renderer::skinned_mesh(const std::string& key, const Mode
     }
     skin_vertices(surface, joints, skinned_vertices_);
     if (skinned.id == render::MeshId::None) {
-        auto made = device_->create_mesh(skinned_vertices_, surface.indices);
+        auto made =
+            device_->create_mesh(skinned_vertices_, surface.indices, lod_spans(surface.lods));
         if (!made) {
             skinned_.erase(key);
             return made.error();
         }
         skinned.id = made.value();
+        skinned.lods = surface.lods;
     } else if (auto updated = device_->update_mesh(skinned.id, skinned_vertices_); !updated) {
         return updated.error();
     }
@@ -1376,7 +1405,7 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
                 skinned ? skinned_mesh(skin_prefix + std::to_string(p) + "/" + std::to_string(i),
                                        surface, joints)
                         : kept_mesh(prefix + std::to_string(part.mesh) + "/" + std::to_string(i),
-                                    surface.vertices, surface.indices);
+                                    surface.vertices, surface.indices, surface.lods);
             if (!made) {
                 problems_.push_back({entity, std::string(kMeshField), made.error().message});
                 continue;
@@ -1385,6 +1414,18 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
             draw.mesh = made.value();
             draw.entity = entity;
             draw.transform = skinned ? place.matrix() : transform;
+            if (skinned) {
+                const Skinned& kept =
+                    skinned_.at(skin_prefix + std::to_string(p) + "/" + std::to_string(i));
+                draw.lods = &kept.lods;
+                draw.box = kept.box;
+            } else {
+                const Shared& kept =
+                    shared_.at(prefix + std::to_string(part.mesh) + "/" + std::to_string(i));
+                draw.lods = &kept.lods;
+                draw.box = kept.box;
+            }
+            draw.lod_bias = instance.lod_bias;
             if (override) {
                 draw.material = *override;
             } else if (surface.material >= 0) {
@@ -1418,7 +1459,8 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
                 draw.material.capture = captured;
             } else if (const render::LightmapShading* lightmap =
                            lit_surface(entity, static_cast<std::uint32_t>(p), lit_source, first,
-                                       static_cast<std::uint32_t>(surface.indices.size()), lit)) {
+                                       static_cast<std::uint32_t>(surface.indices.size()), lit,
+                                       !surface.lods.empty(), &draw.lods)) {
                 draw.mesh = lit;
                 draw.material.lightmap = *lightmap;
             }
@@ -2184,8 +2226,8 @@ Renderer::prepare(const world::World& world, float width, float height, double i
                   const render::SsaoSettings& ssao, const render::SsrSettings& ssr,
                   const render::ReflectionAtlasSettings& reflection_atlas,
                   render::RenderMethod method, bool voxel_gi_high_quality, bool use_taa,
-                  std::optional<render::Fsr2Scaling> fsr2, render::DecalFilter decal_filter,
-                  const render::VolumetricFogSettings& volumetric_fog) {
+                  const std::optional<render::Fsr2Scaling>& fsr2, render::DecalFilter decal_filter,
+                  const render::VolumetricFogSettings& volumetric_fog, float mesh_lod_threshold) {
     ++frame_;
     draws_.clear();
     problems_.clear();
@@ -2481,6 +2523,9 @@ Renderer::prepare(const world::World& world, float width, float height, double i
         problems_.push_back(
             {.entity = camera, .path = "ReflectionProbe", .message = reflected.error().message});
     }
+    // Model surfaces draw at the LODs the camera picks, into shadow maps too, as Godot's.
+    pick_lods(global(camera).origin, view.projection, lens.projection == "orthogonal", width,
+              mesh_lod_threshold);
     return frame;
 }
 
@@ -2739,6 +2784,11 @@ Result<void> Renderer::reflect(const world::World& world, Frame3D& frame, render
             const std::array<float, 3> size{p.size.x, p.size.y, p.size.z};
             const std::array<float, 3> offset{p.origin_offset.x, p.origin_offset.y,
                                               p.origin_offset.z};
+            // Its LODs are picked from where the cube is drawn, by its own threshold over the
+            // atlas's cube size, as Godot's _render_reflection_probe_step.
+            pick_lods(f.place.apply(p.origin_offset),
+                      render::probe_face_projection(size, offset, p.max_distance, 0), false,
+                      static_cast<float>(settings.reflection_size), p.mesh_lod_threshold);
             for (std::uint32_t face = 0; face < 6; ++face) {
                 scene.camera = render::probe_face_view(transform, offset, face);
                 scene.projection =
@@ -2756,8 +2806,9 @@ Result<void> Renderer::reflect(const world::World& world, Frame3D& frame, render
                     if ((draw.layers & p.cull_mask) == 0) {
                         continue;
                     }
-                    if (auto drawn = device_->draw_mesh(draw.mesh, draw.transform, draw.material,
-                                                        draw.layers, draw.shadows);
+                    if (auto drawn =
+                            device_->draw_mesh(draw.mesh, draw.transform, draw.material,
+                                               draw.layers, draw.shadows, std::nullopt, draw.lod);
                         !drawn) {
                         (void)device_->end_frame();
                         return drawn;
@@ -2785,10 +2836,45 @@ Result<void> Renderer::reflect(const world::World& world, Frame3D& frame, render
     return {};
 }
 
+void Renderer::pick_lods(const Vec3& camera_position, const std::array<float, 16>& projection,
+                         bool orthogonal, float width, float threshold_pixels) {
+    // RendererViewport::_draw_3d's screen_mesh_lod_threshold and Projection::get_lod_multiplier.
+    const float threshold = width > 0.0F ? threshold_pixels / width : 0.0F;
+    const float multiplier = 2.0F / projection[0];
+    lods_drawn_ = 0;
+    for (Draw& draw : draws_) {
+        draw.lod = 0;
+        if (threshold <= 0.0F || draw.lods == nullptr || draw.lods->empty()) {
+            continue;
+        }
+        // RenderForwardClustered::_fill_render_list: the distance from the camera to the mesh's
+        // bounds where it is drawn, and RenderGeometryInstanceBase::set_transform's model scale.
+        float distance = 1.0F;
+        if (!orthogonal) {
+            const Bounds box = placed_bounds(draw.box, draw.transform);
+            const Vec3 d{
+                std::max({0.0F, box.min.x - camera_position.x, camera_position.x - box.max.x}),
+                std::max({0.0F, box.min.y - camera_position.y, camera_position.y - box.max.y}),
+                std::max({0.0F, box.min.z - camera_position.z, camera_position.z - box.max.z})};
+            distance = std::sqrt((d.x * d.x) + (d.y * d.y) + (d.z * d.z));
+        }
+        const std::array<float, 16>& m = draw.transform;
+        const float model_scale =
+            std::max({std::sqrt((m[0] * m[0]) + (m[1] * m[1]) + (m[2] * m[2])),
+                      std::sqrt((m[4] * m[4]) + (m[5] * m[5]) + (m[6] * m[6])),
+                      std::sqrt((m[8] * m[8]) + (m[9] * m[9]) + (m[10] * m[10]))});
+        draw.lod =
+            pick_lod(*draw.lods, model_scale * draw.lod_bias, distance * multiplier, threshold);
+        if (draw.lod > 0) {
+            ++lods_drawn_;
+        }
+    }
+}
+
 Result<void> Renderer::draw() {
     for (const Draw& draw : draws_) {
         if (auto drawn = device_->draw_mesh(draw.mesh, draw.transform, draw.material, draw.layers,
-                                            draw.shadows, draw.previous);
+                                            draw.shadows, draw.previous, draw.lod);
             !drawn) {
             return drawn;
         }

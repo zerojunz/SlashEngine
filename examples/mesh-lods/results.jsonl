@@ -1,0 +1,7 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":7,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"bounds":{"max":[0.5035,0.9375,0.5182],"min":[-0.5035,0.0625,-0.4943]},"images":[],"materials":[{"name":"Stone","standard":{"albedo_color":[0.55,0.52,0.48,1]}}],"meshes":[{"lods":[480,240,120,60,30,14],"materials":[0],"name":"Boulder","triangles":960,"vertices":482}],"parts":[{"mesh":0,"node":"Boulder"}]}}
+{"id":3,"jsonrpc":"2.0","result":{"drawn":{"lods":2,"meshes":4},"height":90,"path":"shots/boulders.png","width":160}}
+{"id":4,"jsonrpc":"2.0","result":{"changed":{"MeshInstance3D":{"lod_bias":20.0}},"id":"far"}}
+{"id":5,"jsonrpc":"2.0","result":{"colors":[[0.467,0.635,0.369,1]],"drawn":{"lods":1,"meshes":4},"height":90,"width":160}}
+{"id":6,"jsonrpc":"2.0","result":{"changed":{"Transform3D":{"position":[0.6,0.0,1.2]}},"id":"middle"}}
+{"id":7,"jsonrpc":"2.0","result":{"colors":[[0.467,0.635,0.369,1]],"drawn":{"meshes":4},"height":90,"width":160}}

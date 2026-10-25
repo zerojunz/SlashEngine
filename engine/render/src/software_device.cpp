@@ -77,15 +77,22 @@ struct ScreenVertex {
     std::array<double, 8> varying{};
 };
 
-// A mesh on the CPU: its vertices, every three indices a triangle, and the box around it. Once
-// update_mesh moves its vertices, previous holds them as the last frame with TAA that drew the
-// mesh saw them, until another such frame draws it.
+// A mesh on the CPU: its vertices, every three indices a triangle (its own, then its LODs', where
+// ranges says), and the box around it. Once update_mesh moves its vertices, previous holds them
+// as the last frame with TAA that drew the mesh saw them, until another such frame draws it.
 struct SoftwareMesh {
     std::vector<Vertex3D> vertices;
     std::vector<std::uint32_t> indices;
+    std::vector<detail::IndexRange> ranges;
     detail::Bounds bounds;
     std::vector<Vertex3D> previous;
     bool moved = false;
+
+    // The triangles a draw of lod draws.
+    [[nodiscard]] std::span<const std::uint32_t> triangles(std::uint32_t lod) const {
+        const detail::IndexRange range = ranges.at(lod);
+        return std::span(indices).subspan(range.first, range.count);
+    }
 };
 
 // A mesh corner in clip space, with what the fragment stage reads from it: world position,
@@ -428,19 +435,18 @@ public:
     }
 
     Result<MeshId> create_mesh(std::span<const Vertex3D> vertices,
-                               std::span<const std::uint32_t> indices) override {
-        if (auto checked = detail::check_mesh(vertices, indices); !checked) {
+                               std::span<const std::uint32_t> indices,
+                               std::span<const std::span<const std::uint32_t>> lods) override {
+        if (auto checked = detail::check_mesh(vertices, indices, lods); !checked) {
             return checked.error();
         }
         SoftwareMesh mesh{.vertices = {vertices.begin(), vertices.end()},
-                          .indices = {indices.begin(), indices.end()},
+                          .indices = {},
+                          .ranges = {},
                           .bounds = detail::mesh_bounds(vertices),
                           .previous = {},
                           .moved = false};
-        if (mesh.indices.empty()) {
-            mesh.indices.resize(vertices.size());
-            std::iota(mesh.indices.begin(), mesh.indices.end(), 0U);
-        }
+        mesh.indices = detail::mesh_index_buffer(vertices.size(), indices, lods, mesh.ranges);
         const auto id = static_cast<MeshId>(next_mesh_++);
         meshes_[id] = std::move(mesh);
         return id;
@@ -580,7 +586,7 @@ public:
 
     Result<void> draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
                            std::uint32_t layers, ShadowCasting shadows,
-                           const std::optional<Mat4>& previous) override {
+                           const std::optional<Mat4>& previous, std::uint32_t lod) override {
         if (!in_frame_) {
             return detail::no_frame("draw_mesh");
         }
@@ -594,14 +600,18 @@ public:
         if (auto checked = detail::check_previous_transform(previous); !checked) {
             return checked;
         }
+        if (auto checked = detail::check_lod(lod, it->second.ranges.size() - 1); !checked) {
+            return checked;
+        }
         mesh_draws_.push_back({.mesh = mesh,
                                .transform = transform,
                                .material = material,
                                .layers = layers,
                                .shadows = shadows,
-                               .previous = previous.value_or(transform)});
+                               .previous = previous.value_or(transform),
+                               .lod = lod});
         ++stats_.draws;
-        stats_.triangles += it->second.indices.size() / 3;
+        stats_.triangles += it->second.ranges[lod].count / 3;
         return {};
     }
 
@@ -2099,10 +2109,11 @@ private:
         const auto shade_pixel = [&](const MeshFragment& fragment, std::size_t at) {
             return shade(shader, fragment, at);
         };
-        for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
-            clip_and_draw({corners[mesh.indices[i]], corners[mesh.indices[i + 1]],
-                           corners[mesh.indices[i + 2]]},
-                          raster, shade_pixel);
+        const std::span<const std::uint32_t> triangles = mesh.triangles(draw.lod);
+        for (std::size_t i = 0; i + 2 < triangles.size(); i += 3) {
+            clip_and_draw(
+                {corners[triangles[i]], corners[triangles[i + 1]], corners[triangles[i + 2]]},
+                raster, shade_pixel);
         }
     }
 
@@ -2148,10 +2159,11 @@ private:
                                             {fragment.varying(14), fragment.varying(15),
                                              fragment.varying(16), fragment.varying(17)});
             };
-            for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
-                clip_and_draw({corners[mesh.indices[i]], corners[mesh.indices[i + 1]],
-                               corners[mesh.indices[i + 2]]},
-                              raster, keep);
+            const std::span<const std::uint32_t> triangles = mesh.triangles(draw.lod);
+            for (std::size_t i = 0; i + 2 < triangles.size(); i += 3) {
+                clip_and_draw(
+                    {corners[triangles[i]], corners[triangles[i + 1]], corners[triangles[i + 2]]},
+                    raster, keep);
             }
         }
     }

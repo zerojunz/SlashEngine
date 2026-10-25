@@ -231,7 +231,8 @@ public:
     // use_taa, its meshes given the transforms they were drawn at in the last frame; so it is with
     // fsr2, which draws its 3D smaller and upscales it with FSR 2 (render::uses_fsr2 says when).
     // Its Decals' textures are sampled with decal_filter, and its volumetric fog's froxels are as
-    // volumetric_fog says.
+    // volumetric_fog says. A model's surfaces are drawn at the coarsest LOD that is off by no more
+    // than mesh_lod_threshold pixels, as Godot's rendering/mesh_lod/lod_change/threshold_pixels.
     [[nodiscard]] std::optional<Frame3D>
     prepare(const world::World& world, float width, float height, double interpolation,
             render::Color clear, const render::ShadowSettings& shadows = {}, double time = 0.0,
@@ -240,9 +241,10 @@ public:
             const render::ReflectionAtlasSettings& reflection_atlas = {},
             render::RenderMethod method = render::RenderMethod::ForwardPlus,
             bool voxel_gi_high_quality = false, bool use_taa = false,
-            std::optional<render::Fsr2Scaling> fsr2 = std::nullopt,
+            const std::optional<render::Fsr2Scaling>& fsr2 = std::nullopt,
             render::DecalFilter decal_filter = render::DecalFilter::LinearMipmaps,
-            const render::VolumetricFogSettings& volumetric_fog = {});
+            const render::VolumetricFogSettings& volumetric_fog = {},
+            float mesh_lod_threshold = 1.0F);
     // Draws the meshes prepare found into the frame begun with its scene.
     [[nodiscard]] Result<void> draw();
 
@@ -252,6 +254,8 @@ public:
     [[nodiscard]] std::size_t meshes() const noexcept { return draws_.size(); }
     [[nodiscard]] std::size_t lights() const noexcept { return lights_; }
     [[nodiscard]] std::size_t meshes_kept() const noexcept { return shared_.size(); }
+    // How many of the last prepare's draws are at a coarser LOD than their surface's own.
+    [[nodiscard]] std::size_t lods_drawn() const noexcept { return lods_drawn_; }
 
 private:
     struct Local {
@@ -261,9 +265,10 @@ private:
     };
     struct Shared {
         render::MeshId id = render::MeshId::None;
-        std::uint64_t used = 0; // the last frame that drew it
-        Vec3 center;            // the middle of its vertices' bounds, in its own space
-        Bounds box;             // its vertices' bounds, in its own space
+        std::uint64_t used = 0;       // the last frame that drew it
+        Vec3 center;                  // the middle of its vertices' bounds, in its own space
+        Bounds box;                   // its vertices' bounds, in its own space
+        std::vector<SurfaceLod> lods; // a model surface's coarser LODs
     };
     struct Cached {
         Primitive primitive;
@@ -278,7 +283,17 @@ private:
         entt::entity entity = entt::null; // the entity it draws
         // Where it was drawn in the last frame with TAA, when that was somewhere else.
         std::optional<std::array<float, 16>> previous;
+        // A model surface's coarser LODs (kept in its Shared or Skinned), its mesh's bounds in its
+        // own space and its MeshInstance3D's lod_bias, which pick the LOD it is drawn at.
+        const std::vector<SurfaceLod>* lods = nullptr;
+        Bounds box;
+        float lod_bias = 1.0F;
+        std::uint32_t lod = 0;
     };
+    // Picks each draw's LOD as Godot's Forward+ does for a camera at camera_position, seen
+    // through projection at width pixels across with a threshold of threshold_pixels.
+    void pick_lods(const Vec3& camera_position, const std::array<float, 16>& projection,
+                   bool orthogonal, float width, float threshold_pixels);
 
     // What a probe's cube was drawn from: it is drawn again when this changes.
     struct ProbeKey {
@@ -319,15 +334,18 @@ private:
         std::uint64_t used = 0;
         std::vector<world::Affine3D> joints; // what moved its vertices last
         Bounds box;                          // its moved vertices' bounds
+        std::vector<SurfaceLod> lods;        // its surface's coarser LODs
     };
 
     Result<render::MeshId> mesh_for(const world::World& world, entt::entity entity,
                                     const Primitive& primitive);
     // A model's surface, a CSG root's or a GridMap octant's, as a mesh on the device, made once
     // per key.
+    // A model surface's LODs come with it, and are kept in its Shared.
     Result<render::MeshId> kept_mesh(const std::string& key,
                                      const std::vector<render::Vertex3D>& vertices,
-                                     const std::vector<std::uint32_t>& indices);
+                                     const std::vector<std::uint32_t>& indices,
+                                     const std::vector<SurfaceLod>& lods = {});
     // A texture a model's material samples: a file through textures_, or an image inside it.
     // What can't be made is a problem at the entity's field.
     render::MaterialTexture model_texture(const std::string& path, const SourceModel& source,
@@ -419,10 +437,13 @@ private:
     render::LightmapCapture capture(entt::entity entity, const Vec3& center);
     // The lightmap of the entity's part, and its triangles from first, count of them, as a mesh
     // on the device with their lightmap UVs, made once; nullptr when it has none, or its mesh
-    // changed since the bake, with a problem.
+    // changed since the bake, with a problem. A model's surface (with_lods) has LODs made from
+    // those, as Godot's importer makes them after the unwrap; lods is set to them.
     const render::LightmapShading* lit_surface(entt::entity entity, std::uint32_t part,
                                                const LitSource& source, std::uint32_t first,
-                                               std::uint32_t count, render::MeshId& mesh);
+                                               std::uint32_t count, render::MeshId& mesh,
+                                               bool with_lods = false,
+                                               const std::vector<SurfaceLod>** lods = nullptr);
     void destroy_lightmaps(bool unused_only);
 
     // A VoxelGI's cells and the light injected into them, as an atlas (voxel_gi.cpp).
@@ -474,6 +495,7 @@ private:
     std::unordered_map<entt::entity, Cached> cached_;
     std::unordered_map<std::string, Shared> shared_;
     std::vector<Draw> draws_;
+    std::size_t lods_drawn_ = 0;
     // Where each entity's draws were drawn in the last frame with TAA, by the entity and the
     // draw's place among its draws.
     std::map<std::pair<entt::entity, std::size_t>, std::array<float, 16>> drawn_;

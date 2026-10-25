@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <limits>
 #include <numbers>
+#include <numeric>
 #include <string>
 
 namespace slash::render {
@@ -475,6 +476,16 @@ std::optional<RenderMethod> parse_render_method(std::string_view name) {
     return static_cast<RenderMethod>(index);
 }
 
+float mesh_lod_threshold(const json::Value& rendering) {
+    const json::Value* found = rendering.is_object() ? rendering.find("mesh_lod") : nullptr;
+    found = found != nullptr && found->is_object() ? found->find("lod_change") : nullptr;
+    found = found != nullptr && found->is_object() ? found->find("threshold_pixels") : nullptr;
+    if (found != nullptr && found->is_number() && found->as_double() >= 0.0) {
+        return static_cast<float>(found->as_double());
+    }
+    return 1.0F;
+}
+
 std::array<float, 16> Scene3D::perspective_default() {
     return perspective(75.0F, 1.0F, 0.05F, 4000.0F);
 }
@@ -804,8 +815,33 @@ Result<void> check_vertices(std::span<const Vertex3D> vertices) {
 
 } // namespace
 
-Result<void> check_mesh(std::span<const Vertex3D> vertices,
-                        std::span<const std::uint32_t> indices) {
+Result<void> check_mesh(std::span<const Vertex3D> vertices, std::span<const std::uint32_t> indices,
+                        std::span<const std::span<const std::uint32_t>> lods) {
+    std::size_t all_indices = indices.empty() ? vertices.size() : indices.size();
+    for (std::size_t lod = 0; lod < lods.size(); ++lod) {
+        const std::span<const std::uint32_t> lod_indices = lods[lod];
+        all_indices += lod_indices.size();
+        if (lod_indices.empty() || lod_indices.size() % 3 != 0) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a mesh's LOD " + std::to_string(lod + 1) +
+                                  " has a multiple of 3 indices, more than none, not " +
+                                  std::to_string(lod_indices.size()));
+        }
+        for (std::size_t i = 0; i < lod_indices.size(); ++i) {
+            if (lod_indices[i] >= vertices.size()) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "index " + std::to_string(i) + " of LOD " +
+                                      std::to_string(lod + 1) + " is " +
+                                      std::to_string(lod_indices[i]) + ", past the mesh's " +
+                                      std::to_string(vertices.size()) + " vertices");
+            }
+        }
+    }
+    if (all_indices > kMaxMeshIndices) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a mesh has at most " + std::to_string(kMaxMeshIndices) +
+                              " indices with its LODs', not " + std::to_string(all_indices));
+    }
     if (vertices.size() > kMaxMeshVertices) {
         return make_error(ErrorCode::InvalidArgument,
                           "a mesh has at most " + std::to_string(kMaxMeshVertices) +
@@ -834,6 +870,36 @@ Result<void> check_mesh(std::span<const Vertex3D> vertices,
         }
     }
     return check_vertices(vertices);
+}
+
+std::vector<std::uint32_t> mesh_index_buffer(std::size_t vertex_count,
+                                             std::span<const std::uint32_t> indices,
+                                             std::span<const std::span<const std::uint32_t>> lods,
+                                             std::vector<IndexRange>& ranges) {
+    std::vector<std::uint32_t> out;
+    ranges.clear();
+    if (indices.empty()) {
+        out.resize(vertex_count);
+        std::iota(out.begin(), out.end(), 0U);
+    } else {
+        out.assign(indices.begin(), indices.end());
+    }
+    ranges.push_back({.first = 0, .count = static_cast<std::uint32_t>(out.size())});
+    for (const std::span<const std::uint32_t> lod : lods) {
+        ranges.push_back({.first = static_cast<std::uint32_t>(out.size()),
+                          .count = static_cast<std::uint32_t>(lod.size())});
+        out.insert(out.end(), lod.begin(), lod.end());
+    }
+    return out;
+}
+
+Result<void> check_lod(std::uint32_t lod, std::size_t lod_count) {
+    if (lod > lod_count) {
+        return make_error(ErrorCode::InvalidArgument, "a mesh with " + std::to_string(lod_count) +
+                                                          " LODs has no LOD " +
+                                                          std::to_string(lod));
+    }
+    return {};
 }
 
 Result<void> check_mesh_update(std::span<const Vertex3D> vertices, std::size_t count) {

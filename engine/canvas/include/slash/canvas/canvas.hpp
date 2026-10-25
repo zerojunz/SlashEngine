@@ -261,6 +261,8 @@ public:
     // 3D meshes the last frame drew, the 3D lights they were lit by, and the meshes kept on the
     // device (meshes of equal settings share one).
     [[nodiscard]] std::size_t meshes_drawn() const noexcept { return meshes_drawn_; }
+    // Of those, the ones drawn at a coarser LOD than their surface's own.
+    [[nodiscard]] std::size_t lods_drawn() const noexcept { return lods_drawn_; }
     [[nodiscard]] std::size_t lights_3d_drawn() const noexcept { return lights_3d_drawn_; }
     [[nodiscard]] std::size_t meshes_kept() const noexcept { return scene3d_.meshes_kept(); }
     // The upscaler the last frame scaled the world with (render/upscaler.hpp), and its sizes;
@@ -430,6 +432,7 @@ private:
     std::size_t boxes_drawn_ = 0;
     std::size_t shapes_drawn_ = 0;
     std::size_t meshes_drawn_ = 0;
+    std::size_t lods_drawn_ = 0;
     std::size_t lights_3d_drawn_ = 0;
     // The 3D world's meshes on the device; its textures and models are this renderer's.
     scene3d::Renderer scene3d_;
@@ -475,6 +478,9 @@ struct Settings {
     bool use_taa = false;
     // rendering.textures.decals.filter: how decals' textures are sampled.
     render::DecalFilter decal_filter = render::DecalFilter::LinearMipmaps;
+    // rendering.mesh_lod.lod_change.threshold_pixels: how many pixels a model's coarser LODs may
+    // be off by.
+    float mesh_lod_threshold = 1.0F;
 };
 void set_settings(world::World& world, const Settings& settings);
 // The settings given to the world, or the defaults.
@@ -503,6 +509,7 @@ struct Capture {
     std::size_t controls = 0;
     std::size_t shapes = 0;
     std::size_t meshes = 0; // 3D meshes (scene3d.hpp)
+    std::size_t lods = 0;   // of those, drawn at a coarser LOD
     // How the settings' render scale scaled the world, if they did.
     CanvasRenderer::Scaled scaled;
 };

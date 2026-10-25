@@ -1,0 +1,7 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"model.inspect","params":{"path":"models/boulder.obj"}}
+{"jsonrpc":"2.0","id":3,"method":"frame.capture","params":{"path":"shots/boulders.png"}}
+{"jsonrpc":"2.0","id":4,"method":"component.set","params":{"id":"far","components":{"MeshInstance3D":{"lod_bias":20.0}}}}
+{"jsonrpc":"2.0","id":5,"method":"frame.capture","params":{"points":[[80,45]]}}
+{"jsonrpc":"2.0","id":6,"method":"component.set","params":{"id":"middle","components":{"Transform3D":{"position":[0.6,0.0,1.2]}}}}
+{"jsonrpc":"2.0","id":7,"method":"frame.capture","params":{"points":[[80,45]]}}
