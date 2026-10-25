@@ -840,6 +840,7 @@ struct WorldEnvironment {
     float volumetric_fog_length = 64.0F;
     float volumetric_fog_detail_spread = 2.0F;  // above 1, more detail near the camera
     float volumetric_fog_ambient_inject = 0.0F; // how much it is lit by the ambient light
+    float volumetric_fog_gi_inject = 1.0F;      // how much it is lit by VoxelGIs' light
     float volumetric_fog_sky_affect = 1.0F;     // how much it covers the sky
     float volumetric_fog_temporal_reprojection_amount = 0.9F;
     bool adjustment_enabled = false;
@@ -865,7 +866,7 @@ SLASH_COMPONENT(WorldEnvironment, background_mode, background_color, background_
                 fog_depth_end, volumetric_fog_enabled, volumetric_fog_density,
                 volumetric_fog_albedo, volumetric_fog_emission, volumetric_fog_emission_energy,
                 volumetric_fog_anisotropy, volumetric_fog_length, volumetric_fog_detail_spread,
-                volumetric_fog_ambient_inject, volumetric_fog_sky_affect,
+                volumetric_fog_ambient_inject, volumetric_fog_gi_inject, volumetric_fog_sky_affect,
                 volumetric_fog_temporal_reprojection_enabled,
                 volumetric_fog_temporal_reprojection_amount, adjustment_enabled,
                 adjustment_brightness, adjustment_contrast, adjustment_saturation,
