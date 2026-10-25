@@ -36,7 +36,8 @@ float LoadInputDepth(int2 iPxPos) {
 }
 // The motion vectors are already in texture coordinates: AMD's scale is 1.
 float2 LoadInputMotionVector(int2 iPxPos) {
-    return input_motion.Load(int3(Inside(iPxPos, RenderSize()), 0)).xy;
+    int2 iPos = Inside(iPxPos, RenderSize());
+    return ValidMotionVector(input_motion.Load(int3(iPos, 0)).xy, iPos, LoadInputDepth(iPos));
 }
 float3 LoadInputColor(int2 iPxPos) {
     return input_color.Load(int3(Inside(iPxPos, RenderSize()), 0)).rgb;

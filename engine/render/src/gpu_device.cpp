@@ -285,7 +285,7 @@ Fsr2PassCode fsr2_pass_code(Fsr2Pass pass) {
                          .vertex_msl = shaders::kFsr2DepthClipVertexMsl,
                          .fragment_msl = shaders::kFsr2DepthClipFragmentMsl,
                          .hlsl = shaders::kFsr2DepthClipHlsl},
-                .samplers = 5,
+                .samplers = 6,
                 .storage_buffers = 1,
                 .targets = kFsr2DepthClipTargets};
     case Fsr2Pass::Lock:
@@ -2995,9 +2995,13 @@ private:
             normals.load_op = SDL_GPU_LOADOP_CLEAR;
             normals.store_op = SDL_GPU_STOREOP_STORE;
             if (motion) {
+                // FSR 2 works the sky's motion vectors out from the depth, as Godot's.
                 targets[1] = normals;
                 targets[1].texture =
                     taa != nullptr ? taa->velocity.at(1 - taa->last) : fsr2_textures_.velocity;
+                if (taa == nullptr) {
+                    targets[1].clear_color = {kInvalidMotion, kInvalidMotion, 0.0F, 0.0F};
+                }
             }
             SDL_GPUDepthStencilTargetInfo prepass_depth{};
             prepass_depth.texture = prepass_.depth;
@@ -3016,8 +3020,9 @@ private:
                 copy_to_screen(commands, ssao_targets_.textures.at(kSsaoFinal), 0);
             }
         } else if (fsr2 != nullptr) {
-            // Nothing moved in a frame with no meshes.
-            clear_texture(commands, fsr2_textures_.velocity);
+            // A frame with no meshes is all sky.
+            clear_texture(commands, fsr2_textures_.velocity,
+                          {kInvalidMotion, kInvalidMotion, 0.0F, 0.0F});
         }
         // The sky, then the meshes over it.
         const auto draw_color = [&] {
@@ -3041,7 +3046,9 @@ private:
             SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(commands, &color, 1, &depth);
             if (sky_draws(scene)) {
                 const SDL_GPUTextureFormat format = world_format(scene, frame_format_);
-                const SkyUniforms sky = sky_uniforms(scene, scene_width_, scene_height_);
+                const SkyUniforms sky = sky_uniforms(
+                    scene, scene_width_, scene_height_,
+                    taa != nullptr ? taa_jitter(taa->frames, scene_width_, scene_height_) : jitter);
                 SDL_PushGPUFragmentUniformData(commands, 0, &sky,
                                                static_cast<std::uint32_t>(sizeof(sky)));
                 const SDL_GPUTextureSamplerBinding texture = binding(sky_texture(scene.sky), true);
@@ -4480,10 +4487,11 @@ private:
     }
 
     // Clears a texture the frame draws into to transparent black.
-    static void clear_texture(SDL_GPUCommandBuffer* commands, SDL_GPUTexture* texture) {
+    static void clear_texture(SDL_GPUCommandBuffer* commands, SDL_GPUTexture* texture,
+                              SDL_FColor clear = {0.0F, 0.0F, 0.0F, 0.0F}) {
         SDL_GPUColorTargetInfo color{};
         color.texture = texture;
-        color.clear_color = {0.0F, 0.0F, 0.0F, 0.0F};
+        color.clear_color = clear;
         color.load_op = SDL_GPU_LOADOP_CLEAR;
         color.store_op = SDL_GPU_STOREOP_STORE;
         SDL_EndGPURenderPass(SDL_BeginGPURenderPass(commands, &color, 1, nullptr));
@@ -4498,16 +4506,19 @@ private:
                       const std::array<float, 2>& jitter) {
         const std::size_t last = frames.last;
         const std::size_t next = 1 - last;
-        const Fsr2Uniforms uniforms =
-            fsr2_uniforms({.render_width = scene_width_,
-                           .render_height = scene_height_,
-                           .display_width = frame_width_,
-                           .display_height = frame_height_,
-                           .jitter = jitter,
-                           .projection = scene.projection,
-                           .sharpness = scene.fsr2.value_or(Fsr2Scaling{}).sharpness,
-                           .frame_index = frames.clock.frames,
-                           .phases = frames.clock.phases});
+        const Mat4 view_projection = multiply(scene.projection, scene.camera);
+        const Fsr2Uniforms uniforms = fsr2_uniforms(
+            {.render_width = scene_width_,
+             .render_height = scene_height_,
+             .display_width = frame_width_,
+             .display_height = frame_height_,
+             .jitter = jitter,
+             .projection = scene.projection,
+             .view_projection = view_projection,
+             .previous = frames.clock.frames == 0 ? view_projection : frames.view_projection,
+             .sharpness = scene.fsr2.value_or(Fsr2Scaling{}).sharpness,
+             .frame_index = frames.clock.frames,
+             .phases = frames.clock.phases});
         if (frames.clock.frames == 0) {
             for (SDL_GPUTexture* texture :
                  {frames.color.at(last), frames.lock_status.at(last), frames.luma_history.at(last),
@@ -4574,7 +4585,7 @@ private:
         }
         pass(Fsr2Pass::DepthClip, {t.prepared, t.reactive},
              {frames.dilated_motion.at(next), t.dilated_depth, t.color,
-              frames.dilated_motion.at(last), t.velocity});
+              frames.dilated_motion.at(last), t.velocity, depth_});
         pass(Fsr2Pass::Lock, {t.new_locks}, {t.lock_luma});
         pass(Fsr2Pass::Accumulate,
              {frames.color.at(next), frames.lock_status.at(next), frames.luma_history.at(next)},
@@ -4582,7 +4593,7 @@ private:
               frames.lock_status.at(last), t.new_locks, t.luma_mip, frames.luma_history.at(last)});
         pass(Fsr2Pass::Rcas, {forward_targets_.world}, {frames.color.at(next)});
         frames.last = next;
-        frames.view_projection = multiply(scene.projection, scene.camera);
+        frames.view_projection = view_projection;
     }
 
     // ssr.hlsl's passes, from the prepass's depth and normals and the frame before, seen from

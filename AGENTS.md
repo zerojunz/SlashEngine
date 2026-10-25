@@ -910,7 +910,10 @@ the notice kept: `fsr2_luma`, `fsr2_dilate`, `fsr2_reconstruct` (compute), `fsr2
 `fsr2_lock`, `fsr2_accumulate` and `fsr2_rcas` in `engine/render/shaders/`. `src/fsr2.hpp` holds
 what devices share, with `run_fsr2`, the passes' CPU twin, which `tests/test_fsr2.cpp` holds
 every device to. Each target keeps its own history, and post-processing runs at the window's
-size after. `examples/fsr2-3d` rebuilds a card at twice its render size.
+size after. The prepass clears FSR 2's motion target to `kInvalidMotion`, and where it stays so
+(the sky) the passes work the motion out from the depth with `Fsr2Uniforms::reprojection`, as
+Godot's `derive_motion_vector`; the sky draws through TAA's or FSR 2's jitter, as Godot's.
+`examples/fsr2-3d` rebuilds a card at twice its render size.
 
 Decals are Godot 4.6's Forward+ `Decal` (`render::Decals3D`, `Scene3D::decals`; the `Decal`
 component, gathered by `scene3d::Renderer::add_decals`). `src/decal.hpp` holds what devices

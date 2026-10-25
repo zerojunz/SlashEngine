@@ -159,7 +159,7 @@ Fsr2PassCode fsr2_pass_code(Fsr2Pass pass) {
     case Fsr2Pass::DepthClip:
         return {.vertex = shaders::kFsr2DepthClipVertexWgsl,
                 .fragment = shaders::kFsr2DepthClipFragmentWgsl,
-                .textures = 5,
+                .textures = 6,
                 .targets = kFsr2DepthClipTargets};
     case Fsr2Pass::Lock:
         return {.vertex = shaders::kFsr2LockVertexWgsl,
@@ -1414,7 +1414,15 @@ public:
         }
         std::optional<std::uint32_t> sky_uniforms_at;
         if (sky) {
-            SkyUniforms uniforms = sky_uniforms(*frame_.scene, scene_width_, scene_height_);
+            // Seen through TAA's jitter or FSR 2's, as the meshes.
+            std::array<float, 2> sky_jitter = jitter;
+            if (forward && !mesh_draws_.empty() && uses_taa(*frame_.scene)) {
+                if (const TaaHistory* taa = find_taa_history(frame_.target); taa != nullptr) {
+                    sky_jitter = taa_jitter(taa->frames, scene_width_, scene_height_);
+                }
+            }
+            SkyUniforms uniforms =
+                sky_uniforms(*frame_.scene, scene_width_, scene_height_, sky_jitter);
             uniforms.orientation = transposed(uniforms.orientation);
             sky_uniforms_at = uniforms_.add(uniforms);
             make_depth_target(scene_width_, scene_height_);
@@ -1479,15 +1487,19 @@ public:
         // scatters them.
         std::array<std::uint32_t, 3> fsr2_uniforms_at{};
         if (fsr2 != nullptr) {
-            Fsr2Uniforms uniforms = fsr2_uniforms({.render_width = scene_width_,
-                                                   .render_height = scene_height_,
-                                                   .display_width = frame_width_,
-                                                   .display_height = frame_height_,
-                                                   .jitter = jitter,
-                                                   .projection = frame_.scene->projection,
-                                                   .sharpness = frame_.scene->fsr2->sharpness,
-                                                   .frame_index = fsr2->clock.frames,
-                                                   .phases = fsr2->clock.phases});
+            const Mat4 view_projection = multiply(frame_.scene->projection, frame_.scene->camera);
+            Fsr2Uniforms uniforms = fsr2_uniforms(
+                {.render_width = scene_width_,
+                 .render_height = scene_height_,
+                 .display_width = frame_width_,
+                 .display_height = frame_height_,
+                 .jitter = jitter,
+                 .projection = frame_.scene->projection,
+                 .view_projection = view_projection,
+                 .previous = fsr2->clock.frames == 0 ? view_projection : fsr2->view_projection,
+                 .sharpness = frame_.scene->fsr2->sharpness,
+                 .frame_index = fsr2->clock.frames,
+                 .phases = fsr2->clock.phases});
             fsr2_uniforms_at[0] = uniforms_.add(uniforms);
             for (const std::int32_t step : {0, 1}) {
                 uniforms.options[2] = step;
@@ -1521,10 +1533,11 @@ public:
             velocity = fsr2_textures_.velocity.view;
         }
         if (ssao || ssr || velocity != nullptr) {
-            encode_prepass(encoder, mesh_uniforms, velocity);
+            // FSR 2 works the sky's motion vectors out from the depth, as Godot's.
+            encode_prepass(encoder, mesh_uniforms, velocity, taa == nullptr && fsr2 != nullptr);
         } else if (fsr2 != nullptr) {
-            // Nothing moved in a frame with no meshes.
-            clear_texture(encoder, fsr2_textures_.velocity.view);
+            // A frame with no meshes is all sky.
+            clear_texture(encoder, fsr2_textures_.velocity.view, kInvalidMotion);
         }
         if (ssao) {
             encode_ssao(encoder, *ssao, ssao_uniforms_at);
@@ -3943,9 +3956,10 @@ private:
     }
 
     // The prepass, which draws the opaque meshes' normals and depth, which SSAO, SSR and TAA
-    // read, and their motion vectors into velocity, unless it is null.
+    // read, and their motion vectors into velocity, unless it is null, over kInvalidMotion where
+    // invalid_motion says so (FSR 2's).
     void encode_prepass(WGPUCommandEncoder encoder, const MeshUniforms& at,
-                        WGPUTextureView velocity) {
+                        WGPUTextureView velocity, bool invalid_motion) {
         std::array<WGPURenderPassColorAttachment, 2> colors{};
         for (WGPURenderPassColorAttachment& color : colors) {
             color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
@@ -3955,6 +3969,9 @@ private:
         }
         colors[0].view = prepass_.normals.view;
         colors[1].view = velocity;
+        if (invalid_motion) {
+            colors[1].clearValue = {.r = kInvalidMotion, .g = kInvalidMotion, .b = 0.0, .a = 0.0};
+        }
         WGPURenderPassDepthStencilAttachment depth = WGPU_RENDER_PASS_DEPTH_STENCIL_ATTACHMENT_INIT;
         depth.view = prepass_.depth.view;
         depth.depthLoadOp = WGPULoadOp_Clear;
@@ -4581,12 +4598,14 @@ private:
     }
 
     // Clears a texture the frame draws into to transparent black.
-    static void clear_texture(WGPUCommandEncoder encoder, WGPUTextureView view) {
+    // Clears a texture to value in its first two channels and 0 in the others.
+    static void clear_texture(WGPUCommandEncoder encoder, WGPUTextureView view,
+                              double value = 0.0) {
         WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
         color.view = view;
         color.loadOp = WGPULoadOp_Clear;
         color.storeOp = WGPUStoreOp_Store;
-        color.clearValue = {.r = 0.0, .g = 0.0, .b = 0.0, .a = 0.0};
+        color.clearValue = {.r = value, .g = value, .b = 0.0, .a = 0.0};
         WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
         descriptor.colorAttachmentCount = 1;
         descriptor.colorAttachments = &color;
@@ -4689,7 +4708,7 @@ private:
         wgpuBindGroupRelease(outputs);
         pass(Fsr2Pass::DepthClip, {t.prepared.view, t.reactive.view},
              {frames.dilated_motion.at(next).view, t.dilated_depth.view, t.color.view,
-              frames.dilated_motion.at(last).view, t.velocity.view});
+              frames.dilated_motion.at(last).view, t.velocity.view, depth_.view});
         pass(Fsr2Pass::Lock, {t.new_locks.view}, {t.lock_luma.view});
         pass(Fsr2Pass::Accumulate,
              {frames.color.at(next).view, frames.lock_status.at(next).view,
