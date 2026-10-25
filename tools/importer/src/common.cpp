@@ -190,6 +190,13 @@ std::optional<std::pair<int, int>> png_size(std::string_view bytes) {
     return std::pair{read(16), read(20)};
 }
 
+bool pointer_within(const std::vector<std::string>& pointers, std::string_view pointer) {
+    return std::ranges::any_of(pointers, [&](const std::string& within) {
+        return pointer.starts_with(within) &&
+               (pointer.size() == within.size() || pointer[within.size()] == '/');
+    });
+}
+
 bool remove_pointer(json::Value& root, std::string_view pointer) {
     if (pointer.empty() || pointer.front() != '/') {
         return false;

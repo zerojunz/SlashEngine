@@ -559,8 +559,35 @@ reported, since its tracks are written for the first.
   entity that draws it, which is reported, since the object's own curves then move that entity.
 - Cameras and lights on an animated object, or on an object one of its tracks moves, face -z
   through a child entity, so the animation's turns don't undo the half turn.
-- Root motion, humanoid muscle curves, Animator parameter curves, animated script values and
+- Humanoid muscle curves in `.anim` files, Animator parameter curves, animated script values and
   curves of fields with no counterpart are reported.
+
+#### Humanoid models and root motion
+
+A model whose import settings make it humanoid (`animationType: 3`) has an Avatar: the model's
+node for each of Unity's human bones (`Hips`, `Spine`, `LeftUpperLeg` and the rest), from
+`humanDescription.human`, and those bones' rotations in the T-pose it keeps, from
+`humanDescription.skeleton`. An Avatar copied from another model (`avatarSetup: 2`) is that
+model's.
+
+- A humanoid model's clip played by an instance of another humanoid model is retargeted through
+  both Avatars, as Unity's Mecanim plays it: sampled at the take's frame rate, each human bone of
+  the instance's model turns in the model as the clip's model's bone of the same name turns from
+  its T-pose, and the hips move as far, scaled by the height of the instance's hips over that of
+  the clip's model's. The clip becomes node tracks of the instance's model, rotations as Euler
+  angles keyed where they bend, and bones that don't move have none. Human bones the clip's model
+  hasn't stay in their T-pose.
+- Models with the same rig (the same human bones on nodes of the same names, at the same rest
+  and T-pose) play each other's clips `"from"` the clip's model, unchanged.
+- A controller converts for the first model that plays it. A controller of retargeted clips played
+  by another humanoid model is reported, since its tracks move the first model's nodes.
+- With `m_ApplyRootMotion`, a model's instance gets an `AnimationTree` whose `root_motion_track`
+  is the humanoid model's hips, or the node a generic model's `motionNodeName` names. The tree
+  takes that node's motion out of the pose into `root_motion_position` and
+  `root_motion_rotation`, as Godot's does, and gameplay code moves the object by them as Unity's
+  `Animator` did. A controller with no transitions gets a tree playing its first state,
+  `<controller>.animtree.json`. Root motion is reported either way: on a model's instance to say
+  that gameplay code applies it, and on any other object because nothing takes it out.
 
 ### Terrains
 
@@ -584,8 +611,8 @@ a turned or scaled object are reported. The `TerrainCollider` gives the collisio
 from the object's layer, and its physic material's `friction` and `bounce`; one of another
 `TerrainData`, or on a `Rigidbody`, is reported. With no `TerrainCollider`, collision is off.
 
-Reported, for a later import: meshes saved as assets, skinned meshes, humanoid animation, model
-clips starting past their take's start, mesh colliders of meshes saved as assets, 3D joints and wheels, navigation, reflection and light probes, line and trail
+Reported, for a later import: meshes saved as assets, skinned meshes, model clips starting past
+their take's start, mesh colliders of meshes saved as assets, 3D joints and wheels, navigation, reflection and light probes, line and trail
 renderers, area and baked lights, cookies and color temperature, cubemap skyboxes, a camera's
 viewport rect and render texture, and a `CharacterController`'s step offset.
 

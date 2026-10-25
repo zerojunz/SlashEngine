@@ -1,0 +1,145 @@
+; FBX 7.4.0 project file
+FBXHeaderExtension: {
+	FBXHeaderVersion: 1003
+	FBXVersion: 7400
+}
+GlobalSettings: {
+	Version: 1000
+	Properties70: {
+		P: "UpAxis", "int", "", "", 1
+		P: "UpAxisSign", "int", "", "", 1
+		P: "FrontAxis", "int", "", "", 2
+		P: "FrontAxisSign", "int", "", "", 1
+		P: "CoordAxis", "int", "", "", 0
+		P: "CoordAxisSign", "int", "", "", 1
+		P: "UnitScaleFactor", "double", "", "", 100
+	}
+}
+Objects: {
+	Model: 20, "Model::Armature", "Null" {
+		Version: 232
+		Properties70:
+	}
+	NodeAttribute: 41, "NodeAttribute::pelvis", "LimbNode" {
+		TypeFlags: "Skeleton"
+	}
+	Model: 21, "Model::pelvis", "LimbNode" {
+		Version: 232
+		Properties70: {
+			P: "Lcl Translation", "Lcl Translation", "", "A", 0, 2, 0
+		}
+	}
+	NodeAttribute: 42, "NodeAttribute::spine_01", "LimbNode" {
+		TypeFlags: "Skeleton"
+	}
+	Model: 22, "Model::spine_01", "LimbNode" {
+		Version: 232
+		Properties70: {
+			P: "Lcl Translation", "Lcl Translation", "", "A", 0, 1, 0
+		}
+	}
+	NodeAttribute: 43, "NodeAttribute::thigh_l", "LimbNode" {
+		TypeFlags: "Skeleton"
+	}
+	Model: 23, "Model::thigh_l", "LimbNode" {
+		Version: 232
+		Properties70: {
+			P: "Lcl Translation", "Lcl Translation", "", "A", 0.4, 0, 0
+			P: "Lcl Rotation", "Lcl Rotation", "", "A", 0, 0, 180
+		}
+	}
+	NodeAttribute: 44, "NodeAttribute::calf_l", "LimbNode" {
+		TypeFlags: "Skeleton"
+	}
+	Model: 24, "Model::calf_l", "LimbNode" {
+		Version: 232
+		Properties70: {
+			P: "Lcl Translation", "Lcl Translation", "", "A", 0, 1, 0
+		}
+	}
+	NodeAttribute: 45, "NodeAttribute::thigh_r", "LimbNode" {
+		TypeFlags: "Skeleton"
+	}
+	Model: 25, "Model::thigh_r", "LimbNode" {
+		Version: 232
+		Properties70: {
+			P: "Lcl Translation", "Lcl Translation", "", "A", -0.4, 0, 0
+			P: "Lcl Rotation", "Lcl Rotation", "", "A", 0, 0, 180
+		}
+	}
+	NodeAttribute: 46, "NodeAttribute::calf_r", "LimbNode" {
+		TypeFlags: "Skeleton"
+	}
+	Model: 26, "Model::calf_r", "LimbNode" {
+		Version: 232
+		Properties70: {
+			P: "Lcl Translation", "Lcl Translation", "", "A", 0, 1, 0
+		}
+	}
+	Geometry: 10, "Geometry::Torso", "Mesh" {
+		Vertices: *24 {
+			a: -0.5,0,-0.3,0.5,0,-0.3,0.5,1.2,-0.3,-0.5,1.2,-0.3,-0.5,0,0.3,0.5,0,0.3,0.5,1.2,0.3,-0.5,1.2,0.3
+		}
+		PolygonVertexIndex: *24 {
+			a: 0,3,2,-2,4,5,6,-8,0,1,5,-5,2,3,7,-7,1,2,6,-6,0,4,7,-4
+		}
+		Layer: 0 {
+			Version: 100
+		}
+	}
+	Model: 30, "Model::Torso", "Mesh" {
+		Version: 232
+		Properties70:
+	}
+	Geometry: 11, "Geometry::LeftLeg", "Mesh" {
+		Vertices: *24 {
+			a: -0.16,0,-0.16,0.16,0,-0.16,0.16,2,-0.16,-0.16,2,-0.16,-0.16,0,0.16,0.16,0,0.16,0.16,2,0.16,-0.16,2,0.16
+		}
+		PolygonVertexIndex: *24 {
+			a: 0,3,2,-2,4,5,6,-8,0,1,5,-5,2,3,7,-7,1,2,6,-6,0,4,7,-4
+		}
+		Layer: 0 {
+			Version: 100
+		}
+	}
+	Model: 31, "Model::LeftLeg", "Mesh" {
+		Version: 232
+		Properties70:
+	}
+	Geometry: 12, "Geometry::RightLeg", "Mesh" {
+		Vertices: *24 {
+			a: -0.16,0,-0.16,0.16,0,-0.16,0.16,2,-0.16,-0.16,2,-0.16,-0.16,0,0.16,0.16,0,0.16,0.16,2,0.16,-0.16,2,0.16
+		}
+		PolygonVertexIndex: *24 {
+			a: 0,3,2,-2,4,5,6,-8,0,1,5,-5,2,3,7,-7,1,2,6,-6,0,4,7,-4
+		}
+		Layer: 0 {
+			Version: 100
+		}
+	}
+	Model: 32, "Model::RightLeg", "Mesh" {
+		Version: 232
+		Properties70:
+	}
+}
+Connections: {
+	C: "OO", 20, 0
+	C: "OO", 41, 21
+	C: "OO", 42, 22
+	C: "OO", 43, 23
+	C: "OO", 44, 24
+	C: "OO", 45, 25
+	C: "OO", 46, 26
+	C: "OO", 21, 20
+	C: "OO", 22, 21
+	C: "OO", 23, 21
+	C: "OO", 24, 23
+	C: "OO", 25, 21
+	C: "OO", 26, 25
+	C: "OO", 30, 22
+	C: "OO", 10, 30
+	C: "OO", 31, 23
+	C: "OO", 11, 31
+	C: "OO", 32, 25
+	C: "OO", 12, 32
+}

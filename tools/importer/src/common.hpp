@@ -58,6 +58,11 @@ template <typename Range, typename T>
 // Removes the value at a JSON Pointer; false if there is none to remove.
 bool remove_pointer(json::Value& root, std::string_view pointer);
 
+// Whether a JSON Pointer is one of those given or inside one: a value already removed, when
+// several errors name it.
+[[nodiscard]] bool pointer_within(const std::vector<std::string>& pointers,
+                                  std::string_view pointer);
+
 // --- 3D math ---
 
 // Rounds an angle or scale made from a matrix, so 90 degrees is 1.570796 rather than
