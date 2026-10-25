@@ -823,8 +823,12 @@ Godot's `Voxelizer` (an octree down to `subdiv` cells, each with albedo, emissio
 (`$cli schema voxel_gi`), Godot's `VoxelGIData`. `light_voxel_gi` injects lights on the CPU on the
 job pool, following `voxel_gi.glsl`'s passes (direct light with shadows marched through the
 distance field, mipmaps, the second bounce), and `voxel_gi_atlas` lays its 3D texture's levels
-out as z slices in one RGBA8 atlas. `scene3d::Renderer::trace_voxel_gis` injects again when the
-lights or settings change, stacks every VoxelGI's atlas into one texture and gives each draw the
+out as z slices in one RGBA8 atlas. `plot_voxel_gi_objects` plots moving meshes into that light as
+Godot's dynamic objects (a material pass from six sides at 16 times the cells, lit per pixel, then
+shrunk and blended into each level), and `voxel_gi_meshes` reads an entity's meshes for it and the
+bake. `scene3d::Renderer::trace_voxel_gis` injects again when the lights or settings change, plots
+the `"dynamic"` meshes in each box again whenever they move, stacks every VoxelGI's atlas into one
+texture and gives each draw the
 VoxelGIs its bounds touch as `Material3D::voxel_gi` (`render::VoxelGIShading`, texture slot 5);
 `mesh.hlsl`'s `trace_voxel_gis` follows `gi.glsl`'s `voxel_gi_compute` with manual trilinear
 sampling of the slices, and `render::detail::trace_voxel_gis` (`engine/render/src/voxel_gi.cpp`)

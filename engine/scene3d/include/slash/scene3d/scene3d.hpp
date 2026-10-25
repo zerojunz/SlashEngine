@@ -148,6 +148,11 @@ struct VoxelGIData;
 using VoxelGISource =
     std::function<Result<std::shared_ptr<const VoxelGIData>>(const std::string& path)>;
 
+// The images loaded by project path that the CPU reads, as moving meshes' materials plotted into
+// VoxelGIs: a reload gives new ones.
+using ImageSource =
+    std::function<Result<std::shared_ptr<const render::Image>>(const std::string& path)>;
+
 // A model loaded by project path, and its version: a reload raises it, and its meshes are made
 // again.
 struct SourceModel {
@@ -194,11 +199,13 @@ struct Frame3D {
 // light, and their baked lights' light, from its lightmap, as Godot's lightmapped instances, and
 // dynamic ones their ambient light from its light probes, eased as they move. In Forward+, the
 // other meshes take ambient light and reflections from the VoxelGIs their bounds touch, whose
-// cells the lights are injected into again whenever they change.
+// cells the lights are injected into again whenever they change, and into whose light the
+// dynamic meshes in their boxes are plotted again whenever they move or change (their materials'
+// textures read through images).
 class Renderer {
 public:
     Renderer(render::RenderDevice& device, TextureSource textures, ModelSource models = {},
-             LightmapSource lightmaps = {}, VoxelGISource voxel_gis = {});
+             LightmapSource lightmaps = {}, VoxelGISource voxel_gis = {}, ImageSource images = {});
     ~Renderer();
     Renderer(const Renderer&) = delete;
     Renderer& operator=(const Renderer&) = delete;
@@ -398,12 +405,19 @@ private:
 
     // A VoxelGI's cells and the light injected into them, as an atlas (voxel_gi.cpp).
     struct KeptVoxelGI;
+    // The meshes a dynamic MeshInstance3D plots into the VoxelGIs it touches, and what they were
+    // read from.
+    struct VoxelObject;
     // Loads the cells of the world's VoxelGIs, injects the lights into those whose lights or
-    // settings changed, puts their light in one atlas on the device and gives each draw the
-    // VoxelGIs its bounds touch, at most two, for a camera of env's exposure.
+    // settings changed, plots the dynamic meshes in their boxes into their light where those or
+    // it changed, puts their light in one atlas on the device and gives each draw the VoxelGIs its
+    // bounds touch, at most two, for a camera of env's exposure.
     void trace_voxel_gis(const world::World& world, const world::Tree3D& tree,
                          const std::function<world::Affine3D(entt::entity)>& global,
                          const Environment& env);
+    // The entity's meshes as its VoxelGIs plot them, read again when its mesh, material, model or
+    // their images change.
+    const VoxelObject& voxel_object(const world::World& world, entt::entity entity);
     void destroy_voxel_gis();
 
     render::RenderDevice* device_;
@@ -411,7 +425,9 @@ private:
     ModelSource models_;
     LightmapSource lightmaps_;
     VoxelGISource voxel_gi_source_;
+    ImageSource images_;
     std::unordered_map<entt::entity, std::unique_ptr<KeptVoxelGI>> voxel_gis_;
+    std::unordered_map<entt::entity, std::unique_ptr<VoxelObject>> voxel_objects_;
     // The atlas of this frame's VoxelGIs' light, its size, and the VoxelGIs and versions in it.
     render::TextureId voxel_atlas_ = render::TextureId::None;
     std::uint32_t voxel_atlas_width_ = 0;

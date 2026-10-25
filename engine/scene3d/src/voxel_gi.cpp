@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <numbers>
 #include <optional>
 #include <string>
@@ -943,50 +944,26 @@ struct Grid3D {
     }
 };
 
-class Injector {
+// The light lights bring places in a VoxelGI's cells, as voxel_gi.glsl's compute_light_at_pos:
+// shadows are marched through the cells' distance field.
+class LightField {
 public:
-    Injector(const VoxelGIData& data, const VoxelGIOctree& octree,
-             std::span<const VoxelGILight> lights, const VoxelGISettings& settings,
-             jobs::Pool* pool)
-        : data_(data), octree_(octree), lights_(lights), settings_(settings), pool_(pool) {
+    LightField(const VoxelGIData& data, const VoxelGIOctree& octree,
+               std::span<const VoxelGILight> lights)
+        : lights_(lights) {
         limits_ = {static_cast<float>(data.octree_size[0]), static_cast<float>(data.octree_size[1]),
                    static_cast<float>(data.octree_size[2])};
         const Vec3 ps = divide(limits_, vec(data.bounds_size));
         cell_size_ =
             static_cast<float>(1.0 / static_cast<double>(std::max(std::max(ps.x, ps.y), ps.z)));
-        cells_.reserve(data.cells.size());
-        for (const VoxelGICell& cell : data.cells) {
-            cells_.push_back(lit_cell(cell));
-        }
-        outputs_.assign(data.cells.size(), Vec3{});
         sdf_.size = data.octree_size;
         sdf_.texels = octree.distance_field.data();
         sdf_.components = 1;
     }
 
-    VoxelGITexture run_passes() {
-        const std::size_t levels = data_.level_counts.size();
-        VoxelGITexture texture;
-        for (std::size_t m = 0; m < levels; ++m) {
-            std::array<std::uint32_t, 3> size{};
-            for (std::size_t a = 0; a < 3; ++a) {
-                size.at(a) = std::max(data_.octree_size.at(a) >> m, 1U);
-            }
-            texture.sizes.push_back(size);
-            texture.levels.emplace_back(std::size_t{size[0]} * size[1] * size[2] * 4, 0);
-        }
-        const std::size_t leaves = octree_.level_offsets[levels - 1];
-        const std::size_t leaf_count = octree_.level_offsets[levels] - leaves;
-        run(pool_, leaf_count, [&](std::size_t i) { compute_light(leaves + i); });
-        mipmaps();
-        write(texture);
-        if (settings_.use_two_bounces) {
-            run(pool_, leaf_count, [&](std::size_t i) { second_bounce(leaves + i, texture); });
-            mipmaps();
-            write(texture);
-        }
-        return texture;
-    }
+    // The cells along each axis.
+    [[nodiscard]] Vec3 limits() const { return limits_; }
+    [[nodiscard]] std::span<const VoxelGILight> lights() const { return lights_; }
 
 private:
     // compute_light_vector.
@@ -1071,7 +1048,9 @@ private:
         return occlusion;
     }
 
-    // compute_light_at_pos.
+public:
+    // compute_light_at_pos: the light from light at pos (in cells) on a surface facing normal, and
+    // the way it shines; false where it brings none.
     bool light_at(const VoxelGILight& light, Vec3 pos, Vec3 normal, Vec3& out,
                   Vec3& light_dir) const {
         float attenuation = 0.0F;
@@ -1122,14 +1101,60 @@ private:
         return true;
     }
 
+private:
+    std::span<const VoxelGILight> lights_;
+    Vec3 limits_;
+    float cell_size_ = 1.0F;
+    Grid3D sdf_;
+};
+
+class Injector {
+public:
+    Injector(const VoxelGIData& data, const VoxelGIOctree& octree,
+             std::span<const VoxelGILight> lights, const VoxelGISettings& settings,
+             jobs::Pool* pool)
+        : data_(data), octree_(octree), field_(data, octree, lights), settings_(settings),
+          pool_(pool) {
+        cells_.reserve(data.cells.size());
+        for (const VoxelGICell& cell : data.cells) {
+            cells_.push_back(lit_cell(cell));
+        }
+        outputs_.assign(data.cells.size(), Vec3{});
+    }
+
+    VoxelGITexture run_passes() {
+        const std::size_t levels = data_.level_counts.size();
+        VoxelGITexture texture;
+        for (std::size_t m = 0; m < levels; ++m) {
+            std::array<std::uint32_t, 3> size{};
+            for (std::size_t a = 0; a < 3; ++a) {
+                size.at(a) = std::max(data_.octree_size.at(a) >> m, 1U);
+            }
+            texture.sizes.push_back(size);
+            texture.levels.emplace_back(std::size_t{size[0]} * size[1] * size[2] * 4, 0);
+        }
+        const std::size_t leaves = octree_.level_offsets[levels - 1];
+        const std::size_t leaf_count = octree_.level_offsets[levels] - leaves;
+        run(pool_, leaf_count, [&](std::size_t i) { compute_light(leaves + i); });
+        mipmaps();
+        write(texture);
+        if (settings_.use_two_bounces) {
+            run(pool_, leaf_count, [&](std::size_t i) { second_bounce(leaves + i, texture); });
+            mipmaps();
+            write(texture);
+        }
+        return texture;
+    }
+
+private:
     // MODE_COMPUTE_LIGHT.
     void compute_light(std::size_t index) {
         const LitCell& cell = cells_[index];
         Vec3 accum;
-        for (const VoxelGILight& light : lights_) {
+        for (const VoxelGILight& light : field_.lights()) {
             Vec3 light_color;
             Vec3 light_dir;
-            if (!light_at(light, cell.pos, cell.normal, light_color, light_dir)) {
+            if (!field_.light_at(light, cell.pos, cell.normal, light_color, light_dir)) {
                 continue;
             }
             light_color = multiply(light_color, cell.albedo);
@@ -1191,8 +1216,8 @@ private:
                                                                0.15F, 0.15F, 0.15F};
             // NOLINTNEXTLINE(modernize-use-std-numbers): Godot's tan(30 degrees).
             constexpr float kTanHalfAngle = 0.577F;
-            const float max_distance = length(limits_);
-            const Vec3 cell_size = divide(Vec3{1.0F, 1.0F, 1.0F}, limits_);
+            const float max_distance = length(field_.limits());
+            const Vec3 cell_size = divide(Vec3{1.0F, 1.0F, 1.0F}, field_.limits());
             for (std::size_t i = 0; i < kConeDirs.size(); ++i) {
                 const Vec3 d = kConeDirs.at(i);
                 const Vec3 direction = (tangent * d.x) + (bitangent * d.y) + (normal * d.z);
@@ -1268,14 +1293,11 @@ private:
 
     const VoxelGIData& data_;
     const VoxelGIOctree& octree_;
-    std::span<const VoxelGILight> lights_;
+    LightField field_;
     const VoxelGISettings& settings_;
     jobs::Pool* pool_;
-    Vec3 limits_;
-    float cell_size_ = 1.0F;
     std::vector<LitCell> cells_;
     std::vector<Vec3> outputs_;
-    Grid3D sdf_;
 };
 
 // ---- Baking a world
@@ -1330,57 +1352,44 @@ Box placed_box(std::span<const render::Vertex3D> vertices, const world::Affine3D
     return out;
 }
 
-class Gatherer {
+// Reads entities' meshes as a VoxelGI takes them, their materials' images through sources and
+// their emission at exposure; what can't be read is a problem.
+class MeshReader {
 public:
-    Gatherer(const world::World& world, const LightmapSources& sources, float exposure,
-             VoxelGIBake& out)
-        : world_(world), sources_(sources), tree_(world), exposure_(exposure), out_(out) {}
+    MeshReader(const world::World& world, const LightmapSources& sources, float exposure,
+               std::vector<Problem>& problems)
+        : world_(world), sources_(sources), exposure_(exposure), problems_(problems) {}
 
-    const world::Tree3D& tree() const { return tree_; }
-
-    // The static MeshInstance3Ds at or under scope touching box (in the VoxelGI's space) as
-    // VoxelGI::_find_meshes finds them, placed by to_space.
-    void add_meshes(entt::entity scope, const world::Affine3D& to_space, const Box& box,
-                    std::vector<VoxelGIMesh>& meshes) {
+    // The meshes of the entity's MeshInstance3D in its own space (voxel_gi_meshes).
+    void read(entt::entity entity, std::vector<VoxelGIMesh>& out) {
         const auto& ecs = world_.ecs();
-        for (const entt::entity entity : made<world::MeshInstance3D>(world_)) {
-            const auto& instance = ecs.get<const world::MeshInstance3D>(entity);
-            if (instance.gi_mode != "static" || !tree_.visible(entity) ||
-                !at_or_under(tree_, entity, scope)) {
-                continue;
-            }
-            const world::Affine3D place = to_space * tree_.global(entity);
-            const auto* standard = ecs.try_get<const world::StandardMaterial3D>(entity);
-            std::shared_ptr<const VoxelGIMaterial> override_material;
-            if (standard != nullptr) {
-                override_material = material(*standard, entity, nullptr);
-            }
-            if (!instance.mesh.empty()) {
-                add_model(entity, instance, place, override_material, box, meshes);
-                continue;
-            }
-            auto primitive = primitive_of(world_, entity);
-            if (!primitive) {
-                continue; // nothing drawn, which the renderer reports
-            }
-            const auto& shape = primitive.value();
-            if (!shape) {
-                continue;
-            }
-            auto data = make_mesh(*shape);
-            if (!data) {
-                continue;
-            }
-            if (!placed_box(data.value().vertices, place).intersects(box)) {
-                continue;
-            }
-            VoxelGIMesh mesh;
-            mesh.transform = place;
-            mesh.vertices = std::move(data.value().vertices);
-            mesh.indices = std::move(data.value().indices);
-            mesh.surfaces.push_back({.first_index = 0, .material = override_material});
-            meshes.push_back(std::move(mesh));
+        const auto& instance = ecs.get<const world::MeshInstance3D>(entity);
+        const auto* standard = ecs.try_get<const world::StandardMaterial3D>(entity);
+        std::shared_ptr<const VoxelGIMaterial> override_material;
+        if (standard != nullptr) {
+            override_material = material(*standard, entity, nullptr);
         }
+        if (!instance.mesh.empty()) {
+            add_model(entity, instance, override_material, out);
+            return;
+        }
+        auto primitive = primitive_of(world_, entity);
+        if (!primitive) {
+            return; // nothing drawn, which the renderer reports
+        }
+        const auto& shape = primitive.value();
+        if (!shape) {
+            return;
+        }
+        auto data = make_mesh(*shape);
+        if (!data) {
+            return;
+        }
+        VoxelGIMesh mesh;
+        mesh.vertices = std::move(data.value().vertices);
+        mesh.indices = std::move(data.value().indices);
+        mesh.surfaces.push_back({.first_index = 0, .material = override_material});
+        out.push_back(std::move(mesh));
     }
 
 private:
@@ -1390,12 +1399,12 @@ private:
             return nullptr;
         }
         if (!sources_.images) {
-            out_.problems.push_back({entity, field, "images can't load here"});
+            problems_.push_back({entity, field, "images can't load here"});
             return nullptr;
         }
         auto loaded = sources_.images(path);
         if (!loaded) {
-            out_.problems.push_back({entity, field, loaded.error().message});
+            problems_.push_back({entity, field, loaded.error().message});
             return nullptr;
         }
         return loaded.value();
@@ -1423,17 +1432,16 @@ private:
     }
 
     void add_model(entt::entity entity, const world::MeshInstance3D& instance,
-                   const world::Affine3D& place,
-                   const std::shared_ptr<const VoxelGIMaterial>& override_material, const Box& box,
-                   std::vector<VoxelGIMesh>& meshes) {
+                   const std::shared_ptr<const VoxelGIMaterial>& override_material,
+                   std::vector<VoxelGIMesh>& out) {
         const std::string field = "/components/MeshInstance3D/mesh";
         if (!sources_.models) {
-            out_.problems.push_back({entity, field, "models can't load here"});
+            problems_.push_back({entity, field, "models can't load here"});
             return;
         }
         auto loaded = sources_.models(instance.mesh);
         if (!loaded) {
-            out_.problems.push_back({entity, field, loaded.error().message});
+            problems_.push_back({entity, field, loaded.error().message});
             return;
         }
         const std::shared_ptr<const Model> model = loaded.value();
@@ -1449,10 +1457,10 @@ private:
             return {model, &found.image}; // kept alive with the model
         };
         for (const ModelPart& part : model->parts) {
-            // A skinned part is voxelized at rest, as Godot plots a mesh's own vertices.
+            // A skinned part is taken at rest, as Godot plots a mesh's own vertices.
             const ModelMesh& from = model->meshes[part.mesh];
             VoxelGIMesh mesh;
-            mesh.transform = place * part.transform;
+            mesh.transform = part.transform;
             for (const ModelSurface& surface : from.surfaces) {
                 const auto base = static_cast<std::uint32_t>(mesh.vertices.size());
                 VoxelGIMesh::Surface entry{.first_index =
@@ -1477,19 +1485,471 @@ private:
                     mesh.indices.push_back(base + index);
                 }
             }
-            if (mesh.indices.empty() ||
-                !placed_box(mesh.vertices, mesh.transform).intersects(box)) {
-                continue;
+            if (!mesh.indices.empty()) {
+                out.push_back(std::move(mesh));
             }
-            meshes.push_back(std::move(mesh));
         }
     }
 
     const world::World& world_;
     const LightmapSources& sources_;
-    world::Tree3D tree_;
     float exposure_;
-    VoxelGIBake& out_;
+    std::vector<Problem>& problems_;
+};
+
+// ---- Moving meshes: VoxelGIInstance::update's dynamic objects and voxel_gi.glsl's MODE_DYNAMIC
+
+// The finest dynamic map is 2^4 times finer than the cells, as Godot's oversample.
+constexpr int kOversample = 4;
+constexpr int kMultiplier = 1 << kOversample;
+
+// A side a mesh is drawn from, as set_look_at from a face of its box toward its middle with
+// Godot's render_z and render_up: the cells' axes across and up the map, the axis it looks along,
+// whether it looks down that axis from the far face, and the way it looks.
+struct Side {
+    int x_axis = 0;
+    int y_axis = 0;
+    int z_axis = 0;
+    bool z_flip = false;
+    Vec3 dir;
+};
+
+int axis_of(Vec3 v) {
+    if (std::abs(v.x) > 0.5F) {
+        return 0;
+    }
+    return std::abs(v.y) > 0.5F ? 1 : 2;
+}
+
+const std::array<Side, 6>& sides() {
+    static const std::array<Side, 6> made = [] {
+        static constexpr std::array<Vec3, 6> kRenderZ{
+            Vec3{1.0F, 0.0F, 0.0F},  Vec3{0.0F, 1.0F, 0.0F},  Vec3{0.0F, 0.0F, 1.0F},
+            Vec3{-1.0F, 0.0F, 0.0F}, Vec3{0.0F, -1.0F, 0.0F}, Vec3{0.0F, 0.0F, -1.0F}};
+        static constexpr std::array<Vec3, 6> kRenderUp{
+            Vec3{0.0F, 1.0F, 0.0F}, Vec3{0.0F, 0.0F, 1.0F}, Vec3{0.0F, 1.0F, 0.0F},
+            Vec3{0.0F, 1.0F, 0.0F}, Vec3{0.0F, 0.0F, 1.0F}, Vec3{0.0F, 1.0F, 0.0F}};
+        std::array<Side, 6> out{};
+        for (std::size_t j = 0; j < out.size(); ++j) {
+            // Basis::looking_at: z back toward the eye, x the up cross z, y z cross x.
+            const Vec3 z = kRenderZ.at(j) * -1.0F;
+            const Vec3 x = cross(kRenderUp.at(j), z);
+            const Vec3 y = cross(z, x);
+            out.at(j) = {.x_axis = axis_of(x),
+                         .y_axis = axis_of(y),
+                         .z_axis = axis_of(z),
+                         .z_flip = z.x + z.y + z.z > 0.0F,
+                         .dir = kRenderZ.at(j)};
+        }
+        return out;
+    }();
+    return made;
+}
+
+// A pixel of the material pass (MODE_RENDER_MATERIAL): the nearest surface's albedo, how much of
+// it is there (0 where none), its normal in the cells' space, emission and distance from the side.
+struct MaterialTexel {
+    Vec3 albedo;
+    float alpha = 0.0F;
+    Vec3 normal;
+    Vec3 emission;
+    float depth = 0.0F;
+    float nearest = std::numeric_limits<float>::infinity();
+};
+
+// A texel of a dynamic map: light and how much of it is covered, and its place along the side's
+// axis in the map's units.
+struct DynamicTexel {
+    std::array<float, 4> light{};
+    float z = 0.0F;
+};
+
+class ObjectPlotter {
+public:
+    ObjectPlotter(VoxelGITexture& texture, const VoxelGIData& data, const VoxelGIOctree& octree,
+                  std::span<const VoxelGILight> lights, const VoxelGISettings& settings,
+                  jobs::Pool* pool)
+        : texture_(texture), field_(data, octree, lights), settings_(settings), pool_(pool),
+          octree_size_(data.octree_size) {
+        world::Affine3D oversample;
+        oversample.x = {static_cast<float>(kMultiplier), 0.0F, 0.0F};
+        oversample.y = {0.0F, static_cast<float>(kMultiplier), 0.0F};
+        oversample.z = {0.0F, 0.0F, static_cast<float>(kMultiplier)};
+        to_map_ = oversample * voxel_gi_to_cell(data);
+    }
+
+    void plot(const VoxelGIMesh& mesh) {
+        const world::Affine3D place = to_map_ * mesh.transform;
+        const Box box = placed_box(mesh.vertices, place);
+        // Wrapped to the map's texels against jitter, a texel more each way, and even across for
+        // halving.
+        std::array<int, 3> begin{};
+        std::array<int, 3> end{};
+        for (int a = 0; a < 3; ++a) {
+            const auto i = static_cast<std::size_t>(a);
+            const float low = component(box.position, a);
+            begin.at(i) = static_cast<int>(low - 1.0F);
+            end.at(i) = static_cast<int>(low + component(box.size, a) + 1.0F);
+            if (((end.at(i) - begin.at(i)) & 1) != 0) {
+                ++end.at(i);
+            }
+            begin.at(i) = std::max(begin.at(i), 0);
+            end.at(i) = std::min(end.at(i), static_cast<int>(octree_size_.at(i)) * kMultiplier);
+            if (end.at(i) <= begin.at(i)) {
+                return; // outside the cells
+            }
+        }
+        for (const Side& side : sides()) {
+            plot_side(mesh, place, begin, end, side);
+        }
+    }
+
+private:
+    void plot_side(const VoxelGIMesh& mesh, const world::Affine3D& place,
+                   const std::array<int, 3>& begin, const std::array<int, 3>& end,
+                   const Side& side) {
+        const auto xa = static_cast<std::size_t>(side.x_axis);
+        const auto ya = static_cast<std::size_t>(side.y_axis);
+        const auto za = static_cast<std::size_t>(side.z_axis);
+        std::array<int, 2> rect_pos{begin.at(xa), begin.at(ya)};
+        std::array<int, 2> rect_size{end.at(xa) - begin.at(xa), end.at(ya) - begin.at(ya)};
+        const auto z_base = static_cast<float>(side.z_flip ? end.at(za) : begin.at(za));
+        const float z_sign = side.z_flip ? -1.0F : 1.0F;
+        const auto far = static_cast<float>(end.at(za) - begin.at(za));
+
+        std::vector<MaterialTexel> material(static_cast<std::size_t>(rect_size[0]) *
+                                            static_cast<std::size_t>(rect_size[1]));
+        draw_material(mesh, place, side, rect_pos, rect_size, z_base, z_sign, far, material);
+
+        // MODE_DYNAMIC_LIGHTING: each covered pixel lit at its place in the cells.
+        std::vector<DynamicTexel> map(material.size());
+        run(pool_, static_cast<std::size_t>(rect_size[1]), [&](std::size_t row) {
+            const auto py = static_cast<int>(row);
+            for (int px = 0; px < rect_size[0]; ++px) {
+                const std::size_t at =
+                    (row * static_cast<std::size_t>(rect_size[0])) + static_cast<std::size_t>(px);
+                const MaterialTexel& m = material[at];
+                DynamicTexel& out = map[at];
+                const float z = z_base + (m.depth * z_sign);
+                out.z = z;
+                if (m.alpha == 0.0F) {
+                    continue; // nothing lit, as Godot's cleared albedo and emission
+                }
+                Vec3 pos;
+                set_component(pos, side.x_axis, static_cast<float>(rect_pos[0] + px));
+                set_component(pos, side.y_axis, static_cast<float>(rect_pos[1] + py));
+                set_component(pos, side.z_axis, static_cast<float>(static_cast<int>(z)));
+                pos = pos * (1.0F / static_cast<float>(kMultiplier));
+                Vec3 accum;
+                for (const VoxelGILight& light : field_.lights()) {
+                    Vec3 color;
+                    Vec3 light_dir;
+                    if (!field_.light_at(light, pos, m.normal, color, light_dir)) {
+                        continue;
+                    }
+                    color = multiply(color, m.albedo);
+                    accum = accum + (color * std::max(0.0F, dot(m.normal, light_dir * -1.0F)));
+                }
+                accum = accum + m.emission;
+                out.light = {accum.x, accum.y, accum.z, m.alpha};
+            }
+        });
+
+        // MODE_DYNAMIC_SHRINK: halved down to the cells, then down the texture's levels, plotted
+        // into each level from level 0.
+        const std::size_t levels = texture_.levels.size();
+        const std::size_t maps = kOversample + levels;
+        for (std::size_t k = 1; k < maps; ++k) {
+            const int mipmap = k < kOversample ? -1 : static_cast<int>(k - kOversample);
+            std::array<int, 2> prev_ofs{0, 0};
+            const std::array<int, 2> prev_size = rect_size;
+            for (std::size_t a = 0; a < 2; ++a) {
+                if ((rect_pos.at(a) & 1) != 0) {
+                    ++rect_size.at(a);
+                    prev_ofs.at(a) = 1;
+                }
+                if ((rect_size.at(a) & 1) != 0) {
+                    ++rect_size.at(a);
+                }
+                rect_pos.at(a) >>= 1;
+                rect_size.at(a) = std::max(1, rect_size.at(a) >> 1);
+            }
+            const bool on_mipmap = mipmap > 0;
+            const bool write = mipmap < 0 || k + 1 < maps;
+            std::vector<DynamicTexel> next(write ? static_cast<std::size_t>(rect_size[0]) *
+                                                       static_cast<std::size_t>(rect_size[1])
+                                                 : 0);
+            for (int py = 0; py < rect_size[1]; ++py) {
+                for (int px = 0; px < rect_size[0]; ++px) {
+                    std::array<float, 4> accum{};
+                    float accum_z = 0.0F;
+                    float count = 0.0F;
+                    for (int i = 0; i < 4; ++i) {
+                        const int ox = (px * 2) + (i & 1) - prev_ofs[0];
+                        const int oy = (py * 2) + (i >> 1) - prev_ofs[1];
+                        if (ox < 0 || oy < 0 || ox >= prev_size[0] || oy >= prev_size[1]) {
+                            continue;
+                        }
+                        const DynamicTexel& from = map[(static_cast<std::size_t>(oy) *
+                                                        static_cast<std::size_t>(prev_size[0])) +
+                                                       static_cast<std::size_t>(ox)];
+                        if (from.light[3] == 0.0F) {
+                            continue; // empty
+                        }
+                        for (std::size_t c = 0; c < 4; ++c) {
+                            accum.at(c) += from.light.at(c);
+                        }
+                        accum_z += from.z * 0.5F; // halved too
+                        count += 1.0F;
+                    }
+                    if (on_mipmap) {
+                        // mix(8, count, propagation).
+                        const float divisor = (8.0F * (1.0F - settings_.propagation)) +
+                                              (count * settings_.propagation);
+                        for (std::size_t c = 0; c < 3; ++c) {
+                            accum.at(c) /= divisor;
+                        }
+                        accum[3] /= 8.0F;
+                    } else {
+                        for (float& c : accum) {
+                            c /= 4.0F;
+                        }
+                    }
+                    accum_z = count == 0.0F ? 0.0F : accum_z / count;
+                    if (write) {
+                        next[(static_cast<std::size_t>(py) *
+                              static_cast<std::size_t>(rect_size[0])) +
+                             static_cast<std::size_t>(px)] = {.light = accum, .z = accum_z};
+                    }
+                    if (mipmap >= 0) {
+                        blit(static_cast<std::size_t>(mipmap), side,
+                             {rect_pos[0] + px, rect_pos[1] + py}, accum, accum_z);
+                    }
+                }
+            }
+            map = std::move(next);
+        }
+    }
+
+    // The mesh drawn from the side into the map, nearest surface first, as Godot's material pass
+    // draws it orthographically from the box's face: faces its material culls are left out, and
+    // where it culls none, a face seen from behind has its normal turned round.
+    void draw_material(const VoxelGIMesh& mesh, const world::Affine3D& place, const Side& side,
+                       const std::array<int, 2>& rect_pos, const std::array<int, 2>& rect_size,
+                       float z_base, float z_sign, float far,
+                       std::vector<MaterialTexel>& material) const {
+        const world::Affine3D inv = place.inverse();
+        const auto normal_xform = [&inv](Vec3 n) {
+            return Vec3{dot(inv.x, n), dot(inv.y, n), dot(inv.z, n)};
+        };
+        // A mirrored mesh's faces turn the other way, as Godot's mirrored instances.
+        const bool mirrored = dot(place.x, cross(place.y, place.z)) < 0.0F;
+        for (std::size_t s = 0; s < mesh.surfaces.size(); ++s) {
+            const VoxelGIMesh::Surface& surface = mesh.surfaces[s];
+            const VoxelGIMaterial& from = surface.material ? *surface.material : default_material();
+            const std::size_t first = surface.first_index;
+            const std::size_t last = s + 1 < mesh.surfaces.size() ? mesh.surfaces[s + 1].first_index
+                                                                  : mesh.indices.size();
+            for (std::size_t j = first; j + 3 <= std::min(last, mesh.indices.size()); j += 3) {
+                std::array<Vec3, 3> p;
+                std::array<Vec2, 3> uv;
+                std::array<Vec3, 3> n;
+                bool valid = true;
+                for (std::size_t k = 0; k < 3; ++k) {
+                    const std::uint32_t index = mesh.indices[j + k];
+                    if (index >= mesh.vertices.size()) {
+                        valid = false;
+                        break;
+                    }
+                    const render::Vertex3D& v = mesh.vertices[index];
+                    p.at(k) = place.apply(vec(v.position));
+                    uv.at(k) = {v.uv[0], v.uv[1]};
+                    n.at(k) = normal_xform(vec(v.normal));
+                }
+                if (!valid) {
+                    continue;
+                }
+                // Clockwise as the side sees it, Godot's front, is a normal by the right hand
+                // pointing the way it looks.
+                const bool front =
+                    (dot(cross(p[1] - p[0], p[2] - p[0]), side.dir) > 0.0F) != mirrored;
+                if ((from.cull_mode == render::CullMode::Back && !front) ||
+                    (from.cull_mode == render::CullMode::Front && front)) {
+                    continue;
+                }
+                if (!front && from.cull_mode == render::CullMode::Disabled) {
+                    for (Vec3& v : n) {
+                        v = v * -1.0F;
+                    }
+                }
+                raster(p, uv, n, from, side, rect_pos, rect_size, z_base, z_sign, far, material);
+            }
+        }
+    }
+
+    // One triangle's pixels, sampled at their middles, with a top-left rule on shared edges.
+    static void raster(const std::array<Vec3, 3>& p, const std::array<Vec2, 3>& uv,
+                       const std::array<Vec3, 3>& n, const VoxelGIMaterial& from, const Side& side,
+                       const std::array<int, 2>& rect_pos, const std::array<int, 2>& rect_size,
+                       float z_base, float z_sign, float far,
+                       std::vector<MaterialTexel>& material) {
+        std::array<double, 3> u{};
+        std::array<double, 3> v{};
+        std::array<float, 3> d{};
+        std::array<std::size_t, 3> order{0, 1, 2};
+        for (std::size_t k = 0; k < 3; ++k) {
+            u.at(k) = static_cast<double>(component(p.at(k), side.x_axis)) - rect_pos[0];
+            v.at(k) = static_cast<double>(component(p.at(k), side.y_axis)) - rect_pos[1];
+            d.at(k) = (component(p.at(k), side.z_axis) - z_base) * z_sign;
+        }
+        const auto edge = [](double ax, double ay, double bx, double by, double cx, double cy) {
+            return ((bx - ax) * (cy - ay)) - ((by - ay) * (cx - ax));
+        };
+        double area = edge(u[0], v[0], u[1], v[1], u[2], v[2]);
+        if (area == 0.0 || !std::isfinite(area)) {
+            return;
+        }
+        if (area < 0.0) {
+            std::swap(order[1], order[2]);
+            area = -area;
+        }
+        const std::array<double, 3> x{u.at(order[0]), u.at(order[1]), u.at(order[2])};
+        const std::array<double, 3> y{v.at(order[0]), v.at(order[1]), v.at(order[2])};
+        const double low_x = std::min({x[0], x[1], x[2]});
+        const double high_x = std::max({x[0], x[1], x[2]});
+        const double low_y = std::min({y[0], y[1], y[2]});
+        const double high_y = std::max({y[0], y[1], y[2]});
+        const int x0 = static_cast<int>(std::max(0.0, std::floor(low_x)));
+        const int x1 =
+            static_cast<int>(std::min(static_cast<double>(rect_size[0] - 1), std::ceil(high_x)));
+        const int y0 = static_cast<int>(std::max(0.0, std::floor(low_y)));
+        const int y1 =
+            static_cast<int>(std::min(static_cast<double>(rect_size[1] - 1), std::ceil(high_y)));
+        // Each edge from a corner to the next: a pixel on it counts for the triangle it bounds
+        // on its top or left.
+        const auto counts_on = [&](std::size_t a) {
+            const std::size_t b = (a + 1) % 3;
+            const double dy = y.at(b) - y.at(a);
+            return dy < 0.0 || (dy == 0.0 && x.at(b) - x.at(a) > 0.0);
+        };
+        const std::array<bool, 3> on{counts_on(1), counts_on(2), counts_on(0)};
+        for (int py = y0; py <= y1; ++py) {
+            const double cy = py + 0.5;
+            for (int px = x0; px <= x1; ++px) {
+                const double cx = px + 0.5;
+                // Each weight is that of the corner across from the edge.
+                const std::array<double, 3> w{edge(x[1], y[1], x[2], y[2], cx, cy),
+                                              edge(x[2], y[2], x[0], y[0], cx, cy),
+                                              edge(x[0], y[0], x[1], y[1], cx, cy)};
+                bool inside = true;
+                for (std::size_t k = 0; k < 3; ++k) {
+                    if (w.at(k) < 0.0 || (w.at(k) == 0.0 && !on.at(k))) {
+                        inside = false;
+                    }
+                }
+                if (!inside) {
+                    continue;
+                }
+                std::array<float, 3> b{};
+                for (std::size_t k = 0; k < 3; ++k) {
+                    b.at(k) = static_cast<float>(w.at(k) / area);
+                }
+                const std::size_t i0 = order[0];
+                const std::size_t i1 = order[1];
+                const std::size_t i2 = order[2];
+                const float depth = (d.at(i0) * b[0]) + (d.at(i1) * b[1]) + (d.at(i2) * b[2]);
+                // The orthographic view's near and far planes.
+                if (!(depth >= 0.0001F) || depth > far) {
+                    continue;
+                }
+                MaterialTexel& out = material[(static_cast<std::size_t>(py) *
+                                               static_cast<std::size_t>(rect_size[0])) +
+                                              static_cast<std::size_t>(px)];
+                if (depth > out.nearest) {
+                    continue;
+                }
+                const Vec2 at = (uv.at(i0) * b[0]) + (uv.at(i1) * b[1]) + (uv.at(i2) * b[2]);
+                const std::size_t texel =
+                    (static_cast<std::size_t>(texel_of(at.y)) * kVoxelGIMaterialSize) +
+                    static_cast<std::size_t>(texel_of(at.x));
+                const auto& albedo = from.albedo[texel];
+                const auto& emission = from.emission[texel];
+                out.nearest = depth;
+                out.depth = depth;
+                out.alpha = 1.0F;
+                out.albedo = {albedo[0], albedo[1], albedo[2]};
+                out.emission = {emission[0], emission[1], emission[2]};
+                out.normal = normalized((n.at(i0) * b[0]) + (n.at(i1) * b[1]) + (n.at(i2) * b[2]));
+            }
+        }
+    }
+
+    // MODE_DYNAMIC_SHRINK_PLOT: a texel of light blended over a level of the texture, split
+    // between the two texels along the side's axis its place falls between.
+    void blit(std::size_t level, const Side& side, std::array<int, 2> at,
+              const std::array<float, 4>& accum, float accum_z) {
+        if (accum[3] < 0.001F) {
+            return; // too faint to blit
+        }
+        const auto& size = texture_.sizes[level];
+        std::vector<std::uint8_t>& texels = texture_.levels[level];
+        std::array<int, 3> pos{};
+        pos.at(static_cast<std::size_t>(side.x_axis)) = at[0];
+        pos.at(static_cast<std::size_t>(side.y_axis)) = at[1];
+        pos.at(static_cast<std::size_t>(side.z_axis)) = static_cast<int>(accum_z);
+        const float z_frac = accum_z - std::floor(accum_z);
+        const float range = settings_.dynamic_range;
+        for (int i = 0; i < 2; ++i) {
+            std::array<int, 3> p = pos;
+            p.at(static_cast<std::size_t>(side.z_axis)) += i;
+            bool outside = false;
+            for (std::size_t a = 0; a < 3; ++a) {
+                outside = outside || p.at(a) < 0 || p.at(a) >= static_cast<int>(size.at(a));
+            }
+            if (outside) {
+                continue;
+            }
+            const float weight = i == 0 ? 1.0F - z_frac : z_frac;
+            std::array<float, 4> blit{};
+            for (std::size_t c = 0; c < 4; ++c) {
+                blit.at(c) = accum.at(c) * weight;
+            }
+            const std::size_t index =
+                ((((static_cast<std::size_t>(p[2]) * size[1]) + static_cast<std::size_t>(p[1])) *
+                  size[0]) +
+                 static_cast<std::size_t>(p[0])) *
+                4;
+            std::array<float, 4> color{};
+            for (std::size_t c = 0; c < 4; ++c) {
+                color.at(c) = static_cast<float>(texels[index + c]) / 255.0F;
+            }
+            for (std::size_t c = 0; c < 3; ++c) {
+                color.at(c) *= range;
+            }
+            const float sa = 1.0F - blit[3];
+            const float alpha = (color[3] * sa) + blit[3];
+            // Where nothing shows, Godot leaves the texel's color as it was.
+            if (alpha != 0.0F) {
+                for (std::size_t c = 0; c < 3; ++c) {
+                    color.at(c) = ((color.at(c) * color[3] * sa) + (blit.at(c) * blit[3])) / alpha;
+                }
+                color[3] = alpha;
+            }
+            for (std::size_t c = 0; c < 3; ++c) {
+                color.at(c) /= range;
+            }
+            for (std::size_t c = 0; c < 4; ++c) {
+                texels[index + c] = unorm8(color.at(c));
+            }
+        }
+    }
+
+    VoxelGITexture& texture_;
+    LightField field_;
+    const VoxelGISettings& settings_;
+    jobs::Pool* pool_;
+    std::array<std::uint32_t, 3> octree_size_;
+    world::Affine3D to_map_; // the VoxelGI's space to the finest map's texels
 };
 
 } // namespace
@@ -1600,6 +2060,11 @@ VoxelGIMaterial voxel_gi_material(const world::StandardMaterial3D& standard,
     } else {
         out.albedo = bake_texture(nullptr, {1.0F, 1.0F, 1.0F}, albedo_color);
     }
+    if (standard.cull_mode == "front") {
+        out.cull_mode = render::CullMode::Front;
+    } else if (standard.cull_mode == "disabled") {
+        out.cull_mode = render::CullMode::Disabled;
+    }
     if (standard.emission_enabled) {
         const float energy = standard.emission_energy_multiplier * exposure;
         const std::array<float, 3> color{srgb_to_linear(standard.emission.x) * energy,
@@ -1702,6 +2167,32 @@ VoxelGITexture light_voxel_gi(const VoxelGIData& data, const VoxelGIOctree& octr
     }
     Injector injector(data, octree, lights, settings, pool);
     return injector.run_passes();
+}
+
+std::vector<VoxelGIMesh> voxel_gi_meshes(const world::World& world, entt::entity entity,
+                                         const LightmapSources& sources, float exposure,
+                                         std::vector<Problem>& problems) {
+    std::vector<VoxelGIMesh> out;
+    if (!world.valid(entity) || !world.ecs().all_of<world::MeshInstance3D>(entity)) {
+        return out;
+    }
+    MeshReader reader(world, sources, exposure, problems);
+    reader.read(entity, out);
+    return out;
+}
+
+void plot_voxel_gi_objects(VoxelGITexture& texture, const VoxelGIData& data,
+                           const VoxelGIOctree& octree, std::span<const VoxelGIMesh> objects,
+                           std::span<const VoxelGILight> lights, const VoxelGISettings& settings,
+                           jobs::Pool* pool) {
+    if (texture.levels.empty() || texture.levels.size() != texture.sizes.size() ||
+        texture.sizes[0] != data.octree_size || octree.distance_field.empty()) {
+        return;
+    }
+    ObjectPlotter plotter(texture, data, octree, lights, settings, pool);
+    for (const VoxelGIMesh& object : objects) {
+        plotter.plot(object);
+    }
 }
 
 Result<VoxelGIAtlas> voxel_gi_atlas(const VoxelGITexture& texture) {
@@ -1844,12 +2335,31 @@ Result<VoxelGIBake> bake_voxel_gi(const world::World& world, entt::entity entity
             world.ecs().get<const world::CameraAttributesPractical>(attributes).exposure_multiplier;
     }
     VoxelGIBake out;
-    Gatherer gatherer(world, sources, exposure, out);
-    const world::Affine3D space = gatherer.tree().global(entity);
+    const world::Tree3D tree(world);
+    const world::Affine3D to_space = tree.global(entity).inverse();
+    const entt::entity scope = tree.parent(entity);
     const std::array<float, 3> size{gi.size.x, gi.size.y, gi.size.z};
     const Box box{gi.size * -0.5F, gi.size};
+    // The static MeshInstance3Ds at or under its parent touching its box, as
+    // VoxelGI::_find_meshes finds them.
+    MeshReader reader(world, sources, exposure, out.problems);
     std::vector<VoxelGIMesh> meshes;
-    gatherer.add_meshes(gatherer.tree().parent(entity), space.inverse(), box, meshes);
+    for (const entt::entity found : made<world::MeshInstance3D>(world)) {
+        const auto& instance = world.ecs().get<const world::MeshInstance3D>(found);
+        if (instance.gi_mode != "static" || !tree.visible(found) ||
+            !at_or_under(tree, found, scope)) {
+            continue;
+        }
+        std::vector<VoxelGIMesh> read;
+        reader.read(found, read);
+        const world::Affine3D place = to_space * tree.global(found);
+        for (VoxelGIMesh& mesh : read) {
+            mesh.transform = place * mesh.transform;
+            if (placed_box(mesh.vertices, mesh.transform).intersects(box)) {
+                meshes.push_back(std::move(mesh));
+            }
+        }
+    }
     out.meshes = meshes.size();
     out.data = voxelize(meshes, size, subdiv, exposure);
     return out;
