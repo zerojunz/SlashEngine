@@ -1,0 +1,12 @@
+project.import {"source":"godot"}
+{"converted":{"animation_libraries":0,"animation_trees":0,"assets":0,"audio_streams":0,"bus_layouts":0,"input_actions":0,"mesh_libraries":0,"navigation_meshes":0,"process_materials":0,"scenes":1,"sprite_frames":0,"themes":0,"tile_sets":0},"engine":"godot","files":4,"main_scene":"godot/main.scene.json","project":"Gallery","report":"import/godot.json","scripts":[],"unsupported":[]}
+scene.open {"path":"godot/main.scene.json"}
+{"entities":9,"path":"godot/main.scene.json"}
+entity.get {"components":["VoxelGI"],"id":"gi"}
+{"components":{"VoxelGI":{"bias":1.5,"camera_attributes":"","data":"godot/main.gi_data.voxelgi.json","dynamic_range":2.0,"energy":1.2,"interior":false,"normal_bias":0.0,"propagation":0.5,"size":[6.4,3.2,6.4],"subdiv":"64","use_two_bounces":true}},"id":"gi"}
+frame.capture {"points":[[87,41],[82,45],[25,70],[100,60]]}
+{"colors":[[0.824,0.78,0.722,1],[0.471,0.435,0.416,1],[0.925,0.831,0.753,1],[0.918,0.875,0.796,1]],"drawn":{"meshes":4},"height":90,"width":160}
+component.set {"components":{"VoxelGI":{"data":""}},"id":"gi"}
+{"changed":{"VoxelGI":{"data":""}},"id":"gi"}
+frame.capture {"points":[[87,41],[82,45],[25,70],[100,60]]}
+{"colors":[[0.651,0.631,0.631,1],[0.169,0.216,0.365,1],[0.718,0.694,0.682,1],[0.718,0.694,0.682,1]],"drawn":{"meshes":4},"height":90,"width":160}

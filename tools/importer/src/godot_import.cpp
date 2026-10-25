@@ -27,6 +27,7 @@
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/terrain.hpp"
+#include "slash/scene3d/voxel_gi.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/component_registry.hpp"
@@ -324,6 +325,11 @@ struct GodotCell {
 std::uint16_t read_u16(std::string_view bytes, std::size_t at) {
     return static_cast<std::uint16_t>(static_cast<unsigned char>(bytes[at]) |
                                       (static_cast<unsigned char>(bytes[at + 1]) << 8U));
+}
+
+std::uint32_t read_u32(std::string_view bytes, std::size_t at) {
+    return static_cast<std::uint32_t>(read_u16(bytes, at)) |
+           (static_cast<std::uint32_t>(read_u16(bytes, at + 2)) << 16U);
 }
 
 // Cells of 12 bytes each, little-endian: x and y as signed 16-bit numbers, then the source ID,
@@ -692,6 +698,7 @@ constexpr std::array kNodeTypes{
     NodeType{"ReflectionProbe", Family::Node3D, "ReflectionProbe", ""},
     NodeType{"LightmapGI", Family::Node3D, "LightmapGI", ""},
     NodeType{"LightmapProbe", Family::Node3D, "LightmapProbe", ""},
+    NodeType{"VoxelGI", Family::Node3D, "VoxelGI", ""},
     NodeType{"CollisionShape3D", Family::Node3D, "CollisionShape3D", ""},
     NodeType{"StaticBody3D", Family::Node3D, "StaticBody3D", ""},
     NodeType{"AnimatableBody3D", Family::Node3D, "AnimatableBody3D", ""},
@@ -1879,6 +1886,11 @@ private:
                 project["rendering"]["reflections"]["reflection_atlas"]["reflection_count"] =
                     probes;
             }
+        }
+        // VoxelGIs' cones: Godot's "Low (4 Cones)" and "High (6 Cones)".
+        if (const Value* quality = number("rendering", "global_illumination/voxel_gi/quality")) {
+            project["rendering"]["global_illumination"]["voxel_gi"]["quality"] =
+                quality->number() >= 1.0 ? "high" : "low";
         }
         if (const Value* gravity = number("physics", "2d/default_gravity")) {
             project["physics_2d"]["gravity"] = gravity->number();
@@ -4921,6 +4933,19 @@ private:
                 return true;
             }
         }
+        if (components.contains("VoxelGI")) {
+            if (name == "camera_attributes") {
+                convert_camera_attributes(value, file, components, node, "VoxelGI." + name);
+                if (components.contains("CameraAttributesPractical")) {
+                    components["VoxelGI"]["camera_attributes"] = node.id;
+                }
+                return true;
+            }
+            if (name == "data") {
+                convert_voxel_gi_data(value, file, components, node);
+                return true;
+            }
+        }
         if (name == "shape" && components.contains("CollisionShape3D")) {
             convert_shape_3d(value, file, components["CollisionShape3D"], node);
             return true;
@@ -5543,6 +5568,108 @@ private:
         json::Value& out = components[type];
         out = json::Object{};
         resource_fields(*section, *owner, type, out, node);
+    }
+
+    // --- VoxelGI ---
+
+    // The exposure a VoxelGI bakes its emission at, as Godot's
+    // VoxelGI::_get_camera_exposure_normalization: its camera attributes' exposure_multiplier, or
+    // 1.
+    float bake_exposure(const Node& node) {
+        const Property* attributes = node.find("camera_attributes");
+        if (attributes == nullptr) {
+            return 1.0F;
+        }
+        const auto [section, owner] = resource_section(*attributes->value, *attributes->file);
+        if (section == nullptr || resource_type(*section, *owner) != "CameraAttributesPractical") {
+            return 1.0F;
+        }
+        const Value* multiplier = section->property("exposure_multiplier");
+        return multiplier != nullptr && multiplier->is_number()
+                   ? static_cast<float>(multiplier->number())
+                   : 1.0F;
+    }
+
+    // A VoxelGI's data: the VoxelGIData's settings on the VoxelGI and its baked cells as a
+    // .voxelgi.json file.
+    void convert_voxel_gi_data(const Value& reference, const TextFile& file,
+                               json::Object& components, const Node& node) {
+        if (reference.kind == Value::Kind::Nil) {
+            return;
+        }
+        const auto [section, owner] = resource_section(reference, file);
+        if (section == nullptr || resource_type(*section, *owner) != "VoxelGIData") {
+            problems_.add("VoxelGI.data", node.declared, "not a VoxelGIData resource");
+            return;
+        }
+        resources_used_.insert("VoxelGIData");
+        json::Value& voxel_gi = components["VoxelGI"];
+        resource_fields(*section, *owner, "VoxelGI", voxel_gi, node, {"_data"});
+        if (std::string path = voxel_gi_file(*owner, *section, bake_exposure(node), node.declared);
+            !path.empty()) {
+            voxel_gi["data"] = std::move(path);
+        }
+    }
+
+    // A VoxelGIData's cells as a .voxelgi.json file, written once: the bounds, octree size, level
+    // counts and data cells Godot's VoxelGIData::_get_data keeps, whose layout is the file's, and
+    // the exposure their emission was baked at. Godot's octree and distance field are left out,
+    // since they follow from the cells. "" and a report when there are none or they don't make a
+    // VoxelGI's cells.
+    std::string voxel_gi_file(const TextFile& file, const Section& section, float exposure,
+                              const std::string& where) {
+        const std::string base = resource_base(section, file);
+        const std::string key = file.path + "#" + base;
+        if (const auto done = voxel_gis_written_.find(key); done != voxel_gis_written_.end()) {
+            return done->second;
+        }
+        std::string& written = voxel_gis_written_[key];
+        const Value* data = section.property("_data");
+        const auto numbers = [&](std::string_view name, std::size_t count) {
+            const Value* value = data != nullptr ? data->get(name) : nullptr;
+            auto out = value != nullptr ? value->numbers() : std::nullopt;
+            return out && (count == 0 || out->size() == count) ? out : std::nullopt;
+        };
+        const auto bounds = numbers("bounds", 6);
+        const auto size = numbers("octree_size", 3);
+        const auto levels = numbers("level_counts", 0);
+        const Value* cells_value = data != nullptr ? data->get("octree_data") : nullptr;
+        const auto bytes = cells_value != nullptr ? byte_array(*cells_value) : std::nullopt;
+        if (!bounds || !size || !levels || !bytes || bytes->empty()) {
+            problems_.add("VoxelGIData with no cells", where, "bake it with voxel_gi.bake");
+            return {};
+        }
+        scene3d::VoxelGIData out;
+        out.baked_exposure = exposure;
+        for (std::size_t axis = 0; axis < 3; ++axis) {
+            out.bounds_position.at(axis) = static_cast<float>(bounds->at(axis));
+            out.bounds_size.at(axis) = static_cast<float>(bounds->at(axis + 3));
+            out.octree_size.at(axis) =
+                static_cast<std::uint32_t>(std::clamp(size->at(axis), 0.0, 65536.0));
+        }
+        for (const double count : *levels) {
+            out.level_counts.push_back(static_cast<std::uint32_t>(std::clamp(count, 0.0, 1e9)));
+        }
+        out.cells.resize(bytes->size() / sizeof(scene3d::VoxelGICell));
+        for (std::size_t i = 0; i < out.cells.size(); ++i) {
+            for (std::size_t word = 0; word < 4; ++word) {
+                out.cells[i].at(word) = read_u32(*bytes, (i * 16) + (word * 4));
+            }
+        }
+        const json::Value doc = scene3d::voxel_gi_json(out);
+        if (const auto errors = scene3d::validate_voxel_gi(doc);
+            bytes->size() % sizeof(scene3d::VoxelGICell) != 0 || !errors.empty()) {
+            problems_.add("VoxelGIData cells", where,
+                          "they don't make a VoxelGI's" +
+                              (errors.empty() ? std::string()
+                                              : " (" + errors.front().path + ": " +
+                                                    errors.front().message + ")") +
+                              "; bake it again with voxel_gi.bake");
+            return {};
+        }
+        written = destination(base + std::string(scene3d::kVoxelGISuffix));
+        add_file(written, json::write(doc) + "\n");
+        return written;
     }
 
     // A Shape3D as a CollisionShape3D's shape and the fields it sets.
@@ -10097,6 +10224,7 @@ private:
     std::map<std::string, std::string> process_written_;
     std::map<std::string, std::string> mesh_libraries_written_;
     std::map<std::string, std::string> navigation_written_;
+    std::map<std::string, std::string> voxel_gis_written_; // by file and resource, its file or ""
     // Each converted mesh library's item names by Godot's item IDs, by the library's path.
     std::map<std::string, std::map<std::int64_t, std::string>> mesh_library_items_;
     std::map<std::string, Section> sound_settings_;      // .import [params], by sound
