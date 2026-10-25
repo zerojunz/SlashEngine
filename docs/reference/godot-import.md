@@ -350,7 +350,8 @@ is `OneShot`), with Godot's property names and values, enums by name (`play_mode
 | A blend tree's `nodes/<name>/node` and `node_connections` | A node of the same name in `nodes`; each connection an input by its Godot name (`OneShot`'s `in` and `shot`, `Add3`'s `-add`, `in` and `+add`), and the one to `output` the tree's `output` |
 | A blend space's `blend_point_<n>/node` and `pos`, `triangles` | Its `points` in order; `triangles` only when `auto_triangles` is off, by the points' new indices |
 | A `Transition`'s `input_<n>/name`, `auto_advance`, `break_loop_at_end` and `reset` | Its `inputs`, each with the blend tree node connected to it |
-| A state machine's `states/<name>/node` and `position`, and `transitions` | Its `states`, and a transition for each triple, with its switch and advance modes, condition, priority and cross-fade |
+| A state machine's `states/<name>/node` and `position`, and `transitions` | Its `states`, and a transition for each triple, with its switch and advance modes, condition, expression, priority and cross-fade |
+| A transition's `advance_expression` | The same expression; the names it reads from the tree's `advance_expression_base_node` become the file's `variables`, `null` until gameplay code sets them as parameters, as the report says. One that calls a method or reads a member (`is_on_floor()`, `velocity.x`) doesn't convert |
 | `fadein_curve`, `fadeout_curve`, `xfade_curve` | `[offset, value]` points joined by straight lines, as the report says |
 | `filters` | The tracks they name: a bone or node of a model by its name, a converted track as `<target>:<component>/<field>`, and a node's method tracks and 3D tracks as its event tracks and `Transform3D` tracks |
 
@@ -658,7 +659,7 @@ The report lists each of these once per kind, with how many and where it was fir
 | --- | --- |
 | A `Skeleton3D` a scene builds itself, and what is under it | Not converted yet; a model's skeleton converts with the instance of the model file |
 | `LookAtModifier3D`, `SkeletonIK3D`, `SpringBoneSimulator3D` and the other skeleton modifiers SlashEngine hasn't | Turn the bones from gameplay code, or with a modifier SlashEngine has |
-| A state machine transition's `advance_expression`, `AnimationNodeExtension` and `AnimationNodeOutput` subclasses, and a tree's manual `callback_mode_process` | Set a condition from gameplay code; the tree plays every tick |
+| A state machine transition's `advance_expression` that calls a method or reads a member, `AnimationNodeExtension` and `AnimationNodeOutput` subclasses, and a tree's manual `callback_mode_process` | Set a variable from gameplay code and read it; the tree plays every tick |
 | `blend_shape` tracks, 3D tracks on the bones of a `Skeleton3D` in a scene, and compressed animations | Models have no blend shapes yet, and scenes' own skeletons don't convert yet; turn off an animation's compression in Godot |
 | A model's own nodes changed from a scene (editable children), but for its `Skeleton3D`'s bone poses, and its `.import` file's root scale and root type | The model draws as its file has it; place, scale and add components to the entity that draws it |
 | `ArrayMesh` resources, the meshes Godot saves from imported models | Export the mesh as a glTF file |

@@ -2174,7 +2174,7 @@ moves between them through its `transitions`:
   `Start` picks the first state. In `states` they take only a `position`.
 - A transition's `advance_mode` is `enabled` (the default: travels take it), `auto` (also taken
   on its own once its `advance_condition`, if it has one, is `true` in the parameter
-  `conditions/<name>`) or `disabled`. Of the auto transitions that can be taken, the lowest
+  `conditions/<name>`, and its `advance_expression`, below, holds) or `disabled`. Of the auto transitions that can be taken, the lowest
   `priority` goes. `switch_mode` is `immediate`, `sync` (the next state goes on from where the
   last one was) or `at_end` (once the current state has `xfade_time` left; `break_loop_at_end`
   ends a loop). `xfade_time` and `xfade_curve` cross-fade the two states, and `reset` (the
@@ -2196,12 +2196,35 @@ moves between them through its `transitions`:
   parent's into and out of it, so there are as many of each, and a travel goes into it by a
   path, `"combat/shoot"`, through its `End` when it leaves.
 - A state's node's parameters are named after the state: `"move/run/blend_position"`.
-- Not supported: Godot's `advance_expression`, a script expression; set a condition from gameplay
-  code instead.
+- An auto transition's `advance_expression` must also run to a value that counts as true, as
+  Godot's: `"speed > 0.1 and not crouching"`. It reads the tree's `variables`, which the file
+  declares at its top with their defaults (a number, `true`, `false` or `null`) and games set as
+  parameters of their own (`"speed"`, beside the root's `travel`), as Godot's expressions read the
+  properties of the tree's `advance_expression_base_node`. `triggers` names variables that start
+  `false` and go back to `false` once a transition that reads them is taken on its own, as Unity's
+  Animator triggers: set `jump` and the next transition whose expression holds uses it up.
+
+  ```json
+  {"format": 1, "variables": {"speed": 0.0}, "triggers": ["jump"], "root": {"type": "StateMachine",
+   "states": {"...": {}},
+   "transitions": [{"from": "run", "to": "jump", "advance_mode": "auto",
+                    "advance_expression": "jump and speed < 4"}]}}
+  ```
+
+  Expressions are Godot's `Expression`: numbers, strings, `true`, `false`, `null`, `PI`, `TAU`,
+  `INF` and `NAN`; the operators `**`, `~`, unary `-`, `* / %`, `+ -`, `<< >>`, `&`, `^`, `|`,
+  comparisons, `not` (`!`), `and` (`&&`) and `or` (`||`), bound as Godot binds them; and the
+  functions `abs`, `sign`, `min`, `max`, `clamp`, `floor`, `ceil`, `round`, `sqrt`, `pow`, `lerp`,
+  `fmod`, `is_equal_approx`, `is_zero_approx`, `int`, `float` and `bool`. Values follow Godot's
+  rules: whole numbers divide as integers, and comparing a number with `null` or a string fails.
+  An expression that fails isn't taken. `validate` reports one that doesn't parse, with the
+  character it stops at, and a name that isn't a variable or trigger, with "did you mean".
+  [examples/animation-expressions](../../examples/animation-expressions/) jumps on a trigger.
 
 - A parameter's name is its node's path in the tree and its own: `"shot/request"`,
   `"locomotion/walk/blend_amount"` for a node inside a blend tree inside the root's, and
-  `"blend_position"` for a root blend space. Games set them in `parameters`; requests go back to
+  `"blend_position"` for a root blend space; the tree's variables and triggers go by their own
+  names. Games set them in `parameters`; requests go back to
   their defaults once the tree acts on them. Everything else the nodes keep (times, fades, the
   current input, `shot/active`) is in `state`. A blend space's points' nodes are named by their
   index: `"space/0/..."`.

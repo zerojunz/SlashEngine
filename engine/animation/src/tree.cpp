@@ -349,6 +349,10 @@ json::Value node_schema(TreeNodeType type) {
             property("string", "With auto, the parameter \"conditions/<it>\" must be true for it "
                                "to be taken on its own.");
         fields["advance_condition"]["default"] = "";
+        fields["advance_expression"] = property(
+            "string", "With auto, an expression of the tree's variables, as Godot's, that must "
+                      "be true for it to be taken on its own: \"speed > 0.1 and not jumping\".");
+        fields["advance_expression"]["default"] = "";
         fields["xfade_time"] = number("Seconds the two states cross-fade over.", 0.0);
         fields["xfade_time"]["minimum"] = 0;
         fields["xfade_curve"] = curve("The cross-fade's shape, [offset, value] points.");
@@ -396,6 +400,19 @@ json::Value schema() {
     out["properties"]["format"]["const"] = 1;
     out["properties"]["format"]["description"] = "Format version. Must be 1.";
     out["properties"]["root"]["$ref"] = "#/$defs/root_node";
+    json::Value& variables = out["properties"]["variables"];
+    variables["type"] = "object";
+    variables["description"] =
+        "Values the game sets for advance expressions to read, by name, with their defaults: a "
+        "number, true, false or null.";
+    variables["additionalProperties"]["type"] = json::Array{"number", "boolean", "null"};
+    json::Value& triggers = out["properties"]["triggers"];
+    triggers["type"] = "array";
+    triggers["uniqueItems"] = true;
+    triggers["items"]["type"] = "string";
+    triggers["description"] =
+        "Variables that start false and go back to false once a transition whose advance "
+        "expression reads them is taken, as Unity's Animator triggers.";
     out["$defs"]["node"] = std::move(node);
     out["$defs"]["root_node"] = std::move(root_node);
     return out;
@@ -441,6 +458,7 @@ public:
     explicit Checker(const json::Value& doc) : doc_(doc) {}
 
     std::vector<json::ValidationError> run() {
+        check_variables();
         check_node(*doc_.find("root"), "/root", false);
         return std::move(errors_);
     }
@@ -448,6 +466,62 @@ public:
 private:
     void fail(std::string path, std::string message) {
         errors_.push_back({std::move(path), std::move(message)});
+    }
+
+    // Variables are named as expressions name them, once each, by a name no constant, operator
+    // or root parameter has.
+    void check_variables() {
+        const auto check = [&](const std::string& name, const std::string& at) {
+            static constexpr std::array<std::string_view, 12> kWords{
+                "true", "false", "null", "and", "or",  "not",
+                "in",   "self",  "PI",   "TAU", "INF", "NAN"};
+            const bool word = !name.empty() && std::ranges::all_of(name, [](char c) {
+                return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                       c == '_';
+            }) && (name[0] < '0' || name[0] > '9');
+            if (!word) {
+                fail(at, "a variable's name is letters, digits and \"_\", not starting with a "
+                         "digit");
+            } else if (std::ranges::find(kWords, name) != kWords.end()) {
+                fail(at, "\"" + name + "\" is an expression's own word");
+            } else if (!variable_names_.insert(name).second) {
+                fail(at, "\"" + name + "\" is a variable and a trigger");
+            }
+        };
+        if (const json::Value* variables = doc_.find("variables")) {
+            for (const auto& [name, value] : variables->as_object()) {
+                check(name, "/variables/" + json::pointer_escape(name));
+            }
+        }
+        if (const json::Value* triggers = doc_.find("triggers")) {
+            const json::Array& list = triggers->as_array();
+            for (std::size_t i = 0; i < list.size(); ++i) {
+                check(list[i].as_string(), "/triggers/" + std::to_string(i));
+            }
+        }
+    }
+
+    // An advance expression parses and reads only the tree's variables.
+    void check_expression(const json::Value& transition, const std::string& at) {
+        const std::string text = string_of(transition, "advance_expression", "");
+        if (text.empty()) {
+            return;
+        }
+        auto parsed = Expression::parse(text);
+        if (!parsed) {
+            fail(at + "/advance_expression", parsed.error().message);
+            return;
+        }
+        for (const std::string& name : parsed.value().names()) {
+            if (variable_names_.contains(name)) {
+                continue;
+            }
+            std::string message = "\"" + name + "\" isn't one of the tree's variables or triggers";
+            if (const std::string_view hint = closest_match(name, variable_names_); !hint.empty()) {
+                message += "; did you mean \"" + std::string(hint) + "\"?";
+            }
+            fail(at + "/advance_expression", message);
+        }
     }
 
     void check_curve(const json::Value& node, std::string_view key, const std::string& at) {
@@ -768,6 +842,7 @@ private:
                     fail(transition_at + "/advance_condition",
                          R"(condition names can't have "/" or ":")");
                 }
+                check_expression(list[i], transition_at);
                 check_curve(list[i], "xfade_curve", transition_at);
                 ++into[to];
                 ++out_of[from];
@@ -807,7 +882,18 @@ private:
 
     const json::Value& doc_;
     std::vector<json::ValidationError> errors_;
+    std::set<std::string, std::less<>> variable_names_; // variables' and triggers'
 };
+
+// A checked transition's advance expression.
+Expression expression_of(const json::Value& transition) {
+    const std::string text = string_of(transition, "advance_expression", "");
+    if (text.empty()) {
+        return {};
+    }
+    auto parsed = Expression::parse(text);
+    return parsed ? std::move(parsed).value() : Expression();
+}
 
 // Builds the flat list of nodes from a checked document.
 class Builder {
@@ -903,6 +989,7 @@ private:
                     {.from = t.find("from")->as_string(),
                      .to = t.find("to")->as_string(),
                      .advance_condition = string_of(t, "advance_condition", ""),
+                     .advance_expression = expression_of(t),
                      .xfade_time = number_of(t, "xfade_time", 0.0),
                      .xfade_curve = curve_of(t, "xfade_curve"),
                      .priority = static_cast<int>(number_of(t, "priority", 1.0)),
@@ -1170,6 +1257,21 @@ std::string check_state_path(const AnimationTreeResource& tree, int machine,
     }
 }
 
+// The tree a checked document describes.
+AnimationTreeResource build(const json::Value& doc) {
+    AnimationTreeResource tree;
+    Builder(tree).add(*doc.find("root"), "", "", -1);
+    if (const json::Value* variables = doc.find("variables")) {
+        tree.variables = variables->as_object();
+    }
+    if (const json::Value* triggers = doc.find("triggers")) {
+        for (const json::Value& name : triggers->as_array()) {
+            tree.triggers.push_back(name.as_string());
+        }
+    }
+    return tree;
+}
+
 } // namespace
 
 std::string_view tree_node_type_name(TreeNodeType type) {
@@ -1213,7 +1315,28 @@ std::vector<json::ValidationError> validate_tree(const json::Value& doc) {
     if (!errors.empty()) {
         return errors;
     }
-    return Checker(doc).run();
+    errors = Checker(doc).run();
+    if (!errors.empty() || (doc.find("variables") == nullptr && doc.find("triggers") == nullptr)) {
+        return errors;
+    }
+    // Variables are parameters of their own, so none can share a name with the root's.
+    AnimationTreeResource tree = build(doc);
+    std::vector<TreeParameter> root;
+    add_parameters(tree, 0, root);
+    for (const TreeParameter& parameter : root) {
+        const std::string name = parameter.key;
+        std::string at;
+        if (tree.variables.contains(name)) {
+            at = "/variables/" + json::pointer_escape(name);
+        } else if (const auto it = std::ranges::find(tree.triggers, name);
+                   it != tree.triggers.end()) {
+            at = "/triggers/" + std::to_string(it - tree.triggers.begin());
+        } else {
+            continue;
+        }
+        errors.push_back({at, "\"" + name + "\" is a parameter of the root node"});
+    }
+    return errors;
 }
 
 Result<AnimationTreeResource> parse_tree(const json::Value& doc) {
@@ -1224,13 +1347,28 @@ Result<AnimationTreeResource> parse_tree(const json::Value& doc) {
                           (first.path.empty() ? std::string("root") : first.path) + ": " +
                               first.message);
     }
-    AnimationTreeResource tree;
-    Builder(tree).add(*doc.find("root"), "", "", -1);
-    return tree;
+    return build(doc);
 }
 
 std::vector<TreeParameter> tree_parameters(const AnimationTreeResource& tree) {
     std::vector<TreeParameter> out;
+    for (const auto& [name, value] : tree.variables) {
+        out.push_back({.key = name,
+                       .name = name,
+                       .node = 0,
+                       .default_value = value,
+                       .input = true,
+                       .doc = "A variable advance expressions read."});
+    }
+    for (const std::string& name : tree.triggers) {
+        out.push_back({.key = name,
+                       .name = name,
+                       .node = 0,
+                       .default_value = false,
+                       .input = true,
+                       .doc = "A trigger: advance expressions read it, and the tree sets it back "
+                              "to false once a transition that reads it is taken."});
+    }
     if (!tree.nodes.empty()) {
         add_parameters(tree, 0, out);
     }
@@ -1288,6 +1426,11 @@ std::string check_parameter(const AnimationTreeResource& tree, const TreeParamet
     }
     if (parameter.default_value.is_bool()) {
         return value.is_bool() ? std::string() : "expected true or false";
+    }
+    if (parameter.default_value.is_null()) {
+        return value.is_number() || value.is_bool() || value.is_null()
+                   ? std::string()
+                   : "expected a number, true, false or null";
     }
     if (parameter.default_value.is_string()) {
         return value.is_string() ? std::string() : "expected a string";
