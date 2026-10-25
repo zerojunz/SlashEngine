@@ -12,6 +12,16 @@
 #include "fsr2_luma_shaders.hpp"
 #include "fsr2_rcas_shaders.hpp"
 #include "fsr2_reconstruct_shaders.hpp"
+#include "fsr3.hpp"
+#include "fsr3_accumulate_shaders.hpp"
+#include "fsr3_instability_shaders.hpp"
+#include "fsr3_lock_shaders.hpp"
+#include "fsr3_prepare_shaders.hpp"
+#include "fsr3_pyramid_shaders.hpp"
+#include "fsr3_reactivity_shaders.hpp"
+#include "fsr3_reconstruct_shaders.hpp"
+#include "fsr3_reduce_shaders.hpp"
+#include "fsr3_shading_change_shaders.hpp"
 #include "hlsl_compiler.hpp"
 #include "material_shaders.hpp"
 #include "mesh_clustered_shaders.hpp"
@@ -155,7 +165,9 @@ struct TaaHistory {
 // of each texture the passes keep between frames, which frames take turns to draw into, last the
 // ones the last frame drew: at the display size the accumulate pass's color, locks and luma
 // history, at the render size the dilate pass's motion vectors. sizes are the render size, then
-// the display size.
+// the display size. With FSR 3 (fsr3) the frames keep the accumulate pass's color and lock at the
+// display size and, at the render size, the luma, the frames each pixel gathered and the last
+// four lumas, with the frame before's jitter.
 struct Fsr2Frames {
     Fsr2Clock clock;
     Mat4 view_projection{};
@@ -163,8 +175,13 @@ struct Fsr2Frames {
     std::array<SDL_GPUTexture*, 2> lock_status{};
     std::array<SDL_GPUTexture*, 2> luma_history{};
     std::array<SDL_GPUTexture*, 2> dilated_motion{};
+    std::array<SDL_GPUTexture*, 2> luma{};
+    std::array<SDL_GPUTexture*, 2> accumulation{};
+    std::array<SDL_GPUTexture*, 2> lumas{};
+    std::array<float, 2> jitter{};
     std::size_t last = 0;
     std::array<std::uint32_t, 4> sizes{};
+    bool fsr3 = false;
 };
 
 // A target's volumetric fog: its clock and the froxel buffers its frames draw with. Frames take
@@ -312,6 +329,104 @@ Fsr2PassCode fsr2_pass_code(Fsr2Pass pass) {
                      .fragment_msl = shaders::kFsr2RcasFragmentMsl,
                      .hlsl = shaders::kFsr2RcasHlsl},
             .targets = kFsr2RcasTargets};
+}
+
+// FSR 3's passes that draw, in the order a frame draws them; its reconstruct pass is a compute
+// shader and its last pass is FSR 2's Rcas.
+enum class Fsr3Pass : std::uint8_t {
+    Prepare,
+    Pyramid,
+    Reduce,
+    ShadingChange,
+    Reactivity,
+    Lock,
+    Instability,
+    Accumulate
+};
+constexpr std::size_t kFsr3Passes = 8;
+
+// What each pass draws into, in the formats of the CPU twin's values.
+constexpr std::array kFsr3PrepareTargets{
+    SDL_GPU_TEXTUREFORMAT_R32_FLOAT, SDL_GPU_TEXTUREFORMAT_R16G16_FLOAT,
+    SDL_GPU_TEXTUREFORMAT_R16_FLOAT, SDL_GPU_TEXTUREFORMAT_R16_FLOAT};
+constexpr std::array kFsr3PyramidTargets{SDL_GPU_TEXTUREFORMAT_R16_FLOAT,
+                                         SDL_GPU_TEXTUREFORMAT_R16G16_FLOAT};
+constexpr std::array kFsr3ReduceTargets{SDL_GPU_TEXTUREFORMAT_R16G16_FLOAT};
+constexpr std::array kFsr3ShadingChangeTargets{SDL_GPU_TEXTUREFORMAT_R8_UNORM};
+constexpr std::array kFsr3ReactivityTargets{SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+                                            SDL_GPU_TEXTUREFORMAT_R8_UNORM};
+constexpr std::array kFsr3LockTargets{SDL_GPU_TEXTUREFORMAT_R8_UNORM};
+constexpr std::array kFsr3InstabilityTargets{SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
+                                             SDL_GPU_TEXTUREFORMAT_R16_FLOAT};
+constexpr std::array kFsr3AccumulateTargets{SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT};
+
+Fsr2PassCode fsr3_pass_code(Fsr3Pass pass) {
+    switch (pass) {
+    case Fsr3Pass::Prepare:
+        return {.code = {.vertex_spirv = shaders::kFsr3PrepareVertexSpirv,
+                         .fragment_spirv = shaders::kFsr3PrepareFragmentSpirv,
+                         .vertex_msl = shaders::kFsr3PrepareVertexMsl,
+                         .fragment_msl = shaders::kFsr3PrepareFragmentMsl,
+                         .hlsl = shaders::kFsr3PrepareHlsl},
+                .samplers = 3,
+                .targets = kFsr3PrepareTargets};
+    case Fsr3Pass::Pyramid:
+        return {.code = {.vertex_spirv = shaders::kFsr3PyramidVertexSpirv,
+                         .fragment_spirv = shaders::kFsr3PyramidFragmentSpirv,
+                         .vertex_msl = shaders::kFsr3PyramidVertexMsl,
+                         .fragment_msl = shaders::kFsr3PyramidFragmentMsl,
+                         .hlsl = shaders::kFsr3PyramidHlsl},
+                .samplers = 4,
+                .targets = kFsr3PyramidTargets};
+    case Fsr3Pass::Reduce:
+        return {.code = {.vertex_spirv = shaders::kFsr3ReduceVertexSpirv,
+                         .fragment_spirv = shaders::kFsr3ReduceFragmentSpirv,
+                         .vertex_msl = shaders::kFsr3ReduceVertexMsl,
+                         .fragment_msl = shaders::kFsr3ReduceFragmentMsl,
+                         .hlsl = shaders::kFsr3ReduceHlsl},
+                .targets = kFsr3ReduceTargets};
+    case Fsr3Pass::ShadingChange:
+        return {.code = {.vertex_spirv = shaders::kFsr3ShadingChangeVertexSpirv,
+                         .fragment_spirv = shaders::kFsr3ShadingChangeFragmentSpirv,
+                         .vertex_msl = shaders::kFsr3ShadingChangeVertexMsl,
+                         .fragment_msl = shaders::kFsr3ShadingChangeFragmentMsl,
+                         .hlsl = shaders::kFsr3ShadingChangeHlsl},
+                .samplers = 3,
+                .targets = kFsr3ShadingChangeTargets};
+    case Fsr3Pass::Reactivity:
+        return {.code = {.vertex_spirv = shaders::kFsr3ReactivityVertexSpirv,
+                         .fragment_spirv = shaders::kFsr3ReactivityFragmentSpirv,
+                         .vertex_msl = shaders::kFsr3ReactivityVertexMsl,
+                         .fragment_msl = shaders::kFsr3ReactivityFragmentMsl,
+                         .hlsl = shaders::kFsr3ReactivityHlsl},
+                .samplers = 4,
+                .storage_buffers = 1,
+                .targets = kFsr3ReactivityTargets};
+    case Fsr3Pass::Lock:
+        return {.code = {.vertex_spirv = shaders::kFsr3LockVertexSpirv,
+                         .fragment_spirv = shaders::kFsr3LockFragmentSpirv,
+                         .vertex_msl = shaders::kFsr3LockVertexMsl,
+                         .fragment_msl = shaders::kFsr3LockFragmentMsl,
+                         .hlsl = shaders::kFsr3LockHlsl},
+                .targets = kFsr3LockTargets};
+    case Fsr3Pass::Instability:
+        return {.code = {.vertex_spirv = shaders::kFsr3InstabilityVertexSpirv,
+                         .fragment_spirv = shaders::kFsr3InstabilityFragmentSpirv,
+                         .vertex_msl = shaders::kFsr3InstabilityVertexMsl,
+                         .fragment_msl = shaders::kFsr3InstabilityFragmentMsl,
+                         .hlsl = shaders::kFsr3InstabilityHlsl},
+                .samplers = 4,
+                .targets = kFsr3InstabilityTargets};
+    case Fsr3Pass::Accumulate:
+        break;
+    }
+    return {.code = {.vertex_spirv = shaders::kFsr3AccumulateVertexSpirv,
+                     .fragment_spirv = shaders::kFsr3AccumulateFragmentSpirv,
+                     .vertex_msl = shaders::kFsr3AccumulateVertexMsl,
+                     .fragment_msl = shaders::kFsr3AccumulateFragmentMsl,
+                     .hlsl = shaders::kFsr3AccumulateHlsl},
+            .samplers = 7,
+            .targets = kFsr3AccumulateTargets};
 }
 
 // Godot's canvas blend modes, for straight-alpha colors.
@@ -590,6 +705,21 @@ public:
         }
         if (fsr2_reconstruct_ != nullptr) {
             SDL_ReleaseGPUComputePipeline(device_, fsr2_reconstruct_);
+        }
+        for (const std::array<SDL_GPUShader*, 2>& stages : fsr3_shaders_) {
+            for (SDL_GPUShader* shader : stages) {
+                if (shader != nullptr) {
+                    SDL_ReleaseGPUShader(device_, shader);
+                }
+            }
+        }
+        for (SDL_GPUGraphicsPipeline* pipeline : fsr3_pipelines_) {
+            if (pipeline != nullptr) {
+                SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+            }
+        }
+        if (fsr3_reconstruct_ != nullptr) {
+            SDL_ReleaseGPUComputePipeline(device_, fsr3_reconstruct_);
         }
         release_prepass();
         for (SDL_GPUShader* shader : shadow_shaders_) {
@@ -1319,7 +1449,8 @@ public:
             }
             if (uses_fsr2(*frame.scene)) {
                 if (auto ready =
-                        prepare_fsr2(frame.target, {scene_width, scene_height, width, height});
+                        prepare_fsr2(frame.target, {scene_width, scene_height, width, height},
+                                     uses_fsr3(*frame.scene));
                     !ready) {
                     SDL_CancelGPUCommandBuffer(commands);
                     return ready.error();
@@ -4101,11 +4232,13 @@ private:
         return {width, height};
     }
 
-    // FSR 2's shaders and pipelines, the textures a frame's passes draw into at sizes (the render
-    // size, then the display size), and target's frames before, made empty when it has none or
-    // they were drawn at other sizes. Made at the start of a frame that needs them.
-    Result<void> prepare_fsr2(TextureId target, const std::array<std::uint32_t, 4>& sizes) {
-        if (auto made = make_fsr2_pipelines(); !made) {
+    // FSR 2's shaders and pipelines, or FSR 3's (fsr3), the textures a frame's passes draw into at
+    // sizes (the render size, then the display size), and target's frames before, made empty when
+    // it has none or they were drawn at other sizes or by the other. Made at the start of a frame
+    // that needs them.
+    Result<void> prepare_fsr2(TextureId target, const std::array<std::uint32_t, 4>& sizes,
+                              bool fsr3) {
+        if (auto made = fsr3 ? make_fsr3_pipelines() : make_fsr2_pipelines(); !made) {
             return made;
         }
         const std::uint32_t render_width = sizes[0];
@@ -4122,22 +4255,49 @@ private:
             made = created.value();
             return {};
         };
+        using Made =
+            std::tuple<std::uint32_t, std::uint32_t, SDL_GPUTextureFormat, SDL_GPUTexture**>;
         Fsr2Textures& t = fsr2_textures_;
-        if (t.color == nullptr || t.sizes != sizes) {
+        if (t.color == nullptr || t.sizes != sizes || t.fsr3 != fsr3) {
             release_fsr2_textures();
-            const auto [mip_width, mip_height] = fsr2_luma_mip_size(render_width, render_height);
-            const std::array<
-                std::tuple<std::uint32_t, std::uint32_t, SDL_GPUTextureFormat, SDL_GPUTexture**>, 8>
-                made{{
-                    {render_width, render_height, kHdrFormat, &t.color},
-                    {render_width, render_height, kVelocityFormat, &t.velocity},
-                    {mip_width, mip_height, kFsr2LumaTargets[0], &t.luma_mip},
-                    {render_width, render_height, kFsr2DilateTargets[0], &t.dilated_depth},
-                    {render_width, render_height, kFsr2DilateTargets[2], &t.lock_luma},
-                    {render_width, render_height, kFsr2DepthClipTargets[0], &t.prepared},
-                    {render_width, render_height, kFsr2DepthClipTargets[1], &t.reactive},
-                    {width, height, kFsr2LockTargets[0], &t.new_locks},
-                }};
+            std::vector<Made> made{
+                {render_width, render_height, kHdrFormat, &t.color},
+                {render_width, render_height, kVelocityFormat, &t.velocity},
+            };
+            if (fsr3) {
+                const auto [half_width, half_height] = fsr3_half_size(render_width, render_height);
+                made.insert(
+                    made.end(),
+                    {
+                        {render_width, render_height, kFsr3PrepareTargets[0], &t.dilated_depth},
+                        {render_width, render_height, kFsr3PrepareTargets[1], &t.dilated_motion},
+                        {render_width, render_height, kFsr3PrepareTargets[2], &t.farthest_depth},
+                        {half_width, half_height, kFsr3PyramidTargets[0], &t.farthest_half},
+                        {half_width, half_height, kFsr3ShadingChangeTargets[0], &t.shading_change},
+                        {render_width, render_height, kFsr3ReactivityTargets[0], &t.masks},
+                        {render_width, render_height, kFsr3InstabilityTargets[1], &t.instability},
+                        {width, height, kFsr3LockTargets[0], &t.new_locks},
+                    });
+                for (std::uint32_t level = 0; level < kFsr3ShadingLevels; ++level) {
+                    const auto [level_width, level_height] =
+                        fsr3_level_size(render_width, render_height, level);
+                    made.emplace_back(level_width, level_height, kFsr3ReduceTargets[0],
+                                      &t.levels.at(level));
+                }
+            } else {
+                const auto [mip_width, mip_height] =
+                    fsr2_luma_mip_size(render_width, render_height);
+                made.insert(
+                    made.end(),
+                    {
+                        {mip_width, mip_height, kFsr2LumaTargets[0], &t.luma_mip},
+                        {render_width, render_height, kFsr2DilateTargets[0], &t.dilated_depth},
+                        {render_width, render_height, kFsr2DilateTargets[2], &t.lock_luma},
+                        {render_width, render_height, kFsr2DepthClipTargets[0], &t.prepared},
+                        {render_width, render_height, kFsr2DepthClipTargets[1], &t.reactive},
+                        {width, height, kFsr2LockTargets[0], &t.new_locks},
+                    });
+            }
             for (const auto& [w, h, format, slot] : made) {
                 if (auto created = texture(w, h, format, *slot); !created) {
                     release_fsr2_textures();
@@ -4154,28 +4314,37 @@ private:
                 return sdl_error("creating FSR 2's depth buffer failed");
             }
             t.sizes = sizes;
+            t.fsr3 = fsr3;
         }
         Fsr2Frames* found = find_fsr2_frames(target);
         if (found == nullptr) {
             found = &fsr2_frames_.emplace_back(target, Fsr2Frames{}).second;
         }
         Fsr2Frames& frames = *found;
-        if (frames.color[0] != nullptr && frames.sizes == sizes) {
+        if (frames.color[0] != nullptr && frames.sizes == sizes && frames.fsr3 == fsr3) {
             return {};
         }
         release_fsr2_frames(frames);
         frames = Fsr2Frames{};
         for (std::size_t i = 0; i < 2; ++i) {
-            for (const auto& [w, h, format, slot] :
-                 std::array<std::tuple<std::uint32_t, std::uint32_t, SDL_GPUTextureFormat,
-                                       SDL_GPUTexture**>,
-                            4>{{
-                     {width, height, kFsr2AccumulateTargets[0], &frames.color.at(i)},
-                     {width, height, kFsr2AccumulateTargets[1], &frames.lock_status.at(i)},
-                     {width, height, kFsr2AccumulateTargets[2], &frames.luma_history.at(i)},
-                     {render_width, render_height, kFsr2DilateTargets[1],
-                      &frames.dilated_motion.at(i)},
-                 }}) {
+            const std::vector<Made> made =
+                fsr3 ? std::vector<Made>{
+                           {width, height, kFsr3AccumulateTargets[0], &frames.color.at(i)},
+                           {render_width, render_height, kFsr3PrepareTargets[3],
+                            &frames.luma.at(i)},
+                           {render_width, render_height, kFsr3ReactivityTargets[1],
+                            &frames.accumulation.at(i)},
+                           {render_width, render_height, kFsr3InstabilityTargets[0],
+                            &frames.lumas.at(i)},
+                       }
+                     : std::vector<Made>{
+                           {width, height, kFsr2AccumulateTargets[0], &frames.color.at(i)},
+                           {width, height, kFsr2AccumulateTargets[1], &frames.lock_status.at(i)},
+                           {width, height, kFsr2AccumulateTargets[2], &frames.luma_history.at(i)},
+                           {render_width, render_height, kFsr2DilateTargets[1],
+                            &frames.dilated_motion.at(i)},
+                       };
+            for (const auto& [w, h, format, slot] : made) {
                 if (auto created = texture(w, h, format, *slot); !created) {
                     release_fsr2_frames(frames);
                     return created;
@@ -4183,6 +4352,7 @@ private:
             }
         }
         frames.sizes = sizes;
+        frames.fsr3 = fsr3;
         return {};
     }
 
@@ -4241,6 +4411,68 @@ private:
                 return made.error();
             }
             fsr2_reconstruct_ = made.value();
+        }
+        return {};
+    }
+
+    // FSR 3's shaders and pipelines, and FSR 2's sharpening pass, unless they are made already.
+    Result<void> make_fsr3_pipelines() {
+        if (auto made = make_fsr2_pipelines(); !made) {
+            return made;
+        }
+        for (std::size_t i = 0; i < kFsr3Passes; ++i) {
+            if (fsr3_pipelines_.at(i) != nullptr) {
+                continue;
+            }
+            const Fsr2PassCode pass = fsr3_pass_code(static_cast<Fsr3Pass>(i));
+            std::array<SDL_GPUShader*, 2>& stages = fsr3_shaders_.at(i);
+            if (stages[0] == nullptr) {
+                auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, pass.code, 0, 0);
+                if (!vertex) {
+                    return vertex.error();
+                }
+                auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, pass.code,
+                                                pass.samplers, 1, pass.storage_buffers);
+                if (!fragment) {
+                    SDL_ReleaseGPUShader(device_, vertex.value());
+                    return fragment.error();
+                }
+                stages = {vertex.value(), fragment.value()};
+            }
+            std::array<SDL_GPUColorTargetDescription, 4> colors{};
+            for (std::size_t target = 0; target < pass.targets.size(); ++target) {
+                colors.at(target).format = pass.targets[target];
+            }
+            SDL_GPUGraphicsPipelineCreateInfo info{};
+            info.vertex_shader = stages[0];
+            info.fragment_shader = stages[1];
+            info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+            info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+            info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+            info.target_info.color_target_descriptions = colors.data();
+            info.target_info.num_color_targets = static_cast<std::uint32_t>(pass.targets.size());
+            fsr3_pipelines_.at(i) = SDL_CreateGPUGraphicsPipeline(device_, &info);
+            if (fsr3_pipelines_.at(i) == nullptr) {
+                return sdl_error("creating FSR 3's pipelines failed");
+            }
+        }
+        if (fsr3_reconstruct_ == nullptr) {
+            // The dilated depths and motion vectors; the depths as bits.
+            SDL_GPUComputePipelineCreateInfo info{};
+            info.entrypoint = "cs_main";
+            info.num_samplers = 2;
+            info.num_readwrite_storage_buffers = 1;
+            info.num_uniform_buffers = 1;
+            info.threadcount_x = kFsr2Threads;
+            info.threadcount_y = kFsr2Threads;
+            info.threadcount_z = 1;
+            auto made = create_compute_pipeline(info, shaders::kFsr3ReconstructComputeSpirv,
+                                                shaders::kFsr3ReconstructComputeMsl,
+                                                shaders::kFsr3ReconstructHlsl, "FSR 3 reconstruct");
+            if (!made) {
+                return made.error();
+            }
+            fsr3_reconstruct_ = made.value();
         }
         return {};
     }
@@ -4453,7 +4685,8 @@ private:
 
     void release_fsr2_frames(Fsr2Frames& frames) {
         for (std::array<SDL_GPUTexture*, 2>* pair :
-             {&frames.color, &frames.lock_status, &frames.luma_history, &frames.dilated_motion}) {
+             {&frames.color, &frames.lock_status, &frames.luma_history, &frames.dilated_motion,
+              &frames.luma, &frames.accumulation, &frames.lumas}) {
             for (SDL_GPUTexture*& texture : *pair) {
                 if (texture != nullptr) {
                     pending_release_.push_back(std::exchange(texture, nullptr));
@@ -4474,10 +4707,17 @@ private:
 
     void release_fsr2_textures() {
         Fsr2Textures& t = fsr2_textures_;
-        for (SDL_GPUTexture** texture : {&t.color, &t.velocity, &t.luma_mip, &t.dilated_depth,
-                                         &t.lock_luma, &t.prepared, &t.reactive, &t.new_locks}) {
+        for (SDL_GPUTexture** texture :
+             {&t.color, &t.velocity, &t.luma_mip, &t.dilated_depth, &t.lock_luma, &t.prepared,
+              &t.reactive, &t.new_locks, &t.dilated_motion, &t.farthest_depth, &t.farthest_half,
+              &t.shading_change, &t.masks, &t.instability}) {
             if (*texture != nullptr) {
                 pending_release_.push_back(std::exchange(*texture, nullptr));
+            }
+        }
+        for (SDL_GPUTexture*& level : t.levels) {
+            if (level != nullptr) {
+                pending_release_.push_back(std::exchange(level, nullptr));
             }
         }
         if (t.reconstructed != nullptr) {
@@ -4504,6 +4744,10 @@ private:
     // starts them at 0, as the software device's.
     void upscale_fsr2(SDL_GPUCommandBuffer* commands, const Scene3D& scene, Fsr2Frames& frames,
                       const std::array<float, 2>& jitter) {
+        if (frames.fsr3) {
+            upscale_fsr3(commands, scene, frames, jitter);
+            return;
+        }
         const std::size_t last = frames.last;
         const std::size_t next = 1 - last;
         const Mat4 view_projection = multiply(scene.projection, scene.camera);
@@ -4594,6 +4838,125 @@ private:
         pass(Fsr2Pass::Rcas, {forward_targets_.world}, {frames.color.at(next)});
         frames.last = next;
         frames.view_projection = view_projection;
+    }
+
+    // FSR 3's passes, in the order run_fsr3 runs them, as upscale_fsr2 runs FSR 2's: the frames
+    // before keep the frame's jitter too, which the next reads.
+    void upscale_fsr3(SDL_GPUCommandBuffer* commands, const Scene3D& scene, Fsr2Frames& frames,
+                      const std::array<float, 2>& jitter) {
+        const std::size_t last = frames.last;
+        const std::size_t next = 1 - last;
+        const Mat4 view_projection = multiply(scene.projection, scene.camera);
+        const Fsr3Uniforms uniforms = fsr3_uniforms(
+            {.render_width = scene_width_,
+             .render_height = scene_height_,
+             .display_width = frame_width_,
+             .display_height = frame_height_,
+             .jitter = jitter,
+             .projection = scene.projection,
+             .view_projection = view_projection,
+             .previous = frames.clock.frames == 0 ? view_projection : frames.view_projection,
+             .sharpness = scene.fsr2.value_or(Fsr2Scaling{}).sharpness,
+             .frame_index = frames.clock.frames,
+             .phases = frames.clock.phases},
+            frames.jitter);
+        if (frames.clock.frames == 0) {
+            for (SDL_GPUTexture* texture : {frames.color.at(last), frames.luma.at(last),
+                                            frames.accumulation.at(last), frames.lumas.at(last)}) {
+                clear_texture(commands, texture);
+            }
+        }
+        const Fsr2Textures& t = fsr2_textures_;
+        SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
+        const auto draw = [&](SDL_GPUGraphicsPipeline* pipeline, const void* data,
+                              std::uint32_t size, std::initializer_list<SDL_GPUTexture*> targets,
+                              std::initializer_list<SDL_GPUTexture*> sources,
+                              bool storage = false) {
+            std::array<SDL_GPUColorTargetInfo, 4> colors{};
+            std::size_t count = 0;
+            for (SDL_GPUTexture* target : targets) {
+                SDL_GPUColorTargetInfo& color = colors.at(count++);
+                color.texture = target;
+                color.load_op = SDL_GPU_LOADOP_DONT_CARE;
+                color.store_op = SDL_GPU_STOREOP_STORE;
+            }
+            SDL_GPURenderPass* render = SDL_BeginGPURenderPass(
+                commands, colors.data(), static_cast<std::uint32_t>(count), nullptr);
+            SDL_BindGPUGraphicsPipeline(render, pipeline);
+            SDL_PushGPUFragmentUniformData(commands, 0, data, size);
+            std::array<SDL_GPUTextureSamplerBinding, 8> bindings{};
+            std::size_t bound = 0;
+            for (SDL_GPUTexture* source : sources) {
+                bindings.at(bound++) = {.texture = source, .sampler = nearest};
+            }
+            SDL_BindGPUFragmentSamplers(render, 0, bindings.data(),
+                                        static_cast<std::uint32_t>(bound));
+            if (storage) {
+                SDL_BindGPUFragmentStorageBuffers(render, 0, &t.reconstructed, 1);
+            }
+            SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
+            SDL_EndGPURenderPass(render);
+        };
+        const auto pass = [&](Fsr3Pass which, std::initializer_list<SDL_GPUTexture*> targets,
+                              std::initializer_list<SDL_GPUTexture*> sources,
+                              const Fsr3Uniforms& with) {
+            draw(fsr3_pipelines_.at(static_cast<std::size_t>(which)), &with,
+                 static_cast<std::uint32_t>(sizeof(with)), targets, sources,
+                 which == Fsr3Pass::Reactivity);
+        };
+        pass(Fsr3Pass::Prepare,
+             {t.dilated_depth, t.dilated_motion, t.farthest_depth, frames.luma.at(next)},
+             {depth_, t.velocity, t.color}, uniforms);
+        // The reconstruct pass clears the depths, then scatters them.
+        const std::array<SDL_GPUTextureSamplerBinding, 2> dilated{{
+            {.texture = t.dilated_depth, .sampler = nearest},
+            {.texture = t.dilated_motion, .sampler = nearest},
+        }};
+        for (const std::int32_t step : {0, 1}) {
+            Fsr3Uniforms stepped = uniforms;
+            stepped.fsr2.options[2] = step;
+            const SDL_GPUStorageBufferReadWriteBinding buffer{.buffer = t.reconstructed,
+                                                              .cycle = false,
+                                                              .padding1 = 0,
+                                                              .padding2 = 0,
+                                                              .padding3 = 0};
+            SDL_GPUComputePass* compute = SDL_BeginGPUComputePass(commands, nullptr, 0, &buffer, 1);
+            SDL_BindGPUComputePipeline(compute, fsr3_reconstruct_);
+            SDL_BindGPUComputeSamplers(compute, 0, dilated.data(),
+                                       static_cast<std::uint32_t>(dilated.size()));
+            SDL_PushGPUComputeUniformData(commands, 0, &stepped,
+                                          static_cast<std::uint32_t>(sizeof(stepped)));
+            SDL_DispatchGPUCompute(compute, (scene_width_ + kFsr2Threads - 1) / kFsr2Threads,
+                                   (scene_height_ + kFsr2Threads - 1) / kFsr2Threads, 1);
+            SDL_EndGPUComputePass(compute);
+        }
+        pass(Fsr3Pass::Pyramid, {t.farthest_half, t.levels[0]},
+             {t.farthest_depth, t.dilated_motion, frames.luma.at(next), frames.luma.at(last)},
+             uniforms);
+        for (std::uint32_t level = 1; level < kFsr3ShadingLevels; ++level) {
+            Fsr3Uniforms leveled = uniforms;
+            leveled.fsr2.options[0] = static_cast<std::int32_t>(level);
+            pass(Fsr3Pass::Reduce, {t.levels.at(level)}, {t.levels.at(level - 1)}, leveled);
+        }
+        pass(Fsr3Pass::ShadingChange, {t.shading_change}, {t.levels[0], t.levels[1], t.levels[2]},
+             uniforms);
+        pass(Fsr3Pass::Reactivity, {t.masks, frames.accumulation.at(next)},
+             {t.dilated_motion, t.dilated_depth, t.shading_change, frames.accumulation.at(last)},
+             uniforms);
+        pass(Fsr3Pass::Lock, {t.new_locks}, {frames.luma.at(next)}, uniforms);
+        pass(Fsr3Pass::Instability, {frames.lumas.at(next), t.instability},
+             {t.dilated_motion, t.masks, frames.luma.at(next), frames.lumas.at(last)}, uniforms);
+        pass(Fsr3Pass::Accumulate, {frames.color.at(next)},
+             {t.color, t.dilated_motion, t.instability, t.farthest_half, t.masks,
+              frames.color.at(last), t.new_locks},
+             uniforms);
+        // FSR 2's sharpening pass reads FSR 2's uniforms, the first of FSR 3's.
+        draw(fsr2_pipelines_.at(static_cast<std::size_t>(Fsr2Pass::Rcas)), &uniforms.fsr2,
+             static_cast<std::uint32_t>(sizeof(uniforms.fsr2)), {forward_targets_.world},
+             {frames.color.at(next)});
+        frames.last = next;
+        frames.view_projection = view_projection;
+        frames.jitter = jitter;
     }
 
     // ssr.hlsl's passes, from the prepass's depth and normals and the frame before, seen from
@@ -5629,12 +5992,25 @@ private:
         SDL_GPUTexture* prepared = nullptr;
         SDL_GPUTexture* reactive = nullptr;
         SDL_GPUTexture* new_locks = nullptr; // at the display size
+        // FSR 3's, whose locks are new_locks.
+        SDL_GPUTexture* dilated_motion = nullptr;
+        SDL_GPUTexture* farthest_depth = nullptr;
+        SDL_GPUTexture* farthest_half = nullptr; // at half the render size, as the next two
+        std::array<SDL_GPUTexture*, kFsr3ShadingLevels> levels{};
+        SDL_GPUTexture* shading_change = nullptr;
+        SDL_GPUTexture* masks = nullptr;
+        SDL_GPUTexture* instability = nullptr;
         SDL_GPUBuffer* reconstructed = nullptr;
         std::array<std::uint32_t, 4> sizes{};
+        bool fsr3 = false;
     };
     std::array<std::array<SDL_GPUShader*, 2>, kFsr2Passes> fsr2_shaders_{};
     std::array<SDL_GPUGraphicsPipeline*, kFsr2Passes> fsr2_pipelines_{};
     SDL_GPUComputePipeline* fsr2_reconstruct_ = nullptr;
+    // FSR 3's shaders and pipelines by Fsr3Pass and its reconstruct pass's pipeline.
+    std::array<std::array<SDL_GPUShader*, 2>, kFsr3Passes> fsr3_shaders_{};
+    std::array<SDL_GPUGraphicsPipeline*, kFsr3Passes> fsr3_pipelines_{};
+    SDL_GPUComputePipeline* fsr3_reconstruct_ = nullptr;
     // Volumetric fog: each target's frames, the passes' pipeline, the sky's shaders and pipelines,
     // and the buffer the meshes bind in its place without it.
     std::vector<std::pair<TextureId, FogFrames>> fog_frames_;

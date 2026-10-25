@@ -44,6 +44,7 @@ add_library(slash_render
     src/device.cpp
     src/forward_post.cpp
     src/fsr2.cpp
+    src/fsr3.cpp
     src/gl_device.cpp
     src/gpu_device.cpp
     src/hlsl_compiler.cpp
@@ -99,8 +100,8 @@ endif()
 # every platform: no fused multiply-adds, which arm64 compilers would otherwise emit and x86-64
 # ones not.
 set_source_files_properties(src/clusters.cpp src/decal.cpp src/device.cpp src/forward_post.cpp
-    src/fsr2.cpp src/material.cpp src/mesh.cpp src/particles.cpp src/post.cpp src/resize.cpp
-    src/shader_vm.cpp src/shadow.cpp src/reflection.cpp src/sky.cpp src/software_device.cpp
+    src/fsr2.cpp src/fsr3.cpp src/material.cpp src/mesh.cpp src/particles.cpp src/post.cpp
+    src/resize.cpp src/shader_vm.cpp src/shadow.cpp src/reflection.cpp src/sky.cpp src/software_device.cpp
     src/ssao.cpp src/ssr.cpp src/taa.cpp src/upscaler.cpp src/volumetric_fog.cpp src/voxel_gi.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
@@ -123,7 +124,8 @@ set(slash_shader_headers "")
 # code comes in pieces; ssr_trace is the SSR trace's fragment stage, which draws with ssr's vertex
 # stage. FSR 2's passes (fsr2) share fsr2.hlsl and have no GLSL ES, as the OpenGL devices upscale
 # bilinearly instead; fsr2_storage is its depth clip pass, which reads a storage buffer, and
-# fsr2_compute its reconstruct pass. Volumetric fog's passes (fog_compute) are a compute shader
+# fsr2_compute its reconstruct pass. FSR 3's (fsr3, fsr3_storage, fsr3_compute) share fsr3.hlsl
+# the same way, its prepare reactivity pass reading the storage buffer. Volumetric fog's passes (fog_compute) are a compute shader
 # over the shadow atlases and the sky's radiance, which takes tonemap.hlsl's colors, and fog_sky
 # the pass that draws the sky through the fog, whose fragment stage reads it as a storage buffer.
 set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
@@ -134,6 +136,11 @@ set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
     fsr2_luma:Fsr2Luma:fsr2 fsr2_dilate:Fsr2Dilate:fsr2
     fsr2_reconstruct:Fsr2Reconstruct:fsr2_compute fsr2_depth_clip:Fsr2DepthClip:fsr2_storage
     fsr2_lock:Fsr2Lock:fsr2 fsr2_accumulate:Fsr2Accumulate:fsr2 fsr2_rcas:Fsr2Rcas:fsr2
+    fsr3_prepare:Fsr3Prepare:fsr3 fsr3_reconstruct:Fsr3Reconstruct:fsr3_compute
+    fsr3_pyramid:Fsr3Pyramid:fsr3 fsr3_reduce:Fsr3Reduce:fsr3
+    fsr3_shading_change:Fsr3ShadingChange:fsr3 fsr3_reactivity:Fsr3Reactivity:fsr3_storage
+    fsr3_lock:Fsr3Lock:fsr3 fsr3_instability:Fsr3Instability:fsr3
+    fsr3_accumulate:Fsr3Accumulate:fsr3
     particles_process:ParticlesProcess:compute
     particles_emit:ParticlesEmit:compute particles_draw:ParticlesDraw:compute
     volumetric_fog:VolumetricFog:fog_compute volumetric_fog_sky:VolumetricFogSky:fog_sky)
@@ -163,13 +170,13 @@ foreach(entry IN LISTS slash_shaders)
             set(include tonemap)
             set(interface v_uv)
             set(storage_buffers ON)
-        elseif(kind MATCHES "^fsr2")
-            set(include fsr2)
+        elseif(kind MATCHES "^(fsr[23])")
+            set(include ${CMAKE_MATCH_1})
             set(interface v_uv)
             set(no_glsl ON)
-            if(kind STREQUAL "fsr2_compute")
+            if(kind MATCHES "_compute$")
                 set(compute ON)
-            elseif(kind STREQUAL "fsr2_storage")
+            elseif(kind MATCHES "_storage$")
                 set(storage_buffers ON)
             endif()
         elseif(kind STREQUAL "depth")

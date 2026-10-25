@@ -233,19 +233,19 @@ json::Value scaling_json(const Scaling& scaling) {
 }
 
 std::vector<std::string_view> scaling_modes() {
-    return {kBilinear, kFsr, kFsr2};
+    return {kBilinear, kFsr, kFsr2, kFsr3};
 }
 
 std::string scaling_mode_problem(std::string_view mode) {
-    if (mode == kBilinear || mode == kFsr || mode == kFsr2) {
+    if (mode == kBilinear || mode == kFsr || mode == kFsr2 || mode == kFsr3) {
         return {};
     }
     if (std::ranges::find(kMetalFxModes, mode) != kMetalFxModes.end()) {
         return std::string(mode) +
-               " needs Apple's MetalFX, which isn't built yet; use bilinear, fsr or fsr2";
+               " needs Apple's MetalFX, which isn't built yet; use bilinear, fsr, fsr2 or fsr3";
     }
     std::string problem =
-        "unknown scaling mode " + std::string(mode) + "; expected bilinear, fsr or fsr2";
+        "unknown scaling mode " + std::string(mode) + "; expected bilinear, fsr, fsr2 or fsr3";
     const std::vector<std::string_view> modes = scaling_modes();
     if (const std::string_view near = closest_match(mode, modes); !near.empty()) {
         problem += " (did you mean " + std::string(near) + "?)";
@@ -320,8 +320,9 @@ void clear_added_upscalers() {
 
 bool uses_fsr2(const Scaling& scaling, RenderMethod method, const RenderDevice& device) {
     const Backend backend = device.backend();
-    return scaling.mode == kFsr2 && scaling.scale < 1.0F && method == RenderMethod::ForwardPlus &&
-           backend != Backend::OpenGl && backend != Backend::OpenGlEs;
+    return (scaling.mode == kFsr2 || scaling.mode == kFsr3) && scaling.scale < 1.0F &&
+           method == RenderMethod::ForwardPlus && backend != Backend::OpenGl &&
+           backend != Backend::OpenGlEs;
 }
 
 std::string choose_upscaler(const Scaling& scaling, const RenderDevice& device) {
