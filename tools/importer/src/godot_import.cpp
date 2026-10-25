@@ -22,6 +22,7 @@
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/mesh.hpp"
+#include "slash/render/upscaler.hpp"
 #include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/scene3d/gridmap.hpp"
@@ -1921,20 +1922,15 @@ private:
             taa != nullptr && taa->kind == Value::Kind::Bool) {
             project["rendering"]["anti_aliasing"]["quality"]["use_taa"] = taa->boolean;
         }
-        // The 3D world's scaling. MetalFX isn't built, so its spatial and temporal modes become
-        // FSR's.
+        // The 3D world's scaling, by Godot's Scaling3DMode numbers.
         if (const Value* mode = number("rendering", "scaling_3d/mode")) {
-            constexpr std::array<std::string_view, 5> kModes{"bilinear", "fsr", "fsr2", "fsr",
-                                                             "fsr2"};
+            constexpr std::array<std::string_view, 5> kModes{render::kBilinear, render::kFsr,
+                                                             render::kFsr2, render::kMetalFxSpatial,
+                                                             render::kMetalFxTemporal};
             const auto index = static_cast<std::int64_t>(mode->number());
             if (index >= 0 && static_cast<std::size_t>(index) < kModes.size()) {
-                const std::string scaler(kModes.at(static_cast<std::size_t>(index)));
-                project["rendering"]["scaling"]["mode"] = scaler;
-                if (index >= 3) {
-                    problems_.add("rendering/scaling_3d/mode", "project.godot",
-                                  "MetalFX isn't built, so " + scaler +
-                                      " scales the 3D world instead");
-                }
+                project["rendering"]["scaling"]["mode"] =
+                    std::string(kModes.at(static_cast<std::size_t>(index)));
             }
         }
         if (const Value* scale = number("rendering", "scaling_3d/scale")) {

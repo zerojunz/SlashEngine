@@ -29,6 +29,7 @@
 #include "mesh_normal_shaders.hpp"
 #include "mesh_shaders.hpp"
 #include "mesh_shading.hpp"
+#include "metalfx.hpp"
 #include "particle_layout.hpp"
 #include "particles_draw_shaders.hpp"
 #include "particles_emit_shaders.hpp"
@@ -182,6 +183,10 @@ struct Fsr2Frames {
     std::size_t last = 0;
     std::array<std::uint32_t, 4> sizes{};
     bool fsr3 = false;
+    // With MetalFX's temporal scaler (metalfx), which keeps the frames before itself, the frames
+    // keep only the dilate pass's motion vectors, which work the sky's out from the depth.
+    bool metalfx = false;
+    MetalFxScalerPtr scaler;
 };
 
 // A target's volumetric fog: its clock and the froxel buffers its frames draw with. Frames take
@@ -517,7 +522,8 @@ public:
     using RenderDevice::draw;
 
     GpuDevice(SDL_GPUDevice* device, SDL_Window* window, bool owns_video)
-        : device_(device), window_(window), owns_video_(owns_video), backend_(backend_of(device)) {}
+        : device_(device), window_(window), owns_video_(owns_video), backend_(backend_of(device)),
+          metalfx_(backend_ == Backend::Metal ? metalfx_support(device) : MetalFxSupport{}) {}
 
     GpuDevice(const GpuDevice&) = delete;
     GpuDevice& operator=(const GpuDevice&) = delete;
@@ -1450,7 +1456,9 @@ public:
             if (uses_fsr2(*frame.scene)) {
                 if (auto ready =
                         prepare_fsr2(frame.target, {scene_width, scene_height, width, height},
-                                     uses_fsr3(*frame.scene));
+                                     uses_fsr3(*frame.scene),
+                                     metalfx_.temporal && frame.scene->fsr2.has_value() &&
+                                         frame.scene->fsr2->metalfx);
                     !ready) {
                     SDL_CancelGPUCommandBuffer(commands);
                     return ready.error();
@@ -1952,6 +1960,47 @@ public:
             stats.texture_bytes += texture_bytes(stored);
         }
         return stats;
+    }
+
+    [[nodiscard]] MetalFxSupport metalfx() const override { return metalfx_; }
+
+    Result<void> metalfx_spatial(TextureId source, TextureId target) override {
+        if (!metalfx_.spatial) {
+            return RenderDevice::metalfx_spatial(source, target);
+        }
+        if (in_frame_) {
+            return frame_in_progress("metalfx_spatial");
+        }
+        const auto from = textures_.find(source);
+        if (from == textures_.end()) {
+            return unknown_texture(source);
+        }
+        const auto to = textures_.find(target);
+        if (to == textures_.end()) {
+            return unknown_texture(target);
+        }
+        const TextureDesc& in = from->second.desc;
+        const TextureDesc& out = to->second.desc;
+        if (!in.render_target || !out.scaled_into || out.width < in.width ||
+            out.height < in.height) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "MetalFX scales a render target up into a larger one made "
+                              "scaled_into");
+        }
+        SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+        if (commands == nullptr) {
+            return sdl_error("scaling with MetalFX failed");
+        }
+        if (auto encoded = encode_metalfx_spatial(device_, commands, metalfx_spatial_scaler_,
+                                                  from->second.gpu, to->second.gpu, true);
+            !encoded) {
+            SDL_CancelGPUCommandBuffer(commands);
+            return encoded;
+        }
+        if (!SDL_SubmitGPUCommandBuffer(commands)) {
+            return sdl_error("scaling with MetalFX failed");
+        }
+        return {};
     }
 
 private:
@@ -4237,7 +4286,8 @@ private:
     // it has none or they were drawn at other sizes or by the other. Made at the start of a frame
     // that needs them.
     Result<void> prepare_fsr2(TextureId target, const std::array<std::uint32_t, 4>& sizes,
-                              bool fsr3) {
+                              bool fsr3, bool metalfx) {
+        fsr3 = fsr3 && !metalfx;
         if (auto made = fsr3 ? make_fsr3_pipelines() : make_fsr2_pipelines(); !made) {
             return made;
         }
@@ -4246,9 +4296,10 @@ private:
         const std::uint32_t width = sizes[2];
         const std::uint32_t height = sizes[3];
         const auto texture = [&](std::uint32_t w, std::uint32_t h, SDL_GPUTextureFormat format,
-                                 SDL_GPUTexture*& made) -> Result<void> {
-            auto created =
-                pass_texture(w, h, format, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, 1, "FSR 2");
+                                 SDL_GPUTexture*& made,
+                                 SDL_GPUTextureUsageFlags usage =
+                                     SDL_GPU_TEXTUREUSAGE_COLOR_TARGET) -> Result<void> {
+            auto created = pass_texture(w, h, format, usage, 1, "FSR 2");
             if (!created) {
                 return created.error();
             }
@@ -4258,7 +4309,7 @@ private:
         using Made =
             std::tuple<std::uint32_t, std::uint32_t, SDL_GPUTextureFormat, SDL_GPUTexture**>;
         Fsr2Textures& t = fsr2_textures_;
-        if (t.color == nullptr || t.sizes != sizes || t.fsr3 != fsr3) {
+        if (t.color == nullptr || t.sizes != sizes || t.fsr3 != fsr3 || t.metalfx != metalfx) {
             release_fsr2_textures();
             std::vector<Made> made{
                 {render_width, render_height, kHdrFormat, &t.color},
@@ -4304,6 +4355,18 @@ private:
                     return created;
                 }
             }
+            // MetalFX writes the world at the display size as a compute shader does, then it is
+            // copied into the world the post passes read.
+            if (metalfx) {
+                if (auto created =
+                        texture(width, height, kHdrFormat, t.scaled,
+                                SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER |
+                                    SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE);
+                    !created) {
+                    release_fsr2_textures();
+                    return created;
+                }
+            }
             SDL_GPUBufferCreateInfo buffer{};
             buffer.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE |
                            SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
@@ -4315,35 +4378,42 @@ private:
             }
             t.sizes = sizes;
             t.fsr3 = fsr3;
+            t.metalfx = metalfx;
         }
         Fsr2Frames* found = find_fsr2_frames(target);
         if (found == nullptr) {
             found = &fsr2_frames_.emplace_back(target, Fsr2Frames{}).second;
         }
         Fsr2Frames& frames = *found;
-        if (frames.color[0] != nullptr && frames.sizes == sizes && frames.fsr3 == fsr3) {
-            return {};
+        if (frames.dilated_motion[0] != nullptr || frames.color[0] != nullptr) {
+            if (frames.sizes == sizes && frames.fsr3 == fsr3 && frames.metalfx == metalfx) {
+                return {};
+            }
         }
         release_fsr2_frames(frames);
         frames = Fsr2Frames{};
         for (std::size_t i = 0; i < 2; ++i) {
-            const std::vector<Made> made =
-                fsr3 ? std::vector<Made>{
-                           {width, height, kFsr3AccumulateTargets[0], &frames.color.at(i)},
-                           {render_width, render_height, kFsr3PrepareTargets[3],
-                            &frames.luma.at(i)},
-                           {render_width, render_height, kFsr3ReactivityTargets[1],
-                            &frames.accumulation.at(i)},
-                           {render_width, render_height, kFsr3InstabilityTargets[0],
-                            &frames.lumas.at(i)},
-                       }
-                     : std::vector<Made>{
-                           {width, height, kFsr2AccumulateTargets[0], &frames.color.at(i)},
-                           {width, height, kFsr2AccumulateTargets[1], &frames.lock_status.at(i)},
-                           {width, height, kFsr2AccumulateTargets[2], &frames.luma_history.at(i)},
-                           {render_width, render_height, kFsr2DilateTargets[1],
-                            &frames.dilated_motion.at(i)},
-                       };
+            std::vector<Made> made;
+            if (metalfx) {
+                made = {{render_width, render_height, kFsr2DilateTargets[1],
+                         &frames.dilated_motion.at(i)}};
+            } else if (fsr3) {
+                made = {
+                    {width, height, kFsr3AccumulateTargets[0], &frames.color.at(i)},
+                    {render_width, render_height, kFsr3PrepareTargets[3], &frames.luma.at(i)},
+                    {render_width, render_height, kFsr3ReactivityTargets[1],
+                     &frames.accumulation.at(i)},
+                    {render_width, render_height, kFsr3InstabilityTargets[0], &frames.lumas.at(i)},
+                };
+            } else {
+                made = {
+                    {width, height, kFsr2AccumulateTargets[0], &frames.color.at(i)},
+                    {width, height, kFsr2AccumulateTargets[1], &frames.lock_status.at(i)},
+                    {width, height, kFsr2AccumulateTargets[2], &frames.luma_history.at(i)},
+                    {render_width, render_height, kFsr2DilateTargets[1],
+                     &frames.dilated_motion.at(i)},
+                };
+            }
             for (const auto& [w, h, format, slot] : made) {
                 if (auto created = texture(w, h, format, *slot); !created) {
                     release_fsr2_frames(frames);
@@ -4353,6 +4423,7 @@ private:
         }
         frames.sizes = sizes;
         frames.fsr3 = fsr3;
+        frames.metalfx = metalfx;
         return {};
     }
 
@@ -4693,6 +4764,7 @@ private:
                 }
             }
         }
+        frames.scaler.reset();
     }
 
     void forget_fsr2_frames(TextureId target) {
@@ -4710,7 +4782,7 @@ private:
         for (SDL_GPUTexture** texture :
              {&t.color, &t.velocity, &t.luma_mip, &t.dilated_depth, &t.lock_luma, &t.prepared,
               &t.reactive, &t.new_locks, &t.dilated_motion, &t.farthest_depth, &t.farthest_half,
-              &t.shading_change, &t.masks, &t.instability}) {
+              &t.shading_change, &t.masks, &t.instability, &t.scaled}) {
             if (*texture != nullptr) {
                 pending_release_.push_back(std::exchange(*texture, nullptr));
             }
@@ -4746,6 +4818,10 @@ private:
                       const std::array<float, 2>& jitter) {
         if (frames.fsr3) {
             upscale_fsr3(commands, scene, frames, jitter);
+            return;
+        }
+        if (frames.metalfx) {
+            upscale_metalfx(commands, scene, frames, jitter);
             return;
         }
         const std::size_t last = frames.last;
@@ -4836,6 +4912,73 @@ private:
              {frames.dilated_motion.at(next), t.prepared, t.reactive, frames.color.at(last),
               frames.lock_status.at(last), t.new_locks, t.luma_mip, frames.luma_history.at(last)});
         pass(Fsr2Pass::Rcas, {forward_targets_.world}, {frames.color.at(next)});
+        frames.last = next;
+        frames.view_projection = view_projection;
+    }
+
+    // MetalFX's temporal scaler, as Godot runs it: FSR 2's dilate pass first works the sky's
+    // motion vectors out from the depth (where the prepass left kInvalidMotion), then MetalFX
+    // upscales the world with the depth and those motion vectors and its own frames before into
+    // a texture at the frame's size, which is copied into Forward+'s world for the post passes.
+    void upscale_metalfx(SDL_GPUCommandBuffer* commands, const Scene3D& scene, Fsr2Frames& frames,
+                         const std::array<float, 2>& jitter) {
+        const std::size_t next = 1 - frames.last;
+        const Mat4 view_projection = multiply(scene.projection, scene.camera);
+        const Fsr2Uniforms uniforms = fsr2_uniforms(
+            {.render_width = scene_width_,
+             .render_height = scene_height_,
+             .display_width = frame_width_,
+             .display_height = frame_height_,
+             .jitter = jitter,
+             .projection = scene.projection,
+             .view_projection = view_projection,
+             .previous = frames.clock.frames == 0 ? view_projection : frames.view_projection,
+             .sharpness = scene.fsr2.value_or(Fsr2Scaling{}).sharpness,
+             .frame_index = frames.clock.frames,
+             .phases = frames.clock.phases});
+        const Fsr2Textures& t = fsr2_textures_;
+        SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
+        const std::array dilated{t.dilated_depth, frames.dilated_motion.at(next), t.lock_luma};
+        std::array<SDL_GPUColorTargetInfo, 3> targets{};
+        for (std::size_t i = 0; i < targets.size(); ++i) {
+            targets.at(i).texture = dilated.at(i);
+            targets.at(i).load_op = SDL_GPU_LOADOP_DONT_CARE;
+            targets.at(i).store_op = SDL_GPU_STOREOP_STORE;
+        }
+        SDL_GPURenderPass* dilate = SDL_BeginGPURenderPass(
+            commands, targets.data(), static_cast<std::uint32_t>(targets.size()), nullptr);
+        SDL_BindGPUGraphicsPipeline(dilate,
+                                    fsr2_pipelines_.at(static_cast<std::size_t>(Fsr2Pass::Dilate)));
+        SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
+                                       static_cast<std::uint32_t>(sizeof(uniforms)));
+        const std::array<SDL_GPUTextureSamplerBinding, 3> sources{{
+            {.texture = depth_, .sampler = nearest},
+            {.texture = t.velocity, .sampler = nearest},
+            {.texture = t.color, .sampler = nearest},
+        }};
+        SDL_BindGPUFragmentSamplers(dilate, 0, sources.data(),
+                                    static_cast<std::uint32_t>(sources.size()));
+        SDL_DrawGPUPrimitives(dilate, 3, 1, 0, 0);
+        SDL_EndGPURenderPass(dilate);
+        if (auto scaled = encode_metalfx_temporal(
+                device_, commands, frames.scaler,
+                {.color = t.color,
+                 .depth = depth_,
+                 .motion = frames.dilated_motion.at(next),
+                 .output = t.scaled,
+                 .jitter = metalfx_jitter({uniforms.jitter_scale[0], uniforms.jitter_scale[1]}),
+                 .reset = frames.clock.frames == 0});
+            !scaled) {
+            log::error("MetalFX's temporal scaler failed", {{"error", scaled.error().message}});
+            return;
+        }
+        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+        const SDL_GPUTextureLocation from{
+            .texture = t.scaled, .mip_level = 0, .layer = 0, .x = 0, .y = 0, .z = 0};
+        const SDL_GPUTextureLocation to{
+            .texture = forward_targets_.world, .mip_level = 0, .layer = 0, .x = 0, .y = 0, .z = 0};
+        SDL_CopyGPUTextureToTexture(copy, &from, &to, frame_width_, frame_height_, 1, false);
+        SDL_EndGPUCopyPass(copy);
         frames.last = next;
         frames.view_projection = view_projection;
     }
@@ -5537,6 +5680,10 @@ private:
         if (desc.render_target) {
             info.usage |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
         }
+        // MetalFX's spatial scaler writes into it as a compute shader does.
+        if (desc.scaled_into && metalfx_.spatial) {
+            info.usage |= SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE;
+        }
         info.width = desc.width;
         info.height = desc.height;
         info.layer_count_or_depth = 1;
@@ -6001,8 +6148,11 @@ private:
         SDL_GPUTexture* masks = nullptr;
         SDL_GPUTexture* instability = nullptr;
         SDL_GPUBuffer* reconstructed = nullptr;
+        // MetalFX's output, at the display size.
+        SDL_GPUTexture* scaled = nullptr;
         std::array<std::uint32_t, 4> sizes{};
         bool fsr3 = false;
+        bool metalfx = false;
     };
     std::array<std::array<SDL_GPUShader*, 2>, kFsr2Passes> fsr2_shaders_{};
     std::array<SDL_GPUGraphicsPipeline*, kFsr2Passes> fsr2_pipelines_{};
@@ -6011,6 +6161,9 @@ private:
     std::array<std::array<SDL_GPUShader*, 2>, kFsr3Passes> fsr3_shaders_{};
     std::array<SDL_GPUGraphicsPipeline*, kFsr3Passes> fsr3_pipelines_{};
     SDL_GPUComputePipeline* fsr3_reconstruct_ = nullptr;
+    // The MetalFX scalers the device runs, and metalfx_spatial's scaler.
+    MetalFxSupport metalfx_;
+    MetalFxScalerPtr metalfx_spatial_scaler_;
     // Volumetric fog: each target's frames, the passes' pipeline, the sky's shaders and pipelines,
     // and the buffer the meshes bind in its place without it.
     std::vector<std::pair<TextureId, FogFrames>> fog_frames_;
