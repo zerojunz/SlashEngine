@@ -32,7 +32,7 @@ Rules that apply to every command (see [concepts.md](../concepts.md#sessions)):
 
 Add `"dry_run": true` to the params of any command that changes the world (`scene.new`,
 `scene.open`, `entity.create`, `entity.destroy`, `component.set`, `component.remove`, `step`,
-`run.until`, `world.restore`, `storyboard.edit`, `navigation.bake`, `lightmap.bake`, `voxel_gi.bake`, `replay.run`, `replay.seek` and `batch`) to see what it would do. The command runs, then
+`run.until`, `world.restore`, `storyboard.edit`, `navigation.bake`, `lightmap.bake`, `voxel_gi.bake`, `occluder.bake`, `replay.run`, `replay.seek` and `batch`) to see what it would do. The command runs, then
 the world, the scene's path, the next generated ID and the tick counter are put back, and no undo
 step is recorded. An error is returned as usual. The result holds the command's own result and the
 changes, in the same form as [`world.diff`](#worlddiff):
@@ -47,7 +47,7 @@ changes, in the same form as [`world.diff`](#worlddiff):
 
 A batch takes `dry_run` itself; the commands inside it cannot. In a dry-run batch, `scene.save`
 and `prefab.save` check everything and return their usual result but write no file, and
-`storyboard.edit` returns the versions it would write and `navigation.bake`, `lightmap.bake` and `voxel_gi.bake` what they would bake. Commands that change nothing, such
+`storyboard.edit` returns the versions it would write and `navigation.bake`, `lightmap.bake`, `voxel_gi.bake` and `occluder.bake` what they would bake. Commands that change nothing, such
 as `entity.get`, reject it as an unknown param.
 
 ## Contents
@@ -71,6 +71,7 @@ as `entity.get`, reject it as an unknown param.
 | Particles | [`particles.eval`](#particleseval) |
 | Lights | [`light.sample`](#lightsample) |
 | Global illumination | [`lightmap.bake`](#lightmapbake), [`voxel_gi.bake`](#voxel_gibake) |
+| Occlusion culling | [`occluder.bake`](#occluderbake) |
 | UI and text | [`ui.layout`](#uilayout), [`ui.theme`](#uitheme), [`ui.press`](#uipress), [`ui.popup`](#uipopup), [`ui.select`](#uiselect), [`ui.drag`](#uidrag), [`ui.tooltip`](#uitooltip), [`ui.focus`](#uifocus), [`ui.search`](#uisearch), [`ui.clipboard`](#uiclipboard), [`text.measure`](#textmeasure) |
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.analyze`](#audioanalyze), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord), [`audio.input`](#audioinput) |
@@ -1547,6 +1548,39 @@ Needs: `edit` and `filesystem`. Takes `dry_run`. The room of
 
 An unknown ID fails at `/id` with a "did you mean"; an entity with no `VoxelGI` fails at `/id`. A
 file that doesn't end in `.voxelgi.json` fails at `/file` (or `/id`, for its `data`).
+
+### occluder.bake
+
+Bakes an [`OccluderInstance3D`'s](scene-format.md#occlusion-culling) shape from the scene's
+meshes, as Godot's Bake Occluders: every visible `MeshInstance3D` whose `layers` share a bit with
+its `bake_mask` and whose material isn't transparent (the entity's `StandardMaterial3D`, else
+each model surface's own), placed in the occluder's space, each surface simplified with
+meshoptimizer until it would stray `bake_simplification_distance` meters, then duplicate corners
+and triangles merged. It sets the occluder's `shape` to `"array"` with the `vertices` and
+`indices` it made, and returns how many `vertices` and `triangles` that is, and `problems` when
+there are any: models that don't load, which it leaves out. A bake that comes out the same
+reports `"unchanged": true` and records no undo step. Culling uses the new shape at the next
+command or tick.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with an `OccluderInstance3D` |
+
+Needs: `edit`. Takes `dry_run`. The tower of
+[examples/occlusion-culling](../../examples/occlusion-culling/), the only mesh on its
+`bake_mask`:
+
+```json
+{"id": "tower_occluder"}
+```
+
+```json
+{"triangles":12,"vertices":8}
+```
+
+An unknown ID fails at `/id` with a "did you mean"; an entity with no `OccluderInstance3D` fails
+at `/id`. With nothing to bake (no visible, opaque mesh on a `bake_mask` layer) it fails with
+`-32002` and changes nothing, as Godot's bake reports no meshes.
 
 ## UI and text
 
@@ -3761,7 +3795,8 @@ Needs: `read`, and `filesystem` with `path`. A HUD with a health bar at 75%:
 
 `width` and `height` are the image's, after `region` and `scale`. `drawn` counts what was drawn
 (`sprites`, `tiles`, `particles`, `lights`, `controls`, `shapes`, 3D `meshes` and, of those,
-`lods`: the meshes drawn at a coarser [LOD](scene-format.md#mesh-lods)), leaving out
+`lods`: the meshes drawn at a coarser [LOD](scene-format.md#mesh-lods)), and `occluded`, the 3D
+meshes [occluders](scene-format.md#occlusion-culling) hid, leaving out
 zeros. When the
 project's `rendering.scaling` ([project-format.md](project-format.md#render-scale)) draws the
 world at another size, `upscaler` names what scaled it and `render_size` is the world's size in

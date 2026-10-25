@@ -341,6 +341,35 @@ json::Value mesh_lod_schema() {
     return out;
 }
 
+// rendering.occlusion_culling, as Godot's rendering/occlusion_culling settings.
+json::Value occlusion_culling_schema() {
+    json::Value use;
+    use["type"] = "boolean";
+    use["default"] = false;
+    use["description"] = "OccluderInstance3Ds hide the meshes behind them from the camera.";
+    json::Value rays;
+    rays["type"] = "integer";
+    rays["minimum"] = 1;
+    rays["maximum"] = 65536;
+    rays["default"] = 512;
+    rays["description"] =
+        "Rays cast into the occluders per thread, for 8 threads: more culls more exactly and "
+        "costs more.";
+    json::Value jitter;
+    jitter["type"] = "boolean";
+    jitter["default"] = true;
+    jitter["description"] =
+        "Moves the rays a little each frame, so thin gaps between occluders show.";
+    json::Value out;
+    out["type"] = "object";
+    out["additionalProperties"] = false;
+    out["description"] = "Occlusion culling, as Godot's rendering/occlusion_culling settings.";
+    out["properties"]["use_occlusion_culling"] = std::move(use);
+    out["properties"]["occlusion_rays_per_thread"] = std::move(rays);
+    out["properties"]["jitter_projection"] = std::move(jitter);
+    return out;
+}
+
 // rendering.lights_and_shadows, as Godot's rendering/lights_and_shadows settings.
 json::Value lights_and_shadows_schema() {
     const render::ShadowSettings defaults;
@@ -520,6 +549,7 @@ json::Value project_schema() {
     rendering["properties"]["global_illumination"] = global_illumination_schema();
     rendering["properties"]["anti_aliasing"] = anti_aliasing_schema();
     rendering["properties"]["mesh_lod"] = mesh_lod_schema();
+    rendering["properties"]["occlusion_culling"] = occlusion_culling_schema();
     json::Value compress_mode;
     compress_mode["enum"] = json::Array{"lossless", "vram_compressed", "vram_uncompressed"};
     compress_mode["description"] =
@@ -876,6 +906,7 @@ Result<Project> parse_project(const json::Value& project) {
         out.use_taa = render::use_taa(*rendering);
         out.decal_filter = render::decal_filter(*rendering);
         out.mesh_lod_threshold = render::mesh_lod_threshold(*rendering);
+        out.occlusion_culling = render::occlusion_culling(*rendering);
         if (const json::Value* textures = rendering->find("textures"); textures != nullptr) {
             if (const json::Value* mode = textures->find("compress_mode"); mode != nullptr) {
                 out.texture_import.compress_mode = mode->as_string();

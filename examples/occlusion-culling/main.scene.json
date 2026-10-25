@@ -1,0 +1,134 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "fov": 60.0
+        },
+        "Transform3D": {
+          "position": [0.0, 1.6, 6.0]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.55, 0.62, 0.75, 1.0],
+          "ambient_light_energy": 0.4,
+          "ambient_light_source": "color",
+          "background_color": [0.6, 0.75, 0.9, 1.0],
+          "background_mode": "color"
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [100.0, 100.0]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.45, 0.5, 0.4, 1.0]
+        },
+        "Transform3D": {}
+      }
+    },
+    "house_a": {
+      "components": {
+        "BoxMesh": {
+          "size": [3.0, 3.0, 3.0]
+        },
+        "MeshInstance3D": {},
+        "Transform3D": {
+          "position": [-4.0, 1.5, -6.0]
+        }
+      }
+    },
+    "house_b": {
+      "components": {
+        "BoxMesh": {
+          "size": [3.0, 3.0, 3.0]
+        },
+        "MeshInstance3D": {},
+        "Transform3D": {
+          "position": [0.0, 1.5, -6.0]
+        }
+      }
+    },
+    "house_c": {
+      "components": {
+        "BoxMesh": {
+          "size": [3.0, 3.0, 3.0]
+        },
+        "MeshInstance3D": {},
+        "Transform3D": {
+          "position": [4.0, 1.5, -6.0]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {},
+        "Transform3D": {
+          "rotation": [-0.8, -0.5, 0.0]
+        }
+      }
+    },
+    "tower": {
+      "components": {
+        "BoxMesh": {
+          "size": [2.0, 12.0, 2.0]
+        },
+        "MeshInstance3D": {
+          "layers": 3
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.6, 0.6, 0.65, 1.0]
+        },
+        "Transform3D": {
+          "position": [0.0, 6.0, -12.0]
+        }
+      }
+    },
+    "tower_occluder": {
+      "components": {
+        "OccluderInstance3D": {
+          "bake_mask": 2
+        },
+        "Transform3D": {
+          "position": [0.0, 6.0, -12.0]
+        }
+      }
+    },
+    "wall": {
+      "components": {
+        "BoxMesh": {
+          "size": [12.0, 4.0, 0.5]
+        },
+        "MeshInstance3D": {},
+        "OccluderInstance3D": {
+          "shape": "box",
+          "size": [11.8, 3.8, 0.3]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.7, 0.6, 0.5, 1.0]
+        },
+        "Transform3D": {
+          "position": [0.0, 2.0, 0.0]
+        }
+      }
+    },
+    "well": {
+      "components": {
+        "CylinderMesh": {
+          "height": 1.0
+        },
+        "MeshInstance3D": {},
+        "Transform3D": {
+          "position": [2.0, 0.5, 3.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

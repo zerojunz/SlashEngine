@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "Occlusion culling",
+  "rendering": {
+    "occlusion_culling": {
+      "jitter_projection": false,
+      "use_occlusion_culling": true
+    }
+  },
+  "version": "1.0.0",
+  "window": {
+    "height": 90,
+    "width": 160
+  }
+}

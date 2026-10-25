@@ -21,9 +21,10 @@ target_link_libraries(slash_xatlas PRIVATE slash::core)
 target_compile_options(slash_xatlas PRIVATE "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w;-ffp-contract=off>")
 
 # Mesh LODs (src/lod.cpp) are simplified with meshoptimizer's simplifier, as Godot's importer
-# generates them, with no fused multiply-adds so they are the same on every platform.
+# generates them, and baked occluders (src/occlusion.cpp) simplified and stripped of repeated
+# points, with no fused multiply-adds so they are the same on every platform.
 add_library(slash_meshoptimizer STATIC ${meshoptimizer_SOURCE_DIR}/src/allocator.cpp
-    ${meshoptimizer_SOURCE_DIR}/src/simplifier.cpp)
+    ${meshoptimizer_SOURCE_DIR}/src/indexgenerator.cpp ${meshoptimizer_SOURCE_DIR}/src/simplifier.cpp)
 target_include_directories(slash_meshoptimizer SYSTEM PUBLIC ${meshoptimizer_SOURCE_DIR}/src)
 target_compile_options(slash_meshoptimizer PRIVATE
     "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w;-ffp-contract=off>")
@@ -43,6 +44,7 @@ add_library(slash_scene3d
     src/model.cpp
     src/model_tools.cpp
     src/obj.cpp
+    src/occlusion.cpp
     src/physical_bones.cpp
     src/primitive.cpp
     src/scene3d.cpp

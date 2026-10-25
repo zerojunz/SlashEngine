@@ -1,0 +1,9 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"path":"shots/street.png"}}
+{"jsonrpc":"2.0","id":3,"method":"component.set","params":{"id":"camera","components":{"Transform3D":{"position":[0.0,12.0,10.0],"rotation":[-0.7,0.0,0.0]}}}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"points":[[80,45]]}}
+{"jsonrpc":"2.0","id":5,"method":"undo"}
+{"jsonrpc":"2.0","id":6,"method":"component.set","params":{"id":"house_b","components":{"MeshInstance3D":{"ignore_occlusion_culling":true}}}}
+{"jsonrpc":"2.0","id":7,"method":"frame.capture","params":{"points":[[80,45]]}}
+{"jsonrpc":"2.0","id":8,"method":"occluder.bake","params":{"id":"tower_occluder"}}
+{"jsonrpc":"2.0","id":9,"method":"frame.capture","params":{"points":[[80,45]]}}

@@ -74,11 +74,14 @@ struct MeshInstance3D {
     // Times its size when picking a coarser LOD of a model's surfaces, as Godot's
     // GeometryInstance3D.lod_bias: above 1 keeps detail further away, below 1 drops it sooner.
     float lod_bias = 1.0F;
+    // Always drawn, never hidden by OccluderInstance3Ds, as Godot's
+    // GeometryInstance3D.ignore_occlusion_culling.
+    bool ignore_occlusion_culling = false;
 
     friend bool operator==(const MeshInstance3D&, const MeshInstance3D&) = default;
 };
 SLASH_COMPONENT(MeshInstance3D, mesh, layers, cast_shadow, gi_mode, gi_lightmap_texel_scale,
-                lod_bias)
+                lod_bias, ignore_occlusion_culling)
 
 // Poses the skeleton of the model the entity's MeshInstance3D draws by hand, as Godot's Skeleton3D
 // bone poses: each bone, or other node of the model, named in these maps takes the position, the
@@ -696,6 +699,29 @@ struct VoxelGI {
 };
 SLASH_COMPONENT(VoxelGI, subdiv, size, camera_attributes, data, dynamic_range, energy, bias,
                 normal_bias, propagation, use_two_bounces, interior)
+
+// A shape that hides the meshes behind it from the camera, as Godot's OccluderInstance3D with its
+// Occluder3D: while project.json's rendering.occlusion_culling.use_occlusion_culling is on, a mesh
+// whose bounds the occluders cover from the camera isn't drawn, though it still casts shadows.
+// It draws nothing itself. shape is Godot's occluder: "quad" (QuadOccluder3D, size's x and y
+// across, facing +Z), "box" (BoxOccluder3D, size), "sphere" (SphereOccluder3D, radius),
+// "polygon" (PolygonOccluder3D, polygon's points in its XY plane) or "array" (ArrayOccluder3D,
+// vertices and every three indices a triangle, as occluder.bake writes them). bake_mask and
+// bake_simplification_distance are the bake's.
+struct OccluderInstance3D {
+    std::string shape = "quad";
+    Vec3 size{1.0F, 1.0F, 1.0F};
+    float radius = 1.0F;
+    std::vector<Vec2> polygon;
+    std::vector<Vec3> vertices;
+    std::vector<int> indices;
+    std::uint32_t bake_mask = 0xFFFFFFFF;
+    float bake_simplification_distance = 0.1F;
+
+    friend bool operator==(const OccluderInstance3D&, const OccluderInstance3D&) = default;
+};
+SLASH_COMPONENT(OccluderInstance3D, shape, size, radius, polygon, vertices, indices, bake_mask,
+                bake_simplification_distance)
 
 // A box that projects textures onto the meshes inside it, as Godot's Decal, in Forward+: down its
 // -Y, its albedo texture's color mixed into theirs by albedo_mix where its alpha says, with its

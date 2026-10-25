@@ -701,6 +701,7 @@ constexpr std::array kNodeTypes{
     NodeType{"LightmapProbe", Family::Node3D, "LightmapProbe", ""},
     NodeType{"VoxelGI", Family::Node3D, "VoxelGI", ""},
     NodeType{"Decal", Family::Node3D, "Decal", ""},
+    NodeType{"OccluderInstance3D", Family::Node3D, "OccluderInstance3D", ""},
     NodeType{"FogVolume", Family::Node3D, "FogVolume", ""},
     NodeType{"CollisionShape3D", Family::Node3D, "CollisionShape3D", ""},
     NodeType{"StaticBody3D", Family::Node3D, "StaticBody3D", ""},
@@ -1926,6 +1927,17 @@ private:
             threshold != nullptr && threshold->number() >= 0.0) {
             project["rendering"]["mesh_lod"]["lod_change"]["threshold_pixels"] =
                 threshold->number();
+        }
+        for (const std::string_view flag : {"use_occlusion_culling", "jitter_projection"}) {
+            if (const Value* on = setting("rendering", "occlusion_culling/" + std::string(flag));
+                on != nullptr && on->kind == Value::Kind::Bool) {
+                project["rendering"]["occlusion_culling"][std::string(flag)] = on->boolean;
+            }
+        }
+        if (const Value* rays = number("rendering", "occlusion_culling/occlusion_rays_per_thread");
+            rays != nullptr && rays->number() >= 1.0 && rays->number() <= 65536.0) {
+            project["rendering"]["occlusion_culling"]["occlusion_rays_per_thread"] =
+                static_cast<std::int64_t>(rays->number());
         }
         // The 3D world's scaling, by Godot's Scaling3DMode numbers.
         if (const Value* mode = number("rendering", "scaling_3d/mode")) {
@@ -4985,6 +4997,10 @@ private:
                 return true;
             }
         }
+        if (name == "occluder" && components.contains("OccluderInstance3D")) {
+            convert_occluder(value, file, components, node);
+            return true;
+        }
         // Godot 4.0's Decal took half its size.
         if (name == "extents" && components.contains("Decal")) {
             if (const auto extents = value.numbers(); extents && extents->size() == 3) {
@@ -5663,6 +5679,54 @@ private:
         json::Value& out = components[type];
         out = json::Object{};
         resource_fields(*section, *owner, type, out, node);
+    }
+
+    // An OccluderInstance3D's Occluder3D as its shape: a QuadOccluder3D's size (a Vector2), and
+    // the other kinds' fields as they are. A baked ArrayOccluder3D saved in Godot's binary .occ
+    // file can't be read: occluder.bake bakes it again.
+    void convert_occluder(const Value& reference, const TextFile& file, json::Object& components,
+                          const Node& node) {
+        if (reference.kind == Value::Kind::Nil) {
+            return;
+        }
+        json::Value& out = components["OccluderInstance3D"];
+        const auto [section, owner] = resource_section(reference, file);
+        if (section == nullptr) {
+            problems_.add("OccluderInstance3D.occluder", node.declared,
+                          "the occluder isn't in a text resource; bake it again with "
+                          "occluder.bake");
+            return;
+        }
+        static constexpr std::array<std::pair<std::string_view, std::string_view>, 5> kShapes{
+            std::pair{"QuadOccluder3D", "quad"}, std::pair{"BoxOccluder3D", "box"},
+            std::pair{"SphereOccluder3D", "sphere"}, std::pair{"PolygonOccluder3D", "polygon"},
+            std::pair{"ArrayOccluder3D", "array"}};
+        const std::string type = resource_type(*section, *owner);
+        std::string_view shape;
+        for (const auto& [godot, ours] : kShapes) {
+            if (godot == type) {
+                shape = ours;
+            }
+        }
+        if (shape.empty()) {
+            problems_.add("OccluderInstance3D.occluder", node.declared,
+                          "not an Occluder3D resource");
+            return;
+        }
+        resources_used_.insert(type);
+        out["shape"] = std::string(shape);
+        if (shape == "quad") {
+            // QuadOccluder3D's size is a Vector2, and its default 1 by 1.
+            json::Array size{1.0, 1.0, 1.0};
+            if (const Value* given = section->property("size")) {
+                if (const auto numbers = given->numbers(); numbers && numbers->size() == 2) {
+                    size = json::Array{numbers->at(0), numbers->at(1), 1.0};
+                }
+            }
+            out["size"] = std::move(size);
+            return;
+        }
+        resource_fields(*section, *owner, "OccluderInstance3D", out, node);
     }
 
     // --- VoxelGI ---
