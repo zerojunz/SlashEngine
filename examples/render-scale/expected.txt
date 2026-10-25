@@ -22,6 +22,6 @@ display.set {"scaling": {"upscaler": "pixel", "scale": 0.25}}
 frame.capture {"points": [[11, 31], [12, 31], [13, 31], [14, 31], [15, 31], [63, 6], [64, 6]]}
   -> {"colors":[[0,0,0,1],[0.471,0.196,0.078,1],[0.471,0.196,0.078,1],[0.471,0.196,0.078,1],[0.471,0.196,0.078,1],[0,0,0,1],[0.2,0.8,0.302,1]],"drawn":{"controls":1,"sprites":1},"height":64,"render_size":[24,16],"upscaler":"pixel","width":96}
 display.set {"scaling": {"mode": "metalfx_temporal"}}
-  -> error: /scaling/mode: metalfx_temporal needs Apple's MetalFX, which isn't built yet; use bilinear, fsr or fsr2
+  -> error: /scaling/mode: metalfx_temporal needs Apple's MetalFX, which isn't built yet; use bilinear, fsr, fsr2 or fsr3
 display.set {"scaling": {"upscaler": "pixle"}}
   -> error: /scaling/upscaler: the game has no upscaler named pixle; it has bilinear, fsr, pixel (did you mean pixel?)

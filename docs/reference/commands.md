@@ -3762,11 +3762,11 @@ Needs: `read`, and `filesystem` with `path`. A HUD with a health bar at 75%:
 zeros. When the
 project's `rendering.scaling` ([project-format.md](project-format.md#render-scale)) draws the
 world at another size, `upscaler` names what scaled it and `render_size` is the world's size in
-pixels, `[width, height]` (with `fsr2`, the 3D world's). `colors` are
+pixels, `[width, height]` (with `fsr2` or `fsr3`, the 3D world's). `colors` are
 `[r, g, b, a]` from 0 to 1, one per point, read from the whole window whatever `region` says.
 Over MCP, `png` is sent as an image content block rather than as text. A point or region outside
 the window is an error at its path, and so is a `path` that doesn't end in `.png`. In a dry-run
-`batch`, `path` writes nothing. Captures keep TAA's and FSR 2's history from one to the next,
+`batch`, `path` writes nothing. Captures keep TAA's, FSR 2's and FSR 3's history from one to the next,
 as a running game's frames do, so a still world's edges smooth out over captures and a moved
 mesh's history follows it.
 
@@ -3955,7 +3955,7 @@ Mesa's software Vulkan on an offscreen window has no mode that skips V-Sync:
 {"max_fps":0,"scaling":{"fsr_sharpness":0.2,"mode":"bilinear","scale":1.0},"vsync_mode":"enabled"}
 ```
 
-A scaling `mode` that isn't `bilinear`, `fsr` or `fsr2` is an error at `/scaling/mode` (Godot's
+A scaling `mode` that isn't `bilinear`, `fsr`, `fsr2` or `fsr3` is an error at `/scaling/mode` (Godot's
 MetalFX modes aren't built yet), and an `upscaler` the game hasn't added is a `-32001`
 error at `/scaling/upscaler` that lists the ones it has. Either way nothing changes.
 [examples/render-scale](../../examples/render-scale/) changes the render scale while the game

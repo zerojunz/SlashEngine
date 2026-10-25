@@ -634,8 +634,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         Godot's `scaling_3d` settings imported
   - [x] The sky's motion vectors worked out from the depth in FSR 2, and the sky jittered with
         TAA and FSR 2, as Godot's
-  - [ ] FSR 3's upscaler and MetalFX, and temporal upscalers through `render::Upscaler`, on the
-        depth, motion vectors and jittered camera that FSR 2 uses
+  - [x] FSR 3.1's upscaler, the scaling mode `fsr3`: AMD's passes over the depth, motion vectors
+        and jittered camera that FSR 2 uses, on every Forward+ device
+  - [ ] MetalFX, and temporal upscalers through `render::Upscaler`, on the depth, motion vectors
+        and jittered camera that FSR 2 uses
   - [ ] FSR 3 frame generation, once the render device controls presenting frames
 - [ ] Hardware ray tracing: acceleration structures and ray queries in `render::RenderDevice`,
       native on Vulkan, Direct3D 12 and Metal beside SDL3's GPU API (which has none), with a CPU

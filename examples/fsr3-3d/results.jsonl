@@ -1,0 +1,9 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":3,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.404,0.388,0.361,1],[0.765,0.725,0.647,1],[0.522,0.494,0.451,1],[0.651,0.62,0.553,1]],"drawn":{"meshes":1},"height":90,"path":"shots/first.png","render_size":[80,45],"upscaler":"fsr3","width":160}}
+{"id":3,"jsonrpc":"2.0","result":{"colors":[[0.682,0.647,0.58,1],[0.78,0.737,0.659,1],[0.6,0.569,0.514,1],[0.592,0.565,0.51,1]],"drawn":{"meshes":1},"height":90,"path":"shots/rebuilt.png","render_size":[80,45],"upscaler":"fsr3","width":160}}
+{"id":4,"jsonrpc":"2.0","result":{"changed":{"Transform3D":{"rotation":[0.0,0.0,0.6]}},"id":"card"}}
+{"id":5,"jsonrpc":"2.0","result":{"colors":[[0.769,0.729,0.651,1],[0.427,0.408,0.376,1],[0.937,0.89,0.792,1],[0.878,0.831,0.737,1]],"drawn":{"meshes":1},"height":90,"path":"shots/turned.png","render_size":[80,45],"upscaler":"fsr3","width":160}}
+{"id":6,"jsonrpc":"2.0","result":{"colors":[[0.8,0.761,0.678,1],[0.416,0.396,0.369,1],[0.945,0.894,0.792,1],[0.886,0.843,0.749,1]],"drawn":{"meshes":1},"height":90,"path":"shots/settled.png","render_size":[80,45],"upscaler":"fsr3","width":160}}
+{"id":7,"jsonrpc":"2.0","result":{"changed":{"StandardMaterial3D":{"albedo_color":[0.8,0.15,0.1,1.0]}},"id":"card"}}
+{"id":8,"jsonrpc":"2.0","result":{"colors":[[0.773,0.569,0.502,1],[0.416,0.396,0.369,1],[0.808,0.247,0.2,1],[0.8,0.592,0.525,1],[0.8,0.145,0.09,1]],"drawn":{"meshes":1},"height":90,"path":"shots/recolored.png","render_size":[80,45],"upscaler":"fsr3","width":160}}
+{"id":9,"jsonrpc":"2.0","result":{"colors":[[0.776,0.443,0.388,1],[0.38,0.341,0.322,1],[0.804,0.22,0.173,1],[0.792,0.467,0.408,1],[0.8,0.145,0.09,1]],"drawn":{"meshes":1},"height":90,"path":"shots/recolored_settled.png","render_size":[80,45],"upscaler":"fsr3","width":160}}

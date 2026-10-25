@@ -10,6 +10,7 @@
 #include "decal.hpp"
 #include "forward_post.hpp"
 #include "fsr2.hpp"
+#include "fsr3.hpp"
 #include "mesh_shading.hpp"
 #include "post_shading.hpp"
 #include "reflection.hpp"
@@ -190,13 +191,17 @@ struct TaaHistory {
     bool primed = false;
 };
 
-// A target's frames before for FSR 2: what the passes keep, the clock that picks the next jitter,
-// the last frame's camera without its jitter, and the sizes they were drawn at.
+// A target's frames before for FSR 2 or FSR 3: what the passes keep, the clock that picks the
+// next jitter, the last frame's camera without its jitter and its jitter (which FSR 3 reads), and
+// the sizes they were drawn at.
 struct Fsr2State {
     detail::Fsr2History history;
+    detail::Fsr3History history3;
     detail::Fsr2Clock clock;
     Mat4 view_projection{};
+    std::array<float, 2> jitter{};
     std::array<std::uint32_t, 4> sizes{}; // the render size, then the display size
+    bool fsr3 = false;
 };
 
 // A target's volumetric fog: its clock and the last frame's density, which the next reprojects.
@@ -672,7 +677,8 @@ public:
             Fsr2Camera fsr2_camera;
             if (fsr2) {
                 fsr2_state = &this->fsr2_state(frame_.target,
-                                               {size[0], size[1], target.width, target.height});
+                                               {size[0], size[1], target.width, target.height},
+                                               detail::uses_fsr3(scene));
                 const std::uint32_t phases = detail::fsr2_phase_count(size[0], target.width);
                 fsr2_state->clock.advance(phases);
                 fsr2_camera = Fsr2Camera{.jitter = detail::camera_jitter(fsr2_state->clock.frames,
@@ -1830,50 +1836,64 @@ private:
         return depth;
     }
 
-    // target's frames before for FSR 2 at sizes (the render size, then the display size), made
-    // empty when it has none or they were drawn at other sizes.
-    Fsr2State& fsr2_state(TextureId target, const std::array<std::uint32_t, 4>& sizes) {
+    // target's frames before for FSR 2, or FSR 3 (fsr3), at sizes (the render size, then the
+    // display size), made empty when it has none or they were drawn at other sizes or by the other.
+    Fsr2State& fsr2_state(TextureId target, const std::array<std::uint32_t, 4>& sizes, bool fsr3) {
         for (auto& [id, state] : fsr2_states_) {
             if (id == target) {
-                if (state.sizes != sizes) {
-                    state = Fsr2State{
-                        .history = {}, .clock = {}, .view_projection = {}, .sizes = sizes};
+                if (state.sizes != sizes || state.fsr3 != fsr3) {
+                    state = Fsr2State{.history = {},
+                                      .history3 = {},
+                                      .clock = {},
+                                      .view_projection = {},
+                                      .jitter = {},
+                                      .sizes = sizes,
+                                      .fsr3 = fsr3};
                 }
                 return state;
             }
         }
         return fsr2_states_
-            .emplace_back(
-                target,
-                Fsr2State{.history = {}, .clock = {}, .view_projection = {}, .sizes = sizes})
+            .emplace_back(target, Fsr2State{.history = {},
+                                            .history3 = {},
+                                            .clock = {},
+                                            .view_projection = {},
+                                            .jitter = {},
+                                            .sizes = sizes,
+                                            .fsr3 = fsr3})
             .second;
     }
 
-    // FSR 2's passes: world, drawn at the render size with camera's jitter, upscaled to width x
-    // height with its depth and motion vectors and the target's frames before, which keep it with
-    // the camera it was seen from without the jitter.
+    // FSR 2's passes, or FSR 3's: world, drawn at the render size with camera's jitter, upscaled
+    // to width x height with its depth and motion vectors and the target's frames before, which
+    // keep it with the camera it was seen from without the jitter, and the jitter.
     static detail::HdrImage upscale_fsr2(const Scene3D& scene, Fsr2State& state,
                                          const Fsr2Camera& camera, const detail::HdrImage& world,
                                          std::span<const float> depth,
                                          std::span<const float> velocity, std::uint32_t width,
                                          std::uint32_t height) {
-        const detail::Fsr2Uniforms uniforms =
-            detail::fsr2_uniforms({.render_width = world.width,
-                                   .render_height = world.height,
-                                   .display_width = width,
-                                   .display_height = height,
-                                   .jitter = camera.jitter,
-                                   .projection = scene.projection,
-                                   .view_projection = multiply(scene.projection, scene.camera),
-                                   .previous = camera.previous,
-                                   .sharpness = scene.fsr2.value_or(Fsr2Scaling{}).sharpness,
-                                   .frame_index = state.clock.frames,
-                                   .phases = state.clock.phases});
+        const detail::Fsr2Frame frame{.render_width = world.width,
+                                      .render_height = world.height,
+                                      .display_width = width,
+                                      .display_height = height,
+                                      .jitter = camera.jitter,
+                                      .projection = scene.projection,
+                                      .view_projection = multiply(scene.projection, scene.camera),
+                                      .previous = camera.previous,
+                                      .sharpness = scene.fsr2.value_or(Fsr2Scaling{}).sharpness,
+                                      .frame_index = state.clock.frames,
+                                      .phases = state.clock.phases};
         detail::HdrImage out{.width = width, .height = height, .pixels = {}};
         out.pixels.resize(std::size_t{width} * height * 4);
-        detail::run_fsr2(uniforms, {.color = world.pixels, .depth = depth, .motion = velocity},
-                         state.history, out.pixels);
+        const detail::Fsr2Inputs inputs{.color = world.pixels, .depth = depth, .motion = velocity};
+        if (state.fsr3) {
+            detail::run_fsr3(detail::fsr3_uniforms(frame, state.jitter), inputs, state.history3,
+                             out.pixels);
+        } else {
+            detail::run_fsr2(detail::fsr2_uniforms(frame), inputs, state.history, out.pixels);
+        }
         state.view_projection = multiply(scene.projection, scene.camera);
+        state.jitter = camera.jitter;
         return out;
     }
 

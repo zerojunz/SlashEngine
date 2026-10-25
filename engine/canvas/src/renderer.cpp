@@ -1140,7 +1140,9 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     const render::Scaling& scaling = settings(world).scaling;
     std::optional<render::Fsr2Scaling> fsr2;
     if (render::uses_fsr2(scaling, settings(world).rendering_method, *device_)) {
-        fsr2 = render::Fsr2Scaling{.scale = scaling.scale, .sharpness = scaling.fsr_sharpness};
+        fsr2 = render::Fsr2Scaling{.scale = scaling.scale,
+                                   .sharpness = scaling.fsr_sharpness,
+                                   .fsr3 = scaling.mode == render::kFsr3};
     }
     std::optional<scene3d::Frame3D> scene = scene3d_.prepare(
         world, viewport.x, viewport.y, options.interpolation, options.clear,
@@ -2116,7 +2118,7 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
     const std::uint32_t output_height = options.pixel_height > 0
                                             ? options.pixel_height
                                             : static_cast<std::uint32_t>(options.height);
-    // A 3D world FSR 2 upscales draws at full size here, the 3D smaller in the device.
+    // A 3D world FSR 2 or 3 upscales draws at full size here, the 3D smaller in the device.
     const bool fsr2 = submission.scene && submission.scene->scene.fsr2.has_value();
     std::string chosen;
     if (output_width > 0 && output_height > 0 && !fsr2) {
@@ -2140,7 +2142,8 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
     }
     scaled_ = {};
     if (fsr2 && output_width > 0 && output_height > 0) {
-        scaled_ = {.upscaler = std::string(render::kFsr2),
+        scaled_ = {.upscaler =
+                       std::string(scaling.mode == render::kFsr3 ? render::kFsr3 : render::kFsr2),
                    .size = {.render_width = render::render_size(output_width, scaling.scale),
                             .render_height = render::render_size(output_height, scaling.scale),
                             .output_width = output_width,
