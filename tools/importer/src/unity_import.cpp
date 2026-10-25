@@ -8289,7 +8289,8 @@ private:
         std::string task_text;          // its state machine, for a storyboard task; "" with none
         std::vector<std::string> users; // "<entity> in <scene>"
         std::vector<std::string> scenes;
-        std::string tree; // the base layer's state machine as a .animtree.json file, or ""
+        std::string tree;        // the base layer's state machine as a .animtree.json file, or ""
+        json::Object parameters; // the tree's parameters that start other than at their defaults
     };
 
     // The objects of a controller file, by file ID.
@@ -8308,10 +8309,20 @@ private:
         std::vector<const Object*> states;
         std::vector<const Object*> machines;
         std::map<std::int64_t, std::string> names;               // animations, by state's ID
+        std::map<std::int64_t, std::string> state_names;         // by state's ID
         std::map<std::int64_t, const Object*> machine_of;        // by state's ID
         std::map<std::int64_t, const Object*> parent_of;         // by state machine's ID
         std::map<std::int64_t, std::array<double, 2>> positions; // by state's ID
         std::map<std::string, std::pair<double, bool>> clips;    // length and loop, by animation
+        std::map<std::int64_t, json::Value> nodes;               // blend spaces, by state's ID
+        // The parameters each blend space reads, by state's ID: its parameter path under the
+        // state ("" or "0/"), and its X and, in 2D, Y parameter.
+        struct Blend {
+            std::string path;
+            std::string x;
+            std::string y;
+        };
+        std::map<std::int64_t, std::vector<Blend>> blends;
     };
 
     std::optional<ControllerFile> read_controller(const std::string& guid,
@@ -8454,54 +8465,38 @@ private:
         std::set<std::string> taken;
         std::vector<std::string> events;
         const std::string state_where = file->path + ": state ";
-        for (const Object* state : states) {
-            const std::string name = take(taken, state->body.string_at("m_Name"));
-            names[state->file_id] = name;
-            const std::string here = state_where + name;
-            // A blend tree plays its first motion.
-            std::optional<ObjectRef> motion = ref_at(state->body, "m_Motion");
-            for (int depth = 0;
-                 motion && !motion->null() && motion->guid.empty() && depth < kMaxInstanceDepth;
-                 ++depth) {
-                const auto tree = states_file.by_id.find(motion->file_id);
-                const Node* children =
-                    tree != states_file.by_id.end() && tree->second->class_id == kBlendTree
-                        ? tree->second->body.get("m_Childs")
-                        : nullptr;
-                problems_.add("blend tree", here, "the state plays the tree's first motion");
-                motion = children != nullptr && !children->items.empty()
-                             ? ref_at(children->items.front(), "m_Motion")
-                             : std::nullopt;
-            }
-            if (!motion || motion->null() || motion->guid.empty()) {
-                continue;
-            }
+        // Adds a clip's animation at a speed and returns its name, "" when the clip doesn't
+        // convert: a state's under the state's name, a blend tree's under its clip's, or the
+        // state's and its clip's when another animation has that, unless the same animation is
+        // there already.
+        const AddAnimation add_animation = [&](ObjectRef motion, double speed,
+                                               const std::string& name, const std::string& prefix,
+                                               const std::string& here) {
             if (const auto swapped =
-                    overrides.find(motion->guid + ":" + std::to_string(motion->file_id));
+                    overrides.find(motion.guid + ":" + std::to_string(motion.file_id));
                 swapped != overrides.end()) {
                 motion = swapped->second;
             }
-            const ClipOut& converted = clip(*motion, here);
+            const ClipOut& converted = clip(motion, here);
             if (!converted.ok) {
-                continue;
+                return std::string();
             }
-            double speed = state->body.number_at("m_Speed", 1.0);
-            if (speed <= 0.0) {
-                problems_.add("state speed at or below 0", here, "plays forward at speed 1");
-                speed = 1.0;
+            json::Value animation = at_speed(converted.animation, speed);
+            std::string chosen = name;
+            if (const Asset* asset = asset_of(motion.guid); asset != nullptr && chosen.empty()) {
+                chosen = file_stem(asset->path);
             }
-            if (state->body.flag_at("m_SpeedParameterActive")) {
-                problems_.add("state speed parameter", here,
-                              "set the AnimationPlayer's speed_scale from gameplay code");
+            if (!prefix.empty()) {
+                for (const auto& [existing, value] : animations) {
+                    if (value == animation) {
+                        return existing;
+                    }
+                }
+                if (taken.contains(chosen)) {
+                    chosen.insert(0, prefix + " ");
+                }
+                chosen = take(taken, chosen);
             }
-            if (state->body.number_at("m_CycleOffset") != 0.0 ||
-                state->body.flag_at("m_CycleOffsetParameterActive")) {
-                problems_.add("state cycle offset", here, "plays from the start");
-            }
-            if (state->body.flag_at("m_Mirror") || state->body.flag_at("m_MirrorParameterActive")) {
-                problems_.add("mirrored state", here, "mirroring is for humanoid 3D animation");
-            }
-            animations.emplace(name, at_speed(converted.animation, speed));
             out.offsets = out.offsets || converted.offsets;
             for (const auto& [function, at] : converted.events) {
                 std::ostringstream seconds;
@@ -8510,11 +8505,66 @@ private:
                                      .append(" at ")
                                      .append(seconds.str())
                                      .append(" s in ")
-                                     .append(name));
+                                     .append(chosen));
             }
-            for (const json::Value& track : converted.animation.find("tracks")->as_array()) {
+            for (const json::Value& track : animation.find("tracks")->as_array()) {
                 if (const json::Value* target = track.find("target")) {
                     out.targets.insert(target->as_string());
+                }
+            }
+            animations.emplace(chosen, std::move(animation));
+            return chosen;
+        };
+        // States playing clips first, under their own names, then blend trees, whose clips the
+        // states may play already.
+        std::map<std::int64_t, std::string> reserved;
+        for (const Object* state : states) {
+            reserved[state->file_id] = take(taken, state->body.string_at("m_Name"));
+        }
+        for (const bool blend_trees : {false, true}) {
+            for (const Object* state : states) {
+                const std::optional<ObjectRef> motion = ref_at(state->body, "m_Motion");
+                if (!motion || motion->null() || motion->guid.empty() != blend_trees) {
+                    continue;
+                }
+                const std::string& state_name = reserved.at(state->file_id);
+                const std::string here = state_where + state_name;
+                double speed = state->body.number_at("m_Speed", 1.0);
+                if (speed <= 0.0) {
+                    problems_.add("state speed at or below 0", here, "plays forward at speed 1");
+                    speed = 1.0;
+                }
+                if (state->body.flag_at("m_SpeedParameterActive")) {
+                    problems_.add("state speed parameter", here,
+                                  "set the AnimationPlayer's speed_scale from gameplay code");
+                }
+                if (state->body.number_at("m_CycleOffset") != 0.0 ||
+                    state->body.flag_at("m_CycleOffsetParameterActive")) {
+                    problems_.add("state cycle offset", here, "plays from the start");
+                }
+                if (state->body.flag_at("m_Mirror") ||
+                    state->body.flag_at("m_MirrorParameterActive")) {
+                    problems_.add("mirrored state", here, "mirroring is for humanoid 3D animation");
+                }
+                if (!blend_trees) {
+                    if (!add_animation(*motion, speed, state_name, "", here).empty()) {
+                        names[state->file_id] = state_name;
+                    }
+                    continue;
+                }
+                // A blend tree is a blend space over its clips' animations.
+                std::vector<LayerParts::Blend> blends;
+                std::string first;
+                const std::optional<json::Value> node =
+                    blend_node(states_file, motion->file_id, speed, state_name, here, "", 0,
+                               add_animation, animations, blends, first);
+                if (!node) {
+                    continue;
+                }
+                names[state->file_id] = first;
+                if (node->find("type")->as_string() != "Animation") {
+                    layer.nodes[state->file_id] = *node;
+                    layer.blends[state->file_id] = std::move(blends);
                 }
             }
         }
@@ -8538,8 +8588,10 @@ private:
         add_file(out.path, json::write(doc) + "\n");
         ++animation_libraries_;
         layer.names = names;
+        layer.state_names = reserved;
         std::vector<std::string> described;
-        out.tree = layer_tree(layer, stem, file->path, described);
+        std::vector<std::string> positions;
+        out.tree = layer_tree(layer, stem, file->path, described, positions, out.parameters);
         if (out.tree.empty()) {
             out.task_text =
                 state_machine_text(states_file, controller->body, names, machines, events);
@@ -8550,10 +8602,208 @@ private:
                                  "SetInteger, SetBool and SetTrigger did: " +
                                  join(described, "; ") + ".";
             }
+            if (!positions.empty()) {
+                out.task_text += " Unity's blend trees read their parameters themselves; set "
+                                 "each blend position with them: " +
+                                 join(positions, "; ") + ".";
+            }
             if (!events.empty()) {
                 out.task_text += " Animation events: " + join(events, ", ") + ".";
             }
         }
+        return out;
+    }
+
+    using AddAnimation = std::function<std::string(ObjectRef, double, const std::string&,
+                                                   const std::string&, const std::string&)>;
+
+    // A blend tree as a blend space over its motions, as Godot's BlendSpace1D and BlendSpace2D:
+    // each an Animation node naming the animation add makes of its clip, or a blend space of its
+    // own. Null when no motion converts, and the motion's node when only one does. first is the
+    // first clip's animation; blends gets each blend space's parameters, under path.
+    std::optional<json::Value> blend_node(const ControllerFile& file, std::int64_t id, double speed,
+                                          const std::string& state, const std::string& here,
+                                          const std::string& path, int depth,
+                                          const AddAnimation& add, const json::Object& animations,
+                                          std::vector<LayerParts::Blend>& blends,
+                                          std::string& first) {
+        const auto found = file.by_id.find(id);
+        if (found == file.by_id.end() || found->second->class_id != kBlendTree ||
+            depth > kMaxInstanceDepth) {
+            problems_.add("blend tree", here, "a blend tree missing from the controller");
+            return std::nullopt;
+        }
+        const Node& tree = found->second->body;
+        const Node* children = tree.get("m_Childs");
+        const std::vector<Node> none;
+        const std::vector<Node>& items = children != nullptr ? children->items : none;
+        const std::int64_t type = tree.integer_at("m_BlendType");
+        struct Point {
+            std::array<double, 2> position{};
+            json::Value node;
+            std::string path; // its blend spaces' parameters' path
+        };
+        std::vector<Point> points;
+        const auto motion_node = [&](const Node& child,
+                                     const std::string& child_path) -> std::optional<json::Value> {
+            const auto motion = ref_at(child, "m_Motion");
+            if (!motion || motion->null()) {
+                return std::nullopt;
+            }
+            double scale = child.number_at("m_TimeScale", 1.0);
+            if (scale <= 0.0) {
+                problems_.add("blend tree motion time scale at or below 0", here,
+                              "plays forward at speed 1");
+                scale = 1.0;
+            }
+            if (child.number_at("m_CycleOffset") != 0.0) {
+                problems_.add("blend tree motion cycle offset", here, "plays from the start");
+            }
+            if (child.flag_at("m_Mirror")) {
+                problems_.add("mirrored state", here, "mirroring is for humanoid 3D animation");
+            }
+            if (motion->guid.empty()) {
+                return blend_node(file, motion->file_id, speed * scale, state, here, child_path,
+                                  depth + 1, add, animations, blends, first);
+            }
+            const std::string name = add(*motion, speed * scale, "", state, here);
+            if (name.empty()) {
+                return std::nullopt;
+            }
+            if (first.empty()) {
+                first = name;
+            }
+            json::Value node;
+            node["type"] = "Animation";
+            node["animation"] = name;
+            return node;
+        };
+        if (type == 4) {
+            problems_.add("Animator direct blend tree", here,
+                          "the state plays the tree's first motion");
+            for (const Node& child : items) {
+                if (auto node = motion_node(child, path)) {
+                    return node;
+                }
+            }
+            return std::nullopt;
+        }
+        if (type < 0 || type > 4) {
+            problems_.add("blend tree", here, "a blend type Unity doesn't have");
+            return std::nullopt;
+        }
+        const bool two = type != 0;
+        for (const Node& child : items) {
+            const std::string child_path = path + std::to_string(points.size()) + "/";
+            if (auto node = motion_node(child, child_path)) {
+                const std::array<double, 2> at =
+                    two ? std::array<double, 2>{child.number_at("m_Position.x"),
+                                                child.number_at("m_Position.y")}
+                        : std::array<double, 2>{child.number_at("m_Threshold"), 0.0};
+                points.push_back({.position = at, .node = std::move(*node), .path = child_path});
+            }
+        }
+        if (points.empty()) {
+            return std::nullopt;
+        }
+        if (points.size() == 1) {
+            // The motion's node stands for the tree, its parameters a level up.
+            for (LayerParts::Blend& blend : blends) {
+                if (blend.path.starts_with(points.front().path)) {
+                    blend.path = path + blend.path.substr(points.front().path.size());
+                }
+            }
+            return std::move(points.front().node);
+        }
+        // In 2D, motions all in one row or column blend in 1D along it, and ones on a slant
+        // can't make triangles, so the closest plays.
+        std::string x = tree.string_at("m_BlendParameter");
+        std::string y = two ? tree.string_at("m_BlendParameterY") : std::string();
+        int axis = 0; // the position's part a 1D space reads
+        bool discrete = false;
+        if (two) {
+            bool same_x = true;
+            bool same_y = true;
+            bool line = true;
+            const std::array<double, 2>& a = points.front().position;
+            for (const Point& point : points) {
+                same_x = same_x && std::abs(point.position[0] - a[0]) < 1e-6;
+                same_y = same_y && std::abs(point.position[1] - a[1]) < 1e-6;
+            }
+            for (std::size_t i = 1; i + 1 < points.size() && line; ++i) {
+                for (std::size_t j = i + 1; j < points.size() && line; ++j) {
+                    const std::array<double, 2>& b = points[i].position;
+                    const std::array<double, 2>& c = points[j].position;
+                    line = std::abs(((b[0] - a[0]) * (c[1] - a[1])) -
+                                    ((b[1] - a[1]) * (c[0] - a[0]))) < 1e-6;
+                }
+            }
+            if (same_y && !same_x) {
+                y.clear();
+            } else if (same_x && !same_y) {
+                axis = 1;
+                x = y;
+                y.clear();
+            } else if (line) {
+                discrete = true;
+                problems_.add("Animator 2D blend tree on a slanted line", here,
+                              "its motions make no triangles to blend in; the closest one plays");
+            } else {
+                problems_.add("Animator 2D blend tree", here,
+                              "the blend space blends the three motions around the position, in "
+                              "triangles as Godot's; Unity weighs every motion by gradient bands");
+            }
+        }
+        const bool plane = !y.empty() || discrete;
+        json::Value out;
+        out["type"] = plane ? "BlendSpace2D" : "BlendSpace1D";
+        json::Array list;
+        std::array<double, 2> low{-1.0, -1.0};
+        std::array<double, 2> high{1.0, 1.0};
+        for (Point& point : points) {
+            json::Value entry;
+            if (plane) {
+                entry["position"] = pair(point.position[0], point.position[1]);
+            } else {
+                entry["position"] = tidy(point.position.at(static_cast<std::size_t>(axis)));
+            }
+            entry["node"] = std::move(point.node);
+            list.push_back(std::move(entry));
+            for (std::size_t i = 0; i < 2; ++i) {
+                const double at = plane ? point.position.at(i)
+                                        : point.position.at(static_cast<std::size_t>(axis));
+                low.at(i) = std::min(low.at(i), at);
+                high.at(i) = std::max(high.at(i), at);
+            }
+        }
+        out["points"] = std::move(list);
+        if (low[0] < -1.0 || (plane && low[1] < -1.0)) {
+            out["min_space"] = plane ? pair(low[0], low[1]) : json::Value(tidy(low[0]));
+        }
+        if (high[0] > 1.0 || (plane && high[1] > 1.0)) {
+            out["max_space"] = plane ? pair(high[0], high[1]) : json::Value(tidy(high[0]));
+        }
+        if (discrete) {
+            out["blend_mode"] = "discrete";
+        }
+        // Unity plays every motion, in step; a blend space keeps them all playing with sync.
+        out["sync"] = true;
+        std::set<double> lengths;
+        for (const json::Value& point : out.find("points")->as_array()) {
+            const json::Value& node = *point.find("node");
+            if (const json::Value* animation = node.find("animation")) {
+                if (const auto it = animations.find(animation->as_string());
+                    it != animations.end()) {
+                    lengths.insert(it->second.find("length")->as_double());
+                }
+            }
+        }
+        if (lengths.size() > 1) {
+            problems_.add("Animator blend tree motions of different lengths", here,
+                          "Unity stretches them to one cycle as it blends; each plays at its own "
+                          "length");
+        }
+        blends.push_back({.path = path, .x = x, .y = y});
         return out;
     }
 
@@ -8582,7 +8832,8 @@ private:
     // copied to every state, and conditions as advance expressions of the parameters, which
     // become the tree's variables and triggers. Its path, or "" when no transition converts.
     std::string layer_tree(const LayerParts& layer, const std::string& stem,
-                           const std::string& where, std::vector<std::string>& described) {
+                           const std::string& where, std::vector<std::string>& described,
+                           std::vector<std::string>& positions, json::Object& initial) {
         const ControllerFile& file = *layer.file;
         const auto object = [&](const std::optional<ObjectRef>& ref) -> const Object* {
             if (!ref || ref->null()) {
@@ -8781,13 +9032,18 @@ private:
             if (animation == layer.names.end() || !layer.clips.contains(animation->second)) {
                 continue;
             }
-            std::string id = animation->second;
+            std::string id = layer.state_names.at(state->file_id);
             std::ranges::replace(id, '/', '_');
             id = take(taken, id);
             state_name[state->file_id] = id;
             json::Value entry;
-            entry["node"]["type"] = "Animation";
-            entry["node"]["animation"] = animation->second;
+            if (const auto blended = layer.nodes.find(state->file_id);
+                blended != layer.nodes.end()) {
+                entry["node"] = blended->second;
+            } else {
+                entry["node"]["type"] = "Animation";
+                entry["node"]["animation"] = animation->second;
+            }
             if (const auto at = layer.positions.find(state->file_id); at != layer.positions.end()) {
                 entry["position"] = pair(at->second[0], at->second[1]);
             }
@@ -8935,8 +9191,47 @@ private:
                 convert(transition->body, false);
             }
         }
-        if (transitions.size() == entries) {
+        if (transitions.size() == entries && layer.nodes.empty()) {
             return {};
+        }
+
+        // Unity's blend trees read their parameters; a blend space's position is set with them.
+        for (const auto& [state, blends] : layer.blends) {
+            const auto name = state_name.find(state);
+            if (name == state_name.end()) {
+                continue;
+            }
+            for (const LayerParts::Blend& blend : blends) {
+                const std::string key = name->second + "/" + blend.path + "blend_position";
+                std::vector<std::string> ids;
+                json::Array starts;
+                bool moved = false;
+                for (const std::string* parameter : {&blend.x, &blend.y}) {
+                    if (parameter == &blend.y && blend.y.empty()) {
+                        continue;
+                    }
+                    const auto found = parameters.find(*parameter);
+                    if (found == parameters.end()) {
+                        problems_.add("Animator blend parameter", in_controller + name->second,
+                                      "no parameter is named " + *parameter);
+                        ids.emplace_back("0");
+                        starts.emplace_back(0.0);
+                        continue;
+                    }
+                    ids.push_back(found->second.first);
+                    const auto value = variables.find(found->second.first);
+                    const double start = value != variables.end() && value->second.is_number()
+                                             ? value->second.as_double()
+                                             : 0.0;
+                    moved = moved || start != 0.0;
+                    starts.emplace_back(start);
+                }
+                positions.push_back(key + " to " +
+                                    (ids.size() == 1 ? ids.front() : "[" + join(ids, ", ") + "]"));
+                if (moved) {
+                    initial[key] = starts.size() == 1 ? starts.front() : json::Value(starts);
+                }
+            }
         }
 
         json::Value doc;
@@ -9182,6 +9477,9 @@ private:
             }
             if (!targets.empty()) {
                 tree["targets"] = std::move(targets);
+            }
+            if (!converted.parameters.empty()) {
+                tree["parameters"] = converted.parameters;
             }
             return std::pair{std::string("AnimationTree"), std::move(tree)};
         }

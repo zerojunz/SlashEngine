@@ -689,6 +689,8 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         machines, Any State, entry and exit, muted and solo transitions, exit times and
         durations, with conditions as advance expressions and parameters as the tree's
         variables and triggers
+  - [x] Unity's blend trees as blend spaces: 1D and 2D, nested, their positions set from the
+        controller's parameters
   - [ ] Unity's skinned meshes and 3D animation, and terrains
   - [ ] Unreal Engine levels and assets through the user's own Unreal Editor
 - [ ] 3D in the asset library and generator ([design](design.md#3d-assets))
