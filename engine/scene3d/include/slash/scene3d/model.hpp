@@ -163,6 +163,17 @@ struct Model {
 [[nodiscard]] Result<Model> load_model(std::string_view bytes, std::string_view path,
                                        const ModelReader& read);
 
+// A model as a glTF 2.0 file, as Godot's GLTFDocument exports one, which load_model reads back
+// as written: its nodes (or for a model without them, as an OBJ model, a node for each part,
+// where it puts it), the meshes they place, the materials and the images those sample. path is
+// the project path it is written to. An image beside the model is named by its path relative to
+// path, and one inside it goes in as a PNG; a material's texture paths, where it names no image
+// of the model, are written as images too. Everything goes in one text file, its buffer in a data
+// URI. A metallic or roughness texture goes in only when they share one image, blue for metallic
+// and green for roughness, as glTF's do. Skins and animations are left out: a skinned mesh is
+// placed by its node.
+[[nodiscard]] Result<std::string> write_gltf(const Model& model, std::string_view path);
+
 // Every problem in a model file: why load_model refuses it, at the file's top level ("") since
 // model files are not always JSON, or else each image file beside it that can't be read or
 // decoded, at a glTF model's "/images/<index>/uri". OBJ and FBX models' problems are all at "": an

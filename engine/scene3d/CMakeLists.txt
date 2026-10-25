@@ -16,6 +16,7 @@ add_library(slash_scene3d
     src/bone_attachment.cpp
     src/csg.cpp
     src/fbx.cpp
+    src/gltf_writer.cpp
     src/gridmap.cpp
     src/ik.cpp
     src/model.cpp

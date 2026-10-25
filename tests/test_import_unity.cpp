@@ -12,6 +12,7 @@
 #include "slash/render/image.hpp"
 #include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/project.hpp"
+#include "slash/scene3d/model.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/text/text.hpp"
 #include "slash/world/component_registry.hpp"
@@ -2213,6 +2214,103 @@ fs::path make_project(const fs::path& folder) {
     return folder;
 }
 
+// --- A 3D project: "Yard", with meshes picked out of a model ---
+
+constexpr std::string_view kPropsObj = "a5000000000000000000000000000001";
+// Unity's IDs for the model's meshes: the barrel's is xxHash64 of
+// "Type:Mesh->Barrel_Oak_Banded_LowPoly0", as Unity names a model's objects since 2019.3; the
+// lid's an ID from before, which the model's import settings name.
+constexpr std::int64_t kBarrelMesh = -8458169340473882849;
+constexpr std::int64_t kLidMesh = 4300002;
+
+std::string picked_filter(std::int64_t object, std::int64_t owner, std::int64_t mesh) {
+    return "--- !u!33 &" + id(object) + "\nMeshFilter:\n" + std::string(kSource) +
+           "  m_GameObject: {fileID: " + id(owner) + "}\n  m_Mesh: " + ref(mesh, kPropsObj) + "\n";
+}
+
+std::string mesh_collider(std::int64_t object, std::int64_t owner, std::int64_t mesh, int convex) {
+    return component(64, "MeshCollider", object, owner,
+                     "  m_Material: {fileID: 0}\n  m_IsTrigger: 0\n  serializedVersion: 5\n"
+                     "  m_Convex: " +
+                         std::to_string(convex) + "\n  m_Mesh: " + ref(mesh, kPropsObj) + "\n");
+}
+
+std::string renderer_of(std::int64_t object, std::int64_t owner,
+                        std::initializer_list<std::string_view> materials) {
+    std::string list;
+    for (const std::string_view material : materials) {
+        list += "  - " + std::string(material) + "\n";
+    }
+    return component(23, "MeshRenderer", object, owner,
+                     "  m_CastShadows: 1\n  m_ReceiveShadows: 1\n  m_Materials:\n" + list);
+}
+
+void write_yard(const fs::path& folder) {
+    write(folder / "ProjectSettings/ProjectVersion.txt", "m_EditorVersion: 2022.3.20f1\n");
+    write(folder / "ProjectSettings/ProjectSettings.asset",
+          std::string(kHeader) + "--- !u!129 &1\nPlayerSettings:\n  productName: Yard\n");
+    write(folder / "Assets/Materials/Wood.mat",
+          material_file("Wood", ref(46, kBuiltinSprites, 0), "", " []",
+                        "\n    - _Glossiness: 0.2\n    - _Metallic: 0\n    - _Mode: 0",
+                        "\n    - _Color: {r: 0.8, g: 0.6, b: 0.4, a: 1}"));
+    write(folder / "Assets/Materials/Wood.mat.meta",
+          meta(kWoodMat, "NativeFormatImporter", "  mainObjectFileID: 2100000\n"));
+    write(folder / "Assets/Materials/Stone.mat",
+          material_file("Stone", ref(4800000, "933532a4fcc9baf4fa0491de14d08ed7"), "", " []",
+                        "\n    - _Smoothness: 0.1\n    - _Surface: 0",
+                        "\n    - _BaseColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}"));
+    write(folder / "Assets/Materials/Stone.mat.meta",
+          meta(kStoneMat, "NativeFormatImporter", "  mainObjectFileID: 2100000\n"));
+    // The model: a barrel's side, and a lid of oak banded with iron, two materials.
+    write(folder / "Assets/Models/Props.obj", "mtllib Props.mtl\n"
+                                              "o Barrel_Oak_Banded_LowPoly\n"
+                                              "v -1 0 1\nv 1 0 1\nv 1 2 1\nv -1 2 1\n"
+                                              "vn 0 0 1\nusemtl Oak\nf 1//1 2//1 3//1 4//1\n"
+                                              "o Lid\n"
+                                              "v -1 2 1\nv 1 2 1\nv 1 2 -1\nv -1 2 -1\n"
+                                              "v -1 2.1 1\nv 1 2.1 1\nv 1 2.1 -1\nv -1 2.1 -1\n"
+                                              "vn 0 1 0\nusemtl Oak\nf 5//2 6//2 7//2 8//2\n"
+                                              "usemtl Iron\nf 9//2 10//2 11//2 12//2\n");
+    write(folder / "Assets/Models/Props.mtl",
+          "newmtl Oak\nKd 0.6 0.4 0.2\nnewmtl Iron\nKd 0.3 0.3 0.3\n");
+    write(folder / "Assets/Models/Props.obj.meta",
+          meta(kPropsObj, "ModelImporter",
+               "  serializedVersion: 19\n  fileIDToRecycleName:\n    100000: //RootNode\n"
+               "    4300002: Lid\n  meshes:\n    globalScale: 0.5\n    useFileScale: 1\n"));
+
+    const std::string wood = ref(2100000, kWoodMat, 2);
+    const std::string stone = ref(2100000, kStoneMat, 2);
+    std::string scene(kHeader);
+    // A barrel of wood, a convex collider of its mesh, and one of stone beside it.
+    scene += game_object(10, "Barrel", {11, 12, 13, 14});
+    scene += transform_3d(11, 10, "{x: 2, y: 0, z: 0}", kNoTurn, kOne);
+    scene += picked_filter(12, 10, kBarrelMesh);
+    scene += renderer_of(13, 10, {wood});
+    scene += mesh_collider(14, 10, kBarrelMesh, 1);
+    scene += game_object(20, "Barrel 2", {21, 22, 23});
+    scene += transform_3d(21, 20, "{x: 4, y: 0, z: 0}", kNoTurn, kOne);
+    scene += picked_filter(22, 20, kBarrelMesh);
+    scene += renderer_of(23, 20, {stone});
+    // The lid in wood and stone, its triangles its collider; and with one material, which draws
+    // its first part alone.
+    scene += game_object(30, "Lid", {31, 32, 33, 34});
+    scene += transform_3d(31, 30, "{x: 2, y: 0, z: 0}", kNoTurn, kOne);
+    scene += picked_filter(32, 30, kLidMesh);
+    scene += renderer_of(33, 30, {wood, stone});
+    scene += mesh_collider(34, 30, kLidMesh, 0);
+    scene += game_object(40, "Half Lid", {41, 42, 43});
+    scene += transform_3d(41, 40, "{x: 4, y: 0, z: 0}", kNoTurn, kOne);
+    scene += picked_filter(42, 40, kLidMesh);
+    scene += renderer_of(43, 40, {stone});
+    // A mesh the model doesn't have.
+    scene += game_object(50, "Lost", {51, 52, 53});
+    scene += transform_3d(51, 50, "{x: 0, y: 0, z: 0}", kNoTurn, kOne);
+    scene += picked_filter(52, 50, 12345);
+    scene += renderer_of(53, 50, {wood});
+    write(folder / "Assets/Scenes/Yard.unity", scene);
+    write(folder / "Assets/Scenes/Yard.unity.meta", meta("a5000000000000000000000000000002"));
+}
+
 importer::ImportPlan plan_inside(const fs::path& project) {
     auto plan = importer::plan_import(
         {.source = (project / "unity").string(), .destination = project.string()});
@@ -4288,4 +4386,87 @@ TEST_CASE("Unity 3D scenes convert mirrored in x: meshes, materials, cameras, li
     CHECK(!unsupported(report, "CharacterController step offset").is_null());
     CHECK(!unsupported(report, "procedural skybox").is_null());
     CHECK(!unsupported(report, "audio rolloff").is_null());
+}
+
+TEST_CASE("Unity meshes picked out of a model become glTF files of their own") {
+    const fs::path project = "import_unity_picked";
+    fs::remove_all(project);
+    write_yard(project / "unity");
+    const auto files = files_of(plan_inside(project));
+    const std::string yard = "unity/Assets/Scenes/Yard.scene.json";
+    REQUIRE(files.contains(yard));
+    const auto read = [&files](std::string_view path) -> slash::Result<std::string> {
+        const auto it = files.find(std::string(path));
+        if (it == files.end()) {
+            return slash::make_error(slash::ErrorCode::NotFound, "no such file");
+        }
+        return it->second;
+    };
+    const auto model = [&](const std::string& path) {
+        REQUIRE_MESSAGE(files.contains(path), path);
+        auto loaded = slash::scene3d::load_model(files.at(path), path, read);
+        REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error().message));
+        return std::move(loaded).value();
+    };
+
+    // A MeshFilter's mesh of a model is written alone, at the entity's origin and sized by the
+    // model's import scale; one material for it goes on the entity, so both barrels share it.
+    const std::string barrel_file = "unity/Assets/Models/Props_Barrel_Oak_Banded_LowPoly.gltf";
+    const json::Value barrel = entity(files, yard, "barrel");
+    CHECK(*barrel.find("MeshInstance3D") == json::Object{{"mesh", barrel_file}});
+    CHECK(*barrel.find("StandardMaterial3D") ==
+          parse(R"({"albedo_color": [0.8, 0.6, 0.4, 1.0], "roughness": 0.8})"));
+    const json::Value barrel_2 = entity(files, yard, "barrel_2");
+    CHECK(*barrel_2.find("MeshInstance3D") == json::Object{{"mesh", barrel_file}});
+    CHECK(barrel_2.find("StandardMaterial3D")->find("albedo_color") != nullptr);
+    const slash::scene3d::Model side = model(barrel_file);
+    REQUIRE(side.meshes.size() == 1);
+    CHECK(side.meshes[0].name == "Barrel_Oak_Banded_LowPoly");
+    REQUIRE(side.meshes[0].surfaces.size() == 1);
+    CHECK(side.parts.size() == 1);
+    const slash::scene3d::Bounds box = slash::scene3d::bounds(side);
+    CHECK(box.min.x == doctest::Approx(-0.5));
+    CHECK(box.max.y == doctest::Approx(1.0));
+    CHECK(box.max.z == doctest::Approx(0.5));
+    // Its convex mesh collider is the hull of its corners, sized as it is.
+    const json::Value hull = *barrel.find("CollisionShape3D");
+    CHECK(hull.find("shape")->as_string() == "convex_polygon");
+    CHECK(hull.find("points")->size() == 4);
+    CHECK(hull.find("points")->as_array().front() == parse("[-0.5, 0.0, 0.5]"));
+    CHECK(barrel.find("StaticBody3D") != nullptr);
+
+    // Two materials for the lid's two parts are written into its file, in place of the model's.
+    const json::Value lid = entity(files, yard, "lid");
+    CHECK(*lid.find("MeshInstance3D") ==
+          json::Object{{"mesh", "unity/Assets/Models/Props_Lid.gltf"}});
+    CHECK(lid.find("StandardMaterial3D") == nullptr);
+    const slash::scene3d::Model banded = model("unity/Assets/Models/Props_Lid.gltf");
+    REQUIRE(banded.meshes.at(0).surfaces.size() == 2);
+    REQUIRE(banded.materials.size() == 2);
+    CHECK(banded.materials[0].name == "Wood");
+    CHECK(banded.materials[0].standard.albedo_color.x == doctest::Approx(0.8));
+    CHECK(banded.materials[0].standard.roughness == doctest::Approx(0.8));
+    CHECK(banded.materials[1].name == "Stone");
+    CHECK(banded.materials[1].standard.albedo_color.x == doctest::Approx(0.5));
+    // Its mesh collider is its triangles, both parts' of them.
+    const json::Value faces = *lid.find("CollisionShape3D");
+    CHECK(faces.find("shape")->as_string() == "concave_polygon");
+    CHECK(faces.find("faces")->size() == 12);
+
+    // With one material, Unity draws the lid's first part alone, with the model's own material.
+    const json::Value half = entity(files, yard, "half_lid");
+    CHECK(*half.find("MeshInstance3D") ==
+          json::Object{{"mesh", "unity/Assets/Models/Props_Lid_2.gltf"}});
+    CHECK(half.find("StandardMaterial3D")->find("albedo_color") != nullptr);
+    const slash::scene3d::Model top = model("unity/Assets/Models/Props_Lid_2.gltf");
+    REQUIRE(top.meshes.at(0).surfaces.size() == 1);
+    REQUIRE(top.materials.size() == 1);
+    CHECK(top.materials[0].name == "Oak");
+
+    // A mesh the model doesn't have is reported, and the object kept without one.
+    const json::Value report = parse(files.at("import/unity.json"));
+    const json::Value lost = unsupported(report, "mesh from a model");
+    REQUIRE(!lost.is_null());
+    CHECK(lost.find("why")->as_string() == "Assets/Models/Props.obj has no mesh with the ID 12345");
+    CHECK(entity(files, yard, "lost").find("MeshInstance3D") == nullptr);
 }
