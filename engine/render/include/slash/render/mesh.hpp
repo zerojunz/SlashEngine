@@ -818,11 +818,13 @@ inline constexpr std::array<std::string_view, 2> kRenderMethodNames{"forward_plu
 // target's size from them and the target's frames before, before the post passes. sharpness is
 // Godot's fsr_sharpness: 0 is the sharpest and 2 turns sharpening off. fsr3 rebuilds it with
 // FidelityFX Super Resolution 3.1's upscaler instead, AMD's later passes over the same inputs
-// (scaling_3d mode "fsr3", which Godot doesn't have).
+// (scaling_3d mode "fsr3", which Godot doesn't have), and metalfx with Apple's MetalFX temporal
+// scaler (mode "metalfx_temporal"), on a device whose metalfx() has it; it doesn't sharpen.
 struct Fsr2Scaling {
     float scale = 0.77F;
     float sharpness = 0.2F;
     bool fsr3 = false;
+    bool metalfx = false;
 
     bool operator==(const Fsr2Scaling&) const = default;
 };

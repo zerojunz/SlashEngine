@@ -18,17 +18,20 @@
 // scales it to the screen's size, and the controls draw over it at full size. "bilinear" (a
 // filtered stretch) and "fsr" (AMD's FidelityFX Super Resolution 1: shaders/fsr_easu.hlsl and
 // fsr_rcas.hlsl) are built in, drawn with the device's own calls, so they run on every backend
-// and the software device. A game adds others with add_upscaler, from an SDK package's glue code
-// for one that ships as a vendor's closed library. "fsr2" (FidelityFX Super Resolution 2) and
-// "fsr3" (FSR 3.1's upscaler, which Godot doesn't have) are the 3D renderer's own instead: a
-// Forward+ frame draws its 3D smaller and upscales it in the device with the depth buffer and
-// motion vectors, and the 2D draws over it at full size, as Godot's.
+// and the software device; so is "metalfx_spatial" (Apple's MetalFX spatial scaler), on a device
+// that has it. A game adds others with add_upscaler, from an SDK package's glue code for one that
+// ships as a vendor's closed library. "fsr2" (FidelityFX Super Resolution 2), "fsr3" (FSR 3.1's
+// upscaler, which Godot doesn't have) and "metalfx_temporal" (MetalFX's temporal scaler) are the
+// 3D renderer's own instead: a Forward+ frame draws its 3D smaller and upscales it in the device
+// with the depth buffer and motion vectors, and the 2D draws over it at full size, as Godot's.
+// Where MetalFX isn't, its modes fall back as Godot's do (scaling_mode_on).
 namespace slash::render {
 
 // How a frame's world is scaled, as Godot's rendering/scaling_3d settings (project.json's
 // rendering.scaling).
 struct Scaling {
-    // "bilinear", "fsr", "fsr2" or "fsr3", as Godot's scaling_3d/mode.
+    // "bilinear", "fsr", "fsr2", "fsr3", "metalfx_spatial" or "metalfx_temporal", as Godot's
+    // scaling_3d/mode.
     std::string mode = "bilinear";
     // The render size over the screen's, from 0.25 to 2: below 1 draws fewer pixels and scales
     // up, above 1 draws more and scales down (always bilinear, as FSR only scales up).
@@ -52,23 +55,30 @@ inline constexpr float kMinRenderScale = 0.25F;
 inline constexpr float kMaxRenderScale = 2.0F;
 inline constexpr float kMaxFsrSharpness = 2.0F;
 
-// The built-in modes. Godot's MetalFX modes aren't built.
+// The built-in modes.
 inline constexpr std::string_view kBilinear = "bilinear";
 inline constexpr std::string_view kFsr = "fsr";
 inline constexpr std::string_view kFsr2 = "fsr2";
 inline constexpr std::string_view kFsr3 = "fsr3";
+inline constexpr std::string_view kMetalFxSpatial = "metalfx_spatial";
+inline constexpr std::string_view kMetalFxTemporal = "metalfx_temporal";
 [[nodiscard]] std::vector<std::string_view> scaling_modes();
-// Why a mode isn't one, for project validation: unknown (with the closest name), or one of
-// Godot's that isn't built. Empty for a built-in mode.
+// Why a mode isn't one, for project validation: unknown, with the closest name. Empty for a
+// built-in mode.
 [[nodiscard]] std::string scaling_mode_problem(std::string_view mode);
+// The mode a device runs for these settings, as Godot's RendererViewport falls back:
+// metalfx_temporal where MetalFX's temporal scaler isn't becomes metalfx_spatial, or fsr2 where
+// that isn't either, and fsr2 at a scale outside the temporal scaler's (MetalFxSupport);
+// metalfx_spatial where it isn't becomes fsr; an unknown mode is bilinear. Every other mode is
+// itself.
+[[nodiscard]] std::string_view scaling_mode_on(const Scaling& scaling, const RenderDevice& device);
 
-// Whether a frame with these settings upscales its 3D with FSR 2 or FSR 3 (mode fsr2 or fsr3) on
-// this device: in Forward+
+// Whether a frame with these settings upscales its 3D with FSR 2, FSR 3 or MetalFX's temporal
+// scaler (scaling_mode_on is fsr2, fsr3 or metalfx_temporal) on this device: in Forward+
 // (method), at a scale under 1, on a device that draws Forward+ (every one but OpenGL's), as
-// Godot runs it. The frame's Scene3D then takes the scale, sharpness and which FSR
-// (render::Fsr2Scaling) and
-// no upscaler scales the world; choose_upscaler's bilinear scaling stands in otherwise, as Godot
-// falls back to it.
+// Godot runs them. The frame's Scene3D then takes the scale, sharpness and which upscaler
+// (render::Fsr2Scaling) and no upscaler scales the world; choose_upscaler's bilinear scaling
+// stands in otherwise, as Godot falls back to it.
 [[nodiscard]] bool uses_fsr2(const Scaling& scaling, RenderMethod method,
                              const RenderDevice& device);
 
@@ -140,9 +150,10 @@ struct UpscalerInfo {
 void clear_added_upscalers();
 
 // The upscaler a frame uses for these settings on this device, by name: the game's added one if
-// it runs here, else the mode's, bilinear when the scale is above 1 (FSR doesn't scale down), the
-// mode is unknown or it is fsr2 or fsr3 (in a frame uses_fsr2 turns down). Empty when nothing
-// scales: bilinear, fsr2 or fsr3 at a scale of 1.
+// it runs here, else scaling_mode_on's (fsr or metalfx_spatial), bilinear when the scale is above
+// 1 (FSR and MetalFX don't scale down), the mode is unknown or it is a temporal one (in a frame
+// uses_fsr2 turns down). Empty when nothing scales: any but fsr and metalfx_spatial at a scale
+// of 1.
 [[nodiscard]] std::string choose_upscaler(const Scaling& scaling, const RenderDevice& device);
 
 } // namespace slash::render
