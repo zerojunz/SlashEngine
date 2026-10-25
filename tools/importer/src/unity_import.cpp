@@ -10027,8 +10027,9 @@ private:
             each("m_SavedProperties.m_Ints", number);
             each("m_SavedProperties.m_Colors",
                  [&](const std::string& name, const Node& value) { file.colors[name] = value; });
-            for (const std::string_view keyword :
-                 split_path(body.string_at("m_ShaderKeywords"), ' ')) {
+            // Kept in a local: the keywords are views into it.
+            const std::string keywords = body.string_at("m_ShaderKeywords");
+            for (const std::string_view keyword : split_path(keywords, ' ')) {
                 if (!keyword.empty()) {
                     file.keywords.emplace(keyword);
                 }
