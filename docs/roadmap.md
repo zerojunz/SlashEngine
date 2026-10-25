@@ -646,6 +646,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [x] Procedural, physical and panorama skies and fog, and the sky's light on meshes (ambient
       light and reflections), as Godot's Compatibility renderer
 - [ ] Volumetric fog
+  - [x] Godot 4.6's Forward+ volumetric fog: froxels lit by every light through its shadows, the
+        ambient light and the sky, reprojected from frame to frame, blurred and gathered, over
+        the meshes and the sky, on every Forward+ device and its CPU twin, imported from Godot
+  - [ ] `FogVolume` and `FogMaterial`, and VoxelGI's light in the fog (`gi_inject`)
 - [x] Clustered decals, as Godot 4.6's Forward+ `Decal`: albedo, normal, ORM and emission
       textures in one atlas, fades, cull masks and the project's decal filter, imported from Godot
 - [ ] Generated LODs with meshoptimizer and occlusion culling
@@ -898,7 +902,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Ray tracing | Acceleration structures and ray queries in the render device on Vulkan, Direct3D 12 and Metal: ray-traced shadows, reflections, AO and GI, with raster and probe fallbacks | 7 | Planned |
 | Path tracing | A GPU path tracer for baked lightmaps and progressive reference stills | 7 | Planned |
 | Upscaling and frame generation | Render scale with FSR 1, FSR 2/3 and MetalFX built in, FSR 3 frame generation, DLSS, XeSS and FSR 4 as adapters outside the repo | 7 | Planned |
-| Sky and volumetrics | Physical sky, volumetric fog | 7 | In progress: procedural, physical and panorama skies, their light on meshes, and exponential, depth and height fog done; volumetric fog planned |
+| Sky and volumetrics | Physical sky, volumetric fog | 7 | In progress: procedural, physical and panorama skies, their light on meshes, and exponential, depth and height fog done; volumetric fog done but for `FogVolume`s and VoxelGI's light in it |
 | Decals | Clustered decals | 7 | Done, imported from Godot |
 | Networking | ENet transport, replication driven by reflection, WebSocket for web | 8 | Planned |
 | Terrain | Heightmap terrain with splat materials and LOD | 7 | Planned |

@@ -443,7 +443,8 @@ does. [examples/import-godot-3d](../../examples/import-godot-3d/) imports a cour
 - A `WorldEnvironment`'s `Environment` sets its `WorldEnvironment`'s fields of the same names,
   its `Sky`'s `radiance_size` is `sky_radiance_size` (`3` is `256`), and the sky's
   `ProceduralSkyMaterial`, `PhysicalSkyMaterial` or `PanoramaSkyMaterial` becomes the component
-  of the same name on its entity.
+  of the same name on its entity. Its `volumetric_fog_gi_inject` is reported, as VoxelGIs don't
+  light volumetric fog yet.
 - A `WorldEnvironment`'s `camera_attributes` and a `Camera3D`'s `attributes`, when they are a
   `CameraAttributesPractical`, become the component of the same name on its entity, depth of
   field included. A `CameraAttributesPhysical` is reported.
@@ -589,6 +590,7 @@ on its top.
 | `rendering/camera/depth_of_field/*` | `rendering.camera.depth_of_field` |
 | `rendering/environment/ssao/quality`, `half_size`, `adaptive_target`, `blur_passes`, `fadeout_from`, `fadeout_to` | `rendering.environment.ssao` |
 | `rendering/environment/screen_space_reflection/half_size` | `rendering.environment.screen_space_reflection` |
+| `rendering/environment/volumetric_fog/volume_size`, `volume_depth`, `use_filter` | `rendering.environment.volumetric_fog` |
 | `rendering/reflections/reflection_atlas/reflection_size`, `reflection_count` | `rendering.reflections.reflection_atlas`; a size that isn't a power of two from 32 to 2048 is reported |
 | `rendering/textures/decals/filter` | `rendering.textures.decals.filter`: `0` is `"nearest"`, `1` `"linear"` and so on to `5`, `"linear_mipmaps_anisotropic"` |
 | `rendering/global_illumination/voxel_gi/quality` | `rendering.global_illumination.voxel_gi.quality`: `0` is `"low"`, `1` is `"high"` |

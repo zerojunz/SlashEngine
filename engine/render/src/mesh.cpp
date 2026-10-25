@@ -8,6 +8,7 @@
 #include "post_shading.hpp"
 #include "reflection.hpp"
 #include "sky_shading.hpp"
+#include "volumetric_fog.hpp"
 
 #include "slash/core/math.hpp"
 
@@ -760,7 +761,8 @@ MeshLightUniforms mesh_light_uniforms(const Light3D& light, int shadow_slot) {
     const Vec2 cone = slash::cos_sin(light.spot_angle * (kPi / 180.0F));
     packed.params = {light.attenuation, cone.x, 1.0F / light.spot_attenuation,
                      static_cast<float>(light.cull_mask & kRenderLayers)};
-    packed.shadow = {static_cast<float>(shadow_slot), light.baked ? 1.0F : 0.0F, 0.0F, 0.0F};
+    packed.shadow = {static_cast<float>(shadow_slot), light.baked ? 1.0F : 0.0F,
+                     light.volumetric_fog_energy, 0.0F};
     return packed;
 }
 
@@ -1182,7 +1184,33 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     // Fogged unless the material disables it, then linear for Forward+, or times the exposure,
     // tonemapped unless the post pass does it, and as sRGB.
     const auto finish = [&](Float3 lit) {
-        if (scene.fog_color[3] != 0.0F && (flags & kMeshDisableFog) == 0) {
+        const bool fog_on = (flags & kMeshDisableFog) == 0;
+        if (scene.volumetric_fog[0] != 0.0F && fog_on && maps.uniforms != nullptr) {
+            // Forward+'s volumetric fog, as Godot's scene_forward_clustered.glsl blends it: the
+            // plain fog as the light it adds and how much it lets through, seen through the
+            // volumetric fog in front.
+            Float4 fog{0.0F, 0.0F, 0.0F, 1.0F};
+            if (scene.fog_color[3] != 0.0F) {
+                const Float4 plain = fog_process(scene, pixel.world);
+                fog = {plain[0] * plain[3], plain[1] * plain[3], plain[2] * plain[3],
+                       1.0F - plain[3]};
+            }
+            const Float4& z = maps.uniforms->camera_z;
+            const float depth = -((pixel.world[0] * z[0]) + (pixel.world[1] * z[1]) +
+                                  (pixel.world[2] * z[2]) + z[3]);
+            const Float4 volume =
+                sample_fog_volume(maps.fog,
+                                  {static_cast<std::uint32_t>(scene.fog_volume[0]),
+                                   static_cast<std::uint32_t>(scene.fog_volume[1]),
+                                   static_cast<std::uint32_t>(scene.fog_volume[2])},
+                                  scene.volumetric_fog,
+                                  {(static_cast<float>(pixel.x) + 0.5F) / scene.screen[0],
+                                   (static_cast<float>(pixel.y) + 0.5F) / scene.screen[1]},
+                                  depth);
+            fog = {(fog[0] * volume[3]) + volume[0], (fog[1] * volume[3]) + volume[1],
+                   (fog[2] * volume[3]) + volume[2], fog[3] * volume[3]};
+            lit = add(scale(lit, fog[3]), {fog[0], fog[1], fog[2]});
+        } else if (scene.fog_color[3] != 0.0F && fog_on) {
             const Float4 fogged = fog_process(scene, pixel.world);
             lit = lerp3(lit, {fogged[0], fogged[1], fogged[2]}, fogged[3]);
         }

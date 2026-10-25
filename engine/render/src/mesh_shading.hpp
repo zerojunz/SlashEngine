@@ -119,7 +119,8 @@ struct MeshLightUniforms {
     Float4 direction{};
     Float4 color{};
     Float4 params{};
-    // Its slot in MeshShadowUniforms' directional or positional, or -1; then 1 when it is baked.
+    // Its slot in MeshShadowUniforms' directional or positional, or -1; then 1 when it is baked,
+    // then its volumetric fog energy.
     Float4 shadow{};
 };
 struct MeshSceneUniforms {
@@ -151,6 +152,11 @@ struct MeshSceneUniforms {
     // The camera's view-projection without TAA's jitter: its x, y and w rows, from which decals
     // work out how far their textures move across a pixel.
     std::array<Float4, 3> clip_rows{};
+    // Forward+'s volumetric fog (VolumetricFog3D): 1 when the frame has it, one over its length,
+    // one over its detail spread and its sky affect; then the volume's froxels across, down and
+    // deep, and 0.
+    Float4 volumetric_fog{};
+    Float4 fog_volume{};
     // Every light drawn in Compatibility; in Forward+, only the directional ones.
     std::array<MeshLightUniforms, kMaxLights3D> lights{};
 };
@@ -196,7 +202,7 @@ struct MeshPositionalShadowUniforms {
     std::array<Mat4, 6> faces{};   // one a cube face for an omni light; a spot light's first
     std::array<Float4, 6> rects{}; // each face's tile, its texture coordinates' low and high
     Float4 params{};   // normal bias over distance (world units), opacity, an atlas texel, faces
-    Float4 position{}; // the light's place
+    Float4 position{}; // the light's place, then its range
 };
 struct MeshShadowUniforms {
     Float4 camera_z{}; // the camera matrix's z row: a point's view z is its dot with (point, 1)
@@ -217,7 +223,7 @@ static_assert(sizeof(MeshCameraUniforms) == 144);
 static_assert(sizeof(MeshInstanceUniforms) == 224);
 static_assert(sizeof(MeshVoxelGIUniforms) == 240);
 static_assert(sizeof(MeshSurfaceUniforms) == 784);
-static_assert(sizeof(MeshSceneUniforms) == 352 + (80 * kMaxLights3D));
+static_assert(sizeof(MeshSceneUniforms) == 384 + (80 * kMaxLights3D));
 static_assert(sizeof(MeshDirectionalShadowUniforms) == 320);
 static_assert(sizeof(MeshPositionalShadowUniforms) == 576);
 static_assert(sizeof(MeshShadowUniforms) ==
@@ -469,6 +475,9 @@ struct MeshMaps {
     const std::vector<CubeImage>* probe_cubes = nullptr;
     // Forward+'s decals' atlas, when the clusters have decals.
     const DecalAtlas* decal_atlas = nullptr;
+    // Forward+'s volumetric fog (sample_fog_volume), when the scene's uniforms say the frame has
+    // it.
+    std::span<const Float4> fog;
 };
 
 // A half-float texture's texels, as floats: RGBA, in rows from the top.

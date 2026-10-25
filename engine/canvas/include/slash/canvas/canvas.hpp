@@ -465,6 +465,8 @@ struct Settings {
     render::SsaoSettings ssao{};
     // rendering.environment.screen_space_reflection: screen-space reflections' resolution.
     render::SsrSettings ssr{};
+    // rendering.environment.volumetric_fog: volumetric fog's froxels.
+    render::VolumetricFogSettings volumetric_fog{};
     // rendering.reflections.reflection_atlas: the size and number of reflection probes' cubes.
     render::ReflectionAtlasSettings reflection_atlas{};
     // rendering.global_illumination.voxel_gi.quality "high": VoxelGIs' narrower cones.
