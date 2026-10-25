@@ -40,14 +40,6 @@ namespace importer = slash::importer;
 namespace canvas = slash::canvas;
 namespace fs = std::filesystem;
 
-// Failed checks print JSON values as text, which doctest otherwise shows as {?}.
-template <>
-struct doctest::StringMaker<json::Value> {
-    static doctest::String convert(const json::Value& value) {
-        return json::write(value, json::Style::Compact).c_str();
-    }
-};
-
 namespace {
 
 json::Value parse(std::string_view text) {
@@ -4157,9 +4149,11 @@ TEST_CASE("Unity 3D scenes convert mirrored in x: meshes, materials, cameras, li
     const fs::path project = "import_unity_3d";
     fs::remove_all(project);
     write_hall(project / "unity");
-    const auto files = files_of(plan_inside(project));
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
     const std::string hall = "unity/Assets/Scenes/Hall.scene.json";
     REQUIRE(files.contains(hall));
+    INFO("report: ", json::write(plan.report, json::Style::Compact));
     slash::world::ComponentRegistry components;
     slash::world::register_builtin_components(components);
     CHECK(slash::world::validate_scene(components, parse(files.at(hall))).empty());
@@ -4174,6 +4168,7 @@ TEST_CASE("Unity 3D scenes convert mirrored in x: meshes, materials, cameras, li
     CHECK(*crate.find("MeshInstance3D") == parse("{}"));
     // The Standard shader's color, texture (tiled twice, its offset from the top), smoothness and
     // HDR emission, filtered as the texture's import settings say.
+    INFO("crate: ", json::write(crate, json::Style::Compact));
     CHECK(*crate.find("StandardMaterial3D") == parse(R"({"albedo_color": [0.8, 0.6, 0.4, 1.0],
                     "albedo_texture": "unity/Assets/Art/wood.png", "uv1_scale": [2.0, 2.0, 1.0],
                     "uv1_offset": [0.0, -1.0, 0.0], "roughness": 0.8, "emission_enabled": true,
