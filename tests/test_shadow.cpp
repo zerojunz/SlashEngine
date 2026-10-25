@@ -417,3 +417,35 @@ TEST_CASE("project settings name the shadow atlases' sizes and filters") {
     CHECK_FALSE(render::valid_shadow_atlas_size(32768));
     CHECK_FALSE(render::valid_shadow_atlas_size(3000));
 }
+
+// The shadow uniforms are over 10 KiB; SDL's Vulkan device let shaders see only their first 4 KiB
+// until cmake/patches/sdl-vulkan-uniform-range.cmake, which left the slots past the fifth unlit.
+TEST_CASE("GPUs draw the last positional shadow slots as the software device does") {
+    render::Scene3D scene = above(shadowed(LightType::Directional));
+    for (int i = 0; i < 6; ++i) {
+        Light3D far = shadowed(LightType::Omni);
+        far.position = {40.0F + (static_cast<float>(i) * 10.0F), 3.0F, 40.0F};
+        far.energy = 0.01F;
+        scene.lights.push_back(far);
+    }
+    // Six dim lights far away take the first slots; the seventh casts the cube's shadow.
+    scene.lights.push_back(shadowed(LightType::Omni));
+    const Image expected = draw_shadow(*render::create_software_device(), scene, {}, 64);
+    for (auto& device : slash::test::hardware_devices()) {
+        CAPTURE(render::backend_name(device->backend()));
+        const Image image = draw_shadow(*device, scene, {}, 64);
+        int differing = 0;
+        for (std::uint32_t y = 0; y < image.height; ++y) {
+            for (std::uint32_t x = 0; x < image.width; ++x) {
+                const std::array<int, 4> a = pixel(image, x, y);
+                const std::array<int, 4> b = pixel(expected, x, y);
+                int most = 0;
+                for (std::size_t c = 0; c < 4; ++c) {
+                    most = std::max(most, std::abs(a.at(c) - b.at(c)));
+                }
+                differing += most > 3 ? 1 : 0;
+            }
+        }
+        CHECK(differing <= 40);
+    }
+}
