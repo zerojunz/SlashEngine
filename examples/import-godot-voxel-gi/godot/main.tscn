@@ -1,0 +1,67 @@
+[gd_scene load_steps=10 format=3 uid="uid://gallery0main"]
+
+[ext_resource type="VoxelGIData" path="res://main.gi_data.res" id="1_data"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_white"]
+albedo_color = Color(0.8, 0.8, 0.8, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_red"]
+albedo_color = Color(0.9, 0.1, 0.05, 1)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_floor"]
+material = SubResource("StandardMaterial3D_white")
+size = Vector2(6, 6)
+
+[sub_resource type="BoxMesh" id="BoxMesh_side"]
+material = SubResource("StandardMaterial3D_red")
+size = Vector3(0.2, 2.5, 6)
+
+[sub_resource type="BoxMesh" id="BoxMesh_back"]
+material = SubResource("StandardMaterial3D_white")
+size = Vector3(6, 2.5, 0.2)
+
+[sub_resource type="BoxMesh" id="BoxMesh_crate"]
+material = SubResource("StandardMaterial3D_white")
+
+[sub_resource type="Environment" id="Environment_dusk"]
+background_mode = 1
+background_color = Color(0.3, 0.45, 0.7, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.4, 0.5, 0.8, 1)
+ambient_light_energy = 0.3
+
+[node name="Gallery" type="Node3D"]
+
+[node name="Floor" type="MeshInstance3D" parent="."]
+mesh = SubResource("PlaneMesh_floor")
+
+[node name="RedWall" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.9, 1.25, 0)
+mesh = SubResource("BoxMesh_side")
+
+[node name="BackWall" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.25, -2.9)
+mesh = SubResource("BoxMesh_back")
+
+[node name="Crate" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0.5, -0.4)
+mesh = SubResource("BoxMesh_crate")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.825336, -0.40505, 0.39339, 0, 0.696707, 0.717356, -0.564642, -0.59206, 0.575017, 0, 0, 0)
+light_color = Color(1, 0.95, 0.85, 1)
+shadow_enabled = true
+
+[node name="Camera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.921061, 0.389418, 0, -0.389418, 0.921061, 0, 2.6, 5.5)
+current = true
+fov = 60.0
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_dusk")
+
+[node name="GI" type="VoxelGI" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+subdiv = 0
+size = Vector3(6.4, 3.2, 6.4)
+data = ExtResource("1_data")
