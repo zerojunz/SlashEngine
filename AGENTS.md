@@ -996,6 +996,8 @@ component's `state` (a state machine's playback as an object) and reading `param
 `src/tree_system.cpp` ports `AnimationMixer`'s caches, blending and root motion, and hands
 model poses to `scene3d` through the clip source, ahead of the `AnimationPlayer`'s. Godot
 compares weights in float, so do the same (`is_zero_approx(float)` in `src/internal.hpp`).
+State machine transitions' `advance_expression`s are Godot's `Expression`, in
+`slash/core/expression.hpp`, reading the file's `variables` and `triggers` as parameters.
 `animation.tree` lists a tree's parameters and what plays, `animation.set_parameters` sets them,
 and `check_trees` backs `scene validate` and exports; `examples/animation-tree` points a waving
 arm.

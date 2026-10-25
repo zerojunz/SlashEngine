@@ -619,6 +619,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         `animation.tree` and `animation.set_parameters`
   - [x] State machines with travel, conditions and grouped and nested machines, as Godot's
         `AnimationNodeStateMachine`
+  - [x] Advance expressions, as Godot's `Expression`, over a tree's variables and triggers
   - [x] Two-bone, FABRIK, CCD and Jacobian IK with joint limits, as Godot 4.6's `TwoBoneIK3D`,
         `FABRIK3D`, `CCDIK3D` and `JacobianIK3D`
   - [x] Bone attachments, as Godot's `BoneAttachment3D`: entities that follow a bone after the
@@ -673,7 +674,8 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Godot's CSG shapes, paths, `GridMap` and mesh libraries (text and binary), joints,
         vehicles and navigation nodes, meshes and polygons
   - [x] Godot's `AnimationTree`: blend trees, blend spaces, transitions, state machines and
-        their parameters, on a model's own animations or a player's libraries
+        their parameters and advance expressions, on a model's own animations or a player's
+        libraries
   - [x] Godot's 3D animation tracks, as node tracks on a model's bones and `Transform3D` tracks
         on a scene's 3D nodes
   - [x] Godot's skeletons: a model's bone poses, IK modifiers, ragdolls and bone attachments

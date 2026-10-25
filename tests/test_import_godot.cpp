@@ -3567,7 +3567,7 @@ xfade_time = 0.25
 xfade_curve = SubResource("slow")
 switch_mode = 2
 advance_mode = 2
-advance_expression = "is_dark()"
+advance_expression = "energy < 0.5 and not lit"
 priority = 2
 
 [sub_resource type="AnimationNodeStateMachine" id="lit"]
@@ -3584,6 +3584,7 @@ animation = &"fade"
 
 [sub_resource type="AnimationNodeStateMachineTransition" id="into_group_fade"]
 advance_mode = 2
+advance_expression = "is_dark()"
 
 [sub_resource type="AnimationNodeStateMachine" id="group"]
 state_machine_type = 2
@@ -3800,11 +3801,19 @@ TEST_CASE("importing Godot AnimationTrees writes their trees and plays them wher
     CHECK(lit.find("state_machine_type")->as_string() == "nested");
     CHECK(lit.find("transitions")->as_array().at(1) == parse(R"({"from": "glow", "to": "fade",
         "xfade_time": 0.25, "xfade_curve": [[0.0, 0.0], [0.5, 0.2], [1.0, 1.0]],
-        "switch_mode": "at_end", "advance_mode": "auto", "priority": 2})"));
+        "switch_mode": "at_end", "advance_mode": "auto", "priority": 2,
+        "advance_expression": "energy < 0.5 and not lit"})"));
+    // The names an expression reads from the tree's base node become the tree's variables; one
+    // that calls a method doesn't convert.
+    CHECK(*parse(files.at(glow)).find("variables") == parse(R"({"energy": null, "lit": null})"));
+    CHECK(unsupported(plan.report, "AnimationTree advance_expression_base_node")
+              .find("why")
+              ->as_string() == "its advance expressions read energy, lit from the tree's "
+                               "variables, which gameplay code sets as parameters");
     CHECK(unsupported(plan.report, "StateMachine transition advance_expression")
               .find("why")
-              ->as_string() ==
-          "expressions don't convert; set a condition from gameplay code instead");
+              ->as_string() == "is_dark() doesn't convert (at character 1: there is no function "
+                               "\"is_dark\"); set a variable from gameplay code and read it");
     // A grouped state machine's Start needn't be written out, as Godot's always has one.
     const json::Value& group = *machine.find("states")->find("group")->find("node");
     CHECK(group == parse(R"({"type": "StateMachine", "state_machine_type": "grouped",

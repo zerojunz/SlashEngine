@@ -1,5 +1,6 @@
 add_library(slash_core
     src/assert.cpp
+    src/expression.cpp
     src/fixed_step.cpp
     src/jobs.cpp
     src/json.cpp

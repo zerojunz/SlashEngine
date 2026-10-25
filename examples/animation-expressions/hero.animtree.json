@@ -1,0 +1,76 @@
+{
+  "format": 1,
+  "root": {
+    "states": {
+      "idle": {
+        "node": {
+          "animation": "idle",
+          "type": "Animation"
+        },
+        "position": [100, 0]
+      },
+      "jump": {
+        "node": {
+          "animation": "jump",
+          "type": "Animation"
+        },
+        "position": [200, -100]
+      },
+      "run": {
+        "node": {
+          "animation": "run",
+          "type": "Animation"
+        },
+        "position": [300, 0]
+      }
+    },
+    "transitions": [
+      {
+        "advance_mode": "auto",
+        "from": "Start",
+        "to": "idle"
+      },
+      {
+        "advance_expression": "speed > 0.5",
+        "advance_mode": "auto",
+        "from": "idle",
+        "to": "run",
+        "xfade_time": 0.1
+      },
+      {
+        "advance_expression": "speed <= 0.5",
+        "advance_mode": "auto",
+        "from": "run",
+        "to": "idle",
+        "xfade_time": 0.1
+      },
+      {
+        "advance_expression": "jump and grounded",
+        "advance_mode": "auto",
+        "from": "idle",
+        "to": "jump",
+        "xfade_time": 0.1
+      },
+      {
+        "advance_expression": "jump and grounded",
+        "advance_mode": "auto",
+        "from": "run",
+        "to": "jump",
+        "xfade_time": 0.1
+      },
+      {
+        "advance_mode": "auto",
+        "from": "jump",
+        "switch_mode": "at_end",
+        "to": "idle",
+        "xfade_time": 0.1
+      }
+    ],
+    "type": "StateMachine"
+  },
+  "triggers": ["jump"],
+  "variables": {
+    "grounded": true,
+    "speed": 0.0
+  }
+}
