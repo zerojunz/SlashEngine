@@ -98,7 +98,7 @@ struct MeshLightUniforms {
     Float4 shadow{}; // its slot in MeshShadowUniforms' directional or positional, or -1
 };
 struct MeshSceneUniforms {
-    Float4 camera{}; // the camera's place, then how many lights
+    Float4 camera{}; // the camera's place, then how many lights there are in lights
     Float4 ambient{};
     Float4 tonemap{};   // exposure, white, the tonemapper, 1 to tonemap (0 when post passes do)
     Float4 fog_color{}; // linear, times its energy; then 0 for no fog, 1 exponential, 2 depth
@@ -108,6 +108,10 @@ struct MeshSceneUniforms {
     // ambient light's sky contribution.
     Float4 sky{};
     std::array<Float4, 3> sky_rows{}; // the world to the sky's space, a row each
+    // Forward+'s clusters (LightClusters::uniform): tiles across, a tile's words of light bits,
+    // depth slices per unit of view depth, 0.
+    Float4 cluster{};
+    // Every light drawn in Compatibility; in Forward+, only the directional ones.
     std::array<MeshLightUniforms, kMaxLights3D> lights{};
 };
 
@@ -144,7 +148,7 @@ struct MeshShadowPassUniforms {
 
 static_assert(sizeof(MeshInstanceUniforms) == 144);
 static_assert(sizeof(MeshSurfaceUniforms) == 128);
-static_assert(sizeof(MeshSceneUniforms) == 160 + (80 * kMaxLights3D));
+static_assert(sizeof(MeshSceneUniforms) == 176 + (80 * kMaxLights3D));
 static_assert(sizeof(MeshDirectionalShadowUniforms) == 320);
 static_assert(sizeof(MeshPositionalShadowUniforms) == 576);
 static_assert(sizeof(MeshShadowUniforms) ==
@@ -159,7 +163,41 @@ static_assert(sizeof(MeshShadowPassUniforms) == 144);
                                                           const Material3D& material);
 [[nodiscard]] MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material,
                                                         std::uint32_t layers);
+// The scene's uniforms: in Compatibility its first kMaxLights3D lights, in Forward+ its
+// directional ones, which every pixel takes; its omni and spot lights are in its LightClusters.
 [[nodiscard]] MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene);
+// A light as the shaders take it, with its shadow slot or -1.
+[[nodiscard]] MeshLightUniforms mesh_light_uniforms(const Light3D& light, int shadow_slot);
+// How many of the scene's lights a frame draws, from the first: all of them in Forward+, at most
+// kMaxLights3D in Compatibility.
+[[nodiscard]] std::size_t lights_drawn(const Scene3D& scene);
+
+// Forward+'s clusters, as Godot's ClusterBuilderRD makes them, but on the CPU, so the software
+// device's are the same: the screen in tiles kClusterSize pixels across and each tile's depth in
+// kClusterSlices slices from the camera to the far plane. cells holds, for each tile in rows from
+// the top left, words words with bit i of word i / 32 set for each light that may reach the
+// tile, then for each slice the first of those lights in it in its low 16 bits and one past the
+// last in its high 16 bits (0 for none). The lights are the omni and spot ones, nearest the camera
+// first, so that each slice's lights are a short range.
+inline constexpr std::uint32_t kClusterSize = 32;
+inline constexpr std::uint32_t kClusterSlices = 32;
+struct LightClusters {
+    std::uint32_t tiles_across = 0;
+    std::uint32_t tiles_down = 0;
+    std::uint32_t words = 1; // the lights over 32, rounded up, and at least 1
+    float slices_per_depth = 0.0F;
+    std::vector<MeshLightUniforms> lights;
+    std::vector<std::uint32_t> cells;
+
+    // MeshSceneUniforms::cluster.
+    [[nodiscard]] Float4 uniform() const;
+};
+// The far plane's distance from the camera for a projection.
+[[nodiscard]] float far_plane(const Mat4& projection);
+// The clusters of a scene drawn to a target width by height pixels. A light reaches every tile and
+// slice its range's sphere could cover, rounded out, so that every pixel it lights finds it.
+[[nodiscard]] LightClusters build_clusters(const Scene3D& scene, std::uint32_t width,
+                                           std::uint32_t height);
 
 // The box around a mesh's positions, for sorting draws.
 struct Bounds {
@@ -177,10 +215,10 @@ struct MeshDraw {
     ShadowCasting shadows = ShadowCasting::On;
 };
 
-// Each light's shadow slot, as MeshLightUniforms::shadow holds it: lights with shadow set take the
-// directional or positional slots in order while there are some; the rest, and lights without
-// shadows, have -1.
-[[nodiscard]] std::array<int, kMaxLights3D> shadow_slots(const Scene3D& scene);
+// Each light's shadow slot, as MeshLightUniforms::shadow holds it: drawn lights (lights_drawn)
+// with shadow set take the directional or positional slots in order while there are some; the
+// rest, and lights without shadows, have -1.
+[[nodiscard]] std::vector<int> shadow_slots(const Scene3D& scene);
 
 // A rect of a shadow atlas, in texels from its top left.
 struct AtlasRect {
@@ -242,7 +280,8 @@ mesh_draw_order(std::span<const MeshDraw> draws, const Scene3D& scene, const Bou
                                       std::span<const std::uint32_t> indices);
 // The checks every device makes on new vertices for a mesh of count vertices (update_mesh).
 [[nodiscard]] Result<void> check_mesh_update(std::span<const Vertex3D> vertices, std::size_t count);
-// That a scene's numbers are usable and it has at most kMaxLights3D lights.
+// That a scene's numbers are usable and it has at most kMaxDirectionalLights3D directional lights
+// and kMaxClusteredLights3D omni and spot lights.
 [[nodiscard]] Result<void> check_scene(const Scene3D& scene);
 // That a material's numbers are usable, and its textures exist (known) and aren't the target.
 template <typename Known>
@@ -271,9 +310,11 @@ struct MeshCorner {
 [[nodiscard]] MeshCorner mesh_vertex(const MeshCameraUniforms& camera,
                                      const MeshInstanceUniforms& instance, const Vertex3D& vertex);
 
-// What the fragment stage reads at a pixel: the corners' values there, which face it is on, and
-// what each texture holds there.
+// What the fragment stage reads at a pixel: where it is in the target, the corners' values there,
+// which face it is on, and what each texture holds there.
 struct MeshPixel {
+    std::uint32_t x = 0; // from the target's left
+    std::uint32_t y = 0; // from its top
     Float3 world{};
     Float3 normal{};
     Float3 tangent{};
@@ -300,13 +341,14 @@ struct ShadowAtlas {
 };
 struct CubeImage; // in sky_shading.hpp
 
-// The maps the fragment stage samples besides the material's textures: the shadow atlases, and
-// the radiance (none when the scene's meshes aren't lit by it).
+// The maps the fragment stage samples besides the material's textures: the shadow atlases, the
+// radiance (none when the scene's meshes aren't lit by it), and in Forward+ the clusters.
 struct MeshMaps {
     const MeshShadowUniforms* uniforms = nullptr;
     ShadowAtlas directional;
     ShadowAtlas positional;
     const CubeImage* radiance = nullptr;
+    const LightClusters* clusters = nullptr;
 };
 
 // The pixel's color, as fs_main gives it, or nullopt where it discards the pixel.

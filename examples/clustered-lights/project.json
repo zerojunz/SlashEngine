@@ -1,0 +1,13 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "Clustered Lights",
+  "rendering": {
+    "clear_color": [0.0, 0.0, 0.0, 1.0]
+  },
+  "version": "1.0.0",
+  "window": {
+    "height": 180,
+    "width": 320
+  }
+}

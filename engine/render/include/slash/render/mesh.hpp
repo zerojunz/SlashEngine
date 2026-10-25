@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -48,9 +49,15 @@ struct Vertex3D {
     std::array<std::uint8_t, 4> rgba{255, 255, 255, 255};
 };
 
-// The most corners and indices a mesh may have, and the most lights a frame's scene may have.
+// The most corners and indices a mesh may have.
 inline constexpr std::uint32_t kMaxMeshVertices = 1U << 24U;
 inline constexpr std::uint32_t kMaxMeshIndices = 1U << 26U;
+// The most lights a frame's scene may have, Godot's Forward+ limits: directional lights
+// (MAX_DIRECTIONAL_LIGHTS), and omni and spot lights (rendering/limits/cluster_builder/
+// max_clustered_elements).
+inline constexpr std::size_t kMaxDirectionalLights3D = 8;
+inline constexpr std::size_t kMaxClusteredLights3D = 512;
+// The lights the Compatibility method lights each pixel with: the first in a scene's list.
 inline constexpr std::size_t kMaxLights3D = 64;
 // The most lights whose shadows a frame draws: directional ones, then omni and spot ones. Lights
 // past these shine without shadows.
@@ -340,6 +347,17 @@ struct Radiance3D {
     bool operator==(const Radiance3D&) const = default;
 };
 
+// How meshes are lit, as Godot's rendering/renderer/rendering_method. Forward+ sorts the omni and
+// spot lights into clusters of the screen and lights each pixel with those that reach it, so a
+// scene can have all kMaxClusteredLights3D of them; Compatibility lights every pixel with the
+// first kMaxLights3D lights, as Godot's Compatibility renderer, and is how the OpenGL devices
+// always draw, since OpenGL ES 3.0 has no storage buffers to hold clusters.
+enum class RenderMethod : std::uint8_t { ForwardPlus, Compatibility };
+inline constexpr std::array<std::string_view, 2> kRenderMethodNames{"forward_plus",
+                                                                    "gl_compatibility"};
+// A method by its Godot name, or nullopt.
+[[nodiscard]] std::optional<RenderMethod> parse_render_method(std::string_view name);
+
 // What a frame's meshes are seen from and lit by. Matrices are column-major, as Mat4.
 struct Scene3D {
     // The world to the camera's space: the inverse of the camera's transform.
@@ -350,7 +368,10 @@ struct Scene3D {
     // Light every lit pixel gets, times its albedo: sRGB, times ambient_energy.
     std::array<float, 3> ambient{0.0F, 0.0F, 0.0F};
     float ambient_energy = 1.0F;
-    std::vector<Light3D> lights; // up to kMaxLights3D
+    // Up to kMaxDirectionalLights3D directional lights and kMaxClusteredLights3D omni and spot
+    // lights, in any order.
+    std::vector<Light3D> lights;
+    RenderMethod method = RenderMethod::ForwardPlus;
     ShadowSettings shadows;
     PostProcess post;
     Sky3D sky; // drawn behind the meshes, over the clear color

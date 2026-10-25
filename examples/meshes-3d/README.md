@@ -1,6 +1,6 @@
 # Meshes in 3D
 
-Meshes lit as Godot's Compatibility renderer lights them, drawn by the render device.
+Meshes lit as Godot's Forward+ renderer lights them, drawn by the render device.
 [main.cpp](main.cpp) makes a floor, a cube and a pane with `create_mesh`, then draws a red cube,
 a yellow cube, the floor and a pane of blue glass in one frame whose `scene` gives the camera,
 the sun, a warm lamp and the ambient light, and prints what each pixel of the 60x20 target

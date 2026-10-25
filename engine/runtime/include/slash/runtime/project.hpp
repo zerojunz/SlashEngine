@@ -33,8 +33,8 @@
 // Optional fields: "id" (reverse-DNS identifier for bundles and stores), "version"
 // ("major.minor.patch"), "window" ({"width", "height", "vsync_mode",
 // "linux_display_driver"}), "tick_hz", "max_fps",
-// "rendering" ({"clear_color", "driver", "texture_filter", "interpolation", "scaling",
-// "lights_and_shadows", "textures"}),
+// "rendering" ({"clear_color", "driver", "rendering_method", "texture_filter", "interpolation",
+// "scaling", "lights_and_shadows", "textures"}),
 // "physics_2d",
 // "gui" ({"theme"}), "input" (actions by name), "input_devices" ({"pointing"}), "audio"
 // ({"bus_layout", "mix_rate", "output_latency", "panning_strength_2d"}), "services" (ad
@@ -88,6 +88,9 @@ struct Project {
     bool fallback_to_opengl = true;
     // The render scale and how the world scales to the screen, as Godot's scaling_3d.
     render::Scaling scaling;
+    // How 3D meshes are lit, as Godot's rendering/renderer/rendering_method: Forward+'s clustered
+    // lights, or Compatibility's first 64, as the OpenGL devices always draw.
+    render::RenderMethod rendering_method = render::RenderMethod::ForwardPlus;
     // The 3D shadow atlases' sizes and filters, as Godot's rendering/lights_and_shadows.
     render::ShadowSettings shadows;
     // How exports ship textures.

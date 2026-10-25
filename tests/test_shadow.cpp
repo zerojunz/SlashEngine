@@ -178,12 +178,8 @@ TEST_CASE("lights with shadows take slots, directional and positional apart") {
                     {.type = LightType::Directional},
                     shadowed(LightType::Directional),
                     shadowed(LightType::Spot)};
-    const std::array<int, render::kMaxLights3D> slots = render::detail::shadow_slots(scene);
-    CHECK(slots[0] == 0);
-    CHECK(slots[1] == -1);
-    CHECK(slots[2] == 0);
-    CHECK(slots[3] == 1);
-    CHECK(slots[4] == -1);
+    const std::vector<int> slots = render::detail::shadow_slots(scene);
+    CHECK(slots == std::vector<int>{0, -1, 0, 1});
     // Past the slots there are, a light casts no shadow.
     scene.lights.assign(render::kMaxDirectionalShadows + 1, shadowed(LightType::Directional));
     CHECK(render::detail::shadow_slots(scene)[render::kMaxDirectionalShadows] == -1);

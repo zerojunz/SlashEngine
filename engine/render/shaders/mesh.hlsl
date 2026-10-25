@@ -6,7 +6,8 @@
 // tonemapped (tonemap.hlsl) and written as sRGB, with Godot's approximations of the two.
 // Keep it in step with shade_mesh in src/mesh.cpp, its CPU twin. Registers follow SDL's GPU
 // conventions: vertex uniforms in space1, fragment textures and samplers in space2, fragment
-// uniforms in space3.
+// uniforms in space3. mesh_clustered.hlsl defines CLUSTERED and includes this file for Forward+,
+// whose omni and spot lights come from clusters of the screen instead of the scene's uniforms.
 
 cbuffer Camera : register(b0, space1) {
     float4x4 view_projection; // world to clip space
@@ -137,6 +138,10 @@ cbuffer Scene : register(b1, space3) {
     // ambient light's sky contribution.
     float4 sky;
     float4 sky_rows[3]; // the world to the sky's space, a row each
+    // Forward+'s clusters: tiles across, a tile's words of light bits, depth slices per unit of
+    // view depth (how many over the far plane's distance).
+    float4 cluster;
+    // Every light in Compatibility; in Forward+, only the directional ones.
     Light lights[64];
 };
 
@@ -164,6 +169,27 @@ cbuffer Shadows : register(b2, space3) {
     DirectionalShadow directional_shadows[4];
     PositionalShadow positional_shadows[16];
 };
+
+#ifdef CLUSTERED
+// Forward+'s omni and spot lights, nearest first, and the clusters that pick them, laid out as
+// Godot's cluster buffer: for each tile of kClusterSize pixels, cluster.y words with a bit for
+// each light that reaches it, then for each of kClusterSlices depth slices the first of those
+// lights in the slice and one past the last (src/clusters.cpp). SDL binds a fragment stage's
+// storage buffers after its textures, and in Metal after its uniforms; WebGPU binds them as a
+// group of their own, the mesh pipeline's otherwise empty group 0.
+#if defined(SLASH_MSL)
+StructuredBuffer<Light> clustered_lights : register(t3, space2);
+StructuredBuffer<uint> clusters : register(t4, space2);
+#elif defined(SLASH_WGSL)
+StructuredBuffer<Light> clustered_lights : register(t0, space0);
+StructuredBuffer<uint> clusters : register(t1, space0);
+#else
+StructuredBuffer<Light> clustered_lights : register(t14, space2);
+StructuredBuffer<uint> clusters : register(t15, space2);
+#endif
+static const uint kClusterSize = 32u;
+static const uint kClusterSlices = 32u;
+#endif
 
 #include "tonemap.hlsl"
 
@@ -440,6 +466,49 @@ float3 frame_direction(VertexOutput input, float3 v) {
     return normalize(input.tangent * v.x + input.normal * v.y - input.binormal * v.z);
 }
 
+// One light's share of a pixel's diffuse and specular light, unless its cull mask leaves out the
+// draw's layers, with the shading normal and the one shadows offset along (geometry).
+void add_light(Light light, float3 world, float3 normal, float3 geometry, float3 view, float3 f0,
+               float roughness, float metallic, inout float3 diffuse_light,
+               inout float3 specular_light) {
+    if (((uint)light.params.w & options.z) == 0u) {
+        return;
+    }
+    float type = light.direction.w;
+    float slot = light.shadow.x;
+    bool directional = type == kDirectional;
+    float3 to_light = light.position.xyz - world;
+    float3 toward = directional ? normalize(light.direction.xyz) : normalize(to_light);
+    float attenuation = 1.0;
+    if (!directional) {
+        float distance = length(to_light);
+        attenuation = omni_attenuation(distance, light.position.w, light.params.x);
+        if (type == kSpot) {
+            float cone = light.params.y;
+            float scos = max(dot(-normalize(to_light), light.direction.xyz), cone);
+            float rim = max(0.0001, (1.0 - scos) / (1.0 - cone));
+            attenuation *= 1.0 - pow(rim, light.params.z);
+        }
+    }
+    if (slot >= 0.0) {
+        attenuation *= light_shadow(directional, (uint)slot, world, geometry, toward);
+    }
+    light_compute(normal, toward, view, light.color.rgb, attenuation, f0, roughness, metallic,
+                  light.color.w, diffuse_light, specular_light);
+}
+
+#ifdef CLUSTERED
+// The bits of a word of a tile's light bits for lights from first up to end: light word * 32 +
+// bit for each bit.
+uint range_mask(uint word, uint first, uint end) {
+    int low = clamp((int)first - (int)(word * 32u), 0, 32);
+    int high = clamp((int)end - (int)(word * 32u), 0, 32);
+    uint below_high = high >= 32 ? 0xFFFFFFFFu : (1u << (uint)high) - 1u;
+    uint below_low = low >= 32 ? 0xFFFFFFFFu : (1u << (uint)low) - 1u;
+    return below_high & ~below_low;
+}
+#endif
+
 // A lit pixel's color, linear: its lights, reflections, emission and ambient light on base, the
 // albedo, with the shading normal and the one shadows offset along (geometry).
 float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry, float metallic,
@@ -452,32 +521,30 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     float3 specular_light = (float3)0.0;
     uint count = (uint)camera.w;
     for (uint i = 0u; i < count; ++i) {
-        Light light = lights[i];
-        if (((uint)light.params.w & options.z) == 0u) {
-            continue;
-        }
-        float type = light.direction.w;
-        float slot = light.shadow.x;
-        bool directional = type == kDirectional;
-        float3 to_light = light.position.xyz - input.world;
-        float3 toward = directional ? normalize(light.direction.xyz) : normalize(to_light);
-        float attenuation = 1.0;
-        if (!directional) {
-            float distance = length(to_light);
-            attenuation = omni_attenuation(distance, light.position.w, light.params.x);
-            if (type == kSpot) {
-                float cone = light.params.y;
-                float scos = max(dot(-normalize(to_light), light.direction.xyz), cone);
-                float rim = max(0.0001, (1.0 - scos) / (1.0 - cone));
-                attenuation *= 1.0 - pow(rim, light.params.z);
-            }
-        }
-        if (slot >= 0.0) {
-            attenuation *= light_shadow(directional, (uint)slot, input.world, geometry, toward);
-        }
-        light_compute(normal, toward, view, light.color.rgb, attenuation, f0, roughness, metallic,
-                      light.color.w, diffuse_light, specular_light);
+        add_light(lights[i], input.world, normal, geometry, view, f0, roughness, metallic,
+                  diffuse_light, specular_light);
     }
+#ifdef CLUSTERED
+    // The omni and spot lights of the pixel's cluster: its tile's lights within its slice's
+    // range, nearest first, as Godot's scene_forward_clustered.glsl walks them.
+    uint2 tile = (uint2)input.position.xy / kClusterSize;
+    uint words = (uint)cluster.y;
+    uint cell = (tile.y * (uint)cluster.x + tile.x) * (words + kClusterSlices);
+    float depth = -(dot(input.world, camera_z.xyz) + camera_z.w);
+    uint slice = (uint)clamp(depth * cluster.z, 0.0, (float)(kClusterSlices - 1u));
+    uint range = clusters[cell + words + slice];
+    uint first = range & 0xFFFFu;
+    uint end = range >> 16u;
+    for (uint word = first >> 5u; word < (end + 31u) >> 5u; ++word) {
+        uint mask = clusters[cell + word] & range_mask(word, first, end);
+        while (mask != 0u) {
+            uint bit = firstbitlow(mask);
+            mask &= mask - 1u;
+            add_light(clustered_lights[word * 32u + bit], input.world, normal, geometry, view, f0,
+                      roughness, metallic, diffuse_light, specular_light);
+        }
+    }
+#endif
 
     // Light from the sky's radiance, as Godot's scene.glsl takes it: reflections by roughness
     // and ambient light by the normal, then specular occlusion and Lazarov's environment BRDF.

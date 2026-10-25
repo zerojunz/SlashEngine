@@ -85,8 +85,9 @@ struct Environment {
 };
 [[nodiscard]] Environment environment(const world::World& world, render::Color clear);
 
-// The lights of the world that shine, in tree order, as a frame's lights: those visible in the
-// tree whose sky_mode isn't "sky_only", placed by global, at most render::kMaxLights3D.
+// The lights of the world that shine, as a frame's lights: those visible in the tree whose
+// sky_mode isn't "sky_only", placed by global, the directional ones first, each kind in tree
+// order and at most render::kMaxDirectionalLights3D and render::kMaxClusteredLights3D.
 [[nodiscard]] std::vector<render::Light3D>
 lights(const world::World& world, const world::Tree3D& tree,
        const std::function<world::Affine3D(entt::entity)>& global);

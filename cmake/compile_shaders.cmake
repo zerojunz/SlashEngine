@@ -22,6 +22,13 @@
 # With PIECES, each stage's MSL, GLSL ES and WGSL are arrays of pieces to join too, for a shader
 # whose code is longer than a string literal may be (the mesh shader's).
 #
+# With FRAGMENT_ONLY, only fs_main is compiled, for a variant of another shader's fragment stage
+# that draws with its vertex stage. With STORAGE_BUFFERS, the fragment stage reads storage
+# buffers, which GLSL ES 3.00 has none of, so there is no GLSL ES, and its MSL comes from SPIR-V
+# compiled with SLASH_MSL defined, as a compute shader's, since Metal numbers storage buffers
+# after the uniforms; its WGSL comes from SPIR-V compiled with SLASH_WGSL defined, so the
+# shader can put them in a bind group of their own.
+#
 # WGSL keeps SDL's bind groups, which the HLSL's register spaces name: a vertex stage's uniforms in
 # group 1, a fragment stage's textures in group 2 with their samplers SAMPLER_SHIFT (8 by default)
 # bindings after them (glslang's --shift-sampler-binding) and its uniforms in group 3; a compute
@@ -32,7 +39,8 @@
 # can run it; compiled bytes differ between tool versions, so they aren't compared.
 #
 # A line `#include "name.hlsl"` brings in that file from the shader's folder (canvas.hlsl, which
-# a game's shaders share), so the HLSL written to the header stands alone for Direct3D 12.
+# a game's shaders share), and the files it brings in theirs, so the HLSL written to the header
+# stands alone for Direct3D 12.
 #
 # MSVC refuses string literals over 16380 bytes, so long sources are written as several raw
 # literals in a row, split after a line, which the compiler joins.
@@ -46,16 +54,19 @@ endif()
 # The most bytes in one raw string literal, well under MSVC's limit.
 set(max_literal 12000)
 
-# SOURCE with each #include line replaced by the file it names.
+# SOURCE with each #include line replaced by the file it names, until none are left.
 function(read_with_includes out)
     file(READ "${SOURCE}" text)
     get_filename_component(folder "${SOURCE}" DIRECTORY)
     string(REGEX MATCHALL "#include \"[^\"]+\"\n" includes "${text}")
-    foreach(line IN LISTS includes)
-        string(REGEX REPLACE "#include \"([^\"]+)\"\n" "\\1" name "${line}")
-        file(READ "${folder}/${name}" included)
-        string(REPLACE "${line}" "${included}" text "${text}")
-    endforeach()
+    while(includes)
+        foreach(line IN LISTS includes)
+            string(REGEX REPLACE "#include \"([^\"]+)\"\n" "\\1" name "${line}")
+            file(READ "${folder}/${name}" included)
+            string(REPLACE "${line}" "${included}" text "${text}")
+        endforeach()
+        string(REGEX MATCHALL "#include \"[^\"]+\"\n" includes "${text}")
+    endwhile()
     set(${out} "${text}" PARENT_SCOPE)
 endfunction()
 
@@ -177,8 +188,12 @@ if(COMPUTE)
         "alignas(4) inline constexpr unsigned char k${NAME}ComputeSpirv[] = {\n${bytes}};\n\n"
         "inline constexpr const char* k${NAME}ComputeMsl[] = {\n${msl_literals}};\n\n"
         "inline constexpr const char* k${NAME}ComputeWgsl[] = {\n${wgsl_literals}};\n\n")
+elseif(FRAGMENT_ONLY)
+    set(stages frag)
 else()
     set(stages vert frag)
+endif()
+if(NOT COMPUTE)
     if(NOT INTERFACE)
         set(INTERFACE "v_uv,v_color,v_world")
     endif()
@@ -198,8 +213,14 @@ foreach(stage IN LISTS stages)
     run(glslang "${GLSLANG}" -D -V -S ${stage} -e ${entry} --auto-sampled-textures "${standalone}"
         -o "${spirv}")
     # Metal's texture, sampler and buffer indexes are the HLSL registers, as SDL binds them.
+    set(msl_spirv "${spirv}")
+    if(STORAGE_BUFFERS)
+        set(msl_spirv "${WORKDIR}/${base}.${stage}.msl.spv")
+        run(glslang "${GLSLANG}" -D -V -S ${stage} -e ${entry} --auto-sampled-textures
+            -DSLASH_MSL "${standalone}" -o "${msl_spirv}")
+    endif()
     run(spirv-cross "${SPIRV_CROSS}" --msl --msl-version 20100 --msl-decoration-binding
-        --stage ${stage} --entry ${entry} "${spirv}" --output "${msl}")
+        --stage ${stage} --entry ${entry} "${msl_spirv}" --output "${msl}")
     # GLSL ES 3.00 can't place varyings by location, so both stages name them alike to link,
     # and fragment shaders compute in full precision as the other backends do.
     if(stage STREQUAL "vert")
@@ -217,24 +238,34 @@ foreach(stage IN LISTS stages)
     if(FIXUP_CLIPSPACE AND stage STREQUAL "vert")
         set(fixup --fixup-clipspace)
     endif()
-    run(spirv-cross "${SPIRV_CROSS}" --es --version 300 --stage ${stage} --entry ${entry}
-        ${renames} ${fixup} "${spirv}" --output "${glsl}")
+    if(NOT STORAGE_BUFFERS)
+        run(spirv-cross "${SPIRV_CROSS}" --es --version 300 --stage ${stage} --entry ${entry}
+            ${renames} ${fixup} "${spirv}" --output "${glsl}")
+    endif()
     set(wgsl_spirv "${WORKDIR}/${base}.${stage}.wgsl.spv")
     set(wgsl "${WORKDIR}/${base}.${stage}.wgsl")
+    set(wgsl_defines "")
+    if(STORAGE_BUFFERS)
+        set(wgsl_defines -DSLASH_WGSL)
+    endif()
     run(glslang "${GLSLANG}" -D -V -S ${stage} -e ${entry}
-        --shift-sampler-binding ${SAMPLER_SHIFT}
+        --shift-sampler-binding ${SAMPLER_SHIFT} ${wgsl_defines}
         "${standalone}" -o "${wgsl_spirv}")
     run(tint "${TINT}" --input-format spirv --format wgsl "${wgsl_spirv}" -o "${wgsl}")
     hex_array("${spirv}" bytes)
     file(READ "${msl}" msl_text)
     raw_literals("${msl_text}" msl msl_literals)
-    file(READ "${glsl}" glsl_text)
-    string(REPLACE "precision mediump float;" "precision highp float;" glsl_text "${glsl_text}")
-    raw_literals("${glsl_text}" glsl glsl_literals)
+    set(glsl_code "")
+    if(NOT STORAGE_BUFFERS)
+        file(READ "${glsl}" glsl_text)
+        string(REPLACE "precision mediump float;" "precision highp float;" glsl_text
+            "${glsl_text}")
+        raw_literals("${glsl_text}" glsl glsl_literals)
+        declare_code(k${NAME}${label}Glsl "${glsl_literals}" glsl glsl_code)
+    endif()
     file(READ "${wgsl}" wgsl_text)
     raw_literals("${wgsl_text}" wgsl wgsl_literals)
     declare_code(k${NAME}${label}Msl "${msl_literals}" msl msl_code)
-    declare_code(k${NAME}${label}Glsl "${glsl_literals}" glsl glsl_code)
     declare_code(k${NAME}${label}Wgsl "${wgsl_literals}" wgsl wgsl_code)
     string(APPEND body
         "alignas(4) inline constexpr unsigned char k${NAME}${label}Spirv[] = {\n${bytes}};\n\n"
