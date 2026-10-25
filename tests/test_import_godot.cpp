@@ -19,6 +19,7 @@
 #include "slash/render/image.hpp"
 #include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/project.hpp"
+#include "slash/scene3d/scene3d.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -2106,7 +2107,8 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     CHECK(!unsupported(report, "SpotLight3D.light_indirect_energy").is_null());
     CHECK(why("node type GPUParticles3D") == "no SlashEngine component for it yet");
     CHECK(why("node type Skeleton3D") ==
-          "the importer doesn't convert it yet; add SlashEngine's Skeleton3D component by hand");
+          "a skeleton a scene builds itself doesn't convert yet; one "
+          "an instance of a model file brings does");
     CHECK(why("file type .dae") == "models are glTF, OBJ, FBX or .blend files; export it as glTF");
     CHECK(unsupported(report, "file type .jpg").is_null());
     CHECK(unsupported(report, "Sky.process_mode").is_null());
@@ -3868,6 +3870,359 @@ parameters/mix/blend_amount = 0.5
             FAIL_CHECK(scene << error.path << ": " << error.message);
         }
     }
+}
+
+namespace {
+
+// A figure whose skin's bones aren't in the file in Godot's order: under Root, the joints Tail and
+// Hips; under Hips, Spine then Leg.L in its children but Leg.L first in the file; Head.Top under
+// Spine. Godot's importer makes them one Skeleton3D under Root, its bones Tail, Hips, Leg.L,
+// Spine and Head.Top. Its one animation, "Wag", turns Tail.
+slash::test::Gltf figure() {
+    slash::test::Gltf out;
+    json::Value attributes;
+    attributes["POSITION"] = out.floats(
+        {-0.5F, 0.0F, 0.0F, 0.5F, 0.0F, 0.0F, 0.5F, 2.0F, 0.0F, -0.5F, 2.0F, 0.0F}, "VEC3");
+    attributes["JOINTS_0"] = out.joints({1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 3, 0, 0, 0});
+    attributes["WEIGHTS_0"] = out.floats({1.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 1.0F,
+                                          0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F},
+                                         "VEC4");
+    json::Value primitive;
+    primitive["attributes"] = std::move(attributes);
+    primitive["indices"] = out.indices({0, 1, 2, 0, 2, 3});
+    json::Value mesh;
+    mesh["name"] = "Skin";
+    mesh["primitives"].push_back(std::move(primitive));
+    out.document["meshes"].push_back(std::move(mesh));
+    json::Value skin;
+    skin["joints"] = slash::test::gltf_json("[3, 5, 4, 2, 1]");
+    std::vector<float> binds;
+    for (int joint = 0; joint < 5; ++joint) {
+        binds.insert(binds.end(), {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1});
+    }
+    skin["inverseBindMatrices"] = out.floats(binds, "MAT4");
+    out.document["skins"].push_back(std::move(skin));
+    out.document["nodes"] = slash::test::gltf_json(R"([
+        {"name": "Root", "children": [3, 1, 6]},
+        {"name": "Tail", "translation": [0, 0.8, -0.3]},
+        {"name": "Leg.L", "translation": [0.2, -0.5, 0]},
+        {"name": "Hips", "translation": [0, 1, 0], "children": [5, 2]},
+        {"name": "Head.Top", "translation": [0, 0.5, 0]},
+        {"name": "Spine", "translation": [0, 0.5, 0], "children": [4]},
+        {"name": "Skin", "mesh": 0, "skin": 0}
+    ])");
+    json::Value sampler;
+    sampler["input"] = out.floats({0.0F, 1.0F}, "SCALAR");
+    sampler["output"] = out.floats({0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 1.0F, 0.0F, 0.0F}, "VEC4");
+    json::Value animation;
+    animation["name"] = "Wag";
+    animation["samplers"].push_back(std::move(sampler));
+    animation["channels"] =
+        slash::test::gltf_json(R"([{"sampler": 0, "target": {"node": 1, "path": "rotation"}}])");
+    out.document["animations"].push_back(std::move(animation));
+    out.document["scenes"] = slash::test::gltf_json(R"([{"nodes": [0]}])");
+    out.document["scene"] = 0;
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("Godot's Skeleton3D poses, skeleton modifiers, ragdolls and bone attachments convert "
+          "with the model they're under") {
+    const fs::path project = "import_godot_skeletons";
+    fs::remove_all(project);
+    write(project / "godot/project.godot", R"(config_version=5
+
+[application]
+
+config/name="Skeletons"
+run/main_scene="res://fighter.tscn"
+)");
+    write(project / "godot/models/figure.gltf", figure().gltf());
+    write(project / "godot/fighter.tscn", R"tscn([gd_scene load_steps=4 format=3]
+
+[ext_resource type="PackedScene" path="res://models/figure.gltf" id="1_figure"]
+
+[sub_resource type="JointLimitationCone3D" id="JointLimitationCone3D_spine"]
+angle = 0.5
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_hips"]
+size = Vector3(0.4, 0.3, 0.2)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_brim"]
+top_radius = 0.3
+bottom_radius = 0.3
+height = 0.05
+
+[sub_resource type="Animation" id="Animation_kick"]
+resource_name = "kick"
+length = 1.0
+tracks/0/type = "position_3d"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Body/Root/Skeleton3D:Leg.L")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = PackedFloat32Array(0, 1, 0.2, -0.5, 0, 1, 1, 0.2, -0.3, 0.4)
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_fighter"]
+_data = {
+&"kick": SubResource("Animation_kick")
+}
+
+[node name="Fighter" type="Node3D"]
+
+[node name="Moves" type="AnimationPlayer" parent="."]
+libraries = {
+&"": SubResource("AnimationLibrary_fighter")
+}
+
+[node name="Goal" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 1)
+
+[node name="Pole" type="Marker3D" parent="."]
+
+[node name="Body" parent="." instance=ExtResource("1_figure")]
+
+[node name="Skeleton3D" parent="Body/Root" index="0"]
+bones/0/rotation = Quaternion(1, 0, 0, 0)
+bones/1/rotation = Quaternion(0, 0, 0.38268343, 0.9238795)
+bones/2/position = Vector3(0.25, -0.5, 0)
+bones/3/position = Vector3(0, 0.5, 0)
+bones/4/name = "Crown"
+motion_scale = 2.0
+
+[node name="Skin" parent="Body/Root/Skeleton3D" index="0"]
+visible = false
+
+[node name="BodyIK" type="TwoBoneIK3D" parent="Body/Root/Skeleton3D"]
+influence = 0.75
+setting_count = 1
+settings/0/target_node = NodePath("../../../../Goal")
+settings/0/pole_node = NodePath("../../../../Pole")
+settings/0/root_bone_name = "Hips"
+settings/0/root_bone = 1
+settings/0/middle_bone_name = ""
+settings/0/middle_bone = 3
+settings/0/pole_direction = 5
+settings/0/pole_direction_vector = Vector3(0, 0, 0)
+settings/0/end_bone_name = "Head.Top"
+settings/0/end_bone = 4
+settings/0/use_virtual_end = false
+settings/0/extend_end_bone = true
+settings/0/end_bone/direction = 2
+settings/0/end_bone/length = 0.1
+
+[node name="SpineIK" type="FABRIK3D" parent="Body/Root/Skeleton3D"]
+max_iterations = 8
+deterministic = true
+setting_count = 2
+settings/0/root_bone_name = "Hips"
+settings/0/root_bone = 1
+settings/0/end_bone_name = "Head.Top"
+settings/0/end_bone = 4
+settings/0/target_node = NodePath("../../../../Goal")
+settings/0/joint_count = 3
+settings/0/joints/0/bone_name = "Hips"
+settings/0/joints/0/bone = 1
+settings/0/joints/0/rotation_axis = 3
+settings/0/joints/1/rotation_axis = 0
+settings/0/joints/1/limitation = SubResource("JointLimitationCone3D_spine")
+settings/0/joints/1/limitation/right_axis = 3
+settings/0/joints/3/rotation_axis = 1
+settings/1/root_bone_name = "Leg.L"
+settings/1/end_bone_name = "Spine"
+
+[node name="Simulator" type="PhysicalBoneSimulator3D" parent="Body/Root/Skeleton3D"]
+influence = 0.5
+
+[node name="Physical Bone Hips" type="PhysicalBone3D" parent="Body/Root/Skeleton3D/Simulator"]
+joint_type = 2
+joint_offset = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, 0, 0.1, 0)
+body_offset = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
+bone_name = &"Hips"
+mass = 3.0
+joint_constraints/swing_span = 30.0
+joint_constraints/twist_span = 90.0
+joint_constraints/bias = 0.3
+joint_constraints/softness = 0.5
+joint_constraints/relaxation = 1.0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Body/Root/Skeleton3D/Simulator/Physical Bone Hips"]
+shape = SubResource("BoxShape3D_hips")
+
+[node name="Physical Bone Leg_L" type="PhysicalBone3D" parent="Body/Root/Skeleton3D/Simulator"]
+joint_type = 3
+bone_name = &"Leg.L"
+joint_constraints/angular_limit_enabled = true
+joint_constraints/angular_limit_upper = 45.0
+joint_constraints/angular_limit_lower = -10.0
+joint_constraints/angular_limit_bias = 0.3
+joint_constraints/angular_limit_softness = 0.9
+joint_constraints/angular_limit_relaxation = 1.0
+linear_damp_mode = 1
+custom_integrator = true
+
+[node name="Physical Bone Spine" type="PhysicalBone3D" parent="Body/Root/Skeleton3D/Simulator"]
+joint_type = 5
+bone_name = &"Spine"
+joint_constraints/x/angular_limit_upper = 20.0
+joint_constraints/x/angular_limit_lower = -20.0
+joint_constraints/y/linear_limit_enabled = false
+joint_constraints/z/erp = 0.5
+
+[node name="Hat" type="BoneAttachment3D" parent="Body/Root/Skeleton3D"]
+bone_name = "Head.Top"
+bone_idx = 4
+
+[node name="Brim" type="MeshInstance3D" parent="Body/Root/Skeleton3D/Hat"]
+mesh = SubResource("CylinderMesh_brim")
+
+[node name="Looker" type="LookAtModifier3D" parent="Body/Root/Skeleton3D"]
+
+[node name="Stray" type="TwoBoneIK3D" parent="Body/Root"]
+
+[node name="Holder" type="BoneAttachment3D" parent="."]
+bone_name = "Tail"
+bone_idx = 2
+use_external_skeleton = true
+external_skeleton = NodePath("../Body/Root/Skeleton3D")
+
+[node name="Dummy" parent="." instance=ExtResource("1_figure")]
+
+[node name="Physical Bone Hips" type="PhysicalBone3D" parent="Dummy/Root/Skeleton3D"]
+bone_name = &"Hips"
+
+[node name="Rig" type="Skeleton3D" parent="."]
+
+[node name="Grip" type="BoneAttachment3D" parent="Rig"]
+bone_name = "Hand"
+)tscn");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string scene = "godot/fighter.scene.json";
+    REQUIRE(files.contains(scene));
+
+    // The Skeleton3D's bone poses pose the model's nodes, found by Godot's bone order: bone 1 is
+    // Hips and bone 2 Leg.L, whose '.' a model's node names make '_'. A pose the model already
+    // has is left out, and one of a bone the model's own animations move is reported, since a
+    // pose would hold it still.
+    const json::Value body = entity(files, scene, "body");
+    CHECK(*body.find("Skeleton3D") == parse(R"({"bone_positions": {"Leg_L": [0.25, -0.5, 0.0]},
+                                               "bone_rotations": {"Hips": [0.0, 0.0, 0.785398]}})"));
+    CHECK(unsupported(plan.report, "Skeleton3D.bones/0/rotation").find("why")->as_string() ==
+          "Tail is moved by the model's own animations, where SlashEngine's Skeleton3D pose "
+          "would hold it still; pose it in the animations instead");
+    CHECK(unsupported(plan.report, "Skeleton3D.bones/4/name").find("why")->as_string() ==
+          "a model's bones are as its file has them; edit the model");
+    CHECK(unsupported(plan.report, "Skeleton3D.motion_scale") != nullptr);
+    CHECK(unsupported(plan.report, "node in an imported model").find("count")->as_int() == 2);
+    // A track names the bone by Godot's name, with its '.'.
+    const std::string kick = "godot/fighter_animation_library_fighter.anim.json";
+    REQUIRE(files.contains(kick));
+    const json::Value tracks =
+        *parse(files.at(kick)).find("animations")->find("kick")->find("tracks");
+    CHECK(*tracks.as_array().at(0).find("node") == "Leg_L");
+
+    // What the scene adds under the Skeleton3D hangs from the model's entity, in Godot's order,
+    // so its modifiers run in that order.
+    CHECK(*body.find("Transform3D") ==
+          parse(R"({"children": ["body_ik", "spine_ik", "simulator", "hat", "stray"]})"));
+    // Bones are found by name, as Godot's modifiers find them, or by index where the name is
+    // empty.
+    CHECK(*entity(files, scene, "body_ik").find("TwoBoneIK3D") == parse(R"({
+        "influence": 0.75,
+        "settings": [{"root_bone": "Hips", "middle_bone": "Spine", "end_bone": "Head_Top",
+                      "target": "goal", "pole": "pole", "pole_direction": "plus_z",
+                      "extend_end_bone": true, "end_bone_direction": "plus_y",
+                      "end_bone_length": 0.1}]})"));
+    // A chain's joints are its bones from the root down, by name.
+    CHECK(*entity(files, scene, "spine_ik").find("FABRIK3D") == parse(R"({
+        "max_iterations": 8, "deterministic": true,
+        "settings": [{"root_bone": "Hips", "end_bone": "Head_Top", "target": "goal",
+                      "joints": {"Spine": {"rotation_axis": "x", "limitation": "cone",
+                                           "limitation_angle": 0.5,
+                                           "limitation_right_axis": "plus_y"}}},
+                     {"root_bone": "Leg_L", "end_bone": "Spine"}]})"));
+    CHECK(unsupported(plan.report, "FABRIK3D.settings/0/joints/3/rotation_axis")
+              .find("why")
+              ->as_string() == "the chain has 3 bones");
+    CHECK(unsupported(plan.report, "FABRIK3D.settings/1/end_bone_name").find("why")->as_string() ==
+          "Spine isn't Leg_L or a bone under it");
+
+    // Physical bones keep their joints, Godot's degrees made radians; joint_offset gives the
+    // joint's rotation, its origin being the bone's whatever it says.
+    CHECK(*entity(files, scene, "simulator").find("PhysicalBoneSimulator3D") ==
+          parse(R"({"influence": 0.5})"));
+    CHECK(*entity(files, scene, "physical_bone_hips").find("PhysicalBone3D") == parse(R"({
+        "bone_name": "Hips", "joint_type": "cone", "joint_rotation": [1.570796, 0.0, 0.0],
+        "body_offset_position": [0.0, -0.1, 0.0], "mass": 3.0, "swing_span": 0.523599,
+        "twist_span": 1.570796})"));
+    CHECK(*entity(files, scene, "physical_bone_hips").find("Transform3D") ==
+          parse(R"({"children": ["collision_shape3d"]})"));
+    CHECK(*entity(files, scene, "physical_bone_leg_l").find("PhysicalBone3D") == parse(R"({
+        "bone_name": "Leg_L", "joint_type": "hinge", "angular_limit_enabled": true,
+        "angular_limit_upper": 0.785398, "angular_limit_lower": -0.174533,
+        "linear_damp_mode": "replace"})"));
+    CHECK(*entity(files, scene, "physical_bone_spine").find("PhysicalBone3D") == parse(R"({
+        "bone_name": "Spine", "joint_type": "6dof",
+        "x": {"angular_limit_upper": 0.349066, "angular_limit_lower": -0.349066},
+        "y": {"linear_limit_enabled": false}})"));
+    // Of what Godot's Jolt module ignores, only values other than Godot's defaults are reported.
+    CHECK(unsupported(plan.report, "PhysicalBone3D.joint_constraints/softness") != nullptr);
+    CHECK(unsupported(plan.report, "PhysicalBone3D.joint_constraints/bias") == nullptr);
+    CHECK(unsupported(plan.report, "PhysicalBone3D.joint_constraints/z/erp") == nullptr);
+    CHECK(unsupported(plan.report, "PhysicalBone3D.custom_integrator") != nullptr);
+    // Physical bones right under a Skeleton3D, as Godot 4.2 put them, get the simulator Godot
+    // 4.3 makes for them.
+    const json::Value dummy = entity(files, scene, "dummy");
+    CHECK(*dummy.find("PhysicalBoneSimulator3D") == parse("{}"));
+    CHECK(*dummy.find("Transform3D") == parse(R"({"children": ["dummy_physical_bone_hips"]})"));
+
+    // A bone attachment follows its bone with what hangs under it; one with an external
+    // skeleton follows that model's entity, by bone_idx first as Godot's does.
+    CHECK(*entity(files, scene, "hat").find("BoneAttachment3D") ==
+          parse(R"({"bone_name": "Head_Top"})"));
+    CHECK(*entity(files, scene, "hat").find("Transform3D") == parse(R"({"children": ["brim"]})"));
+    CHECK(*entity(files, scene, "holder").find("BoneAttachment3D") ==
+          parse(R"({"bone_name": "Leg_L", "external_skeleton": "body"})"));
+
+    // Modifiers anywhere but under a model's Skeleton3D, and modifiers SlashEngine hasn't, are
+    // reported.
+    CHECK(unsupported(plan.report, "node type TwoBoneIK3D").find("why")->as_string() ==
+          "it is under Root, which isn't a Skeleton3D Godot makes of models/figure.gltf, so "
+          "Godot's does nothing there");
+    CHECK(entity(files, scene, "stray").find("TwoBoneIK3D") == nullptr);
+    CHECK(unsupported(plan.report, "node type BoneAttachment3D").find("why")->as_string() ==
+          "SlashEngine's BoneAttachment3D works on the model an instance of a model file draws; "
+          "add it under that model's Skeleton3D");
+    CHECK(entity(files, scene, "grip").find("BoneAttachment3D") == nullptr);
+    CHECK(unsupported(plan.report, "node type Skeleton3D").find("why")->as_string() ==
+          "a skeleton a scene builds itself doesn't convert yet; one an instance of a model file "
+          "brings does");
+
+    // The engine finds every bone the scene names in the model, and the chain the importer
+    // reported.
+    const slash::world::FileReader reader =
+        [&](std::string_view path) -> slash::Result<std::string> {
+        if (const auto it = files.find(std::string(path)); it != files.end()) {
+            return it->second;
+        }
+        return slash::platform::read_file((project / path).string());
+    };
+    slash::world::ComponentRegistry components;
+    add_types(components, files);
+    CHECK(slash::world::validate_scene(components, parse(files.at(scene)), reader).empty());
+    std::vector<std::string> problems;
+    for (const json::ValidationError& error :
+         slash::scene3d::check_meshes(components, parse(files.at(scene)), reader)) {
+        problems.push_back(error.path + ": " + error.message);
+    }
+    CHECK(problems == std::vector<std::string>{
+                          "/entities/spine_ik/components/FABRIK3D/settings/1/end_bone: \"Spine\" "
+                          "isn't \"Leg_L\" or under it",
+                          "/entities/spine_ik/components/FABRIK3D/settings/1/target: names no "
+                          "target: name the entity the end reaches for"});
 }
 
 TEST_CASE("importing a Godot project turns each script into a storyboard task") {

@@ -1,0 +1,13 @@
+{"jsonrpc":"2.0","id":1,"method":"project.import","params":{"source":"godot"}}
+{"jsonrpc":"2.0","id":2,"method":"scene.open","params":{"path":"godot/main.scene.json"}}
+{"jsonrpc":"2.0","id":3,"method":"entity.get","params":{"id":"limp"}}
+{"jsonrpc":"2.0","id":4,"method":"entity.get","params":{"id":"reach_ik"}}
+{"jsonrpc":"2.0","id":5,"method":"entity.get","params":{"id":"grip"}}
+{"jsonrpc":"2.0","id":6,"method":"entity.get","params":{"id":"physical_bone_elbow"}}
+{"jsonrpc":"2.0","id":7,"method":"step","params":{"ticks":1}}
+{"jsonrpc":"2.0","id":8,"method":"skeleton.get","params":{"id":"reacher","bones":["Hand"]}}
+{"jsonrpc":"2.0","id":9,"method":"skeleton.get","params":{"id":"limp","bones":["Elbow","Hand"]}}
+{"jsonrpc":"2.0","id":10,"method":"component.set","params":{"id":"ragdoll","components":{"PhysicalBoneSimulator3D":{"simulating":true}}}}
+{"jsonrpc":"2.0","id":11,"method":"step","params":{"ticks":120}}
+{"jsonrpc":"2.0","id":12,"method":"skeleton.get","params":{"id":"limp","bones":["Shoulder","Elbow","Hand"]}}
+{"jsonrpc":"2.0","id":13,"method":"frame.capture","params":{"points":[[91,36],[72,42],[112,74],[142,74],[20,20]]}}

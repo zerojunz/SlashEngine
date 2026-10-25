@@ -473,6 +473,7 @@ struct SceneReader {
         const char* unnamed = node.mesh != nullptr ? "Mesh" : "Node";
         out.name = unique_name(names, named ? node.name : unnamed);
         out.parent = parent;
+        out.file_index = static_cast<int>(&node - data.nodes);
         if (node.has_matrix != 0) {
             std::array<float, 16> matrix{};
             std::copy(std::begin(node.matrix), std::end(node.matrix), matrix.begin());
