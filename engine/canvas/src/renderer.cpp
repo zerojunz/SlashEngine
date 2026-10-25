@@ -1136,7 +1136,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                               ? Vec2{options.width, options.height}
                               : ui::settings(world).viewport;
     // The 3D world, seen through its current Camera3D, which fills the viewport, upscaled with FSR
-    // 2, FSR 3 or MetalFX where the scaling settings and the device take it.
+    // 2, FSR 3, MetalFX or the game's own temporal upscaler where the scaling settings and the
+    // device take it.
     const render::Scaling& scaling = settings(world).scaling;
     std::optional<render::Fsr2Scaling> fsr2;
     if (render::uses_fsr2(scaling, settings(world).rendering_method, *device_)) {
@@ -1144,7 +1145,9 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         fsr2 = render::Fsr2Scaling{.scale = scaling.scale,
                                    .sharpness = scaling.fsr_sharpness,
                                    .fsr3 = mode == render::kFsr3,
-                                   .metalfx = mode == render::kMetalFxTemporal};
+                                   .metalfx = mode == render::kMetalFxTemporal,
+                                   .upscaler = render::temporal_upscaler_on(
+                                       scaling, settings(world).rendering_method, *device_)};
     }
     std::optional<scene3d::Frame3D> scene = scene3d_.prepare(
         world, viewport.x, viewport.y, options.interpolation, options.clear,
@@ -2121,12 +2124,15 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
                                             ? options.pixel_height
                                             : static_cast<std::uint32_t>(options.height);
     // A 3D world FSR 2 or 3 upscales draws at full size here, the 3D smaller in the device.
-    const bool fsr2 = submission.scene && submission.scene->scene.fsr2.has_value();
+    const std::optional<render::Fsr2Scaling>* fsr2_scaling =
+        submission.scene ? &submission.scene->scene.fsr2 : nullptr;
+    const bool fsr2 = fsr2_scaling != nullptr && fsr2_scaling->has_value();
+    const std::string temporal = fsr2 ? (*fsr2_scaling)->upscaler : std::string{};
     std::string chosen;
     if (output_width > 0 && output_height > 0 && !fsr2) {
         chosen = render::choose_upscaler(scaling, *device_);
     }
-    if (!scaling.upscaler.empty() && chosen != scaling.upscaler &&
+    if (!scaling.upscaler.empty() && chosen != scaling.upscaler && temporal != scaling.upscaler &&
         warned_.insert("upscaler " + scaling.upscaler).second) {
         log::warn(
             "the upscaler isn't available here, so the scaling mode is used",
@@ -2144,7 +2150,9 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
     }
     scaled_ = {};
     if (fsr2 && output_width > 0 && output_height > 0) {
-        scaled_ = {.upscaler = std::string(render::scaling_mode_on(scaling, *device_)),
+        scaled_ = {.upscaler = temporal.empty()
+                                   ? std::string(render::scaling_mode_on(scaling, *device_))
+                                   : temporal,
                    .size = {.render_width = render::render_size(output_width, scaling.scale),
                             .render_height = render::render_size(output_height, scaling.scale),
                             .output_width = output_width,

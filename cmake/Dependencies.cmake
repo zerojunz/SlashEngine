@@ -35,7 +35,7 @@ endmacro()
 slash_add_dependency(SDL3
     SYSTEM TRUE
     PATCH_COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_LIST_DIR}/patches/sdl-vulkan-uniform-range.cmake
-        COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_LIST_DIR}/patches/sdl-metal-handles.cmake
+        COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_LIST_DIR}/patches/sdl-native-handles.cmake
     OPTIONS
         "SDL_SHARED OFF"
         "SDL_STATIC ON"

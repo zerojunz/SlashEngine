@@ -255,8 +255,12 @@ The `register` function can add other things a vendor's SDK gives the engine too
 `render::add_upscaler` ([slash/render/upscaler.hpp](../../engine/render/include/slash/render/upscaler.hpp)),
 with a `supports` function that says which GPUs it runs on, and the game names it in
 [`rendering.scaling.upscaler`](project-format.md#render-scale). The renderer picks it up from the
-next frame and uses the scaling `mode` wherever it doesn't run. Temporal upscalers need the 3D
-renderer's depth and motion vectors, so `add_upscaler` refuses them until it exists.
+next frame and uses the scaling `mode` wherever it doesn't run. A temporal one (DLSS, XeSS,
+FSR 4) is marked `temporal` and made by `make_temporal`: a `render::TemporalUpscaler` that the
+device runs in FSR 2's place, handing it the native device, command buffer and the frame's
+color, depth, motion vectors and output as Vulkan, Direct3D 12 or Metal objects, the form
+vendors' libraries take ([project-format.md](project-format.md#render-scale),
+[examples/temporal-upscaler](../../examples/temporal-upscaler/)).
 
 ## In project.json and presets
 

@@ -137,6 +137,7 @@ add_executable(slash_tests
     test_storyboard.cpp
     test_syntax_highlighter.cpp
     test_taa.cpp
+    test_temporal_upscaler.cpp
     test_test_run.cpp
     test_text.cpp
     test_text_edit.cpp
@@ -165,6 +166,8 @@ add_library(slash_test_jpeg STATIC jpeg_write.c)
 target_include_directories(slash_test_jpeg SYSTEM PRIVATE ${stb_SOURCE_DIR})
 target_compile_options(slash_test_jpeg PRIVATE "$<$<NOT:$<C_COMPILER_ID:MSVC>>:-w;-ffp-contract=off>")
 target_link_libraries(slash_tests PRIVATE slash_test_jpeg)
+# Vulkan's headers, which SDL carries, for the temporal upscaler test's native copy.
+target_include_directories(slash_tests SYSTEM PRIVATE ${SDL3_SOURCE_DIR}/src/video/khronos)
 # doctest forward-declares std::ostream by default, which breaks string_view checks on recent
 # MSVC standard libraries; include the real headers instead.
 target_compile_definitions(slash_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS

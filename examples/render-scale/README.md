@@ -26,8 +26,8 @@ for a running game, and samples pixels across the planet's edge and the health b
   `perf.stats` return the settings.
 - A game adds its own upscaler with `render::add_upscaler`, here a nearest-neighbor one for pixel
   art, and names it in `scaling.upscaler`. Vendor upscalers (DLSS, XeSS) come the same way, from
-  an SDK package's glue code, where the vendor's GPU runs them. Temporal ones need the depth and
-  motion vectors of the 3D world, so they are refused for now.
+  an SDK package's glue code, where the vendor's GPU runs them. Temporal ones take the depth and
+  motion vectors of the 3D world instead, as [temporal-upscaler](../temporal-upscaler/) shows.
 - `metalfx_spatial` is Apple's MetalFX spatial scaler, on Metal with macOS 13 or iOS 16. Here, on
   the CPU, it falls back to `fsr` as Godot's does, and `frame.capture` says so.
   Godot's `fsr2` scales only the 3D world, from jittered frames, as

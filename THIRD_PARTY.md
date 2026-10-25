@@ -8,7 +8,7 @@ or license not allowed here, or whose license text changed without review.
 
 | Name | Version | License | Used for | How it is included |
 | --- | --- | --- | --- | --- |
-| [SDL3](https://github.com/libsdl-org/SDL) | release-3.4.18 | zlib | Platform layer: windows, events, timers, GPU; two patches: one lets Vulkan shaders see 16 KiB of each uniform push, and one hands the Metal device's objects to MetalFX (`cmake/patches/`) | Fetched, linked statically |
+| [SDL3](https://github.com/libsdl-org/SDL) | release-3.4.18 | zlib | Platform layer: windows, events, timers, GPU; two patches: one lets Vulkan shaders see 16 KiB of each uniform push, and one hands the Metal, Vulkan and Direct3D 12 devices' native objects to MetalFX and games' temporal upscalers (`cmake/patches/`) | Fetched, linked statically |
 | [EnTT](https://github.com/skypjack/entt) | v3.16.0 | MIT | Entity component system | Fetched, header-only |
 | [yyjson](https://github.com/ibireme/yyjson) | 0.13.0 | MIT | JSON parsing and number formatting | Fetched, linked statically |
 | [Box2D](https://github.com/erincatto/box2d) | v3.1.1 | MIT | 2D physics: bodies, shapes, joints, queries | Fetched, linked statically |
