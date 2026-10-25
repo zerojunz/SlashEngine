@@ -1818,6 +1818,7 @@ jolt_physics_3d/simulation/areas_detect_static_bodies=true
 [rendering]
 
 anti_aliasing/quality/use_taa=true
+mesh_lod/lod_change/threshold_pixels=2.5
 camera/depth_of_field/depth_of_field_bokeh_shape=2
 camera/depth_of_field/depth_of_field_bokeh_quality=3
 camera/depth_of_field/depth_of_field_use_jitter=true
@@ -1921,6 +1922,7 @@ mesh = SubResource("BoxMesh_wall")
 cast_shadow = 2
 gi_mode = 2
 gi_lightmap_texel_scale = 2.0
+lod_bias = 3.0
 
 [node name="Ball" type="MeshInstance3D" parent="Wall"]
 transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 1.5, 0)
@@ -2089,7 +2091,7 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     const json::Value wall = entity(files, level, "wall");
     CHECK(*wall.find("BoxMesh") == parse(R"({"size": [4.0, 2.0, 0.5]})"));
     CHECK(*wall.find("MeshInstance3D") == parse(R"({"cast_shadow": "double_sided",
-        "gi_mode": "dynamic", "gi_lightmap_texel_scale": 2.0})"));
+        "gi_mode": "dynamic", "gi_lightmap_texel_scale": 2.0, "lod_bias": 3.0})"));
     CHECK(*wall.find("StandardMaterial3D") == parse(R"({
         "transparency": "alpha_scissor", "albedo_color": [0.8, 0.4, 0.2, 1.0],
         "albedo_texture": "godot/art/bricks.jpg", "roughness": 0.6, "texture_filter": "nearest",
@@ -2188,6 +2190,8 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
           parse(R"({"reflection_atlas": {"reflection_size": 512, "reflection_count": 16}})"));
     CHECK(*project_file.find("rendering")->find("anti_aliasing") ==
           parse(R"({"quality": {"use_taa": true}})"));
+    CHECK(*project_file.find("rendering")->find("mesh_lod") ==
+          parse(R"({"lod_change": {"threshold_pixels": 2.5}})"));
     CHECK(*project_file.find("rendering")->find("scaling") ==
           parse(R"({"mode": "fsr2", "scale": 0.67, "fsr_sharpness": 0.5})"));
 

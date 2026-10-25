@@ -229,6 +229,7 @@ canvas::Settings canvas_settings(const json::Value& project) {
         settings.voxel_gi_high_quality = render::voxel_gi_high_quality(*rendering);
         settings.use_taa = render::use_taa(*rendering);
         settings.decal_filter = render::decal_filter(*rendering);
+        settings.mesh_lod_threshold = render::mesh_lod_threshold(*rendering);
     }
     const json::Value* tick_hz = project.find("tick_hz");
     if (tick_hz != nullptr && tick_hz->is_number() && tick_hz->as_double() > 0.0) {

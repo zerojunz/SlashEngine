@@ -1115,23 +1115,22 @@ public:
     }
 
     Result<MeshId> create_mesh(std::span<const Vertex3D> vertices,
-                               std::span<const std::uint32_t> indices) override {
-        if (auto checked = check_mesh(vertices, indices); !checked) {
+                               std::span<const std::uint32_t> indices,
+                               std::span<const std::span<const std::uint32_t>> lods) override {
+        if (auto checked = check_mesh(vertices, indices, lods); !checked) {
             return checked.error();
         }
-        std::vector<std::uint32_t> implicit;
-        if (indices.empty()) {
-            implicit.resize(vertices.size());
-            std::iota(implicit.begin(), implicit.end(), 0U);
-            indices = implicit;
-        }
+        std::vector<IndexRange> ranges;
+        const std::vector<std::uint32_t> all =
+            mesh_index_buffer(vertices.size(), indices, lods, ranges);
+        indices = all;
         // Queue writes run ahead of the command buffers sent after them, so the next frame
         // draws the mesh.
         const Mesh mesh{.vertices = create_buffer(WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst,
                                                   vertices.size_bytes()),
                         .indices = create_buffer(WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst,
                                                  indices.size_bytes()),
-                        .index_count = static_cast<std::uint32_t>(indices.size()),
+                        .ranges = std::move(ranges),
                         .vertex_count = vertices.size(),
                         .bounds = mesh_bounds(vertices),
                         .previous = nullptr,
@@ -1390,7 +1389,7 @@ public:
 
     Result<void> draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
                            std::uint32_t layers, ShadowCasting shadows,
-                           const std::optional<Mat4>& previous) override {
+                           const std::optional<Mat4>& previous, std::uint32_t lod) override {
         if (!in_frame_) {
             return no_frame("draw_mesh");
         }
@@ -1404,6 +1403,9 @@ public:
         if (auto checked = check_previous_transform(previous); !checked) {
             return checked;
         }
+        if (auto checked = check_lod(lod, it->second.ranges.size() - 1); !checked) {
+            return checked;
+        }
         if (!frame_drawn_) {
             return {}; // a skipped frame
         }
@@ -1413,7 +1415,7 @@ public:
         MeshBatch batch{
             .vertices = it->second.vertices,
             .indices = it->second.indices,
-            .index_count = it->second.index_count,
+            .range = it->second.ranges[lod],
             .bounds = it->second.bounds,
             .pipeline = mesh_pipeline_for(world_format(*frame_.scene, frame_format_), material,
                                           frame_.scene->method == RenderMethod::ForwardPlus),
@@ -1436,10 +1438,11 @@ public:
                                .material = material,
                                .layers = layers,
                                .shadows = shadows,
-                               .previous = previous.value_or(transform)});
+                               .previous = previous.value_or(transform),
+                               .lod = lod});
         mesh_batches_.push_back(batch);
         ++stats_.draws;
-        stats_.triangles += it->second.index_count / 3;
+        stats_.triangles += batch.range.count / 3;
         return {};
     }
 
@@ -1931,7 +1934,8 @@ private:
     struct Mesh {
         WGPUBuffer vertices = nullptr;
         WGPUBuffer indices = nullptr;
-        std::uint32_t index_count = 0;
+        // Its own triangles' indices, then each LOD's.
+        std::vector<IndexRange> ranges{}; // NOLINT(readability-redundant-member-init)
         std::size_t vertex_count = 0;
         Bounds bounds;
         WGPUBuffer previous = nullptr;
@@ -1942,7 +1946,7 @@ private:
     struct MeshBatch {
         WGPUBuffer vertices = nullptr;
         WGPUBuffer indices = nullptr;
-        std::uint32_t index_count = 0;
+        IndexRange range; // the triangles it draws: the mesh's own or a LOD's
         Bounds bounds;
         WGPURenderPipeline pipeline = nullptr;
         // The prepass's, for an opaque mesh in a frame with SSAO, SSR or TAA.
@@ -3526,7 +3530,8 @@ private:
                                                          WGPU_WHOLE_SIZE);
                     wgpuRenderPassEncoderSetIndexBuffer(render, batch.indices,
                                                         WGPUIndexFormat_Uint32, 0, WGPU_WHOLE_SIZE);
-                    wgpuRenderPassEncoderDrawIndexed(render, batch.index_count, 1, 0, 0, 0);
+                    wgpuRenderPassEncoderDrawIndexed(render, batch.range.count, 1,
+                                                     batch.range.first, 0, 0);
                 }
             }
             wgpuRenderPassEncoderEnd(render);
@@ -3912,7 +3917,7 @@ private:
             }
             wgpuRenderPassEncoderSetIndexBuffer(pass, batch.indices, WGPUIndexFormat_Uint32, 0,
                                                 WGPU_WHOLE_SIZE);
-            wgpuRenderPassEncoderDrawIndexed(pass, batch.index_count, 1, 0, 0, 0);
+            wgpuRenderPassEncoderDrawIndexed(pass, batch.range.count, 1, batch.range.first, 0, 0);
         }
     }
 

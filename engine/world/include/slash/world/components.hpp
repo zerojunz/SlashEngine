@@ -71,10 +71,14 @@ struct MeshInstance3D {
     // gi_lightmap_texel_scale scales its lightmap's texels across.
     std::string gi_mode = "static";
     float gi_lightmap_texel_scale = 1.0F;
+    // Times its size when picking a coarser LOD of a model's surfaces, as Godot's
+    // GeometryInstance3D.lod_bias: above 1 keeps detail further away, below 1 drops it sooner.
+    float lod_bias = 1.0F;
 
     friend bool operator==(const MeshInstance3D&, const MeshInstance3D&) = default;
 };
-SLASH_COMPONENT(MeshInstance3D, mesh, layers, cast_shadow, gi_mode, gi_lightmap_texel_scale)
+SLASH_COMPONENT(MeshInstance3D, mesh, layers, cast_shadow, gi_mode, gi_lightmap_texel_scale,
+                lod_bias)
 
 // Poses the skeleton of the model the entity's MeshInstance3D draws by hand, as Godot's Skeleton3D
 // bone poses: each bone, or other node of the model, named in these maps takes the position, the

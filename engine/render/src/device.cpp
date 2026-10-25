@@ -579,13 +579,18 @@ public:
     }
 
     Result<MeshId> create_mesh(std::span<const Vertex3D> vertices,
-                               std::span<const std::uint32_t> indices) override {
-        if (auto checked = detail::check_mesh(vertices, indices); !checked) {
+                               std::span<const std::uint32_t> indices,
+                               std::span<const std::span<const std::uint32_t>> lods) override {
+        if (auto checked = detail::check_mesh(vertices, indices, lods); !checked) {
             return checked.error();
         }
         const auto id = static_cast<MeshId>(next_mesh_++);
-        meshes_[id] = {.vertices = vertices.size(),
-                       .triangles = (indices.empty() ? vertices.size() : indices.size()) / 3};
+        Counts& counts = meshes_[id];
+        counts.vertices = vertices.size();
+        counts.triangles = {(indices.empty() ? vertices.size() : indices.size()) / 3};
+        for (const std::span<const std::uint32_t> lod : lods) {
+            counts.triangles.push_back(lod.size() / 3);
+        }
         return id;
     }
 
@@ -704,7 +709,7 @@ public:
 
     Result<void> draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
                            std::uint32_t /*layers*/, ShadowCasting /*shadows*/,
-                           const std::optional<Mat4>& previous) override {
+                           const std::optional<Mat4>& previous, std::uint32_t lod) override {
         if (!in_frame_) {
             return detail::no_frame("draw_mesh");
         }
@@ -718,9 +723,12 @@ public:
         if (auto checked = detail::check_previous_transform(previous); !checked) {
             return checked;
         }
+        if (auto checked = detail::check_lod(lod, it->second.triangles.size() - 1); !checked) {
+            return checked;
+        }
         // Each mesh is a draw of its own, as on the GPU device.
         ++stats_.draws;
-        stats_.triangles += it->second.triangles;
+        stats_.triangles += it->second.triangles[lod];
         return {};
     }
 
@@ -810,7 +818,7 @@ private:
     std::uint32_t next_particles_ = 1;
     struct Counts {
         std::size_t vertices = 0;
-        std::size_t triangles = 0;
+        std::vector<std::size_t> triangles; // the mesh's, then each LOD's
     };
     std::unordered_map<MeshId, Counts> meshes_;
     std::uint32_t next_mesh_ = 1;

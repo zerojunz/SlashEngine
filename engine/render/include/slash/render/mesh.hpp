@@ -58,6 +58,11 @@ struct Vertex3D {
 // The most corners and indices a mesh may have.
 inline constexpr std::uint32_t kMaxMeshVertices = 1U << 24U;
 inline constexpr std::uint32_t kMaxMeshIndices = 1U << 26U;
+// Reads project.json's rendering object's mesh_lod.lod_change.threshold_pixels, as Godot's
+// rendering/mesh_lod/lod_change/threshold_pixels: how many pixels a coarser LOD of a mesh may be
+// off by where it is drawn; 0 draws every mesh in full. What is missing or not a number at or
+// above 0 keeps the default, 1.
+[[nodiscard]] float mesh_lod_threshold(const json::Value& rendering);
 // The most lights a frame's scene may have, Godot's Forward+ limits: directional lights
 // (MAX_DIRECTIONAL_LIGHTS), and omni and spot lights (rendering/limits/cluster_builder/
 // max_clustered_elements).

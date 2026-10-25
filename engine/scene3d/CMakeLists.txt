@@ -20,6 +20,14 @@ target_include_directories(slash_xatlas SYSTEM PUBLIC ${xatlas_SOURCE_DIR}/sourc
 target_link_libraries(slash_xatlas PRIVATE slash::core)
 target_compile_options(slash_xatlas PRIVATE "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w;-ffp-contract=off>")
 
+# Mesh LODs (src/lod.cpp) are simplified with meshoptimizer's simplifier, as Godot's importer
+# generates them, with no fused multiply-adds so they are the same on every platform.
+add_library(slash_meshoptimizer STATIC ${meshoptimizer_SOURCE_DIR}/src/allocator.cpp
+    ${meshoptimizer_SOURCE_DIR}/src/simplifier.cpp)
+target_include_directories(slash_meshoptimizer SYSTEM PUBLIC ${meshoptimizer_SOURCE_DIR}/src)
+target_compile_options(slash_meshoptimizer PRIVATE
+    "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w;-ffp-contract=off>")
+
 add_library(slash_scene3d
     src/blend.cpp
     src/bone_attachment.cpp
@@ -31,6 +39,7 @@ add_library(slash_scene3d
     src/lightmap.cpp
     src/lightmap_probes.cpp
     src/lightmapper.cpp
+    src/lod.cpp
     src/model.cpp
     src/model_tools.cpp
     src/obj.cpp
@@ -45,7 +54,7 @@ add_library(slash::scene3d ALIAS slash_scene3d)
 target_include_directories(slash_scene3d PUBLIC include)
 # CSG shapes (src/csg.cpp) combine on Manifold, built in cmake/Dependencies.cmake.
 target_link_libraries(slash_scene3d PUBLIC slash::asset slash::core slash::render slash::world
-    PRIVATE slash::platform slash_cgltf slash_manifold slash_ufbx slash_xatlas)
+    PRIVATE slash::platform slash_cgltf slash_manifold slash_meshoptimizer slash_ufbx slash_xatlas)
 slash_engine_target(slash_scene3d)
 # Meshes and cameras are the same bits on every platform: no fused multiply-adds, which arm64
 # compilers would otherwise emit and x86-64 ones not.

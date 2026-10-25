@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -64,6 +65,15 @@ struct VertexWeights {
     friend bool operator==(const VertexWeights&, const VertexWeights&) = default;
 };
 
+// A coarser copy of a surface's triangles over the same vertices, as a surface LOD of Godot's
+// ArrayMesh: drawn in its place once distance (in the model's units: how far, at most, its
+// surface strays from the full one) times the mesh's scale covers less than the project's
+// rendering.mesh_lod threshold of pixels where the camera sees it.
+struct SurfaceLod {
+    float distance = 0.0F;
+    std::vector<std::uint32_t> indices;
+};
+
 // One part of a mesh drawn with one material, as a glTF primitive or an OBJ material's faces
 // become a surface of Godot's ArrayMesh: triangles only, with Godot's clockwise front faces.
 struct ModelSurface {
@@ -72,6 +82,8 @@ struct ModelSurface {
     int material = -1; // into Model::materials, or -1 for Godot's default material
     // One per vertex for a surface a skin deforms; empty for one that doesn't.
     std::vector<VertexWeights> weights;
+    // Its LODs, finest first (generate_lods).
+    std::vector<SurfaceLod> lods{}; // NOLINT(readability-redundant-member-init)
 };
 
 struct ModelMesh {
@@ -156,6 +168,24 @@ struct Model {
     std::vector<ModelSkin> skins;
     std::vector<ModelAnimation> animations;
 };
+
+// Makes a surface's LODs, as Godot's importer does for every model it imports
+// (ImporterMesh::generate_lods): corners at one position that agree on their normals (within
+// normal_merge_angle degrees), texture coordinates, tangent sign and colors merge, then
+// meshoptimizer's simplifier halves the triangles again and again, weighing normals and colors,
+// until it can't or a LOD would stray by more than the mesh's size. A skinned surface is
+// simplified as bones place it (each its joint's rest transform times its inverse bind, as
+// joint_transforms gives them). load_model makes them for every surface.
+void generate_lods(ModelSurface& surface, std::span<const world::Affine3D> bones = {},
+                   float normal_merge_angle = 20.0F);
+
+// The LOD to draw, as Godot's renderers pick it (MeshStorage::mesh_surface_get_lod): 0 for the
+// full surface, else 1 + the index of the coarsest of lods (finest first) whose distance times
+// model_scale, over distance, is at most threshold. model_scale is the mesh's largest scale times
+// its lod_bias, distance how far the camera is from its box times the projection's
+// lod_multiplier, and threshold the project's pixels over the viewport's width.
+[[nodiscard]] std::uint32_t pick_lod(std::span<const SurfaceLod> lods, float model_scale,
+                                     float distance, float threshold);
 
 // Whether a path names a model file: ".gltf", ".glb", ".obj", ".fbx" or ".blend".
 [[nodiscard]] bool is_model_path(std::string_view path);

@@ -308,7 +308,8 @@ struct MeshDraw {
     Material3D material;
     std::uint32_t layers = 1;
     ShadowCasting shadows = ShadowCasting::On;
-    Mat4 previous{}; // transform in the frame before, for TAA's motion vectors
+    Mat4 previous{};       // transform in the frame before, for TAA's motion vectors
+    std::uint32_t lod = 0; // the mesh's own triangles, or one of its LODs'
 };
 
 // Each light's shadow slot, as MeshLightUniforms::shadow holds it: drawn lights (lights_drawn)
@@ -373,9 +374,23 @@ mesh_draw_order(std::span<const MeshDraw> draws, const Scene3D& scene, const Bou
 [[nodiscard]] float mesh_draw_depth(const MeshDraw& draw, const Bounds& bounds,
                                     const Scene3D& scene);
 
-// The checks every device makes on a mesh's vertices and indices.
+// The checks every device makes on a mesh's vertices, indices and LODs.
 [[nodiscard]] Result<void> check_mesh(std::span<const Vertex3D> vertices,
-                                      std::span<const std::uint32_t> indices);
+                                      std::span<const std::uint32_t> indices,
+                                      std::span<const std::span<const std::uint32_t>> lods = {});
+// Where a mesh's triangles, or one of its LODs', are in its index buffer.
+struct IndexRange {
+    std::uint32_t first = 0;
+    std::uint32_t count = 0;
+};
+// A mesh's index buffer: its indices (0, 1, 2 and on for a mesh without them), then each LOD's;
+// ranges gets where each starts, the mesh's first.
+[[nodiscard]] std::vector<std::uint32_t>
+mesh_index_buffer(std::size_t vertex_count, std::span<const std::uint32_t> indices,
+                  std::span<const std::span<const std::uint32_t>> lods,
+                  std::vector<IndexRange>& ranges);
+// Fails unless lod names a mesh's own triangles (0) or one of its lod_count LODs.
+[[nodiscard]] Result<void> check_lod(std::uint32_t lod, std::size_t lod_count);
 // The checks every device makes on new vertices for a mesh of count vertices (update_mesh).
 [[nodiscard]] Result<void> check_mesh_update(std::span<const Vertex3D> vertices, std::size_t count);
 // That a scene's numbers are usable and it has at most kMaxDirectionalLights3D directional lights

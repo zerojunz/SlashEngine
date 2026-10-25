@@ -799,20 +799,16 @@ public:
     }
 
     Result<MeshId> create_mesh(std::span<const Vertex3D> vertices,
-                               std::span<const std::uint32_t> indices) override {
-        if (auto checked = check_mesh(vertices, indices); !checked) {
+                               std::span<const std::uint32_t> indices,
+                               std::span<const std::span<const std::uint32_t>> lods) override {
+        if (auto checked = check_mesh(vertices, indices, lods); !checked) {
             return checked.error();
         }
-        std::vector<std::uint32_t> implicit;
-        if (indices.empty()) {
-            implicit.resize(vertices.size());
-            std::iota(implicit.begin(), implicit.end(), 0U);
-            indices = implicit;
-        }
+        GlMesh mesh{.vertex_count = vertices.size(), .bounds = mesh_bounds(vertices)};
+        const std::vector<std::uint32_t> all =
+            mesh_index_buffer(vertices.size(), indices, lods, mesh.ranges);
+        indices = all;
         make_current();
-        GlMesh mesh{.index_count = static_cast<GLsizei>(indices.size()),
-                    .vertex_count = vertices.size(),
-                    .bounds = mesh_bounds(vertices)};
         gl_.gen_vertex_arrays(1, &mesh.vertex_array);
         gl_.gen_buffers(1, &mesh.vertices);
         gl_.gen_buffers(1, &mesh.indices);
@@ -887,7 +883,7 @@ public:
 
     Result<void> draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
                            std::uint32_t layers, ShadowCasting shadows,
-                           const std::optional<Mat4>& previous) override {
+                           const std::optional<Mat4>& previous, std::uint32_t lod) override {
         if (!in_frame_) {
             return no_frame("draw_mesh");
         }
@@ -899,6 +895,9 @@ public:
             return checked;
         }
         if (auto checked = check_previous_transform(previous); !checked) {
+            return checked;
+        }
+        if (auto checked = check_lod(lod, it->second.ranges.size() - 1); !checked) {
             return checked;
         }
         if (frame_width_ == 0 || !frame_.scene) {
@@ -918,7 +917,10 @@ public:
         if (auto ready = prepare_radiance(*frame_.scene); !ready) {
             return ready;
         }
-        MeshBatch batch{.mesh = it->second, .units = {}};
+        MeshBatch batch{.vertex_array = it->second.vertex_array,
+                        .bounds = it->second.bounds,
+                        .range = it->second.ranges[lod],
+                        .units = {}};
         const std::array<MaterialTexture, kMeshTextures> slots = mesh_texture_slots(material);
         for (std::size_t slot = 0; slot < kMeshTextures; ++slot) {
             batch.units.at(slot) = binding(slots.at(slot).texture, slots.at(slot).repeat);
@@ -928,10 +930,11 @@ public:
                                .material = material,
                                .layers = layers,
                                .shadows = shadows,
-                               .previous = previous.value_or(transform)});
+                               .previous = previous.value_or(transform),
+                               .lod = lod});
         mesh_batches_.push_back(batch);
         ++stats_.draws;
-        stats_.triangles += static_cast<std::uint64_t>(it->second.index_count / 3);
+        stats_.triangles += std::uint64_t{batch.range.count / 3};
         return {};
     }
 
@@ -1305,9 +1308,10 @@ private:
         GLuint vertex_array = 0;
         GLuint vertices = 0;
         GLuint indices = 0;
-        GLsizei index_count = 0;
         std::size_t vertex_count = 0;
         Bounds bounds;
+        // Its own triangles' indices, then each LOD's.
+        std::vector<IndexRange> ranges{}; // NOLINT(readability-redundant-member-init)
     };
 
     // A shadow atlas: a depth texture the shadow passes draw into and the mesh pass samples.
@@ -1318,9 +1322,17 @@ private:
 
     // What a mesh draw binds, found when it is made: its mesh may be destroyed before end_frame.
     struct MeshBatch {
-        GlMesh mesh;
+        GLuint vertex_array = 0;
+        Bounds bounds;
+        IndexRange range; // the triangles it draws: the mesh's own or a LOD's
         std::array<Unit, kMeshTextures> units{};
     };
+
+    // Draws a batch's triangles, its vertex array bound.
+    void draw_triangles(const MeshBatch& batch) const {
+        gl_.draw_elements(gl::kTriangles, static_cast<GLsizei>(batch.range.count), gl::kUnsignedInt,
+                          offset(std::size_t{batch.range.first} * sizeof(std::uint32_t)));
+    }
 
     static std::size_t sampler_index(Filter filter, bool repeat) {
         return (static_cast<std::size_t>(filter) * 2) + (repeat ? 1 : 0);
@@ -1888,7 +1900,7 @@ private:
                 for (std::size_t i = 0; i < mesh_draws_.size(); ++i) {
                     const MeshDraw& draw = mesh_draws_[i];
                     const MeshBatch& batch = mesh_batches_[i];
-                    if (!shadow_pass_draws(pass, draw, batch.mesh.bounds)) {
+                    if (!shadow_pass_draws(pass, draw, batch.bounds)) {
                         continue;
                     }
                     set_cull(shadow_cull(pass, draw));
@@ -1901,9 +1913,8 @@ private:
                     gl_.active_texture(gl::kTexture0);
                     gl_.bind_texture(gl::kTexture2D, batch.units[0].texture);
                     gl_.bind_sampler(0, batch.units[0].sampler);
-                    gl_.bind_vertex_array(batch.mesh.vertex_array);
-                    gl_.draw_elements(gl::kTriangles, batch.mesh.index_count, gl::kUnsignedInt,
-                                      nullptr);
+                    gl_.bind_vertex_array(batch.vertex_array);
+                    draw_triangles(batch);
                 }
             }
         }
@@ -1934,7 +1945,7 @@ private:
         const std::size_t scene_at = place_uniforms(lights.get(), sizeof(MeshSceneUniforms));
         const std::vector<std::size_t> order =
             mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), scene,
-                            [&](std::size_t at) { return mesh_batches_[at].mesh.bounds; });
+                            [&](std::size_t at) { return mesh_batches_[at].bounds; });
         const std::size_t shadows_at =
             place_uniforms(plan.uniforms.get(), sizeof(MeshShadowUniforms));
         std::vector<std::size_t> pass_uniforms;
@@ -2014,8 +2025,8 @@ private:
                 gl_.bind_texture(gl::kTexture2D, batch.units.at(unit).texture);
                 gl_.bind_sampler(static_cast<GLuint>(unit), batch.units.at(unit).sampler);
             }
-            gl_.bind_vertex_array(batch.mesh.vertex_array);
-            gl_.draw_elements(gl::kTriangles, batch.mesh.index_count, gl::kUnsignedInt, nullptr);
+            gl_.bind_vertex_array(batch.vertex_array);
+            draw_triangles(batch);
         }
         // Back to the 2D state the rest of the device draws with.
         for (std::size_t atlas = 0; atlas < 2; ++atlas) {

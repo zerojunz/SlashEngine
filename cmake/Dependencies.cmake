@@ -256,6 +256,10 @@ slash_add_dependency(ufbx DOWNLOAD_ONLY TRUE)
 # (engine/scene3d builds it through src/xatlas_build.cpp, which makes its charts the same
 # everywhere).
 slash_add_dependency(xatlas DOWNLOAD_ONLY TRUE)
+# Mesh LODs, simplified with meshoptimizer 1.0 as Godot 4.6's importer generates them
+# (engine/scene3d builds its simplifier with no fused multiply-adds, so LODs are the same
+# everywhere).
+slash_add_dependency(meshoptimizer DOWNLOAD_ONLY TRUE)
 
 # Baking navigation meshes, as Godot does (engine/navigation): Recast voxelizes 3D geometry into
 # polygons, and Clipper2 and PolyPartition merge, cut and split 2D outlines. No fused multiply-adds,

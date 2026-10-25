@@ -320,6 +320,27 @@ json::Value anti_aliasing_schema() {
     return out;
 }
 
+// rendering.mesh_lod, as Godot's rendering/mesh_lod settings.
+json::Value mesh_lod_schema() {
+    json::Value threshold;
+    threshold["type"] = "number";
+    threshold["minimum"] = 0;
+    threshold["default"] = 1;
+    threshold["description"] =
+        "How many pixels a coarser LOD of a model's surface may be off by where it is drawn: "
+        "higher draws coarser LODs nearer. 0 draws every mesh in full.";
+    json::Value lod_change;
+    lod_change["type"] = "object";
+    lod_change["additionalProperties"] = false;
+    lod_change["properties"]["threshold_pixels"] = std::move(threshold);
+    json::Value out;
+    out["type"] = "object";
+    out["additionalProperties"] = false;
+    out["description"] = "Mesh LODs, as Godot's rendering/mesh_lod settings.";
+    out["properties"]["lod_change"] = std::move(lod_change);
+    return out;
+}
+
 // rendering.lights_and_shadows, as Godot's rendering/lights_and_shadows settings.
 json::Value lights_and_shadows_schema() {
     const render::ShadowSettings defaults;
@@ -498,6 +519,7 @@ json::Value project_schema() {
     rendering["properties"]["reflections"] = reflections_schema();
     rendering["properties"]["global_illumination"] = global_illumination_schema();
     rendering["properties"]["anti_aliasing"] = anti_aliasing_schema();
+    rendering["properties"]["mesh_lod"] = mesh_lod_schema();
     json::Value compress_mode;
     compress_mode["enum"] = json::Array{"lossless", "vram_compressed", "vram_uncompressed"};
     compress_mode["description"] =
@@ -853,6 +875,7 @@ Result<Project> parse_project(const json::Value& project) {
         out.voxel_gi_high_quality = render::voxel_gi_high_quality(*rendering);
         out.use_taa = render::use_taa(*rendering);
         out.decal_filter = render::decal_filter(*rendering);
+        out.mesh_lod_threshold = render::mesh_lod_threshold(*rendering);
         if (const json::Value* textures = rendering->find("textures"); textures != nullptr) {
             if (const json::Value* mode = textures->find("compress_mode"); mode != nullptr) {
                 out.texture_import.compress_mode = mode->as_string();
