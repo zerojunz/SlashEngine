@@ -922,6 +922,20 @@ gives each tile a decal section after its lights'; and `apply_decals` is the CPU
 at `kMaxDecalAtlasTexels` (2^25, WebGPU's 128 MiB storage binding); `add_decals` drops and reports
 those past it. Compatibility draws none. `examples/decals-3d` paints a street.
 
+Volumetric fog is Godot 4.6's Forward+ `volumetric_fog_*` (`render::VolumetricFog3D`,
+`Scene3D::volumetric_fog`, from `WorldEnvironment`; the volume's size from project.json's
+`rendering.environment.volumetric_fog`). `src/volumetric_fog.hpp` holds what devices share: the
+froxel volume's size as Godot's `_update_volumetric_fog` (`fog_volume_size`), the uniforms and
+the CPU twins of `shaders/volumetric_fog.hlsl`'s compute passes (`run_volumetric_fog`: each
+froxel's density and light from the lights, their shadows, the clusters and the sky's radiance,
+blended with the frame before's reprojected; the blur across and down with `use_filter`; the
+gathering along each column by Beer's law). The volume is a storage buffer of a float4 a froxel
+rather than Godot's 3D textures, since the mesh shader's samplers are taken: `mesh.hlsl` reads it
+and filters it itself (`sample_fog_volume`), and `volumetric_fog_sky.hlsl` draws the sky through
+its last slice by `sky_affect` (`fog_sky`). Each target keeps its density for the next frame
+(`FogClock`); probe captures and frames without meshes have none, and Compatibility draws none.
+A change to the fog math goes in both. `examples/volumetric-fog-3d` lights a misty courtyard.
+
 Compatibility's post-processing: without glow or adjustments, `mesh.hlsl` tonemaps as it draws.
 With either, each device draws the meshes into an RGBA8 texture at `end_frame` and runs
 `shaders/post.hlsl`'s passes: glow's filter, three downsamples and three upsamples through four

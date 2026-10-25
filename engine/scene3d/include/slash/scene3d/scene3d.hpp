@@ -77,6 +77,7 @@ struct Environment {
     render::Fog3D fog;
     render::Ssao3D ssao; // with the default settings, which the project's replace
     render::Ssr3D ssr;   // the same
+    render::VolumetricFog3D volumetric_fog;         // the same
     std::array<float, 3> ambient{0.0F, 0.0F, 0.0F}; // sRGB
     float ambient_energy = 1.0F;
     render::PostProcess post;     // with no color correction texture made yet
@@ -229,7 +230,8 @@ public:
     // voxel_gi_high_quality is set. With use_taa, the frame is antialiased over time, as Godot's
     // use_taa, its meshes given the transforms they were drawn at in the last frame; so it is with
     // fsr2, which draws its 3D smaller and upscales it with FSR 2 (render::uses_fsr2 says when).
-    // Its Decals' textures are sampled with decal_filter.
+    // Its Decals' textures are sampled with decal_filter, and its volumetric fog's froxels are as
+    // volumetric_fog says.
     [[nodiscard]] std::optional<Frame3D>
     prepare(const world::World& world, float width, float height, double interpolation,
             render::Color clear, const render::ShadowSettings& shadows = {}, double time = 0.0,
@@ -239,7 +241,8 @@ public:
             render::RenderMethod method = render::RenderMethod::ForwardPlus,
             bool voxel_gi_high_quality = false, bool use_taa = false,
             std::optional<render::Fsr2Scaling> fsr2 = std::nullopt,
-            render::DecalFilter decal_filter = render::DecalFilter::LinearMipmaps);
+            render::DecalFilter decal_filter = render::DecalFilter::LinearMipmaps,
+            const render::VolumetricFogSettings& volumetric_fog = {});
     // Draws the meshes prepare found into the frame begun with its scene.
     [[nodiscard]] Result<void> draw();
 

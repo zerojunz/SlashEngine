@@ -109,6 +109,8 @@ struct Project {
     // Screen-space reflections' resolution, as Godot's
     // rendering/environment/screen_space_reflection.
     render::SsrSettings ssr{};
+    // Volumetric fog's froxels, as Godot's rendering/environment/volumetric_fog.
+    render::VolumetricFogSettings volumetric_fog{};
     // Reflection probes' cubes, as Godot's rendering/reflections/reflection_atlas.
     render::ReflectionAtlasSettings reflection_atlas{};
     // How exports ship textures.

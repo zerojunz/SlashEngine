@@ -17,6 +17,7 @@
 #include "ssao.hpp"
 #include "ssr.hpp"
 #include "taa.hpp"
+#include "volumetric_fog.hpp"
 
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
@@ -198,6 +199,12 @@ struct Fsr2State {
     std::array<std::uint32_t, 4> sizes{}; // the render size, then the display size
 };
 
+// A target's volumetric fog: its clock and the last frame's density, which the next reprojects.
+struct FogState {
+    detail::FogClock clock;
+    std::vector<Float4> density;
+};
+
 // A frame's camera with FSR 2, for draw_meshes: its jitter, the camera the frame before was seen
 // from without its jitter, and where the prepass's motion vectors go.
 struct Fsr2Camera {
@@ -337,6 +344,7 @@ public:
         forget_ssr_history(texture);
         forget_taa_history(texture);
         std::erase_if(fsr2_states_, [&](const auto& entry) { return entry.first == texture; });
+        std::erase_if(fog_states_, [&](const auto& entry) { return entry.first == texture; });
     }
 
     Result<ShaderId> create_shader(const CompiledShader& shader) override {
@@ -544,6 +552,10 @@ public:
         }
         if (!frame.scene || !detail::uses_fsr2(*frame.scene)) {
             std::erase_if(fsr2_states_,
+                          [&](const auto& entry) { return entry.first == frame.target; });
+        }
+        if (!frame.scene || !detail::uses_volumetric_fog(*frame.scene)) {
+            std::erase_if(fog_states_,
                           [&](const auto& entry) { return entry.first == frame.target; });
         }
         frame_ = frame;
@@ -1612,7 +1624,8 @@ private:
                               .ao_width = 0,
                               .probes = {},
                               .probe_cubes = nullptr,
-                              .decal_atlas = clustered ? &decal_atlas : nullptr};
+                              .decal_atlas = clustered ? &decal_atlas : nullptr,
+                              .fog = {}};
 
         std::vector<float> depth(std::size_t{target.width()} * target.height(), 0.0F);
         // TAA's frame: the next jitter, from the camera the target's frame before was seen from
@@ -1634,6 +1647,42 @@ private:
             std::make_unique<detail::MeshSceneUniforms>(detail::mesh_scene_uniforms(scene));
         if (clustered) {
             detail::set_cluster_uniforms(*lights, clusters, &decal_atlas, scene.decals.filter);
+        }
+        // Volumetric fog's passes, then the sky (drawn already) seen through it.
+        detail::FogVolume fog;
+        if (clustered && detail::uses_volumetric_fog(scene)) {
+            FogState& state = fog_state(frame_.target);
+            const detail::FogUniforms uniforms = detail::volumetric_fog_uniforms(
+                scene, *lights, target.width(), target.height(), state.clock);
+            const std::array<std::uint32_t, 3> size{uniforms.size[0], uniforms.size[1],
+                                                    uniforms.size[2]};
+            fog =
+                detail::run_volumetric_fog(uniforms,
+                                           {.shadows = plan.uniforms.get(),
+                                            .directional = maps.directional,
+                                            .positional = maps.positional,
+                                            .radiance = maps.radiance,
+                                            .clusters = &clusters},
+                                           state.density, scene.volumetric_fog.settings.use_filter);
+            state.density = fog.density;
+            detail::set_volumetric_fog(*lights, scene, size);
+            maps.fog = fog.fog;
+            if (detail::sky_draws(scene)) {
+                const auto w = static_cast<float>(target.width());
+                const auto h = static_cast<float>(target.height());
+                for (std::uint32_t y = 0; y < target.height(); ++y) {
+                    for (std::uint32_t x = 0; x < target.width(); ++x) {
+                        const std::size_t at = (std::size_t{y} * target.width()) + x;
+                        const Float4 sky = target.load(at);
+                        const detail::Float3 seen =
+                            detail::fog_sky(fog.fog, size, lights->volumetric_fog,
+                                            {(static_cast<float>(x) + 0.5F) / w,
+                                             (static_cast<float>(y) + 0.5F) / h},
+                                            {sky[0], sky[1], sky[2]});
+                        target.store(at, {seen[0], seen[1], seen[2], sky[3]});
+                    }
+                }
+            }
         }
         // Forward+'s reflection probes, read from their atlas's cubes.
         const std::vector<detail::MeshProbeUniforms> probes =
@@ -1825,6 +1874,16 @@ private:
             }
         }
         return taa_histories_.emplace_back(target, TaaHistory{}).second;
+    }
+
+    // target's volumetric fog, made empty when it has none.
+    FogState& fog_state(TextureId target) {
+        for (auto& [id, state] : fog_states_) {
+            if (id == target) {
+                return state;
+            }
+        }
+        return fog_states_.emplace_back(target, FogState{}).second;
     }
 
     void forget_taa_history(TextureId target) {
@@ -2210,6 +2269,7 @@ private:
     std::vector<std::pair<TextureId, SsrHistory>> ssr_histories_;
     std::vector<std::pair<TextureId, TaaHistory>> taa_histories_;
     std::vector<std::pair<TextureId, Fsr2State>> fsr2_states_;
+    std::vector<std::pair<TextureId, FogState>> fog_states_;
     std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> shaders_;
     std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> retired_shaders_;
     std::uint32_t next_shader_ = 1;

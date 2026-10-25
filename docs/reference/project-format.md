@@ -43,6 +43,7 @@ checks it.
 | `rendering.camera.depth_of_field` | No | `hexagon`, `low`, no jitter | The bokeh shape and quality of 3D [depth of field](scene-format.md#cameraattributespractical): see [Depth of field](#depth-of-field) |
 | `rendering.environment.ssao` | No | `medium`, half size, 2 blur passes | The quality and cost of 3D [ambient occlusion](scene-format.md#ambient-occlusion): see [SSAO](#ssao) |
 | `rendering.environment.screen_space_reflection` | No | half size | The resolution of 3D [screen-space reflections](scene-format.md#screen-space-reflections): see [Screen-space reflections](#screen-space-reflections) |
+| `rendering.environment.volumetric_fog` | No | 64 x 64 x 64, filtered | The froxels of 3D [volumetric fog](scene-format.md#volumetric-fog): see [Volumetric fog](#volumetric-fog) |
 | `rendering.reflections.reflection_atlas` | No | 256 texels, 64 probes | The size of 3D [reflection probes'](scene-format.md#reflection-probes) cubes and how many a frame draws: see [Reflection probes](#reflection-probes) |
 | `rendering.global_illumination.voxel_gi.quality` | No | `low` | How many cones meshes trace through [VoxelGIs](scene-format.md#voxelgi): see [VoxelGI](#voxelgi) |
 | `rendering.textures` | No | `lossless`, `linear_mipmaps` | How exports ship textures: as their files, or compressed for each platform's GPUs, and how [decals](scene-format.md#decals) sample theirs: see [Texture forms](#texture-forms) |
@@ -232,6 +233,22 @@ atlas into quadrants of different tile sizes; here every tile is the same size.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `half_size` | `true` | Traces at half the frame's resolution in each direction, then resolves the reflections to its size along its depths and normals: faster, and softer at edges |
+
+## Volumetric fog
+
+`rendering.environment.volumetric_fog` says how finely a `WorldEnvironment`'s
+[volumetric fog](scene-format.md#volumetric-fog) is worked out, as Godot's
+`rendering/environment/volumetric_fog` settings.
+
+```json
+"rendering": {"environment": {"volumetric_fog": {"volume_size": 96, "volume_depth": 128}}}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `volume_size` | `64` | Froxels across and down for a square frame, from 16 to 512; a wider frame takes more across and fewer down, as Godot's |
+| `volume_depth` | `64` | Froxels from the camera to the fog's length, from 16 to 512 |
+| `use_filter` | `true` | Blurs the fog across and down before it is gathered, which smooths it |
 
 ## Reflection probes
 

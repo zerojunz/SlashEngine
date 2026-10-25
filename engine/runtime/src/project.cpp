@@ -224,6 +224,31 @@ json::Value environment_schema() {
     ssr["description"] = "Screen-space reflections, for every WorldEnvironment with ssr_enabled.";
     ssr["properties"]["half_size"] = std::move(ssr_half_size);
     out["properties"]["screen_space_reflection"] = std::move(ssr);
+    const render::VolumetricFogSettings fog_defaults;
+    const auto froxels = [](std::uint32_t value, std::string_view description) {
+        json::Value size;
+        size["type"] = "integer";
+        size["minimum"] = 16;
+        size["maximum"] = 512;
+        size["default"] = static_cast<std::int64_t>(value);
+        size["description"] = std::string(description);
+        return size;
+    };
+    json::Value use_filter;
+    use_filter["type"] = "boolean";
+    use_filter["default"] = fog_defaults.use_filter;
+    use_filter["description"] = "Blurs the fog across and down, smoothing it.";
+    json::Value fog;
+    fog["type"] = "object";
+    fog["additionalProperties"] = false;
+    fog["description"] =
+        "Forward+'s volumetric fog, for every WorldEnvironment with volumetric_fog_enabled.";
+    fog["properties"]["volume_size"] =
+        froxels(fog_defaults.volume_size, "Froxels across and down, for a square frame.");
+    fog["properties"]["volume_depth"] =
+        froxels(fog_defaults.volume_depth, "Froxels from the camera to the fog's length.");
+    fog["properties"]["use_filter"] = std::move(use_filter);
+    out["properties"]["volumetric_fog"] = std::move(fog);
     return out;
 }
 
@@ -812,6 +837,9 @@ Result<Project> parse_project(const json::Value& project) {
             if (const json::Value* ssr = environment->find("screen_space_reflection");
                 ssr != nullptr) {
                 out.ssr = render::ssr_settings_from_json(*ssr);
+            }
+            if (const json::Value* fog = environment->find("volumetric_fog"); fog != nullptr) {
+                out.volumetric_fog = render::volumetric_fog_settings_from_json(*fog);
             }
         }
         if (const json::Value* reflections = rendering->find("reflections");

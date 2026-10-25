@@ -67,6 +67,7 @@ add_library(slash_render
     src/texture_codec.cpp
     src/uniforms.cpp
     src/upscaler.cpp
+    src/volumetric_fog.cpp
     src/voxel_gi.cpp)
 add_library(slash::render ALIAS slash_render)
 
@@ -100,7 +101,7 @@ endif()
 set_source_files_properties(src/clusters.cpp src/decal.cpp src/device.cpp src/forward_post.cpp
     src/fsr2.cpp src/material.cpp src/mesh.cpp src/particles.cpp src/post.cpp src/resize.cpp
     src/shader_vm.cpp src/shadow.cpp src/reflection.cpp src/sky.cpp src/software_device.cpp
-    src/ssao.cpp src/ssr.cpp src/taa.cpp src/upscaler.cpp src/voxel_gi.cpp
+    src/ssao.cpp src/ssr.cpp src/taa.cpp src/upscaler.cpp src/volumetric_fog.cpp src/voxel_gi.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
@@ -122,7 +123,9 @@ set(slash_shader_headers "")
 # code comes in pieces; ssr_trace is the SSR trace's fragment stage, which draws with ssr's vertex
 # stage. FSR 2's passes (fsr2) share fsr2.hlsl and have no GLSL ES, as the OpenGL devices upscale
 # bilinearly instead; fsr2_storage is its depth clip pass, which reads a storage buffer, and
-# fsr2_compute its reconstruct pass.
+# fsr2_compute its reconstruct pass. Volumetric fog's passes (fog_compute) are a compute shader
+# over the shadow atlases and the sky's radiance, which takes tonemap.hlsl's colors, and fog_sky
+# the pass that draws the sky through the fog, whose fragment stage reads it as a storage buffer.
 set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
     mesh_clustered:MeshClustered:clustered mesh_normal:MeshNormal:normal
     mesh_motion:MeshMotion:motion shadow:Shadow:depth
@@ -132,7 +135,8 @@ set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
     fsr2_reconstruct:Fsr2Reconstruct:fsr2_compute fsr2_depth_clip:Fsr2DepthClip:fsr2_storage
     fsr2_lock:Fsr2Lock:fsr2 fsr2_accumulate:Fsr2Accumulate:fsr2 fsr2_rcas:Fsr2Rcas:fsr2
     particles_process:ParticlesProcess:compute
-    particles_emit:ParticlesEmit:compute particles_draw:ParticlesDraw:compute)
+    particles_emit:ParticlesEmit:compute particles_draw:ParticlesDraw:compute
+    volumetric_fog:VolumetricFog:fog_compute volumetric_fog_sky:VolumetricFogSky:fog_sky)
 foreach(entry IN LISTS slash_shaders)
     string(REPLACE ":" ";" parts ${entry})
     list(GET parts 0 shader)
@@ -152,6 +156,13 @@ foreach(entry IN LISTS slash_shaders)
         if(kind STREQUAL "compute")
             set(compute ON)
             set(include particles)
+        elseif(kind STREQUAL "fog_compute")
+            set(compute ON)
+            set(include tonemap)
+        elseif(kind STREQUAL "fog_sky")
+            set(include tonemap)
+            set(interface v_uv)
+            set(storage_buffers ON)
         elseif(kind MATCHES "^fsr2")
             set(include fsr2)
             set(interface v_uv)

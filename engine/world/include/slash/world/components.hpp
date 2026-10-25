@@ -446,6 +446,7 @@ struct DirectionalLight3D {
     float light_indirect_energy = 1.0F;
     std::string light_bake_mode = "dynamic";
     float shadow_blur = 1.0F;
+    float light_volumetric_fog_energy = 1.0F; // Forward+: how much it lights volumetric fog
 
     friend bool operator==(const DirectionalLight3D&, const DirectionalLight3D&) = default;
 };
@@ -456,7 +457,7 @@ SLASH_COMPONENT(DirectionalLight3D, light_color, light_energy, light_specular, l
                 directional_shadow_split_3, directional_shadow_blend_splits,
                 directional_shadow_fade_start, directional_shadow_max_distance,
                 directional_shadow_pancake_size, light_angular_distance, sky_mode,
-                light_indirect_energy, light_bake_mode, shadow_blur)
+                light_indirect_energy, light_bake_mode, shadow_blur, light_volumetric_fog_energy)
 
 // Light from a point in every direction, as Godot's OmniLight3D, such as a lamp.
 struct OmniLight3D {
@@ -484,13 +485,15 @@ struct OmniLight3D {
     float light_size = 0.0F;
     std::string light_bake_mode = "dynamic";
     float shadow_blur = 1.0F;
+    float light_volumetric_fog_energy = 1.0F; // Forward+: how much it lights volumetric fog
 
     friend bool operator==(const OmniLight3D&, const OmniLight3D&) = default;
 };
 SLASH_COMPONENT(OmniLight3D, light_color, light_energy, light_specular, light_negative,
                 light_cull_mask, omni_range, omni_attenuation, shadow_enabled, shadow_bias,
                 shadow_normal_bias, shadow_reverse_cull_face, shadow_opacity, shadow_caster_mask,
-                light_indirect_energy, light_size, light_bake_mode, shadow_blur)
+                light_indirect_energy, light_size, light_bake_mode, shadow_blur,
+                light_volumetric_fog_energy)
 
 // Light from a point in a cone down its entity's -z, as Godot's SpotLight3D, such as a torch.
 struct SpotLight3D {
@@ -520,6 +523,7 @@ struct SpotLight3D {
     float light_size = 0.0F;
     std::string light_bake_mode = "dynamic";
     float shadow_blur = 1.0F;
+    float light_volumetric_fog_energy = 1.0F; // Forward+: how much it lights volumetric fog
 
     friend bool operator==(const SpotLight3D&, const SpotLight3D&) = default;
 };
@@ -527,7 +531,7 @@ SLASH_COMPONENT(SpotLight3D, light_color, light_energy, light_specular, light_ne
                 light_cull_mask, spot_range, spot_attenuation, spot_angle, spot_angle_attenuation,
                 shadow_enabled, shadow_bias, shadow_normal_bias, shadow_reverse_cull_face,
                 shadow_opacity, shadow_caster_mask, light_indirect_energy, light_size,
-                light_bake_mode, shadow_blur)
+                light_bake_mode, shadow_blur, light_volumetric_fog_energy)
 
 // Godot's ProceduralSkyMaterial, on a WorldEnvironment's entity: a sky from its top through the
 // horizon to the ground's bottom, with each DirectionalLight3D's sun on it. Colors are sRGB;
@@ -721,11 +725,10 @@ SLASH_COMPONENT(Decal, size, texture_albedo, texture_normal, texture_orm, textur
                 distance_fade_enabled, distance_fade_begin, distance_fade_length, cull_mask, layers,
                 sorting_offset)
 
-// The 3D world's background, ambient light, tonemap, reflections, ambient occlusion, glow, fog and
-// adjustments,
-// as Godot's WorldEnvironment and its Environment. The first one made applies;
-// without one the background is the project's clear color, there is no ambient light and colors
-// are left as they are. A "sky" background is the sky material on the same entity: a
+// The 3D world's background, ambient light, tonemap, reflections, ambient occlusion, glow, fog,
+// volumetric fog and adjustments, as Godot's WorldEnvironment and its Environment. The first one
+// made applies; without one the background is the project's clear color, there is no ambient light
+// and colors are left as they are. A "sky" background is the sky material on the same entity: a
 // ProceduralSkyMaterial, PhysicalSkyMaterial or PanoramaSkyMaterial, or Godot's default
 // procedural sky with none. That sky also lights and is reflected in lit surfaces, by
 // ambient_light_source and reflected_light_source, whatever the background.
@@ -784,6 +787,12 @@ struct WorldEnvironment {
     float glow_hdr_scale = 2.0F;
     float glow_hdr_luminance_cap = 12.0F;
     bool fog_enabled = false;
+    // Forward+: volumetric fog, as Godot's, which fills the view up to volumetric_fog_length
+    // meters with fog the lights shine through and the shadows fall in (its fields are below).
+    bool volumetric_fog_enabled = false;
+    // Whether each frame keeps volumetric_fog_temporal_reprojection_amount of the frame before's
+    // fog, to smooth it.
+    bool volumetric_fog_temporal_reprojection_enabled = true;
     std::string fog_mode = "exponential"; // "exponential" or "depth"
     Vec4 fog_light_color{0.518F, 0.553F, 0.608F, 1.0F};
     float fog_light_energy = 1.0F;
@@ -796,6 +805,17 @@ struct WorldEnvironment {
     float fog_depth_curve = 1.0F;
     float fog_depth_begin = 10.0F;
     float fog_depth_end = 100.0F;
+    float volumetric_fog_density = 0.05F;
+    Vec4 volumetric_fog_albedo{1.0F, 1.0F, 1.0F, 1.0F}; // the color it scatters light with
+    Vec4 volumetric_fog_emission{0.0F, 0.0F, 0.0F, 1.0F};
+    float volumetric_fog_emission_energy = 1.0F;
+    // -1 scatters light back toward it, 0 every way and 1 on, as through a haze.
+    float volumetric_fog_anisotropy = 0.2F;
+    float volumetric_fog_length = 64.0F;
+    float volumetric_fog_detail_spread = 2.0F;  // above 1, more detail near the camera
+    float volumetric_fog_ambient_inject = 0.0F; // how much it is lit by the ambient light
+    float volumetric_fog_sky_affect = 1.0F;     // how much it covers the sky
+    float volumetric_fog_temporal_reprojection_amount = 0.9F;
     bool adjustment_enabled = false;
     float adjustment_brightness = 1.0F;
     float adjustment_contrast = 1.0F;
@@ -816,8 +836,14 @@ SLASH_COMPONENT(WorldEnvironment, background_mode, background_color, background_
                 glow_hdr_scale, glow_hdr_luminance_cap, fog_enabled, fog_mode, fog_light_color,
                 fog_light_energy, fog_sun_scatter, fog_density, fog_aerial_perspective,
                 fog_sky_affect, fog_height, fog_height_density, fog_depth_curve, fog_depth_begin,
-                fog_depth_end, adjustment_enabled, adjustment_brightness, adjustment_contrast,
-                adjustment_saturation, adjustment_color_correction)
+                fog_depth_end, volumetric_fog_enabled, volumetric_fog_density,
+                volumetric_fog_albedo, volumetric_fog_emission, volumetric_fog_emission_energy,
+                volumetric_fog_anisotropy, volumetric_fog_length, volumetric_fog_detail_spread,
+                volumetric_fog_ambient_inject, volumetric_fog_sky_affect,
+                volumetric_fog_temporal_reprojection_enabled,
+                volumetric_fog_temporal_reprojection_amount, adjustment_enabled,
+                adjustment_brightness, adjustment_contrast, adjustment_saturation,
+                adjustment_color_correction)
 
 // How the 3D world is exposed and focused, as Godot's CameraAttributesPractical: on a Camera3D's
 // entity for that camera, or on the WorldEnvironment's entity for cameras without their own.
