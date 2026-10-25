@@ -1140,7 +1140,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         world, viewport.x, viewport.y, options.interpolation, options.clear,
         settings(world).shadows, options.time, settings(world).depth_of_field, settings(world).ssao,
         settings(world).ssr, settings(world).reflection_atlas, settings(world).rendering_method,
-        settings(world).voxel_gi_high_quality);
+        settings(world).voxel_gi_high_quality, settings(world).use_taa);
     if (scene) {
         scene->scene.method = settings(world).rendering_method;
     }

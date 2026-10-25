@@ -469,6 +469,8 @@ struct Settings {
     render::ReflectionAtlasSettings reflection_atlas{};
     // rendering.global_illumination.voxel_gi.quality "high": VoxelGIs' narrower cones.
     bool voxel_gi_high_quality = false;
+    // rendering.anti_aliasing.quality.use_taa: temporal antialiasing of the 3D world.
+    bool use_taa = false;
 };
 void set_settings(world::World& world, const Settings& settings);
 // The settings given to the world, or the defaults.
@@ -482,6 +484,9 @@ struct CaptureOptions {
     double time = -1.0;
     // Draw the collision shapes too, as CanvasOptions::collisions.
     bool collisions = false;
+    // How many times to draw the frame, returning the last: temporal antialiasing builds up over
+    // frames, and the captures of a world keep its history between them.
+    std::uint32_t frames = 1;
 };
 
 struct Capture {

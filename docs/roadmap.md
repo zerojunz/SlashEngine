@@ -626,8 +626,11 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
       or FSR 4 with its vendor's SDK, outside the repo, since those ship only as closed binaries
   - [x] Bilinear and FSR 1 on every backend and the software device, the `render::Upscaler`
         interface and `display.set`'s `scaling`, scaling the 2D world under the UI
-  - [ ] FSR 2/3 and MetalFX, and temporal upscalers through `render::Upscaler`, once the 3D
-        renderer makes depth, motion vectors and a jittered camera
+  - [x] Temporal antialiasing, as Godot's `use_taa`: a jittered camera, motion vectors from
+        the Forward+ prepass (transforms, skins and the camera) and Godot's TAA resolve, on
+        every Forward+ device
+  - [ ] FSR 2/3 and MetalFX, and temporal upscalers through `render::Upscaler`, on the depth,
+        motion vectors and jittered camera that TAA uses
   - [ ] FSR 3 frame generation, once the render device controls presenting frames
 - [ ] Hardware ray tracing: acceleration structures and ray queries in `render::RenderDevice`,
       native on Vulkan, Direct3D 12 and Metal beside SDL3's GPU API (which has none), with a CPU

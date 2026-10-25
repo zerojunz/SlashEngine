@@ -6,6 +6,7 @@
 #include "hlsl_compiler.hpp"
 #include "material_shaders.hpp"
 #include "mesh_clustered_shaders.hpp"
+#include "mesh_motion_shaders.hpp"
 #include "mesh_normal_shaders.hpp"
 #include "mesh_shaders.hpp"
 #include "mesh_shading.hpp"
@@ -27,6 +28,8 @@
 #include "ssr.hpp"
 #include "ssr_shaders.hpp"
 #include "ssr_trace_shaders.hpp"
+#include "taa.hpp"
+#include "taa_shaders.hpp"
 #include "uniforms.hpp"
 
 #include "slash/core/log.hpp"
@@ -62,6 +65,8 @@ constexpr SDL_GPUTextureFormat kHdrFormat = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_F
 constexpr SDL_GPUTextureFormat kLuminanceFormat = SDL_GPU_TEXTUREFORMAT_R32_FLOAT;
 // Forward+'s normal-roughness prepass draws into bytes.
 constexpr SDL_GPUTextureFormat kNormalFormat = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+// TAA's motion vectors are two half floats, as Godot's velocity buffer.
+constexpr SDL_GPUTextureFormat kVelocityFormat = SDL_GPU_TEXTUREFORMAT_R16G16_FLOAT;
 
 constexpr SDL_GPUTextureFormat ssao_gpu_format(SsaoFormat format) {
     switch (format) {
@@ -100,6 +105,20 @@ struct SsrHistory {
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     SsrCamera camera;
+    bool primed = false;
+};
+
+// A target's frames before for TAA, at the frame's size: how many it drew with TAA, which picks
+// the next jitter, the last one's camera without its jitter, and two results and two motion
+// vector textures that frames take turns to draw into, last the pair the last frame drew.
+struct TaaHistory {
+    std::uint64_t frames = 0;
+    Mat4 view_projection{};
+    std::array<SDL_GPUTexture*, 2> color{};
+    std::array<SDL_GPUTexture*, 2> velocity{};
+    std::size_t last = 0;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
     bool primed = false;
 };
 
@@ -374,6 +393,26 @@ public:
         for (auto& [target, history] : ssr_histories_) {
             pending_release_.push_back(std::exchange(history.texture, nullptr));
         }
+        while (!taa_histories_.empty()) {
+            forget_taa_history(taa_histories_.back().first);
+        }
+        if (motion_shaders_[0] != nullptr) {
+            SDL_ReleaseGPUShader(device_, motion_shaders_[0]);
+            SDL_ReleaseGPUShader(device_, motion_shaders_[1]);
+        }
+        for (SDL_GPUGraphicsPipeline* pipeline : motion_pipelines_) {
+            if (pipeline != nullptr) {
+                SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+            }
+        }
+        for (SDL_GPUShader* shader : taa_shaders_) {
+            if (shader != nullptr) {
+                SDL_ReleaseGPUShader(device_, shader);
+            }
+        }
+        for (const auto& [format, pipeline] : taa_pipelines_) {
+            SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+        }
         release_prepass();
         for (SDL_GPUShader* shader : shadow_shaders_) {
             if (shader != nullptr) {
@@ -565,6 +604,7 @@ public:
         }
         textures_.erase(it);
         forget_ssr_history(texture);
+        forget_taa_history(texture);
     }
 
     Result<ShaderId> create_shader(const CompiledShader& shader) override {
@@ -914,6 +954,22 @@ public:
             return checked;
         }
         const auto bytes = static_cast<std::uint32_t>(vertices.size_bytes());
+        // The first update since a frame with TAA drew the mesh keeps the vertices it drew, for
+        // the motion of the next one's: the buffers swap, and the new vertices go in the other.
+        Mesh& found = it->second;
+        if (!found.moved) {
+            if (found.previous == nullptr) {
+                SDL_GPUBufferCreateInfo info{};
+                info.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+                info.size = bytes;
+                found.previous = SDL_CreateGPUBuffer(device_, &info);
+                if (found.previous == nullptr) {
+                    return sdl_error("making room for a mesh's vertices failed");
+                }
+            }
+            std::swap(found.vertices, found.previous);
+            found.moved = true;
+        }
         const TransferBuffer transfer(device_, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, bytes);
         void* mapped = transfer.get() == nullptr
                            ? nullptr
@@ -950,6 +1006,9 @@ public:
             // The frame's draws still read its buffers when it is sent.
             pending_buffers_.push_back(it->second.vertices);
             pending_buffers_.push_back(it->second.indices);
+            if (it->second.previous != nullptr) {
+                pending_buffers_.push_back(it->second.previous);
+            }
         } else {
             release_mesh(it->second);
         }
@@ -1068,6 +1127,12 @@ public:
                     return ready.error();
                 }
             }
+            if (uses_taa(*frame.scene)) {
+                if (auto ready = prepare_taa(frame.target, width, height); !ready) {
+                    SDL_CancelGPUCommandBuffer(commands);
+                    return ready.error();
+                }
+            }
             if (uses_ssao(*frame.scene)) {
                 if (auto ready = prepare_ssao(width, height, frame.scene->ssao.settings); !ready) {
                     SDL_CancelGPUCommandBuffer(commands);
@@ -1102,9 +1167,12 @@ public:
                 return ready.error();
             }
         }
-        // The frame before is kept only while the target's frames draw SSR.
+        // The frames before are kept only while the target's frames draw SSR, or TAA.
         if (!frame.scene || !uses_ssr(*frame.scene)) {
             forget_ssr_history(frame.target);
+        }
+        if (!frame.scene || !uses_taa(*frame.scene)) {
+            forget_taa_history(frame.target);
         }
         start_frame(frame, commands, target, width, height);
         frame_format_ = format;
@@ -1277,7 +1345,8 @@ public:
     }
 
     Result<void> draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
-                           std::uint32_t layers, ShadowCasting shadows) override {
+                           std::uint32_t layers, ShadowCasting shadows,
+                           const std::optional<Mat4>& previous) override {
         if (!in_frame_) {
             return no_frame("draw_mesh");
         }
@@ -1286,6 +1355,9 @@ public:
                 check_mesh_draw(frame_.scene.has_value(), it != meshes_.end(), mesh, transform,
                                 material, frame_.target, [&](TextureId id) { return usable(id); });
             !checked) {
+            return checked;
+        }
+        if (auto checked = check_previous_transform(previous); !checked) {
             return checked;
         }
         if (frame_commands_ == nullptr || !frame_.scene) {
@@ -1311,9 +1383,12 @@ public:
                         .index_count = it->second.index_count,
                         .bounds = it->second.bounds,
                         .pipeline = pipeline.value()};
-        // SSAO's and SSR's prepass draws the opaque meshes' normals.
+        batch.previous_vertices = it->second.moved ? it->second.previous : it->second.vertices;
+        // SSAO's, SSR's and TAA's prepass draws the opaque meshes' normals, and with TAA their
+        // motion vectors.
         if (uses_prepass(*frame_.scene) && material.transparency != Transparency::Alpha) {
-            auto normal = normal_pipeline_for(material.cull);
+            auto normal = uses_taa(*frame_.scene) ? motion_pipeline_for(material.cull)
+                                                  : normal_pipeline_for(material.cull);
             if (!normal) {
                 return normal.error();
             }
@@ -1327,7 +1402,8 @@ public:
                                .transform = transform,
                                .material = material,
                                .layers = layers,
-                               .shadows = shadows});
+                               .shadows = shadows,
+                               .previous = previous.value_or(transform)});
         mesh_batches_.push_back(batch);
         ++stats_.draws;
         stats_.triangles += it->second.index_count / 3;
@@ -1367,6 +1443,12 @@ public:
         const bool post = !forward && frame_.scene && post_processes(frame_.scene->post);
         if (world) {
             draw_meshes(commands, *frame_.scene, meshes ? &*shadow_plan_ : nullptr);
+        }
+        // TAA blends frames that draw meshes; one without starts it again.
+        if (!meshes && frame_.scene && uses_taa(*frame_.scene)) {
+            if (TaaHistory* history = find_taa_history(frame_.target); history != nullptr) {
+                history->primed = false;
+            }
         }
         if (frame_.scene && frame_.scene->capture) {
             Result<void> captured = finish_capture(commands, *frame_.scene->capture);
@@ -1562,13 +1644,17 @@ private:
         SDL_GPUGraphicsPipeline* pipeline = nullptr;
     };
 
-    // A mesh's buffers; one without indices is given them in order.
+    // A mesh's buffers; one without indices is given them in order. Once update_mesh moves its
+    // vertices, previous holds them as the last frame with TAA that drew the mesh saw them,
+    // until another such frame draws it.
     struct Mesh {
         SDL_GPUBuffer* vertices = nullptr;
         SDL_GPUBuffer* indices = nullptr;
         std::uint32_t index_count = 0;
         std::size_t vertex_count = 0;
         Bounds bounds;
+        SDL_GPUBuffer* previous = nullptr;
+        bool moved = false;
     };
 
     // What a mesh draw binds, found when it is made: its mesh may be destroyed before end_frame.
@@ -1578,9 +1664,11 @@ private:
         std::uint32_t index_count = 0;
         Bounds bounds;
         SDL_GPUGraphicsPipeline* pipeline = nullptr;
-        // SSAO's prepass's, for an opaque mesh in a frame with SSAO.
+        // The prepass's, for an opaque mesh in a frame with SSAO, SSR or TAA.
         SDL_GPUGraphicsPipeline* normal_pipeline = nullptr;
         std::array<SDL_GPUTextureSamplerBinding, kMeshTextures> samplers{};
+        // Where its vertices were in the frame before, which TAA's prepass reads.
+        SDL_GPUBuffer* previous_vertices = nullptr;
     };
 
     // A shadow atlas: a depth texture the shadow passes draw into and the mesh pass samples.
@@ -1998,7 +2086,7 @@ private:
     }
 
     void release_mesh(const Mesh& mesh) {
-        for (SDL_GPUBuffer* buffer : {mesh.vertices, mesh.indices}) {
+        for (SDL_GPUBuffer* buffer : {mesh.vertices, mesh.indices, mesh.previous}) {
             if (buffer != nullptr) {
                 SDL_ReleaseGPUBuffer(device_, buffer);
             }
@@ -2248,6 +2336,76 @@ private:
         return made;
     }
 
+    // The pipeline drawing opaque meshes that cull as cull says into TAA's prepass, which draws
+    // their motion vectors too, from a second vertex buffer of where their vertices were, made
+    // the first time a frame needs it.
+    Result<SDL_GPUGraphicsPipeline*> motion_pipeline_for(CullMode cull) {
+        SDL_GPUGraphicsPipeline*& made = motion_pipelines_.at(static_cast<std::size_t>(cull));
+        if (made != nullptr) {
+            return made;
+        }
+        if (motion_shaders_[0] == nullptr) {
+            const std::string vertex_msl = joined(shaders::kMeshMotionVertexMsl);
+            const std::string fragment_msl = joined(shaders::kMeshMotionFragmentMsl);
+            const ShaderCode code{.vertex_spirv = shaders::kMeshMotionVertexSpirv,
+                                  .fragment_spirv = shaders::kMeshMotionFragmentSpirv,
+                                  .vertex_msl = vertex_msl,
+                                  .fragment_msl = fragment_msl,
+                                  .hlsl = shaders::kMeshMotionHlsl};
+            auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 2);
+            if (!vertex) {
+                return vertex.error();
+            }
+            auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code,
+                                            static_cast<std::uint32_t>(kMeshTextures) + 3, 3);
+            if (!fragment) {
+                SDL_ReleaseGPUShader(device_, vertex.value());
+                return fragment.error();
+            }
+            motion_shaders_ = {vertex.value(), fragment.value()};
+        }
+        std::array<SDL_GPUVertexBufferDescription, 2> buffers{};
+        for (std::uint32_t slot = 0; slot < 2; ++slot) {
+            buffers.at(slot).slot = slot;
+            buffers.at(slot).pitch = sizeof(Vertex3D);
+            buffers.at(slot).input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+        }
+        const std::array<SDL_GPUVertexAttribute, 6> mesh = mesh_attributes();
+        std::array<SDL_GPUVertexAttribute, 7> attributes{};
+        std::ranges::copy(mesh, attributes.begin());
+        attributes[6] = {.location = 6,
+                         .buffer_slot = 1,
+                         .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+                         .offset = offsetof(Vertex3D, position)};
+        std::array<SDL_GPUColorTargetDescription, 2> colors{};
+        colors[0].format = kNormalFormat;
+        colors[1].format = kVelocityFormat;
+        SDL_GPUGraphicsPipelineCreateInfo info{};
+        info.vertex_shader = motion_shaders_[0];
+        info.fragment_shader = motion_shaders_[1];
+        info.vertex_input_state.vertex_buffer_descriptions = buffers.data();
+        info.vertex_input_state.num_vertex_buffers = static_cast<std::uint32_t>(buffers.size());
+        info.vertex_input_state.vertex_attributes = attributes.data();
+        info.vertex_input_state.num_vertex_attributes =
+            static_cast<std::uint32_t>(attributes.size());
+        info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+        info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+        info.rasterizer_state.cull_mode = gpu_cull(cull);
+        info.rasterizer_state.front_face = SDL_GPU_FRONTFACE_CLOCKWISE;
+        info.depth_stencil_state.enable_depth_test = true;
+        info.depth_stencil_state.enable_depth_write = true;
+        info.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_GREATER;
+        info.target_info.color_target_descriptions = colors.data();
+        info.target_info.num_color_targets = static_cast<std::uint32_t>(colors.size());
+        info.target_info.has_depth_stencil_target = true;
+        info.target_info.depth_stencil_format = depth_format_;
+        made = SDL_CreateGPUGraphicsPipeline(device_, &info);
+        if (made == nullptr) {
+            return sdl_error("creating TAA's prepass's pipeline failed");
+        }
+        return made;
+    }
+
     // The frame's shadow plan, and the atlases, sampler and pipelines it draws with, made at the
     // frame's first mesh draw so a failure shows there.
     Result<void> prepare_shadows(const Scene3D& scene) {
@@ -2477,7 +2635,16 @@ private:
         if (radiance_draws_) {
             draw_radiance(commands, scene);
         }
-        const MeshCameraUniforms camera = mesh_camera_uniforms(scene);
+        // TAA's frame: the next jitter, from the camera the target's frame before was seen from
+        // (this one's, for its first).
+        TaaHistory* taa =
+            plan != nullptr && uses_taa(scene) ? find_taa_history(frame_.target) : nullptr;
+        const Mat4 view_projection = multiply(scene.projection, scene.camera);
+        const MeshCameraUniforms camera =
+            taa == nullptr
+                ? mesh_camera_uniforms(scene)
+                : taa_camera_uniforms(scene, taa_jitter(taa->frames, frame_width_, frame_height_),
+                                      taa->primed ? taa->view_projection : view_projection);
         const auto lights = std::make_unique<MeshSceneUniforms>(mesh_scene_uniforms(scene));
         const bool clustered = scene.method == RenderMethod::ForwardPlus;
         if (clustered) {
@@ -2535,15 +2702,19 @@ private:
                     bound = pipeline;
                 }
                 const MeshInstanceUniforms instance =
-                    mesh_instance_uniforms(draw.transform, draw.material);
+                    mesh_instance_uniforms(draw.transform, draw.material, draw.previous);
                 SDL_PushGPUVertexUniformData(commands, 1, &instance,
                                              static_cast<std::uint32_t>(sizeof(instance)));
                 const MeshSurfaceUniforms surface =
                     mesh_surface_uniforms(draw.material, draw.layers);
                 SDL_PushGPUFragmentUniformData(commands, 0, &surface,
                                                static_cast<std::uint32_t>(sizeof(surface)));
-                const SDL_GPUBufferBinding vertices{.buffer = batch.vertices, .offset = 0};
-                SDL_BindGPUVertexBuffers(pass, 0, &vertices, 1);
+                // TAA's prepass reads where the vertices were from a second buffer.
+                const std::array vertices{
+                    SDL_GPUBufferBinding{.buffer = batch.vertices, .offset = 0},
+                    SDL_GPUBufferBinding{.buffer = batch.previous_vertices, .offset = 0}};
+                SDL_BindGPUVertexBuffers(pass, 0, vertices.data(),
+                                         prepass && taa != nullptr ? 2 : 1);
                 const SDL_GPUBufferBinding indices{.buffer = batch.indices, .offset = 0};
                 SDL_BindGPUIndexBuffer(pass, &indices, SDL_GPU_INDEXELEMENTSIZE_32BIT);
                 std::copy(batch.samplers.begin(), batch.samplers.end(), samplers.begin());
@@ -2552,14 +2723,20 @@ private:
                 SDL_DrawGPUIndexedPrimitives(pass, batch.index_count, 1, 0, 0, 0);
             }
         };
-        if (ssao || ssr) {
+        if (ssao || ssr || taa != nullptr) {
             // The prepass draws the opaque meshes' normals and depth, from which SSAO's passes
-            // make the occlusion the meshes are then lit with, and SSR's their reflections.
-            SDL_GPUColorTargetInfo normals{};
+            // make the occlusion the meshes are then lit with, and SSR's their reflections, and
+            // with TAA their motion vectors, into the history's next texture.
+            std::array<SDL_GPUColorTargetInfo, 2> targets{};
+            SDL_GPUColorTargetInfo& normals = targets[0];
             normals.texture = prepass_.normals;
             normals.clear_color = {0.0F, 0.0F, 0.0F, 0.0F};
             normals.load_op = SDL_GPU_LOADOP_CLEAR;
             normals.store_op = SDL_GPU_STOREOP_STORE;
+            if (taa != nullptr) {
+                targets[1] = normals;
+                targets[1].texture = taa->velocity.at(1 - taa->last);
+            }
             SDL_GPUDepthStencilTargetInfo prepass_depth{};
             prepass_depth.texture = prepass_.depth;
             prepass_depth.clear_depth = 0.0F;
@@ -2568,7 +2745,8 @@ private:
             prepass_depth.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
             prepass_depth.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
             prepass_depth.cycle = true;
-            SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(commands, &normals, 1, &prepass_depth);
+            SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(
+                commands, targets.data(), taa != nullptr ? 2 : 1, &prepass_depth);
             draw_batches(pass, true);
             SDL_EndGPURenderPass(pass);
             if (ssao) {
@@ -2620,6 +2798,9 @@ private:
         };
         if (!ssr) {
             draw_color();
+            if (taa != nullptr) {
+                resolve_taa(commands, *taa, view_projection);
+            }
             return;
         }
         // SSR reflects the frame before, which a target's first frame draws first without it.
@@ -2634,6 +2815,9 @@ private:
         draw_ssr(commands, scene, seen, history);
         copy_to_screen(commands, ssr_targets_.textures.at(kSsrFinal), 1);
         draw_color();
+        if (taa != nullptr) {
+            resolve_taa(commands, *taa, view_projection);
+        }
         keep_last_frame(commands, scene, history, seen);
     }
 
@@ -3453,6 +3637,141 @@ private:
         ssr_histories_.erase(it);
     }
 
+    // TAA's shaders and pipeline, and target's history at width x height, made empty when it has
+    // none or it was drawn at another size. Made at the start of a frame that needs them.
+    Result<void> prepare_taa(TextureId target, std::uint32_t width, std::uint32_t height) {
+        if (taa_shaders_[0] == nullptr) {
+            const ShaderCode code{.vertex_spirv = shaders::kTaaVertexSpirv,
+                                  .fragment_spirv = shaders::kTaaFragmentSpirv,
+                                  .vertex_msl = shaders::kTaaVertexMsl,
+                                  .fragment_msl = shaders::kTaaFragmentMsl,
+                                  .hlsl = shaders::kTaaHlsl};
+            auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 0);
+            if (!vertex) {
+                return vertex.error();
+            }
+            auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, 5, 1);
+            if (!fragment) {
+                SDL_ReleaseGPUShader(device_, vertex.value());
+                return fragment.error();
+            }
+            taa_shaders_ = {vertex.value(), fragment.value()};
+        }
+        if (auto pipeline = fullscreen_pipeline(taa_pipelines_, taa_shaders_, kHdrFormat);
+            !pipeline) {
+            return pipeline.error();
+        }
+        TaaHistory* found = find_taa_history(target);
+        if (found == nullptr) {
+            found = &taa_histories_.emplace_back(target, TaaHistory{}).second;
+        }
+        TaaHistory& history = *found;
+        if (history.color[0] != nullptr && history.width == width && history.height == height) {
+            return {};
+        }
+        release_taa_textures(history);
+        history = TaaHistory{};
+        for (std::size_t i = 0; i < 2; ++i) {
+            auto color = pass_texture(width, height, kHdrFormat, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
+                                      1, "TAA's frames before");
+            if (!color) {
+                release_taa_textures(history);
+                return color.error();
+            }
+            history.color.at(i) = color.value();
+            auto velocity = pass_texture(width, height, kVelocityFormat,
+                                         SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, 1, "TAA's motion");
+            if (!velocity) {
+                release_taa_textures(history);
+                return velocity.error();
+            }
+            history.velocity.at(i) = velocity.value();
+        }
+        history.width = width;
+        history.height = height;
+        return {};
+    }
+
+    // target's history for TAA, or null when it has none.
+    TaaHistory* find_taa_history(TextureId target) {
+        for (auto& [id, history] : taa_histories_) {
+            if (id == target) {
+                return &history;
+            }
+        }
+        return nullptr;
+    }
+
+    void release_taa_textures(TaaHistory& history) {
+        for (SDL_GPUTexture*& texture : history.color) {
+            if (texture != nullptr) {
+                pending_release_.push_back(std::exchange(texture, nullptr));
+            }
+        }
+        for (SDL_GPUTexture*& texture : history.velocity) {
+            if (texture != nullptr) {
+                pending_release_.push_back(std::exchange(texture, nullptr));
+            }
+        }
+    }
+
+    void forget_taa_history(TextureId target) {
+        const auto it = std::ranges::find_if(
+            taa_histories_, [&](const auto& entry) { return entry.first == target; });
+        if (it == taa_histories_.end()) {
+            return;
+        }
+        release_taa_textures(it->second);
+        taa_histories_.erase(it);
+    }
+
+    // TAA's pass: the world, drawn with the frame's jitter, blended with the history by the
+    // prepass's depth and motion vectors (the history's next texture) into the history's next
+    // result, which is copied over the world; a target's first frame is kept as it is. The
+    // history keeps the camera the frame was seen from without its jitter.
+    void resolve_taa(SDL_GPUCommandBuffer* commands, TaaHistory& history,
+                     const Mat4& view_projection) {
+        const std::size_t next = 1 - history.last;
+        SDL_GPUTexture* world = forward_targets_.world;
+        SDL_GPUTexture* resolved = history.color.at(next);
+        // Made in prepare_taa, at the start of the frame.
+        auto pipeline = fullscreen_pipeline(taa_pipelines_, taa_shaders_, kHdrFormat);
+        if (history.primed && pipeline) {
+            SDL_GPUColorTargetInfo color{};
+            color.texture = resolved;
+            color.load_op = SDL_GPU_LOADOP_DONT_CARE;
+            color.store_op = SDL_GPU_STOREOP_STORE;
+            SDL_GPURenderPass* render = SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
+            SDL_BindGPUGraphicsPipeline(render, pipeline.value());
+            const TaaUniforms uniforms = taa_uniforms(frame_width_, frame_height_);
+            SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
+                                           static_cast<std::uint32_t>(sizeof(uniforms)));
+            SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
+            const std::array<SDL_GPUTextureSamplerBinding, 5> bindings{{
+                {.texture = world, .sampler = nearest},
+                {.texture = prepass_.depth, .sampler = nearest},
+                {.texture = history.velocity.at(next), .sampler = nearest},
+                {.texture = history.velocity.at(history.last), .sampler = nearest},
+                {.texture = history.color.at(history.last), .sampler = nearest},
+            }};
+            SDL_BindGPUFragmentSamplers(render, 0, bindings.data(),
+                                        static_cast<std::uint32_t>(bindings.size()));
+            SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
+            SDL_EndGPURenderPass(render);
+        }
+        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+        SDL_GPUTextureLocation from{};
+        SDL_GPUTextureLocation to{};
+        from.texture = history.primed ? resolved : world;
+        to.texture = history.primed ? world : resolved;
+        SDL_CopyGPUTextureToTexture(copy, &from, &to, frame_width_, frame_height_, 1, false);
+        SDL_EndGPUCopyPass(copy);
+        history.last = next;
+        history.view_projection = view_projection;
+        history.primed = true;
+        ++history.frames;
+    }
+
     // ssr.hlsl's passes, from the prepass's depth and normals and the frame before, seen from
     // history's camera, to the reflections at the frame's size, in the order ssr_plan gives.
     void draw_ssr(SDL_GPUCommandBuffer* commands, const Scene3D& scene, const SsrCamera& camera,
@@ -4240,6 +4559,14 @@ private:
     }
 
     void finish_frame() {
+        // A frame with TAA saw its meshes' vertices as they are now.
+        if (frame_.scene && uses_taa(*frame_.scene)) {
+            for (const MeshDraw& draw : mesh_draws_) {
+                if (const auto found = meshes_.find(draw.mesh); found != meshes_.end()) {
+                    found->second.moved = false;
+                }
+            }
+        }
         frame_commands_ = nullptr;
         frame_texture_ = nullptr;
         vertices_.clear();
@@ -4408,6 +4735,11 @@ private:
     SDL_GPUGraphicsPipeline* ssr_trace_pipeline_ = nullptr;
     SsrTargets ssr_targets_;
     std::vector<std::pair<TextureId, SsrHistory>> ssr_histories_;
+    std::array<SDL_GPUShader*, 2> motion_shaders_{};             // TAA's prepass's stages
+    std::array<SDL_GPUGraphicsPipeline*, 3> motion_pipelines_{}; // by CullMode
+    std::array<SDL_GPUShader*, 2> taa_shaders_{};                // vertex, then fragment
+    std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> taa_pipelines_;
+    std::vector<std::pair<TextureId, TaaHistory>> taa_histories_;
     // The radiance meshes are lit by: the raw cube the sky draws into and the one filtered from
     // it, and what they hold (nullopt to draw them again).
     struct RadianceCubes {

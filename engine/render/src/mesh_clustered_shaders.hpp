@@ -10746,17 +10746,21 @@ inline constexpr char kMeshClusteredHlsl[] = R"hlsl(// The 3D shader's fragment 
 // whose omni and spot lights come from clusters of the screen instead of the scene's uniforms,
 // and which reads screen-space ambient occlusion and reflections (ssao.hlsl and ssr.hlsl draw
 // them). mesh_normal.hlsl defines NORMAL_ROUGHNESS for Forward+'s prepass, which draws the normals
-// and roughness that ssao.hlsl and ssr.hlsl read.
+// and roughness that ssao.hlsl and ssr.hlsl read, and mesh_motion.hlsl MOTION_VECTORS too for
+// the prepass of a frame with TAA, which draws each pixel's motion vector into a second target.
 
 cbuffer Camera : register(b0, space1) {
-    float4x4 view_projection; // world to clip space
+    float4x4 view_projection;          // world to clip space, with TAA's jitter
+    float4x4 previous_view_projection; // the frame before's, without its jitter
+    float4 jitter;                     // TAA's jitter in clip space, in xy
 };
 
 cbuffer Instance : register(b1, space1) {
-    float4x4 model;        // the mesh's space to the world
-    float4x4 normal_model; // the inverse transpose of model's upper 3x3, in its upper 3x3
-    float4 uv1;            // xy scale and zw offset, as Godot's uv1_scale and uv1_offset
-    float4 lightmap_uv;    // the lightmap's rect: uv2's xy offset and zw scale
+    float4x4 model;          // the mesh's space to the world
+    float4x4 normal_model;   // the inverse transpose of model's upper 3x3, in its upper 3x3
+    float4 uv1;              // xy scale and zw offset, as Godot's uv1_scale and uv1_offset
+    float4 lightmap_uv;      // the lightmap's rect: uv2's xy offset and zw scale
+    float4x4 previous_model; // model in the frame before
 };
 
 struct VertexInput {
@@ -10766,6 +10770,11 @@ struct VertexInput {
     float2 uv : TEXCOORD3;
     float4 color : TEXCOORD4;
     float2 uv2 : TEXCOORD5;
+#ifdef MOTION_VECTORS
+    // Where the vertex was in the frame before, from a second vertex buffer: a skinned mesh's
+    // vertices before its last update, or its own.
+    float3 previous : TEXCOORD6;
+#endif
 };
 
 struct VertexOutput {
@@ -10776,6 +10785,10 @@ struct VertexOutput {
     float2 uv : TEXCOORD4;
     float4 color : TEXCOORD5;
     float2 uv2 : TEXCOORD6;
+#ifdef MOTION_VECTORS
+    float4 motion_clip : TEXCOORD7;   // where the vertex is in clip space, without the jitter
+    float4 previous_clip : TEXCOORD8; // and where it was in the frame before
+#endif
     float4 position : SV_Position;
 };
 
@@ -10792,6 +10805,12 @@ VertexOutput vs_main(VertexInput input) {
     output.uv = input.uv * uv1.xy + uv1.zw;
     output.color = input.color;
     output.uv2 = input.uv2 * lightmap_uv.zw + lightmap_uv.xy;
+#ifdef MOTION_VECTORS
+    output.motion_clip = output.position;
+    output.motion_clip.xy -= jitter.xy * output.position.w;
+    output.previous_clip =
+        mul(previous_view_projection, mul(previous_model, float4(input.previous, 1.0)));
+#endif
     return output;
 }
 
@@ -10942,7 +10961,8 @@ cbuffer Shadows : register(b2, space3) {
     PositionalShadow positional_shadows[16];
 };
 
-#ifdef CLUSTERED
+)hlsl"
+R"hlsl(#ifdef CLUSTERED
 // Forward+'s omni and spot lights, nearest first, and the clusters that pick them, laid out as
 // Godot's cluster buffer: for each tile of kClusterSize pixels, cluster.y words with a bit for
 // each light that reaches it, then for each of kClusterSlices depth slices the first of those
@@ -10954,8 +10974,7 @@ cbuffer Shadows : register(b2, space3) {
 // of the sky's it replaces, in A). The reflection probes' cubes are in probe_atlas, mirrored along
 // z (src/reflection.cpp), each linear, its levels filtered as radiance.hlsl filters the sky's.
 Texture2DArray<float4> screen_texture : register(t14, space2);
-)hlsl"
-R"hlsl(TextureCubeArray<float4> probe_atlas : register(t15, space2);
+TextureCubeArray<float4> probe_atlas : register(t15, space2);
 SamplerState screen_sampler : register(s14, space2);
 SamplerState probe_sampler : register(s15, space2);
 struct Probe {
@@ -11215,7 +11234,8 @@ float compare_atlas(bool positional, float2 uv, float reference) {
 
 // Each tap's offset in texels, in the order Godot's sample_shadow adds them: the center, the far
 // cross, the near cross and the corners. Five taps take the center and the near cross.
-static const float2 kTaps[13] = {float2(0.0, 0.0),  float2(2.0, 0.0),   float2(-2.0, 0.0),
+)hlsl"
+R"hlsl(static const float2 kTaps[13] = {float2(0.0, 0.0),  float2(2.0, 0.0),   float2(-2.0, 0.0),
                                  float2(0.0, 2.0),  float2(0.0, -2.0),  float2(1.0, 0.0),
                                  float2(-1.0, 0.0), float2(0.0, 1.0),   float2(0.0, -1.0),
                                  float2(1.0, 1.0),  float2(-1.0, 1.0),  float2(1.0, -1.0),
@@ -11232,8 +11252,7 @@ float sample_shadow(bool positional, float4x4 to_atlas, float3 p, float texel, f
     uint count = taps > 12.0 ? 13u : (taps > 4.0 ? 5u : 1u);
     float sum = 0.0;
     [loop] for (uint i = 0u; i < count; ++i) {
-)hlsl"
-R"hlsl(        float2 offset = kTaps[count == 5u && i > 0u ? i + 4u : i];
+        float2 offset = kTaps[count == 5u && i > 0u ? i + 4u : i];
         sum += compare_atlas(positional, clamp(uv + offset * texel, clamp_rect.xy, clamp_rect.zw),
                              reference);
         // Godot stops early where the far samples agree.
@@ -11482,7 +11501,8 @@ void reflect_probes(float3 world, float3 ray, float3 normal, float roughness,
         float weight = max(0.0, blend - ambient_accum.a);
         if (probe.ambient.w == 1.0) {
             float3 local_normal =
-                float3(dot(probe.rows[0].xyz, normal), dot(probe.rows[1].xyz, normal),
+)hlsl"
+R"hlsl(                float3(dot(probe.rows[0].xyz, normal), dot(probe.rows[1].xyz, normal),
                        dot(probe.rows[2].xyz, normal));
             float3 texel = sample_probe(probe, local_normal, reflections.y);
             ambient_accum += float4(texel * reflections.z * weight, weight);
@@ -11503,8 +11523,7 @@ void reflect_probes(float3 world, float3 ray, float3 normal, float roughness,
 float4 voxel_gi_level(uint index, uint level, float3 uvw) {
     float3 extent = max(floor(voxel_gis[index].size.xyz / (float)(1u << level)), 1.0);
     float4 place = voxel_gis[index].levels[level];
-)hlsl"
-R"hlsl(    uint columns = (uint)place.z;
+    uint columns = (uint)place.z;
     float x = clamp(uvw.x * extent.x, 0.5, extent.x - 0.5);
     float y = clamp(uvw.y * extent.y, 0.5, extent.y - 0.5);
     float z = clamp(uvw.z * extent.z - 0.5, 0.0, extent.z - 1.0);
@@ -11733,7 +11752,8 @@ float3 capture_light(float3 n) {
 }
 
 // A lit pixel's color, linear: its lights, reflections, emission and ambient light on base, the
-// albedo, with the shading normal and the one shadows offset along (geometry), its ambient light
+)hlsl"
+R"hlsl(// albedo, with the shading normal and the one shadows offset along (geometry), its ambient light
 // darkened by ao and its direct light by ao_direct. A lightmapped pixel's ambient light is its
 // lightmap's, and a captured one's its light probes', either standing in for the scene's and the
 // probes', as Godot's USE_LIGHTMAP.
@@ -11753,8 +11773,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
                   diffuse_light, specular_light);
     }
 #ifdef CLUSTERED
-)hlsl"
-R"hlsl(    // The omni and spot lights of the pixel's cluster: its tile's lights within its slice's
+    // The omni and spot lights of the pixel's cluster: its tile's lights within its slice's
     // range, nearest first, as Godot's scene_forward_clustered.glsl walks them.
     uint2 tile = (uint2)input.position.xy / kClusterSize;
     uint words = (uint)cluster.y;
@@ -11856,7 +11875,16 @@ R"hlsl(    // The omni and spot lights of the pixel's cluster: its tile's lights
     return diffuse_light + specular_light + reflected + emitted + ambient_light;
 }
 
+#ifdef MOTION_VECTORS
+// The prepass's targets with TAA: the normal and roughness, and the motion vector.
+struct PrepassOutput {
+    float4 normal_roughness : SV_Target0;
+    float4 motion : SV_Target1;
+};
+PrepassOutput fs_main(VertexOutput input, bool front : SV_IsFrontFace) {
+#else
 float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
+#endif
     // Every texture is sampled first, while control flow is uniform, as WGSL requires. A
     // terrain's ground layers tile across its maps.
     bool terrain = (options.w & kTerrain) != 0u;
@@ -11951,7 +11979,21 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     float3 view_normal =
         normalize(float3(dot(view_rows[0].xyz, normal), dot(view_rows[1].xyz, normal),
                          dot(view_rows[2].xyz, normal)));
-    return float4(view_normal * 0.5 + 0.5, roughness * (127.0 / 255.0));
+    float4 normal_roughness = float4(view_normal * 0.5 + 0.5, roughness * (127.0 / 255.0));
+#ifdef MOTION_VECTORS
+)hlsl"
+R"hlsl(    // Godot's motion vector: the move from where the surface is to where it was, each without its
+    // frame's jitter, in texture coordinates, whose y runs down.
+    float2 position_uv = input.motion_clip.xy / input.motion_clip.w * 0.5;
+    float2 previous_uv = input.previous_clip.xy / input.previous_clip.w * 0.5;
+    float2 motion = previous_uv - position_uv;
+    PrepassOutput output;
+    output.normal_roughness = normal_roughness;
+    output.motion = float4(motion.x, -motion.y, 0.0, 0.0);
+    return output;
+#else
+    return normal_roughness;
+#endif
 #else
     // Godot's SSAO: the frame's occlusion at the pixel darkens the opaque meshes' ambient light,
     // and their direct light by its light affect times its AO channel affect. Its SSR (alpha
@@ -11982,8 +12024,7 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         lit = lit_color(input, base, normal, geometry, metallic, roughness, emitted, ao,
                         ao_direct, ssr);
     }
-)hlsl"
-R"hlsl(    // One call, so the tonemappers are inlined once and the shader stays small.
+    // One call, so the tonemappers are inlined once and the shader stays small.
     return finish(lit, alpha, input.world);
 #endif
 }
