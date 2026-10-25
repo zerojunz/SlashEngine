@@ -442,6 +442,7 @@ when nothing else on it faces a way (its children turn back), else on a `camera`
 | `Transform` | `Transform3D`: position, rotation (Godot's YXZ Euler angles, in radians) and scale |
 | `MeshFilter` and `MeshRenderer` of Unity's cube, sphere, capsule, cylinder, plane and quad | `MeshInstance3D` with `BoxMesh`, `SphereMesh`, `CapsuleMesh`, `CylinderMesh`, `PlaneMesh` (10 by 10 meters) or `QuadMesh`; cast shadows as `cast_shadow`, the layer as `layers` |
 | An instance of a model file | `MeshInstance3D` whose `mesh` is the file, scaled by its import settings' scale factor on a `model` child entity; a material put in place of all of the model's is its `StandardMaterial3D` |
+| `MeshFilter` and `MeshRenderer` of one mesh of a model file | `MeshInstance3D` whose `mesh` is a glTF file of that mesh alone (see below) |
 | A material of Unity's Standard shader or URP's Lit, Simple Lit or Unlit | `StandardMaterial3D`, converted once per material (see below) |
 | `Camera` (perspective or orthographic) | `Camera3D`: fov, `size` (twice Unity's orthographic size), near, far, the culling mask's first 20 layers; the `MainCamera` is `current` |
 | `Light`: directional, point, spot | `DirectionalLight3D`, `OmniLight3D` (range), `SpotLight3D` (range, half the spot angle): color, intensity as energy, shadows on with their strength as opacity, culling mask |
@@ -453,6 +454,7 @@ when nothing else on it faces a way (its children turn back), else on a `camera`
 | Trigger colliders | `Area3D`: on the object when it has no body, else a `trigger` child entity |
 | `BoxCollider`, `SphereCollider`, `CapsuleCollider` | `CollisionShape3D`: box, sphere, capsule (turned to its axis), at its center |
 | `MeshCollider` of a built-in mesh | The same shape; a plane's or quad's is its two triangles, solid from both sides |
+| `MeshCollider` of a model's mesh | `convex_polygon` of its corners when it is convex, else `concave_polygon` of its triangles, scaled as the mesh |
 | `PhysicMaterial` | `friction` (its dynamic friction) and `bounce`; Unity's default friction is 0.6 |
 | `LODGroup` | Only its first level draws; renderers in the others are reported |
 | The scene's `RenderSettings` and its main camera's clear flags | An `environment` entity: `WorldEnvironment` (see below) and the sky |
@@ -465,6 +467,16 @@ settings give `texture_filter` and `texture_repeat`. The specular workflow conve
 and occlusion, height and detail maps are reported. A material of any other shader converts from
 the properties it shares with Standard's, and is reported.
 
+A mesh picked out of a model file (in a prefab made from a model's parts, say) is written to a
+glTF file of its own beside the converted model, named after both
+(`Models/Props_Barrel.gltf`, with `_2` and on for the same mesh with other materials). Its
+positions are scaled by the model's import settings' scale factor, and it sits at the object's
+transform, as Unity draws it. The mesh is found by its ID as Unity's model importer makes it: from
+the `.meta` file's tables, or the hash of its name. The object's materials pick its parts: only as
+many parts as it has materials draw. One `.mat` material for all of them is the entity's
+`StandardMaterial3D`, and the file keeps the model's own materials; several are written into the
+file. A mesh of a `.blend` file is reported, since Blender would have to run for each object.
+
 The environment's background is the sky when the main camera clears to the skybox, else its solid
 color. Unity's procedural skybox (Default-Skybox among them) becomes a `ProceduralSkyMaterial`
 gradient in the colors Unity's draws with its defaults, scaled by its tint, with its ground color
@@ -474,9 +486,8 @@ Ambient light from the skybox, a flat color or a gradient (its equator's color, 
 (exponential as is, linear as depth fog, exponential squared reported) convert, and fog leaves the
 sky alone, as Unity's does.
 
-Reported, for a later import: meshes picked out of a model file or saved as assets, skinned meshes
-and `Animator`s on 3D objects (their controllers and clips wait with them), mesh colliders of
-models, terrains, 3D joints and wheels, navigation, reflection and light probes, line and trail
+Reported, for a later import: meshes saved as assets, skinned meshes and `Animator`s on 3D objects
+(their controllers and clips wait with them), mesh colliders of meshes saved as assets, terrains, 3D joints and wheels, navigation, reflection and light probes, line and trail
 renderers, area and baked lights, cookies and color temperature, cubemap skyboxes, a camera's
 viewport rect and render texture, and a `CharacterController`'s step offset.
 
