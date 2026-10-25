@@ -71,6 +71,10 @@ Result<void> check_texture_desc(const TextureDesc& desc) {
                               "only RGBA8 textures are render targets, not " + name + " ones");
         }
     }
+    if (desc.scaled_into && !desc.render_target) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "only render targets can be scaled into (scaled_into)");
+    }
     if (desc.format == TextureFormat::Rgba16F && desc.render_target) {
         return make_error(ErrorCode::InvalidArgument,
                           "only RGBA8 textures are render targets, not rgba16f ones");

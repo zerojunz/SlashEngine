@@ -16,6 +16,8 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -317,7 +319,8 @@ int largest_difference(const Image& image, const Reference& reference) {
 
 TEST_CASE("upscalers are built in or added by name, and temporal ones are refused for now") {
     slash::render::clear_added_upscalers();
-    CHECK(slash::render::upscaler_names() == std::vector<std::string>{"bilinear", "fsr"});
+    CHECK(slash::render::upscaler_names() ==
+          std::vector<std::string>{"bilinear", "fsr", "metalfx_spatial"});
     CHECK(slash::render::find_upscaler("fsr").has_value());
     CHECK_FALSE(slash::render::find_upscaler("dlss").has_value());
 
@@ -358,7 +361,8 @@ TEST_CASE("upscalers are built in or added by name, and temporal ones are refuse
                                              },
                                          .make = make})
                 .ok());
-    CHECK(slash::render::upscaler_names() == std::vector<std::string>{"bilinear", "fsr", "vendor"});
+    CHECK(slash::render::upscaler_names() ==
+          std::vector<std::string>{"bilinear", "fsr", "metalfx_spatial", "vendor"});
 
     // Godot's choices: nothing scales at 1 with bilinear, FSR doesn't scale down, and a game's
     // own upscaler is used where it runs.
@@ -386,11 +390,11 @@ TEST_CASE("upscalers are built in or added by name, and temporal ones are refuse
     CHECK(slash::render::scaling_mode_problem("fsr").empty());
     CHECK(slash::render::scaling_mode_problem("fsr2").empty());
     CHECK(slash::render::scaling_mode_problem("fsr3").empty());
+    CHECK(slash::render::scaling_mode_problem("metalfx_spatial").empty());
+    CHECK(slash::render::scaling_mode_problem("metalfx_temporal").empty());
     CHECK(slash::render::scaling_mode_problem("fsr1") ==
-          "unknown scaling mode fsr1; expected bilinear, fsr, fsr2 or fsr3 (did you mean fsr?)");
-    CHECK(slash::render::scaling_mode_problem("metalfx_temporal") ==
-          "metalfx_temporal needs Apple's MetalFX, which isn't built yet; use bilinear, fsr, "
-          "fsr2 or fsr3");
+          "unknown scaling mode fsr1; expected bilinear, fsr, fsr2, fsr3, metalfx_spatial or "
+          "metalfx_temporal (did you mean fsr?)");
 
     // FSR 2 upscales a Forward+ frame's 3D in the device, at a scale under 1; bilinear scaling
     // stands in for it otherwise, as Godot's.
@@ -408,6 +412,146 @@ TEST_CASE("upscalers are built in or added by name, and temporal ones are refuse
     CHECK(choose(fsr2, *software) == "bilinear");
     CHECK(choose({.mode = "fsr2", .scale = 1.0F, .fsr_sharpness = 0.2F, .upscaler = {}}, *software)
               .empty());
+}
+
+namespace {
+
+// A null device on Metal that says it has MetalFX's scalers, as an Apple GPU's does, so the
+// fallbacks can be seen without one.
+class MetalFxDevice final : public RenderDevice {
+public:
+    explicit MetalFxDevice(slash::render::MetalFxSupport support)
+        : null_(slash::render::create_null_device()), support_(support) {}
+
+    [[nodiscard]] slash::render::Backend backend() const override {
+        return slash::render::Backend::Metal;
+    }
+    [[nodiscard]] bool supports(slash::render::TextureFormat format) const override {
+        return null_->supports(format);
+    }
+    slash::Result<TextureId> create_texture(const slash::render::TextureDesc& desc,
+                                            std::span<const std::uint8_t> texels) override {
+        return null_->create_texture(desc, texels);
+    }
+    slash::Result<void> update_texture(TextureId texture,
+                                       std::span<const std::uint8_t> texels) override {
+        return null_->update_texture(texture, texels);
+    }
+    void destroy_texture(TextureId texture) override { null_->destroy_texture(texture); }
+    slash::Result<slash::render::ShaderId>
+    create_shader(const slash::render::CompiledShader& shader) override {
+        return null_->create_shader(shader);
+    }
+    void destroy_shader(slash::render::ShaderId shader) override { null_->destroy_shader(shader); }
+    slash::Result<slash::render::ParticlesId> create_particles(std::uint32_t amount,
+                                                               std::uint32_t trail) override {
+        return null_->create_particles(amount, trail);
+    }
+    void destroy_particles(slash::render::ParticlesId particles) override {
+        null_->destroy_particles(particles);
+    }
+    slash::Result<void>
+    process_particle_chain(std::span<const slash::render::ParticleRun> chain) override {
+        return null_->process_particle_chain(chain);
+    }
+    slash::Result<void> draw_particles(slash::render::ParticlesId particles, TextureId texture,
+                                       const slash::render::ParticleDraw& look,
+                                       const slash::render::Material& material) override {
+        return null_->draw_particles(particles, texture, look, material);
+    }
+    slash::Result<std::vector<slash::render::Particle>>
+    read_particles(slash::render::ParticlesId particles) override {
+        return null_->read_particles(particles);
+    }
+    slash::Result<slash::render::MeshId>
+    create_mesh(std::span<const slash::render::Vertex3D> vertices,
+                std::span<const std::uint32_t> indices) override {
+        return null_->create_mesh(vertices, indices);
+    }
+    slash::Result<void> update_mesh(slash::render::MeshId mesh,
+                                    std::span<const slash::render::Vertex3D> vertices) override {
+        return null_->update_mesh(mesh, vertices);
+    }
+    void destroy_mesh(slash::render::MeshId mesh) override { null_->destroy_mesh(mesh); }
+    slash::Result<bool> begin_frame(const Frame& frame) override {
+        return null_->begin_frame(frame);
+    }
+    slash::Result<void> draw(TextureId texture, std::span<const Vertex2D> vertices,
+                             const slash::render::Material& material) override {
+        return null_->draw(texture, vertices, material);
+    }
+    slash::Result<void> draw_mesh(slash::render::MeshId mesh, const slash::render::Mat4& transform,
+                                  const slash::render::Material3D& material, std::uint32_t layers,
+                                  slash::render::ShadowCasting shadows,
+                                  const std::optional<slash::render::Mat4>& previous) override {
+        return null_->draw_mesh(mesh, transform, material, layers, shadows, previous);
+    }
+    slash::Result<void> end_frame() override { return null_->end_frame(); }
+    slash::Result<Image> read_texture(TextureId texture) override {
+        return null_->read_texture(texture);
+    }
+    slash::render::VsyncMode set_vsync(slash::render::VsyncMode mode) override {
+        return null_->set_vsync(mode);
+    }
+    [[nodiscard]] slash::render::VsyncMode vsync() const override { return null_->vsync(); }
+    [[nodiscard]] slash::render::Stats stats() const override { return null_->stats(); }
+    [[nodiscard]] slash::render::MetalFxSupport metalfx() const override { return support_; }
+
+private:
+    std::unique_ptr<RenderDevice> null_;
+    slash::render::MetalFxSupport support_;
+};
+
+} // namespace
+
+TEST_CASE("MetalFX's modes run where Metal has its scalers and fall back as Godot's elsewhere") {
+    using slash::render::RenderMethod;
+    const auto scaling = [](const char* mode, float scale) {
+        return Scaling{.mode = mode, .scale = scale, .fsr_sharpness = 0.2F, .upscaler = {}};
+    };
+    const auto none = slash::render::create_null_device();
+    const MetalFxDevice spatial({.spatial = true, .temporal = false});
+    const MetalFxDevice both(
+        {.spatial = true, .temporal = true, .min_scale = 0.5F, .max_scale = 1.0F});
+
+    // Without MetalFX, the spatial mode is FSR 1 and the temporal one FSR 2.
+    CHECK(slash::render::scaling_mode_on(scaling("metalfx_spatial", 0.5F), *none) == "fsr");
+    CHECK(slash::render::scaling_mode_on(scaling("metalfx_temporal", 0.5F), *none) == "fsr2");
+    CHECK(slash::render::choose_upscaler(scaling("metalfx_spatial", 0.5F), *none) == "fsr");
+    CHECK(slash::render::uses_fsr2(scaling("metalfx_temporal", 0.5F), RenderMethod::ForwardPlus,
+                                   *none));
+
+    // With only the spatial scaler, both modes scale the world with it.
+    CHECK(slash::render::scaling_mode_on(scaling("metalfx_temporal", 0.5F), spatial) ==
+          "metalfx_spatial");
+    CHECK(slash::render::choose_upscaler(scaling("metalfx_spatial", 0.5F), spatial) ==
+          "metalfx_spatial");
+    CHECK(slash::render::choose_upscaler(scaling("metalfx_temporal", 0.5F), spatial) ==
+          "metalfx_spatial");
+    CHECK_FALSE(slash::render::uses_fsr2(scaling("metalfx_temporal", 0.5F),
+                                         RenderMethod::ForwardPlus, spatial));
+    // MetalFX doesn't scale down, as FSR doesn't.
+    CHECK(slash::render::choose_upscaler(scaling("metalfx_spatial", 1.5F), spatial) == "bilinear");
+
+    // The temporal scaler rebuilds the 3D world at the scales it takes, and FSR 2 does outside
+    // them.
+    CHECK(slash::render::scaling_mode_on(scaling("metalfx_temporal", 0.5F), both) ==
+          "metalfx_temporal");
+    CHECK(slash::render::uses_fsr2(scaling("metalfx_temporal", 0.5F), RenderMethod::ForwardPlus,
+                                   both));
+    CHECK(slash::render::scaling_mode_on(scaling("metalfx_temporal", 0.25F), both) == "fsr2");
+    CHECK_FALSE(slash::render::uses_fsr2(scaling("metalfx_temporal", 0.5F),
+                                         RenderMethod::Compatibility, both));
+    CHECK(slash::render::choose_upscaler(scaling("metalfx_temporal", 0.5F), both) == "bilinear");
+
+    // The spatial scaler is an upscaler only where the device has it.
+    const std::optional<slash::render::UpscalerInfo> info =
+        slash::render::find_upscaler("metalfx_spatial");
+    REQUIRE(info.has_value());
+    if (info.has_value()) {
+        CHECK_FALSE(info->supports(*none));
+        CHECK(info->supports(spatial));
+    }
 }
 
 // The web build of the tests (tests/web) has no shader tools.

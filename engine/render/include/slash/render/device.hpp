@@ -121,6 +121,9 @@ struct TextureDesc {
     // capture into it (ProbeCapture) draw into it, and nothing else reads it: it takes no texels
     // and can't be read back. The OpenGL devices, which draw no probes, keep none.
     std::uint32_t cubes = 0;
+    // MetalFX's spatial scaler can write it, as metalfx_spatial's target. Only render targets
+    // can be.
+    bool scaled_into = false;
 };
 
 // The bytes a texture's texels take: 4 a texel in RGBA8, 1 in the compressed formats and 8 in
@@ -401,6 +404,20 @@ struct ParticleRun {
     std::size_t history = 0;
 };
 
+// Which of Apple's MetalFX scalers a device runs (RenderDevice::metalfx): only the GPU device on
+// Metal does, on macOS 13 and iOS 16 or later with a GPU MetalFX takes, as Godot's
+// SUPPORTS_METALFX_SPATIAL and SUPPORTS_METALFX_TEMPORAL. The temporal one takes render scales
+// (the render size over the screen's) from min_scale to max_scale, as Godot's
+// LIMIT_METALFX_TEMPORAL_SCALER_MIN_SCALE and MAX_SCALE.
+struct MetalFxSupport {
+    bool spatial = false;
+    bool temporal = false;
+    float min_scale = 1.0F;
+    float max_scale = 1.0F;
+
+    bool operator==(const MetalFxSupport&) const = default;
+};
+
 struct Stats {
     std::uint64_t frames = 0;        // frames drawn, not counting skipped ones
     std::uint64_t draws = 0;         // draw calls sent to the GPU, after batching
@@ -522,6 +539,19 @@ public:
     [[nodiscard]] virtual VsyncMode vsync() const = 0;
 
     [[nodiscard]] virtual Stats stats() const = 0;
+
+    // The MetalFX scalers the device runs; none but on Metal.
+    [[nodiscard]] virtual MetalFxSupport metalfx() const { return {}; }
+    // Scales source, a render target, over target, a larger one made scaled_into, with MetalFX's
+    // spatial scaler, outside any frame. Its colors are taken as they are drawn, not linear.
+    // Fails where metalfx() has no spatial scaler.
+    // Defined here so RenderDevice has no key function: its vtable and type are then made
+    // wherever it is derived from, as tests built with RTTI need.
+    [[nodiscard]] virtual Result<void> metalfx_spatial(TextureId /*source*/, TextureId /*target*/) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "this device has no MetalFX scaler: only the GPU device on Metal does, "
+                          "on macOS 13 and iOS 16 or later");
+    }
 };
 
 struct DeviceOptions {
