@@ -37,6 +37,8 @@ cbuffer Fsr2 : FSR2_UNIFORMS {
     // The shading change mip's size, the reconstruct pass's step (0 clears, 1 scatters), and 1
     // for an orthogonal camera, whose depth FSR 2's perspective formulas take as linear here.
     int4 options;
+    // Godot's reprojection matrix by columns: clip space now to the frame before's.
+    float4 reprojection[4];
 };
 
 int2 RenderSize() {
@@ -72,6 +74,27 @@ int FrameIndex() {
 }
 int2 LumaMipDimensions() {
     return options.xy;
+}
+
+// Godot's derive_motion_vector (motion_vector_inc.glsl): a render pixel's motion vector from its
+// depth, for one the prepass drew none for (FFX_FSR2_OPTION_GODOT_DERIVE_INVALID_MOTION_VECTORS).
+// Clip space's y runs up and texture coordinates' down.
+float2 DeriveMotionVector(float2 fUv, float fDepth) {
+    float x = fUv.x * 2.0 - 1.0;
+    float y = 1.0 - fUv.y * 2.0;
+    float4 previous = reprojection[0] * x + reprojection[1] * y + reprojection[2] * fDepth +
+                      reprojection[3];
+    float2 ndc = previous.xy / previous.w;
+    return float2(0.5 + ndc.x * 0.5 - fUv.x, 0.5 - ndc.y * 0.5 - fUv.y);
+}
+// LoadInputMotionVector's half of Godot's option: the prepass's motion vector, or one derived
+// from the depth where it is -1 both ways (the target's clear: the sky).
+float2 ValidMotionVector(float2 fMotion, int2 iPxPos, float fDepth) {
+    if (fMotion.x <= -1.0 && fMotion.y <= -1.0) {
+        float2 fUv = (float2(iPxPos) + 0.5) / float2(RenderSize());
+        return DeriveMotionVector(fUv, fDepth);
+    }
+    return fMotion;
 }
 
 static const float FSR2_FP16_MAX = 65504.0;

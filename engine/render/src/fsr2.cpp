@@ -1264,7 +1264,36 @@ Fsr2Uniforms fsr2_uniforms(const Fsr2Frame& frame) {
     const auto mip = fsr2_luma_mip_size(frame.render_width, frame.render_height);
     u.options = {static_cast<std::int32_t>(mip[0]), static_cast<std::int32_t>(mip[1]),
                  sharpness > 1e-6F ? 0 : 1, ortho ? 1 : 0};
+    // Godot's (correction * prev_proj) * prev_transform.affine_inverse() * cur_transform *
+    // (correction * cur_proj).inverse(), worked out in doubles.
+    const std::array<double, 16> to_world = inverse_matrix(frame.view_projection);
+    for (std::size_t column = 0; column < 4; ++column) {
+        for (std::size_t row = 0; row < 4; ++row) {
+            double sum = 0.0;
+            for (std::size_t k = 0; k < 4; ++k) {
+                sum += static_cast<double>(frame.previous.at((k * 4) + row)) *
+                       to_world.at((column * 4) + k);
+            }
+            u.reprojection.at(column).at(row) = static_cast<float>(sum);
+        }
+    }
     return u;
+}
+
+std::array<float, 2> derive_motion_vector(const std::array<Float4, 4>& reprojection,
+                                          const std::array<float, 2>& uv, float depth) {
+    // Clip space's y runs up and texture coordinates' down; depth is already clip space's.
+    const float x = (uv[0] * 2.0F) - 1.0F;
+    const float y = 1.0F - (uv[1] * 2.0F);
+    Float4 previous{};
+    for (std::size_t i = 0; i < 4; ++i) {
+        previous.at(i) = (((reprojection[0].at(i) * x) + (reprojection[1].at(i) * y)) +
+                          (reprojection[2].at(i) * depth)) +
+                         reprojection[3].at(i);
+    }
+    const float px = previous[0] / previous[3];
+    const float py = previous[1] / previous[3];
+    return {(0.5F + (px * 0.5F)) - uv[0], (0.5F - (py * 0.5F)) - uv[1]};
 }
 
 void Fsr2Clock::advance(std::uint32_t target_phases) {
@@ -1297,7 +1326,26 @@ void run_fsr2(const Fsr2Uniforms& uniforms, const Fsr2Inputs& inputs, Fsr2Histor
     }
     const Plane color{.size = k.render, .channels = 4, .data = inputs.color};
     const Plane depth{.size = k.render, .channels = 1, .data = inputs.depth};
-    const Plane motion{.size = k.render, .channels = 2, .data = inputs.motion};
+    // LoadInputMotionVector with Godot's FFX_FSR2_OPTION_GODOT_DERIVE_INVALID_MOTION_VECTORS: a
+    // pixel the prepass drew no motion vector for (the sky) gets one from its depth.
+    std::vector<float> loaded(inputs.motion.begin(), inputs.motion.end());
+    for (int y = 0; y < k.render[1]; ++y) {
+        for (int x = 0; x < k.render[0]; ++x) {
+            const std::size_t at =
+                (static_cast<std::size_t>(y) * static_cast<std::size_t>(k.render[0])) +
+                static_cast<std::size_t>(x);
+            if (loaded[at * 2] <= kInvalidMotion && loaded[(at * 2) + 1] <= kInvalidMotion) {
+                const std::array<float, 2> uv{
+                    (static_cast<float>(x) + 0.5F) / static_cast<float>(k.render[0]),
+                    (static_cast<float>(y) + 0.5F) / static_cast<float>(k.render[1])};
+                const std::array<float, 2> derived =
+                    derive_motion_vector(uniforms.reprojection, uv, depth.r({x, y}));
+                loaded[at * 2] = derived[0];
+                loaded[(at * 2) + 1] = derived[1];
+            }
+        }
+    }
+    const Plane motion{.size = k.render, .channels = 2, .data = loaded};
 
     const std::vector<float> luma_mip = luma_pass(k, color);
     const Dilated dilated = dilate_pass(k, depth, motion, color);

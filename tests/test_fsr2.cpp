@@ -81,6 +81,8 @@ struct Square {
     float step = 0.0F;        // how far the square moves right each frame
     float turn = 0.0F;        // how far the camera moves right each frame
     bool perspective = false; // seen through a perspective camera
+    float yaw = 0.0F;         // how far the camera turns left each frame, in radians
+    bool sky = false;         // over a panorama sky of upright stripes
 };
 
 // A white unshaded square turned 30 degrees, on a dark red background, seen in an orthogonal
@@ -91,6 +93,15 @@ Image draw_square(RenderDevice& device, const Square& settings) {
     REQUIRE(target.ok());
     auto mesh = device.create_mesh(square(), {});
     REQUIRE(mesh.ok());
+    // Black and white stripes, 16 of each all round.
+    std::vector<std::uint8_t> stripes;
+    for (int i = 0; i < 32; ++i) {
+        const std::uint8_t value = i % 2 == 0 ? 255 : 0;
+        stripes.insert(stripes.end(), {value, value, value, 255});
+    }
+    auto panorama = device.create_texture(
+        {.width = 32, .height = 1, .filter = render::Filter::Nearest}, stripes);
+    REQUIRE(panorama.ok());
     const float start = -settings.step * static_cast<float>(settings.frames - 1);
     const float turn = 0.5235988F;
     const float c = std::cos(turn);
@@ -104,7 +115,15 @@ Image draw_square(RenderDevice& device, const Square& settings) {
         scene.use_taa = settings.taa;
         scene.fsr2 = settings.fsr2;
         const float eye = settings.turn * static_cast<float>(frame);
-        scene.camera = render::look_at({eye, 0.0F, 2.5F}, {eye, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F});
+        // It turns to look straight ahead in the last frame.
+        const float yaw = settings.yaw * static_cast<float>(settings.frames - 1 - frame);
+        scene.camera = render::look_at(
+            {eye, 0.0F, 2.5F}, {eye - (2.5F * std::sin(yaw)), 0.0F, 2.5F - (2.5F * std::cos(yaw))},
+            {0.0F, 1.0F, 0.0F});
+        if (settings.sky) {
+            scene.sky.kind = render::SkyKind::Panorama;
+            scene.sky.panorama.panorama = panorama.value();
+        }
         scene.projection = settings.perspective ? render::perspective(60.0F, 1.0F, 0.1F, 20.0F)
                                                 : render::orthogonal(3.0F, 1.0F, 0.1F, 20.0F);
         REQUIRE(device
@@ -126,6 +145,7 @@ Image draw_square(RenderDevice& device, const Square& settings) {
     auto image = device.read_texture(target.value());
     REQUIRE(image.ok());
     device.destroy_mesh(mesh.value());
+    device.destroy_texture(panorama.value());
     device.destroy_texture(target.value());
     return image.value();
 }
@@ -296,6 +316,81 @@ TEST_CASE("Forward+ FSR 2 follows moving meshes and a moving camera by their mot
     }
 }
 
+TEST_CASE("FSR 2 works out the sky's motion vectors from the depth, as Godot's") {
+    // Godot's derive_motion_vector, checked against where a point is now and was in the frame
+    // before through a camera that turned and moved, as the prepass's motion vectors are.
+    const std::array<float, 16> projection = render::perspective(60.0F, 2.0F, 0.1F, 100.0F);
+    const std::array<float, 16> before = render::look_at({0, 0, 0}, {0, 0, -1}, {0, 1, 0});
+    const std::array<float, 16> now = render::look_at({0.5F, 0.2F, 0}, {0.3F, 0.2F, -1}, {0, 1, 0});
+    const auto multiply = [](const std::array<float, 16>& a, const std::array<float, 16>& b) {
+        std::array<float, 16> m{};
+        for (std::size_t c = 0; c < 4; ++c) {
+            for (std::size_t r = 0; r < 4; ++r) {
+                for (std::size_t k = 0; k < 4; ++k) {
+                    m.at((c * 4) + r) += a.at((k * 4) + r) * b.at((c * 4) + k);
+                }
+            }
+        }
+        return m;
+    };
+    const auto clip = [](const std::array<float, 16>& m, const std::array<float, 4>& p) {
+        std::array<float, 4> out{};
+        for (std::size_t r = 0; r < 4; ++r) {
+            for (std::size_t k = 0; k < 4; ++k) {
+                out.at(r) += m.at((k * 4) + r) * p.at(k);
+            }
+        }
+        return out;
+    };
+    const std::array<float, 16> view_projection = multiply(projection, now);
+    const std::array<float, 16> previous = multiply(projection, before);
+    const detail::Fsr2Uniforms uniforms = detail::fsr2_uniforms({.render_width = 64,
+                                                                 .render_height = 32,
+                                                                 .display_width = 128,
+                                                                 .display_height = 64,
+                                                                 .projection = projection,
+                                                                 .view_projection = view_projection,
+                                                                 .previous = previous});
+    // A near point, a far one and one on the far plane, where the sky is.
+    for (const std::array<float, 4>& point :
+         {std::array<float, 4>{0.2F, 0.1F, -2.0F, 1.0F}, std::array<float, 4>{-3, 2, -40, 1},
+          std::array<float, 4>{0.6F, 0.2F, -99.9F, 1.0F}}) {
+        CAPTURE(point[2]);
+        const std::array<float, 4> c = clip(view_projection, point);
+        const std::array<float, 2> uv{(c[0] / c[3] * 0.5F) + 0.5F, 0.5F - (c[1] / c[3] * 0.5F)};
+        const std::array<float, 2> derived =
+            detail::derive_motion_vector(uniforms.reprojection, uv, c[2] / c[3]);
+        const std::array<float, 2> expected = detail::motion_vector(c, clip(previous, point));
+        CHECK(derived[0] == doctest::Approx(expected[0]).epsilon(1e-3));
+        CHECK(derived[1] == doctest::Approx(expected[1]).epsilon(1e-3));
+    }
+    // A camera that didn't move gives no motion.
+    const detail::Fsr2Uniforms still = detail::fsr2_uniforms({.render_width = 64,
+                                                              .render_height = 32,
+                                                              .display_width = 128,
+                                                              .display_height = 64,
+                                                              .projection = projection,
+                                                              .view_projection = previous,
+                                                              .previous = previous});
+    const std::array<float, 2> none =
+        detail::derive_motion_vector(still.reprojection, {0.3F, 0.7F}, 0.0F);
+    CHECK(std::abs(none[0]) < 1e-6F);
+    CHECK(std::abs(none[1]) < 1e-6F);
+
+    // A camera turning over a striped sky ends as one that stood still: the frames before are
+    // moved with the sky, so its stripes stay sharp.
+    for (auto& device : forward_devices()) {
+        CAPTURE(render::backend_name(device->backend()));
+        const Image still_sky =
+            draw_square(*device, {.frames = 16, .perspective = true, .sky = true});
+        const Image turned =
+            draw_square(*device, {.frames = 16, .perspective = true, .yaw = 0.03F, .sky = true});
+        // Some 1400 channels differ when the sky's motion vectors are left at 0, and the right
+        // edge, which the frames before never saw, differs here too.
+        CHECK(differing(turned, still_sky, 40) < 400);
+    }
+}
+
 TEST_CASE("GPUs draw FSR 2 as the software device does") {
     auto gpu = slash::test::gpu_device();
     if (gpu == nullptr) {
@@ -313,6 +408,7 @@ TEST_CASE("GPUs draw FSR 2 as the software device does") {
         {.fsr2 = render::Fsr2Scaling{.scale = 0.77F, .sharpness = 0.0F},
          .frames = 8,
          .perspective = true},
+        {.frames = 10, .perspective = true, .yaw = 0.03F, .sky = true},
     };
     for (std::size_t i = 0; i < squares.size(); ++i) {
         CAPTURE(i);
