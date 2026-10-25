@@ -279,10 +279,14 @@ TEST_CASE("every device checks meshes, scenes and mesh draws") {
         REQUIRE(target.ok());
 
         render::Scene3D crowded;
-        crowded.lights.resize(render::kMaxLights3D + 1);
+        crowded.lights.resize(render::kMaxDirectionalLights3D + 1);
         CHECK(error_of(
                   device->begin_frame({.target = target.value(), .clear = {}, .scene = crowded})) ==
-              "a scene takes up to 64 lights, not 65");
+              "a scene takes up to 8 directional lights, not 9");
+        crowded.lights.assign(render::kMaxClusteredLights3D + 1, {.type = render::LightType::Omni});
+        CHECK(error_of(
+                  device->begin_frame({.target = target.value(), .clear = {}, .scene = crowded})) ==
+              "a scene takes up to 512 omni and spot lights, not 513");
         const Mat4 identity = placed(0.0F, 0.0F, 0.0F, 0.0F);
         REQUIRE(device->begin_frame({.target = target.value(), .clear = {}}).ok());
         CHECK(error_of(device->draw_mesh(mesh.value(), identity, {})) ==

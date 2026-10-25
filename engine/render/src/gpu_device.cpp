@@ -3,6 +3,7 @@
 #include "checks.hpp"
 #include "hlsl_compiler.hpp"
 #include "material_shaders.hpp"
+#include "mesh_clustered_shaders.hpp"
 #include "mesh_shaders.hpp"
 #include "mesh_shading.hpp"
 #include "particle_layout.hpp"
@@ -256,6 +257,12 @@ public:
             SDL_ReleaseGPUBuffer(device_, particle_data_);
             SDL_ReleaseGPUTransferBuffer(device_, particle_transfer_);
         }
+        for (const StorageBuffer& storage : {cluster_lights_, cluster_cells_}) {
+            if (storage.buffer != nullptr) {
+                SDL_ReleaseGPUBuffer(device_, storage.buffer);
+                SDL_ReleaseGPUTransferBuffer(device_, storage.transfer);
+            }
+        }
         if (vertex_buffer_ != nullptr) {
             SDL_ReleaseGPUBuffer(device_, vertex_buffer_);
         }
@@ -271,6 +278,9 @@ public:
             if (shader != nullptr) {
                 SDL_ReleaseGPUShader(device_, shader);
             }
+        }
+        if (clustered_shader_ != nullptr) {
+            SDL_ReleaseGPUShader(device_, clustered_shader_);
         }
         for (SDL_GPUShader* shader : shadow_shaders_) {
             if (shader != nullptr) {
@@ -984,8 +994,9 @@ public:
             return ready;
         }
         // With post-processing, meshes draw into the post passes' texture instead of the target.
-        auto pipeline = mesh_pipeline_for(
-            post_processes(frame_.scene->post) ? kTextureFormat : frame_format_, material);
+        auto pipeline =
+            mesh_pipeline_for(post_processes(frame_.scene->post) ? kTextureFormat : frame_format_,
+                              material, frame_.scene->method == RenderMethod::ForwardPlus);
         if (!pipeline) {
             return pipeline.error();
         }
@@ -1255,7 +1266,16 @@ private:
         CullMode cull = CullMode::Back;
         bool blended = false;             // an Alpha material's, which writes no depth
         BlendMode blend = BlendMode::Mix; // when blended
+        bool clustered = false;           // Forward+'s fragment stage
         SDL_GPUGraphicsPipeline* pipeline = nullptr;
+    };
+
+    // A storage buffer the fragment stage reads, filled each frame through its own transfer
+    // buffer and grown by doubling, so a busy game settles on one size.
+    struct StorageBuffer {
+        SDL_GPUBuffer* buffer = nullptr;
+        SDL_GPUTransferBuffer* transfer = nullptr;
+        std::uint32_t capacity = 0;
     };
 
     // A game's shader (create_shader).
@@ -1709,6 +1729,27 @@ private:
         return {};
     }
 
+    // Forward+'s fragment stage, which reads the clusters' two storage buffers, unless it is made
+    // already.
+    Result<void> make_clustered_shader() {
+        if (clustered_shader_ != nullptr) {
+            return {};
+        }
+        const std::string fragment_msl = joined(shaders::kMeshClusteredFragmentMsl);
+        const ShaderCode code{.vertex_spirv = {},
+                              .fragment_spirv = shaders::kMeshClusteredFragmentSpirv,
+                              .vertex_msl = {},
+                              .fragment_msl = fragment_msl,
+                              .hlsl = shaders::kMeshClusteredHlsl};
+        auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code,
+                                        static_cast<std::uint32_t>(kMeshTextures) + 3, 3, 2);
+        if (!fragment) {
+            return fragment.error();
+        }
+        clustered_shader_ = fragment.value();
+        return {};
+    }
+
     // Vertex3D's fields as the mesh and shadow shaders' inputs.
     static std::array<SDL_GPUVertexAttribute, 5> mesh_attributes() {
         return {{
@@ -1748,20 +1789,25 @@ private:
     }
 
     // The pipeline drawing a material's meshes into a target format, made the first time a frame
-    // needs it: it culls as the material says, and an Alpha material's blends and writes no
-    // depth.
+    // needs it: it culls as the material says, an Alpha material's blends and writes no depth, and
+    // a clustered one lights with Forward+'s clusters.
     Result<SDL_GPUGraphicsPipeline*> mesh_pipeline_for(SDL_GPUTextureFormat format,
-                                                       const Material3D& material) {
+                                                       const Material3D& material, bool clustered) {
         const bool blended = material.transparency == Transparency::Alpha;
         const BlendMode blend = blended ? material.blend : BlendMode::Mix;
         for (const MeshPipeline& made : mesh_pipelines_) {
             if (made.format == format && made.cull == material.cull && made.blended == blended &&
-                made.blend == blend) {
+                made.blend == blend && made.clustered == clustered) {
                 return made.pipeline;
             }
         }
         if (auto made = make_mesh_shaders(); !made) {
             return made.error();
+        }
+        if (clustered) {
+            if (auto made = make_clustered_shader(); !made) {
+                return made.error();
+            }
         }
         SDL_GPUVertexBufferDescription buffer{};
         buffer.slot = 0;
@@ -1775,7 +1821,7 @@ private:
         }
         SDL_GPUGraphicsPipelineCreateInfo info{};
         info.vertex_shader = mesh_shaders_[0];
-        info.fragment_shader = mesh_shaders_[1];
+        info.fragment_shader = clustered ? clustered_shader_ : mesh_shaders_[1];
         info.vertex_input_state.vertex_buffer_descriptions = &buffer;
         info.vertex_input_state.num_vertex_buffers = 1;
         info.vertex_input_state.vertex_attributes = attributes.data();
@@ -1801,6 +1847,7 @@ private:
                                    .cull = material.cull,
                                    .blended = blended,
                                    .blend = blend,
+                                   .clustered = clustered,
                                    .pipeline = pipeline});
         return pipeline;
     }
@@ -1933,6 +1980,7 @@ private:
         buffer.slot = 0;
         buffer.pitch = sizeof(Vertex3D);
         buffer.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+        constexpr std::array kCullModes{CullMode::Back, CullMode::Front, CullMode::Disabled};
         for (std::size_t i = 0; i < shadow_pipelines_.size(); ++i) {
             SDL_GPUGraphicsPipelineCreateInfo info{};
             info.vertex_shader = shadow_shaders_[0];
@@ -1944,7 +1992,7 @@ private:
                 static_cast<std::uint32_t>(attributes.size());
             info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
             info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
-            info.rasterizer_state.cull_mode = gpu_cull(static_cast<CullMode>(i));
+            info.rasterizer_state.cull_mode = gpu_cull(kCullModes.at(i));
             info.rasterizer_state.front_face = SDL_GPU_FRONTFACE_CLOCKWISE;
             info.depth_stencil_state.enable_depth_test = true;
             info.depth_stencil_state.enable_depth_write = true;
@@ -2066,6 +2114,13 @@ private:
         SDL_PushGPUVertexUniformData(commands, 0, &camera,
                                      static_cast<std::uint32_t>(sizeof(camera)));
         const auto lights = std::make_unique<MeshSceneUniforms>(mesh_scene_uniforms(scene));
+        const bool clustered = scene.method == RenderMethod::ForwardPlus;
+        if (clustered) {
+            lights->cluster = clusters_.uniform();
+            const std::array storage{cluster_lights_.buffer, cluster_cells_.buffer};
+            SDL_BindGPUFragmentStorageBuffers(pass, 0, storage.data(),
+                                              static_cast<std::uint32_t>(storage.size()));
+        }
         SDL_PushGPUFragmentUniformData(commands, 1, lights.get(),
                                        static_cast<std::uint32_t>(sizeof(MeshSceneUniforms)));
         SDL_PushGPUFragmentUniformData(commands, 2, plan->uniforms.get(),
@@ -2587,13 +2642,15 @@ private:
 
     // One stage of a shader, in the format the backend takes.
     Result<SDL_GPUShader*> make_gpu_shader(SDL_GPUShaderStage stage, const ShaderCode& code,
-                                           std::uint32_t samplers, std::uint32_t uniforms) {
+                                           std::uint32_t samplers, std::uint32_t uniforms,
+                                           std::uint32_t storage_buffers = 0) {
         const bool vertex = stage == SDL_GPU_SHADERSTAGE_VERTEX;
         SDL_GPUShaderCreateInfo info{};
         info.stage = stage;
         info.entrypoint = vertex ? "vs_main" : "fs_main";
         info.num_samplers = samplers;
         info.num_uniform_buffers = uniforms;
+        info.num_storage_buffers = storage_buffers;
         const SDL_GPUShaderFormat formats = SDL_GetGPUShaderFormats(device_);
         std::vector<std::uint8_t> compiled;
         if ((formats & SDL_GPU_SHADERFORMAT_SPIRV) != 0) {
@@ -2782,7 +2839,10 @@ private:
     // passes, with room after the vertices for the particles' quads.
     Result<void> upload_frame(SDL_GPUCommandBuffer* commands) {
         const auto total = static_cast<std::uint32_t>(frame_vertex_count() * sizeof(Vertex2D));
-        if (total == 0 && particle_jobs_.empty()) {
+        const Scene3D* scene = frame_.scene ? &*frame_.scene : nullptr;
+        const bool clustered =
+            scene != nullptr && !mesh_draws_.empty() && scene->method == RenderMethod::ForwardPlus;
+        if (total == 0 && particle_jobs_.empty() && !clustered) {
             return {};
         }
         const auto size = static_cast<std::uint32_t>(vertices_.size() * sizeof(Vertex2D));
@@ -2826,8 +2886,62 @@ private:
             SDL_UploadToGPUBuffer(copy, &source, &destination, true);
         }
         Result<void> uploaded = upload_particle_words(copy);
+        if (uploaded && clustered) {
+            uploaded = upload_clusters(copy, *scene);
+        }
         SDL_EndGPUCopyPass(copy);
         return uploaded;
+    }
+
+    // Builds the frame's Forward+ clusters and copies them to the GPU.
+    Result<void> upload_clusters(SDL_GPUCopyPass* copy, const Scene3D& scene) {
+        clusters_ = build_clusters(scene, frame_width_, frame_height_);
+        if (clusters_.lights.empty()) {
+            clusters_.lights.emplace_back(); // a storage buffer is never empty
+        }
+        if (auto uploaded =
+                upload_storage(copy, cluster_lights_, std::as_bytes(std::span(clusters_.lights)));
+            !uploaded) {
+            return uploaded;
+        }
+        return upload_storage(copy, cluster_cells_, std::as_bytes(std::span(clusters_.cells)));
+    }
+
+    // Copies bytes into a storage buffer, growing it first if they don't fit.
+    Result<void> upload_storage(SDL_GPUCopyPass* copy, StorageBuffer& storage,
+                                std::span<const std::byte> bytes) {
+        const auto size = static_cast<std::uint32_t>(bytes.size());
+        if (size > storage.capacity) {
+            const std::uint32_t capacity = std::max({size, storage.capacity * 2, kMinVertexBytes});
+            if (storage.buffer != nullptr) {
+                SDL_ReleaseGPUBuffer(device_, storage.buffer);
+                SDL_ReleaseGPUTransferBuffer(device_, storage.transfer);
+                storage = {};
+            }
+            SDL_GPUBufferCreateInfo buffer{};
+            buffer.usage = SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
+            buffer.size = capacity;
+            storage.buffer = SDL_CreateGPUBuffer(device_, &buffer);
+            SDL_GPUTransferBufferCreateInfo transfer{};
+            transfer.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+            transfer.size = capacity;
+            storage.transfer = SDL_CreateGPUTransferBuffer(device_, &transfer);
+            if (storage.buffer == nullptr || storage.transfer == nullptr) {
+                return sdl_error("making room for the frame's light clusters failed");
+            }
+            storage.capacity = capacity;
+        }
+        void* mapped = SDL_MapGPUTransferBuffer(device_, storage.transfer, true);
+        if (mapped == nullptr) {
+            return sdl_error("uploading the frame's light clusters failed");
+        }
+        std::memcpy(mapped, bytes.data(), size);
+        SDL_UnmapGPUTransferBuffer(device_, storage.transfer);
+        const SDL_GPUTransferBufferLocation source{.transfer_buffer = storage.transfer,
+                                                   .offset = 0};
+        const SDL_GPUBufferRegion destination{.buffer = storage.buffer, .offset = 0, .size = size};
+        SDL_UploadToGPUBuffer(copy, &source, &destination, true);
+        return {};
     }
 
     void start_frame(const Frame& frame, SDL_GPUCommandBuffer* commands, SDL_GPUTexture* target,
@@ -2911,7 +3025,12 @@ private:
     std::unordered_map<MeshId, Mesh> meshes_;
     std::uint32_t next_mesh_ = 1;
     std::array<SDL_GPUShader*, 2> mesh_shaders_{}; // vertex, then fragment
+    SDL_GPUShader* clustered_shader_ = nullptr;    // Forward+'s fragment stage
     std::vector<MeshPipeline> mesh_pipelines_;
+    // Forward+'s clusters for the frame, made as it is sent, and the buffers they go in.
+    LightClusters clusters_;
+    StorageBuffer cluster_lights_;
+    StorageBuffer cluster_cells_;
     SDL_GPUTexture* depth_ = nullptr;
     SDL_GPUTextureFormat depth_format_ = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
     // The frame's shadow plan, made at its first mesh draw, and what its passes draw with.

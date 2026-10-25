@@ -433,9 +433,19 @@ std::vector<render::Light3D> lights(const world::World& world, const world::Tree
     add_lights<world::OmniLight3D>(world, tree, global, order, found);
     add_lights<world::SpotLight3D>(world, tree, global, order, found);
     std::ranges::stable_sort(found, {}, &std::pair<std::size_t, render::Light3D>::first);
+    // Directional lights first, so Compatibility's first render::kMaxLights3D keep them all.
+    std::ranges::stable_partition(found, [](const auto& entry) {
+        return entry.second.type == render::LightType::Directional;
+    });
     std::vector<render::Light3D> out;
+    std::size_t directional = 0;
     for (auto& [place, light] : found) {
-        if (out.size() == render::kMaxLights3D) {
+        if (light.type == render::LightType::Directional) {
+            if (directional == render::kMaxDirectionalLights3D) {
+                continue;
+            }
+            ++directional;
+        } else if (out.size() - directional == render::kMaxClusteredLights3D) {
             break;
         }
         out.push_back(light);

@@ -39,6 +39,7 @@ target_compile_options(slash_image_codecs PRIVATE
     "$<$<NOT:$<C_COMPILER_ID:MSVC>>:-w;-ffp-contract=off>")
 
 add_library(slash_render
+    src/clusters.cpp
     src/device.cpp
     src/gl_device.cpp
     src/gpu_device.cpp
@@ -88,9 +89,9 @@ endif()
 # The software device draws the same pixels, and particles and their graphs move the same, on
 # every platform: no fused multiply-adds, which arm64 compilers would otherwise emit and x86-64
 # ones not.
-set_source_files_properties(src/device.cpp src/material.cpp src/mesh.cpp src/particles.cpp
-    src/post.cpp src/resize.cpp src/shader_vm.cpp src/shadow.cpp src/sky.cpp src/software_device.cpp
-    src/upscaler.cpp
+set_source_files_properties(src/clusters.cpp src/device.cpp src/material.cpp src/mesh.cpp
+    src/particles.cpp src/post.cpp src/resize.cpp src/shader_vm.cpp src/shadow.cpp src/sky.cpp
+    src/software_device.cpp src/upscaler.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
@@ -104,9 +105,11 @@ set(slash_shader_headers "")
 # depth for the shadow pass shader, whose varyings GLSL names apart from the canvas shaders' and
 # whose depth it maps to OpenGL's, and post for the post passes, the sky and the radiance filter,
 # which have no varyings. The mesh shader's code is long enough to come in pieces, and its fourteen
-# textures put its WGSL samplers 16 bindings after them instead of 8.
-set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d shadow:Shadow:depth post:Post:post
-    sky:Sky:post radiance:Radiance:post particles_process:ParticlesProcess:compute
+# textures put its WGSL samplers 16 bindings after them instead of 8. clustered is the mesh
+# shader's Forward+ fragment stage, which reads storage buffers.
+set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
+    mesh_clustered:MeshClustered:clustered shadow:Shadow:depth post:Post:post sky:Sky:post
+    radiance:Radiance:post particles_process:ParticlesProcess:compute
     particles_emit:ParticlesEmit:compute particles_draw:ParticlesDraw:compute)
 foreach(entry IN LISTS slash_shaders)
     string(REPLACE ":" ";" parts ${entry})
@@ -119,6 +122,8 @@ foreach(entry IN LISTS slash_shaders)
     set(fixup OFF)
     set(pieces OFF)
     set(sampler_shift 8)
+    set(fragment_only OFF)
+    set(storage_buffers OFF)
     if(count GREATER 2)
         list(GET parts 2 kind)
         if(kind STREQUAL "compute")
@@ -137,6 +142,10 @@ foreach(entry IN LISTS slash_shaders)
             set(fixup ON)
             set(pieces ON)
             set(sampler_shift 16)
+            if(kind STREQUAL "clustered")
+                set(fragment_only ON)
+                set(storage_buffers ON)
+            endif()
         endif()
     endif()
     set(header ${CMAKE_CURRENT_SOURCE_DIR}/src/${shader}_shaders.hpp)
@@ -147,6 +156,7 @@ foreach(entry IN LISTS slash_shaders)
             -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/shaders/${shader}.hlsl -DOUTPUT=${header}
             -DNAME=${name} -DCOMPUTE=${compute} -DINTERFACE=${interface}
             -DFIXUP_CLIPSPACE=${fixup} -DPIECES=${pieces} -DSAMPLER_SHIFT=${sampler_shift}
+            -DFRAGMENT_ONLY=${fragment_only} -DSTORAGE_BUFFERS=${storage_buffers}
             -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/shaders
             -DGLSLANG=${SLASH_GLSLANG} -DSPIRV_CROSS=${SLASH_SPIRV_CROSS} -DTINT=${SLASH_TINT}
             -P ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake

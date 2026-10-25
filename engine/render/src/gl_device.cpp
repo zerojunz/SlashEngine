@@ -1004,6 +1004,11 @@ public:
         }
         in_frame_ = true;
         frame_ = frame;
+        if (frame_.scene) {
+            // OpenGL ES 3.0 has no storage buffers for Forward+'s clusters, so OpenGL is always
+            // Godot's Compatibility renderer.
+            frame_.scene->method = RenderMethod::Compatibility;
+        }
         frame_framebuffer_ = framebuffer;
         frame_width_ = width;
         frame_height_ = height;

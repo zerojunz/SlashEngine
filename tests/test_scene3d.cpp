@@ -323,6 +323,32 @@ TEST_CASE("lights shine from their entities down their -z, in tree order, and fr
     CHECK(renderer.lights() == 2);
 }
 
+TEST_CASE("a frame takes 8 directional lights first, then 512 omni and spot lights") {
+    Scene scene;
+    scene.create("lamp", R"({"Transform3D": {}, "OmniLight3D": {"omni_range": 2}})");
+    for (int i = 0; i < 9; ++i) {
+        scene.create("sun" + std::to_string(i),
+                     R"({"Transform3D": {}, "DirectionalLight3D": {"light_energy": )" +
+                         std::to_string(i) + "}}");
+    }
+    for (int i = 0; i < 520; ++i) {
+        scene.create("candle" + std::to_string(i), R"({"Transform3D": {}, "SpotLight3D": {}})");
+    }
+    world::Tree3D tree(scene.world);
+    const auto lights = scene3d::lights(scene.world, tree,
+                                        [&](entt::entity entity) { return tree.global(entity); });
+    REQUIRE(lights.size() == render::kMaxDirectionalLights3D + render::kMaxClusteredLights3D);
+    // The first 8 suns, so Compatibility's first 64 lights keep them all, then the lamp and
+    // the first 511 candles.
+    for (std::size_t i = 0; i < render::kMaxDirectionalLights3D; ++i) {
+        CHECK(lights[i].type == render::LightType::Directional);
+        CHECK(lights[i].energy == static_cast<float>(i));
+    }
+    CHECK(lights[8].type == render::LightType::Omni);
+    CHECK(lights[9].type == render::LightType::Spot);
+    CHECK(lights.back().type == render::LightType::Spot);
+}
+
 TEST_CASE("meshes of equal settings share one on the device, and unused meshes go") {
     Scene scene;
     const auto device = render::create_null_device();
@@ -837,6 +863,23 @@ TEST_CASE("skies and fog draw behind and over the 3D world, their textures by pa
     contents = {};
     CHECK(draw(contents) == Rgba{0, 255, 0, 255});
     CHECK(contents.problems.empty());
+}
+
+TEST_CASE("project.json's rendering.rendering_method picks how 3D meshes are lit") {
+    json::Value project = parse(R"({"format": 1, "name": "Lamps", "version": "1.0.0",
+        "main_scene": "main.scene.json", "rendering": {"rendering_method": "gl_compatibility"}})");
+    CHECK(slash::runtime::validate_project(project).empty());
+    CHECK(slash::runtime::parse_project(project).value().rendering_method ==
+          render::RenderMethod::Compatibility);
+    project["rendering"] = json::Object{};
+    CHECK(slash::runtime::parse_project(project).value().rendering_method ==
+          render::RenderMethod::ForwardPlus);
+    project["rendering"]["rendering_method"] = "mobile";
+    const auto errors = slash::runtime::validate_project(project);
+    REQUIRE(errors.size() == 1);
+    CHECK(errors.front().path == "/rendering/rendering_method");
+    CHECK(render::parse_render_method("forward_plus") == render::RenderMethod::ForwardPlus);
+    CHECK_FALSE(render::parse_render_method("forward").has_value());
 }
 
 TEST_CASE("project.json's rendering.lights_and_shadows is read and checked") {

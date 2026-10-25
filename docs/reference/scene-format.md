@@ -1349,7 +1349,11 @@ precision.
 
 `DirectionalLight3D` shines down its entity's -z everywhere, as the sun; `OmniLight3D` shines
 from its entity in every direction; `SpotLight3D` shines from its entity in a cone down its -z.
-Up to 64 lights shine at once, in tree order, and hidden ones don't. Their fields are Godot's:
+Up to 8 directional lights and 512 omni and spot lights shine at once, the directional ones
+first and each kind in tree order, and hidden ones don't. The project's
+[rendering method](project-format.md#rendering-methods) picks how: `forward_plus`, the default,
+lights each pixel with only the omni and spot lights whose range reaches it, and
+`gl_compatibility`, as the OpenGL drivers always do, with the first 64. Their fields are Godot's:
 
 | Field | Default | Lights | Meaning |
 | --- | --- | --- | --- |

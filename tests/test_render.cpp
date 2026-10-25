@@ -14,6 +14,7 @@
 // The renderer's own headers, for its HLSL and Windows' compiler.
 #include "../engine/render/src/hlsl_compiler.hpp"
 #include "../engine/render/src/material_shaders.hpp"
+#include "../engine/render/src/mesh_clustered_shaders.hpp"
 #include "../engine/render/src/mesh_shaders.hpp"
 #include "../engine/render/src/particles_draw_shaders.hpp"
 #include "../engine/render/src/particles_emit_shaders.hpp"
@@ -776,6 +777,11 @@ TEST_CASE("every shader compiles with Windows' HLSL compiler") {
                           (compiled.ok() ? std::string() : compiled.error().message));
         }
     }
+    // Forward+'s mesh shader has only a fragment stage.
+    const auto clustered =
+        slash::render::detail::compile_hlsl(shaders::kMeshClusteredHlsl, "fs_main", "ps_5_1");
+    CHECK_MESSAGE(clustered.ok(), "mesh_clustered fs_main: ",
+                  (clustered.ok() ? std::string() : clustered.error().message));
     for (const auto& [name, hlsl] : {std::pair{"particles_process", shaders::kParticlesProcessHlsl},
                                      std::pair{"particles_emit", shaders::kParticlesEmitHlsl},
                                      std::pair{"particles_draw", shaders::kParticlesDrawHlsl}}) {
