@@ -1,0 +1,12 @@
+fileFormatVersion: 2
+guid: b1000000000000000000000000000003
+ModelImporter:
+  serializedVersion: 22200
+  internalIDToNameTable: []
+  externalObjects: {}
+  materials:
+    materialImportMode: 2
+  meshes:
+    globalScale: 1
+    useFileScale: 1
+  userData: 

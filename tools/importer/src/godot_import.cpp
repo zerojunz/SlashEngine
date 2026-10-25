@@ -85,17 +85,6 @@ bool is_script_file(std::string_view extension) {
     return extension == ".gd" || extension == ".cs";
 }
 
-// A texture file: JPEG files load as PNG and BMP files do.
-bool is_godot_texture(std::string_view extension) {
-    return is_texture_file(extension) || extension == ".jpg" || extension == ".jpeg";
-}
-
-// A 3D model file a MeshInstance3D draws.
-bool is_model_file(std::string_view extension) {
-    return extension == ".glb" || extension == ".gltf" || extension == ".obj" ||
-           extension == ".fbx" || extension == ".blend";
-}
-
 // Resources Godot saves in its binary format by default, read as .tres files are: mesh libraries,
 // meshes, materials and any resource saved as .res.
 bool is_binary_resource(std::string_view extension) {
@@ -109,21 +98,7 @@ std::string unsupported_file(std::string_view extension) {
         return "a game's own shaders are on the roadmap; canvas materials are .material.json "
                "graphs";
     }
-    if (extension == ".dae" || extension == ".3ds" || extension == ".max" || extension == ".ma" ||
-        extension == ".mb") {
-        return "models are glTF, OBJ, FBX or .blend files; export it as glTF";
-    }
-    if (extension == ".svg" || extension == ".webp") {
-        return "textures are PNG, JPEG or BMP files; save it as PNG";
-    }
     return unsupported_asset(extension);
-}
-
-// Rounds an angle or scale made from a matrix, so 90 degrees is 1.570796 rather than
-// 1.5707963267948966 or 1.5707962513.
-double tidy_number(double value) {
-    const double rounded = std::round(value * 1e6) / 1e6;
-    return rounded == 0.0 ? 0.0 : rounded;
 }
 
 // A Node3D's place, as Node3D keeps it beside its transform.
@@ -132,25 +107,6 @@ struct Placement3D {
     std::array<double, 3> rotation{};
     std::array<double, 3> scale{1.0, 1.0, 1.0};
 };
-
-// The Euler angles of an orthonormal basis, given by rows, as Godot's Basis::get_euler for
-// EulerOrder::YXZ.
-std::array<double, 3> basis_euler(const std::array<std::array<double, 3>, 3>& m) {
-    constexpr double kEpsilon = 0.00001; // CMP_EPSILON
-    constexpr double kHalfPi = std::numbers::pi / 2.0;
-    const double m12 = m[1][2];
-    if (m12 >= 1.0 - kEpsilon) {
-        return {-kHalfPi, -std::atan2(m[0][1], m[0][0]), 0.0};
-    }
-    if (m12 <= -(1.0 - kEpsilon)) {
-        return {kHalfPi, std::atan2(m[0][1], m[0][0]), 0.0};
-    }
-    if (m[1][0] == 0.0 && m[0][1] == 0.0 && m[0][2] == 0.0 && m[2][0] == 0.0 && m[0][0] == 1.0) {
-        // A turn about x alone, in its simplest form.
-        return {std::atan2(-m12, m[1][1]), 0.0, 0.0};
-    }
-    return {std::asin(-m12), std::atan2(m[0][2], m[2][2]), std::atan2(m[1][0], m[1][1])};
-}
 
 // A Transform3D's twelve numbers (its basis by rows, then its origin) as position, rotation and
 // scale, as Node3D::_update_rotation_and_scale finds them: the scale is the basis's column
@@ -234,49 +190,6 @@ std::optional<Placement3D> decompose_transform(const std::vector<double>& number
         out.rotation.at(i) = tidy_number(euler.at(i));
     }
     return out;
-}
-
-// A rotation as Godot's Quaternion keeps it: x, y, z and w.
-using Quaternion = std::array<double, 4>;
-
-// The YXZ Euler angles of a rotation's quaternion, as Godot's Basis(Quaternion) then
-// Basis::get_euler find them, tidied.
-std::array<double, 3> quaternion_euler(const Quaternion& q) {
-    const auto [x, y, z, w] = q;
-    const double length = (x * x) + (y * y) + (z * z) + (w * w);
-    const double s = length > 0.0 ? 2.0 / length : 0.0;
-    const double xs = x * s;
-    const double ys = y * s;
-    const double zs = z * s;
-    const double wx = w * xs;
-    const double wy = w * ys;
-    const double wz = w * zs;
-    const double xx = x * xs;
-    const double xy = x * ys;
-    const double xz = x * zs;
-    const double yy = y * ys;
-    const double yz = y * zs;
-    const double zz = z * zs;
-    const std::array<std::array<double, 3>, 3> rows{{{1.0 - (yy + zz), xy - wz, xz + wy},
-                                                     {xy + wz, 1.0 - (xx + zz), yz - wx},
-                                                     {xz - wy, yz + wx, 1.0 - (xx + yy)}}};
-    std::array<double, 3> euler = basis_euler(rows);
-    for (double& angle : euler) {
-        angle = tidy_number(angle);
-    }
-    return euler;
-}
-
-// The quaternion of YXZ Euler angles, as Godot's Quaternion::from_euler.
-Quaternion euler_quaternion(const std::array<double, 3>& euler) {
-    const double c1 = std::cos(euler[1] * 0.5);
-    const double s1 = std::sin(euler[1] * 0.5);
-    const double c2 = std::cos(euler[0] * 0.5);
-    const double s2 = std::sin(euler[0] * 0.5);
-    const double c3 = std::cos(euler[2] * 0.5);
-    const double s3 = std::sin(euler[2] * 0.5);
-    return {(s1 * c2 * s3) + (c1 * s2 * c3), (s1 * c2 * c3) - (c1 * s2 * s3),
-            (c1 * c2 * s3) - (s1 * s2 * c3), (s1 * s2 * s3) + (c1 * c2 * c3)};
 }
 
 double quaternion_dot(const Quaternion& a, const Quaternion& b) {
@@ -1735,7 +1648,7 @@ private:
         }
         if (extension == ".gltf") {
             for (const std::string& companion : gltf_files(file, bytes.value())) {
-                if (is_godot_texture(extension_of(companion))) {
+                if (is_texture_file(extension_of(companion))) {
                     continue; // copied as a texture
                 }
                 if (!std::ranges::binary_search(files_, companion)) {
@@ -1761,10 +1674,9 @@ private:
             take_model(file, extension);
             return;
         }
-        if (is_godot_texture(extension) || is_sound_file(extension) || is_font_file(extension) ||
+        if (is_texture_file(extension) || is_sound_file(extension) || is_font_file(extension) ||
             is_data_file(extension) || is_script_file(extension)) {
-            if (is_godot_texture(extension) || is_sound_file(extension) ||
-                is_font_file(extension)) {
+            if (is_texture_file(extension) || is_sound_file(extension) || is_font_file(extension)) {
                 ++assets_;
             }
             if (is_script_file(extension)) {
@@ -2488,7 +2400,7 @@ private:
             if (is_sound_file(extension)) {
                 return sound_path(path);
             }
-            if (is_godot_texture(extension) || is_font_file(extension)) {
+            if (is_texture_file(extension) || is_font_file(extension)) {
                 return destination(path);
             }
             if (extension == ".tscn") {

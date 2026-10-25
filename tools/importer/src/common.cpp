@@ -2,7 +2,10 @@
 
 #include "slash/storyboard/storyboard.hpp"
 
+#include <array>
 #include <charconv>
+#include <cmath>
+#include <numbers>
 #include <set>
 #include <system_error>
 
@@ -125,7 +128,8 @@ std::string join(const std::vector<std::string>& items, std::string_view separat
 }
 
 bool is_texture_file(std::string_view extension) {
-    return extension == ".png" || extension == ".bmp";
+    return extension == ".png" || extension == ".bmp" || extension == ".jpg" ||
+           extension == ".jpeg";
 }
 bool is_sound_file(std::string_view extension) {
     return extension == ".wav" || extension == ".ogg" || extension == ".mp3";
@@ -138,20 +142,18 @@ bool is_data_file(std::string_view extension) {
 }
 
 std::string unsupported_asset(std::string_view extension) {
-    if (extension == ".svg" || extension == ".jpg" || extension == ".jpeg" ||
-        extension == ".webp" || extension == ".tga" || extension == ".exr" || extension == ".hdr" ||
-        extension == ".ktx" || extension == ".dds" || extension == ".psd" || extension == ".psb" ||
-        extension == ".tif" || extension == ".tiff" || extension == ".gif") {
-        return "textures are PNG or BMP files; save it as PNG";
+    if (extension == ".svg" || extension == ".webp" || extension == ".tga" || extension == ".exr" ||
+        extension == ".hdr" || extension == ".ktx" || extension == ".dds" || extension == ".psd" ||
+        extension == ".psb" || extension == ".tif" || extension == ".tiff" || extension == ".gif") {
+        return "textures are PNG, JPEG or BMP files; save it as PNG";
     }
     if (extension == ".woff" || extension == ".woff2" || extension == ".fnt" ||
         extension == ".pfb" || extension == ".pfm") {
         return "fonts are TTF or OTF files";
     }
-    if (extension == ".glb" || extension == ".gltf" || extension == ".obj" || extension == ".fbx" ||
-        extension == ".blend" || extension == ".dae" || extension == ".3ds" ||
-        extension == ".max" || extension == ".ma" || extension == ".mb") {
-        return "3D comes with milestone 7";
+    if (extension == ".dae" || extension == ".3ds" || extension == ".max" || extension == ".ma" ||
+        extension == ".mb") {
+        return "models are glTF, OBJ, FBX or .blend files; export it as glTF";
     }
     if (extension == ".ogv" || extension == ".mp4" || extension == ".mov" || extension == ".webm" ||
         extension == ".avi") {
@@ -166,6 +168,11 @@ std::string unsupported_asset(std::string_view extension) {
                "as AAC); sounds are WAV, Ogg Vorbis or MP3 files";
     }
     return {};
+}
+
+bool is_model_file(std::string_view extension) {
+    return extension == ".glb" || extension == ".gltf" || extension == ".obj" ||
+           extension == ".fbx" || extension == ".blend";
 }
 
 std::optional<std::pair<int, int>> png_size(std::string_view bytes) {
@@ -227,6 +234,65 @@ bool remove_pointer(json::Value& root, std::string_view pointer) {
 }
 
 // --- The destination ---
+
+double tidy_number(double value) {
+    const double rounded = std::round(value * 1e6) / 1e6;
+    return rounded == 0.0 ? 0.0 : rounded;
+}
+
+std::array<double, 3> basis_euler(const std::array<std::array<double, 3>, 3>& m) {
+    constexpr double kEpsilon = 0.00001; // CMP_EPSILON
+    constexpr double kHalfPi = std::numbers::pi / 2.0;
+    const double m12 = m[1][2];
+    if (m12 >= 1.0 - kEpsilon) {
+        return {-kHalfPi, -std::atan2(m[0][1], m[0][0]), 0.0};
+    }
+    if (m12 <= -(1.0 - kEpsilon)) {
+        return {kHalfPi, std::atan2(m[0][1], m[0][0]), 0.0};
+    }
+    if (m[1][0] == 0.0 && m[0][1] == 0.0 && m[0][2] == 0.0 && m[2][0] == 0.0 && m[0][0] == 1.0) {
+        // A turn about x alone, in its simplest form.
+        return {std::atan2(-m12, m[1][1]), 0.0, 0.0};
+    }
+    return {std::asin(-m12), std::atan2(m[0][2], m[2][2]), std::atan2(m[1][0], m[1][1])};
+}
+
+std::array<double, 3> quaternion_euler(const Quaternion& q) {
+    const auto [x, y, z, w] = q;
+    const double length = (x * x) + (y * y) + (z * z) + (w * w);
+    const double s = length > 0.0 ? 2.0 / length : 0.0;
+    const double xs = x * s;
+    const double ys = y * s;
+    const double zs = z * s;
+    const double wx = w * xs;
+    const double wy = w * ys;
+    const double wz = w * zs;
+    const double xx = x * xs;
+    const double xy = x * ys;
+    const double xz = x * zs;
+    const double yy = y * ys;
+    const double yz = y * zs;
+    const double zz = z * zs;
+    const std::array<std::array<double, 3>, 3> rows{{{1.0 - (yy + zz), xy - wz, xz + wy},
+                                                     {xy + wz, 1.0 - (xx + zz), yz - wx},
+                                                     {xz - wy, yz + wx, 1.0 - (xx + yy)}}};
+    std::array<double, 3> euler = basis_euler(rows);
+    for (double& angle : euler) {
+        angle = tidy_number(angle);
+    }
+    return euler;
+}
+
+Quaternion euler_quaternion(const std::array<double, 3>& euler) {
+    const double c1 = std::cos(euler[1] * 0.5);
+    const double s1 = std::sin(euler[1] * 0.5);
+    const double c2 = std::cos(euler[0] * 0.5);
+    const double s2 = std::sin(euler[0] * 0.5);
+    const double c3 = std::cos(euler[2] * 0.5);
+    const double s3 = std::sin(euler[2] * 0.5);
+    return {(s1 * c2 * s3) + (c1 * s2 * c3), (s1 * c2 * c3) - (c1 * s2 * s3),
+            (c1 * c2 * s3) - (s1 * s2 * c3), (s1 * s2 * s3) + (c1 * c2 * c3)};
+}
 
 std::string gameplay_folder(const std::optional<std::string>& project) {
     if (project) {
