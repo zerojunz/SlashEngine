@@ -844,9 +844,10 @@ render::Material3D material(const world::StandardMaterial3D& standard,
 }
 
 Renderer::Renderer(render::RenderDevice& device, TextureSource textures, ModelSource models,
-                   LightmapSource lightmaps, VoxelGISource voxel_gis)
+                   LightmapSource lightmaps, VoxelGISource voxel_gis, ImageSource images)
     : device_(&device), textures_(std::move(textures)), models_(std::move(models)),
-      lightmaps_(std::move(lightmaps)), voxel_gi_source_(std::move(voxel_gis)) {}
+      lightmaps_(std::move(lightmaps)), voxel_gi_source_(std::move(voxel_gis)),
+      images_(std::move(images)) {}
 
 Renderer::~Renderer() {
     for (const auto& [key, shared] : shared_) {
@@ -1782,6 +1783,17 @@ std::vector<VoxelGILight> voxel_gi_lights(const world::World& world, std::span<c
 
 } // namespace
 
+// A dynamic mesh plotted into a VoxelGI: its entity, the version of its meshes, which of them,
+// and its transform into the VoxelGI's space.
+struct PlottedObject {
+    entt::entity entity = entt::null;
+    std::uint64_t version = 0;
+    std::size_t mesh = 0;
+    world::Affine3D to_space;
+
+    friend bool operator==(const PlottedObject&, const PlottedObject&) = default;
+};
+
 struct Renderer::KeptVoxelGI {
     std::shared_ptr<const VoxelGIData> data;
     VoxelGIOctree octree;
@@ -1789,10 +1801,98 @@ struct Renderer::KeptVoxelGI {
     bool lit = false;
     std::vector<VoxelGILight> lights;
     VoxelGISettings settings;
+    VoxelGITexture texture; // the light of its cells
+    // The dynamic meshes plotted into that light, and the atlas of the two.
+    std::vector<PlottedObject> plotted;
     VoxelGIAtlas atlas;
     std::string problem;       // why its light can't be traced
     std::uint64_t version = 0; // raised each time its light changes
 };
+
+struct Renderer::VoxelObject {
+    world::MeshInstance3D instance;
+    std::optional<Primitive> primitive;
+    std::optional<world::StandardMaterial3D> standard;
+    std::uint64_t model_version = 0;
+    // The images its materials read, and what each loaded as (null where it didn't).
+    std::vector<std::pair<std::string, std::shared_ptr<const render::Image>>> images;
+    std::vector<VoxelGIMesh> meshes; // in its own space
+    std::vector<Bounds> boxes;       // each mesh's vertices' bounds, in its own space
+    std::uint64_t version = 0;
+    std::uint64_t used = 0; // the last frame that read it
+};
+
+const Renderer::VoxelObject& Renderer::voxel_object(const world::World& world,
+                                                    entt::entity entity) {
+    const auto& ecs = world.ecs();
+    const auto& instance = ecs.get<const world::MeshInstance3D>(entity);
+    std::optional<Primitive> primitive;
+    std::uint64_t model_version = 0;
+    if (instance.mesh.empty()) {
+        if (auto found = primitive_of(world, entity)) {
+            primitive = found.value();
+        }
+    } else if (models_) {
+        if (auto source = models_(instance.mesh)) {
+            model_version = source.value().version;
+        }
+    }
+    const auto* standard = ecs.try_get<const world::StandardMaterial3D>(entity);
+    const auto image = [this](const std::string& path) -> std::shared_ptr<const render::Image> {
+        if (!images_) {
+            return nullptr;
+        }
+        auto loaded = images_(path);
+        return loaded ? loaded.value() : nullptr;
+    };
+    std::unique_ptr<VoxelObject>& kept = voxel_objects_[entity];
+    bool fresh = kept && kept->instance == instance && kept->primitive == primitive &&
+                 kept->model_version == model_version &&
+                 (standard == nullptr ? !kept->standard.has_value() : kept->standard == *standard);
+    for (std::size_t i = 0; fresh && i < kept->images.size(); ++i) {
+        fresh = image(kept->images[i].first) == kept->images[i].second;
+    }
+    if (!fresh) {
+        auto made = std::make_unique<VoxelObject>();
+        made->instance = instance;
+        made->primitive = primitive;
+        if (standard != nullptr) {
+            made->standard = *standard;
+        }
+        made->model_version = model_version;
+        LightmapSources sources;
+        sources.images =
+            [&](const std::string& path) -> Result<std::shared_ptr<const render::Image>> {
+            std::shared_ptr<const render::Image> loaded = image(path);
+            made->images.emplace_back(path, loaded);
+            if (!loaded) {
+                return make_error(ErrorCode::NotFound, "no image \"" + path + "\"");
+            }
+            return loaded;
+        };
+        if (models_) {
+            sources.models =
+                [this](const std::string& path) -> Result<std::shared_ptr<const Model>> {
+                auto loaded = models_(path);
+                if (!loaded) {
+                    return loaded.error();
+                }
+                return loaded.value().model;
+            };
+        }
+        // What can't be read, its draws report; its emission is plotted at an exposure of 1, as
+        // Godot's dynamic objects without physical light units.
+        std::vector<Problem> unread;
+        made->meshes = voxel_gi_meshes(world, entity, sources, 1.0F, unread);
+        for (const VoxelGIMesh& mesh : made->meshes) {
+            made->boxes.push_back(bounds_of(mesh.vertices));
+        }
+        made->version = ++voxel_gi_versions_;
+        kept = std::move(made);
+    }
+    kept->used = frame_;
+    return *kept;
+}
 
 void Renderer::destroy_voxel_gis() {
     if (voxel_atlas_ != render::TextureId::None) {
@@ -1819,6 +1919,14 @@ void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& t
     std::vector<Traced> traced;
     std::vector<entt::entity> seen;
     std::optional<std::vector<Shone>> shone;
+    // The dynamic MeshInstance3Ds, as Godot's dynamic GI instances, read once a VoxelGI needs
+    // them.
+    struct Moving {
+        entt::entity entity = entt::null;
+        const VoxelObject* object = nullptr;
+        world::Affine3D place;
+    };
+    std::optional<std::vector<Moving>> moving;
     for (const entt::entity entity : made<world::VoxelGI>(world)) {
         const auto& gi = ecs.get<const world::VoxelGI>(entity);
         if (gi.data.empty() || !tree.visible(entity)) {
@@ -1860,13 +1968,59 @@ void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& t
                                        .use_two_bounces = gi.use_two_bounces};
         // The lights are injected again when they or the settings change, as Godot's light
         // cache and voxel_gi_needs_update.
-        if (!kept->lit || lights != kept->lights || settings != kept->settings) {
-            const VoxelGITexture texture =
-                light_voxel_gi(data, kept->octree, lights, settings, &world.pool());
-            auto atlas = voxel_gi_atlas(texture);
+        const bool relit = !kept->lit || lights != kept->lights || settings != kept->settings;
+        if (relit) {
+            kept->texture = light_voxel_gi(data, kept->octree, lights, settings, &world.pool());
             kept->lit = true;
             kept->lights = std::move(lights);
             kept->settings = settings;
+        }
+        // The dynamic meshes whose bounds touch its box, as Godot pairs them with it, plotted
+        // into its light again whenever they move or change, as Godot plots them each frame it
+        // has any.
+        if (!moving) {
+            moving.emplace();
+            for (const entt::entity object : made<world::MeshInstance3D>(world)) {
+                if (ecs.get<const world::MeshInstance3D>(object).gi_mode == "dynamic" &&
+                    tree.visible(object)) {
+                    moving->push_back({.entity = object,
+                                       .object = &voxel_object(world, object),
+                                       .place = global(object)});
+                }
+            }
+        }
+        std::vector<PlottedObject> plotted;
+        const world::Affine3D to_space = place.inverse();
+        for (const Moving& m : *moving) {
+            for (std::size_t i = 0; i < m.object->meshes.size(); ++i) {
+                const world::Affine3D at = m.place * m.object->meshes[i].transform;
+                if (touches(placed_bounds(m.object->boxes[i], at.matrix()), box)) {
+                    plotted.push_back({.entity = m.entity,
+                                       .version = m.object->version,
+                                       .mesh = i,
+                                       .to_space = to_space * at});
+                }
+            }
+        }
+        if (relit || plotted != kept->plotted) {
+            auto atlas = [&]() -> Result<VoxelGIAtlas> {
+                if (plotted.empty()) {
+                    return voxel_gi_atlas(kept->texture);
+                }
+                std::vector<VoxelGIMesh> objects;
+                objects.reserve(plotted.size());
+                for (const PlottedObject& p : plotted) {
+                    const auto found = std::ranges::find_if(
+                        *moving, [&p](const Moving& m) { return m.entity == p.entity; });
+                    objects.push_back(found->object->meshes[p.mesh]);
+                    objects.back().transform = p.to_space;
+                }
+                VoxelGITexture texture = kept->texture;
+                plot_voxel_gi_objects(texture, data, kept->octree, objects, kept->lights,
+                                      kept->settings, &world.pool());
+                return voxel_gi_atlas(texture);
+            }();
+            kept->plotted = std::move(plotted);
             kept->version = ++voxel_gi_versions_;
             kept->problem = atlas ? std::string() : atlas.error().message;
             kept->atlas = atlas ? std::move(atlas).value() : VoxelGIAtlas{};
@@ -1881,6 +2035,7 @@ void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& t
     std::erase_if(voxel_gis_, [&](const auto& entry) {
         return std::ranges::find(seen, entry.first) == seen.end();
     });
+    std::erase_if(voxel_objects_, [&](const auto& entry) { return entry.second->used != frame_; });
 
     // Their atlases one under another in one atlas, which a mesh's two VoxelGIs share.
     std::vector<std::uint32_t> tops;
@@ -2029,6 +2184,7 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
         captured_.clear();
         model_centers_.clear();
         voxel_gis_.clear();
+        voxel_objects_.clear();
         destroy_voxel_gis();
         exposure_version_ = 0;
         return std::nullopt;
@@ -2226,6 +2382,7 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
         trace_voxel_gis(world, tree, global, env);
     } else {
         voxel_gis_.clear();
+        voxel_objects_.clear();
         destroy_voxel_gis();
     }
     if (env.exposure != 1.0F) {

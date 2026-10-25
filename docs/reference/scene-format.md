@@ -729,7 +729,8 @@ Its `gi_mode` (default `"static"`) and `gi_lightmap_texel_scale` (default `1`) a
 `"static"` mesh is baked into a [LightmapGI's lightmap](#baked-lightmaps) and lit by it, with
 `gi_lightmap_texel_scale` times the texels; a `"dynamic"` mesh isn't baked but takes its ambient
 light from the LightmapGI's [light probes](#light-probes), and a `"disabled"` one from neither. A
-[VoxelGI](#voxelgi) voxelizes `"static"` meshes too, and lights every other mesh in its box.
+[VoxelGI](#voxelgi) voxelizes `"static"` meshes too, plots `"dynamic"` ones into its light as they
+move, and lights every other mesh in its box.
 
 The primitive meshes are Godot's, made as Godot makes them: the same corners, normals, tangents
 and texture coordinates, so a texture wraps them as it does in Godot. An entity has at most one.
@@ -1773,6 +1774,13 @@ As the game runs, the renderer:
   directional light, at most 32, each at its `light_energy` times its `light_indirect_energy`,
   shadowed through the cells where it casts shadows. A second bounce is traced through the first
   with `use_two_bounces`, and the light spreads up the octree by `propagation`.
+- Plots the `"dynamic"` meshes whose bounds touch the box into the cells' light, again each frame
+  one moves or changes, as Godot's dynamic objects: each is drawn from the six faces of its box
+  into maps 16 times finer than the cells, the albedo, normal and emission of its nearest surfaces
+  lit by the same lights, then shrunk down to the cells and blended over each level of the light.
+  So a moving mesh bounces light onto what is near it, and glows on it where it is emissive. Moving
+  meshes don't shadow the cells, a skinned model part is plotted at rest, and emission is plotted
+  at an exposure of 1, as Godot's without physical light units.
 - Gives each mesh the VoxelGIs its bounds touch, at most two in the order they were made, as
   Godot pairs them. Lightmapped meshes, `"dynamic"` meshes lit by [light probes](#light-probes),
   terrains and meshes drawn only into shadows take none.
@@ -1784,7 +1792,6 @@ As the game runs, the renderer:
   [reflection probes](#reflection-probes); where they find none, the environment shows through,
   except in an `interior` VoxelGI.
 
-Moving meshes take the cells' light but don't light them yet, as Godot's dynamic objects do.
 Every Forward+ device traces VoxelGIs, including the software one, so `frame.capture` shows
 them; Compatibility draws without them.
 
