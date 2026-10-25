@@ -486,6 +486,23 @@ float dof_distance(const ForwardPostUniforms& uniforms, float depth) {
            (uniforms.dof_depth[0] - (depth * uniforms.dof_depth[1]));
 }
 
+// The depth buffer's value for one of the frame's pixels, as the shader's dof_depth_pixel: the
+// same pixel's, or the one under its center where the depth buffer is smaller.
+float dof_depth(const ForwardPostUniforms& uniforms, std::span<const float> depth,
+                const HdrImage& target, std::uint32_t x, std::uint32_t y) {
+    if (uniforms.dof_jitter[2] == 0.0F) {
+        return depth[(std::size_t{y} * target.width) + x];
+    }
+    const auto width = static_cast<std::uint32_t>(uniforms.dof_jitter[2]);
+    const auto height = static_cast<std::uint32_t>(uniforms.dof_jitter[3]);
+    const auto at = [](std::uint32_t p, float size, float rcp, std::uint32_t most) {
+        return std::min(static_cast<std::uint32_t>((static_cast<float>(p) + 0.5F) * size * rcp),
+                        most - 1);
+    };
+    return depth[(std::size_t{at(y, uniforms.dof_jitter[3], uniforms.target[3], height)} * width) +
+                 at(x, uniforms.dof_jitter[2], uniforms.target[2], width)];
+}
+
 // A pixel's blur size at distance from the camera, as get_blur_size: negative for near blur.
 float dof_blur_size(const ForwardPostUniforms& uniforms, float distance) {
     const std::uint32_t flags = uniforms.dof_options[1];
@@ -777,7 +794,7 @@ std::vector<DofStep> dof_plan(const PostProcess& post, std::uint32_t width, std:
 }
 
 ForwardPostUniforms dof_uniforms(const PostProcess& post, const DofStep& step,
-                                 const std::array<float, 16>& projection) {
+                                 const std::array<float, 16>& projection, PostSize depth) {
     ForwardPostUniforms out;
     const auto width = static_cast<float>(step.size.width);
     const auto height = static_cast<float>(step.size.height);
@@ -800,7 +817,8 @@ ForwardPostUniforms dof_uniforms(const PostProcess& post, const DofStep& step,
     out.dof_blur = {blur, bokeh, bokeh,
                     step.pass == ForwardPass::DofCircle ? kDofCircleScale.at(quality) : 0.5F};
     out.dof_depth = {projection[10], projection[11], projection[14], projection[15]};
-    out.dof_jitter = {post.dof_jitter_seed, 0.0F, 0.0F, 0.0F};
+    out.dof_jitter = {post.dof_jitter_seed, 0.0F, static_cast<float>(depth.width),
+                      static_cast<float>(depth.height)};
     std::uint32_t flags = 0;
     flags |= post.dof_far ? kDofFar : 0U;
     flags |= post.dof_near ? kDofNear : 0U;
@@ -821,7 +839,7 @@ void run_dof_size_pass(const ForwardPostUniforms& uniforms, const HdrImage& worl
         for (std::uint32_t x = 0; x < target.width; ++x) {
             Float4 color = load_hdr(world, x, y);
             color[3] = dof_blur_size(
-                uniforms, dof_distance(uniforms, depth[(std::size_t{y} * target.width) + x]));
+                uniforms, dof_distance(uniforms, dof_depth(uniforms, depth, target, x, y)));
             store_half(target, x, y, color);
         }
     }
@@ -894,7 +912,7 @@ void run_dof_composite_pass(const ForwardPostUniforms& uniforms, const HdrImage&
             const auto [u, v] = dof_place(uniforms, x, y);
             Float4 color = load_hdr(world, x, y);
             const float size = dof_blur_size(
-                uniforms, dof_distance(uniforms, depth[(std::size_t{y} * target.width) + x]));
+                uniforms, dof_distance(uniforms, dof_depth(uniforms, depth, target, x, y)));
             const Float4 blurred = sample_hdr(bokeh, u, v);
             const float amount =
                 blurred[3] < size
