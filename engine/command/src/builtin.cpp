@@ -2597,6 +2597,22 @@ Reply model_inspect(Session& session, const json::Value& params) {
         out["materials"] = std::move(materials);
         out["vertices"] = vertices;
         out["triangles"] = triangles;
+        // The triangles at each coarser LOD, a surface with fewer LODs counted at its coarsest.
+        std::size_t lod_count = 0;
+        for (const scene3d::ModelSurface& surface : mesh.surfaces) {
+            lod_count = std::max(lod_count, surface.lods.size());
+        }
+        for (std::size_t lod = 0; lod < lod_count; ++lod) {
+            std::size_t lod_triangles = 0;
+            for (const scene3d::ModelSurface& surface : mesh.surfaces) {
+                lod_triangles +=
+                    (surface.lods.empty()
+                         ? surface.indices.size()
+                         : surface.lods[std::min(lod, surface.lods.size() - 1)].indices.size()) /
+                    3;
+            }
+            out["lods"].push_back(lod_triangles);
+        }
         result["meshes"].push_back(std::move(out));
     }
     // Each material's StandardMaterial3D fields that differ from the defaults, and the images
@@ -4618,7 +4634,7 @@ Reply frame_capture(Session& session, const json::Value& params) {
          {std::pair{"sprites", capture.sprites}, std::pair{"tiles", capture.tiles},
           std::pair{"particles", capture.particles}, std::pair{"lights", capture.lights},
           std::pair{"controls", capture.controls}, std::pair{"shapes", capture.shapes},
-          std::pair{"meshes", capture.meshes}}) {
+          std::pair{"meshes", capture.meshes}, std::pair{"lods", capture.lods}}) {
         if (count > 0) {
             drawn[name] = count;
         }

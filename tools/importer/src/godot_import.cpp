@@ -1922,6 +1922,11 @@ private:
             taa != nullptr && taa->kind == Value::Kind::Bool) {
             project["rendering"]["anti_aliasing"]["quality"]["use_taa"] = taa->boolean;
         }
+        if (const Value* threshold = number("rendering", "mesh_lod/lod_change/threshold_pixels");
+            threshold != nullptr && threshold->number() >= 0.0) {
+            project["rendering"]["mesh_lod"]["lod_change"]["threshold_pixels"] =
+                threshold->number();
+        }
         // The 3D world's scaling, by Godot's Scaling3DMode numbers.
         if (const Value* mode = number("rendering", "scaling_3d/mode")) {
             constexpr std::array<std::string_view, 5> kModes{render::kBilinear, render::kFsr,

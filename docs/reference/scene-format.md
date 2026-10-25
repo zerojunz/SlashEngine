@@ -732,6 +732,9 @@ light from the LightmapGI's [light probes](#light-probes), and a `"disabled"` on
 [VoxelGI](#voxelgi) voxelizes `"static"` meshes too, plots `"dynamic"` ones into its light as they
 move, and lights every other mesh in its box.
 
+Its `lod_bias` (default `1`) is Godot's `GeometryInstance3D.lod_bias`: a model's surfaces pick
+their [LODs](#mesh-lods) as if the entity were that many times larger.
+
 The primitive meshes are Godot's, made as Godot makes them: the same corners, normals, tangents
 and texture coordinates, so a texture wraps them as it does in Godot. An entity has at most one.
 Meshes of equal settings share one mesh on the GPU.
@@ -792,6 +795,42 @@ share its meshes and textures on the device, and the model reloads when its file
 [`model.inspect`](commands.md#modelinspect) lists what a model holds without drawing it, and
 `slash-cli scene validate` takes a `.gltf`, `.glb`, `.obj`, `.fbx` or `.blend` file and checks it as
 `MeshInstance3D` loads it.
+
+#### Mesh LODs
+
+Every model's surfaces get coarser versions when they load, as Godot's importer makes them with
+its `meshes/generate_lods` option on (`ImporterMesh::generate_lods`, with meshoptimizer 1.0, the
+version Godot uses):
+
+- Corners at one position merge where their texture coordinates, tangent sign, colors and
+  normals (within 20 degrees) agree, so seams stay sharp and smooth areas simplify.
+- Each LOD has about half the triangles of the one before, with borders locked, until one would
+  keep more than three quarters of them, the simplifier can't, or its error would pass the
+  surface's size. Skinned surfaces are simplified in their rest pose, with more regular
+  triangles. Surfaces of 8 triangles or fewer get none.
+- Each LOD keeps the error it was made with, in the surface's units: how far it may be off.
+- A lightmapped mesh's LODs are made from its unwrapped vertices, as Godot makes them after the
+  unwrap.
+
+Drawing picks a LOD per surface each frame, as Godot's Forward+ and Compatibility renderers do:
+the coarsest whose error, times the entity's largest scale and its `MeshInstance3D`'s
+`lod_bias` (default `1`), over its distance from the camera to the mesh's bounds, comes to no
+more than project.json's
+[`rendering.mesh_lod.lod_change.threshold_pixels`](project-format.md#mesh-lods) (default `1`) of
+the view's width. Shadow maps draw the LOD the camera sees, and reflection probes pick their
+own from where their cube is drawn, by their `mesh_lod_threshold` over the atlas's cube size.
+`lod_bias` above `1` keeps detail further away; a threshold of `0` draws every mesh in full.
+
+```json
+"boulder": {"components": {
+  "Transform3D": {"position": [0, 0, -30]},
+  "MeshInstance3D": {"mesh": "models/boulder.obj", "lod_bias": 2.0}
+}}
+```
+
+[`model.inspect`](commands.md#modelinspect) gives each mesh's triangles at every LOD, and
+[`frame.capture`](commands.md#framecapture)'s `drawn` counts the meshes drawn at a coarser one
+as `lods`. Primitive meshes, CSG shapes, `GridMap`s and terrains have no LODs, as in Godot.
 
 #### OBJ models
 
@@ -1724,7 +1763,7 @@ only the project's clear color behind the meshes, as for a room.
 | `enable_shadows` | `false` | Draws shadows into the cube |
 | `cull_mask` | `1048575` | The layers whose meshes the cube shows |
 | `reflection_mask` | `1048575` | The layers whose meshes reflect it |
-| `mesh_lod_threshold` | `1` | Kept for Godot; meshes have no LOD here |
+| `mesh_lod_threshold` | `1` | Pixels of the atlas's cube size a model's coarser [LODs](#mesh-lods) may be off by in the cube; `0` draws every mesh in full |
 | `ambient_mode` | `"environment"` | Ambient light inside it: `"disabled"` (the environment's), `"environment"` (the cube's blurriest level) or `"color"` |
 | `ambient_color` | `[0, 0, 0, 1]` | The ambient light for `"color"`, in sRGB |
 | `ambient_color_energy` | `1` | `ambient_color`'s energy |

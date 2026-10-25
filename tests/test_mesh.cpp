@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -548,5 +549,70 @@ TEST_CASE("GPUs draw meshes as the software device does") {
             MESSAGE("drawn, as a base64 PNG: " << slash::base64_encode(drawn.value()));
             MESSAGE("expected, as a base64 PNG: " << slash::base64_encode(wanted.value()));
         }
+    }
+}
+
+TEST_CASE("every device draws a mesh's LODs from their own indices, as Godot's LOD arrays") {
+    std::vector<std::unique_ptr<RenderDevice>> devices = slash::test::drawing_devices();
+    devices.push_back(render::create_null_device());
+    const std::vector<Vertex3D> square = quad({0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, 1.0F);
+    const std::vector<Vertex3D> corners{square[0], square[1], square[2], square[5]};
+    const std::vector<std::uint32_t> indices{0, 1, 2, 0, 2, 3};
+    // The LOD keeps the upper right triangle: top left, top right, bottom right.
+    const std::vector<std::uint32_t> upper_right{0, 1, 2};
+    const std::array<std::span<const std::uint32_t>, 1> lods{upper_right};
+    for (auto& device : devices) {
+        CAPTURE(render::backend_name(device->backend()));
+        const std::vector<std::uint32_t> two{0, 1};
+        const std::vector<std::uint32_t> past{0, 1, 9};
+        CHECK(error_of(device->create_mesh(corners, indices,
+                                           std::array<std::span<const std::uint32_t>, 1>{two})) ==
+              "a mesh's LOD 1 has a multiple of 3 indices, more than none, not 2");
+        CHECK(error_of(device->create_mesh(corners, indices,
+                                           std::array<std::span<const std::uint32_t>, 1>{past})) ==
+              "index 2 of LOD 1 is 9, past the mesh's 4 vertices");
+        auto card = device->create_mesh(corners, indices, lods);
+        REQUIRE_MESSAGE(card.ok(), error_of(card));
+        // A mesh without indices draws its vertices in order, and its LODs by theirs.
+        auto unindexed = device->create_mesh(square, {}, lods);
+        REQUIRE_MESSAGE(unindexed.ok(), error_of(unindexed));
+        auto target = device->create_texture(target_desc(16));
+        REQUIRE(target.ok());
+        render::Scene3D scene;
+        scene.camera = render::look_at({0.0F, 0.0F, 1.2F}, {0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F});
+        scene.projection = render::perspective(60.0F, 1.0F, 0.1F, 10.0F);
+        const Material3D white{.albedo = {1.0F, 1.0F, 1.0F, 1.0F}, .unshaded = true};
+        const Mat4 identity = placed(0.0F, 0.0F, 0.0F, 0.0F);
+        for (const MeshId mesh : {card.value(), unindexed.value()}) {
+            for (const std::uint32_t lod : {0U, 1U}) {
+                CAPTURE(lod);
+                const render::Stats before = device->stats();
+                REQUIRE(device
+                            ->begin_frame({.target = target.value(),
+                                           .clear = {0.0F, 0.0F, 0.0F, 1.0F},
+                                           .scene = scene})
+                            .ok());
+                REQUIRE(device
+                            ->draw_mesh(mesh, identity, white, 1, render::ShadowCasting::On,
+                                        std::nullopt, lod)
+                            .ok());
+                CHECK(error_of(device->draw_mesh(mesh, identity, white, 1,
+                                                 render::ShadowCasting::On, std::nullopt, 2)) ==
+                      "a mesh with 1 LODs has no LOD 2");
+                REQUIRE(device->end_frame().ok());
+                CHECK(device->stats().triangles - before.triangles == (lod == 0 ? 2 : 1));
+                if (device->backend() == render::Backend::Null) {
+                    continue;
+                }
+                const auto image = device->read_texture(target.value());
+                REQUIRE(image.ok());
+                CHECK(pixel(image.value(), 11, 4) == std::array{255, 255, 255, 255});
+                CHECK(pixel(image.value(), 4, 11) ==
+                      (lod == 0 ? std::array{255, 255, 255, 255} : std::array{0, 0, 0, 255}));
+            }
+        }
+        device->destroy_mesh(card.value());
+        device->destroy_mesh(unindexed.value());
+        device->destroy_texture(target.value());
     }
 }
