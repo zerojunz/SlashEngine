@@ -935,6 +935,12 @@ and filters it itself (`sample_fog_volume`), and `volumetric_fog_sky.hlsl` draws
 its last slice by `sky_affect` (`fog_sky`). Each target keeps its density for the next frame
 (`FogClock`); probe captures and frames without meshes have none, and Compatibility draws none.
 A change to the fog math goes in both. `examples/volumetric-fog-3d` lights a misty courtyard.
+`FogVolume`s and their `FogMaterial`s are Godot's (`render::FogVolume3D` in
+`VolumetricFog3D::volumes`, gathered by `scene3d::Renderer::add_fog_volumes`, up to
+`kMaxFogVolumes`): `fog_volume_froxels` picks each one's froxels as Godot's
+`volumetric_fog_update` does, and the density pass (`fog_volumes` in the shader and its twin)
+adds each one's shape, material and Godot's default material's cull in Godot's fixed point.
+`examples/fog-volumes-3d` fills a cellar.
 
 Compatibility's post-processing: without glow or adjustments, `mesh.hlsl` tonemaps as it draws.
 With either, each device draws the meshes into an RGBA8 texture at `end_frame` and runs

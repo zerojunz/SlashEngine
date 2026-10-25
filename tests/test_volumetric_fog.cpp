@@ -86,7 +86,44 @@ struct Foggy {
     float turn = 0.0F; // how far the camera moves right each frame
     float sky_affect = 1.0F;
     bool disable_fog = false; // the floor's material
+    std::vector<render::FogVolume3D> volumes{};
 };
+
+// A world turned by none, at x, y, z.
+Mat4 placed(float x, float y, float z) {
+    Mat4 out = kIdentity;
+    out[12] = x;
+    out[13] = y;
+    out[14] = z;
+    return out;
+}
+
+// A glowing box that thins with height, a default ellipsoid, cone and cylinder, and a world of
+// thinner, bluer fog, about the floor.
+std::vector<render::FogVolume3D> some_volumes() {
+    return {
+        {.transform = placed(-1.5F, 1.0F, 0.0F),
+         .size = {1.5F, 2.0F, 1.5F},
+         .shape = render::FogVolumeShape::Box,
+         .material = true,
+         .density = 1.5F,
+         .albedo = {1.0F, 0.8F, 0.6F},
+         .emission = {1.0F, 0.4F, 0.1F},
+         .height_falloff = 0.5F,
+         .edge_fade = 0.3F},
+        {.transform = placed(1.5F, 1.0F, -1.0F), .shape = render::FogVolumeShape::Ellipsoid},
+        {.transform = placed(0.0F, 1.0F, -4.0F),
+         .size = {2.0F, 3.0F, 2.0F},
+         .shape = render::FogVolumeShape::Cone},
+        {.transform = placed(3.0F, 1.0F, -3.0F),
+         .size = {1.0F, 2.0F, 1.0F},
+         .shape = render::FogVolumeShape::Cylinder},
+        {.shape = render::FogVolumeShape::World,
+         .material = true,
+         .density = -0.03F,
+         .albedo = {0.5F, 0.6F, 1.0F}},
+    };
+}
 
 // A gray floor seen at a slant under a wall that shades the sun, lit by the sun from behind it
 // and a lamp, in fog, over a blue sky, 48 x 32 pixels.
@@ -137,7 +174,8 @@ Image draw_fog(RenderDevice& device, const Foggy& foggy) {
             .sky_affect = foggy.sky_affect,
             .temporal_reprojection = foggy.reproject,
             .temporal_reprojection_amount = 0.9F,
-            .settings = {.volume_size = 32, .volume_depth = 32, .use_filter = foggy.filter}};
+            .settings = {.volume_size = 32, .volume_depth = 32, .use_filter = foggy.filter},
+            .volumes = foggy.volumes};
         const auto begun =
             device.begin_frame({.target = target.value(), .clear = {}, .scene = scene});
         REQUIRE_MESSAGE(begun.ok(), error_of(begun));
@@ -305,6 +343,9 @@ TEST_CASE("Forward+ volumetric fog lights the view, shaded by the lights' shadow
         // A material that disables fog leaves the floor clear of it.
         const Image disabled = draw_fog(*device, {.disable_fog = true});
         CHECK(pixel(disabled, 24, 30) == pixel(clear, 24, 30));
+        // Fog volumes thicken it, glow and thin it.
+        CHECK(differing(draw_fog(*device, {.volumes = some_volumes()}), fogged, 8) >
+              fogged.pixels.size() / 20);
         // The shadows darken the fog in them.
         const Image unshaded = draw_fog(*device, {.shadow = false});
         CHECK(differing(unshaded, fogged, 2) > 0);
@@ -329,6 +370,8 @@ TEST_CASE("GPUs draw volumetric fog as the software device does") {
         {.frames = 4, .turn = 0.2F},
         {.lamp = false, .anisotropy = -0.5F},
         {.shadow = false, .anisotropy = 0.8F},
+        {.volumes = some_volumes()},
+        {.frames = 4, .turn = 0.2F, .volumes = some_volumes()},
     };
     for (std::size_t i = 0; i < scenes.size(); ++i) {
         CAPTURE(i);
@@ -338,4 +381,100 @@ TEST_CASE("GPUs draw volumetric fog as the software device does") {
         CHECK(differing(drawn, expected, 3) <= drawn.pixels.size() / 50);
         CHECK(difference(drawn, expected) <= 24);
     }
+}
+
+TEST_CASE("fog volumes fill the froxels between their corners, as Godot picks them") {
+    render::Scene3D scene = emitting(0.0F);
+    const std::array<std::uint32_t, 3> size{16, 16, 32};
+    using Range = std::array<std::array<std::int32_t, 3>, 2>;
+    // A world volume fills them all.
+    CHECK(detail::fog_volume_froxels(scene, {.shape = render::FogVolumeShape::World}, size) ==
+          Range{{{0, 0, 0}, {16, 16, 32}}});
+    // A box ahead fills the froxels its corners are in, from the first to the last's.
+    const render::FogVolume3D ahead{.transform = placed(0.0F, 0.0F, -20.0F),
+                                    .size = {4.0F, 4.0F, 4.0F}};
+    const Range box = detail::fog_volume_froxels(scene, ahead, size);
+    CHECK(box[0][0] < 8);
+    CHECK(box[1][0] > 8);
+    CHECK(box[0][1] < 8);
+    CHECK(box[1][1] > 8);
+    // Froxel slices are spread as the fog's detail spread spreads them.
+    CHECK(box[0][2] == 16);
+    CHECK(box[1][2] == 18);
+    // With the camera in it, the whole view across is filled, out to its far corners.
+    const Range around = detail::fog_volume_froxels(
+        scene, {.transform = placed(0.0F, 0.0F, -1.0F), .size = {4.0F, 4.0F, 4.0F}}, size);
+    CHECK(around[0] == std::array<std::int32_t, 3>{0, 0, 0});
+    CHECK(around[1][0] == 16);
+    CHECK(around[1][1] == 16);
+    CHECK(around[1][2] > 0);
+    // Behind the camera, its corners are all in the first slice, which it reaches through.
+    const Range behind = detail::fog_volume_froxels(
+        scene, {.transform = placed(0.0F, 0.0F, 10.0F), .size = {2.0F, 2.0F, 2.0F}}, size);
+    CHECK(behind[0][2] == 0);
+    CHECK(behind[1][2] == 1);
+    // One whose corners share a froxel fills none, and isn't sent.
+    const render::FogVolume3D tiny{.transform = placed(0.0F, 0.0F, -40.0F),
+                                   .size = {0.01F, 0.01F, 0.01F}};
+    const Range none = detail::fog_volume_froxels(scene, tiny, size);
+    CHECK(none[1][2] <= none[0][2]);
+    scene.volumetric_fog.volumes = {tiny, ahead};
+    detail::FogClock clock;
+    const detail::FogUniforms uniforms =
+        detail::volumetric_fog_uniforms(scene, detail::mesh_scene_uniforms(scene), 64, 64, clock);
+    CHECK(uniforms.volume_count[0] == 1);
+    CHECK(uniforms.volumes[0].corner == std::array<std::int32_t, 4>{box[0][0], box[0][1], 16, 0});
+}
+
+TEST_CASE("fog volumes add their density, light and glow in Godot's fixed point") {
+    render::Scene3D scene = emitting(0.0F);
+    scene.volumetric_fog.ambient_inject = 0.0F;
+    const auto density_at = [&scene](std::uint32_t x, std::uint32_t y, std::uint32_t z) {
+        detail::FogClock clock;
+        const detail::FogUniforms uniforms = detail::volumetric_fog_uniforms(
+            scene, detail::mesh_scene_uniforms(scene), 64, 64, clock);
+        return detail::fog_density(uniforms, {}, {}, x, y, z);
+    };
+    const render::FogVolume3D glowing{.shape = render::FogVolumeShape::World,
+                                      .material = true,
+                                      .density = 0.5F,
+                                      .emission = {1.0F, 0.5F, 0.0F},
+                                      .edge_fade = 0.0F};
+    scene.volumetric_fog.volumes = {glowing};
+    detail::Float4 at = density_at(3, 5, 7);
+    // A world volume is as big as twice the froxels in each direction, as Godot sizes it, so
+    // its edge fade shows everywhere; at 0 it doesn't fade. Densities in 1024ths, the glow in
+    // 511ths of what it gives at the density, held to 1.
+    CHECK(at[3] == 0.5F);
+    const float green = std::floor(0.21404114F * 0.5F * 511.0F) / 511.0F;
+    CHECK(at[0] == doctest::Approx(255.0F / 511.0F));
+    CHECK(at[1] == doctest::Approx(green).epsilon(0.002));
+    CHECK(at[2] == 0.0F);
+    // Each channel's sum is held to its bits: 2047 units, 4 and a bit of glow.
+    const render::FogVolume3D bright{.shape = render::FogVolumeShape::World,
+                                     .material = true,
+                                     .density = 2.0F,
+                                     .emission = {1.0F, 1.0F, 1.0F},
+                                     .edge_fade = 0.0F};
+    scene.volumetric_fog.volumes = {bright, bright, bright, bright, bright};
+    at = density_at(3, 5, 7);
+    CHECK(at[3] == 10.0F);
+    CHECK(at[0] == doctest::Approx(2047.0F / 511.0F));
+    CHECK(at[2] == doctest::Approx(1023.0F / 255.0F));
+    // A negative density thins the fog's own and adds no light.
+    scene.volumetric_fog.density = 0.5F;
+    scene.volumetric_fog.volumes = {{.shape = render::FogVolumeShape::World,
+                                     .material = true,
+                                     .density = -0.3F,
+                                     .emission = {1.0F, 1.0F, 1.0F},
+                                     .edge_fade = 0.0F}};
+    at = density_at(3, 5, 7);
+    CHECK(at[3] == doctest::Approx(0.5F - (307.0F / 1024.0F)));
+    // Godot's default material fills its shape and nothing outside it.
+    scene.volumetric_fog.density = 0.0F;
+    scene.volumetric_fog.volumes = {
+        {.transform = placed(0.0F, 0.0F, -20.0F), .size = {8.0F, 8.0F, 8.0F}}};
+    CHECK(density_at(8, 8, 17)[3] == 1.0F);
+    CHECK(density_at(0, 0, 17)[3] == 0.0F);
+    CHECK(density_at(8, 8, 10)[3] == 0.0F);
 }

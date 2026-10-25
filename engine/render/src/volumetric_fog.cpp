@@ -19,6 +19,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <numbers>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -319,6 +320,126 @@ void set_volumetric_fog(MeshSceneUniforms& lights, const Scene3D& scene,
                          static_cast<float>(size[2]), 0.0F};
 }
 
+namespace {
+
+// The camera's frustum as Godot's volumetric_fog_update takes it: Projection's near plane and its
+// get_viewport_half_extents and get_far_plane_half_extents, then the fog's own half extents at
+// the near plane and at length, as it lerps them.
+struct FogFrustum {
+    float near = 0.0F;
+    float far = 0.0F;
+    std::array<float, 2> near_size{};
+    std::array<float, 2> fog_near{};
+    std::array<float, 2> fog_far{};
+};
+
+FogFrustum fog_frustum(const Scene3D& scene) {
+    const Mat4& p = scene.projection;
+    const bool orthogonal = p[11] == 0.0F && p[15] == 1.0F;
+    FogFrustum out;
+    out.far = far_plane(p);
+    out.near = orthogonal ? (p[14] - 1.0F) / p[10] : p[14] / (p[10] + 1.0F);
+    out.near_size = orthogonal ? std::array{1.0F / p[0], 1.0F / p[5]}
+                               : std::array{out.near / p[0], out.near / p[5]};
+    const std::array<float, 2> far_size =
+        orthogonal ? out.near_size : std::array{out.far / p[0], out.far / p[5]};
+    const float t = (scene.volumetric_fog.length - out.near) / (out.far - out.near);
+    out.fog_far = {lerp(out.near_size[0], far_size[0], t), lerp(out.near_size[1], far_size[1], t)};
+    out.fog_near = orthogonal ? out.fog_far
+                              : std::array{std::max(out.near_size[0], 0.001F),
+                                           std::max(out.near_size[1], 0.001F)};
+    return out;
+}
+
+// Godot's Fog::_point_get_position_in_froxel_volume: the froxel a point of the world is in, held
+// to the volume (and in front of the camera).
+std::array<std::int32_t, 3> froxel_of(const Scene3D& scene, const FogFrustum& frustum,
+                                      const std::array<std::uint32_t, 3>& size, const Float3& at) {
+    const VolumetricFog3D& fog = scene.volumetric_fog;
+    Float4 view = transform(scene.camera, {at[0], at[1], at[2], 1.0F});
+    view[2] = std::min(view[2], -0.01F);
+    view[1] = -view[1];
+    Float3 place{};
+    place[2] = -view[2] / fog.length;
+    place[0] =
+        (view[0] /
+         (2.0F * ((frustum.fog_near[0] * (1.0F - place[2])) + (frustum.fog_far[0] * place[2])))) +
+        0.5F;
+    place[1] =
+        (view[1] /
+         (2.0F * ((frustum.fog_near[1] * (1.0F - place[2])) + (frustum.fog_far[1] * place[2])))) +
+        0.5F;
+    place[2] = power(place[2], 1.0F / fog.detail_spread);
+    std::array<std::int32_t, 3> out{};
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+        const auto n = static_cast<float>(size.at(axis));
+        out.at(axis) = static_cast<std::int32_t>(std::clamp((place.at(axis) * n) - 0.5F, 0.0F, n));
+    }
+    return out;
+}
+
+std::array<std::array<std::int32_t, 3>, 2>
+volume_froxels(const Scene3D& scene, const FogFrustum& frustum, const FogVolume3D& volume,
+               const std::array<std::uint32_t, 3>& size) {
+    const auto across = static_cast<std::int32_t>(size[0]);
+    const auto down = static_cast<std::int32_t>(size[1]);
+    const auto deep = static_cast<std::int32_t>(size[2]);
+    if (volume.shape == FogVolumeShape::World) {
+        return {{{0, 0, 0}, {across, down, deep}}};
+    }
+    const Mat4& m = volume.transform;
+    const Float3 half{volume.size[0] / 2.0F, volume.size[1] / 2.0F, volume.size[2] / 2.0F};
+    std::array<std::int32_t, 3> low{across - 1, down - 1, deep - 1};
+    std::array<std::int32_t, 3> high{1, 1, 1};
+    std::array<std::array<std::int32_t, 3>, 8> froxels{};
+    Float3 corner_min{};
+    Float3 corner_max{};
+    for (std::size_t j = 0; j < 8; ++j) {
+        // Godot's order: x, then y, then z flips.
+        const Float3 local{(j & 1U) != 0 ? -half[0] : half[0], (j & 2U) != 0 ? -half[1] : half[1],
+                           (j & 4U) != 0 ? -half[2] : half[2]};
+        const Float3 corner = xyz(transform(m, {local[0], local[1], local[2], 1.0F}));
+        froxels.at(j) = froxel_of(scene, frustum, size, corner);
+        for (std::size_t axis = 0; axis < 3; ++axis) {
+            corner_min.at(axis) =
+                j == 0 ? corner.at(axis) : std::min(corner_min.at(axis), corner.at(axis));
+            corner_max.at(axis) =
+                j == 0 ? corner.at(axis) : std::max(corner_max.at(axis), corner.at(axis));
+        }
+    }
+    // With the camera's near plane in the volume's box, the whole view across is filled.
+    const Float3 camera = xyz(transform(to_float(inverse_matrix(scene.camera)), {0, 0, 0, 1.0F}));
+    const float expand = length({frustum.near_size[0], frustum.near_size[1], frustum.near});
+    bool near = true;
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+        near = near && camera.at(axis) > corner_min.at(axis) - expand &&
+               camera.at(axis) < corner_max.at(axis) + expand;
+    }
+    if (near) {
+        low = {0, 0, 0};
+        high = {across, down, high[2]};
+        for (const auto& froxel_at : froxels) {
+            high[2] = std::max(high[2], froxel_at[2]);
+        }
+    } else {
+        for (const auto& froxel_at : froxels) {
+            for (std::size_t axis = 0; axis < 3; ++axis) {
+                low.at(axis) = std::min(low.at(axis), froxel_at.at(axis));
+                high.at(axis) = std::max(high.at(axis), froxel_at.at(axis));
+            }
+        }
+    }
+    return {low, high};
+}
+
+} // namespace
+
+std::array<std::array<std::int32_t, 3>, 2>
+fog_volume_froxels(const Scene3D& scene, const FogVolume3D& volume,
+                   const std::array<std::uint32_t, 3>& size) {
+    return volume_froxels(scene, fog_frustum(scene), volume, size);
+}
+
 FogUniforms volumetric_fog_uniforms(const Scene3D& scene, const MeshSceneUniforms& lights,
                                     std::uint32_t width, std::uint32_t height, FogClock& clock) {
     const VolumetricFog3D& fog = scene.volumetric_fog;
@@ -326,24 +447,10 @@ FogUniforms volumetric_fog_uniforms(const Scene3D& scene, const MeshSceneUniform
     FogUniforms out;
     out.size = {size[0], size[1], size[2], static_cast<std::uint32_t>(FogPass::Density)};
 
-    // Projection::get_viewport_half_extents and get_far_plane_half_extents, then the fog's own,
-    // as volumetric_fog_update lerps them.
-    const Mat4& p = scene.projection;
-    const bool orthogonal = p[11] == 0.0F && p[15] == 1.0F;
-    const float far = far_plane(p);
-    const float near = orthogonal ? (p[14] - 1.0F) / p[10] : p[14] / (p[10] + 1.0F);
-    const std::array<float, 2> near_size =
-        orthogonal ? std::array{1.0F / p[0], 1.0F / p[5]} : std::array{near / p[0], near / p[5]};
-    const std::array<float, 2> far_size =
-        orthogonal ? near_size : std::array{far / p[0], far / p[5]};
-    const float t = (fog.length - near) / (far - near);
-    const std::array<float, 2> fog_far{lerp(near_size[0], far_size[0], t),
-                                       lerp(near_size[1], far_size[1], t)};
-    const std::array<float, 2> fog_near =
-        orthogonal ? fog_far
-                   : std::array{std::max(near_size[0], 0.001F), std::max(near_size[1], 0.001F)};
-    out.frustum = {fog_near[0], fog_near[1], fog_far[0], fog_far[1]};
-    out.params = {fog.length, fog.detail_spread, far, fog.anisotropy};
+    const FogFrustum frustum = fog_frustum(scene);
+    out.frustum = {frustum.fog_near[0], frustum.fog_near[1], frustum.fog_far[0],
+                   frustum.fog_far[1]};
+    out.params = {fog.length, fog.detail_spread, frustum.far, fog.anisotropy};
 
     const float density = fog.density;
     out.scattering = {srgb_to_linear_exact(fog.albedo[0]) * density,
@@ -371,6 +478,38 @@ FogUniforms volumetric_fog_uniforms(const Scene3D& scene, const MeshSceneUniform
     out.screen = {static_cast<float>(width), static_cast<float>(height), 0.0F, 0.0F};
     out.cluster = lights.cluster;
     out.view_to_world = to_float(inverse_matrix(scene.camera));
+    std::uint32_t volumes = 0;
+    for (const FogVolume3D& volume : fog.volumes) {
+        if (volumes == kMaxFogVolumes) {
+            break;
+        }
+        const auto [low, high] = volume_froxels(scene, frustum, volume, size);
+        if (high[0] <= low[0] || high[1] <= low[1] || high[2] <= low[2]) {
+            continue;
+        }
+        FogVolumeUniforms& v = out.volumes.at(volumes++);
+        const bool world = volume.shape == FogVolumeShape::World;
+        v.to_local = world ? Mat4{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F,
+                                  0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F}
+                           : to_float(inverse_matrix(volume.transform));
+        v.position = {volume.transform[12], volume.transform[13], volume.transform[14],
+                      static_cast<float>(volume.shape)};
+        // Godot hands a world volume the fog's froxels as its extents.
+        v.size =
+            world ? Float4{2.0F * static_cast<float>(size[0]), 2.0F * static_cast<float>(size[1]),
+                           2.0F * static_cast<float>(size[2]), 0.0F}
+                  : Float4{volume.size[0], volume.size[1], volume.size[2], 0.0F};
+        v.size[3] = volume.material ? 1.0F : 0.0F;
+        v.corner = {low[0], low[1], low[2], 0};
+        v.corner_end = {high[0], high[1], high[2], 0};
+        v.albedo = {srgb_to_linear_exact(volume.albedo[0]), srgb_to_linear_exact(volume.albedo[1]),
+                    srgb_to_linear_exact(volume.albedo[2]), volume.density};
+        v.glow = {srgb_to_linear_exact(volume.emission[0]),
+                  srgb_to_linear_exact(volume.emission[1]),
+                  srgb_to_linear_exact(volume.emission[2]), volume.height_falloff};
+        v.fade = {volume.edge_fade, 0.0F, 0.0F, 0.0F};
+    }
+    out.volume_count = {volumes, 0, 0, 0};
 
     // The frame before's density, when it had the same volume, moved to where it was seen, with
     // this frame's point in its froxels.
@@ -385,6 +524,120 @@ FogUniforms volumetric_fog_uniforms(const Scene3D& scene, const MeshSceneUniform
     clock.size = size;
     return out;
 }
+
+namespace {
+
+// What the fog volumes add to a froxel at (x, y, z), whose point is world, as the shader's
+// fog_volumes: the density in 1024ths, then the scattering and emission in Godot's channel units.
+struct VolumeSums {
+    std::int32_t density = 0;
+    std::array<std::uint32_t, 3> scattering{};
+    std::array<std::uint32_t, 3> emission{};
+};
+
+float volume_sdf(const FogVolumeUniforms& v, const Float3& local) {
+    const Float3 half = scale(xyz(v.size), 0.5F);
+    switch (static_cast<std::uint32_t>(v.position[3])) {
+    case 0: {
+        const float k0 = length({local[0] / half[0], local[1] / half[1], local[2] / half[2]});
+        const float k1 = length({local[0] / (half[0] * half[0]), local[1] / (half[1] * half[1]),
+                                 local[2] / (half[2] * half[2])});
+        return k0 * (k0 - 1.0F) / k1;
+    }
+    case 1: {
+        const float inv_height = 1.0F / std::max(0.001F, half[1]);
+        const float radius = 1.0F / std::max(0.001F, std::min(half[0], half[2]) * 0.5F);
+        const float hypotenuse = std::sqrt((radius * radius) + (inv_height * inv_height));
+        const float q = std::sqrt((local[0] * local[0]) + (local[2] * local[2]));
+        return std::max(((radius / hypotenuse) * q) +
+                            ((inv_height / hypotenuse) * (local[1] - half[1])),
+                        -half[1] - local[1]);
+    }
+    case 2: {
+        const float dx = std::abs(std::sqrt((local[0] * local[0]) + (local[2] * local[2]))) -
+                         std::min(half[0], half[2]);
+        const float dy = std::abs(local[1]) - half[1];
+        const float ox = std::max(dx, 0.0F);
+        const float oy = std::max(dy, 0.0F);
+        return std::min(std::max(dx, dy), 0.0F) + std::sqrt((ox * ox) + (oy * oy));
+    }
+    case 3: {
+        const Float3 q{std::abs(local[0]) - half[0], std::abs(local[1]) - half[1],
+                       std::abs(local[2]) - half[2]};
+        const Float3 outside{std::max(q[0], 0.0F), std::max(q[1], 0.0F), std::max(q[2], 0.0F)};
+        return length(outside) + std::min(std::max(q[0], std::max(q[1], q[2])), 0.0F);
+    }
+    default:
+        return -1.0F;
+    }
+}
+
+VolumeSums fog_volumes(const FogUniforms& u, std::uint32_t x, std::uint32_t y, std::uint32_t z,
+                       const Float3& world) {
+    constexpr std::array<std::uint32_t, 3> kLimits{2047, 2047, 1023};
+    constexpr Float3 kScatterUnits{2047.0F, 2047.0F, 1023.0F};
+    constexpr Float3 kGlowUnits{511.0F, 511.0F, 255.0F};
+    constexpr float kLn2 = std::numbers::ln2_v<float>;
+    const std::array<std::int32_t, 3> at{static_cast<std::int32_t>(x), static_cast<std::int32_t>(y),
+                                         static_cast<std::int32_t>(z)};
+    VolumeSums sums;
+    for (std::size_t i = 0; i < u.volume_count[0] && i < u.volumes.size(); ++i) {
+        const FogVolumeUniforms& v = u.volumes.at(i);
+        bool inside = true;
+        for (std::size_t axis = 0; axis < 3; ++axis) {
+            inside =
+                inside && at.at(axis) >= v.corner.at(axis) && at.at(axis) < v.corner_end.at(axis);
+        }
+        if (!inside) {
+            continue;
+        }
+        const Float3 local = xyz(transform(v.to_local, {world[0], world[1], world[2], 1.0F}));
+        const auto shape = static_cast<std::uint32_t>(v.position[3]);
+        const bool material = v.size[3] != 0.0F;
+        const float sdf = volume_sdf(v, local);
+        // Godot's default material doesn't read the distance, so its cells outside are culled.
+        float cull_mask = 1.0F;
+        if (shape <= 3 && !material) {
+            cull_mask = 1.0F - smooth(-0.1F, 0.0F, sdf);
+        }
+        if (!(cull_mask > 0.0F)) {
+            continue;
+        }
+        float density = 1.0F;
+        Float3 albedo{1.0F, 1.0F, 1.0F};
+        Float3 emission{};
+        if (material) {
+            const float height = world[1] - v.position[1];
+            density = v.albedo[3] * std::clamp(slash::exp(-v.glow[3] * height * kLn2), 0.0F, 1.0F);
+            const float edge = std::clamp(
+                -2.0F * sdf / std::min(std::min(v.size[0], v.size[1]), v.size[2]), 0.0F, 1.0F);
+            density *= power(edge, v.fade[0]);
+            albedo = xyz(v.albedo);
+            emission = xyz(v.glow);
+        }
+        density *= cull_mask;
+        if (!(std::abs(density) > 0.001F)) {
+            continue;
+        }
+        sums.density += static_cast<std::int32_t>(density * 1024.0F);
+        const float amount = std::clamp(density, 0.0F, 1.0F);
+        for (std::size_t c = 0; c < 3; ++c) {
+            if (material) {
+                const float glow = std::clamp(emission.at(c) * amount, 0.0F, 4.0F);
+                sums.emission.at(c) = std::min(
+                    sums.emission.at(c) + static_cast<std::uint32_t>(glow * kGlowUnits.at(c)),
+                    kLimits.at(c));
+            }
+            const float scattered = std::clamp(albedo.at(c) * amount, 0.0F, 1.0F);
+            sums.scattering.at(c) = std::min(
+                sums.scattering.at(c) + static_cast<std::uint32_t>(scattered * kScatterUnits.at(c)),
+                kLimits.at(c));
+        }
+    }
+    return sums;
+}
+
+} // namespace
 
 Float4 fog_density(const FogUniforms& u, const FogMaps& maps, std::span<const Float4> previous,
                    std::uint32_t x, std::uint32_t y, std::uint32_t z) {
@@ -426,9 +679,18 @@ Float4 fog_density(const FogUniforms& u, const FogMaps& maps, std::span<const Fl
     const Float3 view_dir = normalize(sub(world, camera));
     const float g = u.params[3];
 
-    const float total_density = std::max(0.0F, u.scattering[3]);
-    const Float3 scattering = xyz(u.scattering);
-    const Float3 emission = xyz(u.emission);
+    // The fog volumes there, over the fog's own density, scattering and emission.
+    const VolumeSums sums = fog_volumes(u, x, y, z, world);
+    const float total_density =
+        std::max(0.0F, u.scattering[3] + (static_cast<float>(sums.density) / 1024.0F));
+    Float3 scattering = xyz(u.scattering);
+    Float3 emission = xyz(u.emission);
+    constexpr Float3 kScatterUnits{2047.0F, 2047.0F, 1023.0F};
+    constexpr Float3 kGlowUnits{511.0F, 511.0F, 255.0F};
+    for (std::size_t c = 0; c < 3; ++c) {
+        scattering.at(c) += static_cast<float>(sums.scattering.at(c)) / kScatterUnits.at(c);
+        emission.at(c) += static_cast<float>(sums.emission.at(c)) / kGlowUnits.at(c);
+    }
     Float3 total_light{};
     if (total_density > 0.00005F) {
         const auto directional = static_cast<std::size_t>(u.sky[3]);

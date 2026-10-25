@@ -39,6 +39,20 @@ struct Light {
     float4 shadow;    // its shadow slot or -1, 1 when baked, its volumetric fog energy
 };
 
+// A FogVolume (src/volumetric_fog.hpp's FogVolumeUniforms).
+struct Volume {
+    float4x4 to_local; // the world to the volume's space
+    float4 position;   // its place in the world, then its shape (Godot's RS::FogVolumeShape)
+    float4 size;       // its size (twice the froxels for a world shape), then 1 for a FogMaterial
+    int4 corner;       // the first froxel it fills
+    int4 corner_end;   // past the last froxel it fills
+    float4 albedo;     // linear, then the material's density
+    float4 glow;       // the emission, linear, then the height falloff
+    float4 fade;       // the edge fade
+};
+
+static const uint kMaxFogVolumes = 32u;
+
 static const uint kPassDensity = 0u;
 static const uint kPassFilterX = 1u;
 static const uint kPassFilterY = 2u;
@@ -59,6 +73,8 @@ cbuffer Fog : FOG_UNIFORMS {
     float4x4 to_previous; // the camera's space to the frame before's
     float4 sky_rows[3];   // the world to the sky's space, a row each
     Light lights[8];      // the directional lights
+    uint4 volume_count;   // how many fog volumes
+    Volume volumes[kMaxFogVolumes];
 };
 
 struct DirectionalShadow {
@@ -244,6 +260,88 @@ uint range_mask(uint word, uint first, uint end) {
     return below_high & ~below_low;
 }
 
+// What the fog volumes add to a froxel at id, whose point is world, as Godot's volumetric_fog.glsl
+// adds each into its density, light and emissive maps: the density in 1024ths, then the scattering
+// and emission, each a channel's units as Godot packs them into 11, 11 and 10 bits, held there.
+struct VolumeSums {
+    int density;
+    uint3 scattering;
+    uint3 emission;
+};
+
+VolumeSums fog_volumes(uint3 id, float3 world) {
+    VolumeSums sums;
+    sums.density = 0;
+    sums.scattering = (uint3)0u;
+    sums.emission = (uint3)0u;
+    const uint3 limits = uint3(2047u, 2047u, 1023u);
+    int3 at = (int3)id;
+    for (uint i = 0u; i < volume_count.x; ++i) {
+        if (any(at < volumes[i].corner.xyz) || any(at >= volumes[i].corner_end.xyz)) {
+            continue;
+        }
+        float3 local_pos = mul(volumes[i].to_local, float4(world, 1.0)).xyz;
+        float3 full = volumes[i].size.xyz;
+        float3 half_size = full / 2.0;
+        uint shape = (uint)volumes[i].position.w;
+        bool material = volumes[i].size.w != 0.0;
+        float sdf = -1.0;
+        if (shape == 0u) {
+            float k0 = length(local_pos / half_size);
+            float k1 = length(local_pos / (half_size * half_size));
+            sdf = k0 * (k0 - 1.0) / k1;
+        } else if (shape == 1u) {
+            float inv_height = 1.0 / max(0.001, half_size.y);
+            float radius = 1.0 / max(0.001, min(half_size.x, half_size.z) * 0.5);
+            float hypotenuse = sqrt(radius * radius + inv_height * inv_height);
+            float2 c = float2(radius / hypotenuse, inv_height / hypotenuse);
+            float q = length(local_pos.xz);
+            sdf = max(dot(c, float2(q, local_pos.y - half_size.y)), -half_size.y - local_pos.y);
+        } else if (shape == 2u) {
+            float2 d = abs(float2(length(local_pos.xz), local_pos.y)) -
+                       float2(min(half_size.x, half_size.z), half_size.y);
+            sdf = min(max(d.x, d.y), 0.0) + length(max(d, (float2)0.0));
+        } else if (shape == 3u) {
+            float3 q = abs(local_pos) - half_size;
+            sdf = length(max(q, (float3)0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+        }
+        // Godot's default material doesn't read the distance, so its cells outside are culled.
+        float cull_mask = 1.0;
+        if (shape <= 3u && !material) {
+            cull_mask = 1.0 - smooth(-0.1, 0.0, sdf);
+        }
+        if (!(cull_mask > 0.0)) {
+            continue;
+        }
+        float density = 1.0;
+        float3 albedo = (float3)1.0;
+        float3 emission = (float3)0.0;
+        if (material) {
+            float height = world.y - volumes[i].position.y;
+            density = volumes[i].albedo.w * clamp(exp2(-volumes[i].glow.w * height), 0.0, 1.0);
+            float edge = clamp(-2.0 * sdf / min(min(full.x, full.y), full.z), 0.0, 1.0);
+            density *= edge > 0.0 ? pow(edge, volumes[i].fade.x) : 0.0;
+            albedo = volumes[i].albedo.rgb;
+            emission = volumes[i].glow.rgb;
+        }
+        density *= cull_mask;
+        if (!(abs(density) > 0.001)) {
+            continue;
+        }
+        sums.density += (int)(density * 1024.0);
+        float amount = clamp(density, 0.0, 1.0);
+        if (material) {
+            float3 glow = clamp(emission * amount, (float3)0.0, (float3)4.0);
+            uint3 units = (uint3)(glow * float3(511.0, 511.0, 255.0));
+            sums.emission = min(sums.emission + units, limits);
+        }
+        float3 scattered = clamp(albedo * amount, (float3)0.0, (float3)1.0);
+        uint3 units = (uint3)(scattered * float3(2047.0, 2047.0, 1023.0));
+        sums.scattering = min(sums.scattering + units, limits);
+    }
+    return sums;
+}
+
 float4 density_pass(uint3 id) {
     float3 cell = 1.0 / (float3)size.xyz;
     float3 place = (float3)id;
@@ -278,10 +376,13 @@ float4 density_pass(uint3 id) {
     float3 view_dir = normalize(world - camera);
     float g = params.w;
 
-    float total_density = max(0.0, scattering.w);
+    // The fog volumes there, over the fog's own density, scattering and emission.
+    VolumeSums sums = fog_volumes(id, world);
+    float total_density = max(0.0, scattering.w + (float)sums.density / 1024.0);
+    float3 scattered = (float3)sums.scattering / float3(2047.0, 2047.0, 1023.0) + scattering.rgb;
+    float3 glowing = (float3)sums.emission / float3(511.0, 511.0, 255.0) + emission.rgb;
     float3 total_light = (float3)0.0;
-    // Sampled while control flow is uniform, as WGSL requires; the sky's level follows the
-    // density, which every froxel shares.
+    // Sampled before the branch below, at the level the froxel's density picks.
     float level = min(2.0 + total_density * (kRadianceMaxLevel - 2.0), kRadianceMaxLevel);
     float3 ray = view_dir * (g > 0.0 ? 1.0 : -1.0);
     float3 turned = float3(dot(sky_rows[0].xyz, ray), dot(sky_rows[1].xyz, ray),
@@ -363,7 +464,7 @@ float4 density_pass(uint3 id) {
         }
     }
 
-    float3 lit = total_light * scattering.rgb + emission.rgb;
+    float3 lit = total_light * scattered + glowing;
     return lerp(float4(lit, total_density), reprojected, reproject_amount);
 }
 
