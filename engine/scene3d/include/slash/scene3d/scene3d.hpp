@@ -433,10 +433,11 @@ private:
     // Loads the cells of the world's VoxelGIs, injects the lights into those whose lights or
     // settings changed, plots the dynamic meshes in their boxes into their light where those or
     // it changed, puts their light in one atlas on the device and gives each draw the VoxelGIs its
-    // bounds touch, at most two, for a camera of env's exposure.
+    // bounds touch, at most two, and fog (when on) the first kMaxFogVoxelGIs, for a camera of
+    // env's exposure.
     void trace_voxel_gis(const world::World& world, const world::Tree3D& tree,
                          const std::function<world::Affine3D(entt::entity)>& global,
-                         const Environment& env);
+                         const Environment& env, render::VolumetricFog3D& fog);
     // The entity's meshes as its VoxelGIs plot them, read again when its mesh, material, model or
     // their images change.
     const VoxelObject& voxel_object(const world::World& world, entt::entity entity);

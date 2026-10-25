@@ -2908,6 +2908,9 @@ void register_3d_components(ComponentRegistry& registry) {
                   {.doc = "Above 1, more of its detail is near the camera.", .min = 0.5, .max = 6})
         .describe("volumetric_fog_ambient_inject",
                   {.doc = "How much the ambient light lights it.", .min = 0, .max = 16})
+        .describe(
+            "volumetric_fog_gi_inject",
+            {.doc = "How much the light of the VoxelGIs it is in lights it.", .min = 0, .max = 16})
         .describe("volumetric_fog_sky_affect",
                   {.doc = "How much it covers the sky.", .min = 0, .max = 1})
         .describe("volumetric_fog_temporal_reprojection_enabled",

@@ -1,0 +1,8 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":9,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.608,0.22,0.188,1],[0.58,0.561,0.549,1],[0.702,0.675,0.647,1],[0.671,0.647,0.627,1]],"drawn":{"meshes":5},"height":90,"path":"shots/unbaked.png","width":160}}
+{"id":3,"jsonrpc":"2.0","result":{"cells":12104,"file":"main.gi.voxelgi.json","levels":7,"meshes":4,"size":[64,32,64]}}
+{"id":4,"jsonrpc":"2.0","result":{"colors":[[0.71,0.282,0.235,1],[0.651,0.616,0.576,1],[0.749,0.714,0.671,1],[0.749,0.714,0.667,1]],"drawn":{"meshes":5},"height":90,"path":"shots/baked.png","width":160}}
+{"id":5,"jsonrpc":"2.0","result":{"changed":{"WorldEnvironment":{"volumetric_fog_gi_inject":4.0}},"id":"environment"}}
+{"id":6,"jsonrpc":"2.0","result":{"colors":[[0.8,0.412,0.337,1],[0.753,0.706,0.647,1],[0.827,0.788,0.729,1],[0.8,0.761,0.706,1]],"drawn":{"meshes":5},"height":90,"path":"shots/strong.png","width":160}}
+{"id":7,"jsonrpc":"2.0","result":{"changed":{"WorldEnvironment":{"volumetric_fog_gi_inject":0.0}},"id":"environment"}}
+{"id":8,"jsonrpc":"2.0","result":{"colors":[[0.675,0.22,0.188,1],[0.612,0.584,0.549,1],[0.722,0.69,0.647,1],[0.729,0.698,0.655,1]],"drawn":{"meshes":5},"height":90,"path":"shots/none.png","width":160}}

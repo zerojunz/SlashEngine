@@ -19,6 +19,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <numbers>
 #include <span>
 #include <string_view>
@@ -432,12 +433,77 @@ volume_froxels(const Scene3D& scene, const FogFrustum& frustum, const FogVolume3
     return {low, high};
 }
 
+// The fog volumes a frame of the scene fills, in a fog of size seen through frustum, as the
+// density pass reads them: at most kMaxFogVolumes, leaving out those whose corners share a froxel.
+std::vector<FogVolumeUniforms> volume_uniforms(const Scene3D& scene, const FogFrustum& frustum,
+                                               const std::array<std::uint32_t, 3>& size) {
+    std::vector<FogVolumeUniforms> out;
+    for (const FogVolume3D& volume : scene.volumetric_fog.volumes) {
+        if (out.size() == kMaxFogVolumes) {
+            break;
+        }
+        const auto [low, high] = volume_froxels(scene, frustum, volume, size);
+        if (high[0] <= low[0] || high[1] <= low[1] || high[2] <= low[2]) {
+            continue;
+        }
+        FogVolumeUniforms& v = out.emplace_back();
+        const bool world = volume.shape == FogVolumeShape::World;
+        v.to_local = world ? Mat4{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F,
+                                  0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F}
+                           : to_float(inverse_matrix(volume.transform));
+        v.position = {volume.transform[12], volume.transform[13], volume.transform[14],
+                      static_cast<float>(volume.shape)};
+        // Godot hands a world volume the fog's froxels as its extents.
+        v.size =
+            world ? Float4{2.0F * static_cast<float>(size[0]), 2.0F * static_cast<float>(size[1]),
+                           2.0F * static_cast<float>(size[2]), 0.0F}
+                  : Float4{volume.size[0], volume.size[1], volume.size[2], 0.0F};
+        v.size[3] = volume.material ? 1.0F : 0.0F;
+        v.corner = {low[0], low[1], low[2], 0};
+        v.corner_end = {high[0], high[1], high[2], 0};
+        v.albedo = {srgb_to_linear_exact(volume.albedo[0]), srgb_to_linear_exact(volume.albedo[1]),
+                    srgb_to_linear_exact(volume.albedo[2]), volume.density};
+        v.glow = {srgb_to_linear_exact(volume.emission[0]),
+                  srgb_to_linear_exact(volume.emission[1]),
+                  srgb_to_linear_exact(volume.emission[2]), volume.height_falloff};
+        v.fade = {volume.edge_fade, 0.0F, 0.0F, 0.0F};
+    }
+    return out;
+}
+
+// How many VoxelGIs' light the fog takes in: the first kMaxFogVoxelGIs, and none at a gi_inject
+// of 0.001 or less, as Godot's.
+std::size_t voxel_gi_count(const VolumetricFog3D& fog) {
+    const bool takes = fog.gi_inject > 0.001F && fog.voxel_gi_atlas != TextureId::None;
+    return takes ? std::min(fog.voxel_gis.size(), kMaxFogVoxelGIs) : 0;
+}
+
 } // namespace
 
 std::array<std::array<std::int32_t, 3>, 2>
 fog_volume_froxels(const Scene3D& scene, const FogVolume3D& volume,
                    const std::array<std::uint32_t, 3>& size) {
     return volume_froxels(scene, fog_frustum(scene), volume, size);
+}
+
+std::vector<Float4> fog_items(const Scene3D& scene, std::uint32_t width, std::uint32_t height) {
+    const VolumetricFog3D& fog = scene.volumetric_fog;
+    const std::vector<FogVolumeUniforms> volumes =
+        volume_uniforms(scene, fog_frustum(scene), fog_volume_size(fog.settings, width, height));
+    const std::size_t voxel_gis = voxel_gi_count(fog);
+    std::vector<Float4> out((volumes.size() * kFogVolumeItems) + (voxel_gis * kFogVoxelGIItems));
+    if (!volumes.empty()) {
+        std::memcpy(out.data(), volumes.data(), volumes.size() * sizeof(FogVolumeUniforms));
+    }
+    for (std::size_t i = 0; i < voxel_gis; ++i) {
+        const MeshVoxelGIUniforms gi = voxel_gi_uniforms(fog.voxel_gis[i]);
+        std::memcpy(&out.at((volumes.size() * kFogVolumeItems) + (i * kFogVoxelGIItems)), &gi,
+                    sizeof(gi));
+    }
+    if (out.empty()) {
+        out.emplace_back(); // a storage buffer is never empty
+    }
+    return out;
 }
 
 FogUniforms volumetric_fog_uniforms(const Scene3D& scene, const MeshSceneUniforms& lights,
@@ -478,38 +544,9 @@ FogUniforms volumetric_fog_uniforms(const Scene3D& scene, const MeshSceneUniform
     out.screen = {static_cast<float>(width), static_cast<float>(height), 0.0F, 0.0F};
     out.cluster = lights.cluster;
     out.view_to_world = to_float(inverse_matrix(scene.camera));
-    std::uint32_t volumes = 0;
-    for (const FogVolume3D& volume : fog.volumes) {
-        if (volumes == kMaxFogVolumes) {
-            break;
-        }
-        const auto [low, high] = volume_froxels(scene, frustum, volume, size);
-        if (high[0] <= low[0] || high[1] <= low[1] || high[2] <= low[2]) {
-            continue;
-        }
-        FogVolumeUniforms& v = out.volumes.at(volumes++);
-        const bool world = volume.shape == FogVolumeShape::World;
-        v.to_local = world ? Mat4{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F,
-                                  0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F}
-                           : to_float(inverse_matrix(volume.transform));
-        v.position = {volume.transform[12], volume.transform[13], volume.transform[14],
-                      static_cast<float>(volume.shape)};
-        // Godot hands a world volume the fog's froxels as its extents.
-        v.size =
-            world ? Float4{2.0F * static_cast<float>(size[0]), 2.0F * static_cast<float>(size[1]),
-                           2.0F * static_cast<float>(size[2]), 0.0F}
-                  : Float4{volume.size[0], volume.size[1], volume.size[2], 0.0F};
-        v.size[3] = volume.material ? 1.0F : 0.0F;
-        v.corner = {low[0], low[1], low[2], 0};
-        v.corner_end = {high[0], high[1], high[2], 0};
-        v.albedo = {srgb_to_linear_exact(volume.albedo[0]), srgb_to_linear_exact(volume.albedo[1]),
-                    srgb_to_linear_exact(volume.albedo[2]), volume.density};
-        v.glow = {srgb_to_linear_exact(volume.emission[0]),
-                  srgb_to_linear_exact(volume.emission[1]),
-                  srgb_to_linear_exact(volume.emission[2]), volume.height_falloff};
-        v.fade = {volume.edge_fade, 0.0F, 0.0F, 0.0F};
-    }
-    out.volume_count = {volumes, 0, 0, 0};
+    out.items = {static_cast<std::uint32_t>(volume_uniforms(scene, frustum, size).size()),
+                 static_cast<std::uint32_t>(voxel_gi_count(fog)), 0, 0};
+    out.voxel_gi = {fog.gi_inject, 0.0F, 0.0F, 0.0F};
 
     // The frame before's density, when it had the same volume, moved to where it was seen, with
     // this frame's point in its froxels.
@@ -572,8 +609,8 @@ float volume_sdf(const FogVolumeUniforms& v, const Float3& local) {
     }
 }
 
-VolumeSums fog_volumes(const FogUniforms& u, std::uint32_t x, std::uint32_t y, std::uint32_t z,
-                       const Float3& world) {
+VolumeSums fog_volumes(const FogUniforms& u, std::span<const Float4> items, std::uint32_t x,
+                       std::uint32_t y, std::uint32_t z, const Float3& world) {
     constexpr std::array<std::uint32_t, 3> kLimits{2047, 2047, 1023};
     constexpr Float3 kScatterUnits{2047.0F, 2047.0F, 1023.0F};
     constexpr Float3 kGlowUnits{511.0F, 511.0F, 255.0F};
@@ -581,8 +618,9 @@ VolumeSums fog_volumes(const FogUniforms& u, std::uint32_t x, std::uint32_t y, s
     const std::array<std::int32_t, 3> at{static_cast<std::int32_t>(x), static_cast<std::int32_t>(y),
                                          static_cast<std::int32_t>(z)};
     VolumeSums sums;
-    for (std::size_t i = 0; i < u.volume_count[0] && i < u.volumes.size(); ++i) {
-        const FogVolumeUniforms& v = u.volumes.at(i);
+    for (std::size_t i = 0; i < u.items[0] && (i + 1) * kFogVolumeItems <= items.size(); ++i) {
+        FogVolumeUniforms v;
+        std::memcpy(static_cast<void*>(&v), &items[i * kFogVolumeItems], sizeof(v));
         bool inside = true;
         for (std::size_t axis = 0; axis < 3; ++axis) {
             inside =
@@ -680,7 +718,7 @@ Float4 fog_density(const FogUniforms& u, const FogMaps& maps, std::span<const Fl
     const float g = u.params[3];
 
     // The fog volumes there, over the fog's own density, scattering and emission.
-    const VolumeSums sums = fog_volumes(u, x, y, z, world);
+    const VolumeSums sums = fog_volumes(u, maps.items, x, y, z, world);
     const float total_density =
         std::max(0.0F, u.scattering[3] + (static_cast<float>(sums.density) / 1024.0F));
     Float3 scattering = xyz(u.scattering);
@@ -789,6 +827,19 @@ Float4 fog_density(const FogUniforms& u, const FogMaps& maps, std::span<const Fl
                     total_light = add(total_light, scale(xyz(light.color),
                                                          attenuation * shadow * phase * energy));
                 }
+            }
+        }
+
+        // The VoxelGIs' light, as Godot's gi_inject takes it in.
+        if (maps.voxel_gi != nullptr) {
+            const std::size_t first = std::size_t{u.items[0]} * kFogVolumeItems;
+            for (std::size_t i = 0;
+                 i < u.items[1] && first + ((i + 1) * kFogVoxelGIItems) <= maps.items.size(); ++i) {
+                MeshVoxelGIUniforms gi;
+                std::memcpy(static_cast<void*>(&gi), &maps.items[first + (i * kFogVoxelGIItems)],
+                            sizeof(gi));
+                total_light = add(total_light, scale(fog_voxel_gi_light(gi, *maps.voxel_gi, world),
+                                                     u.voxel_gi[0]));
             }
         }
     }

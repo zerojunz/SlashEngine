@@ -537,6 +537,38 @@ struct FogVolume3D {
 // The most fog volumes a frame fills its fog with; those past it are left out.
 inline constexpr std::size_t kMaxFogVolumes = 32;
 
+// The most levels a VoxelGI's light has: ten for Godot's 512 subdivision, from 512 texels across
+// down to 1.
+inline constexpr std::size_t kMaxVoxelGILevels = 10;
+// The most texels along each axis of a VoxelGI's level 0 a device traces.
+inline constexpr std::uint32_t kMaxVoxelGICells = 1024;
+
+// A VoxelGI a mesh traces cones through for its ambient light and reflections, as Godot's
+// Forward+ renderer pairs a VoxelGI with the meshes it reaches (servers/rendering/renderer_rd/
+// shaders/environment/gi.glsl): its light, RGBA8 (the light over its dynamic range, and how much
+// of each cell is solid), is a 3D texture of size texels at level 0 and half as many along each
+// axis each level after (at least 1), kept in an atlas as each level's z slices side by side.
+struct VoxelGIProbe {
+    // The world to its cells' space, a row each of a 3x4 matrix: a unit a texel of level 0, its
+    // box from 0 to size.
+    std::array<float, 12> to_cell{1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F,
+                                  0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F};
+    std::array<std::uint32_t, 3> size{1, 1, 1};
+    std::uint32_t levels = 1; // 1 to kMaxVoxelGILevels
+    // Where each level is in the atlas: the left and top texels of its first slice, then how
+    // many slices a row of it holds. Slice z is z % columns slices right and z / columns down.
+    std::array<std::array<std::uint32_t, 3>, kMaxVoxelGILevels> placement{};
+    float energy = 1.0F;       // the light's scale: its dynamic range, energy and exposure
+    float bias = 1.5F;         // how far cones start from the surface, in texels
+    float normal_bias = 0.0F;  // how far the surface moves along its normal first, in texels
+    bool blend_ambient = true; // where cones see nothing, the ambient light and sky show through
+
+    bool operator==(const VoxelGIProbe&) const = default;
+};
+
+// The most VoxelGIs whose light volumetric fog takes in, as Godot's MAX_VOXEL_GI_INSTANCES.
+inline constexpr std::size_t kMaxFogVoxelGIs = 8;
+
 // Forward+: volumetric fog, as Godot 4.6's Environment.volumetric_fog_* with its Forward+
 // renderer. The view to length is cut into froxels (cells of the frustum, deeper further away
 // by detail_spread), each lit by the lights (their volumetric_fog_energy, through their shadows,
@@ -563,6 +595,12 @@ struct VolumetricFog3D {
     // At most kMaxFogVolumes, filled in this order; initialized so that it may be left out.
     // NOLINTNEXTLINE(readability-redundant-member-init)
     std::vector<FogVolume3D> volumes{};
+    // How much the VoxelGIs' light lights it (gi_inject), from 0 to 16, and the VoxelGIs, at most
+    // kMaxFogVoxelGIs, with the atlas their light is in, as VoxelGIShading's (left out alike).
+    float gi_inject = 1.0F;
+    TextureId voxel_gi_atlas{};
+    // NOLINTNEXTLINE(readability-redundant-member-init)
+    std::vector<VoxelGIProbe> voxel_gis{};
 
     bool operator==(const VolumetricFog3D&) const = default;
 };

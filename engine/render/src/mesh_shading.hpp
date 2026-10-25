@@ -511,6 +511,15 @@ struct VoxelGILight {
                                            const Float3& normal, const Float3& view,
                                            float roughness);
 
+// A VoxelGI as mesh.hlsl's Surface and volumetric_fog.hlsl's Fog hold it.
+[[nodiscard]] MeshVoxelGIUniforms voxel_gi_uniforms(const VoxelGIProbe& probe);
+
+// The light a VoxelGI gives volumetric fog at a point of the world, as Godot's
+// volumetric_fog_process.glsl gathers it: each level at the point, front to back by how solid the
+// ones before are, times its energy; nothing outside its box.
+[[nodiscard]] Float3 fog_voxel_gi_light(const MeshVoxelGIUniforms& gi, const Image& atlas,
+                                        const Float3& world);
+
 // The pixel's color, as fs_main gives it, or nullopt where it discards the pixel.
 [[nodiscard]] std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface,
                                                const MeshSceneUniforms& scene, const MeshMaps& maps,

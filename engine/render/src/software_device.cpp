@@ -1656,14 +1656,18 @@ private:
                 scene, *lights, target.width(), target.height(), state.clock);
             const std::array<std::uint32_t, 3> size{uniforms.size[0], uniforms.size[1],
                                                     uniforms.size[2]};
-            fog =
-                detail::run_volumetric_fog(uniforms,
-                                           {.shadows = plan.uniforms.get(),
-                                            .directional = maps.directional,
-                                            .positional = maps.positional,
-                                            .radiance = maps.radiance,
-                                            .clusters = &clusters},
-                                           state.density, scene.volumetric_fog.settings.use_filter);
+            const std::vector<Float4> items =
+                detail::fog_items(scene, target.width(), target.height());
+            fog = detail::run_volumetric_fog(
+                uniforms,
+                {.shadows = plan.uniforms.get(),
+                 .directional = maps.directional,
+                 .positional = maps.positional,
+                 .radiance = maps.radiance,
+                 .clusters = &clusters,
+                 .voxel_gi = bound(scene.volumetric_fog.voxel_gi_atlas, false).image,
+                 .items = items},
+                state.density, scene.volumetric_fog.settings.use_filter);
             state.density = fog.density;
             detail::set_volumetric_fog(*lights, scene, size);
             maps.fog = fog.fog;

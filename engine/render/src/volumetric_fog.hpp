@@ -51,8 +51,9 @@ struct FogClock {
     std::array<std::uint32_t, 3> size{};
 };
 
-// A fog volume as the density pass reads it (shaders/volumetric_fog.hlsl's Volume): its place
-// and shape, the froxels it fills as Godot's volumetric_fog_update picks them, and its material.
+// A fog volume as the density pass reads it from the frame's items (fog_items; kFogVolumeItems
+// float4s in shaders/volumetric_fog.hlsl's load_volume): its place and shape, the froxels it
+// fills as Godot's volumetric_fog_update picks them, and its material.
 struct FogVolumeUniforms {
     Mat4 to_local{};   // the world to the volume's space
     Float4 position{}; // its place in the world, then its shape (FogVolumeShape)
@@ -64,6 +65,9 @@ struct FogVolumeUniforms {
     Float4 fade{};                            // the edge fade
 };
 static_assert(sizeof(FogVolumeUniforms) == 176);
+// The float4s a fog volume and a VoxelGI (MeshVoxelGIUniforms) take in the frame's items.
+inline constexpr std::size_t kFogVolumeItems = sizeof(FogVolumeUniforms) / sizeof(Float4);
+inline constexpr std::size_t kFogVoxelGIItems = sizeof(MeshVoxelGIUniforms) / sizeof(Float4);
 
 // The passes' uniforms: b0 in space2 of shaders/volumetric_fog.hlsl (b0 in Metal), whose b1 is
 // MeshShadowUniforms.
@@ -93,10 +97,14 @@ struct FogUniforms {
     Mat4 to_previous{};   // the camera's space to the camera's space of the frame before
     std::array<Float4, 3> sky_rows{}; // the world to the sky's space, a row each
     std::array<MeshLightUniforms, kMaxDirectionalLights3D> lights{}; // the directional ones
-    std::array<std::uint32_t, 4> volume_count{}; // how many of volumes there are
-    std::array<FogVolumeUniforms, kMaxFogVolumes> volumes{};
+    // How many fog volumes, then VoxelGIs, the frame's items hold (fog_items).
+    std::array<std::uint32_t, 4> items{};
+    Float4 voxel_gi{}; // gi_inject, then 0, 0, 0
 };
-static_assert(sizeof(FogUniforms) == 352 + (80 * kMaxDirectionalLights3D) + (176 * kMaxFogVolumes));
+// Kept under the 4 KiB of uniforms SDL's Vulkan device lets a shader see; arrays that would grow
+// past it go in the frame's items.
+static_assert(sizeof(FogUniforms) == 368 + (80 * kMaxDirectionalLights3D));
+static_assert(sizeof(FogUniforms) <= 4096);
 
 // The froxels from corner to corner_end (past it) that a fog volume of the scene's fills in a fog
 // of size, as Godot's volumetric_fog_update picks
@@ -115,6 +123,12 @@ fog_volume_froxels(const Scene3D& scene, const FogVolume3D& volume,
                                                   std::uint32_t width, std::uint32_t height,
                                                   FogClock& clock);
 
+// The density pass's storage buffer for a frame of the scene drawn at width x height: its fog
+// volumes (kFogVolumeItems float4s each, as many as volumetric_fog_uniforms counts), then the
+// VoxelGIs whose light it takes (kFogVoxelGIItems each). Never empty, as a storage buffer.
+[[nodiscard]] std::vector<Float4> fog_items(const Scene3D& scene, std::uint32_t width,
+                                            std::uint32_t height);
+
 // What the density pass reads besides its uniforms, as the mesh shader's maps: the shadows, the
 // sky's radiance (nullptr when the fog takes none) and the clusters of the omni and spot lights.
 struct FogMaps {
@@ -123,6 +137,8 @@ struct FogMaps {
     ShadowAtlas positional;
     const CubeImage* radiance = nullptr;
     const LightClusters* clusters = nullptr;
+    const Image* voxel_gi = nullptr; // the VoxelGIs' atlas, when the fog takes their light
+    std::span<const Float4> items;   // fog_items
 };
 
 // The CPU twins of the passes, a froxel (or, integrating, a column) at x, y and z of the volume:
