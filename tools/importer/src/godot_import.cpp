@@ -1896,6 +1896,28 @@ private:
             taa != nullptr && taa->kind == Value::Kind::Bool) {
             project["rendering"]["anti_aliasing"]["quality"]["use_taa"] = taa->boolean;
         }
+        // The 3D world's scaling. MetalFX isn't built, so its spatial and temporal modes become
+        // FSR's.
+        if (const Value* mode = number("rendering", "scaling_3d/mode")) {
+            constexpr std::array<std::string_view, 5> kModes{"bilinear", "fsr", "fsr2", "fsr",
+                                                             "fsr2"};
+            const auto index = static_cast<std::int64_t>(mode->number());
+            if (index >= 0 && static_cast<std::size_t>(index) < kModes.size()) {
+                const std::string scaler(kModes.at(static_cast<std::size_t>(index)));
+                project["rendering"]["scaling"]["mode"] = scaler;
+                if (index >= 3) {
+                    problems_.add("rendering/scaling_3d/mode", "project.godot",
+                                  "MetalFX isn't built, so " + scaler +
+                                      " scales the 3D world instead");
+                }
+            }
+        }
+        if (const Value* scale = number("rendering", "scaling_3d/scale")) {
+            project["rendering"]["scaling"]["scale"] = scale->number();
+        }
+        if (const Value* sharpness = number("rendering", "scaling_3d/fsr_sharpness")) {
+            project["rendering"]["scaling"]["fsr_sharpness"] = sharpness->number();
+        }
         if (const Value* gravity = number("physics", "2d/default_gravity")) {
             project["physics_2d"]["gravity"] = gravity->number();
         }

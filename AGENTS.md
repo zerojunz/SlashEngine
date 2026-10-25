@@ -845,6 +845,16 @@ the meshes, `taa.hlsl` (Godot's `taa_resolve.glsl`) blends the frame with each t
 kept by the device. A frame without meshes starts it again. `examples/taa-3d` smooths a turning
 card's edges.
 
+FSR 2 is Godot's `scaling_3d` mode `fsr2` (`render::uses_fsr2`, `Scene3D::fsr2`), in Forward+
+at a scale below 1 on every device but OpenGL; elsewhere the world scales with `bilinear`.
+Devices draw the meshes at `fsr2_render_size` with a jitter over `fsr2_phase_count` frames
+(`camera_jitter`) and motion vectors, then run AMD's FSR 2.2 passes, ported from its HLSL with
+the notice kept: `fsr2_luma`, `fsr2_dilate`, `fsr2_reconstruct` (compute), `fsr2_depth_clip`,
+`fsr2_lock`, `fsr2_accumulate` and `fsr2_rcas` in `engine/render/shaders/`. `src/fsr2.hpp` holds
+what devices share, with `run_fsr2`, the passes' CPU twin, which `tests/test_fsr2.cpp` holds
+every device to. Each target keeps its own history, and post-processing runs at the window's
+size after. `examples/fsr2-3d` rebuilds a card at twice its render size.
+
 Compatibility's post-processing: without glow or adjustments, `mesh.hlsl` tonemaps as it draws.
 With either, each device draws the meshes into an RGBA8 texture at `end_frame` and runs
 `shaders/post.hlsl`'s passes: glow's filter, three downsamples and three upsamples through four
@@ -1013,8 +1023,9 @@ V-Sync and the frame cap follow Godot: `window.vsync_mode` and `max_fps` in `pro
 windowed frames to the cap, never headless ones, and `Loop::interpolation()` gives the fraction
 of the next tick for drawing between ticks.
 
-The render scale follows Godot's `scaling_3d` settings, applied to the 2D world:
-`rendering.scaling` in `project.json` (`mode`, `scale`, `fsr_sharpness`, `upscaler`) and
+The render scale follows Godot's `scaling_3d` settings, applied to the whole world (`fsr2`
+scales only the 3D world; see TAA above): `rendering.scaling` in `project.json` (`mode`, `scale`,
+`fsr_sharpness`, `upscaler`) and
 `display.set`'s `scaling`. `CanvasRenderer` draws the world, with the canvas layers below it,
 into an upscaler's input at the render size, scales it over the screen, then draws the world's
 controls and the layers above at full size (`scaled()`; `frame.capture` returns `upscaler` and
@@ -1022,8 +1033,7 @@ controls and the layers above at full size (`scaled()`; `frame.capture` returns 
 `render::Upscaler`, built-in `bilinear` and `fsr` (AMD's FSR 1, ported in
 `engine/render/shaders/fsr_easu.hlsl` and `fsr_rcas.hlsl` and checked against a C++ port of
 `ffx_fsr1.h` on every device), and `add_upscaler` for a game's or an SDK package's own, which
-refuses temporal ones until the 3D renderer exists. `examples/render-scale` changes it while a
-game runs.
+refuses temporal ones for now. `examples/render-scale` changes it while a game runs.
 
 ## Keyframe animation
 
