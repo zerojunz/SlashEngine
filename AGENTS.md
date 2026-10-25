@@ -83,6 +83,12 @@ that runs over five minutes is stuck: the watchdog in `tests/test_main.cpp` name
 the shard, and `tests/retry_stuck.cmake` runs the shard once more, so a hang that comes back
 still fails.
 
+Claude Code sessions run `.claude/hooks/task_nudge.py` after each tool call. It says nothing
+until one task has taken 30 minutes, then adds a `[task-nudge]` line asking the agent to check
+whether it is going in circles (a subagent is told to hand back what it has), and again every
+30 minutes after. Waiting on a long run you started is fine. `TASK_NUDGE_MIN` changes the limit,
+and `TASK_NUDGE_OFF=1` turns it off.
+
 ## Run the engine
 
 ```bash
