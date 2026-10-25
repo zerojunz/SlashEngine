@@ -178,8 +178,8 @@ int main() {
     call(session, "display.set", R"({"scaling": {"upscaler": "pixel", "scale": 0.25}})");
     call(session, "frame.capture", points);
 
-    // Godot's temporal modes need the 3D renderer; unknown upscalers get the closest name.
-    call(session, "display.set", R"({"scaling": {"mode": "fsr2"}})");
+    // MetalFX isn't built; unknown upscalers get the closest name.
+    call(session, "display.set", R"({"scaling": {"mode": "metalfx_temporal"}})");
     call(session, "display.set", R"({"scaling": {"upscaler": "pixle"}})");
     return 0;
 }

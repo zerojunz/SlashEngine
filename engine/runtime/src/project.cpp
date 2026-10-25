@@ -89,7 +89,8 @@ json::Value scaling_schema() {
     mode["default"] = defaults.mode;
     mode["description"] =
         "How the world scales to the screen: bilinear stretches it, fsr is AMD's FidelityFX Super "
-        "Resolution 1, which finds edges and sharpens.";
+        "Resolution 1, which finds edges and sharpens, and fsr2 is FSR 2, which builds the 3D "
+        "world from jittered frames in Forward+.";
     json::Value scale;
     scale["type"] = "number";
     scale["minimum"] = render::kMinRenderScale;

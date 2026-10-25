@@ -364,9 +364,11 @@ TEST_CASE("project.json's rendering.scaling is read and checked") {
         REQUIRE_FALSE(errors.empty());
         return errors.front();
     };
-    auto error = first_error(R"({"mode": "fsr2"})");
+    project["rendering"]["scaling"] = parse(R"({"mode": "fsr2", "scale": 0.67})");
+    CHECK(slash::runtime::validate_project(project).empty());
+    auto error = first_error(R"({"mode": "metalfx_temporal"})");
     CHECK(error.path == "/rendering/scaling/mode");
-    CHECK(contains(error.message, "3D renderer"));
+    CHECK(contains(error.message, "MetalFX"));
     error = first_error(R"({"mode": "bilinar"})");
     CHECK(error.path == "/rendering/scaling/mode");
     CHECK(contains(error.message, "did you mean bilinear?"));
@@ -451,16 +453,24 @@ TEST_CASE("display.set changes the render scale, and frame.capture and display.l
         CHECK(captured.find("upscaler")->as_string() == "bilinear");
         CHECK(*captured.find("colors") ==
               parse("[[0.251, 0.251, 0.251, 1], [0.749, 0.749, 0.749, 1]]"));
-        ok("display.set", R"({"scaling": {"scale": 1}})");
+        // fsr2 scales only the 3D world: a world without one scales with bilinear, as Godot's
+        // falls back.
+        ok("display.set", R"({"scaling": {"mode": "fsr2"}})");
+        captured = ok("frame.capture", R"({"points": [[3, 1], [4, 1]]})");
+        CHECK(captured.find("upscaler")->as_string() == "bilinear");
+        CHECK(*captured.find("colors") ==
+              parse("[[0.251, 0.251, 0.251, 1], [0.749, 0.749, 0.749, 1]]"));
+        ok("display.set", R"({"scaling": {"mode": "bilinear", "scale": 1}})");
         captured = ok("frame.capture", R"({"points": [[3, 1], [4, 1]]})");
         CHECK(captured.find("upscaler") == nullptr);
         CHECK(*captured.find("colors") == parse("[[0, 0, 0, 1], [1, 1, 1, 1]]"));
 
         // Bad settings change nothing.
-        command::Reply bad = session.call("display.set", parse(R"({"scaling": {"mode": "fsr2"}})"));
+        command::Reply bad =
+            session.call("display.set", parse(R"({"scaling": {"mode": "metalfx_spatial"}})"));
         CHECK(bad.code == command::code::kInvalidArgument);
         CHECK(contains(bad.message, "/scaling/mode"));
-        CHECK(contains(bad.message, "3D renderer"));
+        CHECK(contains(bad.message, "MetalFX"));
         bad = session.call("display.set",
                            parse(R"({"scaling": {"upscaler": "fsrr"}, "max_fps": 30})"));
         CHECK(bad.code == command::code::kNotFound);

@@ -101,11 +101,11 @@ frame at the display's rate, and a frame cap sets how often it calls instead.
 ## Render scale
 
 `rendering.scaling` draws the world at a lower (or higher) resolution than the window and scales
-it to the window's size, as Godot's `rendering/scaling_3d` settings. Godot scales only its 3D
-world, and draws 2D at full size; until the 3D renderer exists, this scales the 2D world, so
-the Godot importer leaves a project's `scaling_3d` settings out. Controls, and canvas layers
-above the world, draw at the window's own size on top, so the UI stays sharp while the world
-costs fewer pixels; canvas layers below the world are scaled with it.
+it to the window's size, as Godot's `rendering/scaling_3d` settings, which the Godot importer
+brings over. `bilinear` and `fsr` scale the whole world, 2D and 3D; `fsr2` scales only the 3D
+world, as Godot's does, and draws 2D at full size. Controls, and canvas layers above the world,
+draw at the window's own size on top, so the UI stays sharp while the world costs fewer pixels;
+canvas layers below the world are scaled with it.
 
 ```json
 "rendering": {"scaling": {"mode": "fsr", "scale": 0.5, "fsr_sharpness": 0.2}}
@@ -113,9 +113,9 @@ costs fewer pixels; canvas layers below the world are scaled with it.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `mode` | `bilinear` | `bilinear` stretches the world with filtering. `fsr` is AMD's FidelityFX Super Resolution 1: EASU scales up along the edges it finds, then RCAS sharpens. Godot's `fsr2`, `metalfx_spatial` and `metalfx_temporal` need the 3D renderer's depth and motion vectors, so `project validate` refuses them for now |
+| `mode` | `bilinear` | `bilinear` stretches the world with filtering. `fsr` is AMD's FidelityFX Super Resolution 1: EASU scales up along the edges it finds, then RCAS sharpens. `fsr2` is FSR 2.2: the camera moves by less than a pixel each frame and the 3D world is rebuilt at the window's size from its frames, its depth and its motion vectors, then sharpened by RCAS. Godot's `metalfx_spatial` and `metalfx_temporal` need Apple's MetalFX, which isn't built yet, so `project validate` refuses them |
 | `scale` | `1` | The world's size over the window's, 0.25 to 2, as Godot's `scaling_3d/scale`. At `1` with `bilinear` nothing is scaled. Above `1` the world draws larger and is averaged down, always with `bilinear`, as FSR only scales up |
-| `fsr_sharpness` | `0.2` | RCAS's sharpening in stops, 0 to 2: `0` is the sharpest, `2` the softest |
+| `fsr_sharpness` | `0.2` | RCAS's sharpening in stops, 0 to 2, for `fsr` and `fsr2`: `0` is the sharpest, `2` the softest |
 | `upscaler` | | An upscaler the game adds with `render::add_upscaler` (from its own C++ or an [SDK package's](sdk-format.md) glue code), used instead of `mode` on the GPUs it supports. Lowercase letters, digits and underscores. Where it isn't added or doesn't run, the game logs a warning once and uses `mode` |
 
 The world draws at the window's size in pixels times `scale`, rounded down: a 2560x1440 window at
@@ -125,13 +125,23 @@ they work on every backend and on the software device behind `frame.capture`, wh
 [`display.set`](commands.md#displayset)'s `scaling`, and
 [examples/render-scale](../../examples/render-scale/) does.
 
+`fsr2` follows AMD's FidelityFX FSR 2.2 (MIT) pass by pass, as Godot's Forward+ renderer runs it:
+the 3D world draws at the render size with a jittered camera, the Forward+ prepass writes motion
+vectors as [TAA](#temporal-antialiasing)'s does, and FSR 2's passes (luminance, dilated depth and
+motion, reconstructed depth from the frame before, depth clip, locks, accumulation and RCAS) rebuild
+it at the window's size before the 3D post-processing. It runs in Forward+ only, at a `scale` below
+`1`; in Compatibility, with the OpenGL drivers, or with no 3D in the world, the world scales with
+`bilinear` instead, as Godot falls back. TAA is off while it runs, since FSR 2 does its job. As in
+Godot, it has no reactive mask, so transparent meshes, which write no depth, can trail for a frame
+or two.
+
 Upscalers a game adds are `render::Upscaler` classes (`slash/render/upscaler.hpp`): `input`
 gives the render target the world draws into, `upscale` runs the upscaler's passes and returns
 the texture and material the window's frame draws over the screen, and `release` frees what it
 made on the device. `render::UpscalerInfo::supports` says which devices one runs on, such as a
-vendor's on its own GPUs. One that is `temporal` (DLSS, XeSS, FSR 2 and later) needs depth,
-motion vectors and a jittered camera, so `add_upscaler` refuses it until the 3D renderer makes
-them.
+vendor's on its own GPUs. One that is `temporal` (DLSS, XeSS, FSR 3 and later) needs depth,
+motion vectors and a jittered camera, so `add_upscaler` refuses it until those are passed to
+upscalers a game adds, as they are to the built-in `fsr2`.
 
 ## Rendering methods
 

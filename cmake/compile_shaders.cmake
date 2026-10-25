@@ -19,6 +19,11 @@
 # SLASH_MSL defined, since Metal numbers buffers in one list where the others use three; it and
 # the WGSL are arrays of pieces to join.
 #
+# A compute shader's sampled textures are combined with their samplers (glslang's
+# --auto-sampled-textures), as SDL binds them, except in the SPIR-V that Tint reads.
+#
+# With NO_GLSL, there is no GLSL ES, for passes the OpenGL devices don't draw.
+#
 # With PIECES, each stage's MSL, GLSL ES and WGSL are arrays of pieces to join too, for a shader
 # whose code is longer than a string literal may be (the mesh shader's).
 #
@@ -169,13 +174,17 @@ if(COMPUTE)
     set(spirv "${WORKDIR}/${base}.comp.spv")
     set(msl_spirv "${WORKDIR}/${base}.comp.msl.spv")
     set(msl "${WORKDIR}/${base}.comp.msl")
-    run(glslang "${GLSLANG}" -D -V -S comp -e cs_main "${standalone}" -o "${spirv}")
-    run(glslang "${GLSLANG}" -D -V -S comp -e cs_main -DSLASH_MSL "${standalone}"
-        -o "${msl_spirv}")
+    set(wgsl_spirv "${WORKDIR}/${base}.comp.wgsl.spv")
+    run(glslang "${GLSLANG}" -D -V -S comp -e cs_main --auto-sampled-textures "${standalone}"
+        -o "${spirv}")
+    run(glslang "${GLSLANG}" -D -V -S comp -e cs_main --auto-sampled-textures -DSLASH_MSL
+        "${standalone}" -o "${msl_spirv}")
+    run(glslang "${GLSLANG}" -D -V -S comp -e cs_main --shift-sampler-binding ${SAMPLER_SHIFT}
+        "${standalone}" -o "${wgsl_spirv}")
     run(spirv-cross "${SPIRV_CROSS}" --msl --msl-version 20100 --msl-decoration-binding
         --stage comp --entry cs_main "${msl_spirv}" --output "${msl}")
     set(wgsl "${WORKDIR}/${base}.comp.wgsl")
-    run(tint "${TINT}" --input-format spirv --format wgsl "${spirv}" -o "${wgsl}")
+    run(tint "${TINT}" --input-format spirv --format wgsl "${wgsl_spirv}" -o "${wgsl}")
     hex_array("${spirv}" bytes)
     file(READ "${msl}" msl_text)
     raw_literals("${msl_text}" msl msl_literals)
@@ -238,7 +247,7 @@ foreach(stage IN LISTS stages)
     if(FIXUP_CLIPSPACE AND stage STREQUAL "vert")
         set(fixup --fixup-clipspace)
     endif()
-    if(NOT STORAGE_BUFFERS)
+    if(NOT STORAGE_BUFFERS AND NOT NO_GLSL)
         run(spirv-cross "${SPIRV_CROSS}" --es --version 300 --stage ${stage} --entry ${entry}
             ${renames} ${fixup} "${spirv}" --output "${glsl}")
     endif()
@@ -256,7 +265,7 @@ foreach(stage IN LISTS stages)
     file(READ "${msl}" msl_text)
     raw_literals("${msl_text}" msl msl_literals)
     set(glsl_code "")
-    if(NOT STORAGE_BUFFERS)
+    if(NOT STORAGE_BUFFERS AND NOT NO_GLSL)
         file(READ "${glsl}" glsl_text)
         string(REPLACE "precision mediump float;" "precision highp float;" glsl_text
             "${glsl_text}")
