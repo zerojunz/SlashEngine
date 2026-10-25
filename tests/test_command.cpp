@@ -1307,7 +1307,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "doc": "Blends each AnimationTree's animations into its entity's components.",
          "priority": 910},
         {"name": "skeleton_modifiers",
-         "doc": "Steps the chains of FABRIK3D, CCDIK3D and JacobianIK3D modifiers that aren't deterministic toward their targets, and moves the physical bones that follow the pose.",
+         "doc": "Steps the chains of FABRIK3D, CCDIK3D and JacobianIK3D modifiers that aren't deterministic toward their targets, moves the physical bones that follow the pose and puts bone attachments where their bones are.",
          "priority": 920},
         {"name": "path_follow",
          "doc": "Wraps each PathFollow2D's and PathFollow3D's progress and places it on its parent's curve.",
