@@ -2,6 +2,7 @@ project.import {"source":"unity"}
 {
   "converted": {
     "animation_libraries": 0,
+    "animation_trees": 0,
     "assets": 0,
     "bus_layouts": 0,
     "input_actions": 0,

@@ -1,5 +1,5 @@
 project.import {"source":"unity"}
-{"converted":{"animation_libraries":0,"assets":2,"bus_layouts":0,"input_actions":0,"prefabs":0,"scenes":1,"tile_sets":2},"engine":"unity","files":5,"main_scene":"unity/Assets/Scenes/Garden.scene.json","pixels_per_unit":32.0,"project":"Hex Garden","report":"import/unity.json","scripts":[],"unity_version":"2022.3.20f1","unsupported":[]}
+{"converted":{"animation_libraries":0,"animation_trees":0,"assets":2,"bus_layouts":0,"input_actions":0,"prefabs":0,"scenes":1,"tile_sets":2},"engine":"unity","files":5,"main_scene":"unity/Assets/Scenes/Garden.scene.json","pixels_per_unit":32.0,"project":"Hex Garden","report":"import/unity.json","scripts":[],"unity_version":"2022.3.20f1","unsupported":[]}
 --- unity/Assets/tiles.tileset.json
 {
   "format": 1,

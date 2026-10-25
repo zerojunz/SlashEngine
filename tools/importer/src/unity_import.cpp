@@ -4,6 +4,7 @@
 #include "skeletons.hpp"
 
 #include "slash/animation/animation.hpp"
+#include "slash/animation/tree.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/canvas/debug_draw.hpp"
 #include "slash/canvas/tilemap.hpp"
@@ -8288,6 +8289,7 @@ private:
         std::string task_text;          // its state machine, for a storyboard task; "" with none
         std::vector<std::string> users; // "<entity> in <scene>"
         std::vector<std::string> scenes;
+        std::string tree; // the base layer's state machine as a .animtree.json file, or ""
     };
 
     // The objects of a controller file, by file ID.
@@ -8295,6 +8297,21 @@ private:
         std::string path;
         std::map<std::int64_t, const Object*> by_id;
         std::vector<Object> objects;
+    };
+
+    // A controller's base layer: its states through its sub-state machines and what the
+    // library made of them.
+    struct LayerParts {
+        const ControllerFile* file = nullptr;
+        const Object* controller = nullptr;
+        const Object* root = nullptr; // the layer's state machine
+        std::vector<const Object*> states;
+        std::vector<const Object*> machines;
+        std::map<std::int64_t, std::string> names;               // animations, by state's ID
+        std::map<std::int64_t, const Object*> machine_of;        // by state's ID
+        std::map<std::int64_t, const Object*> parent_of;         // by state machine's ID
+        std::map<std::int64_t, std::array<double, 2>> positions; // by state's ID
+        std::map<std::string, std::pair<double, bool>> clips;    // length and loop, by animation
     };
 
     std::optional<ControllerFile> read_controller(const std::string& guid,
@@ -8376,8 +8393,7 @@ private:
         }
         if (layers->items.size() > 1) {
             problems_.add("Animator layers other than the base layer", file->path,
-                          "an AnimationPlayer plays one animation at a time; the base layer's "
-                          "states convert");
+                          "the base layer's states convert; the layers over it don't");
         }
         const auto object_at = [&](const Node& node, std::string_view key) -> const Object* {
             const auto local = ref_at(node, key);
@@ -8394,14 +8410,23 @@ private:
         }
 
         // Every state of the base layer, through its sub-state machines.
-        std::vector<const Object*> states;
-        std::vector<const Object*> machines;
+        LayerParts layer;
+        layer.file = &states_file;
+        layer.controller = controller;
+        layer.root = machine;
+        std::vector<const Object*>& states = layer.states;
+        std::vector<const Object*>& machines = layer.machines;
         std::function<void(const Object&, int)> collect = [&](const Object& at, int depth) {
             machines.push_back(&at);
             if (const Node* children = at.body.get("m_ChildStates")) {
                 for (const Node& child : children->items) {
                     if (const Object* state = object_at(child, "m_State")) {
                         states.push_back(state);
+                        layer.machine_of[state->file_id] = &at;
+                        if (child.get("m_Position") != nullptr) {
+                            layer.positions[state->file_id] = {child.number_at("m_Position.x"),
+                                                               child.number_at("m_Position.y")};
+                        }
                     }
                 }
             }
@@ -8409,6 +8434,7 @@ private:
                 for (const Node& child : children->items) {
                     if (const Object* sub = object_at(child, "m_StateMachine");
                         sub != nullptr && depth < kMaxInstanceDepth) {
+                        layer.parent_of[sub->file_id] = &at;
                         collect(*sub, depth + 1);
                     }
                 }
@@ -8498,6 +8524,11 @@ private:
                 out.first = name->second;
             }
         }
+        for (const auto& [name, animation] : animations) {
+            const json::Value* loop = animation.find("loop");
+            layer.clips[name] = {animation.find("length")->as_double(),
+                                 loop != nullptr && loop->as_string() != "none"};
+        }
         json::Value doc;
         doc["format"] = 1;
         doc["animations"] = std::move(animations);
@@ -8506,8 +8537,425 @@ private:
         });
         add_file(out.path, json::write(doc) + "\n");
         ++animation_libraries_;
-        out.task_text = state_machine_text(states_file, controller->body, names, machines, events);
+        layer.names = names;
+        std::vector<std::string> described;
+        out.tree = layer_tree(layer, stem, file->path, described);
+        if (out.tree.empty()) {
+            out.task_text =
+                state_machine_text(states_file, controller->body, names, machines, events);
+        } else {
+            out.task_text = out.tree + " plays the state machine with an AnimationTree.";
+            if (!described.empty()) {
+                out.task_text += " Gameplay code sets its parameters, as Unity's SetFloat, "
+                                 "SetInteger, SetBool and SetTrigger did: " +
+                                 join(described, "; ") + ".";
+            }
+            if (!events.empty()) {
+                out.task_text += " Animation events: " + join(events, ", ") + ".";
+            }
+        }
         return out;
+    }
+
+    // A name for a parameter as the tree's variable: letters, digits and "_", not one of an
+    // expression's own words.
+    static std::string variable_name(std::string_view name) {
+        std::string out;
+        for (const char c : name) {
+            const bool word = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                              (c >= '0' && c <= '9') || c == '_';
+            out += word ? c : '_';
+        }
+        if (out.empty() || (out[0] >= '0' && out[0] <= '9')) {
+            out.insert(0, "_");
+        }
+        static constexpr std::array<std::string_view, 12> kWords{
+            "true", "false", "null", "and", "or", "not", "in", "self", "PI", "TAU", "INF", "NAN"};
+        if (contains(kWords, std::string_view(out))) {
+            out += "_";
+        }
+        return out;
+    }
+
+    // A controller's base layer as a .animtree.json state machine over its library, played as
+    // Unity plays it: sub-state machines flattened into their states, Any State's transitions
+    // copied to every state, and conditions as advance expressions of the parameters, which
+    // become the tree's variables and triggers. Its path, or "" when no transition converts.
+    std::string layer_tree(const LayerParts& layer, const std::string& stem,
+                           const std::string& where, std::vector<std::string>& described) {
+        const ControllerFile& file = *layer.file;
+        const auto object = [&](const std::optional<ObjectRef>& ref) -> const Object* {
+            if (!ref || ref->null()) {
+                return nullptr;
+            }
+            const auto found = file.by_id.find(ref->file_id);
+            return found != file.by_id.end() ? found->second : nullptr;
+        };
+        const auto listed = [&](const Node& owner, std::string_view key) {
+            std::vector<const Object*> out;
+            if (const Node* list = owner.get(key)) {
+                for (const Node& item : list->items) {
+                    if (const Object* found = object(unity::object_ref(item))) {
+                        out.push_back(found);
+                    }
+                }
+            }
+            return out;
+        };
+
+        // Parameters become variables, triggers triggers, under names expressions can read.
+        json::Object variables;
+        json::Array triggers;
+        std::map<std::string, std::pair<std::string, std::int64_t>> parameters; // name and type
+        std::set<std::string> used{
+            "travel",           "start",        "next", "stop", "playback", "current_length",
+            "current_position", "current_delta"};
+        const std::string in_controller = where + ": ";
+        if (const Node* list = layer.controller->body.get("m_AnimatorParameters")) {
+            for (const Node& parameter : list->items) {
+                const std::string name = parameter.string_at("m_Name");
+                const std::int64_t type = parameter.integer_at("m_Type", 1);
+                const std::string id = take(used, variable_name(name));
+                if (id != name) {
+                    problems_.add("Animator parameter name", in_controller + name,
+                                  "the tree's variable is " + id);
+                }
+                parameters[name] = {id, type};
+                std::string text = name;
+                if (id != name) {
+                    text.append(" as ").append(id);
+                }
+                if (type == 1) {
+                    variables[id] = parameter.number_at("m_DefaultFloat");
+                    text += " (float, " + json::write(variables[id], json::Style::Compact) + ")";
+                } else if (type == 3) {
+                    variables[id] = parameter.integer_at("m_DefaultInt");
+                    text += " (int, " + json::write(variables[id], json::Style::Compact) + ")";
+                } else if (type == 4) {
+                    variables[id] = parameter.flag_at("m_DefaultBool");
+                    text += " (bool, " + json::write(variables[id], json::Style::Compact) + ")";
+                } else if (type == 9) {
+                    triggers.emplace_back(id);
+                    text += " (trigger)";
+                } else {
+                    problems_.add("Animator parameter type", in_controller + name);
+                    continue;
+                }
+                described.push_back(std::move(text));
+            }
+        }
+        // A transition's conditions as parts of an expression, all of which must hold; none if
+        // one names no parameter.
+        const auto conditions =
+            [&](const Node& transition,
+                const std::string& at) -> std::optional<std::vector<std::string>> {
+            std::vector<std::string> parts;
+            const Node* list = transition.get("m_Conditions");
+            for (const Node& condition : list != nullptr ? list->items : std::vector<Node>{}) {
+                const std::string name = condition.string_at("m_ConditionEvent");
+                const auto parameter = parameters.find(name);
+                if (parameter == parameters.end()) {
+                    problems_.add("Animator condition", at, "no parameter is named " + name);
+                    return std::nullopt;
+                }
+                const std::string& id = parameter->second.first;
+                const double threshold = condition.number_at("m_EventTreshold");
+                const std::string value =
+                    parameter->second.second == 3
+                        ? std::to_string(std::llround(threshold))
+                        : json::write(json::Value(tidy(threshold)), json::Style::Compact);
+                const auto compared = [&](std::string_view op) {
+                    return std::string(id).append(op).append(value);
+                };
+                switch (condition.integer_at("m_ConditionMode", 1)) {
+                case 1: // true, or a trigger set
+                    parts.push_back(id);
+                    break;
+                case 2:
+                    parts.push_back("not " + id);
+                    break;
+                case 3:
+                    parts.push_back(compared(" > "));
+                    break;
+                case 4:
+                    parts.push_back(compared(" < "));
+                    break;
+                case 6:
+                    parts.push_back(compared(" == "));
+                    break;
+                case 7:
+                    parts.push_back(compared(" != "));
+                    break;
+                default:
+                    problems_.add("Animator condition", at, "a mode Unity doesn't have");
+                    return std::nullopt;
+                }
+            }
+            return parts;
+        };
+
+        // Where a transition leads, as states with the conditions on the way: a state, a
+        // sub-state machine's entry, or its own machine's exit.
+        struct Leg {
+            std::int64_t state = 0;
+            std::vector<std::string> when;
+        };
+        std::function<std::vector<Leg>(const Object&, int)> enter;
+        std::function<std::vector<Leg>(const Object&, int)> leave;
+        const auto leads_to = [&](const Node& transition, const Object& machine,
+                                  int depth) -> std::vector<Leg> {
+            if (const Object* state = object(ref_at(transition, "m_DstState"))) {
+                return {Leg{.state = state->file_id, .when = {}}};
+            }
+            if (const Object* sub = object(ref_at(transition, "m_DstStateMachine"))) {
+                return enter(*sub, depth + 1);
+            }
+            if (transition.flag_at("m_IsExit")) {
+                return leave(machine, depth + 1);
+            }
+            return {};
+        };
+        // Through a machine's entry: its transitions that hold, else its default state.
+        enter = [&](const Object& machine, int depth) {
+            std::vector<Leg> legs;
+            if (depth > kMaxInstanceDepth) {
+                return legs;
+            }
+            for (const Object* transition : listed(machine.body, "m_EntryTransitions")) {
+                const auto when = conditions(transition->body, where + ": entry");
+                if (transition->body.flag_at("m_Mute") || !when) {
+                    continue;
+                }
+                for (Leg& leg : leads_to(transition->body, machine, depth)) {
+                    leg.when.insert(leg.when.begin(), when->begin(), when->end());
+                    legs.push_back(std::move(leg));
+                }
+            }
+            if (const Object* first = object(ref_at(machine.body, "m_DefaultState"))) {
+                legs.push_back({.state = first->file_id, .when = {}});
+            }
+            return legs;
+        };
+        // Through a machine's exit: its parent's transitions from it that hold, else the
+        // parent's entry. The layer's own machine starts over at its entry.
+        leave = [&](const Object& machine, int depth) {
+            std::vector<Leg> legs;
+            const auto parent = layer.parent_of.find(machine.file_id);
+            if (depth > kMaxInstanceDepth) {
+                return legs;
+            }
+            if (parent == layer.parent_of.end()) {
+                return enter(*layer.root, depth);
+            }
+            const Object& outer = *parent->second;
+            const Node* list = outer.body.get("m_StateMachineTransitions");
+            for (const Node& item : list != nullptr ? list->items : std::vector<Node>{}) {
+                const auto from = ref_at(item, "first");
+                const Node* second = item.get("second");
+                if (!from || from->file_id != machine.file_id || second == nullptr) {
+                    continue;
+                }
+                for (const Object* transition : listed(item, "second")) {
+                    const auto when = conditions(transition->body, where + ": exit");
+                    if (transition->body.flag_at("m_Mute") || !when) {
+                        continue;
+                    }
+                    for (Leg& leg : leads_to(transition->body, outer, depth)) {
+                        leg.when.insert(leg.when.begin(), when->begin(), when->end());
+                        legs.push_back(std::move(leg));
+                    }
+                }
+            }
+            for (Leg& leg : enter(outer, depth + 1)) {
+                legs.push_back(std::move(leg));
+            }
+            return legs;
+        };
+
+        // A state for each one whose animation converted, named apart from Start and End.
+        std::set<std::string> taken{"Start", "End"};
+        std::map<std::int64_t, std::string> state_name;
+        json::Object states;
+        for (const Object* state : layer.states) {
+            const auto animation = layer.names.find(state->file_id);
+            if (animation == layer.names.end() || !layer.clips.contains(animation->second)) {
+                continue;
+            }
+            std::string id = animation->second;
+            std::ranges::replace(id, '/', '_');
+            id = take(taken, id);
+            state_name[state->file_id] = id;
+            json::Value entry;
+            entry["node"]["type"] = "Animation";
+            entry["node"]["animation"] = animation->second;
+            if (const auto at = layer.positions.find(state->file_id); at != layer.positions.end()) {
+                entry["position"] = pair(at->second[0], at->second[1]);
+            }
+            states.emplace(id, std::move(entry));
+        }
+
+        // Transitions in the order Unity tries them, which priorities keep: one state machine
+        // transition joins Unity's between the same two states.
+        json::Array transitions;
+        std::map<std::pair<std::string, std::string>, std::size_t> index_of;
+        const auto add = [&](const std::string& from, const std::string& to, json::Value out,
+                             const std::vector<std::string>& when, const std::string& at) {
+            if (from == to) {
+                problems_.add(
+                    "Animator transition to its own state", at,
+                    "a state machine's states don't go to themselves; the state plays on");
+                return;
+            }
+            const std::string expression = join(when, " and ");
+            const auto [it, added] = index_of.try_emplace({from, to}, transitions.size());
+            if (!added) {
+                json::Value& kept = transitions[it->second];
+                if (const json::Value* before = kept.find("advance_expression")) {
+                    if (expression.empty()) {
+                        kept.as_object().erase("advance_expression");
+                    } else {
+                        kept["advance_expression"] =
+                            "(" + before->as_string() + ") or (" + expression + ")";
+                    }
+                }
+                problems_.add("Animator transitions between the same states", at,
+                              "one transition takes either's conditions, with the first's timing");
+                return;
+            }
+            out["from"] = from;
+            out["to"] = to;
+            if (!expression.empty()) {
+                out["advance_expression"] = expression;
+            }
+            transitions.push_back(std::move(out));
+        };
+
+        int start_priority = 0;
+        for (const Leg& leg : enter(*layer.root, 0)) {
+            const auto to = state_name.find(leg.state);
+            if (to == state_name.end()) {
+                problems_.add("Animator entry", where, "to a state whose animation didn't convert");
+                continue;
+            }
+            json::Value out;
+            out["advance_mode"] = "auto";
+            out["priority"] = start_priority++;
+            add("Start", to->second, std::move(out), leg.when, where + ": entry");
+        }
+        const std::size_t entries = transitions.size();
+
+        // Any State's transitions, from every machine of the layer, which Unity tries first.
+        std::vector<const Object*> any;
+        for (const Object* machine : layer.machines) {
+            for (const Object* transition : listed(machine->body, "m_AnyStateTransitions")) {
+                any.push_back(transition);
+            }
+        }
+        for (const Object* state : layer.states) {
+            const auto from = state_name.find(state->file_id);
+            const auto machine = layer.machine_of.find(state->file_id);
+            if (from == state_name.end() || machine == layer.machine_of.end()) {
+                continue;
+            }
+            const std::vector<const Object*> own = listed(state->body, "m_Transitions");
+            const bool solo = std::ranges::any_of(own, [](const Object* transition) {
+                return transition->body.flag_at("m_Solo") && !transition->body.flag_at("m_Mute");
+            });
+            const std::pair<double, bool>& clip = layer.clips.at(layer.names.at(state->file_id));
+            const double length = clip.first;
+            const bool loops = clip.second;
+            int priority = 0;
+            const auto convert = [&](const Node& body, bool from_any) {
+                if (body.flag_at("m_Mute") || (solo && !from_any && !body.flag_at("m_Solo"))) {
+                    return;
+                }
+                const std::string at = in_controller + (from_any ? "Any State" : from->second);
+                const auto when = conditions(body, at);
+                if (!when) {
+                    return;
+                }
+                const bool exit_time = body.flag_at("m_HasExitTime");
+                if (when->empty() && !exit_time) {
+                    problems_.add("Animator transition with no conditions or exit time", at,
+                                  "Unity never takes it");
+                    return;
+                }
+                double duration = body.number_at("m_TransitionDuration");
+                if (!body.flag_at("m_HasFixedDuration", true)) {
+                    duration *= length;
+                }
+                json::Value out;
+                out["advance_mode"] = "auto";
+                if (duration > 0.0) {
+                    out["xfade_time"] = tidy(duration);
+                }
+                if (exit_time) {
+                    out["switch_mode"] = "at_end";
+                    if (loops) {
+                        out["break_loop_at_end"] = true;
+                    }
+                    const double starts = body.number_at("m_ExitTime", 1.0) * length;
+                    if (std::abs(starts - (length - duration)) > 1e-3) {
+                        problems_.add("Animator exit time", at,
+                                      "the transition starts when the state has its cross-fade "
+                                      "left, rather than at its exit time");
+                    }
+                }
+                if (body.number_at("m_TransitionOffset") != 0.0) {
+                    problems_.add("Animator transition offset", at,
+                                  "the next state starts from its start");
+                }
+                if (body.integer_at("m_InterruptionSource") != 0) {
+                    problems_.add("Animator transition interruption source", at,
+                                  "nothing interrupts a cross-fade; the next transition waits "
+                                  "for it to end");
+                }
+                for (const Leg& leg : leads_to(body, *machine->second, 0)) {
+                    const auto to = state_name.find(leg.state);
+                    if (to == state_name.end()) {
+                        problems_.add("Animator transition", at,
+                                      "to a state whose animation didn't convert");
+                        continue;
+                    }
+                    if (from_any && to->second == from->second &&
+                        !body.flag_at("m_CanTransitionToSelf", true)) {
+                        continue;
+                    }
+                    std::vector<std::string> parts = *when;
+                    parts.insert(parts.end(), leg.when.begin(), leg.when.end());
+                    json::Value taken_out = out;
+                    taken_out["priority"] = priority++;
+                    add(from->second, to->second, std::move(taken_out), parts, at);
+                }
+            };
+            for (const Object* transition : any) {
+                convert(transition->body, true);
+            }
+            for (const Object* transition : own) {
+                convert(transition->body, false);
+            }
+        }
+        if (transitions.size() == entries) {
+            return {};
+        }
+
+        json::Value doc;
+        doc["format"] = 1;
+        if (!variables.empty()) {
+            doc["variables"] = std::move(variables);
+        }
+        if (!triggers.empty()) {
+            doc["triggers"] = std::move(triggers);
+        }
+        doc["root"]["type"] = "StateMachine";
+        doc["root"]["states"] = std::move(states);
+        doc["root"]["transitions"] = std::move(transitions);
+        const std::string path = destination(stem + std::string(animation::kTreeSuffix));
+        keep_valid(doc, path,
+                   [](const json::Value& value) { return animation::validate_tree(value); });
+        add_file(path, json::write(doc) + "\n");
+        ++animation_trees_;
+        return path;
     }
 
     // What a controller's state machine does, in words, for the storyboard task that ports it:
@@ -8654,11 +9102,12 @@ private:
         return text;
     }
 
-    // The AnimationPlayer an Animator becomes: its controller's library, starting in its first
-    // state, with each target its tracks name bound to the entity under the object at that path.
-    std::optional<json::Value> animator_player(const Expanded& file, int index,
-                                               const Component& component, bool object_active,
-                                               const std::string& where) {
+    // The component an Animator becomes, with each target its tracks name bound to the entity
+    // under the object at that path: an AnimationTree playing its controller's state machine,
+    // or, with no transitions, an AnimationPlayer starting in its first state.
+    std::optional<std::pair<std::string, json::Value>>
+    animator_component(const Expanded& file, int index, const Component& component,
+                       bool object_active, const std::string& where) {
         const Node& body = component.body;
         const auto controller = ref_at(body, "m_Controller");
         if (!controller || controller->null()) {
@@ -8723,10 +9172,23 @@ private:
                 }
             }
         }
+        if (!converted.tree.empty()) {
+            json::Value tree;
+            tree["tree_root"] = converted.tree;
+            tree["libraries"][""] = converted.path;
+            tree["deterministic"] = false;
+            if (!body.flag_at("m_Enabled", true) || !object_active) {
+                tree["active"] = false;
+            }
+            if (!targets.empty()) {
+                tree["targets"] = std::move(targets);
+            }
+            return std::pair{std::string("AnimationTree"), std::move(tree)};
+        }
         if (!targets.empty()) {
             player["targets"] = std::move(targets);
         }
-        return player;
+        return std::pair{std::string("AnimationPlayer"), std::move(player)};
     }
 
     // Controllers no scene's Animator uses convert too, since gameplay code may set them; clips
@@ -8955,10 +9417,10 @@ private:
             Done& object = *done[static_cast<std::size_t>(index)];
             Converted& converted = object.converted;
             if (converted.animator != nullptr) {
-                if (auto player =
-                        animator_player(file, index, *converted.animator, active(file, index),
-                                        file.path + ": " + object_path(file, index))) {
-                    converted.components["AnimationPlayer"] = std::move(*player);
+                if (auto made =
+                        animator_component(file, index, *converted.animator, active(file, index),
+                                           file.path + ": " + object_path(file, index))) {
+                    converted.components[made->first] = std::move(made->second);
                 }
             }
             const Instance* instance =
@@ -11205,14 +11667,20 @@ private:
             task.link = controller.path;
             const Asset* asset = asset_of(guid);
             task.name = "Port the state machine of " + (asset != nullptr ? asset->path : guid);
-            task.summary = "Unity Animator controller: pick its animations from gameplay code.";
+            task.summary =
+                controller.tree.empty()
+                    ? "Unity Animator controller: pick its animations from gameplay code."
+                    : "Unity Animator controller: set its parameters from gameplay code.";
             task.engine = "unity";
             std::string text = controller.task_text;
             if (!controller.users.empty()) {
                 text += " Played by " + join(controller.users, ", ") + ".";
             }
             task.text = trim_text(text);
-            task.links = controller.scenes;
+            if (!controller.tree.empty()) {
+                task.links.push_back(controller.tree);
+            }
+            task.links.insert(task.links.end(), controller.scenes.begin(), controller.scenes.end());
             tasks.push_back(std::move(task));
             controller_tasks.push_back(guid);
         }
@@ -11344,6 +11812,9 @@ private:
             if (!controller.first.empty()) {
                 item["first"] = controller.first;
             }
+            if (!controller.tree.empty()) {
+                item["tree"] = controller.tree;
+            }
             json::Array users;
             for (const std::string& user : controller.users) {
                 users.emplace_back(user);
@@ -11378,6 +11849,7 @@ private:
         out["converted"]["tile_sets"] = static_cast<std::int64_t>(std::ranges::count_if(
             tile_sets_, [](const TileSetOut& set) { return !set.path.empty(); }));
         out["converted"]["animation_libraries"] = animation_libraries_;
+        out["converted"]["animation_trees"] = animation_trees_;
         out["converted"]["bus_layouts"] = bus_layout_.empty() ? 0 : 1;
         out["converted"]["input_actions"] = input_actions_;
         out["converted"]["assets"] = assets_;
@@ -11451,6 +11923,7 @@ private:
     std::map<std::string, LibraryOut> libraries_; // by controller GUID
     std::set<std::string> library_paths_;
     int animation_libraries_ = 0;
+    int animation_trees_ = 0;
     std::map<std::string, std::map<std::int64_t, std::string>> mixer_buses_; // by mixer GUID
     std::string bus_layout_;
     json::Value bus_groups_; // the buses' names, by mixer and group

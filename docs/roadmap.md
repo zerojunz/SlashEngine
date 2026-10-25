@@ -685,6 +685,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         character controllers, 3D sound, LOD groups, skyboxes, ambient light and fog
   - [x] Unity's meshes picked out of models, as glTF files of their own, and mesh colliders of
         models
+  - [x] Unity's Animator state machines as `AnimationTree` state machines: sub-state
+        machines, Any State, entry and exit, muted and solo transitions, exit times and
+        durations, with conditions as advance expressions and parameters as the tree's
+        variables and triggers
   - [ ] Unity's skinned meshes and 3D animation, and terrains
   - [ ] Unreal Engine levels and assets through the user's own Unreal Editor
 - [ ] 3D in the asset library and generator ([design](design.md#3d-assets))
