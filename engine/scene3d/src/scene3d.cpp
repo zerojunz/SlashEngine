@@ -433,10 +433,10 @@ Environment environment(const world::World& world, render::Color clear) {
     }
     out.post.glow_strength = env.glow_strength;
     out.post.glow_mix = env.glow_mix;
-    if (const auto* blend = std::ranges::find(render::kGlowBlendModeNames, env.glow_blend_mode);
-        blend != render::kGlowBlendModeNames.end()) {
-        out.post.glow_blend_mode = static_cast<render::GlowBlendMode>(
-            std::distance(render::kGlowBlendModeNames.begin(), blend));
+    for (std::size_t i = 0; i < render::kGlowBlendModeNames.size(); ++i) {
+        if (render::kGlowBlendModeNames[i] == env.glow_blend_mode) {
+            out.post.glow_blend_mode = static_cast<render::GlowBlendMode>(i);
+        }
     }
     out.post.glow_bloom = env.glow_bloom;
     out.post.glow_hdr_threshold = env.glow_hdr_threshold;
