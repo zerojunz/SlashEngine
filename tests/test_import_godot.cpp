@@ -22,6 +22,7 @@
 #include "slash/runtime/project.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/scene3d/terrain.hpp"
+#include "slash/scene3d/voxel_gi.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -2918,6 +2919,198 @@ TEST_CASE("importing Godot's HTerrain nodes writes their heightmaps and keeps th
     for (const auto& [path, contents] : files) {
         CHECK_MESSAGE(path.find("hterrain") == std::string::npos, path);
     }
+    fs::remove_all(project);
+}
+
+namespace {
+
+// The cells a VoxelGI of size bakes from a floor and a box, at subdiv "64".
+slash::scene3d::VoxelGIData baked_cells(std::string_view size) {
+    slash::world::ComponentRegistry components;
+    slash::world::register_builtin_components(components);
+    slash::world::World world{components};
+    const auto create = [&](std::string_view id, std::string_view values) {
+        const entt::entity entity = world.create(id).value();
+        const json::Value parsed = parse(values);
+        for (const auto& [name, fields] : parsed.as_object()) {
+            std::string path;
+            REQUIRE(components.find(name)->assign(world, entity, fields, path).ok());
+        }
+        return entity;
+    };
+    create("floor", R"({"Transform3D": {"position": [0, -0.9, 0]}, "MeshInstance3D": {},
+        "PlaneMesh": {"size": [3.5, 3.5]}})");
+    create("box", R"({"Transform3D": {}, "MeshInstance3D": {}, "BoxMesh": {}})");
+    const entt::entity gi =
+        create("gi", R"({"Transform3D": {}, "VoxelGI": {"subdiv": "64", "size": )" +
+                         std::string(size) + "}}");
+    auto bake = slash::scene3d::bake_voxel_gi(world, gi, {});
+    REQUIRE(bake.ok());
+    return std::move(bake).value().data;
+}
+
+// A VoxelGIData's _data as Godot writes it (VoxelGIData::_get_data): its bounds, octree size,
+// level counts and data cells, and an octree and a distance field the importer doesn't read.
+std::string voxel_gi_data_text(const slash::scene3d::VoxelGIData& data) {
+    const auto number = [](auto value) {
+        std::string text = std::to_string(value);
+        if (text.find('.') != std::string::npos) {
+            text.erase(text.find_last_not_of('0') + 1);
+            if (text.back() == '.') {
+                text.pop_back();
+            }
+        }
+        return text;
+    };
+    std::string cells;
+    for (const slash::scene3d::VoxelGICell& cell : data.cells) {
+        for (const std::uint32_t word : cell) {
+            for (int shift = 0; shift < 32; shift += 8) {
+                cells += static_cast<char>((word >> static_cast<unsigned>(shift)) & 0xFFU);
+            }
+        }
+    }
+    std::string levels;
+    for (const std::uint32_t count : data.level_counts) {
+        levels += (levels.empty() ? "" : ", ") + number(count);
+    }
+    std::string out = "_data = {\n\"bounds\": AABB(";
+    for (const float value : data.bounds_position) {
+        out += number(value) + ", ";
+    }
+    out += number(data.bounds_size[0]) + ", " + number(data.bounds_size[1]) + ", " +
+           number(data.bounds_size[2]) + "),\n";
+    out += "\"level_counts\": PackedInt32Array(" + levels + "),\n";
+    out += "\"octree_cells\": PackedByteArray(\"AAAAAA==\"),\n";
+    out += "\"octree_data\": PackedByteArray(\"" + slash::base64_encode(cells) + "\"),\n";
+    out += "\"octree_df_png\": PackedByteArray(\"AAAA\"),\n";
+    out += "\"octree_size\": Vector3(" + number(data.octree_size[0]) + ", " +
+           number(data.octree_size[1]) + ", " + number(data.octree_size[2]) + "),\n";
+    out += "\"to_cell_xform\": Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)\n}\n";
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("importing Godot's VoxelGIs writes their baked cells as .voxelgi.json files") {
+    const fs::path project = "import_godot_voxel_gi";
+    const fs::path folder = project / "godot";
+    fs::remove_all(project);
+    const slash::scene3d::VoxelGIData room = baked_cells("[4, 2, 4]");
+    const slash::scene3d::VoxelGIData hall = baked_cells("[4, 4, 4]");
+    write(folder / "project.godot", R"(config_version=5
+
+[application]
+
+config/name="Rooms"
+run/main_scene="res://level.tscn"
+
+[rendering]
+
+global_illumination/voxel_gi/quality=1
+)");
+    // The hall's data saved in Godot's binary form, as Godot's VoxelGI bake saves it.
+    {
+        auto sections =
+            godot::parse_resource("[gd_resource type=\"VoxelGIData\" format=3]\n\n[resource]\n" +
+                                  voxel_gi_data_text(hall) + "energy = 1.5\n");
+        REQUIRE(sections.ok());
+        auto binary = godot::write_binary_resource(sections.value(), {.path = "res://hall.res"});
+        REQUIRE(binary.ok());
+        write(folder / "hall.res", binary.value());
+    }
+    write(folder / "level.tscn",
+          R"([gd_scene load_steps=7 format=3]
+
+[ext_resource type="VoxelGIData" path="res://hall.res" id="1_hall"]
+
+[sub_resource type="CameraAttributesPractical" id="dim"]
+exposure_multiplier = 0.5
+
+[sub_resource type="VoxelGIData" id="room"]
+)" + voxel_gi_data_text(room) +
+              R"(dynamic_range = 4.0
+propagation = 0.7
+use_two_bounces = false
+interior = true
+
+[sub_resource type="VoxelGIData" id="unbaked"]
+energy = 2.0
+
+[sub_resource type="VoxelGIData" id="broken"]
+)" +
+              voxel_gi_data_text(slash::scene3d::VoxelGIData{
+                  .bounds_position = room.bounds_position,
+                  .bounds_size = room.bounds_size,
+                  .octree_size = room.octree_size,
+                  .level_counts = room.level_counts,
+                  .cells = {room.cells.begin(), room.cells.end() - 1}}) +
+              R"(
+[node name="Level" type="Node3D"]
+
+[node name="Room" type="VoxelGI" parent="."]
+subdiv = 0
+size = Vector3(4, 2, 4)
+camera_attributes = SubResource("dim")
+data = SubResource("room")
+
+[node name="Hall" type="VoxelGI" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, 0)
+subdiv = 0
+size = Vector3(4, 4, 4)
+data = ExtResource("1_hall")
+
+[node name="Unbaked" type="VoxelGI" parent="."]
+data = SubResource("unbaked")
+
+[node name="Broken" type="VoxelGI" parent="."]
+data = SubResource("broken")
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string level = "godot/level.scene.json";
+    REQUIRE(files.contains(level));
+    const auto cells_in = [&](const std::string& path) {
+        REQUIRE_MESSAGE(files.contains(path), path);
+        auto data = slash::scene3d::parse_voxel_gi(parse(files.at(path)));
+        REQUIRE(data.ok());
+        return std::move(data).value();
+    };
+
+    // The data's settings go on the VoxelGI and its cells into a file, their emission baked at
+    // the exposure of the VoxelGI's camera attributes, as Godot bakes it.
+    const json::Value room_entity = entity(files, level, "room");
+    CHECK(*room_entity.find("VoxelGI") == parse(R"({
+        "subdiv": "64", "size": [4.0, 2.0, 4.0], "camera_attributes": "room",
+        "data": "godot/level_room.voxelgi.json", "dynamic_range": 4.0, "propagation": 0.7,
+        "use_two_bounces": false, "interior": true})"));
+    CHECK(*room_entity.find("CameraAttributesPractical") ==
+          parse(R"({"exposure_multiplier": 0.5})"));
+    slash::scene3d::VoxelGIData expected = room;
+    expected.baked_exposure = 0.5F;
+    CHECK(cells_in("godot/level_room.voxelgi.json") == expected);
+    // Binary data reads the same, with no camera attributes at 1.
+    CHECK(*entity(files, level, "hall").find("VoxelGI") == parse(R"({
+        "subdiv": "64", "size": [4.0, 4.0, 4.0], "data": "godot/hall.voxelgi.json",
+        "energy": 1.5})"));
+    CHECK(cells_in("godot/hall.voxelgi.json") == hall);
+
+    // Data with no cells, or cells that don't make a VoxelGI's, is baked again.
+    CHECK(*entity(files, level, "unbaked").find("VoxelGI") == parse(R"({"energy": 2.0})"));
+    CHECK(*entity(files, level, "broken").find("VoxelGI") == parse("{}"));
+    const json::Value unbaked = unsupported(plan.report, "VoxelGIData with no cells");
+    CHECK(unbaked.find("where")->as_string() == "level.tscn: Unbaked");
+    CHECK(unbaked.find("why")->as_string() == "bake it with voxel_gi.bake");
+    const json::Value broken = unsupported(plan.report, "VoxelGIData cells");
+    CHECK(broken.find("where")->as_string() == "level.tscn: Broken");
+    CHECK(broken.find("why")->as_string().starts_with("they don't make a VoxelGI's ("));
+    CHECK(broken.find("why")->as_string().ends_with("); bake it again with voxel_gi.bake"));
+    CHECK(unsupported(plan.report, "node type VoxelGI").is_null());
+
+    // Godot's cones.
+    const json::Value project_file = parse(files.at("project.json"));
+    CHECK(*project_file.find("rendering")->find("global_illumination") ==
+          parse(R"({"voxel_gi": {"quality": "high"}})"));
     fs::remove_all(project);
 }
 
