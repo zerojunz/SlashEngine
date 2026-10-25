@@ -10,8 +10,9 @@
 
 // Apple's MetalFX scalers in the GPU device on Metal, as Godot's MFXSpatialEffect and
 // MFXTemporalEffect (servers/rendering/renderer_rd/effects/metal_fx.mm) run them. SDL3's GPU API
-// doesn't show Metal's objects, so cmake/patches/sdl-metal-handles.cmake adds three calls that
-// hand them over, and the scalers encode between SDL's passes in its command buffer. MetalFX is
+// doesn't show Metal's objects, so the scalers take them through the calls
+// cmake/patches/sdl-native-handles.cmake adds (native.hpp) and encode between SDL's passes in its
+// command buffer. MetalFX is
 // linked weakly, so games still start on macOS 11 and iOS 14, where it isn't. Off Apple's
 // platforms (metalfx_none.cpp) there is none.
 namespace slash::render::detail {

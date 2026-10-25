@@ -928,13 +928,23 @@ card.
 
 MetalFX is Godot's `metalfx_spatial` and `metalfx_temporal`, after its `metal_fx.mm`: Apple's
 scalers run in the GPU device on Metal (`src/metalfx.mm`, `metalfx_none.cpp` elsewhere), encoded
-into SDL's command buffer through three calls `cmake/patches/sdl-metal-handles.cmake` adds to
-SDL, with MetalFX linked weakly so games still start on macOS 11 and iOS 14.
+into SDL's command buffer through the calls `cmake/patches/sdl-native-handles.cmake` adds to
+SDL (`src/native.hpp`), with MetalFX linked weakly so games still start on macOS 11 and iOS 14.
 `RenderDevice::metalfx()` says which scalers a device has and `render::scaling_mode_on` falls
 back as Godot does where it lacks one. The spatial scaler is a built-in `render::Upscaler`
 (`metalfx_spatial`, into a texture made `scaled_into`); the temporal one takes FSR 2's jittered
 frame, depth and dilated motion (`upscale_metalfx` in `gpu_device.cpp`). The software device has
 neither, so tests see the fallbacks; only a Mac draws them.
+
+A game's own temporal upscaler (DLSS, XeSS or FSR 4 from an SDK package) is an `UpscalerInfo`
+with `temporal` set and `make_temporal`; `temporal_upscaler_on` picks it where FSR 2 would run,
+and `Fsr2Scaling::upscaler` names it to the device. The GPU device runs FSR 2's dilate pass, then
+hands the upscaler a `render::TemporalFrame` of native objects (`upscale_external` in
+`gpu_device.cpp`, through `src/native.hpp`) and puts back the Direct3D 12 descriptor heaps after
+it (`SDL_SlashGPURestoreState`); the software device hands it float pixels
+(`upscale_temporal` in `software_device.cpp`, motion from `run_fsr2_dilate`).
+`tests/test_temporal_upscaler.cpp` checks both, copying with Vulkan or Direct3D 12 commands
+where those run. `examples/temporal-upscaler` adds one.
 
 Decals are Godot 4.6's Forward+ `Decal` (`render::Decals3D`, `Scene3D::decals`; the `Decal`
 component, gathered by `scene3d::Renderer::add_decals`). `src/decal.hpp` holds what devices
