@@ -362,6 +362,7 @@ CameraView camera_view(const world::Camera3D& camera, const world::Affine3D& glo
     eye.origin = eye.origin + scaled(eye.y, camera.v_offset) + scaled(eye.x, camera.h_offset);
     CameraView out;
     out.view = eye.inverse().matrix();
+    out.eye = eye;
     const bool keep_width = camera.keep_aspect == "width";
     if (camera.projection == "orthogonal") {
         const float size = keep_width ? camera.size / aspect : camera.size;
@@ -781,6 +782,9 @@ std::vector<Problem> check_meshes(const world::World& world) {
         problems.push_back({problem.entity, std::move(problem.path), std::move(problem.message)});
     }
     for (Problem& problem : check_gridmaps(world)) {
+        problems.push_back(std::move(problem));
+    }
+    for (Problem& problem : check_occluders(world)) {
         problems.push_back(std::move(problem));
     }
     for (Problem& problem : check_terrains(world)) {
@@ -2177,17 +2181,7 @@ void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& t
         }
         probes.push_back(probe);
     }
-    std::unordered_map<render::MeshId, Bounds> boxes;
-    for (const auto& [mesh_key, shared] : shared_) {
-        if (shared.used == frame_) {
-            boxes.emplace(shared.id, shared.box);
-        }
-    }
-    for (const auto& [mesh_key, skinned] : skinned_) {
-        if (skinned.used == frame_) {
-            boxes.emplace(skinned.id, skinned.box);
-        }
-    }
+    const std::unordered_map<render::MeshId, Bounds> boxes = mesh_boxes();
     for (Draw& draw : draws_) {
         const render::Material3D& material = draw.material;
         if (draw.shadows == render::ShadowCasting::ShadowsOnly || material.terrain.enabled ||
@@ -2227,11 +2221,13 @@ Renderer::prepare(const world::World& world, float width, float height, double i
                   const render::ReflectionAtlasSettings& reflection_atlas,
                   render::RenderMethod method, bool voxel_gi_high_quality, bool use_taa,
                   const std::optional<render::Fsr2Scaling>& fsr2, render::DecalFilter decal_filter,
-                  const render::VolumetricFogSettings& volumetric_fog, float mesh_lod_threshold) {
+                  const render::VolumetricFogSettings& volumetric_fog, float mesh_lod_threshold,
+                  const render::OcclusionCulling& occlusion) {
     ++frame_;
     draws_.clear();
     problems_.clear();
     lights_ = 0;
+    occluded_ = 0;
     const auto& ecs = world.ecs();
     const world::Tree3D tree(world);
     const entt::entity camera = scene3d::current_camera(world, tree);
@@ -2523,6 +2519,7 @@ Renderer::prepare(const world::World& world, float width, float height, double i
         problems_.push_back(
             {.entity = camera, .path = "ReflectionProbe", .message = reflected.error().message});
     }
+    cull_occluded(world, tree, view, lens, width, height, occlusion);
     // Model surfaces draw at the LODs the camera picks, into shadow maps too, as Godot's.
     pick_lods(global(camera).origin, view.projection, lens.projection == "orthogonal", width,
               mesh_lod_threshold);
@@ -2869,6 +2866,83 @@ void Renderer::pick_lods(const Vec3& camera_position, const std::array<float, 16
             ++lods_drawn_;
         }
     }
+}
+
+std::unordered_map<render::MeshId, Bounds> Renderer::mesh_boxes() const {
+    std::unordered_map<render::MeshId, Bounds> out;
+    for (const auto& [mesh_key, shared] : shared_) {
+        if (shared.used == frame_) {
+            out.emplace(shared.id, shared.box);
+        }
+    }
+    for (const auto& [mesh_key, skinned] : skinned_) {
+        if (skinned.used == frame_) {
+            out.emplace(skinned.id, skinned.box);
+        }
+    }
+    return out;
+}
+
+void Renderer::cull_occluded(const world::World& world, const world::Tree3D& tree,
+                             const CameraView& view, const world::Camera3D& lens, float width,
+                             float height, const render::OcclusionCulling& settings) {
+    occluded_ = 0;
+    if (!settings.enabled) {
+        occlusion_buffer_.resize(0, 0);
+        occluder_scene_.build({});
+        occlusion_timeouts_.clear();
+        return;
+    }
+    // RendererViewport::_draw_3d sizes the buffer; RaycastOcclusionCull::buffer_update casts it.
+    const std::array<int, 2> size = OcclusionBuffer::size_for(
+        static_cast<int>(width), static_cast<int>(height), settings.rays_per_thread);
+    occlusion_buffer_.resize(size[0], size[1]);
+    occluder_scene_.build(occluder_triangles(world, tree));
+    occlusion_buffer_.update(occluder_scene_,
+                             {.transform = view.eye,
+                              .projection = view.projection,
+                              .near = lens.near,
+                              .far = lens.far,
+                              .orthogonal = lens.projection == "orthogonal"},
+                             frame_, settings.jitter);
+    // Each draw is tested by its own bounds where it is drawn, where Godot tests an instance's
+    // whole mesh: a surface it hides can't be seen either way. Double-sided casters stay drawn,
+    // since a mesh drawn only into shadow maps casts as its material culls.
+    const auto& ecs = world.ecs();
+    const std::unordered_map<render::MeshId, Bounds> boxes = mesh_boxes();
+    std::map<std::pair<entt::entity, std::size_t>, std::uint64_t> timeouts;
+    std::map<entt::entity, std::size_t> counts;
+    std::vector<Draw> kept;
+    kept.reserve(draws_.size());
+    for (Draw& draw : draws_) {
+        const std::pair key{draw.entity, counts[draw.entity]++};
+        const auto* instance = ecs.try_get<const world::MeshInstance3D>(draw.entity);
+        const auto box = boxes.find(draw.mesh);
+        bool hidden = false;
+        if (draw.shadows != render::ShadowCasting::ShadowsOnly &&
+            draw.shadows != render::ShadowCasting::DoubleSided && box != boxes.end() &&
+            (instance == nullptr || !instance->ignore_occlusion_culling)) {
+            std::uint64_t timeout = 0;
+            if (const auto found = occlusion_timeouts_.find(key);
+                found != occlusion_timeouts_.end()) {
+                timeout = found->second;
+            }
+            hidden =
+                occlusion_buffer_.occluded(placed_bounds(box->second, draw.transform), timeout);
+            timeouts.emplace(key, timeout);
+        }
+        if (!hidden) {
+            kept.push_back(draw);
+            continue;
+        }
+        ++occluded_;
+        if (draw.shadows == render::ShadowCasting::On) {
+            draw.shadows = render::ShadowCasting::ShadowsOnly;
+            kept.push_back(draw);
+        }
+    }
+    draws_ = std::move(kept);
+    occlusion_timeouts_ = std::move(timeouts);
 }
 
 Result<void> Renderer::draw() {

@@ -186,7 +186,8 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
                                   .voxel_gi_high_quality = project_.voxel_gi_high_quality,
                                   .use_taa = project_.use_taa,
                                   .decal_filter = project_.decal_filter,
-                                  .mesh_lod_threshold = project_.mesh_lod_threshold});
+                                  .mesh_lod_threshold = project_.mesh_lod_threshold,
+                                  .occlusion_culling = project_.occlusion_culling});
     ui::set_settings(world_, {.viewport = {static_cast<float>(project_.window_width),
                                            static_cast<float>(project_.window_height)},
                               .theme = project_.gui_theme,

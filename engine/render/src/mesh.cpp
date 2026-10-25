@@ -486,6 +486,29 @@ float mesh_lod_threshold(const json::Value& rendering) {
     return 1.0F;
 }
 
+OcclusionCulling occlusion_culling(const json::Value& rendering) {
+    OcclusionCulling out;
+    const json::Value* found =
+        rendering.is_object() ? rendering.find("occlusion_culling") : nullptr;
+    if (found == nullptr || !found->is_object()) {
+        return out;
+    }
+    if (const json::Value* use = found->find("use_occlusion_culling");
+        use != nullptr && use->is_bool()) {
+        out.enabled = use->as_bool();
+    }
+    if (const json::Value* rays = found->find("occlusion_rays_per_thread");
+        rays != nullptr && rays->is_number() && rays->as_double() >= 1.0 &&
+        rays->as_double() <= 65536.0) {
+        out.rays_per_thread = static_cast<int>(rays->as_double());
+    }
+    if (const json::Value* jitter = found->find("jitter_projection");
+        jitter != nullptr && jitter->is_bool()) {
+        out.jitter = jitter->as_bool();
+    }
+    return out;
+}
+
 std::array<float, 16> Scene3D::perspective_default() {
     return perspective(75.0F, 1.0F, 0.05F, 4000.0F);
 }
