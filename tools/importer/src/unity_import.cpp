@@ -2172,6 +2172,9 @@ private:
         std::string entity;                              // its entity ID in this file's scene
         std::map<std::string, std::string> added; // entities made for it, by what they are for
         bool removed = false;
+        // A node of the model the object above it draws, by its name there: no entity of its own
+        // unless something hangs on it, when it becomes one that follows the node (attached).
+        std::string node;
         // UI: whether it becomes a control, the control that draws it when it is part of one,
         // its rect's size in pixels and its canvas's reference pixels per unit.
         bool ui = false;
@@ -2192,6 +2195,8 @@ private:
         std::int64_t root_transform = 0;
         std::int64_t object = 0;
         std::int64_t transform = 0;
+        // Its nodes' objects and Transforms: their IDs in the model, and theirs here.
+        std::map<std::int64_t, std::int64_t> parts;
     };
 
     struct Instance {
@@ -2329,19 +2334,21 @@ private:
                 if (model.id != instance->file_id) {
                     continue;
                 }
-                // A model's inner objects aren't objects here: what is under one goes under the
-                // model's top object.
-                if (source->file_id == model.root_object || object.class_id == kGameObject) {
+                // A node's object or Transform stands for its own; what is under one hangs on
+                // the node. One the model hasn't stands for the model's top object.
+                if (const auto part = model.parts.find(source->file_id);
+                    part != model.parts.end()) {
+                    file.aliases[object.file_id] = part->second;
+                } else if (source->file_id == model.root_object || object.class_id == kGameObject) {
                     file.aliases[object.file_id] = model.object;
                 } else if (source->file_id == model.root_transform ||
                            object.class_id == kTransform) {
                     file.aliases[object.file_id] = model.transform;
                     if (source->file_id != model.root_transform &&
                         fathers.contains(object.file_id)) {
-                        problems_.add("object under a model's inner object",
+                        problems_.add("object under a node the model hasn't",
                                       file.path + ": instance of a model",
-                                      "it goes under the model's top object; a BoneAttachment3D "
-                                      "can follow one of its bones");
+                                      "it goes under the model's top object");
                     }
                 }
             }
@@ -2404,6 +2411,7 @@ private:
             }
         }
         build_hierarchy(file, root_order);
+        fold_models(file);
     }
 
     void instantiate(Expanded& file, const Object& object, int depth) {
@@ -2530,8 +2538,10 @@ private:
     }
 
     // A model file instanced as a prefab becomes one object of the file's own, with a Transform
-    // and a ModelInstance naming the model, which a MeshInstance3D draws whole. The model's inner
-    // objects aren't objects here; overrides of them are reported, but for their materials.
+    // and a ModelInstance naming the model, which a MeshInstance3D draws whole. Each of the
+    // model's nodes gets an object too, with the Transform Unity gives it, so overrides and
+    // objects under it find it: it poses the model's node, and becomes an entity only when
+    // something hangs on it.
     void instantiate_model(Expanded& file, const Object& object, const Asset& asset) {
         const std::string where = file.path + ": instance of " + asset.path;
         ModelInstance model;
@@ -2581,7 +2591,8 @@ private:
         model.root_transform = root(kModelRootTransforms, transforms, "4");
         std::set<std::int64_t> animators(kModelRootAnimators.begin(), kModelRootAnimators.end());
         animators.insert(root(kModelRootAnimators, {}, "95"));
-        std::optional<Component> animator;
+        // The Animator a scene gives the model's top object; no type for none.
+        Component animator;
         model.object = remap(model.id, model.root_object);
         model.transform = remap(model.id, model.root_transform);
 
@@ -2602,6 +2613,49 @@ private:
         if (const auto parent = ref_at(object.body, "m_Modification.m_TransformParent")) {
             father.file_id = parent->file_id;
         }
+        // The model's nodes, under the top object; a top node Unity makes the top object places
+        // it.
+        const scene3d::Model* loaded =
+            extension_of(asset.path) != ".blend" ? model_file(asset, where) : nullptr;
+        std::vector<GameObject> parts;
+        std::map<std::int64_t, Node*> bodies; // by ID in the model
+        if (loaded != nullptr) {
+            const double scale = asset.meta.number_at("ModelImporter.meshes.globalScale", 1.0);
+            const int top = collapsed_top(asset, *loaded);
+            if (top >= 0) {
+                transform.body = unity_place(loaded->nodes[static_cast<std::size_t>(top)], scale);
+                set_node(transform.body, "m_Children", seq_node());
+            }
+            const NodeIds ids = node_ids(asset, *loaded);
+            parts.reserve(loaded->nodes.size());
+            for (std::size_t i = 0; i < loaded->nodes.size(); ++i) {
+                const scene3d::ModelNode& node = loaded->nodes[i];
+                if (static_cast<int>(i) == top) {
+                    continue;
+                }
+                GameObject part;
+                part.id = remap(model.id, ids.objects[i]);
+                part.node = node.name;
+                part.body = map_node({{"m_Name", scalar_node(file_name_of(node))},
+                                      {"m_IsActive", scalar_node("1")}});
+                Component place{.id = remap(model.id, ids.transforms[i]),
+                                .class_id = kTransform,
+                                .type = "Transform",
+                                .body = unity_place(node, scale)};
+                ObjectRef up;
+                up.file_id =
+                    node.parent < 0 || node.parent == top
+                        ? model.transform
+                        : remap(model.id, ids.transforms[static_cast<std::size_t>(node.parent)]);
+                set_node(place.body, "m_Father", ref_node(up));
+                part.components.push_back(std::move(place));
+                model.parts[ids.objects[i]] = part.id;
+                model.parts[ids.transforms[i]] = part.components.front().id;
+                parts.push_back(std::move(part));
+                bodies[ids.objects[i]] = &parts.back().body;
+                bodies[ids.transforms[i]] = &parts.back().components.front().body;
+            }
+        }
         set_node(transform.body, "m_Father", ref_node(father));
         Node materials = seq_node();
         for (const Node& change : changes) {
@@ -2621,19 +2675,44 @@ private:
                 set_property(transform.body, path, change.string_at("value"), reference);
             } else if (animators.contains(target->file_id)) {
                 // Its Animator, as a scene sets its controller.
-                if (!animator) {
+                if (animator.type.empty()) {
                     animator = Component{.id = remap(model.id, target->file_id),
                                          .class_id = kAnimator,
                                          .type = "Animator",
                                          .body = map_node({{"m_Enabled", scalar_node("1")}})};
                 }
-                set_property(animator->body, path, change.string_at("value"), reference);
+                set_property(animator.body, path, change.string_at("value"), reference);
+            } else if (const auto part = bodies.find(target->file_id); part != bodies.end()) {
+                set_property(*part->second, path, change.string_at("value"), reference);
             } else {
                 problems_.add("change to a model's inner object", where,
                               "a model draws as its file has it; " + path + " isn't changed");
             }
         }
         // Materials the model's import settings put in place of its own.
+        add_external_materials(asset, materials);
+        set_node(instance.body, "m_Materials", std::move(materials));
+        if (object.body.path("m_Modification.m_RemovedComponents") != nullptr &&
+            !object.body.path("m_Modification.m_RemovedComponents")->items.empty()) {
+            problems_.add("component removed from a model's inner object", where,
+                          "a model draws as its file has it");
+        }
+        go.components.push_back(std::move(transform));
+        go.components.push_back(std::move(instance));
+        if (!animator.type.empty()) {
+            go.components.push_back(std::move(animator));
+        }
+        file.by_id[go.id] = static_cast<int>(file.objects.size());
+        file.objects.push_back(std::move(go));
+        for (GameObject& part : parts) {
+            file.by_id[part.id] = static_cast<int>(file.objects.size());
+            file.objects.push_back(std::move(part));
+        }
+        file.models.push_back(std::move(model));
+    }
+
+    // Materials a model's import settings put in place of its own.
+    static void add_external_materials(const Asset& asset, Node& materials) {
         if (const Node* remapped = asset.meta.path("ModelImporter.externalObjects")) {
             for (const Node& entry : remapped->items) {
                 const auto reference = ref_at(entry, "second");
@@ -2643,20 +2722,254 @@ private:
                 }
             }
         }
-        set_node(instance.body, "m_Materials", std::move(materials));
-        if (object.body.path("m_Modification.m_RemovedComponents") != nullptr &&
-            !object.body.path("m_Modification.m_RemovedComponents")->items.empty()) {
-            problems_.add("component removed from a model's inner object", where,
-                          "a model draws as its file has it");
+    }
+
+    // A node's name in its model's file, by which Unity names its object.
+    static const std::string& file_name_of(const scene3d::ModelNode& node) {
+        return node.file_name.empty() ? node.name : node.file_name;
+    }
+
+    // A node's place in its parent as Unity has it, in a Transform's fields: mirrored in x, and
+    // moved as far as the model's import scale says.
+    static Node unity_place(const scene3d::ModelNode& node, double scale) {
+        const auto number = [](double value) {
+            return scalar_node(json::write(json::Value(tidy_number(value)), json::Style::Compact));
+        };
+        const auto xyz = [&](double x, double y, double z) {
+            return map_node({{"x", number(x)}, {"y", number(y)}, {"z", number(z)}});
+        };
+        const Vec3& p = node.position;
+        const Quat& q = node.rotation;
+        Node rotation = xyz(q.x, -q.y, -q.z);
+        rotation.entries.push_back({"w", number(q.w)});
+        return map_node({{"m_LocalPosition", xyz(-p.x * scale, p.y * scale, p.z * scale)},
+                         {"m_LocalRotation", std::move(rotation)},
+                         {"m_LocalScale", xyz(node.scale.x, node.scale.y, node.scale.z)}});
+    }
+
+    // The node Unity makes a model's top object: its one top node, unless its import settings
+    // preserve its hierarchy; -1 when the top object is Unity's own.
+    static int collapsed_top(const Asset& asset, const scene3d::Model& model) {
+        if (asset.meta.flag_at("ModelImporter.meshes.preserveHierarchy", false)) {
+            return -1;
         }
-        go.components.push_back(std::move(transform));
-        go.components.push_back(std::move(instance));
-        if (animator) {
-            go.components.push_back(std::move(*animator));
+        int top = -1;
+        for (std::size_t i = 0; i < model.nodes.size(); ++i) {
+            if (model.nodes[i].parent < 0) {
+                if (top >= 0) {
+                    return -1;
+                }
+                top = static_cast<int>(i);
+            }
         }
-        file.by_id[go.id] = static_cast<int>(file.objects.size());
-        file.objects.push_back(std::move(go));
-        file.models.push_back(std::move(model));
+        return top;
+    }
+
+    // The IDs Unity gives each node's object and Transform in a model: those the import settings
+    // name (fileIDToRecycleName before Unity 2019.3, internalIDToNameTable since), else the hash
+    // of the node's name, counting nodes of the same name, as for its meshes.
+    struct NodeIds {
+        std::vector<std::int64_t> objects;
+        std::vector<std::int64_t> transforms;
+    };
+
+    static NodeIds node_ids(const Asset& asset, const scene3d::Model& model) {
+        NodeIds ids;
+        const std::size_t count = model.nodes.size();
+        ids.objects.resize(count);
+        ids.transforms.resize(count);
+        std::map<std::string, int, std::less<>> seen;
+        for (std::size_t i = 0; i < count; ++i) {
+            const std::string& name = file_name_of(model.nodes[i]);
+            const int n = seen[name]++;
+            ids.objects[i] = import_id("GameObject", name, n);
+            ids.transforms[i] = import_id("Transform", name, n);
+        }
+        // An ID the settings give a name goes to the first node of that name not given one yet.
+        std::set<std::size_t> objects_named;
+        std::set<std::size_t> transforms_named;
+        const auto name_id = [&](int class_id, std::string_view name, std::int64_t id) {
+            std::vector<std::int64_t>& out = class_id == kGameObject ? ids.objects : ids.transforms;
+            std::set<std::size_t>& named =
+                class_id == kGameObject ? objects_named : transforms_named;
+            for (std::size_t i = 0; i < count; ++i) {
+                if (!named.contains(i) && file_name_of(model.nodes[i]) == name) {
+                    out[i] = id;
+                    named.insert(i);
+                    return;
+                }
+            }
+        };
+        if (const Node* table = asset.meta.path("ModelImporter.fileIDToRecycleName")) {
+            for (const auto& [key, name] : table->entries) {
+                const auto id = parse_int(key);
+                if (id && (*id / 100000 == kGameObject || *id / 100000 == kTransform)) {
+                    name_id(static_cast<int>(*id / 100000), name.string(), *id);
+                }
+            }
+        }
+        if (const Node* table = asset.meta.path("ModelImporter.internalIDToNameTable")) {
+            for (const Node& entry : table->items) {
+                const Node* first = entry.get("first");
+                for (const int class_id : {kGameObject, kTransform}) {
+                    const Node* id =
+                        first != nullptr ? first->get(std::to_string(class_id)) : nullptr;
+                    const std::optional<std::int64_t> value =
+                        id != nullptr ? id->integer() : std::nullopt;
+                    if (value) {
+                        name_id(class_id, entry.string_at("second"), *value);
+                    }
+                }
+            }
+        }
+        return ids;
+    }
+
+    // Whether an object is named as a model's node is.
+    static bool names_node(const GameObject& go, const scene3d::ModelNode& node) {
+        return go.body.string_at("m_Name") == file_name_of(node);
+    }
+
+    // Unpacked instances of models: objects named as a model's nodes, one with a
+    // SkinnedMeshRenderer drawing one of its meshes. Each folds back into an instance of the
+    // model, which draws whole: its top object gets a ModelInstance and the others become its
+    // nodes, posing them where they are.
+    void fold_models(Expanded& file) {
+        for (std::size_t i = 0; i < file.objects.size(); ++i) {
+            const GameObject& go = file.objects[i];
+            if (go.instance >= 0 || go.removed || !go.node.empty()) {
+                continue;
+            }
+            ObjectRef mesh;
+            for (const Component& component : go.components) {
+                if (component.class_id == kSkinnedMeshRenderer) {
+                    mesh = ref_at(component.body, "m_Mesh").value_or(ObjectRef{});
+                    break;
+                }
+            }
+            const Asset* asset = !mesh.null() && !mesh.guid.empty() ? asset_of(mesh.guid) : nullptr;
+            if (asset != nullptr && is_model_file(extension_of(asset->path)) &&
+                extension_of(asset->path) != ".blend") {
+                fold_model(file, static_cast<int>(i), *asset, mesh.file_id);
+            }
+        }
+    }
+
+    void fold_model(Expanded& file, int index, const Asset& asset, std::int64_t mesh_id) {
+        const std::string where = file.path + ": " + object_path(file, index);
+        const scene3d::Model* model = model_file(asset, where);
+        if (model == nullptr) {
+            return;
+        }
+        const std::optional<std::size_t> mesh = model_mesh(asset, *model, mesh_id);
+        const auto part = std::ranges::find_if(model->parts, [&](const scene3d::ModelPart& p) {
+            return mesh && p.mesh == *mesh && p.node_index >= 0;
+        });
+        if (part == model->parts.end()) {
+            problems_.add("skinned mesh from a model", where,
+                          asset.path + " has no mesh with the ID " + std::to_string(mesh_id));
+            return;
+        }
+        // Up from the object as many objects as its node is deep: the instance's top object.
+        const auto node_at = [&](int n) -> const scene3d::ModelNode& {
+            return model->nodes[static_cast<std::size_t>(n)];
+        };
+        const int top = collapsed_top(asset, *model);
+        int at = index;
+        for (int n = part->node_index; n != top; n = node_at(n).parent) {
+            if (at < 0 || !names_node(file.objects[static_cast<std::size_t>(at)], node_at(n))) {
+                problems_.add("skinned mesh whose objects aren't its model's", where,
+                              "the objects above it aren't named as " + asset.path +
+                                  "'s nodes are, so it isn't drawn; instance the model");
+                return;
+            }
+            at = file.objects[static_cast<std::size_t>(at)].parent;
+            if (node_at(n).parent < 0) {
+                break;
+            }
+        }
+        if (at < 0) {
+            problems_.add("skinned mesh whose objects aren't its model's", where,
+                          "its model's top object isn't there, so it isn't drawn; instance the "
+                          "model");
+            return;
+        }
+        GameObject& root = file.objects[static_cast<std::size_t>(at)];
+        if (!root.node.empty() || root.instance >= 0 || !go_model_guid(root).empty()) {
+            return;
+        }
+        // The objects under it named as the nodes under its node, with the materials their
+        // renderers draw in place of the model's own.
+        const std::string guid = asset.meta.string_at("guid");
+        Node materials = seq_node();
+        std::vector<bool> found(model->nodes.size());
+        const std::function<void(int, int)> match = [&](int object, int node) {
+            for (const int child : file.objects[static_cast<std::size_t>(object)].children) {
+                GameObject& c = file.objects[static_cast<std::size_t>(child)];
+                if (c.removed || c.instance >= 0) {
+                    continue;
+                }
+                for (std::size_t k = 0; k < model->nodes.size(); ++k) {
+                    if (found[k] || static_cast<int>(k) == top || model->nodes[k].parent != node ||
+                        !names_node(c, model->nodes[k])) {
+                        continue;
+                    }
+                    found[k] = true;
+                    c.node = model->nodes[k].name;
+                    for (const Component& component : c.components) {
+                        const Node* used = component.class_id == kSkinnedMeshRenderer ||
+                                                   component.class_id == kMeshRenderer
+                                               ? component.body.get("m_Materials")
+                                               : nullptr;
+                        for (const Node& item :
+                             used != nullptr ? used->items : std::vector<Node>{}) {
+                            if (const auto ref = unity::object_ref(item);
+                                ref && !ref->null() && !ref->guid.empty() && ref->guid != guid) {
+                                materials.items.push_back(ref_node(*ref));
+                            }
+                        }
+                    }
+                    match(child, static_cast<int>(k));
+                    break;
+                }
+            }
+        };
+        match(at, top);
+        for (std::size_t k = 0; k < model->nodes.size(); ++k) {
+            if (!found[k] && static_cast<int>(k) != top) {
+                problems_.add("node of a model the scene removed", where,
+                              model->nodes[k].name + " still draws, since the model draws whole");
+            }
+        }
+        add_external_materials(asset, materials);
+        root.components.push_back(
+            Component{.id = remap(root.id, kModelComponent),
+                      .class_id = kModelInstance,
+                      .type = "ModelInstance",
+                      .body = map_node({{"path", scalar_node(asset.path)},
+                                        {"guid", scalar_node(guid)},
+                                        {"m_Materials", std::move(materials)}})});
+    }
+
+    // Whether a model's node has something on it, so that it becomes an entity following the
+    // node: a component the model doesn't make, or an object under it that isn't the model's.
+    static bool attached(const Expanded& file, int index) {
+        const GameObject& go = file.objects[static_cast<std::size_t>(index)];
+        if (go.node.empty() || go.removed) {
+            return false;
+        }
+        return std::ranges::any_of(go.components,
+                                   [](const Component& c) { return !model_made(c.class_id); }) ||
+               std::ranges::any_of(go.children, [&](int child) {
+                   const GameObject& c = file.objects[static_cast<std::size_t>(child)];
+                   return c.node.empty() && !c.removed;
+               });
+    }
+
+    // The components Unity's model importer gives a model's nodes, which draw with the model.
+    static bool model_made(int class_id) {
+        return class_id == kTransform || class_id == kMeshFilter || class_id == kMeshRenderer ||
+               class_id == kSkinnedMeshRenderer;
     }
 
     static void mark_removed(Expanded& file, int index) {
@@ -2781,16 +3094,21 @@ private:
             GameObject& go = file.objects[static_cast<std::size_t>(index)];
             const Instance* instance =
                 go.instance >= 0 ? &file.instances[static_cast<std::size_t>(go.instance)] : nullptr;
-            if (instance != nullptr && instance->root != index) {
+            if (!go.node.empty() && !attached(file, index)) {
+                go.entity.clear(); // a model's node, which its model draws
+            } else if (instance != nullptr && instance->root != index && !go.source_id.empty()) {
                 go.entity = file.objects[static_cast<std::size_t>(instance->root)].entity + "/" +
                             go.source_id;
             } else {
                 const std::string base = snake_case(go.body.string_at("m_Name"));
-                if (!file.used.contains(base) || go.parent < 0) {
+                int up = go.parent; // the nearest object above it with an entity
+                while (up >= 0 && file.objects[static_cast<std::size_t>(up)].entity.empty()) {
+                    up = file.objects[static_cast<std::size_t>(up)].parent;
+                }
+                if (!file.used.contains(base) || up < 0) {
                     go.entity = take(file.used, base);
                 } else {
-                    const std::string& parent =
-                        file.objects[static_cast<std::size_t>(go.parent)].entity;
+                    const std::string& parent = file.objects[static_cast<std::size_t>(up)].entity;
                     go.entity = take(file.used, snake_case(parent) + "_" + base);
                 }
             }
@@ -10726,7 +11044,7 @@ private:
         std::vector<std::optional<Done>> done(file.objects.size());
         for (const int index : order) {
             GameObject& go = file.objects[static_cast<std::size_t>(index)];
-            if (go.removed) {
+            if (go.removed || (!go.node.empty() && go.entity.empty())) {
                 continue;
             }
             if (!go.folded.empty()) {
@@ -10774,6 +11092,9 @@ private:
         }
         for (const int index : order) {
             GameObject& go = file.objects[static_cast<std::size_t>(index)];
+            if (!go.node.empty() && go.entity.empty()) {
+                continue; // a model's node, which its model draws
+            }
             if (!go.folded.empty()) {
                 record["entities"][object_path(file, index)] = go.folded;
                 continue;
@@ -10793,14 +11114,15 @@ private:
                     // animation moves.
                     const auto drawn = std::ranges::find_if(
                         converted.added, [](const auto& added) { return added.first == "model"; });
+                    json::Object& drawing =
+                        drawn != converted.added.end() ? drawn->second : converted.components;
+                    leave_out_animated(drawing, made->second, where);
                     if (drawn != converted.added.end()) {
                         problems_.add("Animator on a model imported at a scale", where,
                                       "it plays on the entity that draws the model, so tracks of "
                                       "the object's own Transform move that entity");
-                        drawn->second[made->first] = std::move(made->second);
-                    } else {
-                        converted.components[made->first] = std::move(made->second);
                     }
+                    drawing[made->first] = std::move(made->second);
                 }
             }
             const Instance* instance =
@@ -10828,7 +11150,7 @@ private:
             std::function<void(int)> lift = [&](int at) {
                 for (const int child : file.objects[static_cast<std::size_t>(at)].children) {
                     const GameObject& c = file.objects[static_cast<std::size_t>(child)];
-                    if (c.removed) {
+                    if (c.removed || !c.node.empty()) {
                         continue;
                     }
                     if (!c.folded.empty()) {
@@ -10843,6 +11165,22 @@ private:
                 }
             };
             lift(index);
+            // A model's nodes something hangs on follow them under the entity that draws it.
+            std::vector<std::string> attachments;
+            std::function<void(int)> nodes = [&](int at) {
+                for (const int child : file.objects[static_cast<std::size_t>(at)].children) {
+                    const GameObject& c = file.objects[static_cast<std::size_t>(child)];
+                    if (!c.removed && !c.node.empty()) {
+                        if (!c.entity.empty()) {
+                            attachments.push_back(c.entity);
+                        }
+                        nodes(child);
+                    }
+                }
+            };
+            if (go.node.empty()) {
+                nodes(index);
+            }
             json::Value* holder = &transform;
             for (std::size_t i = 0; i < converted.added.size(); ++i) {
                 auto& [purpose, components] = converted.added[i];
@@ -10860,6 +11198,19 @@ private:
             }
             for (const std::string& child : children) {
                 (*holder)["children"].push_back(child);
+            }
+            if (!attachments.empty()) {
+                json::Value* drawing = &transform;
+                if (const auto model = go.added.find("model"); model != go.added.end()) {
+                    drawing = &entities[model->second]["components"]["Transform3D"];
+                    problems_.add("object on a node of a model imported at a scale",
+                                  file.path + ": " + object_path(file, index),
+                                  "it follows the node on the entity that draws the model, so it "
+                                  "is scaled as the model is");
+                }
+                for (const std::string& attachment : attachments) {
+                    (*drawing)["children"].push_back(attachment);
+                }
             }
             if (instance != nullptr) {
                 complete(converted.components, *instance, go.source_id);
@@ -11114,8 +11465,19 @@ private:
             place = place_of(transform->body);
         }
         place.visible = go.body.flag_at("m_IsActive", true);
+        if (!go.node.empty()) {
+            // A model's node with something on it follows the node, from where it is posed.
+            out.components["BoneAttachment3D"]["bone_name"] = go.node;
+            if (const auto posed = node_place(*ctx.file, ctx.index, ctx.where)) {
+                place = *posed;
+            }
+            place.visible = go.body.flag_at("m_IsActive", true);
+        }
         Parts3D parts;
         for (const Component& component : go.components) {
+            if (!go.node.empty() && model_made(component.class_id)) {
+                continue; // drawn with the model
+            }
             switch (component.class_id) {
             case kTransform:
             case kRectTransform:
@@ -11231,7 +11593,7 @@ private:
             out.collisions && body != out.components.end()) {
             body->second["contact_monitor"] = true;
         }
-        place_turned(out, turned, animated_.contains(ctx.index));
+        place_turned(out, turned, animated_.contains(ctx.index) || !go.node.empty());
         out.place = place;
     }
 
@@ -12235,6 +12597,16 @@ private:
             problems_.add("model imported without its file's units", ctx.where,
                           "it is sized as its file's units say");
         }
+        // Its nodes as the scene poses them.
+        const scene3d::Model* loaded = asset != nullptr && extension_of(asset->path) != ".blend"
+                                           ? model_file(*asset, ctx.where)
+                                           : nullptr;
+        if (loaded != nullptr) {
+            ModelPose pose = model_pose(*ctx.file, ctx.index, *asset, *loaded, ctx.where, true);
+            if (!pose.json.as_object().empty()) {
+                parts["Skeleton3D"] = std::move(pose.json);
+            }
+        }
         // The import's scale sizes the model, not the objects under its instance.
         if (const double scale = meta.number_at("ModelImporter.meshes.globalScale", 1.0);
             scale != 1.0) {
@@ -12245,6 +12617,212 @@ private:
         for (auto& [name, fields] : parts) {
             out.components[name] = std::move(fields);
         }
+    }
+
+    // How a scene poses a model's nodes: each whose object is placed other than the model has
+    // it, and a top node Unity made the model's top object, whose place the object has. As
+    // Skeleton3D's fields and as the component itself.
+    struct ModelPose {
+        json::Value json = json::Object{}; // NOLINT(readability-redundant-member-init)
+        world::Skeleton3D skeleton;
+    };
+
+    ModelPose model_pose(const Expanded& file, int index, const Asset& asset,
+                         const scene3d::Model& model, const std::string& where, bool report) {
+        ModelPose out;
+        const double scale = asset.meta.number_at("ModelImporter.meshes.globalScale", 1.0);
+        const auto set = [&](const scene3d::ModelNode& node, const Place3D& place) {
+            const std::array<double, 3> position{
+                place.position[0] / scale, place.position[1] / scale, place.position[2] / scale};
+            const auto differs = [](const std::array<double, 3>& a, const Vec3& b) {
+                const std::array<double, 3> c{b.x, b.y, b.z};
+                for (std::size_t i = 0; i < 3; ++i) {
+                    if (std::abs(a.at(i) - c.at(i)) > 1e-5 * std::max(1.0, std::abs(c.at(i)))) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+            const auto vec = [](const std::array<double, 3>& v) {
+                return Vec3{static_cast<float>(v[0]), static_cast<float>(v[1]),
+                            static_cast<float>(v[2])};
+            };
+            if (differs(position, node.position)) {
+                out.json["bone_positions"][node.name] = triple(position);
+                out.skeleton.bone_positions[node.name] = vec(position);
+            }
+            const Quat& q = node.rotation;
+            if (angle_between(place.rotation, {q.x, q.y, q.z, q.w}) > 1e-4) {
+                const std::array<double, 3> euler = quaternion_euler(place.rotation);
+                out.json["bone_rotations"][node.name] = triple(euler);
+                out.skeleton.bone_rotations[node.name] = vec(euler);
+            }
+            if (differs(place.scale, node.scale)) {
+                out.json["bone_scales"][node.name] = triple(place.scale);
+                out.skeleton.bone_scales[node.name] = vec(place.scale);
+            }
+        };
+        if (const int top = collapsed_top(asset, model); top >= 0) {
+            set(model.nodes[static_cast<std::size_t>(top)], Place3D{});
+        }
+        const std::function<void(int)> walk = [&](int at) {
+            for (const int child : file.objects[static_cast<std::size_t>(at)].children) {
+                const GameObject& c = file.objects[static_cast<std::size_t>(child)];
+                if (c.removed || c.node.empty()) {
+                    continue;
+                }
+                const int n = scene3d::find_node(model, c.node);
+                const Component* transform = transform_of(c);
+                if (n >= 0 && transform != nullptr) {
+                    set(model.nodes[static_cast<std::size_t>(n)], place_of(transform->body));
+                }
+                const bool hidden =
+                    !c.body.flag_at("m_IsActive", true) ||
+                    std::ranges::any_of(c.components, [](const Component& component) {
+                        return (component.class_id == kSkinnedMeshRenderer ||
+                                component.class_id == kMeshRenderer) &&
+                               !component.body.flag_at("m_Enabled", true);
+                    });
+                if (hidden && report) {
+                    problems_.add("hidden node of a model",
+                                  where + "/" + c.body.string_at("m_Name"),
+                                  "it draws, since the model draws whole");
+                }
+                walk(child);
+            }
+        };
+        walk(index);
+        return out;
+    }
+
+    // Where a model's node an entity follows is posed, in the space of the entity that draws the
+    // model.
+    std::optional<Place3D> node_place(const Expanded& file, int index, const std::string& where) {
+        int root = index;
+        while (root >= 0 && !file.objects[static_cast<std::size_t>(root)].node.empty()) {
+            root = file.objects[static_cast<std::size_t>(root)].parent;
+        }
+        const Asset* asset =
+            root >= 0 ? model_of(file.objects[static_cast<std::size_t>(root)]) : nullptr;
+        const scene3d::Model* model = asset != nullptr && extension_of(asset->path) != ".blend"
+                                          ? model_file(*asset, where)
+                                          : nullptr;
+        if (model == nullptr) {
+            return std::nullopt;
+        }
+        const int node =
+            scene3d::find_node(*model, file.objects[static_cast<std::size_t>(index)].node);
+        if (node < 0) {
+            return std::nullopt;
+        }
+        std::vector<scene3d::NodePose> pose = scene3d::rest_pose(*model);
+        scene3d::apply_skeleton(
+            *model, model_pose(file, root, *asset, *model, where, false).skeleton, pose);
+        const scene3d::NodePose at =
+            scene3d::decompose(scene3d::node_globals(*model, pose)[static_cast<std::size_t>(node)]);
+        Place3D place;
+        place.position = {at.position.x, at.position.y, at.position.z};
+        place.rotation = {at.rotation.x, at.rotation.y, at.rotation.z, at.rotation.w};
+        place.scale = {at.scale.x, at.scale.y, at.scale.z};
+        return place;
+    }
+
+    // Unity's Animator writes the nodes its clips move each frame, over the scene's pose, so a
+    // Skeleton3D, which a model's animations don't move, leaves those parts of the pose out.
+    void leave_out_animated(json::Object& drawing, const json::Value& player,
+                            const std::string& where) {
+        const auto skeleton = drawing.find("Skeleton3D");
+        if (skeleton == drawing.end()) {
+            return;
+        }
+        for (const auto& [node, property] : animated_nodes(player, where)) {
+            const std::string field = "bone_" + property + "s";
+            if (json::Value* bones = skeleton->second.find(field); bones != nullptr) {
+                bones->as_object().erase(node);
+                if (bones->as_object().empty()) {
+                    skeleton->second.as_object().erase(field);
+                }
+            }
+        }
+        if (skeleton->second.as_object().empty()) {
+            drawing.erase(skeleton);
+        }
+    }
+
+    // The node properties ("position", "rotation", "scale") an AnimationPlayer's or
+    // AnimationTree's libraries move: their node tracks', and those of the model animations they
+    // play from.
+    std::set<std::pair<std::string, std::string>> animated_nodes(const json::Value& player,
+                                                                 const std::string& where) {
+        std::vector<std::string> paths;
+        if (const json::Value* library = player.find("library");
+            library != nullptr && library->is_string()) {
+            paths.push_back(library->as_string());
+        }
+        if (const json::Value* libraries = player.find("libraries");
+            libraries != nullptr && libraries->is_object()) {
+            for (const auto& [name, library] : libraries->as_object()) {
+                if (library.is_string()) {
+                    paths.push_back(library.as_string());
+                }
+            }
+        }
+        static constexpr std::array<std::string_view, 3> kProperties{"position", "rotation",
+                                                                     "scale"};
+        std::set<std::pair<std::string, std::string>> out;
+        const world::FileReader reader = planned_files();
+        for (const std::string& path : paths) {
+            auto text = reader(path);
+            auto parsed = text ? json::parse(text.value()) : Result<json::Value>(text.error());
+            const json::Value* animations = parsed ? parsed.value().find("animations") : nullptr;
+            if (animations == nullptr || !animations->is_object()) {
+                continue;
+            }
+            for (const auto& [name, animation] : animations->as_object()) {
+                const json::Value* tracks = animation.find("tracks");
+                for (const json::Value& track :
+                     tracks != nullptr && tracks->is_array() ? tracks->as_array() : json::Array{}) {
+                    const json::Value* node = track.find("node");
+                    const json::Value* property = track.find("property");
+                    if (node != nullptr && node->is_string() && property != nullptr &&
+                        property->is_string()) {
+                        out.emplace(node->as_string(), property->as_string());
+                    }
+                }
+                const json::Value* from = animation.find("from");
+                const json::Value* model_path = from != nullptr ? from->find("model") : nullptr;
+                const json::Value* take = from != nullptr ? from->find("animation") : nullptr;
+                if (model_path == nullptr || !model_path->is_string() || take == nullptr ||
+                    !take->is_string()) {
+                    continue;
+                }
+                const Asset* asset = model_at(model_path->as_string());
+                const scene3d::Model* model =
+                    asset != nullptr ? model_file(*asset, where) : nullptr;
+                for (const scene3d::ModelAnimation& played :
+                     model != nullptr ? model->animations
+                                      : std::vector<scene3d::ModelAnimation>{}) {
+                    if (played.name != take->as_string()) {
+                        continue;
+                    }
+                    for (const scene3d::NodeTrack& track : played.tracks) {
+                        out.emplace(model->nodes[track.node].name,
+                                    kProperties.at(static_cast<std::size_t>(track.property)));
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    // The model file converted to a project path.
+    [[nodiscard]] const Asset* model_at(const std::string& converted) const {
+        for (const auto& [guid, asset] : assets_by_guid_) {
+            if (is_model_file(extension_of(asset.path)) && destination(asset.path) == converted) {
+                return &asset;
+            }
+        }
+        return nullptr;
     }
 
     // The scene's background is its main camera's, else its first enabled camera's.

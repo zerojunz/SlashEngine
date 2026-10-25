@@ -5652,3 +5652,197 @@ TEST_CASE("Unity humanoid clips retarget through the Avatars, and root motion le
               ->as_string() == "Assets/Scenes/Gym.unity: Arm");
     CHECK(unsupported(report, "animation clip of another model").is_null());
 }
+
+namespace {
+
+constexpr std::string_view kRigArm = "a9000000000000000000000000000001";
+constexpr std::string_view kRigController = "a9000000000000000000000000000002";
+constexpr std::string_view kRigLift = "a9000000000000000000000000000003";
+constexpr std::string_view kRigOldArm = "a9000000000000000000000000000004";
+// The IDs Unity 2019.3 and later give the arm's nodes' objects and Transforms and its mesh, which
+// it hashes from their names: xxHash64 of "Type:<class>-><name>0".
+constexpr std::int64_t kUpperObject = -249097775771236556;
+constexpr std::int64_t kUpperTransform = -7552837495339606630;
+constexpr std::int64_t kLowerTransform = 2173911252470900051;
+constexpr std::int64_t kArmMesh = 816343263715038232;
+
+// "Rig": instances of the arm of tests/fbx.hpp posed by the scene, one with a lamp on its lower
+// bone and a trigger added to its upper one, one whose Animator moves what the scene posed, one
+// of a copy of the arm whose import settings name its objects as Unity 2019.2 did, and an
+// unpacked copy of the arm with a sword on its lower bone.
+void write_rig(const fs::path& folder) {
+    write(folder / "ProjectSettings/ProjectVersion.txt", "m_EditorVersion: 2022.3.20f1\n");
+    write(folder / "ProjectSettings/ProjectSettings.asset",
+          std::string(kHeader) + "--- !u!129 &1\nPlayerSettings:\n  productName: Rig\n");
+    write(folder / "Assets/Models/Arm.fbx", slash::test::fbx_arm().binary());
+    write(folder / "Assets/Models/Arm.fbx.meta",
+          meta(kRigArm, "ModelImporter", "  meshes:\n    globalScale: 1\n    useFileScale: 1\n"));
+    // The old arm's Armature is turned a quarter turn about x, as Blender writes it. It is the
+    // model's one top node, so Unity makes it the model's top object.
+    slash::test::Fbx old = slash::test::fbx_arm();
+    for (slash::test::FbxNode& node : old.objects.children) {
+        if (node.name == "Model" && std::get<std::int64_t>(node.properties[0]) == 20) {
+            for (slash::test::FbxNode& child : node.children) {
+                if (child.name == "Properties70") {
+                    slash::test::fbx_property(child, "Lcl Rotation", "Lcl Rotation",
+                                              {90.0, 0.0, 0.0});
+                }
+            }
+        }
+    }
+    write(folder / "Assets/Models/OldArm.fbx", old.binary());
+    write(folder / "Assets/Models/OldArm.fbx.meta",
+          meta(kRigOldArm, "ModelImporter",
+               "  fileIDToRecycleName:\n    100000: //RootNode\n    100002: Upper\n"
+               "    100004: Lower\n    100006: Arm\n    400000: //RootNode\n"
+               "    400002: Upper\n    400004: Lower\n    400006: Arm\n"));
+
+    // Lift slides the upper bone along x and bends the lower one a quarter turn about z.
+    ClipCurves lift;
+    const std::string half_x = "{x: 0.5, y: 0, z: 0}";
+    lift.position =
+        anim_curve(anim_key("0", "{x: 0, y: 0, z: 0}", half_x, half_x, kVectorWeight) +
+                       anim_key("1", "{x: 0.5, y: 0, z: 0}", half_x, half_x, kVectorWeight),
+                   "    path: Upper\n");
+    const std::string bend = "{x: 0, y: 0, z: 0.70710677, w: -0.29289323}";
+    lift.rotation =
+        anim_curve(quaternion_key("0", "{x: 0, y: 0, z: 0, w: 1}", bend) +
+                       quaternion_key("1", "{x: 0, y: 0, z: 0.70710677, w: 0.70710677}", bend),
+                   "    path: Upper/Lower\n");
+    write_clip(folder / "Assets/Animations/Lift.anim", kRigLift, "1", false, lift);
+    write(folder / "Assets/Animations/Waver.controller",
+          controller_file("Waver",
+                          animator_state(110200001, "Lift", "1", " []", ref(7400000, kRigLift, 2)),
+                          child_state(110200001), 110200001));
+    write(folder / "Assets/Animations/Waver.controller.meta",
+          meta(kRigController, "NativeFormatImporter", "  mainObjectFileID: 9100000\n"));
+
+    const std::string default_material = ref(10303, kBuiltinSprites, 0);
+    std::string scene(kHeader);
+    // The arm: its upper bone moved half a meter along x and its lower one bent a quarter turn
+    // about z, a lamp on the lower bone and a trigger added to the upper one.
+    scene +=
+        instance(300, kRigArm, 0,
+                 modification(-8679921383154817045, kRigArm, "m_LocalPosition.x", "2") +
+                     modification(919132149155446097, kRigArm, "m_Name", "Arm") +
+                     modification(kUpperTransform, kRigArm, "m_LocalPosition.x", "0.5") +
+                     modification(kLowerTransform, kRigArm, "m_LocalRotation.z", "0.70710677") +
+                     modification(kLowerTransform, kRigArm, "m_LocalRotation.w", "0.70710677") +
+                     modification(kLowerTransform, kRigArm, "m_LocalEulerAnglesHint.z", "90"));
+    scene += stripped(4, "Transform", 310, kLowerTransform, kRigArm, 300);
+    scene += stripped(1, "GameObject", 330, kUpperObject, kRigArm, 300);
+    scene += component(135, "SphereCollider", 331, 330,
+                       "  m_Material: {fileID: 0}\n  m_IsTrigger: 1\n  serializedVersion: 3\n"
+                       "  m_Radius: 0.25\n  m_Center: {x: 0, y: 0, z: 0}\n");
+    scene += game_object(320, "Lamp", {321, 322, 323});
+    scene += transform_3d(321, 320, "{x: 0, y: 0.5, z: 0}", kNoTurn, kOne, 310);
+    scene += mesh_filter(322, 320, 10202);
+    scene += mesh_renderer(323, 320, default_material);
+    // The waver: its Animator moves the upper bone, so the scene's move of it is left out, but
+    // not its stretch.
+    scene += instance(400, kRigArm, 0,
+                      modification(-8679921383154817045, kRigArm, "m_LocalPosition.x", "-2") +
+                          modification(919132149155446097, kRigArm, "m_Name", "Waver") +
+                          modification(kUpperTransform, kRigArm, "m_LocalPosition.x", "0.5") +
+                          modification(kUpperTransform, kRigArm, "m_LocalScale.y", "3") +
+                          modification(5866666021909216657, kRigArm, "m_Controller", "",
+                                       ref(9100000, kRigController, 2)));
+    // The old arm, moved along z and its lower bone bent a quarter turn about x.
+    scene += instance(600, kRigOldArm, 0,
+                      modification(400000, kRigOldArm, "m_LocalPosition.z", "3") +
+                          modification(100000, kRigOldArm, "m_Name", "OldArm") +
+                          modification(400004, kRigOldArm, "m_LocalRotation.x", "0.70710677") +
+                          modification(400004, kRigOldArm, "m_LocalRotation.w", "0.70710677"));
+    // The copy: the arm unpacked, its upper bone turned a quarter turn about y, a sword on its
+    // lower bone.
+    scene += game_object(500, "ArmCopy", {501});
+    scene += transform_3d(501, 500, "{x: 4, y: 0, z: 0}", kNoTurn, kOne, 0, {511, 531});
+    scene += game_object(510, "Upper", {511});
+    scene += transform_3d(511, 510, "{x: 0, y: 0, z: 0}",
+                          "{x: 0, y: 0.70710677, z: 0, w: 0.70710677}", kOne, 501, {521});
+    scene += game_object(520, "Lower", {521});
+    scene += transform_3d(521, 520, "{x: 0, y: 1, z: 0}", kNoTurn, kOne, 511, {541});
+    scene += game_object(530, "Arm", {531, 532});
+    scene += transform_3d(531, 530, "{x: 0, y: 0, z: 0}", kNoTurn, kOne, 501);
+    scene += component(137, "SkinnedMeshRenderer", 532, 530,
+                       "  m_Materials:\n  - {fileID: 2100000, guid: " + std::string(kRigArm) +
+                           ", type: 3}\n  m_Mesh: " + ref(kArmMesh, kRigArm, 3) +
+                           "\n  m_Bones:\n  - {fileID: 511}\n  - {fileID: 521}\n"
+                           "  m_RootBone: {fileID: 511}\n");
+    scene += game_object(540, "Sword", {541, 542, 543});
+    scene += transform_3d(541, 540, "{x: 0, y: 0.25, z: 0}", kNoTurn, kOne, 521);
+    scene += mesh_filter(542, 540, 10202);
+    scene += mesh_renderer(543, 540, default_material);
+    write(folder / "Assets/Scenes/Rig.unity", scene);
+    write(folder / "Assets/Scenes/Rig.unity.meta", meta("a9000000000000000000000000000006"));
+}
+
+} // namespace
+
+TEST_CASE("Unity's skinned meshes: posed nodes, objects on bones and unpacked models") {
+    const fs::path project = "import_unity_rig";
+    fs::remove_all(project);
+    write_rig(project / "unity");
+    auto imported = importer::import_project(
+        {.source = (project / "unity").string(), .destination = project.string()});
+    REQUIRE_MESSAGE(imported.ok(), (imported.ok() ? std::string() : imported.error().message));
+    const auto files = files_of(imported.value());
+    const std::string scene = "unity/Assets/Scenes/Rig.scene.json";
+    REQUIRE(files.contains(scene));
+    // Each node the scene places other than the model has it is posed by the instance's
+    // Skeleton3D, mirrored in x as the scene is; the nodes a lamp and a trigger are on become
+    // entities that follow them, under the entity drawing the model, from where they are posed.
+    const json::Value arm = entity(files, scene, "arm");
+    CHECK(*arm.find("Skeleton3D") == parse(R"({"bone_positions": {"Upper": [-0.5, 0.0, 0.0]},
+                    "bone_rotations": {"Lower": [0.0, 0.0, -1.570796]}})"));
+    CHECK(*arm.find("Transform3D") ==
+          parse(R"({"position": [-2.0, 0.0, 0.0], "children": ["upper", "upper_lower"]})"));
+    const json::Value lower = entity(files, scene, "upper_lower");
+    CHECK(*lower.find("BoneAttachment3D") == parse(R"({"bone_name": "Lower"})"));
+    CHECK(*lower.find("Transform3D") ==
+          parse(R"({"position": [-0.5, 1.0, 0.0], "rotation": [0.0, 0.0, -1.570796],
+                    "children": ["lamp"]})"));
+    CHECK(*entity(files, scene, "lamp").find("Transform3D") ==
+          parse(R"({"position": [0.0, 0.5, 0.0]})"));
+    const json::Value upper = entity(files, scene, "upper");
+    CHECK(*upper.find("BoneAttachment3D") == parse(R"({"bone_name": "Upper"})"));
+    CHECK(upper.find("Area3D") != nullptr);
+    CHECK(upper.find("CollisionShape3D")->find("radius")->as_double() == 0.25);
+    // The waver's Animator writes its upper bone's position each frame, as Unity's does, so the
+    // pose leaves that out; its stretch stays.
+    CHECK(*entity(files, scene, "waver").find("Skeleton3D") ==
+          parse(R"({"bone_scales": {"Upper": [1.0, 3.0, 1.0]}})"));
+    // The old arm's objects are found by the IDs its import settings name. Its Armature is its
+    // top object, which has the Armature's place where the scene doesn't change it, so the
+    // model draws the Armature where it is.
+    const json::Value old = entity(files, scene, "old_arm");
+    CHECK(*old.find("Transform3D") ==
+          parse(R"({"position": [0.0, 0.0, 3.0], "rotation": [1.570796, 0.0, 0.0]})"));
+    CHECK(*old.find("Skeleton3D") == parse(R"({"bone_rotations": {"Armature": [0.0, 0.0, 0.0],
+                                       "Lower": [1.570796, 0.0, 0.0]}})"));
+    // The unpacked copy folds back into an instance of the arm: its objects pose its nodes, and
+    // the lower bone, with the sword on it, follows its node.
+    const json::Value copy = entity(files, scene, "arm_copy");
+    CHECK(*copy.find("MeshInstance3D") == parse(R"({"mesh": "unity/Assets/Models/Arm.fbx"})"));
+    CHECK(*copy.find("Skeleton3D") ==
+          parse(R"({"bone_rotations": {"Upper": [0.0, -1.570796, 0.0]}})"));
+    CHECK(*copy.find("Transform3D") ==
+          parse(R"({"position": [-4.0, 0.0, 0.0], "children": ["lower"]})"));
+    CHECK(*entity(files, scene, "lower").find("Transform3D") ==
+          parse(R"({"position": [0.0, 1.0, 0.0], "rotation": [0.0, -1.570796, 0.0],
+                    "children": ["sword"]})"));
+    CHECK(entity(files, scene, "sword").find("BoxMesh") != nullptr);
+    // The model's own nodes are no entities.
+    for (const char* id : {"arm_copy_upper", "arm_copy_arm", "waver_upper"}) {
+        CHECK(entity(files, scene, id).is_null());
+    }
+
+    const json::Value report = parse(files.at("import/unity.json"));
+    CHECK(*report.find("scenes")->find("Assets/Scenes/Rig.unity")->find("entities") ==
+          parse(R"({"Arm": "arm", "Arm/Upper": "upper", "Arm/Upper/Lower": "upper_lower",
+                    "Arm/Upper/Lower/Lamp": "lamp", "ArmCopy": "arm_copy",
+                    "ArmCopy/Upper/Lower": "lower", "ArmCopy/Upper/Lower/Sword": "sword",
+                    "OldArm": "old_arm", "Waver": "waver"})"));
+    CHECK(unsupported(report, "change to a model's inner object").is_null());
+    CHECK(unsupported(report, "component SkinnedMeshRenderer").is_null());
+}
