@@ -224,7 +224,7 @@ void register_live_commands(Registry& registry, const LiveGame& game) {
     sharpness["minimum"] = 0;
     sharpness["maximum"] = render::kMaxFsrSharpness;
     json::Value scaling = params_schema({
-        {"mode", property("string", "bilinear, fsr or fsr2.")},
+        {"mode", property("string", "bilinear, fsr, fsr2 or fsr3.")},
         {"scale", std::move(scale)},
         {"fsr_sharpness", std::move(sharpness)},
         {"upscaler", property("string", "An upscaler the game added; \"\" for none.")},

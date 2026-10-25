@@ -1296,6 +1296,25 @@ std::array<float, 2> derive_motion_vector(const std::array<Float4, 4>& reproject
     return {(0.5F + (px * 0.5F)) - uv[0], (0.5F - (py * 0.5F)) - uv[1]};
 }
 
+void run_fsr2_rcas(const Fsr2Uniforms& uniforms, std::span<const float> color,
+                   std::span<float> out) {
+    const Constants k(uniforms);
+    const Plane internal{.size = k.display, .channels = 4, .data = color};
+    for (int y = 0; y < k.display[1]; ++y) {
+        for (int x = 0; x < k.display[0]; ++x) {
+            const Float3 pix = rcas(k, internal, {x, y});
+            const std::size_t at =
+                ((static_cast<std::size_t>(y) * static_cast<std::size_t>(k.display[0])) +
+                 static_cast<std::size_t>(x)) *
+                4;
+            out[at] = round_half(pix[0]);
+            out[at + 1] = round_half(pix[1]);
+            out[at + 2] = round_half(pix[2]);
+            out[at + 3] = 1.0F;
+        }
+    }
+}
+
 void Fsr2Clock::advance(std::uint32_t target_phases) {
     if (!primed) {
         frames = 0;
@@ -1397,20 +1416,7 @@ void run_fsr2(const Fsr2Uniforms& uniforms, const Fsr2Inputs& inputs, Fsr2Histor
             next_lock_status[(at * 2) + 1] = round_half(a.lock_status[1]);
         }
     }
-    const Plane internal{.size = k.display, .channels = 4, .data = next_color};
-    for (int y = 0; y < k.display[1]; ++y) {
-        for (int x = 0; x < k.display[0]; ++x) {
-            const Float3 pix = rcas(k, internal, {x, y});
-            const std::size_t at =
-                ((static_cast<std::size_t>(y) * static_cast<std::size_t>(k.display[0])) +
-                 static_cast<std::size_t>(x)) *
-                4;
-            out[at] = round_half(pix[0]);
-            out[at + 1] = round_half(pix[1]);
-            out[at + 2] = round_half(pix[2]);
-            out[at + 3] = 1.0F;
-        }
-    }
+    run_fsr2_rcas(uniforms, next_color, out);
     history.color = std::move(next_color);
     history.lock_status = std::move(next_lock_status);
     history.luma_history = std::move(next_luma);

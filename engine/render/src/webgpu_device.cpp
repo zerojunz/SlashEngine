@@ -16,6 +16,16 @@
 #include "fsr2_luma_shaders.hpp"
 #include "fsr2_rcas_shaders.hpp"
 #include "fsr2_reconstruct_shaders.hpp"
+#include "fsr3.hpp"
+#include "fsr3_accumulate_shaders.hpp"
+#include "fsr3_instability_shaders.hpp"
+#include "fsr3_lock_shaders.hpp"
+#include "fsr3_prepare_shaders.hpp"
+#include "fsr3_pyramid_shaders.hpp"
+#include "fsr3_reactivity_shaders.hpp"
+#include "fsr3_reconstruct_shaders.hpp"
+#include "fsr3_reduce_shaders.hpp"
+#include "fsr3_shading_change_shaders.hpp"
 #include "material_shaders.hpp"
 #include "mesh_clustered_shaders.hpp"
 #include "mesh_motion_shaders.hpp"
@@ -178,6 +188,79 @@ Fsr2PassCode fsr2_pass_code(Fsr2Pass pass) {
             .targets = kFsr2RcasTargets};
 }
 
+// FSR 3's passes, other than the reconstruct pass and FSR 2's sharpening pass, which it ends
+// with, and the formats each draws into, as the CPU twin keeps its values.
+enum class Fsr3Pass : std::uint8_t {
+    Prepare,
+    Pyramid,
+    Reduce,
+    ShadingChange,
+    Reactivity,
+    Lock,
+    Instability,
+    Accumulate
+};
+constexpr std::size_t kFsr3Passes = 8;
+// The dilated depth and motion vectors, the farthest depth and the luma.
+constexpr std::array kFsr3PrepareTargets{WGPUTextureFormat_R32Float, WGPUTextureFormat_RG16Float,
+                                         WGPUTextureFormat_R16Float, WGPUTextureFormat_R16Float};
+// The farthest depth at half the render size and the shading change pyramid's first level.
+constexpr std::array kFsr3PyramidTargets{WGPUTextureFormat_R16Float, WGPUTextureFormat_RG16Float};
+constexpr std::array kFsr3ReduceTargets{WGPUTextureFormat_RG16Float};
+constexpr std::array kFsr3ShadingChangeTargets{WGPUTextureFormat_R8Unorm};
+// The reactive masks and the frames each pixel gathered.
+constexpr std::array kFsr3ReactivityTargets{WGPUTextureFormat_RGBA8Unorm,
+                                            WGPUTextureFormat_R8Unorm};
+constexpr std::array kFsr3LockTargets{WGPUTextureFormat_R8Unorm};
+// The last four lumas and the luma's instability.
+constexpr std::array kFsr3InstabilityTargets{WGPUTextureFormat_RGBA16Float,
+                                             WGPUTextureFormat_R16Float};
+constexpr std::array kFsr3AccumulateTargets{WGPUTextureFormat_RGBA16Float};
+
+Fsr2PassCode fsr3_pass_code(Fsr3Pass pass) {
+    switch (pass) {
+    case Fsr3Pass::Prepare:
+        return {.vertex = shaders::kFsr3PrepareVertexWgsl,
+                .fragment = shaders::kFsr3PrepareFragmentWgsl,
+                .textures = 3,
+                .targets = kFsr3PrepareTargets};
+    case Fsr3Pass::Pyramid:
+        return {.vertex = shaders::kFsr3PyramidVertexWgsl,
+                .fragment = shaders::kFsr3PyramidFragmentWgsl,
+                .textures = 4,
+                .targets = kFsr3PyramidTargets};
+    case Fsr3Pass::Reduce:
+        return {.vertex = shaders::kFsr3ReduceVertexWgsl,
+                .fragment = shaders::kFsr3ReduceFragmentWgsl,
+                .targets = kFsr3ReduceTargets};
+    case Fsr3Pass::ShadingChange:
+        return {.vertex = shaders::kFsr3ShadingChangeVertexWgsl,
+                .fragment = shaders::kFsr3ShadingChangeFragmentWgsl,
+                .textures = 3,
+                .targets = kFsr3ShadingChangeTargets};
+    case Fsr3Pass::Reactivity:
+        return {.vertex = shaders::kFsr3ReactivityVertexWgsl,
+                .fragment = shaders::kFsr3ReactivityFragmentWgsl,
+                .textures = 4,
+                .targets = kFsr3ReactivityTargets};
+    case Fsr3Pass::Lock:
+        return {.vertex = shaders::kFsr3LockVertexWgsl,
+                .fragment = shaders::kFsr3LockFragmentWgsl,
+                .targets = kFsr3LockTargets};
+    case Fsr3Pass::Instability:
+        return {.vertex = shaders::kFsr3InstabilityVertexWgsl,
+                .fragment = shaders::kFsr3InstabilityFragmentWgsl,
+                .textures = 4,
+                .targets = kFsr3InstabilityTargets};
+    case Fsr3Pass::Accumulate:
+        break;
+    }
+    return {.vertex = shaders::kFsr3AccumulateVertexWgsl,
+            .fragment = shaders::kFsr3AccumulateFragmentWgsl,
+            .textures = 7,
+            .targets = kFsr3AccumulateTargets};
+}
+
 constexpr WGPUTextureFormat gpu_format(TextureFormat format) {
     switch (format) {
     case TextureFormat::Bc7:
@@ -239,7 +322,8 @@ constexpr std::uint64_t kLargestUniforms = std::max<std::uint64_t>(
      kComputeUniformBytes, sizeof(MeshInstanceUniforms), sizeof(MeshSurfaceUniforms),
      sizeof(MeshSceneUniforms), sizeof(MeshShadowUniforms), sizeof(MeshShadowPassUniforms),
      sizeof(PostUniforms), sizeof(SkyUniforms), sizeof(RadianceUniforms), sizeof(SsaoUniforms),
-     sizeof(SsrUniforms), sizeof(MeshCameraUniforms), sizeof(TaaUniforms), sizeof(Fsr2Uniforms)});
+     sizeof(SsrUniforms), sizeof(MeshCameraUniforms), sizeof(TaaUniforms), sizeof(Fsr2Uniforms),
+     sizeof(Fsr3Uniforms)});
 // The bind groups are SDL's GPU API's, which the HLSL's registers name and the WGSL keeps
 // (cmake/compile_shaders.cmake): a vertex stage's uniforms in group 1, a fragment stage's
 // textures in group 2 (samplers kSamplerBinding after their textures) and its uniforms in group
@@ -501,6 +585,14 @@ public:
         if (fsr2_reconstruct_ != nullptr) {
             wgpuComputePipelineRelease(fsr2_reconstruct_);
         }
+        for (WGPURenderPipeline pipeline : fsr3_pipelines_) {
+            if (pipeline != nullptr) {
+                wgpuRenderPipelineRelease(pipeline);
+            }
+        }
+        if (fsr3_reconstruct_ != nullptr) {
+            wgpuComputePipelineRelease(fsr3_reconstruct_);
+        }
         for (const auto& [format, pipeline] : ssao_pipelines_) {
             wgpuRenderPipelineRelease(pipeline);
         }
@@ -609,6 +701,8 @@ public:
                                            fsr2_compute_textures_layout_,
                                            fsr2_compute_storage_layout_,
                                            fsr2_compute_uniforms_layout_,
+                                           fsr3_uniforms_layout_,
+                                           fsr3_compute_uniforms_layout_,
                                            fog_textures_layout_,
                                            fog_output_layout_,
                                            fog_uniforms_layout_,
@@ -619,6 +713,11 @@ public:
             }
         }
         for (WGPUBindGroupLayout layout : fsr2_textures_layouts_) {
+            if (layout != nullptr) {
+                wgpuBindGroupLayoutRelease(layout);
+            }
+        }
+        for (WGPUBindGroupLayout layout : fsr3_textures_layouts_) {
             if (layout != nullptr) {
                 wgpuBindGroupLayoutRelease(layout);
             }
@@ -1244,7 +1343,8 @@ public:
                 prepare_taa(frame.target, width, height);
             }
             if (uses_fsr2(*frame.scene)) {
-                prepare_fsr2(frame.target, {scene_width_, scene_height_, width, height});
+                prepare_fsr2(frame.target, {scene_width_, scene_height_, width, height},
+                             uses_fsr3(*frame.scene));
             }
             if (uses_volumetric_fog(*frame.scene)) {
                 prepare_volumetric_fog(frame.target,
@@ -1484,26 +1584,44 @@ public:
             }
         }
         // FSR 2's passes' uniforms, then the reconstruct pass's: it clears the depths, then
-        // scatters them.
-        std::array<std::uint32_t, 3> fsr2_uniforms_at{};
+        // scatters them. FSR 3's then add the reduce pass's, one for each level it draws.
+        std::array<std::uint32_t, 5> fsr2_uniforms_at{};
         if (fsr2 != nullptr) {
             const Mat4 view_projection = multiply(frame_.scene->projection, frame_.scene->camera);
-            Fsr2Uniforms uniforms = fsr2_uniforms(
-                {.render_width = scene_width_,
-                 .render_height = scene_height_,
-                 .display_width = frame_width_,
-                 .display_height = frame_height_,
-                 .jitter = jitter,
-                 .projection = frame_.scene->projection,
-                 .view_projection = view_projection,
-                 .previous = fsr2->clock.frames == 0 ? view_projection : fsr2->view_projection,
-                 .sharpness = frame_.scene->fsr2->sharpness,
-                 .frame_index = fsr2->clock.frames,
-                 .phases = fsr2->clock.phases});
-            fsr2_uniforms_at[0] = uniforms_.add(uniforms);
-            for (const std::int32_t step : {0, 1}) {
-                uniforms.options[2] = step;
-                fsr2_uniforms_at.at(static_cast<std::size_t>(1 + step)) = uniforms_.add(uniforms);
+            const Fsr2Frame frame{.render_width = scene_width_,
+                                  .render_height = scene_height_,
+                                  .display_width = frame_width_,
+                                  .display_height = frame_height_,
+                                  .jitter = jitter,
+                                  .projection = frame_.scene->projection,
+                                  .view_projection = view_projection,
+                                  .previous = fsr2->clock.frames == 0 ? view_projection
+                                                                      : fsr2->view_projection,
+                                  .sharpness = frame_.scene->fsr2->sharpness,
+                                  .frame_index = fsr2->clock.frames,
+                                  .phases = fsr2->clock.phases};
+            if (fsr2->fsr3) {
+                Fsr3Uniforms uniforms = fsr3_uniforms(frame, fsr2->jitter);
+                fsr2_uniforms_at[0] = uniforms_.add(uniforms);
+                for (const std::int32_t step : {0, 1}) {
+                    uniforms.fsr2.options[2] = step;
+                    fsr2_uniforms_at.at(static_cast<std::size_t>(1 + step)) =
+                        uniforms_.add(uniforms);
+                }
+                uniforms.fsr2.options[2] = 0;
+                for (const std::int32_t level : {1, 2}) {
+                    uniforms.fsr2.options[0] = level;
+                    fsr2_uniforms_at.at(static_cast<std::size_t>(2 + level)) =
+                        uniforms_.add(uniforms);
+                }
+            } else {
+                Fsr2Uniforms uniforms = fsr2_uniforms(frame);
+                fsr2_uniforms_at[0] = uniforms_.add(uniforms);
+                for (const std::int32_t step : {0, 1}) {
+                    uniforms.options[2] = step;
+                    fsr2_uniforms_at.at(static_cast<std::size_t>(1 + step)) =
+                        uniforms_.add(uniforms);
+                }
             }
         }
         std::optional<ProbeOffsets> probe_offsets;
@@ -1559,7 +1677,7 @@ public:
         }
         if (fsr2 != nullptr) {
             encode_fsr2(encoder, *fsr2, fsr2_uniforms_at,
-                        multiply(frame_.scene->projection, frame_.scene->camera));
+                        multiply(frame_.scene->projection, frame_.scene->camera), jitter);
         }
         if (capture) {
             if (probe_offsets) {
@@ -1913,7 +2031,10 @@ private:
     // A target's frames before for FSR 2: its clock, the last one's camera without its jitter, and
     // pairs of the accumulate pass's color, locks and luma history at the frame's size and the
     // dilate pass's motion vectors at the render size that frames take turns to draw into, last
-    // the pair the last frame drew, made for sizes (the render size, then the frame's).
+    // the pair the last frame drew, made for sizes (the render size, then the frame's). With FSR 3
+    // (fsr3) the pairs are the accumulate pass's color and lock at the frame's size and the luma,
+    // the frames each pixel gathered and the last four lumas at the render size, and the frames
+    // keep the last one's jitter.
     struct Fsr2Frames {
         Fsr2Clock clock;
         Mat4 view_projection{};
@@ -1921,8 +2042,13 @@ private:
         std::array<GpuTexture, 2> lock_status{};
         std::array<GpuTexture, 2> luma_history{};
         std::array<GpuTexture, 2> dilated_motion{};
+        std::array<GpuTexture, 2> luma{};
+        std::array<GpuTexture, 2> accumulation{};
+        std::array<GpuTexture, 2> lumas{};
+        std::array<float, 2> jitter{};
         std::size_t last = 0;
         std::array<std::uint32_t, 4> sizes{};
+        bool fsr3 = false;
     };
 
     struct Pipeline {
@@ -2339,6 +2465,24 @@ private:
         const std::array fsr2_compute_entries{
             uniform_entry(0, WGPUShaderStage_Compute, sizeof(Fsr2Uniforms))};
         fsr2_compute_uniforms_layout_ = layout(fsr2_compute_entries);
+        // FSR 3's, likewise, with its own uniforms; its reactivity pass reads the reconstructed
+        // depths.
+        for (std::size_t pass = 0; pass < kFsr3Passes; ++pass) {
+            std::array<WGPUBindGroupLayoutEntry, 8> textures{};
+            const std::uint32_t count = fsr3_pass_code(static_cast<Fsr3Pass>(pass)).textures;
+            for (std::uint32_t slot = 0; slot < count; ++slot) {
+                textures.at(slot) = texture_entry(slot);
+                textures.at(slot).texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
+            }
+            fsr3_textures_layouts_.at(pass) =
+                layout(std::span<const WGPUBindGroupLayoutEntry>(textures.data(), count));
+        }
+        const std::array fsr3_entries{
+            uniform_entry(0, WGPUShaderStage_Fragment, sizeof(Fsr3Uniforms))};
+        fsr3_uniforms_layout_ = layout(fsr3_entries);
+        const std::array fsr3_compute_entries{
+            uniform_entry(0, WGPUShaderStage_Compute, sizeof(Fsr3Uniforms))};
+        fsr3_compute_uniforms_layout_ = layout(fsr3_compute_entries);
         // Volumetric fog's passes: the shadow atlases, which they load, the radiance, the
         // VoxelGIs' atlas and their samplers; the lights, the clusters, the fog's items and the
         // source; the target; the fog's and the shadows' uniforms.
@@ -2419,6 +2563,15 @@ private:
         pipeline_layouts_.at(kFsr2ReconstructLayout) =
             pipeline_layout({fsr2_compute_textures_layout_, fsr2_compute_storage_layout_,
                              fsr2_compute_uniforms_layout_});
+        for (std::size_t pass = 0; pass < kFsr3Passes; ++pass) {
+            pipeline_layouts_.at(kFsr3Layout + pass) = pipeline_layout(
+                {static_cast<Fsr3Pass>(pass) == Fsr3Pass::Reactivity ? fsr2_storage_layout_
+                                                                     : empty_layout_,
+                 empty_layout_, fsr3_textures_layouts_.at(pass), fsr3_uniforms_layout_});
+        }
+        pipeline_layouts_.at(kFsr3ReconstructLayout) =
+            pipeline_layout({fsr2_compute_textures_layout_, fsr2_compute_storage_layout_,
+                             fsr3_compute_uniforms_layout_});
         pipeline_layouts_.at(kFogLayout) =
             pipeline_layout({fog_textures_layout_, fog_output_layout_, fog_uniforms_layout_});
         pipeline_layouts_.at(kFogSkyLayout) = pipeline_layout(
@@ -2651,6 +2804,9 @@ private:
         const std::array fsr2{buffer_entry(0, uniform_buffer_, sizeof(Fsr2Uniforms))};
         fsr2_uniforms_group_ = bind_group(fsr2_uniforms_layout_, fsr2);
         fsr2_compute_uniforms_group_ = bind_group(fsr2_compute_uniforms_layout_, fsr2);
+        const std::array fsr3{buffer_entry(0, uniform_buffer_, sizeof(Fsr3Uniforms))};
+        fsr3_uniforms_group_ = bind_group(fsr3_uniforms_layout_, fsr3);
+        fsr3_compute_uniforms_group_ = bind_group(fsr3_compute_uniforms_layout_, fsr3);
         const std::array fog{buffer_entry(0, uniform_buffer_, sizeof(FogUniforms)),
                              buffer_entry(1, uniform_buffer_, sizeof(MeshShadowUniforms))};
         fog_uniforms_group_ = bind_group(fog_uniforms_layout_, fog);
@@ -2659,13 +2815,16 @@ private:
     }
 
     void release_uniform_groups() {
-        for (WGPUBindGroup* group :
-             {&vertex_uniforms_group_, &fragment_uniforms_group_, &compute_uniforms_group_,
-              &mesh_vertex_group_, &mesh_fragment_group_, &shadow_vertex_group_,
-              &shadow_fragment_group_, &post_uniforms_group_, &forward_uniforms_group_,
-              &sky_uniforms_group_, &filter_uniforms_group_, &ssao_uniforms_group_,
-              &ssr_uniforms_group_, &taa_uniforms_group_, &fsr2_uniforms_group_,
-              &fsr2_compute_uniforms_group_, &fog_uniforms_group_, &fog_sky_uniforms_group_}) {
+        for (WGPUBindGroup* group : {&vertex_uniforms_group_,  &fragment_uniforms_group_,
+                                     &compute_uniforms_group_, &mesh_vertex_group_,
+                                     &mesh_fragment_group_,    &shadow_vertex_group_,
+                                     &shadow_fragment_group_,  &post_uniforms_group_,
+                                     &forward_uniforms_group_, &sky_uniforms_group_,
+                                     &filter_uniforms_group_,  &ssao_uniforms_group_,
+                                     &ssr_uniforms_group_,     &taa_uniforms_group_,
+                                     &fsr2_uniforms_group_,    &fsr2_compute_uniforms_group_,
+                                     &fsr3_uniforms_group_,    &fsr3_compute_uniforms_group_,
+                                     &fog_uniforms_group_,     &fog_sky_uniforms_group_}) {
             if (*group != nullptr) {
                 wgpuBindGroupRelease(*group);
                 *group = nullptr;
@@ -4299,48 +4458,82 @@ private:
         return {width, height};
     }
 
-    // The textures FSR 2's passes draw into at sizes (the render size, then the frame's) and
-    // target's frames before, made empty when it has none or they were drawn at other sizes.
-    void prepare_fsr2(TextureId target, const std::array<std::uint32_t, 4>& sizes) {
+    // The textures FSR 2's passes, or FSR 3's (fsr3), draw into at sizes (the render size, then
+    // the frame's) and target's frames before, made empty when it has none or they were drawn at
+    // other sizes or by the other.
+    void prepare_fsr2(TextureId target, const std::array<std::uint32_t, 4>& sizes, bool fsr3) {
         const std::uint32_t render_width = sizes[0];
         const std::uint32_t render_height = sizes[1];
         const std::uint32_t width = sizes[2];
         const std::uint32_t height = sizes[3];
         Fsr2Textures& t = fsr2_textures_;
-        if (t.color.texture == nullptr || t.sizes != sizes) {
+        if (t.color.texture == nullptr || t.sizes != sizes || t.fsr3 != fsr3) {
             release_fsr2_textures();
-            const auto [mip_width, mip_height] = fsr2_luma_mip_size(render_width, render_height);
             t.color = pass_texture(render_width, render_height, kHdrFormat);
             t.velocity = pass_texture(render_width, render_height, kVelocityFormat);
-            t.luma_mip = pass_texture(mip_width, mip_height, kFsr2LumaTargets[0]);
-            t.dilated_depth = pass_texture(render_width, render_height, kFsr2DilateTargets[0]);
-            t.lock_luma = pass_texture(render_width, render_height, kFsr2DilateTargets[2]);
-            t.prepared = pass_texture(render_width, render_height, kFsr2DepthClipTargets[0]);
-            t.reactive = pass_texture(render_width, render_height, kFsr2DepthClipTargets[1]);
-            t.new_locks = pass_texture(width, height, kFsr2LockTargets[0]);
+            if (fsr3) {
+                const auto [half_width, half_height] = fsr3_half_size(render_width, render_height);
+                t.dilated_depth = pass_texture(render_width, render_height, kFsr3PrepareTargets[0]);
+                t.dilated_motion =
+                    pass_texture(render_width, render_height, kFsr3PrepareTargets[1]);
+                t.farthest_depth =
+                    pass_texture(render_width, render_height, kFsr3PrepareTargets[2]);
+                t.farthest_half = pass_texture(half_width, half_height, kFsr3PyramidTargets[0]);
+                for (std::uint32_t level = 0; level < kFsr3ShadingLevels; ++level) {
+                    const auto [level_width, level_height] =
+                        fsr3_level_size(render_width, render_height, level);
+                    t.levels.at(level) =
+                        pass_texture(level_width, level_height, kFsr3ReduceTargets[0]);
+                }
+                t.shading_change =
+                    pass_texture(half_width, half_height, kFsr3ShadingChangeTargets[0]);
+                t.masks = pass_texture(render_width, render_height, kFsr3ReactivityTargets[0]);
+                t.instability =
+                    pass_texture(render_width, render_height, kFsr3InstabilityTargets[1]);
+                t.new_locks = pass_texture(width, height, kFsr3LockTargets[0]);
+            } else {
+                const auto [mip_width, mip_height] =
+                    fsr2_luma_mip_size(render_width, render_height);
+                t.luma_mip = pass_texture(mip_width, mip_height, kFsr2LumaTargets[0]);
+                t.dilated_depth = pass_texture(render_width, render_height, kFsr2DilateTargets[0]);
+                t.lock_luma = pass_texture(render_width, render_height, kFsr2DilateTargets[2]);
+                t.prepared = pass_texture(render_width, render_height, kFsr2DepthClipTargets[0]);
+                t.reactive = pass_texture(render_width, render_height, kFsr2DepthClipTargets[1]);
+                t.new_locks = pass_texture(width, height, kFsr2LockTargets[0]);
+            }
             // A word a render pixel.
             t.reconstructed_bytes = std::uint64_t{render_width} * render_height * 4;
             t.reconstructed = create_buffer(WGPUBufferUsage_Storage, t.reconstructed_bytes);
             t.sizes = sizes;
+            t.fsr3 = fsr3;
         }
         Fsr2Frames* found = find_fsr2_frames(target);
         if (found == nullptr) {
             found = &fsr2_frames_.emplace_back(target, Fsr2Frames{}).second;
         }
         Fsr2Frames& frames = *found;
-        if (frames.color[0].texture != nullptr && frames.sizes == sizes) {
+        if (frames.color[0].texture != nullptr && frames.sizes == sizes && frames.fsr3 == fsr3) {
             return;
         }
         release_fsr2_frames(frames);
         frames = Fsr2Frames{};
-        for (std::size_t i = 0; i < 2; ++i) {
+        frames.sizes = sizes;
+        frames.fsr3 = fsr3;
+        for (std::size_t i = 0; fsr3 && i < 2; ++i) {
+            frames.color.at(i) = pass_texture(width, height, kFsr3AccumulateTargets[0]);
+            frames.luma.at(i) = pass_texture(render_width, render_height, kFsr3PrepareTargets[3]);
+            frames.accumulation.at(i) =
+                pass_texture(render_width, render_height, kFsr3ReactivityTargets[1]);
+            frames.lumas.at(i) =
+                pass_texture(render_width, render_height, kFsr3InstabilityTargets[0]);
+        }
+        for (std::size_t i = 0; !fsr3 && i < 2; ++i) {
             frames.color.at(i) = pass_texture(width, height, kFsr2AccumulateTargets[0]);
             frames.lock_status.at(i) = pass_texture(width, height, kFsr2AccumulateTargets[1]);
             frames.luma_history.at(i) = pass_texture(width, height, kFsr2AccumulateTargets[2]);
             frames.dilated_motion.at(i) =
                 pass_texture(render_width, render_height, kFsr2DilateTargets[1]);
         }
-        frames.sizes = sizes;
     }
 
     // target's froxel buffers for a volume of size, made at the start of a frame with
@@ -4525,7 +4718,8 @@ private:
 
     void release_fsr2_frames(Fsr2Frames& frames) {
         for (std::array<GpuTexture, 2>* pair :
-             {&frames.color, &frames.lock_status, &frames.luma_history, &frames.dilated_motion}) {
+             {&frames.color, &frames.lock_status, &frames.luma_history, &frames.dilated_motion,
+              &frames.luma, &frames.accumulation, &frames.lumas}) {
             for (GpuTexture& texture : *pair) {
                 release_pass_texture(texture);
             }
@@ -4544,8 +4738,11 @@ private:
 
     void release_fsr2_textures() {
         Fsr2Textures& t = fsr2_textures_;
-        for (GpuTexture* texture : {&t.color, &t.velocity, &t.luma_mip, &t.dilated_depth,
-                                    &t.lock_luma, &t.prepared, &t.reactive, &t.new_locks}) {
+        for (GpuTexture* texture :
+             {&t.color, &t.velocity, &t.luma_mip, &t.dilated_depth, &t.lock_luma, &t.prepared,
+              &t.reactive, &t.new_locks, &t.dilated_motion, &t.farthest_depth, &t.farthest_half,
+              &t.levels[0], &t.levels[1], &t.levels[2], &t.shading_change, &t.masks,
+              &t.instability}) {
             release_pass_texture(*texture);
         }
         if (t.reconstructed != nullptr) {
@@ -4621,7 +4818,12 @@ private:
     // before keep the camera the frame was seen from without its jitter, view_projection; a reset
     // frame starts them at 0, as the software device's.
     void encode_fsr2(WGPUCommandEncoder encoder, Fsr2Frames& frames,
-                     const std::array<std::uint32_t, 3>& uniforms, const Mat4& view_projection) {
+                     const std::array<std::uint32_t, 5>& uniforms, const Mat4& view_projection,
+                     const std::array<float, 2>& jitter) {
+        if (frames.fsr3) {
+            encode_fsr3(encoder, frames, uniforms, view_projection, jitter);
+            return;
+        }
         const std::size_t last = frames.last;
         const std::size_t next = 1 - last;
         if (frames.clock.frames == 0) {
@@ -4719,6 +4921,175 @@ private:
         pass(Fsr2Pass::Rcas, {forward_targets_.world.view}, {frames.color.at(next).view});
         frames.last = next;
         frames.view_projection = view_projection;
+    }
+
+    // FSR 3's pipeline for a pass, made the first time a frame needs it.
+    WGPURenderPipeline fsr3_pipeline(Fsr3Pass which) {
+        const auto index = static_cast<std::size_t>(which);
+        WGPURenderPipeline& made = fsr3_pipelines_.at(index);
+        if (made != nullptr) {
+            return made;
+        }
+        const Fsr2PassCode pass = fsr3_pass_code(which);
+        std::array<WGPUColorTargetState, 4> colors{};
+        for (std::size_t target = 0; target < pass.targets.size(); ++target) {
+            colors.at(target) = WGPU_COLOR_TARGET_STATE_INIT;
+            colors.at(target).format = pass.targets[target];
+        }
+        WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
+        fragment.module = module(kFsr3Modules + (2 * index) + 1, pass.fragment);
+        fragment.entryPoint = text_view("fs_main");
+        fragment.targetCount = pass.targets.size();
+        fragment.targets = colors.data();
+        WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
+        info.layout = pipeline_layouts_.at(kFsr3Layout + index);
+        info.vertex.module = module(kFsr3Modules + (2 * index), pass.vertex);
+        info.vertex.entryPoint = text_view("vs_main");
+        info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        info.primitive.cullMode = WGPUCullMode_None;
+        info.fragment = &fragment;
+        made = wgpuDeviceCreateRenderPipeline(device_, &info);
+        return made;
+    }
+
+    // FSR 3's reconstruct pass's pipeline, made the first time a frame needs it.
+    WGPUComputePipeline fsr3_reconstruct_pipeline() {
+        if (fsr3_reconstruct_ == nullptr) {
+            WGPUComputePipelineDescriptor info = WGPU_COMPUTE_PIPELINE_DESCRIPTOR_INIT;
+            info.layout = pipeline_layouts_.at(kFsr3ReconstructLayout);
+            info.compute.module =
+                module(kFsr3ReconstructModule, joined(shaders::kFsr3ReconstructComputeWgsl));
+            info.compute.entryPoint = text_view("cs_main");
+            fsr3_reconstruct_ = wgpuDeviceCreateComputePipeline(device_, &info);
+        }
+        return fsr3_reconstruct_;
+    }
+
+    // FSR 3's passes, in the order run_fsr3 runs them, as encode_fsr2 encodes FSR 2's, their
+    // uniforms at uniforms (the passes', the reconstruct pass's two steps', then the reduce pass's
+    // two levels'). The frames before keep the frame's jitter too, which the next reads.
+    void encode_fsr3(WGPUCommandEncoder encoder, Fsr2Frames& frames,
+                     const std::array<std::uint32_t, 5>& uniforms, const Mat4& view_projection,
+                     const std::array<float, 2>& jitter) {
+        const std::size_t last = frames.last;
+        const std::size_t next = 1 - last;
+        if (frames.clock.frames == 0) {
+            for (const GpuTexture* texture :
+                 {&frames.color.at(last), &frames.luma.at(last), &frames.accumulation.at(last),
+                  &frames.lumas.at(last)}) {
+                clear_texture(encoder, texture->view);
+            }
+        }
+        const Fsr2Textures& t = fsr2_textures_;
+        // The reactivity pass's reconstructed depths.
+        const std::array reconstructed{buffer_entry(0, t.reconstructed, t.reconstructed_bytes)};
+        const auto draw = [&](WGPURenderPipeline pipeline, WGPUBindGroupLayout layout,
+                              WGPUBindGroup uniforms_group, std::uint32_t offset,
+                              std::initializer_list<WGPUTextureView> targets,
+                              std::initializer_list<WGPUTextureView> sources, bool storage) {
+            std::array<WGPUBindGroupEntry, 8> entries{};
+            std::size_t bound = 0;
+            for (WGPUTextureView source : sources) {
+                WGPUBindGroupEntry& entry = entries.at(bound);
+                entry = WGPU_BIND_GROUP_ENTRY_INIT;
+                entry.binding = static_cast<std::uint32_t>(bound++);
+                entry.textureView = source;
+            }
+            WGPUBindGroup textures =
+                bind_group(layout, std::span<const WGPUBindGroupEntry>(entries.data(), bound));
+            std::array<WGPURenderPassColorAttachment, 4> colors{};
+            std::size_t count = 0;
+            for (WGPUTextureView target : targets) {
+                WGPURenderPassColorAttachment& color = colors.at(count++);
+                color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+                color.view = target;
+                color.loadOp = WGPULoadOp_Clear;
+                color.storeOp = WGPUStoreOp_Store;
+            }
+            WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+            descriptor.colorAttachmentCount = count;
+            descriptor.colorAttachments = colors.data();
+            WGPURenderPassEncoder render = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+            wgpuRenderPassEncoderSetPipeline(render, pipeline);
+            WGPUBindGroup storage_group = nullptr;
+            if (storage) {
+                storage_group = bind_group(fsr2_storage_layout_, reconstructed);
+                wgpuRenderPassEncoderSetBindGroup(render, 0, storage_group, 0, nullptr);
+            }
+            wgpuRenderPassEncoderSetBindGroup(render, 2, textures, 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(render, 3, uniforms_group, 1, &offset);
+            wgpuRenderPassEncoderDraw(render, 3, 1, 0, 0);
+            wgpuRenderPassEncoderEnd(render);
+            wgpuRenderPassEncoderRelease(render);
+            wgpuBindGroupRelease(textures);
+            if (storage_group != nullptr) {
+                wgpuBindGroupRelease(storage_group);
+            }
+        };
+        const auto pass = [&](Fsr3Pass which, std::initializer_list<WGPUTextureView> targets,
+                              std::initializer_list<WGPUTextureView> sources,
+                              std::uint32_t offset) {
+            draw(fsr3_pipeline(which), fsr3_textures_layouts_.at(static_cast<std::size_t>(which)),
+                 fsr3_uniforms_group_, offset, targets, sources, which == Fsr3Pass::Reactivity);
+        };
+        pass(Fsr3Pass::Prepare,
+             {t.dilated_depth.view, t.dilated_motion.view, t.farthest_depth.view,
+              frames.luma.at(next).view},
+             {depth_.view, t.velocity.view, t.color.view}, uniforms[0]);
+        // The reconstruct pass clears the depths, then scatters them.
+        std::array<WGPUBindGroupEntry, 2> dilated{};
+        for (std::uint32_t slot = 0; slot < dilated.size(); ++slot) {
+            dilated.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
+            dilated.at(slot).binding = slot;
+        }
+        dilated[0].textureView = t.dilated_depth.view;
+        dilated[1].textureView = t.dilated_motion.view;
+        WGPUBindGroup inputs = bind_group(fsr2_compute_textures_layout_, dilated);
+        WGPUBindGroup outputs = bind_group(fsr2_compute_storage_layout_, reconstructed);
+        for (std::size_t step = 0; step < 2; ++step) {
+            WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+            wgpuComputePassEncoderSetPipeline(compute, fsr3_reconstruct_pipeline());
+            wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
+            wgpuComputePassEncoderSetBindGroup(compute, 1, outputs, 0, nullptr);
+            wgpuComputePassEncoderSetBindGroup(compute, 2, fsr3_compute_uniforms_group_, 1,
+                                               &uniforms.at(1 + step));
+            wgpuComputePassEncoderDispatchWorkgroups(
+                compute, (scene_width_ + kFsr2Threads - 1) / kFsr2Threads,
+                (scene_height_ + kFsr2Threads - 1) / kFsr2Threads, 1);
+            wgpuComputePassEncoderEnd(compute);
+            wgpuComputePassEncoderRelease(compute);
+        }
+        wgpuBindGroupRelease(inputs);
+        wgpuBindGroupRelease(outputs);
+        pass(Fsr3Pass::Pyramid, {t.farthest_half.view, t.levels[0].view},
+             {t.farthest_depth.view, t.dilated_motion.view, frames.luma.at(next).view,
+              frames.luma.at(last).view},
+             uniforms[0]);
+        pass(Fsr3Pass::Reduce, {t.levels[1].view}, {t.levels[0].view}, uniforms[3]);
+        pass(Fsr3Pass::Reduce, {t.levels[2].view}, {t.levels[1].view}, uniforms[4]);
+        pass(Fsr3Pass::ShadingChange, {t.shading_change.view},
+             {t.levels[0].view, t.levels[1].view, t.levels[2].view}, uniforms[0]);
+        pass(Fsr3Pass::Reactivity, {t.masks.view, frames.accumulation.at(next).view},
+             {t.dilated_motion.view, t.dilated_depth.view, t.shading_change.view,
+              frames.accumulation.at(last).view},
+             uniforms[0]);
+        pass(Fsr3Pass::Lock, {t.new_locks.view}, {frames.luma.at(next).view}, uniforms[0]);
+        pass(Fsr3Pass::Instability, {frames.lumas.at(next).view, t.instability.view},
+             {t.dilated_motion.view, t.masks.view, frames.luma.at(next).view,
+              frames.lumas.at(last).view},
+             uniforms[0]);
+        pass(Fsr3Pass::Accumulate, {frames.color.at(next).view},
+             {t.color.view, t.dilated_motion.view, t.instability.view, t.farthest_half.view,
+              t.masks.view, frames.color.at(last).view, t.new_locks.view},
+             uniforms[0]);
+        // FSR 2's sharpening pass reads FSR 2's uniforms, the first of FSR 3's.
+        draw(fsr2_pipeline(Fsr2Pass::Rcas),
+             fsr2_textures_layouts_.at(static_cast<std::size_t>(Fsr2Pass::Rcas)),
+             fsr2_uniforms_group_, uniforms[0], {forward_targets_.world.view},
+             {frames.color.at(next).view}, false);
+        frames.last = next;
+        frames.view_projection = view_projection;
+        frames.jitter = jitter;
     }
 
     // ssr.hlsl's passes, from the prepass's depth and normals and history, to the reflections at
@@ -5454,6 +5825,9 @@ private:
     static constexpr std::size_t kFogModule = kFsr2ReconstructModule + 1;
     static constexpr std::size_t kFogSkyVertexModule = kFogModule + 1;
     static constexpr std::size_t kFogSkyFragmentModule = kFogModule + 2;
+    // FSR 3's passes' vertex and fragment modules in Fsr3Pass's order, then its reconstruct pass's.
+    static constexpr std::size_t kFsr3Modules = kFogSkyFragmentModule + 1;
+    static constexpr std::size_t kFsr3ReconstructModule = kFsr3Modules + (2 * kFsr3Passes);
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
@@ -5473,6 +5847,8 @@ private:
     static constexpr std::size_t kFsr2ReconstructLayout = kFsr2Layout + kFsr2Passes;
     static constexpr std::size_t kFogLayout = kFsr2ReconstructLayout + 1;
     static constexpr std::size_t kFogSkyLayout = kFogLayout + 1;
+    static constexpr std::size_t kFsr3Layout = kFogSkyLayout + 1; // one for each Fsr3Pass
+    static constexpr std::size_t kFsr3ReconstructLayout = kFsr3Layout + kFsr3Passes;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -5485,7 +5861,7 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 4> sampled_{true, false, false, true};
-    std::array<WGPUShaderModule, kFogSkyFragmentModule + 1> modules_{};
+    std::array<WGPUShaderModule, kFsr3ReconstructModule + 1> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -5526,12 +5902,15 @@ private:
     WGPUBindGroupLayout fsr2_compute_textures_layout_ = nullptr;
     WGPUBindGroupLayout fsr2_compute_storage_layout_ = nullptr;
     WGPUBindGroupLayout fsr2_compute_uniforms_layout_ = nullptr;
+    std::array<WGPUBindGroupLayout, kFsr3Passes> fsr3_textures_layouts_{};
+    WGPUBindGroupLayout fsr3_uniforms_layout_ = nullptr;
+    WGPUBindGroupLayout fsr3_compute_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout fog_textures_layout_ = nullptr;
     WGPUBindGroupLayout fog_output_layout_ = nullptr;
     WGPUBindGroupLayout fog_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout fog_sky_storage_layout_ = nullptr;
     WGPUBindGroupLayout fog_sky_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, kFogSkyLayout + 1> pipeline_layouts_{};
+    std::array<WGPUPipelineLayout, kFsr3ReconstructLayout + 1> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -5561,6 +5940,8 @@ private:
     WGPUBindGroup taa_uniforms_group_ = nullptr;
     WGPUBindGroup fsr2_uniforms_group_ = nullptr;
     WGPUBindGroup fsr2_compute_uniforms_group_ = nullptr;
+    WGPUBindGroup fsr3_uniforms_group_ = nullptr;
+    WGPUBindGroup fsr3_compute_uniforms_group_ = nullptr;
     WGPUBindGroup fog_uniforms_group_ = nullptr;
     WGPUBindGroup fog_sky_uniforms_group_ = nullptr;
     std::unordered_map<ParticlesId, ParticleSystem> particle_systems_;
@@ -5657,12 +6038,23 @@ private:
         GpuTexture prepared;
         GpuTexture reactive;
         GpuTexture new_locks;
+        // FSR 3's, whose locks are new_locks.
+        GpuTexture dilated_motion;
+        GpuTexture farthest_depth;
+        GpuTexture farthest_half; // at half the render size, as the next two
+        std::array<GpuTexture, kFsr3ShadingLevels> levels{};
+        GpuTexture shading_change;
+        GpuTexture masks;
+        GpuTexture instability;
         WGPUBuffer reconstructed = nullptr;
         std::uint64_t reconstructed_bytes = 0;
         std::array<std::uint32_t, 4> sizes{};
+        bool fsr3 = false;
     };
     std::array<WGPURenderPipeline, kFsr2Passes> fsr2_pipelines_{};
     WGPUComputePipeline fsr2_reconstruct_ = nullptr;
+    std::array<WGPURenderPipeline, kFsr3Passes> fsr3_pipelines_{};
+    WGPUComputePipeline fsr3_reconstruct_ = nullptr;
     // Volumetric fog: each target's frames, the passes' pipeline, the sky's pipelines and the
     // buffer the meshes bind in its place without it.
     std::vector<std::pair<TextureId, FogFrames>> fog_frames_;
