@@ -514,6 +514,29 @@ struct VolumetricFogSettings {
 // "use_filter"}. What is missing or not valid keeps its default.
 [[nodiscard]] VolumetricFogSettings volumetric_fog_settings_from_json(const json::Value& value);
 
+// The shapes of a FogVolume3D, Godot's RS::FogVolumeShape.
+enum class FogVolumeShape : std::uint8_t { Ellipsoid, Cone, Cylinder, Box, World };
+
+// A place where volumetric fog is thicker, thinner or glows, as Godot's FogVolume with its
+// FogMaterial (material set) or its default fog material (density 1, white albedo, no fade).
+struct FogVolume3D {
+    // Its place, turn and scale in the world (column-major, as Mat4); a World shape's isn't used.
+    std::array<float, 16> transform = {1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F,
+                                       0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
+    std::array<float, 3> size{2.0F, 2.0F, 2.0F};
+    FogVolumeShape shape = FogVolumeShape::Box;
+    bool material = false;
+    float density = 1.0F;
+    std::array<float, 3> albedo{1.0F, 1.0F, 1.0F};   // sRGB
+    std::array<float, 3> emission{0.0F, 0.0F, 0.0F}; // sRGB
+    float height_falloff = 0.0F;
+    float edge_fade = 0.1F;
+
+    bool operator==(const FogVolume3D&) const = default;
+};
+// The most fog volumes a frame fills its fog with; those past it are left out.
+inline constexpr std::size_t kMaxFogVolumes = 32;
+
 // Forward+: volumetric fog, as Godot 4.6's Environment.volumetric_fog_* with its Forward+
 // renderer. The view to length is cut into froxels (cells of the frustum, deeper further away
 // by detail_spread), each lit by the lights (their volumetric_fog_energy, through their shadows,
@@ -537,6 +560,9 @@ struct VolumetricFog3D {
     bool temporal_reprojection = true;
     float temporal_reprojection_amount = 0.9F; // from 0.5 to 0.99
     VolumetricFogSettings settings{};
+    // At most kMaxFogVolumes, filled in this order; initialized so that it may be left out.
+    // NOLINTNEXTLINE(readability-redundant-member-init)
+    std::vector<FogVolume3D> volumes{};
 
     bool operator==(const VolumetricFog3D&) const = default;
 };
