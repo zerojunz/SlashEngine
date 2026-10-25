@@ -7,6 +7,14 @@
 #include "checks.hpp"
 #include "forward_post.hpp"
 #include "forward_post_shaders.hpp"
+#include "fsr2.hpp"
+#include "fsr2_accumulate_shaders.hpp"
+#include "fsr2_depth_clip_shaders.hpp"
+#include "fsr2_dilate_shaders.hpp"
+#include "fsr2_lock_shaders.hpp"
+#include "fsr2_luma_shaders.hpp"
+#include "fsr2_rcas_shaders.hpp"
+#include "fsr2_reconstruct_shaders.hpp"
 #include "material_shaders.hpp"
 #include "mesh_clustered_shaders.hpp"
 #include "mesh_motion_shaders.hpp"
@@ -106,6 +114,66 @@ constexpr WGPUTextureFormat kVelocityFormat = WGPUTextureFormat_RG16Float;
 // The largest shadow atlas: WebGPU's default maxTextureDimension2D.
 constexpr std::uint32_t kMaxShadowAtlas = 8192;
 
+// FSR 2's passes, other than the reconstruct pass, and the formats each draws into, as Godot's FSR
+// 2 effect makes its textures.
+enum class Fsr2Pass : std::uint8_t { Luma, Dilate, DepthClip, Lock, Accumulate, Rcas };
+constexpr std::size_t kFsr2Passes = 6;
+constexpr std::array kFsr2LumaTargets{WGPUTextureFormat_R16Float};
+// The dilated depth, motion vectors and luma the locks are found in.
+constexpr std::array kFsr2DilateTargets{WGPUTextureFormat_R32Float, WGPUTextureFormat_RG16Float,
+                                        WGPUTextureFormat_R16Float};
+// The prepared color and the reactive masks.
+constexpr std::array kFsr2DepthClipTargets{WGPUTextureFormat_RGBA16Float,
+                                           WGPUTextureFormat_RG8Unorm};
+constexpr std::array kFsr2LockTargets{WGPUTextureFormat_R16Float};
+// The color, the locks and the luma history.
+constexpr std::array kFsr2AccumulateTargets{
+    WGPUTextureFormat_RGBA16Float, WGPUTextureFormat_RG16Float, WGPUTextureFormat_RGBA8Unorm};
+constexpr std::array kFsr2RcasTargets{WGPUTextureFormat_RGBA16Float};
+// Threads in a group of the reconstruct pass, each way, as its [numthreads].
+constexpr std::uint32_t kFsr2Threads = 8;
+
+// A pass's WGSL, how many textures it loads and the formats it draws into.
+struct Fsr2PassCode {
+    std::string_view vertex;
+    std::string_view fragment;
+    std::uint32_t textures = 1;
+    std::span<const WGPUTextureFormat> targets;
+};
+
+Fsr2PassCode fsr2_pass_code(Fsr2Pass pass) {
+    switch (pass) {
+    case Fsr2Pass::Luma:
+        return {.vertex = shaders::kFsr2LumaVertexWgsl,
+                .fragment = shaders::kFsr2LumaFragmentWgsl,
+                .targets = kFsr2LumaTargets};
+    case Fsr2Pass::Dilate:
+        return {.vertex = shaders::kFsr2DilateVertexWgsl,
+                .fragment = shaders::kFsr2DilateFragmentWgsl,
+                .textures = 3,
+                .targets = kFsr2DilateTargets};
+    case Fsr2Pass::DepthClip:
+        return {.vertex = shaders::kFsr2DepthClipVertexWgsl,
+                .fragment = shaders::kFsr2DepthClipFragmentWgsl,
+                .textures = 5,
+                .targets = kFsr2DepthClipTargets};
+    case Fsr2Pass::Lock:
+        return {.vertex = shaders::kFsr2LockVertexWgsl,
+                .fragment = shaders::kFsr2LockFragmentWgsl,
+                .targets = kFsr2LockTargets};
+    case Fsr2Pass::Accumulate:
+        return {.vertex = shaders::kFsr2AccumulateVertexWgsl,
+                .fragment = shaders::kFsr2AccumulateFragmentWgsl,
+                .textures = 8,
+                .targets = kFsr2AccumulateTargets};
+    case Fsr2Pass::Rcas:
+        break;
+    }
+    return {.vertex = shaders::kFsr2RcasVertexWgsl,
+            .fragment = shaders::kFsr2RcasFragmentWgsl,
+            .targets = kFsr2RcasTargets};
+}
+
 constexpr WGPUTextureFormat gpu_format(TextureFormat format) {
     switch (format) {
     case TextureFormat::Bc7:
@@ -167,7 +235,7 @@ constexpr std::uint64_t kLargestUniforms = std::max<std::uint64_t>(
      kComputeUniformBytes, sizeof(MeshInstanceUniforms), sizeof(MeshSurfaceUniforms),
      sizeof(MeshSceneUniforms), sizeof(MeshShadowUniforms), sizeof(MeshShadowPassUniforms),
      sizeof(PostUniforms), sizeof(SkyUniforms), sizeof(RadianceUniforms), sizeof(SsaoUniforms),
-     sizeof(SsrUniforms), sizeof(MeshCameraUniforms), sizeof(TaaUniforms)});
+     sizeof(SsrUniforms), sizeof(MeshCameraUniforms), sizeof(TaaUniforms), sizeof(Fsr2Uniforms)});
 // The bind groups are SDL's GPU API's, which the HLSL's registers name and the WGSL keeps
 // (cmake/compile_shaders.cmake): a vertex stage's uniforms in group 1, a fragment stage's
 // textures in group 2 (samplers kSamplerBinding after their textures) and its uniforms in group
@@ -421,6 +489,14 @@ public:
         if (taa_pipeline_ != nullptr) {
             wgpuRenderPipelineRelease(taa_pipeline_);
         }
+        for (WGPURenderPipeline pipeline : fsr2_pipelines_) {
+            if (pipeline != nullptr) {
+                wgpuRenderPipelineRelease(pipeline);
+            }
+        }
+        if (fsr2_reconstruct_ != nullptr) {
+            wgpuComputePipelineRelease(fsr2_reconstruct_);
+        }
         for (const auto& [format, pipeline] : ssao_pipelines_) {
             wgpuRenderPipelineRelease(pipeline);
         }
@@ -441,6 +517,10 @@ public:
         while (!taa_histories_.empty()) {
             forget_taa_history(taa_histories_.back().first);
         }
+        while (!fsr2_frames_.empty()) {
+            forget_fsr2_frames(fsr2_frames_.back().first);
+        }
+        release_fsr2_textures();
         release_pending();
         for (const GpuTexture& atlas :
              {shadow_atlases_[0].gpu, shadow_atlases_[1].gpu, no_shadows_}) {
@@ -509,7 +589,17 @@ public:
                                            ssr_textures_layout_,
                                            ssr_uniforms_layout_,
                                            taa_textures_layout_,
-                                           taa_uniforms_layout_}) {
+                                           taa_uniforms_layout_,
+                                           fsr2_uniforms_layout_,
+                                           fsr2_storage_layout_,
+                                           fsr2_compute_textures_layout_,
+                                           fsr2_compute_storage_layout_,
+                                           fsr2_compute_uniforms_layout_}) {
+            if (layout != nullptr) {
+                wgpuBindGroupLayoutRelease(layout);
+            }
+        }
+        for (WGPUBindGroupLayout layout : fsr2_textures_layouts_) {
             if (layout != nullptr) {
                 wgpuBindGroupLayoutRelease(layout);
             }
@@ -678,6 +768,7 @@ public:
         textures_.erase(it);
         forget_ssr_history(texture);
         forget_taa_history(texture);
+        forget_fsr2_frames(texture);
     }
 
     Result<ShaderId> create_shader(const CompiledShader& shader) override {
@@ -1069,6 +1160,9 @@ public:
         if (!frame.scene || !uses_taa(*frame.scene)) {
             forget_taa_history(frame.target);
         }
+        if (!frame.scene || !uses_fsr2(*frame.scene)) {
+            forget_fsr2_frames(frame.target);
+        }
         if (frame.target == TextureId::None) {
             int pixels_wide = 0;
             int pixels_high = 0;
@@ -1108,22 +1202,26 @@ public:
         frame_texture_ = target;
         frame_format_ = format;
         if (frame.scene && frame.scene->method == RenderMethod::ForwardPlus) {
+            // The sky and meshes draw at FSR 2's render size, and the post passes at the frame's.
             prepare_forward(width, height, frame.scene->post.glow, frame.scene->post.auto_exposure,
                             uses_dof(frame.scene->post));
             if (uses_prepass(*frame.scene)) {
-                prepare_prepass(width, height);
+                prepare_prepass(scene_width_, scene_height_);
             }
             if (uses_ssao(*frame.scene)) {
-                prepare_ssao(width, height, frame.scene->ssao.settings);
+                prepare_ssao(scene_width_, scene_height_, frame.scene->ssao.settings);
             }
             if (uses_ssr(*frame.scene)) {
-                prepare_ssr(frame.target, width, height, frame.scene->ssr.settings);
+                prepare_ssr(frame.target, scene_width_, scene_height_, frame.scene->ssr.settings);
             }
             if (uses_ssao(*frame.scene) || uses_ssr(*frame.scene)) {
-                prepare_screen(width, height);
+                prepare_screen(scene_width_, scene_height_);
             }
             if (uses_taa(*frame.scene)) {
                 prepare_taa(frame.target, width, height);
+            }
+            if (uses_fsr2(*frame.scene)) {
+                prepare_fsr2(frame.target, {scene_width_, scene_height_, width, height});
             }
         } else if (frame.scene && post_processes(frame.scene->post)) {
             prepare_post(width, height);
@@ -1181,7 +1279,7 @@ public:
         if (!frame_drawn_) {
             return {}; // a skipped frame
         }
-        make_depth_target(frame_width_, frame_height_);
+        make_depth_target(scene_width_, scene_height_);
         prepare_shadows(*frame_.scene);
         prepare_radiance(*frame_.scene);
         MeshBatch batch{
@@ -1194,11 +1292,12 @@ public:
             .normal_pipeline = nullptr,
             .bindings = {},
             .previous_vertices = it->second.moved ? it->second.previous : it->second.vertices};
-        // SSAO's, SSR's and TAA's prepass draws the opaque meshes' normals, and with TAA their
-        // motion vectors.
+        // SSAO's, SSR's, TAA's and FSR 2's prepass draws the opaque meshes' normals, and with TAA
+        // or FSR 2 their motion vectors.
         if (uses_prepass(*frame_.scene) && material.transparency != Transparency::Alpha) {
-            batch.normal_pipeline = uses_taa(*frame_.scene) ? motion_pipeline_for(material.cull)
-                                                            : normal_pipeline_for(material.cull);
+            batch.normal_pipeline = uses_motion_vectors(*frame_.scene)
+                                        ? motion_pipeline_for(material.cull)
+                                        : normal_pipeline_for(material.cull);
         }
         const std::array<MaterialTexture, kMeshTextures> slots = mesh_texture_slots(material);
         for (std::size_t slot = 0; slot < kMeshTextures; ++slot) {
@@ -1264,23 +1363,33 @@ public:
             }
             batch_uniforms.push_back(at);
         }
-        const MeshUniforms mesh_uniforms = add_mesh_uniforms();
+        const bool forward = frame_.scene && frame_.scene->method == RenderMethod::ForwardPlus;
+        // FSR 2's frame: its clock's next frame, whose point of the jitter phases moves the camera,
+        // even with no meshes, as the software device's.
+        Fsr2Frames* fsr2 =
+            forward && uses_fsr2(*frame_.scene) ? find_fsr2_frames(frame_.target) : nullptr;
+        std::array<float, 2> jitter{};
+        if (fsr2 != nullptr) {
+            const std::uint32_t phases = fsr2_phase_count(scene_width_, frame_width_);
+            fsr2->clock.advance(phases);
+            jitter = camera_jitter(fsr2->clock.frames, phases, scene_width_, scene_height_);
+        }
+        const MeshUniforms mesh_uniforms = add_mesh_uniforms(fsr2, jitter);
         const std::optional<ProbeCapture> capture =
             frame_.scene ? frame_.scene->capture : std::nullopt;
-        const bool forward = frame_.scene && frame_.scene->method == RenderMethod::ForwardPlus;
         const bool post = !forward && frame_.scene && post_processes(frame_.scene->post);
         const bool sky = frame_.scene && sky_draws(*frame_.scene);
-        // Depth of field needs the depth buffer cleared, even with nothing drawn over it.
+        // Depth of field and FSR 2 need the depth buffer cleared, even with nothing drawn over it.
         const bool dof = forward && uses_dof(frame_.scene->post);
-        if (dof) {
-            make_depth_target(frame_width_, frame_height_);
+        if (dof || fsr2 != nullptr) {
+            make_depth_target(scene_width_, scene_height_);
         }
         std::optional<std::uint32_t> sky_uniforms_at;
         if (sky) {
-            SkyUniforms uniforms = sky_uniforms(*frame_.scene, frame_width_, frame_height_);
+            SkyUniforms uniforms = sky_uniforms(*frame_.scene, scene_width_, scene_height_);
             uniforms.orientation = transposed(uniforms.orientation);
             sky_uniforms_at = uniforms_.add(uniforms);
-            make_depth_target(frame_width_, frame_height_);
+            make_depth_target(scene_width_, scene_height_);
         }
         std::vector<PostDraw> post_draws;
         if (capture) {
@@ -1296,11 +1405,11 @@ public:
         std::optional<SsaoPlan> ssao;
         std::vector<std::uint32_t> ssao_uniforms_at;
         if (forward && !mesh_draws_.empty() && uses_ssao(*frame_.scene)) {
-            ssao = ssao_plan(frame_.scene->ssao.settings, frame_width_, frame_height_);
+            ssao = ssao_plan(frame_.scene->ssao.settings, scene_width_, scene_height_);
             for (const SsaoStep& step : ssao->steps) {
                 ssao_uniforms_at.push_back(
                     uniforms_.add(ssao_uniforms(frame_.scene->ssao, step, frame_.scene->projection,
-                                                frame_width_, frame_height_)));
+                                                scene_width_, scene_height_)));
             }
         }
         // SSR's passes (none for the copies) and the last frame's, and their uniforms. SSR
@@ -1315,16 +1424,16 @@ public:
             history = &ssr_history(frame_.target);
             seen = ssr_camera(scene);
             const SsrCamera last = history->primed ? history->camera : seen;
-            ssr = ssr_plan(scene.ssr.settings, frame_width_, frame_height_);
+            ssr = ssr_plan(scene.ssr.settings, scene_width_, scene_height_);
             for (const SsrStep& step : ssr->steps) {
                 ssr_uniforms_at.push_back(
                     step.pass == SsrPass::CopyLevels
                         ? 0
                         : uniforms_.add(gpu_ssr_uniforms(ssr_uniforms(
-                              scene.ssr, step, seen, last, frame_width_, frame_height_))));
+                              scene.ssr, step, seen, last, scene_width_, scene_height_))));
             }
             last_frame_at = uniforms_.add(gpu_ssr_uniforms(ssr_uniforms(
-                scene.ssr, ssr_last_frame_step(), seen, seen, frame_width_, frame_height_)));
+                scene.ssr, ssr_last_frame_step(), seen, seen, scene_width_, scene_height_)));
         }
         // TAA's pass, in a frame with meshes to blend with the target's frames before.
         TaaHistory* taa = forward && !mesh_draws_.empty() && uses_taa(*frame_.scene)
@@ -1336,6 +1445,25 @@ public:
         if (mesh_draws_.empty() && frame_.scene && uses_taa(*frame_.scene)) {
             if (TaaHistory* frames = find_taa_history(frame_.target); frames != nullptr) {
                 frames->primed = false;
+            }
+        }
+        // FSR 2's passes' uniforms, then the reconstruct pass's: it clears the depths, then
+        // scatters them.
+        std::array<std::uint32_t, 3> fsr2_uniforms_at{};
+        if (fsr2 != nullptr) {
+            Fsr2Uniforms uniforms = fsr2_uniforms({.render_width = scene_width_,
+                                                   .render_height = scene_height_,
+                                                   .display_width = frame_width_,
+                                                   .display_height = frame_height_,
+                                                   .jitter = jitter,
+                                                   .projection = frame_.scene->projection,
+                                                   .sharpness = frame_.scene->fsr2->sharpness,
+                                                   .frame_index = fsr2->clock.frames,
+                                                   .phases = fsr2->clock.phases});
+            fsr2_uniforms_at[0] = uniforms_.add(uniforms);
+            for (const std::int32_t step : {0, 1}) {
+                uniforms.options[2] = step;
+                fsr2_uniforms_at.at(static_cast<std::size_t>(1 + step)) = uniforms_.add(uniforms);
             }
         }
         std::optional<ProbeOffsets> probe_offsets;
@@ -1354,8 +1482,18 @@ public:
         if (radiance_draws_) {
             encode_radiance(encoder, *frame_.scene, radiance_offsets);
         }
-        if (ssao || ssr || taa != nullptr) {
-            encode_prepass(encoder, mesh_uniforms, taa);
+        // The prepass draws the motion vectors into TAA's history's next texture, or FSR 2's own.
+        WGPUTextureView velocity = nullptr;
+        if (taa != nullptr) {
+            velocity = taa->velocity.at(1 - taa->last).view;
+        } else if (fsr2 != nullptr && !mesh_draws_.empty()) {
+            velocity = fsr2_textures_.velocity.view;
+        }
+        if (ssao || ssr || velocity != nullptr) {
+            encode_prepass(encoder, mesh_uniforms, velocity);
+        } else if (fsr2 != nullptr) {
+            // Nothing moved in a frame with no meshes.
+            clear_texture(encoder, fsr2_textures_.velocity.view);
         }
         if (ssao) {
             encode_ssao(encoder, *ssao, ssao_uniforms_at);
@@ -1367,13 +1505,17 @@ public:
         if (ssr) {
             encode_ssr(encoder, *ssr, ssr_uniforms_at, *history);
         }
-        if (!mesh_draws_.empty() || sky || dof || capture) {
+        if (!mesh_draws_.empty() || sky || dof || capture || fsr2 != nullptr) {
             encode_meshes(encoder, mesh_uniforms, sky_uniforms_at, ssao.has_value(),
                           ssr.has_value());
         }
         if (taa != nullptr) {
             encode_taa(encoder, *taa, taa_uniforms_at,
                        multiply(frame_.scene->projection, frame_.scene->camera));
+        }
+        if (fsr2 != nullptr) {
+            encode_fsr2(encoder, *fsr2, fsr2_uniforms_at,
+                        multiply(frame_.scene->projection, frame_.scene->camera));
         }
         if (capture) {
             if (probe_offsets) {
@@ -1704,6 +1846,21 @@ private:
         std::uint32_t width = 0;
         std::uint32_t height = 0;
         bool primed = false;
+    };
+
+    // A target's frames before for FSR 2: its clock, the last one's camera without its jitter, and
+    // pairs of the accumulate pass's color, locks and luma history at the frame's size and the
+    // dilate pass's motion vectors at the render size that frames take turns to draw into, last
+    // the pair the last frame drew, made for sizes (the render size, then the frame's).
+    struct Fsr2Frames {
+        Fsr2Clock clock;
+        Mat4 view_projection{};
+        std::array<GpuTexture, 2> color{};
+        std::array<GpuTexture, 2> lock_status{};
+        std::array<GpuTexture, 2> luma_history{};
+        std::array<GpuTexture, 2> dilated_motion{};
+        std::size_t last = 0;
+        std::array<std::uint32_t, 4> sizes{};
     };
 
     struct Pipeline {
@@ -2086,6 +2243,36 @@ private:
         const std::array filter{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(RadianceUniforms))};
         filter_uniforms_layout_ = layout(filter);
+        // FSR 2's passes load their textures too; the depth clip pass reads the reconstructed
+        // depths, which the reconstruct pass writes from the dilated depths and motion vectors.
+        for (std::size_t pass = 0; pass < kFsr2Passes; ++pass) {
+            std::array<WGPUBindGroupLayoutEntry, 8> textures{};
+            const std::uint32_t count = fsr2_pass_code(static_cast<Fsr2Pass>(pass)).textures;
+            for (std::uint32_t slot = 0; slot < count; ++slot) {
+                textures.at(slot) = texture_entry(slot);
+                textures.at(slot).texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
+            }
+            fsr2_textures_layouts_.at(pass) =
+                layout(std::span<const WGPUBindGroupLayoutEntry>(textures.data(), count));
+        }
+        const std::array fsr2_entries{
+            uniform_entry(0, WGPUShaderStage_Fragment, sizeof(Fsr2Uniforms))};
+        fsr2_uniforms_layout_ = layout(fsr2_entries);
+        const std::array fsr2_storage{storage_entry(0, true, WGPUShaderStage_Fragment)};
+        fsr2_storage_layout_ = layout(fsr2_storage);
+        std::array<WGPUBindGroupLayoutEntry, 2> fsr2_compute_textures{};
+        for (std::uint32_t slot = 0; slot < fsr2_compute_textures.size(); ++slot) {
+            fsr2_compute_textures.at(slot) = texture_entry(slot);
+            fsr2_compute_textures.at(slot).visibility = WGPUShaderStage_Compute;
+            fsr2_compute_textures.at(slot).texture.sampleType =
+                WGPUTextureSampleType_UnfilterableFloat;
+        }
+        fsr2_compute_textures_layout_ = layout(fsr2_compute_textures);
+        const std::array fsr2_compute_storage{storage_entry(0, false)};
+        fsr2_compute_storage_layout_ = layout(fsr2_compute_storage);
+        const std::array fsr2_compute_entries{
+            uniform_entry(0, WGPUShaderStage_Compute, sizeof(Fsr2Uniforms))};
+        fsr2_compute_uniforms_layout_ = layout(fsr2_compute_entries);
 
         const auto pipeline_layout = [&](std::initializer_list<WGPUBindGroupLayout> groups) {
             const std::vector<WGPUBindGroupLayout> list(groups);
@@ -2127,6 +2314,15 @@ private:
             {empty_layout_, empty_layout_, ssr_textures_layout_, ssr_uniforms_layout_});
         pipeline_layouts_.at(kTaaLayout) = pipeline_layout(
             {empty_layout_, empty_layout_, taa_textures_layout_, taa_uniforms_layout_});
+        for (std::size_t pass = 0; pass < kFsr2Passes; ++pass) {
+            pipeline_layouts_.at(kFsr2Layout + pass) = pipeline_layout(
+                {static_cast<Fsr2Pass>(pass) == Fsr2Pass::DepthClip ? fsr2_storage_layout_
+                                                                    : empty_layout_,
+                 empty_layout_, fsr2_textures_layouts_.at(pass), fsr2_uniforms_layout_});
+        }
+        pipeline_layouts_.at(kFsr2ReconstructLayout) =
+            pipeline_layout({fsr2_compute_textures_layout_, fsr2_compute_storage_layout_,
+                             fsr2_compute_uniforms_layout_});
     }
 
     WGPUShaderModule create_module(std::string_view wgsl) {
@@ -2352,6 +2548,9 @@ private:
         ssr_uniforms_group_ = bind_group(ssr_uniforms_layout_, ssr);
         const std::array taa{buffer_entry(0, uniform_buffer_, sizeof(TaaUniforms))};
         taa_uniforms_group_ = bind_group(taa_uniforms_layout_, taa);
+        const std::array fsr2{buffer_entry(0, uniform_buffer_, sizeof(Fsr2Uniforms))};
+        fsr2_uniforms_group_ = bind_group(fsr2_uniforms_layout_, fsr2);
+        fsr2_compute_uniforms_group_ = bind_group(fsr2_compute_uniforms_layout_, fsr2);
     }
 
     void release_uniform_groups() {
@@ -2360,7 +2559,8 @@ private:
               &mesh_vertex_group_, &mesh_fragment_group_, &shadow_vertex_group_,
               &shadow_fragment_group_, &post_uniforms_group_, &forward_uniforms_group_,
               &sky_uniforms_group_, &filter_uniforms_group_, &ssao_uniforms_group_,
-              &ssr_uniforms_group_, &taa_uniforms_group_}) {
+              &ssr_uniforms_group_, &taa_uniforms_group_, &fsr2_uniforms_group_,
+              &fsr2_compute_uniforms_group_}) {
             if (*group != nullptr) {
                 wgpuBindGroupRelease(*group);
                 *group = nullptr;
@@ -3175,22 +3375,27 @@ private:
         return group;
     }
 
-    // Adds the frame's mesh uniforms. The matrices go in turned, as transposed says.
-    MeshUniforms add_mesh_uniforms() {
+    // Adds the frame's mesh uniforms, with FSR 2's frames before and the camera's jitter in a
+    // frame with it. The matrices go in turned, as transposed says.
+    MeshUniforms add_mesh_uniforms(const Fsr2Frames* fsr2, const std::array<float, 2>& jitter) {
         MeshUniforms at;
         if (mesh_draws_.empty()) {
             return at;
         }
         const Scene3D& scene = *frame_.scene;
         // TAA's frame: the next jitter, from the camera the target's frame before was seen from
-        // (this one's, for its first).
+        // (this one's, for its first). FSR 2's jitter is its clock's.
         const TaaHistory* taa = uses_taa(scene) ? find_taa_history(frame_.target) : nullptr;
         const Mat4 view_projection = multiply(scene.projection, scene.camera);
-        MeshCameraUniforms camera =
-            taa == nullptr
-                ? mesh_camera_uniforms(scene)
-                : taa_camera_uniforms(scene, taa_jitter(taa->frames, frame_width_, frame_height_),
-                                      taa->primed ? taa->view_projection : view_projection);
+        MeshCameraUniforms camera = mesh_camera_uniforms(scene);
+        if (taa != nullptr) {
+            camera =
+                taa_camera_uniforms(scene, taa_jitter(taa->frames, scene_width_, scene_height_),
+                                    taa->primed ? taa->view_projection : view_projection);
+        } else if (fsr2 != nullptr) {
+            camera = taa_camera_uniforms(
+                scene, jitter, fsr2->clock.frames == 0 ? view_projection : fsr2->view_projection);
+        }
         camera.view_projection = transposed(camera.view_projection);
         camera.previous_view_projection = transposed(camera.previous_view_projection);
         at.camera = uniforms_.add(camera);
@@ -3240,7 +3445,7 @@ private:
     // Builds the frame's Forward+ clusters and copies them and the frame's reflection probes to
     // the GPU, bound as a group made again when a buffer grows.
     void upload_clusters() {
-        clusters_ = build_clusters(*frame_.scene, frame_width_, frame_height_);
+        clusters_ = build_clusters(*frame_.scene, scene_width_, scene_height_);
         if (clusters_.lights.empty()) {
             clusters_.lights.emplace_back(); // a storage buffer is never empty
         }
@@ -3300,11 +3505,11 @@ private:
         WGPURenderPassDepthStencilAttachment depth = WGPU_RENDER_PASS_DEPTH_STENCIL_ATTACHMENT_INIT;
         depth.view = depth_.view;
         depth.depthLoadOp = WGPULoadOp_Clear;
-        // Kept for depth of field, which reads it after.
-        depth.depthStoreOp =
-            frame_.scene->method == RenderMethod::ForwardPlus && uses_dof(frame_.scene->post)
-                ? WGPUStoreOp_Store
-                : WGPUStoreOp_Discard;
+        // Kept for depth of field and FSR 2, which read it after.
+        depth.depthStoreOp = frame_.scene->method == RenderMethod::ForwardPlus &&
+                                     (uses_dof(frame_.scene->post) || uses_fsr2(*frame_.scene))
+                                 ? WGPUStoreOp_Store
+                                 : WGPUStoreOp_Discard;
         depth.depthClearValue = 0.0F;
         WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
         descriptor.colorAttachmentCount = 1;
@@ -3344,8 +3549,8 @@ private:
                            bool ssao, bool ssr) {
         const std::uint32_t scene =
             !prepass && !ssr && uses_ssr(*frame_.scene) ? at.unreflected : at.scene;
-        // TAA's prepass reads where the vertices were from a second buffer.
-        const bool motion = prepass && uses_taa(*frame_.scene);
+        // The motion vectors' prepass reads where the vertices were from a second buffer.
+        const bool motion = prepass && uses_motion_vectors(*frame_.scene);
         WGPURenderPipeline bound = nullptr;
         for (const std::size_t i :
              mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), *frame_.scene,
@@ -3595,8 +3800,9 @@ private:
     }
 
     // The prepass, which draws the opaque meshes' normals and depth, which SSAO, SSR and TAA
-    // read, and with taa their motion vectors, into its history's next texture.
-    void encode_prepass(WGPUCommandEncoder encoder, const MeshUniforms& at, const TaaHistory* taa) {
+    // read, and their motion vectors into velocity, unless it is null.
+    void encode_prepass(WGPUCommandEncoder encoder, const MeshUniforms& at,
+                        WGPUTextureView velocity) {
         std::array<WGPURenderPassColorAttachment, 2> colors{};
         for (WGPURenderPassColorAttachment& color : colors) {
             color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
@@ -3605,16 +3811,14 @@ private:
             color.clearValue = {.r = 0.0, .g = 0.0, .b = 0.0, .a = 0.0};
         }
         colors[0].view = prepass_.normals.view;
-        if (taa != nullptr) {
-            colors[1].view = taa->velocity.at(1 - taa->last).view;
-        }
+        colors[1].view = velocity;
         WGPURenderPassDepthStencilAttachment depth = WGPU_RENDER_PASS_DEPTH_STENCIL_ATTACHMENT_INIT;
         depth.view = prepass_.depth.view;
         depth.depthLoadOp = WGPULoadOp_Clear;
         depth.depthStoreOp = WGPUStoreOp_Store;
         depth.depthClearValue = 0.0F;
         WGPURenderPassDescriptor prepass = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
-        prepass.colorAttachmentCount = taa != nullptr ? 2 : 1;
+        prepass.colorAttachmentCount = velocity != nullptr ? 2 : 1;
         prepass.colorAttachments = colors.data();
         prepass.depthStencilAttachment = &depth;
         WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &prepass);
@@ -3925,6 +4129,266 @@ private:
         ++history.frames;
     }
 
+    // The size a frame of width x height draws its sky and meshes at: FSR 2's render size, or its
+    // own.
+    static std::array<std::uint32_t, 2> scene_size(const Frame& frame, std::uint32_t width,
+                                                   std::uint32_t height) {
+        if (frame.scene && uses_fsr2(*frame.scene)) {
+            return fsr2_render_size(*frame.scene, width, height);
+        }
+        return {width, height};
+    }
+
+    // The textures FSR 2's passes draw into at sizes (the render size, then the frame's) and
+    // target's frames before, made empty when it has none or they were drawn at other sizes.
+    void prepare_fsr2(TextureId target, const std::array<std::uint32_t, 4>& sizes) {
+        const std::uint32_t render_width = sizes[0];
+        const std::uint32_t render_height = sizes[1];
+        const std::uint32_t width = sizes[2];
+        const std::uint32_t height = sizes[3];
+        Fsr2Textures& t = fsr2_textures_;
+        if (t.color.texture == nullptr || t.sizes != sizes) {
+            release_fsr2_textures();
+            const auto [mip_width, mip_height] = fsr2_luma_mip_size(render_width, render_height);
+            t.color = pass_texture(render_width, render_height, kHdrFormat);
+            t.velocity = pass_texture(render_width, render_height, kVelocityFormat);
+            t.luma_mip = pass_texture(mip_width, mip_height, kFsr2LumaTargets[0]);
+            t.dilated_depth = pass_texture(render_width, render_height, kFsr2DilateTargets[0]);
+            t.lock_luma = pass_texture(render_width, render_height, kFsr2DilateTargets[2]);
+            t.prepared = pass_texture(render_width, render_height, kFsr2DepthClipTargets[0]);
+            t.reactive = pass_texture(render_width, render_height, kFsr2DepthClipTargets[1]);
+            t.new_locks = pass_texture(width, height, kFsr2LockTargets[0]);
+            // A word a render pixel.
+            t.reconstructed_bytes = std::uint64_t{render_width} * render_height * 4;
+            t.reconstructed = create_buffer(WGPUBufferUsage_Storage, t.reconstructed_bytes);
+            t.sizes = sizes;
+        }
+        Fsr2Frames* found = find_fsr2_frames(target);
+        if (found == nullptr) {
+            found = &fsr2_frames_.emplace_back(target, Fsr2Frames{}).second;
+        }
+        Fsr2Frames& frames = *found;
+        if (frames.color[0].texture != nullptr && frames.sizes == sizes) {
+            return;
+        }
+        release_fsr2_frames(frames);
+        frames = Fsr2Frames{};
+        for (std::size_t i = 0; i < 2; ++i) {
+            frames.color.at(i) = pass_texture(width, height, kFsr2AccumulateTargets[0]);
+            frames.lock_status.at(i) = pass_texture(width, height, kFsr2AccumulateTargets[1]);
+            frames.luma_history.at(i) = pass_texture(width, height, kFsr2AccumulateTargets[2]);
+            frames.dilated_motion.at(i) =
+                pass_texture(render_width, render_height, kFsr2DilateTargets[1]);
+        }
+        frames.sizes = sizes;
+    }
+
+    // target's frames before for FSR 2, or null when it has none.
+    Fsr2Frames* find_fsr2_frames(TextureId target) {
+        for (auto& [id, frames] : fsr2_frames_) {
+            if (id == target) {
+                return &frames;
+            }
+        }
+        return nullptr;
+    }
+
+    void release_fsr2_frames(Fsr2Frames& frames) {
+        for (std::array<GpuTexture, 2>* pair :
+             {&frames.color, &frames.lock_status, &frames.luma_history, &frames.dilated_motion}) {
+            for (GpuTexture& texture : *pair) {
+                release_pass_texture(texture);
+            }
+        }
+    }
+
+    void forget_fsr2_frames(TextureId target) {
+        const auto it = std::ranges::find_if(
+            fsr2_frames_, [&](const auto& entry) { return entry.first == target; });
+        if (it == fsr2_frames_.end()) {
+            return;
+        }
+        release_fsr2_frames(it->second);
+        fsr2_frames_.erase(it);
+    }
+
+    void release_fsr2_textures() {
+        Fsr2Textures& t = fsr2_textures_;
+        for (GpuTexture* texture : {&t.color, &t.velocity, &t.luma_mip, &t.dilated_depth,
+                                    &t.lock_luma, &t.prepared, &t.reactive, &t.new_locks}) {
+            release_pass_texture(*texture);
+        }
+        if (t.reconstructed != nullptr) {
+            pending_buffers_.push_back(std::exchange(t.reconstructed, nullptr));
+        }
+        t.reconstructed_bytes = 0;
+        t.sizes = {};
+    }
+
+    // FSR 2's pipeline for a pass, made the first time a frame needs it.
+    WGPURenderPipeline fsr2_pipeline(Fsr2Pass which) {
+        const auto index = static_cast<std::size_t>(which);
+        WGPURenderPipeline& made = fsr2_pipelines_.at(index);
+        if (made != nullptr) {
+            return made;
+        }
+        const Fsr2PassCode pass = fsr2_pass_code(which);
+        std::array<WGPUColorTargetState, 3> colors{};
+        for (std::size_t target = 0; target < pass.targets.size(); ++target) {
+            colors.at(target) = WGPU_COLOR_TARGET_STATE_INIT;
+            colors.at(target).format = pass.targets[target];
+        }
+        WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
+        fragment.module = module(kFsr2Modules + (2 * index) + 1, pass.fragment);
+        fragment.entryPoint = text_view("fs_main");
+        fragment.targetCount = pass.targets.size();
+        fragment.targets = colors.data();
+        WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
+        info.layout = pipeline_layouts_.at(kFsr2Layout + index);
+        info.vertex.module = module(kFsr2Modules + (2 * index), pass.vertex);
+        info.vertex.entryPoint = text_view("vs_main");
+        info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        info.primitive.cullMode = WGPUCullMode_None;
+        info.fragment = &fragment;
+        made = wgpuDeviceCreateRenderPipeline(device_, &info);
+        return made;
+    }
+
+    // The reconstruct pass's pipeline, made the first time a frame needs it.
+    WGPUComputePipeline fsr2_reconstruct_pipeline() {
+        if (fsr2_reconstruct_ == nullptr) {
+            WGPUComputePipelineDescriptor info = WGPU_COMPUTE_PIPELINE_DESCRIPTOR_INIT;
+            info.layout = pipeline_layouts_.at(kFsr2ReconstructLayout);
+            info.compute.module =
+                module(kFsr2ReconstructModule, joined(shaders::kFsr2ReconstructComputeWgsl));
+            info.compute.entryPoint = text_view("cs_main");
+            fsr2_reconstruct_ = wgpuDeviceCreateComputePipeline(device_, &info);
+        }
+        return fsr2_reconstruct_;
+    }
+
+    // Clears a texture the frame draws into to transparent black.
+    static void clear_texture(WGPUCommandEncoder encoder, WGPUTextureView view) {
+        WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+        color.view = view;
+        color.loadOp = WGPULoadOp_Clear;
+        color.storeOp = WGPUStoreOp_Store;
+        color.clearValue = {.r = 0.0, .g = 0.0, .b = 0.0, .a = 0.0};
+        WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+        descriptor.colorAttachmentCount = 1;
+        descriptor.colorAttachments = &color;
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+    }
+
+    // FSR 2's passes, as Godot's FSR 2 effect dispatches them, their uniforms at uniforms (the
+    // passes', then the reconstruct pass's two steps'): the world, drawn at the render size with
+    // jitter, upscaled by the depth buffer, the prepass's motion vectors and the target's frames
+    // before into Forward+'s world at the frame's size, which the post passes read. The frames
+    // before keep the camera the frame was seen from without its jitter, view_projection; a reset
+    // frame starts them at 0, as the software device's.
+    void encode_fsr2(WGPUCommandEncoder encoder, Fsr2Frames& frames,
+                     const std::array<std::uint32_t, 3>& uniforms, const Mat4& view_projection) {
+        const std::size_t last = frames.last;
+        const std::size_t next = 1 - last;
+        if (frames.clock.frames == 0) {
+            for (const GpuTexture* texture :
+                 {&frames.color.at(last), &frames.lock_status.at(last),
+                  &frames.luma_history.at(last), &frames.dilated_motion.at(last)}) {
+                clear_texture(encoder, texture->view);
+            }
+        }
+        const Fsr2Textures& t = fsr2_textures_;
+        // The depth clip pass's reconstructed depths.
+        const std::array reconstructed{buffer_entry(0, t.reconstructed, t.reconstructed_bytes)};
+        const auto pass = [&](Fsr2Pass which, std::initializer_list<WGPUTextureView> targets,
+                              std::initializer_list<WGPUTextureView> sources) {
+            const auto index = static_cast<std::size_t>(which);
+            std::array<WGPUBindGroupEntry, 8> entries{};
+            std::size_t bound = 0;
+            for (WGPUTextureView source : sources) {
+                WGPUBindGroupEntry& entry = entries.at(bound);
+                entry = WGPU_BIND_GROUP_ENTRY_INIT;
+                entry.binding = static_cast<std::uint32_t>(bound++);
+                entry.textureView = source;
+            }
+            WGPUBindGroup textures =
+                bind_group(fsr2_textures_layouts_.at(index),
+                           std::span<const WGPUBindGroupEntry>(entries.data(), bound));
+            std::array<WGPURenderPassColorAttachment, 3> colors{};
+            std::size_t count = 0;
+            for (WGPUTextureView target : targets) {
+                WGPURenderPassColorAttachment& color = colors.at(count++);
+                color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+                color.view = target;
+                color.loadOp = WGPULoadOp_Clear;
+                color.storeOp = WGPUStoreOp_Store;
+            }
+            WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+            descriptor.colorAttachmentCount = count;
+            descriptor.colorAttachments = colors.data();
+            WGPURenderPassEncoder draw = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+            wgpuRenderPassEncoderSetPipeline(draw, fsr2_pipeline(which));
+            WGPUBindGroup storage = nullptr;
+            if (which == Fsr2Pass::DepthClip) {
+                storage = bind_group(fsr2_storage_layout_, reconstructed);
+                wgpuRenderPassEncoderSetBindGroup(draw, 0, storage, 0, nullptr);
+            }
+            wgpuRenderPassEncoderSetBindGroup(draw, 2, textures, 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(draw, 3, fsr2_uniforms_group_, 1, uniforms.data());
+            wgpuRenderPassEncoderDraw(draw, 3, 1, 0, 0);
+            wgpuRenderPassEncoderEnd(draw);
+            wgpuRenderPassEncoderRelease(draw);
+            wgpuBindGroupRelease(textures);
+            if (storage != nullptr) {
+                wgpuBindGroupRelease(storage);
+            }
+        };
+        pass(Fsr2Pass::Luma, {t.luma_mip.view}, {t.color.view});
+        pass(Fsr2Pass::Dilate,
+             {t.dilated_depth.view, frames.dilated_motion.at(next).view, t.lock_luma.view},
+             {depth_.view, t.velocity.view, t.color.view});
+        // The reconstruct pass clears the depths, then scatters them.
+        std::array<WGPUBindGroupEntry, 2> dilated{};
+        for (std::uint32_t slot = 0; slot < dilated.size(); ++slot) {
+            dilated.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
+            dilated.at(slot).binding = slot;
+        }
+        dilated[0].textureView = t.dilated_depth.view;
+        dilated[1].textureView = frames.dilated_motion.at(next).view;
+        WGPUBindGroup inputs = bind_group(fsr2_compute_textures_layout_, dilated);
+        WGPUBindGroup outputs = bind_group(fsr2_compute_storage_layout_, reconstructed);
+        for (std::size_t step = 0; step < 2; ++step) {
+            WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+            wgpuComputePassEncoderSetPipeline(compute, fsr2_reconstruct_pipeline());
+            wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
+            wgpuComputePassEncoderSetBindGroup(compute, 1, outputs, 0, nullptr);
+            wgpuComputePassEncoderSetBindGroup(compute, 2, fsr2_compute_uniforms_group_, 1,
+                                               &uniforms.at(1 + step));
+            wgpuComputePassEncoderDispatchWorkgroups(
+                compute, (scene_width_ + kFsr2Threads - 1) / kFsr2Threads,
+                (scene_height_ + kFsr2Threads - 1) / kFsr2Threads, 1);
+            wgpuComputePassEncoderEnd(compute);
+            wgpuComputePassEncoderRelease(compute);
+        }
+        wgpuBindGroupRelease(inputs);
+        wgpuBindGroupRelease(outputs);
+        pass(Fsr2Pass::DepthClip, {t.prepared.view, t.reactive.view},
+             {frames.dilated_motion.at(next).view, t.dilated_depth.view, t.color.view,
+              frames.dilated_motion.at(last).view, t.velocity.view});
+        pass(Fsr2Pass::Lock, {t.new_locks.view}, {t.lock_luma.view});
+        pass(Fsr2Pass::Accumulate,
+             {frames.color.at(next).view, frames.lock_status.at(next).view,
+              frames.luma_history.at(next).view},
+             {frames.dilated_motion.at(next).view, t.prepared.view, t.reactive.view,
+              frames.color.at(last).view, frames.lock_status.at(last).view, t.new_locks.view,
+              t.luma_mip.view, frames.luma_history.at(last).view});
+        pass(Fsr2Pass::Rcas, {forward_targets_.world.view}, {frames.color.at(next).view});
+        frames.last = next;
+        frames.view_projection = view_projection;
+    }
+
     // ssr.hlsl's passes, from the prepass's depth and normals and history, to the reflections at
     // the frame's size, in the order plan gives, their uniforms at uniforms.
     void encode_ssr(WGPUCommandEncoder encoder, const SsrPlan& plan,
@@ -3974,7 +4438,7 @@ private:
             } else if (index == kSsrLastFrame) {
                 view = history.texture.view;
             } else if (index == kSsrWorld) {
-                view = forward_targets_.world.view;
+                view = world_view(*frame_.scene);
             } else if (index < kSsrTextures && ssr_targets_.textures.at(index).view != nullptr) {
                 view = ssr_targets_.textures.at(index).view;
             }
@@ -4060,7 +4524,7 @@ private:
             return probe_raw_.faces.at(scene.capture->face);
         }
         if (scene.method == RenderMethod::ForwardPlus) {
-            return forward_targets_.world.view;
+            return uses_fsr2(scene) ? fsr2_textures_.color.view : forward_targets_.world.view;
         }
         return post_processes(scene.post) ? post_targets_.world.view : frame_view_;
     }
@@ -4219,10 +4683,14 @@ private:
                            ? forward_targets_.world.view
                            : forward_targets_.dof.at(static_cast<std::size_t>(which) - 1).view;
             };
+            // With FSR 2 the depth buffer is at its render size.
+            const PostSize depth = uses_fsr2(scene)
+                                       ? PostSize{.width = scene_width_, .height = scene_height_}
+                                       : PostSize{};
             for (const DofStep& step : dof_plan(post, frame_width_, frame_height_)) {
-                add(texture(step.target), kHdrFormat, dof_uniforms(post, step, scene.projection),
-                    texture(step.source), false, white_.view, nullptr, depth_.view,
-                    forward_targets_.world.view);
+                add(texture(step.target), kHdrFormat,
+                    dof_uniforms(post, step, scene.projection, depth), texture(step.source), false,
+                    white_.view, nullptr, depth_.view, forward_targets_.world.view);
             }
             scene_world = texture(DofTexture::Out);
         }
@@ -4559,6 +5027,9 @@ private:
         frame_view_ = view;
         frame_width_ = width;
         frame_height_ = height;
+        const auto [scene_width, scene_height] = scene_size(frame, width, height);
+        scene_width_ = scene_width;
+        scene_height_ = scene_height;
         frame_drawn_ = drawn;
         vertices_.clear();
         batches_.clear();
@@ -4571,8 +5042,8 @@ private:
     }
 
     void finish_frame() {
-        // A frame with TAA saw its meshes' vertices as they are now.
-        if (frame_.scene && uses_taa(*frame_.scene)) {
+        // A frame with TAA or FSR 2 saw its meshes' vertices as they are now.
+        if (frame_.scene && uses_motion_vectors(*frame_.scene)) {
             for (const MeshDraw& draw : mesh_draws_) {
                 if (const auto found = meshes_.find(draw.mesh); found != meshes_.end()) {
                     found->second.moved = false;
@@ -4645,6 +5116,9 @@ private:
     static constexpr std::size_t kMeshMotionFragmentModule = 27;
     static constexpr std::size_t kTaaVertexModule = 28;
     static constexpr std::size_t kTaaFragmentModule = 29;
+    // FSR 2's passes' vertex and fragment modules in Fsr2Pass's order, then its reconstruct pass's.
+    static constexpr std::size_t kFsr2Modules = 30;
+    static constexpr std::size_t kFsr2ReconstructModule = kFsr2Modules + (2 * kFsr2Passes);
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
@@ -4660,6 +5134,8 @@ private:
     static constexpr std::size_t kSsaoLayout = 12;
     static constexpr std::size_t kSsrLayout = 13;
     static constexpr std::size_t kTaaLayout = 14;
+    static constexpr std::size_t kFsr2Layout = 15; // one for each Fsr2Pass
+    static constexpr std::size_t kFsr2ReconstructLayout = kFsr2Layout + kFsr2Passes;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -4672,7 +5148,7 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 4> sampled_{true, false, false, true};
-    std::array<WGPUShaderModule, 30> modules_{};
+    std::array<WGPUShaderModule, kFsr2ReconstructModule + 1> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -4707,7 +5183,13 @@ private:
     WGPUBindGroupLayout ssr_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout taa_textures_layout_ = nullptr;
     WGPUBindGroupLayout taa_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, 15> pipeline_layouts_{};
+    std::array<WGPUBindGroupLayout, kFsr2Passes> fsr2_textures_layouts_{};
+    WGPUBindGroupLayout fsr2_uniforms_layout_ = nullptr;
+    WGPUBindGroupLayout fsr2_storage_layout_ = nullptr;
+    WGPUBindGroupLayout fsr2_compute_textures_layout_ = nullptr;
+    WGPUBindGroupLayout fsr2_compute_storage_layout_ = nullptr;
+    WGPUBindGroupLayout fsr2_compute_uniforms_layout_ = nullptr;
+    std::array<WGPUPipelineLayout, kFsr2ReconstructLayout + 1> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -4735,6 +5217,8 @@ private:
     WGPUBindGroup ssao_uniforms_group_ = nullptr;
     WGPUBindGroup ssr_uniforms_group_ = nullptr;
     WGPUBindGroup taa_uniforms_group_ = nullptr;
+    WGPUBindGroup fsr2_uniforms_group_ = nullptr;
+    WGPUBindGroup fsr2_compute_uniforms_group_ = nullptr;
     std::unordered_map<ParticlesId, ParticleSystem> particle_systems_;
     std::uint32_t next_particles_ = 1;
     std::vector<WGPUBuffer> pending_buffers_;
@@ -4808,6 +5292,27 @@ private:
     WGPURenderPipeline taa_pipeline_ = nullptr;
     // Each target's frames before for TAA, by the target.
     std::vector<std::pair<TextureId, TaaHistory>> taa_histories_;
+    // FSR 2's pipelines by Fsr2Pass, its reconstruct pass's, the textures a frame's passes draw
+    // into (the world and motion vectors at the render size, which the sky and meshes draw, and
+    // the passes' own), the reconstructed depths, the sizes they were made for (the render size,
+    // then the frame's), and each target's frames before, by the target.
+    struct Fsr2Textures {
+        GpuTexture color;
+        GpuTexture velocity;
+        GpuTexture luma_mip;
+        GpuTexture dilated_depth;
+        GpuTexture lock_luma;
+        GpuTexture prepared;
+        GpuTexture reactive;
+        GpuTexture new_locks;
+        WGPUBuffer reconstructed = nullptr;
+        std::uint64_t reconstructed_bytes = 0;
+        std::array<std::uint32_t, 4> sizes{};
+    };
+    std::array<WGPURenderPipeline, kFsr2Passes> fsr2_pipelines_{};
+    WGPUComputePipeline fsr2_reconstruct_ = nullptr;
+    Fsr2Textures fsr2_textures_;
+    std::vector<std::pair<TextureId, Fsr2Frames>> fsr2_frames_;
     // The radiance meshes are lit by: the raw cube the sky draws into and the one filtered from
     // it, and what they hold (nullopt to draw them again).
     struct RadianceCubes {
@@ -4845,6 +5350,9 @@ private:
     WGPUTextureFormat frame_format_ = kTextureFormat;
     std::uint32_t frame_width_ = 0;
     std::uint32_t frame_height_ = 0;
+    // The size the sky and meshes draw at: FSR 2's render size, or the frame's.
+    std::uint32_t scene_width_ = 0;
+    std::uint32_t scene_height_ = 0;
     std::vector<Vertex2D> vertices_;
     std::vector<Batch> batches_;
     std::uint32_t particle_vertices_ = 0; // the particles' quads, after vertices_

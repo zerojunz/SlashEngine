@@ -227,7 +227,8 @@ public:
     // device, into an atlas as reflection_atlas says; so call it before the frame begins. Its
     // VoxelGIs' cones are traced as Godot's high quality setting traces them where
     // voxel_gi_high_quality is set. With use_taa, the frame is antialiased over time, as Godot's
-    // use_taa, its meshes given the transforms they were drawn at in the last frame.
+    // use_taa, its meshes given the transforms they were drawn at in the last frame; so it is with
+    // fsr2, which draws its 3D smaller and upscales it with FSR 2 (render::uses_fsr2 says when).
     [[nodiscard]] std::optional<Frame3D>
     prepare(const world::World& world, float width, float height, double interpolation,
             render::Color clear, const render::ShadowSettings& shadows = {}, double time = 0.0,
@@ -235,7 +236,8 @@ public:
             const render::SsaoSettings& ssao = {}, const render::SsrSettings& ssr = {},
             const render::ReflectionAtlasSettings& reflection_atlas = {},
             render::RenderMethod method = render::RenderMethod::ForwardPlus,
-            bool voxel_gi_high_quality = false, bool use_taa = false);
+            bool voxel_gi_high_quality = false, bool use_taa = false,
+            std::optional<render::Fsr2Scaling> fsr2 = std::nullopt);
     // Draws the meshes prepare found into the frame begun with its scene.
     [[nodiscard]] Result<void> draw();
 

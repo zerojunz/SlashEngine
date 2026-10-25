@@ -384,11 +384,29 @@ TEST_CASE("upscalers are built in or added by name, and temporal ones are refuse
     CHECK(slash::render::render_size(3, 0.25F) == 1);
     CHECK(slash::render::render_size(10000, 2.0F) == slash::render::kMaxTextureSize);
     CHECK(slash::render::scaling_mode_problem("fsr").empty());
+    CHECK(slash::render::scaling_mode_problem("fsr2").empty());
     CHECK(slash::render::scaling_mode_problem("fsr1") ==
-          "unknown scaling mode fsr1; expected bilinear or fsr (did you mean fsr?)");
-    CHECK(slash::render::scaling_mode_problem("fsr2") ==
-          "fsr2 needs the depth and motion vectors of the 3D renderer, which isn't built yet; use "
-          "bilinear or fsr");
+          "unknown scaling mode fsr1; expected bilinear, fsr or fsr2 (did you mean fsr?)");
+    CHECK(slash::render::scaling_mode_problem("metalfx_temporal") ==
+          "metalfx_temporal needs Apple's MetalFX, which isn't built yet; use bilinear, fsr or "
+          "fsr2");
+
+    // FSR 2 upscales a Forward+ frame's 3D in the device, at a scale under 1; bilinear scaling
+    // stands in for it otherwise, as Godot's.
+    const Scaling fsr2{.mode = "fsr2", .scale = 0.5F, .fsr_sharpness = 0.2F, .upscaler = {}};
+    using slash::render::RenderMethod;
+    CHECK(slash::render::uses_fsr2(fsr2, RenderMethod::ForwardPlus, *software));
+    CHECK(slash::render::uses_fsr2(fsr2, RenderMethod::ForwardPlus, *null));
+    CHECK_FALSE(slash::render::uses_fsr2(fsr2, RenderMethod::Compatibility, *software));
+    CHECK_FALSE(slash::render::uses_fsr2(
+        {.mode = "fsr2", .scale = 1.0F, .fsr_sharpness = 0.2F, .upscaler = {}},
+        RenderMethod::ForwardPlus, *software));
+    CHECK_FALSE(slash::render::uses_fsr2(
+        {.mode = "fsr", .scale = 0.5F, .fsr_sharpness = 0.2F, .upscaler = {}},
+        RenderMethod::ForwardPlus, *software));
+    CHECK(choose(fsr2, *software) == "bilinear");
+    CHECK(choose({.mode = "fsr2", .scale = 1.0F, .fsr_sharpness = 0.2F, .upscaler = {}}, *software)
+              .empty());
 }
 
 // The web build of the tests (tests/web) has no shader tools.
