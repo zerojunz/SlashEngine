@@ -5474,3 +5474,181 @@ TEST_CASE("Unity 3D animation: Animators move Transform3D, and on a model's inst
     CHECK(unsupported(report, "Animator root motion").find("where")->as_string() ==
           "Assets/Scenes/Shed.unity: Arm");
 }
+
+// --- Humanoid animation: "Gym", saved by Unity 2022.3 ---
+
+namespace {
+
+constexpr std::string_view kGymArm = "a8000000000000000000000000000001";
+constexpr std::string_view kGymLeg = "a8000000000000000000000000000002";
+constexpr std::string_view kGymTwin = "a8000000000000000000000000000003";
+constexpr std::string_view kWalkerController = "a8000000000000000000000000000004";
+constexpr std::string_view kTwinController = "a8000000000000000000000000000005";
+constexpr std::int64_t kBendClip = 7400000000000000001;
+constexpr std::int64_t kGymIdleClip = 7400000000000000002;
+
+struct HumanBone {
+    std::string_view node;
+    std::string_view human;
+    std::string_view position;
+    std::string_view rotation;
+};
+
+// A humanoid model's import settings: its Avatar maps each bone's node to a human bone and keeps
+// its T-pose, and its clips are the arm's: Bend, and Idle cut from its Idle-loop take.
+std::string humanoid_meta(std::string_view guid, const std::vector<HumanBone>& bones) {
+    std::string human;
+    std::string skeleton;
+    for (const HumanBone& bone : bones) {
+        human += "    - boneName: " + std::string(bone.node) +
+                 "\n      humanName: " + std::string(bone.human) +
+                 "\n      limit:\n        min: {x: 0, y: 0, z: 0}\n"
+                 "        max: {x: 0, y: 0, z: 0}\n        value: {x: 0, y: 0, z: 0}\n"
+                 "        length: 0\n        modified: 0\n";
+        skeleton += "    - name: " + std::string(bone.node) +
+                    "\n      parentName: \n      position: " + std::string(bone.position) +
+                    "\n      rotation: " + std::string(bone.rotation) +
+                    "\n      scale: {x: 1, y: 1, z: 1}\n";
+    }
+    return meta(guid, "ModelImporter",
+                "  internalIDToNameTable:\n  - first:\n      74: " + id(kBendClip) +
+                    "\n    second: Bend\n  - first:\n      74: " + id(kGymIdleClip) +
+                    "\n    second: Idle\n  meshes:\n    globalScale: 1\n    useFileScale: 1\n"
+                    "  animations:\n    clipAnimations:\n    - serializedVersion: 16\n"
+                    "      name: Idle\n      takeName: Idle-loop\n      internalID: " +
+                    id(kGymIdleClip) +
+                    "\n      firstFrame: 0\n      lastFrame: 24\n      loopTime: 1\n"
+                    "      events: []\n  humanDescription:\n    serializedVersion: 3\n"
+                    "    human:\n" +
+                    human + "    skeleton:\n" + skeleton +
+                    "    armTwist: 0.5\n  animationType: 3\n  avatarSetup: 1\n");
+}
+
+// A leg whose root stands turned a quarter turn about x, with a knee a meter along it: Unity's
+// humanoid rig maps the root to the hips and the knee to the spine, as the arm's upper and lower
+// bones are mapped.
+std::string fbx_leg() {
+    slash::test::Fbx file;
+    file.geometry(10, "Leg", {-0.5, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 1.0, 0.0}, {0, 1, -3});
+    file.model(20, "Armature").properties[2] = std::string("Null");
+    slash::test::fbx_property(file.bone(21, 31, "Root").children[1], "Lcl Rotation", "Lcl Rotation",
+                              {90.0, 0.0, 0.0});
+    file.bone(22, 32, "Knee", {0.0, 1.0, 0.0});
+    file.model(23, "Leg");
+    file.connect(20, 0);
+    file.connect(21, 20);
+    file.connect(22, 21);
+    file.connect(23, 20);
+    file.connect(10, 23);
+    return file.binary();
+}
+
+// A leg whose Animator plays the arm's humanoid clips with root motion, a twin of the arm, the
+// same rig under another name, playing the arm's Bend, and the arm playing the leg's
+// controller.
+void write_gym(const fs::path& folder) {
+    write(folder / "ProjectSettings/ProjectVersion.txt", "m_EditorVersion: 2022.3.20f1\n");
+    write(folder / "ProjectSettings/ProjectSettings.asset",
+          std::string(kHeader) + "--- !u!129 &1\nPlayerSettings:\n  productName: Gym\n");
+    const std::string_view still = "{x: 0, y: 0, z: 0, w: 1}";
+    const std::vector<HumanBone> arm{{"Upper", "Hips", "{x: 0, y: 0, z: 0}", still},
+                                     {"Lower", "Spine", "{x: 0, y: 1, z: 0}", still}};
+    for (const auto& [name, guid] : {std::pair{"Arm", kGymArm}, std::pair{"Twin", kGymTwin}}) {
+        const std::string path = std::string("Assets/Models/") + name + ".fbx";
+        write(folder / path, slash::test::fbx_arm().binary());
+        write(folder / (path + ".meta"), humanoid_meta(guid, arm));
+    }
+    write(folder / "Assets/Models/Leg.fbx", fbx_leg());
+    write(folder / "Assets/Models/Leg.fbx.meta",
+          humanoid_meta(kGymLeg, {{"Root", "Hips", "{x: 0, y: 0, z: 0}",
+                                   "{x: 0.7071068, y: 0, z: 0, w: 0.7071068}"},
+                                  {"Knee", "Spine", "{x: 0, y: 1, z: 0}", still}}));
+
+    write(folder / "Assets/Animations/Walker.controller",
+          controller_file(
+              "Walker",
+              animator_state(110200001, "Bend", "1", " []", ref(kBendClip, kGymArm, 3)) +
+                  animator_state(110200002, "Idle", "1", " []", ref(kGymIdleClip, kGymArm, 3)),
+              child_state(110200001) + child_state(110200002), 110200001));
+    write(folder / "Assets/Animations/Walker.controller.meta",
+          meta(kWalkerController, "NativeFormatImporter", "  mainObjectFileID: 9100000\n"));
+    write(folder / "Assets/Animations/Twin.controller",
+          controller_file("Twin",
+                          animator_state(110200001, "Bend", "1", " []", ref(kBendClip, kGymArm, 3)),
+                          child_state(110200001), 110200001));
+    write(folder / "Assets/Animations/Twin.controller.meta",
+          meta(kTwinController, "NativeFormatImporter", "  mainObjectFileID: 9100000\n"));
+
+    std::string scene(kHeader);
+    scene += instance(300, kGymLeg, 0,
+                      modification(919132149155446097, kGymLeg, "m_Name", "Leg") +
+                          modification(5866666021909216657, kGymLeg, "m_Controller", "",
+                                       ref(9100000, kWalkerController, 2)) +
+                          modification(5866666021909216657, kGymLeg, "m_ApplyRootMotion", "1"));
+    scene += instance(400, kGymTwin, 0,
+                      modification(-8679921383154817045, kGymTwin, "m_LocalPosition.x", "3") +
+                          modification(919132149155446097, kGymTwin, "m_Name", "Twin") +
+                          modification(5866666021909216657, kGymTwin, "m_Controller", "",
+                                       ref(9100000, kTwinController, 2)));
+    // The arm itself plays the leg's controller, whose clips are retargeted to the leg.
+    scene += instance(500, kGymArm, 0,
+                      modification(-8679921383154817045, kGymArm, "m_LocalPosition.x", "-3") +
+                          modification(919132149155446097, kGymArm, "m_Name", "Arm") +
+                          modification(5866666021909216657, kGymArm, "m_Controller", "",
+                                       ref(9100000, kWalkerController, 2)));
+    write(folder / "Assets/Scenes/Gym.unity", scene);
+    write(folder / "Assets/Scenes/Gym.unity.meta", meta("a8000000000000000000000000000006"));
+}
+
+} // namespace
+
+TEST_CASE("Unity humanoid clips retarget through the Avatars, and root motion leaves the pose") {
+    const fs::path project = "import_unity_gym";
+    fs::remove_all(project);
+    write_gym(project / "unity");
+    auto imported = importer::import_project(
+        {.source = (project / "unity").string(), .destination = project.string()});
+    REQUIRE_MESSAGE(imported.ok(), (imported.ok() ? std::string() : imported.error().message));
+    const auto files = files_of(imported.value());
+    const std::string scene = "unity/Assets/Scenes/Gym.scene.json";
+    REQUIRE(files.contains(scene));
+    // The arm's clips play on the leg retargeted: each bone turns in the model as the arm's bone
+    // of the same human name turns from its T-pose, so the knee, standing on its root's quarter
+    // turn about x, bends about y; and the hips move as far as the arm's upper bone, scaled by
+    // the legs' heights (both 0 here, so not scaled). Bones that don't move have no track.
+    const json::Value walker = parse(files.at("unity/Assets/Animations/Walker.anim.json"));
+    CHECK(*walker.find("animations") == parse(R"({
+        "Bend": {"length": 1.0, "loop": "none", "tracks": [
+          {"node": "Knee", "property": "rotation",
+           "keys": [{"time": 0.0, "value": [0.0, 0.0, 0.0]},
+                    {"time": 1.0, "value": [0.0, 1.570796, 0.0]}]}]},
+        "Idle": {"length": 1.0, "loop": "linear", "tracks": [
+          {"node": "Root", "property": "position",
+           "keys": [{"time": 0.0, "value": [0.0, 0.0, 0.0]}, {"time": 0.5, "value": [0.0, 0.25, 0.0]},
+                    {"time": 1.0, "value": [0.0, 0.0, 0.0]}]}]}})"));
+    // With root motion, the leg's Animator becomes a tree playing its first state that takes the
+    // hips' motion out of the pose for gameplay code to move the leg by.
+    CHECK(parse(files.at("unity/Assets/Animations/Walker.animtree.json")) ==
+          parse(R"({"format": 1, "root": {"type": "Animation", "animation": "Bend"}})"));
+    const json::Value leg = entity(files, scene, "leg");
+    CHECK(*leg.find("AnimationTree") ==
+          parse(R"({"tree_root": "unity/Assets/Animations/Walker.animtree.json",
+                    "libraries": {"": "unity/Assets/Animations/Walker.anim.json"},
+                    "deterministic": false, "root_motion_track": "Root"})"));
+    CHECK(leg.find("AnimationPlayer") == nullptr);
+    // The twin's rig is the arm's, so its clip plays from the arm's model as it is.
+    CHECK(*parse(files.at("unity/Assets/Animations/Twin.anim.json")).find("animations") ==
+          parse(R"({"Bend": {"from": {"model": "unity/Assets/Models/Arm.fbx", "animation": "Bend"},
+                             "loop": "none", "length": 1.0}})"));
+    CHECK(*entity(files, scene, "twin").find("AnimationPlayer") ==
+          parse(R"({"library": "unity/Assets/Animations/Twin.anim.json", "animation": "Bend"})"));
+
+    const json::Value report = parse(files.at("import/unity.json"));
+    const json::Value root_motion = unsupported(report, "Animator root motion");
+    CHECK(root_motion.find("where")->as_string() == "Assets/Scenes/Gym.unity: Leg");
+    CHECK(root_motion.find("why")->as_string().find("the Root node's motion") != std::string::npos);
+    CHECK(unsupported(report, "Animator controller played by different humanoid models")
+              .find("where")
+              ->as_string() == "Assets/Scenes/Gym.unity: Arm");
+    CHECK(unsupported(report, "animation clip of another model").is_null());
+}
