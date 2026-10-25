@@ -3762,7 +3762,7 @@ Needs: `read`, and `filesystem` with `path`. A HUD with a health bar at 75%:
 zeros. When the
 project's `rendering.scaling` ([project-format.md](project-format.md#render-scale)) draws the
 world at another size, `upscaler` names what scaled it and `render_size` is the world's size in
-pixels, `[width, height]` (with `fsr2` or `fsr3`, the 3D world's). `colors` are
+pixels, `[width, height]` (with `fsr2`, `fsr3` or a game's temporal upscaler, the 3D world's). `colors` are
 `[r, g, b, a]` from 0 to 1, one per point, read from the whole window whatever `region` says.
 Over MCP, `png` is sent as an image content block rather than as text. A point or region outside
 the window is an error at its path, and so is a `path` that doesn't end in `.png`. In a dry-run

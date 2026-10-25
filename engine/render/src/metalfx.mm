@@ -3,20 +3,12 @@
 // Built with ARC.
 #include "metalfx.hpp"
 
+#include "native.hpp"
+
 #import <Metal/Metal.h>
 #import <MetalFX/MetalFX.h>
 #include <algorithm>
 #include <string>
-
-// What cmake/patches/sdl-metal-handles.cmake adds to SDL's Metal device: its MTLDevice, the
-// texture an SDL texture draws into now and an SDL command buffer's MTLCommandBuffer, each
-// unretained; the device's is null where it isn't Metal's, and the others take only a Metal
-// device's objects.
-extern "C" {
-void* SDL_SlashMetalDevice(SDL_GPUDevice* device);
-void* SDL_SlashMetalTexture(SDL_GPUTexture* texture);
-void* SDL_SlashMetalCommandBuffer(SDL_GPUCommandBuffer* commands);
-}
 
 namespace slash::render::detail {
 
@@ -42,15 +34,25 @@ void MetalFxScalerDeleter::operator()(MetalFxScaler* scaler) const {
 namespace {
 
 id<MTLDevice> metal_device(SDL_GPUDevice* device) {
-    return (__bridge id<MTLDevice>)SDL_SlashMetalDevice(device);
+    void* instance = nullptr;
+    void* physical = nullptr;
+    void* logical = nullptr;
+    void* queue = nullptr;
+    Uint32 family = 0;
+    if (!SDL_SlashGPUNativeDevice(device, &instance, &physical, &logical, &queue, &family)) {
+        return nil;
+    }
+    return (__bridge id<MTLDevice>)logical;
 }
 
-id<MTLTexture> metal_texture(SDL_GPUTexture* texture) {
-    return (__bridge id<MTLTexture>)SDL_SlashMetalTexture(texture);
+id<MTLTexture> metal_texture(SDL_GPUDevice* device, SDL_GPUTexture* texture) {
+    void* view = nullptr;
+    Uint32 format = 0;
+    return (__bridge id<MTLTexture>)SDL_SlashGPUNativeTexture(device, texture, &view, &format);
 }
 
 id<MTLCommandBuffer> metal_commands(SDL_GPUCommandBuffer* commands) {
-    return (__bridge id<MTLCommandBuffer>)SDL_SlashMetalCommandBuffer(commands);
+    return (__bridge id<MTLCommandBuffer>)SDL_SlashGPUNativeCommandBuffer(commands);
 }
 
 Result<void> missing(const char* what) {
@@ -103,8 +105,8 @@ Result<void> encode_metalfx_spatial(SDL_GPUDevice* device, SDL_GPUCommandBuffer*
     if (@available(macOS 13.0, iOS 16.0, *)) {
         id<MTLDevice> metal = metal_device(device);
         id<MTLCommandBuffer> buffer = metal_commands(commands);
-        id<MTLTexture> in = metal_texture(color);
-        id<MTLTexture> out = metal_texture(output);
+        id<MTLTexture> in = metal_texture(device, color);
+        id<MTLTexture> out = metal_texture(device, output);
         if (metal == nil || buffer == nil || in == nil || out == nil) {
             return missing("device, command buffer and textures");
         }
@@ -156,10 +158,10 @@ Result<void> encode_metalfx_temporal(SDL_GPUDevice* device, SDL_GPUCommandBuffer
     if (@available(macOS 13.0, iOS 16.0, *)) {
         id<MTLDevice> metal = metal_device(device);
         id<MTLCommandBuffer> buffer = metal_commands(commands);
-        id<MTLTexture> color = metal_texture(frame.color);
-        id<MTLTexture> depth = metal_texture(frame.depth);
-        id<MTLTexture> motion = metal_texture(frame.motion);
-        id<MTLTexture> out = metal_texture(frame.output);
+        id<MTLTexture> color = metal_texture(device, frame.color);
+        id<MTLTexture> depth = metal_texture(device, frame.depth);
+        id<MTLTexture> motion = metal_texture(device, frame.motion);
+        id<MTLTexture> out = metal_texture(device, frame.output);
         if (metal == nil || buffer == nil || color == nil || depth == nil || motion == nil ||
             out == nil) {
             return missing("device, command buffer and textures");

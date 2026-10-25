@@ -118,7 +118,8 @@ int main() {
     write_planet("planet.png");
 
     // A game adds its upscalers before it draws, for project.json and display.set to name.
-    // Temporal ones (FSR 2, DLSS, XeSS) need the 3D renderer's depth and motion vectors.
+    // Temporal ones (DLSS, XeSS) take the 3D renderer's depth and motion vectors instead, as
+    // examples/temporal-upscaler shows.
     if (auto added = render::add_upscaler({.name = "pixel",
                                            .temporal = false,
                                            .supports = {},
@@ -126,16 +127,12 @@ int main() {
                                                [] {
                                                    return std::unique_ptr<render::Upscaler>(
                                                        std::make_unique<PixelUpscaler>());
-                                               }});
+                                               },
+                                           .make_temporal = {}});
         !added) {
         std::fprintf(stderr, "%s\n", added.error().message.c_str());
         return 1;
     }
-    const auto refused =
-        render::add_upscaler({.name = "dlss", .temporal = true, .supports = {}, .make = [] {
-                                  return std::unique_ptr<render::Upscaler>();
-                              }});
-    std::printf("add_upscaler dlss -> %s\n", refused.error().message.c_str());
 
     auto platform = slash::platform::Platform::create({.headless = true});
     auto loop =

@@ -20,11 +20,13 @@
 #include "taa.hpp"
 #include "volumetric_fog.hpp"
 
+#include "slash/core/log.hpp"
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/light.hpp"
 #include "slash/render/material.hpp"
 #include "slash/render/shader.hpp"
+#include "slash/render/upscaler.hpp"
 
 #include <algorithm>
 #include <array>
@@ -202,6 +204,11 @@ struct Fsr2State {
     std::array<float, 2> jitter{};
     std::array<std::uint32_t, 4> sizes{}; // the render size, then the display size
     bool fsr3 = false;
+    // The game's temporal upscaler named added, made as temporal, which runs in place of FSR 2,
+    // and what it wrote last.
+    std::string added;
+    std::unique_ptr<TemporalUpscaler> temporal;
+    std::vector<float> output;
 };
 
 // A target's volumetric fog: its clock and the last frame's density, which the next reprojects.
@@ -676,9 +683,13 @@ public:
             Fsr2State* fsr2_state = nullptr;
             Fsr2Camera fsr2_camera;
             if (fsr2) {
-                fsr2_state = &this->fsr2_state(frame_.target,
-                                               {size[0], size[1], target.width, target.height},
-                                               detail::uses_fsr3(scene));
+                auto state = this->fsr2_state(
+                    frame_.target, {size[0], size[1], target.width, target.height},
+                    detail::uses_fsr3(scene), scene.fsr2 ? scene.fsr2->upscaler : std::string{});
+                if (!state) {
+                    return state.error();
+                }
+                fsr2_state = state.value();
                 const std::uint32_t phases = detail::fsr2_phase_count(size[0], target.width);
                 fsr2_state->clock.advance(phases);
                 fsr2_camera = Fsr2Camera{.jitter = detail::camera_jitter(fsr2_state->clock.frames,
@@ -1836,32 +1847,40 @@ private:
         return depth;
     }
 
-    // target's frames before for FSR 2, or FSR 3 (fsr3), at sizes (the render size, then the
-    // display size), made empty when it has none or they were drawn at other sizes or by the other.
-    Fsr2State& fsr2_state(TextureId target, const std::array<std::uint32_t, 4>& sizes, bool fsr3) {
+    // target's frames before for FSR 2, FSR 3 (fsr3) or the game's temporal upscaler named added,
+    // at sizes (the render size, then the display size), made empty when it has none or they were
+    // drawn at other sizes or by another.
+    Result<Fsr2State*> fsr2_state(TextureId target, const std::array<std::uint32_t, 4>& sizes,
+                                  bool fsr3, const std::string& added) {
+        fsr3 = fsr3 && added.empty();
+        Fsr2State* found = nullptr;
         for (auto& [id, state] : fsr2_states_) {
             if (id == target) {
-                if (state.sizes != sizes || state.fsr3 != fsr3) {
-                    state = Fsr2State{.history = {},
-                                      .history3 = {},
-                                      .clock = {},
-                                      .view_projection = {},
-                                      .jitter = {},
-                                      .sizes = sizes,
-                                      .fsr3 = fsr3};
-                }
-                return state;
+                found = &state;
             }
         }
-        return fsr2_states_
-            .emplace_back(target, Fsr2State{.history = {},
-                                            .history3 = {},
-                                            .clock = {},
-                                            .view_projection = {},
-                                            .jitter = {},
-                                            .sizes = sizes,
-                                            .fsr3 = fsr3})
-            .second;
+        if (found != nullptr && found->sizes == sizes && found->fsr3 == fsr3 &&
+            found->added == added) {
+            return found;
+        }
+        if (found == nullptr) {
+            found = &fsr2_states_.emplace_back(target, Fsr2State{}).second;
+        }
+        *found = Fsr2State{};
+        found->sizes = sizes;
+        found->fsr3 = fsr3;
+        if (!added.empty()) {
+            const std::optional<UpscalerInfo> info = find_upscaler(added);
+            if (info && info->make_temporal) {
+                found->temporal = info->make_temporal();
+            }
+            if (found->temporal == nullptr) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "temporal upscaler " + added + " made nothing");
+            }
+            found->added = added;
+        }
+        return found;
     }
 
     // FSR 2's passes, or FSR 3's: world, drawn at the render size with camera's jitter, upscaled
@@ -1886,7 +1905,9 @@ private:
         detail::HdrImage out{.width = width, .height = height, .pixels = {}};
         out.pixels.resize(std::size_t{width} * height * 4);
         const detail::Fsr2Inputs inputs{.color = world.pixels, .depth = depth, .motion = velocity};
-        if (state.fsr3) {
+        if (state.temporal != nullptr) {
+            upscale_temporal(scene, state, frame, inputs, out);
+        } else if (state.fsr3) {
             detail::run_fsr3(detail::fsr3_uniforms(frame, state.jitter), inputs, state.history3,
                              out.pixels);
         } else {
@@ -1895,6 +1916,47 @@ private:
         state.view_projection = multiply(scene.projection, scene.camera);
         state.jitter = camera.jitter;
         return out;
+    }
+
+    // The game's temporal upscaler in place of FSR 2, as the GPU device runs it: given the dilate
+    // pass's motion vectors and the CPU's copies of the textures, it writes out, which starts as
+    // what it wrote last and is stored as half floats.
+    static void upscale_temporal(const Scene3D& scene, Fsr2State& state,
+                                 const detail::Fsr2Frame& frame, const detail::Fsr2Inputs& inputs,
+                                 detail::HdrImage& out) {
+        const detail::Fsr2Uniforms uniforms = detail::fsr2_uniforms(frame);
+        std::vector<float> color(inputs.color.begin(), inputs.color.end());
+        std::vector<float> depth(inputs.depth.begin(), inputs.depth.end());
+        std::vector<float> motion = detail::run_fsr2_dilate(uniforms, inputs);
+        state.output.resize(out.pixels.size(), 0.0F);
+        const auto texture = [](std::uint32_t width, std::uint32_t height,
+                                std::span<float> pixels) {
+            return NativeTexture{.width = width, .height = height, .pixels = pixels};
+        };
+        const TemporalFrame temporal{
+            .device = {.backend = Backend::Software},
+            .commands = nullptr,
+            .size = {.render_width = frame.render_width,
+                     .render_height = frame.render_height,
+                     .output_width = frame.display_width,
+                     .output_height = frame.display_height},
+            .color = texture(frame.render_width, frame.render_height, color),
+            .depth = texture(frame.render_width, frame.render_height, depth),
+            .motion = texture(frame.render_width, frame.render_height, motion),
+            .output = texture(frame.display_width, frame.display_height, state.output),
+            .jitter = {uniforms.jitter_scale[0], uniforms.jitter_scale[1]},
+            .reset = state.clock.frames == 0,
+            .sharpness = frame.sharpness,
+            .projection = scene.projection,
+            .camera = scene.camera};
+        if (auto done = state.temporal->upscale(temporal); !done) {
+            log::error("the temporal upscaler failed",
+                       {{"upscaler", state.added}, {"error", done.error().message}});
+        }
+        for (float& value : state.output) {
+            value = detail::round_half(value);
+        }
+        out.pixels = state.output;
     }
 
     // target's frames before for TAA at width x height, made empty when it has none or they were

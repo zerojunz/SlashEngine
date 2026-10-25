@@ -1331,22 +1331,13 @@ void Fsr2Clock::advance(std::uint32_t target_phases) {
     }
 }
 
-void run_fsr2(const Fsr2Uniforms& uniforms, const Fsr2Inputs& inputs, Fsr2History& history,
-              std::span<float> out) {
-    const Constants k(uniforms);
-    const std::size_t render_pixels = pixels(k.render);
-    const std::size_t display_pixels = pixels(k.display);
-    if (k.frame_index == 0 || history.color.size() != display_pixels * 4 ||
-        history.dilated_motion.size() != render_pixels * 2) {
-        history.color.assign(display_pixels * 4, 0.0F);
-        history.lock_status.assign(display_pixels * 2, 0.0F);
-        history.luma_history.assign(display_pixels * 4, 0.0F);
-        history.dilated_motion.assign(render_pixels * 2, 0.0F);
-    }
-    const Plane color{.size = k.render, .channels = 4, .data = inputs.color};
+namespace {
+
+// LoadInputMotionVector with Godot's FFX_FSR2_OPTION_GODOT_DERIVE_INVALID_MOTION_VECTORS: a pixel
+// the prepass drew no motion vector for (the sky) gets one from its depth.
+std::vector<float> load_motion(const Fsr2Uniforms& uniforms, const Constants& k,
+                               const Fsr2Inputs& inputs) {
     const Plane depth{.size = k.render, .channels = 1, .data = inputs.depth};
-    // LoadInputMotionVector with Godot's FFX_FSR2_OPTION_GODOT_DERIVE_INVALID_MOTION_VECTORS: a
-    // pixel the prepass drew no motion vector for (the sky) gets one from its depth.
     std::vector<float> loaded(inputs.motion.begin(), inputs.motion.end());
     for (int y = 0; y < k.render[1]; ++y) {
         for (int x = 0; x < k.render[0]; ++x) {
@@ -1364,6 +1355,35 @@ void run_fsr2(const Fsr2Uniforms& uniforms, const Fsr2Inputs& inputs, Fsr2Histor
             }
         }
     }
+    return loaded;
+}
+
+} // namespace
+
+std::vector<float> run_fsr2_dilate(const Fsr2Uniforms& uniforms, const Fsr2Inputs& inputs) {
+    const Constants k(uniforms);
+    const Plane color{.size = k.render, .channels = 4, .data = inputs.color};
+    const Plane depth{.size = k.render, .channels = 1, .data = inputs.depth};
+    const std::vector<float> loaded = load_motion(uniforms, k, inputs);
+    const Plane motion{.size = k.render, .channels = 2, .data = loaded};
+    return dilate_pass(k, depth, motion, color).motion;
+}
+
+void run_fsr2(const Fsr2Uniforms& uniforms, const Fsr2Inputs& inputs, Fsr2History& history,
+              std::span<float> out) {
+    const Constants k(uniforms);
+    const std::size_t render_pixels = pixels(k.render);
+    const std::size_t display_pixels = pixels(k.display);
+    if (k.frame_index == 0 || history.color.size() != display_pixels * 4 ||
+        history.dilated_motion.size() != render_pixels * 2) {
+        history.color.assign(display_pixels * 4, 0.0F);
+        history.lock_status.assign(display_pixels * 2, 0.0F);
+        history.luma_history.assign(display_pixels * 4, 0.0F);
+        history.dilated_motion.assign(render_pixels * 2, 0.0F);
+    }
+    const Plane color{.size = k.render, .channels = 4, .data = inputs.color};
+    const Plane depth{.size = k.render, .channels = 1, .data = inputs.depth};
+    const std::vector<float> loaded = load_motion(uniforms, k, inputs);
     const Plane motion{.size = k.render, .channels = 2, .data = loaded};
 
     const std::vector<float> luma_mip = luma_pass(k, color);

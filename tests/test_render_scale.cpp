@@ -300,8 +300,8 @@ TEST_CASE("an added upscaler is made once, used where it runs and released") {
             {.name = "counting",
              .temporal = false,
              .supports = [](const render::RenderDevice&) { return calls().runs; },
-             .make =
-                 [] { return std::unique_ptr<render::Upscaler>(std::make_unique<Counting>()); }})
+             .make = [] { return std::unique_ptr<render::Upscaler>(std::make_unique<Counting>()); },
+             .make_temporal = {}})
             .ok());
     Scene scene;
     scene.scale({.mode = "bilinear", .scale = 0.5F, .fsr_sharpness = 0.2F, .upscaler = "counting"});

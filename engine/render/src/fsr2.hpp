@@ -129,6 +129,12 @@ struct Fsr2Inputs {
 void run_fsr2_rcas(const Fsr2Uniforms& uniforms, std::span<const float> color,
                    std::span<float> out);
 
+// The dilate pass's motion vectors (shaders/fsr2_dilate.hlsl), which a temporal upscaler takes:
+// each render pixel's taken from the nearest of its neighbors, the sky's worked out from the
+// depth first, two half floats a pixel.
+[[nodiscard]] std::vector<float> run_fsr2_dilate(const Fsr2Uniforms& uniforms,
+                                                 const Fsr2Inputs& inputs);
+
 // The CPU twin of the passes: the frame upscaled into out (RGBA at the display size, each value
 // rounded to a half float, as the GPU stores it), and the history moved on.
 void run_fsr2(const Fsr2Uniforms& uniforms, const Fsr2Inputs& inputs, Fsr2History& history,

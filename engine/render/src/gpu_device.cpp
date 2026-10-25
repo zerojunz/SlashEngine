@@ -30,6 +30,7 @@
 #include "mesh_shaders.hpp"
 #include "mesh_shading.hpp"
 #include "metalfx.hpp"
+#include "native.hpp"
 #include "particle_layout.hpp"
 #include "particles_draw_shaders.hpp"
 #include "particles_emit_shaders.hpp"
@@ -183,10 +184,13 @@ struct Fsr2Frames {
     std::size_t last = 0;
     std::array<std::uint32_t, 4> sizes{};
     bool fsr3 = false;
-    // With MetalFX's temporal scaler (metalfx), which keeps the frames before itself, the frames
-    // keep only the dilate pass's motion vectors, which work the sky's out from the depth.
+    // With MetalFX's temporal scaler (metalfx) or the game's temporal upscaler named added (made
+    // as temporal), which keep the frames before themselves, the frames keep only the dilate
+    // pass's motion vectors, which work the sky's out from the depth.
     bool metalfx = false;
     MetalFxScalerPtr scaler;
+    std::string added;
+    std::unique_ptr<TemporalUpscaler> temporal;
 };
 
 // A target's volumetric fog: its clock and the froxel buffers its frames draw with. Frames take
@@ -1458,7 +1462,9 @@ public:
                         prepare_fsr2(frame.target, {scene_width, scene_height, width, height},
                                      uses_fsr3(*frame.scene),
                                      metalfx_.temporal && frame.scene->fsr2.has_value() &&
-                                         frame.scene->fsr2->metalfx);
+                                         frame.scene->fsr2->metalfx,
+                                     frame.scene->fsr2.has_value() ? frame.scene->fsr2->upscaler
+                                                                   : std::string{});
                     !ready) {
                     SDL_CancelGPUCommandBuffer(commands);
                     return ready.error();
@@ -4286,8 +4292,12 @@ private:
     // it has none or they were drawn at other sizes or by the other. Made at the start of a frame
     // that needs them.
     Result<void> prepare_fsr2(TextureId target, const std::array<std::uint32_t, 4>& sizes,
-                              bool fsr3, bool metalfx) {
-        fsr3 = fsr3 && !metalfx;
+                              bool fsr3, bool metalfx, const std::string& added) {
+        // A temporal upscaler outside the device's passes (MetalFX's or the game's) takes the
+        // dilated motion vectors and writes the world at the display size.
+        metalfx = metalfx && added.empty();
+        const bool external = metalfx || !added.empty();
+        fsr3 = fsr3 && !external;
         if (auto made = fsr3 ? make_fsr3_pipelines() : make_fsr2_pipelines(); !made) {
             return made;
         }
@@ -4309,7 +4319,7 @@ private:
         using Made =
             std::tuple<std::uint32_t, std::uint32_t, SDL_GPUTextureFormat, SDL_GPUTexture**>;
         Fsr2Textures& t = fsr2_textures_;
-        if (t.color == nullptr || t.sizes != sizes || t.fsr3 != fsr3 || t.metalfx != metalfx) {
+        if (t.color == nullptr || t.sizes != sizes || t.fsr3 != fsr3 || t.external != external) {
             release_fsr2_textures();
             std::vector<Made> made{
                 {render_width, render_height, kHdrFormat, &t.color},
@@ -4355,9 +4365,9 @@ private:
                     return created;
                 }
             }
-            // MetalFX writes the world at the display size as a compute shader does, then it is
-            // copied into the world the post passes read.
-            if (metalfx) {
+            // MetalFX or the game's upscaler writes the world at the display size as a compute
+            // shader does, then it is copied into the world the post passes read.
+            if (external) {
                 if (auto created =
                         texture(width, height, kHdrFormat, t.scaled,
                                 SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER |
@@ -4378,7 +4388,7 @@ private:
             }
             t.sizes = sizes;
             t.fsr3 = fsr3;
-            t.metalfx = metalfx;
+            t.external = external;
         }
         Fsr2Frames* found = find_fsr2_frames(target);
         if (found == nullptr) {
@@ -4386,7 +4396,8 @@ private:
         }
         Fsr2Frames& frames = *found;
         if (frames.dilated_motion[0] != nullptr || frames.color[0] != nullptr) {
-            if (frames.sizes == sizes && frames.fsr3 == fsr3 && frames.metalfx == metalfx) {
+            if (frames.sizes == sizes && frames.fsr3 == fsr3 && frames.metalfx == metalfx &&
+                frames.added == added) {
                 return {};
             }
         }
@@ -4394,7 +4405,7 @@ private:
         frames = Fsr2Frames{};
         for (std::size_t i = 0; i < 2; ++i) {
             std::vector<Made> made;
-            if (metalfx) {
+            if (external) {
                 made = {{render_width, render_height, kFsr2DilateTargets[1],
                          &frames.dilated_motion.at(i)}};
             } else if (fsr3) {
@@ -4424,6 +4435,18 @@ private:
         frames.sizes = sizes;
         frames.fsr3 = fsr3;
         frames.metalfx = metalfx;
+        if (!added.empty()) {
+            const std::optional<UpscalerInfo> info = find_upscaler(added);
+            if (info && info->make_temporal) {
+                frames.temporal = info->make_temporal();
+            }
+            if (frames.temporal == nullptr) {
+                release_fsr2_frames(frames);
+                return make_error(ErrorCode::InvalidArgument,
+                                  "temporal upscaler " + added + " made nothing");
+            }
+            frames.added = added;
+        }
         return {};
     }
 
@@ -4765,6 +4788,8 @@ private:
             }
         }
         frames.scaler.reset();
+        frames.temporal.reset();
+        frames.added.clear();
     }
 
     void forget_fsr2_frames(TextureId target) {
@@ -4820,8 +4845,8 @@ private:
             upscale_fsr3(commands, scene, frames, jitter);
             return;
         }
-        if (frames.metalfx) {
-            upscale_metalfx(commands, scene, frames, jitter);
+        if (frames.metalfx || frames.temporal != nullptr) {
+            upscale_external(commands, scene, frames, jitter);
             return;
         }
         const std::size_t last = frames.last;
@@ -4916,12 +4941,14 @@ private:
         frames.view_projection = view_projection;
     }
 
-    // MetalFX's temporal scaler, as Godot runs it: FSR 2's dilate pass first works the sky's
-    // motion vectors out from the depth (where the prepass left kInvalidMotion), then MetalFX
-    // upscales the world with the depth and those motion vectors and its own frames before into
-    // a texture at the frame's size, which is copied into Forward+'s world for the post passes.
-    void upscale_metalfx(SDL_GPUCommandBuffer* commands, const Scene3D& scene, Fsr2Frames& frames,
-                         const std::array<float, 2>& jitter) {
+    // MetalFX's temporal scaler, as Godot runs it, or the game's temporal upscaler: FSR 2's dilate
+    // pass first works the sky's motion vectors out from the depth (where the prepass left
+    // kInvalidMotion), then the upscaler upscales the world with the depth and those motion
+    // vectors and its own frames before into a texture at the frame's size, which is copied into
+    // Forward+'s world for the post passes. A failure is logged, and the copy shows what the
+    // texture held.
+    void upscale_external(SDL_GPUCommandBuffer* commands, const Scene3D& scene, Fsr2Frames& frames,
+                          const std::array<float, 2>& jitter) {
         const std::size_t next = 1 - frames.last;
         const Mat4 view_projection = multiply(scene.projection, scene.camera);
         const Fsr2Uniforms uniforms = fsr2_uniforms(
@@ -4960,17 +4987,42 @@ private:
                                     static_cast<std::uint32_t>(sources.size()));
         SDL_DrawGPUPrimitives(dilate, 3, 1, 0, 0);
         SDL_EndGPURenderPass(dilate);
-        if (auto scaled = encode_metalfx_temporal(
-                device_, commands, frames.scaler,
-                {.color = t.color,
-                 .depth = depth_,
-                 .motion = frames.dilated_motion.at(next),
-                 .output = t.scaled,
-                 .jitter = metalfx_jitter({uniforms.jitter_scale[0], uniforms.jitter_scale[1]}),
-                 .reset = frames.clock.frames == 0});
-            !scaled) {
-            log::error("MetalFX's temporal scaler failed", {{"error", scaled.error().message}});
-            return;
+        const std::array<float, 2> pixels{uniforms.jitter_scale[0], uniforms.jitter_scale[1]};
+        Result<void> scaled;
+        if (frames.temporal != nullptr) {
+            const TemporalFrame frame{
+                .device = native_device(device_, backend_),
+                .commands = SDL_SlashGPUNativeCommandBuffer(commands),
+                .size = {.render_width = scene_width_,
+                         .render_height = scene_height_,
+                         .output_width = frame_width_,
+                         .output_height = frame_height_},
+                .color = native_texture(device_, t.color, scene_width_, scene_height_),
+                .depth = native_texture(device_, depth_, scene_width_, scene_height_),
+                .motion = native_texture(device_, frames.dilated_motion.at(next), scene_width_,
+                                         scene_height_),
+                .output = native_texture(device_, t.scaled, frame_width_, frame_height_),
+                .jitter = pixels,
+                .reset = frames.clock.frames == 0,
+                .sharpness = scene.fsr2.value_or(Fsr2Scaling{}).sharpness,
+                .projection = scene.projection,
+                .camera = scene.camera};
+            scaled = frames.temporal->upscale(frame);
+            SDL_SlashGPURestoreState(commands);
+        } else {
+            scaled = encode_metalfx_temporal(device_, commands, frames.scaler,
+                                             {.color = t.color,
+                                              .depth = depth_,
+                                              .motion = frames.dilated_motion.at(next),
+                                              .output = t.scaled,
+                                              .jitter = metalfx_jitter(pixels),
+                                              .reset = frames.clock.frames == 0});
+        }
+        if (!scaled) {
+            log::error("the temporal upscaler failed",
+                       {{"upscaler",
+                         frames.temporal != nullptr ? frames.added.c_str() : "metalfx_temporal"},
+                        {"error", scaled.error().message}});
         }
         SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
         const SDL_GPUTextureLocation from{
@@ -6148,11 +6200,11 @@ private:
         SDL_GPUTexture* masks = nullptr;
         SDL_GPUTexture* instability = nullptr;
         SDL_GPUBuffer* reconstructed = nullptr;
-        // MetalFX's output, at the display size.
+        // MetalFX's or the game's temporal upscaler's output, at the display size.
         SDL_GPUTexture* scaled = nullptr;
         std::array<std::uint32_t, 4> sizes{};
         bool fsr3 = false;
-        bool metalfx = false;
+        bool external = false;
     };
     std::array<std::array<SDL_GPUShader*, 2>, kFsr2Passes> fsr2_shaders_{};
     std::array<SDL_GPUGraphicsPipeline*, kFsr2Passes> fsr2_pipelines_{};

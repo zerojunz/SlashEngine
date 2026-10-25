@@ -1,4 +1,3 @@
-add_upscaler dlss -> upscaler dlss is temporal: it needs depth, motion vectors and a jittered camera, which only the 3D renderer will make
 scene.open {"path": "main.scene.json"}
   -> {"entities":2,"path":"main.scene.json"}
 display.list {}
