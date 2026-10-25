@@ -162,6 +162,8 @@ struct Light3D {
     // Baked into lightmaps (Godot's BAKE_STATIC): meshes with a lightmap (LightmapShading) leave
     // it out, since theirs holds its light; the rest are lit by it as by any other.
     bool baked = false;
+    // How much it lights volumetric fog, as Godot's light_volumetric_fog_energy.
+    float volumetric_fog_energy = 1.0F;
 
     bool operator==(const Light3D&) const = default;
 };
@@ -498,6 +500,47 @@ struct Fog3D {
     bool operator==(const Fog3D&) const = default;
 };
 
+// Godot's rendering/environment/volumetric_fog settings: the froxels across (times the frame's
+// width over the mean of its width and height; down, over it) and deep, each from 16 to 512, and
+// whether the fog is blurred across and down before it is gathered.
+struct VolumetricFogSettings {
+    std::uint32_t volume_size = 64;
+    std::uint32_t volume_depth = 64;
+    bool use_filter = true;
+
+    bool operator==(const VolumetricFogSettings&) const = default;
+};
+// Reads project.json's rendering.environment.volumetric_fog: {"volume_size", "volume_depth",
+// "use_filter"}. What is missing or not valid keeps its default.
+[[nodiscard]] VolumetricFogSettings volumetric_fog_settings_from_json(const json::Value& value);
+
+// Forward+: volumetric fog, as Godot 4.6's Environment.volumetric_fog_* with its Forward+
+// renderer. The view to length is cut into froxels (cells of the frustum, deeper further away
+// by detail_spread), each lit by the lights (their volumetric_fog_energy, through their shadows,
+// scattered forward or back by anisotropy) and the ambient light and sky (ambient_inject), and
+// glowing with its emission; with temporal reprojection each is blended with where it was the
+// frame before, jittered across the cell, so the fog is smooth over frames. The froxels are then
+// gathered along each column into how much light the fog in front of a depth adds and lets
+// through, which meshes and the sky (by sky_affect) are seen through. A target's first frame
+// isn't blended with anything, and frames without meshes have none. Compatibility has none.
+struct VolumetricFog3D {
+    bool enabled = false;
+    float density = 0.05F;
+    std::array<float, 3> albedo{1.0F, 1.0F, 1.0F};   // sRGB: the color light scatters off it
+    std::array<float, 3> emission{0.0F, 0.0F, 0.0F}; // sRGB
+    float emission_energy = 1.0F;
+    float anisotropy = 0.2F;    // from -0.9 (back toward lights) to 0.9 (on, away from them)
+    float length = 64.0F;       // how far it reaches from the camera
+    float detail_spread = 2.0F; // above 1, more froxels near the camera
+    float ambient_inject = 0.0F;
+    float sky_affect = 1.0F;
+    bool temporal_reprojection = true;
+    float temporal_reprojection_amount = 0.9F; // from 0.5 to 0.99
+    VolumetricFogSettings settings{};
+
+    bool operator==(const VolumetricFog3D&) const = default;
+};
+
 // Light a frame's sky gives its meshes, as Godot's radiance map in its Compatibility renderer: one
 // of the sky's materials drawn into a cube map size texels across, then blurred more for each
 // smaller level, which lit meshes take ambient light from (by their normal, the blurriest level)
@@ -735,6 +778,7 @@ struct Scene3D {
     PostProcess post;
     Sky3D sky; // drawn behind the meshes, over the clear color
     Fog3D fog;
+    VolumetricFog3D volumetric_fog;
     Radiance3D radiance;
     Ssao3D ssao;
     Ssr3D ssr;

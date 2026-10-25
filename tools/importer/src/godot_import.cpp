@@ -1867,6 +1867,21 @@ private:
             project["rendering"]["environment"]["screen_space_reflection"]["half_size"] =
                 half->boolean;
         }
+        // Volumetric fog's froxels; Godot's use_filter is 0 (disabled) or 1 (enabled).
+        json::Value fog;
+        for (const char* key : {"volume_size", "volume_depth"}) {
+            if (const Value* value =
+                    number("rendering", std::string("environment/volumetric_fog/") + key);
+                value != nullptr && value->number() >= 16.0 && value->number() <= 512.0) {
+                fog[key] = static_cast<std::int64_t>(value->number());
+            }
+        }
+        if (const Value* filter = number("rendering", "environment/volumetric_fog/use_filter")) {
+            fog["use_filter"] = filter->number() != 0.0;
+        }
+        if (!fog.is_null()) {
+            project["rendering"]["environment"]["volumetric_fog"] = std::move(fog);
+        }
         // Reflection probes' cubes, which take sizes in powers of two here.
         if (const Value* size =
                 number("rendering", "reflections/reflection_atlas/reflection_size")) {

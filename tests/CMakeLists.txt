@@ -18,7 +18,8 @@ if(EMSCRIPTEN)
         test_ssao.cpp
         test_ssr.cpp
         test_taa.cpp
-        test_upscaler.cpp)
+        test_upscaler.cpp
+        test_volumetric_fog.cpp)
     target_link_libraries(slash_web_tests PRIVATE slash::core slash::platform slash::render
         doctest::doctest SDL3::SDL3-static)
     target_compile_definitions(slash_web_tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS
@@ -149,6 +150,7 @@ add_executable(slash_tests
     test_ui_scroll.cpp
     test_unity_build.cpp
     test_upscaler.cpp
+    test_volumetric_fog.cpp
     test_voxel_gi.cpp
     test_world.cpp)
 target_link_libraries(slash_tests PRIVATE

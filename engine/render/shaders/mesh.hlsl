@@ -202,6 +202,10 @@ cbuffer Scene : register(b1, space3) {
     float4 screen; // the target's width and height in pixels
     // The camera's view-projection without TAA's jitter: its x, y and w rows.
     float4 clip_rows[3];
+    // Forward+'s volumetric fog: 1 when the frame has it, 1 over its length, 1 over its detail
+    // spread, its sky affect; then the froxels across, down and deep in fog_froxels.
+    float4 volumetric_fog;
+    float4 fog_volume;
     // Every light in Compatibility; in Forward+, only the directional ones.
     Light lights[64];
 };
@@ -236,7 +240,8 @@ cbuffer Shadows : register(b2, space3) {
 // Godot's cluster buffer: for each tile of kClusterSize pixels, cluster.y words with a bit for
 // each light that reaches it, then for each of kClusterSlices depth slices the first of those
 // lights in the slice and one past the last, then the same for the decals in cluster.w words when
-// there are some (src/clusters.cpp). The decals' textures are in decal_atlas, a texel a word (RGBA8,
+// there are some (src/clusters.cpp). The volumetric fog's froxels are in fog_froxels, rows across,
+// then down, then slices deeper (src/volumetric_fog.hpp). The decals' textures are in decal_atlas, a texel a word (RGBA8,
 // red lowest), its levels one after another (src/decal.cpp). SDL binds a fragment stage's
 // storage buffers after its textures, and in Metal after its uniforms; WebGPU binds them as a
 // group of their own, the mesh pipeline's otherwise empty group 0. The screen's layers are the
@@ -271,18 +276,21 @@ StructuredBuffer<uint> clusters : register(t4, space2);
 StructuredBuffer<Probe> probes : register(t5, space2);
 StructuredBuffer<Decal> decals : register(t6, space2);
 StructuredBuffer<uint> decal_atlas : register(t7, space2);
+StructuredBuffer<float4> fog_froxels : register(t8, space2);
 #elif defined(SLASH_WGSL)
 StructuredBuffer<Light> clustered_lights : register(t0, space0);
 StructuredBuffer<uint> clusters : register(t1, space0);
 StructuredBuffer<Probe> probes : register(t2, space0);
 StructuredBuffer<Decal> decals : register(t3, space0);
 StructuredBuffer<uint> decal_atlas : register(t4, space0);
+StructuredBuffer<float4> fog_froxels : register(t5, space0);
 #else
 StructuredBuffer<Light> clustered_lights : register(t16, space2);
 StructuredBuffer<uint> clusters : register(t17, space2);
 StructuredBuffer<Probe> probes : register(t18, space2);
 StructuredBuffer<Decal> decals : register(t19, space2);
 StructuredBuffer<uint> decal_atlas : register(t20, space2);
+StructuredBuffer<float4> fog_froxels : register(t21, space2);
 #endif
 static const uint kClusterSize = 32u;
 static const uint kClusterSlices = 32u;
@@ -319,11 +327,63 @@ float4 fog_process(float3 world) {
     return float4(color, amount);
 }
 
+#ifdef CLUSTERED
+// The froxel volume read at a texture coordinate as a 3D texture is read linearly, clamped to its
+// edges: src/volumetric_fog.cpp's sample_volume.
+float4 sample_fog_froxels(float3 uvw) {
+    uint3 size = (uint3)fog_volume.xyz;
+    float3 n = (float3)size;
+    float3 p = clamp(uvw * n - 0.5, 0.0, n - 1.0);
+    float3 base = floor(p);
+    uint3 low = (uint3)base;
+    uint3 high = min(low + 1u, size - 1u);
+    float3 t = p - base;
+    float4 a = lerp(fog_froxels[(low.z * size.y + low.y) * size.x + low.x],
+                    fog_froxels[(low.z * size.y + low.y) * size.x + high.x], t.x);
+    float4 b = lerp(fog_froxels[(low.z * size.y + high.y) * size.x + low.x],
+                    fog_froxels[(low.z * size.y + high.y) * size.x + high.x], t.x);
+    float4 c = lerp(fog_froxels[(high.z * size.y + low.y) * size.x + low.x],
+                    fog_froxels[(high.z * size.y + low.y) * size.x + high.x], t.x);
+    float4 d = lerp(fog_froxels[(high.z * size.y + high.y) * size.x + low.x],
+                    fog_froxels[(high.z * size.y + high.y) * size.x + high.x], t.x);
+    return lerp(lerp(a, b, t.y), lerp(c, d, t.y), t.z);
+}
+
+// Godot's volumetric_fog_process: the fog in front of a point view_depth away at a place on the
+// screen, the light it adds, then how much of the point's it lets through.
+float4 volumetric_fog_process(float2 uv, float view_depth) {
+    float z = view_depth * volumetric_fog.y;
+    if (z < 0.0) {
+        return (float4)0.0;
+    }
+    if (z < 1.0) {
+        z = pow(z, volumetric_fog.z);
+    }
+    return sample_fog_froxels(float3(uv, z));
+}
+#endif
+
 // A lit color at a point in the world, linear, as the frame's target takes it: fogged unless the
 // material disables it, then left linear for Forward+, or times the exposure, tonemapped unless
-// the post pass does it, and as sRGB, as Godot's scene.glsl ends.
-float4 finish(float3 color, float alpha, float3 world) {
-    if (fog_color.w != 0.0 && (options.x & kDisableFog) == 0u) {
+// the post pass does it, and as sRGB, as Godot's scene.glsl ends. In Forward+ with volumetric
+// fog, the plain fog is seen through the volumetric fog in front of it, as Godot's
+// scene_forward_clustered.glsl blends them; pixel is the fragment's place on the target.
+float4 finish(float3 color, float alpha, float3 world, float2 pixel) {
+    bool fog_on = (options.x & kDisableFog) == 0u;
+#ifdef CLUSTERED
+    [branch] if (volumetric_fog.x != 0.0 && fog_on) {
+        float4 fog = float4(0.0, 0.0, 0.0, 1.0);
+        if (fog_color.w != 0.0) {
+            float4 plain = fog_process(world);
+            fog = float4(plain.rgb * plain.a, 1.0 - plain.a);
+        }
+        float depth = -dot(camera_z, float4(world, 1.0));
+        float4 volume = volumetric_fog_process(pixel / screen.xy, depth);
+        fog = float4(fog.rgb * volume.a + volume.rgb, fog.a * volume.a);
+        color = color * fog.a + fog.rgb;
+    } else
+#endif
+    if (fog_color.w != 0.0 && fog_on) {
         float4 fogged = fog_process(world);
         color = lerp(color, fogged.rgb, fogged.a);
     }
@@ -1413,6 +1473,6 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
                         ao_direct, ssr);
     }
     // One call, so the tonemappers are inlined once and the shader stays small.
-    return finish(lit, alpha, input.world);
+    return finish(lit, alpha, input.world, input.position.xy);
 #endif
 }

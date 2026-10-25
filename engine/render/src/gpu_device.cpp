@@ -40,6 +40,9 @@
 #include "taa.hpp"
 #include "taa_shaders.hpp"
 #include "uniforms.hpp"
+#include "volumetric_fog.hpp"
+#include "volumetric_fog_shaders.hpp"
+#include "volumetric_fog_sky_shaders.hpp"
 
 #include "slash/core/log.hpp"
 #include "slash/render/image.hpp"
@@ -162,6 +165,19 @@ struct Fsr2Frames {
     std::array<SDL_GPUTexture*, 2> dilated_motion{};
     std::size_t last = 0;
     std::array<std::uint32_t, 4> sizes{};
+};
+
+// A target's volumetric fog: its clock and the froxel buffers its frames draw with. Frames take
+// turns to write the density into one of two (last the one the last frame wrote, which the next
+// reprojects; the blur writes into the other), then gather it into fog, which the meshes and the
+// sky read. size is the volume's.
+struct FogFrames {
+    FogClock clock;
+    std::array<SDL_GPUBuffer*, 2> density{};
+    SDL_GPUBuffer* scratch = nullptr;
+    SDL_GPUBuffer* fog = nullptr;
+    std::size_t last = 0;
+    std::array<std::uint32_t, 3> size{};
 };
 
 constexpr SDL_GPUTextureFormat gpu_format(TextureFormat format) {
@@ -542,6 +558,23 @@ public:
         while (!fsr2_frames_.empty()) {
             forget_fsr2_frames(fsr2_frames_.back().first);
         }
+        while (!fog_frames_.empty()) {
+            forget_fog_frames(fog_frames_.back().first);
+        }
+        if (fog_pipeline_ != nullptr) {
+            SDL_ReleaseGPUComputePipeline(device_, fog_pipeline_);
+        }
+        for (SDL_GPUShader* shader : fog_sky_shaders_) {
+            if (shader != nullptr) {
+                SDL_ReleaseGPUShader(device_, shader);
+            }
+        }
+        for (const auto& [format, pipeline] : fog_sky_pipelines_) {
+            SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+        }
+        if (no_fog_ != nullptr) {
+            SDL_ReleaseGPUBuffer(device_, no_fog_);
+        }
         release_fsr2_textures();
         for (const std::array<SDL_GPUShader*, 2>& stages : fsr2_shaders_) {
             for (SDL_GPUShader* shader : stages) {
@@ -753,6 +786,7 @@ public:
         forget_ssr_history(texture);
         forget_taa_history(texture);
         forget_fsr2_frames(texture);
+        forget_fog_frames(texture);
     }
 
     Result<ShaderId> create_shader(const CompiledShader& shader) override {
@@ -1291,6 +1325,16 @@ public:
                     return ready.error();
                 }
             }
+            if (uses_volumetric_fog(*frame.scene)) {
+                if (auto ready =
+                        prepare_volumetric_fog(frame.target, world_format(*frame.scene, format),
+                                               fog_volume_size(frame.scene->volumetric_fog.settings,
+                                                               scene_width, scene_height));
+                    !ready) {
+                    SDL_CancelGPUCommandBuffer(commands);
+                    return ready.error();
+                }
+            }
             if (uses_ssao(*frame.scene)) {
                 if (auto ready =
                         prepare_ssao(scene_width, scene_height, frame.scene->ssao.settings);
@@ -1337,6 +1381,9 @@ public:
         }
         if (!frame.scene || !uses_fsr2(*frame.scene)) {
             forget_fsr2_frames(frame.target);
+        }
+        if (!frame.scene || !uses_volumetric_fog(*frame.scene)) {
+            forget_fog_frames(frame.target);
         }
         start_frame(frame, commands, target, width, height);
         frame_format_ = format;
@@ -2345,13 +2392,22 @@ private:
                               .fragment_msl = fragment_msl,
                               .hlsl = hlsl};
         // The material's textures, the shadow atlases, the radiance, the screen's SSAO and SSR,
-        // and the reflection probes' atlas; the lights, clusters, probes, decals and decal atlas.
+        // and the reflection probes' atlas; the lights, clusters, probes, decals, decal atlas and
+        // volumetric fog.
         auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code,
-                                        static_cast<std::uint32_t>(kMeshTextures) + 5, 3, 5);
+                                        static_cast<std::uint32_t>(kMeshTextures) + 5, 3, 6);
         if (!fragment) {
             return fragment.error();
         }
         clustered_shader_ = fragment.value();
+        // What the meshes bind in the volumetric fog's place without it.
+        SDL_GPUBufferCreateInfo info{};
+        info.usage = SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
+        info.size = static_cast<std::uint32_t>(sizeof(Float4));
+        no_fog_ = SDL_CreateGPUBuffer(device_, &info);
+        if (no_fog_ == nullptr) {
+            return sdl_error("creating the volumetric fog's buffers failed");
+        }
         return {};
     }
 
@@ -2873,6 +2929,15 @@ private:
             order = mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), scene,
                                     [&](std::size_t at) { return mesh_batches_[at].bounds; });
         }
+        // Volumetric fog, which frames without meshes go without: its passes, before the meshes
+        // and the sky read it.
+        FogFrames* fog = clustered && plan != nullptr && uses_volumetric_fog(scene)
+                             ? find_fog_frames(frame_.target)
+                             : nullptr;
+        if (fog != nullptr) {
+            set_volumetric_fog(*lights, scene, fog->size);
+            draw_volumetric_fog(commands, scene, *lights, *plan, *fog);
+        }
         // Draws the meshes in pass, with their prepass pipelines (the opaque ones') for the
         // prepass.
         const auto draw_batches = [&](SDL_GPURenderPass* pass, bool prepass) {
@@ -2983,15 +3048,25 @@ private:
                 SDL_BindGPUGraphicsPipeline(pass, sky_pipeline(format));
                 SDL_BindGPUFragmentSamplers(pass, 0, &texture, 1);
                 SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
+                if (fog != nullptr) {
+                    // The sky seen through the fog.
+                    const FogSkyUniforms seen = fog_sky_uniforms(*lights);
+                    SDL_PushGPUFragmentUniformData(commands, 0, &seen,
+                                                   static_cast<std::uint32_t>(sizeof(seen)));
+                    SDL_BindGPUGraphicsPipeline(pass, fog_sky_pipeline(format));
+                    SDL_BindGPUFragmentStorageBuffers(pass, 0, &fog->fog, 1);
+                    SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
+                }
             }
             if (plan == nullptr) {
                 SDL_EndGPURenderPass(pass);
                 return;
             }
             if (clustered) {
-                const std::array storage{cluster_lights_.buffer, cluster_cells_.buffer,
-                                         probe_buffer_.buffer, decal_buffer_.buffer,
-                                         decal_atlas_buffer_.buffer};
+                const std::array storage{
+                    cluster_lights_.buffer,     cluster_cells_.buffer,
+                    probe_buffer_.buffer,       decal_buffer_.buffer,
+                    decal_atlas_buffer_.buffer, fog != nullptr ? fog->fog : no_fog_};
                 SDL_BindGPUFragmentStorageBuffers(pass, 0, storage.data(),
                                                   static_cast<std::uint32_t>(storage.size()));
             }
@@ -4163,6 +4238,199 @@ private:
         return {};
     }
 
+    // Volumetric fog's pipelines and target's froxel buffers for a volume of size, made at the
+    // start of a frame with it.
+    Result<void> prepare_volumetric_fog(TextureId target, SDL_GPUTextureFormat format,
+                                        const std::array<std::uint32_t, 3>& size) {
+        if (fog_pipeline_ == nullptr) {
+            // The shadow atlases and the radiance; the lights, the clusters and the source; the
+            // target; the fog's and the shadows' uniforms.
+            SDL_GPUComputePipelineCreateInfo info{};
+            info.entrypoint = "cs_main";
+            info.num_samplers = 3;
+            info.num_readonly_storage_buffers = 3;
+            info.num_readwrite_storage_buffers = 1;
+            info.num_uniform_buffers = 2;
+            info.threadcount_x = kFogThreads;
+            info.threadcount_y = kFogThreads;
+            info.threadcount_z = 1;
+            auto made = create_compute_pipeline(info, shaders::kVolumetricFogComputeSpirv,
+                                                shaders::kVolumetricFogComputeMsl,
+                                                shaders::kVolumetricFogHlsl, "volumetric fog");
+            if (!made) {
+                return made.error();
+            }
+            fog_pipeline_ = made.value();
+        }
+        if (fog_sky_shaders_[0] == nullptr) {
+            const ShaderCode code{.vertex_spirv = shaders::kVolumetricFogSkyVertexSpirv,
+                                  .fragment_spirv = shaders::kVolumetricFogSkyFragmentSpirv,
+                                  .vertex_msl = shaders::kVolumetricFogSkyVertexMsl,
+                                  .fragment_msl = shaders::kVolumetricFogSkyFragmentMsl,
+                                  .hlsl = shaders::kVolumetricFogSkyHlsl};
+            auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 0);
+            if (!vertex) {
+                return vertex.error();
+            }
+            auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, 0, 1, 1);
+            if (!fragment) {
+                SDL_ReleaseGPUShader(device_, vertex.value());
+                return fragment.error();
+            }
+            fog_sky_shaders_ = {vertex.value(), fragment.value()};
+        }
+        if (fog_sky_pipeline(format) == nullptr) {
+            // Over the sky, in the sky's pass: ONE, SRC_ALPHA, keeping the target's alpha.
+            SDL_GPUColorTargetDescription color{};
+            color.format = format;
+            color.blend_state.enable_blend = true;
+            color.blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+            color.blend_state.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+            color.blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
+            color.blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO;
+            color.blend_state.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+            color.blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+            SDL_GPUGraphicsPipelineCreateInfo info{};
+            info.vertex_shader = fog_sky_shaders_[0];
+            info.fragment_shader = fog_sky_shaders_[1];
+            info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+            info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+            info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+            info.target_info.color_target_descriptions = &color;
+            info.target_info.num_color_targets = 1;
+            info.target_info.has_depth_stencil_target = true;
+            info.target_info.depth_stencil_format = depth_format_;
+            SDL_GPUGraphicsPipeline* pipeline = SDL_CreateGPUGraphicsPipeline(device_, &info);
+            if (pipeline == nullptr) {
+                return sdl_error("creating the volumetric fog's sky pipeline failed");
+            }
+            fog_sky_pipelines_.emplace_back(format, pipeline);
+        }
+        const auto buffer = [&](std::uint32_t bytes, SDL_GPUBuffer*& made) -> Result<void> {
+            SDL_GPUBufferCreateInfo info{};
+            info.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ |
+                         SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE |
+                         SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
+            info.size = bytes;
+            made = SDL_CreateGPUBuffer(device_, &info);
+            if (made == nullptr) {
+                return sdl_error("creating the volumetric fog's buffers failed");
+            }
+            return {};
+        };
+        FogFrames* found = find_fog_frames(target);
+        if (found == nullptr) {
+            found = &fog_frames_.emplace_back(target, FogFrames{}).second;
+        }
+        FogFrames& frames = *found;
+        if (frames.fog != nullptr && frames.size == size) {
+            return {};
+        }
+        release_fog_frames(frames);
+        frames = FogFrames{};
+        const auto bytes =
+            static_cast<std::uint32_t>(std::size_t{size[0]} * size[1] * size[2] * sizeof(Float4));
+        for (SDL_GPUBuffer** slot :
+             {frames.density.data(), &frames.density[1], &frames.scratch, &frames.fog}) {
+            if (auto made = buffer(bytes, *slot); !made) {
+                release_fog_frames(frames);
+                return made;
+            }
+        }
+        frames.size = size;
+        return {};
+    }
+
+    // The volumetric fog's sky pipeline for a target format, or null before
+    // prepare_volumetric_fog made it.
+    SDL_GPUGraphicsPipeline* fog_sky_pipeline(SDL_GPUTextureFormat format) const {
+        for (const auto& [made, pipeline] : fog_sky_pipelines_) {
+            if (made == format) {
+                return pipeline;
+            }
+        }
+        return nullptr;
+    }
+
+    // target's volumetric fog, or null when it has none.
+    FogFrames* find_fog_frames(TextureId target) {
+        for (auto& [id, frames] : fog_frames_) {
+            if (id == target) {
+                return &frames;
+            }
+        }
+        return nullptr;
+    }
+
+    void release_fog_frames(FogFrames& frames) {
+        for (SDL_GPUBuffer** buffer :
+             {frames.density.data(), &frames.density[1], &frames.scratch, &frames.fog}) {
+            if (*buffer != nullptr) {
+                pending_buffers_.push_back(std::exchange(*buffer, nullptr));
+            }
+        }
+    }
+
+    void forget_fog_frames(TextureId target) {
+        const auto it = std::ranges::find_if(
+            fog_frames_, [&](const auto& entry) { return entry.first == target; });
+        if (it == fog_frames_.end()) {
+            return;
+        }
+        release_fog_frames(it->second);
+        fog_frames_.erase(it);
+    }
+
+    // Volumetric fog's passes for a frame whose meshes take lights and plan's shadows: the
+    // density, written over the frame before's, which it reprojects; the blur across, then down,
+    // into the other density buffer; the gathering into the fog.
+    void draw_volumetric_fog(SDL_GPUCommandBuffer* commands, const Scene3D& scene,
+                             const MeshSceneUniforms& lights, const ShadowPlan& plan,
+                             FogFrames& frames) {
+        FogUniforms uniforms =
+            volumetric_fog_uniforms(scene, lights, scene_width_, scene_height_, frames.clock);
+        SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
+        const std::array<SDL_GPUTextureSamplerBinding, 3> textures{{
+            {.texture = plan.directional_size != 0 ? shadow_atlases_[0].texture : no_shadows_,
+             .sampler = nearest},
+            {.texture = plan.positional_size != 0 ? shadow_atlases_[1].texture : no_shadows_,
+             .sampler = nearest},
+            {.texture = radiance_used(scene) ? radiance_.filtered : no_radiance_,
+             .sampler = radiance_sampler_},
+        }};
+        const std::size_t last = frames.last;
+        const std::size_t next = 1 - last;
+        const auto pass = [&](FogPass which, SDL_GPUBuffer* source, SDL_GPUBuffer* target,
+                              std::uint32_t depth) {
+            uniforms.size[3] = static_cast<std::uint32_t>(which);
+            const SDL_GPUStorageBufferReadWriteBinding output{
+                .buffer = target, .cycle = false, .padding1 = 0, .padding2 = 0, .padding3 = 0};
+            SDL_GPUComputePass* compute = SDL_BeginGPUComputePass(commands, nullptr, 0, &output, 1);
+            SDL_BindGPUComputePipeline(compute, fog_pipeline_);
+            SDL_BindGPUComputeSamplers(compute, 0, textures.data(),
+                                       static_cast<std::uint32_t>(textures.size()));
+            const std::array inputs{cluster_lights_.buffer, cluster_cells_.buffer, source};
+            SDL_BindGPUComputeStorageBuffers(compute, 0, inputs.data(),
+                                             static_cast<std::uint32_t>(inputs.size()));
+            SDL_PushGPUComputeUniformData(commands, 0, &uniforms,
+                                          static_cast<std::uint32_t>(sizeof(uniforms)));
+            SDL_PushGPUComputeUniformData(commands, 1, plan.uniforms.get(),
+                                          static_cast<std::uint32_t>(sizeof(MeshShadowUniforms)));
+            SDL_DispatchGPUCompute(compute, (frames.size[0] + kFogThreads - 1) / kFogThreads,
+                                   (frames.size[1] + kFogThreads - 1) / kFogThreads, depth);
+            SDL_EndGPUComputePass(compute);
+        };
+        pass(FogPass::Density, frames.density.at(last), frames.density.at(next), frames.size[2]);
+        SDL_GPUBuffer* gathered = frames.density.at(next);
+        if (scene.volumetric_fog.settings.use_filter) {
+            pass(FogPass::FilterX, frames.density.at(next), frames.scratch, frames.size[2]);
+            pass(FogPass::FilterY, frames.scratch, frames.density.at(last), frames.size[2]);
+            gathered = frames.density.at(last);
+        }
+        pass(FogPass::Integrate, gathered, frames.fog, 1);
+        frames.last = next;
+    }
+
     // target's frames before for FSR 2, or null when it has none.
     Fsr2Frames* find_fsr2_frames(TextureId target) {
         for (auto& [id, frames] : fsr2_frames_) {
@@ -5086,7 +5354,9 @@ private:
                 storage = {};
             }
             SDL_GPUBufferCreateInfo buffer{};
-            buffer.usage = SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
+            // Volumetric fog's passes read the lights and clusters too.
+            buffer.usage = SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ |
+                           SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
             buffer.size = capacity;
             storage.buffer = SDL_CreateGPUBuffer(device_, &buffer);
             SDL_GPUTransferBufferCreateInfo transfer{};
@@ -5343,6 +5613,13 @@ private:
     std::array<std::array<SDL_GPUShader*, 2>, kFsr2Passes> fsr2_shaders_{};
     std::array<SDL_GPUGraphicsPipeline*, kFsr2Passes> fsr2_pipelines_{};
     SDL_GPUComputePipeline* fsr2_reconstruct_ = nullptr;
+    // Volumetric fog: each target's frames, the passes' pipeline, the sky's shaders and pipelines,
+    // and the buffer the meshes bind in its place without it.
+    std::vector<std::pair<TextureId, FogFrames>> fog_frames_;
+    SDL_GPUComputePipeline* fog_pipeline_ = nullptr;
+    std::array<SDL_GPUShader*, 2> fog_sky_shaders_{};
+    std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> fog_sky_pipelines_;
+    SDL_GPUBuffer* no_fog_ = nullptr;
     Fsr2Textures fsr2_textures_;
     std::vector<std::pair<TextureId, Fsr2Frames>> fsr2_frames_;
     // The radiance meshes are lit by: the raw cube the sky draws into and the one filtered from
