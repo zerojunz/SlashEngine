@@ -8,7 +8,8 @@ The `gi` entity's box covers the room at 64 cells along its longest side. `voxel
 voxelizes the meshes whose `gi_mode` is `"static"`, Godot's default, once; the renderer injects
 the sun into the cells and traces cones through them every frame, so the bounce follows the
 lights as the game runs. The ball's `gi_mode` is `"dynamic"`, as for anything that moves: it
-isn't voxelized, but it takes the VoxelGI's light like any mesh in the box.
+isn't voxelized, but the renderer plots it into the cells' light each frame it moves or
+changes, so it lights the room too.
 
 [calls.jsonl](calls.jsonl) drives it the way an agent does over MCP or JSON-RPC, and
 [results.jsonl](results.jsonl) holds the replies:
@@ -25,13 +26,18 @@ voxel_gi.bake {"id":"gi"}
   octree of 7 levels, writes them to `main.gi.voxelgi.json` beside the scene and sets the
   VoxelGI's `data` to it.
 - Traced, the crate's shadowed side turns from the ambient light's blue (0.17, 0.22, 0.37) to grey
-  (0.37, 0.35, 0.37) with the light off the floor, and so does the floor in its shadow. The
-  ball's underside warms from (0.63, 0.62, 0.64) to (0.77, 0.73, 0.69). The floor by the red wall
+  (0.36, 0.34, 0.36) with the light off the floor, and so does the floor in its shadow. The
+  ball's underside warms from (0.63, 0.62, 0.64) to (0.76, 0.72, 0.67). The floor by the red wall
   comes out redder than the open floor: (0.84, 0.77, 0.71) against (0.83, 0.79, 0.73).
 - `component.set` turns the sun orange. Lights aren't baked, so the next frame's bounce is orange
-  too, with no bake: the crate's shadowed side goes to (0.37, 0.24, 0.26).
+  too, with no bake: the crate's shadowed side goes to (0.36, 0.24, 0.26).
 - A bake after that reports `"unchanged": true` and records no undo step, since the meshes
   haven't changed.
+- `component.set` makes the ball glow green. It's plotted into the cells with its emission, with
+  no bake, so the floor beside it comes out green, (0.82, 0.64, 0.34), while the floor by the
+  crate keeps the sunset's (0.83, 0.51, 0.36).
+- Moved by the crate, the ball takes its glow with it: the floor where it was goes to
+  (0.84, 0.51, 0.35), and the floor by the crate to (0.81, 0.72, 0.35).
 
 `voxel_gi.bake` changes project files, so it needs the `edit` and `filesystem` capabilities.
 Undo removes the file it made, or puts back the one it replaced. `slash-cli scene validate`
