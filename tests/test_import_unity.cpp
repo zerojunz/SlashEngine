@@ -40,6 +40,14 @@ namespace importer = slash::importer;
 namespace canvas = slash::canvas;
 namespace fs = std::filesystem;
 
+// Failed checks print JSON values as text, which doctest otherwise shows as {?}.
+template <>
+struct doctest::StringMaker<json::Value> {
+    static doctest::String convert(const json::Value& value) {
+        return json::write(value, json::Style::Compact).c_str();
+    }
+};
+
 namespace {
 
 json::Value parse(std::string_view text) {
