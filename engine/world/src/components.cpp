@@ -2685,6 +2685,39 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("use_two_bounces", {.doc = "Light bounces twice inside the cells, not once."})
         .describe("interior",
                   {.doc = "Leaves out the environment's light: meshes take only the cells'."});
+    registry.add<Decal>()
+        .set_doc("A box that projects textures down its -Y onto the meshes inside it, as Godot's "
+                 "Decal, in Forward+. Nearer decals draw over further ones.")
+        .describe("size", {.doc = "The box, centered on the entity, in its space.", .min = 0.001})
+        .describe("texture_albedo", {.doc = "Color mixed in where its alpha says. " + texture.doc})
+        .describe("texture_normal", {.doc = "Normal map, Y down. " + texture.doc})
+        .describe("texture_orm",
+                  {.doc = "Ambient occlusion, roughness and metallic in red, green and blue, "
+                          "where the albedo's alpha says. " +
+                          texture.doc})
+        .describe("texture_emission", {.doc = "Light added. " + texture.doc})
+        .describe("emission_energy", {.doc = "Times the emission.", .min = 0})
+        .describe("modulate", {.doc = "Times the albedo and emission. " + color.doc})
+        .describe("albedo_mix",
+                  {.doc = "How much of the albedo replaces the surface's.", .min = 0, .max = 1})
+        .describe("normal_fade",
+                  {.doc = "Fades it on surfaces facing away from its up, from 0 (never) to 1.",
+                   .min = 0,
+                   .max = 1})
+        .describe("upper_fade",
+                  {.doc = "How it fades toward its top: the curve's power; 0 never.", .min = 0})
+        .describe("lower_fade",
+                  {.doc = "How it fades toward its bottom: the curve's power; 0 never.", .min = 0})
+        .describe("distance_fade_enabled",
+                  {.doc = "Fades it out from distance_fade_begin meters from the camera."})
+        .describe("distance_fade_begin", {.doc = "Where it starts fading, in meters.", .min = 0})
+        .describe("distance_fade_length",
+                  {.doc = "Meters over which it fades out; past them it isn't drawn.", .min = 0})
+        .describe("cull_mask", {.doc = "Draws on meshes whose layers share a bit."})
+        .describe("layers", {.doc = "Cameras whose cull_mask shares a bit see it."})
+        .describe("sorting_offset",
+                  {.doc = "Meters taken off its distance from the camera, to draw it over "
+                          "nearer decals."});
     registry.add<WorldEnvironment>()
         .set_doc("The 3D world's background, ambient and reflected light, tonemap, glow, fog and "
                  "adjustments, as Godot's WorldEnvironment. The first one applies; with none, the "
