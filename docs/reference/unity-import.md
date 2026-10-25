@@ -526,6 +526,42 @@ Ambient light from the skybox, a flat color or a gradient (its equator's color, 
 (exponential as is, linear as depth fog, exponential squared reported) convert, and fog leaves the
 sky alone, as Unity's does.
 
+### 3D animation
+
+An `Animator` in a 3D scene converts as one in a 2D scene does (see [animation](#animation)): its
+controller becomes an animation library and, with transitions, an animation tree, and its clips'
+curves move `Transform3D`, mirrored in x as the scene is. A controller converts once for 2D
+objects, once for 3D objects and once for models' instances; one played by two kinds of object is
+reported, since its tracks are written for the first.
+
+| Unity curve | Track |
+| --- | --- |
+| Position | `Transform3D/position`, its x negated |
+| Euler angles | `Transform3D/rotation`, in radians: `[x, -y, -z]` |
+| Quaternion rotation | `Transform3D/rotation` with `linear_angle` interpolation, its parts interpolated as Unity does, mirrored, and keyed wherever the turn between keys passes about 6 degrees |
+| Scale | `Transform3D/scale` |
+| One axis of a position, Euler angle or scale | That axis's track, as the 2D import's |
+| `GameObject.m_IsActive` | `Transform3D/visible` (reported: the object's other components still run) |
+
+- On an instance of a model file, a curve on a path below the Animator's object moves a node of
+  the model: it becomes a node track (`"node"` and `"property"`) naming the path's last object.
+  Node tracks interpolate linearly and turn the shorter way, so a stepped key is held by keying
+  its value again just before the next key.
+- A clip of a model file (a take of an FBX file, say, as the model's import settings cut it)
+  becomes an animation `"from"` the converted model's take, with the clip's loop and events (their
+  times scaled to its length). A clip ending before its take does is cut there; one starting past
+  its take's start plays from the take's start and is reported. The clip is found by its ID as
+  Unity's model importer makes it: from the `.meta` file's tables, or the hash of its name. It
+  plays at the take's own speed, so a state's speed on it is reported, and a clip of a model on an
+  object that isn't the model's instance, or of a `.blend` file, is reported.
+- A model's instance whose prefab modifications give its root an `Animator` (as Unity's model
+  importer adds one) plays it there. On a model imported at a scale it plays on the `model` child
+  entity that draws it, which is reported, since the object's own curves then move that entity.
+- Cameras and lights on an animated object, or on an object one of its tracks moves, face -z
+  through a child entity, so the animation's turns don't undo the half turn.
+- Root motion, humanoid muscle curves, Animator parameter curves, animated script values and
+  curves of fields with no counterpart are reported.
+
 ### Terrains
 
 A `Terrain` becomes an `HTerrain`, the heightmap terrain that follows the HTerrain plugin for
@@ -548,8 +584,8 @@ a turned or scaled object are reported. The `TerrainCollider` gives the collisio
 from the object's layer, and its physic material's `friction` and `bounce`; one of another
 `TerrainData`, or on a `Rigidbody`, is reported. With no `TerrainCollider`, collision is off.
 
-Reported, for a later import: meshes saved as assets, skinned meshes and `Animator`s on 3D objects
-(their controllers and clips wait with them), mesh colliders of meshes saved as assets, 3D joints and wheels, navigation, reflection and light probes, line and trail
+Reported, for a later import: meshes saved as assets, skinned meshes, humanoid animation, model
+clips starting past their take's start, mesh colliders of meshes saved as assets, 3D joints and wheels, navigation, reflection and light probes, line and trail
 renderers, area and baked lights, cookies and color temperature, cubemap skyboxes, a camera's
 viewport rect and render texture, and a `CharacterController`'s step offset.
 
