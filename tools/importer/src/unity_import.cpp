@@ -2741,7 +2741,7 @@ private:
         const Vec3& p = node.position;
         const Quat& q = node.rotation;
         Node rotation = xyz(q.x, -q.y, -q.z);
-        rotation.entries.emplace_back("w", number(q.w));
+        rotation.entries.push_back({"w", number(q.w)});
         return map_node({{"m_LocalPosition", xyz(-p.x * scale, p.y * scale, p.z * scale)},
                          {"m_LocalRotation", std::move(rotation)},
                          {"m_LocalScale", xyz(node.scale.x, node.scale.y, node.scale.z)}});
