@@ -1464,6 +1464,7 @@ there is no ambient light and colors stay as they are.
 | `volumetric_fog_length` | `64` | How far from the camera it reaches, in meters; what is past it is seen through all of it |
 | `volumetric_fog_detail_spread` | `2` | How its slices spread over its length: above 1, more of them are near the camera, from 0.5 to 6 |
 | `volumetric_fog_ambient_inject` | `0` | How much the ambient light (and the sky's, as meshes take it) lights it, from 0 to 16 |
+| `volumetric_fog_gi_inject` | `1` | How much the light of the [VoxelGIs](#voxelgi) it is in lights it, from 0 to 16 |
 | `volumetric_fog_sky_affect` | `1` | How much it covers the sky, from 0 to 1 |
 | `volumetric_fog_temporal_reprojection_enabled`, `volumetric_fog_temporal_reprojection_amount` | `true`, `0.9` | Each frame blends in this much of the frame before's fog, from 0.5 to 0.99, smoothing it |
 
@@ -1616,7 +1617,8 @@ the project's `rendering.environment.volumetric_fog`, see
 `volumetric_fog_detail_spread`. A compute pass works out each froxel's light: its emission, the
 directional lights through their shadow maps, the omni and spot lights that reach it (through
 the meshes' clusters, with their shadows), the ambient light by
-`volumetric_fog_ambient_inject`, each scattered toward the camera by
+`volumetric_fog_ambient_inject`, the light of the first eight `VoxelGI`s whose boxes hold it by
+`volumetric_fog_gi_inject` (every level of each, as Godot's fog reads them), each scattered toward the camera by
 `volumetric_fog_anisotropy` (the Henyey-Greenstein phase) and times each light's
 `light_volumetric_fog_energy`. With temporal reprojection, each froxel is sampled at a point
 that moves each frame and blends in the frame before's light where it was then. The volume is

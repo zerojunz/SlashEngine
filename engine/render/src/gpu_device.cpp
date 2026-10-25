@@ -472,8 +472,8 @@ public:
             SDL_ReleaseGPUBuffer(device_, particle_data_);
             SDL_ReleaseGPUTransferBuffer(device_, particle_transfer_);
         }
-        for (const StorageBuffer& storage :
-             {cluster_lights_, cluster_cells_, probe_buffer_, decal_buffer_, decal_atlas_buffer_}) {
+        for (const StorageBuffer& storage : {cluster_lights_, cluster_cells_, probe_buffer_,
+                                             decal_buffer_, decal_atlas_buffer_, fog_items_}) {
             if (storage.buffer != nullptr) {
                 SDL_ReleaseGPUBuffer(device_, storage.buffer);
                 SDL_ReleaseGPUTransferBuffer(device_, storage.transfer);
@@ -4243,12 +4243,12 @@ private:
     Result<void> prepare_volumetric_fog(TextureId target, SDL_GPUTextureFormat format,
                                         const std::array<std::uint32_t, 3>& size) {
         if (fog_pipeline_ == nullptr) {
-            // The shadow atlases and the radiance; the lights, the clusters and the source; the
-            // target; the fog's and the shadows' uniforms.
+            // The shadow atlases, the radiance and the VoxelGIs' atlas; the lights, the clusters,
+            // the fog's items and the source; the target; the fog's and the shadows' uniforms.
             SDL_GPUComputePipelineCreateInfo info{};
             info.entrypoint = "cs_main";
-            info.num_samplers = 3;
-            info.num_readonly_storage_buffers = 3;
+            info.num_samplers = 4;
+            info.num_readonly_storage_buffers = 4;
             info.num_readwrite_storage_buffers = 1;
             info.num_uniform_buffers = 2;
             info.threadcount_x = kFogThreads;
@@ -4390,13 +4390,15 @@ private:
         FogUniforms uniforms =
             volumetric_fog_uniforms(scene, lights, scene_width_, scene_height_, frames.clock);
         SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
-        const std::array<SDL_GPUTextureSamplerBinding, 3> textures{{
+        const bool voxel_gi = uniforms.items[1] > 0;
+        const std::array<SDL_GPUTextureSamplerBinding, 4> textures{{
             {.texture = plan.directional_size != 0 ? shadow_atlases_[0].texture : no_shadows_,
              .sampler = nearest},
             {.texture = plan.positional_size != 0 ? shadow_atlases_[1].texture : no_shadows_,
              .sampler = nearest},
             {.texture = radiance_used(scene) ? radiance_.filtered : no_radiance_,
              .sampler = radiance_sampler_},
+            binding(voxel_gi ? scene.volumetric_fog.voxel_gi_atlas : TextureId::None, false),
         }};
         const std::size_t last = frames.last;
         const std::size_t next = 1 - last;
@@ -4409,7 +4411,8 @@ private:
             SDL_BindGPUComputePipeline(compute, fog_pipeline_);
             SDL_BindGPUComputeSamplers(compute, 0, textures.data(),
                                        static_cast<std::uint32_t>(textures.size()));
-            const std::array inputs{cluster_lights_.buffer, cluster_cells_.buffer, source};
+            const std::array inputs{cluster_lights_.buffer, cluster_cells_.buffer,
+                                    fog_items_.buffer, source};
             SDL_BindGPUComputeStorageBuffers(compute, 0, inputs.data(),
                                              static_cast<std::uint32_t>(inputs.size()));
             SDL_PushGPUComputeUniformData(commands, 0, &uniforms,
@@ -5330,6 +5333,13 @@ private:
             !uploaded) {
             return uploaded;
         }
+        if (uses_volumetric_fog(scene)) {
+            const std::vector<Float4> items = fog_items(scene, scene_width_, scene_height_);
+            if (auto uploaded = upload_storage(copy, fog_items_, std::as_bytes(std::span(items)));
+                !uploaded) {
+                return uploaded;
+            }
+        }
         if (atlas.generation == decal_atlas_uploaded_ && decal_atlas_buffer_.buffer != nullptr) {
             return {};
         }
@@ -5478,6 +5488,7 @@ private:
     // Forward+'s clusters for the frame, made as it is sent, and the buffers they go in.
     LightClusters clusters_;
     StorageBuffer cluster_lights_;
+    StorageBuffer fog_items_; // volumetric fog's volumes and VoxelGIs (fog_items)
     StorageBuffer cluster_cells_;
     StorageBuffer probe_buffer_; // the frame's reflection probes
     // The decals' atlas, packed when their textures change, and uploaded then; and the frame's

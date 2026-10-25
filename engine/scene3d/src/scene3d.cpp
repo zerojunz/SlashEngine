@@ -430,6 +430,7 @@ Environment world_environment(const world::World& world, render::Color clear) {
         fog.length = env.volumetric_fog_length;
         fog.detail_spread = env.volumetric_fog_detail_spread;
         fog.ambient_inject = env.volumetric_fog_ambient_inject;
+        fog.gi_inject = env.volumetric_fog_gi_inject;
         fog.sky_affect = env.volumetric_fog_sky_affect;
         fog.temporal_reprojection = env.volumetric_fog_temporal_reprojection_enabled;
         fog.temporal_reprojection_amount = env.volumetric_fog_temporal_reprojection_amount;
@@ -1926,7 +1927,7 @@ void Renderer::destroy_voxel_gis() {
 
 void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& tree,
                                const std::function<world::Affine3D(entt::entity)>& global,
-                               const Environment& env) {
+                               const Environment& env, render::VolumetricFog3D& fog) {
     const auto& ecs = world.ecs();
     // The VoxelGIs whose light is traced this frame, in the order they were made.
     struct Traced {
@@ -2165,6 +2166,14 @@ void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& t
         if (shading.count > 0) {
             draw.material.voxel_gi = shading;
         }
+    }
+    // Volumetric fog takes the light of the first kMaxFogVoxelGIs, as Godot's
+    // volumetric_fog_update takes its first MAX_VOXEL_GI_INSTANCES.
+    if (fog.enabled) {
+        fog.voxel_gi_atlas = voxel_atlas_;
+        fog.voxel_gis.assign(
+            probes.begin(), probes.begin() + static_cast<std::ptrdiff_t>(
+                                                 std::min(probes.size(), render::kMaxFogVoxelGIs)));
     }
 }
 
@@ -2413,7 +2422,7 @@ Renderer::prepare(const world::World& world, float width, float height, double i
         }
     }
     if (method == render::RenderMethod::ForwardPlus) {
-        trace_voxel_gis(world, tree, global, env);
+        trace_voxel_gis(world, tree, global, env, frame.scene.volumetric_fog);
     } else {
         voxel_gis_.clear();
         voxel_objects_.clear();

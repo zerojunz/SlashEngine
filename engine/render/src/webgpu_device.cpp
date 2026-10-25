@@ -567,7 +567,7 @@ public:
         for (WGPUBuffer buffer :
              {no_source_, no_target_, particle_data_, vertex_buffer_, uniform_buffer_,
               cluster_lights_.buffer, cluster_cells_.buffer, probe_buffer_.buffer,
-              decal_buffer_.buffer, decal_atlas_buffer_.buffer, no_fog_}) {
+              decal_buffer_.buffer, decal_atlas_buffer_.buffer, fog_items_.buffer, no_fog_}) {
             destroy_buffer(buffer);
         }
         release_uniform_groups();
@@ -2326,15 +2326,20 @@ private:
         const std::array fsr2_compute_entries{
             uniform_entry(0, WGPUShaderStage_Compute, sizeof(Fsr2Uniforms))};
         fsr2_compute_uniforms_layout_ = layout(fsr2_compute_entries);
-        // Volumetric fog's passes: the shadow atlases, which they load, the radiance and its
-        // sampler; the lights, the clusters and the source; the target; the fog's and the
-        // shadows' uniforms.
-        std::array<WGPUBindGroupLayoutEntry, 7> fog_inputs{
-            texture_entry(0),       texture_entry(1),
-            cube_entry(2),          sampler_entry(kSamplerBinding + 2),
-            storage_entry(3, true), storage_entry(4, true),
-            storage_entry(5, true)};
-        for (std::size_t slot = 0; slot < 4; ++slot) {
+        // Volumetric fog's passes: the shadow atlases, which they load, the radiance, the
+        // VoxelGIs' atlas and their samplers; the lights, the clusters, the fog's items and the
+        // source; the target; the fog's and the shadows' uniforms.
+        std::array<WGPUBindGroupLayoutEntry, 10> fog_inputs{texture_entry(0),
+                                                            texture_entry(1),
+                                                            cube_entry(2),
+                                                            texture_entry(3),
+                                                            sampler_entry(kSamplerBinding + 2),
+                                                            sampler_entry(kSamplerBinding + 3),
+                                                            storage_entry(4, true),
+                                                            storage_entry(5, true),
+                                                            storage_entry(6, true),
+                                                            storage_entry(7, true)};
+        for (std::size_t slot = 0; slot < 6; ++slot) {
             fog_inputs.at(slot).visibility = WGPUShaderStage_Compute;
         }
         fog_inputs[0].texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
@@ -3504,9 +3509,8 @@ private:
                 volumetric_fog_uniforms(scene, *lights, scene_width_, scene_height_, fog->clock);
             uniforms.view_to_world = transposed(uniforms.view_to_world);
             uniforms.to_previous = transposed(uniforms.to_previous);
-            for (FogVolumeUniforms& volume : uniforms.volumes) {
-                volume.to_local = transposed(volume.to_local);
-            }
+            const std::vector<Float4> items = fog_items(scene, scene_width_, scene_height_);
+            upload_storage(fog_items_, std::as_bytes(std::span(items)));
             for (std::size_t pass = 0; pass < at.fog.size(); ++pass) {
                 uniforms.size[3] = static_cast<std::uint32_t>(pass);
                 at.fog.at(pass) = uniforms_.add(uniforms);
@@ -4432,10 +4436,14 @@ private:
         const Scene3D& scene = *frame_.scene;
         const std::size_t last = frames.last;
         const std::size_t next = 1 - last;
+        // Whether the fog takes VoxelGIs' light, as volumetric_fog_uniforms counts them.
+        const bool voxel_gis = scene.volumetric_fog.gi_inject > 0.001F &&
+                               scene.volumetric_fog.voxel_gi_atlas != TextureId::None &&
+                               !scene.volumetric_fog.voxel_gis.empty();
         const auto pass = [&](FogPass which, WGPUBuffer source, WGPUBuffer target,
                               std::uint32_t depth) {
-            std::array<WGPUBindGroupEntry, 7> entries{};
-            for (std::uint32_t slot = 0; slot < 3; ++slot) {
+            std::array<WGPUBindGroupEntry, 10> entries{};
+            for (std::uint32_t slot = 0; slot < 4; ++slot) {
                 entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
                 entries.at(slot).binding = slot;
             }
@@ -4446,12 +4454,19 @@ private:
                 shadow_plan_->positional_size != 0 ? shadow_atlases_[1].gpu.view : no_shadows_.view;
             entries[2].textureView =
                 radiance_used(scene) ? radiance_.filtered.view : no_radiance_.view;
-            entries[3] = WGPU_BIND_GROUP_ENTRY_INIT;
-            entries[3].binding = kSamplerBinding + 2;
-            entries[3].sampler = radiance_sampler_;
-            entries[4] = buffer_entry(3, cluster_lights_.buffer, cluster_lights_.capacity);
-            entries[5] = buffer_entry(4, cluster_cells_.buffer, cluster_cells_.capacity);
-            entries[6] = buffer_entry(5, source, frames.bytes);
+            const auto [voxel_gi, voxel_gi_sampler] =
+                binding(voxel_gis ? scene.volumetric_fog.voxel_gi_atlas : TextureId::None, false);
+            entries[3].textureView = voxel_gi;
+            entries[4] = WGPU_BIND_GROUP_ENTRY_INIT;
+            entries[4].binding = kSamplerBinding + 2;
+            entries[4].sampler = radiance_sampler_;
+            entries[5] = WGPU_BIND_GROUP_ENTRY_INIT;
+            entries[5].binding = kSamplerBinding + 3;
+            entries[5].sampler = voxel_gi_sampler;
+            entries[6] = buffer_entry(4, cluster_lights_.buffer, cluster_lights_.capacity);
+            entries[7] = buffer_entry(5, cluster_cells_.buffer, cluster_cells_.capacity);
+            entries[8] = buffer_entry(6, fog_items_.buffer, fog_items_.capacity);
+            entries[9] = buffer_entry(7, source, frames.bytes);
             WGPUBindGroup inputs = bind_group(fog_textures_layout_, entries);
             const std::array output{buffer_entry(0, target, frames.bytes)};
             WGPUBindGroup outputs = bind_group(fog_output_layout_, output);
@@ -5547,6 +5562,7 @@ private:
     // The frame's Forward+ clusters, the buffers they are copied to and the group binding them.
     LightClusters clusters_;
     StorageBuffer cluster_lights_;
+    StorageBuffer fog_items_; // volumetric fog's volumes and VoxelGIs (fog_items)
     StorageBuffer cluster_cells_;
     // The decals' atlas, packed when their textures change, and written then; and the frame's
     // decals.

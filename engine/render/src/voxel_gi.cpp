@@ -276,4 +276,31 @@ VoxelGILight trace_voxel_gis(const MeshSurfaceUniforms& surface, bool high_quali
     return {.ambient = sum.ambient, .reflection = sum.reflection};
 }
 
+Float3 fog_voxel_gi_light(const MeshVoxelGIUniforms& gi, const Image& atlas, const Float3& world) {
+    Float3 position{dot(xyz(gi.rows[0]), world) + gi.rows[0][3],
+                    dot(xyz(gi.rows[1]), world) + gi.rows[1][3],
+                    dot(xyz(gi.rows[2]), world) + gi.rows[2][3]};
+    const Float3 bounds{gi.size[0], gi.size[1], gi.size[2]};
+    for (std::size_t i = 0; i < 3; ++i) {
+        if (position.at(i) < 0.0F || position.at(i) >= bounds.at(i)) {
+            return {};
+        }
+        position.at(i) /= bounds.at(i);
+    }
+    const Volume volume{.atlas = atlas,
+                        .gi = gi,
+                        .cell_size = {1.0F / bounds[0], 1.0F / bounds[1], 1.0F / bounds[2]},
+                        .max_distance = 0.0F};
+    Float4 light{};
+    const auto levels = static_cast<std::uint32_t>(gi.size[3]);
+    for (std::uint32_t level = 0; level < levels; ++level) {
+        const Float4 seen = sample_level(volume, level, position);
+        const float a = 1.0F - light[3];
+        for (std::size_t c = 0; c < 4; ++c) {
+            light.at(c) += a * seen.at(c);
+        }
+    }
+    return scale(xyz(light), gi.params[0]);
+}
+
 } // namespace slash::render::detail

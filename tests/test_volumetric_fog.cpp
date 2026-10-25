@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <utility>
@@ -87,6 +88,8 @@ struct Foggy {
     float sky_affect = 1.0F;
     bool disable_fog = false; // the floor's material
     std::vector<render::FogVolume3D> volumes{};
+    bool voxel_gi = false;  // a VoxelGI glows over the floor
+    float gi_inject = 1.0F; // how much of its light the fog takes
 };
 
 // A world turned by none, at x, y, z.
@@ -125,6 +128,61 @@ std::vector<render::FogVolume3D> some_volumes() {
     };
 }
 
+// A VoxelGI 4 x 2 x 4 meters about the floor, its 4 x 4 x 4 cells of two levels glowing warm
+// on the left, green deeper in and blue up high, in a 16 x 6 atlas: level 0's slices side by side
+// on top, level 1's (2 x 2 x 2) under them.
+struct FogVoxelGI {
+    Image atlas;
+    render::VoxelGIProbe probe;
+};
+FogVoxelGI fog_voxel_gi() {
+    FogVoxelGI out{.atlas = {.width = 16, .height = 6, .pixels = {}}, .probe = {}};
+    out.atlas.pixels.resize(std::size_t{16} * 6 * 4);
+    const auto put = [&](std::uint32_t x, std::uint32_t y, std::array<std::uint8_t, 4> texel) {
+        std::copy(texel.begin(), texel.end(),
+                  out.atlas.pixels.begin() + static_cast<std::ptrdiff_t>((y * 16 + x) * 4));
+    };
+    for (std::uint32_t z = 0; z < 4; ++z) {
+        for (std::uint32_t y = 0; y < 4; ++y) {
+            for (std::uint32_t x = 0; x < 4; ++x) {
+                put((z * 4) + x, y,
+                    {static_cast<std::uint8_t>(200 - (x * 50)), static_cast<std::uint8_t>(z * 60),
+                     static_cast<std::uint8_t>(y * 70), static_cast<std::uint8_t>(60 + (x * 40))});
+            }
+        }
+    }
+    for (std::uint32_t z = 0; z < 2; ++z) {
+        for (std::uint32_t y = 0; y < 2; ++y) {
+            for (std::uint32_t x = 0; x < 2; ++x) {
+                put((z * 2) + x, 4 + y, {90, 120, static_cast<std::uint8_t>(80 + (y * 100)), 255});
+            }
+        }
+    }
+    out.probe.to_cell = {1.0F, 0.0F, 0.0F, 2.0F, 0.0F, 2.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 3.0F};
+    out.probe.size = {4, 4, 4};
+    out.probe.levels = 2;
+    out.probe.placement[0] = {0, 0, 4};
+    out.probe.placement[1] = {0, 4, 2};
+    out.probe.energy = 3.0F;
+    return out;
+}
+
+// Thirty-two small glowing balls of fog in rows over the floor, as many as a frame takes.
+std::vector<render::FogVolume3D> many_volumes() {
+    std::vector<render::FogVolume3D> out;
+    for (std::size_t i = 0; i < render::kMaxFogVolumes; ++i) {
+        const auto column = static_cast<float>(i % 8);
+        const auto row = static_cast<float>(i / 8);
+        out.push_back({.transform = placed(-3.5F + column, 0.6F + (0.3F * row), -1.0F - row),
+                       .size = {0.8F, 0.8F, 0.8F},
+                       .shape = render::FogVolumeShape::Ellipsoid,
+                       .material = true,
+                       .density = 2.0F,
+                       .emission = {0.2F + (0.1F * column), 0.5F, 1.0F - (0.2F * row)}});
+    }
+    return out;
+}
+
 // A gray floor seen at a slant under a wall that shades the sun, lit by the sun from behind it
 // and a lamp, in fog, over a blue sky, 48 x 32 pixels.
 Image draw_fog(RenderDevice& device, const Foggy& foggy) {
@@ -134,6 +192,10 @@ Image draw_fog(RenderDevice& device, const Foggy& foggy) {
     REQUIRE(floor.ok());
     auto wall = device.create_mesh(quad({0, 2.5F, -3}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, 3.0F), {});
     REQUIRE(wall.ok());
+    const FogVoxelGI gi = fog_voxel_gi();
+    auto atlas = device.create_texture({.width = gi.atlas.width, .height = gi.atlas.height},
+                                       gi.atlas.pixels);
+    REQUIRE(atlas.ok());
     for (std::uint32_t frame = 0; frame < foggy.frames; ++frame) {
         render::Scene3D scene;
         scene.method = foggy.method;
@@ -175,7 +237,12 @@ Image draw_fog(RenderDevice& device, const Foggy& foggy) {
             .temporal_reprojection = foggy.reproject,
             .temporal_reprojection_amount = 0.9F,
             .settings = {.volume_size = 32, .volume_depth = 32, .use_filter = foggy.filter},
-            .volumes = foggy.volumes};
+            .volumes = foggy.volumes,
+            .gi_inject = foggy.gi_inject};
+        if (foggy.voxel_gi) {
+            scene.volumetric_fog.voxel_gi_atlas = atlas.value();
+            scene.volumetric_fog.voxel_gis = {gi.probe};
+        }
         const auto begun =
             device.begin_frame({.target = target.value(), .clear = {}, .scene = scene});
         REQUIRE_MESSAGE(begun.ok(), error_of(begun));
@@ -194,6 +261,7 @@ Image draw_fog(RenderDevice& device, const Foggy& foggy) {
     REQUIRE_MESSAGE(image.ok(), error_of(image));
     device.destroy_mesh(floor.value());
     device.destroy_mesh(wall.value());
+    device.destroy_texture(atlas.value());
     device.destroy_texture(target.value());
     return image.value();
 }
@@ -346,6 +414,11 @@ TEST_CASE("Forward+ volumetric fog lights the view, shaded by the lights' shadow
         // Fog volumes thicken it, glow and thin it.
         CHECK(differing(draw_fog(*device, {.volumes = some_volumes()}), fogged, 8) >
               fogged.pixels.size() / 20);
+        // A VoxelGI's light lights the fog in its box, as much as gi_inject says, and none at 0.
+        const Image glowing = draw_fog(*device, {.voxel_gi = true});
+        CHECK(differing(glowing, fogged, 8) > fogged.pixels.size() / 20);
+        CHECK(differing(draw_fog(*device, {.voxel_gi = true, .gi_inject = 4.0F}), glowing, 8) > 0);
+        CHECK(difference(draw_fog(*device, {.voxel_gi = true, .gi_inject = 0.0F}), fogged) == 0);
         // The shadows darken the fog in them.
         const Image unshaded = draw_fog(*device, {.shadow = false});
         CHECK(differing(unshaded, fogged, 2) > 0);
@@ -372,6 +445,10 @@ TEST_CASE("GPUs draw volumetric fog as the software device does") {
         {.shadow = false, .anisotropy = 0.8F},
         {.volumes = some_volumes()},
         {.frames = 4, .turn = 0.2F, .volumes = some_volumes()},
+        {.volumes = many_volumes()},
+        {.voxel_gi = true},
+        {.frames = 4, .turn = 0.2F, .voxel_gi = true, .gi_inject = 2.5F},
+        {.volumes = many_volumes(), .voxel_gi = true},
     };
     for (std::size_t i = 0; i < scenes.size(); ++i) {
         CAPTURE(i);
@@ -422,8 +499,12 @@ TEST_CASE("fog volumes fill the froxels between their corners, as Godot picks th
     detail::FogClock clock;
     const detail::FogUniforms uniforms =
         detail::volumetric_fog_uniforms(scene, detail::mesh_scene_uniforms(scene), 64, 64, clock);
-    CHECK(uniforms.volume_count[0] == 1);
-    CHECK(uniforms.volumes[0].corner == std::array<std::int32_t, 4>{box[0][0], box[0][1], 16, 0});
+    CHECK(uniforms.items[0] == 1);
+    const std::vector<detail::Float4> items = detail::fog_items(scene, 64, 64);
+    REQUIRE(items.size() == detail::kFogVolumeItems);
+    detail::FogVolumeUniforms sent;
+    std::memcpy(static_cast<void*>(&sent), items.data(), sizeof(sent));
+    CHECK(sent.corner == std::array<std::int32_t, 4>{box[0][0], box[0][1], 16, 0});
 }
 
 TEST_CASE("fog volumes add their density, light and glow in Godot's fixed point") {
@@ -433,7 +514,10 @@ TEST_CASE("fog volumes add their density, light and glow in Godot's fixed point"
         detail::FogClock clock;
         const detail::FogUniforms uniforms = detail::volumetric_fog_uniforms(
             scene, detail::mesh_scene_uniforms(scene), 64, 64, clock);
-        return detail::fog_density(uniforms, {}, {}, x, y, z);
+        const std::vector<detail::Float4> items = detail::fog_items(scene, 64, 64);
+        detail::FogMaps maps;
+        maps.items = items;
+        return detail::fog_density(uniforms, maps, {}, x, y, z);
     };
     const render::FogVolume3D glowing{.shape = render::FogVolumeShape::World,
                                       .material = true,
@@ -477,4 +561,43 @@ TEST_CASE("fog volumes add their density, light and glow in Godot's fixed point"
     CHECK(density_at(8, 8, 17)[3] == 1.0F);
     CHECK(density_at(0, 0, 17)[3] == 0.0F);
     CHECK(density_at(8, 8, 10)[3] == 0.0F);
+}
+
+TEST_CASE("the fog takes a VoxelGI's light inside its box, its levels front to back") {
+    const FogVoxelGI gi = fog_voxel_gi();
+    const detail::MeshVoxelGIUniforms uniforms = detail::voxel_gi_uniforms(gi.probe);
+    // At the middle of cell (0, 1, 2): its texel's light, then the coarser level's through what
+    // it lets through, times the energy.
+    const detail::Float3 at = detail::fog_voxel_gi_light(uniforms, gi.atlas, {-1.5F, 0.75F, -0.5F});
+    const float alpha = 60.0F / 255.0F;
+    const float through = 1.0F - alpha;
+    CHECK(at[0] == doctest::Approx(3.0F * ((200.0F / 255.0F) + (through * 90.0F / 255.0F))));
+    CHECK(at[1] == doctest::Approx(3.0F * ((120.0F / 255.0F) + (through * 120.0F / 255.0F))));
+    // Level 1 is read between its rows, a quarter of the way to the bluer one.
+    CHECK(at[2] == doctest::Approx(3.0F * ((70.0F / 255.0F) + (through * 105.0F / 255.0F))));
+    // Outside its box there is none.
+    CHECK(detail::fog_voxel_gi_light(uniforms, gi.atlas, {-2.5F, 0.75F, -0.5F}) ==
+          detail::Float3{});
+    CHECK(detail::fog_voxel_gi_light(uniforms, gi.atlas, {0.0F, 2.0F, 0.0F}) == detail::Float3{});
+    // The fog takes the first eight VoxelGIs, only above a gi_inject of 0.001.
+    render::Scene3D scene;
+    scene.method = render::RenderMethod::ForwardPlus;
+    scene.volumetric_fog = {.enabled = true, .gi_inject = 2.0F};
+    scene.volumetric_fog.voxel_gi_atlas = render::TextureId{1};
+    scene.volumetric_fog.voxel_gis.assign(10, gi.probe);
+    const detail::MeshSceneUniforms lights = detail::mesh_scene_uniforms(scene);
+    detail::FogClock clock;
+    detail::FogUniforms fog = detail::volumetric_fog_uniforms(scene, lights, 64, 64, clock);
+    CHECK(fog.items[1] == 8);
+    CHECK(fog.voxel_gi[0] == 2.0F);
+    // They follow the fog volumes in the items the density pass reads.
+    const std::vector<detail::Float4> items = detail::fog_items(scene, 64, 64);
+    REQUIRE(items.size() == 8 * detail::kFogVoxelGIItems);
+    detail::MeshVoxelGIUniforms last;
+    std::memcpy(static_cast<void*>(&last), &items[7 * detail::kFogVoxelGIItems], sizeof(last));
+    CHECK(last.size == uniforms.size);
+    scene.volumetric_fog.gi_inject = 0.001F;
+    fog = detail::volumetric_fog_uniforms(scene, lights, 64, 64, clock);
+    CHECK(fog.items[1] == 0);
+    CHECK(detail::fog_items(scene, 64, 64).size() == 1); // a storage buffer is never empty
 }
