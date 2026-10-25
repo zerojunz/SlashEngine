@@ -1,5 +1,6 @@
 #include "forward_post.hpp"
 
+#include "slash/core/bits.hpp"
 #include "slash/core/math.hpp"
 #include "slash/render/image.hpp"
 
@@ -8,7 +9,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <span>
 #include <vector>
 
@@ -411,41 +411,31 @@ std::uint8_t to_byte(float value) {
     return static_cast<std::uint8_t>(std::lround(std::clamp(value, 0.0F, 1.0F) * 255.0F));
 }
 
-// A value's bits as another type of the same size. std::bit_cast would do, but the glibc 2.31
-// sysroot Linux exports build against has libstdc++ 10, which lacks it.
-template <typename To, typename From>
-To float_bits(From value) {
-    static_assert(sizeof(To) == sizeof(From));
-    To out{};
-    std::memcpy(&out, &value, sizeof(out));
-    return out;
-}
-
 } // namespace
 
 float round_half(float value) {
     if (std::isnan(value)) {
         return value;
     }
-    const auto bits = float_bits<std::uint32_t>(value);
+    const auto bits = slash::bit_cast<std::uint32_t>(value);
     const std::uint32_t sign = bits & 0x80000000U;
     const std::uint32_t magnitude = bits & 0x7FFFFFFFU;
     // At least 65520 rounds up past half's largest value, 65504.
     if (magnitude >= 0x477FF000U) {
-        return float_bits<float>(sign | 0x7F800000U);
+        return slash::bit_cast<float>(sign | 0x7F800000U);
     }
     const auto exponent = static_cast<int>(magnitude >> 23U) - 127;
     // Below 2^-25, half the smallest half, everything rounds to 0.
     if (exponent < -25) {
-        return float_bits<float>(sign);
+        return slash::bit_cast<float>(sign);
     }
     // Halves keep 10 bits after the point, and from 2^-14 down a step of 2^-24. Rounds to a
     // multiple of the step by adding and taking away a number whose last bit is worth one step,
     // as float addition rounds ties to even.
     const float step = std::ldexp(1.0F, std::max(exponent, -14) - 10);
     const float big = step * 8388608.0F; // 2^23 steps: its last bit is worth one step
-    const float rounded = (float_bits<float>(magnitude) + big) - big;
-    return float_bits<float>(sign | float_bits<std::uint32_t>(rounded));
+    const float rounded = (slash::bit_cast<float>(magnitude) + big) - big;
+    return slash::bit_cast<float>(sign | slash::bit_cast<std::uint32_t>(rounded));
 }
 
 Float4 forward_clear(const Color& clear) {

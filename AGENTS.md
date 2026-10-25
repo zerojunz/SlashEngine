@@ -1607,6 +1607,8 @@ CI rejects unformatted code and any clang-tidy finding.
 - C++20. Engine libraries build with no exceptions and no RTTI; fallible calls return
   `slash::Result<T>` (`engine/core/include/slash/core/result.hpp`). Tools and tests may use
   exceptions.
+- Use `slash::bit_cast` (`slash/core/bits.hpp`), not `std::bit_cast`: Linux exports build against
+  libstdc++ 10, which lacks it.
 - Invariants use `SLASH_ASSERT`, which logs and aborts in every build type.
 - Log with `slash::log::info("message", {{"key", value}})`; never print free-form text to stdout
   from engine code.
