@@ -95,6 +95,9 @@ struct ModelPart {
 // and where it is in its parent at rest.
 struct ModelNode {
     std::string name;
+    // Its name in the file, before Godot's naming rules made name of it ("mixamorig:Hips" for
+    // "mixamorig_Hips"), by which other engines' scenes name the node; "" for none.
+    std::string file_name;
     int parent = -1;
     Vec3 position;
     Quat rotation;

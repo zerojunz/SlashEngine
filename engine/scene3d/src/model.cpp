@@ -472,6 +472,7 @@ struct SceneReader {
         const bool named = node.name != nullptr && *node.name != '\0';
         const char* unnamed = node.mesh != nullptr ? "Mesh" : "Node";
         out.name = unique_name(names, named ? node.name : unnamed);
+        out.file_name = named ? node.name : "";
         out.parent = parent;
         out.file_index = static_cast<int>(&node - data.nodes);
         if (node.has_matrix != 0) {
