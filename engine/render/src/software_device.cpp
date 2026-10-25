@@ -666,7 +666,6 @@ public:
                 std::copy(clear_color.begin(), clear_color.end(),
                           world.pixels.begin() + static_cast<std::ptrdiff_t>(i));
             }
-            draw_sky(scene, {.bytes = nullptr, .hdr = &world});
             std::vector<float> depth;
             std::vector<float> velocity;
             Fsr2State* fsr2_state = nullptr;
@@ -683,6 +682,13 @@ public:
                                                          : fsr2_state->view_projection,
                                          .velocity = &velocity};
             }
+            // The sky is seen through TAA's jitter or FSR 2's, as the meshes.
+            std::array<float, 2> sky_jitter = fsr2_camera.jitter;
+            if (detail::uses_taa(scene) && !mesh_draws_.empty()) {
+                sky_jitter = detail::taa_jitter(taa_history(frame_.target, size[0], size[1]).frames,
+                                                size[0], size[1]);
+            }
+            draw_sky(scene, {.bytes = nullptr, .hdr = &world}, sky_jitter);
             if (!mesh_draws_.empty()) {
                 depth = draw_meshes(scene, {.bytes = nullptr, .hdr = &world},
                                     fsr2_state != nullptr ? &fsr2_camera : nullptr);
@@ -696,7 +702,8 @@ public:
             }
             depth.resize(std::size_t{size[0]} * size[1], 0.0F);
             if (fsr2_state != nullptr) {
-                velocity.resize(std::size_t{size[0]} * size[1] * 2, 0.0F);
+                // A frame with no meshes is all sky.
+                velocity.resize(std::size_t{size[0]} * size[1] * 2, detail::kInvalidMotion);
                 world = upscale_fsr2(scene, *fsr2_state, fsr2_camera, world, depth, velocity,
                                      target.width, target.height);
             }
@@ -1494,14 +1501,15 @@ private:
         return brightness_->value;
     }
 
-    // sky.hlsl on the CPU: every pixel of the target, from its view direction, before the
-    // meshes.
-    void draw_sky(const Scene3D& scene, const WorldTarget& target) {
+    // sky.hlsl on the CPU: every pixel of the target, from its view direction through the
+    // camera moved by jitter in clip space, before the meshes.
+    void draw_sky(const Scene3D& scene, const WorldTarget& target,
+                  const std::array<float, 2>& jitter = {}) {
         if (!detail::sky_draws(scene)) {
             return;
         }
         const detail::SkyUniforms uniforms =
-            detail::sky_uniforms(scene, target.width(), target.height());
+            detail::sky_uniforms(scene, target.width(), target.height(), jitter);
         const Texture* texture = nullptr;
         if (const TextureId id = detail::sky_texture(scene.sky); id != TextureId::None) {
             texture = find(id);
@@ -1737,7 +1745,8 @@ private:
         if (lights->ssao[0] != 0.0F || ssr || motion) {
             prepass_depth.assign(pixels, 0.0F);
             if (motion) {
-                velocity.assign(pixels * 2, 0.0F);
+                // FSR 2 works the sky's motion vectors out from the depth, as Godot's.
+                velocity.assign(pixels * 2, fsr2 != nullptr ? detail::kInvalidMotion : 0.0F);
             }
             detail::SsaoImage normals{.width = target.width(),
                                       .height = target.height(),
@@ -1855,6 +1864,8 @@ private:
                                    .display_height = height,
                                    .jitter = camera.jitter,
                                    .projection = scene.projection,
+                                   .view_projection = multiply(scene.projection, scene.camera),
+                                   .previous = camera.previous,
                                    .sharpness = scene.fsr2.value_or(Fsr2Scaling{}).sharpness,
                                    .frame_index = state.clock.frames,
                                    .phases = state.clock.phases});

@@ -632,6 +632,8 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] FSR 2.2, as Godot's `fsr2`: the 3D world drawn at the render size with a jittered
         camera and rebuilt at the window's size by AMD's passes, on every Forward+ device, with
         Godot's `scaling_3d` settings imported
+  - [x] The sky's motion vectors worked out from the depth in FSR 2, and the sky jittered with
+        TAA and FSR 2, as Godot's
   - [ ] FSR 3's upscaler and MetalFX, and temporal upscalers through `render::Upscaler`, on the
         depth, motion vectors and jittered camera that FSR 2 uses
   - [ ] FSR 3 frame generation, once the render device controls presenting frames

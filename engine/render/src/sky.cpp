@@ -2,6 +2,7 @@
 #include "mesh_shading.hpp"
 #include "post_shading.hpp"
 #include "sky_shading.hpp"
+#include "taa.hpp"
 
 #include "slash/core/math.hpp"
 #include "slash/render/image.hpp"
@@ -351,7 +352,8 @@ TextureId sky_texture(const Sky3D& sky) {
     return material_texture(sky, sky.kind);
 }
 
-SkyUniforms sky_uniforms(const Scene3D& scene, std::uint32_t width, std::uint32_t height) {
+SkyUniforms sky_uniforms(const Scene3D& scene, std::uint32_t width, std::uint32_t height,
+                         const std::array<float, 2>& jitter) {
     const Sky3D& sky = scene.sky;
     SkyUniforms out;
     out.orientation = multiply3(sky.orientation, inverse3(scene.camera));
@@ -361,6 +363,8 @@ SkyUniforms sky_uniforms(const Scene3D& scene, std::uint32_t width, std::uint32_
         // near and far planes don't change the entries the sky reads.
         projection = perspective(sky.custom_fov, projection[5] / projection[0], 0.05F, 4000.0F);
     }
+    // Godot's correction.add_jitter_offset(taa_jitter).
+    projection = jittered(projection, jitter);
     out.projection = {projection[8], projection[0], projection[9], projection[5]};
     out.pixel = {1.0F / static_cast<float>(std::max(width, 1U)),
                  1.0F / static_cast<float>(std::max(height, 1U)), sky.energy, 0.0F};

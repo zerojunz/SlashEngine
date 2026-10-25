@@ -52,9 +52,11 @@ static_assert(sizeof(SkyUniforms) == 448);
 // The texture the sky samples (its material's sky cover, night sky or panorama), or None.
 [[nodiscard]] TextureId sky_texture(const Sky3D& sky);
 
-// The sky pass's uniforms, for a target of width x height.
+// The sky pass's uniforms, for a target of width x height, seen through the camera moved by TAA's
+// or FSR 2's jitter in clip space, as Godot's sky.
 [[nodiscard]] SkyUniforms sky_uniforms(const Scene3D& scene, std::uint32_t width,
-                                       std::uint32_t height);
+                                       std::uint32_t height,
+                                       const std::array<float, 2>& jitter = {});
 
 // Where the pixel at x, y (its center, from the top left) looks: its direction in the sky's
 // space, and the panorama coordinate it samples.

@@ -130,7 +130,10 @@ they work on every backend and on the software device behind `frame.capture`, wh
 the 3D world draws at the render size with a jittered camera, the Forward+ prepass writes motion
 vectors as [TAA](#temporal-antialiasing)'s does, and FSR 2's passes (luminance, dilated depth and
 motion, reconstructed depth from the frame before, depth clip, locks, accumulation and RCAS) rebuild
-it at the window's size before the 3D post-processing. It runs in Forward+ only, at a `scale` below
+it at the window's size before the 3D post-processing. Where no opaque mesh drew, such as the sky,
+FSR 2 works the motion vector out from the depth and the camera of the frame before, as Godot's,
+so a sky stays sharp while the camera turns. The sky is seen through the same jittered camera as
+the meshes, with TAA too. It runs in Forward+ only, at a `scale` below
 `1`; in Compatibility, with the OpenGL drivers, or with no 3D in the world, the world scales with
 `bilinear` instead, as Godot falls back. TAA is off while it runs, since FSR 2 does its job. As in
 Godot, it has no reactive mask, so transparent meshes, which write no depth, can trail for a frame

@@ -4,3 +4,7 @@
 {"jsonrpc":"2.0","id":4,"method":"component.set","params":{"id":"card","components":{"Transform3D":{"rotation":[0.0,0.0,0.6]}}}}
 {"jsonrpc":"2.0","id":5,"method":"frame.capture","params":{"points":[[77,28],[88,28],[62,45],[98,45]],"path":"shots/turned.png"}}
 {"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[77,28],[88,28],[62,45],[98,45]],"frames":15,"path":"shots/settled.png"}}
+{"jsonrpc":"2.0","id":7,"method":"batch","params":{"commands":[{"command":"component.set","params":{"id":"environment","components":{"ProceduralSkyMaterial":{"sky_top_color":[0.05,0.08,0.2,1.0],"sky_horizon_color":[0.1,0.12,0.25,1.0],"ground_horizon_color":[0.1,0.12,0.25,1.0],"ground_bottom_color":[0.02,0.03,0.08,1.0],"sun_angle_max":2.0},"WorldEnvironment":{"background_mode":"sky"}}}},{"command":"entity.create","params":{"id":"moon","components":{"DirectionalLight3D":{"light_angular_distance":4.0,"light_color":[0.9,0.92,1.0,1.0]},"Transform3D":{"rotation":[-0.252,-2.601,0.0]}}}}]}}
+{"jsonrpc":"2.0","id":8,"method":"frame.capture","params":{"points":[[24,21],[25,21],[32,21],[41,21]],"path":"shots/moon.png","frames":16}}
+{"jsonrpc":"2.0","id":9,"method":"component.set","params":{"id":"camera","components":{"Transform3D":{"rotation":[0.0,0.03,0.0]}}}}
+{"jsonrpc":"2.0","id":10,"method":"frame.capture","params":{"points":[[27,21],[28,21],[35,21],[43,21]],"path":"shots/moon_turned.png"}}
