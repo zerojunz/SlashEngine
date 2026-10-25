@@ -621,6 +621,8 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         `AnimationNodeStateMachine`
   - [x] Two-bone, FABRIK, CCD and Jacobian IK with joint limits, as Godot 4.6's `TwoBoneIK3D`,
         `FABRIK3D`, `CCDIK3D` and `JacobianIK3D`
+  - [x] Bone attachments, as Godot's `BoneAttachment3D`: entities that follow a bone after the
+        animations and IK, carrying what hangs under them
 - [x] Navigation in 2D and 3D, as Godot 4.6's `NavigationServer2D` and `NavigationServer3D`
   - [x] Navigation meshes and polygons (`.navmesh.json`, `.navpoly.json`), regions, links,
         layers, edge connections and agents' paths, as Godot's own A* over polygons;

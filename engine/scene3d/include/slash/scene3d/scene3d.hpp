@@ -119,9 +119,10 @@ using ModelSource = std::function<Result<SourceModel>(const std::string& path)>;
 // The meshes of a world that can't draw, in the order their entities were made: an entity with
 // more than one primitive mesh, a MeshInstance3D with none or with both a model and a primitive
 // mesh, and settings Godot refuses (a torus whose radii are equal). With the world's file reader
-// set, each model is read and checked as check_model does. CSG shapes that can't be made
-// (check_csg), path followers that can't follow (world::check_paths) and GridMaps whose cells
-// can't be made (check_gridmaps) come after.
+// set, each model is read and checked as check_model does, and the bone names of Skeleton3Ds,
+// skeleton modifiers and bone attachments against the models they follow. CSG shapes that can't
+// be made (check_csg), path followers that can't follow (world::check_paths) and GridMaps whose
+// cells can't be made (check_gridmaps) come after.
 [[nodiscard]] std::vector<Problem> check_meshes(const world::World& world);
 
 // The same in a parsed scene file, each at its JSON Pointer in the file. Prefabs and instanced
