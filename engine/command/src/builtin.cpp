@@ -4580,10 +4580,13 @@ Reply frame_capture(Session& session, const json::Value& params) {
     }
 
     const json::Value* collisions = params.find("collisions");
-    auto captured = canvas::capture(world, session.assets(),
-                                    {.scale = static_cast<float>(scale),
-                                     .time = time != nullptr ? time->as_double() : -1.0,
-                                     .collisions = collisions != nullptr && collisions->as_bool()});
+    const json::Value* frames = params.find("frames");
+    auto captured = canvas::capture(
+        world, session.assets(),
+        {.scale = static_cast<float>(scale),
+         .time = time != nullptr ? time->as_double() : -1.0,
+         .collisions = collisions != nullptr && collisions->as_bool(),
+         .frames = frames != nullptr ? static_cast<std::uint32_t>(frames->as_int()) : 1U});
     if (!captured) {
         return param_error(captured.error(), scale_param != nullptr ? "/scale" : "");
     }
@@ -6546,6 +6549,11 @@ void register_builtin_commands(Registry& registry) {
         property("number", "Seconds of game time materials and animated tiles read. Default: the "
                            "tick's.");
     capture_time["minimum"] = 0;
+    json::Value capture_frames =
+        property("integer", "Draw the frame this many times and return the last, for temporal "
+                            "antialiasing, which builds up over frames. Default 1.");
+    capture_frames["minimum"] = 1;
+    capture_frames["maximum"] = 120;
     registry.add({
         .name = "frame.capture",
         .description = "Draws the frame the window shows now, on the CPU, the same on every "
@@ -6558,6 +6566,7 @@ void register_builtin_commands(Registry& registry) {
             {"collisions",
              property("boolean", "Draw collision shapes over the world, as Godot's Visible "
                                  "Collision Shapes.")},
+            {"frames", std::move(capture_frames)},
             {"image", property("boolean", "Return the PNG, base64, as \"png\".")},
             {"path", property("string", "A .png file to write.")},
             {"points", std::move(capture_points)},

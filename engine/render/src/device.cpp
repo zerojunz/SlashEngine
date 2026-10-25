@@ -699,7 +699,8 @@ public:
     }
 
     Result<void> draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
-                           std::uint32_t /*layers*/, ShadowCasting /*shadows*/) override {
+                           std::uint32_t /*layers*/, ShadowCasting /*shadows*/,
+                           const std::optional<Mat4>& previous) override {
         if (!in_frame_) {
             return detail::no_frame("draw_mesh");
         }
@@ -708,6 +709,9 @@ public:
                 has_scene_, it != meshes_.end(), mesh, transform, material, target_,
                 [&](TextureId id) { return textures_.contains(id); });
             !checked) {
+            return checked;
+        }
+        if (auto checked = detail::check_previous_transform(previous); !checked) {
             return checked;
         }
         // Each mesh is a draw of its own, as on the GPU device.

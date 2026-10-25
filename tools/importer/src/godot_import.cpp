@@ -1892,6 +1892,10 @@ private:
             project["rendering"]["global_illumination"]["voxel_gi"]["quality"] =
                 quality->number() >= 1.0 ? "high" : "low";
         }
+        if (const Value* taa = setting("rendering", "anti_aliasing/quality/use_taa");
+            taa != nullptr && taa->kind == Value::Kind::Bool) {
+            project["rendering"]["anti_aliasing"]["quality"]["use_taa"] = taa->boolean;
+        }
         if (const Value* gravity = number("physics", "2d/default_gravity")) {
             project["physics_2d"]["gravity"] = gravity->number();
         }

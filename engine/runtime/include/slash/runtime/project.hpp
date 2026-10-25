@@ -89,6 +89,9 @@ struct Project {
     // rendering.global_illumination.voxel_gi.quality "high": VoxelGIs trace six narrower cones
     // for ambient light in place of four wide ones, as Godot's.
     bool voxel_gi_high_quality = false;
+    // rendering.anti_aliasing.quality.use_taa: temporal antialiasing of the 3D world in Forward+,
+    // as Godot's.
+    bool use_taa = false;
     // The render scale and how the world scales to the screen, as Godot's scaling_3d.
     render::Scaling scaling;
     // How 3D meshes are lit, as Godot's rendering/renderer/rendering_method: Forward+'s clustered

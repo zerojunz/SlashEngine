@@ -250,6 +250,25 @@ six narrower ones, which show finer detail and cost more.
 "rendering": {"global_illumination": {"voxel_gi": {"quality": "high"}}}
 ```
 
+## Temporal antialiasing
+
+`rendering.anti_aliasing.quality.use_taa` turns on temporal antialiasing for the 3D world in
+`forward_plus`, as Godot's `rendering/anti_aliasing/quality/use_taa`. Each frame moves the
+camera by less than a pixel, along the next of 16 points of a Halton sequence. Meshes write how
+far each pixel moved since the frame before, from their transforms, skins and the camera's. A
+pass then blends the frame with the frames before it, moved by those motion vectors, and clips
+the old colors to those around each pixel so that moving things leave little trail. Edges smooth
+out over about 16 frames; details thinner than a pixel, which most frames miss, fade instead.
+
+```json
+"rendering": {"anti_aliasing": {"quality": {"use_taa": true}}}
+```
+
+TAA is off by default, as in Godot. It leaves the 2D canvas, controls and `gl_compatibility`
+alone (Godot's Compatibility renderer has no TAA), and reflection probes capture without it. A
+frame with no meshes starts the history again. `frame.capture` keeps the history between
+captures, and its `frames` draws several at once.
+
 ## Texture forms
 
 `rendering.textures` says how exports ship textures, as Godot's texture import `compress/mode`.
