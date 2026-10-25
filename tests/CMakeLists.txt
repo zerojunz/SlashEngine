@@ -4,6 +4,7 @@ if(EMSCRIPTEN)
     add_executable(slash_web_tests
         test_main.cpp
         test_clusters.cpp
+        test_decal.cpp
         test_forward_post.cpp
         test_fsr2.cpp
         test_gpu_particles.cpp
@@ -62,6 +63,7 @@ add_executable(slash_tests
     test_command.cpp
     test_csg.cpp
     test_debug.cpp
+    test_decal.cpp
     test_exporter.cpp
     test_expression.cpp
     test_fixed_step.cpp
