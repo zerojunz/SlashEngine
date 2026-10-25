@@ -450,6 +450,13 @@ does. [examples/import-godot-3d](../../examples/import-godot-3d/) imports a cour
   field included. A `CameraAttributesPhysical` is reported.
 - A `GeometryInstance3D`'s `lod_bias` keeps its name, and its model's surfaces pick their
   [LODs](scene-format.md#mesh-lods) by it.
+- A `GeometryInstance3D`'s `ignore_occlusion_culling` keeps its name. An `OccluderInstance3D`
+  keeps its `bake_mask` and `bake_simplification_distance`, and its occluder becomes its
+  [`shape`](scene-format.md#occlusion-culling): a `QuadOccluder3D`'s `size` is `[x, y, 1]`, and a
+  `BoxOccluder3D`'s `size`, a `SphereOccluder3D`'s `radius`, a `PolygonOccluder3D`'s `polygon` and
+  an `ArrayOccluder3D`'s `vertices` and `indices` keep their names. An occluder in the binary
+  `.occ` file Godot's bake saves is reported; bake it again with
+  [`occluder.bake`](commands.md#occluderbake).
 - A `GeometryInstance3D`'s `gi_mode` and `gi_lightmap_texel_scale` and a light's
   `light_bake_mode`, `light_indirect_energy` and `light_size` keep their names (`gi_mode` `2` is
   `"dynamic"`), so [`lightmap.bake`](commands.md#lightmapbake) bakes the meshes and lights Godot
@@ -598,6 +605,7 @@ on its top.
 | `rendering/global_illumination/voxel_gi/quality` | `rendering.global_illumination.voxel_gi.quality`: `0` is `"low"`, `1` is `"high"` |
 | `rendering/anti_aliasing/quality/use_taa` | `rendering.anti_aliasing.quality.use_taa` |
 | `rendering/mesh_lod/lod_change/threshold_pixels` | `rendering.mesh_lod.lod_change.threshold_pixels` |
+| `rendering/occlusion_culling/use_occlusion_culling`, `occlusion_rays_per_thread`, `jitter_projection` | `rendering.occlusion_culling` |
 | `rendering/scaling_3d/mode`, `scale`, `fsr_sharpness` | `rendering.scaling`: `bilinear`, `fsr`, `fsr2`, `metalfx_spatial` or `metalfx_temporal`, by Godot's mode number |
 | `gui/theme/custom` | `gui.theme`, the theme's `.theme.json` file |
 | `audio/buses/default_bus_layout` | `audio.bus_layout`, the layout's `.bus_layout.json` file |

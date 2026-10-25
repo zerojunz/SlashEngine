@@ -77,6 +77,9 @@ struct Project {
     // rendering.mesh_lod.lod_change.threshold_pixels: how many pixels a coarser LOD may be off by,
     // as Godot's rendering/mesh_lod/lod_change/threshold_pixels.
     float mesh_lod_threshold = 1.0F;
+    // rendering.occlusion_culling: whether OccluderInstance3Ds hide meshes from the camera, as
+    // Godot's rendering/occlusion_culling.
+    render::OcclusionCulling occlusion_culling{};
     // What the window shows behind everything, as RGBA from 0 to 1: Godot's default gray.
     std::array<float, 4> clear_color{0.3F, 0.3F, 0.3F, 1.0F};
     // How sprites that inherit their filter are sampled: "linear" or "nearest".

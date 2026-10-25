@@ -263,6 +263,8 @@ public:
     [[nodiscard]] std::size_t meshes_drawn() const noexcept { return meshes_drawn_; }
     // Of those, the ones drawn at a coarser LOD than their surface's own.
     [[nodiscard]] std::size_t lods_drawn() const noexcept { return lods_drawn_; }
+    // 3D meshes the OccluderInstance3Ds hid from the camera in the last frame.
+    [[nodiscard]] std::size_t meshes_occluded() const noexcept { return meshes_occluded_; }
     [[nodiscard]] std::size_t lights_3d_drawn() const noexcept { return lights_3d_drawn_; }
     [[nodiscard]] std::size_t meshes_kept() const noexcept { return scene3d_.meshes_kept(); }
     // The upscaler the last frame scaled the world with (render/upscaler.hpp), and its sizes;
@@ -433,6 +435,7 @@ private:
     std::size_t shapes_drawn_ = 0;
     std::size_t meshes_drawn_ = 0;
     std::size_t lods_drawn_ = 0;
+    std::size_t meshes_occluded_ = 0;
     std::size_t lights_3d_drawn_ = 0;
     // The 3D world's meshes on the device; its textures and models are this renderer's.
     scene3d::Renderer scene3d_;
@@ -481,6 +484,8 @@ struct Settings {
     // rendering.mesh_lod.lod_change.threshold_pixels: how many pixels a model's coarser LODs may
     // be off by.
     float mesh_lod_threshold = 1.0F;
+    // rendering.occlusion_culling: whether OccluderInstance3Ds hide meshes from the camera.
+    render::OcclusionCulling occlusion_culling{};
 };
 void set_settings(world::World& world, const Settings& settings);
 // The settings given to the world, or the defaults.
@@ -508,8 +513,9 @@ struct Capture {
     std::size_t lights = 0;
     std::size_t controls = 0;
     std::size_t shapes = 0;
-    std::size_t meshes = 0; // 3D meshes (scene3d.hpp)
-    std::size_t lods = 0;   // of those, drawn at a coarser LOD
+    std::size_t meshes = 0;   // 3D meshes (scene3d.hpp)
+    std::size_t lods = 0;     // of those, drawn at a coarser LOD
+    std::size_t occluded = 0; // 3D meshes occluders hid from the camera
     // How the settings' render scale scaled the world, if they did.
     CanvasRenderer::Scaled scaled;
 };
