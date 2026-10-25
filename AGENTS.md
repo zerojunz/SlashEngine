@@ -855,6 +855,16 @@ what devices share, with `run_fsr2`, the passes' CPU twin, which `tests/test_fsr
 every device to. Each target keeps its own history, and post-processing runs at the window's
 size after. `examples/fsr2-3d` rebuilds a card at twice its render size.
 
+Decals are Godot 4.6's Forward+ `Decal` (`render::Decals3D`, `Scene3D::decals`; the `Decal`
+component, gathered by `scene3d::Renderer::add_decals`). `src/decal.hpp` holds what devices
+share: `pack_decal_atlas` packs a frame's textures as Godot's `update_decal_atlas` (skyline
+layout, 5 averaged levels) into a storage buffer the shader filters itself, so every device reads
+the same texels; `place_decals` orders them as Godot's `update_decal_buffer`; `build_clusters`
+gives each tile a decal section after its lights'; and `apply_decals` is the CPU twin of
+`mesh.hlsl`'s decal loop. A change to the decal math goes in both. `check_decals` caps the atlas
+at `kMaxDecalAtlasTexels` (2^25, WebGPU's 128 MiB storage binding); `add_decals` drops and reports
+those past it. Compatibility draws none. `examples/decals-3d` paints a street.
+
 Compatibility's post-processing: without glow or adjustments, `mesh.hlsl` tonemaps as it draws.
 With either, each device draws the meshes into an RGBA8 texture at `end_frame` and runs
 `shaders/post.hlsl`'s passes: glow's filter, three downsamples and three upsamples through four

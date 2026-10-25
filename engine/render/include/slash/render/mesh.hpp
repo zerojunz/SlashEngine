@@ -1,10 +1,12 @@
 #pragma once
 
 #include "slash/core/json.hpp"
+#include "slash/core/result.hpp"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string_view>
 #include <vector>
@@ -586,6 +588,87 @@ struct Reflections3D {
     bool operator==(const Reflections3D&) const = default;
 };
 
+struct Image; // in device.hpp
+
+// The most decals a frame draws, Godot's rendering/limits/cluster_builder/max_clustered_elements:
+// those past it are left out.
+inline constexpr std::size_t kMaxDecals3D = 512;
+
+// How decals' textures are filtered, as Godot's rendering/textures/decals/filter: by the nearest
+// texel or between texels, and with mipmaps, levels of the atlas each half the size of the one
+// before, between which minified decals are filtered too. The anisotropic modes filter as the
+// mipmap ones.
+enum class DecalFilter : std::uint8_t {
+    Nearest,
+    Linear,
+    NearestMipmaps,
+    LinearMipmaps,
+    NearestMipmapsAnisotropic,
+    LinearMipmapsAnisotropic
+};
+// Their names in project.json, in order: "nearest", "linear" and so on.
+inline constexpr std::array<std::string_view, 6> kDecalFilterNames{"nearest",
+                                                                   "linear",
+                                                                   "nearest_mipmaps",
+                                                                   "linear_mipmaps",
+                                                                   "nearest_mipmaps_anisotropic",
+                                                                   "linear_mipmaps_anisotropic"};
+
+// A decal, as Godot's Decal in its Forward+ renderer: a box that projects its textures down its
+// -Y onto the surfaces inside it, changing their albedo (by albedo_mix), normal, ambient
+// occlusion, roughness and metallic (an ORM texture's red, green and blue) where the albedo
+// texture's alpha says, and adding emission. It fades toward its top and bottom by upper_fade and
+// lower_fade, where surfaces face away from its up by normal_fade, and with distance_fade from
+// distance_fade_begin to distance_fade_begin + distance_fade_length from the camera. Decals are
+// drawn nearest the camera last (on top), less their sorting_offset. A decal without an albedo or
+// an emission texture draws nothing.
+struct Decal3D {
+    // Its place, turn and scale in the world (column-major, as Mat4).
+    std::array<float, 16> transform = {1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F,
+                                       0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
+    std::array<float, 3> size{2.0F, 2.0F, 2.0F}; // the box, centered on it
+    // The albedo (sRGB, with alpha), normal (Y down, as most tools draw them), ORM and emission
+    // (sRGB) textures, each RGBA8 pixels or nullptr for none. Their pixels are copied into the
+    // device's atlas of decal textures when a frame first draws them.
+    // NOLINTBEGIN(readability-redundant-member-init)
+    std::shared_ptr<const Image> albedo{};
+    std::shared_ptr<const Image> normal{};
+    std::shared_ptr<const Image> orm{};
+    std::shared_ptr<const Image> emission{};
+    // NOLINTEND(readability-redundant-member-init)
+    float emission_energy = 1.0F;
+    std::array<float, 4> modulate{1.0F, 1.0F, 1.0F, 1.0F}; // sRGB, times the albedo and emission
+    float albedo_mix = 1.0F;
+    float normal_fade = 0.0F;
+    float upper_fade = 0.3F;
+    float lower_fade = 0.3F;
+    bool distance_fade = false;
+    float distance_fade_begin = 40.0F;
+    float distance_fade_length = 10.0F;
+    std::uint32_t cull_mask = 0xFFFFF; // the layers whose meshes it draws on
+    float sorting_offset = 0.0F;
+
+    bool operator==(const Decal3D&) const = default;
+};
+
+// A frame's decals, in Forward+; Compatibility draws none, as Godot's.
+struct Decals3D {
+    std::vector<Decal3D> decals; // in any order
+    DecalFilter filter = DecalFilter::LinearMipmaps;
+
+    bool operator==(const Decals3D&) const = default;
+};
+// Reads project.json's rendering object's textures.decals.filter. What is missing or not valid
+// keeps the default, linear_mipmaps.
+[[nodiscard]] DecalFilter decal_filter(const json::Value& rendering);
+// Fails unless a decal's numbers are usable and its textures are RGBA8 images of 1 to
+// kMaxTextureSize texels across, saying which, after name ("the decal's size is above 0").
+[[nodiscard]] Result<void> check_decal(const Decal3D& decal, std::string_view name = "the decal");
+// Fails unless every decal passes check_decal, the filter is one of Godot's and the atlas of
+// their textures fits in what devices hold (2^25 texels over all its levels, 128 MiB: a texture
+// 2048 texels across and a few smaller ones). Devices refuse frames whose decals fail it.
+[[nodiscard]] Result<void> check_decals(const Decals3D& decals);
+
 // A frame that draws the world into a face of a reflection atlas's cube instead of its target, as
 // Godot draws a ReflectionProbe's sides: linear and unprocessed, as a Forward+ frame's world is
 // before its post passes, with no SSAO, SSR or probes. The frame's target is None and its size
@@ -656,6 +739,7 @@ struct Scene3D {
     Ssao3D ssao;
     Ssr3D ssr;
     Reflections3D reflections;
+    Decals3D decals;
     // How meshes trace their VoxelGIs (Material3D::voxel_gi), as Godot's rendering/
     // global_illumination/voxel_gi/quality: four cones of 45 degrees for their ambient light, or
     // with high quality six narrower ones.

@@ -3,6 +3,7 @@
 // software device's meshes are the same pixels on every machine.
 
 #include "checks.hpp"
+#include "decal.hpp"
 #include "mesh_shading.hpp"
 #include "post_shading.hpp"
 #include "reflection.hpp"
@@ -664,19 +665,27 @@ MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material, std::uint3
     return out;
 }
 
-MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
-    MeshSceneUniforms out;
-    // The camera's place: the inverse of the camera matrix applied to the origin, -R^T t for its
-    // rotation R and translation t, scaled back by the rows' lengths for a camera matrix that
-    // scales.
-    const Mat4& c = scene.camera;
+Float3 camera_place(const Mat4& c) {
+    // -R^T t for its rotation R and translation t, scaled back by the rows' lengths for a camera
+    // matrix that scales.
     Float3 place{};
     for (std::size_t row = 0; row < 3; ++row) {
         const Float3 axis{c.at(row), c.at(4 + row), c.at(8 + row)};
         const float squared = dot3(axis, axis);
         place = add(place, scale(axis, -c.at(12 + row) / squared));
     }
+    return place;
+}
+
+MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
+    MeshSceneUniforms out;
+    const Mat4& c = scene.camera;
+    const Float3 place = camera_place(c);
     out.camera = {place[0], place[1], place[2], 0.0F};
+    const Mat4 clip = multiply(scene.projection, c);
+    out.clip_rows = {Float4{clip[0], clip[4], clip[8], clip[12]},
+                     Float4{clip[1], clip[5], clip[9], clip[13]},
+                     Float4{clip[3], clip[7], clip[11], clip[15]}};
     out.view_rows = {Float4{c[0], c[4], c[8], c[12]}, Float4{c[1], c[5], c[9], c[13]},
                      Float4{c[2], c[6], c[10], c[14]}};
     if (const Ssao3D& ssao = scene.ssao;
@@ -883,7 +892,7 @@ Result<void> check_scene(const Scene3D& scene) {
                           "shadow atlases are powers of two from 256 to " +
                               std::to_string(kMaxTextureSize) + " texels across");
     }
-    return {};
+    return check_decals(scene.decals);
 }
 
 Error unknown_mesh(MeshId mesh) {
@@ -1036,10 +1045,6 @@ Float3 capture_light(const MeshSurfaceUniforms& surface, const Float3& n) {
     return out;
 }
 
-namespace {
-
-// range_mask in shaders/mesh.hlsl: the bits of a word of a tile's light bits for lights from
-// first up to end.
 std::uint32_t range_mask(std::uint32_t word, std::uint32_t first, std::uint32_t end) {
     const auto at = static_cast<std::int64_t>(word) * 32;
     const std::int64_t low =
@@ -1051,6 +1056,8 @@ std::uint32_t range_mask(std::uint32_t word, std::uint32_t first, std::uint32_t 
     return below_high & ~below_low;
 }
 
+namespace {
+
 // The clustered loop of lit_color in shaders/mesh.hlsl: each of the pixel's tile's lights within
 // its slice's range, nearest first.
 template <typename AddLight>
@@ -1060,7 +1067,7 @@ void add_cluster_lights(const LightClusters& clusters, const MeshShadowUniforms&
     const std::uint32_t tile_y = std::min(pixel.y / kClusterSize, clusters.tiles_down - 1);
     const std::uint32_t words = clusters.words;
     const std::size_t cell =
-        ((std::size_t{tile_y} * clusters.tiles_across) + tile_x) * (words + kClusterSlices);
+        ((std::size_t{tile_y} * clusters.tiles_across) + tile_x) * clusters.stride();
     const float depth =
         -(dot3(pixel.world, {shadows.camera_z[0], shadows.camera_z[1], shadows.camera_z[2]}) +
           shadows.camera_z[3]);
@@ -1193,21 +1200,48 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     };
     const bool terrain = found->terrain;
     const TerrainTexel& ground = found->ground;
-    const Float3& base = found->base;
+    Float3 emitted{};
+    if ((flags & kMeshUnshaded) == 0) {
+        emitted = {surface.emission[0], surface.emission[1], surface.emission[2]};
+        if ((flags & kMeshEmissionTexture) != 0) {
+            emitted = add(emitted, xyz(pixel.texels[3]));
+        }
+        emitted = scale(srgb_to_linear(emitted), surface.emission[3]);
+    }
+    // Shadows offset the point they sample along the vertex normal, as Godot's normal_interp; a
+    // terrain's along its shape's.
+    const Float3 geometry =
+        terrain ? frame_direction(pixel, ground.shape) : normalize(pixel.normal);
+    // Forward+'s decals change the surface before it is lit, as Godot's, with the vertex normal
+    // turned to the pixel's side.
+    DecalSurface decaled{.base = found->base,
+                         .normal = found->normal,
+                         .ao = 1.0F,
+                         .roughness = found->roughness,
+                         .metallic = found->metallic,
+                         .emitted = emitted};
+    if (maps.decal_atlas != nullptr) {
+        const bool flipped = (flags & kMeshSideCheck) != 0 && !pixel.front;
+        apply_decals(scene, maps, pixel, surface.options[2],
+                     flipped ? scale(geometry, -1.0F) : geometry, decaled);
+    }
+    const Float3& base = decaled.base;
     if ((flags & kMeshUnshaded) != 0) {
         return finish(base);
     }
 
-    const float metallic = found->metallic;
-    const float roughness = found->roughness;
-    const Float3& normal = found->normal;
+    const float metallic = decaled.metallic;
+    const float roughness = decaled.roughness;
+    const Float3& normal = decaled.normal;
+    emitted = decaled.emitted;
     // Godot's SSAO: the frame's occlusion at the pixel darkens the opaque meshes' ambient light,
-    // and their direct light by its light affect times its AO channel affect.
-    float ao = 1.0F;
+    // with the decals' ambient occlusion, and their direct light by its light affect times its AO
+    // channel affect.
+    float ao = decaled.ao;
     float ao_direct = 1.0F;
     const bool opaque = (flags & kMeshHasAlpha) == 0 || (flags & kMeshAlphaScissor) != 0;
     if (scene.ssao[0] != 0.0F && opaque && !maps.ao.empty()) {
-        ao = maps.ao[(std::size_t{pixel.y} * maps.ao_width) + pixel.x];
+        ao = std::min(ao, maps.ao[(std::size_t{pixel.y} * maps.ao_width) + pixel.x]);
         const float affect = std::max(0.0F, scene.ssao[1]) * scene.ssao[2];
         ao_direct = 1.0F + ((ao - 1.0F) * affect);
     }
@@ -1218,21 +1252,12 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         ssr = {maps.ssr[at], maps.ssr[at + 1], maps.ssr[at + 2], maps.ssr[at + 3]};
     }
     const float specular = surface.surface[2];
-    Float3 emitted{surface.emission[0], surface.emission[1], surface.emission[2]};
-    if ((flags & kMeshEmissionTexture) != 0) {
-        emitted = add(emitted, xyz(pixel.texels[3]));
-    }
-    emitted = scale(srgb_to_linear(emitted), surface.emission[3]);
 
     const Float3 view =
         normalize(sub({scene.camera[0], scene.camera[1], scene.camera[2]}, pixel.world));
     const float dielectric = 0.16F * specular * specular;
     const Float3 f0 = lerp3({dielectric, dielectric, dielectric}, base, metallic);
 
-    // Shadows offset the point they sample along the vertex normal, as Godot's normal_interp; a
-    // terrain's along its shape's.
-    const Float3 geometry =
-        terrain ? frame_direction(pixel, ground.shape) : normalize(pixel.normal);
     LightSum light_sum;
     // add_light in shaders/mesh.hlsl.
     const bool lightmapped = (flags & kMeshLightmap) != 0;

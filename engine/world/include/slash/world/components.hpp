@@ -689,6 +689,38 @@ struct VoxelGI {
 SLASH_COMPONENT(VoxelGI, subdiv, size, camera_attributes, data, dynamic_range, energy, bias,
                 normal_bias, propagation, use_two_bounces, interior)
 
+// A box that projects textures onto the meshes inside it, as Godot's Decal, in Forward+: down its
+// -Y, its albedo texture's color mixed into theirs by albedo_mix where its alpha says, with its
+// normal and ORM (ambient occlusion, roughness, metallic) textures there too, and its emission
+// texture added. It fades toward its top and bottom (upper_fade, lower_fade), on surfaces that
+// face away from its up (normal_fade) and, with distance_fade_enabled, away from the camera.
+// Nearer decals draw over further ones, less their sorting_offset. Compatibility draws none.
+struct Decal {
+    Vec3 size{2.0F, 2.0F, 2.0F}; // the box, centered on the entity, in its space
+    std::string texture_albedo;
+    std::string texture_normal;
+    std::string texture_orm;
+    std::string texture_emission;
+    float emission_energy = 1.0F;
+    Vec4 modulate{1.0F, 1.0F, 1.0F, 1.0F}; // sRGB, times the albedo and emission
+    float albedo_mix = 1.0F;
+    float normal_fade = 0.0F;
+    float upper_fade = 0.3F;
+    float lower_fade = 0.3F;
+    bool distance_fade_enabled = false;
+    float distance_fade_begin = 40.0F;
+    float distance_fade_length = 10.0F;
+    std::uint32_t cull_mask = 0xFFFFF; // the layers of the meshes it draws on
+    std::uint32_t layers = 1;          // as MeshInstance3D's: the cameras that see it
+    float sorting_offset = 0.0F;
+
+    friend bool operator==(const Decal&, const Decal&) = default;
+};
+SLASH_COMPONENT(Decal, size, texture_albedo, texture_normal, texture_orm, texture_emission,
+                emission_energy, modulate, albedo_mix, normal_fade, upper_fade, lower_fade,
+                distance_fade_enabled, distance_fade_begin, distance_fade_length, cull_mask, layers,
+                sorting_offset)
+
 // The 3D world's background, ambient light, tonemap, reflections, ambient occlusion, glow, fog and
 // adjustments,
 // as Godot's WorldEnvironment and its Environment. The first one made applies;

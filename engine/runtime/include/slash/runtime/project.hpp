@@ -110,6 +110,9 @@ struct Project {
     render::ReflectionAtlasSettings reflection_atlas{};
     // How exports ship textures.
     TextureImport texture_import;
+    // rendering.textures.decals.filter: how decals' textures are filtered, as Godot's
+    // rendering/textures/decals/filter.
+    render::DecalFilter decal_filter = render::DecalFilter::LinearMipmaps;
     // Gravity and default damping for 2D physics.
     physics2d::Settings physics_2d;
     // Gravity and default damping for 3D physics.

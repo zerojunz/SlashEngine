@@ -1,6 +1,7 @@
 #include "gpu_device.hpp"
 
 #include "checks.hpp"
+#include "decal.hpp"
 #include "forward_post.hpp"
 #include "forward_post_shaders.hpp"
 #include "fsr2.hpp"
@@ -440,7 +441,8 @@ public:
             SDL_ReleaseGPUBuffer(device_, particle_data_);
             SDL_ReleaseGPUTransferBuffer(device_, particle_transfer_);
         }
-        for (const StorageBuffer& storage : {cluster_lights_, cluster_cells_}) {
+        for (const StorageBuffer& storage :
+             {cluster_lights_, cluster_cells_, probe_buffer_, decal_buffer_, decal_atlas_buffer_}) {
             if (storage.buffer != nullptr) {
                 SDL_ReleaseGPUBuffer(device_, storage.buffer);
                 SDL_ReleaseGPUTransferBuffer(device_, storage.transfer);
@@ -2311,7 +2313,7 @@ private:
         return {};
     }
 
-    // Forward+'s fragment stage, which reads the clusters' two storage buffers, unless it is made
+    // Forward+'s fragment stage, which reads the clusters' storage buffers, unless it is made
     // already.
     Result<void> make_clustered_shader() {
         if (clustered_shader_ != nullptr) {
@@ -2324,9 +2326,9 @@ private:
                               .fragment_msl = fragment_msl,
                               .hlsl = shaders::kMeshClusteredHlsl};
         // The material's textures, the shadow atlases, the radiance, the screen's SSAO and SSR,
-        // and the reflection probes' atlas; the lights, clusters and probes.
+        // and the reflection probes' atlas; the lights, clusters, probes, decals and decal atlas.
         auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code,
-                                        static_cast<std::uint32_t>(kMeshTextures) + 5, 3, 3);
+                                        static_cast<std::uint32_t>(kMeshTextures) + 5, 3, 5);
         if (!fragment) {
             return fragment.error();
         }
@@ -2821,7 +2823,7 @@ private:
         const auto lights = std::make_unique<MeshSceneUniforms>(mesh_scene_uniforms(scene));
         const bool clustered = scene.method == RenderMethod::ForwardPlus;
         if (clustered) {
-            lights->cluster = clusters_.uniform();
+            set_cluster_uniforms(*lights, clusters_, &decal_atlas_.atlas(), scene.decals.filter);
         }
         const bool ssao = plan != nullptr && uses_ssao(scene);
         const bool ssr = plan != nullptr && uses_ssr(scene);
@@ -2967,7 +2969,8 @@ private:
             }
             if (clustered) {
                 const std::array storage{cluster_lights_.buffer, cluster_cells_.buffer,
-                                         probe_buffer_.buffer};
+                                         probe_buffer_.buffer, decal_buffer_.buffer,
+                                         decal_atlas_buffer_.buffer};
                 SDL_BindGPUFragmentStorageBuffers(pass, 0, storage.data(),
                                                   static_cast<std::uint32_t>(storage.size()));
             }
@@ -4976,9 +4979,12 @@ private:
         return uploaded;
     }
 
-    // Builds the frame's Forward+ clusters and copies them to the GPU.
+    // Builds the frame's Forward+ clusters and copies them to the GPU, with the decals' atlas when
+    // it changes.
     Result<void> upload_clusters(SDL_GPUCopyPass* copy, const Scene3D& scene) {
-        clusters_ = build_clusters(scene, scene_width_, scene_height_);
+        decal_atlas_.update(scene.decals);
+        const DecalAtlas& atlas = decal_atlas_.atlas();
+        clusters_ = build_clusters(scene, scene_width_, scene_height_, &atlas);
         if (clusters_.lights.empty()) {
             clusters_.lights.emplace_back(); // a storage buffer is never empty
         }
@@ -4996,7 +5002,27 @@ private:
         if (probes.empty()) {
             probes.emplace_back(); // a storage buffer is never empty
         }
-        return upload_storage(copy, probe_buffer_, std::as_bytes(std::span(probes)));
+        if (auto uploaded = upload_storage(copy, probe_buffer_, std::as_bytes(std::span(probes)));
+            !uploaded) {
+            return uploaded;
+        }
+        if (clusters_.decals.empty()) {
+            clusters_.decals.emplace_back();
+        }
+        if (auto uploaded =
+                upload_storage(copy, decal_buffer_, std::as_bytes(std::span(clusters_.decals)));
+            !uploaded) {
+            return uploaded;
+        }
+        if (atlas.generation == decal_atlas_uploaded_ && decal_atlas_buffer_.buffer != nullptr) {
+            return {};
+        }
+        auto uploaded =
+            upload_storage(copy, decal_atlas_buffer_, std::as_bytes(std::span(atlas.texels)));
+        if (uploaded) {
+            decal_atlas_uploaded_ = atlas.generation;
+        }
+        return uploaded;
     }
 
     // Copies bytes into a storage buffer, growing it first if they don't fit.
@@ -5004,7 +5030,8 @@ private:
                                 std::span<const std::byte> bytes) {
         const auto size = static_cast<std::uint32_t>(bytes.size());
         if (size > storage.capacity) {
-            const std::uint32_t capacity = std::max({size, storage.capacity * 2, kMinVertexBytes});
+            const std::uint32_t capacity =
+                std::max({size, std::min(storage.capacity * 2, kMaxStorageBytes), kMinVertexBytes});
             if (storage.buffer != nullptr) {
                 SDL_ReleaseGPUBuffer(device_, storage.buffer);
                 SDL_ReleaseGPUTransferBuffer(device_, storage.transfer);
@@ -5135,6 +5162,12 @@ private:
     StorageBuffer cluster_lights_;
     StorageBuffer cluster_cells_;
     StorageBuffer probe_buffer_; // the frame's reflection probes
+    // The decals' atlas, packed when their textures change, and uploaded then; and the frame's
+    // decals.
+    DecalAtlasCache decal_atlas_;
+    std::uint64_t decal_atlas_uploaded_ = 0;
+    StorageBuffer decal_buffer_;
+    StorageBuffer decal_atlas_buffer_;
     // The frame's SSAO and SSR, as layers 0 and 1, for the mesh pass; and white layers for frames
     // with neither.
     struct Screen {

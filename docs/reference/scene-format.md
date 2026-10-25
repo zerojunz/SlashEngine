@@ -1816,6 +1816,46 @@ along each axis), the `baked_exposure`, the `level_counts` of the octree from th
 emission and normal. `scene validate` checks a VoxelGI's `subdiv`, `size`, `camera_attributes`
 and `data`, and exports ship the file.
 
+### Decals
+
+A `Decal` projects textures down its -Y onto the surfaces in a box, as Godot 4.6's Forward+
+`Decal`: paint on a wall, a puddle on the street, a scorch mark. Where its albedo texture
+covers a surface, the surface takes its color by `albedo_mix`, its normal texture's bumps, and its
+ORM texture's ambient occlusion, roughness and metallic (red, green and blue); its emission
+texture glows on top, whatever the albedo covers. A decal with neither an albedo nor an emission
+texture draws nothing. Textures load as sprites' do, at most 16384 texels across.
+
+As Godot's, decals go into the frame's clusters with the lights: up to 512 a frame, those nearest
+the camera (less their `sorting_offset`) drawn last, on top. Each frame's textures are packed into
+one atlas, as Godot's, with mipmaps that project.json's `rendering.textures.decals.filter` samples
+(see [Texture forms](project-format.md#texture-forms)). The atlas holds 2^25 texels over its
+levels, so a texture 2048 texels across fits with room to spare; decals whose textures overflow it
+are left out and reported, those before them kept. Every Forward+ device draws decals, including
+the software one, so `frame.capture` shows them, on unshaded meshes too; Compatibility draws
+without them, as Godot's. A mesh takes a decal when its `layers` share a bit with the decal's
+`cull_mask`, and a camera sees a decal on its `cull_mask` layers.
+[examples/decals-3d](../../examples/decals-3d/) paints a street with three.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `size` | `[2, 2, 2]` | The box, centered on the entity, in its space; textures span its x and z |
+| `texture_albedo` | `""` | Its color, sRGB with alpha, which covers the surface by alpha |
+| `texture_normal` | `""` | Its bumps, Y down as most tools draw normal maps, where the albedo covers |
+| `texture_orm` | `""` | Ambient occlusion, roughness and metallic in red, green and blue, where the albedo covers |
+| `texture_emission` | `""` | Light it gives off, sRGB |
+| `emission_energy` | `1` | Times the emission |
+| `modulate` | `[1, 1, 1, 1]` | sRGB color times the albedo and emission; its alpha fades the decal |
+| `albedo_mix` | `1` | How much of the surface's color the albedo replaces, 0 to 1; its normal, ORM and emission apply by alpha either way |
+| `normal_fade` | `0` | Fades the decal on surfaces turned away from its -Y: 0 doesn't, 1 shows it only on surfaces facing it head on |
+| `upper_fade` | `0.3` | How sharply it fades toward the top of its box, as an exponent: 0 doesn't fade |
+| `lower_fade` | `0.3` | The same toward the bottom |
+| `distance_fade_enabled` | `false` | Fade it out with distance from the camera |
+| `distance_fade_begin` | `40` | Meters from the camera the fade starts |
+| `distance_fade_length` | `10` | Meters over which it fades out; past them it isn't drawn |
+| `cull_mask` | `0xFFFFF` | The mesh layers it projects onto |
+| `layers` | `1` | The render layers it is on, which cameras' `cull_mask` see |
+| `sorting_offset` | `0` | Meters taken off its distance when ordering decals, so it draws over closer ones |
+
 ### Checks
 
 `scene validate` and exports report an entity with two primitive meshes (at

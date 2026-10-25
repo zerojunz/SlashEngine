@@ -45,7 +45,7 @@ checks it.
 | `rendering.environment.screen_space_reflection` | No | half size | The resolution of 3D [screen-space reflections](scene-format.md#screen-space-reflections): see [Screen-space reflections](#screen-space-reflections) |
 | `rendering.reflections.reflection_atlas` | No | 256 texels, 64 probes | The size of 3D [reflection probes'](scene-format.md#reflection-probes) cubes and how many a frame draws: see [Reflection probes](#reflection-probes) |
 | `rendering.global_illumination.voxel_gi.quality` | No | `low` | How many cones meshes trace through [VoxelGIs](scene-format.md#voxelgi): see [VoxelGI](#voxelgi) |
-| `rendering.textures` | No | `lossless` | How exports ship textures: as their files, or compressed for each platform's GPUs: see [Texture forms](#texture-forms) |
+| `rendering.textures` | No | `lossless`, `linear_mipmaps` | How exports ship textures: as their files, or compressed for each platform's GPUs, and how [decals](scene-format.md#decals) sample theirs: see [Texture forms](#texture-forms) |
 | `rendering.interpolation` | No | `true` | Draw sprites part of the way between fixed ticks, from where they were before the last tick to where they are, so motion looks smooth when the display refreshes faster than the game ticks. Drawing lags the simulation by up to one tick; set `false` to draw exactly where things are |
 | `physics_2d.gravity` | No | `980` | Gravity's strength in pixels per second squared, as Godot's `physics/2d/default_gravity` |
 | `physics_2d.gravity_vector` | No | `[0, 1]` | Gravity's direction, as `[x, y]`; y points down |
@@ -296,6 +296,7 @@ naming `sprites/hero.png`; the game reads the form its GPU samples.
 | --- | --- | --- |
 | `compress_mode` | `lossless` | `lossless` ships the file as it is, decoded when it loads, as Godot's default for 2D. `vram_compressed` ships blocks GPUs sample as they are, a quarter of the GPU memory of RGBA8: BC7 on macOS, Windows and Linux, ASTC 4x4 on Android and iOS, and both on the web, whose browsers have one or the other. `vram_uncompressed` ships RGBA8 texels, as big on disk as in memory but ready for the GPU |
 | `paths` | | Modes for folders (ending in `/`) and files, such as `{"ui/": "lossless", "ui/atlas.png": "vram_compressed"}`; the longest one that holds a texture wins |
+| `decals.filter` | `linear_mipmaps` | How [decals](scene-format.md#decals) sample their textures, as Godot's `rendering/textures/decals/filter`: `nearest`, `linear`, `nearest_mipmaps`, `linear_mipmaps`, `nearest_mipmaps_anisotropic` or `linear_mipmaps_anisotropic`. The mipmap filters pick a level by how far the decal is; the anisotropic ones sample as their mipmap twins |
 
 BC7 and ASTC are blocks of 4x4 texels, so a texture whose sides aren't multiples of 4 ships as it
 is, and the export logs a warning. Compressing keeps the colors close rather than exact, so pixel
