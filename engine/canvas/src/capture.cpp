@@ -1,6 +1,7 @@
 #include "slash/canvas/canvas.hpp"
 #include "slash/ui/ui.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <string>
@@ -86,8 +87,10 @@ Result<Capture> capture(world::World& world, asset::Assets& assets, const Captur
     draw.time =
         options.time >= 0.0 ? options.time : material_time(world.tick(), frame.tick_seconds, 1.0);
     draw.collisions = options.collisions;
-    if (auto drawn = capturer.renderer->draw(world, draw); !drawn) {
-        return drawn.error();
+    for (std::uint32_t frame_index = 0; frame_index < std::max(options.frames, 1U); ++frame_index) {
+        if (auto drawn = capturer.renderer->draw(world, draw); !drawn) {
+            return drawn.error();
+        }
     }
     auto image = capturer.device->read_texture(capturer.target);
     if (!image) {

@@ -891,6 +891,17 @@ VoxelGIs its bounds touch as `Material3D::voxel_gi` (`render::VoxelGIShading`, t
 sampling of the slices, and `render::detail::trace_voxel_gis` (`engine/render/src/voxel_gi.cpp`)
 is its CPU twin. `examples/voxel-gi-3d` bounces a sun around a room.
 
+TAA is Godot 4.6's `use_taa` (project.json's `rendering.anti_aliasing.quality.use_taa`,
+`Scene3D::use_taa`), in Forward+ only. `src/taa.hpp` holds what devices share: the jitter
+(`taa_jitter`, Halton bases 2 and 3 over 16 frames, `jittered`), the mesh passes' camera with the
+frame before's (`taa_camera_uniforms`) and the resolve's CPU twin, `run_taa`. `scene3d::Renderer`
+gives each draw whose transform changed since the frame before its old one (`draw_mesh`'s
+`previous`), and devices keep a skinned mesh's vertices from before its last `update_mesh`.
+The prepass then draws with `mesh_motion.hlsl`, writing motion vectors to a second target. After
+the meshes, `taa.hlsl` (Godot's `taa_resolve.glsl`) blends the frame with each target's history,
+kept by the device. A frame without meshes starts it again. `examples/taa-3d` smooths a turning
+card's edges.
+
 Compatibility's post-processing: without glow or adjustments, `mesh.hlsl` tonemaps as it draws.
 With either, each device draws the meshes into an RGBA8 texture at `end_frame` and runs
 `shaders/post.hlsl`'s passes: glow's filter, three downsamples and three upsamples through four
