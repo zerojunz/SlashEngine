@@ -3188,6 +3188,67 @@ texture_albedo = ExtResource("1_paint")
     fs::remove_all(project);
 }
 
+TEST_CASE("importing Godot's FogVolumes keeps their shapes and FogMaterials") {
+    const fs::path project = "import_godot_fog_volume";
+    const fs::path folder = project / "godot";
+    fs::remove_all(project);
+    write(folder / "project.godot", "config_version=5\n\n[application]\n\nconfig/name=\"Cellar\"\n"
+                                    "run/main_scene=\"res://cellar.tscn\"\n");
+    write(folder / "cellar.tscn", R"([gd_scene load_steps=4 format=3]
+
+[sub_resource type="FogMaterial" id="FogMaterial_mist"]
+density = 0.5
+albedo = Color(0.8, 0.9, 1, 1)
+emission = Color(0.2, 0.1, 0, 1)
+height_falloff = 1.5
+edge_fade = 0.25
+
+[sub_resource type="Shader" id="Shader_swirl"]
+code = "shader_type fog;"
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_swirl"]
+shader = SubResource("Shader_swirl")
+
+[node name="Cellar" type="Node3D"]
+
+[node name="Mist" type="FogVolume" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -2)
+size = Vector3(4, 2, 3)
+shape = 0
+layers = 3
+material = SubResource("FogMaterial_mist")
+
+[node name="Plain" type="FogVolume" parent="."]
+extents = Vector3(1, 0.5, 2)
+
+[node name="Swirl" type="FogVolume" parent="."]
+shape = 4
+material = SubResource("ShaderMaterial_swirl")
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string cellar = "godot/cellar.scene.json";
+    REQUIRE(files.contains(cellar));
+    const json::Value& mist = entity(files, cellar, "mist");
+    CHECK(*mist.find("FogVolume") ==
+          parse(R"({"size": [4.0, 2.0, 3.0], "shape": "ellipsoid", "layers": 3})"));
+    CHECK(*mist.find("FogMaterial") == parse(R"({"density": 0.5,
+        "albedo": [0.8, 0.9, 1.0, 1.0], "emission": [0.2, 0.1, 0.0, 1.0],
+        "height_falloff": 1.5, "edge_fade": 0.25})"));
+    // Godot 4.0's extents were half the size; with no material, the default one fills it.
+    const json::Value& plain = entity(files, cellar, "plain");
+    CHECK(*plain.find("FogVolume") == parse(R"({"size": [2.0, 1.0, 4.0]})"));
+    CHECK(plain.find("FogMaterial") == nullptr);
+    // Fog shaders aren't read; the volume is kept with the default material.
+    const json::Value& swirl = entity(files, cellar, "swirl");
+    CHECK(*swirl.find("FogVolume") == parse(R"({"shape": "world"})"));
+    CHECK(swirl.find("FogMaterial") == nullptr);
+    CHECK(unsupported(plan.report, "FogVolume.material").find("why")->as_string() ==
+          "fog shaders aren't supported");
+    CHECK(unsupported(plan.report, "node type FogVolume").is_null());
+    fs::remove_all(project);
+}
+
 TEST_CASE("importing Godot's top_level and z_as_relative keeps them") {
     const fs::path project = "import_godot_top_level";
     fs::remove_all(project);

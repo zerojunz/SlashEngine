@@ -51,6 +51,20 @@ struct FogClock {
     std::array<std::uint32_t, 3> size{};
 };
 
+// A fog volume as the density pass reads it (shaders/volumetric_fog.hlsl's Volume): its place
+// and shape, the froxels it fills as Godot's volumetric_fog_update picks them, and its material.
+struct FogVolumeUniforms {
+    Mat4 to_local{};   // the world to the volume's space
+    Float4 position{}; // its place in the world, then its shape (FogVolumeShape)
+    Float4 size{};     // its size (twice the froxels for World), then 1 for a FogMaterial
+    std::array<std::int32_t, 4> corner{};     // the first froxel it fills
+    std::array<std::int32_t, 4> corner_end{}; // past the last froxel it fills
+    Float4 albedo{};                          // linear, then the material's density
+    Float4 glow{};                            // the emission, linear, then the height falloff
+    Float4 fade{};                            // the edge fade
+};
+static_assert(sizeof(FogVolumeUniforms) == 176);
+
 // The passes' uniforms: b0 in space2 of shaders/volumetric_fog.hlsl (b0 in Metal), whose b1 is
 // MeshShadowUniforms.
 struct FogUniforms {
@@ -79,8 +93,18 @@ struct FogUniforms {
     Mat4 to_previous{};   // the camera's space to the camera's space of the frame before
     std::array<Float4, 3> sky_rows{}; // the world to the sky's space, a row each
     std::array<MeshLightUniforms, kMaxDirectionalLights3D> lights{}; // the directional ones
+    std::array<std::uint32_t, 4> volume_count{}; // how many of volumes there are
+    std::array<FogVolumeUniforms, kMaxFogVolumes> volumes{};
 };
-static_assert(sizeof(FogUniforms) == 336 + (80 * kMaxDirectionalLights3D));
+static_assert(sizeof(FogUniforms) == 352 + (80 * kMaxDirectionalLights3D) + (176 * kMaxFogVolumes));
+
+// The froxels from corner to corner_end (past it) that a fog volume of the scene's fills in a fog
+// of size, as Godot's volumetric_fog_update picks
+// them: the volume's corners' froxels, or the whole view across while the camera's near plane is
+// near its box; none (corner_end not past corner on some axis) when the corners share a froxel.
+[[nodiscard]] std::array<std::array<std::int32_t, 3>, 2>
+fog_volume_froxels(const Scene3D& scene, const FogVolume3D& volume,
+                   const std::array<std::uint32_t, 3>& size);
 
 // The fog's uniforms for a frame of the scene drawn at width x height, whose meshes take lights
 // and clusters, as Godot's volumetric_fog_update sets them for the density pass, and moves clock

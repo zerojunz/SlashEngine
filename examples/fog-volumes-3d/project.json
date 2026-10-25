@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "Fog Volumes 3D",
+  "rendering": {
+    "environment": {
+      "volumetric_fog": {
+        "volume_depth": 32,
+        "volume_size": 32
+      }
+    }
+  },
+  "version": "1.0.0",
+  "window": {
+    "height": 90,
+    "width": 160
+  }
+}

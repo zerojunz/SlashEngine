@@ -1627,9 +1627,40 @@ Meshes are seen through the volume at their depth, after the [fog](#fog), as God
 and the sky through all of it by `volumetric_fog_sky_affect` (a `"color"` or `"clear_color"`
 background is left as it is unless the fog draws it as a sky). Transparent meshes take it too;
 a material's `disable_fog` leaves it out. Frames with no meshes and reflection probes' cubes go
-without it, `gl_compatibility` has none, as in Godot, and `FogVolume`s are still to come. Every
-device draws the same passes (the software device on the CPU, so `frame.capture` shows it), and
-a target's first frame starts from its own density instead of fading in from none.
+without it, and `gl_compatibility` has none, as in Godot. Every device draws the same passes (the
+software device on the CPU, so `frame.capture` shows it), and a target's first frame starts from
+its own density instead of fading in from none.
+
+#### Fog volumes
+
+A `FogVolume` adds fog to the volumetric fog in a shape, as Godot 4.6's: mist in a hollow, a
+glowing cloud, or a box of clear air in fog where its material's density is below 0. It is
+filled as the `FogMaterial` on its entity says, and with none as Godot's default material does:
+a density of 1, white, filling the shape and stopping at its edge. A material's density fades
+toward the shape's edges by `edge_fade`, and with height above the entity by `height_falloff`.
+
+As Godot's, each volume fills the froxels between its corners' froxels (the whole view across
+while the camera is near it), up to 32 a frame, those after left out and reported, and adds to
+each froxel in Godot's fixed point: its density in 1024ths, and the light it scatters and its
+glow held to what 11, 11 and 10 bits a channel carry. A `"world"` volume fills every froxel, as
+big as twice the froxels in each direction, so a material on one fades by `edge_fade` (0 keeps
+it whole). Volumes only show with `volumetric_fog_enabled`, in `forward_plus`, to cameras whose
+`cull_mask` has one of their `layers`.
+[examples/fog-volumes-3d](../../examples/fog-volumes-3d/) fills a cellar with them.
+
+| `FogVolume` field | Default | Meaning |
+| --- | --- | --- |
+| `size` | `[2, 2, 2]` | The shape's size, centered on the entity, in its space; at 0 or more |
+| `shape` | `"box"` | `"ellipsoid"`, `"cone"` (pointing up), `"cylinder"` (upright), `"box"` or `"world"` (everywhere) |
+| `layers` | `1` | The render layers it is on, which cameras' `cull_mask` see |
+
+| `FogMaterial` field | Default | Meaning |
+| --- | --- | --- |
+| `density` | `1` | Added to the fog's own; below 0 takes fog away |
+| `albedo` | `[1, 1, 1, 1]` | The color it scatters light with, sRGB |
+| `emission` | `[0, 0, 0, 1]` | The light it gives off itself, sRGB |
+| `height_falloff` | `0` | How fast it thins above the entity: it halves every 1 / `height_falloff` meters |
+| `edge_fade` | `0.1` | How it fades toward the shape's edges, as an exponent on the depth into it: 0 doesn't fade |
 
 ### Ambient occlusion
 

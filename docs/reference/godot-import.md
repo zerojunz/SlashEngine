@@ -133,6 +133,7 @@ above the world.
 | `LightmapGI` | `Transform3D` and `LightmapGI`, with its fields of the same names and its `camera_attributes` on an entity of their own; its baked `light_data` isn't read, so bake it again with [`lightmap.bake`](commands.md#lightmapbake) |
 | `LightmapProbe` | `Transform3D` and `LightmapProbe` |
 | `Decal` | `Transform3D` and `Decal`, with its fields of the same names; Godot 4.0's `extents` become a `size` twice as big |
+| `FogVolume` | `Transform3D` and `FogVolume`, with its fields of the same names, and its `FogMaterial` as the component of that name; a `ShaderMaterial` (Godot's fog shaders) and a material's `density_texture` are reported, and Godot 4.0's `extents` become a `size` twice as big |
 | `VoxelGI` | `Transform3D` and `VoxelGI`, with its fields and its data's of the same names, its `camera_attributes` on an entity of their own, and its baked cells as a `.voxelgi.json` file (see [3D](#3d)) |
 | An instance of a model file (`.glb`, `.gltf`, `.fbx`, `.blend`) | `Transform3D` and `MeshInstance3D` drawing the model |
 | `CSGCombiner3D`, `CSGBox3D`, `CSGSphere3D`, `CSGCylinder3D`, `CSGTorus3D`, `CSGPolygon3D`, `CSGMesh3D` | `Transform3D` and the component of the same name, with its material (see [3D](#3d)) |

@@ -3504,6 +3504,9 @@ private:
                 volumetric_fog_uniforms(scene, *lights, scene_width_, scene_height_, fog->clock);
             uniforms.view_to_world = transposed(uniforms.view_to_world);
             uniforms.to_previous = transposed(uniforms.to_previous);
+            for (FogVolumeUniforms& volume : uniforms.volumes) {
+                volume.to_local = transposed(volume.to_local);
+            }
             for (std::size_t pass = 0; pass < at.fog.size(); ++pass) {
                 uniforms.size[3] = static_cast<std::uint32_t>(pass);
                 at.fog.at(pass) = uniforms_.add(uniforms);
