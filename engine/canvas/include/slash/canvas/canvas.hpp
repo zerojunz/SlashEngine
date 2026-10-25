@@ -394,6 +394,7 @@ private:
     std::map<std::string, asset::Handle<render::ParticleProcess>, std::less<>> processes_;
     std::unordered_map<entt::entity, GpuSystem> gpu_systems_;
     std::unordered_map<entt::entity, LayerCells> layer_cells_;
+    // Images read on the CPU: lights' textures, and those of the materials VoxelGIs plot.
     std::map<std::string, asset::Handle<render::Image>, std::less<>> light_images_;
     std::map<std::string, asset::Handle<scene3d::Model>, std::less<>> models_;
     // The lightmaps LightmapGIs name, and their texels' .hdr files.
