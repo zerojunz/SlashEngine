@@ -10,11 +10,13 @@
 #include "slash/core/text.hpp"
 #include "slash/library/generator.hpp"
 #include "slash/library/library.hpp"
+#include "slash/library/material.hpp"
 #include "slash/library/music.hpp"
 #include "slash/library/team.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
 #include "slash/scene3d/geometry.hpp"
+#include "slash/scene3d/material.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/recipe.hpp"
 #include "slash/storyboard/storyboard.hpp"
@@ -419,6 +421,9 @@ json::Value summary(const Record& record) {
         out["size"] = json::Array{record.size[0], record.size[1], record.size[2]};
         out["triangles"] = record.triangles;
     }
+    if (record.type == "material") {
+        out["seam"] = record.seam;
+    }
     if (record.bpm > 0.0) {
         out["bpm"] = bpm_json(record.bpm);
         out["beat_count"] = record.beat_count;
@@ -537,9 +542,13 @@ Result<std::string> copy_into_project(Session& session, Libraries& libs, const R
                                       const std::string& path, json::Array* parts = nullptr,
                                       int depth = 0);
 
-// A library recipe as its project copy at path is written: each model part's library reference
-// replaced by the path of the part copied into the parts folder beside it
-// (props/parts/3fa4c2e81b07.glb for props/stall.model.json), each listed in parts.
+std::string stem_of(std::string_view path);
+
+// A library recipe or material as its project copy at path is written: each library reference
+// replaced by the path of the file copied for it, each listed in parts. A recipe's model parts
+// and material files go in the parts folder beside it (props/parts/3fa4c2e81b07.glb for
+// props/stall.model.json), a material's textures beside it, named for their fields
+// (materials/stone_albedo.png for materials/stone.standard_material.json).
 Result<std::string> project_form(Session& session, Libraries& libs, const Record& record,
                                  std::string data, const std::string& path, json::Array& parts,
                                  int depth) {
@@ -551,9 +560,11 @@ Result<std::string> project_form(Session& session, Libraries& libs, const Record
         return doc.error();
     }
     const std::size_t slash = path.rfind('/');
-    const std::string folder =
-        (slash == std::string::npos ? std::string() : path.substr(0, slash + 1)) + "parts/";
-    for (json::Value* model : model_refs(doc.value())) {
+    const std::string beside =
+        slash == std::string::npos ? std::string() : path.substr(0, slash + 1);
+    const std::string folder = beside + "parts/";
+    for (const AssetRef& ref : asset_refs(doc.value(), path)) {
+        json::Value* model = ref.value;
         const std::string_view id = ref_id_of(*model);
         if (id.empty()) {
             continue;
@@ -562,8 +573,12 @@ Result<std::string> project_form(Session& session, Libraries& libs, const Record
         if (!part) {
             return part.error();
         }
-        const std::string part_path =
-            folder + short_id(part.value().id) + "." + part.value().format;
+        std::string part_path = folder + short_id(part.value().id) + "." + part.value().format;
+        if (ref.role.ends_with("_texture")) {
+            part_path = beside + stem_of(path) + "_" +
+                        ref.role.substr(0, ref.role.size() - std::string_view("_texture").size()) +
+                        "." + part.value().format;
+        }
         if (std::ranges::none_of(parts, [&](const json::Value& placed) {
                 return placed.as_string() == part_path;
             })) {
@@ -574,7 +589,7 @@ Result<std::string> project_form(Session& session, Libraries& libs, const Record
             }
             parts.emplace_back(part_path);
         }
-        *model = part_path + variant_suffix(model->as_string());
+        *model = part_path + (ref.role == "model" ? variant_suffix(model->as_string()) : "");
     }
     return json::write(doc.value()) + "\n";
 }
@@ -645,7 +660,10 @@ bool is_model_file(std::string_view path) {
 std::string stem_of(std::string_view path) {
     const std::size_t slash = path.rfind('/');
     std::string_view name = path.substr(slash == std::string_view::npos ? 0 : slash + 1);
-    for (const std::string_view suffix : {std::string_view(".glb"), scene3d::kModelRecipeSuffix}) {
+    for (const std::string_view suffix :
+         {std::string_view(".glb"), scene3d::kModelRecipeSuffix, scene3d::kStandardMaterialSuffix,
+          std::string_view(".png"), std::string_view(".bmp"), std::string_view(".jpg"),
+          std::string_view(".jpeg")}) {
         if (name.ends_with(suffix)) {
             name.remove_suffix(suffix.size());
         }
@@ -1331,12 +1349,13 @@ Reply read_shared(const json::Value& params, Asked& asked) {
         asked.keyed["seconds"] = seconds->as_double();
     }
     const bool sized = request.width > 0 || request.height > 0;
-    if (request.type == "image" && request.seconds > 0.0) {
+    const bool flat = request.type == "image" || request.type == "material";
+    if (flat && request.seconds > 0.0) {
         return Reply::failure(command::code::kInvalidParams,
                               "/seconds: images have a width and height, not seconds",
                               json::Value(json::Object{{"path", "/seconds"}}));
     }
-    if (request.type != "image" && sized) {
+    if (!flat && sized) {
         return Reply::failure(command::code::kInvalidParams,
                               std::string("/width: ") +
                                   (request.type == "music" ? "music has" : "sounds have") +
@@ -1352,13 +1371,20 @@ Reply read_shared(const json::Value& params, Asked& asked) {
     asked.path = text(params, "path");
     if (!asked.path.empty()) {
         const std::size_t dot = asked.path.rfind('.');
-        if (!holds(request.type,
-                   dot == std::string::npos ? std::string_view() : asked.path.substr(dot))) {
+        std::string_view extension = dot == std::string::npos
+                                         ? std::string_view()
+                                         : std::string_view(asked.path).substr(dot);
+        if (asked.path.ends_with(scene3d::kStandardMaterialSuffix)) {
+            extension = scene3d::kStandardMaterialSuffix;
+        }
+        if (!holds(request.type, extension)) {
             std::string_view kind = "a sound (.wav, .ogg or .mp3)";
             if (request.type == "image") {
                 kind = "an image (.png)";
             } else if (request.type == "model") {
                 kind = "a model (.glb)";
+            } else if (request.type == "material") {
+                kind = "a material (.standard_material.json)";
             }
             return Reply::failure(command::code::kInvalidParams,
                                   "/path: \"" + asked.path + "\" is not " + std::string(kind),
@@ -1633,22 +1659,197 @@ Reply generate_model(Session& session, const json::Value& params, Asked asked) {
     return Reply::success(std::move(out));
 }
 
+// Words added to a material's prompt, so the image comes back flat and ready to tile.
+constexpr std::string_view kTileWords =
+    ", as a seamless tileable texture seen flat from straight above, evenly lit with no shadows";
+
+// Keeps a map made of a material's image in the library, its record naming the image.
+Result<Record> keep_map(Libraries& libs, const Record& source, const render::Image& image,
+                        std::string_view map, const Asked& asked) {
+    auto png = render::encode_png(image);
+    if (!png) {
+        return png.error();
+    }
+    Record record;
+    if (auto described = describe_file(png.value(), "map.png", record); !described) {
+        return described.error();
+    }
+    record.description = trimmed(asked.description + ", its " + std::string(map) + " map");
+    record.tags = asked.tags;
+    record.parent = source.id;
+    record.license = source.license;
+    record.author = source.author;
+    record.request["material"] = source.id;
+    record.request["map"] = map;
+    auto stored = libs.local().put(png.value(), std::move(record));
+    if (stored) {
+        share(libs, stored.value(), png.value(), "");
+    }
+    return stored;
+}
+
+Reply asset_generate(Session& session, const json::Value& params);
+
+// A tileable PBR material: the library image given, else one the generator makes from the
+// prompt asked to tile; made to tile where its edges don't meet (seam_ratio above kSeamless),
+// with a normal and a roughness map from its brightness, each kept as an image whose parent is
+// the source, and the material file naming them, copied to path.
+Reply generate_material(Session& session, const json::Value& params, Asked asked) {
+    for (const std::string_view key :
+         {"height", "seconds", "bpm", "key", "bar_beats", "loop", "theme"}) {
+        if (params.find(key) != nullptr) {
+            return invalid_at("/" + std::string(key),
+                              key == "height" ? "a material's image is square: give its width"
+                                              : "a material takes no " + std::string(key));
+        }
+    }
+    if (Reply shared = read_shared(params, asked); !shared.ok) {
+        return shared;
+    }
+    if (asked.description.empty()) {
+        asked.description = asked.request.prompt;
+    }
+    auto libs = open_libraries(session);
+    if (!libs) {
+        return Reply::failure(libs.error());
+    }
+    if (auto writes = check_writes(session); !writes) {
+        return Reply::failure(writes.error());
+    }
+    Record source;
+    if (const json::Value* image_id = params.find("image"); image_id != nullptr) {
+        if (params.find("width") != nullptr) {
+            return invalid_at("/width", "a material made of a library image keeps its size");
+        }
+        auto found = find_asset(session, libs.value(), image_id->as_string());
+        if (!found) {
+            return failure_at(found.error(), "/image");
+        }
+        if (found.value().type != "image") {
+            return invalid_at("/image", "a material is made of an image; " +
+                                            short_id(found.value().id) + " is " +
+                                            with_article(found.value().type));
+        }
+        source = std::move(found).value();
+    } else {
+        json::Value ask = params;
+        ask.as_object().erase("path");
+        ask["type"] = "image";
+        ask["prompt"] = asked.request.prompt + std::string(kTileWords);
+        ask["description"] = asked.description;
+        if (const json::Value* width = params.find("width"); width != nullptr) {
+            ask["height"] = *width;
+        }
+        Reply made = asset_generate(session, ask);
+        if (!made.ok || made.value.find("id") == nullptr) {
+            return made; // a failure, or candidates to look at first
+        }
+        auto found = find_asset(session, libs.value(), made.value["id"].as_string());
+        if (!found) {
+            return Reply::failure(found.error());
+        }
+        source = std::move(found).value();
+    }
+    auto bytes = read_asset(libs.value(), source);
+    if (!bytes) {
+        return Reply::failure(bytes.error());
+    }
+    auto image = render::decode_image(bytes.value());
+    if (!image) {
+        return failure_at(image.error(), "/image");
+    }
+    const double source_seam = seam_ratio(image.value());
+    const bool retiled = source_seam > kSeamless;
+    Record albedo = source;
+    if (retiled) {
+        image.value() = make_seamless(image.value());
+        auto kept = keep_map(libs.value(), source, image.value(), "albedo", asked);
+        if (!kept) {
+            return Reply::failure(kept.error());
+        }
+        albedo = std::move(kept).value();
+    }
+    auto normal = keep_map(libs.value(), source, normal_map(image.value()), "normal", asked);
+    if (!normal) {
+        return Reply::failure(normal.error());
+    }
+    auto rough = keep_map(libs.value(), source, roughness_map(image.value()), "roughness", asked);
+    if (!rough) {
+        return Reply::failure(rough.error());
+    }
+    json::Value doc;
+    doc["format"] = 1;
+    doc["albedo_texture"] = asset_ref(albedo);
+    doc["normal_enabled"] = true;
+    doc["normal_texture"] = asset_ref(normal.value());
+    doc["roughness_texture"] = asset_ref(rough.value());
+    const std::string text = json::write(doc) + "\n";
+    Record record;
+    if (auto described = describe_file(text, "material.standard_material.json", record,
+                                       part_reader(libs.value().local()));
+        !described) {
+        return Reply::failure(described.error());
+    }
+    record.description = asked.description;
+    record.tags = asked.tags;
+    record.parent = source.id;
+    record.license = source.license;
+    record.author = source.author;
+    record.request["type"] = "material";
+    record.request["image"] = source.id;
+    auto stored = libs.value().local().put(text, std::move(record));
+    if (!stored) {
+        return Reply::failure(stored.error());
+    }
+    share(libs.value(), stored.value(), text, "");
+    json::Value out;
+    out["id"] = short_id(stored.value().id);
+    out["type"] = "material";
+    out["image"] = short_id(source.id);
+    if (retiled) {
+        out["image_seam"] = source_seam;
+    }
+    out["seam"] = stored.value().seam;
+    out["maps"]["albedo"] = short_id(albedo.id);
+    out["maps"]["normal"] = short_id(normal.value().id);
+    out["maps"]["roughness"] = short_id(rough.value().id);
+    if (!asked.path.empty()) {
+        json::Value use;
+        use["id"] = stored.value().id;
+        use["path"] = asked.path;
+        Reply used = asset_use(session, use);
+        if (!used.ok) {
+            return used;
+        }
+        for (auto& [key, value] : used.value.as_object()) {
+            if (key != "id") {
+                out[key] = std::move(value);
+            }
+        }
+    }
+    return libs.value().noted(Reply::success(std::move(out)));
+}
+
 Reply asset_generate(Session& session, const json::Value& params) {
     Asked asked;
     asked.request.prompt = text(params, "prompt");
     asked.request.type = params.find("type") != nullptr ? text(params, "type") : "image";
-    if (asked.request.type != "model") {
-        for (const std::string_view key : {"image", "review"}) {
-            if (params.find(key) != nullptr) {
-                return invalid_at("/" + std::string(key), "only a model takes " + std::string(key) +
-                                                              "; asked for " +
-                                                              with_article(asked.request.type));
-            }
+    for (const std::string_view key : {"image", "review"}) {
+        const bool takes =
+            asked.request.type == "model" || (key == "image" && asked.request.type == "material");
+        if (!takes && params.find(key) != nullptr) {
+            return invalid_at(
+                "/" + std::string(key),
+                (key == "image" ? "only a model or a material takes " : "only a model takes ") +
+                    std::string(key) + "; asked for " + with_article(asked.request.type));
         }
     }
     asked.keyed["type"] = asked.request.type;
     if (asked.request.type == "model") {
         return generate_model(session, params, std::move(asked));
+    }
+    if (asked.request.type == "material") {
+        return generate_material(session, params, std::move(asked));
     }
     if (Reply shared = read_shared(params, asked); !shared.ok) {
         return shared;
@@ -2035,22 +2236,34 @@ struct PartWork {
 Result<std::string> library_form(Session& session, Libraries& libs, std::string data,
                                  const std::string& path, PartWork& work);
 
-// The library reference to the project's model file at path, put in the library (as
-// work.added) where it lacks it; a file the project took from the library and changed is a new
-// version of that.
+// The library reference to the project's file at path that a file being added names in its
+// role (AssetRef::role), put in the library (as work.added) where it lacks it; a file the
+// project took from the library and changed is a new version of that.
 Result<std::string> add_part(Session& session, Libraries& libs, const std::string& path,
-                             PartWork& work) {
+                             std::string_view role, PartWork& work) {
     if (auto known = work.refs.find(path); known != work.refs.end()) {
         return known->second;
     }
-    const auto failed = [&path](const Error& error) {
-        return make_error(error.code, "the model part \"" + path + "\": " + error.message);
+    std::string what = "the model part";
+    std::string kept = "model parts that are .glb or .model.json files";
+    bool fits = is_model_file(path);
+    if (role == "material") {
+        what = "the material file";
+        kept =
+            "material files that are " + std::string(scene3d::kStandardMaterialSuffix) + " files";
+        fits = path.ends_with(scene3d::kStandardMaterialSuffix);
+    } else if (role != "model") {
+        what = "the texture";
+        kept = "textures that are .png, .bmp or .jpg files";
+        const std::size_t dot = path.rfind('.');
+        fits = dot != std::string::npos && type_of(path.substr(dot)) == "image";
+    }
+    const auto failed = [&path, &what](const Error& error) {
+        return make_error(error.code, what + " \"" + path + "\": " + error.message);
     };
-    if (!is_model_file(path)) {
+    if (!fits) {
         return make_error(ErrorCode::InvalidArgument,
-                          "the model part \"" + path +
-                              "\": the library keeps model parts that are .glb or .model.json "
-                              "files");
+                          what + " \"" + path + "\": the library keeps " + kept);
     }
     auto bytes = platform::read_file_in(session.options().project_root, path);
     if (!bytes) {
@@ -2083,7 +2296,7 @@ Result<std::string> add_part(Session& session, Libraries& libs, const std::strin
         part.record.tags = recipe.tags;
         part.record.license = recipe.license;
         part.record.author = recipe.author;
-        if (earlier && earlier->type == "model") {
+        if (earlier && earlier->type == part.record.type) {
             part.record.parent = earlier->id;
             part.record.description = earlier->description;
             part.record.tags = earlier->tags;
@@ -2100,20 +2313,18 @@ Result<std::string> add_part(Session& session, Libraries& libs, const std::strin
     return ref;
 }
 
-// A project's recipe as the library keeps it: each model part naming a project file names that
-// file's library model instead (add_part). Other files come back as they are.
+// A project's recipe or material as the library keeps it: each model part, material file or
+// texture naming a project file names that file's library asset instead (add_part). Other files
+// come back as they are.
 Result<std::string> library_form(Session& session, Libraries& libs, std::string data,
                                  const std::string& path, PartWork& work) {
-    if (!path.ends_with(scene3d::kModelRecipeSuffix)) {
-        return data;
-    }
     auto doc = json::parse(data);
     if (!doc) {
         return data; // describe_file says what is wrong with it
     }
-    std::vector<json::Value*> models = model_refs(doc.value());
-    if (std::ranges::none_of(models, [](const json::Value* model) {
-            return model->is_string() && ref_id_of(*model).empty();
+    const std::vector<AssetRef> refs = asset_refs(doc.value(), path);
+    if (std::ranges::none_of(refs, [](const AssetRef& ref) {
+            return ref.value->is_string() && ref_id_of(*ref.value).empty();
         })) {
         return data;
     }
@@ -2126,12 +2337,14 @@ Result<std::string> library_form(Session& session, Libraries& libs, std::string 
                           "model parts nest more than " + std::to_string(kMaxPartDepth) + " deep");
     }
     work.loading.push_back(path);
-    for (json::Value* model : models) {
+    for (const AssetRef& named : refs) {
+        json::Value* model = named.value;
         if (!model->is_string() || !ref_id_of(*model).empty()) {
             continue;
         }
-        const std::string suffix = variant_suffix(model->as_string());
-        auto ref = add_part(session, libs, std::string(asset::file_of(model->as_string())), work);
+        const std::string suffix = named.role == "model" ? variant_suffix(model->as_string()) : "";
+        auto ref = add_part(session, libs, std::string(asset::file_of(model->as_string())),
+                            named.role, work);
         if (!ref) {
             work.loading.pop_back();
             return ref.error();
@@ -2866,7 +3079,7 @@ Reply asset_sync(Session& session, const json::Value& params) {
 
 json::Value type_property(std::string_view description) {
     json::Value type = property("string", description);
-    type["enum"] = json::Array{"image", "sound", "music", "model"};
+    type["enum"] = json::Array{"image", "sound", "music", "model", "material"};
     return type;
 }
 
@@ -3202,15 +3415,18 @@ void register_commands(command::Registry& registry) {
                                                  "\"theme/harbor\", whose key, tempo, "
                                                  "instruments and mood it asks for."));
     generate.emplace("image", property("string", "A model: the library image to make it from, "
-                                                 "a concept generated and checked first."));
+                                                 "a concept generated and checked first. A "
+                                                 "material: the image to make it of instead of "
+                                                 "generating one."));
     generate.emplace("review", integer("A model: review each one made (asset.review) and make "
                                        "it again with what was wrong, up to this many in all.",
                                        1, 5));
     registry.add({
         .name = "asset.generate",
-        .description = "Makes an image, sound, music or a model (from a concept image) with a "
-                       "generator and keeps it in the asset library; music comes back with its "
-                       "measured bpm, beats and key. "
+        .description = "Makes an image, sound, music, a model (from a concept image) or a "
+                       "tileable material (an image made to tile, with normal and roughness "
+                       "maps) with a generator and keeps it in the asset library; music comes "
+                       "back with its measured bpm, beats and key. "
                        "An exact repeat returns the stored asset with no model call; close "
                        "matches come back as candidates instead of generating.",
         .capabilities = {Capability::Read, Capability::Filesystem, Capability::Network},
