@@ -204,16 +204,20 @@ struct ModelImageSize {
 struct ModelFacts {
     std::size_t triangles = 0;
     std::vector<ModelImageSize> images;
+    // Texels of its albedo textures per meter (scene3d::check_geometry), or none.
+    std::optional<float> texel_density;
 };
 // An error for each model (by project path) with more triangles than a budget covering it
-// allows, or an image inside it larger on a side than the budget's texture_size. Budgets cover
+// allows, an image inside it larger on a side than the budget's texture_size, or a texel density
+// under half or over twice the budget's texel_density. Budgets cover
 // models as check_textures says they cover textures; palettes leave models alone, whose textures
 // are lit. Only models a budget covers are loaded; load returns nothing for one it can't read.
 void check_models(const json::Object& entries, const std::vector<std::string>& models,
                   const std::function<std::optional<ModelFacts>(std::string_view path)>& load,
                   std::vector<FileError>& errors);
 
-// The tightest budget covering a path that sets a field ("triangles" or "texture_size"), as
+// The tightest budget covering a path that sets a field ("triangles", "texture_size" or
+// "texel_density"), as
 // check_models and check_textures cover paths: its ID and the limit, or nullopt for none.
 struct BudgetLimit {
     std::string id;
