@@ -6,7 +6,6 @@
 
 #include <algorithm>
 #include <array>
-#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -447,7 +446,10 @@ Float4 forward_clear(const Color& clear) {
 GlowPlan forward_glow_plan(const PostProcess& post, std::uint32_t width, std::uint32_t height) {
     GlowPlan plan;
     // Godot's Image::get_image_required_mipmaps: halvings to 1 x 1.
-    const auto mipmaps = static_cast<int>(std::bit_width(std::max({width, height, 1U}))) - 1;
+    int mipmaps = 0;
+    for (std::uint32_t size = std::max(width, height); size > 1; size >>= 1U) {
+        ++mipmaps;
+    }
     const int levels = std::clamp(mipmaps - 1, 1, static_cast<int>(kMaxGlowLevels));
     for (std::size_t i = 0; i < kMaxGlowLevels; ++i) {
         plan.sizes.at(i) = {.width = std::max((width >> 1U) >> i, 1U),
