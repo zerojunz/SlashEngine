@@ -1083,7 +1083,12 @@ under the part's as Godot instances a scene (`add_model` in `recipe.cpp`), so bi
 of small ones; the loader passed to `build_model_recipe` reads them, and a recipe reloads when one
 changes, since an asset reloads when any file it read as it loaded does (`Assets::read` while a
 loader runs). `examples/parametric-models` is a table and a vase, and `examples/composite-models`
-a market stall of crates and a lantern. A recipe's `points` become nodes with no
+a market stall of crates and a lantern. A recipe's `variants` and `quality` tiers are named forms
+of it (`recipe_form`: parameters set, materials' and parts' fields changed, parts removed, as
+Godot's inherited scenes override nodes); a model path picks a variant after `::`
+(`asset::file_of` and `subresource_of`; the asset reloads with its file), and an export preset's
+`model_quality` ships each recipe as its tier makes it (`with_quality` in
+`tools/exporter/src/export.cpp`). `examples/model-variants` burns a crate and ships it for phones. A recipe's `points` become nodes with no
 mesh after the parts' nodes, under the part they name. `scene3d::summarize` (`model.cpp`)
 describes any model in a few numbers and names: its size, `pivot` (the origin's place in its
 bounds), triangles, each part's box and materials and its attachment points (nodes that place no

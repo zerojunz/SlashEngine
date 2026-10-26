@@ -24,6 +24,7 @@
 #include <memory>
 #include <numbers>
 #include <optional>
+#include <ranges>
 #include <set>
 #include <span>
 #include <string>
@@ -378,6 +379,25 @@ json::Value make_schema(bool loose) {
     schema["properties"]["parameters"]["description"] =
         "Numbers by name (letters, digits and '_', not starting with a digit), which parts' "
         "expressions read.";
+    // Form names go in paths after "::", so they keep to letters, digits, '_' and '-'.
+    constexpr std::string_view kFormName = "^[A-Za-z0-9_-]+$";
+    json::Value form;
+    form["type"] = "object";
+    form["additionalProperties"] = false;
+    form["properties"]["parameters"]["type"] = "object";
+    form["properties"]["parameters"]["description"] = "New values for the recipe's parameters.";
+    form["properties"]["parameters"]["additionalProperties"] = parameter;
+    form["properties"]["materials"]["type"] = "object";
+    form["properties"]["materials"]["description"] =
+        "StandardMaterial3D fields by material name, over the recipe's, or new materials.";
+    form["properties"]["materials"]["additionalProperties"] = material;
+    json::Value changed_part;
+    changed_part["anyOf"] =
+        json::Array{json::Object{{"type", "null"}}, json::Object{{"$ref", "#/$defs/Part"}}};
+    form["properties"]["parts"]["type"] = "object";
+    form["properties"]["parts"]["description"] =
+        "Fields over the parts of that name, top-level or not, or null to leave them out.";
+    form["properties"]["parts"]["additionalProperties"] = std::move(changed_part);
     schema["properties"]["parameters"]["additionalProperties"] = std::move(parameter);
     schema["properties"]["materials"]["type"] = "object";
     schema["properties"]["materials"]["description"] =
@@ -409,6 +429,19 @@ json::Value make_schema(bool loose) {
     schema["properties"]["points"]["items"] = std::move(point);
     schema["properties"]["points"]["description"] =
         "Named places on the model where other things attach: a seat, a muzzle, a door's handle.";
+    form["description"] = "The recipe's parameters, materials and parts as this form changes them.";
+    schema["properties"][std::string(kVariants)]["type"] = "object";
+    schema["properties"][std::string(kVariants)]["description"] =
+        "Named options of the model, such as \"damaged\" or \"winter\", which a model path picks "
+        "after \"::\" (\"props/crate.model.json::damaged\").";
+    schema["properties"][std::string(kVariants)]["additionalProperties"] = form;
+    schema["properties"][std::string(kVariants)]["propertyNames"]["pattern"] = kFormName;
+    schema["properties"][std::string(kQuality)]["type"] = "object";
+    schema["properties"][std::string(kQuality)]["description"] =
+        "Quality tiers, such as \"phone\", which an export preset's model_quality applies to the "
+        "recipe and its variants.";
+    schema["properties"][std::string(kQuality)]["additionalProperties"] = std::move(form);
+    schema["properties"][std::string(kQuality)]["propertyNames"]["pattern"] = kFormName;
     json::Value definitions = builder.definitions();
     definitions["Part"] = std::move(part);
     json::Value expression;
@@ -1113,6 +1146,9 @@ Read read_recipe(const json::Value& doc, std::vector<json::ValidationError>& err
         errors = std::move(loose);
         return out;
     }
+    // Forms are checked as the recipes they make (validate_model_recipe).
+    out.doc.as_object().erase(std::string(kVariants));
+    out.doc.as_object().erase(std::string(kQuality));
     Evaluator(out.doc, errors).run();
     static const json::Value strict = make_schema(false);
     if (auto checked = json::validate(out.doc, strict); !checked.empty()) {
@@ -1414,6 +1450,148 @@ Model build(const Read& read, std::vector<json::ValidationError>* problems,
     return model;
 }
 
+// The parts named name under parts (top-level or children), as (array, index) pairs.
+void find_parts(json::Value& parts, std::string_view name,
+                std::vector<std::pair<json::Array*, std::size_t>>& found,
+                std::vector<std::string>& names) {
+    if (!parts.is_array()) {
+        return;
+    }
+    json::Array& array = parts.as_array();
+    for (std::size_t i = 0; i < array.size(); ++i) {
+        json::Value& part = array[i];
+        if (!part.is_object()) {
+            continue;
+        }
+        if (const json::Value* given = part.find("name"); given != nullptr && given->is_string()) {
+            if (given->as_string() == name) {
+                found.emplace_back(&array, i);
+            }
+            names.push_back(given->as_string());
+        }
+        if (json::Value* children = part.find("children"); children != nullptr) {
+            find_parts(*children, name, found, names);
+        }
+    }
+}
+
+std::string unknown(std::string_view what, std::string_view name,
+                    const std::vector<std::string>& names) {
+    std::string message = "the recipe has no " + std::string(what) + " " + quoted(name);
+    if (names.empty()) {
+        message += "; it has none";
+    } else if (const std::string_view near = closest_match(name, names); !near.empty()) {
+        message += " (did you mean " + quoted(near) + "?)";
+    }
+    return message;
+}
+
+} // namespace
+
+std::vector<std::string> recipe_forms(const json::Value& doc, std::string_view group) {
+    std::vector<std::string> names;
+    const json::Value* forms = doc.is_object() ? doc.find(group) : nullptr;
+    if (forms != nullptr && forms->is_object()) {
+        for (const auto& entry : forms->as_object()) {
+            names.push_back(entry.first);
+        }
+    }
+    return names;
+}
+
+Result<json::Value> recipe_form(const json::Value& doc, std::string_view group,
+                                std::string_view name) {
+    const auto failed = [](const std::string& at, const std::string& message) {
+        return make_error(ErrorCode::InvalidArgument, at + ": " + message);
+    };
+    const std::string what = group == kVariants ? "variant" : "quality tier";
+    const json::Value* forms = doc.is_object() ? doc.find(group) : nullptr;
+    const json::Value* form = forms != nullptr && forms->is_object() ? forms->find(name) : nullptr;
+    if (form == nullptr || !form->is_object()) {
+        return make_error(ErrorCode::NotFound, unknown(what, name, recipe_forms(doc, group)));
+    }
+    const std::string at = "/" + std::string(group) + "/" + std::string(name);
+    json::Value out = doc;
+    out.as_object().erase(std::string(group));
+    if (const json::Value* parameters = form->find("parameters"); parameters != nullptr) {
+        std::vector<std::string> names;
+        if (const json::Value* known = out.find("parameters"); known != nullptr) {
+            for (const auto& entry : known->as_object()) {
+                names.push_back(entry.first);
+            }
+        }
+        for (const auto& [parameter, value] : parameters->as_object()) {
+            if (std::ranges::find(names, parameter) == names.end()) {
+                std::string where = at;
+                where += "/parameters/";
+                where += parameter;
+                return failed(where, unknown("parameter", parameter, names));
+            }
+            out["parameters"][parameter] = value;
+        }
+    }
+    if (const json::Value* materials = form->find("materials"); materials != nullptr) {
+        for (const auto& [material, fields] : materials->as_object()) {
+            for (const auto& [field, value] : fields.as_object()) {
+                out["materials"][material][field] = value;
+            }
+        }
+    }
+    if (const json::Value* parts = form->find("parts"); parts != nullptr) {
+        for (const auto& [part, change] : parts->as_object()) {
+            std::vector<std::pair<json::Array*, std::size_t>> found;
+            std::vector<std::string> names;
+            find_parts(out["parts"], part, found, names);
+            if (found.empty()) {
+                std::string where = at;
+                where += "/parts/";
+                where += part;
+                return failed(where, unknown("part", part, names));
+            }
+            // Removed from the back, so the indices before stay right.
+            for (const auto& [array, index] : std::views::reverse(found)) {
+                if (change.is_null()) {
+                    array->erase(array->begin() + static_cast<std::ptrdiff_t>(index));
+                    continue;
+                }
+                for (const auto& [field, value] : change.as_object()) {
+                    (*array)[index][field] = value;
+                }
+            }
+        }
+        if (out["parts"].as_array().empty()) {
+            return failed(at + "/parts", "it leaves the recipe no parts");
+        }
+    }
+    return out;
+}
+
+namespace {
+
+// Every form's errors, each at the form, saying where in the recipe it made them.
+void check_forms(const json::Value& doc, const ModelPartLoader& load,
+                 std::vector<json::ValidationError>& errors) {
+    for (const std::string_view group : {kQuality, kVariants}) {
+        for (const std::string& name : recipe_forms(doc, group)) {
+            const std::string at = "/" + std::string(group) + "/" + name;
+            auto applied = recipe_form(doc, group, name);
+            if (!applied) {
+                const std::string& message = applied.error().message;
+                const std::size_t colon = message.find(": ");
+                errors.push_back({message.substr(0, colon), message.substr(colon + 2)});
+                continue;
+            }
+            applied.value().as_object().erase(std::string(kVariants));
+            applied.value().as_object().erase(std::string(kQuality));
+            for (const json::ValidationError& error :
+                 validate_model_recipe(applied.value(), load)) {
+                errors.push_back(
+                    {at, (error.path.empty() ? "" : error.path + ": ") + error.message});
+            }
+        }
+    }
+}
+
 } // namespace
 
 json::Value model_recipe_schema() {
@@ -1429,6 +1607,9 @@ std::vector<json::ValidationError> validate_model_recipe(const json::Value& doc,
         return errors;
     }
     (void)build(read, &errors, load, &errors);
+    if (errors.empty()) {
+        check_forms(doc, load, errors);
+    }
     return errors;
 }
 

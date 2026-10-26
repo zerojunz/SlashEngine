@@ -1,5 +1,6 @@
 #include "slash/scene3d/scene3d.hpp"
 
+#include "slash/asset/assets.hpp"
 #include "slash/core/json.hpp"
 #include "slash/core/math.hpp"
 #include "slash/core/text.hpp"
@@ -311,12 +312,15 @@ constexpr std::string_view kMeshField = "/components/MeshInstance3D/mesh";
 // What's wrong with a MeshInstance3D's mesh path, without reading it; "" for nothing.
 std::string mesh_path_problem(const world::World& world, entt::entity entity,
                               const std::string& path) {
-    if (!is_project_path(path)) {
+    if (!is_project_path(asset::file_of(path))) {
         return "expected a path inside the project folder, separated by '/', with no \".\" or "
                "\"..\" parts";
     }
     if (!is_model_path(path)) {
         return "expected a .gltf, .glb, .obj, .fbx, .blend or .model.json file";
+    }
+    if (asset::file_of(path) != path && asset::subresource_of(path).empty()) {
+        return "names no variant after \"::\"";
     }
     auto primitive = primitive_of(world, entity);
     if (!primitive) {
@@ -725,7 +729,7 @@ std::vector<Problem> check_meshes(const world::World& world) {
         if (!reader) {
             continue;
         }
-        auto bytes = reader(path);
+        auto bytes = reader(asset::file_of(path));
         if (!bytes) {
             problems.push_back({entity, std::string(kMeshField),
                                 "\"" + path + "\" could not be read: " + bytes.error().message});
