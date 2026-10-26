@@ -7,9 +7,11 @@
 #include "slash/importer/scripts.hpp"
 #include "slash/importer/unreal.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/render/image.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/scene3d/collision.hpp"
 #include "slash/scene3d/model.hpp"
+#include "slash/scene3d/terrain.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -1250,8 +1252,18 @@ private:
             }
             return true;
         }
+        if (cls == "Landscape") {
+            if (member(actor, "landscape") != nullptr) {
+                return false;
+            }
+            problems_.add("landscape", where, "the export wrote no heights for it");
+            return true;
+        }
+        if (cls == "LandscapeStreamingProxy") {
+            return true; // its heights are in its landscape's
+        }
         if (cls.starts_with("Landscape")) {
-            problems_.add("landscape", where, "landscapes don't convert yet");
+            problems_.add(cls, where, "it doesn't convert");
             return true;
         }
         if (cls.find("Niagara") != std::string::npos || cls == "Emitter") {
@@ -1278,6 +1290,10 @@ private:
         level.record["actors"][id] = std::move(record);
         if (member(actor, "bounds") != nullptr) {
             convert_volume(actor, level, id, where);
+            return;
+        }
+        if (const json::Value* landscape = member(actor, "landscape")) {
+            convert_landscape(actor, *landscape, level, id, where);
             return;
         }
         // The actor's own entity: its root component, or an empty one.
@@ -1383,6 +1399,187 @@ private:
             level.entities[id].components.erase("CollisionShape3D");
             level.entities[id].components.erase("StaticBody3D");
         }
+    }
+
+    // --- Landscapes ---
+
+    // Unreal's heights: 16-bit numbers, 32768 at the landscape's own height and 128 a unit of its
+    // space, which its scale makes centimeters. An HTerrain over this range keeps them exactly.
+    static constexpr double kLandscapeLow = -256.0;
+    static constexpr double kLandscapeHigh = 32767.0 / 128.0;
+
+    // A landscape as an HTerrain, as HTerrain is the terrain SlashEngine has: its heights, from
+    // the .r16 file the export wrote, laid out in the world's axes in a square a power of two plus
+    // one across, what lies past the landscape in it a hole; its transform the actor's, moved to
+    // the HTerrain's first corner. A landscape over 4097 vertices across keeps every second one
+    // until it fits.
+    void convert_landscape(const json::Value& actor, const json::Value& landscape, Level& level,
+                           const std::string& id, const std::string& where) {
+        level.roots.push_back(id);
+        Entity& entity = level.entities[id];
+        const auto fail = [&](const std::string& why) {
+            entity.components["Transform3D"] =
+                transform_3d(*member(actor, "transform"), kIdentity, kIdentity);
+            problems_.add("landscape", where, why);
+        };
+        const std::array<std::size_t, 3>& axis = axes_.axis;
+        if (axis[1] != 2 || axes_.sign[1] < 0.0) {
+            fail("its heights run along Unreal's z, which isn't the world's up here");
+            return;
+        }
+        const json::Array& size = items(landscape, "size");
+        const json::Array& first = items(landscape, "min");
+        if (size.size() != 2 || first.size() != 2 || size[0].as_double() < 2.0 ||
+            size[1].as_double() < 2.0) {
+            fail("the export gave it no size");
+            return;
+        }
+        const std::array<std::int64_t, 2> count{std::llround(size[0].as_double()),
+                                                std::llround(size[1].as_double())};
+        const std::array<std::int64_t, 2> low{std::llround(first[0].as_double()),
+                                              std::llround(first[1].as_double())};
+        auto bytes = platform::read_file((work_ / text(landscape, "heightmap")).string());
+        if (!bytes || bytes.value().size() != static_cast<std::size_t>(count[0] * count[1] * 2)) {
+            fail("its heightmap isn't " + std::to_string(count[0]) + " by " +
+                 std::to_string(count[1]) + " 16-bit heights");
+            return;
+        }
+        const std::string& raw = bytes.value();
+        const auto height_at = [&](std::int64_t i, std::int64_t j) {
+            const auto at =
+                static_cast<std::size_t>((((j - low[1]) * count[0]) + (i - low[0])) * 2);
+            return static_cast<std::uint16_t>(
+                static_cast<std::uint16_t>(static_cast<unsigned char>(raw[at])) |
+                static_cast<std::uint16_t>(static_cast<unsigned char>(raw[at + 1]) << 8U));
+        };
+        // The world's x and z run along Unreal's axis[0] and axis[2], one of its x and y each.
+        if (axis[0] > 1 || axis[2] > 1) {
+            fail("its x and y aren't the world's x and z here");
+            return;
+        }
+        const std::array<std::int64_t, 2> along{count[axis[0]], count[axis[2]]};
+        int step = 1;
+        while (((std::max(along[0], along[1]) - 1) / step) + 1 > 4097) {
+            step *= 2;
+        }
+        const std::array<std::int64_t, 2> cells{((along[0] - 1) / step) + 1,
+                                                ((along[1] - 1) / step) + 1};
+        if (step > 1) {
+            problems_.add("landscape over 4097 vertices across", where,
+                          "an HTerrain is 65 to 4097 heights across; it keeps every " +
+                              std::to_string(step) + "th of the landscape's");
+        }
+        int resolution = 65;
+        while (resolution < std::max(cells[0], cells[1])) {
+            resolution = (resolution * 2) - 1;
+        }
+        // The landscape's vertex at the HTerrain's (c, r): the world's x is sign[0] times its
+        // axis[0], so with a negative sign the first column is the landscape's last.
+        const auto vertex = [&](std::int64_t c, std::int64_t r) {
+            std::array<std::int64_t, 2> uv{};
+            const std::array<std::int64_t, 2> along_axis{c * step, r * step};
+            for (std::size_t k = 0; k < 2; ++k) {
+                const std::size_t unreal_axis = axis[k == 0 ? 0 : 2];
+                const double sign = axes_.sign[k == 0 ? 0 : 2];
+                uv[unreal_axis] = sign > 0.0
+                                      ? low[unreal_axis] + along_axis[k]
+                                      : low[unreal_axis] + count[unreal_axis] - 1 - along_axis[k];
+            }
+            return uv;
+        };
+        render::Gray16 heights;
+        heights.width = static_cast<std::uint32_t>(resolution);
+        heights.height = static_cast<std::uint32_t>(resolution);
+        heights.values.resize(static_cast<std::size_t>(resolution) *
+                              static_cast<std::size_t>(resolution));
+        bool holes = false;
+        for (std::int64_t r = 0; r < resolution; ++r) {
+            for (std::int64_t c = 0; c < resolution; ++c) {
+                // Past the landscape: a hole at the nearest edge's height.
+                holes = holes || c >= cells[0] || r >= cells[1];
+                const auto [i, j] = vertex(std::min(c, cells[0] - 1), std::min(r, cells[1] - 1));
+                heights
+                    .values[(static_cast<std::size_t>(r) * static_cast<std::size_t>(resolution)) +
+                            static_cast<std::size_t>(c)] = height_at(i, j);
+            }
+        }
+        const std::string stem = content_path(level.path, "_" + id);
+        auto png = render::encode_gray16_png(heights);
+        if (!png) {
+            fail(png.error().message);
+            return;
+        }
+        json::Value hterrain;
+        hterrain["heightmap"] = stem + std::string(scene3d::kHeightmapSuffix);
+        add_file(stem + std::string(scene3d::kHeightmapSuffix), std::move(png).value());
+        hterrain["resolution"] = resolution;
+        hterrain["height_range"] = json::Array{kLandscapeLow, kLandscapeHigh};
+        // A vertex is a unit of the landscape's space across, which its scale makes
+        // centimeters: the HTerrain's map scale, its transform left unscaled.
+        const json::Value& placed = *member(actor, "transform");
+        const V3 scale = vec(placed, "scale", {1, 1, 1});
+        hterrain["map_scale"] =
+            json::Array{tidy(scale[axis[0]] * axes_.scale * step), tidy(scale[2] * axes_.scale),
+                        tidy(scale[axis[2]] * axes_.scale * step)};
+        if (holes) {
+            render::Image color{.width = heights.width,
+                                .height = heights.height,
+                                .pixels = std::vector<std::uint8_t>(heights.values.size() * 4, 255),
+                                .block_format = render::TextureFormat::Rgba8,
+                                .blocks = {}};
+            for (std::int64_t r = 0; r < resolution; ++r) {
+                for (std::int64_t c = 0; c < resolution; ++c) {
+                    if (c >= cells[0] || r >= cells[1]) {
+                        color.pixels[(((static_cast<std::size_t>(r) *
+                                        static_cast<std::size_t>(resolution)) +
+                                       static_cast<std::size_t>(c)) *
+                                      4) +
+                                     3] = 0;
+                    }
+                }
+            }
+            if (auto written = render::encode_png(color)) {
+                hterrain["colormap"] = stem + ".color.png";
+                add_file(stem + ".color.png", std::move(written).value());
+            }
+        }
+        const std::string collision = text(landscape, "collision");
+        if (collision == "no_collision") {
+            hterrain["collision_enabled"] = false;
+        }
+        if (!flag(landscape, "cast_shadow", true)) {
+            hterrain["cast_shadow"] = "off";
+        }
+        if (!text(landscape, "material").empty()) {
+            problems_.add("landscape material", where,
+                          "an HTerrain shades as HTerrain's Classic4 shader; give it textures");
+        }
+        if (!items(landscape, "layers").empty()) {
+            problems_.add("landscape paint layers", where,
+                          "their weights don't convert; an HTerrain's splat map mixes its "
+                          "textures");
+        }
+        // The HTerrain starts at its (0, 0), the landscape's vertex there, in the actor's space.
+        const auto [i0, j0] = vertex(0, 0);
+        const V3 local{static_cast<double>(i0), static_cast<double>(j0), 0.0};
+        const json::Value* rotation = member(placed, "rotation");
+        V3 q{};
+        double w = 1.0;
+        if (rotation != nullptr && rotation->is_array() && rotation->as_array().size() == 4) {
+            const json::Array& turn = rotation->as_array();
+            q = {turn[0].as_double(), turn[1].as_double(), turn[2].as_double()};
+            w = turn[3].as_double();
+        }
+        const V3 offset = transform_point(quaternion_matrix(q, w),
+                                          {local[0] * scale[0], local[1] * scale[1], 0.0});
+        json::Value unscaled = placed;
+        unscaled["scale"] = json::Array{1.0, 1.0, 1.0};
+        entity.components["Transform3D"] = transform_3d(unscaled, kIdentity, kIdentity, offset);
+        if (!flag(actor, "visible", true)) {
+            entity.components["Transform3D"]["visible"] = false;
+        }
+        entity.components["HTerrain"] = std::move(hterrain);
+        ++converted_landscapes_;
     }
 
     void convert_volume(const json::Value& actor, Level& level, const std::string& id,
@@ -2637,6 +2834,7 @@ private:
         out["converted"]["sounds"] = converted_sounds_;
         out["converted"]["animations"] = converted_animations_;
         out["converted"]["material_variants"] = converted_variants_;
+        out["converted"]["landscapes"] = converted_landscapes_;
         out["converted"]["input_actions"] = input_actions_;
         out["converted"]["blueprints"] = blueprints_;
         out["converted"]["classes"] = static_cast<std::int64_t>(classes_.size());
@@ -2688,6 +2886,7 @@ private:
     int converted_sounds_ = 0;
     int converted_animations_ = 0;
     int converted_variants_ = 0;
+    int converted_landscapes_ = 0;
     int input_actions_ = 0;
     int blueprints_ = 0;
     Problems problems_;

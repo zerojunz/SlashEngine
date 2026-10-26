@@ -12,13 +12,13 @@
 // One call converts it. Its level becomes a .scene.json file beside the .umap, in Godot's axes and
 // meters: meshes as MeshInstance3D entities over the exported glTF files (with the collision Unreal
 // gives them, and a copy drawn with a component's override material), the hero's skeletal mesh
-// playing its animation sequence, lights, the sky, fog, the camera on the player's spring arm,
-// physics bodies, trigger and blocking volumes, and sounds; its settings and both input systems
-// become project.json; each C++ class becomes a C++ skeleton with its properties as a component
-// the level's actors fill in, as Unity's scripts do; and each Blueprint and C++ class becomes a
-// storyboard task to port it, since SlashEngine games are plain C++. The report lists what didn't
-// convert, and why. The glTF files and the sound are made in code here, so the repository holds
-// no binary files.
+// playing its animation sequence, the landscape as an HTerrain, lights, the sky, fog, the camera
+// on the player's spring arm, physics bodies, trigger and blocking volumes, and sounds; its
+// settings and both input systems become project.json; each C++ class becomes a C++ skeleton with
+// its properties as a component the level's actors fill in, as Unity's scripts do; and each
+// Blueprint and C++ class becomes a storyboard task to port it, since SlashEngine games are plain
+// C++. The report lists what didn't convert, and why. The glTF files, the landscape's heights and
+// the sound are made in code here, so the repository holds no binary files.
 
 #include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"
@@ -134,6 +134,21 @@ void write_wind(const std::string& path) {
     write_file(path, audio::encode_wav(out, kRate));
 }
 
+// Writes a landscape's heights as the export does, as Unreal's .r16 heightmaps are: 33 by 33
+// 16-bit heights, 32768 at the landscape's own height and 128 a unit, here a hill 20 units high.
+void write_landscape(const std::string& path) {
+    std::string out;
+    for (int y = 0; y < 33; ++y) {
+        for (int x = 0; x < 33; ++x) {
+            const int d2 = ((x - 16) * (x - 16)) + ((y - 16) * (y - 16));
+            const int value = 32768 + (d2 < 200 ? (200 - d2) * 128 / 10 : 0);
+            out.push_back(static_cast<char>(value & 0xFF));
+            out.push_back(static_cast<char>(value >> 8));
+        }
+    }
+    write_file(path, out);
+}
+
 void print_file(const std::string& path) {
     std::printf("--- %s\n%s", path.c_str(), slash::platform::read_file(path).value().c_str());
 }
@@ -173,7 +188,7 @@ int main() {
     const std::string exported = "unreal/FakeExport/";
     for (const char* folder :
          {"meshes/Game/Props", "meshes/Game/Characters", "materials/Game/Props",
-          "animations/Game/Characters", "sounds/Game/Audio"}) {
+          "animations/Game/Characters", "sounds/Game/Audio", "landscapes/Game/Maps/Main"}) {
         if (!slash::platform::create_directories(exported + folder).ok()) {
             return 1;
         }
@@ -211,6 +226,7 @@ int main() {
                                       {0.0F, 0.0F, 0.0F, 0.0F}}});
     write_model(exported + "animations/Game/Characters/A_Idle.glb", idle);
     write_wind(exported + "sounds/Game/Audio/Wind.wav");
+    write_landscape(exported + "landscapes/Game/Maps/Main/Landscape_0.r16");
     // The Blueprints the import's tasks link to, which only Unreal reads: stand-ins here.
     if (!slash::platform::create_directories("unreal/Content/Blueprints").ok() ||
         !slash::platform::create_directories("unreal/Content/UI").ok()) {
@@ -245,6 +261,8 @@ int main() {
     print_file("src/imported/coin_pickup.cpp");
     // The floor collides as Unreal's complex collision: a ray down stops on its top.
     agent.call("physics.raycast", R"({"from": [-6, 5, -3], "to": [-6, -5, -3]})");
+    // The landscape is an HTerrain: a ray down onto its hill's top stops 20 meters up.
+    agent.call("physics.raycast", R"({"from": [-64, 50, 0], "to": [-64, -50, 0]})");
     // The goal is a trigger box, an area the player can walk into.
     agent.call("physics.overlap", R"({"shape": {"shape": "sphere", "radius": 0.1},
                                       "position": [8, 0.5, 1], "collide_with_areas": true})");
