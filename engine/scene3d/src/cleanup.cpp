@@ -1,8 +1,9 @@
 // Making a model game-ready (cleanup.hpp): turning, scaling and moving it by its root, then
-// simplifying and unwrapping its surfaces.
+// simplifying and unwrapping its surfaces, and making what it collides as.
 
 #include "slash/scene3d/cleanup.hpp"
 
+#include "slash/scene3d/collision.hpp"
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/world/tree3d.hpp"
@@ -71,6 +72,11 @@ void transform_root(Model& model, const Quat& turn, float scale, Vec3 move) {
     }
     for (ModelPart& part : model.parts) {
         part.transform = whole * part.transform;
+    }
+    for (ModelCollision& collision : model.collision) {
+        for (Vec3& point : collision.points) {
+            point = whole.apply(point);
+        }
     }
 }
 
@@ -227,6 +233,17 @@ Result<CleanupReport> cleanup_model(Model& model, const CleanupOptions& options)
                 ++report.unwrapped;
             }
         }
+    }
+    if (!options.collision.empty()) {
+        DecomposeOptions decompose;
+        if (options.max_hulls > 0) {
+            decompose.max_hulls = options.max_hulls;
+        }
+        auto made = generate_collision(model, options.collision, decompose);
+        if (!made) {
+            return made.error();
+        }
+        report.collision = made.value();
     }
     report.triangles = drawn_triangles(model);
     return report;

@@ -1,0 +1,10 @@
+{"id":1,"jsonrpc":"2.0","result":{"collision":[{"name":"Ground","points":4,"shape":"trimesh","triangles":2},{"name":"Wall","points":8,"shape":"convex","triangles":12}],"materials":[],"parts":[{"center":[1.2,0.5,0],"materials":[],"name":"Wall","size":[0.4,1,2],"triangles":12},{"center":[-2.8,0.2,-2.8],"materials":[],"name":"Rock","size":[0.4,0.4,0.4],"triangles":4}],"pivot":[0.6818,0,0.75],"size":[4.4,1,4],"triangles":16}}
+{"id":2,"jsonrpc":"2.0","result":{"collision":{"convex":6},"out":"props/arch.glb","pivot":[0.5,0.0,0.5],"size":[2.4,2.4,0.4],"triangles":[36,36]}}
+{"id":3,"jsonrpc":"2.0","result":{"collision":[{"name":"collision1","points":8,"shape":"convex","triangles":12},{"name":"collision2","points":8,"shape":"convex","triangles":12},{"name":"collision3","points":8,"shape":"convex","triangles":12},{"name":"collision4","points":8,"shape":"convex","triangles":12},{"name":"collision5","points":8,"shape":"convex","triangles":12},{"name":"collision6","points":8,"shape":"convex","triangles":12}],"materials":[],"parts":[{"center":[-1,1,0],"materials":[],"name":"left","size":[0.4,2,0.4],"triangles":12},{"center":[1,1,0],"materials":[],"name":"right","size":[0.4,2,0.4],"triangles":12},{"center":[0,2.2,0],"materials":[],"name":"beam","size":[2.4,0.4,0.4],"triangles":12}],"pivot":[0.5,0,0.5],"size":[2.4,2.4,0.4],"triangles":36}}
+{"id":4,"jsonrpc":"2.0","result":{"entities":4,"path":"main.scene.json"}}
+{"id":5,"jsonrpc":"2.0","result":{"id":"arch"}}
+{"id":6,"jsonrpc":"2.0","result":{"tick":120,"ticks":120}}
+{"id":7,"jsonrpc":"2.0","result":{"count":3,"entities":[{"components":{"Transform3D":{"position":[-2.0,2.6299996,-1.5887087e-9]}},"id":"ball_arch"},{"components":{"Transform3D":{"position":[0.0,0.25,0.0]}},"id":"ball_ground"},{"components":{"Transform3D":{"position":[1.2,1.2299997,0.0]}},"id":"ball_wall"}],"truncated":false}}
+{"id":8,"jsonrpc":"2.0","result":{"hit":null}}
+{"id":9,"jsonrpc":"2.0","result":{"hit":{"fraction":0.45,"id":"arch","normal":[0,0,1],"point":[-3,1,0.2]}}}
+{"id":10,"jsonrpc":"2.0","result":{"hit":{"fraction":0.6667,"id":"yard","normal":[0,1,0],"point":[-2.8,0,-2.8]}}}

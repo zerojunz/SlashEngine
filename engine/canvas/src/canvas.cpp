@@ -9,6 +9,7 @@
 #include "slash/core/text.hpp"
 #include "slash/physics2d/physics2d.hpp"
 #include "slash/render/image.hpp"
+#include "slash/scene3d/collision.hpp"
 #include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/terrain.hpp"
@@ -333,8 +334,8 @@ void add_systems(world::World& world, asset::Assets& assets) {
     world::add_path_systems(world);
     add_particles_system(world);
     add_gpu_particles_system(world, &assets);
-    // CSG roots and GridMaps keep their meshes until they change, models and mesh libraries
-    // read through assets.
+    // CSG roots and GridMaps keep their meshes, and models their collision shapes, until they
+    // change, models and mesh libraries read through assets.
     const scene3d::ModelLoader models =
         [&assets](const std::string& path) -> Result<std::shared_ptr<const scene3d::Model>> {
         auto found = assets.load<scene3d::Model>(path);
@@ -344,6 +345,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
         return held(found.value());
     };
     scene3d::install_csg(world, models);
+    scene3d::install_model_collision(world, models);
     scene3d::install_gridmap(
         world, models,
         [&assets](const std::string& path) -> Result<std::shared_ptr<const scene3d::MeshLibrary>> {

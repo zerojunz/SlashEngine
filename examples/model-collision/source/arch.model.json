@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "parts": [
+    {"name": "left", "position": [-1.0, 1.0, 0.0], "shape": "box", "size": [0.4, 2.0, 0.4]},
+    {"name": "right", "position": [1.0, 1.0, 0.0], "shape": "box", "size": [0.4, 2.0, 0.4]},
+    {"name": "beam", "position": [0.0, 2.2, 0.0], "shape": "box", "size": [2.4, 0.4, 0.4]}
+  ]
+}

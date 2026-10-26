@@ -835,6 +835,43 @@ own from where their cube is drawn, by their `mesh_lod_threshold` over the atlas
 [`frame.capture`](commands.md#framecapture)'s `drawn` counts the meshes drawn at a coarser one
 as `lods`. Primitive meshes, CSG shapes, `GridMap`s and terrains have no LODs, as in Godot.
 
+#### Model collision
+
+A model says what it collides as with Godot's import hints on its nodes' names (an OBJ file's
+objects, a glTF or FBX file's nodes, a `.blend` file's objects), as Godot's scene importer reads
+them:
+
+| Hint | Collides as | Draws |
+| --- | --- | --- |
+| `-col` | its triangles, a `concave_polygon` shape | yes |
+| `-convcol` | their convex hull, a `convex_polygon` shape | yes |
+| `-colonly` | its triangles | no |
+| `-convcolonly` | their convex hull | no |
+
+A hint is matched as Godot matches it, in any case: at the end of the name after `-` or `_`, once
+trailing digits and dots are dropped, or anywhere after `$` (`Wall-COL.001` is `Wall_001`
+colliding as its triangles). The name keeps the rest. A convex hull is one hull of all the node's corners, as
+Godot's `create_convex_shape`. A node with no mesh, such as a recipe's point, makes no collision.
+
+```json
+"yard": {"components": {
+  "Transform3D": {},
+  "MeshInstance3D": {"mesh": "levels/yard.obj"}
+}}
+```
+
+A `MeshInstance3D` whose model has collision collides as it, with no other components, as the
+`StaticBody3D` Godot's importer adds above the mesh: it is a static body of those shapes, on
+collision layer and mask 1, with no friction or bounce changes. On an entity that is a body
+already (`RigidBody3D`, `CharacterBody3D` and the rest), or a direct child of one, the shapes are
+that body's, in the place the model is drawn, as a `CollisionShape3D` there would be. Collision
+follows the model when its file changes.
+
+A model without hints gets collision from [`model.cleanup`](commands.md#modelcleanup)'s
+`collision`. [`model.inspect`](commands.md#modelinspect) lists it apart from the parts, and
+[`model.cleanup`](commands.md#modelcleanup) and `write_glb` keep it in the `.glb` files they write
+as nodes named with those hints, so Godot reads them as it reads its own.
+
 #### OBJ models
 
 An `.obj` file is read as Godot's OBJ importer reads one as a scene, with its `.mtl` material

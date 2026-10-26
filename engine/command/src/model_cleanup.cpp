@@ -112,6 +112,16 @@ Reply model_cleanup(Session& session, const json::Value& params) {
     }
     const json::Value* uvs = params.find("uvs");
     options.uvs = uvs == nullptr || uvs->as_bool();
+    if (const json::Value* collision = params.find("collision"); collision != nullptr) {
+        options.collision = collision->as_string();
+    }
+    if (const json::Value* max_hulls = params.find("max_hulls"); max_hulls != nullptr) {
+        if (options.collision != "decompose") {
+            return param_error(code::kInvalidParams, "/max_hulls",
+                               "max_hulls goes with collision \"decompose\"");
+        }
+        options.max_hulls = static_cast<std::size_t>(max_hulls->as_int());
+    }
 
     auto loaded = session.assets().load<scene3d::Model>(path);
     if (!loaded) {
@@ -126,6 +136,9 @@ Reply model_cleanup(Session& session, const json::Value& params) {
             at = "/up";
         } else if (message.starts_with("the simplifier")) {
             at = budget ? "/out" : "/triangles";
+        } else if (message.starts_with("the model has no triangles") ||
+                   message.starts_with("the model's triangles span")) {
+            at = "/collision";
         } else if (message.find("height") != std::string::npos) {
             at = "/height";
         }
@@ -162,6 +175,21 @@ Reply model_cleanup(Session& session, const json::Value& params) {
     result["pivot"] = numbers(summary.pivot);
     if (report.value().unwrapped > 0) {
         result["unwrapped"] = static_cast<std::int64_t>(report.value().unwrapped);
+    }
+    if (!summary.collision.empty()) {
+        // How many shapes of each kind it collides as.
+        std::int64_t convex = 0;
+        for (const scene3d::ModelSummary::Collision& shape : summary.collision) {
+            convex += shape.convex ? 1 : 0;
+        }
+        json::Value shapes;
+        if (convex > 0) {
+            shapes["convex"] = convex;
+        }
+        if (convex < static_cast<std::int64_t>(summary.collision.size())) {
+            shapes["trimesh"] = static_cast<std::int64_t>(summary.collision.size()) - convex;
+        }
+        result["collision"] = std::move(shapes);
     }
     auto before = session.read_project_file(out);
     if (!before) {
@@ -207,12 +235,20 @@ void register_model_cleanup_commands(Registry& registry) {
     triangles["minimum"] = 0;
     json::Value uvs = property("boolean", "Unwrap surfaces without texture coordinates. Default "
                                           "true.");
+    json::Value collision = property(
+        "string", "Give it collision from its triangles, replacing any it has, as Godot's "
+                  "\"Generate > Physics\": \"trimesh\", \"convex\" (one hull) or \"decompose\" "
+                  "(convex hulls). Default: keep its own.");
+    collision["enum"] = json::Array{"trimesh", "convex", "decompose"};
+    json::Value max_hulls = property("integer", "The most hulls \"decompose\" makes. Default 16.");
+    max_hulls["minimum"] = 1;
+    max_hulls["maximum"] = 256;
     registry.add({
         .name = "model.cleanup",
         .description = "Makes a model game-ready as a .glb file: turns its up to y, scales it to "
                        "real size, puts its origin at a pivot, simplifies it under its triangle "
-                       "budget and unwraps surfaces without texture coordinates. Returns "
-                       "triangles before and after, size and pivot.",
+                       "budget, unwraps surfaces without texture coordinates and makes its "
+                       "collision. Returns triangles before and after, size and pivot.",
         .capabilities = {Capability::Edit, Capability::Filesystem},
         .effect = Effect::Edit,
         .params = params_schema({{"path", std::move(path)},
@@ -222,7 +258,9 @@ void register_model_cleanup_commands(Registry& registry) {
                                  {"height", std::move(height)},
                                  {"pivot", std::move(pivot)},
                                  {"triangles", std::move(triangles)},
-                                 {"uvs", std::move(uvs)}},
+                                 {"uvs", std::move(uvs)},
+                                 {"collision", std::move(collision)},
+                                 {"max_hulls", std::move(max_hulls)}},
                                 {"path"}),
         .handler = model_cleanup,
     });

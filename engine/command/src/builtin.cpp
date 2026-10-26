@@ -2599,6 +2599,14 @@ json::Value brief_model(const scene3d::ModelSummary& summary) {
     if (!summary.animations.empty()) {
         out["animations"] = names(summary.animations);
     }
+    for (const scene3d::ModelSummary::Collision& shape : summary.collision) {
+        json::Value item;
+        item["name"] = shape.name;
+        item["shape"] = shape.convex ? "convex" : "trimesh";
+        item["points"] = shape.points;
+        item["triangles"] = shape.triangles;
+        out["collision"].push_back(std::move(item));
+    }
     return out;
 }
 
@@ -2736,6 +2744,15 @@ Reply model_inspect(Session& session, const json::Value& params) {
         }
         out["tracks"] = animation.tracks.size();
         result["animations"].push_back(std::move(out));
+    }
+    // Collision only for a model that has it.
+    for (const scene3d::ModelCollision& shape : model.collision) {
+        json::Value out;
+        out["name"] = shape.node;
+        out["shape"] = shape.convex ? "convex" : "trimesh";
+        out["points"] = shape.points.size();
+        out["triangles"] = shape.indices.size() / 3;
+        result["collision"].push_back(std::move(out));
     }
     const scene3d::Bounds box = scene3d::bounds(model);
     result["bounds"]["min"] = rounded(json::Array{box.min.x, box.min.y, box.min.z});
