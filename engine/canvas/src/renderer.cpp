@@ -1098,7 +1098,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     std::optional<scene3d::Frame3D> scene =
         scene3d_.prepare(world, viewport.x, viewport.y, options.interpolation, options.clear,
                          settings(world).shadows, options.time, settings(world).depth_of_field,
-                         settings(world).ssao);
+                         settings(world).ssao, settings(world).ssr);
     if (scene) {
         scene->scene.method = settings(world).rendering_method;
     }

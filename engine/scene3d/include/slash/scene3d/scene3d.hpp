@@ -73,6 +73,7 @@ struct Environment {
     render::SkyKind sky_material = render::SkyKind::None;
     render::Fog3D fog;
     render::Ssao3D ssao; // with the default settings, which the project's replace
+    render::Ssr3D ssr;   // the same
     std::array<float, 3> ambient{0.0F, 0.0F, 0.0F}; // sRGB
     float ambient_energy = 1.0F;
     render::PostProcess post;     // with no color correction texture made yet
@@ -181,14 +182,14 @@ public:
     // Works out the frame for a target of width by height pixels, interpolation of the way from
     // the transforms before the last tick to the current ones, its shadows drawn with shadows,
     // shown at time seconds of game time, over which auto exposure adapts and from which depth of
-    // field's jitter is seeded, its depth of field blurred as depth_of_field says and its ambient
-    // occlusion worked out as ssao says: nullopt when the world has no camera, and nothing 3D
-    // draws. The mesh draws wait for draw().
+    // field's jitter is seeded, its depth of field blurred as depth_of_field says, its ambient
+    // occlusion worked out as ssao says and its reflections as ssr says: nullopt when the world
+    // has no camera, and nothing 3D draws. The mesh draws wait for draw().
     [[nodiscard]] std::optional<Frame3D>
     prepare(const world::World& world, float width, float height, double interpolation,
             render::Color clear, const render::ShadowSettings& shadows = {}, double time = 0.0,
             const render::DepthOfFieldSettings& depth_of_field = {},
-            const render::SsaoSettings& ssao = {});
+            const render::SsaoSettings& ssao = {}, const render::SsrSettings& ssr = {});
     // Draws the meshes prepare found into the frame begun with its scene.
     [[nodiscard]] Result<void> draw();
 
