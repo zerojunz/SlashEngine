@@ -1,0 +1,112 @@
+{
+  "entities": {
+    "back_wall": {
+      "components": {
+        "BoxMesh": {
+          "size": [14.0, 4.0, 0.2]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.85, 0.85, 0.85, 1.0],
+          "roughness": 0.9
+        },
+        "Transform3D": {
+          "position": [0.0, 2.0, -2.1]
+        }
+      }
+    },
+    "box": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.5, 0.5, 0.5]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.3, 0.45, 0.6, 1.0],
+          "roughness": 0.8
+        },
+        "Transform3D": {
+          "position": [0.9, 0.25, 0.3]
+        }
+      }
+    },
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 60.0
+        },
+        "Transform3D": {
+          "position": [0.4, 1.6, 3.4],
+          "rotation": [-0.3, 0.15, 0.0]
+        }
+      }
+    },
+    "crate": {
+      "components": {
+        "BoxMesh": {},
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.6, 0.4, 0.25, 1.0],
+          "roughness": 0.8
+        },
+        "Transform3D": {
+          "position": [-1.0, 0.5, -1.5]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.9, 0.85, 0.8, 1.0],
+          "ambient_light_energy": 0.6,
+          "ambient_light_source": "color",
+          "background_color": [0.1, 0.1, 0.12, 1.0],
+          "background_mode": "color",
+          "ssao_enabled": true
+        }
+      }
+    },
+    "floor": {
+      "components": {
+        "BoxMesh": {
+          "size": [14.0, 0.2, 10.0]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.8, 0.78, 0.72, 1.0],
+          "roughness": 0.9
+        },
+        "Transform3D": {
+          "position": [0.0, -0.1, 0.0]
+        }
+      }
+    },
+    "side_wall": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.2, 4.0, 8.0]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.85, 0.85, 0.85, 1.0],
+          "roughness": 0.9
+        },
+        "Transform3D": {
+          "position": [-2.6, 2.0, 0.0]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {
+          "light_energy": 0.6
+        },
+        "Transform3D": {
+          "rotation": [-0.9, 0.6, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

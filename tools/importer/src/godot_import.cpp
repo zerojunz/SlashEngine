@@ -1825,6 +1825,30 @@ private:
             project["rendering"]["camera"]["depth_of_field"]["depth_of_field_use_jitter"] =
                 jitter->boolean;
         }
+        // SSAO's quality and cost, named as Godot names them.
+        json::Value ssao;
+        if (const Value* quality = number("rendering", "environment/ssao/quality")) {
+            const auto index = static_cast<std::int64_t>(quality->number());
+            if (index >= 0 && static_cast<std::size_t>(index) < render::kSsaoQualityNames.size()) {
+                ssao["quality"] =
+                    std::string(render::kSsaoQualityNames.at(static_cast<std::size_t>(index)));
+            }
+        }
+        if (const Value* half = setting("rendering", "environment/ssao/half_size");
+            half != nullptr && half->kind == Value::Kind::Bool) {
+            ssao["half_size"] = half->boolean;
+        }
+        if (const Value* passes = number("rendering", "environment/ssao/blur_passes")) {
+            ssao["blur_passes"] = static_cast<std::int64_t>(passes->number());
+        }
+        for (const char* key : {"adaptive_target", "fadeout_from", "fadeout_to"}) {
+            if (const Value* value = number("rendering", std::string("environment/ssao/") + key)) {
+                ssao[key] = value->number();
+            }
+        }
+        if (!ssao.is_null()) {
+            project["rendering"]["environment"]["ssao"] = std::move(ssao);
+        }
         if (const Value* gravity = number("physics", "2d/default_gravity")) {
             project["physics_2d"]["gravity"] = gravity->number();
         }

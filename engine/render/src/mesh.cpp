@@ -623,6 +623,12 @@ MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
         place = add(place, scale(axis, -c.at(12 + row) / squared));
     }
     out.camera = {place[0], place[1], place[2], 0.0F};
+    out.view_rows = {Float4{c[0], c[4], c[8], c[12]}, Float4{c[1], c[5], c[9], c[13]},
+                     Float4{c[2], c[6], c[10], c[14]}};
+    if (const Ssao3D& ssao = scene.ssao;
+        ssao.enabled && scene.method == RenderMethod::ForwardPlus) {
+        out.ssao = {1.0F, ssao.light_affect, ssao.ao_channel_affect, 0.0F};
+    }
     const float energy = scene.ambient_energy;
     out.ambient = {srgb_to_linear_exact(scene.ambient[0]) * energy,
                    srgb_to_linear_exact(scene.ambient[1]) * energy,
@@ -893,10 +899,21 @@ void add_cluster_lights(const LightClusters& clusters, const MeshShadowUniforms&
     }
 }
 
-} // namespace
+// What fs_main works out before it lights a pixel: its albedo, linear, and alpha, its metallic and
+// roughness, and its shading normal.
+struct SurfacePixel {
+    Float3 base{};
+    float alpha = 1.0F;
+    float metallic = 0.0F;
+    float roughness = 0.0F;
+    Float3 normal{};
+    bool terrain = false;
+    TerrainTexel ground;
+};
 
-std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshSceneUniforms& scene,
-                                 const MeshMaps& maps, const MeshPixel& pixel) {
+// The surface at a pixel, or nullopt where the alpha scissor discards it.
+std::optional<SurfacePixel> surface_pixel(const MeshSurfaceUniforms& surface,
+                                          const MeshPixel& pixel) {
     const std::uint32_t flags = surface.options[0];
     Float4 color{};
     for (std::size_t i = 0; i < 4; ++i) {
@@ -907,13 +924,74 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
             color.at(i) *= pixel.color.at(i);
         }
     }
-    float alpha = (flags & kMeshHasAlpha) != 0 ? color[3] : 1.0F;
+    SurfacePixel out;
+    out.alpha = (flags & kMeshHasAlpha) != 0 ? color[3] : 1.0F;
     if ((flags & kMeshAlphaScissor) != 0) {
-        if (alpha < same_bits<float>(surface.options[1])) {
+        if (out.alpha < same_bits<float>(surface.options[1])) {
             return std::nullopt;
         }
-        alpha = 1.0F;
+        out.alpha = 1.0F;
     }
+    out.terrain = (surface.options[3] & kMeshTerrain) != 0;
+    if (out.terrain) {
+        out.ground = terrain_texel(surface, pixel.texels);
+    }
+    out.base = out.terrain ? mul(srgb_to_linear(xyz(surface.albedo)), out.ground.albedo)
+                           : srgb_to_linear({color[0], color[1], color[2]});
+    const auto dot4 = [](const Float4& a, const Float4& b) {
+        return (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]) + (a[3] * b[3]);
+    };
+    out.metallic = out.terrain
+                       ? surface.surface[0]
+                       : surface.surface[0] * dot4(pixel.texels[1], surface.metallic_channel);
+    out.roughness = out.terrain
+                        ? surface.surface[1] * out.ground.roughness
+                        : surface.surface[1] * dot4(pixel.texels[2], surface.roughness_channel);
+    Float3 normal = out.terrain ? frame_direction(pixel, out.ground.normal) : pixel.normal;
+    if ((flags & kMeshSideCheck) != 0 && !pixel.front) {
+        normal = scale(normal, -1.0F);
+    }
+    if ((flags & kMeshNormalMap) != 0) {
+        Float3 mapped = xyz(pixel.texels[4]);
+        mapped[0] = (mapped[0] * 2.0F) - 1.0F;
+        mapped[1] = (mapped[1] * 2.0F) - 1.0F;
+        mapped[2] =
+            std::sqrt(std::max(0.0F, 1.0F - ((mapped[0] * mapped[0]) + (mapped[1] * mapped[1]))));
+        const Float3 bent =
+            add(add(scale(pixel.tangent, mapped[0]), scale(pixel.binormal, mapped[1])),
+                scale(normal, mapped[2]));
+        out.normal = normalize(lerp3(normal, bent, surface.surface[3]));
+    } else {
+        out.normal = normalize(normal);
+    }
+    return out;
+}
+
+} // namespace
+
+std::optional<Float4> mesh_normal_roughness(const MeshSurfaceUniforms& surface,
+                                            const MeshSceneUniforms& scene,
+                                            const MeshPixel& pixel) {
+    const std::optional<SurfacePixel> found = surface_pixel(surface, pixel);
+    if (!found) {
+        return std::nullopt;
+    }
+    const Float3& n = found->normal;
+    const Float3 view =
+        normalize({dot3(xyz(scene.view_rows[0]), n), dot3(xyz(scene.view_rows[1]), n),
+                   dot3(xyz(scene.view_rows[2]), n)});
+    return Float4{(view[0] * 0.5F) + 0.5F, (view[1] * 0.5F) + 0.5F, (view[2] * 0.5F) + 0.5F,
+                  found->roughness * (127.0F / 255.0F)};
+}
+
+std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshSceneUniforms& scene,
+                                 const MeshMaps& maps, const MeshPixel& pixel) {
+    const std::uint32_t flags = surface.options[0];
+    const std::optional<SurfacePixel> found = surface_pixel(surface, pixel);
+    if (!found) {
+        return std::nullopt;
+    }
+    const float alpha = found->alpha;
     // Fogged unless the material disables it, then linear for Forward+, or times the exposure,
     // tonemapped unless the post pass does it, and as sRGB.
     const auto finish = [&](Float3 lit) {
@@ -933,26 +1011,26 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         const Float3 out = linear_to_srgb(exposed);
         return Float4{out[0], out[1], out[2], alpha};
     };
-    const bool terrain = (surface.options[3] & kMeshTerrain) != 0;
-    TerrainTexel ground;
-    if (terrain) {
-        ground = terrain_texel(surface, pixel.texels);
-    }
-    const Float3 base = terrain ? mul(srgb_to_linear(xyz(surface.albedo)), ground.albedo)
-                                : srgb_to_linear({color[0], color[1], color[2]});
+    const bool terrain = found->terrain;
+    const TerrainTexel& ground = found->ground;
+    const Float3& base = found->base;
     if ((flags & kMeshUnshaded) != 0) {
         return finish(base);
     }
 
-    const auto dot4 = [](const Float4& a, const Float4& b) {
-        return (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]) + (a[3] * b[3]);
-    };
-    const float metallic =
-        terrain ? surface.surface[0]
-                : surface.surface[0] * dot4(pixel.texels[1], surface.metallic_channel);
-    const float roughness =
-        terrain ? surface.surface[1] * ground.roughness
-                : surface.surface[1] * dot4(pixel.texels[2], surface.roughness_channel);
+    const float metallic = found->metallic;
+    const float roughness = found->roughness;
+    const Float3& normal = found->normal;
+    // Godot's SSAO: the frame's occlusion at the pixel darkens the opaque meshes' ambient light,
+    // and their direct light by its light affect times its AO channel affect.
+    float ao = 1.0F;
+    float ao_direct = 1.0F;
+    const bool opaque = (flags & kMeshHasAlpha) == 0 || (flags & kMeshAlphaScissor) != 0;
+    if (scene.ssao[0] != 0.0F && opaque && !maps.ao.empty()) {
+        ao = maps.ao[(std::size_t{pixel.y} * maps.ao_width) + pixel.x];
+        const float affect = std::max(0.0F, scene.ssao[1]) * scene.ssao[2];
+        ao_direct = 1.0F + ((ao - 1.0F) * affect);
+    }
     const float specular = surface.surface[2];
     Float3 emitted{surface.emission[0], surface.emission[1], surface.emission[2]};
     if ((flags & kMeshEmissionTexture) != 0) {
@@ -960,23 +1038,6 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     }
     emitted = scale(srgb_to_linear(emitted), surface.emission[3]);
 
-    Float3 normal = terrain ? frame_direction(pixel, ground.normal) : pixel.normal;
-    if ((flags & kMeshSideCheck) != 0 && !pixel.front) {
-        normal = scale(normal, -1.0F);
-    }
-    if ((flags & kMeshNormalMap) != 0) {
-        Float3 mapped = xyz(pixel.texels[4]);
-        mapped[0] = (mapped[0] * 2.0F) - 1.0F;
-        mapped[1] = (mapped[1] * 2.0F) - 1.0F;
-        mapped[2] =
-            std::sqrt(std::max(0.0F, 1.0F - ((mapped[0] * mapped[0]) + (mapped[1] * mapped[1]))));
-        const Float3 bent =
-            add(add(scale(pixel.tangent, mapped[0]), scale(pixel.binormal, mapped[1])),
-                scale(normal, mapped[2]));
-        normal = normalize(lerp3(normal, bent, surface.surface[3]));
-    } else {
-        normal = normalize(normal);
-    }
     const Float3 view =
         normalize(sub({scene.camera[0], scene.camera[1], scene.camera[2]}, pixel.world));
     const float dielectric = 0.16F * specular * specular;
@@ -1057,6 +1118,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
                 lerp3(ambient_light, scale(srgb_to_linear(xyz(texel)), scene.sky[2]), scene.sky[3]);
         }
     }
+    ambient_light = scale(ambient_light, ao);
     float occlusion =
         ((ambient_light[0] * 0.3F) + (ambient_light[1] * 0.59F) + (ambient_light[2] * 0.11F)) *
         2.0F;
@@ -1077,9 +1139,11 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     }
 
     ambient_light = scale(mul(ambient_light, base), 1.0F - metallic);
-    const Float3 diffuse_light = mul(light_sum.diffuse, scale(base, 1.0F - metallic));
+    const Float3 diffuse_light =
+        mul(light_sum.diffuse, scale(scale(base, ao_direct), 1.0F - metallic));
+    const Float3 specular_light = scale(light_sum.specular, ao_direct);
     const Float3 lit =
-        add(add(add(add(diffuse_light, light_sum.specular), reflected), emitted), ambient_light);
+        add(add(add(add(diffuse_light, specular_light), reflected), emitted), ambient_light);
     return finish(lit);
 }
 

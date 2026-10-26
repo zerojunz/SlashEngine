@@ -1,0 +1,8 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":8,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.667,0.647,0.627,1],[0.714,0.694,0.671,1],[0.737,0.702,0.635,1],[0.78,0.741,0.667,1]],"drawn":{"meshes":5},"height":180,"path":"shots/room.png","width":320}}
+{"id":3,"jsonrpc":"2.0","result":{"changed":{"WorldEnvironment":{"ssao_intensity":4.0,"ssao_radius":2.0}},"id":"environment"}}
+{"id":4,"jsonrpc":"2.0","result":{"colors":[[0.549,0.537,0.529,1],[0.627,0.616,0.6,1],[0.706,0.675,0.612,1],[0.78,0.741,0.667,1]],"drawn":{"meshes":5},"height":180,"path":"shots/stronger.png","width":320}}
+{"id":5,"jsonrpc":"2.0","result":{"changed":{"WorldEnvironment":{"ssao_ao_channel_affect":1.0,"ssao_light_affect":1.0}},"id":"environment"}}
+{"id":6,"jsonrpc":"2.0","result":{"colors":[[0.416,0.4,0.384,1],[0.506,0.486,0.471,1],[0.612,0.576,0.518,1],[0.78,0.741,0.667,1]],"drawn":{"meshes":5},"height":180,"width":320}}
+{"id":7,"jsonrpc":"2.0","result":{"changed":{"WorldEnvironment":{"ssao_enabled":false}},"id":"environment"}}
+{"id":8,"jsonrpc":"2.0","result":{"colors":[[0.729,0.706,0.678,1],[0.765,0.741,0.714,1],[0.788,0.745,0.671,1],[0.78,0.741,0.667,1]],"drawn":{"meshes":5},"height":180,"width":320}}
