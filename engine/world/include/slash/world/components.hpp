@@ -558,7 +558,7 @@ struct PanoramaSkyMaterial {
 SLASH_COMPONENT(PanoramaSkyMaterial, panorama, filter, energy_multiplier)
 
 // The 3D world's background, ambient light, tonemap, glow, fog and adjustments, as Godot's
-// WorldEnvironment and its Environment in the Compatibility renderer. The first one made applies;
+// WorldEnvironment and its Environment. The first one made applies;
 // without one the background is the project's clear color, there is no ambient light and colors
 // are left as they are. A "sky" background is the sky material on the same entity: a
 // ProceduralSkyMaterial, PhysicalSkyMaterial or PanoramaSkyMaterial, or Godot's default
@@ -585,8 +585,18 @@ struct WorldEnvironment {
     std::string tonemap_mode = "linear"; // "linear", "reinhard", "filmic", "aces" or "agx"
     float tonemap_exposure = 1.0F;
     float tonemap_white = 1.0F;
+    float tonemap_agx_white = 16.29F;   // agx's white with Forward+, as Blender's AgX
+    float tonemap_agx_contrast = 1.25F; // how steep agx's curve is with Forward+
     bool glow_enabled = false;
-    float glow_intensity = 0.8F;
+    // Forward+: how much each of glow's seven levels adds, from the sharpest; Godot's
+    // glow_levels/1 to glow_levels/7.
+    std::vector<float> glow_levels{0.0F, 0.8F, 0.4F, 0.1F, 0.0F, 0.0F, 0.0F};
+    bool glow_normalized = false; // Forward+: the levels are divided by their sum
+    float glow_intensity = 0.3F;
+    float glow_strength = 1.0F; // Forward+
+    float glow_mix = 0.05F;     // Forward+, with the "mix" blend mode
+    // Forward+: "additive", "screen", "softlight", "replace" or "mix"
+    std::string glow_blend_mode = "screen";
     float glow_bloom = 0.0F;
     float glow_hdr_threshold = 1.0F;
     float glow_hdr_scale = 2.0F;
@@ -615,13 +625,15 @@ struct WorldEnvironment {
 SLASH_COMPONENT(WorldEnvironment, background_mode, background_color, background_energy_multiplier,
                 sky_custom_fov, sky_rotation, sky_radiance_size, ambient_light_source,
                 ambient_light_color, ambient_light_sky_contribution, ambient_light_energy,
-                reflected_light_source, tonemap_mode, tonemap_exposure, tonemap_white, glow_enabled,
-                glow_intensity, glow_bloom, glow_hdr_threshold, glow_hdr_scale,
-                glow_hdr_luminance_cap, fog_enabled, fog_mode, fog_light_color, fog_light_energy,
-                fog_sun_scatter, fog_density, fog_aerial_perspective, fog_sky_affect, fog_height,
-                fog_height_density, fog_depth_curve, fog_depth_begin, fog_depth_end,
-                adjustment_enabled, adjustment_brightness, adjustment_contrast,
-                adjustment_saturation, adjustment_color_correction)
+                reflected_light_source, tonemap_mode, tonemap_exposure, tonemap_white,
+                tonemap_agx_white, tonemap_agx_contrast, glow_enabled, glow_levels, glow_normalized,
+                glow_intensity, glow_strength, glow_mix, glow_blend_mode, glow_bloom,
+                glow_hdr_threshold, glow_hdr_scale, glow_hdr_luminance_cap, fog_enabled, fog_mode,
+                fog_light_color, fog_light_energy, fog_sun_scatter, fog_density,
+                fog_aerial_perspective, fog_sky_affect, fog_height, fog_height_density,
+                fog_depth_curve, fog_depth_begin, fog_depth_end, adjustment_enabled,
+                adjustment_brightness, adjustment_contrast, adjustment_saturation,
+                adjustment_color_correction)
 
 // ---- Paths, as Godot's Path2D and Path3D with their curves (path.hpp) ----
 //

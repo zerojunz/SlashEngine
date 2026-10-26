@@ -1,0 +1,114 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 60.0
+        },
+        "Transform3D": {
+          "position": [0.0, 1.5, 6.0],
+          "rotation": [-0.08, 0.0, 0.0]
+        }
+      }
+    },
+    "cyan_light": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.3, 0.9, 1.0, 1.0],
+          "light_energy": 1.5
+        },
+        "Transform3D": {
+          "position": [2.0, 1.8, -1.2]
+        }
+      }
+    },
+    "cyan_sign": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.2, 1.8, 0.1]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.0, 0.0, 0.0, 1.0],
+          "emission": [0.3, 0.9, 1.0, 1.0],
+          "emission_enabled": true,
+          "emission_energy_multiplier": 4.0
+        },
+        "Transform3D": {
+          "position": [2.0, 1.8, -1.75]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.3, 0.3, 0.5, 1.0],
+          "ambient_light_energy": 0.3,
+          "ambient_light_source": "color",
+          "background_color": [0.01, 0.01, 0.03, 1.0],
+          "background_mode": "color",
+          "glow_enabled": true,
+          "glow_intensity": 0.8,
+          "tonemap_mode": "agx"
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [16.0, 16.0]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.2, 0.2, 0.22, 1.0],
+          "roughness": 0.4
+        },
+        "Transform3D": {}
+      }
+    },
+    "pink_light": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.3, 0.7, 1.0],
+          "light_energy": 1.5
+        },
+        "Transform3D": {
+          "position": [-1.5, 2.3, -1.2]
+        }
+      }
+    },
+    "pink_sign": {
+      "components": {
+        "BoxMesh": {
+          "size": [2.4, 0.25, 0.1]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.0, 0.0, 0.0, 1.0],
+          "emission": [1.0, 0.2, 0.6, 1.0],
+          "emission_enabled": true,
+          "emission_energy_multiplier": 6.0
+        },
+        "Transform3D": {
+          "position": [-1.5, 2.3, -1.75]
+        }
+      }
+    },
+    "wall": {
+      "components": {
+        "BoxMesh": {
+          "size": [10.0, 4.0, 0.4]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.3, 0.27, 0.28, 1.0]
+        },
+        "Transform3D": {
+          "position": [0.0, 2.0, -2.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

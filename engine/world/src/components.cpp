@@ -2595,13 +2595,35 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("tonemap_exposure",
                   {.doc = "Multiplies lit colors before they are tonemapped.", .min = 0})
         .describe("tonemap_white",
-                  {.doc = "The color tonemapped to white; agx ignores it.", .min = 0})
+                  {.doc = "The color tonemapped to white, at least 1 with Forward+; agx uses "
+                          "tonemap_agx_white instead with Forward+ and ignores both with "
+                          "Compatibility.",
+                   .min = 0})
+        .describe("tonemap_agx_white", {.doc = "agx's white with Forward+, at least 2.", .min = 0})
+        .describe("tonemap_agx_contrast",
+                  {.doc = "How steep agx's curve is with Forward+.", .min = 0})
         .describe("glow_enabled", {.doc = "Bright colors bleed into what is around them."})
+        .describe("glow_levels",
+                  {.doc = "Forward+: how much each of glow's seven levels adds, from the "
+                          "sharpest, half the screen's size, to the softest; Godot's "
+                          "glow_levels/1 to /7. Levels at 0.01 or less are skipped.",
+                   .min = 0})
+        .describe("glow_normalized",
+                  {.doc = "Forward+: glow_levels are divided by their sum, so they add to 1."})
         .describe("glow_intensity", {.doc = "How strong the glow is.", .min = 0})
+        .describe("glow_strength",
+                  {.doc = "Forward+: multiplies each level as it is blurred.", .min = 0})
+        .describe("glow_mix",
+                  {.doc = "Forward+: how much glow replaces colors with the mix blend mode.",
+                   .min = 0,
+                   .max = 1})
+        .describe("glow_blend_mode",
+                  {.doc = "Forward+: how glow blends in; Compatibility always screens.",
+                   .choices = {"additive", "screen", "softlight", "replace", "mix"}})
         .describe("glow_bloom", {.doc = "How much of every color glows.", .min = 0, .max = 1})
         .describe("glow_hdr_threshold",
-                  {.doc = "Colors above it glow; drawn colors reach 1 at most, so glow needs it "
-                          "below 1 or glow_bloom.",
+                  {.doc = "Colors above it glow. Compatibility draws colors up to 1 at most, so "
+                          "there glow needs it below 1 or glow_bloom.",
                    .min = 0})
         .describe("glow_hdr_scale",
                   {.doc = "How far above the threshold colors reach full glow.", .min = 0})

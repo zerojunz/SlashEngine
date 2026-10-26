@@ -7,6 +7,7 @@
 
 #include "checks.hpp"
 #include "cpu_particles.hpp"
+#include "forward_post.hpp"
 #include "mesh_shading.hpp"
 #include "post_shading.hpp"
 #include "sky_shading.hpp"
@@ -119,6 +120,39 @@ float clamp01(float value) {
 std::uint8_t to_byte(float value) {
     return static_cast<std::uint8_t>(std::lround(clamp01(value) * 255.0F));
 }
+
+// Where a frame's sky and meshes draw: the frame's target, in bytes, or for Forward+ the world's
+// texture of half floats, which keeps colors past 1 and below 0 as the GPU devices' does.
+struct WorldTarget {
+    Image* bytes = nullptr;
+    detail::HdrImage* hdr = nullptr;
+
+    [[nodiscard]] std::uint32_t width() const {
+        return bytes != nullptr ? bytes->width : hdr->width;
+    }
+    [[nodiscard]] std::uint32_t height() const {
+        return bytes != nullptr ? bytes->height : hdr->height;
+    }
+    [[nodiscard]] Float4 load(std::size_t pixel) const {
+        Float4 color{};
+        for (std::size_t i = 0; i < 4; ++i) {
+            color.at(i) = bytes != nullptr
+                              ? static_cast<float>(bytes->pixels[(pixel * 4) + i]) / 255.0F
+                              : hdr->pixels[(pixel * 4) + i];
+        }
+        return color;
+    }
+    // Rounded to bytes, or to half floats, as a GPU writes them.
+    void store(std::size_t pixel, const Float4& color) const {
+        for (std::size_t i = 0; i < 4; ++i) {
+            if (bytes != nullptr) {
+                bytes->pixels[(pixel * 4) + i] = to_byte(color.at(i));
+            } else {
+                hdr->pixels[(pixel * 4) + i] = detail::round_half(color.at(i));
+            }
+        }
+    }
+};
 
 // The GPU device's blend states (gpu_device.cpp), on a straight-alpha source color clamped to 0
 // to 1 and the target's color.
@@ -467,19 +501,34 @@ public:
             std::copy(clear.begin(), clear.end(),
                       target.pixels.begin() + static_cast<std::ptrdiff_t>(i));
         }
-        if (frame_.scene && detail::post_processes(frame_.scene->post)) {
+        if (frame_.scene && frame_.scene->method == RenderMethod::ForwardPlus) {
+            // The sky and meshes draw linear colors into a texture of half floats cleared to the
+            // clear color, and Forward+'s post passes draw that over the target.
+            detail::HdrImage world{.width = target.width, .height = target.height, .pixels = {}};
+            world.pixels.resize(std::size_t{target.width} * target.height * 4);
+            const Float4 clear_color = detail::forward_clear(frame_.clear);
+            for (std::size_t i = 0; i < world.pixels.size(); i += 4) {
+                std::copy(clear_color.begin(), clear_color.end(),
+                          world.pixels.begin() + static_cast<std::ptrdiff_t>(i));
+            }
+            draw_sky(*frame_.scene, {.bytes = nullptr, .hdr = &world});
+            if (!mesh_draws_.empty()) {
+                draw_meshes(*frame_.scene, {.bytes = nullptr, .hdr = &world});
+            }
+            forward_post(frame_.scene->post, world, target);
+        } else if (frame_.scene && detail::post_processes(frame_.scene->post)) {
             // The sky and meshes draw untonemapped over a copy of the cleared target, and the
             // post passes draw that over the target.
             Image world = target;
-            draw_sky(*frame_.scene, world);
+            draw_sky(*frame_.scene, {.bytes = &world, .hdr = nullptr});
             if (!mesh_draws_.empty()) {
-                draw_meshes(*frame_.scene, world);
+                draw_meshes(*frame_.scene, {.bytes = &world, .hdr = nullptr});
             }
             post_process(frame_.scene->post, world, target);
         } else if (frame_.scene) {
-            draw_sky(*frame_.scene, target);
+            draw_sky(*frame_.scene, {.bytes = &target, .hdr = nullptr});
             if (!mesh_draws_.empty()) {
-                draw_meshes(*frame_.scene, target);
+                draw_meshes(*frame_.scene, {.bytes = &target, .hdr = nullptr});
             }
         }
         const Mat4 view = frame_.view.value_or(
@@ -1150,23 +1199,50 @@ private:
                               world, post.glow ? levels[0] : none, *lut, target);
     }
 
+    // forward_post.hlsl's passes on the CPU: glow's levels, each from the one before, then the
+    // tonemap pass from world over target.
+    void forward_post(const PostProcess& post, const detail::HdrImage& world, Image& target) {
+        const Image none;
+        const Image* lut = &none;
+        if (post.adjustments && post.color_correction != TextureId::None) {
+            lut = &find(post.color_correction)->image;
+        }
+        std::vector<detail::HdrImage> levels;
+        if (post.glow) {
+            const detail::GlowPlan plan =
+                detail::forward_glow_plan(post, target.width, target.height);
+            levels.resize(plan.count);
+            for (std::size_t i = 0; i < levels.size(); ++i) {
+                const detail::PostSize size = plan.sizes.at(i);
+                detail::run_forward_glow_pass(
+                    detail::forward_post_uniforms(
+                        post,
+                        i == 0 ? detail::ForwardPass::GlowFirst : detail::ForwardPass::GlowNext,
+                        size.width, size.height, target.width, target.height),
+                    i == 0 ? world : levels.at(i - 1), levels.at(i));
+            }
+        }
+        detail::run_forward_tonemap_pass(
+            detail::forward_post_uniforms(post, detail::ForwardPass::Tonemap, target.width,
+                                          target.height, target.width, target.height, lut->width,
+                                          lut->height),
+            world, levels, *lut, target);
+    }
+
     // sky.hlsl on the CPU: every pixel of the target, from its view direction, before the
-    // meshes. Colors are rounded to bytes as a GPU writes them.
-    void draw_sky(const Scene3D& scene, Image& target) {
+    // meshes.
+    void draw_sky(const Scene3D& scene, const WorldTarget& target) {
         if (!detail::sky_draws(scene)) {
             return;
         }
         const detail::SkyUniforms uniforms =
-            detail::sky_uniforms(scene, target.width, target.height);
+            detail::sky_uniforms(scene, target.width(), target.height());
         const Texture* texture = nullptr;
         if (const TextureId id = detail::sky_texture(scene.sky); id != TextureId::None) {
             texture = find(id);
         }
-        const auto to_byte = [](float value) {
-            return static_cast<std::uint8_t>(std::lround(std::clamp(value, 0.0F, 1.0F) * 255.0F));
-        };
-        for (std::uint32_t y = 0; y < target.height; ++y) {
-            for (std::uint32_t x = 0; x < target.width; ++x) {
+        for (std::uint32_t y = 0; y < target.height(); ++y) {
+            for (std::uint32_t x = 0; x < target.width(); ++x) {
                 const float px = static_cast<float>(x) + 0.5F;
                 const float py = static_cast<float>(y) + 0.5F;
                 const detail::SkyRay ray = detail::sky_ray(uniforms, px, py);
@@ -1174,11 +1250,8 @@ private:
                                          ? Float4{1.0F, 1.0F, 1.0F, 1.0F}
                                          : sample_image(texture->image, texture->desc.filter, true,
                                                         ray.coords[0], ray.coords[1]);
-                const Float4 color = detail::shade_sky(uniforms, ray, texel, px, py);
-                const std::size_t at = ((std::size_t{y} * target.width) + x) * 4;
-                for (std::size_t i = 0; i < 4; ++i) {
-                    target.pixels[at + i] = to_byte(color.at(i));
-                }
+                target.store((std::size_t{y} * target.width()) + x,
+                             detail::shade_sky(uniforms, ray, texel, px, py));
             }
         }
     }
@@ -1202,7 +1275,7 @@ private:
         return &radiance_;
     }
 
-    void draw_meshes(const Scene3D& scene, Image& target) {
+    void draw_meshes(const Scene3D& scene, const WorldTarget& target) {
         const detail::ShadowPlan plan = detail::plan_shadows(scene, kMaxTextureSize);
         std::vector<float> directional(std::size_t{plan.directional_size} * plan.directional_size,
                                        0.0F);
@@ -1214,7 +1287,7 @@ private:
         }
         const bool clustered = scene.method == RenderMethod::ForwardPlus;
         const detail::LightClusters clusters =
-            clustered ? detail::build_clusters(scene, target.width, target.height)
+            clustered ? detail::build_clusters(scene, target.width(), target.height())
                       : detail::LightClusters{};
         const detail::MeshMaps maps{
             .uniforms = plan.uniforms.get(),
@@ -1223,7 +1296,7 @@ private:
             .radiance = radiance(scene),
             .clusters = clustered ? &clusters : nullptr};
 
-        std::vector<float> depth(std::size_t{target.width} * target.height, 0.0F);
+        std::vector<float> depth(std::size_t{target.width()} * target.height(), 0.0F);
         const detail::MeshCameraUniforms camera = detail::mesh_camera_uniforms(scene);
         const auto lights =
             std::make_unique<detail::MeshSceneUniforms>(detail::mesh_scene_uniforms(scene));
@@ -1270,16 +1343,17 @@ private:
                 put(corner.uv);
                 put(corner.color);
             }
-            const MeshRaster raster{.depth = depth,
-                                    .stride = target.width,
-                                    .viewport = {.width = target.width, .height = target.height},
-                                    .cull = material.cull};
+            const MeshRaster raster{
+                .depth = depth,
+                .stride = target.width(),
+                .viewport = {.width = target.width(), .height = target.height()},
+                .cull = material.cull};
             const bool blended = material.transparency == Transparency::Alpha;
             const auto shade = [&](const MeshFragment& fragment, std::size_t at) {
                 const auto color =
                     shade_mesh_pixel(shader, fragment.varyings(), fragment.front,
-                                     {static_cast<std::uint32_t>(at % target.width),
-                                      static_cast<std::uint32_t>(at / target.width)});
+                                     {static_cast<std::uint32_t>(at % target.width()),
+                                      static_cast<std::uint32_t>(at / target.width())});
                 if (!color) {
                     return false; // discarded, as by the alpha scissor
                 }
@@ -1516,22 +1590,14 @@ private:
     }
 
     // Writes a mesh pixel as the GPU device's mesh pipelines do: opaque ones replace the pixel,
-    // alpha ones blend into it.
+    // alpha ones blend into it. A target of bytes clamps the color first; half floats keep it.
     static void write_mesh_pixel(const Material3D& material, bool blended, const Float4& color,
-                                 Image& target, std::size_t at) {
-        const Float4 src{clamp01(color[0]), clamp01(color[1]), clamp01(color[2]),
-                         clamp01(color[3])};
-        Float4 out = src;
-        if (blended) {
-            Float4 dst{};
-            for (std::size_t i = 0; i < 4; ++i) {
-                dst.at(i) = static_cast<float>(target.pixels[(at * 4) + i]) / 255.0F;
-            }
-            out = blend(material.blend, src, dst);
+                                 const WorldTarget& target, std::size_t at) {
+        Float4 src = color;
+        if (target.bytes != nullptr) {
+            src = {clamp01(color[0]), clamp01(color[1]), clamp01(color[2]), clamp01(color[3])};
         }
-        for (std::size_t i = 0; i < 4; ++i) {
-            target.pixels[(at * 4) + i] = to_byte(out.at(i));
-        }
+        target.store(at, blended ? blend(material.blend, src, target.load(at)) : src);
     }
 
     std::unordered_map<TextureId, Texture> textures_;

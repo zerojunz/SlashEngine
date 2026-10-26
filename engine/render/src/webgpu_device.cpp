@@ -5,6 +5,8 @@
 #include "webgpu_device.hpp"
 
 #include "checks.hpp"
+#include "forward_post.hpp"
+#include "forward_post_shaders.hpp"
 #include "material_shaders.hpp"
 #include "mesh_clustered_shaders.hpp"
 #include "mesh_shaders.hpp"
@@ -78,6 +80,8 @@ namespace {
 
 // Textures are 8-bit RGBA, or the compressed formats the GPU samples.
 constexpr WGPUTextureFormat kTextureFormat = WGPUTextureFormat_RGBA8Unorm;
+// A Forward+ frame's world and glow's levels are half floats, as Godot's Forward+ buffers.
+constexpr WGPUTextureFormat kHdrFormat = WGPUTextureFormat_RGBA16Float;
 // The radiance's cubes are RGB10A2, as Godot's.
 constexpr WGPUTextureFormat kRadianceFormat = WGPUTextureFormat_RGB10A2Unorm;
 // Meshes draw over 32-bit float depth, which every WebGPU device has and suits reversed depth.
@@ -326,6 +330,9 @@ public:
         for (const auto& [format, pipeline] : post_pipelines_) {
             wgpuRenderPipelineRelease(pipeline);
         }
+        for (const auto& [format, pipeline] : forward_pipelines_) {
+            wgpuRenderPipelineRelease(pipeline);
+        }
         for (const auto& [format, pipeline] : sky_pipelines_) {
             wgpuRenderPipelineRelease(pipeline);
         }
@@ -341,6 +348,7 @@ public:
             wgpuSamplerRelease(radiance_sampler_);
         }
         release_post_targets();
+        release_forward_targets();
         release_pending();
         for (const GpuTexture& atlas :
              {shadow_atlases_[0].gpu, shadow_atlases_[1].gpu, no_shadows_}) {
@@ -398,6 +406,8 @@ public:
                                            shadow_fragment_layout_,
                                            post_textures_layout_,
                                            post_uniforms_layout_,
+                                           forward_textures_layout_,
+                                           forward_uniforms_layout_,
                                            sky_uniforms_layout_,
                                            cube_texture_layout_,
                                            filter_uniforms_layout_}) {
@@ -938,7 +948,9 @@ public:
         start_frame(frame, view, width, height, true);
         frame_texture_ = target;
         frame_format_ = format;
-        if (frame.scene && post_processes(frame.scene->post)) {
+        if (frame.scene && frame.scene->method == RenderMethod::ForwardPlus) {
+            prepare_forward(width, height, frame.scene->post.glow);
+        } else if (frame.scene && post_processes(frame.scene->post)) {
             prepare_post(width, height);
         }
         return true;
@@ -997,9 +1009,9 @@ public:
                         .indices = it->second.indices,
                         .index_count = it->second.index_count,
                         .bounds = it->second.bounds,
-                        .pipeline = mesh_pipeline_for(
-                            post_processes(frame_.scene->post) ? kTextureFormat : frame_format_,
-                            material, frame_.scene->method == RenderMethod::ForwardPlus),
+                        .pipeline =
+                            mesh_pipeline_for(world_format(*frame_.scene, frame_format_), material,
+                                              frame_.scene->method == RenderMethod::ForwardPlus),
                         .bindings = {}};
         const std::array<MaterialTexture, kMeshTextures> slots = mesh_texture_slots(material);
         for (std::size_t slot = 0; slot < kMeshTextures; ++slot) {
@@ -1065,7 +1077,8 @@ public:
             batch_uniforms.push_back(at);
         }
         const MeshUniforms mesh_uniforms = add_mesh_uniforms();
-        const bool post = frame_.scene && post_processes(frame_.scene->post);
+        const bool forward = frame_.scene && frame_.scene->method == RenderMethod::ForwardPlus;
+        const bool post = !forward && frame_.scene && post_processes(frame_.scene->post);
         const bool sky = frame_.scene && sky_draws(*frame_.scene);
         std::optional<std::uint32_t> sky_uniforms_at;
         if (sky) {
@@ -1074,8 +1087,12 @@ public:
             sky_uniforms_at = uniforms_.add(uniforms);
             make_depth_target(frame_width_, frame_height_);
         }
-        const std::vector<PostDraw> post_draws =
-            post ? post_draws_for(frame_.scene->post) : std::vector<PostDraw>{};
+        std::vector<PostDraw> post_draws;
+        if (forward) {
+            post_draws = forward_draws_for(frame_.scene->post);
+        } else if (post) {
+            post_draws = post_draws_for(frame_.scene->post);
+        }
         const RadianceOffsets radiance_offsets =
             radiance_draws_ ? add_radiance_uniforms(*frame_.scene) : RadianceOffsets{};
         upload_frame();
@@ -1093,12 +1110,13 @@ public:
         if (!mesh_draws_.empty() || sky) {
             encode_meshes(encoder, mesh_uniforms, sky_uniforms_at);
         }
-        if (post) {
+        if (forward || post) {
             encode_post(encoder, post_draws);
         }
         WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
         color.view = frame_view_;
-        color.loadOp = mesh_draws_.empty() && !sky && !post ? WGPULoadOp_Clear : WGPULoadOp_Load;
+        color.loadOp =
+            mesh_draws_.empty() && !sky && !post && !forward ? WGPULoadOp_Clear : WGPULoadOp_Load;
         color.storeOp = WGPUStoreOp_Store;
         color.clearValue = {
             .r = frame_.clear.r, .g = frame_.clear.g, .b = frame_.clear.b, .a = frame_.clear.a};
@@ -1251,12 +1269,21 @@ private:
 
     // The post passes' textures: the source, glow and the color correction.
     static constexpr std::uint32_t kPostTextures = 3;
-    // A post pass: its target and pipeline, the textures it reads and its uniforms' offset.
+    // A post pass: its target and pipeline, the textures it reads (post.hlsl's three or
+    // forward_post.hlsl's nine) and its uniforms' offset.
     struct PostDraw {
         WGPUTextureView target = nullptr;
         WGPURenderPipeline pipeline = nullptr;
-        std::array<WGPUTextureView, kPostTextures> textures{};
+        std::vector<WGPUTextureView> textures;
         std::uint32_t uniforms = 0;
+    };
+    // What a Forward+ frame draws with: the world's texture of half floats and glow's levels,
+    // made with the first frame that glows.
+    struct ForwardTargets {
+        GpuTexture world;
+        std::array<GpuTexture, kMaxGlowLevels> glow{};
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
     };
     // What a frame that post-processes draws with: the meshes' texture and glow's.
     struct PostTargets {
@@ -1662,6 +1689,17 @@ private:
         const std::array post_uniforms{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(PostUniforms))};
         post_uniforms_layout_ = layout(post_uniforms);
+        // Forward+'s post passes bind nine textures, so their samplers come 16 after them.
+        std::array<WGPUBindGroupLayoutEntry, kForwardPostTextures * 2> forward_textures{};
+        for (std::uint32_t slot = 0; slot < kForwardPostTextures; ++slot) {
+            forward_textures.at(slot) = texture_entry(slot);
+            forward_textures.at(kForwardPostTextures + slot) =
+                sampler_entry(kMeshSamplerBinding + slot);
+        }
+        forward_textures_layout_ = layout(forward_textures);
+        const std::array forward_uniforms{
+            uniform_entry(0, WGPUShaderStage_Fragment, sizeof(ForwardPostUniforms))};
+        forward_uniforms_layout_ = layout(forward_uniforms);
         const std::array sky_entries{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(SkyUniforms))};
         sky_uniforms_layout_ = layout(sky_entries);
@@ -1699,6 +1737,8 @@ private:
                              shadow_fragment_layout_});
         pipeline_layouts_.at(kPostLayout) = pipeline_layout(
             {empty_layout_, empty_layout_, post_textures_layout_, post_uniforms_layout_});
+        pipeline_layouts_.at(kForwardPostLayout) = pipeline_layout(
+            {empty_layout_, empty_layout_, forward_textures_layout_, forward_uniforms_layout_});
         pipeline_layouts_.at(kSkyLayout) = pipeline_layout(
             {empty_layout_, empty_layout_, sprite_textures_layout_, sky_uniforms_layout_});
         pipeline_layouts_.at(kRadianceLayout) = pipeline_layout(
@@ -1916,6 +1956,8 @@ private:
         shadow_fragment_group_ = bind_group(shadow_fragment_layout_, shadow_fragment);
         const std::array post{buffer_entry(0, uniform_buffer_, sizeof(PostUniforms))};
         post_uniforms_group_ = bind_group(post_uniforms_layout_, post);
+        const std::array forward{buffer_entry(0, uniform_buffer_, sizeof(ForwardPostUniforms))};
+        forward_uniforms_group_ = bind_group(forward_uniforms_layout_, forward);
         const std::array sky{buffer_entry(0, uniform_buffer_, sizeof(SkyUniforms))};
         sky_uniforms_group_ = bind_group(sky_uniforms_layout_, sky);
         const std::array filter{buffer_entry(0, uniform_buffer_, sizeof(RadianceUniforms))};
@@ -1926,8 +1968,8 @@ private:
         for (WGPUBindGroup* group :
              {&vertex_uniforms_group_, &fragment_uniforms_group_, &compute_uniforms_group_,
               &mesh_vertex_group_, &mesh_fragment_group_, &shadow_vertex_group_,
-              &shadow_fragment_group_, &post_uniforms_group_, &sky_uniforms_group_,
-              &filter_uniforms_group_}) {
+              &shadow_fragment_group_, &post_uniforms_group_, &forward_uniforms_group_,
+              &sky_uniforms_group_, &filter_uniforms_group_}) {
             if (*group != nullptr) {
                 wgpuBindGroupRelease(*group);
                 *group = nullptr;
@@ -2671,11 +2713,10 @@ private:
                        std::optional<std::uint32_t> sky) {
         WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
         // A scene that post-processes draws its meshes into a texture the post passes read.
-        color.view = post_processes(frame_.scene->post) ? post_targets_.world.view : frame_view_;
+        color.view = world_view(*frame_.scene);
         color.loadOp = WGPULoadOp_Clear;
         color.storeOp = WGPUStoreOp_Store;
-        color.clearValue = {
-            .r = frame_.clear.r, .g = frame_.clear.g, .b = frame_.clear.b, .a = frame_.clear.a};
+        color.clearValue = world_clear(*frame_.scene);
         WGPURenderPassDepthStencilAttachment depth = WGPU_RENDER_PASS_DEPTH_STENCIL_ATTACHMENT_INIT;
         depth.view = depth_.view;
         depth.depthLoadOp = WGPULoadOp_Clear;
@@ -2697,8 +2738,7 @@ private:
             entries[1].sampler = sampler;
             WGPUBindGroup texture = bind_group(sprite_textures_layout_, entries);
             wgpuRenderPassEncoderSetPipeline(
-                pass, sky_pipeline_for(post_processes(frame_.scene->post) ? kTextureFormat
-                                                                          : frame_format_));
+                pass, sky_pipeline_for(world_format(*frame_.scene, frame_format_)));
             wgpuRenderPassEncoderSetBindGroup(pass, 2, texture, 0, nullptr);
             wgpuRenderPassEncoderSetBindGroup(pass, 3, sky_uniforms_group_, 1, &*sky);
             wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
@@ -2780,6 +2820,147 @@ private:
         post_targets_.height = 0;
     }
 
+    // The format the sky and meshes draw in, for a frame whose target has frame's: half floats for
+    // Forward+, whose post passes draw them over the target; RGBA8 for a Compatibility scene the
+    // post passes process; otherwise the target's own.
+    static WGPUTextureFormat world_format(const Scene3D& scene, WGPUTextureFormat frame) {
+        if (scene.method == RenderMethod::ForwardPlus) {
+            return kHdrFormat;
+        }
+        return post_processes(scene.post) ? kTextureFormat : frame;
+    }
+
+    // The texture the sky and meshes draw into, and what it is cleared to: for Forward+ the
+    // clear color made linear.
+    [[nodiscard]] WGPUTextureView world_view(const Scene3D& scene) const {
+        if (scene.method == RenderMethod::ForwardPlus) {
+            return forward_targets_.world.view;
+        }
+        return post_processes(scene.post) ? post_targets_.world.view : frame_view_;
+    }
+    [[nodiscard]] WGPUColor world_clear(const Scene3D& scene) const {
+        if (scene.method == RenderMethod::ForwardPlus) {
+            const Float4 clear = forward_clear(frame_.clear);
+            return {.r = clear[0], .g = clear[1], .b = clear[2], .a = clear[3]};
+        }
+        return {.r = frame_.clear.r, .g = frame_.clear.g, .b = frame_.clear.b, .a = frame_.clear.a};
+    }
+
+    // The world's texture of half floats at the frame's size and, with glow, glow's seven levels.
+    void prepare_forward(std::uint32_t width, std::uint32_t height, bool glow) {
+        const auto made = [&](std::uint32_t w, std::uint32_t h) {
+            WGPUTextureDescriptor info = WGPU_TEXTURE_DESCRIPTOR_INIT;
+            info.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment;
+            info.size = {.width = w, .height = h, .depthOrArrayLayers = 1};
+            info.format = kHdrFormat;
+            WGPUTexture texture = wgpuDeviceCreateTexture(device_, &info);
+            return GpuTexture{.texture = texture,
+                              .view = wgpuTextureCreateView(texture, nullptr),
+                              .filter = Filter::Linear};
+        };
+        if (forward_targets_.world.texture == nullptr || forward_targets_.width != width ||
+            forward_targets_.height != height) {
+            release_forward_targets();
+            forward_targets_.world = made(width, height);
+            forward_targets_.width = width;
+            forward_targets_.height = height;
+        }
+        if (glow && forward_targets_.glow[0].texture == nullptr) {
+            const GlowPlan plan = forward_glow_plan(PostProcess{}, width, height);
+            for (std::size_t i = 0; i < kMaxGlowLevels; ++i) {
+                forward_targets_.glow.at(i) = made(plan.sizes.at(i).width, plan.sizes.at(i).height);
+            }
+        }
+    }
+
+    void release_forward_targets() {
+        const auto release = [this](GpuTexture& texture) {
+            if (texture.texture != nullptr) {
+                pending_textures_.push_back(std::exchange(texture, {}));
+            }
+        };
+        release(forward_targets_.world);
+        for (GpuTexture& texture : forward_targets_.glow) {
+            release(texture);
+        }
+        forward_targets_.width = 0;
+        forward_targets_.height = 0;
+    }
+
+    // Forward+'s post pipeline for a target format, made the first time a frame needs it.
+    WGPURenderPipeline forward_pipeline_for(WGPUTextureFormat format) {
+        for (const auto& [made, pipeline] : forward_pipelines_) {
+            if (made == format) {
+                return pipeline;
+            }
+        }
+        WGPUColorTargetState color = WGPU_COLOR_TARGET_STATE_INIT;
+        color.format = format;
+        WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
+        fragment.module = module(kForwardPostFragmentModule, shaders::kForwardPostFragmentWgsl);
+        fragment.entryPoint = text_view("fs_main");
+        fragment.targetCount = 1;
+        fragment.targets = &color;
+        WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
+        info.layout = pipeline_layouts_.at(kForwardPostLayout);
+        info.vertex.module = module(kForwardPostVertexModule, shaders::kForwardPostVertexWgsl);
+        info.vertex.entryPoint = text_view("vs_main");
+        info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        info.primitive.cullMode = WGPUCullMode_None;
+        info.fragment = &fragment;
+        WGPURenderPipeline pipeline = wgpuDeviceCreateRenderPipeline(device_, &info);
+        forward_pipelines_.emplace_back(format, pipeline);
+        return pipeline;
+    }
+
+    // forward_post.hlsl's passes, as the GPU device draws them: glow's levels, each from the one
+    // before, then the tonemap pass from the world's texture over the frame's target. Their
+    // uniforms are added to the frame's.
+    std::vector<PostDraw> forward_draws_for(const PostProcess& post) {
+        std::vector<PostDraw> draws;
+        // A glow pass reads only its source; the tonemap pass reads glow's levels too.
+        const auto add = [&](WGPUTextureView target, WGPUTextureFormat format,
+                             const ForwardPostUniforms& uniforms, WGPUTextureView source,
+                             bool levels, WGPUTextureView lut) {
+            std::vector<WGPUTextureView> textures(kForwardPostTextures, white_.view);
+            textures.front() = source;
+            for (std::size_t i = 0; i < kMaxGlowLevels; ++i) {
+                if (levels && forward_targets_.glow.at(i).view != nullptr) {
+                    textures.at(1 + i) = forward_targets_.glow.at(i).view;
+                }
+            }
+            textures.back() = lut;
+            draws.push_back({.target = target,
+                             .pipeline = forward_pipeline_for(format),
+                             .textures = std::move(textures),
+                             .uniforms = uniforms_.add(uniforms)});
+        };
+        if (post.glow) {
+            const GlowPlan plan = forward_glow_plan(post, frame_width_, frame_height_);
+            for (std::size_t i = 0; i < plan.count; ++i) {
+                const PostSize size = plan.sizes.at(i);
+                add(forward_targets_.glow.at(i).view, kHdrFormat,
+                    forward_post_uniforms(post,
+                                          i == 0 ? ForwardPass::GlowFirst : ForwardPass::GlowNext,
+                                          size.width, size.height, frame_width_, frame_height_),
+                    i == 0 ? forward_targets_.world.view : forward_targets_.glow.at(i - 1).view,
+                    false, white_.view);
+            }
+        }
+        WGPUTextureView lut = white_.view;
+        TextureDesc lut_desc{};
+        if (post.adjustments && post.color_correction != TextureId::None) {
+            const Texture& found = textures_.at(post.color_correction);
+            lut = found.gpu.view;
+            lut_desc = found.desc;
+        }
+        add(frame_view_, frame_format_,
+            forward_post_uniforms(post, ForwardPass::Tonemap, frame_width_, frame_height_,
+                                  frame_width_, frame_height_, lut_desc.width, lut_desc.height),
+            forward_targets_.world.view, post.glow, lut);
+        return draws;
+    }
+
     // The sky's pipeline for a target format, made the first time a frame needs it: one triangle
     // over the target that neither tests nor writes depth.
     WGPURenderPipeline sky_pipeline_for(WGPUTextureFormat format) {
@@ -2848,7 +3029,7 @@ private:
                              std::array<WGPUTextureView, kPostTextures> textures) {
             draws.push_back({.target = target,
                              .pipeline = post_pipeline_for(format),
-                             .textures = textures,
+                             .textures = {textures.begin(), textures.end()},
                              .uniforms = uniforms_.add(uniforms)});
         };
         const std::array<PostSize, kGlowLevels> sizes = glow_sizes(frame_width_, frame_height_);
@@ -2881,44 +3062,49 @@ private:
         return draws;
     }
 
-    // Records the post passes, each over its whole target. A frame with no mesh draws clears the
-    // meshes' texture first.
+    // Records the post passes, each over its whole target. A frame with no sky or mesh draws
+    // clears the world's texture first.
     void encode_post(WGPUCommandEncoder encoder, std::span<const PostDraw> draws) {
         const auto begin = [&](WGPUTextureView target, WGPULoadOp load) {
             WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
             color.view = target;
             color.loadOp = load;
             color.storeOp = WGPUStoreOp_Store;
-            color.clearValue = {
-                .r = frame_.clear.r, .g = frame_.clear.g, .b = frame_.clear.b, .a = frame_.clear.a};
+            color.clearValue = world_clear(*frame_.scene);
             WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
             descriptor.colorAttachmentCount = 1;
             descriptor.colorAttachments = &color;
             return wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
         };
         if (mesh_draws_.empty() && !sky_draws(*frame_.scene)) {
-            WGPURenderPassEncoder pass = begin(post_targets_.world.view, WGPULoadOp_Clear);
+            WGPURenderPassEncoder pass = begin(world_view(*frame_.scene), WGPULoadOp_Clear);
             wgpuRenderPassEncoderEnd(pass);
             wgpuRenderPassEncoderRelease(pass);
         }
         WGPUSampler sampler = samplers_.at(sampler_index(Filter::Linear, false));
         for (const PostDraw& draw : draws) {
-            std::array<WGPUBindGroupEntry, kPostTextures * 2> entries{};
-            for (std::uint32_t slot = 0; slot < kPostTextures; ++slot) {
+            const bool forward = draw.textures.size() == kForwardPostTextures;
+            const auto count = static_cast<std::uint32_t>(draw.textures.size());
+            const std::uint32_t samplers = forward ? kMeshSamplerBinding : kSamplerBinding;
+            std::vector<WGPUBindGroupEntry> entries(std::size_t{count} * 2);
+            for (std::uint32_t slot = 0; slot < count; ++slot) {
                 WGPUBindGroupEntry& texture = entries.at(slot);
                 texture = WGPU_BIND_GROUP_ENTRY_INIT;
                 texture.binding = slot;
                 texture.textureView = draw.textures.at(slot);
-                WGPUBindGroupEntry& bound = entries.at(kPostTextures + slot);
+                WGPUBindGroupEntry& bound = entries.at(count + slot);
                 bound = WGPU_BIND_GROUP_ENTRY_INIT;
-                bound.binding = kSamplerBinding + slot;
+                bound.binding = samplers + slot;
                 bound.sampler = sampler;
             }
-            WGPUBindGroup textures = bind_group(post_textures_layout_, entries);
+            WGPUBindGroup textures =
+                bind_group(forward ? forward_textures_layout_ : post_textures_layout_, entries);
             WGPURenderPassEncoder pass = begin(draw.target, WGPULoadOp_Clear);
             wgpuRenderPassEncoderSetPipeline(pass, draw.pipeline);
             wgpuRenderPassEncoderSetBindGroup(pass, 2, textures, 0, nullptr);
-            wgpuRenderPassEncoderSetBindGroup(pass, 3, post_uniforms_group_, 1, &draw.uniforms);
+            wgpuRenderPassEncoderSetBindGroup(
+                pass, 3, forward ? forward_uniforms_group_ : post_uniforms_group_, 1,
+                &draw.uniforms);
             wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
             wgpuRenderPassEncoderEnd(pass);
             wgpuRenderPassEncoderRelease(pass);
@@ -3121,6 +3307,8 @@ private:
     static constexpr std::size_t kRadianceVertexModule = 15;
     static constexpr std::size_t kRadianceFragmentModule = 16;
     static constexpr std::size_t kMeshClusteredFragmentModule = 17;
+    static constexpr std::size_t kForwardPostVertexModule = 18;
+    static constexpr std::size_t kForwardPostFragmentModule = 19;
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
@@ -3132,6 +3320,7 @@ private:
     static constexpr std::size_t kSkyLayout = 8;
     static constexpr std::size_t kRadianceLayout = 9;
     static constexpr std::size_t kMeshClusteredLayout = 10;
+    static constexpr std::size_t kForwardPostLayout = 11;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -3144,7 +3333,7 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 3> sampled_{true, false, false};
-    std::array<WGPUShaderModule, 18> modules_{};
+    std::array<WGPUShaderModule, 20> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -3168,10 +3357,12 @@ private:
     WGPUBindGroupLayout shadow_fragment_layout_ = nullptr;
     WGPUBindGroupLayout post_textures_layout_ = nullptr;
     WGPUBindGroupLayout post_uniforms_layout_ = nullptr;
+    WGPUBindGroupLayout forward_textures_layout_ = nullptr;
+    WGPUBindGroupLayout forward_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout sky_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout cube_texture_layout_ = nullptr;
     WGPUBindGroupLayout filter_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, 11> pipeline_layouts_{};
+    std::array<WGPUPipelineLayout, 12> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -3193,6 +3384,7 @@ private:
     WGPUBindGroup shadow_vertex_group_ = nullptr;
     WGPUBindGroup shadow_fragment_group_ = nullptr;
     WGPUBindGroup post_uniforms_group_ = nullptr;
+    WGPUBindGroup forward_uniforms_group_ = nullptr;
     WGPUBindGroup sky_uniforms_group_ = nullptr;
     WGPUBindGroup filter_uniforms_group_ = nullptr;
     std::unordered_map<ParticlesId, ParticleSystem> particle_systems_;
@@ -3227,6 +3419,8 @@ private:
     std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> post_pipelines_;
     std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> sky_pipelines_;
     PostTargets post_targets_;
+    std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> forward_pipelines_;
+    ForwardTargets forward_targets_;
     // The radiance meshes are lit by: the raw cube the sky draws into and the one filtered from
     // it, and what they hold (nullopt to draw them again).
     struct RadianceCubes {

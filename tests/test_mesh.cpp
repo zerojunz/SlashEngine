@@ -139,7 +139,8 @@ std::vector<std::uint8_t> checker() {
 }
 
 // A frame of every kind of mesh draw: lit, textured, emissive, blended, scissored and culled.
-Image draw_everything(RenderDevice& device, std::uint32_t size) {
+Image draw_everything(RenderDevice& device, std::uint32_t size,
+                      render::RenderMethod method = render::RenderMethod::ForwardPlus) {
     auto target = device.create_texture(target_desc(size));
     REQUIRE(target.ok());
     const std::vector<std::uint8_t> texels = checker();
@@ -159,7 +160,8 @@ Image draw_everything(RenderDevice& device, std::uint32_t size) {
     auto floor = device.create_mesh(ground, {});
     REQUIRE(floor.ok());
 
-    const render::Scene3D scene = lit_scene();
+    render::Scene3D scene = lit_scene();
+    scene.method = method;
     auto began = device.begin_frame(
         {.target = target.value(), .clear = {0.05F, 0.05F, 0.1F, 1.0F}, .scene = scene});
     REQUIRE(began.ok());
@@ -503,9 +505,15 @@ TEST_CASE("2D draws go over a frame's meshes") {
 }
 
 TEST_CASE("GPUs draw meshes as the software device does") {
-    const Image expected = draw_everything(*render::create_software_device(), 96);
+    const auto software = render::create_software_device();
+    const Image forward = draw_everything(*software, 96);
+    // The OpenGL devices always draw as Compatibility, which blends the card in sRGB.
+    const Image compatibility = draw_everything(*software, 96, render::RenderMethod::Compatibility);
     for (auto& device : slash::test::hardware_devices()) {
         CAPTURE(render::backend_name(device->backend()));
+        const bool opengl = device->backend() == render::Backend::OpenGl ||
+                            device->backend() == render::Backend::OpenGlEs;
+        const Image& expected = opengl ? compatibility : forward;
         const Image image = draw_everything(*device, 96);
         // Edges may land a pixel apart, and the GPU's sin and pow differ in their last bits.
         int differing = 0;

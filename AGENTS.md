@@ -787,14 +787,26 @@ and `ShadowAtlas::compare` are the CPU twins, and `tests/test_shadow.cpp` holds 
 the software device's pixels. `MeshInstance3D.cast_shadow` and the lights' `shadow_*` fields
 are Godot's; `examples/shadows-3d` is a courtyard with three shadowed lights.
 
-Post-processing is the Compatibility renderer's: `Scene3D::post` (`render::PostProcess`, from
+Post-processing follows the scene's renderer. `Scene3D::post` (`render::PostProcess`, from
 `WorldEnvironment`'s `tonemap_*`, `glow_*` and `adjustment_*` fields) picks a tonemapper (linear,
 Reinhard, filmic, ACES, AgX), the exposure and white, glow, and brightness, contrast, saturation
-and a lookup texture. Without glow or adjustments, `mesh.hlsl` tonemaps as it draws. With either,
-each device draws the meshes into an RGBA8 texture at `end_frame` and runs `shaders/post.hlsl`'s
-passes: glow's filter, three downsamples and three upsamples through four textures each half the
-last's size, then the post pass over the target, before the 2D draws. `shaders/tonemap.hlsl` is
-shared by both shaders. `src/post_shading.hpp` holds the uniforms, the checks and the CPU twins
+and a lookup texture. `color_stage` (`src/post.cpp`) tells `mesh.hlsl` and `sky.hlsl` where their
+colors go: linear for Forward+, untonemapped for Compatibility's post pass, or tonemapped as they
+draw.
+
+Forward+ is Godot 4.6's: each device draws the sky and meshes into an RGBA16F texture cleared to
+`forward_clear`, then runs `shaders/forward_post.hlsl`'s passes at `end_frame`: glow's levels (up
+to seven, each half the last's size, as many as `forward_glow_plan` says), then the tonemap pass
+over the target, before the 2D draws. `src/forward_post.hpp` holds the uniforms and the CPU twins
+(`run_forward_glow_pass`, `run_forward_tonemap_pass`, `round_half`); the software device keeps its
+world as half floats too, and `tests/test_forward_post.cpp` holds the GPU to its pixels. The
+OpenGL devices always draw as Compatibility. `examples/glow-3d` is neon signs at night.
+
+Compatibility's post-processing: without glow or adjustments, `mesh.hlsl` tonemaps as it draws.
+With either, each device draws the meshes into an RGBA8 texture at `end_frame` and runs
+`shaders/post.hlsl`'s passes: glow's filter, three downsamples and three upsamples through four
+textures each half the last's size, then the post pass over the target. `shaders/tonemap.hlsl` is
+shared by the shaders. `src/post_shading.hpp` holds the uniforms, the checks and the CPU twins
 (`tonemap`, `run_post_pass`) the software device draws with; `tests/test_post.cpp` holds every
 device to its pixels. `examples/post-processing-3d` is a lantern glowing at night.
 
@@ -1595,6 +1607,8 @@ CI rejects unformatted code and any clang-tidy finding.
 - C++20. Engine libraries build with no exceptions and no RTTI; fallible calls return
   `slash::Result<T>` (`engine/core/include/slash/core/result.hpp`). Tools and tests may use
   exceptions.
+- Use `slash::bit_cast` (`slash/core/bits.hpp`), not `std::bit_cast`: Linux exports build against
+  libstdc++ 10, which lacks it.
 - Invariants use `SLASH_ASSERT`, which logs and aborts in every build type.
 - Log with `slash::log::info("message", {{"key", value}})`; never print free-form text to stdout
   from engine code.
