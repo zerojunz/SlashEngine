@@ -771,7 +771,14 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         motion taken out of the pose by the `AnimationTree`
   - [x] Unity's skinned meshes: nodes posed in a scene as the model's `Skeleton3D`, objects on
         nodes as `BoneAttachment3D`s, and models unpacked into objects folded back into one
-  - [ ] Unreal Engine levels and assets through the user's own Unreal Editor
+  - [x] Unreal Engine levels and assets through the user's own Unreal Editor: a Python script
+        the editor runs headless exports each level's actors and components, Enhanced Input,
+        static meshes as glTF and sounds as WAV; the importer converts meshes with their
+        collision, lights in Unreal's units, the sky and fog, cameras and spring arms, bodies,
+        shapes, volumes, sounds, both input systems and the settings, and makes a task per
+        Blueprint and C++ class
+  - [ ] Unreal's landscapes, skeletal animation and Animation Blueprints, materials and their
+        overrides, Niagara particles, and C++ classes as skeletons as Unity's scripts are
 - [x] 3D in the asset library and generator ([design](design.md#3d-assets))
   - [x] Parametric models: agents write a `.model.json` recipe of shapes, CSG on Manifold,
         extrusions, lathes, bevels and arrays, and the engine builds the mesh; the library keeps
