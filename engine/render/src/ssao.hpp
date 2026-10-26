@@ -82,6 +82,9 @@ enum class SsaoFormat : std::uint8_t { R16F, RG8, R8, R32F };
 // levels and the load counter are floats, which are only loaded, since WebGPU filters no floats.
 inline constexpr std::uint32_t kSsaoSlots = 12;
 
+// Diagnostic only: the GPU device draws at most this many of a frame's SSAO passes.
+inline std::size_t ssao_pass_limit = static_cast<std::size_t>(-1);
+
 // One of SSAO's passes: what it draws, from what (a texture index for each slot, or
 // kSsaoUnbound) and with which slice and level.
 struct SsaoStep {

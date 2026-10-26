@@ -2865,7 +2865,11 @@ private:
     void draw_ssao(SDL_GPUCommandBuffer* commands, const Scene3D& scene) {
         SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
         const SsaoPlan plan = ssao_plan(scene.ssao.settings, frame_width_, frame_height_);
+        std::size_t drawn = 0;
         for (const SsaoStep& step : plan.steps) {
+            if (drawn++ >= ssao_pass_limit) {
+                break;
+            }
             const SsaoUniforms uniforms =
                 ssao_uniforms(scene.ssao, step, scene.projection, frame_width_, frame_height_);
             // Made in prepare_ssao, at the start of the frame.
