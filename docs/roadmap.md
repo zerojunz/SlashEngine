@@ -767,7 +767,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Unity's skinned meshes: nodes posed in a scene as the model's `Skeleton3D`, objects on
         nodes as `BoneAttachment3D`s, and models unpacked into objects folded back into one
   - [ ] Unreal Engine levels and assets through the user's own Unreal Editor
-- [ ] 3D in the asset library and generator ([design](design.md#3d-assets))
+- [x] 3D in the asset library and generator ([design](design.md#3d-assets))
   - [x] Parametric models: agents write a `.model.json` recipe of shapes, CSG on Manifold,
         extrusions, lathes, bevels and arrays, and the engine builds the mesh; the library keeps
         the recipe, so refining means changing a number
@@ -809,7 +809,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         artists go into the library like generated ones, with the same cleanup, text
         description, review, versions and a license the importer records; editing the source
         file makes a new version
-  - [ ] A Blender bridge: agents build assets by running Blender headless with Python scripts
+  - [x] A Blender bridge: agents build assets by running Blender headless with Python scripts
         as a generator; the script is saved with the result, so the asset can be rebuilt or
         tweaked later
   - [x] Complex assets: an asset made of other library assets (a building of walls, doors and

@@ -178,6 +178,7 @@ service names them; and `timeout_seconds` and `max_retries` work as a provider's
 | `stability-audio` | Music, through Stability AI's Stable Audio 2 and 2.5 (`/v2beta/audio/stable-audio-2/text-to-audio`) | No | `stable-audio-2.5`, `https://api.stability.ai` |
 | `stability-3d` | Models (`.glb`) from a concept image, through Stability AI's Stable Fast 3D or, with `model` `stable-point-aware-3d`, Stable Point Aware 3D (`/v2beta/3d/<model>`) | No | `stable-fast-3d`, `https://api.stability.ai` |
 | `meshy-rig` | Rigs (skeletons and skins) for `.glb` models of humanoid figures, through Meshy's rigging API (`/openapi/v1/rigging`) | Rigs only | `https://api.meshy.ai` |
+| `blender` | Models (`.glb`) built by a Blender Python script, by the artist's own Blender run in the background (see [Blender scripts](commands.md#blender-scripts)). Always there as `blender`, even with no `generators`; `options.program` names the Blender to run, else it is found as for `.blend` files, and `timeout_seconds` stops it (600 by default) | With new parameters or a new script | The Blender version that ran it |
 | `test` | Placeholder images, tones, music and models made on the machine, the same on every platform, for tests and CI, and placeholder rigs. Always there as `test`, even with no `generators` | Yes, but not models | |
 
 Services make images at their own sizes, so the library fits each one to the `width` and `height`
