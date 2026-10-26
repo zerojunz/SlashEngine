@@ -180,7 +180,8 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
                                   .shadows = project_.shadows,
                                   .depth_of_field = project_.depth_of_field,
                                   .ssao = project_.ssao,
-                                  .ssr = project_.ssr});
+                                  .ssr = project_.ssr,
+                                  .reflection_atlas = project_.reflection_atlas});
     ui::set_settings(world_, {.viewport = {static_cast<float>(project_.window_width),
                                            static_cast<float>(project_.window_height)},
                               .theme = project_.gui_theme,

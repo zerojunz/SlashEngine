@@ -1,0 +1,1 @@
+{"format": 1, "main_scene": "main.scene.json", "name": "Reflection Probes 3D", "rendering": {"reflections": {"reflection_atlas": {"reflection_size": 128}}}, "version": "1.0.0", "window": {"height": 180, "width": 320}}

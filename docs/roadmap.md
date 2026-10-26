@@ -601,6 +601,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         by roughness and a resolve at half size, set by `WorldEnvironment` and
         `rendering.environment.screen_space_reflection`, on every Forward+ device
 - [ ] Baked lightmaps and probe-based global illumination
+  - [x] Reflection probes, as Godot 4.6's Forward+ `ReflectionProbe`: cubes captured into one
+        atlas, box projection, blending where probes overlap and their ambient modes, on every
+        Forward+ device, imported from Godot and Unity scenes
 - [ ] Render scale and upscalers, as Godot's `scaling_3d` setting: bilinear, FSR 1 and FSR 2/3
       (AMD's FidelityFX code, MIT) on every backend and MetalFX on Apple, set in `project.json`
       and changeable while a game runs; a `render::Upscaler` interface lets a game add DLSS, XeSS

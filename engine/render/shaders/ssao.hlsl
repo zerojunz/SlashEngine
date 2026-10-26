@@ -705,7 +705,9 @@ float4 fs_main(float4 position : SV_Position) : SV_Target0 {
 #endif
 #if SSAO_PASS_LAST >= 12
     if (pass_kind >= kInterleavePlain) {
-        result.x = interleave_pass(p, pass_kind);
+        // The occlusion as an 8-bit texture keeps it, as Godot's, though the mesh pass reads it
+        // from a 16-bit float layer of its screen array.
+        result.x = floor(saturate(interleave_pass(p, pass_kind)) * 255.0 + 0.5) / 255.0;
     }
 #endif
     return float4(result, 0.0, 1.0);

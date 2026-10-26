@@ -59,6 +59,7 @@ add_library(slash_render
     src/sky.cpp
     src/software_device.cpp
     src/ssao.cpp
+    src/reflection.cpp
     src/ssr.cpp
     src/texture_codec.cpp
     src/uniforms.cpp
@@ -94,7 +95,7 @@ endif()
 # ones not.
 set_source_files_properties(src/clusters.cpp src/device.cpp src/forward_post.cpp src/material.cpp
     src/mesh.cpp src/particles.cpp src/post.cpp src/resize.cpp src/shader_vm.cpp src/shadow.cpp
-    src/sky.cpp src/software_device.cpp src/ssao.cpp src/ssr.cpp
+    src/reflection.cpp src/sky.cpp src/software_device.cpp src/ssao.cpp src/ssr.cpp
     src/upscaler.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")

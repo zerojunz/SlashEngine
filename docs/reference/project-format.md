@@ -43,6 +43,7 @@ checks it.
 | `rendering.camera.depth_of_field` | No | `hexagon`, `low`, no jitter | The bokeh shape and quality of 3D [depth of field](scene-format.md#cameraattributespractical): see [Depth of field](#depth-of-field) |
 | `rendering.environment.ssao` | No | `medium`, half size, 2 blur passes | The quality and cost of 3D [ambient occlusion](scene-format.md#ambient-occlusion): see [SSAO](#ssao) |
 | `rendering.environment.screen_space_reflection` | No | half size | The resolution of 3D [screen-space reflections](scene-format.md#screen-space-reflections): see [Screen-space reflections](#screen-space-reflections) |
+| `rendering.reflections.reflection_atlas` | No | 256 texels, 64 probes | The size of 3D [reflection probes'](scene-format.md#reflection-probes) cubes and how many a frame draws: see [Reflection probes](#reflection-probes) |
 | `rendering.textures` | No | `lossless` | How exports ship textures: as their files, or compressed for each platform's GPUs: see [Texture forms](#texture-forms) |
 | `rendering.interpolation` | No | `true` | Draw sprites part of the way between fixed ticks, from where they were before the last tick to where they are, so motion looks smooth when the display refreshes faster than the game ticks. Drawing lags the simulation by up to one tick; set `false` to draw exactly where things are |
 | `physics_2d.gravity` | No | `980` | Gravity's strength in pixels per second squared, as Godot's `physics/2d/default_gravity` |
@@ -220,6 +221,22 @@ atlas into quadrants of different tile sizes; here every tile is the same size.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `half_size` | `true` | Traces at half the frame's resolution in each direction, then resolves the reflections to its size along its depths and normals: faster, and softer at edges |
+
+## Reflection probes
+
+`rendering.reflections.reflection_atlas` sizes the atlas of cubes that
+[reflection probes](scene-format.md#reflection-probes) are drawn into, as Godot's
+`rendering/reflections/reflection_atlas` settings. Every probe's cube is the same size; a larger
+one shows sharper reflections and costs more to draw and keep.
+
+```json
+"rendering": {"reflections": {"reflection_atlas": {"reflection_size": 512, "reflection_count": 16}}}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `reflection_size` | `256` | Texels across each face of a probe's cube: 32, 64, 128, 256, 512, 1024 or 2048 |
+| `reflection_count` | `64` | How many probes a frame draws, from 1 to 4096, at most 42 here; the largest are drawn first and the rest reflect nothing |
 
 ## Texture forms
 

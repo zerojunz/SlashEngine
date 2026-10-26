@@ -1824,6 +1824,8 @@ environment/ssao/half_size=false
 environment/ssao/blur_passes=3
 environment/ssao/fadeout_to=200.0
 environment/screen_space_reflection/half_size=false
+reflections/reflection_atlas/reflection_size=512
+reflections/reflection_atlas/reflection_count=16
 )");
     write(folder / "level.tscn", R"([gd_scene load_steps=16 format=3]
 
@@ -1956,6 +1958,15 @@ omni_range = 8.0
 light_indirect_energy = 2.0
 spot_angle = 30.0
 
+[node name="Probe" type="ReflectionProbe" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0)
+update_mode = 1
+size = Vector3(10, 4, 10)
+origin_offset = Vector3(0, -1, 0)
+box_projection = true
+ambient_mode = 2
+ambient_color = Color(0.2, 0.3, 0.4, 1)
+
 [node name="Environment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_1")
 camera_attributes = SubResource("CameraAttributesPractical_1")
@@ -2034,8 +2045,8 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
 
     // Transforms decompose as Godot's Node3D does, and Node3D children nest.
     CHECK(*entity(files, level, "level").find("Transform3D") == parse(R"({
-        "children": ["wall", "rock", "blob", "cart", "camera", "sun", "lamp", "torch", "crate",
-                     "ground", "hero", "mirror", "sparks", "rig"]})"));
+        "children": ["wall", "rock", "blob", "cart", "camera", "sun", "lamp", "torch", "probe",
+                     "crate", "ground", "hero", "mirror", "sparks", "rig"]})"));
     CHECK(*entity(files, level, "wall").find("Transform3D") ==
           parse(R"({"position": [3.0, 1.0, -2.0], "rotation": [0.0, 1.570796, 0.0],
                     "children": ["ball"]})"));
@@ -2086,6 +2097,11 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     CHECK(*entity(files, level, "lamp").find("OmniLight3D") ==
           parse(R"({"light_color": [1.0, 0.8, 0.6, 1.0], "omni_range": 8.0})"));
     CHECK(*entity(files, level, "torch").find("SpotLight3D") == parse(R"({"spot_angle": 30.0})"));
+    const json::Value probe = entity(files, level, "probe");
+    CHECK(*probe.find("Transform3D") == parse(R"({"position": [0.0, 2.0, 0.0]})"));
+    CHECK(*probe.find("ReflectionProbe") == parse(R"({
+        "update_mode": "always", "size": [10.0, 4.0, 10.0], "origin_offset": [0.0, -1.0, 0.0],
+        "box_projection": true, "ambient_mode": "color", "ambient_color": [0.2, 0.3, 0.4, 1.0]})"));
     const json::Value environment = entity(files, level, "environment");
     CHECK(environment.find("Transform2D") == nullptr);
     CHECK(*environment.find("WorldEnvironment") == parse(R"({
@@ -2133,6 +2149,8 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     CHECK(*project_file.find("rendering")->find("environment") == parse(R"({"ssao": {
         "quality": "high", "half_size": false, "blur_passes": 3, "fadeout_to": 200.0},
         "screen_space_reflection": {"half_size": false}})"));
+    CHECK(*project_file.find("rendering")->find("reflections") ==
+          parse(R"({"reflection_atlas": {"reflection_size": 512, "reflection_count": 16}})"));
 
     const json::Value& report = plan.report;
     const auto why = [&](std::string_view what) {

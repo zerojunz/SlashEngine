@@ -689,6 +689,7 @@ constexpr std::array kNodeTypes{
     NodeType{"OmniLight3D", Family::Node3D, "OmniLight3D", ""},
     NodeType{"SpotLight3D", Family::Node3D, "SpotLight3D", ""},
     NodeType{"WorldEnvironment", Family::Plain, "WorldEnvironment", ""},
+    NodeType{"ReflectionProbe", Family::Node3D, "ReflectionProbe", ""},
     NodeType{"CollisionShape3D", Family::Node3D, "CollisionShape3D", ""},
     NodeType{"StaticBody3D", Family::Node3D, "StaticBody3D", ""},
     NodeType{"AnimatableBody3D", Family::Node3D, "AnimatableBody3D", ""},
@@ -1854,6 +1855,27 @@ private:
             half != nullptr && half->kind == Value::Kind::Bool) {
             project["rendering"]["environment"]["screen_space_reflection"]["half_size"] =
                 half->boolean;
+        }
+        // Reflection probes' cubes, which take sizes in powers of two here.
+        if (const Value* size =
+                number("rendering", "reflections/reflection_atlas/reflection_size")) {
+            const auto texels = static_cast<std::int64_t>(size->number());
+            if (texels >= 32 && texels <= 2048 &&
+                std::has_single_bit(static_cast<std::uint64_t>(texels))) {
+                project["rendering"]["reflections"]["reflection_atlas"]["reflection_size"] = texels;
+            } else {
+                problems_.add("rendering/reflections/reflection_atlas/reflection_size",
+                              "project.godot",
+                              "cubes are 32 to 2048 texels across, in powers of two");
+            }
+        }
+        if (const Value* count =
+                number("rendering", "reflections/reflection_atlas/reflection_count")) {
+            const auto probes = static_cast<std::int64_t>(count->number());
+            if (probes >= 1 && probes <= 4096) {
+                project["rendering"]["reflections"]["reflection_atlas"]["reflection_count"] =
+                    probes;
+            }
         }
         if (const Value* gravity = number("physics", "2d/default_gravity")) {
             project["physics_2d"]["gravity"] = gravity->number();

@@ -510,6 +510,94 @@ struct Radiance3D {
     bool operator==(const Radiance3D&) const = default;
 };
 
+// The most cubes a reflection atlas holds: 42 cubes of six faces are the 256 texture layers every
+// GPU and WebGPU take.
+inline constexpr std::uint32_t kMaxReflectionCubes = 42;
+// The level of an atlas cube the roughest surfaces reflect and ambient light is taken from, as
+// Godot's MAX_ROUGHNESS_LOD with its 7 roughness layers.
+inline constexpr float kReflectionMaxLevel = 6.0F;
+
+// Godot's rendering/reflections/reflection_atlas settings: how many texels across each face of a
+// reflection probe's cube is (a power of two from 32 to 2048), and how many probes a frame can
+// reflect at most (1 to kMaxReflectionCubes; Godot takes up to 4096).
+struct ReflectionAtlasSettings {
+    std::uint32_t reflection_size = 256;
+    std::uint32_t reflection_count = 64;
+
+    bool operator==(const ReflectionAtlasSettings&) const = default;
+};
+// Reads project.json's rendering.reflections.reflection_atlas: {"reflection_size",
+// "reflection_count"}. What is missing or not valid keeps its default.
+[[nodiscard]] ReflectionAtlasSettings reflection_atlas_settings_from_json(const json::Value& value);
+
+// How a reflection probe lights what is inside it, as Godot's ReflectionProbe.ambient_mode: not
+// at all, by the blurriest level of its cube along each pixel's normal, or by a color.
+enum class ReflectionAmbient : std::uint8_t { Disabled, Environment, Color };
+
+// A reflection probe a frame's meshes reflect, as Godot's ReflectionProbe in its Forward+
+// renderer: a box of the world whose surroundings were drawn into a cube of the frame's reflection
+// atlas, from its origin_offset, by a capture (ProbeCapture). Meshes inside the box reflect the
+// cube in place of the sky's radiance, by roughness, and may take ambient light from it, fading
+// out over blend_distance toward its sides. Where probes overlap, the smallest is taken first and
+// the larger ones fill in what it leaves.
+struct ReflectionProbe3D {
+    // The probe's place and turn in the world, without scale (column-major, as Mat4).
+    std::array<float, 16> transform = {1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F, 0.0F, 0.0F,
+                                       0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F};
+    std::array<float, 3> size{20.0F, 20.0F, 20.0F};       // the box, centered on the probe
+    std::array<float, 3> origin_offset{0.0F, 0.0F, 0.0F}; // where the cube was drawn from
+    float intensity = 1.0F;
+    float blend_distance = 1.0F;
+    // Reflections are aimed at the box's walls from origin_offset, as for a room, rather than
+    // taken as if what they show were far away.
+    bool box_projection = false;
+    std::uint32_t reflection_mask = 0xFFFFF; // the layers whose meshes reflect it
+    ReflectionAmbient ambient_mode = ReflectionAmbient::Environment;
+    std::array<float, 3> ambient_color{0.0F, 0.0F, 0.0F}; // sRGB, for ReflectionAmbient::Color
+    float ambient_color_energy = 1.0F;
+    std::uint32_t cube = 0; // the atlas cube it was drawn into
+
+    bool operator==(const ReflectionProbe3D&) const = default;
+};
+
+// A frame's reflection probes, in Forward+: those meshes reflect, in the order Godot keeps them
+// (largest first), and the atlas their cubes are in, a texture made with TextureDesc::cubes.
+// Compatibility draws none yet.
+struct Reflections3D {
+    TextureId atlas{};
+    std::vector<ReflectionProbe3D> probes; // at most the atlas's cubes
+    // What their light is multiplied by, as Godot's exposure normalization: the camera's exposure
+    // over the one they were drawn with.
+    float exposure = 1.0F;
+
+    bool operator==(const Reflections3D&) const = default;
+};
+
+// A frame that draws the world into a face of a reflection atlas's cube instead of its target, as
+// Godot draws a ReflectionProbe's sides: linear and unprocessed, as a Forward+ frame's world is
+// before its post passes, with no SSAO, SSR or probes. The frame's target is None and its size
+// the atlas's. After a cube's sixth face, its levels are filtered from it as the sky's radiance
+// is (shaders/radiance.hlsl), for rougher surfaces.
+struct ProbeCapture {
+    TextureId atlas{};
+    std::uint32_t cube = 0;
+    std::uint32_t face = 0; // +x, -x, +y, -y, +z, -z, as cube textures lay them out
+
+    bool operator==(const ProbeCapture&) const = default;
+};
+
+// A capture's camera for a face of a probe at transform (its place and turn, without scale), drawn
+// from origin_offset: the world to the camera's space, and its projection, which reaches as far
+// as Godot's does (the box's side the face looks at, or max_distance when that is further). A
+// cube's faces hold a probe's surroundings mirrored along z, so that each face is seen through a
+// camera that turns without mirroring: the face +z holds what is toward -z.
+[[nodiscard]] std::array<float, 16> probe_face_view(const std::array<float, 16>& transform,
+                                                    const std::array<float, 3>& origin_offset,
+                                                    std::uint32_t face);
+[[nodiscard]] std::array<float, 16> probe_face_projection(const std::array<float, 3>& size,
+                                                          const std::array<float, 3>& origin_offset,
+                                                          float max_distance, std::uint32_t face);
+
 // How meshes are lit, as Godot's rendering/renderer/rendering_method. Forward+ sorts the omni and
 // spot lights into clusters of the screen and lights each pixel with those that reach it, so a
 // scene can have all kMaxClusteredLights3D of them; Compatibility lights every pixel with the
@@ -542,6 +630,9 @@ struct Scene3D {
     Radiance3D radiance;
     Ssao3D ssao;
     Ssr3D ssr;
+    Reflections3D reflections;
+    // Set for a frame that draws a face of a reflection probe (ProbeCapture).
+    std::optional<ProbeCapture> capture{}; // NOLINT(readability-redundant-member-init)
 
     // Godot's default Camera3D: 75 degrees across a square target, from 0.05 to 4000.
     static std::array<float, 16> perspective_default();
