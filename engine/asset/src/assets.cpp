@@ -80,13 +80,17 @@ Result<detail::Loaded> Assets::run_loader(const Type& type, std::string_view tex
 
 Result<std::shared_ptr<detail::Record>> Assets::load_record(std::string_view path,
                                                             entt::id_type id) {
-    if (!is_project_path(path)) {
+    const std::string_view file = file_of(path);
+    if (!is_project_path(file)) {
         return make_error(ErrorCode::InvalidArgument,
                           "asset paths are relative to the project folder and separated by '/', "
                           "with no \".\" or \"..\" parts; got " +
                               quoted(path));
     }
-    const Type* type = type_for(path);
+    if (file.size() != path.size() && subresource_of(path).empty()) {
+        return make_error(ErrorCode::InvalidArgument, quoted(path) + " names nothing after \"::\"");
+    }
+    const Type* type = type_for(file);
     if (type == nullptr) {
         std::string known;
         for (const Type& candidate : types_) {
@@ -107,8 +111,8 @@ Result<std::shared_ptr<detail::Record>> Assets::load_record(std::string_view pat
         }
     }
     // The stamp comes first, so an edit made while reading still counts as a change.
-    const std::optional<FileStamp> stamp = source_.stamp(path);
-    auto text = source_.read(path);
+    const std::optional<FileStamp> stamp = source_.stamp(file);
+    auto text = source_.read(file);
     if (!text) {
         return make_error(ErrorCode::NotFound,
                           "asset " + quoted(path) + " could not be read: " + text.error().message);
@@ -179,7 +183,8 @@ std::vector<Assets::Change> Assets::poll() {
             continue;
         }
         ++it;
-        const std::optional<FileStamp> stamp = source_.stamp(record->path);
+        const std::string_view file = file_of(record->path);
+        const std::optional<FileStamp> stamp = source_.stamp(file);
         if (stamp == record->stamp && !record->changed) {
             continue;
         }
@@ -188,10 +193,9 @@ std::vector<Assets::Change> Assets::poll() {
         Change change{record->path, record->type, record->version, {}};
         if (!stamp) {
             change.error = "the file is missing";
-        } else if (auto text = source_.read(record->path); !text) {
+        } else if (auto text = source_.read(file); !text) {
             change.error = text.error().message;
-        } else if (auto loaded = run_loader(*type_for(record->path), text.value(), record->path);
-                   !loaded) {
+        } else if (auto loaded = run_loader(*type_for(file), text.value(), record->path); !loaded) {
             change.error = loaded.error().message;
         } else {
             record->value = std::move(loaded.value().value);
@@ -205,8 +209,12 @@ std::vector<Assets::Change> Assets::poll() {
 }
 
 void Assets::mark_changed(std::string_view path) {
-    if (const auto it = loaded_.find(path); it != loaded_.end()) {
-        if (const std::shared_ptr<detail::Record> record = it->second.lock(); record != nullptr) {
+    // The file's assets, and the forms of it others name after "::".
+    for (const auto& [loaded_path, weak] : loaded_) {
+        if (loaded_path != path && file_of(loaded_path) != path) {
+            continue;
+        }
+        if (const std::shared_ptr<detail::Record> record = weak.lock(); record != nullptr) {
             record->changed = true;
         }
     }

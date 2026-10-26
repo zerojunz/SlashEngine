@@ -34,6 +34,7 @@
 #include "slash/scene3d/blend.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/lightmap.hpp"
+#include "slash/scene3d/recipe.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
@@ -510,15 +511,54 @@ std::set<std::string, std::less<>> terrain_maps(const fs::path& project_dir) {
     return maps;
 }
 
+// A model recipe as a preset's quality tier makes it (scene3d::recipe_form), without its tiers,
+// and the errors of what that makes, with its variants; nullopt for a recipe without the tier.
+// tiers gathers every tier the project's recipes have.
+std::optional<std::string> with_quality(std::string_view text, const std::string& tier,
+                                        const world::FileReader& reader,
+                                        std::set<std::string, std::less<>>& tiers,
+                                        std::vector<json::ValidationError>& errors) {
+    auto doc = json::parse(text);
+    if (!doc) {
+        return std::nullopt;
+    }
+    const std::vector<std::string> names = scene3d::recipe_forms(doc.value(), scene3d::kQuality);
+    tiers.insert(names.begin(), names.end());
+    if (std::ranges::find(names, tier) == names.end()) {
+        return std::nullopt;
+    }
+    auto applied = scene3d::recipe_form(doc.value(), scene3d::kQuality, tier);
+    if (!applied) {
+        errors.push_back({"", applied.error().message});
+        return std::nullopt;
+    }
+    const auto load = [&reader](std::string_view path) -> Result<scene3d::Model> {
+        auto bytes = reader(asset::file_of(path));
+        if (!bytes) {
+            return bytes.error();
+        }
+        return scene3d::load_model(bytes.value(), path, reader);
+    };
+    for (const json::ValidationError& error :
+         scene3d::validate_model_recipe(applied.value(), load)) {
+        errors.push_back({"/quality/" + json::pointer_escape(tier),
+                          "as the export's tier makes it: " +
+                              (error.path.empty() ? "" : error.path + ": ") + error.message});
+    }
+    return json::write(applied.value(), json::Style::Pretty) + "\n";
+}
+
 // Copies project.json, providers.json and every scene, prefab, texture, .frames.json,
 // .material.json, .anim.json, .animtree.json, .tileset.json, font, .theme.json, sound, .audio.json,
 // .bus_layout.json, .navmesh.json, .navpoly.json, .meshlib.json, .lightmap.json and .voxelgi.json
 // file, heightmap,
 // lightmap's .hdr texels and model into data, checking each on the way.
 // Materials take their shaders compiled for the platform, and textures ship in the forms
-// project.json's rendering.textures asks for, kept in library_dir's cache.
+// project.json's rendering.textures asks for, kept in library_dir's cache. Model recipes ship
+// as the preset's model_quality tier makes them.
 bool stage_data(const fs::path& project_dir, const runtime::Project& project, const fs::path& data,
-                std::string_view target, const std::string& library_dir, Failure& failure) {
+                std::string_view target, const Preset& preset, const std::string& library_dir,
+                Failure& failure) {
     std::error_code error;
     fs::remove_all(data, error);
     fs::create_directories(data, error);
@@ -549,6 +589,8 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
     bool found_main = false;
     FormCounts forms;
     const std::set<std::string, std::less<>> raw_textures = terrain_maps(project_dir);
+    std::set<std::string, std::less<>> quality_tiers;
+    bool quality_used = false;
     auto it = fs::recursive_directory_iterator(project_dir, error);
     for (; !error && it != fs::recursive_directory_iterator(); it.increment(error)) {
         const fs::directory_entry& entry = *it;
@@ -570,9 +612,16 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
         if (blend && text) {
             text = scene3d::convert_blend(file, text.value(), blend_options);
         }
-        const std::vector<json::ValidationError> errors =
+        std::vector<json::ValidationError> errors =
             text ? check_data_file(kind, file, text.value(), components, reader)
                  : std::vector<json::ValidationError>{{"", text.error().message}};
+        std::optional<std::string> tiered;
+        if (kind == DataFile::Model && errors.empty() && !preset.model_quality.empty() &&
+            file.ends_with(scene3d::kModelRecipeSuffix)) {
+            tiered =
+                with_quality(text.value(), preset.model_quality, reader, quality_tiers, errors);
+            quality_used = quality_used || tiered.has_value();
+        }
         for (const json::ValidationError& problem : errors) {
             json::Value item;
             item["file"] = file;
@@ -581,7 +630,7 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
             problems.push_back(std::move(item));
         }
         fs::create_directories((data / relative).parent_path(), error);
-        std::optional<std::string> compiled;
+        std::optional<std::string> compiled = std::move(tiered);
         if (kind == DataFile::Material && errors.empty()) {
             compiled = with_compiled_shader(text.value(), reader, target);
         }
@@ -647,6 +696,21 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
                 return false;
             }
         }
+    }
+    // A tier no recipe has is most likely misspelled.
+    if (!preset.model_quality.empty() && !quality_used) {
+        json::Value item;
+        item["file"] = std::string(kPresetsFile);
+        item["path"] = "/presets/" + json::pointer_escape(preset.name) + "/model_quality";
+        std::string message =
+            "no model recipe has the quality tier \"" + preset.model_quality + "\"";
+        const std::vector<std::string> known(quality_tiers.begin(), quality_tiers.end());
+        if (const std::string_view near = closest_match(preset.model_quality, known);
+            !near.empty()) {
+            message += " (did you mean \"" + std::string(near) + "\"?)";
+        }
+        item["message"] = std::move(message);
+        problems.push_back(std::move(item));
     }
     if (!found_main) {
         json::Value item;
@@ -1283,7 +1347,7 @@ ExportResult export_game(const ExportOptions& options) {
     const fs::path data = fs::absolute(work / "data", error);
     const std::string library_dir =
         options.library.empty() ? library::default_dir() : options.library;
-    if (!stage_data(project_dir, project.value(), data, platform, library_dir, failure)) {
+    if (!stage_data(project_dir, project.value(), data, platform, preset, library_dir, failure)) {
         return fail(failure, log_path);
     }
     // The platform's icons, made from the preset's icon, the project's or the engine's.

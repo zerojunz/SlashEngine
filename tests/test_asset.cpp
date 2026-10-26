@@ -235,3 +235,35 @@ TEST_CASE("an asset reloads when a file it read as it loaded changes") {
     REQUIRE(notes.size() == 1);
     CHECK(notes[0].path == "notes.txt");
 }
+
+TEST_CASE("a path names a form of its file after \"::\", which reloads with the file") {
+    static_assert(asset::file_of("props/crate.model.json::burnt") == "props/crate.model.json");
+    static_assert(asset::subresource_of("props/crate.model.json::burnt") == "burnt");
+    static_assert(asset::subresource_of("props/crate.model.json").empty());
+    MemoryFiles files;
+    files.write("levels/one.level", "abc");
+    asset::Assets assets(files.source());
+    // A level is its text's length, or with "::twice", twice that.
+    assets.add_type<int>("level", {".level"}, [](std::string_view text, std::string_view path) {
+        const int size = static_cast<int>(text.size());
+        return slash::Result<int>(asset::subresource_of(path) == "twice" ? size * 2 : size);
+    });
+    auto plain = assets.load<int>("levels/one.level").value();
+    auto twice = assets.load<int>("levels/one.level::twice").value();
+    CHECK(*plain == 3);
+    CHECK(*twice == 6);
+    CHECK(assets.list().size() == 2);
+
+    files.write("levels/one.level", "abcd");
+    const auto changes = assets.poll();
+    REQUIRE(changes.size() == 2);
+    CHECK(changes[0].path == "levels/one.level");
+    CHECK(changes[1].path == "levels/one.level::twice");
+    CHECK(*plain == 4);
+    CHECK(*twice == 8);
+
+    CHECK(assets.load<int>("levels/one.level::").error().message ==
+          "\"levels/one.level::\" names nothing after \"::\"");
+    CHECK(assets.load<int>("levels/../one.level::twice").error().code ==
+          slash::ErrorCode::InvalidArgument);
+}
