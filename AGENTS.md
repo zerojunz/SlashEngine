@@ -220,7 +220,7 @@ generator, model, seed, license, tags, a short description and the parent it was
 Files are written whole and moved into place (`platform::rename_file`), so agents can share a
 library. Generators are `library::Generator` adapters named in `providers.json`'s `generators`,
 as models are `ai::Provider`s: `openai-image`, `gemini-image`, `automatic1111`, `openai-speech`,
-`elevenlabs-sound`, `elevenlabs-music`, `stability-audio` and `stability-3d` (`src/adapters.cpp`, through `ai::post_with_retries`, with images fitted
+`elevenlabs-sound`, `elevenlabs-music`, `stability-audio`, `stability-3d` and `meshy-rig` (`src/adapters.cpp`, through `ai::post_with_retries`, with images fitted
 to the size asked for by `fit_image`), and the built-in `test` generator, which draws
 placeholders with integer math only, so they are the same bytes everywhere. `asset.search`, `asset.generate` (an exact repeat
 calls no generator, close matches come back as candidates), `asset.refine`, `asset.info`,
@@ -1194,7 +1194,13 @@ and collision so the model draws as it did. Godot divides position tracks by the
 `motion_scale`, which glTF can't keep, so `blend_animation` scales another model's bone
 position tracks by the ratio of the two models' `motion_scale` (the hips' height) instead.
 `model.retarget` (in `engine/command/src/model_cleanup.cpp`) writes the result as a `.glb`;
-`examples/humanoid-retarget` plays a Mixamo hero's wave on a Blender knight.
+`examples/humanoid-retarget` plays a Mixamo hero's wave on a Blender knight. Unrigged figures are
+rigged by a generator that rigs (`GeneratorCapabilities::rigs`): `asset.refine`'s `rig` sends
+the `.glb` to one (`meshy-rig` polls Meshy's task with `HttpRequest::method` `GET` and
+`Transport::later`; the `test` generator calls `scene3d::rig_humanoid`, `src/auto_rig.cpp`, a
+skeleton placed by average proportions), then `retarget_rig` in `engine/library/src/commands.cpp`
+retargets the result before the library keeps it. `examples/humanoid-rigging` rigs a boxy knight
+and plays a dancer's wave on it.
 
 CSG shapes are Godot 4.6's CSG module (`engine/scene3d/src/csg.cpp`, after
 `modules/csg/csg_shape.cpp`): `CSGBox3D`, `CSGSphere3D`, `CSGCylinder3D`, `CSGTorus3D`,

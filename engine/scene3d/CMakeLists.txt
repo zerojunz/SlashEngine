@@ -38,6 +38,7 @@ target_link_libraries(slash_vhacd PRIVATE slash::core)
 target_compile_options(slash_vhacd PRIVATE "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w;-ffp-contract=off>")
 
 add_library(slash_scene3d
+    src/auto_rig.cpp
     src/blend.cpp
     src/bone_attachment.cpp
     src/cleanup.cpp

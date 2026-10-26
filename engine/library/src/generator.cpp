@@ -5,6 +5,7 @@
 #include "slash/core/text.hpp"
 #include "slash/library/music.hpp"
 #include "slash/render/image.hpp"
+#include "slash/scene3d/humanoid.hpp"
 #include "slash/scene3d/model.hpp"
 
 #include <algorithm>
@@ -311,6 +312,26 @@ std::vector<Cell> relief_cells(const render::Image& image, int columns, int rows
 // A placeholder model made from the concept image: its shape in cells a meter across, standing
 // on the ground, pushed back into a slab of each cell's color. The prompt says how deep: thin or
 // flat, deep or thick, else a sixth of its width.
+// The parent model rigged as a humanoid by its proportions.
+Result<std::string> rig_model(const GenerateRequest& request) {
+    if (request.rig != "humanoid") {
+        return make_error(ErrorCode::InvalidArgument,
+                          "the test generator rigs humanoids, not \"" + request.rig + "\"");
+    }
+    auto model = scene3d::load_model(
+        request.parent_data, "parent.glb", [](std::string_view path) -> Result<std::string> {
+            return make_error(ErrorCode::NotFound, std::string(path) + " is outside it");
+        });
+    if (!model) {
+        return model.error();
+    }
+    auto rigged = scene3d::rig_humanoid(model.value());
+    if (!rigged) {
+        return rigged.error();
+    }
+    return scene3d::write_glb(rigged.value(), "rigged.glb", {});
+}
+
 Result<std::string> make_model(const GenerateRequest& request) {
     if (request.image_data.empty()) {
         return make_error(ErrorCode::InvalidArgument,
@@ -879,7 +900,7 @@ public:
             return out;
         }
         if (request.type == "model") {
-            auto made = make_model(request);
+            auto made = request.rig.empty() ? make_model(request) : rig_model(request);
             if (!made) {
                 return made.error();
             }
@@ -920,11 +941,15 @@ private:
                                         .refines_sounds = true,
                                         .music = true,
                                         .refines_music = true,
-                                        .models = true};
+                                        .models = true,
+                                        .rigs = true};
 };
 
 // "images", "sounds" or "music", for messages.
 std::string plural(std::string_view type) {
+    if (type == "rig") {
+        return "rigs";
+    }
     return type == "music" ? std::string(type) : std::string(type) + "s";
 }
 
@@ -948,6 +973,9 @@ Result<std::shared_ptr<Generator>> make_generator(const ai::GeneratorConfig& con
 } // namespace
 
 bool makes(const GeneratorCapabilities& can, std::string_view type) noexcept {
+    if (type == "rig") {
+        return can.rigs;
+    }
     if (type == "image") {
         return can.images;
     }

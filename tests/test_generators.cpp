@@ -19,9 +19,11 @@
 #include <doctest/doctest.h>
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <httplib.h>
 #include <memory>
 #include <mutex>
@@ -78,7 +80,14 @@ public:
         return {};
     }
 
+    // A task's polls wait no time here.
+    void later(std::chrono::milliseconds delay, std::function<void()> then) override {
+        waits.push_back(delay);
+        then();
+    }
+
     std::vector<slash::ai::HttpRequest> requests;
+    std::vector<std::chrono::milliseconds> waits;
 
 private:
     std::vector<Reply> replies_;
@@ -526,6 +535,90 @@ TEST_CASE("stability-3d makes a model from the concept image, sent as a form") {
     CHECK(aware->requests[0].url == "https://api.stability.ai/v2beta/3d/stable-point-aware-3d");
     CHECK(aware->requests[0].body.find("name=\"seed\"\r\n\r\n3\r\n") != std::string::npos);
     CHECK_FALSE(library::refines(pointed.generator->capabilities(), "model"));
+}
+
+TEST_CASE("meshy-rig rigs a figure as a task: started, asked about, then fetched") {
+    const std::string figure = std::string("glTF\x02\x00\x00\x00", 8) + "figure";
+    const std::string rigged = std::string("glTF\x02\x00\x00\x00", 8) + "rigged";
+    library::Record parent;
+    parent.id = "figure";
+    parent.type = "model";
+    parent.format = "glb";
+    parent.size = {0.6, 1.8, 0.3};
+    library::GenerateRequest asked = request("model", "");
+    asked.rig = "humanoid";
+    asked.parent = &parent;
+    asked.parent_data = figure;
+
+    auto transport = std::make_shared<ScriptedTransport>(std::vector<ScriptedTransport::Reply>{
+        {202, R"({"result": "task-7"})"},
+        {200, R"({"id": "task-7", "status": "PENDING", "progress": 0})"},
+        {200, R"({"id": "task-7", "status": "IN_PROGRESS", "progress": 40})"},
+        {200, R"({"id": "task-7", "status": "SUCCEEDED", "progress": 100, "result":
+                  {"rigged_character_glb_url": "https://assets.meshy.ai/task-7/rigged.glb",
+                   "rigged_character_fbx_url": "https://assets.meshy.ai/task-7/rigged.fbx"}})"},
+        {200, rigged}});
+    const library::OpenedGenerator rigger =
+        open(R"({"type": "meshy-rig", "api_key_env": "TEST_KEY"})", transport, "rig");
+    CHECK(rigger.generator->capabilities().rigs);
+    CHECK_FALSE(rigger.generator->capabilities().models);
+    CHECK(rigger.model.empty());
+    auto made = rigger.generator->generate(asked);
+    REQUIRE_MESSAGE(made.ok(), made.error().message);
+    CHECK(made.value().format == "glb");
+    CHECK(made.value().data == rigged);
+
+    REQUIRE(transport->requests.size() == 5);
+    const slash::ai::HttpRequest& start = transport->requests[0];
+    CHECK(start.url == "https://api.meshy.ai/openapi/v1/rigging");
+    CHECK(start.method == "POST");
+    CHECK(transport->header("Authorization") == "Bearer key");
+    const json::Value body = transport->body();
+    CHECK(body.find("model_url")->as_string() ==
+          "data:application/octet-stream;base64," + slash::base64_encode(figure));
+    CHECK(body.find("height_meters")->as_double() == doctest::Approx(1.8));
+    for (std::size_t i = 1; i < 4; ++i) {
+        CHECK(transport->requests[i].url == "https://api.meshy.ai/openapi/v1/rigging/task-7");
+        CHECK(transport->requests[i].method == "GET");
+        CHECK(transport->header("Authorization", i) == "Bearer key");
+    }
+    // The file comes from a signed URL, with no key.
+    CHECK(transport->requests[4].url == "https://assets.meshy.ai/task-7/rigged.glb");
+    CHECK(transport->requests[4].method == "GET");
+    CHECK(transport->header("Authorization", 4).empty());
+    CHECK(transport->waits == std::vector<std::chrono::milliseconds>(2, std::chrono::seconds(5)));
+
+    // A failed task says why; a task still running when the time is up says so.
+    auto failing = std::make_shared<ScriptedTransport>(std::vector<ScriptedTransport::Reply>{
+        {200, R"({"result": "task-8"})"},
+        {200, R"({"status": "FAILED", "task_error": {"message": "Pose estimation failed"}})"}});
+    auto failed = open(R"({"type": "meshy-rig", "api_key_env": "TEST_KEY"})", failing, "rig")
+                      .generator->generate(asked);
+    REQUIRE_FALSE(failed.ok());
+    CHECK(failed.error().message ==
+          "the meshy-rig generator's task failed: Pose estimation failed");
+    auto slow = std::make_shared<ScriptedTransport>(std::vector<ScriptedTransport::Reply>{
+        {200, R"({"result": "task-9"})"}, {200, R"({"status": "IN_PROGRESS"})"}});
+    auto late = open(R"({"type": "meshy-rig", "api_key_env": "TEST_KEY", "timeout_seconds": 20})",
+                     slow, "rig")
+                    .generator->generate(asked);
+    REQUIRE_FALSE(late.ok());
+    CHECK(late.error().message ==
+          "the meshy-rig generator's task was still IN_PROGRESS after 20 seconds");
+    CHECK(slow->requests.size() == 5);
+
+    // It rigs .glb figures as humanoids, with its key.
+    asked.parent_data = "{}";
+    auto json_model = rigger.generator->generate(asked);
+    REQUIRE_FALSE(json_model.ok());
+    CHECK(json_model.error().message == "the meshy-rig generator rigs a .glb model");
+    auto keyless = std::make_shared<ScriptedTransport>(std::vector<ScriptedTransport::Reply>{});
+    auto no_key = open(R"({"type": "meshy-rig", "api_key_env": "MESHY_API_KEY"})", keyless, "rig")
+                      .generator->generate(asked);
+    REQUIRE_FALSE(no_key.ok());
+    CHECK(no_key.error().message ==
+          "the meshy-rig generator reads its key from MESHY_API_KEY, which is not set");
+    CHECK(keyless->requests.empty());
 }
 
 TEST_CASE("generators retry rate limits and report errors with the service's message") {
