@@ -161,7 +161,8 @@ service names them; and `timeout_seconds` and `max_retries` work as a provider's
               "license": "Stability AI Community License", "options": {"output_format": "wav"}},
     "sculptor": {"type": "stability-3d", "api_key_env": "STABILITY_API_KEY",
                  "license": "Stability AI Community License",
-                 "options": {"texture_resolution": 1024, "remesh": "quad"}}
+                 "options": {"texture_resolution": 1024, "remesh": "quad"}},
+    "rigger": {"type": "meshy-rig", "api_key_env": "MESHY_API_KEY", "license": "Meshy terms of use"}
   }
 }
 ```
@@ -176,7 +177,8 @@ service names them; and `timeout_seconds` and `max_retries` work as a provider's
 | `elevenlabs-music` | Music, through ElevenLabs' music generation (`/v1/music`), instrumental | No | `music_v1`, `https://api.elevenlabs.io` |
 | `stability-audio` | Music, through Stability AI's Stable Audio 2 and 2.5 (`/v2beta/audio/stable-audio-2/text-to-audio`) | No | `stable-audio-2.5`, `https://api.stability.ai` |
 | `stability-3d` | Models (`.glb`) from a concept image, through Stability AI's Stable Fast 3D or, with `model` `stable-point-aware-3d`, Stable Point Aware 3D (`/v2beta/3d/<model>`) | No | `stable-fast-3d`, `https://api.stability.ai` |
-| `test` | Placeholder images, tones, music and models made on the machine, the same on every platform, for tests and CI. Always there as `test`, even with no `generators` | Yes, but not models | |
+| `meshy-rig` | Rigs (skeletons and skins) for `.glb` models of humanoid figures, through Meshy's rigging API (`/openapi/v1/rigging`) | Rigs only | `https://api.meshy.ai` |
+| `test` | Placeholder images, tones, music and models made on the machine, the same on every platform, for tests and CI, and placeholder rigs. Always there as `test`, even with no `generators` | Yes, but not models | |
 
 Services make images at their own sizes, so the library fits each one to the `width` and `height`
 asked for (a refine's parent's when it asks for none): the middle of the image at that shape,
@@ -213,8 +215,19 @@ Point Aware 3D (Stable Fast 3D takes none) and its options (`texture_resolution`
 back. The `test` generator's models are reliefs of the concept image (see
 [`asset.generate`](commands.md#models-from-a-concept-image)).
 
+`meshy-rig` rigs a figure as a task: it sends the `.glb` file as a data URI (`model_url`) with the
+figure's height in meters (`height_meters`, from the size the library measured) and its options,
+asks how the task is going every 5 seconds, and fetches the rigged `.glb` from the address the
+finished task names, without the key, since that address is signed. A task still running after
+`timeout_seconds` is an error, and a failed one reports Meshy's message. Meshy rigs textured
+figures of humanoids standing and facing +z, which is the way Godot's humanoid profile faces. The
+`test` generator's rigs are placed by a standing figure's average proportions
+(`scene3d::rig_humanoid`): good enough to try animations on, not to ship. Either way the library
+retargets the rig to Godot's humanoid skeleton before keeping it (see
+[`asset.refine`](commands.md#rigging-a-figure)).
+
 `asset.generate` uses the one generator that makes the type asked for, or the one its `generator`
-param names. [`ai.providers`](commands.md#aiproviders) lists them, with whether each one's key is
+param names, and `asset.refine`'s `rig` the one that rigs. [`ai.providers`](commands.md#aiproviders) lists them, with whether each one's key is
 set. A key that isn't set fails only when a request would be sent.
 
 ## Team library

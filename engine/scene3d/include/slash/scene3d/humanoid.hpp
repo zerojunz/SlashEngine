@@ -114,4 +114,13 @@ struct RetargetReport {
 // ratio of theirs (blend_animation), so a short character walks with shorter steps.
 [[nodiscard]] float motion_scale(const Model& model);
 
+// Rigs an unrigged figure standing on its lowest point and facing +z: a skeleton of the
+// profile's body bones (no fingers, eyes or jaw) placed by the average proportions of a standing
+// figure scaled to its height, the arms reaching for its widest point, and every vertex weighted
+// to its two nearest bones on its side of the figure. Parts become skinned meshes placed in the
+// model's space; animations are left out. The placeholder rig the library's test generator
+// makes; services rig a figure better, from what they see of it. A model with a skin already, or
+// no mesh, is an error.
+[[nodiscard]] Result<Model> rig_humanoid(const Model& model);
+
 } // namespace slash::scene3d
