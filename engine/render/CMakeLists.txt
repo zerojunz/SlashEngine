@@ -63,7 +63,8 @@ add_library(slash_render
     src/ssr.cpp
     src/texture_codec.cpp
     src/uniforms.cpp
-    src/upscaler.cpp)
+    src/upscaler.cpp
+    src/voxel_gi.cpp)
 add_library(slash::render ALIAS slash_render)
 
 target_include_directories(slash_render PUBLIC include)
@@ -96,7 +97,7 @@ endif()
 set_source_files_properties(src/clusters.cpp src/device.cpp src/forward_post.cpp src/material.cpp
     src/mesh.cpp src/particles.cpp src/post.cpp src/resize.cpp src/shader_vm.cpp src/shadow.cpp
     src/reflection.cpp src/sky.cpp src/software_device.cpp src/ssao.cpp src/ssr.cpp
-    src/upscaler.cpp
+    src/upscaler.cpp src/voxel_gi.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 

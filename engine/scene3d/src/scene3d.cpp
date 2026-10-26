@@ -9,6 +9,7 @@
 #include "slash/scene3d/ik.hpp"
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/terrain.hpp"
+#include "slash/scene3d/voxel_gi.hpp"
 #include "slash/world/path.hpp"
 #include "slash/world/serialize.hpp"
 #include "slash/world/world.hpp"
@@ -18,13 +19,18 @@
 #include <atomic>
 #include <bit>
 #include <cmath>
+#include <cstddef>
 #include <functional>
 #include <limits>
 #include <map>
+#include <memory>
 #include <numbers>
+#include <optional>
 #include <ranges>
 #include <set>
+#include <span>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -67,6 +73,21 @@ std::vector<entt::entity> made(const world::World& world) {
         out.push_back(entity);
     }
     std::ranges::sort(out, {}, [](entt::entity entity) { return entt::to_entity(entity); });
+    return out;
+}
+
+// The bounds of vertices, in their own space.
+Bounds bounds_of(std::span<const render::Vertex3D> vertices) {
+    if (vertices.empty()) {
+        return {};
+    }
+    const auto& first = vertices.front().position;
+    Bounds out{.min = {first[0], first[1], first[2]}, .max = {first[0], first[1], first[2]}};
+    for (const render::Vertex3D& vertex : vertices) {
+        const auto& p = vertex.position;
+        out.min = {std::min(out.min.x, p[0]), std::min(out.min.y, p[1]), std::min(out.min.z, p[2])};
+        out.max = {std::max(out.max.x, p[0]), std::max(out.max.y, p[1]), std::max(out.max.z, p[2])};
+    }
     return out;
 }
 
@@ -128,12 +149,19 @@ render::ShadowCasting casting_of(const std::string& name) {
     return render::ShadowCasting::On;
 }
 
-// Each light of type T that shines, with where it is, keyed by its place in tree order.
+// A light that shines, the entity it is on and its place in tree order.
+struct Shone {
+    std::size_t place = 0;
+    entt::entity entity = entt::null;
+    render::Light3D light;
+};
+
+// Each light of type T that shines, with where it is.
 template <typename T>
 void add_lights(const world::World& world, const world::Tree3D& tree,
                 const std::function<world::Affine3D(entt::entity)>& global,
                 const std::unordered_map<entt::entity, std::size_t>& order,
-                std::vector<std::pair<std::size_t, render::Light3D>>& out) {
+                std::vector<Shone>& out) {
     for (const entt::entity entity : made<T>(world)) {
         if (!tree.visible(entity)) {
             continue;
@@ -171,8 +199,25 @@ void add_lights(const world::World& world, const world::Tree3D& tree,
         const Vec3 up = normalized(placed.y);
         shone.up = {up.x, up.y, up.z};
         const auto at = order.find(entity);
-        out.emplace_back(at != order.end() ? at->second : order.size(), shone);
+        out.push_back({.place = at != order.end() ? at->second : order.size(),
+                       .entity = entity,
+                       .light = shone});
     }
+}
+
+// Every light that shines, in tree order.
+std::vector<Shone> shining(const world::World& world, const world::Tree3D& tree,
+                           const std::function<world::Affine3D(entt::entity)>& global) {
+    std::unordered_map<entt::entity, std::size_t> order;
+    for (std::size_t i = 0; i < tree.order().size(); ++i) {
+        order.emplace(tree.order()[i], i);
+    }
+    std::vector<Shone> found;
+    add_lights<world::DirectionalLight3D>(world, tree, global, order, found);
+    add_lights<world::OmniLight3D>(world, tree, global, order, found);
+    add_lights<world::SpotLight3D>(world, tree, global, order, found);
+    std::ranges::stable_sort(found, {}, &Shone::place);
+    return found;
 }
 
 std::array<float, 4> rgba(const Vec4& color) {
@@ -551,22 +596,15 @@ Environment environment(const world::World& world, render::Color clear, entt::en
 
 std::vector<render::Light3D> lights(const world::World& world, const world::Tree3D& tree,
                                     const std::function<world::Affine3D(entt::entity)>& global) {
-    std::unordered_map<entt::entity, std::size_t> order;
-    for (std::size_t i = 0; i < tree.order().size(); ++i) {
-        order.emplace(tree.order()[i], i);
-    }
-    std::vector<std::pair<std::size_t, render::Light3D>> found;
-    add_lights<world::DirectionalLight3D>(world, tree, global, order, found);
-    add_lights<world::OmniLight3D>(world, tree, global, order, found);
-    add_lights<world::SpotLight3D>(world, tree, global, order, found);
-    std::ranges::stable_sort(found, {}, &std::pair<std::size_t, render::Light3D>::first);
+    std::vector<Shone> found = shining(world, tree, global);
     // Directional lights first, so Compatibility's first render::kMaxLights3D keep them all.
-    std::ranges::stable_partition(found, [](const auto& entry) {
-        return entry.second.type == render::LightType::Directional;
+    std::ranges::stable_partition(found, [](const Shone& shone) {
+        return shone.light.type == render::LightType::Directional;
     });
     std::vector<render::Light3D> out;
     std::size_t directional = 0;
-    for (auto& [place, light] : found) {
+    for (const Shone& shone : found) {
+        const render::Light3D& light = shone.light;
         if (light.type == render::LightType::Directional) {
             if (directional == render::kMaxDirectionalLights3D) {
                 continue;
@@ -724,6 +762,9 @@ std::vector<Problem> check_meshes(const world::World& world) {
     for (Problem& problem : check_lightmaps(world)) {
         problems.push_back(std::move(problem));
     }
+    for (Problem& problem : check_voxel_gis(world)) {
+        problems.push_back(std::move(problem));
+    }
     return problems;
 }
 
@@ -803,9 +844,9 @@ render::Material3D material(const world::StandardMaterial3D& standard,
 }
 
 Renderer::Renderer(render::RenderDevice& device, TextureSource textures, ModelSource models,
-                   LightmapSource lightmaps)
+                   LightmapSource lightmaps, VoxelGISource voxel_gis)
     : device_(&device), textures_(std::move(textures)), models_(std::move(models)),
-      lightmaps_(std::move(lightmaps)) {}
+      lightmaps_(std::move(lightmaps)), voxel_gi_source_(std::move(voxel_gis)) {}
 
 Renderer::~Renderer() {
     for (const auto& [key, shared] : shared_) {
@@ -818,6 +859,7 @@ Renderer::~Renderer() {
         device_->destroy_texture(texture.id);
     }
     destroy_lightmaps(false);
+    destroy_voxel_gis();
 }
 
 void Renderer::destroy_lightmaps(bool unused_only) {
@@ -1111,18 +1153,8 @@ Result<render::MeshId> Renderer::mesh_for(const world::World& world, entt::entit
             return made.error();
         }
         shared.id = made.value();
-        if (!data.value().vertices.empty()) {
-            std::array<float, 3> lo = data.value().vertices.front().position;
-            std::array<float, 3> hi = lo;
-            for (const render::Vertex3D& vertex : data.value().vertices) {
-                for (std::size_t c = 0; c < 3; ++c) {
-                    lo.at(c) = std::min(lo.at(c), vertex.position.at(c));
-                    hi.at(c) = std::max(hi.at(c), vertex.position.at(c));
-                }
-            }
-            shared.center = {(lo[0] + hi[0]) * 0.5F, (lo[1] + hi[1]) * 0.5F,
-                             (lo[2] + hi[2]) * 0.5F};
-        }
+        shared.box = bounds_of(data.value().vertices);
+        shared.center = scaled(shared.box.min + shared.box.max, 0.5F);
     }
     shared.used = frame_;
     return shared.id;
@@ -1139,6 +1171,7 @@ Result<render::MeshId> Renderer::kept_mesh(const std::string& key,
             return made.error();
         }
         shared.id = made.value();
+        shared.box = bounds_of(vertices);
     }
     shared.used = frame_;
     return shared.id;
@@ -1163,6 +1196,7 @@ Result<render::MeshId> Renderer::skinned_mesh(const std::string& key, const Mode
         return updated.error();
     }
     skinned.joints = joints;
+    skinned.box = bounds_of(skinned_vertices_);
     return skinned.id;
 }
 
@@ -1653,6 +1687,312 @@ void Renderer::add_terrain(const world::World& world, entt::entity entity,
     }
 }
 
+namespace {
+
+// rendering/global_illumination/voxel_gi: the most lights Godot injects into a VoxelGI.
+constexpr std::size_t kMaxVoxelGILights = 32;
+
+// The bounds of a box under a column-major transform.
+Bounds placed_bounds(const Bounds& box, const std::array<float, 16>& m) {
+    Bounds out{.min = {std::numeric_limits<float>::max(), std::numeric_limits<float>::max(),
+                       std::numeric_limits<float>::max()},
+               .max = {std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(),
+                       std::numeric_limits<float>::lowest()}};
+    for (int corner = 0; corner < 8; ++corner) {
+        const float x = (corner & 1) != 0 ? box.max.x : box.min.x;
+        const float y = (corner & 2) != 0 ? box.max.y : box.min.y;
+        const float z = (corner & 4) != 0 ? box.max.z : box.min.z;
+        const Vec3 p{(m[0] * x) + (m[4] * y) + (m[8] * z) + m[12],
+                     (m[1] * x) + (m[5] * y) + (m[9] * z) + m[13],
+                     (m[2] * x) + (m[6] * y) + (m[10] * z) + m[14]};
+        out.min = {std::min(out.min.x, p.x), std::min(out.min.y, p.y), std::min(out.min.z, p.z)};
+        out.max = {std::max(out.max.x, p.x), std::max(out.max.y, p.y), std::max(out.max.z, p.z)};
+    }
+    return out;
+}
+
+// Whether two boxes overlap, as Godot's AABB::intersects.
+bool touches(const Bounds& a, const Bounds& b) {
+    return a.min.x < b.max.x && b.min.x < a.max.x && a.min.y < b.max.y && b.min.y < a.max.y &&
+           a.min.z < b.max.z && b.min.z < a.max.z;
+}
+
+// The bounds of an omni or spot light's reach, as Godot's LightStorage::light_get_aabb: a cube
+// its range across for an omni light, the box round its cone for a spot light (a cube for a cone
+// of 90 degrees or more, whose box Godot's tangent turns inside out).
+Bounds light_bounds(const render::Light3D& light) {
+    const Vec3 at{light.position[0], light.position[1], light.position[2]};
+    const float range = light.range;
+    if (light.type == render::LightType::Omni || light.spot_angle >= 90.0F) {
+        return {.min = {at.x - range, at.y - range, at.z - range},
+                .max = {at.x + range, at.y + range, at.z + range}};
+    }
+    const float size = std::tan(light.spot_angle * kRadians) * range;
+    const Vec3 back = normalized({-light.direction[0], -light.direction[1], -light.direction[2]});
+    const Vec3 up = normalized({light.up[0], light.up[1], light.up[2]});
+    const Vec3 right{(up.y * back.z) - (up.z * back.y), (up.z * back.x) - (up.x * back.z),
+                     (up.x * back.y) - (up.y * back.x)};
+    const std::array<float, 16> place{right.x, right.y, right.z, 0.0F, up.x, up.y, up.z, 0.0F,
+                                      back.x,  back.y,  back.z,  0.0F, at.x, at.y, at.z, 1.0F};
+    return placed_bounds({.min = {-size, -size, -range}, .max = {size, size, 0.0F}}, place);
+}
+
+// What a light's component says of its indirect light: light_indirect_energy and bake_mode.
+std::pair<float, std::string_view> indirect_of(const world::World& world, const Shone& shone) {
+    const auto& ecs = world.ecs();
+    if (shone.light.type == render::LightType::Directional) {
+        const auto& light = ecs.get<const world::DirectionalLight3D>(shone.entity);
+        return {light.light_indirect_energy, light.light_bake_mode};
+    }
+    if (shone.light.type == render::LightType::Omni) {
+        const auto& light = ecs.get<const world::OmniLight3D>(shone.entity);
+        return {light.light_indirect_energy, light.light_bake_mode};
+    }
+    const auto& light = ecs.get<const world::SpotLight3D>(shone.entity);
+    return {light.light_indirect_energy, light.light_bake_mode};
+}
+
+// The lights a VoxelGI of data, placed at place, whose box in the world is box, injects, as Godot
+// pairs them: the omni and spot lights whose bake_mode isn't "disabled" and whose reach touches
+// its box, then every directional light, at most kMaxVoxelGILights.
+std::vector<VoxelGILight> voxel_gi_lights(const world::World& world, std::span<const Shone> shone,
+                                          const VoxelGIData& data, const world::Affine3D& place,
+                                          const Bounds& box) {
+    std::vector<VoxelGILight> out;
+    const auto add = [&](const Shone& light) {
+        if (out.size() < kMaxVoxelGILights) {
+            out.push_back(
+                voxel_gi_light(light.light, indirect_of(world, light).first, data, place));
+        }
+    };
+    for (const Shone& light : shone) {
+        if (light.light.type != render::LightType::Directional &&
+            indirect_of(world, light).second != "disabled" &&
+            touches(light_bounds(light.light), box)) {
+            add(light);
+        }
+    }
+    for (const Shone& light : shone) {
+        if (light.light.type == render::LightType::Directional) {
+            add(light);
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+struct Renderer::KeptVoxelGI {
+    std::shared_ptr<const VoxelGIData> data;
+    VoxelGIOctree octree;
+    // What its light was injected with: none yet while lit is false.
+    bool lit = false;
+    std::vector<VoxelGILight> lights;
+    VoxelGISettings settings;
+    VoxelGIAtlas atlas;
+    std::string problem;       // why its light can't be traced
+    std::uint64_t version = 0; // raised each time its light changes
+};
+
+void Renderer::destroy_voxel_gis() {
+    if (voxel_atlas_ != render::TextureId::None) {
+        device_->destroy_texture(voxel_atlas_);
+    }
+    voxel_atlas_ = render::TextureId::None;
+    voxel_atlas_width_ = 0;
+    voxel_atlas_height_ = 0;
+    voxel_atlas_key_.clear();
+}
+
+void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& tree,
+                               const std::function<world::Affine3D(entt::entity)>& global,
+                               const Environment& env) {
+    const auto& ecs = world.ecs();
+    // The VoxelGIs whose light is traced this frame, in the order they were made.
+    struct Traced {
+        entt::entity entity = entt::null;
+        const KeptVoxelGI* kept = nullptr;
+        const world::VoxelGI* component = nullptr;
+        world::Affine3D place;
+        Bounds box; // in the world
+    };
+    std::vector<Traced> traced;
+    std::vector<entt::entity> seen;
+    std::optional<std::vector<Shone>> shone;
+    for (const entt::entity entity : made<world::VoxelGI>(world)) {
+        const auto& gi = ecs.get<const world::VoxelGI>(entity);
+        if (gi.data.empty() || !tree.visible(entity)) {
+            continue;
+        }
+        const std::string field = "/components/VoxelGI/data";
+        if (!voxel_gi_source_) {
+            problems_.push_back({entity, field, "VoxelGIs can't load here"});
+            continue;
+        }
+        auto loaded = voxel_gi_source_(gi.data);
+        if (!loaded) {
+            problems_.push_back({entity, field, loaded.error().message});
+            continue;
+        }
+        seen.push_back(entity);
+        std::unique_ptr<KeptVoxelGI>& kept = voxel_gis_[entity];
+        if (!kept) {
+            kept = std::make_unique<KeptVoxelGI>();
+        }
+        if (kept->data != loaded.value()) {
+            kept->data = loaded.value();
+            kept->octree = voxel_gi_octree(*kept->data, &world.pool());
+            kept->lit = false;
+        }
+        const VoxelGIData& data = *kept->data;
+        const world::Affine3D place = global(entity);
+        const Vec3 low{data.bounds_position[0], data.bounds_position[1], data.bounds_position[2]};
+        const Bounds box = placed_bounds(
+            {.min = low,
+             .max = low + Vec3{data.bounds_size[0], data.bounds_size[1], data.bounds_size[2]}},
+            place.matrix());
+        if (!shone) {
+            shone = shining(world, tree, global);
+        }
+        std::vector<VoxelGILight> lights = voxel_gi_lights(world, *shone, data, place, box);
+        const VoxelGISettings settings{.dynamic_range = gi.dynamic_range,
+                                       .propagation = gi.propagation,
+                                       .use_two_bounces = gi.use_two_bounces};
+        // The lights are injected again when they or the settings change, as Godot's light
+        // cache and voxel_gi_needs_update.
+        if (!kept->lit || lights != kept->lights || settings != kept->settings) {
+            const VoxelGITexture texture =
+                light_voxel_gi(data, kept->octree, lights, settings, &world.pool());
+            auto atlas = voxel_gi_atlas(texture);
+            kept->lit = true;
+            kept->lights = std::move(lights);
+            kept->settings = settings;
+            kept->version = ++voxel_gi_versions_;
+            kept->problem = atlas ? std::string() : atlas.error().message;
+            kept->atlas = atlas ? std::move(atlas).value() : VoxelGIAtlas{};
+        }
+        if (!kept->problem.empty()) {
+            problems_.push_back({entity, field, kept->problem});
+            continue;
+        }
+        traced.push_back(
+            {.entity = entity, .kept = kept.get(), .component = &gi, .place = place, .box = box});
+    }
+    std::erase_if(voxel_gis_, [&](const auto& entry) {
+        return std::ranges::find(seen, entry.first) == seen.end();
+    });
+
+    // Their atlases one under another in one atlas, which a mesh's two VoxelGIs share.
+    std::vector<std::uint32_t> tops;
+    std::vector<std::pair<entt::entity, std::uint64_t>> key;
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    for (auto it = traced.begin(); it != traced.end();) {
+        const render::Image& image = it->kept->atlas.image;
+        if (height + image.height > render::kMaxTextureSize) {
+            problems_.push_back({it->entity, "/components/VoxelGI/subdiv",
+                                 "leaves its light no room in the atlas it shares with the "
+                                 "VoxelGIs made before it: lower its subdiv, or theirs"});
+            it = traced.erase(it);
+            continue;
+        }
+        tops.push_back(height);
+        key.emplace_back(it->entity, it->kept->version);
+        height += image.height;
+        width = std::max(width, image.width);
+        ++it;
+    }
+    if (traced.empty()) {
+        destroy_voxel_gis();
+        return;
+    }
+    if (key != voxel_atlas_key_) {
+        std::vector<std::uint8_t> pixels(std::size_t{width} * height * 4, 0);
+        for (std::size_t i = 0; i < traced.size(); ++i) {
+            const render::Image& image = traced[i].kept->atlas.image;
+            const std::size_t row = std::size_t{image.width} * 4;
+            for (std::uint32_t y = 0; y < image.height; ++y) {
+                std::copy_n(image.pixels.begin() + static_cast<std::ptrdiff_t>(y * row), row,
+                            pixels.begin() +
+                                static_cast<std::ptrdiff_t>((std::size_t{tops[i]} + y) *
+                                                            std::size_t{width} * 4));
+            }
+        }
+        Result<void> made;
+        if (voxel_atlas_ != render::TextureId::None && width == voxel_atlas_width_ &&
+            height == voxel_atlas_height_) {
+            made = device_->update_texture(voxel_atlas_, pixels);
+        } else {
+            destroy_voxel_gis();
+            auto created = device_->create_texture(
+                {.width = width, .height = height, .filter = render::Filter::Linear}, pixels);
+            if (created) {
+                voxel_atlas_ = created.value();
+                voxel_atlas_width_ = width;
+                voxel_atlas_height_ = height;
+            } else {
+                made = created.error();
+            }
+        }
+        if (!made) {
+            problems_.push_back({traced.front().entity, "/components/VoxelGI/data",
+                                 "its light's atlas: " + made.error().message});
+            destroy_voxel_gis();
+            return;
+        }
+        voxel_atlas_key_ = std::move(key);
+    }
+
+    // Each draw traces the VoxelGIs its bounds touch, at most two in the order they were made, as
+    // Godot pairs them (MAX_INSTANCE_PAIRS); lightmapped, captured, terrain and shadow-only draws
+    // take none.
+    std::vector<render::VoxelGIProbe> probes;
+    probes.reserve(traced.size());
+    for (std::size_t i = 0; i < traced.size(); ++i) {
+        const Traced& t = traced[i];
+        const float normalization =
+            env.attributes != entt::null ? env.exposure / t.kept->data->baked_exposure : 1.0F;
+        render::VoxelGIProbe probe =
+            voxel_gi_probe(*t.component, *t.kept->data, t.kept->atlas, t.place, normalization);
+        for (std::uint32_t level = 0; level < probe.levels; ++level) {
+            probe.placement.at(level)[1] += tops[i];
+        }
+        probes.push_back(probe);
+    }
+    std::unordered_map<render::MeshId, Bounds> boxes;
+    for (const auto& [mesh_key, shared] : shared_) {
+        if (shared.used == frame_) {
+            boxes.emplace(shared.id, shared.box);
+        }
+    }
+    for (const auto& [mesh_key, skinned] : skinned_) {
+        if (skinned.used == frame_) {
+            boxes.emplace(skinned.id, skinned.box);
+        }
+    }
+    for (Draw& draw : draws_) {
+        const render::Material3D& material = draw.material;
+        if (draw.shadows == render::ShadowCasting::ShadowsOnly || material.terrain.enabled ||
+            material.lightmap.texture != render::TextureId::None || material.capture.enabled) {
+            continue;
+        }
+        const auto box = boxes.find(draw.mesh);
+        if (box == boxes.end()) {
+            continue;
+        }
+        const Bounds placed = placed_bounds(box->second, draw.transform);
+        render::VoxelGIShading shading{.atlas = voxel_atlas_, .probes = {}, .count = 0};
+        for (std::size_t i = 0; i < traced.size() && shading.count < shading.probes.size(); ++i) {
+            if (touches(placed, traced[i].box)) {
+                shading.probes.at(shading.count++) = probes[i];
+            }
+        }
+        if (shading.count > 0) {
+            draw.material.voxel_gi = shading;
+        }
+    }
+}
+
 std::optional<Frame3D> Renderer::prepare(const world::World& world, float width, float height,
                                          double interpolation, render::Color clear,
                                          const render::ShadowSettings& shadows, double time,
@@ -1660,7 +2000,7 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
                                          const render::SsaoSettings& ssao,
                                          const render::SsrSettings& ssr,
                                          const render::ReflectionAtlasSettings& reflection_atlas,
-                                         render::RenderMethod method) {
+                                         render::RenderMethod method, bool voxel_gi_high_quality) {
     ++frame_;
     draws_.clear();
     problems_.clear();
@@ -1688,6 +2028,8 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
         probe_sources_.clear();
         captured_.clear();
         model_centers_.clear();
+        voxel_gis_.clear();
+        destroy_voxel_gis();
         exposure_version_ = 0;
         return std::nullopt;
     }
@@ -1800,6 +2142,7 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
         light.energy *= env.exposure;
     }
     frame.scene.shadows = shadows;
+    frame.scene.voxel_gi_high_quality = voxel_gi_high_quality;
     lights_ = frame.scene.lights.size();
     capture_time_ = time;
     find_lightmaps(world, env.exposure, global);
@@ -1878,6 +2221,12 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
         if (tree.visible(entity)) {
             add_terrain(world, entity, global(entity), global(camera), lens);
         }
+    }
+    if (method == render::RenderMethod::ForwardPlus) {
+        trace_voxel_gis(world, tree, global, env);
+    } else {
+        voxel_gis_.clear();
+        destroy_voxel_gis();
     }
     if (env.exposure != 1.0F) {
         for (Draw& draw : draws_) {

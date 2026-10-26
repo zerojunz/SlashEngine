@@ -44,6 +44,7 @@ checks it.
 | `rendering.environment.ssao` | No | `medium`, half size, 2 blur passes | The quality and cost of 3D [ambient occlusion](scene-format.md#ambient-occlusion): see [SSAO](#ssao) |
 | `rendering.environment.screen_space_reflection` | No | half size | The resolution of 3D [screen-space reflections](scene-format.md#screen-space-reflections): see [Screen-space reflections](#screen-space-reflections) |
 | `rendering.reflections.reflection_atlas` | No | 256 texels, 64 probes | The size of 3D [reflection probes'](scene-format.md#reflection-probes) cubes and how many a frame draws: see [Reflection probes](#reflection-probes) |
+| `rendering.global_illumination.voxel_gi.quality` | No | `low` | How many cones meshes trace through [VoxelGIs](scene-format.md#voxelgi): see [VoxelGI](#voxelgi) |
 | `rendering.textures` | No | `lossless` | How exports ship textures: as their files, or compressed for each platform's GPUs: see [Texture forms](#texture-forms) |
 | `rendering.interpolation` | No | `true` | Draw sprites part of the way between fixed ticks, from where they were before the last tick to where they are, so motion looks smooth when the display refreshes faster than the game ticks. Drawing lags the simulation by up to one tick; set `false` to draw exactly where things are |
 | `physics_2d.gravity` | No | `980` | Gravity's strength in pixels per second squared, as Godot's `physics/2d/default_gravity` |
@@ -237,6 +238,17 @@ one shows sharper reflections and costs more to draw and keep.
 | --- | --- | --- |
 | `reflection_size` | `256` | Texels across each face of a probe's cube: 32, 64, 128, 256, 512, 1024 or 2048 |
 | `reflection_count` | `64` | How many probes a frame draws, from 1 to 4096, at most 42 here; the largest are drawn first and the rest reflect nothing |
+
+## VoxelGI
+
+`rendering.global_illumination.voxel_gi.quality` says how meshes trace their ambient light
+through [VoxelGIs](scene-format.md#voxelgi), as Godot's
+`rendering/global_illumination/voxel_gi/quality`: `low` traces four cones of 45 degrees, `high`
+six narrower ones, which show finer detail and cost more.
+
+```json
+"rendering": {"global_illumination": {"voxel_gi": {"quality": "high"}}}
+```
 
 ## Texture forms
 

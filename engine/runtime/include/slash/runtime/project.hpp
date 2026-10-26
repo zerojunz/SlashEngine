@@ -86,6 +86,9 @@ struct Project {
     // Draw with OpenGL where the GPU backend doesn't work, as Godot's
     // rendering_device/fallback_to_opengl3.
     bool fallback_to_opengl = true;
+    // rendering.global_illumination.voxel_gi.quality "high": VoxelGIs trace six narrower cones
+    // for ambient light in place of four wide ones, as Godot's.
+    bool voxel_gi_high_quality = false;
     // The render scale and how the world scales to the screen, as Godot's scaling_3d.
     render::Scaling scaling;
     // How 3D meshes are lit, as Godot's rendering/renderer/rendering_method: Forward+'s clustered
