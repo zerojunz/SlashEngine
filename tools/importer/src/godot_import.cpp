@@ -690,6 +690,7 @@ constexpr std::array kNodeTypes{
     NodeType{"SpotLight3D", Family::Node3D, "SpotLight3D", ""},
     NodeType{"WorldEnvironment", Family::Plain, "WorldEnvironment", ""},
     NodeType{"ReflectionProbe", Family::Node3D, "ReflectionProbe", ""},
+    NodeType{"LightmapGI", Family::Node3D, "LightmapGI", ""},
     NodeType{"CollisionShape3D", Family::Node3D, "CollisionShape3D", ""},
     NodeType{"StaticBody3D", Family::Node3D, "StaticBody3D", ""},
     NodeType{"AnimatableBody3D", Family::Node3D, "AnimatableBody3D", ""},
@@ -1046,6 +1047,7 @@ const std::vector<std::string_view>* enum_names(std::string_view component,
         {"Control.layout_direction", {"inherited", "inherited", "ltr", "rtl", "inherited"}},
         {"PopupMenu.layout_direction", {"inherited", "inherited", "ltr", "rtl", "inherited"}},
         {"TextEdit.autowrap_mode", {"", "arbitrary", "word", "word_smart"}},
+        {"LightmapGI.environment_mode", {"disabled", "scene", "", "custom_color"}},
     };
     const std::string exact = std::string(component) + "." + std::string(field);
     if (const auto it = kNames.find(exact); it != kNames.end()) {
@@ -4901,6 +4903,22 @@ private:
             (name == "attributes" && components.contains("Camera3D"))) {
             convert_camera_attributes(value, file, components, node, node.type + "." + name);
             return true;
+        }
+        if (components.contains("LightmapGI")) {
+            // Its exposure, as camera attributes on its own entity.
+            if (name == "camera_attributes") {
+                convert_camera_attributes(value, file, components, node, "LightmapGI." + name);
+                if (components.contains("CameraAttributesPractical")) {
+                    components["LightmapGI"]["camera_attributes"] = node.id;
+                }
+                return true;
+            }
+            // Godot's bake is in its own formats; lightmap.bake makes the lightmap again.
+            if (name == "light_data") {
+                problems_.add("LightmapGI.light_data", node.declared,
+                              "Godot's baked lightmaps aren't read; bake again with lightmap.bake");
+                return true;
+            }
         }
         if (name == "shape" && components.contains("CollisionShape3D")) {
             convert_shape_3d(value, file, components["CollisionShape3D"], node);

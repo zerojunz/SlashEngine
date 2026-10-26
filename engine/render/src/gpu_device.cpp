@@ -124,6 +124,8 @@ constexpr SDL_GPUTextureFormat gpu_format(TextureFormat format) {
         return SDL_GPU_TEXTUREFORMAT_BC7_RGBA_UNORM;
     case TextureFormat::Astc4x4:
         return SDL_GPU_TEXTUREFORMAT_ASTC_4x4_UNORM;
+    case TextureFormat::Rgba16F:
+        return SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT;
     case TextureFormat::Rgba8:
         break;
     }
@@ -2101,7 +2103,7 @@ private:
     }
 
     // Vertex3D's fields as the mesh and shadow shaders' inputs.
-    static std::array<SDL_GPUVertexAttribute, 5> mesh_attributes() {
+    static std::array<SDL_GPUVertexAttribute, 6> mesh_attributes() {
         return {{
             {.location = 0,
              .buffer_slot = 0,
@@ -2123,6 +2125,10 @@ private:
              .buffer_slot = 0,
              .format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM,
              .offset = offsetof(Vertex3D, rgba)},
+            {.location = 5,
+             .buffer_slot = 0,
+             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
+             .offset = offsetof(Vertex3D, uv2)},
         }};
     }
 
@@ -2163,7 +2169,7 @@ private:
         buffer.slot = 0;
         buffer.pitch = sizeof(Vertex3D);
         buffer.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
-        const std::array<SDL_GPUVertexAttribute, 5> attributes = mesh_attributes();
+        const std::array<SDL_GPUVertexAttribute, 6> attributes = mesh_attributes();
         SDL_GPUColorTargetDescription color{};
         color.format = format;
         if (blended) {
@@ -2230,7 +2236,7 @@ private:
         buffer.slot = 0;
         buffer.pitch = sizeof(Vertex3D);
         buffer.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
-        const std::array<SDL_GPUVertexAttribute, 5> attributes = mesh_attributes();
+        const std::array<SDL_GPUVertexAttribute, 6> attributes = mesh_attributes();
         SDL_GPUColorTargetDescription color{};
         color.format = kNormalFormat;
         SDL_GPUGraphicsPipelineCreateInfo info{};
@@ -2382,7 +2388,7 @@ private:
             }
             shadow_shaders_ = {vertex.value(), fragment.value()};
         }
-        const std::array<SDL_GPUVertexAttribute, 5> attributes = mesh_attributes();
+        const std::array<SDL_GPUVertexAttribute, 6> attributes = mesh_attributes();
         SDL_GPUVertexBufferDescription buffer{};
         buffer.slot = 0;
         buffer.pitch = sizeof(Vertex3D);
@@ -4311,7 +4317,7 @@ private:
     std::array<SDL_GPUSampler*, 4> samplers_{}; // by sampler_index
     SDL_GPUTexture* white_ = nullptr;
     // Which formats the GPU samples, by TextureFormat.
-    std::array<bool, 3> sampled_{true, false, false};
+    std::array<bool, 4> sampled_{true, false, false, true};
     SDL_GPUBuffer* vertex_buffer_ = nullptr;
     SDL_GPUTransferBuffer* vertex_transfer_ = nullptr;
     std::uint32_t vertex_capacity_ = 0;
