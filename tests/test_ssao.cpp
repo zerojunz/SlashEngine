@@ -118,9 +118,10 @@ Image draw_corner(RenderDevice& device, const Corner& corner) {
     floating.roughness = 1.0F;
     floating.cull = render::CullMode::Disabled;
     REQUIRE(device.draw_mesh(mesh.value(), kFloating, floating).ok());
-    REQUIRE(device.end_frame().ok());
+    const auto ended = device.end_frame();
+    REQUIRE_MESSAGE(ended.ok(), (ended.ok() ? std::string() : ended.error().message));
     auto image = device.read_texture(target.value());
-    REQUIRE(image.ok());
+    REQUIRE_MESSAGE(image.ok(), (image.ok() ? std::string() : image.error().message));
     device.destroy_mesh(mesh.value());
     device.destroy_texture(target.value());
     return image.value();
