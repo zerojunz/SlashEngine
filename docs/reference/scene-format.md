@@ -1216,7 +1216,8 @@ file's skin deformers and animation stacks are read as [FBX models](#fbx-models)
   `AnimationPlayer` plays an imported scene's library. A [`.anim.json` animation](#animations) can
   come `from` a model's animation and add tracks of its own, such as footsteps. An animation from
   another model moves the nodes of the same names, so one rig's animations can play on every model
-  made from it. The pose follows the player's `time` while paused too.
+  made from it, or every [retargeted](#retargeting) humanoid. The pose follows the player's
+  `time` while paused too.
 - A model is posed from its rest, then by its animation, then by its `Skeleton3D`, each time it
   is drawn, so undo, snapshots and dry runs always draw what the components say. Between ticks it
   is drawn part of the way from its last pose, as entities are.
@@ -1233,6 +1234,39 @@ file's skin deformers and animation stacks are read as [FBX models](#fbx-models)
 `Skeleton3D` bone the model hasn't (with "did you mean") and one on an entity that draws no
 model. [examples/skinned-meshes](../../examples/skinned-meshes/) waves a skinned arm, from a
 glTF file and from the same arm as an FBX file.
+
+#### Retargeting
+
+Humanoids rigged in different tools name and turn their bones differently.
+[`model.retarget`](commands.md#modelretarget) makes a rigged model's skeleton Godot's
+`SkeletonProfileHumanoid`, as Godot's importer does with a `BoneMap`, so animations made for one
+retargeted humanoid play on every other:
+
+- The bone map says which of the model's bones is each of the profile's 56 (`Root`, `Hips`,
+  `Spine`, `Chest`, `UpperChest`, `Neck`, `Head`, then each side's shoulder, arm, hand, five
+  fingers of three bones, leg, foot and toes, as `LeftUpperArm`, `LeftIndexProximal`,
+  `RightLowerLeg`). It is guessed as Godot's `BoneMapper` guesses it, from the words in the
+  bones' names and where they are in the hierarchy, so Mixamo's and Blender's names map with no
+  help. The skeleton is the model's largest.
+- The nodes above the skeleton fold into it: their turn into its roots and their scale into
+  every bone's position, as Godot's `apply_node_transforms`, so a rig in centimeters under an
+  armature scaled by 0.01 comes out in meters.
+- Mapped bones take the profile's names; a node that already has one moves aside (`Spine`
+  becomes `Spine2`).
+- Each mapped bone's rest is turned to lie as the profile's does (y along the bone, z forward),
+  bones that aren't mapped and have none mapped under them keep their rest in the world, and every
+  skin, animation and node a bone carries turns with it, so the model looks and moves as it did
+  (Godot's Overwrite Axis). `fix_silhouette` first turns bones that point more than 15 degrees
+  away from the profile's T-pose toward it, as for an A-pose.
+- Each animation gets a rotation key at its start for each mapped bone it doesn't move, and loses
+  the position tracks of mapped bones other than `Root` and `Hips`, whose lengths differ between
+  characters.
+
+Godot also divides position tracks by the skeleton's motion scale, the hips' height, which a
+glTF file can't keep. Instead, an animation from another model whose motion scale differs (both
+skinned, both with a node named `Hips`) has its bones' position tracks scaled by the ratio, so a
+short character's hips move less. [examples/humanoid-retarget](../../examples/humanoid-retarget/)
+plays a Mixamo hero's wave on a Blender knight.
 
 #### IK modifiers
 
