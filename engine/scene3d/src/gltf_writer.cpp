@@ -111,6 +111,8 @@ struct Writer {
     std::map<std::tuple<int, int, int, int>, int> samplers; // by filters and wraps
     std::map<std::pair<int, int>, int> textures;            // by image and sampler
     std::vector<std::string> extensions;
+    // A .glb file's: every image in the buffer, those beside the model read with read.
+    const ModelReader* read = nullptr;
 
     void uses(std::string_view extension) {
         if (std::ranges::find(extensions, extension) == extensions.end()) {
@@ -127,7 +129,7 @@ struct Writer {
         return static_cast<int>(list.size()) - 1;
     }
 
-    // Bytes as a buffer view, at a multiple of four as accessors need.
+    // Bytes as a buffer view, at a multiple of four as accessors need; target 0 for none.
     int view(std::string_view bytes, int target) {
         while (bin.size() % 4 != 0) {
             bin.push_back('\0');
@@ -136,7 +138,9 @@ struct Writer {
         out["buffer"] = 0;
         out["byteOffset"] = static_cast<std::int64_t>(bin.size());
         out["byteLength"] = static_cast<std::int64_t>(bytes.size());
-        out["target"] = target;
+        if (target != 0) {
+            out["target"] = target;
+        }
         bin.append(bytes);
         return add("bufferViews", std::move(out));
     }
@@ -157,8 +161,63 @@ struct Writer {
         return add("accessors", std::move(out));
     }
 
+    // An image in the buffer, as a .glb file holds it: a PNG or JPEG file as it is, anything
+    // else as a PNG.
+    Result<int> embedded(const ModelImage& in) {
+        std::string bytes;
+        std::string mime = "image/png";
+        if (in.path.empty()) {
+            auto png = render::encode_png(in.image);
+            if (!png) {
+                return png.error();
+            }
+            bytes = std::move(png).value();
+        } else {
+            auto file = (*read)(in.path);
+            if (!file) {
+                return file.error();
+            }
+            std::string lower = in.path;
+            std::ranges::transform(lower, lower.begin(), [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+            if (lower.ends_with(".jpg") || lower.ends_with(".jpeg")) {
+                mime = "image/jpeg";
+                bytes = std::move(file).value();
+            } else if (lower.ends_with(".png")) {
+                bytes = std::move(file).value();
+            } else {
+                auto decoded = render::decode_image(file.value());
+                if (!decoded) {
+                    return make_error(ErrorCode::InvalidArgument,
+                                      "\"" + in.path + "\": " + decoded.error().message);
+                }
+                auto png = render::encode_png(decoded.value());
+                if (!png) {
+                    return png.error();
+                }
+                bytes = std::move(png).value();
+            }
+        }
+        json::Value out = json::Object{};
+        out["bufferView"] = view(bytes, 0);
+        out["mimeType"] = mime;
+        const int index = add("images", std::move(out));
+        if (!in.path.empty()) {
+            image_paths.emplace(in.path, index);
+        }
+        return index;
+    }
+
     // An image, by its index in the model or by the path of a file a material names.
     Result<int> image(const ModelImage& in) {
+        if (read != nullptr) {
+            if (const auto it = image_paths.find(in.path);
+                !in.path.empty() && it != image_paths.end()) {
+                return it->second;
+            }
+            return embedded(in);
+        }
         if (!in.path.empty()) {
             if (const auto it = image_paths.find(in.path); it != image_paths.end()) {
                 return it->second;
@@ -394,9 +453,10 @@ json::Array numbers(const Vec3& v) {
     return {v.x, v.y, v.z};
 }
 
-} // namespace
-
-Result<std::string> write_gltf(const Model& model, std::string_view path) {
+// The glTF document of a model and its buffer's bytes, which a .gltf file holds in a data URI
+// and a .glb file after the document; with read, every image goes in the buffer.
+Result<std::pair<json::Value, std::string>> document_of(const Model& model, std::string_view path,
+                                                        const ModelReader* read) {
     const std::size_t slash = path.rfind('/');
     Writer writer{.model = model,
                   .folder =
@@ -407,7 +467,8 @@ Result<std::string> write_gltf(const Model& model, std::string_view path) {
                   .model_images = {},
                   .samplers = {},
                   .textures = {},
-                  .extensions = {}};
+                  .extensions = {},
+                  .read = read};
     writer.document["asset"]["version"] = "2.0";
     writer.document["asset"]["generator"] = "SlashEngine";
     for (const ModelMaterial& in : model.materials) {
@@ -538,10 +599,60 @@ Result<std::string> write_gltf(const Model& model, std::string_view path) {
     if (!writer.bin.empty()) {
         json::Value buffer = json::Object{};
         buffer["byteLength"] = static_cast<std::int64_t>(writer.bin.size());
-        buffer["uri"] = "data:application/octet-stream;base64," + base64_encode(writer.bin);
+        if (read == nullptr) {
+            buffer["uri"] = "data:application/octet-stream;base64," + base64_encode(writer.bin);
+        }
         writer.add("buffers", std::move(buffer));
     }
-    return json::write(writer.document, json::Style::Pretty) + "\n";
+    return std::pair(std::move(writer.document), std::move(writer.bin));
+}
+
+void append_u32(std::string& out, std::uint32_t value) {
+    for (std::uint32_t shift = 0; shift < 32; shift += 8) {
+        out.push_back(static_cast<char>((value >> shift) & 0xFFU));
+    }
+}
+
+} // namespace
+
+Result<std::string> write_gltf(const Model& model, std::string_view path) {
+    auto made = document_of(model, path, nullptr);
+    if (!made) {
+        return made.error();
+    }
+    return json::write(made.value().first, json::Style::Pretty) + "\n";
+}
+
+Result<std::string> write_glb(const Model& model, std::string_view path, const ModelReader& read) {
+    auto made = document_of(model, path, &read);
+    if (!made) {
+        return made.error();
+    }
+    // The GLB container: a header, then the JSON chunk padded with spaces and the binary chunk
+    // padded with zeros, each to four bytes.
+    std::string text = json::write(made.value().first, json::Style::Compact);
+    while (text.size() % 4 != 0) {
+        text.push_back(' ');
+    }
+    std::string& bin = made.value().second;
+    while (bin.size() % 4 != 0) {
+        bin.push_back('\0');
+    }
+    const std::size_t length = 12 + 8 + text.size() + (bin.empty() ? 0 : 8 + bin.size());
+    std::string out;
+    out.reserve(length);
+    out += "glTF";
+    append_u32(out, 2);
+    append_u32(out, static_cast<std::uint32_t>(length));
+    append_u32(out, static_cast<std::uint32_t>(text.size()));
+    out += "JSON";
+    out += text;
+    if (!bin.empty()) {
+        append_u32(out, static_cast<std::uint32_t>(bin.size()));
+        out += std::string_view("BIN\0", 4);
+        out += bin;
+    }
+    return out;
 }
 
 } // namespace slash::scene3d

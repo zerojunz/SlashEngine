@@ -213,6 +213,15 @@ void check_models(const json::Object& entries, const std::vector<std::string>& m
                   const std::function<std::optional<ModelFacts>(std::string_view path)>& load,
                   std::vector<FileError>& errors);
 
+// The tightest budget covering a path that sets a field ("triangles" or "texture_size"), as
+// check_models and check_textures cover paths: its ID and the limit, or nullopt for none.
+struct BudgetLimit {
+    std::string id;
+    std::int64_t most = 0;
+};
+[[nodiscard]] std::optional<BudgetLimit> budget_for(const json::Object& entries,
+                                                    std::string_view path, std::string_view field);
+
 // An asset agents accepted, for style_edits.
 struct Accepted {
     std::string path;             // its project path
