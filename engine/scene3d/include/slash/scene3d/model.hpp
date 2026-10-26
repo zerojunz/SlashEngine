@@ -157,6 +157,19 @@ struct ModelAnimation {
     double frame_rate = 0.0;
 };
 
+// A collision shape that comes with a model, as Godot's importer makes one of a mesh whose node's
+// name ends with a collision hint: the mesh's triangles ("-col", "-colonly") or their convex hull
+// ("-convcol", "-convcolonly"), in the model's space at rest.
+struct ModelCollision {
+    std::string node;    // the node's name, the hint taken off
+    int node_index = -1; // into Model::nodes; -1 for a model without them (OBJ)
+    bool convex = false;
+    std::vector<Vec3> points;
+    // Triangles over points, three corners each in Godot's winding: a trimesh's faces, or the
+    // faces of a convex hull, whose points alone make its shape.
+    std::vector<std::uint32_t> indices;
+};
+
 struct Model {
     std::vector<ModelMesh> meshes;
     std::vector<ModelMaterial> materials;
@@ -167,7 +180,16 @@ struct Model {
     std::vector<ModelNode> nodes;
     std::vector<ModelSkin> skins;
     std::vector<ModelAnimation> animations;
+    // What it collides as; see apply_import_hints.
+    std::vector<ModelCollision> collision{}; // NOLINT(readability-redundant-member-init)
 };
+
+// Godot's collision import hints (ResourceImporterScene::_pre_fix_node), which load_model applies
+// to every model: a part whose node's name ends with "-col" or "-convcol" ("_" in place of "-",
+// any case, or "$col" anywhere) keeps drawing and also collides as its mesh's triangles or their
+// convex hull, and one ending with "-colonly" or "-convcolonly" only collides, its mesh no longer
+// drawn. The hint is taken off the node's name either way.
+void apply_import_hints(Model& model);
 
 // Makes a surface's LODs, as Godot's importer does for every model it imports
 // (ImporterMesh::generate_lods): corners at one position that agree on their normals (within
@@ -263,6 +285,15 @@ struct ModelSummary {
     };
     std::vector<Point> points;
     std::vector<std::string> animations;
+    // What it collides as (Model::collision): each shape's name, whether it is a convex hull or
+    // a trimesh, and its points and triangles.
+    struct Collision {
+        std::string name;
+        bool convex = false;
+        std::size_t points = 0;
+        std::size_t triangles = 0;
+    };
+    std::vector<Collision> collision{}; // NOLINT(readability-redundant-member-init)
 };
 [[nodiscard]] ModelSummary summarize(const Model& model);
 

@@ -162,7 +162,7 @@ Every line in the repo is Apache 2.0 or comes from a dependency under a permissi
 | meshoptimizer | LODs, mesh compression | MIT |
 | Manifold | CSG and parametric models | Apache 2.0 |
 | xatlas | UV unwrapping | MIT |
-| CoACD | Convex collision hulls | MIT |
+| V-HACD | Convex decomposition into collision hulls, as Godot | BSD-3-Clause |
 | ENet | Networking | MIT |
 | OpenXR SDK | XR | Apache 2.0 |
 | dav1d | Video | BSD |
@@ -362,7 +362,7 @@ Generated 3D meshes are usually too dense, badly scaled, hard to edit and lit in
 
 - **Parametric models first.** Many props, buildings and hard-surface objects are better written than generated. An agent writes a `.model.json` recipe (primitives, CSG on Manifold, extrusions, lathes, bevels, arrays, all with named parameters) and the engine builds the mesh. Recipes are small, exact and reproducible, and refining one means changing a number rather than generating again. This is Godot's CSG idea, written as text.
 - **Concept image, then model.** For organic shapes a generator makes a cheap 2D concept first. The agent reviews it, and only then is a 3D model made from the image. The image stays in the library as the model's parent.
-- **Game-ready cleanup.** Every generated or imported mesh is set to real-world scale, given a sensible pivot and up axis, reduced to a triangle budget (meshoptimizer), unwrapped (xatlas), rebaked into PBR textures with baked-in lighting removed, given LODs and given collision hulls (CoACD).
+- **Game-ready cleanup.** Every generated or imported mesh is set to real-world scale, given a sensible pivot and up axis, reduced to a triangle budget (meshoptimizer), unwrapped (xatlas), rebaked into PBR textures with baked-in lighting removed, given LODs and given collision hulls (V-HACD, as Godot).
 - **Automatic review.** The engine renders turntable views headless, checks the geometry (budget, scale, holes, texel density) and asks a vision-capable model through `ai::Provider` whether the views match the request. The results are recorded with `asset.feedback`, and a failed check retries within a call budget the caller sets.
 - **Described in text.** Each model comes with its size, pivot, named parts, materials, triangle count and attachment points, so agents place and combine models without loading images.
 - **Parts, rigs and animation.** Named parts and attachment points let wheels turn, doors open and parts from different models combine. Characters are auto-rigged through a generator adapter and retargeted to one standard humanoid skeleton, so every animation in the library works on every character.

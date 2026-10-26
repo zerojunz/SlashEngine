@@ -1048,8 +1048,16 @@ out of a model, and `write_glb` as one `.glb` file holding everything. `model.cl
 (`engine/command/src/model_cleanup.cpp`, on `scene3d::cleanup_model` in `src/cleanup.cpp`) makes a
 generated or imported model game-ready as a `.glb`: up turned to y, simplified with meshoptimizer
 to the storyboard's triangle budget (`storyboard::budget_for`) with LODs made again, sized, moved
-to a pivot and unwrapped with xatlas where it has no texture coordinates; `examples/model-cleanup`
-cleans a CAD crate and a dense boulder. JPEG textures decode with stb_image's integer decoder
+to a pivot, unwrapped with xatlas where it has no texture coordinates and given collision;
+`examples/model-cleanup` cleans a CAD crate and a dense boulder. Models collide as Godot's
+importer makes them (`slash/scene3d/collision.hpp`, `src/collision.cpp`): `apply_import_hints`
+reads `-col`, `-convcol`, `-colonly` and `-convcolonly` on nodes' names into `Model::collision`
+when a model loads, `generate_collision` makes a trimesh, a hull or V-HACD's convex
+decomposition (`src/vhacd_build.cpp`, built with `-ffp-contract=off` and patched by
+`cmake/patches/vhacd-deterministic.cmake` so hulls are the same everywhere), and `write_glb`
+writes them back as hinted nodes. physics3d makes each `MeshInstance3D` whose model collides a
+static body of `model_shapes`, or adds them to the body it is on or under (`add_model_shapes` in
+`engine/physics3d/src/space.cpp`). `examples/model-collision` drops balls on a yard and an arch. JPEG textures decode with stb_image's integer decoder
 (`engine/render/src/jpeg.c`). `tests/gltf.hpp` writes test models in code, so none is committed;
 `examples/models-3d` is a house from a `.gltf` file.
 

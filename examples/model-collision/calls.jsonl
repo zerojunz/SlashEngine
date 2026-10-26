@@ -1,0 +1,10 @@
+{"jsonrpc":"2.0","id":1,"method":"model.inspect","params":{"path":"source/yard.obj","brief":true}}
+{"jsonrpc":"2.0","id":2,"method":"model.cleanup","params":{"path":"source/arch.model.json","out":"props/arch.glb","collision":"decompose","max_hulls":6}}
+{"jsonrpc":"2.0","id":3,"method":"model.inspect","params":{"path":"props/arch.glb","brief":true}}
+{"jsonrpc":"2.0","id":4,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":5,"method":"entity.create","params":{"id":"arch","components":{"Transform3D":{"position":[-2,0,0]},"MeshInstance3D":{"mesh":"props/arch.glb"}}}}
+{"jsonrpc":"2.0","id":6,"method":"step","params":{"ticks":120}}
+{"jsonrpc":"2.0","id":7,"method":"world.query","params":{"with":["RigidBody3D"],"include":["Transform3D"],"omit_defaults":true}}
+{"jsonrpc":"2.0","id":8,"method":"physics.raycast","params":{"from":[-2,1,2],"to":[-2,1,-2]}}
+{"jsonrpc":"2.0","id":9,"method":"physics.raycast","params":{"from":[-3,1,2],"to":[-3,1,-2]}}
+{"jsonrpc":"2.0","id":10,"method":"physics.raycast","params":{"from":[-2.8,2,-2.8],"to":[-2.8,-1,-2.8]}}

@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <numbers>
 #include <string>
 #include <string_view>
@@ -1042,4 +1043,67 @@ TEST_CASE("a wheel moved by hand is mounted where it was put") {
     CHECK_FALSE(car.wheel("front_left").in_contact);
     CHECK(car.wheel("front_left").suspension_length == doctest::Approx(0.3F));
     CHECK(car.wheel("rear_left").in_contact);
+}
+
+TEST_CASE("a model's collision makes a static body, or is the shape of the body that draws it") {
+    // A floor that only collides, as Godot's "-colonly" hint makes it, and a crate that collides
+    // as its convex hull and draws nothing else.
+    const std::map<std::string, std::string, std::less<>> files{{"floor.obj", R"(o Floor-colonly
+v -2 0 -2
+v 2 0 -2
+v 2 0 2
+v -2 0 2
+f 1 4 3
+f 1 3 2
+)"},
+                                                                {"crate.obj", R"(o Crate-convcolonly
+v -0.5 -0.5 -0.5
+v 0.5 -0.5 -0.5
+v 0.5 0.5 -0.5
+v -0.5 0.5 -0.5
+v -0.5 -0.5 0.5
+v 0.5 -0.5 0.5
+v 0.5 0.5 0.5
+v -0.5 0.5 0.5
+f 1 3 2
+f 1 4 3
+f 5 6 7
+f 5 7 8
+f 1 2 6
+f 1 6 5
+f 4 8 7
+f 4 7 3
+f 1 5 8
+f 1 8 4
+f 2 3 7
+f 2 7 6
+)"}};
+    Physics physics;
+    physics.world.set_file_reader([&files](std::string_view path) -> slash::Result<std::string> {
+        const auto found = files.find(path);
+        if (found == files.end()) {
+            return slash::make_error(slash::ErrorCode::NotFound, "no such file");
+        }
+        return found->second;
+    });
+    physics.world.ecs().emplace<world::MeshInstance3D>(physics.add("floor", {})).mesh = "floor.obj";
+    const entt::entity ball = physics.add("ball", {0.0F, 2.0F, 0.0F});
+    physics.world.ecs().emplace<world::RigidBody3D>(ball);
+    physics.world.ecs().emplace<world::CollisionShape3D>(ball, sphere_shape(0.25F));
+    // The crate's rigid body takes its model's hull as a CollisionShape3D of its own.
+    const entt::entity crate = physics.add("crate", {1.25F, 3.0F, 0.0F});
+    physics.world.ecs().emplace<world::RigidBody3D>(crate);
+    physics.world.ecs().emplace<world::MeshInstance3D>(crate).mesh = "crate.obj";
+    physics.step(180);
+    CHECK(physics.position("ball").y == doctest::Approx(0.25F).epsilon(0.02));
+    CHECK(physics.position("crate").y == doctest::Approx(0.5F).epsilon(0.02));
+    const auto hit = physics3d::raycast(physics.world, {-1.0F, 1.0F, 1.0F}, {-1.0F, -1.0F, 1.0F});
+    REQUIRE(hit.has_value());
+    CHECK(physics.world.id_of(hit->entity) == "floor");
+    CHECK(hit->point.y == doctest::Approx(0.0F));
+
+    // Off the floor's model, the ball falls through.
+    physics.get<world::MeshInstance3D>("floor").mesh = "";
+    physics.step(60);
+    CHECK(physics.position("ball").y < 0.0F);
 }

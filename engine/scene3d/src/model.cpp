@@ -1029,6 +1029,7 @@ Result<Model> load_model(std::string_view bytes, std::string_view path, const Mo
         model = read_gltf(bytes, file, read);
     }
     if (model) {
+        apply_import_hints(model.value());
         add_lods(model.value());
     }
     return model;
@@ -1184,6 +1185,13 @@ ModelSummary summarize(const Model& model) {
             taken[joint] = true;
         }
     }
+    // Nor are the nodes collision came from, which Godot's importer makes static bodies.
+    for (const ModelCollision& collision : model.collision) {
+        if (collision.node_index >= 0 &&
+            static_cast<std::size_t>(collision.node_index) < taken.size()) {
+            taken[static_cast<std::size_t>(collision.node_index)] = true;
+        }
+    }
     const std::vector<world::Affine3D> globals = node_globals(model, rest_pose(model));
     for (std::size_t i = 0; i < model.nodes.size(); ++i) {
         if (taken[i]) {
@@ -1206,6 +1214,14 @@ ModelSummary summarize(const Model& model) {
     out.animations.reserve(model.animations.size());
     for (const ModelAnimation& animation : model.animations) {
         out.animations.push_back(animation.name);
+    }
+    for (const ModelCollision& collision : model.collision) {
+        ModelSummary::Collision shape;
+        shape.name = collision.node;
+        shape.convex = collision.convex;
+        shape.points = collision.points.size();
+        shape.triangles = collision.indices.size() / 3;
+        out.collision.push_back(std::move(shape));
     }
     return out;
 }
@@ -1233,6 +1249,10 @@ std::size_t model_bytes(const Model& model) {
     }
     for (const ModelImage& image : model.images) {
         bytes += image.image.pixels.capacity();
+    }
+    for (const ModelCollision& collision : model.collision) {
+        bytes += sizeof(ModelCollision) + (collision.points.capacity() * sizeof(Vec3)) +
+                 (collision.indices.capacity() * sizeof(std::uint32_t));
     }
     return bytes + (model.materials.size() * sizeof(ModelMaterial)) +
            (model.parts.size() * sizeof(ModelPart));

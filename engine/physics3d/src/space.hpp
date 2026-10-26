@@ -1,6 +1,7 @@
 #pragma once
 
 #include "slash/physics3d/physics3d.hpp"
+#include "slash/scene3d/collision.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/world/components.hpp"
@@ -215,6 +216,15 @@ struct ShapeKey {
     std::shared_ptr<const scene3d::TerrainData> terrain;
     Vec3 terrain_scale{1.0F, 1.0F, 1.0F};
     bool terrain_centered = false;
+    // The collision of models the body's entity and the entities under it draw, as scene3d
+    // keeps it, each placed in the body's scaled space as those entities are.
+    struct Model {
+        std::shared_ptr<const std::vector<world::CollisionShape3D>> shapes;
+        world::Affine3D local;
+
+        friend bool operator==(const Model&, const Model&) = default;
+    };
+    std::vector<Model> models{}; // NOLINT(readability-redundant-member-init)
 
     friend bool operator==(const ShapeKey&, const ShapeKey&) = default;
 };
@@ -244,8 +254,9 @@ struct Body {
     std::string name; // the entity's ID
     Kind kind = Kind::Static;
     // A CSG root with use_collision, a static body of its triangles as Godot's CSGShape3D's, a
-    // GridMap, a static body of its cells' shapes as its octants' bodies, or an HTerrain, a
-    // static height field as its collider: what scene3d makes.
+    // GridMap, a static body of its cells' shapes as its octants' bodies, an HTerrain, a
+    // static height field as its collider, or a model with collision, a static body as the one
+    // Godot's importer adds: what scene3d makes.
     bool generated = false;
     // Physical bones: what their simulator makes of them.
     world::PhysicalBoneMode bone_mode = world::PhysicalBoneMode::Static;
@@ -481,9 +492,9 @@ public:
     [[nodiscard]] world::MemoryPart memory() const;
 
 private:
-    // A static body scene3d makes: a CSG root's triangles, a GridMap's cells' shapes or an
-    // HTerrain's heights, with
-    // their collision layer and mask and physics material.
+    // A static body scene3d makes: a CSG root's triangles, a GridMap's cells' shapes, an
+    // HTerrain's heights or a model's collision, with their collision layer and mask and physics
+    // material.
     struct MadeShape {
         std::uint32_t layer = 1;
         std::uint32_t mask = 1;
@@ -494,6 +505,7 @@ private:
         std::shared_ptr<const scene3d::TerrainData> terrain;
         Vec3 terrain_scale{1.0F, 1.0F, 1.0F};
         bool terrain_centered = false;
+        std::shared_ptr<const std::vector<world::CollisionShape3D>> model;
     };
 
     void create_system();

@@ -694,6 +694,9 @@ Give `path` or `id`. Needs: `read`.
   name, length in seconds, `loop` if it loops and how many tracks it has.
   [`skeleton.get`](#skeletonget) lists the bones.
 - `bounds` are the corners of the box the parts fill at rest, in the model's own meters.
+- `collision` is there only for a model with [collision](scene-format.md#model-collision): each
+  shape's `name`, `shape` (`"convex"` or `"trimesh"`), and how many `points` and `triangles` it
+  has.
 
 With `brief`, it describes the model in a few numbers and names instead, so an agent can place
 it, and things on it, without drawing it:
@@ -720,6 +723,8 @@ it, and things on it, without drawing it:
   A [`BoneAttachment3D`](scene-format.md#bone-attachments)'s `bone_name` follows one, and a
   `Skeleton3D` turns a part by its name.
 - `animations` are the names of its animations, for a model with any.
+- `collision` lists its [collision](scene-format.md#model-collision) shapes, as the full form
+  does, for a model with any. Collision nodes aren't `points`.
 
 A model that doesn't load is an error at `/path` (or `/id`) saying why, as
 [`scene validate`](cli.md#scene-validate) reports it.
@@ -738,6 +743,12 @@ Godot's glTF export writes one. The steps run in this order:
 4. `pivot` moves it so its origin is at that point of its box.
 5. With `uvs`, each surface whose vertices all share one texture coordinate (none, in effect) is
    unwrapped with xatlas, as lightmap UVs are.
+6. `collision` makes what it collides as from the triangles it draws, as Godot's mesh import
+   "Generate > Physics" shape types: `"trimesh"` the triangles, `"convex"` one convex hull of at
+   most 32 corners, `"decompose"` convex hulls from V-HACD 4, as Godot's
+   `Mesh::convex_decompose` makes them (Godot's defaults: about 10000 voxels, 32 corners a hull),
+   the same hulls on every platform. It replaces the [collision](scene-format.md#model-collision)
+   the model had; without it, that collision is turned, sized and moved with the model.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -749,10 +760,13 @@ Godot's glTF export writes one. The steps run in this order:
 | `pivot` | array | | Where its origin goes in its box, 0 to 1 on each axis, as `model.inspect`'s brief `pivot`: `[0.5, 0, 0.5]` stands it on the ground, centered |
 | `triangles` | integer | the storyboard's | The most triangles it may have, 0 for no limit; left out, the tightest [budget](storyboard-format.md#checks) covering `out` that sets `triangles` |
 | `uvs` | boolean | `true` | Unwrap surfaces without texture coordinates |
+| `collision` | string | | Collision to make: `"trimesh"`, `"convex"` or `"decompose"` |
+| `max_hulls` | integer | `16` | The most hulls `"decompose"` makes, 1 to 256; only with it |
 
 Needs: `edit`, `filesystem`. Undo takes the file back. Models with skins or animations are refused
 for now, as are a budget the simplifier can't get under (`/triangles`, or `/out` for the
-storyboard's) and a `height` for a model flat along y.
+storyboard's) and a `height` for a model flat along y; so are `"convex"` and `"decompose"` for
+a model flat in some direction, which makes no hull (`/collision`).
 
 ```json
 {"path": "source/boulder.model.json", "out": "props/boulder.glb", "height": 0.8, "pivot": [0.5, 0, 0.5]}
@@ -765,7 +779,8 @@ storyboard's) and a `height` for a model flat along y.
 `triangles` are the model's before and after, counting each mesh once for every part that draws
 it; `budget` is the storyboard entry the limit came from; `size` and `pivot` are the result's, as
 `model.inspect`'s brief form gives them; `unwrapped` counts the surfaces given texture
-coordinates, when there are any; and `unchanged` is `true` when `out` already held the same bytes.
+coordinates, when there are any; `collision` counts the result's collision shapes by kind, as
+`{"convex": 6}`, when it has any; and `unchanged` is `true` when `out` already held the same bytes.
 
 ### skeleton.get
 
