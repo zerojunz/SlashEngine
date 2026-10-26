@@ -73,6 +73,21 @@ constexpr SDL_GPUTextureFormat ssao_gpu_format(SsaoFormat format) {
     return SDL_GPU_TEXTUREFORMAT_R32_FLOAT;
 }
 
+// Direct3D 12's SSAO shaders, each for a group of ssao.hlsl's passes (SSAO_PASS_FIRST to
+// SSAO_PASS_LAST), as Godot's are: the depth, the gather, the importance map, the blur and the
+// interleave. WARP loses the device running the shader with every pass in it.
+constexpr std::array<std::array<std::uint32_t, 2>, 5> kSsaoShaderGroups{
+    {{0, 0}, {1, 3}, {4, 8}, {9, 11}, {12, 14}}};
+
+constexpr std::size_t ssao_shader_group(SsaoPass pass) {
+    const auto kind = static_cast<std::uint32_t>(pass);
+    std::size_t group = 0;
+    while (kSsaoShaderGroups.at(group)[1] < kind) {
+        ++group;
+    }
+    return group;
+}
+
 constexpr SDL_GPUTextureFormat gpu_format(TextureFormat format) {
     switch (format) {
     case TextureFormat::Bc7:
@@ -320,8 +335,10 @@ public:
                 SDL_ReleaseGPUShader(device_, shader);
             }
         }
-        for (const auto& [format, pipeline] : ssao_pipelines_) {
-            SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+        for (const auto& made : ssao_pipelines_) {
+            for (const auto& [format, pipeline] : made) {
+                SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+            }
         }
         release_ssao_targets();
         for (SDL_GPUShader* shader : shadow_shaders_) {
@@ -2308,11 +2325,9 @@ private:
             prepass_depth.store_op = SDL_GPU_STOREOP_STORE;
             prepass_depth.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
             prepass_depth.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
-            prepass_depth.cycle = ssao_probe != 2;
+            prepass_depth.cycle = true;
             SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(commands, &normals, 1, &prepass_depth);
-            if (ssao_probe != 4) {
-                draw_batches(pass, true);
-            }
+            draw_batches(pass, true);
             SDL_EndGPURenderPass(pass);
             draw_ssao(commands, scene);
         }
@@ -2770,27 +2785,46 @@ private:
         if (ssao_shaders_[0] == nullptr) {
             const std::string vertex_msl = joined(shaders::kSsaoVertexMsl);
             const std::string fragment_msl = joined(shaders::kSsaoFragmentMsl);
-            const ShaderCode code{.vertex_spirv = shaders::kSsaoVertexSpirv,
-                                  .fragment_spirv = shaders::kSsaoFragmentSpirv,
-                                  .vertex_msl = vertex_msl,
-                                  .fragment_msl = fragment_msl,
-                                  .hlsl = shaders::kSsaoHlsl};
+            ShaderCode code{.vertex_spirv = shaders::kSsaoVertexSpirv,
+                            .fragment_spirv = shaders::kSsaoFragmentSpirv,
+                            .vertex_msl = vertex_msl,
+                            .fragment_msl = fragment_msl,
+                            .hlsl = shaders::kSsaoHlsl};
             auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 0);
             if (!vertex) {
                 return vertex.error();
             }
-            auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, kSsaoSlots, 1);
-            if (!fragment) {
-                SDL_ReleaseGPUShader(device_, vertex.value());
-                return fragment.error();
+            ssao_split_ = (SDL_GetGPUShaderFormats(device_) & SDL_GPU_SHADERFORMAT_DXBC) != 0 &&
+                          (SDL_GetGPUShaderFormats(device_) &
+                           (SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_MSL)) == 0;
+            const std::size_t count = ssao_split_ ? kSsaoShaderGroups.size() : 1;
+            for (std::size_t group = 0; group < count; ++group) {
+                std::string hlsl;
+                if (ssao_split_) {
+                    hlsl = "#define SSAO_PASS_FIRST " +
+                           std::to_string(kSsaoShaderGroups.at(group)[0]) +
+                           "\n#define SSAO_PASS_LAST " +
+                           std::to_string(kSsaoShaderGroups.at(group)[1]) + "\n" +
+                           std::string(shaders::kSsaoHlsl);
+                    code.hlsl = hlsl;
+                }
+                auto fragment =
+                    make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, kSsaoSlots, 1);
+                if (!fragment) {
+                    SDL_ReleaseGPUShader(device_, vertex.value());
+                    for (SDL_GPUShader*& made : ssao_shaders_) {
+                        if (made != nullptr) {
+                            SDL_ReleaseGPUShader(device_, std::exchange(made, nullptr));
+                        }
+                    }
+                    return fragment.error();
+                }
+                ssao_shaders_.at(1 + group) = fragment.value();
             }
-            ssao_shaders_ = {vertex.value(), fragment.value()};
+            ssao_shaders_[0] = vertex.value();
         }
-        for (const SsaoFormat format :
-             {SsaoFormat::R16F, SsaoFormat::RG8, SsaoFormat::R8, SsaoFormat::R32F}) {
-            if (auto pipeline =
-                    fullscreen_pipeline(ssao_pipelines_, ssao_shaders_, ssao_gpu_format(format));
-                !pipeline) {
+        for (const SsaoStep& step : ssao_plan(settings, width, height).steps) {
+            if (auto pipeline = ssao_pipeline(step); !pipeline) {
                 return pipeline.error();
             }
         }
@@ -2862,24 +2896,24 @@ private:
         ssao_targets_.height = 0;
     }
 
+    // The pipeline drawing an SSAO pass into its target's format.
+    Result<SDL_GPUGraphicsPipeline*> ssao_pipeline(const SsaoStep& step) {
+        const std::size_t group = ssao_split_ ? ssao_shader_group(step.pass) : 0;
+        return fullscreen_pipeline(ssao_pipelines_.at(group),
+                                   {ssao_shaders_[0], ssao_shaders_.at(1 + group)},
+                                   ssao_gpu_format(ssao_format(step.target)));
+    }
+
     // ssao.hlsl's passes, from the prepass's depth and normals to the occlusion at the frame's
     // size, in the order ssao_plan gives.
     void draw_ssao(SDL_GPUCommandBuffer* commands, const Scene3D& scene) {
         SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
         const SsaoPlan plan = ssao_plan(scene.ssao.settings, frame_width_, frame_height_);
-        std::size_t drawn = 0;
         for (const SsaoStep& step : plan.steps) {
-            if (drawn++ >= ssao_pass_limit) {
-                break;
-            }
-            SsaoUniforms uniforms =
+            const SsaoUniforms uniforms =
                 ssao_uniforms(scene.ssao, step, scene.projection, frame_width_, frame_height_);
-            if (ssao_probe == 3) {
-                uniforms.options[0] = 15;
-            }
             // Made in prepare_ssao, at the start of the frame.
-            auto pipeline = fullscreen_pipeline(ssao_pipelines_, ssao_shaders_,
-                                                ssao_gpu_format(ssao_format(step.target)));
+            auto pipeline = ssao_pipeline(step);
             if (!pipeline) {
                 return;
             }
@@ -2896,7 +2930,7 @@ private:
                 const std::uint32_t index = step.slots.at(slot);
                 SDL_GPUTexture* texture = white_;
                 if (index == kSsaoDepthBuffer) {
-                    texture = ssao_probe == 1 ? white_ : ssao_targets_.depth;
+                    texture = ssao_targets_.depth;
                 } else if (index == kSsaoNormals) {
                     texture = ssao_targets_.normals;
                 } else if (index < kSsaoTextures && ssao_targets_.textures.at(index) != nullptr) {
@@ -3717,8 +3751,13 @@ private:
     };
     SDL_GPUShader* normal_shader_ = nullptr;                     // the prepass's fragment stage
     std::array<SDL_GPUGraphicsPipeline*, 3> normal_pipelines_{}; // by CullMode
-    std::array<SDL_GPUShader*, 2> ssao_shaders_{};               // vertex, then fragment
-    std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> ssao_pipelines_;
+    // The vertex shader, then the fragment shader, or on Direct3D 12 one for each group of passes
+    // (kSsaoShaderGroups), and the pipelines for each.
+    std::array<SDL_GPUShader*, 1 + kSsaoShaderGroups.size()> ssao_shaders_{};
+    std::array<std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>>,
+               kSsaoShaderGroups.size()>
+        ssao_pipelines_;
+    bool ssao_split_ = false;
     SsaoTargets ssao_targets_;
     // The radiance meshes are lit by: the raw cube the sky draws into and the one filtered from
     // it, and what they hold (nullopt to draw them again).

@@ -664,29 +664,49 @@ float interleave_pass(int2 p, uint pass_kind) {
     return dot(values, weights) / weight_sum;
 }
 
+// Direct3D 12 makes a shader for each group of passes, from SSAO_PASS_FIRST to SSAO_PASS_LAST,
+// as Godot's SSAO is a shader per pass (downsample, gather, importance map, blur, interleave):
+// WARP loses the device running one shader with every pass in it. The other backends take one
+// shader for all.
+#ifndef SSAO_PASS_FIRST
+#define SSAO_PASS_FIRST 0
+#define SSAO_PASS_LAST 14
+#endif
+
 float4 fs_main(float4 position : SV_Position) : SV_Target0 {
     int2 p = (int2)position.xy;
     uint pass_kind = options.x;
-    if (pass_kind == 15u) {
-        return float4(0.0, 0.0, 0.0, 1.0);
-    }
     float2 result = float2(0.0, 0.0);
+#if SSAO_PASS_FIRST <= 0
     if (pass_kind == kDepth) {
         result.x = depth_pass(p);
-    } else if (pass_kind <= kGatherAdaptive) {
+    }
+#endif
+#if SSAO_PASS_FIRST <= 3 && SSAO_PASS_LAST >= 1
+    if (pass_kind >= kGather && pass_kind <= kGatherAdaptive) {
         result = gather_pass(p, pass_kind);
-    } else if (pass_kind == kImportanceGenerate) {
+    }
+#endif
+#if SSAO_PASS_FIRST <= 8 && SSAO_PASS_LAST >= 4
+    if (pass_kind == kImportanceGenerate) {
         result.x = importance_generate(p);
-    } else if (pass_kind <= kImportanceB) {
+    } else if (pass_kind == kImportanceA || pass_kind == kImportanceB) {
         result.x = importance_blur(p, pass_kind == kImportanceB);
     } else if (pass_kind == kImportanceRows) {
         result.x = importance_row(p.y);
     } else if (pass_kind == kImportanceSum) {
         result.x = importance_sum();
-    } else if (pass_kind <= kBlurWide) {
+    }
+#endif
+#if SSAO_PASS_FIRST <= 11 && SSAO_PASS_LAST >= 9
+    if (pass_kind >= kBlurPlain && pass_kind <= kBlurWide) {
         result = blur_pass(p, pass_kind);
-    } else {
+    }
+#endif
+#if SSAO_PASS_LAST >= 12
+    if (pass_kind >= kInterleavePlain) {
         result.x = interleave_pass(p, pass_kind);
     }
+#endif
     return float4(result, 0.0, 1.0);
 }
