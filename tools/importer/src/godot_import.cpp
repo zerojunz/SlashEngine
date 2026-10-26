@@ -2,7 +2,6 @@
 
 #include "common.hpp"
 #include "godot_binary.hpp"
-#include "godot_bones.hpp"
 #include "godot_terrain.hpp"
 #include "skeletons.hpp"
 
@@ -27,6 +26,7 @@
 #include "slash/runtime/project.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/model.hpp"
+#include "slash/scene3d/skin_tool.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
 #include "slash/storyboard/storyboard.hpp"
@@ -6960,11 +6960,11 @@ private:
         std::vector<scene3d::ModelNode> nodes;
         std::vector<std::string> names; // the nodes' names
         std::vector<bool> animated;     // by node
-        std::vector<godot::ModelSkeleton> skeletons;
+        std::vector<scene3d::ModelSkeleton> skeletons;
 
         // The skeleton at a node path in the model's Godot scene, or null.
-        [[nodiscard]] const godot::ModelSkeleton* skeleton(std::string_view path) const {
-            const auto found = std::ranges::find(skeletons, path, &godot::ModelSkeleton::path);
+        [[nodiscard]] const scene3d::ModelSkeleton* skeleton(std::string_view path) const {
+            const auto found = std::ranges::find(skeletons, path, &scene3d::ModelSkeleton::path);
             return found != skeletons.end() ? &*found : nullptr;
         }
         // A node's index by its name, or -1.
@@ -7004,7 +7004,7 @@ private:
                 }
             }
         }
-        info->skeletons = godot::model_skeletons(read);
+        info->skeletons = scene3d::model_skeletons(read);
         return &*info;
     }
 
@@ -7022,7 +7022,7 @@ private:
     struct BoneSource {
         const Node* owner = nullptr;     // the model's instance
         const ModelInfo* info = nullptr; // null if the model can't be read
-        const godot::ModelSkeleton* skeleton = nullptr;
+        const scene3d::ModelSkeleton* skeleton = nullptr;
         std::string under; // the model's node it is under: "Armature/Skeleton3D"
     };
 
@@ -7669,7 +7669,7 @@ private:
     void convert_model_overrides(const Node& node, json::Object& components) {
         const ModelInfo* info = model_info(node.model);
         for (const ModelOverride& set : node.model_overrides) {
-            const godot::ModelSkeleton* skeleton =
+            const scene3d::ModelSkeleton* skeleton =
                 info != nullptr ? info->skeleton(set.node) : nullptr;
             const bool sets_any = std::ranges::any_of(
                 set.properties, [](const Property& p) { return !ignored_property(p.name); });
@@ -7692,7 +7692,7 @@ private:
     }
 
     // One property a scene sets on a model's Skeleton3D, or a problem.
-    void skeleton_property(const ModelInfo& info, const godot::ModelSkeleton& skeleton,
+    void skeleton_property(const ModelInfo& info, const scene3d::ModelSkeleton& skeleton,
                            const Property& property, const std::string& declared,
                            json::Object& components) {
         const std::string& name = property.name;

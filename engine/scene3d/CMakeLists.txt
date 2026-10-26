@@ -63,7 +63,10 @@ add_library(slash_scene3d
     src/primitive.cpp
     src/recipe.cpp
     src/scene3d.cpp
+    src/retarget.cpp
+    src/humanoid.cpp
     src/skeleton.cpp
+    src/skin_tool.cpp
     src/terrain.cpp
     src/voxel_gi.cpp)
 add_library(slash::scene3d ALIAS slash_scene3d)

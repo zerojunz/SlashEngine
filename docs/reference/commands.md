@@ -61,7 +61,7 @@ as `entity.get`, reject it as an unknown param.
 | Assets | [`asset.list`](#assetlist) |
 | Materials | [`material.eval`](#materialeval) |
 | Animations | [`animation.eval`](#animationeval) |
-| Models | [`model.inspect`](#modelinspect), [`model.cleanup`](#modelcleanup), [`skeleton.get`](#skeletonget), [`csg.get`](#csgget) |
+| Models | [`model.inspect`](#modelinspect), [`model.cleanup`](#modelcleanup), [`model.retarget`](#modelretarget), [`skeleton.get`](#skeletonget), [`csg.get`](#csgget) |
 | Paths | [`path.get`](#pathget) |
 | Grid maps | [`gridmap.set`](#gridmapset), [`gridmap.get`](#gridmapget) |
 | Terrains | [`terrain.generate`](#terraingenerate), [`terrain.brush`](#terrainbrush), [`terrain.get`](#terrainget) |
@@ -793,6 +793,41 @@ coordinates, when there are any; `collision` counts the result's collision shape
 `{"convex": 6}`, when it has any; `delit` counts the textures `delight` changed and `light` is
 the direction the light it took out came from, in the result's space, when it found one; and
 `unchanged` is `true` when `out` already held the same bytes.
+
+### model.retarget
+
+[Retargets](scene-format.md#retargeting) a rigged humanoid to Godot's `SkeletonProfileHumanoid`,
+as Godot's importer does with a `BoneMap` and its default options, and writes it as one `.glb`
+file with its skins and animations: the nodes above the skeleton fold into it, the mapped bones
+take the profile's names, and their rests turn to lie as the profile's do, with the skin and
+animations turned to match, so the model looks and moves as it did and animations of every
+retargeted humanoid play on it. The bone map is guessed from the bones' names and places, as
+Godot's `BoneMapper` guesses it; `bone_map` changes it.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | The rigged model: a `.gltf`, `.glb`, `.fbx` or `.blend` file with a skin |
+| `out` | string | `path` as `.glb` | The `.glb` file to write |
+| `bone_map` | object | | Changes to the guessed map: a profile bone (`"LeftUpperArm"`) to the model's bone, or to `""` to leave it unmapped |
+| `fix_silhouette` | boolean | `false` | Turn bones pointing more than 15 degrees from the profile's T-pose toward it first, as for an A-pose |
+
+Needs: `edit`, `filesystem`. Undo takes the file back. A model without a skin is refused at
+`/path`; a profile bone that doesn't exist, or a bone the model hasn't, at its key in `bone_map`,
+with the closest name; and a bone mapped twice at `/bone_map`.
+
+```json
+{"path": "source/knight.glb", "out": "characters/knight.glb", "fix_silhouette": true}
+```
+
+```json
+{"bone_map":{"Chest":"chest","Head":"head","Hips":"hips","LeftUpperArm":"upper_arm_L","...":"..."},"motion_scale":0.8,"out":"characters/knight.glb"}
+```
+
+`bone_map` is the map it used; `missing` lists the profile's required bones it leaves out
+(`Hips`, `Spine`, `Head` and each side's shoulder, upper and lower arm, hand, upper and lower leg
+and foot), `unmapped` the skeleton's bones no profile bone names, and `moved_aside` the nodes
+renamed to make way, by their new names; each only when there are any. `motion_scale` is the
+hips' height, by which animations' positions scale when they play on another model.
 
 ### skeleton.get
 
