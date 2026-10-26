@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -446,5 +447,339 @@ TEST_CASE("GPUs measure auto exposure as the software device does") {
         const Image expected = draw(*software, post, material, clear, 75);
         const Image image = draw(*gpu, post, material, clear, 75);
         CHECK(difference(image, expected) <= 3);
+    }
+}
+
+namespace {
+
+// A checkered floor that recedes from a camera in perspective, from about 1 to 9 meters away,
+// under a square standing on it 3 meters away, both unlit: what depth of field blurs.
+Image draw_depths(RenderDevice& device, const PostProcess& post, std::uint32_t size = 48) {
+    auto target = device.create_texture({.width = size, .height = size, .render_target = true});
+    REQUIRE(target.ok());
+    std::vector<std::uint8_t> texels;
+    for (int i = 0; i < 16; ++i) {
+        const bool light = ((i % 4) + (i / 4)) % 2 == 0;
+        for (const std::uint8_t channel : light ? std::array<std::uint8_t, 4>{230, 220, 160, 255}
+                                                : std::array<std::uint8_t, 4>{40, 90, 60, 255}) {
+            texels.push_back(channel);
+        }
+    }
+    auto checker =
+        device.create_texture({.width = 4, .height = 4, .filter = render::Filter::Nearest}, texels);
+    REQUIRE(checker.ok());
+    auto mesh = device.create_mesh(square(), {});
+    REQUIRE(mesh.ok());
+    render::Scene3D scene;
+    scene.camera = render::look_at({0.0F, 0.5F, 3.0F}, {0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F});
+    scene.projection = render::perspective(60.0F, 1.0F, 0.1F, 20.0F);
+    scene.post = post;
+    REQUIRE(device
+                .begin_frame(
+                    {.target = target.value(), .clear = {0.1F, 0.2F, 0.3F, 1.0F}, .scene = scene})
+                .ok());
+    // The square laid down 8 times as large, its middle at (0, -0.5, -2), and one standing up.
+    constexpr std::array<float, 16> kFloor{8, 0, 0, 0, 0, 0, -8, 0, 0, 8, 0, 0, 0, -0.5F, -2, 1};
+    constexpr std::array<float, 16> kStanding{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+    REQUIRE(device
+                .draw_mesh(mesh.value(), kFloor,
+                           {.albedo_texture = {.texture = checker.value(), .repeat = true},
+                            .unshaded = true,
+                            .cull = render::CullMode::Disabled,
+                            .uv1_scale = {4.0F, 4.0F}})
+                .ok());
+    REQUIRE(device
+                .draw_mesh(mesh.value(), kStanding,
+                           {.albedo = {1.0F, 0.4F, 0.1F, 1.0F},
+                            .unshaded = true,
+                            .cull = render::CullMode::Disabled})
+                .ok());
+    REQUIRE(device.end_frame().ok());
+    auto image = device.read_texture(target.value());
+    REQUIRE(image.ok());
+    device.destroy_mesh(mesh.value());
+    device.destroy_texture(checker.value());
+    device.destroy_texture(target.value());
+    return image.value();
+}
+
+// How many of the channels of a and b differ by more than by.
+std::size_t differing(const Image& a, const Image& b, int by) {
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < a.pixels.size(); ++i) {
+        count += std::abs(int{a.pixels[i]} - int{b.pixels[i]}) > by ? 1U : 0U;
+    }
+    return count;
+}
+
+} // namespace
+
+TEST_CASE("depth of field plans Godot's passes for each bokeh shape and quality") {
+    using detail::DofTexture;
+    using detail::ForwardPass;
+    PostProcess post{.dof_far = true};
+    const auto steps = [&](std::uint32_t width, std::uint32_t height) {
+        std::vector<
+            std::tuple<ForwardPass, DofTexture, DofTexture, std::uint32_t, std::uint32_t, bool>>
+            out;
+        for (const detail::DofStep& step : detail::dof_plan(post, width, height)) {
+            out.emplace_back(step.pass, step.source, step.target, step.size.width, step.size.height,
+                             step.second);
+        }
+        return out;
+    };
+    using Steps = std::vector<
+        std::tuple<ForwardPass, DofTexture, DofTexture, std::uint32_t, std::uint32_t, bool>>;
+    // Hexagon at low quality, Godot's defaults: two passes at half size, then the composite.
+    CHECK(steps(101, 50) ==
+          Steps{{ForwardPass::DofSize, DofTexture::World, DofTexture::Sized, 101, 50, false},
+                {ForwardPass::DofHexagon, DofTexture::Sized, DofTexture::Half0, 50, 25, false},
+                {ForwardPass::DofHexagon, DofTexture::Half0, DofTexture::Half1, 50, 25, true},
+                {ForwardPass::DofComposite, DofTexture::Half1, DofTexture::Out, 101, 50, false}});
+    // Medium and high blur at full size, the second pass into the result.
+    post.depth_of_field = {.bokeh_shape = render::BokehShape::Box,
+                           .bokeh_quality = render::BokehQuality::Medium};
+    CHECK(steps(32, 16) ==
+          Steps{{ForwardPass::DofSize, DofTexture::World, DofTexture::Sized, 32, 16, false},
+                {ForwardPass::DofBox, DofTexture::Sized, DofTexture::Secondary, 32, 16, false},
+                {ForwardPass::DofBox, DofTexture::Secondary, DofTexture::Out, 32, 16, true}});
+    // A circle blurs once, at half size, at every quality.
+    post.depth_of_field.bokeh_shape = render::BokehShape::Circle;
+    CHECK(steps(32, 16) ==
+          Steps{{ForwardPass::DofSize, DofTexture::World, DofTexture::Sized, 32, 16, false},
+                {ForwardPass::DofCircle, DofTexture::Sized, DofTexture::Half0, 16, 8, false},
+                {ForwardPass::DofComposite, DofTexture::Half0, DofTexture::Out, 32, 16, false}});
+    // None without far or near blur, with no blur amount, or under 8 x 8 pixels.
+    CHECK(steps(8, 8).size() == 3);
+    CHECK(steps(7, 100).empty());
+    post.dof_amount = 0.0F;
+    CHECK(steps(32, 16).empty());
+    post = {};
+    CHECK_FALSE(detail::uses_dof(post));
+    post.dof_near = true;
+    CHECK(detail::uses_dof(post));
+}
+
+TEST_CASE("depth of field's uniforms are Godot's push constants") {
+    using detail::DofStep;
+    using detail::DofTexture;
+    using detail::ForwardPass;
+    const std::array<float, 16> projection = render::perspective(70.0F, 1.5F, 0.05F, 100.0F);
+    PostProcess post{.dof_far = true,
+                     .dof_far_distance = 8.0F,
+                     .dof_far_transition = 4.0F,
+                     .dof_near_distance = 3.0F,
+                     .dof_near_transition = 2.0F,
+                     .dof_amount = 0.25F};
+    const auto uniforms = [&](ForwardPass pass, bool second = false,
+                              DofTexture target = DofTexture::Half0) {
+        return detail::dof_uniforms(post,
+                                    DofStep{.pass = pass,
+                                            .target = target,
+                                            .size = {.width = 40, .height = 20},
+                                            .second = second},
+                                    projection);
+    };
+    detail::ForwardPostUniforms size = uniforms(ForwardPass::DofSize, false, DofTexture::Sized);
+    CHECK(size.target == render::detail::Float4{40.0F, 20.0F, 1.0F / 40.0F, 1.0F / 20.0F});
+    CHECK(size.options[0] == static_cast<std::uint32_t>(ForwardPass::DofSize));
+    CHECK(size.dof == render::detail::Float4{8.0F, 12.0F, 3.0F, 1.0F});
+    CHECK(size.dof_blur == render::detail::Float4{16.0F, 16.0F, 16.0F, 0.5F});
+    CHECK(size.dof_depth ==
+          render::detail::Float4{projection[10], projection[11], projection[14], projection[15]});
+    CHECK(size.dof_options == std::array<std::uint32_t, 4>{0, detail::kDofFar, 0, 0});
+    // A hexagon at low quality blurs half as far at half size, 12 samples a side.
+    detail::ForwardPostUniforms hexagon = uniforms(ForwardPass::DofHexagon);
+    CHECK(hexagon.dof_blur[0] == 8.0F);
+    CHECK(hexagon.dof_options[0] == 12);
+    CHECK(hexagon.dof_options[1] == (detail::kDofFar | detail::kDofHalf));
+    CHECK(uniforms(ForwardPass::DofHexagon, true).dof_options[1] ==
+          (detail::kDofFar | detail::kDofHalf | detail::kDofSecond));
+    // At high quality, 24 samples at full size; the second pass writes the world's alpha.
+    post.depth_of_field.bokeh_quality = render::BokehQuality::High;
+    hexagon = uniforms(ForwardPass::DofHexagon, true, DofTexture::Out);
+    CHECK(hexagon.dof_blur[0] == 16.0F);
+    CHECK(hexagon.dof_options[0] == 24);
+    CHECK(hexagon.dof_options[1] == (detail::kDofFar | detail::kDofSecond | detail::kDofToWorld));
+    // A circle's step for each quality; it always runs at half size and never halves its blur.
+    for (const auto& [quality, step] : std::array<std::pair<render::BokehQuality, float>, 4>{
+             {{render::BokehQuality::VeryLow, 8.0F},
+              {render::BokehQuality::Low, 4.0F},
+              {render::BokehQuality::Medium, 1.0F},
+              {render::BokehQuality::High, 0.5F}}}) {
+        post.depth_of_field.bokeh_quality = quality;
+        const detail::ForwardPostUniforms circle = uniforms(ForwardPass::DofCircle);
+        CHECK(circle.dof_blur == render::detail::Float4{16.0F, 16.0F, 16.0F, step});
+        CHECK(circle.dof_options ==
+              std::array<std::uint32_t, 4>{0, detail::kDofFar | detail::kDofHalf, 0, 0});
+    }
+    // Negative transitions blur the physical way; with both, the blur is capped at 32 pixels.
+    post.dof_far_transition = -1.0F;
+    post.dof_near = true;
+    post.depth_of_field.use_jitter = true;
+    post.dof_jitter_seed = 250.0F;
+    size = uniforms(ForwardPass::DofSize, false, DofTexture::Sized);
+    CHECK(size.dof_blur[0] == 16.0F);
+    CHECK(size.dof_options[1] ==
+          (detail::kDofFar | detail::kDofNear | detail::kDofPhysicalFar | detail::kDofJitter));
+    CHECK(size.dof_jitter[0] == 250.0F);
+    post.dof_near_transition = -1.0F;
+    size = uniforms(ForwardPass::DofSize, false, DofTexture::Sized);
+    CHECK(size.dof_blur == render::detail::Float4{32.0F, 16.0F, 16.0F, 0.5F});
+}
+
+TEST_CASE("depth of field sizes each pixel's blur by its distance, as Godot's get_blur_size") {
+    // Four pixels at 1, 4, 11 and 30 meters from a camera, their depths as a perspective
+    // projection with reversed depth puts them.
+    const std::array<float, 16> projection = render::perspective(60.0F, 1.0F, 0.5F, 50.0F);
+    const auto depth = [&](float distance) {
+        return (projection[10] * -distance + projection[14]) / (projection[11] * -distance);
+    };
+    const std::array<float, 4> distances{1.0F, 4.0F, 11.0F, 30.0F};
+    std::vector<float> depths;
+    detail::HdrImage world{.width = 4, .height = 1, .pixels = {}};
+    for (const float distance : distances) {
+        depths.push_back(depth(distance));
+        world.pixels.insert(world.pixels.end(), {0.5F, 0.25F, 1.0F, 0.75F});
+    }
+    PostProcess post{.dof_far = true,
+                     .dof_far_distance = 10.0F,
+                     .dof_far_transition = 4.0F,
+                     .dof_near = true,
+                     .dof_near_distance = 3.0F,
+                     .dof_near_transition = 4.0F,
+                     .dof_amount = 0.5F};
+    const auto sizes = [&] {
+        detail::HdrImage sized;
+        detail::run_dof_size_pass(detail::dof_uniforms(post,
+                                                       {.pass = detail::ForwardPass::DofSize,
+                                                        .target = detail::DofTexture::Sized,
+                                                        .size = {.width = 4, .height = 1}},
+                                                       projection),
+                                  world, depths, sized);
+        REQUIRE(sized.pixels.size() == 16);
+        CHECK(sized.pixels[0] == 0.5F);
+        CHECK(sized.pixels[2] == 1.0F);
+        return std::array<float, 4>{sized.pixels[3], sized.pixels[7], sized.pixels[11],
+                                    sized.pixels[15]};
+    };
+    // Near blur is negative and grows over the transition toward the camera; 1 meter is half way
+    // from 3 to -1. Far blur grows past 10 meters: 11 is a quarter of the way to 14.
+    const auto smooth = [](float t) { return t * t * (3.0F - (2.0F * t)); };
+    std::array<float, 4> read = sizes();
+    CHECK(read[0] == doctest::Approx(-(1.0F - smooth(0.5F)) * 32.0F).epsilon(0.002));
+    CHECK(read[1] == 0.0F);
+    CHECK(read[2] == doctest::Approx(smooth(0.25F) * 32.0F).epsilon(0.002));
+    CHECK(read[3] == 32.0F);
+    // The physical way, by how far past the distance each pixel is, over the distance.
+    post.dof_near_transition = -1.0F;
+    post.dof_far_transition = -1.0F;
+    read = sizes();
+    CHECK(read[0] == doctest::Approx(-(2.0F / 1.0F) * 32.0F).epsilon(0.002));
+    CHECK(read[2] == doctest::Approx((1.0F / 11.0F) * 32.0F).epsilon(0.002));
+    CHECK(read[3] == doctest::Approx((20.0F / 30.0F) * 32.0F).epsilon(0.002));
+}
+
+TEST_CASE("Forward+ depth of field blurs what is past or nearer than its distances") {
+    // The 32-pixel frame's square is 5 meters from the camera, the background at the far plane,
+    // 10 meters away. Far blur from 7 meters blurs the background but leaves the square sharp; as
+    // in Godot, the blurred background next to it takes a little of its light, from the samples
+    // less than half a pixel away. From 3 meters the square blurs into the pixel beside it.
+    const auto beside = [](const Image& image) { return pixel(image, kBeside, kInside)[0]; };
+    const auto inside = [](const Image& image) { return pixel(image, kInside, kInside)[0]; };
+    const auto square = [](const Image& image) {
+        std::vector<std::array<int, 4>> pixels;
+        for (std::uint32_t y = 8; y < 24; ++y) {
+            for (std::uint32_t x = 8; x < 24; ++x) {
+                pixels.push_back(pixel(image, x, y));
+            }
+        }
+        return pixels;
+    };
+    for (auto& device : forward_devices()) {
+        CAPTURE(render::backend_name(device->backend()));
+        const Image sharp = draw(*device, {}, kBright);
+        REQUIRE(beside(sharp) == 0);
+        PostProcess post{.dof_far = true, .dof_far_distance = 7.0F, .dof_far_transition = 1.0F};
+        const Image background = draw(*device, post, kBright);
+        CHECK(square(background) == square(sharp));
+        post.dof_far_distance = 3.0F;
+        const Image far = draw(*device, post, kBright);
+        CHECK(beside(far) > beside(background));
+        CHECK(inside(far) == 255);
+        // Near blur from 7 meters blurs the square, nearer than 6, over the background.
+        post = {.dof_near = true, .dof_near_distance = 7.0F, .dof_near_transition = 1.0F};
+        CHECK(beside(draw(*device, post, kBright)) > 0);
+        // Every shape and quality blurs it, by as much as dof_amount says. (At very low quality a
+        // circle's spiral starts 8 pixels out, so as in Godot it blurs nothing under that.)
+        for (const render::BokehShape shape :
+             {render::BokehShape::Box, render::BokehShape::Hexagon, render::BokehShape::Circle}) {
+            for (const render::BokehQuality quality :
+                 {render::BokehQuality::VeryLow, render::BokehQuality::High}) {
+                CAPTURE(static_cast<int>(shape));
+                CAPTURE(static_cast<int>(quality));
+                post.depth_of_field = {.bokeh_shape = shape, .bokeh_quality = quality};
+                post.dof_amount = 0.2F;
+                CHECK(beside(draw(*device, post, kBright)) > 0);
+                post.dof_amount = 0.0F;
+                CHECK(beside(draw(*device, post, kBright)) == 0);
+            }
+        }
+    }
+}
+
+TEST_CASE("GPUs draw depth of field as the software device does") {
+    auto gpu = slash::test::gpu_device();
+    if (gpu == nullptr) {
+        return;
+    }
+    CAPTURE(render::backend_name(gpu->backend()));
+    const auto software = render::create_software_device();
+    PostProcess base{.dof_far = true,
+                     .dof_far_distance = 3.5F,
+                     .dof_far_transition = 2.0F,
+                     .dof_near = true,
+                     .dof_near_distance = 2.5F,
+                     .dof_near_transition = 1.0F,
+                     .dof_amount = 0.12F};
+    std::vector<PostProcess> posts;
+    for (const render::BokehShape shape :
+         {render::BokehShape::Box, render::BokehShape::Hexagon, render::BokehShape::Circle}) {
+        for (const render::BokehQuality quality :
+             {render::BokehQuality::Low, render::BokehQuality::Medium}) {
+            PostProcess post = base;
+            post.depth_of_field = {.bokeh_shape = shape, .bokeh_quality = quality};
+            posts.push_back(post);
+        }
+    }
+    PostProcess physical = base;
+    physical.dof_far_transition = -1.0F;
+    physical.dof_near_transition = -1.0F;
+    posts.push_back(physical);
+    PostProcess jittered = base;
+    jittered.depth_of_field.use_jitter = true;
+    jittered.dof_jitter_seed = 123.0F;
+    posts.push_back(jittered);
+    PostProcess exposed = base;
+    exposed.auto_exposure = true;
+    exposed.auto_exposure_max = 4.0F;
+    exposed.glow = true;
+    exposed.glow_intensity = 0.6F;
+    posts.push_back(exposed);
+    for (std::size_t i = 0; i < posts.size(); ++i) {
+        CAPTURE(i);
+        const Image expected = draw_depths(*software, posts.at(i));
+        const Image image = draw_depths(*gpu, posts.at(i));
+        // Bilinear filtering on GPUs weighs texels a little differently, which moves a sample in
+        // or out of a pixel's blur here and there. Jitter's hash wraps from one end of its range to
+        // the other where a GPU rounds its last bit otherwise, so a few of its pixels differ more,
+        // as do a few of the physical blur's: its near size, d / (near - d), grows without bound
+        // toward the camera, so a depth's last bit (Direct3D 12's WARP rounds it otherwise) moves
+        // a big blur's edge by a pixel.
+        CHECK(differing(image, expected, 3) <= image.pixels.size() / 100);
+        const bool physical_blur = posts.at(i).dof_near_transition < 0.0F;
+        if (!posts.at(i).depth_of_field.use_jitter && !physical_blur) {
+            CHECK(difference(image, expected) <= 40);
+        }
     }
 }

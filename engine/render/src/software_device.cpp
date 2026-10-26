@@ -512,8 +512,13 @@ public:
                           world.pixels.begin() + static_cast<std::ptrdiff_t>(i));
             }
             draw_sky(*frame_.scene, {.bytes = nullptr, .hdr = &world});
+            std::vector<float> depth;
             if (!mesh_draws_.empty()) {
-                draw_meshes(*frame_.scene, {.bytes = nullptr, .hdr = &world});
+                depth = draw_meshes(*frame_.scene, {.bytes = nullptr, .hdr = &world});
+            }
+            if (detail::uses_dof(frame_.scene->post)) {
+                depth.resize(std::size_t{target.width} * target.height, 0.0F);
+                world = depth_of_field(*frame_.scene, world, depth);
             }
             forward_post(frame_.scene->post, world, target);
         } else if (frame_.scene && detail::post_processes(frame_.scene->post)) {
@@ -1199,6 +1204,35 @@ private:
                               world, post.glow ? levels[0] : none, *lut, target);
     }
 
+    // Depth of field's passes on the CPU, from the world and the depth buffer, as the GPU devices
+    // draw them before the rest: the result is the world the rest draw from.
+    static detail::HdrImage depth_of_field(const Scene3D& scene, const detail::HdrImage& world,
+                                           std::span<const float> depth) {
+        const std::vector<detail::DofStep> plan =
+            detail::dof_plan(scene.post, world.width, world.height);
+        if (plan.empty()) {
+            return world;
+        }
+        std::array<detail::HdrImage, 5> textures; // Sized, Secondary, Half0, Half1, Out
+        const auto texture = [&](detail::DofTexture which) -> detail::HdrImage& {
+            return textures.at(static_cast<std::size_t>(which) - 1);
+        };
+        for (const detail::DofStep& step : plan) {
+            const detail::ForwardPostUniforms uniforms =
+                detail::dof_uniforms(scene.post, step, scene.projection);
+            if (step.pass == detail::ForwardPass::DofSize) {
+                detail::run_dof_size_pass(uniforms, world, depth, texture(step.target));
+            } else if (step.pass == detail::ForwardPass::DofComposite) {
+                detail::run_dof_composite_pass(uniforms, world, depth, texture(step.source),
+                                               texture(step.target));
+            } else {
+                detail::run_dof_blur_pass(uniforms, texture(step.source), world,
+                                          texture(step.target));
+            }
+        }
+        return std::move(texture(detail::DofTexture::Out));
+    }
+
     // forward_post.hlsl's passes on the CPU: with auto exposure the luminance passes, then glow's
     // levels, each from the one before, then the tonemap pass from world over target.
     void forward_post(const PostProcess& post, const detail::HdrImage& world, Image& target) {
@@ -1309,7 +1343,9 @@ private:
         return &radiance_;
     }
 
-    void draw_meshes(const Scene3D& scene, const WorldTarget& target) {
+    // Draws the frame's meshes over target and returns the depth buffer: a float a pixel, rows
+    // top to bottom.
+    std::vector<float> draw_meshes(const Scene3D& scene, const WorldTarget& target) {
         const detail::ShadowPlan plan = detail::plan_shadows(scene, kMaxTextureSize);
         std::vector<float> directional(std::size_t{plan.directional_size} * plan.directional_size,
                                        0.0F);
@@ -1400,6 +1436,7 @@ private:
                               raster, shade);
             }
         }
+        return depth;
     }
 
     // A shadow pass: the meshes it draws, depth only, into its rect of an atlas size texels

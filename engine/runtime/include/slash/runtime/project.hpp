@@ -34,7 +34,7 @@
 // ("major.minor.patch"), "window" ({"width", "height", "vsync_mode",
 // "linux_display_driver"}), "tick_hz", "max_fps",
 // "rendering" ({"clear_color", "driver", "rendering_method", "texture_filter", "interpolation",
-// "scaling", "lights_and_shadows", "textures"}),
+// "scaling", "lights_and_shadows", "camera", "textures"}),
 // "physics_2d",
 // "gui" ({"theme"}), "input" (actions by name), "input_devices" ({"pointing"}), "audio"
 // ({"bus_layout", "mix_rate", "output_latency", "panning_strength_2d"}), "services" (ad
@@ -93,6 +93,8 @@ struct Project {
     render::RenderMethod rendering_method = render::RenderMethod::ForwardPlus;
     // The 3D shadow atlases' sizes and filters, as Godot's rendering/lights_and_shadows.
     render::ShadowSettings shadows;
+    // Depth of field's blur, as Godot's rendering/camera/depth_of_field.
+    render::DepthOfFieldSettings depth_of_field{};
     // How exports ship textures.
     TextureImport texture_import;
     // Gravity and default damping for 2D physics.

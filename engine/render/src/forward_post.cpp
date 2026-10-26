@@ -10,6 +10,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string_view>
+#include <type_traits>
 #include <vector>
 
 namespace slash::render::detail {
@@ -455,6 +457,126 @@ void reduce_luminance(const ForwardPostUniforms& uniforms, float previous, Lumin
     }
 }
 
+// --- Depth of field, as bokeh_dof.glsl ---
+
+// The samples a side of a box's or hexagon's blur, and how far a circle's steps go, for each
+// BokehQuality.
+constexpr std::array<std::uint32_t, 4> kDofSamples{6, 12, 12, 24};
+constexpr std::array<float, 4> kDofCircleScale{8.0F, 4.0F, 1.0F, 0.5F};
+constexpr float kGoldenAngle = 2.39996323F;
+constexpr float kTwoPi = 6.28318531F;
+
+float fract(float x) {
+    return x - std::floor(x);
+}
+
+// bokeh_dof_inc.glsl's hash12n: a number from 0 up to 1 for a place.
+float hash12n(float x, float y) {
+    float px = fract(x * 5.3987F);
+    float py = fract(y * 5.4421F);
+    const float dot = (py * (px + 21.5351F)) + (px * (py + 14.3137F));
+    px += dot;
+    py += dot;
+    return fract(px * py * 95.4307F);
+}
+
+// The distance from the camera along its view of a depth buffer value.
+float dof_distance(const ForwardPostUniforms& uniforms, float depth) {
+    return (uniforms.dof_depth[2] - (depth * uniforms.dof_depth[3])) /
+           (uniforms.dof_depth[0] - (depth * uniforms.dof_depth[1]));
+}
+
+// A pixel's blur size at distance from the camera, as get_blur_size: negative for near blur.
+float dof_blur_size(const ForwardPostUniforms& uniforms, float distance) {
+    const std::uint32_t flags = uniforms.dof_options[1];
+    const float far_begin = uniforms.dof[0];
+    const float far_end = uniforms.dof[1];
+    const float near_begin = uniforms.dof[2];
+    const float near_end = uniforms.dof[3];
+    if ((flags & kDofNear) != 0 && distance < near_begin) {
+        if ((flags & kDofPhysicalNear) != 0) {
+            const float d = std::abs(near_begin - distance);
+            return -(d / (near_begin - d)) * uniforms.dof_blur[2];
+        }
+        return -(1.0F - smoothstep(near_end, near_begin, distance)) * uniforms.dof_blur[0];
+    }
+    if ((flags & kDofFar) != 0 && distance > far_begin) {
+        if ((flags & kDofPhysicalFar) != 0) {
+            const float d = std::abs(far_begin - distance);
+            return (d / (far_begin + d)) * uniforms.dof_blur[1];
+        }
+        return smoothstep(far_begin, far_end, distance) * uniforms.dof_blur[0];
+    }
+    return 0.0F;
+}
+
+Float4 mix4(const Float4& a, const Float4& b, float t) {
+    return {lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t), lerp(a[3], b[3], t)};
+}
+
+// weighted_filter_dir: source blurred along dir, in pixels of the pass, from (u, v). Each sample
+// counts as far as the smaller of its and the pixel's blur sizes reaches it.
+Float4 weighted_filter_dir(const ForwardPostUniforms& uniforms, const HdrImage& source, float dx,
+                           float dy, float u, float v) {
+    dx *= uniforms.target[2];
+    dy *= uniforms.target[3];
+    const Float4 color = sample_hdr(source, u, v);
+    Float4 accum = color;
+    float total = 1.0F;
+    const auto steps = static_cast<int>(uniforms.dof_options[0]);
+    const float blur_scale = uniforms.dof_blur[0] / static_cast<float>(steps);
+    if ((uniforms.dof_options[1] & kDofJitter) != 0) {
+        const float jitter = hash12n(u + uniforms.dof_jitter[0], v + uniforms.dof_jitter[0]) - 0.5F;
+        u += dx * jitter;
+        v += dy * jitter;
+    }
+    for (int i = -steps; i <= steps; ++i) {
+        if (i == 0) {
+            continue;
+        }
+        float radius = static_cast<float>(i) * blur_scale;
+        const Float4 sample = sample_hdr(source, u + (dx * radius), v + (dy * radius));
+        radius = std::abs(radius);
+        const float limit = sample[3] < color[3] ? std::abs(sample[3]) : std::abs(color[3]);
+        const float m = smoothstep(radius - 0.5F, radius + 0.5F, limit);
+        add4(accum, mix4(color, sample, m), 1.0F);
+        total += 1.0F;
+    }
+    return scale4(accum, 1.0F / total);
+}
+
+// Where depth of field's blur reads from for the pass's pixel (x, y): the centers of its pixels,
+// or the full-size source's, for a first pass at half size.
+std::array<float, 2> dof_place(const ForwardPostUniforms& uniforms, std::uint32_t x,
+                               std::uint32_t y) {
+    const std::uint32_t flags = uniforms.dof_options[1];
+    const bool circle = uniforms.options[0] == static_cast<std::uint32_t>(ForwardPass::DofCircle);
+    float offset = 0.5F;
+    if ((flags & kDofHalf) != 0 && (circle || (flags & kDofSecond) == 0)) {
+        offset = 0.25F;
+    }
+    return {(static_cast<float>(x) * uniforms.target[2]) + (offset * uniforms.target[2]),
+            (static_cast<float>(y) * uniforms.target[3]) + (offset * uniforms.target[3])};
+}
+
+void resize_target(const ForwardPostUniforms& uniforms, HdrImage& target) {
+    target.width = static_cast<std::uint32_t>(uniforms.target[0]);
+    target.height = static_cast<std::uint32_t>(uniforms.target[1]);
+    target.pixels.assign(std::size_t{target.width} * target.height * 4, 0.0F);
+}
+
+void store_half(HdrImage& target, std::uint32_t x, std::uint32_t y, const Float4& color) {
+    const std::size_t at = ((std::size_t{y} * target.width) + x) * 4;
+    for (std::size_t i = 0; i < 4; ++i) {
+        target.pixels[at + i] = round_half(color.at(i));
+    }
+}
+
+Float4 load_hdr(const HdrImage& image, std::uint32_t x, std::uint32_t y) {
+    const std::size_t at = ((std::size_t{y} * image.width) + x) * 4;
+    return {image.pixels[at], image.pixels[at + 1], image.pixels[at + 2], image.pixels[at + 3]};
+}
+
 std::uint8_t to_byte(float value) {
     return static_cast<std::uint8_t>(std::lround(std::clamp(value, 0.0F, 1.0F) * 255.0F));
 }
@@ -597,6 +719,193 @@ void run_luminance_pass(const ForwardPostUniforms& uniforms, const LuminanceImag
     reduce_luminance(uniforms, previous, target, [&](std::uint32_t x, std::uint32_t y) {
         return source.values[(std::size_t{y} * source.width) + x];
     });
+}
+
+bool uses_dof(const PostProcess& post) {
+    return (post.dof_far || post.dof_near) && post.dof_amount > 0.0F;
+}
+
+std::vector<DofStep> dof_plan(const PostProcess& post, std::uint32_t width, std::uint32_t height) {
+    // As Godot's can_use_effects: no post effects under 8 x 8 pixels.
+    if (!uses_dof(post) || width < 8 || height < 8) {
+        return {};
+    }
+    const PostSize full{.width = width, .height = height};
+    const PostSize half{.width = std::max(width >> 1U, 1U), .height = std::max(height >> 1U, 1U)};
+    std::vector<DofStep> plan{{.pass = ForwardPass::DofSize,
+                               .source = DofTexture::World,
+                               .target = DofTexture::Sized,
+                               .size = full}};
+    const BokehShape shape = post.depth_of_field.bokeh_shape;
+    if (shape == BokehShape::Circle) {
+        plan.push_back({.pass = ForwardPass::DofCircle,
+                        .source = DofTexture::Sized,
+                        .target = DofTexture::Half0,
+                        .size = half});
+        plan.push_back({.pass = ForwardPass::DofComposite,
+                        .source = DofTexture::Half0,
+                        .target = DofTexture::Out,
+                        .size = full});
+        return plan;
+    }
+    const ForwardPass blur =
+        shape == BokehShape::Box ? ForwardPass::DofBox : ForwardPass::DofHexagon;
+    if (post.depth_of_field.bokeh_quality <= BokehQuality::Low) {
+        plan.push_back(
+            {.pass = blur, .source = DofTexture::Sized, .target = DofTexture::Half0, .size = half});
+        plan.push_back({.pass = blur,
+                        .source = DofTexture::Half0,
+                        .target = DofTexture::Half1,
+                        .size = half,
+                        .second = true});
+        plan.push_back({.pass = ForwardPass::DofComposite,
+                        .source = DofTexture::Half1,
+                        .target = DofTexture::Out,
+                        .size = full});
+    } else {
+        plan.push_back({.pass = blur,
+                        .source = DofTexture::Sized,
+                        .target = DofTexture::Secondary,
+                        .size = full});
+        plan.push_back({.pass = blur,
+                        .source = DofTexture::Secondary,
+                        .target = DofTexture::Out,
+                        .size = full,
+                        .second = true});
+    }
+    return plan;
+}
+
+ForwardPostUniforms dof_uniforms(const PostProcess& post, const DofStep& step,
+                                 const std::array<float, 16>& projection) {
+    ForwardPostUniforms out;
+    const auto width = static_cast<float>(step.size.width);
+    const auto height = static_cast<float>(step.size.height);
+    out.target = {width, height, 1.0F / width, 1.0F / height};
+    out.options = {static_cast<std::uint32_t>(step.pass), 0, 0, 0};
+    const auto quality = static_cast<std::size_t>(post.depth_of_field.bokeh_quality);
+    const bool box_or_hexagon =
+        step.pass == ForwardPass::DofBox || step.pass == ForwardPass::DofHexagon;
+    const bool half = (box_or_hexagon && post.depth_of_field.bokeh_quality <= BokehQuality::Low) ||
+                      step.pass == ForwardPass::DofCircle;
+    const float bokeh = post.dof_amount * 64.0F;
+    const bool physical_far = post.dof_far_transition < 0.0F;
+    const bool physical_near = post.dof_near_transition < 0.0F;
+    float blur = physical_far && physical_near ? 32.0F : bokeh;
+    if (box_or_hexagon && half) {
+        blur *= 0.5F;
+    }
+    out.dof = {post.dof_far_distance, post.dof_far_distance + post.dof_far_transition,
+               post.dof_near_distance, post.dof_near_distance - post.dof_near_transition};
+    out.dof_blur = {blur, bokeh, bokeh,
+                    step.pass == ForwardPass::DofCircle ? kDofCircleScale.at(quality) : 0.5F};
+    out.dof_depth = {projection[10], projection[11], projection[14], projection[15]};
+    out.dof_jitter = {post.dof_jitter_seed, 0.0F, 0.0F, 0.0F};
+    std::uint32_t flags = 0;
+    flags |= post.dof_far ? kDofFar : 0U;
+    flags |= post.dof_near ? kDofNear : 0U;
+    flags |= physical_far ? kDofPhysicalFar : 0U;
+    flags |= physical_near ? kDofPhysicalNear : 0U;
+    flags |= half ? kDofHalf : 0U;
+    flags |= step.second ? kDofSecond : 0U;
+    flags |= box_or_hexagon && step.target == DofTexture::Out ? kDofToWorld : 0U;
+    flags |= post.depth_of_field.use_jitter ? kDofJitter : 0U;
+    out.dof_options = {box_or_hexagon ? kDofSamples.at(quality) : 0U, flags, 0, 0};
+    return out;
+}
+
+void run_dof_size_pass(const ForwardPostUniforms& uniforms, const HdrImage& world,
+                       std::span<const float> depth, HdrImage& target) {
+    resize_target(uniforms, target);
+    for (std::uint32_t y = 0; y < target.height; ++y) {
+        for (std::uint32_t x = 0; x < target.width; ++x) {
+            Float4 color = load_hdr(world, x, y);
+            color[3] = dof_blur_size(
+                uniforms, dof_distance(uniforms, depth[(std::size_t{y} * target.width) + x]));
+            store_half(target, x, y, color);
+        }
+    }
+}
+
+void run_dof_blur_pass(const ForwardPostUniforms& uniforms, const HdrImage& source,
+                       const HdrImage& world, HdrImage& target) {
+    resize_target(uniforms, target);
+    const auto pass = static_cast<ForwardPass>(uniforms.options[0]);
+    const std::uint32_t flags = uniforms.dof_options[1];
+    const bool second = (flags & kDofSecond) != 0;
+    for (std::uint32_t y = 0; y < target.height; ++y) {
+        for (std::uint32_t x = 0; x < target.width; ++x) {
+            const auto [u, v] = dof_place(uniforms, x, y);
+            Float4 color{};
+            if (pass == ForwardPass::DofBox) {
+                color = second ? weighted_filter_dir(uniforms, source, 0.0F, 1.0F, u, v)
+                               : weighted_filter_dir(uniforms, source, 1.0F, 0.0F, u, v);
+            } else if (pass == ForwardPass::DofHexagon) {
+                color = second ? weighted_filter_dir(uniforms, source, 0.866025404F, 0.5F, u, v)
+                               : weighted_filter_dir(uniforms, source, 0.0F, 1.0F, u, v);
+                if (second) {
+                    const Float4 other =
+                        weighted_filter_dir(uniforms, source, -0.866025404F, 0.5F, u, v);
+                    for (std::size_t i = 0; i < 3; ++i) {
+                        color.at(i) = std::min(color.at(i), other.at(i));
+                    }
+                    color[3] = (color[3] + other[3]) * 0.5F;
+                }
+            } else {
+                // MODE_BOKEH_CIRCULAR: samples on a spiral, in pixels of the full size
+                const float pixel_x = uniforms.target[2] * 0.5F;
+                const float pixel_y = uniforms.target[3] * 0.5F;
+                color = sample_hdr(source, u, v);
+                const float initial_blur = color[3];
+                float accum = 1.0F;
+                float radius = uniforms.dof_blur[3];
+                for (float angle = 0.0F; radius < uniforms.dof_blur[0];) {
+                    const Vec2 turn = slash::cos_sin(angle);
+                    const Float4 sample = sample_hdr(source, u + (turn.x * pixel_x * radius),
+                                                     v + (turn.y * pixel_y * radius));
+                    float sample_size = std::abs(sample[3]);
+                    if (sample[3] > initial_blur) {
+                        sample_size = std::clamp(sample_size, 0.0F, std::abs(initial_blur) * 2.0F);
+                    }
+                    const float m = smoothstep(radius - 0.5F, radius + 0.5F, sample_size);
+                    add4(color, mix4(scale4(color, 1.0F / accum), sample, m), 1.0F);
+                    accum += 1.0F;
+                    radius += uniforms.dof_blur[3] / radius;
+                    angle += kGoldenAngle;
+                    if (angle >= kTwoPi) {
+                        angle -= kTwoPi;
+                    }
+                }
+                color = scale4(color, 1.0F / accum);
+            }
+            if ((flags & kDofToWorld) != 0) {
+                color[3] = load_hdr(world, x, y)[3];
+            }
+            store_half(target, x, y, color);
+        }
+    }
+}
+
+void run_dof_composite_pass(const ForwardPostUniforms& uniforms, const HdrImage& world,
+                            std::span<const float> depth, const HdrImage& bokeh, HdrImage& target) {
+    resize_target(uniforms, target);
+    for (std::uint32_t y = 0; y < target.height; ++y) {
+        for (std::uint32_t x = 0; x < target.width; ++x) {
+            const auto [u, v] = dof_place(uniforms, x, y);
+            Float4 color = load_hdr(world, x, y);
+            const float size = dof_blur_size(
+                uniforms, dof_distance(uniforms, depth[(std::size_t{y} * target.width) + x]));
+            const Float4 blurred = sample_hdr(bokeh, u, v);
+            const float amount =
+                blurred[3] < size
+                    ? std::min(1.0F, std::max(0.0F, std::max(std::abs(size), std::abs(blurred[3]))))
+                    : std::min(1.0F, std::max(0.0F, std::abs(size)));
+            for (std::size_t i = 0; i < 3; ++i) {
+                color.at(i) = lerp(color.at(i), blurred.at(i), amount);
+            }
+            store_half(target, x, y, color);
+        }
+    }
 }
 
 void run_forward_glow_pass(const ForwardPostUniforms& uniforms, const HdrImage& source,
@@ -764,3 +1073,30 @@ void run_forward_tonemap_pass(const ForwardPostUniforms& uniforms, const HdrImag
 }
 
 } // namespace slash::render::detail
+
+namespace slash::render {
+
+DepthOfFieldSettings depth_of_field_settings_from_json(const json::Value& value) {
+    DepthOfFieldSettings out;
+    if (!value.is_object()) {
+        return out;
+    }
+    const auto pick = [&](std::string_view key, const auto& names, auto& field) {
+        if (const json::Value* found = value.find(key); found != nullptr && found->is_string()) {
+            for (std::size_t i = 0; i < names.size(); ++i) {
+                if (found->as_string() == names.at(i)) {
+                    field = static_cast<std::remove_reference_t<decltype(field)>>(i);
+                }
+            }
+        }
+    };
+    pick("depth_of_field_bokeh_shape", kBokehShapeNames, out.bokeh_shape);
+    pick("depth_of_field_bokeh_quality", kBokehQualityNames, out.bokeh_quality);
+    if (const json::Value* found = value.find("depth_of_field_use_jitter");
+        found != nullptr && found->is_bool()) {
+        out.use_jitter = found->as_bool();
+    }
+    return out;
+}
+
+} // namespace slash::render
