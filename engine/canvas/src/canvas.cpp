@@ -12,6 +12,7 @@
 #include "slash/scene3d/collision.hpp"
 #include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/gridmap.hpp"
+#include "slash/scene3d/particles.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/ui/ui.hpp"
 #include "slash/world/path.hpp"
@@ -334,6 +335,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
     world::add_path_systems(world);
     add_particles_system(world);
     add_gpu_particles_system(world, &assets);
+    scene3d::add_particles_system(world);
     // CSG roots and GridMaps keep their meshes, and models their collision shapes, until they
     // change, models and mesh libraries read through assets.
     const scene3d::ModelLoader models =

@@ -9,6 +9,7 @@
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/ik.hpp"
 #include "slash/scene3d/lightmap.hpp"
+#include "slash/scene3d/particles.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
 #include "slash/world/path.hpp"
@@ -308,6 +309,9 @@ constexpr std::string_view kNoMesh =
     "CylinderMesh, "
     "CapsuleMesh, PlaneMesh, QuadMesh, PrismMesh or TorusMesh";
 constexpr std::string_view kMeshField = "/components/MeshInstance3D/mesh";
+constexpr std::string_view kNoParticleMesh =
+    "has no mesh to draw at its particles: set mesh to a model file, or add a QuadMesh or "
+    "another primitive mesh";
 
 // What's wrong with a MeshInstance3D's mesh path, without reading it; "" for nothing.
 std::string mesh_path_problem(const world::World& world, entt::entity entity,
@@ -751,6 +755,28 @@ std::vector<Problem> check_meshes(const world::World& world) {
             }
         }
     }
+    // A CPUParticles3D draws its model or its primitive mesh at each particle.
+    for (const entt::entity entity : made<world::CPUParticles3D>(world)) {
+        const std::string& path = world.ecs().get<const world::CPUParticles3D>(entity).mesh;
+        if (!path.empty()) {
+            if (std::string problem = mesh_path_problem(world, entity, path); !problem.empty()) {
+                problems.push_back({entity, "/components/CPUParticles3D/mesh", std::move(problem)});
+            }
+            continue;
+        }
+        auto primitive = primitive_of(world, entity);
+        if (!primitive) {
+            continue; // reported with the other entities' primitive meshes below
+        }
+        if (!primitive.value()) {
+            problems.push_back(
+                {entity, "/components/CPUParticles3D/mesh", std::string(kNoParticleMesh)});
+        } else if (auto checked = check_primitive(*primitive.value()); !checked) {
+            problems.push_back(
+                {entity, "/components/" + std::string(kPrimitiveNames[primitive.value()->index()]),
+                 checked.error().message});
+        }
+    }
     for (ModifierProblem& problem : check_stray_modifiers(world)) {
         problems.push_back({problem.entity, std::move(problem.path), std::move(problem.message)});
     }
@@ -891,6 +917,9 @@ Renderer::~Renderer() {
     }
     for (const auto& [key, skinned] : skinned_) {
         device_->destroy_mesh(skinned.id);
+    }
+    for (const auto& [key, kept] : particle_meshes_) {
+        device_->destroy_mesh(kept.id);
     }
     for (const auto& [key, texture] : embedded_) {
         device_->destroy_texture(texture.id);
@@ -1381,9 +1410,9 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
         const ModelPart& part = model.parts[p];
         const bool posed = !globals.empty() && part.node_index >= 0 &&
                            static_cast<std::size_t>(part.node_index) < globals.size();
-        const std::array<float, 16> transform =
-            (place * (posed ? globals[static_cast<std::size_t>(part.node_index)] : part.transform))
-                .matrix();
+        const world::Affine3D part_place =
+            place * (posed ? globals[static_cast<std::size_t>(part.node_index)] : part.transform);
+        const std::array<float, 16> transform = part_place.matrix();
         std::vector<world::Affine3D> joints;
         if (!globals.empty() && part.skin >= 0) {
             joints = joint_transforms(model.skins[static_cast<std::size_t>(part.skin)], globals);
@@ -1437,6 +1466,10 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
             draw.lod_bias = instance.lod_bias;
             if (override) {
                 draw.material = *override;
+                if (!skinned) {
+                    face_camera(world.ecs().get<const world::StandardMaterial3D>(entity),
+                                part_place, draw);
+                }
             } else if (surface.material >= 0) {
                 const auto index = static_cast<std::size_t>(surface.material);
                 std::optional<render::Material3D>& made_material = materials[index];
@@ -1518,6 +1551,24 @@ render::Material3D Renderer::surface_material(const SurfaceMaterial& from, entt:
     return out;
 }
 
+void Renderer::face_camera(const world::StandardMaterial3D& standard, const world::Affine3D& place,
+                           Draw& draw) const {
+    const Billboard mode = billboard_of(standard.billboard_mode);
+    if (mode == Billboard::Disabled) {
+        return;
+    }
+    draw.transform =
+        billboard(place, camera_place_, mode, standard.billboard_keep_scale, 0.0F).matrix();
+    if (mode == Billboard::Particles) {
+        // Frame 0 of the texture's frames, as a mesh that isn't a particle's shows.
+        const float h = static_cast<float>(std::max(standard.particles_anim_h_frames, 1));
+        const float v = static_cast<float>(std::max(standard.particles_anim_v_frames, 1));
+        draw.material.uv1_scale = {draw.material.uv1_scale[0] / h, draw.material.uv1_scale[1] / v};
+        draw.material.uv1_offset = {draw.material.uv1_offset[0] / h,
+                                    draw.material.uv1_offset[1] / v};
+    }
+}
+
 void Renderer::add_csg(const world::World& world, const world::Tree3D& tree, entt::entity root,
                        const world::Affine3D& place, std::uint32_t cull_mask) {
     const std::optional<CsgShape> shape = csg_shape_of(world, root);
@@ -1588,6 +1639,250 @@ void Renderer::add_gridmap(const world::World& world, entt::entity entity,
             draw.shadows = casting;
             draws_.push_back(draw);
         }
+    }
+}
+
+void Renderer::add_particles(const world::World& world, entt::entity entity,
+                             const world::Affine3D& place, const world::Affine3D& camera,
+                             std::uint32_t cull_mask, float interpolation) {
+    const auto& emitter = world.ecs().get<const world::CPUParticles3D>(entity);
+    render::ShadowCasting casting = casting_of(emitter.cast_shadow);
+    if ((emitter.layers & cull_mask) == 0) {
+        if (casting == render::ShadowCasting::Off) {
+            return;
+        }
+        casting = render::ShadowCasting::ShadowsOnly;
+    }
+    constexpr std::string_view kField = "/components/CPUParticles3D/mesh";
+    const auto* standard = world.ecs().try_get<const world::StandardMaterial3D>(entity);
+    // The mesh drawn at each particle: its surfaces, each where its part puts it, with what it is
+    // made of; the entity's StandardMaterial3D takes the place of a model's materials.
+    struct Piece {
+        const MeshData* mesh = nullptr;
+        const ModelSurface* surface = nullptr;
+        world::Affine3D place;
+        SurfaceMaterial material;
+    };
+    std::vector<Piece> pieces;
+    std::shared_ptr<const Model> model;
+    if (!emitter.mesh.empty()) {
+        if (std::string problem = mesh_path_problem(world, entity, emitter.mesh);
+            !problem.empty()) {
+            problems_.push_back({entity, std::string(kField), std::move(problem)});
+            return;
+        }
+        if (!models_) {
+            problems_.push_back({entity, std::string(kField), "models can't load here"});
+            return;
+        }
+        auto source = models_(emitter.mesh);
+        if (!source) {
+            problems_.push_back({entity, std::string(kField), source.error().message});
+            return;
+        }
+        model = source.value().model;
+        for (const ModelPart& part : model->parts) {
+            for (const ModelSurface& surface : model->meshes[part.mesh].surfaces) {
+                Piece piece;
+                piece.surface = &surface;
+                piece.place = part.transform;
+                if (standard != nullptr) {
+                    piece.material.standard = *standard;
+                } else {
+                    piece.material = {.standard = std::nullopt,
+                                      .model_path = emitter.mesh,
+                                      .model = model,
+                                      .model_material = surface.material,
+                                      .entity = entity};
+                }
+                pieces.push_back(std::move(piece));
+            }
+        }
+    } else {
+        auto primitive = primitive_of(world, entity);
+        if (!primitive) {
+            problems_.push_back({entity, "/components", primitive.error().message});
+            return;
+        }
+        const auto& found = primitive.value();
+        if (!found) {
+            problems_.push_back({entity, std::string(kField), std::string(kNoParticleMesh)});
+            return;
+        }
+        const Primitive& shape = *found;
+        if (auto checked = check_primitive(shape); !checked) {
+            problems_.push_back({entity,
+                                 "/components/" + std::string(kPrimitiveNames[shape.index()]),
+                                 checked.error().message});
+            return;
+        }
+        const std::string key =
+            std::string(kPrimitiveNames[shape.index()]) +
+            std::visit(
+                [&](const auto& mesh) {
+                    return json::write(world::to_json(world, mesh), json::Style::Compact);
+                },
+                shape);
+        auto kept = particle_shapes_.find(key);
+        if (kept == particle_shapes_.end()) {
+            auto made = make_mesh(shape);
+            if (!made) {
+                problems_.push_back({entity,
+                                     "/components/" + std::string(kPrimitiveNames[shape.index()]),
+                                     made.error().message});
+                return;
+            }
+            kept = particle_shapes_.emplace(key, std::pair{std::move(made.value()), frame_}).first;
+        }
+        kept->second.second = frame_;
+        Piece piece;
+        piece.mesh = &kept->second.first;
+        if (standard != nullptr) {
+            piece.material.standard = *standard;
+        }
+        pieces.push_back(std::move(piece));
+    }
+
+    std::vector<Particle3D> particles = particles_3d(world, entity);
+    const std::size_t amount = static_cast<std::size_t>(std::clamp(emitter.amount, 1, 65536));
+    if (emitter.draw_order == "view_depth") {
+        // Back to front along the camera's z, in the particles' own space.
+        Vec3 z = camera.z;
+        if (emitter.local_coords) {
+            z = place.inverse().basis(z);
+        }
+        sort_by_depth(particles, normalized(z));
+    }
+    const std::string prefix = "particles:" + std::to_string(entt::to_integral(entity)) + "/";
+    for (std::size_t i = 0; i < pieces.size(); ++i) {
+        const Piece& piece = pieces[i];
+        const std::vector<render::Vertex3D>& vertices =
+            piece.mesh != nullptr ? piece.mesh->vertices : piece.surface->vertices;
+        const std::vector<std::uint32_t>& indices =
+            piece.mesh != nullptr ? piece.mesh->indices : piece.surface->indices;
+        if (vertices.empty()) {
+            continue;
+        }
+        if (vertices.size() * amount > render::kMaxMeshVertices ||
+            (indices.empty() ? vertices.size() : indices.size()) * amount >
+                render::kMaxMeshIndices) {
+            problems_.push_back(
+                {entity, "/components/CPUParticles3D/amount",
+                 "its mesh has too many corners to draw " + std::to_string(amount) + " of them"});
+            continue;
+        }
+        render::Material3D made = surface_material(piece.material, entity, std::string(kField));
+        const world::StandardMaterial3D* look =
+            piece.material.standard ? &*piece.material.standard : nullptr;
+        if (look == nullptr && model != nullptr && piece.surface->material >= 0) {
+            look = &model->materials[static_cast<std::size_t>(piece.surface->material)].standard;
+        }
+        const Billboard mode =
+            look != nullptr ? billboard_of(look->billboard_mode) : Billboard::Disabled;
+        const bool keep_scale = look != nullptr && look->billboard_keep_scale;
+        // The texture coordinates are moved here, so a particle's frame comes after uv1, as in
+        // Godot's shader.
+        const std::array<float, 2> uv_scale = made.uv1_scale;
+        const std::array<float, 2> uv_offset = made.uv1_offset;
+        made.uv1_scale = {1.0F, 1.0F};
+        made.uv1_offset = {0.0F, 0.0F};
+
+        particle_vertices_.assign(vertices.size() * amount, render::Vertex3D{});
+        std::size_t at = 0;
+        for (const Particle3D& p : particles) {
+            if (at + vertices.size() > particle_vertices_.size()) {
+                break;
+            }
+            world::Affine3D model_place = p.transform;
+            model_place.origin =
+                p.previous + scaled(p.transform.origin - p.previous, interpolation);
+            if (emitter.local_coords) {
+                model_place = place * model_place;
+            }
+            const world::Affine3D placed =
+                billboard(model_place * piece.place, camera, mode, keep_scale, p.angle);
+            // Normals turn with the basis, as Godot's MODELVIEW_NORMAL_MATRIX: as it is for a
+            // billboard, its inverse's transpose otherwise.
+            const world::Affine3D inverse = placed.inverse();
+            const auto normal_of = [&](Vec3 n) {
+                return mode != Billboard::Disabled
+                           ? normalized(placed.basis(n))
+                           : normalized(
+                                 Vec3{dot(inverse.x, n), dot(inverse.y, n), dot(inverse.z, n)});
+            };
+            const std::array<float, 4> tint{
+                std::clamp(p.color.x, 0.0F, 1.0F), std::clamp(p.color.y, 0.0F, 1.0F),
+                std::clamp(p.color.z, 0.0F, 1.0F), std::clamp(p.color.w, 0.0F, 1.0F)};
+            for (const render::Vertex3D& from : vertices) {
+                render::Vertex3D& out = particle_vertices_[at++];
+                out = from;
+                const Vec3 position =
+                    placed.apply({from.position[0], from.position[1], from.position[2]});
+                out.position = {position.x, position.y, position.z};
+                const Vec3 normal = normal_of({from.normal[0], from.normal[1], from.normal[2]});
+                out.normal = {normal.x, normal.y, normal.z};
+                const Vec3 tangent =
+                    normalized(placed.basis({from.tangent[0], from.tangent[1], from.tangent[2]}));
+                out.tangent = {tangent.x, tangent.y, tangent.z, from.tangent[3]};
+                Vec2 uv{(from.uv[0] * uv_scale[0]) + uv_offset[0],
+                        (from.uv[1] * uv_scale[1]) + uv_offset[1]};
+                if (mode == Billboard::Particles) {
+                    uv =
+                        particle_frame_uv(uv, p.frame, look->particles_anim_h_frames,
+                                          look->particles_anim_v_frames, look->particles_anim_loop);
+                }
+                out.uv = {uv.x, uv.y};
+                for (std::size_t c = 0; c < 4; ++c) {
+                    out.rgba.at(c) = static_cast<std::uint8_t>(
+                        std::lround(static_cast<float>(from.rgba.at(c)) * tint.at(c)));
+                }
+            }
+        }
+        const Bounds box = bounds_of(std::span(particle_vertices_).first(at));
+        const std::string key = prefix + std::to_string(i);
+        ParticleMesh& kept = particle_meshes_[key];
+        kept.used = frame_;
+        if (kept.id != render::MeshId::None && kept.vertices != particle_vertices_.size()) {
+            device_->destroy_mesh(kept.id);
+            kept.id = render::MeshId::None;
+        }
+        if (kept.id == render::MeshId::None) {
+            // Each particle's triangles over its own corners; those past the live ones are
+            // folded to a point, so they draw nothing.
+            std::vector<std::uint32_t> all;
+            const std::size_t count = indices.empty() ? vertices.size() : indices.size();
+            all.reserve(count * amount);
+            for (std::size_t n = 0; n < amount; ++n) {
+                const auto base = static_cast<std::uint32_t>(n * vertices.size());
+                for (std::size_t k = 0; k < count; ++k) {
+                    all.push_back(base +
+                                  (indices.empty() ? static_cast<std::uint32_t>(k) : indices[k]));
+                }
+            }
+            auto created = device_->create_mesh(particle_vertices_, all);
+            if (!created) {
+                problems_.push_back({entity, std::string(kField), created.error().message});
+                particle_meshes_.erase(key);
+                continue;
+            }
+            kept.id = created.value();
+            kept.vertices = particle_vertices_.size();
+        } else if (auto updated = device_->update_mesh(kept.id, particle_vertices_); !updated) {
+            problems_.push_back({entity, std::string(kField), updated.error().message});
+            continue;
+        }
+        if (particles.empty()) {
+            continue;
+        }
+        Draw draw;
+        draw.mesh = kept.id;
+        draw.entity = entity;
+        draw.transform = world::Affine3D{}.matrix();
+        draw.material = made;
+        draw.layers = emitter.layers;
+        draw.shadows = casting;
+        draw.box = box;
+        draws_.push_back(draw);
     }
 }
 
@@ -2251,6 +2546,11 @@ Renderer::prepare(const world::World& world, float width, float height, double i
             device_->destroy_mesh(skinned.id);
         }
         skinned_.clear();
+        for (const auto& [key, kept] : particle_meshes_) {
+            device_->destroy_mesh(kept.id);
+        }
+        particle_meshes_.clear();
+        particle_shapes_.clear();
         lit_.clear();
         destroy_lightmaps(false);
         probe_sources_.clear();
@@ -2295,6 +2595,7 @@ Renderer::prepare(const world::World& world, float width, float height, double i
     const auto& lens = ecs.get<const world::Camera3D>(camera);
     const float aspect = width > 0.0F && height > 0.0F ? width / height : 1.0F;
     const CameraView view = camera_view(lens, global(camera), aspect);
+    camera_place_ = global(camera);
     frame.scene.camera = view.view;
     frame.scene.projection = view.projection;
     const Environment env = environment(world, clear, camera);
@@ -2422,6 +2723,7 @@ Renderer::prepare(const world::World& world, float width, float height, double i
         if (const auto* standard = ecs.try_get<world::StandardMaterial3D>(entity);
             standard != nullptr) {
             draw.material = material(*standard, textures_, problems_, entity);
+            face_camera(*standard, global(entity), draw);
         }
         if (instance.gi_mode == "dynamic") {
             const Shared& shared = shared_.at(cached_.at(entity).key);
@@ -2456,6 +2758,12 @@ Renderer::prepare(const world::World& world, float width, float height, double i
     for (const entt::entity entity : made<world::GridMap>(world)) {
         if (tree.visible(entity)) {
             add_gridmap(world, entity, global(entity), lens.cull_mask);
+        }
+    }
+    // CPUParticles3Ds draw their meshes at their particles.
+    for (const entt::entity entity : made<world::CPUParticles3D>(world)) {
+        if (tree.visible(entity)) {
+            add_particles(world, entity, global(entity), global(camera), lens.cull_mask, t);
         }
     }
     // Terrains draw the chunks their quad trees settle on for the camera.
@@ -2509,6 +2817,16 @@ Renderer::prepare(const world::World& world, float width, float height, double i
             ++it;
         }
     }
+    for (auto it = particle_meshes_.begin(); it != particle_meshes_.end();) {
+        if (it->second.used != frame_) {
+            device_->destroy_mesh(it->second.id);
+            it = particle_meshes_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    std::erase_if(particle_shapes_,
+                  [&](const auto& entry) { return entry.second.second != frame_; });
     for (auto it = embedded_.begin(); it != embedded_.end();) {
         if (it->second.used != frame_) {
             device_->destroy_texture(it->second.id);

@@ -108,6 +108,7 @@ add_executable(slash_tests
     test_standard_material.cpp
     test_particle_graphs.cpp
     test_particles.cpp
+    test_particles_3d.cpp
     test_path.cpp
     test_path_trace.cpp
     test_physics.cpp
