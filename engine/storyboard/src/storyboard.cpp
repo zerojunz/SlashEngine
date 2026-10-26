@@ -41,7 +41,11 @@ std::vector<Kind> make_kinds() {
          .fields = {{.name = "triangles", .type = Integer, .doc = "Most triangles per model."},
                     {.name = "texture_size",
                      .type = Integer,
-                     .doc = "Largest texture side, in pixels."}}},
+                     .doc = "Largest texture side, in pixels."},
+                    {.name = "texel_density",
+                     .type = Integer,
+                     .doc = "Texels per meter models' textures should have, give or take "
+                            "half."}}},
         {.name = "character",
          .file = "world",
          .doc = "A person or creature in the game.",

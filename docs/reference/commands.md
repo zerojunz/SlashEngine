@@ -92,7 +92,7 @@ as `entity.get`, reject it as an unknown param.
 | Export | [`export.run`](#exportrun), [`texture.forms`](#textureforms), [`sdk.check`](#sdkcheck), [`sdk.add`](#sdkadd), [`sdk.lock`](#sdklock) |
 | Gameplay code | [`gameplay.build`](#gameplaybuild), [`build.check`](#buildcheck), [`api.search`](#apisearch) |
 | AI | [`ai.providers`](#aiproviders), [`ai.complete`](#aicomplete) |
-| Asset library | [`asset.search`](#assetsearch), [`asset.generate`](#assetgenerate), [`asset.refine`](#assetrefine), [`asset.info`](#assetinfo), [`asset.use`](#assetuse), [`asset.add`](#assetadd), [`asset.feedback`](#assetfeedback), [`asset.check`](#assetcheck), [`asset.style`](#assetstyle), [`asset.sync`](#assetsync) |
+| Asset library | [`asset.search`](#assetsearch), [`asset.generate`](#assetgenerate), [`asset.refine`](#assetrefine), [`asset.info`](#assetinfo), [`asset.use`](#assetuse), [`asset.add`](#assetadd), [`asset.feedback`](#assetfeedback), [`asset.check`](#assetcheck), [`asset.style`](#assetstyle), [`asset.review`](#assetreview), [`asset.sync`](#assetsync) |
 
 
 ## Describe
@@ -5224,6 +5224,61 @@ a cafe with a tone and nothing else, after a stool, a cup and a sign were accept
 
 ```json
 {"accepted":3,"edits":[{"id":"palette/main","set":{"colors":{"dark_green":"#2a3a30","light_orange":"#e8d8b0"},"links":["art"],"name":"Main palette","summary":"The colors of the accepted images.","tolerance":8},"version":null},{"id":"budget/assets","set":{"name":"Asset budgets","summary":"What the accepted assets need at most.","texture_size":32,"triangles":96},"version":null},{"id":"reference/sign","set":{"links":["art/sign.png"],"name":"A chalkboard sign","summary":"two flat colors, a thick frame"},"version":null},{"id":"reference/cup","set":{"links":["props/cup.model.json"],"name":"A cup","summary":"reads at a glance on the counter"},"version":null},{"id":"reference/stool","set":{"links":["props/stool.model.json"],"name":"A cafe stool","summary":"eight-sided parts, flat oak and steel"},"version":null}]}
+```
+
+### asset.review
+
+Reviews a model as a person would before it goes into a game: checks its geometry, draws it from
+every side headless and asks a vision-capable model whether the views show what was asked for.
+A library model's verdict is recorded as its [feedback](#assetfeedback), source
+`asset.review`, so search, candidates and later prompts learn from it. Needs: `read`,
+`filesystem`, `network`.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | | A library model, or the start of its ID |
+| `path` | string | | A project model; with `id`, where the library model will go, whose budgets it is held to |
+| `request` | string | what it was generated from, else its description | What it should be |
+| `views` | integer, 1 to 8 | `4` | How many views round it |
+| `size` | integer, 64 to 1024 | `256` | Each view's width and height in pixels |
+| `out` | string | | A project folder to write the views to, as `view-1.png` and on |
+| `ask` | boolean | when `providers.json` names a provider | Whether to ask a vision model |
+| `role` | string | `""` | The role or provider in `providers.json` to ask |
+| `record` | boolean | `true` for a library model | Whether to record the verdict as feedback |
+
+Give `id`, `path` or both. The checks:
+
+- errors: the storyboard's [budgets](storyboard-format.md#checks) that cover the path (triangles,
+  texture size and `texel_density`, the texels a meter of its albedo textures, from half to twice
+  the budget's) and the [checks](scene-format.md#model-checks) the library keeps with the asset;
+- warnings: a size outside 1 cm to 100 m on its largest side, holes (loops of edges only one
+  triangle uses, after corners closer than a hundred-thousandth of its size are joined) and
+  triangles with no area.
+
+The views circle the model from 20 degrees above, the first from its front's right, framed by
+its bounds on a plain backdrop and lit by a key and a fill light that turn with the camera. They
+are drawn on the software device, so they are the same pixels on every machine and asking again
+about the same model is the same request, which a replay file answers. The model is sent the
+views, the request and what the checks found (size, triangles, errors and warnings), and returns
+whether the model `matches` and its `problems`, each with the view that shows it; a problem
+naming no real view is counted in `unverified` and left out.
+
+The reply has the `verdict` (`rejected` when there are errors or the model says it doesn't
+match, else `accepted`), `errors` and `warnings` (left out when empty), the `size` in meters,
+`triangles`, `holes`, `texel_density` (for textured models), `views` (the paths written, or the
+count), `review` (`matches`, `problems`, `unverified` when not 0, the `model` that answered, and
+`replayed` when a replay file answered), a `note` when no model was asked, and `recorded` when
+feedback was recorded. Without `providers.json` and with no params asking for a model, it makes
+the checks and the views and notes that no model looked; asking with no request to give it fails
+at `/request`. From [examples/model-review](../../examples/model-review/), an oak chest asked to
+have brass hinges:
+
+```json
+{"id": "ec2f563f549a", "request": "An oak chest with brass hinges on its lid", "out": "review/chest"}
+```
+
+```json
+{"holes":0,"recorded":true,"review":{"matches":false,"model":"vision-model","problems":[{"problem":"The lid has no brass hinges; its back edge is plain wood.","view":2}]},"size":[1.04,0.64,0.64],"triangles":24,"verdict":"rejected","views":["review/chest/view-1.png","review/chest/view-2.png","review/chest/view-3.png","review/chest/view-4.png"]}
 ```
 
 ### asset.sync

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -315,7 +316,8 @@ void check_models(const json::Object& entries, const std::vector<std::string>& m
         std::vector<std::pair<std::string, const json::Value*>> limits;
         for (const auto& budget : budgets) {
             if ((integer(*budget.second, "triangles") > 0 ||
-                 integer(*budget.second, "texture_size") > 0) &&
+                 integer(*budget.second, "texture_size") > 0 ||
+                 integer(*budget.second, "texel_density") > 0) &&
                 budget_covers(*budget.second, path)) {
                 limits.push_back(budget);
             }
@@ -333,6 +335,17 @@ void check_models(const json::Object& entries, const std::vector<std::string>& m
                 errors.push_back({path, "",
                                   "has " + std::to_string(facts->triangles) + " triangles; " + id +
                                       " allows " + std::to_string(most)});
+            }
+            const std::int64_t density = integer(*budget, "texel_density");
+            if (density > 0 && facts->texel_density &&
+                (*facts->texel_density < static_cast<float>(density) / 2.0F ||
+                 *facts->texel_density > static_cast<float>(density) * 2.0F)) {
+                errors.push_back({path, "",
+                                  "has " + std::to_string(std::lround(*facts->texel_density)) +
+                                      " texels a meter; " + id + " asks for " +
+                                      std::to_string(density) + ", from " +
+                                      std::to_string(density / 2) + " to " +
+                                      std::to_string(density * 2)});
             }
             const std::int64_t side = integer(*budget, "texture_size");
             if (side <= 0) {
