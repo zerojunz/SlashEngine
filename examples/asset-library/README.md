@@ -35,5 +35,9 @@ library and calls the commands as an agent does over MCP (tools `asset_search`,
 - Models go in as [`.model.json` recipes](../../docs/reference/scene-format.md#model-recipes),
   kept with their size and triangles. `asset.refine` makes a version of the bench with its
   `length` parameter doubled: no generator is called, and the legs move out with the seat.
+- A file taken from the library and edited goes back in as a new version: the artist deepens
+  the bench's seat in the game's copy, and `asset.add` with only the path keeps it with the
+  first bench as its `parent`, described and licensed as that one was. `.glb` models go in the
+  same way, when they hold their own buffers and images.
 - The library is `~/.slash/library`, or `SLASH_LIBRARY_DIR`; this example keeps its own in
   `library/`.
