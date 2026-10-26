@@ -1,0 +1,5 @@
+{"jsonrpc":"2.0","id":1,"method":"model.cleanup","params":{"path":"source/crate.obj","out":"props/crate.glb","up":"z","scale":0.001,"pivot":[0.5,0,0.5]}}
+{"jsonrpc":"2.0","id":2,"method":"model.cleanup","params":{"path":"source/boulder.model.json","out":"props/boulder.glb","height":0.8,"pivot":[0.5,0,0.5]}}
+{"jsonrpc":"2.0","id":3,"method":"model.inspect","params":{"path":"props/boulder.glb","brief":true}}
+{"jsonrpc":"2.0","id":4,"method":"storyboard.check","params":{}}
+{"jsonrpc":"2.0","id":5,"method":"model.cleanup","params":{"path":"source/boulder.model.json","out":"props/boulder.glb","height":0.8,"pivot":[0.5,0,0.5],"triangles":2}}

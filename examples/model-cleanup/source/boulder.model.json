@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "materials": {
+    "granite": {
+      "albedo_color": [0.46, 0.45, 0.43, 1],
+      "roughness": 0.9
+    }
+  },
+  "parts": [
+    {
+      "material": "granite",
+      "name": "rock",
+      "radial_segments": 64,
+      "radius": 1,
+      "rings": 32,
+      "scale": [1.4, 0.8, 1],
+      "shape": "sphere"
+    }
+  ]
+}

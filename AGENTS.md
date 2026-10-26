@@ -1044,7 +1044,12 @@ reload, and `check_model` backs `scene validate`, exports and `model.inspect`; a
 `StandardMaterial3D` on the entity is Godot's `material_override`. `write_gltf`
 (`src/gltf_writer.cpp`) writes a `Model` back out as a `.gltf` file that loads as written (its
 buffer embedded, images by their paths or embedded as PNGs), which importers use to pick one mesh
-out of a model. JPEG textures decode with stb_image's integer decoder
+out of a model, and `write_glb` as one `.glb` file holding everything. `model.cleanup`
+(`engine/command/src/model_cleanup.cpp`, on `scene3d::cleanup_model` in `src/cleanup.cpp`) makes a
+generated or imported model game-ready as a `.glb`: up turned to y, simplified with meshoptimizer
+to the storyboard's triangle budget (`storyboard::budget_for`) with LODs made again, sized, moved
+to a pivot and unwrapped with xatlas where it has no texture coordinates; `examples/model-cleanup`
+cleans a CAD crate and a dense boulder. JPEG textures decode with stb_image's integer decoder
 (`engine/render/src/jpeg.c`). `tests/gltf.hpp` writes test models in code, so none is committed;
 `examples/models-3d` is a house from a `.gltf` file.
 

@@ -5,6 +5,7 @@ add_library(slash_command
     src/lightmap.cpp
     src/live.cpp
     src/mcp.cpp
+    src/model_cleanup.cpp
     src/navigation.cpp
     src/perf.cpp
     src/place.cpp
