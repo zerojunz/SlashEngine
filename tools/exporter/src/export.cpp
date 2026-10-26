@@ -33,6 +33,7 @@
 #include "slash/runtime/project.hpp"
 #include "slash/scene3d/blend.hpp"
 #include "slash/scene3d/gridmap.hpp"
+#include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
@@ -153,7 +154,7 @@ std::optional<fs::path> find_emscripten_toolchain() {
 
 // The files a game reads at run time: scenes, prefabs, the assets sprites draw, animations and
 // animation trees, tile sets, particle process materials, fonts, sounds, navigation meshes,
-// models, mesh libraries and terrains' heightmaps.
+// models, mesh libraries, terrains' heightmaps and baked lightmaps.
 enum class DataFile : std::uint8_t {
     None,
     Scene,
@@ -175,6 +176,8 @@ enum class DataFile : std::uint8_t {
     NavigationMesh,
     NavigationPolygon,
     MeshLibrary,
+    Lightmap,
+    LightmapTexels,
     Model,
     Buffer
 };
@@ -239,6 +242,13 @@ DataFile data_file(std::string_view name) {
     if (name.ends_with(scene3d::kMeshLibrarySuffix)) {
         return DataFile::MeshLibrary;
     }
+    if (name.ends_with(scene3d::kLightmapSuffix)) {
+        return DataFile::Lightmap;
+    }
+    // A lightmap's texels, light past 1 kept as a Radiance HDR file.
+    if (name.ends_with(".hdr")) {
+        return DataFile::LightmapTexels;
+    }
     if (audio::is_sound_path(name)) {
         return DataFile::Sound;
     }
@@ -256,6 +266,12 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     if (kind == DataFile::Heightmap) {
         if (auto heights = render::decode_gray16(text); !heights) {
             return {{"", heights.error().message}};
+        }
+        return {};
+    }
+    if (kind == DataFile::LightmapTexels) {
+        if (auto texels = render::decode_hdr(text); !texels) {
+            return {{"", texels.error().message}};
         }
         return {};
     }
@@ -319,6 +335,8 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return navigation::validate_polygon(parsed.value());
     case DataFile::MeshLibrary:
         return scene3d::validate_mesh_library(parsed.value());
+    case DataFile::Lightmap:
+        return scene3d::validate_lightmap(parsed.value());
     case DataFile::Prefab:
         errors = world::validate_prefab(components, parsed.value(), reader);
         break;
@@ -487,8 +505,8 @@ std::set<std::string, std::less<>> terrain_maps(const fs::path& project_dir) {
 
 // Copies project.json, providers.json and every scene, prefab, texture, .frames.json,
 // .material.json, .anim.json, .animtree.json, .tileset.json, font, .theme.json, sound, .audio.json,
-// .bus_layout.json, .navmesh.json, .navpoly.json and .meshlib.json file, heightmap and model into
-// data, checking each on the way.
+// .bus_layout.json, .navmesh.json, .navpoly.json, .meshlib.json and .lightmap.json file, heightmap,
+// lightmap's .hdr texels and model into data, checking each on the way.
 // Materials take their shaders compiled for the platform, and textures ship in the forms
 // project.json's rendering.textures asks for, kept in library_dir's cache.
 bool stage_data(const fs::path& project_dir, const runtime::Project& project, const fs::path& data,

@@ -251,6 +251,9 @@ slash_add_dependency(stb DOWNLOAD_ONLY TRUE)
 # FBX models, read with ufbx as Godot 4.3's importer reads them (engine/scene3d builds its one
 # source file).
 slash_add_dependency(ufbx DOWNLOAD_ONLY TRUE)
+# Lightmap UVs, unwrapped with xatlas as Godot's "Unwrap UV2 for Lightmap/AO" unwraps them
+# (engine/scene3d builds it through src/xatlas.cpp, which makes its charts the same everywhere).
+slash_add_dependency(xatlas DOWNLOAD_ONLY TRUE)
 
 # Baking navigation meshes, as Godot does (engine/navigation): Recast voxelizes 3D geometry into
 # polygons, and Clipper2 and PolyPartition merge, cut and split 2D outlines. No fused multiply-adds,

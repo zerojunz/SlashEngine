@@ -4,6 +4,7 @@
 #include "slash/core/json_schema.hpp"
 #include "slash/core/result.hpp"
 #include "slash/render/device.hpp"
+#include "slash/render/image.hpp"
 #include "slash/render/mesh.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/primitive.hpp"
@@ -19,10 +20,12 @@
 #include <cstdint>
 #include <entt/entity/entity.hpp>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace slash::world {
@@ -94,6 +97,9 @@ struct Environment {
 };
 [[nodiscard]] Environment environment(const world::World& world, render::Color clear,
                                       entt::entity camera = entt::null);
+// The environment of the first WorldEnvironment made, before any camera's attributes, as
+// Godot's environment bakes take it (a LightmapGI's).
+[[nodiscard]] Environment world_environment(const world::World& world, render::Color clear);
 
 // The entity whose CameraAttributesPractical a camera uses, as Godot's Camera3D.attributes and
 // WorldEnvironment.camera_attributes: the camera's own, else the first WorldEnvironment's;
@@ -123,6 +129,18 @@ struct SourceTexture {
 using TextureSource =
     std::function<Result<SourceTexture>(const std::string& path, render::Filter filter)>;
 
+struct LightmapData;
+struct LightmapUnwrap;
+
+// A baked lightmap loaded by its .lightmap.json file's project path (lightmap.hpp), with the
+// texels of its .hdr file: a reload of either gives new ones, and its texture is made again.
+struct SourceLightmap {
+    std::shared_ptr<const LightmapData> data;
+    std::shared_ptr<const render::HdrImage> texels;
+};
+// The lightmaps LightmapGI's light_data names, loaded by project path.
+using LightmapSource = std::function<Result<SourceLightmap>(const std::string& path)>;
+
 // A model loaded by project path, and its version: a reload raises it, and its meshes are made
 // again.
 struct SourceModel {
@@ -137,8 +155,9 @@ using ModelSource = std::function<Result<SourceModel>(const std::string& path)>;
 // mesh, and settings Godot refuses (a torus whose radii are equal). With the world's file reader
 // set, each model is read and checked as check_model does, and the bone names of Skeleton3Ds,
 // skeleton modifiers and bone attachments against the models they follow. CSG shapes that can't
-// be made (check_csg), path followers that can't follow (world::check_paths) and GridMaps whose
-// cells can't be made (check_gridmaps) come after.
+// be made (check_csg), path followers that can't follow (world::check_paths), GridMaps whose
+// cells can't be made (check_gridmaps), terrains (check_terrains) and LightmapGIs
+// (check_lightmaps) come after.
 [[nodiscard]] std::vector<Problem> check_meshes(const world::World& world);
 
 // The same in a parsed scene file, each at its JSON Pointer in the file. Prefabs and instanced
@@ -164,10 +183,12 @@ struct Frame3D {
 
 // Draws a world's meshes through a render device, keeping their meshes on the device between
 // frames: meshes of equal settings share one, each model's meshes and images are made once, and
-// a mesh no entity used last frame goes.
+// a mesh no entity used last frame goes. Static meshes a LightmapGI baked take their ambient
+// light, and their baked lights' light, from its lightmap, as Godot's lightmapped instances.
 class Renderer {
 public:
-    Renderer(render::RenderDevice& device, TextureSource textures, ModelSource models = {});
+    Renderer(render::RenderDevice& device, TextureSource textures, ModelSource models = {},
+             LightmapSource lightmaps = {});
     ~Renderer();
     Renderer(const Renderer&) = delete;
     Renderer& operator=(const Renderer&) = delete;
@@ -304,9 +325,51 @@ private:
     Result<render::MeshId> skinned_mesh(const std::string& key, const ModelSurface& surface,
                                         const std::vector<world::Affine3D>& joints);
 
+    // A mesh's place in a baked lightmap this frame, by its entity and model part.
+    struct Lit {
+        std::shared_ptr<const LightmapData> data;
+        const LightmapUnwrap* unwrap = nullptr;
+        std::string mesh; // the unwrap's hash
+        std::string key;  // the lightmap file and its version
+        render::LightmapShading shading;
+        bool reported = false; // that its mesh changed since, this frame
+    };
+    struct KeptLightmap {
+        SourceLightmap source;
+        render::TextureId texture = render::TextureId::None;
+        std::string problem; // why its texture couldn't be made
+        std::uint64_t version = 0;
+        std::uint64_t used = 0;
+    };
+    struct MeshHash {
+        std::string hash;
+        std::uint64_t used = 0;
+    };
+    // The source of a lit mesh: a key that stays while it does, and its vertices and indices
+    // made as they were unwrapped (a model part's surfaces one after another).
+    struct LitSource {
+        std::string key;
+        std::function<void(std::vector<render::Vertex3D>&, std::vector<std::uint32_t>&)> make;
+    };
+    // Loads the lightmaps the world's LightmapGIs name, makes their textures where they changed
+    // and finds each lit mesh's place, for a camera of this exposure.
+    void find_lightmaps(const world::World& world, float exposure);
+    // The lightmap of the entity's part, and its triangles from first, count of them, as a mesh
+    // on the device with their lightmap UVs, made once; nullptr when it has none, or its mesh
+    // changed since the bake, with a problem.
+    const render::LightmapShading* lit_surface(entt::entity entity, std::uint32_t part,
+                                               const LitSource& source, std::uint32_t first,
+                                               std::uint32_t count, render::MeshId& mesh);
+    void destroy_lightmaps(bool unused_only);
+
     render::RenderDevice* device_;
     TextureSource textures_;
     ModelSource models_;
+    LightmapSource lightmaps_;
+    std::unordered_map<std::string, KeptLightmap> kept_lightmaps_;
+    std::map<std::pair<entt::entity, std::uint32_t>, Lit> lit_;
+    std::unordered_map<std::string, MeshHash> mesh_hashes_;
+    std::uint64_t lightmap_versions_ = 0;
     std::unordered_map<std::string, Embedded> embedded_;
     std::unordered_map<entt::entity, Local> before_;
     std::unordered_map<entt::entity, PoseKey> before_poses_;

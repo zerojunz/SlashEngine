@@ -38,7 +38,7 @@ template <typename To, typename From>
 }
 
 // The textures a mesh draw samples: albedo, metallic, roughness, emission and normal, then six
-// only terrain shading samples (mesh_texture_slots).
+// only terrain shading samples, the last of which holds a lightmap (mesh_texture_slots).
 inline constexpr std::size_t kMeshTextures = 11;
 
 // mesh.hlsl's Surface flags.
@@ -50,6 +50,7 @@ inline constexpr std::uint32_t kMeshNormalMap = 16;
 inline constexpr std::uint32_t kMeshSideCheck = 32;
 inline constexpr std::uint32_t kMeshHasAlpha = 64;
 inline constexpr std::uint32_t kMeshDisableFog = 128;
+inline constexpr std::uint32_t kMeshLightmap = 256;
 
 // mesh.hlsl's terrain flags, in MeshSurfaceUniforms::options' w: terrain shading, depth blending,
 // and from kMeshTerrainNormals up, which layers have a normal_roughness texture.
@@ -63,8 +64,9 @@ struct MeshCameraUniforms {
 };
 struct MeshInstanceUniforms {
     Mat4 model{};
-    Mat4 normal_model{}; // the inverse transpose of model's upper 3x3, in its upper 3x3
-    Float4 uv1{};        // scale, then offset
+    Mat4 normal_model{};  // the inverse transpose of model's upper 3x3, in its upper 3x3
+    Float4 uv1{};         // scale, then offset
+    Float4 lightmap_uv{}; // the lightmap's rect of uv2: offset, then scale
 };
 
 // The fragment stage's uniforms: b0 and b1 in space3.
@@ -78,11 +80,13 @@ struct MeshSurfaceUniforms {
     std::array<std::uint32_t, 4> options{};
     Float4 terrain_uv{};      // each ground layer's tiling: the maps' resolution over its uv_scale
     Float4 terrain_opacity{}; // how much the color map tints each ground layer
+    Float4 lightmap{};        // the lightmap's exposure, then 1 for the bicubic filter
 };
 
 // A draw's textures in mesh.hlsl's slots. A StandardMaterial3D's albedo, metallic, roughness,
-// emission and normal textures, the rest None; with terrain shading, the color map, splat map and
-// normal map, then the four layers' albedo_bump and their normal_roughness.
+// emission and normal textures, the rest None but the last, its lightmap; with terrain shading,
+// the color map, splat map and normal map, then the four layers' albedo_bump and their
+// normal_roughness.
 [[nodiscard]] std::array<MaterialTexture, kMeshTextures>
 mesh_texture_slots(const Material3D& material);
 // Where slot samples for a pixel at uv: the ground layers' slots tile by terrain_uv, the rest
@@ -95,7 +99,8 @@ struct MeshLightUniforms {
     Float4 direction{};
     Float4 color{};
     Float4 params{};
-    Float4 shadow{}; // its slot in MeshShadowUniforms' directional or positional, or -1
+    // Its slot in MeshShadowUniforms' directional or positional, or -1; then 1 when it is baked.
+    Float4 shadow{};
 };
 struct MeshSceneUniforms {
     Float4 camera{}; // the camera's place, then how many lights there are in lights
@@ -162,8 +167,8 @@ struct MeshShadowPassUniforms {
     Float4 options{};  // the bias, 1 pushes by it along the ray (omni), 1 clamps to near (pancake)
 };
 
-static_assert(sizeof(MeshInstanceUniforms) == 144);
-static_assert(sizeof(MeshSurfaceUniforms) == 128);
+static_assert(sizeof(MeshInstanceUniforms) == 160);
+static_assert(sizeof(MeshSurfaceUniforms) == 144);
 static_assert(sizeof(MeshSceneUniforms) == 256 + (80 * kMaxLights3D));
 static_assert(sizeof(MeshDirectionalShadowUniforms) == 320);
 static_assert(sizeof(MeshPositionalShadowUniforms) == 576);
@@ -324,6 +329,7 @@ struct MeshCorner {
     Float3 binormal{};
     std::array<float, 2> uv{};
     Float4 color{};
+    std::array<float, 2> uv2{}; // in the lightmap
 };
 [[nodiscard]] MeshCorner mesh_vertex(const MeshCameraUniforms& camera,
                                      const MeshInstanceUniforms& instance, const Vertex3D& vertex);
@@ -341,6 +347,8 @@ struct MeshPixel {
     bool front = true;
     // Each slot's texel, at mesh_texture_uv.
     std::array<Float4, kMeshTextures> texels{white_texels()};
+    // The lightmap's light there, as lightmap_light gives it, when the draw has one.
+    Float3 lightmap{};
 
     [[nodiscard]] static constexpr std::array<Float4, kMeshTextures> white_texels() {
         std::array<Float4, kMeshTextures> out{};
@@ -378,6 +386,20 @@ struct MeshMaps {
     std::span<const MeshProbeUniforms> probes;
     const std::vector<CubeImage>* probe_cubes = nullptr;
 };
+
+// A half-float texture's texels, as floats: RGBA, in rows from the top.
+struct FloatImage {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::vector<float> rgba;
+};
+// The image's RGBA at uv, filtered linearly and clamped to its edges, as a linear sampler that
+// clamps reads it.
+[[nodiscard]] Float4 sample_linear(const FloatImage& image, std::array<float, 2> uv);
+// lightmap_light in shaders/mesh.hlsl: the lightmap's light at uv, bicubic or bilinear by the
+// surface's lightmap uniform, times its exposure.
+[[nodiscard]] Float3 lightmap_light(const MeshSurfaceUniforms& surface, const FloatImage& image,
+                                    std::array<float, 2> uv);
 
 // The pixel's color, as fs_main gives it, or nullopt where it discards the pixel.
 [[nodiscard]] std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface,
@@ -420,10 +442,28 @@ Result<void> check_material_3d(const Material3D& material, TextureId target, con
         return std::ranges::all_of(values, [](float value) { return std::isfinite(value); });
     };
     const auto& m = material;
-    if (!finite({m.albedo[0], m.albedo[1], m.albedo[2], m.albedo[3], m.metallic, m.roughness,
-                 m.specular, m.emission[0], m.emission[1], m.emission[2], m.emission_energy,
-                 m.normal_scale, m.alpha_scissor_threshold, m.uv1_scale[0], m.uv1_scale[1],
-                 m.uv1_offset[0], m.uv1_offset[1]})) {
+    if (!finite({m.albedo[0],
+                 m.albedo[1],
+                 m.albedo[2],
+                 m.albedo[3],
+                 m.metallic,
+                 m.roughness,
+                 m.specular,
+                 m.emission[0],
+                 m.emission[1],
+                 m.emission[2],
+                 m.emission_energy,
+                 m.normal_scale,
+                 m.alpha_scissor_threshold,
+                 m.uv1_scale[0],
+                 m.uv1_scale[1],
+                 m.uv1_offset[0],
+                 m.uv1_offset[1],
+                 m.lightmap.uv_rect[0],
+                 m.lightmap.uv_rect[1],
+                 m.lightmap.uv_rect[2],
+                 m.lightmap.uv_rect[3],
+                 m.lightmap.exposure})) {
         return make_error(ErrorCode::InvalidArgument, "a 3D material's numbers are finite");
     }
     if (m.terrain.enabled) {

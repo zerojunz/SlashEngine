@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -12,7 +13,8 @@
 
 // Image files to and from Image, for textures and captures. PNG and BMP read, through SDL's own
 // loaders, JPEG through stb_image's decoder, and KTX2 files of RGBA8, BC7 or ASTC 4x4 texels; PNG
-// and KTX2 write. 16-bit gray PNG files, as heightmaps are, read and write as Gray16.
+// and KTX2 write. 16-bit gray PNG files, as heightmaps are, read and write as Gray16, and
+// Radiance HDR files, as lightmaps are, as HdrImage.
 namespace slash::render {
 
 // The suffixes of the image files decode_image reads, as texture paths end.
@@ -68,6 +70,35 @@ struct Gray16 {
 [[nodiscard]] Result<Gray16> decode_gray16(std::string_view bytes);
 // Encodes the values as a 16-bit gray PNG file, the same bytes on every machine.
 [[nodiscard]] Result<std::string> encode_gray16_png(const Gray16& image);
+
+// An image of linear light beyond 1, three floats a pixel (red, green, blue), rows from the top,
+// as a baked lightmap holds it.
+struct HdrImage {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::vector<float> rgb; // width * height * 3
+
+    bool operator==(const HdrImage&) const = default;
+};
+// Decodes a Radiance HDR file (.hdr): RGBE pixels, in flat or run-length encoded scanlines, top
+// row first ("-Y height +X width"), as Greg Ward's rgbe2float decodes them. Images wider or
+// taller than 16384 pixels are refused.
+[[nodiscard]] Result<HdrImage> decode_hdr(std::string_view bytes);
+// Encodes the image as a Radiance HDR file of flat RGBE scanlines, the same bytes on every
+// machine. Values below 0 and NaN are written as 0, and values past 1e38 as 1e38.
+[[nodiscard]] Result<std::string> encode_hdr(const HdrImage& image);
+
+// The ambient light a scene's lit surfaces take from each direction they face, as a panorama
+// width by height texels, linear: its ambient color times its energy, mixed with its sky's
+// radiance at the blurriest level by Radiance3D's ambient_mix where Radiance3D.ambient is set, as
+// the devices light a surface by its normal. Godot's LightmapGI takes its environment so
+// (environment_bake_panorama) for rays that leave the scene. Texel (x, y) holds the direction at
+// angle 2 pi (x + 0.5) / width about y from +z toward +x and pi (y + 0.5) / height down from +y,
+// as Godot's lightmapper looks a direction up. sky_texel samples the sky's texture at a panorama
+// coordinate, as a device would.
+[[nodiscard]] HdrImage
+ambient_panorama(const Scene3D& scene, std::uint32_t width, std::uint32_t height,
+                 const std::function<std::array<float, 4>(const std::array<float, 2>&)>& sky_texel);
 
 // The image's color at a texture coordinate, from (0, 0) at its top left to (1, 1), as RGBA from
 // 0 to 1, filtered as a GPU samples it. Outside 0..1 the edge pixels stretch on, or with repeat

@@ -65,10 +65,15 @@ struct MeshInstance3D {
     // Which lights' shadows it casts, as Godot's GeometryInstance3D.cast_shadow: "off", "on",
     // "double_sided" (with no faces culled) or "shadows_only" (it casts but isn't seen).
     std::string cast_shadow = "on";
+    // How it takes part in global illumination, as Godot's GeometryInstance3D.gi_mode: "static"
+    // meshes are baked into a LightmapGI's lightmap (and lit by it), "dynamic" and "disabled"
+    // ones are not. gi_lightmap_texel_scale scales its lightmap's texels across.
+    std::string gi_mode = "static";
+    float gi_lightmap_texel_scale = 1.0F;
 
     friend bool operator==(const MeshInstance3D&, const MeshInstance3D&) = default;
 };
-SLASH_COMPONENT(MeshInstance3D, mesh, layers, cast_shadow)
+SLASH_COMPONENT(MeshInstance3D, mesh, layers, cast_shadow, gi_mode, gi_lightmap_texel_scale)
 
 // Poses the skeleton of the model the entity's MeshInstance3D draws by hand, as Godot's Skeleton3D
 // bone poses: each bone, or other node of the model, named in these maps takes the position, the
@@ -434,6 +439,12 @@ struct DirectionalLight3D {
     // ("sky_only").
     float light_angular_distance = 0.0F;
     std::string sky_mode = "light_and_sky";
+    // Baking into a LightmapGI, as Godot's Light3D: how much it lights what bounces, whether it is
+    // left out ("disabled"), baked for bounces only and lit live ("dynamic") or baked whole and not
+    // lit live on lightmapped meshes ("static"), and how far its soft shadows blur.
+    float light_indirect_energy = 1.0F;
+    std::string light_bake_mode = "dynamic";
+    float shadow_blur = 1.0F;
 
     friend bool operator==(const DirectionalLight3D&, const DirectionalLight3D&) = default;
 };
@@ -443,7 +454,8 @@ SLASH_COMPONENT(DirectionalLight3D, light_color, light_energy, light_specular, l
                 directional_shadow_mode, directional_shadow_split_1, directional_shadow_split_2,
                 directional_shadow_split_3, directional_shadow_blend_splits,
                 directional_shadow_fade_start, directional_shadow_max_distance,
-                directional_shadow_pancake_size, light_angular_distance, sky_mode)
+                directional_shadow_pancake_size, light_angular_distance, sky_mode,
+                light_indirect_energy, light_bake_mode, shadow_blur)
 
 // Light from a point in every direction, as Godot's OmniLight3D, such as a lamp.
 struct OmniLight3D {
@@ -463,12 +475,21 @@ struct OmniLight3D {
     bool shadow_reverse_cull_face = false;
     float shadow_opacity = 1.0F;
     std::uint32_t shadow_caster_mask = 0xFFFFFFFFU;
+    // Baking into a LightmapGI, as Godot's Light3D: how much it lights what bounces, its radius
+    // for soft shadows, whether it is left out ("disabled"), baked for bounces only and lit live
+    // ("dynamic") or baked whole and not lit live on lightmapped meshes ("static"), and how far
+    // its soft shadows blur.
+    float light_indirect_energy = 1.0F;
+    float light_size = 0.0F;
+    std::string light_bake_mode = "dynamic";
+    float shadow_blur = 1.0F;
 
     friend bool operator==(const OmniLight3D&, const OmniLight3D&) = default;
 };
 SLASH_COMPONENT(OmniLight3D, light_color, light_energy, light_specular, light_negative,
                 light_cull_mask, omni_range, omni_attenuation, shadow_enabled, shadow_bias,
-                shadow_normal_bias, shadow_reverse_cull_face, shadow_opacity, shadow_caster_mask)
+                shadow_normal_bias, shadow_reverse_cull_face, shadow_opacity, shadow_caster_mask,
+                light_indirect_energy, light_size, light_bake_mode, shadow_blur)
 
 // Light from a point in a cone down its entity's -z, as Godot's SpotLight3D, such as a torch.
 struct SpotLight3D {
@@ -490,13 +511,22 @@ struct SpotLight3D {
     bool shadow_reverse_cull_face = false;
     float shadow_opacity = 1.0F;
     std::uint32_t shadow_caster_mask = 0xFFFFFFFFU;
+    // Baking into a LightmapGI, as Godot's Light3D: how much it lights what bounces, its radius
+    // for soft shadows, whether it is left out ("disabled"), baked for bounces only and lit live
+    // ("dynamic") or baked whole and not lit live on lightmapped meshes ("static"), and how far
+    // its soft shadows blur.
+    float light_indirect_energy = 1.0F;
+    float light_size = 0.0F;
+    std::string light_bake_mode = "dynamic";
+    float shadow_blur = 1.0F;
 
     friend bool operator==(const SpotLight3D&, const SpotLight3D&) = default;
 };
 SLASH_COMPONENT(SpotLight3D, light_color, light_energy, light_specular, light_negative,
                 light_cull_mask, spot_range, spot_attenuation, spot_angle, spot_angle_attenuation,
                 shadow_enabled, shadow_bias, shadow_normal_bias, shadow_reverse_cull_face,
-                shadow_opacity, shadow_caster_mask)
+                shadow_opacity, shadow_caster_mask, light_indirect_energy, light_size,
+                light_bake_mode, shadow_blur)
 
 // Godot's ProceduralSkyMaterial, on a WorldEnvironment's entity: a sky from its top through the
 // horizon to the ground's bottom, with each DirectionalLight3D's sun on it. Colors are sRGB;
@@ -581,6 +611,41 @@ struct ReflectionProbe {
 SLASH_COMPONENT(ReflectionProbe, update_mode, intensity, blend_distance, max_distance, size,
                 origin_offset, box_projection, interior, enable_shadows, cull_mask, reflection_mask,
                 mesh_lod_threshold, ambient_mode, ambient_color, ambient_color_energy)
+
+// Light baked into lightmaps, as Godot's LightmapGI: lightmap.bake traces the light of the static
+// MeshInstance3Ds and the lights that bake (light_bake_mode) under its entity's parent (the whole
+// world for a root) into light_data, and lightmapped meshes then take their ambient light from it,
+// in place of the environment's and reflection probes'. Its own place doesn't matter.
+struct LightmapGI {
+    std::string quality = "medium"; // "low", "medium", "high" or "ultra": rays traced a texel
+    bool supersampling = false;     // bake at supersampling_factor times the texels, then shrink
+    float supersampling_factor = 2.0F;
+    int bounces = 3;
+    float bounce_indirect_energy = 1.0F;
+    bool use_texture_for_bounces = true; // bounces take direct light from the lightmap
+    bool use_denoiser = true;
+    float denoiser_strength = 0.1F;
+    int denoiser_range = 10;
+    float bias = 0.0005F;
+    float texel_scale = 1.0F;
+    int max_texture_size = 16384;
+    // The light rays that leave the world bring: "disabled" (none), "scene" (the
+    // WorldEnvironment's, as meshes would take ambient light from it) or "custom_color".
+    std::string environment_mode = "scene";
+    Vec4 environment_custom_color{1.0F, 1.0F, 1.0F, 1.0F};
+    float environment_custom_energy = 1.0F;
+    // The entity whose CameraAttributesPractical's exposure_multiplier the light is baked with,
+    // or "" for 1.
+    std::string camera_attributes;
+    // The .lightmap.json file lightmap.bake writes, project path; "" before a bake.
+    std::string light_data;
+
+    friend bool operator==(const LightmapGI&, const LightmapGI&) = default;
+};
+SLASH_COMPONENT(LightmapGI, quality, supersampling, supersampling_factor, bounces,
+                bounce_indirect_energy, use_texture_for_bounces, use_denoiser, denoiser_strength,
+                denoiser_range, bias, texel_scale, max_texture_size, environment_mode,
+                environment_custom_color, environment_custom_energy, camera_attributes, light_data)
 
 // The 3D world's background, ambient light, tonemap, reflections, ambient occlusion, glow, fog and
 // adjustments,

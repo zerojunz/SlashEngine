@@ -9,6 +9,7 @@
 #include "slash/core/result.hpp"
 #include "slash/render/device.hpp"
 #include "slash/render/upscaler.hpp"
+#include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
@@ -394,6 +395,12 @@ private:
     std::unordered_map<entt::entity, LayerCells> layer_cells_;
     std::map<std::string, asset::Handle<render::Image>, std::less<>> light_images_;
     std::map<std::string, asset::Handle<scene3d::Model>, std::less<>> models_;
+    // The lightmaps LightmapGIs name, and their texels' .hdr files.
+    struct LightmapEntry {
+        asset::Handle<scene3d::LightmapData> data;
+        asset::Handle<render::HdrImage> texels;
+    };
+    std::map<std::string, LightmapEntry, std::less<>> lightmaps_;
     ShadowCache shadow_cache_;
     // The light atlas, and the textures and versions it was packed from.
     render::TextureId atlas_ = render::TextureId::None;

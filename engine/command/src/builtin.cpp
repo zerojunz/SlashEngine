@@ -16,6 +16,7 @@
 #include "slash/canvas/particles.hpp"
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/canvas/tilemap.hpp"
+#include "slash/command/lightmap.hpp"
 #include "slash/command/navigation.hpp"
 #include "slash/command/perf.hpp"
 #include "slash/command/replay.hpp"
@@ -39,6 +40,7 @@
 #include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/ik.hpp"
+#include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/soundtrack/score.hpp"
@@ -452,6 +454,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "meshlib") {
         return Reply::success(scene3d::mesh_library_schema());
+    }
+    if (kind == "lightmap") {
+        return Reply::success(scene3d::lightmap_schema());
     }
     if (kind == "replay") {
         return Reply::success(replay_schema());
@@ -6123,21 +6128,24 @@ void register_builtin_commands(Registry& registry) {
                                           "(.audio.json), \"bus_layout\" (.bus_layout.json), "
                                           "\"navmesh\" (.navmesh.json), \"navpoly\" "
                                           "(.navpoly.json), \"meshlib\" (.meshlib.json), "
+                                          "\"lightmap\" (.lightmap.json), "
                                           "\"replay\" (.replay.json), \"score\" (.score.json) "
                                           "or \"storyboard\" for those files, \"component\" for "
                                           "one component's fields, \"command\" for a command's "
                                           "params.");
-    kind["enum"] = json::Array{
-        "scene",   "prefab", "frames", "material", "animation",  "animtree",  "process_material",
-        "tileset", "font",   "theme",  "audio",    "bus_layout", "navmesh",   "navpoly",
-        "meshlib", "replay", "test",   "score",    "storyboard", "component", "command"};
+    kind["enum"] = json::Array{"scene",     "prefab",           "frames",  "material", "animation",
+                               "animtree",  "process_material", "tileset", "font",     "theme",
+                               "audio",     "bus_layout",       "navmesh", "navpoly",  "meshlib",
+                               "lightmap",  "replay",           "test",    "score",    "storyboard",
+                               "component", "command"};
     registry.add({
         .name = "schema.get",
         .description =
             "Returns a JSON Schema: for scene, prefab, .frames.json, .material.json, "
             ".anim.json, .animtree.json, .process_material.json, .tileset.json, .font.json, "
             ".theme.json, .audio.json, "
-            ".bus_layout.json, .navmesh.json, .navpoly.json, .meshlib.json, .replay.json, "
+            ".bus_layout.json, .navmesh.json, .navpoly.json, .meshlib.json, .lightmap.json, "
+            ".replay.json, "
             ".test.json, "
             ".score.json or storyboard "
             "files, one component or one command.",
@@ -7620,6 +7628,7 @@ void register_builtin_commands(Registry& registry) {
     register_project_map(registry);
     register_navigation_commands(registry);
     register_terrain_commands(registry);
+    register_lightmap_commands(registry);
     register_services_commands(registry);
 }
 

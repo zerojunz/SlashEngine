@@ -107,6 +107,8 @@ constexpr WGPUTextureFormat gpu_format(TextureFormat format) {
         return WGPUTextureFormat_BC7RGBAUnorm;
     case TextureFormat::Astc4x4:
         return WGPUTextureFormat_ASTC4x4Unorm;
+    case TextureFormat::Rgba16F:
+        return WGPUTextureFormat_RGBA16Float;
     case TextureFormat::Rgba8:
         break;
     }
@@ -2399,7 +2401,7 @@ private:
     }
 
     // Vertex3D's fields as the mesh and shadow shaders' inputs.
-    static std::array<WGPUVertexAttribute, 5> mesh_attributes() {
+    static std::array<WGPUVertexAttribute, 6> mesh_attributes() {
         const auto attribute = [](WGPUVertexFormat format, std::size_t offset,
                                   std::uint32_t location) {
             return WGPUVertexAttribute{.nextInChain = nullptr,
@@ -2411,7 +2413,8 @@ private:
                 attribute(WGPUVertexFormat_Float32x3, offsetof(Vertex3D, normal), 1),
                 attribute(WGPUVertexFormat_Float32x4, offsetof(Vertex3D, tangent), 2),
                 attribute(WGPUVertexFormat_Float32x2, offsetof(Vertex3D, uv), 3),
-                attribute(WGPUVertexFormat_Unorm8x4, offsetof(Vertex3D, rgba), 4)};
+                attribute(WGPUVertexFormat_Unorm8x4, offsetof(Vertex3D, rgba), 4),
+                attribute(WGPUVertexFormat_Float32x2, offsetof(Vertex3D, uv2), 5)};
     }
 
     static WGPUCullMode gpu_cull(CullMode cull) {
@@ -4161,7 +4164,9 @@ private:
         destination.texture = texture;
         WGPUTexelCopyBufferLayout layout = WGPU_TEXEL_COPY_BUFFER_LAYOUT_INIT;
         // A compressed row is a row of 4x4 blocks, 16 bytes each.
-        layout.bytesPerRow = is_compressed(desc.format) ? desc.width / 4 * 16 : desc.width * 4;
+        layout.bytesPerRow = is_compressed(desc.format)
+                                 ? desc.width / 4 * 16
+                                 : static_cast<std::uint32_t>(texture_bytes(desc) / desc.height);
         layout.rowsPerImage = is_compressed(desc.format) ? desc.height / 4 : desc.height;
         const WGPUExtent3D extent{
             .width = desc.width, .height = desc.height, .depthOrArrayLayers = 1};
@@ -4341,7 +4346,7 @@ private:
     std::uint32_t surface_height_ = 0;
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
-    std::array<bool, 3> sampled_{true, false, false};
+    std::array<bool, 4> sampled_{true, false, false, true};
     std::array<WGPUShaderModule, 26> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;

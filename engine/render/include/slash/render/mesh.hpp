@@ -47,6 +47,9 @@ struct Vertex3D {
     std::array<float, 4> tangent{1.0F, 0.0F, 0.0F, 1.0F};
     std::array<float, 2> uv{};
     std::array<std::uint8_t, 4> rgba{255, 255, 255, 255};
+    // The second texture coordinate, where a lightmap is sampled (LightmapShading), as Godot's
+    // UV2: each triangle its own place in 0..1.
+    std::array<float, 2> uv2{};
 };
 
 // The most corners and indices a mesh may have.
@@ -154,6 +157,9 @@ struct Light3D {
     float shadow_fade_start = 0.8F;
     float shadow_max_distance = 100.0F;
     float shadow_pancake_size = 20.0F;
+    // Baked into lightmaps (Godot's BAKE_STATIC): meshes with a lightmap (LightmapShading) leave
+    // it out, since theirs holds its light; the rest are lit by it as by any other.
+    bool baked = false;
 
     bool operator==(const Light3D&) const = default;
 };
