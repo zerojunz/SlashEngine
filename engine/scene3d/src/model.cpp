@@ -8,6 +8,7 @@
 #include "slash/scene3d/blend.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/lightmap.hpp"
+#include "slash/scene3d/recipe.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
@@ -736,7 +737,8 @@ bool loops_by_name(std::string_view name) {
 
 bool is_model_path(std::string_view path) {
     return path.ends_with(".gltf") || path.ends_with(".glb") || path.ends_with(".obj") ||
-           path.ends_with(".fbx") || path.ends_with(kBlendSuffix);
+           path.ends_with(".fbx") || path.ends_with(kBlendSuffix) ||
+           path.ends_with(kModelRecipeSuffix);
 }
 
 namespace {
@@ -892,9 +894,62 @@ void add_lods(Model& model) {
 
 } // namespace
 
+namespace {
+
+// A model recipe's model (recipe.hpp).
+Result<Model> load_recipe(std::string_view bytes) {
+    auto doc = json::parse(bytes);
+    if (!doc) {
+        return doc.error();
+    }
+    return build_model_recipe(doc.value());
+}
+
+// A model recipe's errors, and each texture its materials name that can't be read or decoded,
+// at the material's field.
+std::vector<json::ValidationError> check_recipe(std::string_view bytes, const ModelReader& read) {
+    auto doc = json::parse(bytes);
+    if (!doc) {
+        return {{"", doc.error().message}};
+    }
+    std::vector<json::ValidationError> errors = validate_model_recipe(doc.value());
+    if (!errors.empty()) {
+        return errors;
+    }
+    const json::Value* materials = doc.value().find("materials");
+    if (materials == nullptr) {
+        return errors;
+    }
+    for (const auto& [name, fields] : materials->as_object()) {
+        for (const std::string_view field :
+             {"albedo_texture", "metallic_texture", "roughness_texture", "normal_texture",
+              "emission_texture"}) {
+            const json::Value* file = fields.find(field);
+            if (file == nullptr || file->as_string().empty()) {
+                continue;
+            }
+            const std::string at =
+                "/materials/" + json::pointer_escape(name) + "/" + std::string(field);
+            auto text = read(file->as_string());
+            if (!text) {
+                errors.push_back({at, quoted(file->as_string()) +
+                                          " could not be read: " + text.error().message});
+            } else if (auto image = render::decode_image(text.value()); !image) {
+                errors.push_back(
+                    {at, quoted(file->as_string()) + " doesn't decode: " + image.error().message});
+            }
+        }
+    }
+    return errors;
+}
+
+} // namespace
+
 Result<Model> load_model(std::string_view bytes, std::string_view path, const ModelReader& read) {
     Result<Model> model = make_error(ErrorCode::InvalidArgument, "");
-    if (path.ends_with(".obj")) {
+    if (path.ends_with(kModelRecipeSuffix)) {
+        model = load_recipe(bytes);
+    } else if (path.ends_with(".obj")) {
         model = load_obj(bytes, path, read, nullptr);
     } else if (path.ends_with(".fbx")) {
         model = load_fbx(bytes, path, read, nullptr);
@@ -909,6 +964,9 @@ Result<Model> load_model(std::string_view bytes, std::string_view path, const Mo
 
 std::vector<json::ValidationError> check_model(std::string_view bytes, std::string_view path,
                                                const ModelReader& read) {
+    if (path.ends_with(kModelRecipeSuffix)) {
+        return check_recipe(bytes, read);
+    }
     const bool obj = path.ends_with(".obj");
     const bool fbx = path.ends_with(".fbx");
     std::vector<json::ValidationError> errors;
@@ -1000,7 +1058,9 @@ std::size_t model_bytes(const Model& model) {
 
 void add_asset_types(asset::Assets& assets) {
     assets.add_type<Model>(
-        "model", {".gltf", ".glb", ".obj", ".fbx", std::string(kBlendSuffix)},
+        "model",
+        {".gltf", ".glb", ".obj", ".fbx", std::string(kBlendSuffix),
+         std::string(kModelRecipeSuffix)},
         [&assets](std::string_view bytes, std::string_view path) {
             return load_model(bytes, path, [&assets](std::string_view file) {
                 return assets.read(file, "model_file");

@@ -759,9 +759,9 @@ Every primitive also has `flip_faces` (`false`), which turns it inside out, as f
 
 `MeshInstance3D`'s `mesh` (default `""`) names a model by project path: a glTF 2.0 `.gltf` file,
 with its buffers and images in files beside it or in data URIs, a `.glb` file holding
-everything, a Wavefront [`.obj` file](#obj-models), an [`.fbx` file](#fbx-models) or a
-[Blender `.blend` file](#blender-models). The entity draws the model's meshes in
-place of a primitive mesh, read as Godot's importers read them:
+everything, a Wavefront [`.obj` file](#obj-models), an [`.fbx` file](#fbx-models), a
+[Blender `.blend` file](#blender-models) or a [`.model.json` recipe](#model-recipes). The entity
+draws the model's meshes in place of a primitive mesh, read as Godot's importers read them:
 
 ```json
 "house": {"components": {
@@ -925,6 +925,75 @@ with a game.
   `slash-cli scene validate` converts the files it checks.
 - Textures packed into the `.blend` file, or found where it names them, are carried inside the
   `.glb` file.
+
+#### Model recipes
+
+A `.model.json` file is a model written as text: named parameters, materials and parts, which the
+engine builds into meshes when it loads the file, so `MeshInstance3D`'s `mesh`, `model.inspect`
+and exports take it as they take a glTF file, and it reloads when it changes. Parts are Godot's
+[CSG shapes](#csg-shapes), combined as CSG nodes are, so refining a prop means changing a number.
+`slash-cli schema model` prints the schema with every field's doc, `slash-cli scene validate`
+checks a recipe and `slash-cli scene format` writes it in canonical form.
+
+```json
+{
+  "format": 1,
+  "parameters": {"width": 1.4, "height": 0.75, "leg": "=width / 20"},
+  "materials": {"oak": {"albedo_color": [0.55, 0.36, 0.2, 1]}},
+  "parts": [
+    {"name": "top", "shape": "box", "material": "oak", "size": ["=width", 0.05, 0.8],
+     "bevel": 0.01, "position": [0, "=height - 0.025", 0]},
+    {"name": "leg", "shape": "cylinder", "material": "oak", "radius": "=leg / 2",
+     "height": "=height - 0.05", "position": ["=-width / 2 + 0.1", "=(height - 0.05) / 2", 0],
+     "array": {"count": 2, "position": ["=width - 0.2", 0, 0]}}
+  ]
+}
+```
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `format` | integer | required | `1` |
+| `parameters` | object | `{}` | Numbers by name, each a number or an expression over the others |
+| `materials` | object | `{}` | [`StandardMaterial3D`](#standardmaterial3d) fields by name; texture fields name images by project path |
+| `parts` | array | required | At least one part |
+
+Every number in a part, and every parameter, can be a string starting with `=`: an expression in
+Godot's `Expression` syntax over the parameters (`"=width / 2"`, `"=sin(angle) * r"`). A name
+that isn't a parameter is reported with the closest one, and parameters that depend on
+themselves are reported with the chain (`a -> b -> a`).
+
+A part's fields:
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `name` | string | its shape | The node a top-level part becomes; copies are numbered from 2 as Godot names nodes (`leg`, `leg2`) |
+| `shape` | string | `"combiner"` | `combiner` (only its children), `box`, `sphere`, `cylinder`, `torus`, `polygon`, `capsule` or `prism` |
+| `operation` | string | `"union"` | `union`, `intersection` or `subtraction` with what came before it among its parent's children, as a CSG shape's |
+| `material` | string | its parent's | A name in `materials`; shapes under it inherit it |
+| `position`, `rotation`, `scale` | `[x, y, z]` | none | Placed in its parent's space; rotation in radians in Godot's YXZ order |
+| `flip_faces` | bool | `false` | Turns its faces inside out (not on a combiner) |
+| `array` | object | none | `count` copies (1 to 1024), each placed by the array's `position`, `rotation` and `scale` after the one before, so a rotation turns them round the parent's origin |
+| `children` | array | `[]` | Parts combined with it in order, as a CSG shape's children |
+
+Shapes take the fields of Godot's CSG node of that shape (`CSGBox3D`'s `size`, `CSGSphere3D`'s
+`radius`, `radial_segments` and `rings`, `CSGCylinder3D`'s `radius`, `height`, `sides` and
+`cone`, `CSGTorus3D`'s radii and sides, `CSGPolygon3D`'s `polygon`, `mode`, `depth`, `spin_*`
+and `path_*`, `smooth_faces`), with the same defaults and limits; a capsule takes
+`CapsuleMesh`'s `radius`, `height`, `radial_segments` and `rings` and a prism `PrismMesh`'s
+`size`, `left_to_right` and `subdivide_*`. A field the shape doesn't take is reported with the
+fields it does. Beyond Godot's:
+
+- A box or cylinder's `bevel` (meters, default `0`) rounds its edges in `bevel_segments` steps
+  (default 4, 1 to 16; 1 cuts them flat). A bevel more than half a box's smallest side, or more
+  than a cylinder's radius or half its height, is reported; cones can't be beveled.
+- A polygon in `"path"` mode is swept along its `path`, a [`Path3D`](#paths)'s fields
+  (`points` with `position`, `in` and `out`), in the part's own space.
+
+Each top-level part, and each copy its array makes, becomes a node of the model placing a mesh
+of one surface per material, made as a CSG root's mesh. Models get [LODs](#mesh-lods) as they load.
+A part the CSG can't make, such as a polygon with no area or a shape cut away to nothing, is
+reported at its pointer and left out. A recipe makes at most 4096 shapes in all.
+[examples/parametric-models](../../examples/parametric-models/) is a table and a vase.
 
 #### Skeletons and model animations
 
