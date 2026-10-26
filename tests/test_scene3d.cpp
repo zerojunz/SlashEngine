@@ -1022,6 +1022,99 @@ TEST_CASE("a captured frame reflects a glowing cube in a polished floor, with SS
     CHECK(reflected.at(edge - 2) == plain.at(edge - 2));
 }
 
+TEST_CASE("ReflectionProbes reach the frame largest first, with cubes in one atlas") {
+    Scene scene;
+    scene.create("camera", R"({"Transform3D": {}, "Camera3D": {}})");
+    scene.create("small", R"({"Transform3D": {"position": [1, 2, 3]},
+        "ReflectionProbe": {"size": [2, 2, 2], "intensity": 0.5, "box_projection": true,
+        "ambient_mode": "color", "ambient_color": [1, 0, 0, 1], "ambient_color_energy": 2}})");
+    scene.create("large", R"({"Transform3D": {"rotation": [0, 1.5708, 0], "scale": [2, 2, 2]},
+        "ReflectionProbe": {"size": [10, 4, 10], "origin_offset": [0, 1, 0],
+        "blend_distance": 2, "reflection_mask": 3}})");
+    const entt::entity hidden =
+        scene.create("hidden", R"({"Transform3D": {"visible": false}, "ReflectionProbe": {}})");
+    const auto device = render::create_null_device();
+    scene3d::Renderer renderer(*device, nullptr);
+    auto frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {});
+    REQUIRE(frame.has_value());
+    CHECK(renderer.problems().empty());
+    const render::Reflections3D& reflections = frame->scene.reflections;
+    CHECK(reflections.atlas != render::TextureId::None);
+    REQUIRE(reflections.probes.size() == 2);
+    const render::ReflectionProbe3D& large = reflections.probes.at(0);
+    const render::ReflectionProbe3D& small = reflections.probes.at(1);
+    // The size is the probe's own: its node's scale is left out, as Godot's.
+    CHECK(large.size == std::array{10.0F, 4.0F, 10.0F});
+    CHECK(large.origin_offset == std::array{0.0F, 1.0F, 0.0F});
+    CHECK(large.blend_distance == 2.0F);
+    CHECK(large.reflection_mask == 3U);
+    CHECK(large.transform.at(0) == doctest::Approx(0.0F).epsilon(0.0001));
+    CHECK(large.transform.at(2) == doctest::Approx(-1.0F).epsilon(0.0001));
+    CHECK(small.transform.at(12) == 1.0F);
+    CHECK(small.transform.at(13) == 2.0F);
+    CHECK(small.transform.at(14) == 3.0F);
+    CHECK(small.intensity == 0.5F);
+    CHECK(small.box_projection);
+    CHECK(small.ambient_mode == render::ReflectionAmbient::Color);
+    CHECK(small.ambient_color == std::array{1.0F, 0.0F, 0.0F});
+    CHECK(small.ambient_color_energy == 2.0F);
+    CHECK(large.cube != small.cube);
+    // Compatibility draws no probes yet, and an atlas of one cube keeps only the largest.
+    frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}, {}, 0.0, {}, {}, {}, {},
+                             render::RenderMethod::Compatibility);
+    CHECK(frame->scene.reflections.probes.empty());
+    frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}, {}, 0.0, {}, {}, {},
+                             {.reflection_size = 64, .reflection_count = 1});
+    REQUIRE(frame->scene.reflections.probes.size() == 1);
+    CHECK(frame->scene.reflections.probes.at(0).size == std::array{10.0F, 4.0F, 10.0F});
+    // A shown probe takes part again.
+    scene.world.ecs().get<world::Transform3D>(hidden).visible = true;
+    frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {});
+    CHECK(frame->scene.reflections.probes.size() == 3);
+}
+
+TEST_CASE("a captured frame reflects a glowing cube in a polished floor, with a ReflectionProbe") {
+    Scene scene;
+    scene.create("camera", R"({"Transform3D": {"position": [0, 1, 3], "rotation": [-0.3, 0, 0]},
+        "Camera3D": {}})");
+    scene.create("env", R"({"WorldEnvironment": {
+        "background_mode": "color", "background_color": [0, 0, 0, 1],
+        "ambient_light_source": "color", "ambient_light_color": [1, 1, 1, 1],
+        "ambient_light_energy": 0.3}})");
+    scene.create("floor", R"({"Transform3D": {"position": [0, -0.1, 0]}, "MeshInstance3D": {},
+        "BoxMesh": {"size": [8, 0.2, 8]},
+        "StandardMaterial3D": {"metallic": 1, "roughness": 0.05}})");
+    scene.create("cube", R"({"Transform3D": {"position": [0, 0.5, -1]}, "MeshInstance3D": {},
+        "BoxMesh": {}, "StandardMaterial3D": {"albedo_color": [0, 0, 0, 1],
+        "emission_enabled": true, "emission": [1, 0, 0, 1]}})");
+    const auto column = [&] {
+        const auto captured = canvas::capture(scene.world, scene.assets, {});
+        REQUIRE(captured.ok());
+        std::array<int, 64> red{};
+        for (std::uint32_t y = 0; y < red.size(); ++y) {
+            red.at(y) = pixel(captured.value().image, 32, y)[0];
+        }
+        return red;
+    };
+    const std::array<int, 64> plain = column();
+    std::size_t edge = 63;
+    while (edge > 0 && plain.at(edge) < 200) {
+        --edge;
+    }
+    REQUIRE(edge > 16);
+    REQUIRE(edge < 56);
+    // Drawn from halfway up the cube, which the floor's reflections in front of it look toward.
+    const entt::entity probe = scene.create("probe", R"({"Transform3D":
+        {"position": [0, 0.5, 0]}, "ReflectionProbe": {"size": [8, 4, 8]}})");
+    const std::array<int, 64> reflected = column();
+    // Below the cube the floor shows its reflection, and the cube itself is as it was.
+    CHECK(reflected.at(edge + 3) > plain.at(edge + 3) + 20);
+    CHECK(std::abs(reflected.at(edge - 2) - plain.at(edge - 2)) <= 2);
+    // A floor on a layer the probe's reflection_mask leaves out reflects only the sky.
+    scene.world.ecs().get<world::ReflectionProbe>(probe).reflection_mask = 2;
+    CHECK(column() == plain);
+}
+
 TEST_CASE("a captured frame adapts to the 3D world's brightness over game time") {
     Scene scene;
     scene.create("camera", R"({"Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}})");

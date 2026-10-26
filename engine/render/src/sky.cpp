@@ -1,3 +1,4 @@
+#include "forward_post.hpp"
 #include "mesh_shading.hpp"
 #include "post_shading.hpp"
 #include "sky_shading.hpp"
@@ -294,6 +295,11 @@ Float4 quantized(const Float4& color) {
     }
     out[3] = 1.0F;
     return out;
+}
+
+// A color as RGBA16F holds it.
+Float4 half_texel(const Float4& color) {
+    return {round_half(color[0]), round_half(color[1]), round_half(color[2]), 1.0F};
 }
 
 // Godot's helpers for IBL filtering, in effects/cubemap_filter.cpp.
@@ -680,7 +686,7 @@ CubeImage make_radiance(const Scene3D& scene,
         return cube;
     };
 
-    // The sky into the raw cube's faces, then its mipmaps, each texel the mean of four.
+    // The sky into the raw cube's faces, then its mipmaps and the filtered levels.
     CubeImage raw = empty();
     for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
         const SkyUniforms uniforms = radiance_face_uniforms(scene, face);
@@ -694,7 +700,13 @@ CubeImage make_radiance(const Scene3D& scene,
             }
         }
     }
-    for (std::uint32_t level = 1; level < levels; ++level) {
+    cube_mipmaps(raw, false);
+    return filter_cube(raw, false);
+}
+
+void cube_mipmaps(CubeImage& cube, bool linear) {
+    const std::uint32_t size = cube.size;
+    for (std::uint32_t level = 1; level < cube.levels.size(); ++level) {
         const std::uint32_t n = size >> level;
         for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
             for (std::uint32_t y = 0; y < n; ++y) {
@@ -702,23 +714,29 @@ CubeImage make_radiance(const Scene3D& scene,
                     Float4 sum{};
                     for (const auto& [dx, dy] : {std::pair{0U, 0U}, std::pair{1U, 0U},
                                                  std::pair{0U, 1U}, std::pair{1U, 1U}}) {
-                        const Float4& t = raw.texel(level - 1, face, (x * 2) + dx, (y * 2) + dy);
+                        const Float4& t = cube.texel(level - 1, face, (x * 2) + dx, (y * 2) + dy);
                         for (std::size_t i = 0; i < 4; ++i) {
                             sum.at(i) += t.at(i) * 0.25F;
                         }
                     }
-                    raw.levels[level][(((std::size_t{face} * n) + y) * n) + x] = quantized(sum);
+                    cube.levels[level][(((std::size_t{face} * n) + y) * n) + x] =
+                        linear ? half_texel(sum) : quantized(sum);
                 }
             }
         }
     }
+}
 
+CubeImage filter_cube(const CubeImage& raw, bool linear) {
     // radiance.hlsl's twin: level 0 as it is, then each next level blurred from the raw cube.
-    CubeImage out = empty();
-    out.levels[0] = raw.levels[0];
+    const std::uint32_t size = raw.size;
+    const auto levels = static_cast<std::uint32_t>(raw.levels.size());
+    CubeImage out{.size = size, .levels = {}};
+    out.levels.push_back(raw.levels[0]);
     for (std::uint32_t level = 1; level < levels; ++level) {
         const RadianceUniforms uniforms = radiance_uniforms(size, levels, level);
         const std::uint32_t n = size >> level;
+        out.levels.emplace_back(std::size_t{kCubeFaces} * n * n);
         const auto count = static_cast<std::uint32_t>(uniforms.params[3]);
         for (std::uint32_t face = 0; face < kCubeFaces; ++face) {
             for (std::uint32_t y = 0; y < n; ++y) {
@@ -738,12 +756,15 @@ CubeImage make_radiance(const Scene3D& scene,
                         const Float3 l =
                             add(add(scale(tangent, sample[0]), scale(bitangent, sample[1])),
                                 scale(normal, sample[2]));
-                        const Float3 value = srgb_to_linear(rgb(raw.sample(l, sample[3])));
+                        const Float3 texel = rgb(raw.sample(l, sample[3]));
+                        const Float3 value = linear ? texel : srgb_to_linear(texel);
                         sum = add(sum, scale(value, sample[2]));
                     }
-                    const Float3 color = linear_to_srgb(scale(sum, 1.0F / uniforms.params[2]));
+                    const Float3 mean = scale(sum, 1.0F / uniforms.params[2]);
+                    const Float3 color = linear ? mean : linear_to_srgb(mean);
+                    const Float4 texel{color[0], color[1], color[2], 1.0F};
                     out.levels[level][(((std::size_t{face} * n) + y) * n) + x] =
-                        quantized({color[0], color[1], color[2], 1.0F});
+                        linear ? half_texel(texel) : quantized(texel);
                 }
             }
         }

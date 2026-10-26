@@ -841,6 +841,17 @@ with SSR is drawn once without it. `mesh.hlsl` puts the result over the sky's re
 Godot's scene shader does. `run_ssr_pass` is the CPU twin. `examples/ssr-3d` reflects a room in a
 polished floor.
 
+Reflection probes are Godot 4.6's Forward+ `ReflectionProbe`. `scene3d::Renderer::reflect` sorts
+a frame's probes largest first, gives each a cube of one atlas (a texture made with
+`TextureDesc::cubes`, sized by project.json's `rendering.reflections.reflection_atlas`) and draws
+a probe's six faces as frames whose `Scene3D::capture` (`render::ProbeCapture`) names the cube and
+face, with `probe_face_view` and `probe_face_projection`. At the end of a capture's sixth face the
+device filters the cube's levels with `radiance.hlsl`, as it does the sky's. `Scene3D::reflections`
+(`render::Reflections3D`) lists the probes a frame reflects; `mesh.hlsl` runs Godot's
+`reflection_process` over them, and `src/reflection.cpp` holds the checks, the uniforms and its
+CPU twin, `reflect_probes`. SSAO and SSR share one two-layer screen texture the mesh pass reads.
+`examples/reflection-probes-3d` reflects a lit room in a metal floor.
+
 Compatibility's post-processing: without glow or adjustments, `mesh.hlsl` tonemaps as it draws.
 With either, each device draws the meshes into an RGBA8 texture at `end_frame` and runs
 `shaders/post.hlsl`'s passes: glow's filter, three downsamples and three upsamples through four

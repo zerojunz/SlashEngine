@@ -5,6 +5,7 @@
 #include "checks.hpp"
 #include "mesh_shading.hpp"
 #include "post_shading.hpp"
+#include "reflection.hpp"
 #include "sky_shading.hpp"
 
 #include "slash/core/math.hpp"
@@ -632,6 +633,9 @@ MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
     if (scene.ssr.enabled && scene.method == RenderMethod::ForwardPlus) {
         out.ssao[3] = 1.0F;
     }
+    if (scene.method == RenderMethod::ForwardPlus && !scene.capture) {
+        out.reflections = reflections_uniform(scene.reflections);
+    }
     const float energy = scene.ambient_energy;
     out.ambient = {srgb_to_linear_exact(scene.ambient[0]) * energy,
                    srgb_to_linear_exact(scene.ambient[1]) * energy,
@@ -1125,6 +1129,25 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
             const Float4 texel = maps.radiance->sample(to_sky(normal), kRadianceMaxLevel);
             ambient_light =
                 lerp3(ambient_light, scale(srgb_to_linear(xyz(texel)), scene.sky[2]), scene.sky[3]);
+        }
+    }
+    // Forward+'s reflection probes, as Godot's scene_forward_clustered.glsl takes them: where
+    // they reach, their reflections and ambient light go over the sky's by how much they cover.
+    if (scene.reflections[0] > 0.0F && !maps.probes.empty() && maps.probe_cubes != nullptr) {
+        const ProbeLight probe =
+            reflect_probes(maps.probes, *maps.probe_cubes, scene.reflections[2], pixel.world,
+                           normal, view, roughness, surface.options[2]);
+        const Float4& r = probe.reflection;
+        const Float4& a = probe.ambient;
+        for (std::size_t i = 0; i < 3; ++i) {
+            if (r[3] > 0.0F) {
+                reflected.at(i) =
+                    r[3] < 1.0F ? (reflected.at(i) * (1.0F - r[3])) + r.at(i) : r.at(i);
+            }
+            if (a[3] > 0.0F) {
+                ambient_light.at(i) =
+                    a[3] < 1.0F ? (ambient_light.at(i) * (1.0F - a[3])) + a.at(i) : a.at(i);
+            }
         }
     }
     ambient_light = scale(ambient_light, ao);

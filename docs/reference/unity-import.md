@@ -485,6 +485,7 @@ when nothing else on it faces a way (its children turn back), else on a `camera`
 | A material of Unity's Standard shader or URP's Lit, Simple Lit or Unlit | `StandardMaterial3D`, converted once per material (see below) |
 | `Camera` (perspective or orthographic) | `Camera3D`: fov, `size` (twice Unity's orthographic size), near, far, the culling mask's first 20 layers; the `MainCamera` is `current` |
 | `Light`: directional, point, spot | `DirectionalLight3D`, `OmniLight3D` (range), `SpotLight3D` (range, half the spot angle): color, intensity as energy, shadows on with their strength as opacity, culling mask |
+| `ReflectionProbe` | `ReflectionProbe`: box size, intensity, blend distance, box projection, far clip as `max_distance`, shadows when its shadow distance is above 0, the culling mask's first 20 layers, and no ambient light of its own, as Unity's light only reflections. Realtime probes refreshed every frame are `"always"`, the rest `"once"`. A box offset puts the probe on a `reflection_probe` child entity moved by it, drawing from back where the object is (`origin_offset`); so does a disabled probe, hidden |
 | `AudioListener` | `AudioListener3D` |
 | `AudioSource` with spatial blend above 0 | `AudioStreamPlayer3D`: `unit_size` its min distance, `max_db` 0, `max_distance` its max distance |
 | `Rigidbody` | `RigidBody3D`: mass, gravity, drag and angular drag as damping, kinematic as `freeze` (`kinematic`), frozen axes as axis locks, continuous detection |
@@ -648,10 +649,12 @@ a turned or scaled object are reported. The `TerrainCollider` gives the collisio
 from the object's layer, and its physic material's `friction` and `bounce`; one of another
 `TerrainData`, or on a `Rigidbody`, is reported. With no `TerrainCollider`, collision is off.
 
-Reported, for a later import: meshes saved as assets, model clips starting past
-their take's start, mesh colliders of meshes saved as assets, 3D joints and wheels, navigation, reflection and light probes, line and trail
-renderers, area and baked lights, cookies and color temperature, cubemap skyboxes, a camera's
-viewport rect and render texture, and a `CharacterController`'s step offset.
+Reported, for a later import: meshes saved as assets, model clips starting past their take's
+start, mesh colliders of meshes saved as assets, 3D joints and wheels, navigation, light probes,
+line and trail renderers, area and baked lights, cookies and color temperature, cubemap skyboxes,
+a camera's viewport rect and render texture, and a `CharacterController`'s step offset. Also
+reported: a reflection probe's custom cubemap, background color and refreshes by script, and a
+turned or scaled probe, whose box turns with its object as Godot's does but isn't scaled.
 
 ## Project settings
 

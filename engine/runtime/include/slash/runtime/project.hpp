@@ -100,6 +100,8 @@ struct Project {
     // Screen-space reflections' resolution, as Godot's
     // rendering/environment/screen_space_reflection.
     render::SsrSettings ssr{};
+    // Reflection probes' cubes, as Godot's rendering/reflections/reflection_atlas.
+    render::ReflectionAtlasSettings reflection_atlas{};
     // How exports ship textures.
     TextureImport texture_import;
     // Gravity and default damping for 2D physics.

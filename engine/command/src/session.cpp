@@ -216,6 +216,13 @@ canvas::Settings canvas_settings(const json::Value& project) {
                 settings.ssr = render::ssr_settings_from_json(*ssr);
             }
         }
+        if (const json::Value* reflections = rendering->find("reflections");
+            reflections != nullptr && reflections->is_object()) {
+            if (const json::Value* atlas = reflections->find("reflection_atlas");
+                atlas != nullptr) {
+                settings.reflection_atlas = render::reflection_atlas_settings_from_json(*atlas);
+            }
+        }
     }
     const json::Value* tick_hz = project.find("tick_hz");
     if (tick_hz != nullptr && tick_hz->is_number() && tick_hz->as_double() > 0.0) {

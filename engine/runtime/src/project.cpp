@@ -226,6 +226,34 @@ json::Value environment_schema() {
     return out;
 }
 
+// rendering.reflections, as Godot's rendering/reflections settings.
+json::Value reflections_schema() {
+    const render::ReflectionAtlasSettings defaults;
+    json::Value size;
+    size["type"] = "integer";
+    size["enum"] = json::Array{32, 64, 128, 256, 512, 1024, 2048};
+    size["default"] = static_cast<std::int64_t>(defaults.reflection_size);
+    size["description"] = "Texels across each face of a reflection probe's cube.";
+    json::Value count;
+    count["type"] = "integer";
+    count["minimum"] = 1;
+    count["maximum"] = 4096;
+    count["default"] = static_cast<std::int64_t>(defaults.reflection_count);
+    count["description"] = "How many probes a frame reflects at most (42 are drawn at most).";
+    json::Value atlas;
+    atlas["type"] = "object";
+    atlas["additionalProperties"] = false;
+    atlas["description"] = "Reflection probes' cubes, as Godot's reflection_atlas.";
+    atlas["properties"]["reflection_size"] = std::move(size);
+    atlas["properties"]["reflection_count"] = std::move(count);
+    json::Value out;
+    out["type"] = "object";
+    out["additionalProperties"] = false;
+    out["description"] = "Reflections, as Godot's rendering/reflections settings.";
+    out["properties"]["reflection_atlas"] = std::move(atlas);
+    return out;
+}
+
 // rendering.lights_and_shadows, as Godot's rendering/lights_and_shadows settings.
 json::Value lights_and_shadows_schema() {
     const render::ShadowSettings defaults;
@@ -401,6 +429,7 @@ json::Value project_schema() {
     rendering["properties"]["lights_and_shadows"] = lights_and_shadows_schema();
     rendering["properties"]["camera"] = camera_schema();
     rendering["properties"]["environment"] = environment_schema();
+    rendering["properties"]["reflections"] = reflections_schema();
     json::Value compress_mode;
     compress_mode["enum"] = json::Array{"lossless", "vram_compressed", "vram_uncompressed"};
     compress_mode["description"] =
@@ -726,6 +755,13 @@ Result<Project> parse_project(const json::Value& project) {
             if (const json::Value* ssr = environment->find("screen_space_reflection");
                 ssr != nullptr) {
                 out.ssr = render::ssr_settings_from_json(*ssr);
+            }
+        }
+        if (const json::Value* reflections = rendering->find("reflections");
+            reflections != nullptr && reflections->is_object()) {
+            if (const json::Value* atlas = reflections->find("reflection_atlas");
+                atlas != nullptr) {
+                out.reflection_atlas = render::reflection_atlas_settings_from_json(*atlas);
             }
         }
         if (const json::Value* textures = rendering->find("textures"); textures != nullptr) {

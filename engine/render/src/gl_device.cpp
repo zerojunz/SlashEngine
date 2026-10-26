@@ -654,6 +654,10 @@ public:
         if (auto checked = check_pixels(desc, texels, true); !checked) {
             return checked.error();
         }
+        if (desc.cubes > 0) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "the OpenGL devices draw no reflection probes, so keep no atlas");
+        }
         // A format the GPU doesn't sample is kept as RGBA8.
         TextureDesc stored = desc;
         std::vector<std::uint8_t> decoded;
@@ -925,6 +929,10 @@ public:
     Result<bool> begin_frame(const Frame& frame) override {
         if (in_frame_) {
             return frame_in_progress("begin_frame");
+        }
+        if (frame.scene && frame.scene->capture) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "the OpenGL devices draw no reflection probes, so no captures");
         }
         if (frame.scene) {
             if (auto checked = check_scene(*frame.scene); !checked) {

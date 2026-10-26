@@ -10,6 +10,7 @@
 #include "forward_post.hpp"
 #include "mesh_shading.hpp"
 #include "post_shading.hpp"
+#include "reflection.hpp"
 #include "sky_shading.hpp"
 #include "ssao.hpp"
 #include "ssr.hpp"
@@ -49,6 +50,7 @@ using Float4 = std::array<float, 4>;
 struct Texture {
     TextureDesc desc;
     Image image;
+    std::vector<detail::CubeImage> cubes; // a reflection atlas's, which has no image
 };
 
 // A run of draws with the same texture and material, as the GPU device batches them.
@@ -223,8 +225,11 @@ public:
             return checked.error();
         }
         Texture texture{.desc = desc,
-                        .image = {.width = desc.width, .height = desc.height, .pixels = {}}};
-        if (texels.empty()) {
+                        .image = {.width = desc.width, .height = desc.height, .pixels = {}},
+                        .cubes = {}};
+        if (desc.cubes > 0) {
+            texture.cubes.assign(desc.cubes, empty_cube(desc.width));
+        } else if (texels.empty()) {
             texture.image.pixels.assign(std::size_t{desc.width} * desc.height * 4, 0);
         } else {
             auto pixels = decode_texels(desc.format, desc.width, desc.height, texels);
@@ -389,7 +394,8 @@ public:
         if (in_frame_) {
             return detail::frame_in_progress("begin_frame");
         }
-        if (frame.target == TextureId::None) {
+        const bool capture = frame.scene && frame.scene->capture;
+        if (frame.target == TextureId::None && !capture) {
             return make_error(ErrorCode::InvalidArgument,
                               "the software device has no window; draw to a render-target "
                               "texture");
@@ -399,7 +405,7 @@ public:
                 return checked.error();
             }
             if (auto checked = detail::check_post(
-                    frame.scene->post, [&](TextureId id) { return textures_.contains(id); },
+                    frame.scene->post, [&](TextureId id) { return usable(id); },
                     [&](TextureId id) {
                         const TextureDesc& desc = textures_.at(id).desc;
                         return std::pair{desc.width, desc.height};
@@ -407,11 +413,41 @@ public:
                 !checked) {
                 return checked.error();
             }
-            if (auto checked = detail::check_sky(
-                    *frame.scene, [&](TextureId id) { return textures_.contains(id); });
+            if (auto checked =
+                    detail::check_sky(*frame.scene, [&](TextureId id) { return usable(id); });
                 !checked) {
                 return checked.error();
             }
+            if (auto checked = detail::check_reflections(*frame.scene,
+                                                         [&](TextureId id) {
+                                                             const auto found = textures_.find(id);
+                                                             return found == textures_.end()
+                                                                        ? 0U
+                                                                        : found->second.desc.cubes;
+                                                         });
+                !checked) {
+                return checked.error();
+            }
+        }
+        if (capture) {
+            if (frame.target != TextureId::None) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "a capture frame draws into its atlas; its target is None");
+            }
+            // A capture draws the world alone: no SSAO, SSR, probes or post passes.
+            frame_ = frame;
+            Scene3D& scene = *frame_.scene;
+            scene.method = RenderMethod::ForwardPlus;
+            scene.ssao.enabled = false;
+            scene.ssr.enabled = false;
+            scene.reflections.probes.clear();
+            scene.post = {};
+            frame_.lighting = {};
+            in_frame_ = true;
+            vertices_.clear();
+            batches_.clear();
+            mesh_draws_.clear();
+            return true;
         }
         const auto it = textures_.find(frame.target);
         if (it == textures_.end()) {
@@ -421,7 +457,7 @@ public:
             return detail::not_a_render_target(frame.target);
         }
         if (auto checked = detail::check_lighting(
-                frame.lighting, frame.target, [&](TextureId id) { return textures_.contains(id); },
+                frame.lighting, frame.target, [&](TextureId id) { return usable(id); },
                 [&](TextureId id) {
                     const TextureDesc& desc = textures_.at(id).desc;
                     return std::pair{desc.width, desc.height};
@@ -447,9 +483,9 @@ public:
             return detail::no_frame("draw_mesh");
         }
         const auto it = meshes_.find(mesh);
-        if (auto checked = detail::check_mesh_draw(
-                frame_.scene.has_value(), it != meshes_.end(), mesh, transform, material,
-                frame_.target, [&](TextureId id) { return textures_.contains(id); });
+        if (auto checked = detail::check_mesh_draw(frame_.scene.has_value(), it != meshes_.end(),
+                                                   mesh, transform, material, frame_.target,
+                                                   [&](TextureId id) { return usable(id); });
             !checked) {
             return checked;
         }
@@ -475,7 +511,7 @@ public:
             return detail::target_in_use(texture);
         }
         if (auto checked = detail::check_material(
-                material, frame_.target, [&](TextureId id) { return textures_.contains(id); },
+                material, frame_.target, [&](TextureId id) { return usable(id); },
                 [&](ShaderId id) { return shaders_.contains(id); });
             !checked) {
             return checked;
@@ -484,7 +520,7 @@ public:
             return checked;
         }
         if (auto checked = detail::check_lighting_textures(
-                frame_.lighting, [&](TextureId id) { return textures_.contains(id); });
+                frame_.lighting, [&](TextureId id) { return usable(id); });
             !checked) {
             return checked;
         }
@@ -509,6 +545,10 @@ public:
             return detail::no_frame("end_frame");
         }
         in_frame_ = false;
+        if (frame_.scene && frame_.scene->capture) {
+            draw_capture(*frame_.scene, *frame_.scene->capture);
+            return {};
+        }
         ++stats_.frames;
         Image& target = find(frame_.target)->image;
         const std::array<std::uint8_t, 4> clear = detail::to_rgba8(frame_.clear);
@@ -1339,6 +1379,54 @@ private:
         }
     }
 
+    // Whether a texture can be drawn with or sampled: known, and not a reflection atlas.
+    bool usable(TextureId id) const {
+        const auto it = textures_.find(id);
+        return it != textures_.end() && it->second.desc.cubes == 0;
+    }
+
+    static detail::CubeImage empty_cube(std::uint32_t size) {
+        detail::CubeImage cube{.size = size, .levels = {}};
+        for (std::uint32_t level = 0; level < detail::probe_levels(size); ++level) {
+            const std::size_t n = size >> level;
+            cube.levels.emplace_back(detail::kCubeFaces * n * n, Float4{0.0F, 0.0F, 0.0F, 1.0F});
+        }
+        return cube;
+    }
+
+    // A capture frame's face: the sky and meshes drawn linear into the raw cube, as the GPU
+    // devices draw them into theirs in half floats. After the sixth face, the atlas's cube is the
+    // raw cube's levels, filtered.
+    void draw_capture(const Scene3D& scene, const ProbeCapture& capture) {
+        Texture& atlas = textures_.at(capture.atlas);
+        const std::uint32_t size = atlas.desc.width;
+        detail::HdrImage world{.width = size, .height = size, .pixels = {}};
+        world.pixels.resize(std::size_t{size} * size * 4);
+        const Float4 clear_color = detail::forward_clear(frame_.clear);
+        for (std::size_t i = 0; i < world.pixels.size(); i += 4) {
+            std::copy(clear_color.begin(), clear_color.end(),
+                      world.pixels.begin() + static_cast<std::ptrdiff_t>(i));
+        }
+        draw_sky(scene, {.bytes = nullptr, .hdr = &world});
+        if (!mesh_draws_.empty()) {
+            draw_meshes(scene, {.bytes = nullptr, .hdr = &world});
+        }
+        if (capture_raw_.size != size) {
+            capture_raw_ = empty_cube(size);
+        }
+        const std::size_t face = std::size_t{capture.face} * size * size;
+        for (std::size_t i = 0; i < std::size_t{size} * size; ++i) {
+            capture_raw_.levels[0][face + i] = {detail::round_half(world.pixels[i * 4]),
+                                                detail::round_half(world.pixels[(i * 4) + 1]),
+                                                detail::round_half(world.pixels[(i * 4) + 2]),
+                                                1.0F};
+        }
+        if (capture.face + 1 == detail::kCubeFaces) {
+            detail::cube_mipmaps(capture_raw_, true);
+            atlas.cubes.at(capture.cube) = detail::filter_cube(capture_raw_, true);
+        }
+    }
+
     // The scene's radiance, drawn again only when what it is drawn from changed, or nullptr when
     // its meshes aren't lit by it.
     const detail::CubeImage* radiance(const Scene3D& scene) {
@@ -1382,7 +1470,10 @@ private:
                               .radiance = radiance(scene),
                               .clusters = clustered ? &clusters : nullptr,
                               .ao = {},
-                              .ssr = {}};
+                              .ssr = {},
+                              .ao_width = 0,
+                              .probes = {},
+                              .probe_cubes = nullptr};
 
         std::vector<float> depth(std::size_t{target.width()} * target.height(), 0.0F);
         const detail::MeshCameraUniforms camera = detail::mesh_camera_uniforms(scene);
@@ -1390,6 +1481,13 @@ private:
             std::make_unique<detail::MeshSceneUniforms>(detail::mesh_scene_uniforms(scene));
         if (clustered) {
             lights->cluster = clusters.uniform();
+        }
+        // Forward+'s reflection probes, read from their atlas's cubes.
+        const std::vector<detail::MeshProbeUniforms> probes =
+            detail::probe_uniforms(scene.reflections);
+        if (lights->reflections[0] > 0.0F) {
+            maps.probes = probes;
+            maps.probe_cubes = &textures_.at(scene.reflections.atlas).cubes;
         }
         const std::vector<std::size_t> order = detail::mesh_draw_order(
             std::span<const detail::MeshDraw>(mesh_draws_), scene,
@@ -1825,6 +1923,7 @@ private:
     std::vector<detail::MeshDraw> mesh_draws_;
     std::optional<detail::RadianceKey> radiance_key_;
     detail::CubeImage radiance_;
+    detail::CubeImage capture_raw_; // the faces captured so far
     // Each target's frame before, which SSR reflects.
     std::vector<std::pair<TextureId, SsrHistory>> ssr_histories_;
     std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> shaders_;

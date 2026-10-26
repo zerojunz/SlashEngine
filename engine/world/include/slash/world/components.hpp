@@ -557,6 +557,31 @@ struct PanoramaSkyMaterial {
 };
 SLASH_COMPONENT(PanoramaSkyMaterial, panorama, filter, energy_multiplier)
 
+// A box that reflects its surroundings, as Godot's ReflectionProbe: in Forward+, meshes inside it
+// reflect a cube drawn from origin_offset in place of the sky's, by roughness, and may take their
+// ambient light from it, fading out over blend_distance toward its sides. Where probes overlap,
+// the smallest is taken first. Its scale is ignored.
+struct ReflectionProbe {
+    std::string update_mode = "once"; // "once" (when it or its settings change) or "always"
+    float intensity = 1.0F;
+    float blend_distance = 1.0F;
+    float max_distance = 0.0F; // how far the cube sees, when further than the box's sides
+    Vec3 size{20.0F, 20.0F, 20.0F};
+    Vec3 origin_offset;          // where the cube is drawn from, inside the box
+    bool box_projection = false; // aim reflections at the box's walls, as for a room
+    bool interior = false;       // draw the cube without the sky, fog or ambient light
+    bool enable_shadows = false;
+    std::uint32_t cull_mask = 0xFFFFF;       // the layers the cube shows
+    std::uint32_t reflection_mask = 0xFFFFF; // the layers whose meshes reflect it
+    float mesh_lod_threshold = 1.0F;
+    std::string ambient_mode = "environment"; // "disabled", "environment" or "color"
+    Vec4 ambient_color{0.0F, 0.0F, 0.0F, 1.0F};
+    float ambient_color_energy = 1.0F;
+};
+SLASH_COMPONENT(ReflectionProbe, update_mode, intensity, blend_distance, max_distance, size,
+                origin_offset, box_projection, interior, enable_shadows, cull_mask, reflection_mask,
+                mesh_lod_threshold, ambient_mode, ambient_color, ambient_color_energy)
+
 // The 3D world's background, ambient light, tonemap, reflections, ambient occlusion, glow, fog and
 // adjustments,
 // as Godot's WorldEnvironment and its Environment. The first one made applies;

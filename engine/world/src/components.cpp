@@ -2553,6 +2553,31 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("filter", {.doc = "Samples it smoothly; false takes its nearest texel."})
         .describe("energy_multiplier", energy);
 
+    registry.add<ReflectionProbe>()
+        .set_doc("A box whose meshes reflect a cube drawn from inside it, as Godot's "
+                 "ReflectionProbe, in Forward+. Overlapping probes blend, smallest first.")
+        .describe("update_mode", {.doc = "\"once\" draws the cube when the probe or its settings "
+                                         "change; \"always\" every frame.",
+                                  .choices = {"once", "always"}})
+        .describe("intensity", {.doc = "How bright its reflections are.", .min = 0.0})
+        .describe("blend_distance",
+                  {.doc = "How far in from the box's sides it fades in.", .min = 0.0})
+        .describe("max_distance",
+                  {.doc = "How far the cube sees, when further than the box's sides.", .min = 0.0})
+        .describe("size", {.doc = "The box, centered on the probe, in meters."})
+        .describe("origin_offset", {.doc = "Where the cube is drawn from, inside the box."})
+        .describe("box_projection", {.doc = "Aims reflections at the box's walls, as for a room."})
+        .describe("interior", {.doc = "Draws the cube without the sky, fog or ambient light."})
+        .describe("enable_shadows", {.doc = "Draws shadows into the cube."})
+        .describe("cull_mask", {.doc = "The layers the cube shows."})
+        .describe("reflection_mask", {.doc = "The layers whose meshes reflect it."})
+        .describe("mesh_lod_threshold",
+                  {.doc = "Kept for Godot; meshes have no LOD here.", .min = 0.0})
+        .describe("ambient_mode",
+                  {.doc = "Ambient light inside it: none of its own, the cube's, or ambient_color.",
+                   .choices = {"disabled", "environment", "color"}})
+        .describe("ambient_color", {.doc = "sRGB, for ambient_mode \"color\"."})
+        .describe("ambient_color_energy", {.doc = "ambient_color's energy.", .min = 0.0});
     registry.add<WorldEnvironment>()
         .set_doc("The 3D world's background, ambient and reflected light, tonemap, glow, fog and "
                  "adjustments, as Godot's WorldEnvironment. The first one applies; with none, the "
