@@ -1,0 +1,12 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"step","params":{"ticks":40}}
+{"jsonrpc":"2.0","id":3,"method":"particles.eval","params":{"id":"fountain","list":true,"max_results":2}}
+{"jsonrpc":"2.0","id":4,"method":"particles.eval","params":{"id":"snow"}}
+{"jsonrpc":"2.0","id":5,"method":"particles.eval","params":{"id":"fire","time":2}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[52,42],[105,40],[105,46],[80,10]]}}
+{"jsonrpc":"2.0","id":7,"method":"frame.capture","params":{"path":"shots/particles.png"}}
+{"jsonrpc":"2.0","id":8,"method":"component.set","params":{"id":"fountain","components":{"CPUParticles3D":{"emitting":false}}}}
+{"jsonrpc":"2.0","id":9,"method":"step","params":{"ticks":90}}
+{"jsonrpc":"2.0","id":10,"method":"particles.eval","params":{"id":"fountain"}}
+{"jsonrpc":"2.0","id":11,"method":"entity.create","params":{"id":"embers","components":{"Transform3D":{},"CPUParticles3D":{}}}}
+{"jsonrpc":"2.0","id":12,"method":"frame.summary"}

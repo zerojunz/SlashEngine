@@ -1,0 +1,12 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":7,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"tick":40,"ticks":40}}
+{"id":3,"jsonrpc":"2.0","result":{"alive":45,"bounds":[-2.7396,0.0276,-0.419,0.9195,0.9621,0.8001],"particles":[{"age":0.6667,"angle":0,"color":[0.55,0.8,1,1],"position":[-2.2196,0.7629,0.3811],"scale":[0.6667,0.6667,0.6667],"velocity":[-0.0294,-2.0406,0.5717]},{"age":0.6517,"angle":0,"color":[0.55,0.8,1,1],"position":[-2.2347,0.5153,-0.2618],"scale":[0.6742,0.6742,0.6742],"velocity":[-0.0532,-2.321,-0.4018]}]}}
+{"id":4,"jsonrpc":"2.0","result":{"alive":120,"bounds":[-5.376,-0.0144,-3.9016,14.1869,4.5836,5.7908]}}
+{"id":5,"jsonrpc":"2.0","result":{"alive":40,"bounds":[1.7802,0.1759,-0.2641,0.5664,1.3353,0.5384]}}
+{"id":6,"jsonrpc":"2.0","result":{"colors":[[0.494,0.725,0.945,1],[1,0.69,0.302,1],[1,1,1,1],[0.051,0.071,0.149,1]],"drawn":{"meshes":4},"height":90,"width":160}}
+{"id":7,"jsonrpc":"2.0","result":{"drawn":{"meshes":4},"height":90,"path":"shots/particles.png","width":160}}
+{"id":8,"jsonrpc":"2.0","result":{"changed":{"CPUParticles3D":{"emitting":false}},"id":"fountain"}}
+{"id":9,"jsonrpc":"2.0","result":{"tick":130,"ticks":90}}
+{"id":10,"jsonrpc":"2.0","result":{"alive":0,"bounds":null}}
+{"id":11,"jsonrpc":"2.0","result":{"id":"embers"}}
+{"id":12,"jsonrpc":"2.0","result":{"drawn":[],"problems":[{"id":"embers","message":"has no mesh to draw at its particles: set mesh to a model file, or add a QuadMesh or another primitive mesh","path":"/components/CPUParticles3D/mesh"}],"viewport":[160,90]}}

@@ -1291,12 +1291,12 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     world.add_system("controls", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
     // Every session applies input and service events first and plays animations, steps 2D and
     // 3D physics and navigation, moves the camera and parallax, runs particles, hands over models'
-    // replies and plays sound with built-in systems that run late. The two particle systems are
+    // replies and plays sound with built-in systems that run late. The three particle systems are
     // threaded and run at the same time.
     CHECK(*engine.ok("engine.describe").find("systems") ==
           parse(R"(["input", "gui", "services", "controls", "movement", "animation_player",
                     "animation_tree", "skeleton_modifiers", "path_follow", "physics2d", "physics3d", "navigation", "animated_sprite_2d",
-                    "camera_2d", "parallax_2d", "cpu_particles_2d", "gpu_particles_2d", "ai", "audio"])"));
+                    "camera_2d", "parallax_2d", "cpu_particles_2d", "cpu_particles_3d", "gpu_particles_2d", "ai", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
          "priority": -1000},
@@ -1339,6 +1339,9 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         {"name": "cpu_particles_2d",
          "doc": "Emits, moves and ages each CPUParticles2D's particles.", "priority": 1100,
          "threaded": true, "stage": 15, "reads": ["Transform2D"], "writes": ["CPUParticles2D"]},
+        {"name": "cpu_particles_3d",
+         "doc": "Emits, moves and ages each CPUParticles3D's particles.", "priority": 1100,
+         "threaded": true, "stage": 15, "reads": ["Transform3D"], "writes": ["CPUParticles3D"]},
         {"name": "gpu_particles_2d",
          "doc": "Steps each GPUParticles2D's emission for renderers to run.", "priority": 1110,
          "threaded": true, "stage": 15,
@@ -2889,7 +2892,7 @@ TEST_CASE("particles.eval counts and lists particles, as they are or after a tim
         "/id: no entity has the id \"sparkle\"; did you mean \"sparkler\"?");
     engine.ok("entity.create", R"({"id": "rock", "components": {"Transform2D": {}}})");
     CHECK(engine.fails("particles.eval", R"({"id": "rock"})", command::code::kInvalidParams)
-              .message == "/id: \"rock\" has no CPUParticles2D or GPUParticles2D");
+              .message == "/id: \"rock\" has no CPUParticles2D, GPUParticles2D or CPUParticles3D");
     engine.fails("particles.eval", R"({"id": "sparkler", "time": -1})",
                  command::code::kInvalidParams);
 }

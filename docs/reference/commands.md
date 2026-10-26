@@ -1585,8 +1585,9 @@ first error's JSON Pointer.
 
 ### particles.eval
 
-Returns a [`CPUParticles2D`](scene-format.md#particles)'s or
-[`GPUParticles2D`](scene-format.md#gpu-particles)'s live particles: how many, the box they fill
+Returns a [`CPUParticles2D`](scene-format.md#particles)'s,
+[`GPUParticles2D`](scene-format.md#gpu-particles)'s or
+[`CPUParticles3D`](scene-format.md#3d-particles)'s live particles: how many, the box they fill
 in the world and, with `list`, each one. Without `time`, the particles the world has after its
 last tick; a `GPUParticles2D`'s are made by running the steps its emitter kept on the CPU, as
 every device runs them. With `time`, it runs the emitter's settings from the start for that many
@@ -1596,7 +1597,7 @@ many ticks would give, since the same seed, entity ID and ticks give the same pa
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with a `CPUParticles2D` or `GPUParticles2D` |
+| `id` | string | required | An entity with a `CPUParticles2D`, `GPUParticles2D` or `CPUParticles3D` |
 | `time` | number | | Seconds to run the settings from the start, 0 to 3600; preprocess runs first |
 | `tick_seconds` | number | `1/60` | The tick length for `time`, above 0 and at most 1 |
 | `list` | boolean | `false` | Also return each particle |
@@ -1617,6 +1618,16 @@ they went off:
 alive. Each particle has its position in the world (particles in `local_coords` are placed by
 the entity's `Transform2D`), its rotation in radians clockwise, its scale, its color as
 `[r, g, b, a]` and its age in seconds, in draw order. Numbers are rounded to four decimals.
+
+A `CPUParticles3D`'s `bounds` are `[x, y, z, width, height, depth]` in meters, and each particle
+has its `position` and `velocity` in the world, its `angle` in radians (the turn a `"particles"`
+billboard draws it at), its `scale` along each of its axes, its `color` and its `age`, in draw
+order (`view_depth` lists as `index`, since it needs a camera). The fountain of
+[examples/particles-3d](../../examples/particles-3d/) after 40 ticks:
+
+```json
+{"alive":45,"bounds":[-2.7396,0.0276,-0.419,0.9195,0.9621,0.8001],"particles":[{"age":0.6667,"angle":0,"color":[0.55,0.8,1,1],"position":[-2.2196,0.7629,0.3811],"scale":[0.6667,0.6667,0.6667],"velocity":[-0.0294,-2.0406,0.5717]}]}
+```
 
 A `GPUParticles2D` with [trails](scene-format.md#gpu-particle-trails) also returns `trails`, how
 many draw (a particle's copies run on after it dies), and `trail_bounds`, the box round every
