@@ -8,10 +8,12 @@
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/world/tree3d.hpp"
 
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace test_humanoid {
@@ -234,6 +236,83 @@ inline std::vector<Bone> blender() {
         bones.push_back({"toe" + s, "foot" + s, {8.0F * side, 1.0F, 10.0F}, ""});
     }
     return bones;
+}
+
+// Adds a box to a surface, its faces wound clockwise from outside, as Godot's front faces are.
+inline void add_box(slash::scene3d::ModelSurface& surface, Vec3 low, Vec3 high) {
+    const std::array<Vec3, 8> corner{{{low.x, low.y, low.z},
+                                      {high.x, low.y, low.z},
+                                      {high.x, high.y, low.z},
+                                      {low.x, high.y, low.z},
+                                      {low.x, low.y, high.z},
+                                      {high.x, low.y, high.z},
+                                      {high.x, high.y, high.z},
+                                      {low.x, high.y, high.z}}};
+    // Each face's corners counterclockwise seen from outside, and its normal.
+    const std::array<std::pair<std::array<int, 4>, Vec3>, 6> faces{{
+        {{0, 3, 2, 1}, {0.0F, 0.0F, -1.0F}},
+        {{4, 5, 6, 7}, {0.0F, 0.0F, 1.0F}},
+        {{0, 4, 7, 3}, {-1.0F, 0.0F, 0.0F}},
+        {{1, 2, 6, 5}, {1.0F, 0.0F, 0.0F}},
+        {{0, 1, 5, 4}, {0.0F, -1.0F, 0.0F}},
+        {{3, 7, 6, 2}, {0.0F, 1.0F, 0.0F}},
+    }};
+    for (const auto& [ring, normal] : faces) {
+        const auto first = static_cast<std::uint32_t>(surface.vertices.size());
+        for (const int c : ring) {
+            slash::render::Vertex3D vertex;
+            const Vec3 p = corner.at(static_cast<std::size_t>(c));
+            vertex.position = {p.x, p.y, p.z};
+            vertex.normal = {normal.x, normal.y, normal.z};
+            surface.vertices.push_back(vertex);
+        }
+        for (const std::uint32_t i : {0U, 2U, 1U, 0U, 3U, 2U}) {
+            surface.indices.push_back(first + i);
+        }
+    }
+}
+
+// An unrigged figure 1.8 meters tall, facing +z, of boxes: legs, a body, a head and arms held
+// out level (a T-pose) or hanging at its sides, with a helmet as a second part one node places.
+inline slash::scene3d::Model figure(bool t_pose) {
+    namespace scene3d = slash::scene3d;
+    scene3d::Model model;
+    scene3d::ModelMesh body;
+    body.name = "Body";
+    scene3d::ModelSurface& surface = body.surfaces.emplace_back();
+    for (const float side : {1.0F, -1.0F}) {
+        const auto x = [side](float a, float b) {
+            return side > 0.0F ? std::pair{a, b} : std::pair{-b, -a};
+        };
+        add_box(surface, {x(0.03F, 0.15F).first, 0.0F, -0.07F},
+                {x(0.03F, 0.15F).second, 0.9F, 0.07F});
+        if (t_pose) {
+            add_box(surface, {x(0.18F, 0.8F).first, 1.38F, -0.05F},
+                    {x(0.18F, 0.8F).second, 1.48F, 0.05F});
+        } else {
+            add_box(surface, {x(0.19F, 0.27F).first, 0.8F, -0.05F},
+                    {x(0.19F, 0.27F).second, 1.46F, 0.05F});
+        }
+    }
+    add_box(surface, {-0.18F, 0.9F, -0.1F}, {0.18F, 1.5F, 0.1F});
+    add_box(surface, {-0.1F, 1.55F, -0.1F}, {0.1F, 1.75F, 0.1F});
+    scene3d::ModelMesh helmet;
+    helmet.name = "Helmet";
+    add_box(helmet.surfaces.emplace_back(), {-0.11F, 0.0F, -0.11F}, {0.11F, 0.05F, 0.11F});
+    model.meshes = {body, helmet};
+    scene3d::ModelNode body_node;
+    body_node.name = "Body";
+    scene3d::ModelNode helmet_node;
+    helmet_node.name = "Helmet";
+    helmet_node.position = {0.0F, 1.75F, 0.0F};
+    model.nodes = {body_node, helmet_node};
+    model.parts.push_back(
+        {.node = "Body", .mesh = 0, .transform = {}, .node_index = 0, .skin = -1});
+    slash::world::Affine3D on_head;
+    on_head.origin = {0.0F, 1.75F, 0.0F};
+    model.parts.push_back(
+        {.node = "Helmet", .mesh = 1, .transform = on_head, .node_index = 1, .skin = -1});
+    return model;
 }
 
 } // namespace test_humanoid

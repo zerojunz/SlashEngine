@@ -5036,6 +5036,7 @@ prompt. A repeat is reused as with `asset.generate`. The parent's generator is u
 | `loop` | boolean | false | Music: loop it in the settings written beside `path` |
 | `parameters` | object | | A model: new values for its [recipe's](scene-format.md#model-recipes) parameters, numbers or expressions |
 | `parts` | object | | A recipe: library models to make its [model parts](scene-format.md#model-recipes) of instead, by the IDs (or starts of them) of the ones they replace |
+| `rig` | string | | A `.glb` figure: `"humanoid"` rigs it (see [rigging a figure](#rigging-a-figure)) |
 
 A [model recipe](scene-format.md#model-recipes) is refined by its `parameters` instead, and no
 generator is called: the new version is the recipe with those values, checked as it builds,
@@ -5046,7 +5047,7 @@ that makes the recipe fail to build, or fail the parent's checks, is reported at
 each model it is made of that `parts` names becomes the model it maps to, kept in the
 request's `parts` by full IDs. Naming a model the recipe isn't made of, or something that isn't
 a model, is reported at `/parts/<id>`. A `.glb` model has no parameters and no generator refines it yet:
-edit the file and [`asset.add`](#assetadd) it again, which keeps it as a new version.
+edit the file and [`asset.add`](#assetadd) it again, which keeps it as a new version, or rig it.
 
 ```json
 {"id": "edc8a071", "parameters": {"length": 2.4}, "prompt": "long enough for four", "path": "props/long_bench.model.json"}
@@ -5073,6 +5074,34 @@ The picnic set made of the bench's deeper version, made of the long bench instea
 ```json
 {"height":32,"id":"833c6cd1f6e5","parent":"0b2fd1b5cf5a","path":"art/slime_red.png","width":32}
 ```
+
+#### Rigging a figure
+
+`rig` makes a rigged version of a `.glb` model of a figure: a generator that rigs (`meshy-rig`,
+see [generators](providers.md#generators), or `test`) gives it a skeleton and skins it, then the
+library retargets the skeleton to Godot's `SkeletonProfileHumanoid` as
+[`model.retarget`](#modelretarget) does, with `fix_silhouette` (so the figure stands in the
+profile's T-pose at rest), before keeping it, so every animation of a retargeted humanoid plays on
+it. A skeleton whose bones already have the profile's names maps by name, and others by Godot's
+guesses. The figure is sent as it is: only `prompt`, `generator`, `seed`, `description`, `tags`
+and `path` go with `rig`. The version keeps the parent's
+[checks](scene-format.md#model-checks), and its description is the parent's (less a closing
+period) followed by "; rigged as a humanoid". The reply's `rig` says how many profile bones
+`mapped`, which bones the profile needs are `missing`, the skeleton's `unmapped` bones when there
+are any, and its `motion_scale`. A model that isn't a `.glb` file, or is rigged already, is refused.
+
+```json
+{"id": "4df1e210524b", "rig": "humanoid", "generator": "test", "path": "characters/knight.glb"}
+```
+
+```json
+{"id":"0f00af4f49c0","parent":"4df1e210524b","path":"characters/knight.glb","rig":{"mapped":23,"missing":[],"motion_scale":0.954},"size":[1.72,1.811,0.2],"triangles":72}
+```
+
+The `test` generator places a skeleton of the profile's body bones (no fingers, eyes or jaw) by
+the average proportions of a standing figure facing +z, the arms reaching for its widest point,
+and weights each vertex to its two nearest bones on its side of the figure; services rig from
+what they see of the figure, fingers included.
 
 The `test` generator recolors an image to a color the prompt names, mirrors, darkens or lightens
 it, and makes a sound higher, lower, shorter, longer, louder, quieter or reversed. Its own music

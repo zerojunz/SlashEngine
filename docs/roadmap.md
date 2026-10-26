@@ -789,13 +789,15 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         attachment points, so agents place models without loading images
   - [x] Named parts and attachment points, so wheels turn, doors open and parts from different
         models combine
-  - [ ] Auto-rigging through a generator adapter, retargeted to one standard humanoid skeleton
+  - [x] Auto-rigging through a generator adapter, retargeted to one standard humanoid skeleton
         so every library animation works on every character
     - [x] Retargeting rigged humanoids to Godot's `SkeletonProfileHumanoid`: `model.retarget`
           guesses the bone map as Godot's `BoneMapper`, renames the bones and turns their rests
           as Godot's importer (Overwrite Axis, optionally fixing an A-pose's silhouette), and
           animations play across models in proportion to their heights
-    - [ ] Rigging an unrigged mesh through a generator adapter
+    - [x] Rigging an unrigged mesh through a generator adapter: `asset.refine`'s `rig` with
+          Meshy's rigging (`meshy-rig`) or the test generator's placeholder rig, retargeted
+          before the library keeps it
   - [x] The storyboard's style section (palette, reference images, triangle and texel
         budgets), refined from accepted assets and sent with every request so a game's assets
         match

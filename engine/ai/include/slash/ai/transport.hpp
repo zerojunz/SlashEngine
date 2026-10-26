@@ -12,12 +12,14 @@
 #include <utility>
 #include <vector>
 
-// How adapters reach a model: one POST of a JSON body, whose reply arrives whole or as a stream
+// How adapters reach a model: one POST of a JSON body (or a GET, for a service's task status
+// and files), whose reply arrives whole or as a stream
 // of server-sent events. Tests swap in their own Transport or point an adapter at a local server.
 namespace slash::ai {
 
 struct HttpRequest {
-    std::string url; // scheme, host, optional port and path
+    std::string url;             // scheme, host, optional port and path
+    std::string method = "POST"; // or "GET", which sends no body
     std::vector<std::pair<std::string, std::string>> headers;
     std::string body; // JSON, unless content_type says otherwise
     int timeout_seconds = 600;
@@ -40,9 +42,10 @@ class Transport {
 public:
     virtual ~Transport() = default;
 
-    // POSTs the body as JSON. A 200 response's body goes to the sink, if there is one; any other
-    // status keeps its body in the response for the error it carries. Fails only if the server
-    // could not be reached, the request was cancelled or the sink stopped it.
+    // Sends the request: POSTs the body as JSON, or GETs. A 200 response's body goes to the sink,
+    // if there is one; any other status keeps its body in the response for the error it carries.
+    // Fails only if the server could not be reached, the request was cancelled or the sink stopped
+    // it.
     [[nodiscard]] virtual Result<HttpResponse>
     post(const HttpRequest& request, const BodySink& sink, const CancelFlag* cancel) = 0;
 
@@ -103,8 +106,9 @@ struct HttpOptions {
 // code following the status.
 [[nodiscard]] Error http_error(std::string_view who, const HttpResponse& reply);
 
-// POSTs the request and returns the whole reply, trying again after a retryable status up to
-// max_retries times. A status other than 200 after that is an error naming who answered.
+// Sends the request and returns the whole reply, trying again after a retryable status up to
+// max_retries times. A status other than 2xx (a task accepted is 202) after that is an error
+// naming who answered.
 [[nodiscard]] Result<HttpResponse> post_with_retries(Transport& transport,
                                                      const HttpRequest& request,
                                                      std::string_view who, int max_retries,
