@@ -2,6 +2,7 @@
 # them and the team's library they share.
 add_library(slash_library
     src/adapters.cpp
+    src/blender.cpp
     src/generator.cpp
     src/library.cpp
     src/material.cpp

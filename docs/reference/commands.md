@@ -4875,7 +4875,8 @@ names of its `stems`. Model results have their `size` (meters along x, y and z) 
 
 ### asset.generate
 
-Makes an image, a sound, music, a model or a material with a generator and keeps it. An exact repeat of an earlier request
+Makes an image, a sound, music, a model or a material with a generator and keeps it, or builds a
+model by running a [Blender script](#blender-scripts). An exact repeat of an earlier request
 (the same generator, model and params, apart from `description`, `tags`, `path`, `similar` and
 `context`) returns the stored asset with `"reused": true` and calls no model. Otherwise, when the
 library has assets of the type that score at least 0.75 for the prompt and were not rejected
@@ -4905,7 +4906,9 @@ result is recorded as the asset's feedback (source `storyboard.check`).
 | `bar_beats` | integer | 4 | Music: beats per bar, 2 to 32 |
 | `loop` | boolean | false | Music: ask for a loop, and loop it in the settings written beside `path` |
 | `theme` | string | | Music: a storyboard [theme](storyboard-format.md#music), such as `"theme/harbor"`: its `key`, `tempo` and `bar_beats` where these params give none, its `instruments` and `mood` added to the prompt, and its ID added to the tags |
-| `image` | string | | A model: the library image to make it from, required (see [models](#models-from-a-concept-image)). A material: the library image to make it from instead of generating one (see [materials](#tileable-materials)) |
+| `image` | string | | A model: the library image to make it from, required unless `script` is given (see [models](#models-from-a-concept-image)). A material: the library image to make it from instead of generating one (see [materials](#tileable-materials)) |
+| `script` | string | | A model: a Blender Python script that builds it, as a `.py` file in the project or its text (see [Blender scripts](#blender-scripts)) |
+| `parameters` | object | | A model built by `script`: the values its `params` holds, numbers, strings or booleans |
 | `review` | integer, 1 to 5 | | A model: review each one made and make it again with what was wrong, up to this many in all |
 | `seed` | integer | | For a repeatable result, where the generator takes one |
 | `description` | string | the prompt | A sentence for agents to read instead of the file |
@@ -4989,6 +4992,38 @@ image whose prompt asks for a texture ("texture", "tileable" or "seamless") is r
 random shades in the prompt's color, lit from one corner, which doesn't tile as drawn. Its
 license is `CC0-1.0`.
 
+#### Blender scripts
+
+A model that is easier to write as code than to describe, such as a shelf with a number of boards,
+is built by a Blender script with `script`: a path to a `.py` file in the project, or the script's
+text. The built-in `blender` generator (see [generators](providers.md#generators)) runs the
+artist's own Blender in the background, found as for [`.blend` files](scene-format.md#blender-models),
+on an empty scene (`read_factory_settings(use_empty=True)`), runs the script with `bpy`, `params`
+(the call's `parameters`, `{}` by default) and `seed` (the call's, 0 by default) defined, and
+exports what it leaves in the scene as a `.glb` file with the same glTF options as `.blend`
+imports, which the library keeps. The record keeps the script's text, not its path, with the
+parameters and seed, so the asset is made again the same way on any machine, and its `model` is
+the Blender version that ran it. Blender is GPL, so it only ever runs as a program of its own.
+
+Running Blender needs the `build` capability; an exact repeat, which runs nothing, doesn't. The
+call takes no `width`, `height`, `seconds`, music params, `image` or `review`: the script decides
+the model, and running it again makes the same one, so review it with
+[`asset.review`](#assetreview) and change the script instead. Close matches aren't offered as
+candidates, and no storyboard context is added, since no model reads a prompt. A script that
+fails reports the end of Blender's output, and its whole log is kept in `.slash/blender/`. From
+[examples/blender-scripts](../../examples/blender-scripts/):
+
+```json
+{"type": "model", "prompt": "a wooden bookshelf", "script": "tools/shelf.py", "tags": ["furniture"], "parameters": {"name": "Shelf", "width": 0.8, "depth": 0.3, "height": 1.8, "boards": 5}, "path": "props/shelf.glb"}
+```
+
+```json
+{"id":"2534a95672af","path":"props/shelf.glb","size":[0.8,1.8,0.3],"triangles":12}
+```
+
+[`asset.refine`](#assetrefine) of a model a script built takes new `parameters`, merged over the
+parent's, or a new `script`, or both, and runs it again with the parent's seed.
+
 #### Tileable materials
 
 `"type": "material"` makes a Godot `StandardMaterial3D` that tiles, for walls, floors and roads,
@@ -5034,7 +5069,8 @@ prompt. A repeat is reused as with `asset.generate`. The parent's generator is u
 | `id` | string | required | The asset to change |
 | `prompt` | string | required, but for a model | What to change |
 | `loop` | boolean | false | Music: loop it in the settings written beside `path` |
-| `parameters` | object | | A model: new values for its [recipe's](scene-format.md#model-recipes) parameters, numbers or expressions |
+| `parameters` | object | | A model: new values for its [recipe's](scene-format.md#model-recipes) parameters, numbers or expressions, or for the `params` of the [Blender script](#blender-scripts) that built it |
+| `script` | string | | A model a Blender script built: a new script to build it with, as a `.py` file or its text |
 | `parts` | object | | A recipe: library models to make its [model parts](scene-format.md#model-recipes) of instead, by the IDs (or starts of them) of the ones they replace |
 | `rig` | string | | A `.glb` figure: `"humanoid"` rigs it (see [rigging a figure](#rigging-a-figure)) |
 
@@ -5046,7 +5082,19 @@ that makes the recipe fail to build, or fail the parent's checks, is reported at
 `prompt` and `path` go with it. A recipe made of other models takes `parts` too, or instead:
 each model it is made of that `parts` names becomes the model it maps to, kept in the
 request's `parts` by full IDs. Naming a model the recipe isn't made of, or something that isn't
-a model, is reported at `/parts/<id>`. A `.glb` model has no parameters and no generator refines it yet:
+a model, is reported at `/parts/<id>`. A model a [Blender script](#blender-scripts) built is made again by its script, the parent's
+unless `script` gives a new one, with `parameters` merged over the parent's and the parent's
+seed; one of the two is needed, and the description, tags and prompt default to the parent's:
+
+```json
+{"id": "2534a95672af", "parameters": {"width": 1.6}, "path": "props/wide_shelf.glb"}
+```
+
+```json
+{"id":"d8bc491ee8d3","parent":"2534a95672af","path":"props/wide_shelf.glb","size":[1.6,1.8,0.3],"triangles":12}
+```
+
+Any other `.glb` model has no parameters and no generator refines it yet:
 edit the file and [`asset.add`](#assetadd) it again, which keeps it as a new version, or rig it.
 
 ```json
