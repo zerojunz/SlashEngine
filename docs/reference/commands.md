@@ -736,14 +736,21 @@ pass before it goes into a game, and writes it as one `.glb` file holding its bu
 Godot's glTF export writes one. The steps run in this order:
 
 1. `up` turns the axis the file calls up to y, Godot's up.
-2. `triangles` simplifies each surface to its share of the budget with meshoptimizer's
+2. `delight` takes the light baked into its albedo textures out of them, as Unity's
+   De-Lighting tool does for scans: each texel the surfaces cover is placed on the model, the sky
+   each place sees is traced against the model (16 rays, as far as half its size), the ambient
+   and directional light that best explain the texels' brightness are fitted by least squares, and
+   each texel is divided by that light, by `delight` of the way. A texture lit evenly, or on
+   surfaces all facing one way, is left alone; an image another of a material's slots samples is
+   kept, and the albedo gets a copy.
+3. `triangles` simplifies each surface to its share of the budget with meshoptimizer's
    simplifier, as Godot's importer simplifies LODs, then makes the result's
    [LODs](scene-format.md#mesh-lods).
-3. `scale`, or `height`, sizes it.
-4. `pivot` moves it so its origin is at that point of its box.
-5. With `uvs`, each surface whose vertices all share one texture coordinate (none, in effect) is
+4. `scale`, or `height`, sizes it.
+5. `pivot` moves it so its origin is at that point of its box.
+6. With `uvs`, each surface whose vertices all share one texture coordinate (none, in effect) is
    unwrapped with xatlas, as lightmap UVs are.
-6. `collision` makes what it collides as from the triangles it draws, as Godot's mesh import
+7. `collision` makes what it collides as from the triangles it draws, as Godot's mesh import
    "Generate > Physics" shape types: `"trimesh"` the triangles, `"convex"` one convex hull of at
    most 32 corners, `"decompose"` convex hulls from V-HACD 4, as Godot's
    `Mesh::convex_decompose` makes them (Godot's defaults: about 10000 voxels, 32 corners a hull),
@@ -762,11 +769,13 @@ Godot's glTF export writes one. The steps run in this order:
 | `uvs` | boolean | `true` | Unwrap surfaces without texture coordinates |
 | `collision` | string | | Collision to make: `"trimesh"`, `"convex"` or `"decompose"` |
 | `max_hulls` | integer | `16` | The most hulls `"decompose"` makes, 1 to 256; only with it |
+| `delight` | number | `0` | How much of the light baked into its albedo textures to take out, 0 to 1: 1 for scans and generated models lit in their textures |
 
 Needs: `edit`, `filesystem`. Undo takes the file back. Models with skins or animations are refused
 for now, as are a budget the simplifier can't get under (`/triangles`, or `/out` for the
 storyboard's) and a `height` for a model flat along y; so are `"convex"` and `"decompose"` for
-a model flat in some direction, which makes no hull (`/collision`).
+a model flat in some direction, which makes no hull (`/collision`), and a texture `delight`
+can't read (`/delight`).
 
 ```json
 {"path": "source/boulder.model.json", "out": "props/boulder.glb", "height": 0.8, "pivot": [0.5, 0, 0.5]}
@@ -780,7 +789,9 @@ a model flat in some direction, which makes no hull (`/collision`).
 it; `budget` is the storyboard entry the limit came from; `size` and `pivot` are the result's, as
 `model.inspect`'s brief form gives them; `unwrapped` counts the surfaces given texture
 coordinates, when there are any; `collision` counts the result's collision shapes by kind, as
-`{"convex": 6}`, when it has any; and `unchanged` is `true` when `out` already held the same bytes.
+`{"convex": 6}`, when it has any; `delit` counts the textures `delight` changed and `light` is
+the direction the light it took out came from, in the result's space, when it found one; and
+`unchanged` is `true` when `out` already held the same bytes.
 
 ### skeleton.get
 
