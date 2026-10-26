@@ -14,9 +14,9 @@
 // retries and turns the reply into a file the library keeps.
 namespace slash::library::detail {
 
-inline constexpr std::array<std::string_view, 7> kHttpTypes = {
+inline constexpr std::array<std::string_view, 8> kHttpTypes = {
     "automatic1111", "elevenlabs-music", "elevenlabs-sound", "gemini-image",
-    "openai-image",  "openai-speech",    "stability-audio"};
+    "openai-image",  "openai-speech",    "stability-3d",     "stability-audio"};
 
 // The model a type's requests name when providers.json names none: "" for automatic1111, which
 // draws with the checkpoint it has loaded.

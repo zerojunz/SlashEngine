@@ -1,0 +1,12 @@
+asset.generate {"generator":"test","path":"concepts/stool.png","prompt":"a round red mushroom cap with white spots, transparent sprite","width":48}
+{"height":48,"id":"f07b29b24fe7","path":"concepts/stool.png","width":48}
+asset.feedback {"id":"f07b29b24fe7","reason":"reads as a mushroom cap at a glance","verdict":"accepted"}
+{"accepted":1,"id":"f07b29b24fe7"}
+asset.generate {"generator":"test","image":"f07b29b24fe7","path":"props/stool.glb","prompt":"a mushroom stool for a forest cafe","review":3,"type":"model"}
+the stand-in read a depth of 0.17 m
+the stand-in read a depth of 0.50 m
+{"attempts":[{"id":"06bcc43c0bf8","reason":"The stool is too thin to sit on; make it thick","verdict":"rejected"},{"id":"c8d7daf109f0","verdict":"accepted"}],"id":"c8d7daf109f0","parent":"f07b29b24fe7","path":"props/stool.glb","review":{"holes":0,"recorded":true,"review":{"matches":true,"model":"vision-model","problems":[]},"size":[0.8333,0.8333,0.5],"triangles":1488,"verdict":"accepted","views":4},"size":[0.833,0.833,0.5],"triangles":1488}
+asset.info {"id":"c8d7daf109f0"}
+{"bytes":165052,"description":"a mushroom stool for a forest cafe","feedback":[{"reason":"matches the request","source":"asset.review","verdict":"accepted"}],"format":"glb","generator":"test","id":"c8d7daf109f0","license":"CC0-1.0","model":"test","parent":"f07b29b24fe7","parts":["relief"],"pivot":[0.5,0.0,0.5],"request":{"image":"f07b29b24fe70ffcfc94bee7d62a8979455eb9ccddb5fe1eb29977e2158ba734","prompt":"a mushroom stool for a forest cafe\n\nThe last model was rejected: The stool is too thin to sit on; make it thick.","type":"model"},"seed":0,"size":[0.833,0.833,0.5],"triangles":1488,"type":"model","versions":["f07b29b24fe7"]}
+asset.generate {"prompt":"a mushroom stool","type":"model"}
+"/image: a model is made from a concept image: generate one with type image, check it, then give its ID as image"
