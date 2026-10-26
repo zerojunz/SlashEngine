@@ -43,10 +43,13 @@ struct Editor {
 
 // Runs the export with the editor into work (emptied first): writes the script there, runs the
 // editor with SLASH_UNREAL_EXPORT naming work and its log in work/unreal.log, and returns
-// export.json as it reads. Fails with the end of the log when the editor wrote no export.
+// export.json as it reads. Fails with the end of the log when the editor wrote no export. A
+// request, when it is an object, goes to the script as work/request.json: its "properties" name
+// the properties to read of each C++ class's actors and components, by class path.
 [[nodiscard]] Result<json::Value> run_export(const Editor& editor,
                                              const std::filesystem::path& project,
-                                             const std::filesystem::path& work);
+                                             const std::filesystem::path& work,
+                                             const json::Value& request = {});
 
 // An Unreal config file (.ini): its sections by name, each key's values in order, after the
 // +Key (add), -Key (remove), .Key (add even if there) and !Key (clear) lines are applied.

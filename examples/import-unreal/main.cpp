@@ -14,15 +14,18 @@
 // gives them, and a copy drawn with a component's override material), the hero's skeletal mesh
 // playing its animation sequence, lights, the sky, fog, the camera on the player's spring arm,
 // physics bodies, trigger and blocking volumes, and sounds; its settings and both input systems
-// become project.json; and each Blueprint and C++ class becomes a storyboard task to port it to
-// C++, since SlashEngine games are plain C++. The report lists what didn't convert, and why. The
-// glTF files and the sound are made in code here, so the repository holds no binary files.
+// become project.json; each C++ class becomes a C++ skeleton with its properties as a component
+// the level's actors fill in, as Unity's scripts do; and each Blueprint and C++ class becomes a
+// storyboard task to port it, since SlashEngine games are plain C++. The report lists what didn't
+// convert, and why. The glTF files and the sound are made in code here, so the repository holds
+// no binary files.
 
 #include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
+#include "slash/gameplay/host.hpp"
 #include "slash/importer/commands.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/mesh.hpp"
@@ -138,6 +141,9 @@ void print_file(const std::string& path) {
 struct Agent {
     world::ComponentRegistry components;
     command::Registry commands;
+    // The game's own C++ code. Until it is built, the components of the skeletons the import
+    // writes are stand-ins that keep the values levels give them.
+    slash::gameplay::Host code{components, slash::gameplay::library_path(".")};
     std::unique_ptr<command::Session> session;
 
     Agent() {
@@ -146,6 +152,7 @@ struct Agent {
         slash::importer::register_import_commands(commands);
         command::SessionOptions options;
         options.capture_logs = false;
+        options.gameplay = &code;
         session = std::make_unique<command::Session>(components, commands, options);
     }
 
@@ -232,6 +239,10 @@ int main() {
     // The hero's mesh plays its idle sequence, as the component played it in Unreal: a second
     // and a half in.
     agent.call("world.query", R"({"with": ["AnimationPlayer"], "include": ["AnimationPlayer"]})");
+    // The coin's Blueprint is made from the C++ class ACoinPickup, which became a skeleton in
+    // src/imported/: the coin holds its component with the values the level gave it.
+    agent.call("world.query", R"({"with": ["CoinPickup"], "include": ["CoinPickup"]})");
+    print_file("src/imported/coin_pickup.cpp");
     // The floor collides as Unreal's complex collision: a ray down stops on its top.
     agent.call("physics.raycast", R"({"from": [-6, 5, -3], "to": [-6, -5, -3]})");
     // The goal is a trigger box, an area the player can walk into.
