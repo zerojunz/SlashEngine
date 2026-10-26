@@ -60,15 +60,20 @@ inline constexpr std::uint32_t kMeshTerrain = 1;
 inline constexpr std::uint32_t kMeshTerrainDepthBlending = 2;
 inline constexpr std::uint32_t kMeshTerrainNormals = 16;
 
-// The vertex stage's uniforms: b0 and b1 in space1.
+// The vertex stage's uniforms: b0 and b1 in space1. A frame with TAA draws with its camera
+// jittered, and its prepass works out each pixel's motion from where the vertex is without the
+// jitter and where it was in the frame before.
 struct MeshCameraUniforms {
     Mat4 view_projection{};
+    Mat4 previous_view_projection{}; // the frame before's, without its jitter
+    Float4 jitter{};                 // in clip space, in x and y; view_projection has it
 };
 struct MeshInstanceUniforms {
     Mat4 model{};
-    Mat4 normal_model{};  // the inverse transpose of model's upper 3x3, in its upper 3x3
-    Float4 uv1{};         // scale, then offset
-    Float4 lightmap_uv{}; // the lightmap's rect of uv2: offset, then scale
+    Mat4 normal_model{};   // the inverse transpose of model's upper 3x3, in its upper 3x3
+    Float4 uv1{};          // scale, then offset
+    Float4 lightmap_uv{};  // the lightmap's rect of uv2: offset, then scale
+    Mat4 previous_model{}; // model in the frame before
 };
 
 // A VoxelGI a draw traces, as mesh.hlsl's Surface holds it.
@@ -185,7 +190,8 @@ struct MeshShadowPassUniforms {
     Float4 options{};  // the bias, 1 pushes by it along the ray (omni), 1 clamps to near (pancake)
 };
 
-static_assert(sizeof(MeshInstanceUniforms) == 160);
+static_assert(sizeof(MeshCameraUniforms) == 144);
+static_assert(sizeof(MeshInstanceUniforms) == 224);
 static_assert(sizeof(MeshVoxelGIUniforms) == 240);
 static_assert(sizeof(MeshSurfaceUniforms) == 784);
 static_assert(sizeof(MeshSceneUniforms) == 272 + (80 * kMaxLights3D));
@@ -198,9 +204,13 @@ static_assert(sizeof(MeshShadowPassUniforms) == 144);
 // Godot's Color::srgb_to_linear, for colors the CPU converts before the shader sees them.
 [[nodiscard]] float srgb_to_linear_exact(float value);
 
+// The scene's camera, with no jitter and as the frame before's.
 [[nodiscard]] MeshCameraUniforms mesh_camera_uniforms(const Scene3D& scene);
+// A draw's instance, which was at previous in the frame before (at transform without one).
 [[nodiscard]] MeshInstanceUniforms mesh_instance_uniforms(const Mat4& transform,
                                                           const Material3D& material);
+[[nodiscard]] MeshInstanceUniforms
+mesh_instance_uniforms(const Mat4& transform, const Material3D& material, const Mat4& previous);
 [[nodiscard]] MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material,
                                                         std::uint32_t layers);
 // The scene's uniforms: in Compatibility its first kMaxLights3D lights, in Forward+ its
@@ -253,6 +263,7 @@ struct MeshDraw {
     Material3D material;
     std::uint32_t layers = 1;
     ShadowCasting shadows = ShadowCasting::On;
+    Mat4 previous{}; // transform in the frame before, for TAA's motion vectors
 };
 
 // Each light's shadow slot, as MeshLightUniforms::shadow holds it: drawn lights (lights_drawn)
@@ -338,8 +349,12 @@ template <typename Known>
                                            const Mat4& transform, const Material3D& material,
                                            TextureId target, const Known& known);
 
+// Fails unless a draw's previous transform, when it has one, is finite.
+[[nodiscard]] Result<void> check_previous_transform(const std::optional<Mat4>& previous);
+
 // What the vertex stage leaves at a corner, as vs_main does: where it is in the world and in
-// clip space, its normal, tangent and binormal, texture coordinate and color.
+// clip space, its normal, tangent and binormal, texture coordinate and color, and for TAA's
+// prepass, where it is in clip space without the jitter and where it was in the frame before.
 struct MeshCorner {
     Float4 clip{};
     Float3 world{};
@@ -349,9 +364,16 @@ struct MeshCorner {
     std::array<float, 2> uv{};
     Float4 color{};
     std::array<float, 2> uv2{}; // in the lightmap
+    Float4 motion_clip{};
+    Float4 previous_clip{};
 };
+// A corner whose vertex was at previous, in the mesh's space, in the frame before (at its
+// position without one).
 [[nodiscard]] MeshCorner mesh_vertex(const MeshCameraUniforms& camera,
                                      const MeshInstanceUniforms& instance, const Vertex3D& vertex);
+[[nodiscard]] MeshCorner mesh_vertex(const MeshCameraUniforms& camera,
+                                     const MeshInstanceUniforms& instance, const Vertex3D& vertex,
+                                     const Float3& previous);
 
 // What the fragment stage reads at a pixel: where it is in the target, the corners' values there,
 // which face it is on, and what each texture holds there.

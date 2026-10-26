@@ -11,17 +11,21 @@
 // whose omni and spot lights come from clusters of the screen instead of the scene's uniforms,
 // and which reads screen-space ambient occlusion and reflections (ssao.hlsl and ssr.hlsl draw
 // them). mesh_normal.hlsl defines NORMAL_ROUGHNESS for Forward+'s prepass, which draws the normals
-// and roughness that ssao.hlsl and ssr.hlsl read.
+// and roughness that ssao.hlsl and ssr.hlsl read, and mesh_motion.hlsl MOTION_VECTORS too for
+// the prepass of a frame with TAA, which draws each pixel's motion vector into a second target.
 
 cbuffer Camera : register(b0, space1) {
-    float4x4 view_projection; // world to clip space
+    float4x4 view_projection;          // world to clip space, with TAA's jitter
+    float4x4 previous_view_projection; // the frame before's, without its jitter
+    float4 jitter;                     // TAA's jitter in clip space, in xy
 };
 
 cbuffer Instance : register(b1, space1) {
-    float4x4 model;        // the mesh's space to the world
-    float4x4 normal_model; // the inverse transpose of model's upper 3x3, in its upper 3x3
-    float4 uv1;            // xy scale and zw offset, as Godot's uv1_scale and uv1_offset
-    float4 lightmap_uv;    // the lightmap's rect: uv2's xy offset and zw scale
+    float4x4 model;          // the mesh's space to the world
+    float4x4 normal_model;   // the inverse transpose of model's upper 3x3, in its upper 3x3
+    float4 uv1;              // xy scale and zw offset, as Godot's uv1_scale and uv1_offset
+    float4 lightmap_uv;      // the lightmap's rect: uv2's xy offset and zw scale
+    float4x4 previous_model; // model in the frame before
 };
 
 struct VertexInput {
@@ -31,6 +35,11 @@ struct VertexInput {
     float2 uv : TEXCOORD3;
     float4 color : TEXCOORD4;
     float2 uv2 : TEXCOORD5;
+#ifdef MOTION_VECTORS
+    // Where the vertex was in the frame before, from a second vertex buffer: a skinned mesh's
+    // vertices before its last update, or its own.
+    float3 previous : TEXCOORD6;
+#endif
 };
 
 struct VertexOutput {
@@ -41,6 +50,10 @@ struct VertexOutput {
     float2 uv : TEXCOORD4;
     float4 color : TEXCOORD5;
     float2 uv2 : TEXCOORD6;
+#ifdef MOTION_VECTORS
+    float4 motion_clip : TEXCOORD7;   // where the vertex is in clip space, without the jitter
+    float4 previous_clip : TEXCOORD8; // and where it was in the frame before
+#endif
     float4 position : SV_Position;
 };
 
@@ -57,6 +70,12 @@ VertexOutput vs_main(VertexInput input) {
     output.uv = input.uv * uv1.xy + uv1.zw;
     output.color = input.color;
     output.uv2 = input.uv2 * lightmap_uv.zw + lightmap_uv.xy;
+#ifdef MOTION_VECTORS
+    output.motion_clip = output.position;
+    output.motion_clip.xy -= jitter.xy * output.position.w;
+    output.previous_clip =
+        mul(previous_view_projection, mul(previous_model, float4(input.previous, 1.0)));
+#endif
     return output;
 }
 
@@ -1007,7 +1026,16 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     return diffuse_light + specular_light + reflected + emitted + ambient_light;
 }
 
+#ifdef MOTION_VECTORS
+// The prepass's targets with TAA: the normal and roughness, and the motion vector.
+struct PrepassOutput {
+    float4 normal_roughness : SV_Target0;
+    float4 motion : SV_Target1;
+};
+PrepassOutput fs_main(VertexOutput input, bool front : SV_IsFrontFace) {
+#else
 float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
+#endif
     // Every texture is sampled first, while control flow is uniform, as WGSL requires. A
     // terrain's ground layers tile across its maps.
     bool terrain = (options.w & kTerrain) != 0u;
@@ -1102,7 +1130,20 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     float3 view_normal =
         normalize(float3(dot(view_rows[0].xyz, normal), dot(view_rows[1].xyz, normal),
                          dot(view_rows[2].xyz, normal)));
-    return float4(view_normal * 0.5 + 0.5, roughness * (127.0 / 255.0));
+    float4 normal_roughness = float4(view_normal * 0.5 + 0.5, roughness * (127.0 / 255.0));
+#ifdef MOTION_VECTORS
+    // Godot's motion vector: the move from where the surface is to where it was, each without its
+    // frame's jitter, in texture coordinates, whose y runs down.
+    float2 position_uv = input.motion_clip.xy / input.motion_clip.w * 0.5;
+    float2 previous_uv = input.previous_clip.xy / input.previous_clip.w * 0.5;
+    float2 motion = previous_uv - position_uv;
+    PrepassOutput output;
+    output.normal_roughness = normal_roughness;
+    output.motion = float4(motion.x, -motion.y, 0.0, 0.0);
+    return output;
+#else
+    return normal_roughness;
+#endif
 #else
     // Godot's SSAO: the frame's occlusion at the pixel darkens the opaque meshes' ambient light,
     // and their direct light by its light affect times its AO channel affect. Its SSR (alpha

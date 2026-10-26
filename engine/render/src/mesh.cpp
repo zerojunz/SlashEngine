@@ -487,12 +487,21 @@ float srgb_to_linear_exact(float value) {
 }
 
 MeshCameraUniforms mesh_camera_uniforms(const Scene3D& scene) {
-    return {.view_projection = multiply(scene.projection, scene.camera)};
+    const Mat4 view_projection = multiply(scene.projection, scene.camera);
+    return {.view_projection = view_projection,
+            .previous_view_projection = view_projection,
+            .jitter = {}};
 }
 
 MeshInstanceUniforms mesh_instance_uniforms(const Mat4& transform, const Material3D& material) {
+    return mesh_instance_uniforms(transform, material, transform);
+}
+
+MeshInstanceUniforms mesh_instance_uniforms(const Mat4& transform, const Material3D& material,
+                                            const Mat4& previous) {
     MeshInstanceUniforms out;
     out.model = transform;
+    out.previous_model = previous;
     // The cofactors of the upper 3x3 are its inverse transpose times its determinant, whose sign
     // keeps a mirrored mesh's normals pointing out; the shader normalizes them.
     const auto a = [&](std::size_t row, std::size_t column) {
@@ -887,13 +896,32 @@ Error no_scene() {
                       "draw_mesh needs a frame with a scene (Frame::scene)");
 }
 
+Result<void> check_previous_transform(const std::optional<Mat4>& previous) {
+    if (previous &&
+        !std::ranges::all_of(*previous, [](float value) { return std::isfinite(value); })) {
+        return make_error(ErrorCode::InvalidArgument, "a mesh's previous transform is finite");
+    }
+    return {};
+}
+
 MeshCorner mesh_vertex(const MeshCameraUniforms& camera, const MeshInstanceUniforms& instance,
                        const Vertex3D& vertex) {
+    return mesh_vertex(camera, instance, vertex, vertex.position);
+}
+
+MeshCorner mesh_vertex(const MeshCameraUniforms& camera, const MeshInstanceUniforms& instance,
+                       const Vertex3D& vertex, const Float3& previous) {
     MeshCorner out;
     const Float4 world = transform(
         instance.model, {vertex.position[0], vertex.position[1], vertex.position[2], 1.0F});
     out.world = {world[0], world[1], world[2]};
     out.clip = transform(camera.view_projection, world);
+    out.motion_clip = out.clip;
+    out.motion_clip[0] -= camera.jitter[0] * out.clip[3];
+    out.motion_clip[1] -= camera.jitter[1] * out.clip[3];
+    out.previous_clip = transform(
+        camera.previous_view_projection,
+        transform(instance.previous_model, {previous[0], previous[1], previous[2], 1.0F}));
     const Float3 tangent{vertex.tangent[0], vertex.tangent[1], vertex.tangent[2]};
     const Float3 binormal = normalize(scale(cross(vertex.normal, tangent), vertex.tangent[3]));
     out.normal = normalize(transform3(instance.normal_model, vertex.normal));

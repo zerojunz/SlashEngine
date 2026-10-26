@@ -508,7 +508,8 @@ public:
     [[nodiscard]] virtual Result<MeshId> create_mesh(std::span<const Vertex3D> vertices,
                                                      std::span<const std::uint32_t> indices) = 0;
     // Replaces a mesh's vertices with as many new ones, keeping its triangles, as a skinned
-    // mesh's are replaced each frame; not during a frame.
+    // mesh's are replaced each frame; not during a frame. A frame with TAA (Scene3D::use_taa)
+    // moves its pixels by how far each vertex moved since the last such frame that drew it.
     [[nodiscard]] virtual Result<void> update_mesh(MeshId mesh,
                                                    std::span<const Vertex3D> vertices) = 0;
     // A mesh in use by the frame being built goes once the frame is sent.
@@ -530,11 +531,13 @@ public:
     // material, if one of layers' bits is in a light's cull_mask, lit by that light. Opaque and
     // alpha scissor meshes are drawn first, nearest first, then alpha meshes, farthest first,
     // as Godot sorts them; all before the frame's 2D draws. shadows says which lights' shadow
-    // maps it is drawn into; alpha meshes cast no shadows, as in Godot.
-    [[nodiscard]] virtual Result<void> draw_mesh(MeshId mesh, const Mat4& transform,
-                                                 const Material3D& material,
-                                                 std::uint32_t layers = 1,
-                                                 ShadowCasting shadows = ShadowCasting::On) = 0;
+    // maps it is drawn into; alpha meshes cast no shadows, as in Godot. previous is where the
+    // mesh was in the frame before, from which a frame with TAA works out how far its pixels
+    // moved; without it, the mesh stood still.
+    [[nodiscard]] virtual Result<void>
+    draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
+              std::uint32_t layers = 1, ShadowCasting shadows = ShadowCasting::On,
+              const std::optional<Mat4>& previous = std::nullopt) = 0;
     // Sends the frame to the GPU, and to the window when it is the target.
     [[nodiscard]] virtual Result<void> end_frame() = 0;
 

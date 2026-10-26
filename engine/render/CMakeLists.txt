@@ -61,6 +61,7 @@ add_library(slash_render
     src/ssao.cpp
     src/reflection.cpp
     src/ssr.cpp
+    src/taa.cpp
     src/texture_codec.cpp
     src/uniforms.cpp
     src/upscaler.cpp
@@ -97,7 +98,7 @@ endif()
 set_source_files_properties(src/clusters.cpp src/device.cpp src/forward_post.cpp src/material.cpp
     src/mesh.cpp src/particles.cpp src/post.cpp src/resize.cpp src/shader_vm.cpp src/shadow.cpp
     src/reflection.cpp src/sky.cpp src/software_device.cpp src/ssao.cpp src/ssr.cpp
-    src/upscaler.cpp src/voxel_gi.cpp
+    src/taa.cpp src/upscaler.cpp src/voxel_gi.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
@@ -114,13 +115,15 @@ set(slash_shader_headers "")
 # textures put its WGSL samplers 16 bindings after them instead of 8, as the thirteen textures of
 # the Forward+ post passes (post16) do. clustered is the mesh shader's Forward+ fragment stage,
 # which reads storage buffers, and normal its fragment stage for Forward+'s normal-roughness
-# prepass. The SSAO and SSR passes (ssao) are post passes with twelve and eight textures whose
+# prepass; motion is that prepass with TAA's motion vectors, whose vertex stage reads where each
+# vertex was in the frame before and whose varyings carry it. The SSAO and SSR passes (ssao) are post passes with twelve and eight textures whose
 # code comes in pieces; ssr_trace is the SSR trace's fragment stage, which draws with ssr's vertex
 # stage.
 set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
-    mesh_clustered:MeshClustered:clustered mesh_normal:MeshNormal:normal shadow:Shadow:depth
+    mesh_clustered:MeshClustered:clustered mesh_normal:MeshNormal:normal
+    mesh_motion:MeshMotion:motion shadow:Shadow:depth
     post:Post:post sky:Sky:post forward_post:ForwardPost:post16 ssao:Ssao:ssao ssr:Ssr:ssao
-    ssr_trace:SsrTrace:ssr_trace radiance:Radiance:post
+    ssr_trace:SsrTrace:ssr_trace radiance:Radiance:post taa:Taa:post
     particles_process:ParticlesProcess:compute
     particles_emit:ParticlesEmit:compute particles_draw:ParticlesDraw:compute)
 foreach(entry IN LISTS slash_shaders)
@@ -170,6 +173,8 @@ foreach(entry IN LISTS slash_shaders)
                 set(storage_buffers ON)
             elseif(kind STREQUAL "normal")
                 set(fragment_only ON)
+            elseif(kind STREQUAL "motion")
+                set(interface ${interface},v_motion_clip,v_previous_clip)
             endif()
         endif()
     endif()

@@ -590,6 +590,7 @@ on its top.
 | `rendering/environment/screen_space_reflection/half_size` | `rendering.environment.screen_space_reflection` |
 | `rendering/reflections/reflection_atlas/reflection_size`, `reflection_count` | `rendering.reflections.reflection_atlas`; a size that isn't a power of two from 32 to 2048 is reported |
 | `rendering/global_illumination/voxel_gi/quality` | `rendering.global_illumination.voxel_gi.quality`: `0` is `"low"`, `1` is `"high"` |
+| `rendering/anti_aliasing/quality/use_taa` | `rendering.anti_aliasing.quality.use_taa` |
 | `gui/theme/custom` | `gui.theme`, the theme's `.theme.json` file |
 | `audio/buses/default_bus_layout` | `audio.bus_layout`, the layout's `.bus_layout.json` file |
 | `audio/driver/mix_rate`, `audio/driver/output_latency` | `audio.mix_rate`, `audio.output_latency` |
