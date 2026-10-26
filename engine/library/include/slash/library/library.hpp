@@ -56,7 +56,8 @@ struct Stem {
 struct Record {
     std::string id;   // the SHA-256 of the bytes, 64 hex digits
     std::string type; // "image", "sound", "music" or "model"
-    // The file's extension without the dot: "png", "bmp", "wav", "ogg", "mp3", "model.json"
+    // The file's extension without the dot: "png", "bmp", "wav", "ogg", "mp3", "model.json",
+    // "glb"
     std::string format;
     std::int64_t bytes = 0;
     int width = 0; // images
@@ -105,14 +106,15 @@ void add_feedback(Record& record, Feedback feedback);
 [[nodiscard]] json::Value to_json(const Record& record);
 [[nodiscard]] Result<Record> record_from_json(const json::Value& value);
 
-// "image", "sound" or "model" for a file extension such as ".png" or ".model.json", or "" for one
-// the library doesn't keep. Music is kept in sound files.
+// "image", "sound" or "model" for a file extension such as ".png", ".model.json" or ".glb", or ""
+// for one the library doesn't keep. Music is kept in sound files.
 [[nodiscard]] std::string_view type_of(std::string_view extension);
 // Whether a file of the extension can be an asset of the type.
 [[nodiscard]] bool holds(std::string_view type, std::string_view extension);
 
-// Fills in a record's type, format, size, image size or sound length from the file's bytes, and
-// checks they are a file of that format. path names the file, for its extension.
+// Fills in a record's type, format, size, image size, sound length or model summary from the
+// file's bytes, and checks they are a file of that format; a .glb model must read nothing
+// outside itself. path names the file, for its extension.
 [[nodiscard]] Result<void> describe_file(std::string_view data, std::string_view path,
                                          Record& record);
 

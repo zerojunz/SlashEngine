@@ -1,3 +1,5 @@
+#include "gltf.hpp"
+
 #include "slash/ai/commands.hpp"
 #include "slash/ai/config.hpp"
 #include "slash/command/builtin.hpp"
@@ -184,8 +186,8 @@ TEST_CASE("library stores each asset once by the hash of its bytes") {
 
     library::Record unknown;
     CHECK(library::describe_file("text", "notes.txt", unknown).error().message ==
-          "\"notes.txt\" is not a file the library keeps: .png, .bmp, .wav, .ogg, .mp3 or "
-          ".model.json");
+          "\"notes.txt\" is not a file the library keeps: .png, .bmp, .wav, .ogg, .mp3, "
+          ".model.json or .glb");
     CHECK_FALSE(library::describe_file("not a png", "broken.png", unknown).ok());
 
     // Requests remember what they made.
@@ -528,6 +530,54 @@ TEST_CASE("model recipes go into the library, and refining one changes its param
     CHECK(
         engine.fail("asset.add", R"({"path": "props/stone.model.json", "description": "A ball."})")
             .message.starts_with("/path: /materials/stone/albedo_texture: "));
+    // A recipe taken from the library and edited goes back in as a new version of it, with
+    // what it was said to be.
+    write(root / "project" / "props" / "again.model.json",
+          R"({"format": 1, "parameters": {"width": 3},
+              "parts": [{"name": "crate", "shape": "box", "size": ["=width", 1, 1]}]})");
+    json::Value edited = engine.call("asset.add", R"({"path": "props/again.model.json"})");
+    CHECK(edited["parent"] == first);
+    CHECK(edited["size"] == parse("[3, 1, 1]"));
+    info = engine.call("asset.info", R"({"id": ")" + edited["id"].as_string() + R"("})");
+    CHECK(info["description"] == "A wooden crate.");
+    CHECK(info["license"] == "CC0-1.0");
+    CHECK(info["author"] == "Mira");
+    // A file the library never gave needs saying what it is.
+    write(root / "project" / "props" / "new.model.json",
+          R"({"format": 1, "parts": [{"shape": "sphere"}]})");
+    CHECK(engine.fail("asset.add", R"({"path": "props/new.model.json"})").data["path"] ==
+          "/description");
+
+    // A .glb model goes in with its summary, if it holds everything it reads.
+    slash::test::Gltf glb = slash::test::quad();
+    glb.document["nodes"] = parse(R"([{"name": "Quad", "mesh": 0, "children": [1]},
+                                      {"name": "Hook", "translation": [0, 1, 0]}])");
+    write(root / "project" / "props" / "sign.glb", glb.glb());
+    json::Value sign =
+        engine.call("asset.add", R"({"path": "props/sign.glb", "description": "A blank sign.",
+                         "license": "CC-BY-4.0", "author": "Ana"})");
+    CHECK(sign["type"] == "model");
+    CHECK(sign["size"] == parse("[2, 2, 0]"));
+    CHECK(sign["triangles"] == 2);
+    info = engine.call("asset.info", R"({"id": ")" + sign["id"].as_string() + R"("})");
+    CHECK(info["format"] == "glb");
+    CHECK(info["parts"] == parse(R"(["Quad"])"));
+    CHECK(info["points"] == parse(R"(["Hook"])"));
+    CHECK(engine
+              .fail("asset.refine",
+                    R"({"id": ")" + sign["id"].as_string() + R"(", "prompt": "rounder"})")
+              .data["path"] == "/id");
+    slash::test::Gltf painted = slash::test::quad(0);
+    painted.document["images"] = parse(R"([{"uri": "paint.png"}])");
+    painted.document["textures"] = parse(R"([{"source": 0}])");
+    painted.document["materials"] =
+        parse(R"([{"pbrMetallicRoughness": {"baseColorTexture": {"index": 0}}}])");
+    write(root / "project" / "props" / "painted.glb", painted.glb());
+    CHECK(engine.fail("asset.add", R"({"path": "props/painted.glb", "description": "A sign."})")
+              .message ==
+          "/path: the library keeps .glb files that hold their own buffers and images, and this "
+          "one reads \"props/paint.png\"");
+
     // An image's versions come from prompts, not parameters.
     const std::string icon =
         engine.call("asset.generate", R"({"prompt": "gem icon", "generator": "test"})")["id"]
