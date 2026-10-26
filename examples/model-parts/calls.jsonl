@@ -1,0 +1,6 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"model.inspect","params":{"path":"props/cabinet.model.json","brief":true}}
+{"jsonrpc":"2.0","id":3,"method":"step","params":{"ticks":1}}
+{"jsonrpc":"2.0","id":4,"method":"skeleton.get","params":{"id":"cabinet","bones":["door","handle"]}}
+{"jsonrpc":"2.0","id":5,"method":"entity.get","params":{"id":"on_top","components":["Transform3D"]}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[86,7],[75,45],[50,50],[10,10]]}}

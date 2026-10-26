@@ -2552,6 +2552,54 @@ Reply text_measure(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+// A model in a few numbers and names: its size, where its origin is in it, its triangles, and
+// each part's and attachment point's place.
+json::Value brief_model(const scene3d::ModelSummary& summary) {
+    const auto xyz = [](Vec3 v) { return rounded(json::Array{v.x, v.y, v.z}); };
+    const auto size_of = [&](const scene3d::Bounds& box) { return xyz(box.max - box.min); };
+    const auto center_of = [&](const scene3d::Bounds& box) {
+        return xyz((box.min + box.max) * 0.5F);
+    };
+    const auto names = [](const std::vector<std::string>& list) {
+        json::Array out;
+        for (const std::string& name : list) {
+            out.emplace_back(name);
+        }
+        return out;
+    };
+    json::Value out;
+    out["size"] = size_of(summary.bounds);
+    out["pivot"] = xyz(summary.pivot);
+    out["triangles"] = summary.triangles;
+    out["materials"] = names(summary.materials);
+    out["parts"] = json::Array{};
+    for (const scene3d::ModelSummary::Part& part : summary.parts) {
+        json::Value item;
+        item["name"] = part.name;
+        item["center"] = center_of(part.bounds);
+        item["size"] = size_of(part.bounds);
+        item["materials"] = names(part.materials);
+        item["triangles"] = part.triangles;
+        out["parts"].push_back(std::move(item));
+    }
+    for (const scene3d::ModelSummary::Point& point : summary.points) {
+        json::Value item;
+        item["name"] = point.name;
+        if (!point.part.empty()) {
+            item["part"] = point.part;
+        }
+        item["position"] = xyz(point.position);
+        if (point.rotation != Vec3{}) {
+            item["rotation"] = xyz(point.rotation);
+        }
+        out["points"].push_back(std::move(item));
+    }
+    if (!summary.animations.empty()) {
+        out["animations"] = names(summary.animations);
+    }
+    return out;
+}
+
 // A glTF model's meshes, materials, images and parts, as a MeshInstance3D draws them.
 Reply model_inspect(Session& session, const json::Value& params) {
     const std::string id = text(params, "id");
@@ -2586,6 +2634,9 @@ Reply model_inspect(Session& session, const json::Value& params) {
         return param_error(loaded.error(), id.empty() ? "/path" : "/id");
     }
     const scene3d::Model& model = *loaded.value();
+    if (flag(params, "brief")) {
+        return Reply::success(brief_model(scene3d::summarize(model)));
+    }
     json::Value result;
     result["meshes"] = json::Array{};
     for (const scene3d::ModelMesh& mesh : model.meshes) {
@@ -6982,7 +7033,8 @@ void register_builtin_commands(Registry& registry) {
     registry.add({
         .name = "model.inspect",
         .description = "Returns a model's meshes, materials, images, parts and bounds, as a "
-                       "MeshInstance3D draws them.",
+                       "MeshInstance3D draws them; brief gives only its size, pivot, triangles, "
+                       "parts and attachment points.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema({
@@ -6990,6 +7042,9 @@ void register_builtin_commands(Registry& registry) {
             {"path",
              property("string",
                       "A .gltf, .glb, .obj, .fbx, .blend or .model.json file. Or give id.")},
+            {"brief", property("boolean", "Only size, pivot (the origin's place in the bounds, "
+                                          "0 to 1 per axis), triangles, materials, parts' "
+                                          "centers and sizes, attachment points and animations.")},
         }),
         .handler = model_inspect,
     });

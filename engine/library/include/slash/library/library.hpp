@@ -64,9 +64,14 @@ struct Record {
     double seconds = 0.0; // sounds
     int channels = 0;
     int sample_rate = 0;
-    // Models: the size of their bounds in meters, x, y and z, and their triangles.
+    // Models: the size of their bounds in meters, x, y and z, their triangles, where their origin
+    // is in their bounds (0 to 1 per axis, as scene3d::ModelSummary::pivot) and the names of
+    // their parts and attachment points.
     std::array<double, 3> size{};
     std::int64_t triangles = 0;
+    std::array<double, 3> pivot{};
+    std::vector<std::string> parts;
+    std::vector<std::string> points;
     std::string description; // a sentence or two for agents to read instead of the file
     std::vector<std::string> tags;
     json::Value request;   // what the generator was asked; null for an added file
