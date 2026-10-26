@@ -802,6 +802,15 @@ over the target, before the 2D draws. `src/forward_post.hpp` holds the uniforms 
 world as half floats too, and `tests/test_forward_post.cpp` holds the GPU to its pixels. The
 OpenGL devices always draw as Compatibility. `examples/glow-3d` is neon signs at night.
 
+Auto exposure is Godot 4.6's: `CameraAttributesPractical` (the camera's, else the
+`WorldEnvironment`'s; `scene3d::camera_attributes`) sets `PostProcess::auto_exposure_*`, and
+its `exposure_multiplier` scales lights, emission, the background and the sky in
+`scene3d::environment` and `Renderer::prepare`. Forward+ devices measure each frame with
+`forward_post.hlsl`'s luminance passes (`luminance_plan`, `run_luminance_pass`) into R32F
+textures down to a 1x1 brightness they keep between frames, moving `auto_exposure_adjust` of the
+way each frame, which `prepare` works out from game time; `auto_exposure_version` starts the
+measure over. `examples/auto-exposure-3d` walks out of a tunnel.
+
 Compatibility's post-processing: without glow or adjustments, `mesh.hlsl` tonemaps as it draws.
 With either, each device draws the meshes into an RGBA8 texture at `end_frame` and runs
 `shaders/post.hlsl`'s passes: glow's filter, three downsamples and three upsamples through four

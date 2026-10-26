@@ -1313,7 +1313,7 @@ Godot's do in 3D, unless `texture_repeat` is off.
 | `metallic`, `metallic_texture`, `metallic_texture_channel` | `0`, `""`, `"red"` | How metallic, times a channel of the texture (`"red"`, `"green"`, `"blue"`, `"alpha"` or `"gray"`) |
 | `metallic_specular` | `0.5` | Specular strength of the non-metallic part |
 | `roughness`, `roughness_texture`, `roughness_texture_channel` | `1`, `""`, `"red"` | How rough, as `metallic` |
-| `emission_enabled`, `emission`, `emission_energy_multiplier`, `emission_texture` | `false`, `[0, 0, 0, 1]`, `1`, `""` | Light the surface gives off, unlit |
+| `emission_enabled`, `emission`, `emission_energy_multiplier`, `emission_texture` | `false`, `[0, 0, 0, 1]`, `1`, `""` | Light the surface gives off, unlit: the color (plus the texture) made linear, times the multiplier, as Godot |
 | `normal_enabled`, `normal_scale`, `normal_texture` | `false`, `1`, `""` | A tangent-space normal map |
 | `shading_mode` | `"per_pixel"` | `"unshaded"` draws the albedo with no lighting |
 | `transparency`, `alpha_scissor_threshold` | `"disabled"`, `0.5` | `"alpha"` blends; `"alpha_scissor"` drops pixels under the threshold |
@@ -1457,6 +1457,29 @@ LUTs (a `GradientTexture1D`) do. One as wide as its height squared is a 3D LUT: 
 height by height pixels side by side, blue choosing the slice and red and green the pixel in it,
 as Godot imports a `Texture3D` from horizontal slices. A texture of another shape, or one that
 can't load, is reported and left out.
+
+### CameraAttributesPractical
+
+How a camera exposes the 3D world, as Godot's `CameraAttributesPractical`. A `Camera3D` uses the
+one on its own entity, as Godot's `Camera3D.attributes`, or else the one on the first
+`WorldEnvironment`'s, as `WorldEnvironment.camera_attributes`.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `exposure_multiplier` | `1` | Brightens the lights, emission, the background and the sky, and so the sky's light, but not `ambient_light_color` or fog |
+| `exposure_sensitivity` | `100` | The camera's ISO, which the auto exposure sensitivities are over |
+| `auto_exposure_enabled` | `false` | `forward_plus`: exposes each frame by how bright it is |
+| `auto_exposure_scale` | `0.4` | The brightness frames are exposed toward: higher is brighter |
+| `auto_exposure_speed` | `0.5` | How much of the way to a new brightness the exposure moves each second of game time |
+| `auto_exposure_min_sensitivity`, `auto_exposure_max_sensitivity` | `0`, `800` | The least and most brightness the exposure follows, in ISO: a scene darker than the least stays dark, and one brighter than the most stays bright |
+
+Auto exposure measures each frame as Godot's Forward+ renderer does: each pixel's brightest
+channel is averaged in blocks of 8 by 8, then the blocks' averages, down to one value, and the
+frame is exposed by `auto_exposure_scale` over it, glow too. The brightness moves toward each
+new frame's by `auto_exposure_speed` per second of game time, so the same frames at the same
+times expose the same way. It starts from the first frame's own brightness when auto exposure
+turns on, when the camera follows other attributes, or when game time goes back, as after a
+restore. `gl_compatibility` has no auto exposure, as in Godot.
 
 ### Skies
 

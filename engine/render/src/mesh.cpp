@@ -958,7 +958,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
     if ((flags & kMeshEmissionTexture) != 0) {
         emitted = add(emitted, xyz(pixel.texels[3]));
     }
-    emitted = srgb_to_linear(scale(emitted, surface.emission[3]));
+    emitted = scale(srgb_to_linear(emitted), surface.emission[3]);
 
     Float3 normal = terrain ? frame_direction(pixel, ground.normal) : pixel.normal;
     if ((flags & kMeshSideCheck) != 0 && !pixel.front) {

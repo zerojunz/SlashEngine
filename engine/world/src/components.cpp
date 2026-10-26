@@ -2663,6 +2663,29 @@ void register_3d_components(ComponentRegistry& registry) {
                   {.doc = "Project path of a lookup texture colors pass through: 1 pixel tall "
                           "(each channel read at its value along it), or as wide as its height "
                           "squared (a 3D LUT of height slices side by side); \"\" for none."});
+
+    registry.add<CameraAttributesPractical>()
+        .set_doc("How the 3D world is exposed, as Godot's CameraAttributesPractical: on a "
+                 "Camera3D's entity for that camera, or on the WorldEnvironment's for cameras "
+                 "without their own.")
+        .describe("exposure_sensitivity",
+                  {.doc = "The camera's ISO, which the auto exposure sensitivities are over.",
+                   .min = 0.1})
+        .describe(
+            "exposure_multiplier",
+            {.doc = "Multiplies the lights, emission, background and the sky's light.", .min = 0})
+        .describe("auto_exposure_enabled",
+                  {.doc = "Forward+: each frame's brightness is measured and exposed toward "
+                          "auto_exposure_scale, as an eye adapts."})
+        .describe("auto_exposure_scale",
+                  {.doc = "The brightness a frame's average comes out at.", .min = 0.01})
+        .describe("auto_exposure_speed",
+                  {.doc = "How fast exposure adapts: the fraction of the way it goes in a second.",
+                   .min = 0.01})
+        .describe("auto_exposure_min_sensitivity",
+                  {.doc = "The darkest scene it brightens, in ISO.", .min = 0})
+        .describe("auto_exposure_max_sensitivity",
+                  {.doc = "The brightest scene it darkens, in ISO.", .min = 0});
 }
 
 void register_builtin_components(ComponentRegistry& registry) {

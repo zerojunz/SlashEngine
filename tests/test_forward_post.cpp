@@ -97,9 +97,9 @@ Image draw(RenderDevice& device, const PostProcess& post, const Material3D& mate
 const Material3D kBright{
     .albedo = {0.0F, 0.0F, 0.0F, 1.0F}, .emission = {1.0F, 1.0F, 1.0F}, .emission_energy = 4.0F};
 
-// A square only half again as bright as white, whose glow stays below white.
+// A square two and a half times as bright as white, whose glow stays below white.
 const Material3D kDim{
-    .albedo = {0.0F, 0.0F, 0.0F, 1.0F}, .emission = {1.0F, 1.0F, 1.0F}, .emission_energy = 1.5F};
+    .albedo = {0.0F, 0.0F, 0.0F, 1.0F}, .emission = {1.0F, 1.0F, 1.0F}, .emission_energy = 2.5F};
 
 // The middle of a 32-pixel frame's square, and a pixel just outside its right edge.
 constexpr std::uint32_t kInside = 16;
@@ -307,6 +307,144 @@ TEST_CASE("GPUs post-process Forward+ as the software device does") {
         const Image expected =
             draw(*render::create_software_device(), posts.at(i), kBright, clear, 48);
         const Image image = draw(*gpu, posts.at(i), kBright, clear, 48);
+        CHECK(difference(image, expected) <= 3);
+    }
+}
+
+TEST_CASE("auto exposure measures a frame in blocks of 8, as Godot's luminance_reduce") {
+    using detail::PostSize;
+    const auto sizes = [](std::uint32_t width, std::uint32_t height) {
+        std::vector<std::pair<std::uint32_t, std::uint32_t>> out;
+        for (const PostSize size : detail::luminance_plan(width, height)) {
+            out.emplace_back(size.width, size.height);
+        }
+        return out;
+    };
+    using Sizes = std::vector<std::pair<std::uint32_t, std::uint32_t>>;
+    CHECK(sizes(32, 32) == Sizes{{4, 4}, {1, 1}});
+    CHECK(sizes(1000, 600) == Sizes{{125, 75}, {15, 9}, {1, 1}});
+    CHECK(sizes(100, 30) == Sizes{{12, 3}, {1, 1}});
+    CHECK(sizes(7, 5) == Sizes{{1, 1}});
+
+    // A frame of 20 x 9 measures blocks of its first 16 x 8 pixels, each pixel by its brightest
+    // channel; the rest are left out.
+    detail::HdrImage world{
+        .width = 20, .height = 9, .pixels = std::vector<float>(std::size_t{20} * 9 * 4)};
+    for (std::uint32_t y = 0; y < 9; ++y) {
+        for (std::uint32_t x = 0; x < 20; ++x) {
+            const std::size_t at = ((std::size_t{y} * 20) + x) * 4;
+            const bool left_out = x >= 16 || y == 8;
+            world.pixels[at] = left_out ? 100.0F : (x < 8 ? 0.5F : 0.0F);
+            world.pixels[at + 1] = x >= 8 && !left_out ? 2.0F : 0.0F;
+            world.pixels[at + 2] = 0.1F;
+            world.pixels[at + 3] = 1.0F;
+        }
+    }
+    PostProcess post{.auto_exposure = true, .auto_exposure_max = 10.0F};
+    detail::LuminanceImage blocks;
+    detail::run_luminance_pass(
+        detail::luminance_uniforms(post, detail::ForwardPass::LuminanceFirst, {20, 9}, {2, 1}),
+        world, blocks);
+    CHECK(blocks.values == std::vector<float>{0.5F, 2.0F});
+
+    // The last pass moves auto_exposure_adjust of the way from the last frame's brightness to the
+    // average, 1.25, and keeps it from the least to the most.
+    const auto last = [&](float previous) {
+        detail::LuminanceImage out;
+        detail::run_luminance_pass(
+            detail::luminance_uniforms(post, detail::ForwardPass::LuminanceFinal, {2, 1}, {1, 1}),
+            blocks, previous, out);
+        REQUIRE(out.values.size() == 1);
+        return out.values[0];
+    };
+    post.auto_exposure_adjust = 0.5F;
+    CHECK(last(0.25F) == 0.75F);
+    post.auto_exposure_max = 0.6F;
+    CHECK(last(0.25F) == 0.6F);
+    post.auto_exposure_max = 10.0F;
+    post.auto_exposure_min = 0.9F;
+    CHECK(last(0.25F) == 0.9F);
+    // A pass before the last averages alone.
+    detail::LuminanceImage average;
+    detail::run_luminance_pass(
+        detail::luminance_uniforms(post, detail::ForwardPass::Luminance, {2, 1}, {1, 1}), blocks,
+        0.25F, average);
+    CHECK(average.values == std::vector<float>{1.25F});
+}
+
+TEST_CASE("Forward+ auto exposure brightens a dark frame and darkens a bright one") {
+    // The 32-pixel frame's square covers a quarter of it, so the frame's brightness is a quarter
+    // of the square's, and a scale of 0.1 shows the square at 0.4 whatever its brightness.
+    const auto exposed = [](std::uint64_t version, float adjust = 1.0F) {
+        return PostProcess{.auto_exposure = true,
+                           .auto_exposure_scale = 0.1F,
+                           .auto_exposure_max = 10.0F,
+                           .auto_exposure_adjust = adjust,
+                           .auto_exposure_version = version};
+    };
+    const auto shining = [](float energy) {
+        return Material3D{.albedo = {0.0F, 0.0F, 0.0F, 1.0F},
+                          .emission = {1.0F, 1.0F, 1.0F},
+                          .emission_energy = energy};
+    };
+    const auto red = [](const Image& image) { return pixel(image, kInside, kInside)[0]; };
+    for (auto& device : forward_devices()) {
+        CAPTURE(render::backend_name(device->backend()));
+        CHECK(red(draw(*device, {}, shining(0.5F))) == 188);
+        CHECK(red(draw(*device, {}, shining(4.0F))) == 255);
+        CHECK(std::abs(red(draw(*device, exposed(1), shining(0.5F))) - 170) <= 1);
+        CHECK(std::abs(red(draw(*device, exposed(2), shining(4.0F))) - 170) <= 1);
+        // The next frame of the same version moves half way from the bright frame's brightness,
+        // 1, toward the dim one's, 0.125: 0.5625, which shows the square at 0.0889.
+        CHECK(std::abs(red(draw(*device, exposed(2, 0.5F), shining(0.5F))) - 84) <= 1);
+        // A new version takes the frame's own brightness, however little it would move.
+        CHECK(std::abs(red(draw(*device, exposed(3, 0.0F), shining(0.5F))) - 170) <= 1);
+        // The brightness stays from the least to the most, from the version's second frame.
+        PostProcess capped = exposed(4);
+        capped.auto_exposure_max = 0.05F;
+        (void)draw(*device, capped, shining(4.0F));
+        CHECK(red(draw(*device, capped, shining(4.0F))) == 255);
+        PostProcess floored = exposed(5);
+        floored.auto_exposure_min = 2.0F;
+        (void)draw(*device, floored, shining(0.5F));
+        CHECK(std::abs(red(draw(*device, floored, shining(0.5F))) - 44) <= 1);
+        // Glow's first level is exposed the same way: four times white, over a scale of 0.1 by a
+        // brightness of 1, is 0.4, below the threshold.
+        PostProcess glowing = exposed(6);
+        glowing.glow = true;
+        glowing.glow_intensity = 1.0F;
+        CHECK(pixel(draw(*device, glowing, kBright), kBeside, kInside)[0] == 0);
+        glowing.auto_exposure = false;
+        CHECK(pixel(draw(*device, glowing, kBright), kBeside, kInside)[0] > 60);
+    }
+}
+
+TEST_CASE("GPUs measure auto exposure as the software device does") {
+    auto gpu = slash::test::gpu_device();
+    if (gpu == nullptr) {
+        return;
+    }
+    CAPTURE(render::backend_name(gpu->backend()));
+    const auto software = render::create_software_device();
+    const render::Color clear{0.1F, 0.2F, 0.3F, 1.0F};
+    PostProcess post{.tonemapper = Tonemapper::Filmic,
+                     .glow = true,
+                     .glow_intensity = 0.6F,
+                     .auto_exposure = true,
+                     .auto_exposure_scale = 0.3F,
+                     .auto_exposure_max = 4.0F,
+                     .auto_exposure_version = 7};
+    // A frame big enough for two luminance levels and a remainder, then frames that move toward a
+    // dimmer square.
+    const std::array<std::pair<float, float>, 3> frames{{{1.0F, 4.0F}, {0.3F, 1.5F}, {0.3F, 1.5F}}};
+    for (std::size_t i = 0; i < frames.size(); ++i) {
+        CAPTURE(i);
+        post.auto_exposure_adjust = frames.at(i).first;
+        const Material3D material{.albedo = {0.0F, 0.0F, 0.0F, 1.0F},
+                                  .emission = {1.0F, 0.5F, 0.25F},
+                                  .emission_energy = frames.at(i).second};
+        const Image expected = draw(*software, post, material, clear, 75);
+        const Image image = draw(*gpu, post, material, clear, 75);
         CHECK(difference(image, expected) <= 3);
     }
 }
