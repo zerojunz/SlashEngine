@@ -1,0 +1,7 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":16,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"placed":[{"id":"crate_a","on":"ground","position":[0,0.4,0]},{"id":"crate_b","moved":0.8,"on":"ground","position":[0.8,0.4,0]},{"id":"crate_c","moved":0.8,"on":"ground","position":[0,0.4,0.8]}]}}
+{"id":3,"jsonrpc":"2.0","result":{"placed":[{"id":"lamp","on":"platform","position":[4.5,1.7,-1]}]}}
+{"id":4,"jsonrpc":"2.0","result":{"placed":[{"id":"post_1","on":"ground","position":[-6,0.6,4],"rotation":[0,0,0]},{"id":"post_2","on":"ground","position":[-6,0.6,0.5],"rotation":[0,0,0]},{"id":"post_3","on":"ground","position":[-6,0.6,-3],"rotation":[0,0,0]},{"id":"post_4","on":"ground","position":[-3.5,0.6,-4],"rotation":[0,-1.5708,0]},{"id":"post_5","on":"ground","position":[0,0.6,-4],"rotation":[0,-1.5708,0]}]}}
+{"id":5,"jsonrpc":"2.0","result":{"changes":{"changed":{"kite":{"Transform3D":{"position":[30.0,2.0,0.0]}}}},"dry_run":true,"result":{"placed":[{"id":"kite","position":[30,2,0]}],"problems":[{"id":"kite","message":"nothing is below it to stand on within 500 m"}]}}}
+{"id":6,"jsonrpc":"2.0","result":{"placed":[{"id":"crate_c","moved":1,"on":"platform","position":[5.5,1.4,-1]}]}}
+{"id":7,"jsonrpc":"2.0","result":{"colors":[[0.627,0.392,0.192,1],[0.78,0.722,0.365,1],[0.671,0.478,0.235,1],[0.345,0.545,0.318,1]],"drawn":{"meshes":12},"height":90,"width":160}}
