@@ -10,6 +10,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -129,7 +130,8 @@ public:
     }
 
     // Reads a file that other code parses, such as a prefab, and watches it so poll() reports
-    // edits. type names it in list().
+    // edits. type names it in list(). A file read while an asset loads, such as a texture or part
+    // a model names, is that asset's too: an edit to it reloads the asset.
     [[nodiscard]] Result<std::string> read(std::string_view path, std::string_view type);
 
     struct Change {
@@ -169,7 +171,12 @@ private:
         std::optional<FileStamp> stamp;
         std::uint64_t version = 1;
         bool changed = false;
+        std::set<std::string, std::less<>> readers; // assets that read it as they loaded
     };
+
+    // Loads an asset's file with its type, as the asset that the files read meanwhile belong to.
+    [[nodiscard]] Result<detail::Loaded> run_loader(const Type& type, std::string_view text,
+                                                    std::string_view path);
 
     void add_loader(std::string name, entt::id_type id, std::vector<std::string> suffixes,
                     detail::Loader load);
@@ -180,6 +187,7 @@ private:
     std::vector<Type> types_;
     std::map<std::string, std::weak_ptr<detail::Record>, std::less<>> loaded_;
     std::map<std::string, Watched, std::less<>> watched_;
+    std::vector<std::string> loading_; // the assets loading now, innermost last
 };
 
 } // namespace slash::asset

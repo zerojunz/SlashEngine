@@ -1,0 +1,64 @@
+{
+  "format": 1,
+  "materials": {
+    "cloth": {
+      "albedo_color": [0.8, 0.2, 0.18, 1]
+    },
+    "wood": {
+      "albedo_color": [0.55, 0.38, 0.22, 1]
+    }
+  },
+  "parameters": {
+    "depth": 1.2,
+    "height": 2.2,
+    "width": 2.4
+  },
+  "parts": [
+    {
+      "material": "wood",
+      "name": "counter",
+      "position": [0, 0.45, "=depth / 4"],
+      "shape": "box",
+      "size": ["=width", 0.9, "=depth / 2"]
+    },
+    {
+      "array": {
+        "count": 2,
+        "position": ["=width - 0.08", 0, 0]
+      },
+      "material": "wood",
+      "name": "post",
+      "position": ["=-width / 2 + 0.04", "=height / 2", "=-depth / 2 + 0.04"],
+      "shape": "box",
+      "size": [0.08, "=height", 0.08]
+    },
+    {
+      "material": "cloth",
+      "name": "awning",
+      "position": [0, "=height", 0.1],
+      "rotation": [0.15, 0, 0],
+      "shape": "box",
+      "size": ["=width + 0.2", 0.05, "=depth + 0.3"]
+    },
+    {
+      "array": {
+        "count": 3,
+        "position": [0.7, 0, 0]
+      },
+      "model": "props/crate.model.json",
+      "position": [-0.7, 0.9, 0.3]
+    },
+    {
+      "model": "props/lantern.model.json",
+      "name": "lamp",
+      "position": [0, 2.05, 0.3]
+    }
+  ],
+  "points": [
+    {
+      "name": "shelf",
+      "part": "counter",
+      "position": [0, 0.45, 0]
+    }
+  ]
+}
