@@ -198,8 +198,58 @@ TEST_CASE("a recipe reports each mistake at its pointer, with the closest name")
     CHECK(failed.error().message.starts_with("/parts: "));
 }
 
+TEST_CASE("a recipe's points are nodes with no mesh, placed in their parts") {
+    const scene3d::Model model = build(R"({"format": 1, "parameters": {"width": 0.8},
+        "parts": [
+          {"name": "body", "shape": "box", "size": ["=width", 1, 0.4], "position": [0, 0.5, 0]},
+          {"name": "door", "position": ["=-width / 2", 0.5, 0.2],
+           "children": [{"shape": "box", "size": ["=width", 1, 0.02],
+                         "position": ["=width / 2", 0, 0.01]}]}],
+        "points": [{"name": "handle", "part": "door", "position": ["=width - 0.05", 0, 0.04]},
+                   {"name": "top", "position": [0, 1, 0], "rotation": [0, 1, 0]}]})");
+    // The points come after the parts' nodes, so the parts keep theirs.
+    REQUIRE(model.nodes.size() == 4);
+    CHECK(model.nodes[2].name == "handle");
+    CHECK(model.nodes[2].parent == 1);
+    CHECK(model.nodes[2].position.x == doctest::Approx(0.75));
+    CHECK(model.nodes[3].name == "top");
+    CHECK(model.nodes[3].parent == -1);
+
+    const scene3d::ModelSummary summary = scene3d::summarize(model);
+    CHECK(summary.bounds.min.y == doctest::Approx(0.0));
+    CHECK(summary.bounds.max.z == doctest::Approx(0.22));
+    CHECK(summary.pivot.x == doctest::Approx(0.5));
+    CHECK(summary.pivot.y == doctest::Approx(0.0));
+    REQUIRE(summary.parts.size() == 2);
+    CHECK(summary.parts[1].name == "door");
+    CHECK(summary.parts[1].bounds.min.x == doctest::Approx(-0.4));
+    CHECK(summary.parts[0].triangles + summary.parts[1].triangles == summary.triangles);
+    REQUIRE(summary.points.size() == 2);
+    CHECK(summary.points[0].name == "handle");
+    CHECK(summary.points[0].part == "door");
+    CHECK(summary.points[0].position.x == doctest::Approx(0.35));
+    CHECK(summary.points[0].position.y == doctest::Approx(0.5));
+    CHECK(summary.points[0].position.z == doctest::Approx(0.24));
+    CHECK(summary.points[1].part.empty());
+    CHECK(summary.points[1].rotation.y == doctest::Approx(1.0));
+
+    CHECK(first_error(R"({"format": 1, "parts": [{"name": "door", "shape": "box"}],
+        "points": [{"name": "handle", "part": "dor"}]})") ==
+          "/points/0/part: names no part (did you mean \"door\"?)");
+    CHECK(first_error(R"({"format": 1, "parts": [{"name": "door", "shape": "box"}],
+        "points": [{"name": "door"}]})")
+              .starts_with("/points/0/name: a part or point is already named \"door\""));
+    CHECK(first_error(R"({"format": 1, "parts": [{"shape": "box"}],
+        "points": [{"name": "a.b"}]})") ==
+          "/points/0/name: a node name can't hold . : @ / \" or %");
+    CHECK(first_error(R"({"format": 1, "parameters": {"w": 1}, "parts": [{"shape": "box"}],
+        "points": [{"name": "p", "position": ["=x", 0, 0]}]})")
+              .starts_with("/points/0/position/0: expression \"=x\" reads \"x\""));
+}
+
 TEST_CASE("model recipes load as models, LODs and all, and their textures are checked") {
-    const scene3d::ModelReader no_files = [](std::string_view /*path*/) -> slash::Result<std::string> {
+    const scene3d::ModelReader no_files =
+        [](std::string_view /*path*/) -> slash::Result<std::string> {
         return slash::make_error(slash::ErrorCode::NotFound, "no such file");
     };
     CHECK(scene3d::is_model_path("props/table.model.json"));

@@ -382,6 +382,27 @@ json::Value make_schema(bool loose) {
     schema["properties"]["parts"]["items"]["$ref"] = "#/$defs/Part";
     schema["properties"]["parts"]["description"] =
         "The model's parts: each a node of its own, drawn as one mesh.";
+    json::Value point;
+    point["type"] = "object";
+    point["additionalProperties"] = false;
+    point["required"] = json::Array{"name"};
+    point["description"] = "An attachment point: a node with no mesh, as Godot's Marker3D, which a "
+                           "BoneAttachment3D's bone_name follows.";
+    point["properties"]["name"]["type"] = "string";
+    point["properties"]["name"]["minLength"] = 1;
+    point["properties"]["name"]["description"] = "Its node name, unique in the model.";
+    point["properties"]["part"]["type"] = "string";
+    point["properties"]["part"]["minLength"] = 1;
+    point["properties"]["part"]["description"] =
+        "A top-level part's node name (a copy's numbered one), to place it in and move with. "
+        "Default: the model's origin.";
+    point["properties"]["position"] = vector_schema(3, "Meters, as [x, y, z].", loose);
+    point["properties"]["rotation"] =
+        vector_schema(3, "Radians about each axis, as Transform3D's (YXZ order).", loose);
+    schema["properties"]["points"]["type"] = "array";
+    schema["properties"]["points"]["items"] = std::move(point);
+    schema["properties"]["points"]["description"] =
+        "Named places on the model where other things attach: a seat, a muzzle, a door's handle.";
     json::Value definitions = builder.definitions();
     definitions["Part"] = std::move(part);
     json::Value expression;
@@ -441,6 +462,9 @@ public:
         }
         if (json::Value* parts = doc_.find("parts"); parts != nullptr) {
             walk(*parts, "/parts");
+        }
+        if (json::Value* points = doc_.find("points"); points != nullptr) {
+            walk(*points, "/points");
         }
     }
 
@@ -1010,10 +1034,19 @@ private:
     bool too_many_ = false;
 };
 
+// An attachment point: its name, the root it is placed in (into Read::roots, or -1 for the
+// model's origin) and where.
+struct Point {
+    std::string name;
+    int root = -1;
+    world::Affine3D place;
+};
+
 // The recipe with its expressions worked out and its parts read, and every error on the way.
 struct Read {
     json::Value doc;
     std::vector<Root> roots;
+    std::vector<Point> points;
     std::map<std::string, world::StandardMaterial3D, std::less<>> materials;
 };
 
@@ -1052,6 +1085,50 @@ Read read_recipe(const json::Value& doc, std::vector<json::ValidationError>& err
             root.tree = std::move(tree);
             out.roots.push_back(std::move(root));
         }
+    }
+    const json::Value* points = out.doc.find("points");
+    if (points == nullptr) {
+        return out;
+    }
+    std::vector<std::string> roots;
+    roots.reserve(out.roots.size());
+    for (const Root& root : out.roots) {
+        roots.push_back(root.name);
+    }
+    for (std::size_t i = 0; i < points->as_array().size(); ++i) {
+        const json::Value& given = points->as_array()[i];
+        const std::string at = "/points/" + std::to_string(i);
+        Point point;
+        point.name = given.find("name")->as_string();
+        // Kept as given, so the name a BoneAttachment3D gives is the one the node has.
+        if (taken.contains(point.name)) {
+            errors.push_back({at + "/name", "a part or point is already named " +
+                                                quoted(point.name) +
+                                                "; give each point a name of its own"});
+            continue;
+        }
+        if (unique_name(taken, point.name) != point.name) {
+            errors.push_back({at + "/name", "a node name can't hold . : @ / \" or %"});
+            continue;
+        }
+        if (const json::Value* part = given.find("part"); part != nullptr) {
+            const std::string& name = part->as_string();
+            const auto found = std::ranges::find(roots, name);
+            if (found == roots.end()) {
+                std::string message = "names no part: the parts are";
+                for (std::size_t r = 0; r < roots.size(); ++r) {
+                    message += (r == 0 ? " " : ", ") + roots[r];
+                }
+                if (const std::string_view near = closest_match(name, roots); !near.empty()) {
+                    message = "names no part (did you mean " + quoted(near) + "?)";
+                }
+                errors.push_back({at + "/part", std::move(message)});
+                continue;
+            }
+            point.root = static_cast<int>(found - roots.begin());
+        }
+        point.place = transform_of(given);
+        out.points.push_back(std::move(point));
     }
     return out;
 }
@@ -1146,6 +1223,15 @@ Model build(const Read& read, std::vector<json::ValidationError>* problems) {
                                .transform = world::affine(rest),
                                .node_index = index});
         model.meshes.push_back(std::move(out));
+    }
+    // Points after the parts, each under its part's node, so the parts keep their indices.
+    for (const Point& point : read.points) {
+        ModelNode node;
+        node.name = point.name;
+        node.parent =
+            point.root >= 0 ? model.parts[static_cast<std::size_t>(point.root)].node_index : -1;
+        decompose(point.place, node);
+        model.nodes.push_back(node);
     }
     return model;
 }

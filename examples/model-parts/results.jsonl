@@ -1,0 +1,6 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":6,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"materials":["pine","brass"],"parts":[{"center":[0,0.5,0],"materials":["pine"],"name":"body","size":[0.8,1,0.45],"triangles":28},{"center":[0,0.5,0.26],"materials":["pine","brass"],"name":"door","size":[0.8,1,0.08],"triangles":80}],"pivot":[0.5,0,0.4286],"points":[{"name":"handle","part":"door","position":[0.33,0.5,0.3]},{"name":"top","position":[0,1,0]}],"size":[0.8,1,0.525],"triangles":108}}
+{"id":3,"jsonrpc":"2.0","result":{"tick":1,"ticks":1}}
+{"id":4,"jsonrpc":"2.0","result":{"bones":[{"name":"door","position":[-0.4,0.5,0.225],"rotation":[0,-1.2,0],"scale":[1,1,1],"world_position":[-0.4,0.5,0.225]},{"name":"handle","parent":"door","position":[0.73,0,0.075],"rotation":[0,0,0],"scale":[1,1,1],"world_position":[-0.2054,0.5,0.9326]}],"clips":[],"model":"props/cabinet.model.json"}}
+{"id":5,"jsonrpc":"2.0","result":{"components":{"Transform3D":{"children":["lamp"],"position":[0.0,1.0,0.0],"rotation":[0.0,0.0,0.0],"scale":[1.0,1.0,1.0],"top_level":false,"visible":true}},"id":"on_top"}}
+{"id":6,"jsonrpc":"2.0","result":{"colors":[[1,0.996,0.792,1],[0.596,0.459,0.306,1],[0.455,0.345,0.231,1],[0.302,0.329,0.38,1]],"drawn":{"lods":1,"meshes":5},"height":90,"width":160}}

@@ -227,6 +227,38 @@ struct Bounds {
 };
 [[nodiscard]] Bounds bounds(const Model& model);
 
+// A model in a few numbers and names, so an agent can place it, and things on it, without
+// drawing it: what model.inspect's brief form and the asset library's records report.
+struct ModelSummary {
+    Bounds bounds;
+    // Where the model's origin is in its bounds on each axis: 0 at min, 1 at max (0.5 on an axis
+    // the model is flat in). [0.5, 0, 0.5] stands on the ground, centered.
+    Vec3 pivot;
+    std::size_t triangles = 0;
+    // Its materials' names, in Model::materials' order; "" for one without.
+    std::vector<std::string> materials;
+    struct Part {
+        std::string name; // the node placing it
+        Bounds bounds;    // in the model's space, at rest
+        std::vector<std::string> materials;
+        std::size_t triangles = 0;
+    };
+    std::vector<Part> parts;
+    // Attachment points, as Godot's Marker3D in an imported scene: nodes that place no mesh,
+    // have no children and are no skin's joint. Each is placed at rest in the model's space,
+    // under the nearest node above it that places a mesh ("" for none), and a
+    // BoneAttachment3D's bone_name follows it.
+    struct Point {
+        std::string name;
+        std::string part;
+        Vec3 position;
+        Vec3 rotation; // radians, as Transform3D's
+    };
+    std::vector<Point> points;
+    std::vector<std::string> animations;
+};
+[[nodiscard]] ModelSummary summarize(const Model& model);
+
 // What a model holds in memory, for asset.list and perf.stats.
 [[nodiscard]] std::size_t model_bytes(const Model& model);
 

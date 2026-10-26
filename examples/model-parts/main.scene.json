@@ -1,0 +1,71 @@
+{
+  "entities": {
+    "cabinet": {
+      "components": {
+        "MeshInstance3D": {
+          "mesh": "props/cabinet.model.json"
+        },
+        "Skeleton3D": {
+          "bone_rotations": {
+            "door": [0.0, -1.2, 0.0]
+          }
+        },
+        "Transform3D": {
+          "children": ["on_top"]
+        }
+      }
+    },
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 50.0
+        },
+        "Transform3D": {
+          "position": [0.9, 1.2, 2.0],
+          "rotation": [-0.3, 0.4, 0.0]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.6, 0.6, 0.65, 1.0],
+          "ambient_light_energy": 0.4,
+          "ambient_light_source": "color",
+          "background_color": [0.3, 0.33, 0.38, 1.0],
+          "background_mode": "color"
+        }
+      }
+    },
+    "lamp": {
+      "components": {
+        "MeshInstance3D": {
+          "mesh": "props/lamp.model.json"
+        },
+        "Transform3D": {
+          "position": [0.2, 0.0, 0.0]
+        }
+      }
+    },
+    "on_top": {
+      "components": {
+        "BoneAttachment3D": {
+          "bone_name": "top"
+        },
+        "Transform3D": {
+          "children": ["lamp"]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {},
+        "Transform3D": {
+          "rotation": [-0.9, 0.6, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}
