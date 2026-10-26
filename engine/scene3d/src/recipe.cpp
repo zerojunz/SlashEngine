@@ -321,6 +321,12 @@ json::Value make_schema(bool loose) {
     properties["shape"]["description"] =
         "combiner (only its children, as CSGCombiner3D), box, sphere, cylinder, torus, polygon "
         "(CSGPolygon3D), capsule or prism (CSGMesh3D of that primitive mesh).";
+    properties["model"]["type"] = "string";
+    properties["model"]["minLength"] = 1;
+    properties["model"]["description"] =
+        "A top-level part only: another model file (a recipe, glTF, OBJ, FBX or .blend) by project "
+        "path, its nodes placed under this part's node as Godot instances a scene. It takes only "
+        "name, position, rotation, scale and array.";
     properties["operation"] =
         choice_schema({"union", "intersection", "subtraction"},
                       "How it combines with the shapes before it under the same parent.", "union");
@@ -739,6 +745,8 @@ struct Root {
     std::string name;
     world::Affine3D place;
     CsgTree tree;
+    std::string model; // a model part's file, whose nodes go under its node
+    std::string at;    // its part's JSON Pointer
 };
 
 class Reader {
@@ -766,6 +774,11 @@ public:
     std::vector<CsgTree> read_part(const json::Value& part, const std::string& at,
                                    const std::optional<world::StandardMaterial3D>& inherited) {
         std::vector<CsgTree> out;
+        if (part.find("model") != nullptr) {
+            errors_.push_back({at + "/model", "only a top-level part can be a model; put it in "
+                                              "parts and place it there"});
+            return out;
+        }
         const std::string shape =
             part.find("shape") != nullptr ? part.find("shape")->as_string() : "combiner";
         const ShapeKind& kind = shape_kind(shape);
@@ -1050,6 +1063,49 @@ struct Read {
     std::map<std::string, world::StandardMaterial3D, std::less<>> materials;
 };
 
+// A top-level part that is another model file: a root for it and each copy its array makes.
+// Named after the file without its folders and suffix unless it has a name.
+void read_model_part(const json::Value& part, const std::string& at, const std::string& path,
+                     NameSet& taken, std::vector<json::ValidationError>& errors,
+                     std::vector<Root>& roots) {
+    bool fits = true;
+    for (const auto& [key, value] : part.as_object()) {
+        if (key != "name" && key != "model" && key != "position" && key != "rotation" &&
+            key != "scale" && key != "array") {
+            errors.push_back({at + "/" + json::pointer_escape(key),
+                              "a model part takes only name, position, rotation, scale and "
+                              "array; its model has its own shapes and materials"});
+            fits = false;
+        }
+    }
+    if (!fits) {
+        return;
+    }
+    std::string name;
+    if (const json::Value* given = part.find("name"); given != nullptr) {
+        name = given->as_string();
+    } else {
+        name = path.substr(path.find_last_of('/') + 1);
+        name = name.substr(0, name.find('.'));
+    }
+    std::int64_t count = 1;
+    world::Affine3D step;
+    if (const json::Value* array = part.find("array"); array != nullptr) {
+        count = static_cast<std::int64_t>(array->find("count")->as_double());
+        step = transform_of(*array);
+    }
+    world::Affine3D place = transform_of(part);
+    for (std::int64_t i = 0; i < count; ++i) {
+        Root root;
+        root.name = unique_name(taken, name);
+        root.place = place;
+        root.model = path;
+        root.at = at;
+        roots.push_back(std::move(root));
+        place = step * place;
+    }
+}
+
 Read read_recipe(const json::Value& doc, std::vector<json::ValidationError>& errors) {
     Read out;
     out.doc = doc;
@@ -1077,12 +1133,17 @@ Read read_recipe(const json::Value& doc, std::vector<json::ValidationError>& err
         } else if (const json::Value* shape = part.find("shape"); shape != nullptr) {
             name = shape->as_string();
         }
+        if (const json::Value* model = part.find("model"); model != nullptr) {
+            read_model_part(part, at, model->as_string(), taken, errors, out.roots);
+            continue;
+        }
         for (CsgTree& tree : reader.read_part(part, at, std::nullopt)) {
             Root root;
             root.name = unique_name(taken, name);
             root.place = tree.local;
             tree.local = {};
             root.tree = std::move(tree);
+            root.at = at;
             out.roots.push_back(std::move(root));
         }
     }
@@ -1165,8 +1226,104 @@ int image_of(Model& model, std::string& path) {
     return index;
 }
 
-Model build(const Read& read, std::vector<json::ValidationError>* problems) {
+// Puts a model's meshes, materials, images, nodes, parts and skins into another under a node,
+// as Godot instances a scene under one: node names kept unless taken (then numbered), a model
+// without nodes given one for each part, the parts placed by place in the model's space, and
+// materials it has already shared. Animations stay with the file.
+void add_model(Model& into, const Model& from, int parent, const world::Affine3D& place,
+               NameSet& taken) {
+    std::vector<int> images;
+    for (const ModelImage& image : from.images) {
+        const auto found = image.path.empty()
+                               ? into.images.end()
+                               : std::ranges::find_if(into.images, [&](const ModelImage& had) {
+                                     return had.path == image.path;
+                                 });
+        images.push_back(static_cast<int>(found - into.images.begin()));
+        if (found == into.images.end()) {
+            into.images.push_back(image);
+        }
+    }
+    const auto image = [&](int index) {
+        return index < 0 ? -1 : images[static_cast<std::size_t>(index)];
+    };
+    // A material the model has already, as another copy of the same part brings, is shared.
+    std::vector<int> materials;
+    for (ModelMaterial material : from.materials) {
+        material.albedo_image = image(material.albedo_image);
+        material.metallic_image = image(material.metallic_image);
+        material.roughness_image = image(material.roughness_image);
+        material.normal_image = image(material.normal_image);
+        material.emission_image = image(material.emission_image);
+        const auto same = [&](const ModelMaterial& had) {
+            return had.name == material.name && had.standard == material.standard &&
+                   had.albedo_image == material.albedo_image &&
+                   had.metallic_image == material.metallic_image &&
+                   had.roughness_image == material.roughness_image &&
+                   had.normal_image == material.normal_image &&
+                   had.emission_image == material.emission_image;
+        };
+        const auto found = std::ranges::find_if(into.materials, same);
+        materials.push_back(static_cast<int>(found - into.materials.begin()));
+        if (found == into.materials.end()) {
+            into.materials.push_back(std::move(material));
+        }
+    }
+    const std::size_t meshes = into.meshes.size();
+    for (ModelMesh mesh : from.meshes) {
+        for (ModelSurface& surface : mesh.surfaces) {
+            if (surface.material >= 0) {
+                surface.material = materials[static_cast<std::size_t>(surface.material)];
+            }
+        }
+        into.meshes.push_back(std::move(mesh));
+    }
+    const auto nodes = static_cast<int>(into.nodes.size());
+    for (ModelNode node : from.nodes) {
+        node.name = unique_name(taken, node.name);
+        node.parent = node.parent < 0 ? parent : node.parent + nodes;
+        into.nodes.push_back(std::move(node));
+    }
+    const auto skins = static_cast<int>(into.skins.size());
+    for (ModelSkin skin : from.skins) {
+        for (std::size_t& joint : skin.joints) {
+            joint += static_cast<std::size_t>(nodes);
+        }
+        into.skins.push_back(std::move(skin));
+    }
+    for (ModelPart part : from.parts) {
+        part.mesh += meshes;
+        if (part.skin >= 0) {
+            part.skin += skins;
+        }
+        if (part.node_index >= 0) {
+            part.node_index += nodes;
+            part.node = into.nodes[static_cast<std::size_t>(part.node_index)].name;
+        } else {
+            ModelNode node;
+            node.name = unique_name(taken, part.node.empty() ? "mesh" : part.node);
+            node.parent = parent;
+            decompose(part.transform, node);
+            part.node = node.name;
+            part.node_index = static_cast<int>(into.nodes.size());
+            into.nodes.push_back(std::move(node));
+        }
+        part.transform = place * part.transform;
+        into.parts.push_back(std::move(part));
+    }
+}
+
+Model build(const Read& read, std::vector<json::ValidationError>* problems,
+            const ModelPartLoader& load, std::vector<json::ValidationError>* failures) {
     Model model;
+    NameSet taken = node_names();
+    for (const Root& root : read.roots) {
+        taken.insert(root.name);
+    }
+    for (const Point& point : read.points) {
+        taken.insert(point.name);
+    }
+    std::vector<int> root_nodes;
     std::vector<world::StandardMaterial3D> made;
     const auto material_index = [&](const SurfaceMaterial& material) {
         if (!material.standard) {
@@ -1194,6 +1351,27 @@ Model build(const Read& read, std::vector<json::ValidationError>* problems) {
         return static_cast<int>(model.materials.size() - 1);
     };
     for (const Root& root : read.roots) {
+        if (!root.model.empty()) {
+            ModelNode node;
+            node.name = root.name;
+            decompose(root.place, node);
+            const int index = static_cast<int>(model.nodes.size());
+            root_nodes.push_back(index);
+            model.nodes.push_back(node);
+            if (!load) {
+                continue;
+            }
+            Result<Model> part = load(root.model);
+            if (!part) {
+                if (failures != nullptr) {
+                    failures->push_back({root.at + "/model", quoted(root.model) + " didn't load: " +
+                                                                 part.error().message});
+                }
+                continue;
+            }
+            add_model(model, part.value(), index, root.place, taken);
+            continue;
+        }
         const std::shared_ptr<const CsgMesh> mesh = csg_mesh(root.tree);
         if (problems != nullptr) {
             for (const Problem& problem : mesh->problems) {
@@ -1213,6 +1391,7 @@ Model build(const Read& read, std::vector<json::ValidationError>* problems) {
         node.name = root.name;
         decompose(root.place, node);
         const int index = static_cast<int>(model.nodes.size());
+        root_nodes.push_back(index);
         model.nodes.push_back(node);
         world::Transform3D rest;
         rest.position = node.position;
@@ -1228,8 +1407,7 @@ Model build(const Read& read, std::vector<json::ValidationError>* problems) {
     for (const Point& point : read.points) {
         ModelNode node;
         node.name = point.name;
-        node.parent =
-            point.root >= 0 ? model.parts[static_cast<std::size_t>(point.root)].node_index : -1;
+        node.parent = point.root >= 0 ? root_nodes[static_cast<std::size_t>(point.root)] : -1;
         decompose(point.place, node);
         model.nodes.push_back(node);
     }
@@ -1243,26 +1421,44 @@ json::Value model_recipe_schema() {
     return schema;
 }
 
-std::vector<json::ValidationError> validate_model_recipe(const json::Value& doc) {
+std::vector<json::ValidationError> validate_model_recipe(const json::Value& doc,
+                                                         const ModelPartLoader& load) {
     std::vector<json::ValidationError> errors;
     const Read read = read_recipe(doc, errors);
     if (!errors.empty()) {
         return errors;
     }
-    (void)build(read, &errors);
+    (void)build(read, &errors, load, &errors);
     return errors;
 }
 
-Result<Model> build_model_recipe(const json::Value& doc) {
+Result<Model> build_model_recipe(const json::Value& doc, const ModelPartLoader& load) {
     std::vector<json::ValidationError> errors;
     const Read read = read_recipe(doc, errors);
-    if (!errors.empty()) {
+    const auto failed = [&] {
         return make_error(
             ErrorCode::InvalidArgument,
             (errors.front().path.empty() ? std::string() : errors.front().path + ": ") +
                 errors.front().message);
+    };
+    if (!errors.empty()) {
+        return failed();
     }
-    return build(read, nullptr);
+    if (!load) {
+        for (const Root& root : read.roots) {
+            if (!root.model.empty()) {
+                errors.push_back({root.at + "/model",
+                                  "a model part's file is read from the project: load the "
+                                  "recipe as a model, through its MeshInstance3D or load_model"});
+                return failed();
+            }
+        }
+    }
+    Model model = build(read, nullptr, load, &errors);
+    if (!errors.empty()) {
+        return failed();
+    }
+    return model;
 }
 
 } // namespace slash::scene3d

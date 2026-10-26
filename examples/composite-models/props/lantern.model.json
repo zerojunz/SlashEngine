@@ -1,0 +1,35 @@
+{
+  "format": 1,
+  "materials": {
+    "glow": {
+      "albedo_color": [1, 0.8, 0.4, 1],
+      "emission": [1, 0.7, 0.3, 1],
+      "emission_enabled": true,
+      "emission_energy_multiplier": 2
+    },
+    "iron": {
+      "albedo_color": [0.2, 0.2, 0.22, 1],
+      "metallic": 1,
+      "roughness": 0.4
+    }
+  },
+  "parts": [
+    {
+      "height": 0.2,
+      "material": "glow",
+      "name": "glass",
+      "position": [0, -0.15, 0],
+      "radius": 0.08,
+      "shape": "cylinder"
+    },
+    {
+      "inner_radius": 0.02,
+      "material": "iron",
+      "name": "hook",
+      "outer_radius": 0.04,
+      "position": [0, -0.02, 0],
+      "rotation": [1.5708, 0, 0],
+      "shape": "torus"
+    }
+  ]
+}
