@@ -1801,6 +1801,39 @@ TEST_CASE("model.inspect returns a model's meshes, materials, images and parts")
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("a recipe made of other model files reloads when one of them changes") {
+    const std::string root = "model_parts_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root + "/props").ok());
+    const auto door = [&](std::string_view width) {
+        REQUIRE(slash::platform::write_file(
+                    root + "/props/door.model.json",
+                    R"({"format": 1, "parts": [{"name": "board", "shape": "box", "size": [)" +
+                        std::string(width) + R"(, 1, 0.1]}]})")
+                    .ok());
+    };
+    door("1");
+    REQUIRE(slash::platform::write_file(root + "/props/shed.model.json",
+                                        R"({"format": 1, "parts": [
+            {"name": "walls", "shape": "box", "size": [2, 2, 2], "position": [0, 1, 0]},
+            {"model": "props/door.model.json", "position": [0, 0.5, 1.05]}]})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("entity.create", R"({"id": "shed", "components": {"Transform3D": {},
+        "MeshInstance3D": {"mesh": "props/shed.model.json"}}})");
+    const auto size = [&] {
+        return json::write(
+            *engine.ok("model.inspect", R"({"id": "shed", "brief": true})").find("size"));
+    };
+    CHECK(size() == "[2, 2, 2.1]");
+    // Widened past the walls, the door widens the shed the next command.
+    door("3.5");
+    CHECK(size() == "[3.5, 2, 2.1]");
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("csg.get returns the mesh a CSG root makes") {
     Engine engine;
     engine.ok("batch", R"({"commands": [

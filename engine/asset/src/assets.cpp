@@ -70,6 +70,14 @@ const Assets::Type* Assets::type_for(std::string_view path) const {
     return best;
 }
 
+Result<detail::Loaded> Assets::run_loader(const Type& type, std::string_view text,
+                                          std::string_view path) {
+    loading_.emplace_back(path);
+    auto loaded = type.load(text, path);
+    loading_.pop_back();
+    return loaded;
+}
+
 Result<std::shared_ptr<detail::Record>> Assets::load_record(std::string_view path,
                                                             entt::id_type id) {
     if (!is_project_path(path)) {
@@ -105,7 +113,7 @@ Result<std::shared_ptr<detail::Record>> Assets::load_record(std::string_view pat
         return make_error(ErrorCode::NotFound,
                           "asset " + quoted(path) + " could not be read: " + text.error().message);
     }
-    auto loaded = type->load(text.value(), path);
+    auto loaded = run_loader(*type, text.value(), path);
     if (!loaded) {
         return make_error(loaded.error().code,
                           "asset " + quoted(path) + " did not load: " + loaded.error().message);
@@ -135,14 +143,35 @@ Result<std::string> Assets::read(std::string_view path, std::string_view type) {
         return text;
     }
     // A file read again keeps its first stamp, so poll() still reports an edit made since.
-    if (!watched_.contains(path)) {
-        watched_.emplace(std::string(path), Watched{std::string(type), stamp, 1});
+    auto it = watched_.find(path);
+    if (it == watched_.end()) {
+        Watched watched;
+        watched.type = std::string(type);
+        watched.stamp = stamp;
+        it = watched_.emplace(std::string(path), std::move(watched)).first;
+    }
+    if (!loading_.empty() && loading_.back() != path) {
+        it->second.readers.insert(loading_.back());
     }
     return text;
 }
 
 std::vector<Assets::Change> Assets::poll() {
     std::vector<Change> changes;
+    // Files assets read first, so the assets reload with them.
+    for (auto& [path, watched] : watched_) {
+        const std::optional<FileStamp> stamp = source_.stamp(path);
+        if (stamp == watched.stamp && !watched.changed) {
+            continue;
+        }
+        watched.stamp = stamp;
+        watched.changed = false;
+        for (const std::string& reader : watched.readers) {
+            mark_changed(reader);
+        }
+        changes.push_back({path, watched.type, ++watched.version,
+                           stamp ? std::string() : std::string("the file is missing")});
+    }
     for (auto it = loaded_.begin(); it != loaded_.end();) {
         const std::shared_ptr<detail::Record> record = it->second.lock();
         if (record == nullptr) {
@@ -161,7 +190,7 @@ std::vector<Assets::Change> Assets::poll() {
             change.error = "the file is missing";
         } else if (auto text = source_.read(record->path); !text) {
             change.error = text.error().message;
-        } else if (auto loaded = type_for(record->path)->load(text.value(), record->path);
+        } else if (auto loaded = run_loader(*type_for(record->path), text.value(), record->path);
                    !loaded) {
             change.error = loaded.error().message;
         } else {
@@ -170,16 +199,6 @@ std::vector<Assets::Change> Assets::poll() {
             change.version = ++record->version;
         }
         changes.push_back(std::move(change));
-    }
-    for (auto& [path, watched] : watched_) {
-        const std::optional<FileStamp> stamp = source_.stamp(path);
-        if (stamp == watched.stamp && !watched.changed) {
-            continue;
-        }
-        watched.stamp = stamp;
-        watched.changed = false;
-        changes.push_back({path, watched.type, ++watched.version,
-                           stamp ? std::string() : std::string("the file is missing")});
     }
     std::ranges::sort(changes, {}, &Change::path);
     return changes;
