@@ -482,6 +482,135 @@ TEST_CASE("a VoxelGI's texture packs into an atlas, each level's slices side by 
     CHECK_FALSE(scene3d::voxel_gi_atlas({}).ok());
 }
 
+TEST_CASE("moving meshes plot their light into a VoxelGI's texture, as Godot's dynamic objects") {
+    const scene3d::VoxelGIData data = scene3d::voxelize(floor_meshes(false), kSize, 6);
+    const scene3d::VoxelGIOctree octree = scene3d::voxel_gi_octree(data);
+    scene3d::VoxelGISettings settings;
+    settings.use_two_bounces = false;
+    const std::array<scene3d::VoxelGILight, 1> lit{sun(true)};
+    const scene3d::VoxelGITexture texture = scene3d::light_voxel_gi(data, octree, lit, settings);
+    // A box of a meter floating a meter over the floor, where floor_meshes(true) has one: its top
+    // half a cell into row 48 and its bottom into row 32.
+    const std::vector<scene3d::VoxelGIMesh> box{
+        mesh_of(scene3d::box_mesh({}), 0.03125F, 0.53125F, 0.03125F)};
+    scene3d::VoxelGITexture plotted = texture;
+    scene3d::plot_voxel_gi_objects(plotted, data, octree, box, lit, settings);
+
+    // Where there was no cell its faces now show, lit where the sun reaches them: its top is
+    // split between the two rows it lies between, at half its light over each.
+    CHECK(texel(texture, 0, 32, 48, 32)[3] == 0);
+    const auto top = texel(plotted, 0, 32, 48, 32);
+    CAPTURE(int{top[0]});
+    CAPTURE(int{top[3]});
+    CHECK(top[3] >= 120);
+    CHECK(top[3] <= 136);
+    CHECK(top[0] >= 56);
+    CHECK(top[0] <= 72);
+    CHECK(texel(plotted, 0, 32, 49, 32) == top);
+    // Its bottom faces away from the sun: there, but dark.
+    const auto bottom = texel(plotted, 0, 32, 32, 32);
+    CHECK(bottom[3] > 0);
+    CHECK(bottom[0] == 0);
+    // Its sides are lit sideways by none of the sun straight down.
+    CHECK(texel(plotted, 0, 24, 40, 32)[3] > 0);
+    // Its inside and the floor beside it are as they were: the floor isn't shaded by it.
+    CHECK(texel(plotted, 0, 32, 40, 32)[3] == 0);
+    CHECK(texel(plotted, 0, 12, 16, 12) == texel(texture, 0, 12, 16, 12));
+    CHECK(texel(plotted, 0, 32, 16, 32) == texel(texture, 0, 32, 16, 32));
+    // Each level up has it too.
+    CHECK(texel(texture, 1, 16, 24, 16)[3] == 0);
+    CHECK(texel(plotted, 1, 16, 24, 16)[3] > 0);
+
+    // The same texels for any number of threads.
+    jobs::Pool pool(3);
+    scene3d::VoxelGITexture threaded = texture;
+    scene3d::plot_voxel_gi_objects(threaded, data, octree, box, lit, settings, &pool);
+    CHECK(threaded.levels == plotted.levels);
+
+    // A mesh outside the box changes nothing, and nor does a texture of other cells.
+    scene3d::VoxelGITexture outside = texture;
+    const std::vector<scene3d::VoxelGIMesh> far{
+        mesh_of(scene3d::box_mesh({}), 5.0F, 0.53125F, 0.03125F)};
+    scene3d::plot_voxel_gi_objects(outside, data, octree, far, lit, settings);
+    CHECK(outside.levels == texture.levels);
+    scene3d::VoxelGITexture other = texture;
+    other.sizes[0] = {32, 32, 32};
+    scene3d::plot_voxel_gi_objects(other, data, octree, box, lit, settings);
+    CHECK(other.levels == texture.levels);
+
+    // An emissive mesh gives its emission with no lights at all.
+    world::StandardMaterial3D glowing;
+    glowing.albedo_color = {0.0F, 0.0F, 0.0F, 1.0F};
+    glowing.emission_enabled = true;
+    glowing.emission = {1.0F, 0.0F, 0.0F, 1.0F};
+    const std::vector<scene3d::VoxelGIMesh> lamp{
+        mesh_of(scene3d::box_mesh({}), 0.03125F, 0.53125F, 0.03125F, glowing)};
+    scene3d::VoxelGITexture glow = texture;
+    scene3d::plot_voxel_gi_objects(glow, data, octree, lamp, {}, settings);
+    const auto red = texel(glow, 0, 32, 48, 32);
+    CHECK(red[0] > 0);
+    CHECK(red[1] == 0);
+    CHECK(red[2] == 0);
+}
+
+TEST_CASE("a moving mesh's material culls its faces as Godot's material pass does") {
+    const scene3d::VoxelGIData data = scene3d::voxelize(floor_meshes(false), kSize, 6);
+    const scene3d::VoxelGIOctree octree = scene3d::voxel_gi_octree(data);
+    scene3d::VoxelGISettings settings;
+    settings.use_two_bounces = false;
+    const std::array<scene3d::VoxelGILight, 1> lit{sun(false)};
+    const scene3d::VoxelGITexture texture = scene3d::light_voxel_gi(data, octree, lit, settings);
+    // A plane facing up, lit from above, half a cell into row 40.
+    const auto plot = [&](const std::string& cull_mode) {
+        world::StandardMaterial3D standard;
+        standard.cull_mode = cull_mode;
+        const std::vector<scene3d::VoxelGIMesh> plane{
+            mesh_of(scene3d::plane_mesh({}), 0.03125F, 0.53125F, 0.03125F, standard)};
+        scene3d::VoxelGITexture out = texture;
+        scene3d::plot_voxel_gi_objects(out, data, octree, plane, lit, settings);
+        return texel(out, 0, 32, 40, 32);
+    };
+    // Culling its back, it is drawn only from above, where its front faces; culling its front,
+    // only from below, lit by its own normal as Godot leaves it.
+    const auto back = plot("back");
+    CAPTURE(int{back[0]});
+    CHECK(back[3] >= 120);
+    CHECK(back[0] > 0);
+    CHECK(plot("front") == back);
+    // With neither culled it is drawn from below first, its normal turned down away from the sun,
+    // then from above over that: more of it, and lighter than half.
+    const auto both = plot("disabled");
+    CAPTURE(int{both[0]});
+    CHECK(both[3] > back[3]);
+    CHECK(both[0] * 2 > back[0]);
+    CHECK(both[0] < back[0]);
+}
+
+TEST_CASE("a mesh entity's meshes read as a VoxelGI takes them") {
+    Scene scene;
+    const entt::entity ball = scene.create("ball", R"({"Transform3D": {"position": [1, 2, 3]},
+        "MeshInstance3D": {"gi_mode": "dynamic"}, "SphereMesh": {},
+        "StandardMaterial3D": {"albedo_color": [1, 0, 0, 1], "albedo_texture": "red.png",
+        "cull_mode": "disabled"}})");
+    std::vector<scene3d::Problem> problems;
+    const std::vector<scene3d::VoxelGIMesh> meshes =
+        scene3d::voxel_gi_meshes(scene.world, ball, {}, 1.0F, problems);
+    // In its own space, with its material and the problem of the image it couldn't read.
+    REQUIRE(meshes.size() == 1);
+    CHECK(meshes[0].transform == world::Affine3D{});
+    CHECK(meshes[0].vertices.size() == scene3d::sphere_mesh({}).vertices.size());
+    REQUIRE(meshes[0].surfaces.size() == 1);
+    REQUIRE(meshes[0].surfaces[0].material != nullptr);
+    CHECK(meshes[0].surfaces[0].material->cull_mode == render::CullMode::Disabled);
+    CHECK(meshes[0].surfaces[0].material->albedo[0][1] == 0.0F);
+    REQUIRE(problems.size() == 1);
+    CHECK(problems[0].path == "/components/StandardMaterial3D/albedo_texture");
+    CHECK(problems[0].message == "images can't load here");
+    // An entity with no mesh has none.
+    const entt::entity empty = scene.create("empty", R"({"Transform3D": {}})");
+    CHECK(scene3d::voxel_gi_meshes(scene.world, empty, {}, 1.0F, problems).empty());
+}
+
 namespace {
 
 // The floor and box voxelized at 64 cells, lit by a sun from above at a slant that the box shades,
@@ -766,6 +895,37 @@ TEST_CASE("the 3D renderer lights a world's VoxelGIs with its lights and traces 
     (void)draw_world(*device, renderer, gi.scene.world);
     REQUIRE(renderer.problems().size() == 1);
     CHECK(renderer.problems()[0].message == "\"other.voxelgi.json\" doesn't exist");
+}
+
+TEST_CASE("the 3D renderer plots dynamic meshes into the VoxelGIs they touch") {
+    VoxelGIWorld gi;
+    // A glowing ball on the floor, which the bake left out.
+    const entt::entity ball = gi.scene.create("ball", R"({"Transform3D":
+        {"position": [-0.7, -0.6, 0.5]}, "MeshInstance3D": {"gi_mode": "dynamic"},
+        "SphereMesh": {"radius": 0.3, "height": 0.6}, "StandardMaterial3D":
+        {"albedo_color": [0.2, 1, 0.2, 1], "emission_enabled": true,
+        "emission": [0.2, 1, 0.2, 1], "emission_energy_multiplier": 4}})");
+    const auto device = render::create_software_device();
+    scene3d::Renderer renderer(*device, nullptr, {}, {}, gi.source());
+    const render::Image plotted = draw_world(*device, renderer, gi.scene.world);
+    CHECK(renderer.problems().empty());
+    // Unplotted, as when its gi_mode leaves it out, the floor round it takes none of its glow.
+    auto& instance = gi.scene.world.ecs().get<world::MeshInstance3D>(ball);
+    instance.gi_mode = "disabled";
+    const render::Image unplotted = draw_world(*device, renderer, gi.scene.world);
+    CHECK(differences(plotted, unplotted)[0] > 50);
+    instance.gi_mode = "dynamic";
+    // Unchanged, the next frame is the same; moved, it lights somewhere else, and moved back, the
+    // same again.
+    CHECK(draw_world(*device, renderer, gi.scene.world).pixels == plotted.pixels);
+    auto& place = gi.scene.world.ecs().get<world::Transform3D>(ball);
+    place.position.x = 0.7F;
+    CHECK(differences(draw_world(*device, renderer, gi.scene.world), plotted)[0] > 50);
+    place.position.x = -0.7F;
+    CHECK(draw_world(*device, renderer, gi.scene.world).pixels == plotted.pixels);
+    // A new material is read again.
+    gi.scene.world.ecs().get<world::StandardMaterial3D>(ball).emission = {1.0F, 0.2F, 0.2F, 1.0F};
+    CHECK(differences(draw_world(*device, renderer, gi.scene.world), plotted)[0] > 50);
 }
 
 TEST_CASE("every Forward+ device traces VoxelGIs as the software device does") {
