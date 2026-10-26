@@ -782,7 +782,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Unreal's C++ classes as skeletons, as Unity's scripts are: properties as a component the
         level's actors fill in, delegates as events and functions as stubs the system calls
   - [x] Unreal's landscapes as HTerrains, their heights exactly as Unreal keeps them
-  - [ ] Unreal's Animation Blueprints and Niagara particles
+  - [x] Unreal's Animation Blueprints' sequences as an `AnimationTree` state machine for their
+        task to join
+  - [ ] Unreal's Niagara particles, once there are 3D particles to convert them to
 - [x] 3D in the asset library and generator ([design](design.md#3d-assets))
   - [x] Parametric models: agents write a `.model.json` recipe of shapes, CSG on Manifold,
         extrusions, lathes, bevels and arrays, and the engine builds the mesh; the library keeps

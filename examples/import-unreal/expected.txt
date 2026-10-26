@@ -11,8 +11,9 @@ project.import {"dry_run":true,"source":"unreal"}
     }
   ],
   "converted": {
-    "animations": 1,
-    "blueprints": 4,
+    "animation_trees": 1,
+    "animations": 2,
+    "blueprints": 5,
     "classes": 1,
     "input_actions": 10,
     "landscapes": 1,
@@ -24,7 +25,7 @@ project.import {"dry_run":true,"source":"unreal"}
   "dry_run": true,
   "engine": "unreal",
   "engine_version": "5.4.4-35576357+++UE5+Release-5.4",
-  "files": ["unreal/Content/Characters/SK_Hero.glb", "unreal/Content/Props/SM_Coin.glb", "unreal/Content/Props/SM_Crate.glb", "unreal/Content/Props/SM_Floor.glb", "unreal/Content/Audio/Wind.wav", "unreal/Content/Audio/Wind.audio.json", "unreal/Content/Characters/A_Idle.glb", "unreal/Content/Props/SM_Crate_MI_CrateDark.glb", "unreal/Content/Maps/Main_hills.height.png", "unreal/Content/Maps/Main_hills.color.png", "unreal/Content/Characters/A_Idle.anim.json", "unreal/Content/Maps/Main.scene.json", "project.json", "storyboard/work.json", "src/imported/coin_pickup.cpp", "src/imported/scripts.cpp", "src/game.cpp", "import/unreal.json"],
+  "files": ["unreal/Content/Characters/SK_Hero.glb", "unreal/Content/Props/SM_Coin.glb", "unreal/Content/Props/SM_Crate.glb", "unreal/Content/Props/SM_Floor.glb", "unreal/Content/Audio/Wind.wav", "unreal/Content/Audio/Wind.audio.json", "unreal/Content/Characters/A_Idle.glb", "unreal/Content/Characters/A_Wave.glb", "unreal/Content/Props/SM_Crate_MI_CrateDark.glb", "unreal/Content/Maps/Main_hills.height.png", "unreal/Content/Maps/Main_hills.color.png", "unreal/Content/Characters/A_Idle.anim.json", "unreal/Content/Characters/ABP_Guard.anim.json", "unreal/Content/Characters/ABP_Guard.animtree.json", "unreal/Content/Maps/Main.scene.json", "project.json", "storyboard/work.json", "src/imported/coin_pickup.cpp", "src/imported/scripts.cpp", "src/game.cpp", "import/unreal.json"],
   "log": ".slash/import/unreal/unreal.log",
   "main_scene": "unreal/Content/Maps/Main.scene.json",
   "module": "src/game.cpp",
@@ -44,6 +45,10 @@ project.import {"dry_run":true,"source":"unreal"}
       "task": "task/port-bp-hero"
     },
     {
+      "source": "unreal/Content/Characters/ABP_Guard.uasset",
+      "task": "task/port-abp-guard"
+    },
+    {
       "source": "unreal/Content/UI/WBP_Hud.uasset",
       "task": "task/port-wbp-hud"
     },
@@ -53,6 +58,12 @@ project.import {"dry_run":true,"source":"unreal"}
     }
   ],
   "unsupported": [
+    {
+      "count": 1,
+      "what": "Animation Blueprint",
+      "where": "/Game/Maps/Main: Guard",
+      "why": "its graph doesn't convert: an AnimationTree plays its sequences as a state machine's states with no transitions, which its task adds"
+    },
     {
       "count": 1,
       "what": "CharacterMovementComponent",
@@ -146,8 +157,9 @@ project.import {"source":"unreal"}
     }
   ],
   "converted": {
-    "animations": 1,
-    "blueprints": 4,
+    "animation_trees": 1,
+    "animations": 2,
+    "blueprints": 5,
     "classes": 1,
     "input_actions": 10,
     "landscapes": 1,
@@ -158,7 +170,7 @@ project.import {"source":"unreal"}
   },
   "engine": "unreal",
   "engine_version": "5.4.4-35576357+++UE5+Release-5.4",
-  "files": 18,
+  "files": 21,
   "log": ".slash/import/unreal/unreal.log",
   "main_scene": "unreal/Content/Maps/Main.scene.json",
   "module": "src/game.cpp",
@@ -178,6 +190,10 @@ project.import {"source":"unreal"}
       "task": "task/port-bp-hero"
     },
     {
+      "source": "unreal/Content/Characters/ABP_Guard.uasset",
+      "task": "task/port-abp-guard"
+    },
+    {
       "source": "unreal/Content/UI/WBP_Hud.uasset",
       "task": "task/port-wbp-hud"
     },
@@ -187,6 +203,12 @@ project.import {"source":"unreal"}
     }
   ],
   "unsupported": [
+    {
+      "count": 1,
+      "what": "Animation Blueprint",
+      "where": "/Game/Maps/Main: Guard",
+      "why": "its graph doesn't convert: an AnimationTree plays its sequences as a state machine's states with no transitions, which its task adds"
+    },
     {
       "count": 1,
       "what": "CharacterMovementComponent",
@@ -367,6 +389,22 @@ project.import {"source":"unreal"}
         }
       }
     },
+    "guard": {
+      "components": {
+        "AnimationTree": {
+          "libraries": {
+            "": "unreal/Content/Characters/ABP_Guard.anim.json"
+          },
+          "tree_root": "unreal/Content/Characters/ABP_Guard.animtree.json"
+        },
+        "MeshInstance3D": {
+          "mesh": "unreal/Content/Characters/SK_Hero.glb"
+        },
+        "Transform3D": {
+          "position": [6.0, 0.0, 3.0]
+        }
+      }
+    },
     "hero": {
       "components": {
         "CharacterBody3D": {
@@ -515,7 +553,8 @@ project.import {"source":"unreal"}
 --- import/unreal.json
 {
   "animations": {
-    "/Game/Characters/A_Idle": "unreal/Content/Characters/A_Idle.glb"
+    "/Game/Characters/A_Idle": "unreal/Content/Characters/A_Idle.glb",
+    "/Game/Characters/A_Wave": "unreal/Content/Characters/A_Wave.glb"
   },
   "axes": "x = x, y = z, z = y",
   "classes": [
@@ -552,6 +591,9 @@ project.import {"source":"unreal"}
         "goal": {
           "class": "/Script/Engine.TriggerBox",
           "tags": ["goal"]
+        },
+        "guard": {
+          "class": "/Script/Engine.SkeletalMeshActor"
         },
         "hero": {
           "character_movement": {
@@ -597,6 +639,7 @@ project.import {"source":"unreal"}
         "NavMeshBoundsVolume_0": "nav_mesh_bounds_volume",
         "PlayerStart_0": "player_start",
         "PointLight_0": "lamp",
+        "SkeletalMeshActor_0": "guard",
         "SpotLight_0": "spot",
         "StaticMeshActor_0": "floor",
         "StaticMeshActor_1": "crate",
@@ -632,6 +675,10 @@ project.import {"source":"unreal"}
       "task": "task/port-bp-hero"
     },
     {
+      "source": "unreal/Content/Characters/ABP_Guard.uasset",
+      "task": "task/port-abp-guard"
+    },
+    {
       "source": "unreal/Content/UI/WBP_Hud.uasset",
       "task": "task/port-wbp-hud"
     },
@@ -641,6 +688,12 @@ project.import {"source":"unreal"}
     }
   ],
   "unsupported": [
+    {
+      "count": 1,
+      "what": "Animation Blueprint",
+      "where": "/Game/Maps/Main: Guard",
+      "why": "its graph doesn't convert: an AnimationTree plays its sequences as a state machine's states with no transitions, which its task adds"
+    },
     {
       "count": 1,
       "what": "CharacterMovementComponent",
@@ -849,7 +902,7 @@ project.import {"source":"unreal"}
 }
 scene.open {"path":"unreal/Content/Maps/Main.scene.json"}
 {
-  "entities": 20,
+  "entities": 21,
   "path": "unreal/Content/Maps/Main.scene.json"
 }
 step {"ticks":90}
@@ -894,6 +947,43 @@ world.query {"include":["AnimationPlayer"],"with":["AnimationPlayer"]}
         }
       },
       "id": "hero_character_mesh0"
+    }
+  ],
+  "truncated": false
+}
+world.query {"include":["AnimationTree"],"omit_defaults":true,"with":["AnimationTree"]}
+{
+  "count": 1,
+  "entities": [
+    {
+      "components": {
+        "AnimationTree": {
+          "libraries": {
+            "": "unreal/Content/Characters/ABP_Guard.anim.json"
+          },
+          "playing": [
+            {
+              "animation": "Idle",
+              "time": 1.483333333333333,
+              "weight": 1.0
+            }
+          ],
+          "state": {
+            "Idle/current_delta": 0.016666666666666666,
+            "Idle/current_length": 2.0,
+            "Idle/current_position": 1.483333333333333,
+            "current_delta": 0.016666666666666666,
+            "current_length": 2.0,
+            "current_position": 1.483333333333333,
+            "playback": {
+              "current": "Idle",
+              "playing": true
+            }
+          },
+          "tree_root": "unreal/Content/Characters/ABP_Guard.animtree.json"
+        }
+      },
+      "id": "guard"
     }
   ],
   "truncated": false
@@ -1024,6 +1114,14 @@ physics.overlap {"collide_with_areas":true,"position":[8,0.5,1],"shape":{"radius
 storyboard.query {"kind":"task"}
 {
   "entries": [
+    {
+      "fields": {
+        "name": "Port the animation Blueprint /Game/Characters/ABP_Guard",
+        "summary": "Animation Blueprint: give unreal/Content/Characters/ABP_Guard.animtree.json the transitions, blends and parameters of its graphs."
+      },
+      "id": "task/port-abp-guard",
+      "version": "769d133b"
+    },
     {
       "fields": {
         "name": "Port the Blueprint /Game/Blueprints/BP_Coin to C++",

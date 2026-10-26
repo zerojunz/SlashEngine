@@ -8,8 +8,8 @@
 #                      exporter
 #   materials/<path>.glb  each material a component puts over its mesh's own, on the exporter's
 #                      preview mesh
-#   animations/<path>.glb  each animation sequence a skeletal mesh component plays, with its
-#                      skeletal mesh
+#   animations/<path>.glb  each animation sequence a skeletal mesh component or an Animation
+#                      Blueprint plays, with its skeletal mesh
 #   sounds/<path>.wav  each sound wave an ambient sound or audio component plays
 #   landscapes/<level>/<actor>.r16  each landscape's heights, its streaming proxies' too, as
 #                      Unreal's .r16 heightmaps are: 16-bit and little-endian, a row per vertex
@@ -401,6 +401,48 @@ def overrides_of(comp, out):
         out['override_materials'] = overrides
 
 
+ANIMATION_ASSETS = ('BlendSpace', 'BlendSpace1D', 'AimOffsetBlendSpace', 'AimOffsetBlendSpace1D',
+                    'AnimMontage', 'AnimComposite', 'PoseAsset')
+
+
+def sequences_of(package, registry, depth=0):
+    # The animation sequences an asset references: its own, and those of the blend spaces,
+    # montages and composites it uses.
+    options = unreal.AssetRegistryDependencyOptions()
+    out = []
+    for dep in call([], registry.get_dependencies, package, options) or []:
+        dep = str(dep)
+        if not dep.startswith('/') or dep.startswith('/Script/'):
+            continue
+        for data in call([], registry.get_assets_by_package_name, dep) or []:
+            kind = class_name(data)
+            if kind == 'AnimSequence':
+                out.append(dep)
+            elif kind in ANIMATION_ASSETS and depth < 2:
+                out.extend(sequences_of(dep, registry, depth + 1))
+    return out
+
+
+def anim_blueprint_of(data, registry, entry):
+    # The sequences an Animation Blueprint's graphs play, exported as the meshes' are, so the
+    # importer can make them an AnimationTree's states.
+    package = str(data.package_name)
+    seen = []
+    for dep in sequences_of(package, registry):
+        if dep in seen:
+            continue
+        seen.append(dep)
+        asset = call(None, unreal.EditorAssetLibrary.load_asset, dep)
+        if asset is not None:
+            use_animation(asset)
+    if seen:
+        entry['animations'] = seen
+    blueprint = call(None, data.get_asset)
+    skeleton = prop(blueprint, 'target_skeleton') if blueprint is not None else None
+    if skeleton is not None:
+        entry['skeleton'] = package_of(skeleton)
+
+
 def animation_of(comp):
     mode = enum_name(prop(comp, 'animation_mode', 'animation_blueprint'))
     if 'single' in mode:
@@ -768,9 +810,11 @@ def main():
         if kind == 'World':
             worlds.append(package)
         elif kind in ('Blueprint', 'WidgetBlueprint', 'AnimBlueprint'):
-            result['blueprints'].append({'path': package, 'kind': kind,
-                                         'parent': tag(data, 'ParentClass'),
-                                         'native_parent': tag(data, 'NativeParentClass')})
+            entry = {'path': package, 'kind': kind, 'parent': tag(data, 'ParentClass'),
+                     'native_parent': tag(data, 'NativeParentClass')}
+            if kind == 'AnimBlueprint':
+                anim_blueprint_of(data, registry, entry)
+            result['blueprints'].append(entry)
         elif kind == 'InputAction':
             action = call(None, data.get_asset)
             value = prop(action, 'value_type') if action is not None else None
