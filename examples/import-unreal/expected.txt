@@ -1,17 +1,19 @@
 project.import {"dry_run":true,"source":"unreal"}
 {
   "converted": {
+    "animations": 1,
     "blueprints": 4,
     "classes": 1,
     "input_actions": 10,
-    "meshes": 3,
+    "material_variants": 1,
+    "meshes": 4,
     "scenes": 1,
     "sounds": 1
   },
   "dry_run": true,
   "engine": "unreal",
   "engine_version": "5.4.4-35576357+++UE5+Release-5.4",
-  "files": ["unreal/Content/Props/SM_Coin.glb", "unreal/Content/Props/SM_Crate.glb", "unreal/Content/Props/SM_Floor.glb", "unreal/Content/Audio/Wind.wav", "unreal/Content/Audio/Wind.audio.json", "unreal/Content/Maps/Main.scene.json", "project.json", "storyboard/work.json", "import/unreal.json"],
+  "files": ["unreal/Content/Characters/SK_Hero.glb", "unreal/Content/Props/SM_Coin.glb", "unreal/Content/Props/SM_Crate.glb", "unreal/Content/Props/SM_Floor.glb", "unreal/Content/Audio/Wind.wav", "unreal/Content/Audio/Wind.audio.json", "unreal/Content/Characters/A_Idle.glb", "unreal/Content/Props/SM_Crate_MI_CrateDark.glb", "unreal/Content/Characters/A_Idle.anim.json", "unreal/Content/Maps/Main.scene.json", "project.json", "storyboard/work.json", "import/unreal.json"],
   "log": ".slash/import/unreal/unreal.log",
   "main_scene": "unreal/Content/Maps/Main.scene.json",
   "project": "Crate Run",
@@ -92,12 +94,6 @@ project.import {"dry_run":true,"source":"unreal"}
       "what": "linear sound attenuation",
       "where": "/Game/Maps/Main: Wind",
       "why": "it fades as 1 / distance from its inner radius and stops at its falloff's end"
-    },
-    {
-      "count": 1,
-      "what": "material override",
-      "where": "/Game/Maps/Main: Crate Stack.StaticMeshComponent0",
-      "why": "the mesh draws with its own materials"
     },
     {
       "count": 1,
@@ -128,16 +124,18 @@ project.import {"dry_run":true,"source":"unreal"}
 project.import {"source":"unreal"}
 {
   "converted": {
+    "animations": 1,
     "blueprints": 4,
     "classes": 1,
     "input_actions": 10,
-    "meshes": 3,
+    "material_variants": 1,
+    "meshes": 4,
     "scenes": 1,
     "sounds": 1
   },
   "engine": "unreal",
   "engine_version": "5.4.4-35576357+++UE5+Release-5.4",
-  "files": 9,
+  "files": 13,
   "log": ".slash/import/unreal/unreal.log",
   "main_scene": "unreal/Content/Maps/Main.scene.json",
   "project": "Crate Run",
@@ -218,12 +216,6 @@ project.import {"source":"unreal"}
       "what": "linear sound attenuation",
       "where": "/Game/Maps/Main: Wind",
       "why": "it fades as 1 / distance from its inner radius and stops at its falloff's end"
-    },
-    {
-      "count": 1,
-      "what": "material override",
-      "where": "/Game/Maps/Main: Crate Stack.StaticMeshComponent0",
-      "why": "the mesh draws with its own materials"
     },
     {
       "count": 1,
@@ -304,7 +296,7 @@ project.import {"source":"unreal"}
     "crate_stack": {
       "components": {
         "MeshInstance3D": {
-          "mesh": "unreal/Content/Props/SM_Crate.glb"
+          "mesh": "unreal/Content/Props/SM_Crate_MI_CrateDark.glb"
         },
         "Transform3D": {
           "position": [-2.0, 0.0, -1.5],
@@ -357,7 +349,7 @@ project.import {"source":"unreal"}
           "shape": "capsule"
         },
         "Transform3D": {
-          "children": ["hero_camera_boom"],
+          "children": ["hero_camera_boom", "hero_character_mesh0"],
           "position": [-4.0, 0.92, 0.0]
         }
       }
@@ -368,6 +360,20 @@ project.import {"source":"unreal"}
           "children": ["hero_follow_camera"],
           "position": [0.0, 0.6, 0.0],
           "rotation": [0.0, 0.0, -0.349066]
+        }
+      }
+    },
+    "hero_character_mesh0": {
+      "components": {
+        "AnimationPlayer": {
+          "animation": "Idle",
+          "library": "unreal/Content/Characters/A_Idle.anim.json"
+        },
+        "MeshInstance3D": {
+          "mesh": "unreal/Content/Characters/SK_Hero.glb"
+        },
+        "Transform3D": {
+          "position": [0.0, -0.92, 0.0]
         }
       }
     },
@@ -466,6 +472,9 @@ project.import {"source":"unreal"}
 }
 --- import/unreal.json
 {
+  "animations": {
+    "/Game/Characters/A_Idle": "unreal/Content/Characters/A_Idle.glb"
+  },
   "axes": "x = x, y = z, z = y",
   "engine": "unreal",
   "engine_version": "5.4.4-35576357+++UE5+Release-5.4",
@@ -544,6 +553,7 @@ project.import {"source":"unreal"}
     }
   },
   "meshes": {
+    "/Game/Characters/SK_Hero": "unreal/Content/Characters/SK_Hero.glb",
     "/Game/Props/SM_Coin": "unreal/Content/Props/SM_Coin.glb",
     "/Game/Props/SM_Crate": "unreal/Content/Props/SM_Crate.glb",
     "/Game/Props/SM_Floor": "unreal/Content/Props/SM_Floor.glb"
@@ -628,12 +638,6 @@ project.import {"source":"unreal"}
       "what": "linear sound attenuation",
       "where": "/Game/Maps/Main: Wind",
       "why": "it fades as 1 / distance from its inner radius and stops at its falloff's end"
-    },
-    {
-      "count": 1,
-      "what": "material override",
-      "where": "/Game/Maps/Main: Crate Stack.StaticMeshComponent0",
-      "why": "the mesh draws with its own materials"
     },
     {
       "count": 1,
@@ -786,7 +790,7 @@ project.import {"source":"unreal"}
 }
 scene.open {"path":"unreal/Content/Maps/Main.scene.json"}
 {
-  "entities": 18,
+  "entities": 19,
   "path": "unreal/Content/Maps/Main.scene.json"
 }
 step {"ticks":90}
@@ -810,6 +814,27 @@ world.query {"include":["Transform3D"],"with":["RigidBody3D"]}
         }
       },
       "id": "crate"
+    }
+  ],
+  "truncated": false
+}
+world.query {"include":["AnimationPlayer"],"with":["AnimationPlayer"]}
+{
+  "count": 1,
+  "entities": [
+    {
+      "components": {
+        "AnimationPlayer": {
+          "animation": "Idle",
+          "backwards": false,
+          "library": "unreal/Content/Characters/A_Idle.anim.json",
+          "playing": true,
+          "speed_scale": 1.0,
+          "targets": {},
+          "time": 1.4999999999999996
+        }
+      },
+      "id": "hero_character_mesh0"
     }
   ],
   "truncated": false

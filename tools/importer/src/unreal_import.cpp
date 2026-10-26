@@ -2,6 +2,7 @@
 
 #include "common.hpp"
 
+#include "slash/animation/animation.hpp"
 #include "slash/importer/unreal.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/runtime/project.hpp"
@@ -565,6 +566,18 @@ struct MeshOut {
     std::string bytes;
 };
 
+struct AnimationOut {
+    std::string library; // the .glb file in the destination
+    std::string name;    // its animation's name in that file
+    double length = 0.0;
+};
+
+// The last part of an Unreal package's path: /Game/Props/M_Wood is M_Wood.
+[[nodiscard]] std::string package_stem(std::string_view package) {
+    const std::size_t slash = package.rfind('/');
+    return std::string(slash == std::string_view::npos ? package : package.substr(slash + 1));
+}
+
 class UnrealImporter {
 public:
     UnrealImporter(fs::path project, std::string prefix, bool copy_assets, fs::path work,
@@ -594,6 +607,8 @@ public:
         mark_mesh_uses();
         write_meshes();
         write_sounds();
+        read_materials();
+        write_animations();
         for (const json::Value& level : items(export_, "levels")) {
             convert_level(level);
         }
@@ -813,6 +828,192 @@ private:
             add_file(mesh.path, std::move(mesh.bytes));
             mesh.bytes.clear();
             ++converted_meshes_;
+        }
+    }
+
+    // --- Materials ---
+
+    // The materials components draw meshes with in place of the meshes' own: each was exported on
+    // a mesh of its own, and its file's first material is it.
+    void read_materials() {
+        const json::Value* materials = member(export_, "materials");
+        if (materials == nullptr || !materials->is_object()) {
+            return;
+        }
+        for (const auto& [package, entry] : materials->as_object()) {
+            const std::string file = text(entry, "file");
+            if (file.empty()) {
+                continue; // reported by the export
+            }
+            auto bytes = platform::read_file((work_ / file).string());
+            if (!bytes) {
+                problems_.add("material the editor exported but left no file", package,
+                              bytes.error().message);
+                continue;
+            }
+            auto model =
+                scene3d::load_model(bytes.value(), content_path(package, ".glb"), no_files());
+            if (!model) {
+                problems_.add("material glTF file that doesn't load", package,
+                              model.error().message);
+                continue;
+            }
+            if (model.value().materials.empty()) {
+                problems_.add("material glTF file that doesn't load", package,
+                              "it holds no material");
+                continue;
+            }
+            materials_[package] = std::move(model.value());
+        }
+    }
+
+    // The model material a mesh's material slot draws with: the one named as the slot's material,
+    // else, when the file has one material a slot, the slot's own; -1 for none.
+    [[nodiscard]] static int slot_material(const scene3d::Model& model,
+                                           const std::vector<std::string>& slots,
+                                           std::size_t slot) {
+        if (slot < slots.size() && !slots[slot].empty()) {
+            const std::string name = package_stem(slots[slot]);
+            for (std::size_t i = 0; i < model.materials.size(); ++i) {
+                if (model.materials[i].name == name) {
+                    return static_cast<int>(i);
+                }
+            }
+        }
+        if ((slots.empty() || slots.size() == model.materials.size()) &&
+            slot < model.materials.size()) {
+            return static_cast<int>(slot);
+        }
+        return -1;
+    }
+
+    static void replace_material(scene3d::Model& model, int target, const scene3d::Model& from) {
+        scene3d::ModelMaterial material = from.materials.front();
+        const int offset = static_cast<int>(model.images.size());
+        for (int* image :
+             {&material.albedo_image, &material.metallic_image, &material.roughness_image,
+              &material.normal_image, &material.emission_image}) {
+            if (*image >= 0) {
+                *image += offset;
+            }
+        }
+        model.images.insert(model.images.end(), from.images.begin(), from.images.end());
+        model.materials[static_cast<std::size_t>(target)] = std::move(material);
+    }
+
+    // FNV-1a, for names that must be short and the same on every run.
+    [[nodiscard]] static std::string short_hash(std::string_view text) {
+        std::uint64_t hash = 14695981039346656037ULL;
+        for (const char c : text) {
+            hash = (hash ^ static_cast<unsigned char>(c)) * 1099511628211ULL;
+        }
+        static constexpr std::string_view kDigits = "0123456789abcdef";
+        std::string out;
+        for (int shift = 60; shift >= 32; shift -= 4) {
+            out += kDigits[(hash >> static_cast<unsigned>(shift)) & 0xFU];
+        }
+        return out;
+    }
+
+    // The mesh a component draws, with its override materials in place of the mesh's own in a
+    // .glb file of its own beside the mesh's (a MeshInstance3D has no per-surface materials, as
+    // Godot's has no surface overrides in a scene file); the mesh's own file when none applies.
+    std::string mesh_with_overrides(const std::string& package, const MeshOut& mesh,
+                                    const json::Value& comp, const std::string& where) {
+        const json::Value* overrides = member(comp, "override_materials");
+        if (overrides == nullptr || !overrides->is_array() || !mesh.model) {
+            return mesh.path;
+        }
+        const json::Value* meshes = member(export_, "meshes");
+        const json::Value* entry = meshes != nullptr ? meshes->find(package) : nullptr;
+        std::vector<std::string> slots;
+        if (entry != nullptr) {
+            for (const json::Value& slot : items(*entry, "materials")) {
+                slots.push_back(slot.is_string() ? slot.as_string() : std::string());
+            }
+        }
+        scene3d::Model model = *mesh.model;
+        std::string key = package;
+        std::vector<std::string> names;
+        const json::Array& list = overrides->as_array();
+        for (std::size_t slot = 0; slot < list.size(); ++slot) {
+            const std::string material = list[slot].is_string() ? list[slot].as_string() : "";
+            const auto found = materials_.find(material);
+            if (material.empty() || found == materials_.end()) {
+                continue; // the slot keeps its own, or the export reported why
+            }
+            const int target = slot_material(model, slots, slot);
+            if (target < 0) {
+                problems_.add("material override of a slot the mesh's file lacks", where,
+                              "slot " + std::to_string(slot) + " keeps the mesh's material");
+                continue;
+            }
+            replace_material(model, target, found->second);
+            names.push_back(package_stem(material));
+            key += "|" + std::to_string(slot) + "=" + material;
+        }
+        if (names.empty()) {
+            return mesh.path;
+        }
+        if (const auto known = variants_.find(key); known != variants_.end()) {
+            return known->second;
+        }
+        const std::string base = mesh.path.substr(0, mesh.path.size() - 4); // less ".glb"
+        std::string path = base + "_" + join(names, "_") + ".glb";
+        if (path.size() - base.size() > 64 || variant_paths_.contains(path)) {
+            path = base + "_" + short_hash(key) + ".glb";
+        }
+        auto glb = scene3d::write_glb(model, path, no_files());
+        if (!glb) {
+            problems_.add("mesh with override materials that couldn't be written", where,
+                          glb.error().message);
+            return mesh.path;
+        }
+        add_file(path, std::move(glb.value()));
+        variants_[key] = path;
+        variant_paths_.insert(path);
+        ++converted_variants_;
+        return path;
+    }
+
+    // --- Animations ---
+
+    // Animation sequences, each exported on its skeleton, written where Unreal keeps them so an
+    // AnimationPlayer plays them on a skeletal mesh by its bones' names.
+    void write_animations() {
+        const json::Value* animations = member(export_, "animations");
+        if (animations == nullptr || !animations->is_object()) {
+            return;
+        }
+        for (const auto& [package, entry] : animations->as_object()) {
+            const std::string file = text(entry, "file");
+            if (file.empty()) {
+                continue; // reported by the export
+            }
+            auto bytes = platform::read_file((work_ / file).string());
+            if (!bytes) {
+                problems_.add("animation the editor exported but left no file", package,
+                              bytes.error().message);
+                continue;
+            }
+            AnimationOut out;
+            out.library = content_path(package, ".glb");
+            auto model = scene3d::load_model(bytes.value(), out.library, no_files());
+            if (!model) {
+                problems_.add("animation glTF file that doesn't load", package,
+                              model.error().message);
+                continue;
+            }
+            if (model.value().animations.empty()) {
+                problems_.add("animation glTF file that doesn't load", package,
+                              "it holds no animation");
+                continue;
+            }
+            out.name = model.value().animations.front().name;
+            out.length = model.value().animations.front().length;
+            add_file(out.library, std::move(bytes.value()));
+            animations_[package] = std::move(out);
+            ++converted_animations_;
         }
     }
 
@@ -1238,6 +1439,63 @@ private:
         entity.has_body = true;
     }
 
+    // A skeletal mesh component's animation, as Godot's AnimationPlayer playing it on the entity
+    // that draws the mesh: a sequence played on its own node (Unreal's "Use Animation Asset")
+    // plays from where the component left it, looping through an .anim.json library that takes it
+    // from the sequence's file; an Animation Blueprint is left for its task.
+    void convert_animation(const json::Value& comp, Entity& entity, const std::string& where) {
+        const json::Value* animation = member(comp, "animation");
+        if (animation == nullptr) {
+            return;
+        }
+        const std::string mode = text(*animation, "mode");
+        if (mode == "blueprint") {
+            problems_.add("Animation Blueprint", where,
+                          "the mesh stands in its bind pose until its task's AnimationTree "
+                          "plays it");
+            return;
+        }
+        if (mode != "single_node") {
+            problems_.add("skeletal mesh animation mode " + mode, where,
+                          "the mesh stands in its bind pose");
+            return;
+        }
+        const auto found = animations_.find(text(*animation, "animation"));
+        if (found == animations_.end()) {
+            return; // none set, or the export reported why
+        }
+        const AnimationOut& out = found->second;
+        json::Value player;
+        player["animation"] = out.name;
+        if (flag(*animation, "looping", true)) {
+            const std::string library = out.library.substr(0, out.library.size() - 4) +
+                                        std::string(animation::kAnimationSuffix);
+            if (!looped_.contains(library)) {
+                json::Value file;
+                file["format"] = 1;
+                json::Value& entry = file["animations"][out.name];
+                entry["from"]["model"] = out.library;
+                entry["from"]["animation"] = out.name;
+                entry["loop"] = "linear";
+                add_file(library, json::write(file) + "\n");
+                looped_.insert(library);
+            }
+            player["library"] = library;
+        } else {
+            player["library"] = out.library;
+        }
+        if (!flag(*animation, "playing", true)) {
+            player["playing"] = false;
+        }
+        if (const double rate = number(*animation, "play_rate", 1.0); rate != 1.0) {
+            player["speed_scale"] = tidy(rate);
+        }
+        if (const double position = number(*animation, "position"); position > 0.0) {
+            player["time"] = tidy(position);
+        }
+        entity.components["AnimationPlayer"] = std::move(player);
+    }
+
     void convert_component(const json::Value& comp, const json::Value& actor, Level& level,
                            const std::string& id, const std::string& where) {
         Entity& entity = level.entities[id];
@@ -1253,18 +1511,13 @@ private:
                 return; // reported when exported
             }
             json::Value instance;
-            instance["mesh"] = found->second.path;
+            instance["mesh"] =
+                mesh_with_overrides(mesh, found->second, comp, where + "." + text(comp, "name"));
             if (!flag(comp, "cast_shadow", true)) {
                 instance["cast_shadow"] = "off";
             }
-            if (member(comp, "override_materials") != nullptr) {
-                problems_.add("material override", where + "." + text(comp, "name"),
-                              "the mesh draws with its own materials");
-            }
             if (found->second.skeletal) {
-                problems_.add("skeletal mesh animation", where,
-                              "the mesh comes in its bind pose; its animations don't convert "
-                              "yet");
+                convert_animation(comp, entity, where);
             }
             if (member(comp, "instances") != nullptr) {
                 std::size_t count = 0;
@@ -2093,6 +2346,13 @@ private:
             sounds[package] = stream;
         }
         report["sounds"] = std::move(sounds);
+        if (!animations_.empty()) {
+            json::Value animations = json::Object{};
+            for (const auto& [package, animation] : animations_) {
+                animations[package] = animation.library;
+            }
+            report["animations"] = std::move(animations);
+        }
         report["tasks"] = task_list_;
         json::Array unsupported = problems_.to_json();
         report["unsupported"] = unsupported;
@@ -2108,6 +2368,8 @@ private:
         out["converted"]["scenes"] = static_cast<std::int64_t>(scenes_.size());
         out["converted"]["meshes"] = converted_meshes_;
         out["converted"]["sounds"] = converted_sounds_;
+        out["converted"]["animations"] = converted_animations_;
+        out["converted"]["material_variants"] = converted_variants_;
         out["converted"]["input_actions"] = input_actions_;
         out["converted"]["blueprints"] = blueprints_;
         out["converted"]["classes"] = static_cast<std::int64_t>(classes_.size());
@@ -2131,7 +2393,12 @@ private:
     Axes axes_;
     M3 axes_matrix_ = Axes{}.matrix();
     std::map<std::string, MeshOut> meshes_;
-    std::map<std::string, std::string> sounds_; // package -> the stream players play
+    std::map<std::string, std::string> sounds_;       // package -> the stream players play
+    std::map<std::string, scene3d::Model> materials_; // package -> a model drawing it
+    std::map<std::string, std::string> variants_;     // mesh and overrides -> the .glb file
+    std::set<std::string> variant_paths_;
+    std::map<std::string, AnimationOut> animations_; // package -> its file
+    std::set<std::string> looped_;                   // .anim.json files written
     std::map<std::string, json::Value> levels_;
     std::vector<std::string> scenes_;
     std::vector<std::string> classes_;
@@ -2140,6 +2407,8 @@ private:
     std::string main_scene_;
     int converted_meshes_ = 0;
     int converted_sounds_ = 0;
+    int converted_animations_ = 0;
+    int converted_variants_ = 0;
     int input_actions_ = 0;
     int blueprints_ = 0;
     Problems problems_;

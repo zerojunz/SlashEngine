@@ -661,11 +661,14 @@ Unreal Editor, which only ever runs as a program of its own, as Blender does:
 `SLASH_UNREAL_EDITOR`, then the Epic Games Launcher's installs), reads Unreal's `.ini` files
 (`parse_config`, `parse_struct`) and runs `UnrealEditor-Cmd <project> -run=pythonscript` on
 `src/unreal_export.py` (embedded in the tools), which writes each level's actors and components,
-Enhanced Input, static meshes as glTF and sounds as WAV into `.slash/import/unreal/`.
+Enhanced Input, meshes, override materials and animation sequences as glTF and sounds as WAV into
+`.slash/import/unreal/`.
 `src/unreal_import.cpp` converts that: it finds the exporter's axes and scale by matching the
 glTF files' bounds to Unreal's, places the levels in them (so meshes need no turn; cameras and
 lights turn to face Godot's way), gives each mesh's `.glb` the collision Unreal gives it with
-`generate_collision`, converts lights by Unreal's units, the sky, fog, bodies, shapes, volumes,
+`generate_collision`, draws a component's override materials with a copy of its mesh's `.glb`
+(`mesh_with_overrides`), plays a skeletal mesh's animation sequence with an `AnimationPlayer`
+(`convert_animation`), converts lights by Unreal's units, the sky, fog, bodies, shapes, volumes,
 sounds and both input systems, and makes a task per Blueprint and `UCLASS`. Unreal projects need
 the `build` capability. `tests/fake_unreal.cpp` is the editor's stand-in for tests and
 `examples/import-unreal`, copying a project's `FakeExport/` folder;
