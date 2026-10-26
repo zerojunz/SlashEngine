@@ -411,29 +411,24 @@ TEST_CASE("GPUs draw SSAO as the software device does") {
     }
 }
 
-// Diagnostic only: on Direct3D 12, the first SSAO pass after which the device is lost.
+// Diagnostic only: on Direct3D 12, which change keeps the first SSAO pass from losing the device.
 TEST_CASE("which SSAO pass loses a Direct3D 12 device") {
-    for (const SsaoQuality quality : {SsaoQuality::VeryLow, SsaoQuality::Ultra}) {
-        const Corner corner{.ssao = with_quality(quality)};
-        const detail::SsaoPlan plan = detail::ssao_plan(corner.ssao.settings, 64, 64);
-        for (std::size_t limit = 0; limit <= plan.steps.size(); ++limit) {
+    const Corner corner{.ssao = with_quality(SsaoQuality::VeryLow)};
+    for (const std::size_t limit : {std::size_t{0}, std::size_t{1}}) {
+        for (int probe = 0; probe <= 4; ++probe) {
             auto gpu = slash::test::gpu_device();
             if (gpu == nullptr || render::backend_name(gpu->backend()) != std::string("d3d12")) {
                 return;
             }
             detail::ssao_pass_limit = limit;
+            detail::ssao_probe = probe;
             probing = true;
             const Image image = draw_corner(*gpu, corner);
             probing = false;
             detail::ssao_pass_limit = static_cast<std::size_t>(-1);
-            const int pass = limit == 0 ? -1 : static_cast<int>(plan.steps.at(limit - 1).pass);
-            const int target = limit == 0 ? -1 : static_cast<int>(plan.steps.at(limit - 1).target);
-            MESSAGE("quality " << static_cast<int>(quality) << " passes " << limit << " last pass "
-                               << pass << " target " << target << ": "
-                               << (image.pixels.empty() ? "LOST" : "ok"));
-            if (image.pixels.empty()) {
-                break;
-            }
+            detail::ssao_probe = 0;
+            const std::string state = image.pixels.empty() ? "LOST" : "ok";
+            MESSAGE("passes " << limit << " probe " << probe << ": " << state);
         }
     }
 }

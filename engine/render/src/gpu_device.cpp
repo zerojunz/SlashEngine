@@ -2308,9 +2308,11 @@ private:
             prepass_depth.store_op = SDL_GPU_STOREOP_STORE;
             prepass_depth.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
             prepass_depth.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
-            prepass_depth.cycle = true;
+            prepass_depth.cycle = ssao_probe != 2;
             SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(commands, &normals, 1, &prepass_depth);
-            draw_batches(pass, true);
+            if (ssao_probe != 4) {
+                draw_batches(pass, true);
+            }
             SDL_EndGPURenderPass(pass);
             draw_ssao(commands, scene);
         }
@@ -2870,8 +2872,11 @@ private:
             if (drawn++ >= ssao_pass_limit) {
                 break;
             }
-            const SsaoUniforms uniforms =
+            SsaoUniforms uniforms =
                 ssao_uniforms(scene.ssao, step, scene.projection, frame_width_, frame_height_);
+            if (ssao_probe == 3) {
+                uniforms.options[0] = 15;
+            }
             // Made in prepare_ssao, at the start of the frame.
             auto pipeline = fullscreen_pipeline(ssao_pipelines_, ssao_shaders_,
                                                 ssao_gpu_format(ssao_format(step.target)));
@@ -2891,7 +2896,7 @@ private:
                 const std::uint32_t index = step.slots.at(slot);
                 SDL_GPUTexture* texture = white_;
                 if (index == kSsaoDepthBuffer) {
-                    texture = ssao_targets_.depth;
+                    texture = ssao_probe == 1 ? white_ : ssao_targets_.depth;
                 } else if (index == kSsaoNormals) {
                     texture = ssao_targets_.normals;
                 } else if (index < kSsaoTextures && ssao_targets_.textures.at(index) != nullptr) {

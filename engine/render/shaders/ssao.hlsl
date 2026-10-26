@@ -667,6 +667,9 @@ float interleave_pass(int2 p, uint pass_kind) {
 float4 fs_main(float4 position : SV_Position) : SV_Target0 {
     int2 p = (int2)position.xy;
     uint pass_kind = options.x;
+    if (pass_kind == 15u) {
+        return float4(0.0, 0.0, 0.0, 1.0);
+    }
     float2 result = float2(0.0, 0.0);
     if (pass_kind == kDepth) {
         result.x = depth_pass(p);
