@@ -101,6 +101,30 @@ void append(std::string& bin, const std::vector<T>& values) {
     }
 }
 
+json::Array numbers(const Vec3& v) {
+    return {v.x, v.y, v.z};
+}
+
+// The glTF path of what a track moves.
+std::string path_of(NodeProperty property) {
+    switch (property) {
+    case NodeProperty::Position:
+        return "translation";
+    case NodeProperty::Rotation:
+        return "rotation";
+    case NodeProperty::Scale:
+        break;
+    }
+    return "scale";
+}
+
+// Whether every vertex of a mesh has its joints and weights, so a skin can deform it.
+bool weighted(const ModelMesh& mesh) {
+    return std::ranges::all_of(mesh.surfaces, [](const ModelSurface& surface) {
+        return surface.weights.size() == surface.vertices.size();
+    });
+}
+
 struct Writer {
     const Model& model;
     std::string folder; // the file's folder, which image paths are relative to
@@ -423,6 +447,76 @@ struct Writer {
         return add("meshes", std::move(mesh));
     }
 
+    // The model's skins, their joints the nodes of the same index, and its animations, a
+    // channel and a sampler per track; an animation that loops without a name that says so
+    // takes Godot's "-loop" hint.
+    void skins_and_animations() {
+        for (const ModelSkin& in : model.skins) {
+            json::Value skin = json::Object{};
+            if (!in.name.empty()) {
+                skin["name"] = in.name;
+            }
+            json::Array joints;
+            std::vector<float> matrices;
+            for (std::size_t j = 0; j < in.joints.size(); ++j) {
+                joints.emplace_back(static_cast<std::int64_t>(in.joints[j]));
+                const std::array<float, 16> m = j < in.inverse_binds.size()
+                                                    ? in.inverse_binds[j].matrix()
+                                                    : world::Affine3D{}.matrix();
+                matrices.insert(matrices.end(), m.begin(), m.end());
+            }
+            skin["joints"] = std::move(joints);
+            if (!matrices.empty()) {
+                skin["inverseBindMatrices"] = accessor(matrices, 16, kFloat, "MAT4", 0);
+            }
+            add("skins", std::move(skin));
+        }
+        for (const ModelAnimation& in : model.animations) {
+            json::Array channels;
+            json::Array keyframes;
+            for (const NodeTrack& track : in.tracks) {
+                const std::size_t keys = std::min(track.times.size(), track.values.size());
+                if (track.node >= model.nodes.size() || keys == 0) {
+                    continue;
+                }
+                const std::vector<float> times(
+                    track.times.begin(), track.times.begin() + static_cast<std::ptrdiff_t>(keys));
+                const bool rotation = track.property == NodeProperty::Rotation;
+                std::vector<float> values;
+                for (std::size_t k = 0; k < keys; ++k) {
+                    const std::array<float, 4>& v = track.values[k];
+                    values.insert(values.end(), v.begin(), v.begin() + (rotation ? 4 : 3));
+                }
+                json::Value sampler = json::Object{};
+                const int input = accessor(times, 1, kFloat, "SCALAR", 0);
+                json::Value& input_accessor =
+                    document["accessors"].as_array()[static_cast<std::size_t>(input)];
+                input_accessor["min"] = json::Array{*std::ranges::min_element(times)};
+                input_accessor["max"] = json::Array{*std::ranges::max_element(times)};
+                sampler["input"] = input;
+                sampler["output"] =
+                    accessor(values, rotation ? 4 : 3, kFloat, rotation ? "VEC4" : "VEC3", 0);
+                sampler["interpolation"] = track.step ? "STEP" : "LINEAR";
+                json::Value target = json::Object{};
+                target["node"] = static_cast<std::int64_t>(track.node);
+                target["path"] = path_of(track.property);
+                json::Value channel = json::Object{};
+                channel["sampler"] = static_cast<std::int64_t>(keyframes.size());
+                channel["target"] = std::move(target);
+                keyframes.push_back(std::move(sampler));
+                channels.push_back(std::move(channel));
+            }
+            if (channels.empty()) {
+                continue;
+            }
+            json::Value animation = json::Object{};
+            animation["name"] = in.loop && !loops_by_name(in.name) ? in.name + "-loop" : in.name;
+            animation["channels"] = std::move(channels);
+            animation["samplers"] = std::move(keyframes);
+            add("animations", std::move(animation));
+        }
+    }
+
     // A surface as a primitive of triangles, its corners back in glTF's counter-clockwise order.
     json::Value primitive(const ModelSurface& surface) {
         const std::size_t count = surface.vertices.size();
@@ -465,6 +559,27 @@ struct Writer {
             attributes["COLOR_0"] =
                 accessor(colors, 4, kUnsignedByte, "VEC4", kArrayBuffer, /*normalized=*/true);
         }
+        // Joints and weights, a second set where a vertex has more than four.
+        if (count > 0 && surface.weights.size() == count) {
+            const bool eight = std::ranges::any_of(surface.weights, [](const VertexWeights& w) {
+                return w.weights[4] != 0.0F || w.weights[5] != 0.0F || w.weights[6] != 0.0F ||
+                       w.weights[7] != 0.0F;
+            });
+            for (std::size_t set = 0; set < (eight ? 2U : 1U); ++set) {
+                std::vector<std::uint16_t> joints;
+                std::vector<float> weights;
+                for (const VertexWeights& w : surface.weights) {
+                    for (std::size_t k = set * 4; k < (set * 4) + 4; ++k) {
+                        joints.push_back(w.joints.at(k));
+                        weights.push_back(w.weights.at(k));
+                    }
+                }
+                attributes["JOINTS_" + std::to_string(set)] =
+                    accessor(joints, 4, kUnsignedShort, "VEC4", kArrayBuffer);
+                attributes["WEIGHTS_" + std::to_string(set)] =
+                    accessor(weights, 4, kFloat, "VEC4", kArrayBuffer);
+            }
+        }
         std::vector<std::uint32_t> indices = surface.indices;
         for (std::size_t i = 0; i + 2 < indices.size(); i += 3) {
             std::swap(indices[i + 1], indices[i + 2]);
@@ -484,10 +599,6 @@ struct Writer {
         return out;
     }
 };
-
-json::Array numbers(const Vec3& v) {
-    return {v.x, v.y, v.z};
-}
 
 // The import hint a written collision shape's node takes, by whether its node draws too.
 std::string hint_of(const ModelCollision& collision, bool drawn) {
@@ -574,13 +685,22 @@ Result<std::pair<json::Value, std::string>> document_of(const Model& model, std:
                 continue;
             }
             json::Value& node = nodes[static_cast<std::size_t>(part.node_index)];
+            const bool skinned = part.skin >= 0 &&
+                                 static_cast<std::size_t>(part.skin) < model.skins.size() &&
+                                 weighted(model.meshes[part.mesh]);
             if (node.find("mesh") == nullptr) {
                 node["mesh"] = mesh;
+                if (skinned) {
+                    node["skin"] = part.skin;
+                }
                 continue;
             }
             json::Value more = json::Object{};
             more["name"] = part.node + "_" + std::to_string(extra.size() + 2);
             more["mesh"] = mesh;
+            if (skinned) {
+                more["skin"] = part.skin;
+            }
             children[static_cast<std::size_t>(part.node_index)].push_back(
                 static_cast<int>(model.nodes.size() + extra.size()));
             extra.push_back(std::move(more));
@@ -631,6 +751,7 @@ Result<std::pair<json::Value, std::string>> document_of(const Model& model, std:
         for (json::Value& more : extra) {
             writer.add("nodes", std::move(more));
         }
+        writer.skins_and_animations();
     } else {
         // A model without nodes, as an OBJ model: a node for each part, where it puts it, with
         // the hint of the collision its part made.

@@ -6,7 +6,6 @@ add_library(slash_importer
     src/compression.cpp
     src/gdscript_tokens.cpp
     src/godot_binary.cpp
-    src/godot_bones.cpp
     src/godot_import.cpp
     src/godot_pack.cpp
     src/godot_terrain.cpp

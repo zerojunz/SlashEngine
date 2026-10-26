@@ -230,8 +230,9 @@ void generate_lods(ModelSurface& surface, std::span<const world::Affine3D> bones
 // path, and one inside it goes in as a PNG; a material's texture paths, where it names no image
 // of the model, are written as images too. Everything goes in one text file, its buffer in a data
 // URI. A metallic or roughness texture goes in only when they share one image, blue for metallic
-// and green for roughness, as glTF's do. Skins and animations are left out: a skinned mesh is
-// placed by its node.
+// and green for roughness, as glTF's do. Skins go in with their joints and inverse bind
+// matrices, a skinned part's node naming its skin when its mesh has weights for every vertex,
+// and animations with a sampler per track (an animation that loops takes "-loop" on its name).
 [[nodiscard]] Result<std::string> write_gltf(const Model& model, std::string_view path);
 // The same model as one binary glTF (.glb) file that holds everything, as Godot's GLTFDocument
 // writes one: its buffer and every image, those beside the model read with read and put in as

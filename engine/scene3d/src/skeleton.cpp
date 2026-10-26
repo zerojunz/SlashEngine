@@ -2,6 +2,7 @@
 
 #include "slash/core/json.hpp"
 #include "slash/core/text.hpp"
+#include "slash/scene3d/humanoid.hpp"
 #include "slash/world/world.hpp"
 
 #include <algorithm>
@@ -12,6 +13,7 @@
 #include <optional>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace slash::scene3d {
 namespace {
@@ -238,6 +240,25 @@ void blend_tracks(const Model& target, const Model& source, const ModelAnimation
                   double time, const WeightOf& weight_of, std::span<const int> map,
                   std::vector<NodePose>& pose) {
     const bool same = map.empty();
+    // Godot's mixer multiplies a bone's position track by its skeleton's motion scale, which
+    // retargeting sets; a model's tracks keep its own scale, so they change by the ratio here.
+    float ratio = 1.0F;
+    std::vector<bool> bones;
+    if (!same) {
+        const float to = motion_scale(target);
+        const float from = motion_scale(source);
+        if (to > 0.0F && from > 0.0F && to != from) {
+            ratio = to / from;
+            bones.assign(target.nodes.size(), false);
+            for (const ModelSkin& skin : target.skins) {
+                for (const std::size_t joint : skin.joints) {
+                    if (joint < bones.size()) {
+                        bones[joint] = true;
+                    }
+                }
+            }
+        }
+    }
     for (const NodeTrack& track : animation.tracks) {
         int node = static_cast<int>(track.node);
         if (!same) {
@@ -259,9 +280,13 @@ void blend_tracks(const Model& target, const Model& source, const ModelAnimation
         const std::array<float, 4> value =
             sample_track(track, time, animation.length, animation.loop);
         switch (track.property) {
-        case NodeProperty::Position:
-            posed.position = posed.position + ((vec_of(value) - rest.position) * weight);
+        case NodeProperty::Position: {
+            const Vec3 position = bones.empty() || !bones[static_cast<std::size_t>(node)]
+                                      ? vec_of(value)
+                                      : vec_of(value) * ratio;
+            posed.position = posed.position + ((position - rest.position) * weight);
             break;
+        }
         case NodeProperty::Rotation: {
             const Quat turn = multiply(inverse(rest.rotation), quat_of(value));
             posed.rotation =
