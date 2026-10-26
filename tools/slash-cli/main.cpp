@@ -50,6 +50,7 @@
 #include "slash/scene3d/blend.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/lightmap.hpp"
+#include "slash/scene3d/material.hpp"
 #include "slash/scene3d/recipe.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
@@ -123,8 +124,9 @@ Usage:
                                      .material.json, .process_material.json, .anim.json,
                                      .animtree.json, .tileset.json, .font.json, .theme.json,
                                      .audio.json, .bus_layout.json, .navmesh.json,
-                                     .navpoly.json, .meshlib.json, .lightmap.json,
-                                     .voxelgi.json, .replay.json, .test.json or .score.json
+                                     .navpoly.json, .meshlib.json, .standard_material.json,
+                                     .lightmap.json, .voxelgi.json, .replay.json, .test.json or
+                                     .score.json
                                      file; lists every error
   slash-cli scene format <file>      Rewrite one of those files in canonical form
       --check                        Only report whether it is canonical; change nothing
@@ -134,7 +136,8 @@ Usage:
                                      animtree (.animtree.json), tileset (.tileset.json), font (.font.json), theme
                                      (.theme.json), audio (.audio.json), bus_layout
                                      (.bus_layout.json), navmesh (.navmesh.json), navpoly
-                                     (.navpoly.json), meshlib (.meshlib.json), lightmap
+                                     (.navpoly.json), meshlib (.meshlib.json), standard_material
+                                     (.standard_material.json), lightmap
                                      (.lightmap.json), voxel_gi (.voxelgi.json), replay
                                      (.replay.json), test (.test.json), score
                                      (.score.json), storyboard, project
@@ -920,6 +923,7 @@ int cmd_scene_validate(const std::string& path) {
     const bool navmesh = path.ends_with(slash::navigation::kMeshSuffix);
     const bool navpoly = path.ends_with(slash::navigation::kPolygonSuffix);
     const bool meshlib = path.ends_with(slash::scene3d::kMeshLibrarySuffix);
+    const bool standard = path.ends_with(slash::scene3d::kStandardMaterialSuffix);
     const bool lightmap = path.ends_with(slash::scene3d::kLightmapSuffix);
     const bool voxel_gi = path.ends_with(slash::scene3d::kVoxelGISuffix);
     const bool replay = path.ends_with(command::kReplaySuffix);
@@ -959,6 +963,8 @@ int cmd_scene_validate(const std::string& path) {
         errors = slash::navigation::validate_polygon(parsed.value());
     } else if (meshlib) {
         errors = slash::scene3d::validate_mesh_library(parsed.value());
+    } else if (standard) {
+        errors = slash::scene3d::check_standard_material(text.value(), prefab_reader(path));
     } else if (lightmap) {
         errors = slash::scene3d::validate_lightmap(parsed.value());
     } else if (voxel_gi) {
@@ -996,14 +1002,14 @@ int cmd_scene_validate(const std::string& path) {
         }
     }
     if (parsed && !frames && !material && !process && !animation && !tree && !tileset && !font &&
-        !theme && !stream && !buses && !navmesh && !navpoly && !meshlib && !lightmap && !replay &&
-        !test && !score) {
+        !theme && !stream && !buses && !navmesh && !navpoly && !meshlib && !standard && !lightmap &&
+        !replay && !test && !score) {
         check_story_refs(path, parsed.value(), errors);
     }
     result["valid"] = errors.empty();
     if (!errors.empty()) {
         result["errors"] = errors_to_json(errors);
-    } else if (font || stream || process) {
+    } else if (font || stream || process || standard) {
         print(result);
         return kExitOk;
     } else if (score) {
@@ -1149,6 +1155,9 @@ int cmd_scene_format(const std::string& path, bool check) {
         if (path.ends_with(slash::scene3d::kMeshLibrarySuffix)) {
             return format_checked(text.value(), slash::scene3d::parse_mesh_library);
         }
+        if (path.ends_with(slash::scene3d::kStandardMaterialSuffix)) {
+            return format_checked(text.value(), slash::scene3d::parse_standard_material);
+        }
         if (path.ends_with(slash::scene3d::kLightmapSuffix)) {
             return format_checked(text.value(), slash::scene3d::parse_lightmap);
         }
@@ -1239,18 +1248,40 @@ int cmd_scene(const std::vector<std::string>& args) {
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 27> kKinds = {
-        "scene",     "prefab",     "frames",  "material", "process_material",
-        "animation", "animtree",   "tileset", "font",     "theme",
-        "audio",     "bus_layout", "navmesh", "navpoly",  "meshlib",
-        "lightmap",  "voxel_gi",   "model",   "replay",   "test",
-        "score",     "storyboard", "project", "presets",  "sdk",
-        "providers", "bench"};
+    constexpr std::array<std::string_view, 28> kKinds = {"scene",
+                                                         "prefab",
+                                                         "frames",
+                                                         "material",
+                                                         "process_material",
+                                                         "animation",
+                                                         "animtree",
+                                                         "tileset",
+                                                         "font",
+                                                         "theme",
+                                                         "audio",
+                                                         "bus_layout",
+                                                         "navmesh",
+                                                         "navpoly",
+                                                         "meshlib",
+                                                         "lightmap",
+                                                         "voxel_gi",
+                                                         "model",
+                                                         "replay",
+                                                         "test",
+                                                         "score",
+                                                         "storyboard",
+                                                         "project",
+                                                         "presets",
+                                                         "sdk",
+                                                         "providers",
+                                                         "bench",
+                                                         "standard_material"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
         return usage_error(
             "schema takes one argument: scene, prefab, frames, material, "
             "process_material, animation, animtree, tileset, font, theme, audio, "
-            "bus_layout, navmesh, navpoly, meshlib, lightmap, voxel_gi, model, replay, test, "
+            "bus_layout, navmesh, navpoly, meshlib, lightmap, voxel_gi, model, standard_material, "
+            "replay, test, "
             "score, "
             "storyboard, "
             "project, presets, sdk, providers or bench");
@@ -1292,6 +1323,8 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::scene3d::voxel_gi_schema();
     } else if (args[0] == "model") {
         schema = slash::scene3d::model_recipe_schema();
+    } else if (args[0] == "standard_material") {
+        schema = slash::scene3d::standard_material_schema();
     } else if (args[0] == "replay") {
         schema = command::replay_schema();
     } else if (args[0] == "test") {

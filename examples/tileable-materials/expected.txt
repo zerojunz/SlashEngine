@@ -1,0 +1,22 @@
+asset.generate {"generator":"test","path":"materials/cobble.standard_material.json","prompt":"grey cobblestones","tags":["stone"],"type":"material","width":128}
+{"id":"f0c506382a8d","image":"29aede753ea5","image_seam":2.36,"maps":{"albedo":"5fa7a51ef047","normal":"6655fb14243d","roughness":"7f62f437bcd8"},"parts":["materials/cobble_albedo.png","materials/cobble_roughness.png","materials/cobble_normal.png"],"path":"materials/cobble.standard_material.json","seam":0.58,"type":"material"}
+game/materials/cobble.standard_material.json:
+{
+  "albedo_texture": "materials/cobble_albedo.png",
+  "format": 1,
+  "normal_enabled": true,
+  "normal_texture": "materials/cobble_normal.png",
+  "roughness_texture": "materials/cobble_roughness.png"
+}
+model.inspect {"path":"props/steps.model.json::mossy"}
+{"bounds":{"max":[0.6,0.5,0.2],"min":[-0.6,-0.1,-0.8]},"images":[{"path":"materials/cobble_albedo.png"},{"path":"materials/cobble_roughness.png"},{"path":"materials/cobble_normal.png"}],"materials":[{"name":"cobble","standard":{"albedo_color":[0.6,0.8,0.5,1],"normal_enabled":true,"uv1_scale":[2,2,2]},"textures":{"albedo":0,"normal":2,"roughness":1}}],"meshes":[{"materials":[0],"name":"step","triangles":12,"vertices":24},{"materials":[0],"name":"step2","triangles":12,"vertices":24},{"materials":[0],"name":"step3","triangles":12,"vertices":24}],"parts":[{"mesh":0,"node":"step"},{"mesh":1,"node":"step2"},{"mesh":2,"node":"step3"}]}
+asset.add {"description":"a cobblestone wall","license":"CC0-1.0","path":"props/wall.model.json"}
+{"id":"babbc7c8efca","model_parts":{"materials/cobble.standard_material.json":"f0c506382a8d","materials/cobble_albedo.png":"5fa7a51ef047","materials/cobble_normal.png":"6655fb14243d","materials/cobble_roughness.png":"7f62f437bcd8"},"size":[3.0,1.2,0.4],"triangles":12,"type":"model"}
+asset.add {"description":"cobblestone steps","license":"CC0-1.0","path":"props/steps.model.json"}
+{"id":"620300259140","model_parts":{"materials/cobble.standard_material.json":"f0c506382a8d","materials/cobble_albedo.png":"5fa7a51ef047","materials/cobble_normal.png":"6655fb14243d","materials/cobble_roughness.png":"7f62f437bcd8"},"size":[1.2,0.6,1.0],"triangles":36,"type":"model"}
+asset.info {"id":"f0c506382a8d"}
+{"bytes":341,"description":"grey cobblestones","format":"standard_material.json","height":128,"id":"f0c506382a8d","license":"CC0-1.0","parent":"29aede753ea5","request":{"image":"29aede753ea51868e55ea7de4c7c783c1bb853522598766acdc62d892dd058d4","type":"material"},"seam":0.58,"tags":["stone"],"type":"material","used_by":["620300259140","babbc7c8efca"],"uses":["5fa7a51ef047","7f62f437bcd8","6655fb14243d"],"versions":["29aede753ea5"],"width":128}
+asset.generate {"generator":"test","prompt":"beep","type":"sound"}
+{"id":"d9fea3b9a4f3","seconds":0.5}
+asset.generate {"image":"d9fea3b9a4f3","prompt":"beep","type":"material"}
+"/image: a material is made of an image; d9fea3b9a4f3 is a sound"

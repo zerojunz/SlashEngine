@@ -991,7 +991,7 @@ checks a recipe and `slash-cli scene format` writes it in canonical form.
 | --- | --- | --- | --- |
 | `format` | integer | required | `1` |
 | `parameters` | object | `{}` | Numbers by name, each a number or an expression over the others |
-| `materials` | object | `{}` | [`StandardMaterial3D`](#standardmaterial3d) fields by name; texture fields name images by project path |
+| `materials` | object | `{}` | [`StandardMaterial3D`](#standardmaterial3d) fields by name, or a [material file](#material-files) by path, or one with fields changed (`extends`); texture fields name images by project path |
 | `parts` | array | required | At least one part |
 | `points` | array | `[]` | Attachment points, as below |
 | `variants`, `quality` | object | `{}` | Named forms of the recipe, as [below](#variants-and-quality-tiers) |
@@ -1110,6 +1110,45 @@ names a tier ships each recipe that has it as the tier makes it, without its `qu
 its variants applied after the tier; the rest ship as written. A tier no recipe has is reported
 with the closest one. Only recipes have variants: `::` after another model file is reported.
 [examples/model-variants](../../examples/model-variants/) burns a crate and ships it for phones.
+
+##### Material files
+
+A `.standard_material.json` file is one [`StandardMaterial3D`](#standardmaterial3d) in a file of
+its own, as Godot saves one as a `.tres` resource, so models share a material and its textures:
+`format` (`1`) and the component's fields, texture fields naming images by project path.
+`slash-cli schema standard_material` prints its schema; `scene validate` checks it and that its
+textures decode, `scene format` writes it in canonical form, and exports check and ship it.
+[`asset.generate`](commands.md#tileable-materials) makes tileable ones.
+
+```json
+{
+  "albedo_texture": "materials/cobble_albedo.png",
+  "format": 1,
+  "normal_enabled": true,
+  "normal_texture": "materials/cobble_normal.png",
+  "roughness_texture": "materials/cobble_roughness.png"
+}
+```
+
+A recipe's material is the file's path, or an object whose `extends` names the file and whose
+other fields replace the file's, as a Godot scene overrides a resource's properties:
+
+```json
+"materials": {
+  "cobble": "materials/cobble.standard_material.json",
+  "mossy": {"extends": "materials/cobble.standard_material.json", "uv1_scale": [2, 2, 2],
+            "albedo_color": [0.6, 0.8, 0.5, 1]}
+}
+```
+
+A variant's or tier's `materials` set fields over the file's in the same way, or name another
+file. A file that can't be read or isn't a valid material is an error at the material
+(`/materials/cobble: "materials/cobble.standard_material.json" could not be read: ...`); a path
+that isn't a `.standard_material.json` file is one too. A recipe naming material files is built
+where it is loaded, through `MeshInstance3D`, `model.inspect` or an export, which read them;
+reloading follows them, as it follows model parts.
+[examples/tileable-materials](../../examples/tileable-materials/) shares one between a wall and
+steps.
 
 ##### Model checks
 

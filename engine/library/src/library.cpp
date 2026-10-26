@@ -3,10 +3,12 @@
 #include "slash/asset/assets.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/core/sha256.hpp"
+#include "slash/library/material.hpp"
 #include "slash/library/music.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/render/image.hpp"
+#include "slash/scene3d/material.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/recipe.hpp"
 
@@ -58,6 +60,9 @@ std::string extension_of(std::string_view path) {
     // A model recipe's extension is its whole suffix, as a .model.json file stays one.
     if (extension == ".json" && lowercase(path).ends_with(scene3d::kModelRecipeSuffix)) {
         extension = std::string(scene3d::kModelRecipeSuffix);
+    } else if (extension == ".json" &&
+               lowercase(path).ends_with(scene3d::kStandardMaterialSuffix)) {
+        extension = std::string(scene3d::kStandardMaterialSuffix);
     }
     return extension;
 }
@@ -97,25 +102,38 @@ Result<void> describe_recipe(std::string_view data, Record& record,
     if (!doc) {
         return doc.error();
     }
-    // Project paths mean nothing in another project, so parts name library models.
+    // Project paths mean nothing in another project, so parts name library models and materials
+    // library materials.
     record.uses.clear();
-    for (const json::Value* model : model_refs(doc.value())) {
-        const std::string_view id = ref_id_of(*model);
-        if (id.empty()) {
+    bool materials = false;
+    for (const AssetRef& ref : asset_refs(doc.value(), scene3d::kModelRecipeSuffix)) {
+        const std::string_view id = ref_id_of(*ref.value);
+        const std::string& named = ref.value->is_string() ? ref.value->as_string() : "";
+        if (ref.role == "model" &&
+            (id.empty() || type_of(extension_of(asset::file_of(named))) != "model")) {
             return make_error(ErrorCode::InvalidArgument,
                               "a model part names \"" +
-                                  (model->is_string() ? model->as_string() : json::write(*model)) +
+                                  (ref.value->is_string() ? named : json::write(*ref.value)) +
                                   "\": the library keeps recipes whose model parts are library "
                                   "models (\"asset:<id>.glb\"); asset.add puts a recipe's part "
                                   "files in with it");
         }
+        if (ref.role == "material" && (id.empty() || type_of(extension_of(named)) != "material")) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a material names \"" + named +
+                                  "\": the library keeps recipes whose material files are library "
+                                  "materials (\"asset:<id>.standard_material.json\"); asset.add "
+                                  "puts a recipe's material files in with it");
+        }
+        materials = materials || ref.role == "material";
         if (std::ranges::find(record.uses, id) == record.uses.end()) {
             record.uses.emplace_back(id);
         }
     }
     if (!record.uses.empty() && !read) {
         return make_error(ErrorCode::InvalidArgument,
-                          "the recipe's model parts are read from the library that keeps them");
+                          "the recipe's model parts and materials are read from the library that "
+                          "keeps them");
     }
     const scene3d::ModelPartLoader load = [&read](std::string_view path) -> Result<scene3d::Model> {
         auto bytes = read(asset::file_of(path));
@@ -126,8 +144,10 @@ Result<void> describe_recipe(std::string_view data, Record& record,
     };
     const scene3d::ModelPartLoader none;
     const scene3d::ModelPartLoader& parts = record.uses.empty() ? none : load;
+    const scene3d::ModelReader no_files;
+    const scene3d::ModelReader& files = materials ? read : no_files;
     const std::vector<json::ValidationError> errors =
-        scene3d::validate_model_recipe(doc.value(), parts);
+        scene3d::validate_model_recipe(doc.value(), parts, files);
     if (!errors.empty()) {
         return make_error(ErrorCode::InvalidArgument,
                           errors.front().path + ": " + errors.front().message);
@@ -138,11 +158,67 @@ Result<void> describe_recipe(std::string_view data, Record& record,
                           texture + ": the library keeps recipes that name no texture files; "
                                     "give the material colors instead");
     }
-    auto model = scene3d::build_model_recipe(doc.value(), parts);
+    auto model = scene3d::build_model_recipe(doc.value(), parts, files);
     if (!model) {
         return model.error();
     }
     return describe_model(model.value(), record);
+}
+
+// Fills in a material's textures (uses), the size of its first texture and how its albedo tiles,
+// and checks it reads as written, its textures library images read through read.
+Result<void> describe_material(std::string_view data, Record& record,
+                               const scene3d::ModelReader& read) {
+    auto doc = json::parse(data);
+    if (!doc) {
+        return doc.error();
+    }
+    if (const std::vector<json::ValidationError> errors =
+            scene3d::validate_standard_material(doc.value());
+        !errors.empty()) {
+        return make_error(ErrorCode::InvalidArgument,
+                          (errors.front().path.empty() ? "" : errors.front().path + ": ") +
+                              errors.front().message);
+    }
+    record.uses.clear();
+    record.width = 0;
+    record.height = 0;
+    record.seam = 0.0;
+    for (const AssetRef& ref : asset_refs(doc.value(), scene3d::kStandardMaterialSuffix)) {
+        const std::string& named = ref.value->as_string();
+        const std::string_view id = ref_id(named);
+        if (id.empty() || type_of(extension_of(named)) != "image") {
+            return make_error(ErrorCode::InvalidArgument,
+                              "/" + ref.role +
+                                  ": the library keeps materials whose textures are "
+                                  "library images (\"asset:<id>.png\"); asset.add "
+                                  "puts a material's textures in with it");
+        }
+        if (!read) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "the material's textures are read from the library that keeps "
+                              "them");
+        }
+        auto bytes = read(named);
+        if (!bytes) {
+            return make_error(bytes.error().code, "/" + ref.role + ": " + bytes.error().message);
+        }
+        auto image = render::decode_image(bytes.value());
+        if (!image) {
+            return make_error(image.error().code, "/" + ref.role + ": " + image.error().message);
+        }
+        if (record.width == 0) {
+            record.width = static_cast<int>(image.value().width);
+            record.height = static_cast<int>(image.value().height);
+        }
+        if (ref.role == "albedo_texture") {
+            record.seam = seam_ratio(image.value());
+        }
+        if (std::ranges::find(record.uses, id) == record.uses.end()) {
+            record.uses.emplace_back(id);
+        }
+    }
+    return {};
 }
 
 // Fills in a .glb model's summary, and checks it loads with nothing outside the file.
@@ -370,6 +446,9 @@ json::Value to_json(const Record& record) {
         }
         out["uses"] = std::move(uses);
     }
+    if (record.type == "material") {
+        out["seam"] = record.seam;
+    }
     if (record.checks.is_object()) {
         out["checks"] = record.checks;
     }
@@ -484,6 +563,9 @@ Result<Record> record_from_json(const json::Value& value) {
         checks != nullptr && checks->is_object()) {
         record.checks = *checks;
     }
+    if (const json::Value* seam = value.find("seam"); seam != nullptr && seam->is_number()) {
+        record.seam = seam->as_double();
+    }
     return record;
 }
 
@@ -525,6 +607,9 @@ std::string_view type_of(std::string_view extension) {
     if (lower == scene3d::kModelRecipeSuffix || lower == ".glb") {
         return "model";
     }
+    if (lower == scene3d::kStandardMaterialSuffix) {
+        return "material";
+    }
     return {};
 }
 
@@ -541,7 +626,7 @@ Result<void> describe_file(std::string_view data, std::string_view path, Record&
         return make_error(ErrorCode::InvalidArgument,
                           "\"" + std::string(path) +
                               "\" is not a file the library keeps: .png, .bmp, .wav, .ogg, .mp3, "
-                              ".model.json or .glb");
+                              ".model.json, .glb or .standard_material.json");
     }
     record.type = std::string(type);
     record.format = extension.substr(1);
@@ -549,6 +634,9 @@ Result<void> describe_file(std::string_view data, std::string_view path, Record&
     if (type == "model") {
         return extension == ".glb" ? describe_glb(data, path, record)
                                    : describe_recipe(data, record, read);
+    }
+    if (type == "material") {
+        return describe_material(data, record, read);
     }
     if (type == "image") {
         auto image = render::decode_image(data);
@@ -582,8 +670,8 @@ std::string_view ref_id(std::string_view model) {
     const std::string_view rest = model.substr(kAssetRef.size());
     const std::string_view id = rest.substr(0, std::min(rest.find('.'), rest.size()));
     const std::string_view format = rest.substr(id.size());
-    if (id.size() != kHashLength || !is_hex(id) ||
-        (format != ".glb" && format != scene3d::kModelRecipeSuffix)) {
+    if (id.size() != kHashLength || !is_hex(id) || type_of(format).empty() ||
+        type_of(format) == "sound") {
         return {};
     }
     return id;
@@ -608,14 +696,49 @@ std::vector<json::Value*> model_refs(json::Value& recipe) {
     return out;
 }
 
+std::vector<AssetRef> asset_refs(json::Value& doc, std::string_view path) {
+    std::vector<AssetRef> out;
+    if (!doc.is_object()) {
+        return out;
+    }
+    if (path.ends_with(scene3d::kStandardMaterialSuffix)) {
+        for (const std::string_view field : scene3d::kMaterialTextureFields) {
+            if (json::Value* texture = doc.find(field);
+                texture != nullptr && texture->is_string() && !texture->as_string().empty()) {
+                out.push_back({.value = texture, .role = std::string(field)});
+            }
+        }
+        return out;
+    }
+    if (!asset::file_of(path).ends_with(scene3d::kModelRecipeSuffix)) {
+        return out;
+    }
+    for (json::Value* model : model_refs(doc)) {
+        out.push_back({.value = model, .role = "model"});
+    }
+    json::Value* materials = doc.find("materials");
+    if (materials == nullptr || !materials->is_object()) {
+        return out;
+    }
+    for (auto& [name, material] : materials->as_object()) {
+        json::Value* file = material.is_object() ? material.find("extends") : &material;
+        if (file != nullptr && file->is_string()) {
+            out.push_back({.value = file, .role = "material"});
+        }
+    }
+    return out;
+}
+
 scene3d::ModelReader part_reader(AssetBytes get) {
     return [get = std::move(get)](std::string_view path) -> Result<std::string> {
         const std::string_view id = ref_id(path);
         if (id.empty()) {
             return make_error(ErrorCode::NotFound,
                               "\"" + std::string(path) +
-                                  "\" isn't a library model; a library recipe's model parts name "
-                                  "\"asset:<id>.glb\" or \"asset:<id>.model.json\"");
+                                  "\" isn't a library asset; a library recipe's model parts name "
+                                  "\"asset:<id>.glb\" or \"asset:<id>.model.json\", its "
+                                  "materials \"asset:<id>.standard_material.json\" and a "
+                                  "material's textures \"asset:<id>.png\"");
         }
         auto bytes = get(id);
         if (!bytes) {
