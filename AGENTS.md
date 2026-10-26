@@ -243,7 +243,14 @@ naming texture files are refused,
 whose paths are a project's); `asset.refine` with `parameters` makes a version with new parameter
 values and no generator (`refine_model` in `src/commands.cpp`). `asset.add` of a file the
 project's `library.json` says came from an asset, changed since, keeps it as a new version of
-that asset (`used_version`). A recipe made of other model files (its model parts) is kept with
+that asset (`used_version`). A model in another format (`.gltf`, `.obj`, `.fbx`, `.blend`), or
+one with `cleanup`, is imported (`import_model`): loaded through the session's assets, cleaned up
+with `model.cleanup`'s options (`command::read_cleanup` and `clean_up` in
+`slash/command/model_cleanup.hpp`) and kept as the `.glb` file `write_glb` makes, its record
+keeping the file's name, the SHA-256 of its bytes and the cleanup, as Godot's `.import` files;
+`library.json` keeps the hash, so `asset.check` reports an edited source, and adding it again
+makes a new version with the same cleanup. `review` reviews what was kept as `asset.review`
+does; `examples/imported-assets` imports a CAD crate and an edit of it. A recipe made of other model files (its model parts) is kept with
 each part as a library reference, `"asset:<id>.glb"` (`library_form` and `add_part` put the part
 files in first; `library::part_reader` reads references back, and `describe_file` and the team
 check recipes with it), its record's `uses` listing them; `copy_into_project` copies a recipe's

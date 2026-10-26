@@ -805,7 +805,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         of a unique texture per model: `asset.generate`'s `material` type makes the image tile,
         works out normal and roughness maps and writes a `.standard_material.json` file that
         recipes name or `extends`
-  - [ ] Imported assets: files from Blender and other tools, asset stores or a team's own
+  - [x] Imported assets: files from Blender and other tools, asset stores or a team's own
         artists go into the library like generated ones, with the same cleanup, text
         description, review, versions and a license the importer records; editing the source
         file makes a new version

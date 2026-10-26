@@ -452,6 +452,13 @@ json::Value to_json(const Record& record) {
     if (record.checks.is_object()) {
         out["checks"] = record.checks;
     }
+    if (!record.source.empty()) {
+        out["source"] = record.source;
+        out["source_sha256"] = record.source_sha256;
+    }
+    if (record.cleanup.is_object()) {
+        out["cleanup"] = record.cleanup;
+    }
     return out;
 }
 
@@ -565,6 +572,12 @@ Result<Record> record_from_json(const json::Value& value) {
     }
     if (const json::Value* seam = value.find("seam"); seam != nullptr && seam->is_number()) {
         record.seam = seam->as_double();
+    }
+    record.source = text_of(value, "source");
+    record.source_sha256 = text_of(value, "source_sha256");
+    if (const json::Value* cleanup = value.find("cleanup");
+        cleanup != nullptr && cleanup->is_object()) {
+        record.cleanup = *cleanup;
     }
     return record;
 }
