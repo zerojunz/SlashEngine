@@ -372,13 +372,24 @@ struct StandardMaterial3D {
     std::string emission_texture;
     bool normal_enabled = false;
     float normal_scale = 1.0F;
+    // With billboard_mode "particles", the albedo texture's frames, which each particle steps
+    // through as its anim_speed and anim_offset say, as Godot's particles_anim_*; with
+    // particles_anim_loop, frames past the last start again from the first.
+    int particles_anim_h_frames = 1;
+    int particles_anim_v_frames = 1;
     std::string normal_texture;
     Vec3 uv1_scale{1.0F, 1.0F, 1.0F};
     Vec3 uv1_offset;
     // "nearest", "linear", "nearest_with_mipmaps" or "linear_with_mipmaps"
     std::string texture_filter = "linear_with_mipmaps";
+    // Turns the mesh to face the camera, as Godot's billboard_mode: "disabled", "enabled",
+    // "fixed_y" (turning about y only) or "particles" (each particle faces it, rotated by its
+    // angle). billboard_keep_scale keeps the mesh's scale, which billboards otherwise drop.
+    std::string billboard_mode = "disabled";
     bool texture_repeat = true; // textures tile past 0..1; false stretches their edges
     bool disable_fog = false;   // the WorldEnvironment's fog leaves it alone
+    bool billboard_keep_scale = false;
+    bool particles_anim_loop = false;
 
     friend bool operator==(const StandardMaterial3D&, const StandardMaterial3D&) = default;
 };
@@ -387,7 +398,9 @@ SLASH_COMPONENT(StandardMaterial3D, transparency, alpha_scissor_threshold, blend
                 metallic_specular, metallic_texture, metallic_texture_channel, roughness,
                 roughness_texture, roughness_texture_channel, emission_enabled, emission,
                 emission_energy_multiplier, emission_texture, normal_enabled, normal_scale,
-                normal_texture, uv1_scale, uv1_offset, texture_filter, texture_repeat, disable_fog)
+                normal_texture, uv1_scale, uv1_offset, texture_filter, texture_repeat, disable_fog,
+                billboard_mode, billboard_keep_scale, particles_anim_h_frames,
+                particles_anim_v_frames, particles_anim_loop)
 
 // What the 3D world is seen through, as Godot's Camera3D: it looks down its entity's -z. The
 // world is seen through the current camera: the first with current set, else the first one,
@@ -2511,6 +2524,115 @@ SLASH_COMPONENT(CPUParticles2D, emitting, amount, lifetime, one_shot, preprocess
                 hue_variation_min, hue_variation_max, hue_variation_curve, anim_speed_min,
                 anim_speed_max, anim_speed_curve, anim_offset_min, anim_offset_max,
                 anim_offset_curve)
+
+// Emits particles from the entity's Transform3D, moves them and draws its mesh at each, as Godot's
+// CPUParticles3D. The mesh is the entity's primitive mesh component (a QuadMesh, say) or the
+// model file mesh names, made of its StandardMaterial3D or the model's materials; a material with
+// billboard_mode "particles" turns each to face the camera, rotated by its angle. Lengths are in
+// meters and angles in degrees, as Godot's properties. Each particle takes a random value between
+// a parameter's _min and _max when it is emitted, and the parameter's _curve multiplies it as it
+// ages, as CPUParticles2D's. The particles themselves are not saved.
+struct CPUParticles3D {
+    // Fields are grouped by type so the struct packs tightly; SLASH_COMPONENT lists them as
+    // Godot groups them.
+    std::vector<Vec3> emission_points;
+    std::vector<Vec3> emission_normals;
+    std::vector<Vec4> emission_colors;
+    std::vector<Vec2> angular_velocity_curve;
+    std::vector<Vec2> orbit_velocity_curve;
+    std::vector<Vec2> linear_accel_curve;
+    std::vector<Vec2> radial_accel_curve;
+    std::vector<Vec2> tangential_accel_curve;
+    std::vector<Vec2> damping_curve;
+    std::vector<Vec2> angle_curve;
+    std::vector<Vec2> scale_amount_curve;
+    std::vector<Vec2> scale_curve_x;
+    std::vector<Vec2> scale_curve_y;
+    std::vector<Vec2> scale_curve_z;
+    std::vector<Vec2> hue_variation_curve;
+    std::vector<Vec2> anim_speed_curve;
+    std::vector<Vec2> anim_offset_curve;
+    std::vector<GradientPoint> color_ramp;
+    std::vector<GradientPoint> color_initial_ramp;
+    std::string draw_order = "index"; // "index", "lifetime" or "view_depth"
+    // A .gltf, .glb, .obj, .fbx, .blend or .model.json file's meshes, drawn at each particle in
+    // place of a primitive mesh component; "" for none.
+    std::string mesh;
+    std::string cast_shadow = "on"; // as MeshInstance3D's
+    // "point", "sphere", "sphere_surface", "box", "points", "directed_points" or "ring"
+    std::string emission_shape = "point";
+    std::uint32_t layers = 1; // as MeshInstance3D's
+    int amount = 8;
+    int seed = 0;
+    float lifetime = 1.0F;
+    float preprocess = 0.0F;
+    float speed_scale = 1.0F;
+    float explosiveness = 0.0F;
+    float randomness = 0.0F;
+    float lifetime_randomness = 0.0F;
+    float emission_sphere_radius = 1.0F;
+    float emission_ring_height = 1.0F;
+    float emission_ring_radius = 1.0F;
+    float emission_ring_inner_radius = 0.0F;
+    float emission_ring_cone_angle = 90.0F;
+    float spread = 45.0F;
+    float flatness = 0.0F;
+    float initial_velocity_min = 0.0F;
+    float initial_velocity_max = 0.0F;
+    float angular_velocity_min = 0.0F;
+    float angular_velocity_max = 0.0F;
+    float orbit_velocity_min = 0.0F;
+    float orbit_velocity_max = 0.0F;
+    float linear_accel_min = 0.0F;
+    float linear_accel_max = 0.0F;
+    float radial_accel_min = 0.0F;
+    float radial_accel_max = 0.0F;
+    float tangential_accel_min = 0.0F;
+    float tangential_accel_max = 0.0F;
+    float damping_min = 0.0F;
+    float damping_max = 0.0F;
+    float angle_min = 0.0F;
+    float angle_max = 0.0F;
+    float scale_amount_min = 1.0F;
+    float scale_amount_max = 1.0F;
+    float hue_variation_min = 0.0F;
+    float hue_variation_max = 0.0F;
+    float anim_speed_min = 0.0F;
+    float anim_speed_max = 0.0F;
+    float anim_offset_min = 0.0F;
+    float anim_offset_max = 0.0F;
+    Vec3 emission_box_extents{1.0F, 1.0F, 1.0F};
+    Vec3 emission_ring_axis{0.0F, 0.0F, 1.0F};
+    Vec3 direction{1.0F, 0.0F, 0.0F};
+    Vec3 gravity{0.0F, -9.8F, 0.0F};
+    Vec4 color{1.0F, 1.0F, 1.0F, 1.0F};
+    bool emitting = true;
+    bool one_shot = false;
+    bool local_coords = false;
+    bool particle_flag_align_y = false;
+    bool particle_flag_rotate_y = false;
+    bool particle_flag_disable_z = false;
+    bool split_scale = false;
+
+    friend bool operator==(const CPUParticles3D&, const CPUParticles3D&) = default;
+};
+SLASH_COMPONENT(CPUParticles3D, emitting, amount, lifetime, one_shot, preprocess, speed_scale,
+                explosiveness, randomness, lifetime_randomness, seed, local_coords, draw_order,
+                mesh, layers, cast_shadow, emission_shape, emission_sphere_radius,
+                emission_box_extents, emission_points, emission_normals, emission_colors,
+                emission_ring_axis, emission_ring_height, emission_ring_radius,
+                emission_ring_inner_radius, emission_ring_cone_angle, particle_flag_align_y,
+                particle_flag_rotate_y, particle_flag_disable_z, direction, spread, flatness,
+                gravity, initial_velocity_min, initial_velocity_max, angular_velocity_min,
+                angular_velocity_max, angular_velocity_curve, orbit_velocity_min,
+                orbit_velocity_max, orbit_velocity_curve, linear_accel_min, linear_accel_max,
+                linear_accel_curve, radial_accel_min, radial_accel_max, radial_accel_curve,
+                tangential_accel_min, tangential_accel_max, tangential_accel_curve, damping_min,
+                damping_max, damping_curve, angle_min, angle_max, angle_curve, scale_amount_min,
+                scale_amount_max, scale_amount_curve, split_scale, scale_curve_x, scale_curve_y,
+                scale_curve_z, color, color_ramp, color_initial_ramp, hue_variation_min,
+                hue_variation_max, hue_variation_curve, anim_speed_min, anim_speed_max,
+                anim_speed_curve, anim_offset_min, anim_offset_max, anim_offset_curve)
 
 // Emits particles from the entity's Transform2D and moves them on the GPU, as Godot's
 // GPUParticles2D: process_material names a .process_material.json file (Godot's

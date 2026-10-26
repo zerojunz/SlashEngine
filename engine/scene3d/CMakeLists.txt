@@ -59,6 +59,7 @@ add_library(slash_scene3d
     src/model_checks.cpp
     src/model_tools.cpp
     src/obj.cpp
+    src/particles.cpp
     src/occlusion.cpp
     src/physical_bones.cpp
     src/primitive.cpp
