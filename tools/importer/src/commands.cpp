@@ -3,10 +3,13 @@
 #include "slash/command/session.hpp"
 #include "slash/importer/import.hpp"
 #include "slash/importer/unity_build.hpp"
+#include "slash/importer/unreal.hpp"
 #include "slash/runtime/gameplay.hpp"
 
+#include <filesystem>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 
 namespace slash::importer {
@@ -35,7 +38,30 @@ Reply project_import(command::Session& session, const json::Value& params,
     if (!folder) {
         return failure(folder.error(), "/source");
     }
-    if (unity::find_build(folder.value())) {
+    const std::filesystem::path chosen(folder.value());
+    std::error_code error;
+    const bool unreal = chosen.extension() == ".uproject" ||
+                        (!std::filesystem::exists(chosen / "project.godot", error) &&
+                         !std::filesystem::exists(chosen / "ProjectSettings", error) &&
+                         unreal::find_project(chosen).has_value());
+    if (unreal) {
+        if (!command_options.unpack_builds) {
+            Reply reply = Reply::failure(command::code::kPermissionDenied,
+                                         "a running game doesn't import Unreal projects, which "
+                                         "runs Unreal's editor for minutes; use slash-cli import");
+            reply.data["path"] = "/source";
+            return reply;
+        }
+        if (!session.allowed(Capability::Build)) {
+            Reply reply = Reply::failure(command::code::kPermissionDenied,
+                                         "importing an Unreal project runs Unreal's editor, which "
+                                         "needs the \"build\" capability, which this session "
+                                         "does not grant");
+            reply.data["path"] = "/source";
+            reply.data["capability"] = "build";
+            return reply;
+        }
+    } else if (unity::find_build(folder.value())) {
         if (!command_options.unpack_builds) {
             Reply reply = Reply::failure(command::code::kPermissionDenied,
                                          "a running game doesn't unpack Unity builds, which "
@@ -105,8 +131,9 @@ void register_import_commands(command::Registry& registry, ImportCommandOptions 
     params["additionalProperties"] = false;
     params["required"] = json::Array{"source"};
     params["properties"]["source"] =
-        property("string", "Folder holding a Godot 4 project (with project.godot) or a Unity "
-                           "project (with Assets/ and ProjectSettings/), a game exported "
+        property("string", "Folder holding a Godot 4 project (with project.godot), a Unity "
+                           "project (with Assets/ and ProjectSettings/) or an Unreal Engine 5 "
+                           "project (with a .uproject file), a game exported "
                            "with Godot 4 (its .pck file or executable), or a game built with "
                            "Unity (its folder, .apk or .ipa).");
     params["properties"]["unpack_to"] =
@@ -118,11 +145,11 @@ void register_import_commands(command::Registry& registry, ImportCommandOptions 
     registry.add({
         .name = "project.import",
         .description =
-            "Converts a Godot 4 or Unity project's scenes, prefabs, resources, input and "
+            "Converts a Godot 4, Unity or Unreal project's scenes, prefabs, resources, input and "
             "settings into this project, using its assets where they are; a game exported "
-            "with Godot 4 or built with Unity is unpacked first (a Unity build with AssetRipper, "
-            "which needs the build capability). Each script becomes a storyboard task to port "
-            "it to C++. Reports what didn't convert.",
+            "with Godot 4 or built with Unity is unpacked first. Unity builds (AssetRipper) "
+            "and Unreal projects (Unreal's editor) need the build capability. Each script "
+            "becomes a storyboard task to port it to C++. Reports what didn't convert.",
         .capabilities = {Capability::Read, Capability::Filesystem},
         .effect = command::Effect::Read,
         .params = std::move(params),

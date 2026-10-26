@@ -82,6 +82,7 @@ add_executable(slash_tests
     test_terrain.cpp
     test_import_godot.cpp
     test_import_unity.cpp
+    test_import_unreal.cpp
     test_gui.cpp
     test_icons.cpp
     test_ik.cpp
@@ -195,6 +196,13 @@ add_executable(fake-blender fake_blender.cpp)
 slash_target_warnings(fake-blender)
 add_dependencies(slash_tests fake-blender)
 target_compile_definitions(slash_tests PRIVATE SLASH_FAKE_BLENDER="$<TARGET_FILE:fake-blender>")
+
+# A stand-in for Unreal Editor's command-line program, so the Unreal import tests and the
+# import-unreal example run without it.
+add_executable(fake-unreal fake_unreal.cpp)
+slash_target_warnings(fake-unreal)
+add_dependencies(slash_tests fake-unreal)
+target_compile_definitions(slash_tests PRIVATE SLASH_FAKE_UNREAL="$<TARGET_FILE:fake-unreal>")
 
 # Gameplay libraries for test_gameplay.cpp, built as cmake/gameplay builds a game's code: with the
 # engine's headers, and its functions left for the program that loads them.

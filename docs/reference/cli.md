@@ -499,15 +499,16 @@ An existing `.gitignore` is never replaced, even with `--force`: `init` adds the
 
 ### import
 
-Converts a game made with Godot 4 or Unity into a SlashEngine project, with each script turned
-into a storyboard task to port it to C++. From Godot: its scenes, sprite frames, animations, tile
+Converts a game made with Godot 4, Unity or Unreal Engine 5 into a SlashEngine project, with
+each script turned into a storyboard task to port it to C++. From Godot: its scenes, sprite frames, animations, tile
 sets, themes, bus layouts, input map and settings, from its project folder or from the game as
 Godot exported it. From Unity: its scenes, prefabs, sprites,
 tile maps, Animator controllers and clips, cameras, 2D physics and joints, sounds, audio mixers,
-UI, input and settings. It runs
+UI, input and settings. From Unreal: its levels' meshes, lights, sky and fog, cameras, physics,
+volumes and sounds, both input systems and settings, read through its own Unreal Editor. It runs
 [`project.import`](commands.md#projectimport) and prints the same report;
-[godot-import.md](godot-import.md) and [unity-import.md](unity-import.md) say what converts to
-what.
+[godot-import.md](godot-import.md), [unity-import.md](unity-import.md) and
+[unreal-import.md](unreal-import.md) say what converts to what.
 
 ```bash
 slash-cli import <folder|file> [options]
@@ -517,6 +518,7 @@ slash-cli import <folder|file> [options]
 | --- | --- |
 | `--project <dir>` | The SlashEngine project to import into (default `.`); it needn't exist yet |
 | `--unpack-to <dir>` | For an exported game or a Unity build, also write the Godot or Unity project unpacked from it to this folder of the project, and use its assets there |
+| `--unreal-editor <path>` | For an Unreal project, the Unreal Editor to export it with: its `UnrealEditor-Cmd` or its engine folder (default `SLASH_UNREAL_EDITOR`, else one the Epic Games Launcher installed) |
 | `--dry-run` | Print the report and the files it would write; write nothing |
 
 `<folder>` holds the Godot project's `project.godot`, or the Unity project's `Assets/` and
@@ -558,6 +560,16 @@ in Unity; the report's `unpacked` names the platform, scripting backend and Unit
 lists what didn't come back, such as the code of an IL2CPP build's scripts. AssetRipper is GPL
 3.0, so it only ever runs as a program of its own: `SLASH_ASSETRIPPER` names it, else the first
 import installs it as the `assetripper` toolchain. A build with encrypted bundles is refused.
+
+`<folder|file>` can also be an Unreal Engine 5 project: its folder or its `.uproject` file. Its
+levels and assets are binary packages only Unreal reads, so the project's own Unreal Editor runs
+in the background with a Python script that exports them (meshes as glTF, sounds as WAV) into
+`<project>/.slash/import/unreal/`, which the import then converts; the report's `log` is the
+editor's log. No Unreal code is linked or shipped. See [unreal-import.md](unreal-import.md).
+
+```bash
+slash-cli import ~/Unreal/CrateRun --project crate-run --unreal-editor ~/UE_5.4
+```
 
 ```bash
 slash-cli import ~/Downloads/Hopper --project hopper --unpack-to unity
