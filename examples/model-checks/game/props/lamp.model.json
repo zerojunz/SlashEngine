@@ -1,0 +1,35 @@
+{
+  "format": 1,
+  "materials": {
+    "brass": {
+      "albedo_color": [0.8, 0.6, 0.3, 1],
+      "metallic": 1
+    }
+  },
+  "parts": [
+    {
+      "height": 1.5,
+      "material": "brass",
+      "name": "pole",
+      "position": [0, 0.75, 0],
+      "radius": 0.02,
+      "shape": "cylinder"
+    },
+    {
+      "cone": true,
+      "height": 0.2,
+      "material": "brass",
+      "name": "shade",
+      "position": [0, 1.55, 0],
+      "radius": 0.2,
+      "shape": "cylinder"
+    }
+  ],
+  "points": [
+    {
+      "name": "bulb",
+      "part": "shade",
+      "position": [0, -0.05, 0]
+    }
+  ]
+}

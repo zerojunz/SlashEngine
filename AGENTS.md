@@ -1088,7 +1088,13 @@ of it (`recipe_form`: parameters set, materials' and parts' fields changed, part
 Godot's inherited scenes override nodes); a model path picks a variant after `::`
 (`asset::file_of` and `subresource_of`; the asset reloads with its file), and an export preset's
 `model_quality` ships each recipe as its tier makes it (`with_quality` in
-`tools/exporter/src/export.cpp`). `examples/model-variants` burns a crate and ships it for phones. A recipe's `points` become nodes with no
+`tools/exporter/src/export.cpp`). `examples/model-variants` burns a crate and ships it for phones.
+A recipe's `checks` (`scene3d::model_checks_schema`, `check_model_against` in
+`src/model_checks.cpp`: size, pivot, triangles and the materials, nodes, bones and animations
+other files name) run wherever it is validated, forms' over the recipe's; the library keeps a
+model's checks from `asset.add` in its record and the project's `library.json`, every version
+passes them, and `asset.check` checks the project's copy again, which `test.run` fails on.
+`examples/model-checks` breaks a stool and a lamp. A recipe's `points` become nodes with no
 mesh after the parts' nodes, under the part they name. `scene3d::summarize` (`model.cpp`)
 describes any model in a few numbers and names: its size, `pivot` (the origin's place in its
 bounds), triangles, each part's box and materials and its attachment points (nodes that place no

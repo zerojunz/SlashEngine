@@ -398,6 +398,9 @@ json::Value make_schema(bool loose) {
     form["properties"]["parts"]["description"] =
         "Fields over the parts of that name, top-level or not, or null to leave them out.";
     form["properties"]["parts"]["additionalProperties"] = std::move(changed_part);
+    form["properties"]["checks"] = model_checks_schema();
+    form["properties"]["checks"]["description"] =
+        "Checks over the recipe's, field by field, for what the form changes.";
     schema["properties"]["parameters"]["additionalProperties"] = std::move(parameter);
     schema["properties"]["materials"]["type"] = "object";
     schema["properties"]["materials"]["description"] =
@@ -429,6 +432,7 @@ json::Value make_schema(bool loose) {
     schema["properties"]["points"]["items"] = std::move(point);
     schema["properties"]["points"]["description"] =
         "Named places on the model where other things attach: a seat, a muzzle, a door's handle.";
+    schema["properties"]["checks"] = model_checks_schema();
     form["description"] = "The recipe's parameters, materials and parts as this form changes them.";
     schema["properties"][std::string(kVariants)]["type"] = "object";
     schema["properties"][std::string(kVariants)]["description"] =
@@ -1094,6 +1098,7 @@ struct Read {
     std::vector<Root> roots;
     std::vector<Point> points;
     std::map<std::string, world::StandardMaterial3D, std::less<>> materials;
+    json::Value checks; // null for none
 };
 
 // A top-level part that is another model file: a root for it and each copy its array makes.
@@ -1149,6 +1154,11 @@ Read read_recipe(const json::Value& doc, std::vector<json::ValidationError>& err
     // Forms are checked as the recipes they make (validate_model_recipe).
     out.doc.as_object().erase(std::string(kVariants));
     out.doc.as_object().erase(std::string(kQuality));
+    // Checks are read as written, once the model is built.
+    if (const json::Value* checks = out.doc.find("checks"); checks != nullptr) {
+        out.checks = *checks;
+        out.doc.as_object().erase("checks");
+    }
     Evaluator(out.doc, errors).run();
     static const json::Value strict = make_schema(false);
     if (auto checked = json::validate(out.doc, strict); !checked.empty()) {
@@ -1563,6 +1573,11 @@ Result<json::Value> recipe_form(const json::Value& doc, std::string_view group,
             return failed(at + "/parts", "it leaves the recipe no parts");
         }
     }
+    if (const json::Value* checks = form->find("checks"); checks != nullptr) {
+        for (const auto& [check, value] : checks->as_object()) {
+            out["checks"][check] = value;
+        }
+    }
     return out;
 }
 
@@ -1606,7 +1621,14 @@ std::vector<json::ValidationError> validate_model_recipe(const json::Value& doc,
     if (!errors.empty()) {
         return errors;
     }
-    (void)build(read, &errors, load, &errors);
+    const Model model = build(read, &errors, load, &errors);
+    if (!errors.empty()) {
+        return errors;
+    }
+    for (json::ValidationError& error : check_model_against(model, read.checks)) {
+        error.path = "/checks" + error.path;
+        errors.push_back(std::move(error));
+    }
     if (errors.empty()) {
         check_forms(doc, load, errors);
     }
