@@ -261,6 +261,16 @@ struct ModelSummary {
 };
 [[nodiscard]] ModelSummary summarize(const Model& model);
 
+// The JSON Schema of a model's checks, what other files count on it being: a size range in
+// meters, a pivot, a triangle budget, and materials, nodes, bones and animations it must have. A
+// model recipe's "checks" holds them.
+[[nodiscard]] json::Value model_checks_schema();
+
+// How a model fails checks that model_checks_schema accepts, each at its JSON Pointer into
+// checks, with the closest name the model has for a missing one. None when it passes.
+[[nodiscard]] std::vector<json::ValidationError> check_model_against(const Model& model,
+                                                                     const json::Value& checks);
+
 // What a model holds in memory, for asset.list and perf.stats.
 [[nodiscard]] std::size_t model_bytes(const Model& model);
 

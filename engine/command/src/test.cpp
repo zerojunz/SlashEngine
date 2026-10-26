@@ -401,9 +401,16 @@ Reply test_run(Session& session, const json::Value& params) {
     if (paths == nullptr && wanted.empty() && session.commands().find("asset.check") != nullptr) {
         Reply checked = session.call("asset.check", json::Object{});
         if (checked.ok) {
-            if (json::Value* problems = checked.value.find("problems");
-                problems != nullptr && problems->size() > 0) {
-                assets = std::move(*problems);
+            // A model that fails the checks it was kept with fails; the rest is advice.
+            if (json::Value* problems = checked.value.find("problems"); problems != nullptr) {
+                for (json::Value& problem : problems->as_array()) {
+                    if (const json::Value* check = problem.find("check"); check != nullptr) {
+                        failed.push_back(file_failure("library.json", check->as_string(),
+                                                      problem.find("message")->as_string()));
+                    } else {
+                        assets.push_back(std::move(problem));
+                    }
+                }
             }
         } else if (checked.code != code::kPermissionDenied) {
             failed.push_back(file_failure("library.json", "", checked.message));

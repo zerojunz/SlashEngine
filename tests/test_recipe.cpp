@@ -10,6 +10,7 @@
 #include <map>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -442,4 +443,85 @@ TEST_CASE("a recipe's variants and quality tiers change its parameters, material
     CHECK(first_error(R"({"format": 1, "parts": [{"shape": "box"}],
         "variants": {"odd": {"colour": 1}}})")
               .starts_with("/variants/odd"));
+}
+
+TEST_CASE("a recipe's checks hold its size, pivot, budget and names, and its forms' over them") {
+    const auto with_checks = [](std::string_view checks) {
+        std::string text(kTable);
+        text.insert(text.rfind('}'), ", \"checks\": " + std::string(checks));
+        return text;
+    };
+    CHECK(errors_of(with_checks(R"({"size": {"min": [1, 0.7, 0.7], "max": [1.2, 0.8, 0.8]},
+        "pivot": [0.5, 0, 0.5], "max_triangles": 100000, "materials": ["wood", "steel"],
+        "nodes": ["top", "leg", "leg2"]})"))
+              .empty());
+
+    const std::size_t made = triangles(build(kTable));
+    const auto errors = errors_of(with_checks(R"({"size": {"max": [1, 1, 1]},
+        "pivot": [0.5, 0.5, 0.5], "max_triangles": 10, "materials": ["wod"],
+        "nodes": ["drawer"], "bones": ["top"], "animations": ["fold"]})"));
+    REQUIRE(errors.size() == 7);
+    CHECK(errors[0].path == "/checks/size/max/0");
+    CHECK(errors[0].message == "the model is 1.2 m along x, more than 1");
+    CHECK(errors[1].path == "/checks/pivot/1");
+    CHECK(errors[1].message == "the model's origin is 0 of the way along its box in y, not 0.5");
+    CHECK(errors[2].path == "/checks/max_triangles");
+    CHECK(errors[2].message ==
+          "the model has " + std::to_string(made) + " triangles, more than 10");
+    CHECK(errors[3].path == "/checks/materials/0");
+    CHECK(errors[3].message == "the model has no material \"wod\" (did you mean \"wood\"?)");
+    CHECK(errors[4].message == "the model has no node \"drawer\"");
+    CHECK(errors[5].path == "/checks/bones/0");
+    CHECK(errors[5].message == "\"top\" is a node of the model but no skin's bone");
+    CHECK(errors[6].message == "the model has no animation \"fold\"; it has none");
+    CHECK(first_error(with_checks(R"({"size": {"max": [1, 1]}})")).starts_with("/checks/size/max"));
+
+    // A form's checks go over the recipe's, field by field: one without a lid lets it go.
+    const std::string crate = R"({"format": 1,
+        "parts": [{"name": "box", "shape": "box"},
+                  {"name": "lid", "shape": "box", "size": [1, 0.1, 1], "position": [0, 0.55, 0]}],
+        "checks": {"nodes": ["box", "lid"], "size": {"max": [1, 1.1, 1]}},
+        "variants": {"open": {"parts": {"lid": null}, "checks": {"nodes": ["box"]}},
+                     "tall": {"parts": {"lid": {"position": [0, 1, 0]}}},
+                     "bare": {"parts": {"lid": null}}}})";
+    const auto forms = errors_of(crate);
+    REQUIRE(forms.size() == 2);
+    CHECK(forms[0].path == "/variants/bare");
+    CHECK(forms[0].message == "/checks/nodes/1: the model has no node \"lid\"");
+    CHECK(forms[1].path == "/variants/tall");
+    CHECK(forms[1].message == "/checks/size/max/1: the model is 1.55 m along y, more than 1.1");
+}
+
+TEST_CASE("checks name a model's bones and animations, telling a bone from a plain node") {
+    scene3d::Model model;
+    // Fields set one by one: GCC warns of the ones a designated initializer leaves out.
+    for (const auto& [name, parent] :
+         {std::pair<const char*, int>{"Armature", -1}, {"Hips", 0}, {"Spine", 1}, {"Hat", 2}}) {
+        scene3d::ModelNode node;
+        node.name = name;
+        node.parent = parent;
+        model.nodes.push_back(node);
+    }
+    scene3d::ModelSkin skin;
+    skin.name = "body";
+    skin.joints = {1, 2};
+    skin.inverse_binds = {{}, {}};
+    model.skins.push_back(skin);
+    scene3d::ModelAnimation walk;
+    walk.name = "walk-loop";
+    walk.length = 1.0;
+    walk.loop = true;
+    model.animations.push_back(walk);
+    const auto checks = parse(R"({"bones": ["Hips", "Spine", "Hat", "Neck"],
+        "animations": ["walk-loop", "walkloop"], "nodes": ["Hat"]})");
+    REQUIRE(json::validate(checks, scene3d::model_checks_schema()).empty());
+    const auto errors = scene3d::check_model_against(model, checks);
+    REQUIRE(errors.size() == 3);
+    CHECK(errors[0].path == "/bones/2");
+    CHECK(errors[0].message == "\"Hat\" is a node of the model but no skin's bone");
+    CHECK(errors[1].path == "/bones/3");
+    CHECK(errors[1].message == "the model has no bone \"Neck\"");
+    CHECK(errors[2].path == "/animations/1");
+    CHECK(errors[2].message ==
+          "the model has no animation \"walkloop\" (did you mean \"walk-loop\"?)");
 }
