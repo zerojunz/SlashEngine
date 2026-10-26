@@ -772,9 +772,13 @@ TEST_CASE("GPUs draw depth of field as the software device does") {
         const Image image = draw_depths(*gpu, posts.at(i));
         // Bilinear filtering on GPUs weighs texels a little differently, which moves a sample in
         // or out of a pixel's blur here and there. Jitter's hash wraps from one end of its range to
-        // the other where a GPU rounds its last bit otherwise, so a few of its pixels differ more.
+        // the other where a GPU rounds its last bit otherwise, so a few of its pixels differ more,
+        // as do a few of the physical blur's: its near size, d / (near - d), grows without bound
+        // toward the camera, so a depth's last bit (Direct3D 12's WARP rounds it otherwise) moves
+        // a big blur's edge by a pixel.
         CHECK(differing(image, expected, 3) <= image.pixels.size() / 100);
-        if (!posts.at(i).depth_of_field.use_jitter) {
+        const bool physical_blur = posts.at(i).dof_near_transition < 0.0F;
+        if (!posts.at(i).depth_of_field.use_jitter && !physical_blur) {
             CHECK(difference(image, expected) <= 40);
         }
     }
