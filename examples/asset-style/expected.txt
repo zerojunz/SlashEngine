@@ -1,0 +1,24 @@
+asset.add {"description":"A cafe stool","path":"props/stool.model.json"}
+{"id":"a5277d75edb0","size":[0.36,0.45,0.36],"triangles":96,"type":"model"}
+asset.add {"description":"A cup","path":"props/cup.model.json"}
+{"id":"888e2c4ec884","size":[0.08,0.09,0.08],"triangles":48,"type":"model"}
+asset.add {"description":"A chalkboard sign","path":"art/sign.png"}
+{"height":12,"id":"28727fa7a409","type":"image","width":24}
+asset.feedback {"id":"a5277d75edb0","reason":"eight-sided parts, flat oak and steel","verdict":"accepted"}
+{"accepted":1,"id":"a5277d75edb0","size":[0.36,0.45,0.36],"triangles":96}
+asset.feedback {"id":"888e2c4ec884","reason":"reads at a glance on the counter","verdict":"accepted"}
+{"accepted":1,"id":"888e2c4ec884","size":[0.08,0.09,0.08],"triangles":48}
+asset.feedback {"id":"28727fa7a409","reason":"two flat colors, a thick frame","verdict":"accepted"}
+{"accepted":1,"id":"28727fa7a409"}
+asset.style {}
+{"accepted":3,"edits":[{"id":"palette/main","set":{"colors":{"dark_green":"#2a3a30","light_orange":"#e8d8b0"},"links":["art"],"name":"Main palette","summary":"The colors of the accepted images.","tolerance":8},"version":null},{"id":"budget/assets","set":{"name":"Asset budgets","summary":"What the accepted assets need at most.","texture_size":32,"triangles":96},"version":null},{"id":"reference/sign","set":{"links":["art/sign.png"],"name":"A chalkboard sign","summary":"two flat colors, a thick frame"},"version":null},{"id":"reference/cup","set":{"links":["props/cup.model.json"],"name":"A cup","summary":"reads at a glance on the counter"},"version":null},{"id":"reference/stool","set":{"links":["props/stool.model.json"],"name":"A cafe stool","summary":"eight-sided parts, flat oak and steel"},"version":null}]}
+storyboard.edit {"edits":[{"id":"palette/main","set":{"colors":{"dark_green":"#2a3a30","light_orange":"#e8d8b0"},"links":["art"],"name":"Main palette","summary":"The colors of the accepted images.","tolerance":8},"version":null},{"id":"budget/assets","set":{"name":"Asset budgets","summary":"What the accepted assets need at most.","texture_size":32,"triangles":96},"version":null},{"id":"reference/sign","set":{"links":["art/sign.png"],"name":"A chalkboard sign","summary":"two flat colors, a thick frame"},"version":null},{"id":"reference/cup","set":{"links":["props/cup.model.json"],"name":"A cup","summary":"reads at a glance on the counter"},"version":null},{"id":"reference/stool","set":{"links":["props/stool.model.json"],"name":"A cafe stool","summary":"eight-sided parts, flat oak and steel"},"version":null}],"why":"the style of the accepted stool, cup and sign"}
+{"changes":{"budget/assets":"e4593870","palette/main":"5070f431","reference/cup":"e1dcd51b","reference/sign":"9f5eaf77","reference/stool":"6e92dde1"},"seq":1}
+asset.add {"description":"A brass lamp","path":"props/lamp.model.json"}
+{"id":"06aa8bc9e674","size":[0.4,0.4,0.4],"triangles":2208,"type":"model"}
+storyboard.check {}
+{"errors":[{"file":"props/lamp.model.json","message":"has 2208 triangles; budget/assets allows 96","path":""}],"valid":false}
+asset.generate {"generator":"test","height":8,"path":"art/menu.png","prompt":"a coffee menu board","width":16}
+{"height":8,"id":"c6a5f13ad765","path":"art/menu.png","problems":["has 128 pixels in 15 colors not in palette/main: #0f2d12 at (0, 0), nearest \"dark_green\" #2a3a30; #143c19 at (2, 1), nearest \"dark_green\" #2a3a30; #f58230 at (3, 2), nearest \"light_orange\" #e8d8b0; and 12 more"],"width":16}
+asset.info {"id":"c6a5f13ad765"}
+{"bytes":167,"description":"a coffee menu board","feedback":[{"reason":"has 128 pixels in 15 colors not in palette/main: #0f2d12 at (0, 0), nearest \"dark_green\" #2a3a30; #143c19 at (2, 1), nearest \"dark_green\" #2a3a30; #f58230 at (3, 2), nearest \"light_orange\" #e8d8b0; and 12 more","source":"storyboard.check","verdict":"rejected"}],"format":"png","generator":"test","height":8,"id":"c6a5f13ad765","license":"CC0-1.0","model":"test","request":{"context":"Style: A warm low-poly cafe in flat colors.\nUse only these colors: dark_green #2a3a30, light_orange #e8d8b0.\nFollow: two flat colors, a thick frame.","height":8,"prompt":"a coffee menu board","type":"image","width":16},"seed":0,"type":"image","width":16}

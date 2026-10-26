@@ -145,7 +145,7 @@ rendering on top.
   - [x] `storyboard.check`: references, glossary names and `StoryRef` IDs, checked by
         `scene validate`, `project validate` and CI
   - [x] Storyboard checks in the headless test command
-  - [x] Palette and budget checks on textures; a budget's triangle count waits on meshes in
+  - [x] Palette and budget checks on textures, and a budget's triangle count on models since
         milestone 7
   - [x] A journal of who changed what and why, and open work that says which agent is on it
         and what it touches, so agents can see what others are doing
@@ -785,7 +785,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         models combine
   - [ ] Auto-rigging through a generator adapter, retargeted to one standard humanoid skeleton
         so every library animation works on every character
-  - [ ] The storyboard's style section (palette, reference images, triangle and texel
+  - [x] The storyboard's style section (palette, reference images, triangle and texel
         budgets), refined from accepted assets and sent with every request so a game's assets
         match
   - [ ] Tileable PBR materials from the 2D generator, shared through the material graph instead
@@ -928,7 +928,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | Planned |
 | Video playback | AV1 through dav1d | 8 | Planned |
 | Accessibility | AccessKit | 8 | Planned |
-| Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | In progress: files, commands and checks, palette and texture budget checks included, are done, and so are model review and the project map; triangle budgets with meshes in 7 |
+| Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | Done: files, commands and checks, palette, texture and triangle budget checks included, model review, the project map, and the style refined from accepted assets |
 | Analytics, ads and in-app purchases | One API for analytics, ads and purchases; StoreKit, Play Billing and a developer-chosen analytics endpoint in the repo, ad networks as outside adapters | 8 | In progress: the API, its backend interfaces, consent and the test backend are done |
 | Closed vendor SDKs | SDK packages: an `sdk.json` per SDK that exports fetch, check and link on all six platforms, with JNI and Objective-C bridges and engine interfaces for the glue | 6 | In progress: packages, exports, `sdk.add`, `sdk.check`, Android libraries and Maven, services and glue code |
 | One-command export | `slash-cli export` to macOS, Windows, Linux, iOS, Android and web | 4 | In progress: every platform exports (4a, 4b); building them all from one Mac is next |

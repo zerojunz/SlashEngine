@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "materials": {
+    "oak": {
+      "albedo_color": [0.55, 0.38, 0.22, 1]
+    },
+    "steel": {
+      "metallic": 1,
+      "roughness": 0.3
+    }
+  },
+  "parts": [
+    {
+      "height": 0.04,
+      "material": "oak",
+      "name": "seat",
+      "position": [0, 0.43, 0],
+      "radius": 0.18,
+      "shape": "cylinder"
+    },
+    {
+      "height": 0.39,
+      "material": "steel",
+      "name": "post",
+      "position": [0, 0.215, 0],
+      "radius": 0.02,
+      "shape": "cylinder"
+    },
+    {
+      "height": 0.02,
+      "material": "steel",
+      "name": "foot",
+      "position": [0, 0.01, 0],
+      "radius": 0.14,
+      "shape": "cylinder"
+    }
+  ]
+}

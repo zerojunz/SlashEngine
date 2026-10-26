@@ -182,7 +182,8 @@ refuses.
 components name, those linked to its files, global rules and live work. `storyboard.check` finds
 broken references, glossary words to avoid, unknown `StoryRef` IDs in every scene and prefab,
 and textures larger than a `budget` or with colors a `palette` covering them lacks
-(`storyboard::check_textures`); `$cli scene validate` checks a scene's `StoryRef` IDs and `$cli project validate` runs the whole
+(`storyboard::check_textures`), and models with more triangles or larger images inside them
+than a budget allows (`storyboard::check_models`, `src/style.cpp`); `$cli scene validate` checks a scene's `StoryRef` IDs and `$cli project validate` runs the whole
 check. `storyboard.review` (`engine/ai/src/review.cpp`) asks a model from `providers.json`
 whether new text, scene text, images or entries contradict the entries they touch; its findings
 are advisory, and one that quotes nothing in the material or names no real entry is dropped.
@@ -223,12 +224,15 @@ as models are `ai::Provider`s: `openai-image`, `gemini-image`, `automatic1111`, 
 to the size asked for by `fit_image`), and the built-in `test` generator, which draws
 placeholders with integer math only, so they are the same bytes everywhere. `asset.search`, `asset.generate` (an exact repeat
 calls no generator, close matches come back as candidates), `asset.refine`, `asset.info`,
-`asset.use`, `asset.add`, `asset.feedback`, `asset.check` and `asset.sync` are in `slash_library_commands`, registered by
+`asset.use`, `asset.add`, `asset.feedback`, `asset.check`, `asset.style` and `asset.sync` are in `slash_library_commands`, registered by
 slash-cli and slash-mcp; using an asset copies it into the project, records its source and
-license in the project's `library.json` and checks an image against the storyboard's palettes and
-budgets. Feedback (accepted or rejected, and why) ranks search results, keeps rejected assets out
-of candidates and, with the storyboard's tone and palette, goes into later prompts
-(`prompt_context` in `src/commands.cpp`). `asset.check`, which `test.run` runs on a whole
+license in the project's `library.json` and checks an image or model against the storyboard's
+palettes and budgets. Feedback (accepted or rejected, and why) ranks search results, keeps
+rejected assets out of candidates and, with the storyboard's tone, palette and references, goes
+into later prompts (`prompt_context` in `src/commands.cpp`). `asset.style` refines the style
+from what was accepted: `storyboard::style_edits` drafts palette colors, budgets and references
+from the project's accepted assets as edits for `storyboard.edit`, and prompts carry the
+references of other assets of the type asked for; `examples/asset-style` drafts a cafe's style. `asset.check`, which `test.run` runs on a whole
 project, records feedback by itself: it opens each scene that draws a library file and checks
 what `canvas::summarize` sees with `SummaryOptions::contrast` (the edge contrast of each thing
 in the frame `canvas::capture` draws, `Shown::contrast`) and how small each file is drawn, from

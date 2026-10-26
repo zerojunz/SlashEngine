@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "materials": {
+    "glaze": {
+      "albedo_color": [0.94, 0.88, 0.75, 1]
+    }
+  },
+  "parts": [
+    {
+      "height": 0.09,
+      "material": "glaze",
+      "name": "cup",
+      "position": [0, 0.045, 0],
+      "radius": 0.04,
+      "shape": "cylinder",
+      "sides": 12
+    }
+  ]
+}

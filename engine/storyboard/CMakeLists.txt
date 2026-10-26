@@ -1,5 +1,6 @@
 add_library(slash_storyboard
-    src/storyboard.cpp)
+    src/storyboard.cpp
+    src/style.cpp)
 add_library(slash::storyboard ALIAS slash_storyboard)
 
 target_include_directories(slash_storyboard PUBLIC include)
