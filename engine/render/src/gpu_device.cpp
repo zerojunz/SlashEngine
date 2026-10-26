@@ -2808,8 +2808,7 @@ private:
                            std::string(shaders::kSsaoHlsl);
                     code.hlsl = hlsl;
                 }
-                auto fragment =
-                    make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, kSsaoSlots, 1);
+                auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, kSsaoSlots, 1);
                 if (!fragment) {
                     SDL_ReleaseGPUShader(device_, vertex.value());
                     for (SDL_GPUShader*& made : ssao_shaders_) {
