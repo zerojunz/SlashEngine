@@ -211,6 +211,11 @@ void generate_lods(ModelSurface& surface, std::span<const world::Affine3D> bones
 // and green for roughness, as glTF's do. Skins and animations are left out: a skinned mesh is
 // placed by its node.
 [[nodiscard]] Result<std::string> write_gltf(const Model& model, std::string_view path);
+// The same model as one binary glTF (.glb) file that holds everything, as Godot's GLTFDocument
+// writes one: its buffer and every image, those beside the model read with read and put in as
+// they are when PNG or JPEG files, else as PNGs.
+[[nodiscard]] Result<std::string> write_glb(const Model& model, std::string_view path,
+                                            const ModelReader& read);
 
 // Every problem in a model file: why load_model refuses it, at the file's top level ("") since
 // model files are not always JSON, or else each image file beside it that can't be read or

@@ -17,6 +17,7 @@
 #include "slash/canvas/sprite_frames.hpp"
 #include "slash/canvas/tilemap.hpp"
 #include "slash/command/lightmap.hpp"
+#include "slash/command/model_cleanup.hpp"
 #include "slash/command/navigation.hpp"
 #include "slash/command/perf.hpp"
 #include "slash/command/place.hpp"
@@ -7753,6 +7754,7 @@ void register_builtin_commands(Registry& registry) {
     register_place_commands(registry);
     register_terrain_commands(registry);
     register_lightmap_commands(registry);
+    register_model_cleanup_commands(registry);
     register_services_commands(registry);
 }
 
