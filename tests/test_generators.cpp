@@ -467,6 +467,67 @@ TEST_CASE("elevenlabs-music and stability-audio make music, asked its tempo and 
     CHECK_FALSE(library::refines(stable.generator->capabilities(), "music"));
 }
 
+TEST_CASE("stability-3d makes a model from the concept image, sent as a form") {
+    auto png = library::test_generator()->generate(request("image", "red ball", 16));
+    REQUIRE(png.ok());
+    library::GenerateRequest asked = request("model", "A red ball");
+    asked.image_data = png.value().data;
+    asked.seed = 3;
+    const std::string glb = std::string("glTF\x02\x00\x00\x00", 8) + "...";
+
+    // Stable Fast 3D: the image as a file, the options as fields, no seed, a .glb back.
+    auto fast = std::make_shared<ScriptedTransport>(
+        std::vector<ScriptedTransport::Reply>{{200, glb}, {200, "{}"}});
+    const library::OpenedGenerator sculptor =
+        open(R"({"type": "stability-3d", "api_key_env": "TEST_KEY",
+                 "options": {"texture_resolution": 512, "remesh": "quad"}})",
+             fast, "model");
+    CHECK(sculptor.model == "stable-fast-3d");
+    CHECK(sculptor.generator->capabilities().models);
+    CHECK_FALSE(sculptor.generator->capabilities().images);
+    auto made = sculptor.generator->generate(asked);
+    REQUIRE_MESSAGE(made.ok(), made.error().message);
+    CHECK(made.value().format == "glb");
+    CHECK(made.value().data == glb);
+    CHECK_FALSE(made.value().seed.has_value());
+    const slash::ai::HttpRequest& sent = fast->requests[0];
+    CHECK(sent.url == "https://api.stability.ai/v2beta/3d/stable-fast-3d");
+    CHECK(sent.content_type.starts_with("multipart/form-data; boundary=slash-"));
+    CHECK(fast->header("Authorization") == "Bearer key");
+    CHECK(sent.body.find("name=\"image\"; filename=\"concept.png\"\r\nContent-Type: "
+                         "image/png\r\n\r\n" +
+                         png.value().data) != std::string::npos);
+    CHECK(sent.body.find("name=\"texture_resolution\"\r\n\r\n512\r\n") != std::string::npos);
+    CHECK(sent.body.find("name=\"remesh\"\r\n\r\nquad\r\n") != std::string::npos);
+    CHECK(sent.body.find("name=\"seed\"") == std::string::npos);
+    CHECK(sent.body.find("A red ball") == std::string::npos);
+
+    // A reply that isn't a .glb file is an error, and so is a request with no concept.
+    auto wrong = sculptor.generator->generate(asked);
+    REQUIRE_FALSE(wrong.ok());
+    CHECK(wrong.error().message.find("returned something other than a .glb model") !=
+          std::string::npos);
+    asked.image_data.clear();
+    auto none = sculptor.generator->generate(asked);
+    REQUIRE_FALSE(none.ok());
+    CHECK(none.error().message.find("makes a model from a concept image") != std::string::npos);
+
+    // Stable Point Aware 3D takes the seed.
+    auto aware =
+        std::make_shared<ScriptedTransport>(std::vector<ScriptedTransport::Reply>{{200, glb}});
+    const library::OpenedGenerator pointed =
+        open(R"({"type": "stability-3d", "model": "stable-point-aware-3d",
+                 "api_key_env": "TEST_KEY"})",
+             aware, "model");
+    asked.image_data = png.value().data;
+    auto seeded = pointed.generator->generate(asked);
+    REQUIRE_MESSAGE(seeded.ok(), seeded.error().message);
+    CHECK(seeded.value().seed == 3);
+    CHECK(aware->requests[0].url == "https://api.stability.ai/v2beta/3d/stable-point-aware-3d");
+    CHECK(aware->requests[0].body.find("name=\"seed\"\r\n\r\n3\r\n") != std::string::npos);
+    CHECK_FALSE(library::refines(pointed.generator->capabilities(), "model"));
+}
+
 TEST_CASE("generators retry rate limits and report errors with the service's message") {
     const std::string made = png(4, 4, {1, 2, 3});
     auto transport = std::make_shared<ScriptedTransport>(std::vector<ScriptedTransport::Reply>{

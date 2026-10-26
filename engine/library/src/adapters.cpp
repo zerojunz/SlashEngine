@@ -50,7 +50,7 @@ std::string_view default_url(std::string_view type) noexcept {
     if (type == "elevenlabs-sound" || type == "elevenlabs-music") {
         return "https://api.elevenlabs.io";
     }
-    if (type == "stability-audio") {
+    if (type == "stability-audio" || type == "stability-3d") {
         return "https://api.stability.ai";
     }
     return "http://127.0.0.1:7860"; // automatic1111
@@ -922,6 +922,72 @@ protected:
     }
 };
 
+// Stability AI's image to 3D: Stable Fast 3D (the default) or Stable Point Aware 3D, which take
+// the concept image as a form and answer with a .glb file. The prompt isn't sent: the image is
+// the request.
+class StabilityModel final : public HttpGenerator {
+public:
+    explicit StabilityModel(Service service)
+        : HttpGenerator(std::move(service), {.images = false,
+                                             .sounds = false,
+                                             .refines_images = false,
+                                             .refines_sounds = false,
+                                             .music = false,
+                                             .refines_music = false,
+                                             .models = true}) {}
+
+protected:
+    [[nodiscard]] Result<ai::HttpRequest> build(const GenerateRequest& request) const override {
+        if (request.image_data.empty()) {
+            return make_error(ErrorCode::InvalidArgument,
+                              who() + " makes a model from a concept image, and none was given");
+        }
+        const std::string_view data = request.image_data;
+        std::string_view format;
+        if (data.starts_with("\x89PNG")) {
+            format = "png";
+        } else if (data.starts_with("\xFF\xD8")) {
+            format = "jpeg";
+        } else if (data.size() >= 12 && data.starts_with("RIFF") && data.substr(8, 4) == "WEBP") {
+            format = "webp";
+        } else {
+            return make_error(ErrorCode::InvalidArgument,
+                              who() + " takes a PNG, JPEG or WebP concept image");
+        }
+        Multipart form(data);
+        form.file("image", "concept." + std::string(format), "image/" + std::string(format), data);
+        // Stable Point Aware 3D takes a seed; Stable Fast 3D has none.
+        if (request.seed && service().model == "stable-point-aware-3d") {
+            form.field("seed", std::to_string(*request.seed));
+        }
+        if (service().options.is_object()) {
+            for (const auto& [name, value] : service().options.as_object()) {
+                form.field(name, value.is_string() ? value.as_string()
+                                                   : json::write(value, json::Style::Compact));
+            }
+        }
+        ai::HttpRequest http;
+        http.url = url("/v2beta/3d/" + service().model);
+        http.content_type = form.content_type();
+        bearer(http);
+        http.body = form.finish();
+        return http;
+    }
+
+    [[nodiscard]] Result<Generated> read(const GenerateRequest& request,
+                                         const ai::HttpResponse& reply) const override {
+        if (!reply.body.starts_with("glTF")) {
+            return make_error(ErrorCode::PlatformFailure,
+                              who() + " returned something other than a .glb model");
+        }
+        return Generated{.data = reply.body,
+                         .format = "glb",
+                         .model = service().model,
+                         .seed = service().model == "stable-point-aware-3d" ? request.seed
+                                                                            : std::nullopt};
+    }
+};
+
 // Per output pixel along one axis, the source pixels it covers and by how much, in units of
 // 1/to of a source pixel: output o spans [o * from, (o + 1) * from).
 std::vector<std::vector<std::pair<std::uint32_t, std::uint64_t>>>
@@ -960,6 +1026,9 @@ std::string_view default_model(std::string_view type) noexcept {
     }
     if (type == "stability-audio") {
         return "stable-audio-2.5";
+    }
+    if (type == "stability-3d") {
+        return "stable-fast-3d";
     }
     return ""; // automatic1111 draws with the checkpoint it has loaded
 }
@@ -1058,6 +1127,9 @@ Result<std::shared_ptr<Generator>> make_http_generator(const ai::GeneratorConfig
     }
     if (config.type == "stability-audio") {
         return std::shared_ptr<Generator>(std::make_shared<StabilityAudio>(std::move(service)));
+    }
+    if (config.type == "stability-3d") {
+        return std::shared_ptr<Generator>(std::make_shared<StabilityModel>(std::move(service)));
     }
     return make_error(ErrorCode::InvalidArgument, "no generator of type \"" + config.type + "\"");
 }

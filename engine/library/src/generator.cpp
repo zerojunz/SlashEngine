@@ -5,6 +5,7 @@
 #include "slash/core/text.hpp"
 #include "slash/library/music.hpp"
 #include "slash/render/image.hpp"
+#include "slash/scene3d/model.hpp"
 
 #include <algorithm>
 #include <array>
@@ -30,6 +31,9 @@ constexpr double kDefaultSeconds = 0.5;
 constexpr double kDefaultBpm = 120.0;
 constexpr int kDefaultBarBeats = 4;
 constexpr int kDefaultBars = 4;
+// The test generator's models: reliefs of a concept image, this many cells across at most, a
+// meter wide.
+constexpr int kReliefCells = 24;
 
 struct Rgb {
     int r = 0;
@@ -215,6 +219,242 @@ Result<std::string> make_image(const GenerateRequest& request, std::int64_t seed
         }
     }
     return render::encode_png(image);
+}
+
+// One cell of a relief: whether the concept fills it, and its color.
+struct Cell {
+    bool filled = false;
+    std::array<std::uint8_t, 4> rgba{};
+};
+
+// The concept image in cells of whole pixels, each filled where most of its pixels are opaque
+// and, in an image with no transparent pixels, differ from its top left corner, the backdrop.
+std::vector<Cell> relief_cells(const render::Image& image, int columns, int rows) {
+    const std::size_t width = image.width;
+    bool see_through = false;
+    for (std::size_t i = 3; i < image.pixels.size(); i += 4) {
+        see_through = see_through || image.pixels[i] < 128;
+    }
+    const auto backdrop = [&image](std::size_t at) {
+        int far = 0;
+        for (std::size_t c = 0; c < 3; ++c) {
+            far = std::max(far, std::abs(int{image.pixels[at + c]} - int{image.pixels[c]}));
+        }
+        return far <= 48;
+    };
+    std::vector<Cell> cells(static_cast<std::size_t>(columns) * static_cast<std::size_t>(rows));
+    for (int row = 0; row < rows; ++row) {
+        for (int column = 0; column < columns; ++column) {
+            const std::size_t x0 =
+                width * static_cast<std::size_t>(column) / static_cast<std::size_t>(columns);
+            const std::size_t x1 =
+                width * static_cast<std::size_t>(column + 1) / static_cast<std::size_t>(columns);
+            const std::size_t y0 = std::size_t{image.height} * static_cast<std::size_t>(row) /
+                                   static_cast<std::size_t>(rows);
+            const std::size_t y1 = std::size_t{image.height} * static_cast<std::size_t>(row + 1) /
+                                   static_cast<std::size_t>(rows);
+            std::array<std::size_t, 3> sum{};
+            std::size_t solid = 0;
+            std::size_t count = 0;
+            for (std::size_t y = y0; y < y1; ++y) {
+                for (std::size_t x = x0; x < x1; ++x) {
+                    const std::size_t at = (y * width + x) * 4;
+                    ++count;
+                    if (image.pixels[at + 3] < 128 || (!see_through && backdrop(at))) {
+                        continue;
+                    }
+                    ++solid;
+                    for (std::size_t c = 0; c < 3; ++c) {
+                        sum.at(c) += image.pixels[at + c];
+                    }
+                }
+            }
+            Cell& cell = cells[static_cast<std::size_t>(row) * static_cast<std::size_t>(columns) +
+                               static_cast<std::size_t>(column)];
+            cell.filled = count > 0 && solid * 2 > count;
+            for (std::size_t c = 0; c < 3 && solid > 0; ++c) {
+                cell.rgba.at(c) = static_cast<std::uint8_t>((sum.at(c) + solid / 2) / solid);
+            }
+            cell.rgba[3] = 255;
+        }
+    }
+    return cells;
+}
+
+// A placeholder model made from the concept image: its shape in cells a meter across, standing
+// on the ground, pushed back into a slab of each cell's color. The prompt says how deep: thin or
+// flat, deep or thick, else a sixth of its width.
+Result<std::string> make_model(const GenerateRequest& request) {
+    if (request.image_data.empty()) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a model is made from a concept image, and none was given");
+    }
+    auto decoded = render::decode_image(request.image_data);
+    if (!decoded) {
+        return decoded.error();
+    }
+    const render::Image& image = decoded.value();
+    if (image.width == 0 || image.height == 0) {
+        return make_error(ErrorCode::InvalidArgument, "the concept image is empty");
+    }
+    const int columns = static_cast<int>(std::min<std::uint32_t>(image.width, kReliefCells));
+    const int rows = std::max(
+        1, static_cast<int>((std::uint64_t{image.height} * static_cast<std::uint64_t>(columns) +
+                             image.width / 2) /
+                            image.width));
+    const std::vector<Cell> cells = relief_cells(image, columns, rows);
+    if (std::ranges::none_of(cells, [](const Cell& cell) { return cell.filled; })) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "the concept image shows nothing to make a model of: it is all "
+                          "transparent or all one color");
+    }
+    // The depth in sixths of the width, as the last word about it says: "too thin; make it
+    // thick" is thick.
+    int sixths = 1;
+    for (const std::string& word : words(request.prompt)) {
+        if (word == "thin" || word == "thinner" || word == "flat" || word == "flatter") {
+            sixths = 0;
+        } else if (word == "thick" || word == "thicker" || word == "deep" || word == "deeper" ||
+                   word == "chunky") {
+            sixths = 3;
+        }
+    }
+    const float cell_size = 1.0F / static_cast<float>(columns);
+    const float depth = sixths == 0 ? cell_size : static_cast<float>(sixths) / 6.0F;
+    const auto filled = [&](int column, int row) {
+        return column >= 0 && column < columns && row >= 0 && row < rows &&
+               cells[static_cast<std::size_t>(row) * static_cast<std::size_t>(columns) +
+                     static_cast<std::size_t>(column)]
+                   .filled;
+    };
+    // A cell's corner: x across from the middle of what is filled, y up from its lowest row
+    // (row 0 is the top), so the model stands on the ground around its origin.
+    int first_column = columns;
+    int last_column = 0;
+    int last_row = 0;
+    for (int row = 0; row < rows; ++row) {
+        for (int column = 0; column < columns; ++column) {
+            if (filled(column, row)) {
+                first_column = std::min(first_column, column);
+                last_column = std::max(last_column, column + 1);
+                last_row = std::max(last_row, row + 1);
+            }
+        }
+    }
+    const auto x_at = [&](int column) {
+        return static_cast<float>((2 * column) - first_column - last_column) * cell_size / 2.0F;
+    };
+    const auto y_at = [&](int row) { return static_cast<float>(last_row - row) * cell_size; };
+
+    scene3d::ModelSurface surface;
+    surface.material = 0;
+    // Four corners counterclockwise as seen from outside, in Godot's clockwise winding.
+    const auto quad = [&surface](const std::array<std::array<float, 3>, 4>& corners,
+                                 std::array<float, 3> normal, std::array<std::uint8_t, 4> rgba) {
+        const auto first = static_cast<std::uint32_t>(surface.vertices.size());
+        for (const std::array<float, 3>& corner : corners) {
+            render::Vertex3D vertex;
+            vertex.position = corner;
+            vertex.normal = normal;
+            vertex.rgba = rgba;
+            surface.vertices.push_back(vertex);
+        }
+        for (const std::uint32_t corner : {0U, 2U, 1U, 0U, 3U, 2U}) {
+            surface.indices.push_back(first + corner);
+        }
+    };
+    const float front = depth / 2.0F;
+    const float back = -front;
+    const auto rgba_at = [&](int column, int row) {
+        return cells[static_cast<std::size_t>(row) * static_cast<std::size_t>(columns) +
+                     static_cast<std::size_t>(column)]
+            .rgba;
+    };
+    for (int row = 0; row < rows; ++row) {
+        const float top = y_at(row);
+        const float bottom = y_at(row + 1);
+        // The front and back of each run of cells of one color, then each cell's open sides.
+        for (int column = 0; column < columns;) {
+            if (!filled(column, row)) {
+                ++column;
+                continue;
+            }
+            const std::array<std::uint8_t, 4> rgba = rgba_at(column, row);
+            int end = column + 1;
+            while (filled(end, row) && rgba_at(end, row) == rgba) {
+                ++end;
+            }
+            const float left = x_at(column);
+            const float right = x_at(end);
+            quad({{{left, bottom, front},
+                   {right, bottom, front},
+                   {right, top, front},
+                   {left, top, front}}},
+                 {0.0F, 0.0F, 1.0F}, rgba);
+            quad({{{right, bottom, back},
+                   {left, bottom, back},
+                   {left, top, back},
+                   {right, top, back}}},
+                 {0.0F, 0.0F, -1.0F}, rgba);
+            column = end;
+        }
+        for (int column = 0; column < columns; ++column) {
+            if (!filled(column, row)) {
+                continue;
+            }
+            const std::array<std::uint8_t, 4> rgba = rgba_at(column, row);
+            const float left = x_at(column);
+            const float right = x_at(column + 1);
+            if (!filled(column - 1, row)) {
+                quad({{{left, bottom, back},
+                       {left, bottom, front},
+                       {left, top, front},
+                       {left, top, back}}},
+                     {-1.0F, 0.0F, 0.0F}, rgba);
+            }
+            if (!filled(column + 1, row)) {
+                quad({{{right, bottom, front},
+                       {right, bottom, back},
+                       {right, top, back},
+                       {right, top, front}}},
+                     {1.0F, 0.0F, 0.0F}, rgba);
+            }
+            if (!filled(column, row - 1)) {
+                quad({{{left, top, front},
+                       {right, top, front},
+                       {right, top, back},
+                       {left, top, back}}},
+                     {0.0F, 1.0F, 0.0F}, rgba);
+            }
+            if (!filled(column, row + 1)) {
+                quad({{{left, bottom, back},
+                       {right, bottom, back},
+                       {right, bottom, front},
+                       {left, bottom, front}}},
+                     {0.0F, -1.0F, 0.0F}, rgba);
+            }
+        }
+    }
+    scene3d::Model model;
+    scene3d::ModelMaterial material;
+    material.name = "concept";
+    material.standard.vertex_color_use_as_albedo = true;
+    material.standard.roughness = 0.8F;
+    model.materials.push_back(std::move(material));
+    scene3d::ModelMesh mesh;
+    mesh.name = "relief";
+    mesh.surfaces.push_back(std::move(surface));
+    model.meshes.push_back(std::move(mesh));
+    scene3d::ModelNode node;
+    node.name = "relief";
+    model.nodes.push_back(std::move(node));
+    scene3d::ModelPart part;
+    part.node = "relief";
+    part.node_index = 0;
+    model.parts.push_back(std::move(part));
+    return scene3d::write_glb(model, "generated.glb", [](std::string_view path) {
+        return Result<std::string>(make_error(ErrorCode::NotFound, std::string(path)));
+    });
 }
 
 Result<std::string> refine_image(const GenerateRequest& request, std::int64_t seed) {
@@ -611,6 +851,15 @@ public:
             out.format = "png";
             return out;
         }
+        if (request.type == "model") {
+            auto made = make_model(request);
+            if (!made) {
+                return made.error();
+            }
+            out.data = std::move(made).value();
+            out.format = "glb";
+            return out;
+        }
         if (request.type == "music") {
             auto plan = request.parent != nullptr ? refine_music(request, seed)
                                                   : Result<MusicPlan>(plan_music(request, seed));
@@ -643,7 +892,8 @@ private:
                                         .refines_images = true,
                                         .refines_sounds = true,
                                         .music = true,
-                                        .refines_music = true};
+                                        .refines_music = true,
+                                        .models = true};
 };
 
 // "images", "sounds" or "music", for messages.
@@ -674,12 +924,18 @@ bool makes(const GeneratorCapabilities& can, std::string_view type) noexcept {
     if (type == "image") {
         return can.images;
     }
+    if (type == "model") {
+        return can.models;
+    }
     return type == "music" ? can.music : can.sounds;
 }
 
 bool refines(const GeneratorCapabilities& can, std::string_view type) noexcept {
     if (type == "image") {
         return can.refines_images;
+    }
+    if (type == "model") {
+        return false;
     }
     return type == "music" ? can.refines_music : can.refines_sounds;
 }

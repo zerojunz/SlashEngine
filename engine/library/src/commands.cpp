@@ -1140,6 +1140,8 @@ std::string prompt_context(Session& session, std::span<const Record> records, co
     return joined(lines, "\n");
 }
 
+std::string with_article(std::string_view type);
+
 Reply run_generator(Session& session, const json::Value& params, Asked asked,
                     const Record* parent) {
     auto opened_libs = open_libraries(session);
@@ -1252,6 +1254,8 @@ Reply run_generator(Session& session, const json::Value& params, Asked asked,
     record.license = generator.license;
     if (parent != nullptr) {
         record.parent = parent->id;
+    } else if (asked.request.image != nullptr) {
+        record.parent = asked.request.image->id; // a model's concept image
     }
     const std::string& data = generated.value().data;
     const std::string file = "generated." + generated.value().format;
@@ -1262,6 +1266,11 @@ Reply run_generator(Session& session, const json::Value& params, Asked asked,
                 "\" returned a file the library can't read: " + described.error().message);
     }
     json::Array notes;
+    if (asked.request.type == "model" && record.type != "model") {
+        return Reply::failure(command::code::kPlatformFailure,
+                              "the generator \"" + generator.name + "\" returned " +
+                                  with_article(record.type) + ", not a model");
+    }
     if (asked.request.type == "music") {
         if (record.type != "sound") {
             return Reply::failure(command::code::kPlatformFailure,
@@ -1345,11 +1354,15 @@ Reply read_shared(const json::Value& params, Asked& asked) {
         const std::size_t dot = asked.path.rfind('.');
         if (!holds(request.type,
                    dot == std::string::npos ? std::string_view() : asked.path.substr(dot))) {
-            return Reply::failure(
-                command::code::kInvalidParams,
-                "/path: \"" + asked.path + "\" is not " +
-                    (request.type == "image" ? "an image (.png)" : "a sound (.wav, .ogg or .mp3)"),
-                json::Value(json::Object{{"path", "/path"}}));
+            std::string_view kind = "a sound (.wav, .ogg or .mp3)";
+            if (request.type == "image") {
+                kind = "an image (.png)";
+            } else if (request.type == "model") {
+                kind = "a model (.glb)";
+            }
+            return Reply::failure(command::code::kInvalidParams,
+                                  "/path: \"" + asked.path + "\" is not " + std::string(kind),
+                                  json::Value(json::Object{{"path", "/path"}}));
         }
     }
     return Reply::success({});
@@ -1469,16 +1482,174 @@ Reply apply_theme(Session& session, const std::string& id, Asked& asked) {
     return Reply::success({});
 }
 
+Reply asset_review(Session& session, const json::Value& params);
+Reply asset_use(Session& session, const json::Value& params);
+
+// The reasons a review gives for rejecting a model: its errors, then the problems the model saw.
+std::vector<std::string> rejections(const json::Value& review) {
+    std::vector<std::string> out;
+    const auto add = [&out](std::string reason) {
+        while (!reason.empty() && (reason.back() == '.' || reason.back() == ' ')) {
+            reason.pop_back();
+        }
+        out.push_back(std::move(reason));
+    };
+    if (const json::Value* errors = review.find("errors"); errors != nullptr) {
+        for (const json::Value& error : errors->as_array()) {
+            add(error.as_string());
+        }
+    }
+    if (const json::Value* seen = review.find("review"); seen != nullptr) {
+        if (const json::Value* problems = seen->find("problems"); problems != nullptr) {
+            for (const json::Value& problem : problems->as_array()) {
+                add(problem.find("problem")->as_string());
+            }
+        }
+        if (out.empty() && !seen->find("matches")->as_bool()) {
+            out.emplace_back("it doesn't match the request");
+        }
+    }
+    return out;
+}
+
+// A model made from a concept image, the image kept as its parent. With review, each model made
+// is reviewed (asset.review) and, while rejected, made again with what was wrong added to the
+// prompt, up to that many models in all; the accepted one, else the last, is returned, and copied
+// to path once accepted.
+Reply generate_model(Session& session, const json::Value& params, Asked asked) {
+    for (const std::string_view key :
+         {"width", "height", "seconds", "bpm", "key", "bar_beats", "loop", "theme"}) {
+        if (params.find(key) != nullptr) {
+            return invalid_at("/" + std::string(key), "a model is made from a concept image; it "
+                                                      "takes no " +
+                                                          std::string(key));
+        }
+    }
+    const json::Value* image_id = params.find("image");
+    if (image_id == nullptr) {
+        return invalid_at("/image", "a model is made from a concept image: generate one with "
+                                    "type image, check it, then give its ID as image");
+    }
+    if (Reply shared = read_shared(params, asked); !shared.ok) {
+        return shared;
+    }
+    auto libs = open_libraries(session);
+    if (!libs) {
+        return Reply::failure(libs.error());
+    }
+    auto concept_image = find_asset(session, libs.value(), image_id->as_string());
+    if (!concept_image) {
+        return failure_at(concept_image.error(), "/image");
+    }
+    if (concept_image.value().type != "image") {
+        return invalid_at("/image", "a model is made from an image; " +
+                                        short_id(concept_image.value().id) + " is " +
+                                        with_article(concept_image.value().type));
+    }
+    auto concept_data = libs.value().local().read(concept_image.value());
+    if (!concept_data) {
+        return Reply::failure(concept_data.error());
+    }
+    if (asked.description.empty()) {
+        asked.description = asked.request.prompt;
+    }
+    asked.request.image = &concept_image.value();
+    asked.request.image_data = std::move(concept_data).value();
+    asked.keyed["image"] = concept_image.value().id;
+    asked.keyed["prompt"] = asked.request.prompt;
+    const json::Value* review = params.find("review");
+    if (review == nullptr) {
+        return run_generator(session, params, std::move(asked), nullptr);
+    }
+
+    // Each try is made without path, reviewed where it will go, and copied there once accepted.
+    json::Value tried = params;
+    tried.as_object().erase("path");
+    tried.as_object().erase("review");
+    const std::string path = asked.path;
+    asked.path.clear();
+    const std::string prompt = asked.request.prompt;
+    Reply made;
+    json::Value reviewed;
+    json::Array attempts;
+    std::vector<std::string> wrong;
+    for (std::int64_t attempt = 0; attempt < review->as_int(); ++attempt) {
+        Asked again = asked;
+        if (!wrong.empty()) {
+            again.request.prompt =
+                prompt + "\n\nThe last model was rejected: " + joined(wrong, "; ") + ".";
+            again.keyed["prompt"] = again.request.prompt;
+            tried["similar"] = false;
+        }
+        made = run_generator(session, tried, std::move(again), nullptr);
+        if (!made.ok || made.value.find("id") == nullptr) {
+            return made; // a failure, or candidates to look at first
+        }
+        json::Value look;
+        look["id"] = made.value["id"];
+        look["request"] = prompt;
+        if (!path.empty()) {
+            look["path"] = path;
+        }
+        Reply looked = asset_review(session, look);
+        if (!looked.ok) {
+            return looked;
+        }
+        reviewed = std::move(looked.value);
+        wrong = rejections(reviewed);
+        json::Value entry;
+        entry["id"] = made.value["id"];
+        entry["verdict"] = reviewed["verdict"];
+        if (!wrong.empty()) {
+            entry["reason"] = wrong.front();
+        }
+        attempts.push_back(std::move(entry));
+        if (reviewed["verdict"] == "accepted") {
+            break;
+        }
+    }
+    json::Value out = std::move(made.value);
+    const bool accepted = reviewed["verdict"] == "accepted";
+    out["review"] = std::move(reviewed);
+    if (attempts.size() > 1) {
+        out["attempts"] = std::move(attempts);
+    }
+    if (!path.empty() && accepted) {
+        json::Value use;
+        use["id"] = out["id"];
+        use["path"] = path;
+        Reply used = asset_use(session, use);
+        if (!used.ok) {
+            return used;
+        }
+        for (auto& [key, value] : used.value.as_object()) {
+            if (key != "id") {
+                out[key] = std::move(value);
+            }
+        }
+    } else if (!path.empty()) {
+        out["note"] = "no model made was accepted, so none was copied to path";
+    }
+    return Reply::success(std::move(out));
+}
+
 Reply asset_generate(Session& session, const json::Value& params) {
     Asked asked;
     asked.request.prompt = text(params, "prompt");
     asked.request.type = params.find("type") != nullptr ? text(params, "type") : "image";
-    if (asked.request.type == "model") {
-        return invalid_at("/type", "models aren't generated yet: write a .model.json recipe, add "
-                                   "it with asset.add and refine it with asset.refine's "
-                                   "parameters");
+    if (asked.request.type != "model") {
+        for (const std::string_view key : {"image", "review"}) {
+            if (params.find(key) != nullptr) {
+                return invalid_at("/" + std::string(key), "only a model takes " + std::string(key) +
+                                                              "; asked for " +
+                                                              with_article(asked.request.type));
+            }
+        }
     }
     asked.keyed["type"] = asked.request.type;
+    if (asked.request.type == "model") {
+        return generate_model(session, params, std::move(asked));
+    }
     if (Reply shared = read_shared(params, asked); !shared.ok) {
         return shared;
     }
@@ -2768,9 +2939,8 @@ Reply asset_review(Session& session, const json::Value& params) {
         }
         record = std::move(found).value();
         if (record->type != "model") {
-            const char* article = record->type == "image" ? " is an " : " is a ";
-            return invalid_at("/id",
-                              short_id(record->id) + article + record->type + ", not a model");
+            return invalid_at("/id", short_id(record->id) + " is " + with_article(record->type) +
+                                         ", not a model");
         }
         if (request.empty()) {
             const json::Value* prompt =
@@ -3031,10 +3201,16 @@ void register_commands(command::Registry& registry) {
     generate.emplace("theme", property("string", "Music: a storyboard theme, such as "
                                                  "\"theme/harbor\", whose key, tempo, "
                                                  "instruments and mood it asks for."));
+    generate.emplace("image", property("string", "A model: the library image to make it from, "
+                                                 "a concept generated and checked first."));
+    generate.emplace("review", integer("A model: review each one made (asset.review) and make "
+                                       "it again with what was wrong, up to this many in all.",
+                                       1, 5));
     registry.add({
         .name = "asset.generate",
-        .description = "Makes an image, sound or music with a generator and keeps it in the "
-                       "asset library; music comes back with its measured bpm, beats and key. "
+        .description = "Makes an image, sound, music or a model (from a concept image) with a "
+                       "generator and keeps it in the asset library; music comes back with its "
+                       "measured bpm, beats and key. "
                        "An exact repeat returns the stored asset with no model call; close "
                        "matches come back as candidates instead of generating.",
         .capabilities = {Capability::Read, Capability::Filesystem, Capability::Network},
