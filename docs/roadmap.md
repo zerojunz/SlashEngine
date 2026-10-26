@@ -779,9 +779,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [ ] Automatic review: headless turntable renders, geometry checks (budget, scale, holes,
         texel density) and a vision-capable model comparing the views with the request, all
         recorded as feedback; failed checks retry within a call budget
-  - [ ] Text descriptions of 3D assets: size, pivot, parts, materials, triangle count and
+  - [x] Text descriptions of 3D assets: size, pivot, parts, materials, triangle count and
         attachment points, so agents place models without loading images
-  - [ ] Named parts and attachment points, so wheels turn, doors open and parts from different
+  - [x] Named parts and attachment points, so wheels turn, doors open and parts from different
         models combine
   - [ ] Auto-rigging through a generator adapter, retargeted to one standard humanoid skeleton
         so every library animation works on every character
@@ -913,7 +913,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Navigation | Godot's navigation server, Recast baking, 2D and 3D, avoidance | 7 | Done |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Done |
 | Profiling | Tracy, plus `perf.stats` over the command API | 5, 6 | Done: Tracy, and `perf.stats` reports frame pacing, tick and system times and memory by part of the engine |
-| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | In progress: the library, search, refining, hosted and test generators, feedback, team sharing, ready-to-use texture forms and parametric model recipes done; the rest of 3D in 7 |
+| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | In progress: the library, search, refining, hosted and test generators, feedback, team sharing, ready-to-use texture forms, parametric model recipes, models' text descriptions and attachment points done; the rest of 3D in 7 |
 | Global illumination | Baked lightmaps and probe-based GI | 7 | Done: reflection probes, baked lightmaps and their light probes, and VoxelGI with its dynamic objects, all imported from Godot |
 | Ray tracing | Acceleration structures and ray queries in the render device on Vulkan, Direct3D 12 and Metal: ray-traced shadows, reflections, AO and GI, with raster and probe fallbacks | 7 | Planned |
 | Path tracing | A GPU path tracer for baked lightmaps and progressive reference stills | 7 | Planned |

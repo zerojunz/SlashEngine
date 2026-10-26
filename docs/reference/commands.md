@@ -607,8 +607,9 @@ animations, and its bounds.
 | --- | --- | --- | --- |
 | `path` | string | | A `.gltf`, `.glb`, `.obj`, `.fbx` or `.blend` file |
 | `id` | string | | Or an entity whose `MeshInstance3D` draws a model |
+| `brief` | boolean | `false` | Only what it takes to place the model, as below |
 
-Give one of them. Needs: `read`.
+Give `path` or `id`. Needs: `read`.
 
 ```json
 {"path": "models/house.gltf"}
@@ -634,6 +635,32 @@ Give one of them. Needs: `read`.
   name, length in seconds, `loop` if it loops and how many tracks it has.
   [`skeleton.get`](#skeletonget) lists the bones.
 - `bounds` are the corners of the box the parts fill at rest, in the model's own meters.
+
+With `brief`, it describes the model in a few numbers and names instead, so an agent can place
+it, and things on it, without drawing it:
+
+```json
+{"path": "props/cabinet.model.json", "brief": true}
+```
+
+```json
+{"materials":["pine","brass"],"parts":[{"center":[0,0.5,0],"materials":["pine"],"name":"body","size":[0.8,1,0.45],"triangles":28},{"center":[0,0.5,0.26],"materials":["pine","brass"],"name":"door","size":[0.8,1,0.08],"triangles":80}],"pivot":[0.5,0,0.4286],"points":[{"name":"handle","part":"door","position":[0.33,0.5,0.3]},{"name":"top","position":[0,1,0]}],"size":[0.8,1,0.525],"triangles":108}
+```
+
+- `size` is the bounds' size in meters, and `pivot` where the model's origin is in them on each
+  axis, from 0 at the low side to 1 at the high one (0.5 on an axis the model is flat in):
+  `[0.5, 0, 0.5]` stands on its origin, centered.
+- `materials` are the materials' names (`""` for one without), and each part's `materials` those
+  its surfaces use.
+- Each part is the node placing a mesh, with the `center` and `size` of what it draws at rest, in
+  the model's space, and its triangles.
+- `points` are the model's attachment points, as Godot's `Marker3D` in an imported scene: nodes
+  that place no mesh, have no children and are no skin's joint, such as a glTF file's empty nodes
+  or a [recipe's points](scene-format.md#model-recipes). Each has its `position` and `rotation`
+  (left out when zero) at rest in the model's space, and the `part` above it that it moves with.
+  A [`BoneAttachment3D`](scene-format.md#bone-attachments)'s `bone_name` follows one, and a
+  `Skeleton3D` turns a part by its name.
+- `animations` are the names of its animations, for a model with any.
 
 A model that doesn't load is an error at `/path` (or `/id`) saying why, as
 [`scene validate`](cli.md#scene-validate) reports it.
@@ -4807,7 +4834,7 @@ understands none of makes a variation.
 ### asset.info
 
 Returns an asset's whole record: `type`, `format`, `bytes`, size or length (`seconds`,
-`channels` and `sample_rate`; a model's `size` and `triangles`), `description`, `tags`, the `request` its generator was asked,
+`channels` and `sample_rate`; a model's `size`, `triangles`, `pivot` and the names of its `parts` and attachment `points`, as [`model.inspect`](#modelinspect)'s brief form gives them), `description`, `tags`, the `request` its generator was asked,
 `generator`, `model`, `seed`, `license`, `author` and `parent`; music's `bpm`, `beat_count`,
 `bar_beats` and `key`, a track's `stems` (`name` and `id` each) and a stem's `track`; then
 `versions`, every version before it, oldest first, and `children`, the versions made from it.

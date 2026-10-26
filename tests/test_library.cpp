@@ -463,7 +463,8 @@ TEST_CASE("model recipes go into the library, and refining one changes its param
     const std::string recipe = R"({"format": 1, "parameters": {"width": 1, "height": 0.5},
         "materials": {"oak": {"albedo_color": [0.6, 0.4, 0.2, 1]}},
         "parts": [{"name": "crate", "shape": "box", "material": "oak",
-                   "size": ["=width", "=height", 1]}]})";
+                   "size": ["=width", "=height", 1], "position": [0, "=height / 2", 0]}],
+        "points": [{"name": "lid", "part": "crate", "position": [0, "=height / 2", 0]}]})";
     write(root / "project" / "props" / "crate.model.json", recipe);
     json::Value added = engine.call(
         "asset.add", R"({"path": "props/crate.model.json", "description": "A wooden crate.",
@@ -489,6 +490,10 @@ TEST_CASE("model recipes go into the library, and refining one changes its param
     CHECK(info["author"] == "Mira");
     CHECK(info["request"]["parameters"] == parse(R"({"width": 2})"));
     CHECK(info["versions"] == parse(R"([")" + first + R"("])"));
+    // What an agent needs to place it: the origin on its floor, and its part and point.
+    CHECK(info["pivot"] == parse("[0.5, 0, 0.5]"));
+    CHECK(info["parts"] == parse(R"(["crate"])"));
+    CHECK(info["points"] == parse(R"(["lid"])"));
     CHECK(info.find("generator") == nullptr);
     CHECK(engine.call("asset.refine", R"({"id": ")" + first +
                                           R"(", "parameters": {"width": 2}})")["reused"] == true);

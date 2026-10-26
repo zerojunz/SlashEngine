@@ -997,11 +997,16 @@ std::vector<json::ValidationError> check_model(std::string_view bytes, std::stri
     return errors;
 }
 
-Bounds bounds(const Model& model) {
-    std::optional<Bounds> out;
+namespace {
+
+// Each part's bounds in the model's space at rest; nullopt for a part with no vertices.
+std::vector<std::optional<Bounds>> part_bounds(const Model& model) {
+    std::vector<std::optional<Bounds>> out;
+    out.reserve(model.parts.size());
     const std::vector<world::Affine3D> globals = node_globals(model, rest_pose(model));
     std::vector<render::Vertex3D> skinned;
     for (const ModelPart& part : model.parts) {
+        std::optional<Bounds>& box = out.emplace_back();
         std::vector<world::Affine3D> joints;
         if (part.skin >= 0) {
             joints = joint_transforms(model.skins[static_cast<std::size_t>(part.skin)], globals);
@@ -1015,17 +1020,119 @@ Bounds bounds(const Model& model) {
             for (const render::Vertex3D& vertex : skin ? skinned : surface.vertices) {
                 const Vec3 p =
                     skin ? position_of(vertex) : part.transform.apply(position_of(vertex));
-                if (!out) {
-                    out = Bounds{p, p};
+                if (!box) {
+                    box = Bounds{p, p};
                 }
-                out->min = {std::min(out->min.x, p.x), std::min(out->min.y, p.y),
-                            std::min(out->min.z, p.z)};
-                out->max = {std::max(out->max.x, p.x), std::max(out->max.y, p.y),
-                            std::max(out->max.z, p.z)};
+                box->min = {std::min(box->min.x, p.x), std::min(box->min.y, p.y),
+                            std::min(box->min.z, p.z)};
+                box->max = {std::max(box->max.x, p.x), std::max(box->max.y, p.y),
+                            std::max(box->max.z, p.z)};
             }
         }
     }
-    return out.value_or(Bounds{});
+    return out;
+}
+
+std::optional<Bounds> joined(const std::vector<std::optional<Bounds>>& boxes) {
+    std::optional<Bounds> out;
+    for (const std::optional<Bounds>& box : boxes) {
+        if (!box) {
+            continue;
+        }
+        if (!out) {
+            out = box;
+            continue;
+        }
+        out->min = {std::min(out->min.x, box->min.x), std::min(out->min.y, box->min.y),
+                    std::min(out->min.z, box->min.z)};
+        out->max = {std::max(out->max.x, box->max.x), std::max(out->max.y, box->max.y),
+                    std::max(out->max.z, box->max.z)};
+    }
+    return out;
+}
+
+} // namespace
+
+Bounds bounds(const Model& model) {
+    return joined(part_bounds(model)).value_or(Bounds{});
+}
+
+ModelSummary summarize(const Model& model) {
+    ModelSummary out;
+    const std::vector<std::optional<Bounds>> boxes = part_bounds(model);
+    out.bounds = joined(boxes).value_or(Bounds{});
+    const auto fraction = [](float min, float max) {
+        return max - min > 0.0F ? (0.0F - min) / (max - min) : 0.5F;
+    };
+    out.pivot = {fraction(out.bounds.min.x, out.bounds.max.x),
+                 fraction(out.bounds.min.y, out.bounds.max.y),
+                 fraction(out.bounds.min.z, out.bounds.max.z)};
+    out.materials.reserve(model.materials.size());
+    for (const ModelMaterial& material : model.materials) {
+        out.materials.push_back(material.name);
+    }
+    out.parts.reserve(model.parts.size());
+    for (std::size_t i = 0; i < model.parts.size(); ++i) {
+        const ModelPart& part = model.parts[i];
+        ModelSummary::Part made;
+        made.name = part.node;
+        made.bounds = boxes[i].value_or(Bounds{});
+        for (const ModelSurface& surface : model.meshes[part.mesh].surfaces) {
+            made.triangles += surface.indices.size() / 3;
+            if (surface.material >= 0) {
+                const std::string& name =
+                    model.materials[static_cast<std::size_t>(surface.material)].name;
+                if (std::ranges::find(made.materials, name) == made.materials.end()) {
+                    made.materials.push_back(name);
+                }
+            }
+        }
+        out.triangles += made.triangles;
+        out.parts.push_back(std::move(made));
+    }
+    // Nodes that place a mesh, have children or are joints aren't points.
+    std::vector<bool> taken(model.nodes.size(), false);
+    std::vector<std::string> placing(model.nodes.size());
+    for (const ModelPart& part : model.parts) {
+        if (part.node_index >= 0) {
+            taken[static_cast<std::size_t>(part.node_index)] = true;
+            placing[static_cast<std::size_t>(part.node_index)] = part.node;
+        }
+    }
+    for (const ModelNode& node : model.nodes) {
+        if (node.parent >= 0) {
+            taken[static_cast<std::size_t>(node.parent)] = true;
+        }
+    }
+    for (const ModelSkin& skin : model.skins) {
+        for (const std::size_t joint : skin.joints) {
+            taken[joint] = true;
+        }
+    }
+    const std::vector<world::Affine3D> globals = node_globals(model, rest_pose(model));
+    for (std::size_t i = 0; i < model.nodes.size(); ++i) {
+        if (taken[i]) {
+            continue;
+        }
+        ModelSummary::Point point;
+        point.name = model.nodes[i].name;
+        for (int up = model.nodes[i].parent; up >= 0;
+             up = model.nodes[static_cast<std::size_t>(up)].parent) {
+            if (!placing[static_cast<std::size_t>(up)].empty()) {
+                point.part = placing[static_cast<std::size_t>(up)];
+                break;
+            }
+        }
+        const NodePose place = decompose(globals[i]);
+        point.position = place.position;
+        point.rotation = world::euler(world::rotation_basis(place.rotation));
+        out.points.push_back(std::move(point));
+    }
+    out.animations.reserve(model.animations.size());
+    for (const ModelAnimation& animation : model.animations) {
+        out.animations.push_back(animation.name);
+    }
+    return out;
 }
 
 std::size_t model_bytes(const Model& model) {

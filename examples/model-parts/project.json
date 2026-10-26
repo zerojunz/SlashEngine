@@ -1,0 +1,7 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "Model Parts",
+  "version": "1.0.0",
+  "window": {"width": 160, "height": 90}
+}
