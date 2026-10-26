@@ -1,0 +1,6 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":6,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"materials":["pine","dark"],"parts":[{"center":[0,0.25,0],"materials":["pine","dark"],"name":"box","size":[0.51,0.5,0.51],"triangles":174},{"center":[0,0.515,0],"materials":["dark"],"name":"lid","size":[0.52,0.03,0.52],"triangles":12}],"pivot":[0.5,0,0.5],"size":[0.52,0.53,0.52],"triangles":186}}
+{"id":3,"jsonrpc":"2.0","result":{"materials":["pine","dark"],"parts":[{"center":[0,0.25,0],"materials":["pine","dark"],"name":"box","size":[0.51,0.5,0.51],"triangles":204}],"pivot":[0.5,0,0.5],"size":[0.51,0.5,0.51],"triangles":204}}
+{"id":4,"jsonrpc":"2.0","result":{"materials":["pine","dark"],"parts":[{"center":[0,0.4,0],"materials":["pine","dark"],"name":"box","size":[0.81,0.8,0.81],"triangles":174},{"center":[0,0.815,0],"materials":["dark"],"name":"lid","size":[0.82,0.03,0.82],"triangles":12}],"pivot":[0.5,0,0.5],"size":[0.82,0.83,0.82],"triangles":186}}
+{"id":5,"jsonrpc":"2.0","result":{"colors":[[0.733,0.576,0.365,1],[0.161,0.129,0.114,1],[0.729,0.573,0.365,1]],"drawn":{"lods":3,"meshes":8},"height":90,"width":160}}
+{"error":{"code":-32001,"data":{"path":"/path"},"message":"/path: asset \"props/crate.model.json::brunt\" did not load: the recipe has no variant \"brunt\" (did you mean \"burnt\"?)"},"id":6,"jsonrpc":"2.0"}

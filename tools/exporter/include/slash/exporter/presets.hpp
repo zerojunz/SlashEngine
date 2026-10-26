@@ -110,6 +110,8 @@ struct Preset {
     std::string output; // project-relative; "" means build/export/<name>
     bool debug = false;
     std::string icon; // project-relative; "" means project.json's
+    // The quality tier its model recipes ship as (slash/scene3d/recipe.hpp); "" means as written.
+    std::string model_quality;
     // The SDK packages it links, by name; nullopt means every one with a section for the
     // platform (slash/exporter/sdk.hpp).
     std::optional<std::vector<std::string>> sdks;

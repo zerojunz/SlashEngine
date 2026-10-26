@@ -664,7 +664,7 @@ animations, and its bounds.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `path` | string | | A `.gltf`, `.glb`, `.obj`, `.fbx` or `.blend` file |
+| `path` | string | | A `.gltf`, `.glb`, `.obj`, `.fbx`, `.blend` or `.model.json` file, or a recipe's [variant](scene-format.md#variants-and-quality-tiers) after `::` |
 | `id` | string | | Or an entity whose `MeshInstance3D` draws a model |
 | `brief` | boolean | `false` | Only what it takes to place the model, as below |
 

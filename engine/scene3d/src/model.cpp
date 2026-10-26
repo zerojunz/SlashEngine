@@ -736,6 +736,7 @@ bool loops_by_name(std::string_view name) {
 }
 
 bool is_model_path(std::string_view path) {
+    path = asset::file_of(path);
     return path.ends_with(".gltf") || path.ends_with(".glb") || path.ends_with(".obj") ||
            path.ends_with(".fbx") || path.ends_with(kBlendSuffix) ||
            path.ends_with(kModelRecipeSuffix);
@@ -918,12 +919,21 @@ ModelPartLoader part_loader(const ModelReader& read) {
                                                               std::to_string(kMaxModelDepth) +
                                                               " deep");
         }
-        auto bytes = read(path);
+        auto bytes = read(asset::file_of(path));
         if (!bytes) {
             return bytes.error();
         }
         return load_model(bytes.value(), path, read);
     };
+}
+
+// A recipe as the variant its path names after "::" makes it, or as it is.
+Result<json::Value> variant_of(json::Value doc, std::string_view path) {
+    const std::string_view variant = asset::subresource_of(path);
+    if (variant.empty()) {
+        return doc;
+    }
+    return recipe_form(doc, kVariants, variant);
 }
 
 // A model recipe's model (recipe.hpp), its model parts read through read.
@@ -932,8 +942,12 @@ Result<Model> load_recipe(std::string_view bytes, std::string_view path, const M
     if (!doc) {
         return doc.error();
     }
-    loading_models.emplace_back(path);
-    Result<Model> model = build_model_recipe(doc.value(), part_loader(read));
+    auto form = variant_of(std::move(doc.value()), path);
+    if (!form) {
+        return form.error();
+    }
+    loading_models.emplace_back(asset::file_of(path));
+    Result<Model> model = build_model_recipe(form.value(), part_loader(read));
     loading_models.pop_back();
     return model;
 }
@@ -946,12 +960,15 @@ std::vector<json::ValidationError> check_recipe(std::string_view bytes, std::str
     if (!doc) {
         return {{"", doc.error().message}};
     }
-    loading_models.emplace_back(path);
+    loading_models.emplace_back(asset::file_of(path));
     std::vector<json::ValidationError> errors =
         validate_model_recipe(doc.value(), part_loader(read));
     loading_models.pop_back();
     if (!errors.empty()) {
         return errors;
+    }
+    if (auto form = variant_of(doc.value(), path); !form) {
+        return {{"", form.error().message}};
     }
     const json::Value* materials = doc.value().find("materials");
     if (materials == nullptr) {
@@ -982,16 +999,34 @@ std::vector<json::ValidationError> check_recipe(std::string_view bytes, std::str
 
 } // namespace
 
+namespace {
+
+// Variants are a recipe's: other model files name nothing after "::".
+std::optional<std::string> variant_problem(std::string_view path) {
+    if (asset::subresource_of(path).empty() || asset::file_of(path).ends_with(kModelRecipeSuffix)) {
+        return std::nullopt;
+    }
+    return "only a model recipe (" + std::string(kModelRecipeSuffix) +
+           ") has variants to pick "
+           "after \"::\"";
+}
+
+} // namespace
+
 Result<Model> load_model(std::string_view bytes, std::string_view path, const ModelReader& read) {
+    if (auto problem = variant_problem(path)) {
+        return make_error(ErrorCode::InvalidArgument, *problem);
+    }
+    const std::string_view file = asset::file_of(path);
     Result<Model> model = make_error(ErrorCode::InvalidArgument, "");
-    if (path.ends_with(kModelRecipeSuffix)) {
+    if (file.ends_with(kModelRecipeSuffix)) {
         model = load_recipe(bytes, path, read);
-    } else if (path.ends_with(".obj")) {
-        model = load_obj(bytes, path, read, nullptr);
-    } else if (path.ends_with(".fbx")) {
-        model = load_fbx(bytes, path, read, nullptr);
+    } else if (file.ends_with(".obj")) {
+        model = load_obj(bytes, file, read, nullptr);
+    } else if (file.ends_with(".fbx")) {
+        model = load_fbx(bytes, file, read, nullptr);
     } else {
-        model = read_gltf(bytes, path, read);
+        model = read_gltf(bytes, file, read);
     }
     if (model) {
         add_lods(model.value());
@@ -1001,7 +1036,10 @@ Result<Model> load_model(std::string_view bytes, std::string_view path, const Mo
 
 std::vector<json::ValidationError> check_model(std::string_view bytes, std::string_view path,
                                                const ModelReader& read) {
-    if (path.ends_with(kModelRecipeSuffix)) {
+    if (auto problem = variant_problem(path)) {
+        return {{"", *problem}};
+    }
+    if (path.ends_with(kModelRecipeSuffix) || asset::file_of(path) != path) {
         return check_recipe(bytes, path, read);
     }
     const bool obj = path.ends_with(".obj");

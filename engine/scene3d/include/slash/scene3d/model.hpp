@@ -187,7 +187,8 @@ void generate_lods(ModelSurface& surface, std::span<const world::Affine3D> bones
 [[nodiscard]] std::uint32_t pick_lod(std::span<const SurfaceLod> lods, float model_scale,
                                      float distance, float threshold);
 
-// Whether a path names a model file: ".gltf", ".glb", ".obj", ".fbx" or ".blend".
+// Whether a path names a model file: ".gltf", ".glb", ".obj", ".fbx", ".blend" or ".model.json",
+// or a recipe's variant ("crate.model.json::damaged").
 [[nodiscard]] bool is_model_path(std::string_view path);
 
 // Reads a model from its file's bytes; path is its project path, which the files it names are
@@ -195,7 +196,8 @@ void generate_lods(ModelSurface& surface, std::span<const world::Affine3D> bones
 // files that need extensions it doesn't read, such as Draco compression, are refused, naming
 // them. An OBJ model whose material library can't be read loads with Godot's default material,
 // and an OBJ or FBX model whose textures can't be found loads without them, as Godot's importers.
-// A .blend file's bytes must be the glTF Blender made of it (blend.hpp).
+// A .blend file's bytes must be the glTF Blender made of it (blend.hpp). A recipe's path can
+// name one of its variants after "::" (recipe.hpp), which it builds instead; other files have none.
 [[nodiscard]] Result<Model> load_model(std::string_view bytes, std::string_view path,
                                        const ModelReader& read);
 

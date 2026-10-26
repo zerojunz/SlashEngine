@@ -1,5 +1,6 @@
 #include "slash/library/library.hpp"
 
+#include "slash/asset/assets.hpp"
 #include "slash/audio/audio.hpp"
 #include "slash/core/sha256.hpp"
 #include "slash/library/music.hpp"
@@ -116,7 +117,7 @@ Result<void> describe_recipe(std::string_view data, Record& record,
                           "the recipe's model parts are read from the library that keeps them");
     }
     const scene3d::ModelPartLoader load = [&read](std::string_view path) -> Result<scene3d::Model> {
-        auto bytes = read(path);
+        auto bytes = read(asset::file_of(path));
         if (!bytes) {
             return bytes.error();
         }
@@ -552,6 +553,8 @@ std::string asset_ref(const Record& record) {
 }
 
 std::string_view ref_id(std::string_view model) {
+    // A variant (recipe.hpp) is of the model the reference names.
+    model = asset::file_of(model);
     if (!model.starts_with(kAssetRef)) {
         return {};
     }

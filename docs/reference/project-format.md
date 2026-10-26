@@ -641,6 +641,7 @@ that platform's defaults, so `slash-cli export windows` above signs.
 | `output` | `build/export/<preset>` | Output folder, inside the project |
 | `debug` | `false` | Debug build instead of Release |
 | `icon` | `project.json`'s `icon` | A square image inside the project that this preset's [icons](#icons) are made from |
+| `model_quality` | none | The quality tier, such as `"phone"`, that model recipes ship as: each recipe whose `quality` has it ships [as the tier makes it](scene-format.md#variants-and-quality-tiers), and the rest as written |
 | `macos.codesign_identity` | `"-"` | Keychain identity to sign with; `"-"` signs ad hoc |
 | `macos.entitlements` | none | Entitlements `.plist` to sign with, inside the project |
 | `macos.notarize` | `false` | Notarize with Apple and staple the ticket; needs a Developer ID identity |

@@ -402,6 +402,10 @@ json::Value presets_schema() {
             {"icon", property("string", "A square image relative to the project that this "
                                         "preset's icons are made from in place of project.json's "
                                         "icon.")},
+            {"model_quality",
+             property("string", "The quality tier, such as \"phone\", that model recipes ship "
+                                "as: each recipe with that tier in its quality has it applied, "
+                                "and the rest ship as written.")},
             {"sdks", std::move(sdks)},
             {"macos", std::move(macos)},
             {"windows", std::move(windows)},
@@ -473,6 +477,9 @@ Result<Presets> parse_presets(const json::Value& presets) {
         }
         if (const json::Value* icon = value.find("icon"); icon != nullptr) {
             preset.icon = icon->as_string();
+        }
+        if (const json::Value* quality = value.find("model_quality"); quality != nullptr) {
+            preset.model_quality = quality->as_string();
         }
         if (const json::Value* sdks = value.find("sdks"); sdks != nullptr) {
             preset.sdks.emplace();
