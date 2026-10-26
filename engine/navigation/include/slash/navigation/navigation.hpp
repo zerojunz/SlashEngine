@@ -166,6 +166,17 @@ struct SourceGeometry2D {
                                                      asset::Assets& assets, entt::entity root,
                                                      const NavigationMesh& settings,
                                                      std::vector<std::string>* warnings = nullptr);
+// One entity's own geometry, as parse_source_geometry takes it, in the world's space.
+struct EntityGeometry {
+    entt::entity entity = entt::null;
+    SourceGeometry3D geometry;
+};
+// Each entity's own geometry, in world space and tree order (world::Tree3D::order), those with
+// none left out: what parse_source_geometry takes of each, without those under it. What scene
+// assembly stands things on and keeps them apart from.
+[[nodiscard]] std::vector<EntityGeometry>
+world_geometry(const world::World& world, asset::Assets& assets, const NavigationMesh& settings,
+               std::vector<std::string>* warnings = nullptr);
 // The same in 2D: the shapes of each StaticBody2D and AnimatableBody2D under the region whose
 // collision_layer shares a bit with parsed_collision_mask, as obstructions, each
 // NavigationObstacle2D with affect_navigation_mesh as a projected obstruction, and each

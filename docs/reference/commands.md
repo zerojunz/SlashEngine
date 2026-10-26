@@ -56,7 +56,7 @@ as `entity.get`, reject it as an unknown param.
 | --- | --- |
 | Describe | [`engine.describe`](#enginedescribe), [`schema.get`](#schemaget), [`project.map`](#projectmap) |
 | Scene | [`scene.get`](#sceneget), [`scene.new`](#scenenew), [`scene.open`](#sceneopen), [`scene.save`](#scenesave) |
-| Entities | [`entity.create`](#entitycreate), [`entity.destroy`](#entitydestroy), [`entity.get`](#entityget) |
+| Entities | [`entity.create`](#entitycreate), [`entity.destroy`](#entitydestroy), [`entity.get`](#entityget), [`entity.place`](#entityplace) |
 | Prefabs | [`prefab.save`](#prefabsave) |
 | Assets | [`asset.list`](#assetlist) |
 | Materials | [`material.eval`](#materialeval) |
@@ -400,6 +400,65 @@ An unknown ID fails with `-32001` (not found):
 
 ```json
 {"code":-32001,"data":{"path":"/id"},"message":"/id: no entity has the id \"nobody\""}
+```
+
+### entity.place
+
+Places 3D entities with constraints instead of exact coordinates, as agents assemble a level of
+library assets: at a point or along a path, dropped onto what is below, and moved aside from
+what is in the way. Each entity is dropped as Godot's editor snaps a node to the floor (Snap
+Object to Floor): a ray from a meter above the bottom of its bounds, straight down at most 500
+meters, puts the bottom of its bounds on the first surface it meets, which can be another prop.
+Then, when its bounds overlap anything but what it stands on, it is moved to the nearest spot
+that is free, trying rings of spots around where it was asked to go, each half its size further
+out (16 rings), dropping it again at each. Surfaces and what is in the way are what a
+[navigation bake](#navigationbake) reads: meshes, CSG roots, grid maps, terrains and static and
+animatable bodies' shapes, kept apart by their bounding boxes. Entities are placed in order,
+each kept apart from those before it; an entity's children move with it. Each one's
+`Transform3D` position (and, with `rotate`, rotation) is set in its parent's space.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `entities` | array | required | Entity IDs, or `{"id", "at"}` with `at` the point in the world its origin goes to before it is dropped (default where it is); up to 256 |
+| `along` | object | none | Spread the entities along a `Path3D`'s curve instead: `path` (an entity ID), `from` (meters along it to the first, default 0), `spacing` (meters between each; default spread evenly from end to end, or around a closed path) and `rotate` (turn each about y so its -z faces along the path, default `false`) |
+| `ground` | boolean | `true` | Drop each onto what is below it |
+| `on` | array of strings | anything | Entities that may be stood on, with those under them; everything else is only in the way |
+| `apart` | boolean | `true` | Move each aside until its bounds overlap nothing but what it stands on |
+| `margin` | number | `0` | Meters kept clear across the ground between bounds |
+
+Needs: `edit`. Takes `dry_run`.
+
+Each placed entity comes back with its `position` in the world, what it stands `on`, how far it
+was `moved` aside and, with `rotate`, its `rotation`. `problems` lists entities that had nothing
+below them within 500 meters, found no free spot (they stay where they were asked to go) or
+would be past the end of an open path (they stay where they were). From
+[examples/scene-assembly](../../examples/scene-assembly/README.md):
+
+```json
+{"entities": [{"id": "crate_a", "at": [0, 3, 0]}, {"id": "crate_b", "at": [0, 3, 0]}]}
+```
+
+```json
+{"placed":[{"id":"crate_a","on":"ground","position":[0,0.4,0]},{"id":"crate_b","moved":0.8,"on":"ground","position":[0.8,0.4,0]}]}
+```
+
+```json
+{"entities": ["post_1", "post_2", "post_3", "post_4", "post_5"],
+ "along": {"path": "fence", "rotate": true}, "margin": 0.2}
+```
+
+```json
+{"placed":[{"id":"post_1","on":"ground","position":[-6,0.6,4],"rotation":[0,0,0]},...,{"id":"post_5","on":"ground","position":[0,0.6,-4],"rotation":[0,-1.5708,0]}]}
+```
+
+```json
+{"placed":[{"id":"kite","position":[30,2,0]}],"problems":[{"id":"kite","message":"nothing is below it to stand on within 500 m"}]}
+```
+
+An entity listed under another being placed fails with `-32602`, since that one moves it:
+
+```json
+{"code":-32602,"data":{"path":"/entities/1"},"message":"/entities/1: \"crate\" is under \"cart\", which moves it; place one of them"}
 ```
 
 ## Prefabs

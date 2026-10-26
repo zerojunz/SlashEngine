@@ -1876,6 +1876,99 @@ TEST_CASE("path.get samples a Path2D's or Path3D's curve and finds its nearest p
     CHECK(contains(reply.message, "has no Path2D or Path3D"));
 }
 
+TEST_CASE("entity.place stands entities on what is below, apart and along a path") {
+    Engine engine;
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "floor", "components": {
+            "Transform3D": {"position": [0, -0.5, 0]}, "StaticBody3D": {},
+            "CollisionShape3D": {"shape": "box", "size": [10, 1, 10]}}}},
+        {"command": "entity.create", "params": {"id": "step", "components": {
+            "Transform3D": {"position": [-3, 0.5, 0]}, "MeshInstance3D": {},
+            "BoxMesh": {"size": [2, 1, 2]}}}},
+        {"command": "entity.create", "params": {"id": "crate", "components": {
+            "Transform3D": {}, "MeshInstance3D": {}, "BoxMesh": {}}}},
+        {"command": "entity.create", "params": {"id": "barrel", "components": {
+            "Transform3D": {"position": [0, -9, 0]}, "MeshInstance3D": {}, "BoxMesh": {}}}},
+        {"command": "entity.create", "params": {"id": "cart", "components": {
+            "Transform3D": {"position": [0, 0, 3], "rotation": [0, 1.5708, 0],
+                            "children": ["crate"]}}}}]})");
+    const auto position = [&](std::string_view id) {
+        const json::Value got = engine.ok("entity.get", "{\"id\": \"" + std::string(id) + "\"}");
+        const json::Array& at =
+            got.find("components")->find("Transform3D")->find("position")->as_array();
+        return std::array<double, 3>{at[0].as_double(), at[1].as_double(), at[2].as_double()};
+    };
+
+    // Onto the static body's top, a meter below the bottom of its box or more; the crate's
+    // position is kept in the turned cart's space.
+    CHECK(engine.ok("entity.place", R"({"entities": [{"id": "crate", "at": [2, 5, 0]}]})") ==
+          parse(R"({"placed": [{"id": "crate", "on": "floor", "position": [2, 0.5, 0]}]})"));
+    const auto crate = position("crate");
+    CHECK(crate[0] == doctest::Approx(3.0).epsilon(1.0e-4));
+    CHECK(crate[1] == doctest::Approx(0.5));
+    CHECK(crate[2] == doctest::Approx(2.0).epsilon(1.0e-4));
+
+    // A mesh is stood on too, and a second box asked to go where the crate is moves aside to
+    // the nearest spot where it only touches: half a box a ring, two rings. Asked to go higher,
+    // it would stand on the crate, as Godot's snap does.
+    CHECK(engine.ok("entity.place", R"({"entities": [{"id": "barrel", "at": [-3, 2, 0]}]})") ==
+          parse(R"({"placed": [{"id": "barrel", "on": "step", "position": [-3, 1.5, 0]}]})"));
+    CHECK(engine.ok("entity.place", R"({"entities": [{"id": "barrel", "at": [2, 0, 0]}]})") ==
+          parse(R"({"placed": [{"id": "barrel", "moved": 1, "on": "floor",
+                                "position": [3, 0.5, 0]}]})"));
+    // Allowed to overlap, and kept at its height without the ground.
+    CHECK(engine.ok("entity.place", R"({"entities": [{"id": "barrel", "at": [2, 3, 0]}],
+                                       "ground": false, "apart": false})") ==
+          parse(R"({"placed": [{"id": "barrel", "position": [2, 3, 0]}]})"));
+    // Only on what on names: the step is in the way instead.
+    CHECK(engine.ok("entity.place", R"({"entities": [{"id": "barrel", "at": [-3, 3, 0]}],
+                                       "on": ["floor"]})") ==
+          parse(R"({"placed": [{"id": "barrel", "moved": 1.5, "on": "floor",
+                                "position": [-1.5, 0.5, 0]}]})"));
+
+    // Along a path, spread from end to end, turned to face along it.
+    engine.ok("entity.create", R"({"id": "fence", "components": {"Transform3D": {},
+        "Path3D": {"points": [{"position": [4, 0, 4]}, {"position": [-4, 0, 4]}]}}})");
+    CHECK(engine.ok("entity.place", R"({"entities": ["barrel", "crate"],
+                                       "along": {"path": "fence", "rotate": true}})") ==
+          parse(R"({"placed": [
+              {"id": "barrel", "on": "floor", "position": [4, 0.5, 4], "rotation": [0, 1.5708, 0]},
+              {"id": "crate", "on": "floor", "position": [-4, 0.5, 4],
+               "rotation": [0, 0, 0]}]})"));
+    // Past the end with spacing: left where it was and reported. Nothing below: reported.
+    const json::Value past =
+        engine.ok("entity.place",
+                  R"({"entities": ["barrel", "crate"], "along": {"path": "fence", "spacing": 9}})");
+    CHECK(contains(json::write(past), "past the end of the path"));
+    const json::Value air =
+        engine.ok("entity.place", R"({"entities": [{"id": "barrel", "at": [40, 0, 0]}]})");
+    CHECK(contains(json::write(air), "nothing is below it to stand on"));
+    engine.ok("undo");
+    CHECK(position("barrel")[0] == doctest::Approx(4.0));
+
+    auto reply =
+        engine.fails("entity.place", R"({"entities": ["crat"]})", command::code::kNotFound);
+    CHECK(reply.message == "/entities/0: no entity has the id \"crat\"; did you mean \"crate\"?");
+    reply = engine.fails("entity.place", R"({"entities": ["cart", "crate"]})",
+                         command::code::kInvalidParams);
+    CHECK(contains(reply.message, "\"crate\" is under \"cart\", which moves it"));
+    reply = engine.fails("entity.place", R"({"entities": ["crate", "crate"]})",
+                         command::code::kInvalidParams);
+    CHECK(contains(reply.message, "listed twice"));
+    reply = engine.fails("entity.place", R"({"entities": ["crate"], "along": {"path": "floor"}})",
+                         command::code::kInvalidParams);
+    CHECK(reply.message == "/along/path: \"floor\" has no Path3D");
+    reply = engine.fails(
+        "entity.place",
+        R"({"entities": [{"id": "crate", "at": [0, 0, 0]}], "along": {"path": "fence"}})",
+        command::code::kInvalidParams);
+    CHECK(contains(reply.message, "/entities/0/at: along places it"));
+    engine.ok("entity.create", R"({"id": "note", "components": {}})");
+    reply =
+        engine.fails("entity.place", R"({"entities": ["note"]})", command::code::kInvalidParams);
+    CHECK(contains(reply.message, "has no Transform3D"));
+}
+
 TEST_CASE("gridmap commands set and read a GridMap's cells, and rays name the cell they hit") {
     const std::string root = "gridmap_test_project";
     std::filesystem::remove_all(root);
