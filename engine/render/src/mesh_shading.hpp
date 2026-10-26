@@ -111,6 +111,9 @@ struct MeshSceneUniforms {
     // Forward+'s clusters (LightClusters::uniform): tiles across, a tile's words of light bits,
     // depth slices per unit of view depth, 0.
     Float4 cluster{};
+    // 1 when the frame draws SSAO, its light affect and its AO channel affect.
+    Float4 ssao{};
+    std::array<Float4, 3> view_rows{}; // the world to the camera's space, a row each, for normals
     // Every light drawn in Compatibility; in Forward+, only the directional ones.
     std::array<MeshLightUniforms, kMaxLights3D> lights{};
 };
@@ -148,7 +151,7 @@ struct MeshShadowPassUniforms {
 
 static_assert(sizeof(MeshInstanceUniforms) == 144);
 static_assert(sizeof(MeshSurfaceUniforms) == 128);
-static_assert(sizeof(MeshSceneUniforms) == 176 + (80 * kMaxLights3D));
+static_assert(sizeof(MeshSceneUniforms) == 240 + (80 * kMaxLights3D));
 static_assert(sizeof(MeshDirectionalShadowUniforms) == 320);
 static_assert(sizeof(MeshPositionalShadowUniforms) == 576);
 static_assert(sizeof(MeshShadowUniforms) ==
@@ -349,12 +352,22 @@ struct MeshMaps {
     ShadowAtlas positional;
     const CubeImage* radiance = nullptr;
     const LightClusters* clusters = nullptr;
+    // Forward+'s screen-space ambient occlusion, a value a pixel of the target in rows from the
+    // top, when the scene's uniforms say the frame draws it.
+    std::span<const float> ao;
+    std::uint32_t ao_width = 0;
 };
 
 // The pixel's color, as fs_main gives it, or nullopt where it discards the pixel.
 [[nodiscard]] std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface,
                                                const MeshSceneUniforms& scene, const MeshMaps& maps,
                                                const MeshPixel& pixel);
+// fs_main in shaders/mesh_normal.hlsl, Forward+'s normal-roughness prepass: the pixel's normal in
+// the camera's space (scaled from -1 to 1 into 0 to 1) and its roughness times 127 / 255, or
+// nullopt where it discards the pixel.
+[[nodiscard]] std::optional<Float4> mesh_normal_roughness(const MeshSurfaceUniforms& surface,
+                                                          const MeshSceneUniforms& scene,
+                                                          const MeshPixel& pixel);
 // fs_main in shaders/shadow.hlsl: whether a shadow pass keeps a pixel, as the alpha scissor does.
 [[nodiscard]] bool shadow_keeps(const MeshSurfaceUniforms& surface, const Float4& albedo_texel,
                                 const Float4& color);

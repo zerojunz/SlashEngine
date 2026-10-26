@@ -450,6 +450,8 @@ struct Settings {
     render::ShadowSettings shadows;
     // rendering.camera.depth_of_field: depth of field's blur.
     render::DepthOfFieldSettings depth_of_field{};
+    // rendering.environment.ssao: screen-space ambient occlusion's quality.
+    render::SsaoSettings ssao{};
 };
 void set_settings(world::World& world, const Settings& settings);
 // The settings given to the world, or the defaults.

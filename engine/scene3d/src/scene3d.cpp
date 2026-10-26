@@ -367,6 +367,17 @@ Environment world_environment(const world::World& world, render::Color clear) {
         fog.depth_begin = env.fog_depth_begin;
         fog.depth_end = env.fog_depth_end;
     }
+    if (env.ssao_enabled) {
+        out.ssao = {.enabled = true,
+                    .radius = env.ssao_radius,
+                    .intensity = env.ssao_intensity,
+                    .power = env.ssao_power,
+                    .detail = env.ssao_detail,
+                    .horizon = env.ssao_horizon,
+                    .sharpness = env.ssao_sharpness,
+                    .light_affect = env.ssao_light_affect,
+                    .ao_channel_affect = env.ssao_ao_channel_affect};
+    }
     out.sky.energy = energy;
     if (sky || sky_ambient || sky_reflections) {
         add_sky(world, out.entity, out);
@@ -1333,7 +1344,8 @@ void Renderer::add_terrain(const world::World& world, entt::entity entity,
 std::optional<Frame3D> Renderer::prepare(const world::World& world, float width, float height,
                                          double interpolation, render::Color clear,
                                          const render::ShadowSettings& shadows, double time,
-                                         const render::DepthOfFieldSettings& depth_of_field) {
+                                         const render::DepthOfFieldSettings& depth_of_field,
+                                         const render::SsaoSettings& ssao) {
     ++frame_;
     draws_.clear();
     problems_.clear();
@@ -1416,6 +1428,8 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
         exposure_version_ = 0;
     }
     frame.scene.post.depth_of_field = depth_of_field;
+    frame.scene.ssao = env.ssao;
+    frame.scene.ssao.settings = ssao;
     if (depth_of_field.use_jitter) {
         // Godot seeds the jitter at random each frame; the game time keeps frames repeatable.
         frame.scene.post.dof_jitter_seed = static_cast<float>(time - std::floor(time)) * 1000.0F;

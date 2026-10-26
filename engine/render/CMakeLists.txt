@@ -58,6 +58,7 @@ add_library(slash_render
     src/shadow.cpp
     src/sky.cpp
     src/software_device.cpp
+    src/ssao.cpp
     src/texture_codec.cpp
     src/uniforms.cpp
     src/upscaler.cpp)
@@ -92,7 +93,7 @@ endif()
 # ones not.
 set_source_files_properties(src/clusters.cpp src/device.cpp src/forward_post.cpp src/material.cpp
     src/mesh.cpp src/particles.cpp src/post.cpp src/resize.cpp src/shader_vm.cpp src/shadow.cpp
-    src/sky.cpp src/software_device.cpp src/upscaler.cpp
+    src/sky.cpp src/software_device.cpp src/ssao.cpp src/upscaler.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
@@ -105,13 +106,15 @@ set(slash_shader_headers "")
 # Each shader as file:Name, then compute for compute shaders, and 3d for the mesh shader and
 # depth for the shadow pass shader, whose varyings GLSL names apart from the canvas shaders' and
 # whose depth it maps to OpenGL's, and post for the post passes, the sky and the radiance filter,
-# which have no varyings. The mesh shader's code is long enough to come in pieces, and its fourteen
-# textures put its WGSL samplers 16 bindings after them instead of 8, as the nine textures of the
-# Forward+ post passes (post16) do. clustered is the mesh shader's Forward+ fragment stage, which
-# reads storage buffers.
+# which have no varyings. The mesh shader's code is long enough to come in pieces, and its fifteen
+# textures put its WGSL samplers 16 bindings after them instead of 8, as the thirteen textures of
+# the Forward+ post passes (post16) do. clustered is the mesh shader's Forward+ fragment stage,
+# which reads storage buffers, and normal its fragment stage for Forward+'s normal-roughness
+# prepass. The SSAO passes (ssao) are post passes with twelve textures whose code comes in pieces.
 set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
-    mesh_clustered:MeshClustered:clustered shadow:Shadow:depth post:Post:post sky:Sky:post
-    forward_post:ForwardPost:post16 radiance:Radiance:post
+    mesh_clustered:MeshClustered:clustered mesh_normal:MeshNormal:normal shadow:Shadow:depth
+    post:Post:post sky:Sky:post forward_post:ForwardPost:post16 ssao:Ssao:ssao
+    radiance:Radiance:post
     particles_process:ParticlesProcess:compute
     particles_emit:ParticlesEmit:compute particles_draw:ParticlesDraw:compute)
 foreach(entry IN LISTS slash_shaders)
@@ -136,11 +139,14 @@ foreach(entry IN LISTS slash_shaders)
             set(include shadow)
             set(interface v_uv,v_color)
             set(fixup ON)
-        elseif(kind STREQUAL "post" OR kind STREQUAL "post16")
+        elseif(kind STREQUAL "post" OR kind STREQUAL "post16" OR kind STREQUAL "ssao")
             set(include tonemap)
             set(interface v_uv)
-            if(kind STREQUAL "post16")
+            if(NOT kind STREQUAL "post")
                 set(sampler_shift 16)
+            endif()
+            if(kind STREQUAL "ssao")
+                set(pieces ON)
             endif()
         else()
             set(include mesh)
@@ -151,6 +157,8 @@ foreach(entry IN LISTS slash_shaders)
             if(kind STREQUAL "clustered")
                 set(fragment_only ON)
                 set(storage_buffers ON)
+            elseif(kind STREQUAL "normal")
+                set(fragment_only ON)
             endif()
         endif()
     endif()

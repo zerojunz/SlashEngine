@@ -159,6 +159,62 @@ json::Value camera_schema() {
     return out;
 }
 
+// rendering.environment, as Godot's rendering/environment settings: screen-space ambient
+// occlusion's quality.
+json::Value environment_schema() {
+    const render::SsaoSettings defaults;
+    const auto number = [](double value, double min, double max, std::string description) {
+        json::Value out;
+        out["type"] = "number";
+        out["minimum"] = min;
+        out["maximum"] = max;
+        out["default"] = value;
+        out["description"] = std::move(description);
+        return out;
+    };
+    json::Array qualities;
+    for (const std::string_view name : render::kSsaoQualityNames) {
+        qualities.emplace_back(std::string(name));
+    }
+    json::Value quality;
+    quality["enum"] = std::move(qualities);
+    quality["default"] =
+        std::string(render::kSsaoQualityNames.at(static_cast<std::size_t>(defaults.quality)));
+    quality["description"] = "How many samples it takes: very_low 3 in half its slices, low 5, "
+                             "medium 12, high 12 with depth mipmaps, ultra up to 32 where they "
+                             "help most.";
+    json::Value half_size;
+    half_size["type"] = "boolean";
+    half_size["default"] = defaults.half_size;
+    half_size["description"] = "Works at a quarter of the frame's resolution rather than half.";
+    json::Value blur_passes;
+    blur_passes["type"] = "integer";
+    blur_passes["minimum"] = 0;
+    blur_passes["maximum"] = 6;
+    blur_passes["default"] = defaults.blur_passes;
+    blur_passes["description"] = "How many times it is blurred; very_low always blurs once.";
+    json::Value ssao;
+    ssao["type"] = "object";
+    ssao["additionalProperties"] = false;
+    ssao["description"] =
+        "Screen-space ambient occlusion, for every WorldEnvironment with ssao_enabled.";
+    ssao["properties"]["quality"] = std::move(quality);
+    ssao["properties"]["half_size"] = std::move(half_size);
+    ssao["properties"]["adaptive_target"] =
+        number(defaults.adaptive_target, 0, 1, "Ultra: how many of the extra samples it takes.");
+    ssao["properties"]["blur_passes"] = std::move(blur_passes);
+    ssao["properties"]["fadeout_from"] =
+        number(defaults.fadeout_from, 0, 1e6, "Meters from the camera where it starts to fade.");
+    ssao["properties"]["fadeout_to"] =
+        number(defaults.fadeout_to, 0, 1e6, "Meters from the camera where it is gone.");
+    json::Value out;
+    out["type"] = "object";
+    out["additionalProperties"] = false;
+    out["description"] = "3D environments, as Godot's rendering/environment settings.";
+    out["properties"]["ssao"] = std::move(ssao);
+    return out;
+}
+
 // rendering.lights_and_shadows, as Godot's rendering/lights_and_shadows settings.
 json::Value lights_and_shadows_schema() {
     const render::ShadowSettings defaults;
@@ -333,6 +389,7 @@ json::Value project_schema() {
     rendering["properties"]["scaling"] = scaling_schema();
     rendering["properties"]["lights_and_shadows"] = lights_and_shadows_schema();
     rendering["properties"]["camera"] = camera_schema();
+    rendering["properties"]["environment"] = environment_schema();
     json::Value compress_mode;
     compress_mode["enum"] = json::Array{"lossless", "vram_compressed", "vram_uncompressed"};
     compress_mode["description"] =
@@ -648,6 +705,12 @@ Result<Project> parse_project(const json::Value& project) {
         if (const json::Value* camera = rendering->find("camera"); camera != nullptr) {
             if (const json::Value* dof = camera->find("depth_of_field"); dof != nullptr) {
                 out.depth_of_field = render::depth_of_field_settings_from_json(*dof);
+            }
+        }
+        if (const json::Value* environment = rendering->find("environment");
+            environment != nullptr) {
+            if (const json::Value* ssao = environment->find("ssao"); ssao != nullptr) {
+                out.ssao = render::ssao_settings_from_json(*ssao);
             }
         }
         if (const json::Value* textures = rendering->find("textures"); textures != nullptr) {
