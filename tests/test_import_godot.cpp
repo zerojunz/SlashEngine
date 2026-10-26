@@ -1974,9 +1974,14 @@ ambient_color = Color(0.2, 0.3, 0.4, 1)
 [node name="Lightmap" type="LightmapGI" parent="."]
 quality = 2
 bounces = 2
+interior = true
 environment_mode = 3
 environment_custom_color = Color(0.1, 0.2, 0.3, 1)
 camera_attributes = SubResource("CameraAttributesPractical_1")
+generate_probes_subdiv = 3
+
+[node name="Doorway" type="LightmapProbe" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 1, 0)
 
 [node name="Environment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_1")
@@ -2057,7 +2062,7 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     // Transforms decompose as Godot's Node3D does, and Node3D children nest.
     CHECK(*entity(files, level, "level").find("Transform3D") == parse(R"({
         "children": ["wall", "rock", "blob", "cart", "camera", "sun", "lamp", "torch", "probe",
-                     "lightmap", "crate", "ground", "hero", "mirror", "sparks", "rig"]})"));
+                     "lightmap", "doorway", "crate", "ground", "hero", "mirror", "sparks", "rig"]})"));
     CHECK(*entity(files, level, "wall").find("Transform3D") ==
           parse(R"({"position": [3.0, 1.0, -2.0], "rotation": [0.0, 1.570796, 0.0],
                     "children": ["ball"]})"));
@@ -2119,9 +2124,14 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     // A LightmapGI bakes with its own camera attributes.
     const json::Value lightmap = entity(files, level, "lightmap");
     CHECK(*lightmap.find("LightmapGI") == parse(R"({
-        "quality": "high", "bounces": 2, "environment_mode": "custom_color",
-        "environment_custom_color": [0.1, 0.2, 0.3, 1.0], "camera_attributes": "lightmap"})"));
+        "quality": "high", "bounces": 2, "interior": true, "environment_mode": "custom_color",
+        "environment_custom_color": [0.1, 0.2, 0.3, 1.0], "camera_attributes": "lightmap",
+        "generate_probes_subdiv": "16"})"));
     CHECK(lightmap.find("CameraAttributesPractical") != nullptr);
+    // A LightmapProbe is a place to bake a probe.
+    const json::Value doorway = entity(files, level, "doorway");
+    CHECK(*doorway.find("LightmapProbe") == parse("{}"));
+    CHECK(*doorway.find("Transform3D") == parse(R"({"position": [3.0, 1.0, 0.0]})"));
     const json::Value environment = entity(files, level, "environment");
     CHECK(environment.find("Transform2D") == nullptr);
     CHECK(*environment.find("WorldEnvironment") == parse(R"({

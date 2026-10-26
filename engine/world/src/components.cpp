@@ -2278,7 +2278,8 @@ void register_3d_components(ComponentRegistry& registry) {
                    .choices = {"off", "on", "double_sided", "shadows_only"}})
         .describe("gi_mode",
                   {.doc = "\"static\" meshes are baked into a LightmapGI's lightmap and lit by "
-                          "it; \"dynamic\" and \"disabled\" ones are not.",
+                          "it; \"dynamic\" ones take ambient light from its light probes; "
+                          "\"disabled\" ones from neither.",
                    .choices = {"disabled", "static", "dynamic"}})
         .describe("gi_lightmap_texel_scale",
                   {.doc = "Times the texels across its lightmap.", .min = 0.01, .max = 10.0});
@@ -2624,6 +2625,8 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("use_texture_for_bounces",
                   {.doc = "Bounces take direct light from the lightmap rather than tracing "
                           "lights again: faster, a little less exact."})
+        .describe("interior", {.doc = "Moving meshes inside its probes take only interior "
+                                      "lightmaps' light, leaving out the others'."})
         .describe("use_denoiser", {.doc = "Smooths the lightmap's noise, as Godot's JNLM."})
         .describe("denoiser_strength",
                   {.doc = "How much the denoiser smooths.", .min = 0.001, .max = 1})
@@ -2648,8 +2651,15 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("camera_attributes",
                   {.doc = "ID of the entity whose CameraAttributesPractical's exposure_multiplier "
                           "light is baked with; \"\" for 1."})
+        .describe("generate_probes_subdiv",
+                  {.doc = "Light probes for moving meshes: 8 at the corners, or an octree's cells "
+                          "along the longest side where static meshes are.",
+                   .choices = {"disabled", "4", "8", "16", "32"}})
         .describe("light_data",
                   {.doc = "Project path of the .lightmap.json file lightmap.bake writes."});
+    registry.add<LightmapProbe>().set_doc(
+        "A place a LightmapGI bakes a light probe, under its parent as its meshes are, as "
+        "Godot's LightmapProbe: where moving meshes' light changes quickly.");
     registry.add<WorldEnvironment>()
         .set_doc("The 3D world's background, ambient and reflected light, tonemap, glow, fog and "
                  "adjustments, as Godot's WorldEnvironment. The first one applies; with none, the "

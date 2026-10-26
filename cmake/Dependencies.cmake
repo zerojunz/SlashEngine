@@ -252,7 +252,8 @@ slash_add_dependency(stb DOWNLOAD_ONLY TRUE)
 # source file).
 slash_add_dependency(ufbx DOWNLOAD_ONLY TRUE)
 # Lightmap UVs, unwrapped with xatlas as Godot's "Unwrap UV2 for Lightmap/AO" unwraps them
-# (engine/scene3d builds it through src/xatlas.cpp, which makes its charts the same everywhere).
+# (engine/scene3d builds it through src/xatlas_build.cpp, which makes its charts the same
+# everywhere).
 slash_add_dependency(xatlas DOWNLOAD_ONLY TRUE)
 
 # Baking navigation meshes, as Godot does (engine/navigation): Recast voxelizes 3D geometry into

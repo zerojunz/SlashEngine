@@ -727,7 +727,8 @@ ones cast only where their pixels are kept.
 
 Its `gi_mode` (default `"static"`) and `gi_lightmap_texel_scale` (default `1`) are Godot's: a
 `"static"` mesh is baked into a [LightmapGI's lightmap](#baked-lightmaps) and lit by it, with
-`gi_lightmap_texel_scale` times the texels; `"dynamic"` and `"disabled"` meshes aren't.
+`gi_lightmap_texel_scale` times the texels; a `"dynamic"` mesh isn't baked but takes its ambient
+light from the LightmapGI's [light probes](#light-probes), and a `"disabled"` one from neither.
 
 The primitive meshes are Godot's, made as Godot makes them: the same corners, normals, tangents
 and texture coordinates, so a texture wraps them as it does in Godot. An entity has at most one.
@@ -1704,6 +1705,8 @@ room at `"medium"`. A model part with a skin isn't baked, since its bones move i
 | `environment_mode` | `"scene"` | What rays that leave the world bring: `"disabled"`, `"scene"` (the [WorldEnvironment's](#worldenvironment) ambient light or sky) or `"custom_color"` |
 | `environment_custom_color`, `environment_custom_energy` | `[1, 1, 1, 1]`, `1` | The light for `"custom_color"` |
 | `camera_attributes` | `""` | An entity whose `CameraAttributesPractical`'s `exposure_multiplier` it bakes with |
+| `generate_probes_subdiv` | `"8"` | Where [light probes](#light-probes) go: `"disabled"` for the bounds' corners only, or `"4"`, `"8"`, `"16"` or `"32"` cells along the longest side of an octree over the static meshes |
+| `interior` | `false` | Moving meshes inside its probes' bounds take only interior LightmapGIs' light |
 | `light_data` | `""` | The `.lightmap.json` file it bakes into and draws from |
 
 Each baked mesh then draws with its texels as its ambient light, in place of the
@@ -1717,8 +1720,36 @@ A `.lightmap.json` file is Godot's `LightmapGIData` in text (`slash-cli schema l
 `texture` (an `.hdr` file of the slices one above the other), each slice's `width` and `height`,
 the `slices`, the `baked_exposure`, the unwraps in `meshes` by a hash of each mesh (lightmap UVs,
 the vertices they came from and the triangles, as base64), and the `users`: each baked entity, the
-model `part`, its `mesh`, `slice` and `uv_rect`. `scene validate` checks a LightmapGI's
+model `part`, its `mesh`, `slice` and `uv_rect`, then its `probes` (below). `scene validate` checks a LightmapGI's
 `light_data` and `camera_attributes`, and exports ship both files.
+
+#### Light probes
+
+A LightmapGI also bakes light probes, as Godot 4.6's do, which light the meshes that move: a
+`MeshInstance3D` whose `gi_mode` is `"dynamic"` takes its ambient light from them, at its bounds'
+middle, in place of the WorldEnvironment's and the reflection probes'. Lights still light it live,
+`"static"` ones included.
+
+- Probes go at the corners of the bounds around the static meshes and at the corners of the
+  octree cells (`generate_probes_subdiv` along the longest side) that their triangles touch, as
+  Godot's `LightmapGI::bake` places them. An entity with a `LightmapProbe` component (no fields)
+  adds one where light changes quickly, as in a doorway; generated probes within half a cell of
+  it are left out.
+- Each probe traces rays (`quality`: 64, 256, 512 or 2048) for its light from every direction,
+  kept as nine spherical harmonics coefficients, with the lightmap's bounces.
+- The probes are joined into Delaunay tetrahedra (Godot's `Delaunay3D`, with an exact in-sphere
+  test so they never overlap and are the same everywhere) and a BSP tree finds the one around a
+  point. A moving mesh
+  takes its four probes' light blended by where it is, turned with the LightmapGI and scaled by
+  the camera's exposure over the one it was baked with, then eased toward it as it moves (15
+  times the frame's time, Godot's `update_speed`). Where LightmapGIs' bounds overlap, their
+  light blends by how far inside each the mesh is, and an `interior` one stands in for the
+  rest. Outside every LightmapGI's bounds, it takes the scene's ambient light.
+
+The `.lightmap.json` file keeps them in `probes`: the `bounds` (position, then size), `interior`,
+and as base64 the `points`, their `sh` light (27 floats each), the `tetrahedra` (four probe
+indices each) and the `bsp` tree (24-byte nodes: a plane, then the node or tetrahedron on each
+side). `scene validate` reports light, tetrahedra or nodes that don't fit the points.
 
 ### Checks
 

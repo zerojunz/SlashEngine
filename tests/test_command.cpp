@@ -2385,7 +2385,7 @@ TEST_CASE("lightmap.bake writes a LightmapGI's lightmap and texels, and undo tak
         return slash::platform::read_file(root + "/" + path).value();
     };
     const json::Value baked = parse(R"({"file": "gi.lightmap.json", "texture": "gi.lightmap.hdr",
-        "meshes": 1, "lights": 1, "size": [32, 32], "slices": 1})");
+        "meshes": 1, "lights": 1, "size": [32, 32], "slices": 1, "probes": 162})");
 
     // A dry run says what it would bake and writes nothing.
     const json::Value dry = engine.ok("lightmap.bake", R"({"id": "gi", "dry_run": true})");
