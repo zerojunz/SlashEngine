@@ -74,6 +74,9 @@ std::vector<Vertex3D> square() {
             corner(-1, 1), corner(1, -1), corner(-1, -1)};
 }
 
+// Diagnostic only: draw_corner returns an empty image when the frame can't be read back.
+bool probing = false;
+
 // What draw_corner draws.
 struct Corner {
     render::Ssao3D ssao{};
@@ -121,6 +124,9 @@ Image draw_corner(RenderDevice& device, const Corner& corner) {
     const auto ended = device.end_frame();
     REQUIRE_MESSAGE(ended.ok(), (ended.ok() ? std::string() : ended.error().message));
     auto image = device.read_texture(target.value());
+    if (probing && !image.ok()) {
+        return Image{};
+    }
     REQUIRE_MESSAGE(image.ok(), (image.ok() ? std::string() : image.error().message));
     device.destroy_mesh(mesh.value());
     device.destroy_texture(target.value());
@@ -402,5 +408,32 @@ TEST_CASE("GPUs draw SSAO as the software device does") {
         const Image image = draw_corner(*gpu, corners.at(i));
         CHECK(differing(image, expected, 3) <= image.pixels.size() / 100);
         CHECK(difference(image, expected) <= 40);
+    }
+}
+
+// Diagnostic only: on Direct3D 12, the first SSAO pass after which the device is lost.
+TEST_CASE("which SSAO pass loses a Direct3D 12 device") {
+    for (const SsaoQuality quality : {SsaoQuality::VeryLow, SsaoQuality::Ultra}) {
+        const Corner corner{.ssao = with_quality(quality)};
+        const detail::SsaoPlan plan = detail::ssao_plan(corner.ssao.settings, 64, 64);
+        for (std::size_t limit = 0; limit <= plan.steps.size(); ++limit) {
+            auto gpu = slash::test::gpu_device();
+            if (gpu == nullptr || render::backend_name(gpu->backend()) != std::string("d3d12")) {
+                return;
+            }
+            detail::ssao_pass_limit = limit;
+            probing = true;
+            const Image image = draw_corner(*gpu, corner);
+            probing = false;
+            detail::ssao_pass_limit = static_cast<std::size_t>(-1);
+            const int pass = limit == 0 ? -1 : static_cast<int>(plan.steps.at(limit - 1).pass);
+            const int target = limit == 0 ? -1 : static_cast<int>(plan.steps.at(limit - 1).target);
+            MESSAGE("quality " << static_cast<int>(quality) << " passes " << limit << " last pass "
+                               << pass << " target " << target << ": "
+                               << (image.pixels.empty() ? "LOST" : "ok"));
+            if (image.pixels.empty()) {
+                break;
+            }
+        }
     }
 }
