@@ -1,0 +1,4 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"model.inspect","params":{"id":"table"}}
+{"jsonrpc":"2.0","id":3,"method":"model.inspect","params":{"path":"props/vase.model.json"}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"path":"shots/room.png","points":[[91,25],[70,32],[80,80]]}}

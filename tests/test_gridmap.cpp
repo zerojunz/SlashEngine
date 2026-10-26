@@ -406,7 +406,7 @@ TEST_CASE("mesh libraries hold items by name, checked as they load") {
               "/items/plane/shapes/0/shape: a world boundary can't be in a cell: it is infinite",
               "/items/ring/primitive/TorusMesh: a TorusMesh's inner_radius and outer_radius "
               "can't be the same",
-              "/items/rock/mesh: is not a .gltf, .glb, .obj, .fbx or .blend file",
+              "/items/rock/mesh: is not a .gltf, .glb, .obj, .fbx, .blend or .model.json file",
               "/items/walk/navigation_mesh: is not a .navmesh.json file"});
     CHECK(scene3d::parse_mesh_library(parse(R"({"format": 1, "items": {"a:b": {}}})"))
               .error()

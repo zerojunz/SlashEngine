@@ -135,7 +135,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, meshlib, lightmap, voxel_gi, sdk)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, meshlib, lightmap, voxel_gi, model, sdk)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -145,7 +145,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.meshlib.json`, `.lightmap.json` and `.voxelgi.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json` and `.model.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -1046,6 +1046,17 @@ bytes, with Blender's log beside it. `scene3d::with_blender` wraps a file source
 files read as their glTF: sessions run Blender only with the `build` capability, and exports and
 `slash-cli scene validate` always may; exports ship the glTF under the `.blend` file's name.
 `tests/fake_blender.cpp` is Blender's stand-in for tests and `examples/blend-models`.
+
+Model recipes are `.model.json` files (`$cli schema model`; `engine/scene3d/src/recipe.cpp`):
+parameters, materials and parts of Godot's CSG shapes, capsules and prisms, combined with their
+children in order, with bevels, arrays and numbers written as `Expression`s over the parameters
+(`"=width / 2"`). `build_model_recipe` evaluates them, checks the result against the strict
+schema and the shapes' fields, and builds each top-level part as a CSG root through
+`csg_mesh(const CsgTree&)`, the same code CSG entities use; bevels are hulls of corner spheres
+fed in as `CSGMesh3D`s. `load_model` and `check_model` take recipes, so `MeshInstance3D`,
+`model.inspect`, LODs, hot reload and exports treat them as any model, and
+`validate_model_recipe` backs `scene validate` and `scene format`.
+`examples/parametric-models` is a table and a vase.
 
 Models' surfaces get LODs when they load, as Godot 4.6's importer generates them
 (`engine/scene3d/src/lod.cpp`: `generate_lods`, ported from `ImporterMesh::generate_lods`, on

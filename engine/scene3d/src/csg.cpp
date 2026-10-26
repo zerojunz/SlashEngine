@@ -212,6 +212,9 @@ struct CsgNode {
     std::optional<world::Path3D> path;
     world::Affine3D path_place;
     std::string path_error;
+    // Where its problems are reported, for a node made from a CsgTree; "" for the component's
+    // path.
+    std::string where;
     std::vector<CsgNode> children; // the visible ones, in order
 
     friend bool operator==(const CsgNode&, const CsgNode&) = default;
@@ -219,6 +222,11 @@ struct CsgNode {
 
 std::string component_path(const CsgShape& shape) {
     return "/components/" + std::string(kCsgNames[shape.index()]);
+}
+
+// Where a node's problems are reported.
+std::string where_of(const CsgNode& node) {
+    return node.where.empty() ? component_path(node.shape) : node.where;
 }
 
 // Faces all drawn with the shape's material, as CSGPrimitive3D makes them.
@@ -756,7 +764,7 @@ Brush mesh_brush(const CsgNode& node, bool flip) {
 }
 
 Brush own_brush(const CsgNode& node, std::vector<Problem>& problems) {
-    const std::string path = component_path(node.shape);
+    const std::string path = where_of(node);
     return std::visit(
         [&](const auto& shape) -> Brush {
             using T = std::decay_t<decltype(shape)>;
@@ -907,7 +915,7 @@ Brush brush_of(const CsgNode& node, std::vector<Problem>& problems) {
     Materials materials;
     const manifold::Manifold root = pack(own, materials);
     if (!own.faces.empty() && root.Status() != manifold::Manifold::Error::NoError) {
-        problems.push_back({node.entity, component_path(node.shape),
+        problems.push_back({node.entity, where_of(node),
                             "its faces don't close (" + status_name(root.Status()) +
                                 "), so it adds nothing: each edge must join exactly two faces"});
     }
@@ -1164,7 +1172,7 @@ CsgNode node_of(const world::World& world, const world::Tree3D& tree, entt::enti
                 node.mesh_error = "expected a path inside the project folder, separated by '/', "
                                   "with no \".\" or \"..\" parts";
             } else if (!is_model_path(mesh->mesh)) {
-                node.mesh_error = "expected a .gltf, .glb, .obj, .fbx or .blend file";
+                node.mesh_error = "expected a .gltf, .glb, .obj, .fbx, .blend or .model.json file";
             } else if (primitive) {
                 node.mesh_error = "names a model, so its " +
                                   std::string(kPrimitiveNames[primitive->index()]) +
@@ -1197,7 +1205,7 @@ std::shared_ptr<const CsgMesh> make(const CsgNode& root) {
     mesh->version = next_version.fetch_add(1);
     // An empty result, unless a shape under the root already says why.
     if (brush.faces.empty() && problems.empty()) {
-        problems.push_back({root.entity, component_path(root.shape),
+        problems.push_back({root.entity, where_of(root),
                             "makes an empty shape: shapes are usually empty because a mesh isn't "
                             "closed (manifold), or a subtraction or intersection leaves nothing"});
     }
@@ -1314,6 +1322,38 @@ std::shared_ptr<const CsgMesh> csg_mesh(const world::World& world, const world::
     });
     cache->entries[root] = {.input = std::move(input), .mesh = mesh};
     return mesh;
+}
+
+namespace {
+
+CsgNode node_of(const CsgTree& tree) {
+    CsgNode node;
+    node.shape = tree.shape;
+    node.local = tree.local;
+    node.material = tree.material;
+    node.model = tree.model;
+    node.primitive = tree.primitive;
+    node.path = tree.path;
+    node.where = tree.where;
+    if (const auto* polygon = std::get_if<world::CSGPolygon3D>(&tree.shape);
+        polygon != nullptr && polygon->mode == "path" && !tree.path) {
+        node.path_error = "has no path to push the polygon along";
+    }
+    if (const auto* mesh = std::get_if<world::CSGMesh3D>(&tree.shape);
+        mesh != nullptr && !tree.model && !tree.primitive) {
+        node.mesh_error = "has no mesh";
+    }
+    node.children.reserve(tree.children.size());
+    for (const CsgTree& child : tree.children) {
+        node.children.push_back(node_of(child));
+    }
+    return node;
+}
+
+} // namespace
+
+std::shared_ptr<const CsgMesh> csg_mesh(const CsgTree& root) {
+    return make(node_of(root));
 }
 
 void install_csg(world::World& world, ModelLoader load) {

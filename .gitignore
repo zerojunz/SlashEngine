@@ -6,3 +6,7 @@ compile_commands.json
 .vscode/
 .idea/
 node_modules/
+# Folders tests make in the folder they run from
+/import_godot_*/
+/import_unity_*/
+/bench_live_*/
