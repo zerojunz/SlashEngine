@@ -587,6 +587,118 @@ TEST_CASE("model recipes go into the library, and refining one changes its param
     CHECK(engine.fail("asset.refine", R"({"id": ")" + icon + R"("})").data["path"] == "/prompt");
 }
 
+TEST_CASE("a recipe made of other model files goes into the library with them, and out again") {
+    const fs::path root = fresh("library_composite");
+    const Engine engine(root);
+    const fs::path project = root / "project";
+    write(project / "props" / "crate.model.json",
+          R"({"format": 1, "parts": [{"name": "box", "shape": "box", "size": [1, 1, 1],
+              "position": [0, 0.5, 0]}]})");
+    slash::test::Gltf glb = slash::test::quad();
+    write(project / "props" / "sign.glb", glb.glb());
+    const std::string stall = R"({"format": 1, "parts": [
+        {"name": "counter", "shape": "box", "size": [3, 1, 1], "position": [0, 0.5, 0]},
+        {"name": "left", "model": "props/crate.model.json", "position": [-2, 0, 0]},
+        {"name": "right", "model": "props/crate.model.json", "position": [2, 0, 0]},
+        {"name": "sign", "model": "props/sign.glb", "position": [0, 2, 0]}]})";
+    write(project / "props" / "stall.model.json", stall);
+
+    // The part files go in with the recipe, which names them by their library IDs.
+    json::Value added = engine.call(
+        "asset.add", R"({"path": "props/stall.model.json", "description": "A market stall.",
+                         "license": "CC0-1.0", "author": "Mira"})");
+    CHECK(added["size"] == parse("[5, 3, 1]"));
+    const std::string crate = added["model_parts"]["props/crate.model.json"].as_string();
+    const std::string sign = added["model_parts"]["props/sign.glb"].as_string();
+    const std::string first = added["id"].as_string();
+    CHECK(read(project / "props" / "stall.model.json") == stall);
+    json::Value info = engine.call("asset.info", R"({"id": ")" + first + R"("})");
+    CHECK(info["uses"] == parse(R"([")" + crate + R"(", ")" + sign + R"("])"));
+    info = engine.call("asset.info", R"({"id": ")" + crate + R"("})");
+    CHECK(info["description"] == "crate, a part of: A market stall.");
+    CHECK(info["license"] == "CC0-1.0");
+    CHECK(info["author"] == "Mira");
+    CHECK(info["used_by"] == parse(R"([")" + first + R"("])"));
+    const library::Library kept((root / "library").string());
+    const library::Record crate_record = kept.get(crate).value();
+    const std::string in_library = kept.read(kept.get(first).value()).value();
+    CHECK(in_library.find("\"asset:" + crate_record.id + ".model.json\"") != std::string::npos);
+    CHECK(in_library.find("props/") == std::string::npos);
+    json::Value list = parse(read(project / "library.json"));
+    CHECK(list["assets"]["props/crate.model.json"]["id"] == crate_record.id);
+    CHECK(list["assets"]["props/sign.glb"]["license"] == "CC0-1.0");
+
+    // Using it copies its parts beside it; adding that copy again is the same asset.
+    json::Value used = engine.call("asset.use", R"({"id": ")" + first +
+                                                    R"(", "path": "market/stall.model.json"})");
+    const std::string crate_copy = "market/parts/" + crate + ".model.json";
+    const std::string sign_copy = "market/parts/" + sign + ".glb";
+    CHECK(used["parts"] == parse(R"([")" + crate_copy + R"(", ")" + sign_copy + R"("])"));
+    json::Value copied = parse(read(project / "market" / "stall.model.json"));
+    CHECK(copied["parts"].as_array()[1]["model"] == crate_copy);
+    CHECK(copied["parts"].as_array()[3]["model"] == sign_copy);
+    CHECK(read(project / sign_copy) == glb.glb());
+    json::Value again = engine.call("asset.add", R"({"path": "market/stall.model.json"})");
+    CHECK(again["id"] == first);
+    CHECK(again.find("parent") == nullptr);
+    CHECK(again["model_parts"][crate_copy] == crate);
+
+    // A part changed and added again is a new version, and says which recipes use the old one,
+    // which asset.refine moves to it.
+    write(project / "props" / "crate.model.json",
+          R"({"format": 1, "parts": [{"name": "box", "shape": "box", "size": [1, 2, 1],
+              "position": [0, 1, 0]}]})");
+    json::Value taller = engine.call("asset.add", R"({"path": "props/crate.model.json"})");
+    CHECK(taller["parent"] == crate);
+    CHECK(taller["used_by"] == parse(R"([")" + first + R"("])"));
+    const std::string tall = taller["id"].as_string();
+    json::Value moved = engine.call("asset.refine", R"({"id": ")" + first + R"(", "parts": {")" +
+                                                        crate + R"(": ")" + tall + R"("}})");
+    CHECK(moved["parent"] == first);
+    info = engine.call("asset.info", R"({"id": ")" + moved["id"].as_string() + R"("})");
+    CHECK(info["uses"] == parse(R"([")" + tall + R"(", ")" + sign + R"("])"));
+    CHECK(info["request"]["parts"] ==
+          parse(R"({")" + crate_record.id + R"(": ")" + kept.get(tall).value().id + R"("})"));
+    CHECK(info["description"] == "A market stall.");
+    CHECK(engine
+              .fail("asset.refine", R"({"id": ")" + first + R"(", "parts": {")" + tall + R"(": ")" +
+                                        crate + R"("}})")
+              .message == "/parts/" + tall + ": the recipe isn't made of \"" + tall +
+                              "\"; it is made of \"" + crate + "\", \"" + sign + "\"");
+    const std::string icon =
+        engine.call("asset.generate", R"({"prompt": "gem icon", "generator": "test"})")["id"]
+            .as_string();
+    CHECK(engine
+              .fail("asset.refine", R"({"id": ")" + first + R"(", "parts": {")" + crate +
+                                        R"(": ")" + icon + R"("}})")
+              .message ==
+          "/parts/" + crate + ": a model part is a model; \"" + icon + "\" is an image");
+
+    // Parts the library can't keep, and recipes that take in themselves.
+    write(project / "props" / "lamp.obj", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+    write(project / "props" / "lit.model.json",
+          R"({"format": 1, "parts": [{"model": "props/lamp.obj"}]})");
+    CHECK(engine.fail("asset.add", R"({"path": "props/lit.model.json", "description": "A lamp."})")
+              .message == "/path: the model part \"props/lamp.obj\": the library keeps model "
+                          "parts that are .glb or .model.json files");
+    write(project / "props" / "a.model.json",
+          R"({"format": 1, "parts": [{"model": "props/b.model.json"}]})");
+    write(project / "props" / "b.model.json",
+          R"({"format": 1, "parts": [{"model": "props/a.model.json"}]})");
+    CHECK(engine.fail("asset.add", R"({"path": "props/a.model.json", "description": "A loop."})")
+              .message == "/path: \"props/a.model.json\" takes in itself through its model parts");
+
+    // A library recipe names library models, never a project's files.
+    library::Record record;
+    CHECK(library::describe_file(stall, "stall.model.json", record).error().message ==
+          "a model part names \"props/crate.model.json\": the library keeps recipes whose model "
+          "parts are library models (\"asset:<id>.glb\"); asset.add puts a recipe's part files "
+          "in with it");
+    CHECK(library::ref_id("asset:" + crate_record.id + ".model.json") == crate_record.id);
+    CHECK(library::ref_id("asset:" + crate_record.id + ".obj").empty());
+    CHECK(library::ref_id("props/crate.model.json").empty());
+}
+
 TEST_CASE("asset commands report bad params with their paths") {
     const fs::path root = fresh("library_errors");
     const Engine engine(root);
