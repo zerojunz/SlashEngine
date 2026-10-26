@@ -32,7 +32,9 @@
 #include <cstdint>
 #include <filesystem>
 #include <initializer_list>
+#include <iomanip>
 #include <map>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -5173,6 +5175,273 @@ void write_hills(const fs::path& folder) {
 }
 
 } // namespace
+
+namespace {
+
+// A MinMaxCurve as Unity writes it: a constant, two constants, or a curve of [time, value,
+// in slope, out slope] keys times a multiplier.
+std::string min_max(std::string_view name, double scalar, double min_scalar, int state = -1,
+                    std::initializer_list<std::array<double, 4>> keys = {}, int indent = 4) {
+    const auto number = [](double value) {
+        std::ostringstream out;
+        out << std::setprecision(8) << value;
+        return out.str();
+    };
+    const std::string at(static_cast<std::size_t>(indent), ' ');
+    const std::string in = at + "  ";
+    const std::string deeper = in + "  ";
+    if (state < 0) {
+        state = min_scalar == scalar ? 0 : 3;
+    }
+    std::string out = at + std::string(name) + ":\n" + in + "serializedVersion: 2\n" + in +
+                      "minMaxState: " + std::to_string(state) + "\n" + in +
+                      "scalar: " + number(scalar) + "\n" + in + "minScalar: " + number(min_scalar) +
+                      "\n" + in + "maxCurve:\n" + deeper + "serializedVersion: 2\n" + deeper +
+                      "m_Curve:";
+    if (keys.size() == 0) {
+        out += " []\n";
+    } else {
+        out += "\n";
+        for (const auto& [time, value, slope_in, slope_out] : keys) {
+            out += deeper + "- serializedVersion: 3\n" + deeper + "  time: " + number(time) + "\n" +
+                   deeper + "  value: " + number(value) + "\n" + deeper +
+                   "  inSlope: " + number(slope_in) + "\n" + deeper +
+                   "  outSlope: " + number(slope_out) + "\n" + deeper + "  tangentMode: 0\n" +
+                   deeper + "  weightedMode: 0\n";
+        }
+    }
+    return out + deeper + "m_PreInfinity: 2\n" + deeper + "m_PostInfinity: 2\n";
+}
+
+// A ParticleSystem with Unity 2022's defaults but for the modules given, each a module's name
+// and its lines after "enabled".
+std::string particle_system(std::int64_t object, std::int64_t owner, std::string_view main,
+                            std::string_view initial, std::string_view shape,
+                            std::string_view emission, std::string_view modules = "") {
+    return "--- !u!198 &" + id(object) + "\nParticleSystem:\n" + std::string(kSource) +
+           "  m_GameObject: {fileID: " + id(owner) +
+           "}\n  serializedVersion: 8\n  stopAction: 0\n" + std::string(main) +
+           "  InitialModule:\n    serializedVersion: 3\n    enabled: 1\n" + std::string(initial) +
+           "    maxNumParticles: 1000\n  ShapeModule:\n    serializedVersion: 6\n    enabled: 1\n" +
+           std::string(shape) + "  EmissionModule:\n    enabled: 1\n    serializedVersion: 4\n" +
+           std::string(emission) + std::string(modules);
+}
+
+std::string particle_renderer(std::int64_t object, std::int64_t owner, std::string_view material,
+                              int render_mode, int sort_mode, int shadows,
+                              std::string_view mesh = "{fileID: 0}") {
+    return component(199, "ParticleSystemRenderer", object, owner,
+                     "  m_CastShadows: " + std::to_string(shadows) +
+                         "\n  m_ReceiveShadows: 0\n  m_Materials:\n  - " + std::string(material) +
+                         "\n  m_RenderMode: " + std::to_string(render_mode) +
+                         "\n  m_MeshDistribution: 0\n  m_SortMode: " + std::to_string(sort_mode) +
+                         "\n  m_RenderAlignment: 0\n  m_Pivot: {x: 0, y: 0, z: 0}\n"
+                         "  m_Flip: {x: 0, y: 0, z: 0}\n  m_Mesh: " +
+                         std::string(mesh) + "\n  m_Mesh1: {fileID: 0}\n");
+}
+
+// A Gradient of Unity's: up to eight keys, each a color's r, g and b and an alpha, and the
+// times of the color keys and the alpha keys, out of 65535.
+std::string gradient(std::string_view name, std::string_view keys, std::string_view times,
+                     int colors, int alphas) {
+    return "      " + std::string(name) + ":\n        serializedVersion: 2\n" + std::string(keys) +
+           std::string(times) +
+           "        m_Mode: 0\n        m_ColorSpace: -1\n        m_NumColorKeys: " +
+           std::to_string(colors) + "\n        m_NumAlphaKeys: " + std::to_string(alphas) + "\n";
+}
+
+// A courtyard with a fire, sparks and a smoking chimney, saved by Unity 2022.3.
+void write_bonfire(const fs::path& folder) {
+    write(folder / "ProjectSettings/ProjectVersion.txt", "m_EditorVersion: 2022.3.20f1\n");
+    write(folder / "ProjectSettings/DynamicsManager.asset",
+          std::string(kHeader) + "--- !u!55 &1\nPhysicsManager:\n  m_ObjectHideFlags: 0\n" +
+              "  serializedVersion: 13\n  m_Gravity: {x: 0, y: -9.81, z: 0}\n");
+    // URP's Particles/Unlit shader, alpha blended, in grey.
+    write(folder / "Assets/Materials/Smoke.mat",
+          material_file("Smoke", ref(4800000, "0406db5a14f94604a8c57ccfbc9f3b46"), "", " []",
+                        "\n    - _Surface: 1\n    - _Blend: 0",
+                        "\n    - _BaseColor: {r: 0.5, g: 0.5, b: 0.5, a: 0.8}"));
+    write(folder / "Assets/Materials/Smoke.mat.meta",
+          meta("a6000000000000000000000000000001", "NativeFormatImporter",
+               "  mainObjectFileID: 2100000\n"));
+
+    const std::string white = "{r: 1, g: 1, b: 1, a: 1}";
+    std::string scene(kHeader);
+    // The fire: Unity's default cone turned to point up, with its default material, fading from
+    // yellow to red and shrinking over each life.
+    scene += game_object(10, "Fire", {11, 12, 13});
+    scene += transform_3d(11, 10, "{x: 2, y: 0, z: 0}", "{x: -0.7071068, y: 0, z: 0, w: 0.7071068}",
+                          kOne);
+    scene += particle_system(
+        12, 10,
+        "  lengthInSec: 5\n  simulationSpeed: 1\n  looping: 1\n  prewarm: 0\n  playOnAwake: 1\n"
+        "  autoRandomSeed: 1\n" +
+            min_max("startDelay", 0, 0, -1, {}, 2) + "  moveWithTransform: 0\n  randomSeed: 0\n",
+        min_max("startLifetime", 2, 2) + min_max("startSpeed", 5, 5) +
+            "    startColor:\n      serializedVersion: 2\n      minMaxState: 0\n"
+            "      minColor: " +
+            white + "\n      maxColor: " + white + "\n" + min_max("startSize", 1, 1) +
+            min_max("startRotation", 0, 0) + "    size3D: 0\n    rotation3D: 0\n" +
+            min_max("gravityModifier", 0, 0),
+        "    type: 4\n    angle: 25\n    radiusThickness: 1\n    m_Position: {x: 0, y: 0, z: 0}\n"
+        "    m_Rotation: {x: 0, y: 0, z: 0}\n    m_Scale: {x: 1, y: 1, z: 1}\n"
+        "    radius:\n      value: 0.3\n      mode: 0\n    arc:\n      value: 360\n      mode: 0\n",
+        min_max("rateOverTime", 10, 10) + min_max("rateOverDistance", 0, 0) +
+            "    m_BurstCount: 0\n    m_Bursts: []\n",
+        "  ColorModule:\n    enabled: 1\n    gradient:\n      serializedVersion: 2\n"
+        "      minMaxState: 1\n      minColor: " +
+            white + "\n      maxColor: " + white + "\n" +
+            gradient("maxGradient",
+                     "        key0: {r: 1, g: 0.9, b: 0.4, a: 1}\n"
+                     "        key1: {r: 1, g: 0.3, b: 0.1, a: 0.8}\n"
+                     "        key2: {r: 0, g: 0, b: 0, a: 0}\n",
+                     "        ctime0: 0\n        ctime1: 65535\n        atime0: 0\n"
+                     "        atime1: 39321\n        atime2: 65535\n",
+                     2, 3) +
+            "  SizeModule:\n    enabled: 1\n" +
+            min_max("curve", 1, 1, 1, {{0, 1, -0.8, -0.8}, {1, 0.2, -0.8, -0.8}}) +
+            "    separateAxes: 0\n");
+    scene += particle_renderer(13, 10, ref(10308, kBuiltinSprites, 0), 0, 0, 0);
+
+    // Sparks: one burst of cubes from a sphere's surface, falling, eased smaller.
+    scene += game_object(20, "Sparks", {21, 22, 23});
+    scene += transform_3d(21, 20, "{x: 2, y: 1, z: 0}", kNoTurn, kOne);
+    scene += particle_system(
+        22, 20,
+        "  lengthInSec: 1\n  simulationSpeed: 1\n  looping: 0\n  prewarm: 0\n  playOnAwake: 1\n"
+        "  autoRandomSeed: 0\n  moveWithTransform: 1\n  randomSeed: 1234\n",
+        min_max("startLifetime", 1, 0.5) + min_max("startSpeed", 4, 2) +
+            "    startColor:\n      serializedVersion: 2\n      minMaxState: 2\n"
+            "      minColor: {r: 1, g: 1, b: 0, a: 1}\n      maxColor: {r: 1, g: 0.5, b: 0, a: "
+            "1}\n" +
+            min_max("startSize", 0.1, 0.1) + min_max("gravityModifier", 1, 1),
+        "    type: 0\n    radiusThickness: 0\n    radius:\n      value: 0.1\n",
+        min_max("rateOverTime", 0, 0) +
+            "    m_BurstCount: 1\n    m_Bursts:\n    - serializedVersion: 2\n      time: 0\n" +
+            min_max("countCurve", 30, 30, -1, {}, 6) +
+            "      cycleCount: 1\n      repeatInterval: 0.01\n      probability: 1\n",
+        "  SizeModule:\n    enabled: 1\n" +
+            min_max("curve", 1, 1, 1, {{0, 1, 0, 0}, {1, 0, 0, 0}}));
+    scene += particle_renderer(23, 20, ref(10303, kBuiltinSprites, 0), 4, 1, 1,
+                               ref(10202, kBuiltinExtra, 0));
+
+    // A chimney smoking: its cone turned up in the shape module, puffs from a texture sheet
+    // turning as they rise, and noise, which doesn't convert.
+    scene += game_object(30, "Chimney", {31, 32, 33, 34, 35});
+    scene += transform_3d(31, 30, "{x: -3, y: 2, z: 1}", kNoTurn, kOne);
+    scene += mesh_filter(32, 30, 10202);
+    scene += mesh_renderer(33, 30, ref(10303, kBuiltinSprites, 0));
+    scene += particle_system(
+        34, 30,
+        "  lengthInSec: 5\n  simulationSpeed: 0.5\n  looping: 1\n  prewarm: 1\n  playOnAwake: 0\n"
+        "  moveWithTransform: 1\n",
+        min_max("startLifetime", 3, 3) + min_max("startSpeed", 1, 1),
+        "    type: 4\n    angle: 10\n    radiusThickness: 1\n    m_Rotation: {x: -90, y: 0, z: 0}\n"
+        "    radius:\n      value: 0.2\n",
+        min_max("rateOverTime", 8, 4),
+        "  RotationModule:\n    enabled: 1\n" + min_max("curve", 0.7853982, 0.7853982) +
+            "  UVModule:\n    enabled: 1\n    mode: 0\n    tilesX: 2\n    tilesY: 2\n"
+            "    animationType: 0\n" +
+            min_max("frameOverTime", 0.9999, 0.9999, 1, {{0, 0, 1, 1}, {1, 1, 1, 1}}) +
+            min_max("startFrame", 0, 0) + "    cycleCount: 2\n" +
+            "  NoiseModule:\n    enabled: 1\n");
+    scene +=
+        particle_renderer(35, 30, ref(2100000, "a6000000000000000000000000000001", 2), 3, 0, 0);
+    write(folder / "Assets/Scenes/Bonfire.unity", scene);
+    write(folder / "Assets/Scenes/Bonfire.unity.meta", meta("a6000000000000000000000000000002"));
+}
+
+} // namespace
+
+TEST_CASE("Unity particle systems become CPUParticles3D: shapes, emission and each life's change") {
+    const fs::path project = "import_unity_particles";
+    fs::remove_all(project);
+    write_bonfire(project / "unity");
+    const auto files = files_of(plan_inside(project));
+    const std::string bonfire = "unity/Assets/Scenes/Bonfire.scene.json";
+    REQUIRE(files.contains(bonfire));
+    slash::world::ComponentRegistry components;
+    slash::world::register_builtin_components(components);
+    CHECK(slash::world::validate_scene(components, parse(files.at(bonfire))).empty());
+
+    // The fire: Godot emits amount particles each lifetime, so 10 a second for 2 seconds is 20.
+    // Unity's cone leaves along +z from a disc at its base, a ring here; Unity's local simulation
+    // space is local_coords. Unity keeps the gradient's color and alpha keys apart: a point goes
+    // at each, with both blended there.
+    const json::Value fire = entity(files, bonfire, "fire");
+    CHECK(*fire.find("CPUParticles3D") == parse(R"({
+        "amount": 20, "lifetime": 2.0, "local_coords": true, "emission_shape": "ring",
+        "emission_ring_height": 0.0, "emission_ring_radius": 0.3, "direction": [0.0, 0.0, 1.0],
+        "spread": 25.0, "gravity": [0.0, 0.0, 0.0], "initial_velocity_min": 5.0,
+        "initial_velocity_max": 5.0, "scale_amount_curve": [[0.0, 1.0], [1.0, 0.2]],
+        "color_ramp": [{"color": [1.0, 0.9, 0.4, 1.0]},
+                       {"offset": 0.6, "color": [1.0, 0.54, 0.22, 0.8]},
+                       {"offset": 1.0, "color": [1.0, 0.3, 0.1, 0.0]}],
+        "cast_shadow": "off"})"));
+    // A billboard of Unity's default particle material, its soft dot drawn by the import.
+    CHECK(*fire.find("QuadMesh") == parse("{}"));
+    CHECK(*fire.find("StandardMaterial3D") == parse(R"({
+        "transparency": "alpha", "shading_mode": "unshaded", "vertex_color_use_as_albedo": true,
+        "albedo_texture": "unity/Assets/particles/Default-Particle.png",
+        "billboard_mode": "particles", "billboard_keep_scale": true})"));
+    REQUIRE(files.contains("unity/Assets/particles/Default-Particle.png"));
+    CHECK(*fire.find("Transform3D") ==
+          parse(R"({"position": [-2.0, 0.0, 0.0], "rotation": [-1.570796, 0.0, 0.0]})"));
+
+    // The sparks: a burst of 30 at the start, once; random lifetimes as Godot's randomness,
+    // colors between two as an initial ramp, gravity by its modifier, a seed of their own, cubes
+    // in view depth order, and an eased size sampled each sixteenth of a life.
+    const json::Value sparks = entity(files, bonfire, "sparks");
+    const json::Value& spark = *sparks.find("CPUParticles3D");
+    for (const auto& [field, value] : json::Object(parse(R"({
+            "amount": 30, "lifetime_randomness": 0.5, "one_shot": true,
+            "explosiveness": 1.0, "seed": 1234, "emission_shape": "sphere_surface",
+            "emission_sphere_radius": 0.1, "spread": 180.0, "gravity": [0.0, -9.81, 0.0],
+            "initial_velocity_min": 2.0, "initial_velocity_max": 4.0, "scale_amount_min": 0.1,
+            "scale_amount_max": 0.1, "draw_order": "view_depth",
+            "color_initial_ramp": [{"color": [1.0, 1.0, 0.0, 1.0]},
+                                   {"offset": 1.0, "color": [1.0, 0.5, 0.0, 1.0]}]})")
+                                                       .as_object())) {
+        CAPTURE(field);
+        REQUIRE(spark.find(field) != nullptr);
+        CHECK(*spark.find(field) == value);
+    }
+    const json::Array& eased = spark.find("scale_amount_curve")->as_array();
+    REQUIRE(eased.size() == 17);
+    CHECK(eased[0] == parse("[0.0, 1.0]"));
+    CHECK(eased[8] == parse("[0.5, 0.5]"));
+    CHECK(eased[4] == parse("[0.25, 0.84375]"));
+    CHECK(eased[16] == parse("[1.0, 0.0]"));
+    CHECK(sparks.find("BoxMesh") != nullptr);
+    CHECK(*sparks.find("StandardMaterial3D") ==
+          parse(R"({"roughness": 0.5, "vertex_color_use_as_albedo": true})"));
+
+    // The chimney draws its own cube, so its smoke goes on an entity under it. The shape turned
+    // -90 degrees about x points the cone up; a rate between 4 and 8 emits 8 a second; the
+    // texture sheet's two cycles play two times over each life, looping.
+    const json::Value chimney = entity(files, bonfire, "chimney");
+    CHECK(chimney.find("BoxMesh") != nullptr);
+    CHECK(chimney.find("CPUParticles3D") == nullptr);
+    const json::Value smoke = entity(files, bonfire, "chimney_particles");
+    CHECK(*smoke.find("CPUParticles3D") == parse(R"({
+        "emitting": false, "amount": 24, "lifetime": 3.0, "preprocess": 5.0, "speed_scale": 0.5,
+        "emission_shape": "ring", "emission_ring_axis": [0.0, 1.0, 0.0],
+        "emission_ring_height": 0.0, "emission_ring_radius": 0.2, "direction": [0.0, 1.0, 0.0],
+        "spread": 10.0, "gravity": [0.0, 0.0, 0.0], "initial_velocity_min": 1.0,
+        "initial_velocity_max": 1.0, "angular_velocity_min": 45.0, "angular_velocity_max": 45.0,
+        "anim_speed_min": 2.0, "anim_speed_max": 2.0, "cast_shadow": "off"})"));
+    CHECK(*smoke.find("StandardMaterial3D") == parse(R"({
+        "albedo_color": [0.5, 0.5, 0.5, 0.8], "roughness": 0.5, "transparency": "alpha",
+        "shading_mode": "unshaded",
+        "billboard_mode": "fixed_y", "billboard_keep_scale": true,
+        "vertex_color_use_as_albedo": true, "particles_anim_h_frames": 2,
+        "particles_anim_v_frames": 2, "particles_anim_loop": true})"));
+
+    const json::Value report = parse(files.at("import/unity.json"));
+    CHECK(unsupported(report, "particle Noise").find("why")->as_string() ==
+          "Godot's CPUParticles3D has none");
+    CHECK(unsupported(report, "particle emission rate that varies") != nullptr);
+}
 
 TEST_CASE("Unity terrains become HTerrains: heights, layers, alpha maps and holes, mirrored in x") {
     const fs::path project = "import_unity_terrain";
