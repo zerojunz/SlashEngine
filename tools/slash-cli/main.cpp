@@ -51,6 +51,7 @@
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/scene3d.hpp"
+#include "slash/scene3d/voxel_gi.hpp"
 #include "slash/server/server.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
 #include "slash/soundtrack/commands.hpp"
@@ -122,8 +123,8 @@ Usage:
                                      .animtree.json, .tileset.json, .font.json, .theme.json,
                                      .audio.json, .bus_layout.json, .navmesh.json,
                                      .navpoly.json, .meshlib.json, .lightmap.json,
-                                     .replay.json, .test.json or .score.json file; lists every
-                                     error
+                                     .voxelgi.json, .replay.json, .test.json or .score.json
+                                     file; lists every error
   slash-cli scene format <file>      Rewrite one of those files in canonical form
       --check                        Only report whether it is canonical; change nothing
   slash-cli schema <name>            Print a JSON Schema: scene, prefab, frames (.frames.json),
@@ -133,7 +134,7 @@ Usage:
                                      (.theme.json), audio (.audio.json), bus_layout
                                      (.bus_layout.json), navmesh (.navmesh.json), navpoly
                                      (.navpoly.json), meshlib (.meshlib.json), lightmap
-                                     (.lightmap.json), replay
+                                     (.lightmap.json), voxel_gi (.voxelgi.json), replay
                                      (.replay.json), test (.test.json), score
                                      (.score.json), storyboard, project
                                      (project.json), presets (export_presets.json), sdk
@@ -919,6 +920,7 @@ int cmd_scene_validate(const std::string& path) {
     const bool navpoly = path.ends_with(slash::navigation::kPolygonSuffix);
     const bool meshlib = path.ends_with(slash::scene3d::kMeshLibrarySuffix);
     const bool lightmap = path.ends_with(slash::scene3d::kLightmapSuffix);
+    const bool voxel_gi = path.ends_with(slash::scene3d::kVoxelGISuffix);
     const bool replay = path.ends_with(command::kReplaySuffix);
     const bool test = path.ends_with(command::kTestSuffix);
     const bool score = path.ends_with(slash::soundtrack::kScoreSuffix);
@@ -958,6 +960,8 @@ int cmd_scene_validate(const std::string& path) {
         errors = slash::scene3d::validate_mesh_library(parsed.value());
     } else if (lightmap) {
         errors = slash::scene3d::validate_lightmap(parsed.value());
+    } else if (voxel_gi) {
+        errors = slash::scene3d::validate_voxel_gi(parsed.value());
     } else if (replay) {
         errors = command::validate_replay(parsed.value());
     } else if (test) {
@@ -1146,6 +1150,9 @@ int cmd_scene_format(const std::string& path, bool check) {
         }
         if (path.ends_with(slash::scene3d::kLightmapSuffix)) {
             return format_checked(text.value(), slash::scene3d::parse_lightmap);
+        }
+        if (path.ends_with(slash::scene3d::kVoxelGISuffix)) {
+            return format_checked(text.value(), slash::scene3d::parse_voxel_gi);
         }
         const auto checked_by = [](auto validate) {
             return [validate](const json::Value& doc) -> slash::Result<void> {

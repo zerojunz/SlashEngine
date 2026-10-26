@@ -109,6 +109,16 @@ static const uint kTerrain = 1u;
 static const uint kTerrainDepthBlending = 2u;
 static const uint kTerrainNormals = 16u; // shifted left by the layer
 
+// A VoxelGI a draw traces (Forward+): its light is a 3D texture kept in ground_texture_2 as each
+// level's z slices side by side.
+struct VoxelGI {
+    float4 rows[3]; // the world to its cells' space, a row each: a unit a texel of level 0
+    float4 size;    // texels along x, y and z at level 0, then how many levels
+    float4 params;  // energy, bias, normal bias, 1 to blend with the ambient light
+    // Each level's first slice's left and top texels in the atlas and its slices a row.
+    float4 levels[10];
+};
+
 cbuffer Surface : register(b0, space3) {
     float4 albedo;            // sRGB, and alpha
     float4 emission;          // sRGB, and its energy
@@ -122,6 +132,8 @@ cbuffer Surface : register(b0, space3) {
     float4 terrain_opacity; // how much the color map tints each ground layer
     float4 lightmap;        // the lightmap's exposure, then 1 for the bicubic filter
     float4 capture[9];      // the light probes' spherical harmonics, RGB
+    float4 voxel_gi;        // how many of voxel_gis it traces
+    VoxelGI voxel_gis[2];
 };
 
 struct Light {
@@ -163,6 +175,9 @@ cbuffer Scene : register(b1, space3) {
     // Forward+'s reflection probes: how many in probes, the level the roughest surfaces read, and
     // the exposure their light is multiplied by.
     float4 reflections;
+    // 1 when meshes trace their VoxelGIs (Forward+, and not a reflection probe's capture), then 1
+    // for high quality.
+    float4 scene_voxel_gi;
     // Every light in Compatibility; in Forward+, only the directional ones.
     Light lights[64];
 };
@@ -631,6 +646,183 @@ void reflect_probes(float3 world, float3 ray, float3 normal, float roughness,
 }
 #endif
 
+#ifdef CLUSTERED
+// Godot 4.6's VoxelGI cone tracing (gi.glsl's voxel_gi_compute and its cone traces), through each
+// VoxelGI's 3D texture kept as tiles of the atlas in ground_texture_2. trace_voxel_gis in
+// src/voxel_gi.cpp is its CPU twin.
+
+// A VoxelGI's texture at one level, as a linear sampler that clamps reads a 3D texture: bilinear
+// in the two slices around uvw, each read inside its own tile, then between them.
+float4 voxel_gi_level(uint index, uint level, float3 uvw) {
+    float3 extent = max(floor(voxel_gis[index].size.xyz / (float)(1u << level)), 1.0);
+    float4 place = voxel_gis[index].levels[level];
+    uint columns = (uint)place.z;
+    float x = clamp(uvw.x * extent.x, 0.5, extent.x - 0.5);
+    float y = clamp(uvw.y * extent.y, 0.5, extent.y - 0.5);
+    float z = clamp(uvw.z * extent.z - 0.5, 0.0, extent.z - 1.0);
+    float z0 = floor(z);
+    uint width;
+    uint height;
+    ground_texture_2.GetDimensions(width, height);
+    float2 size = float2((float)width, (float)height);
+    uint low = (uint)z0;
+    uint high = (uint)min(z0 + 1.0, extent.z - 1.0);
+    float2 at_low = float2(place.x + (float)(low % columns) * extent.x + x,
+                           place.y + (float)(low / columns) * extent.y + y);
+    float2 at_high = float2(place.x + (float)(high % columns) * extent.x + x,
+                            place.y + (float)(high / columns) * extent.y + y);
+    float4 a = ground_texture_2.SampleLevel(ground_sampler_2, at_low / size, 0.0);
+    float4 b = ground_texture_2.SampleLevel(ground_sampler_2, at_high / size, 0.0);
+    return a + (b - a) * (z - z0);
+}
+
+// textureLod with a linear sampler with mipmaps: between the two levels around lod.
+float4 voxel_gi_sample(uint index, float3 uvw, float lod) {
+    lod = clamp(lod, 0.0, voxel_gis[index].size.w - 1.0);
+    float low = floor(lod);
+    float4 color = voxel_gi_level(index, (uint)low, uvw);
+    if (lod != low) {
+        float4 next = voxel_gi_level(index, (uint)low + 1u, uvw);
+        color = color + (next - color) * (lod - low);
+    }
+    return color;
+}
+
+// voxel_cone_trace: a cone from pos (in cells) along direction, its diameter growing by
+// 2 tan_half_angle a cell, stepping half its diameter, until it is opaque or leaves the texture.
+float4 voxel_cone_trace(uint index, float3 cell_size, float max_distance, float3 pos,
+                        float3 direction, float tan_half_angle, float bias) {
+    float dist = bias;
+    float4 color = (float4)0.0;
+    [loop] while (dist < max_distance && color.a < 1.0) {
+        float diameter = max(1.0, 2.0 * tan_half_angle * dist);
+        float3 uvw = (pos + direction * dist) * cell_size;
+        float half_diameter = diameter * 0.5;
+        if (any(abs(uvw - 0.5) > 0.5 + half_diameter * cell_size)) {
+            break;
+        }
+        float4 scolor = voxel_gi_sample(index, uvw, log2(diameter));
+        float a = 1.0 - color.a;
+        color += a * scolor;
+        dist += half_diameter;
+    }
+    return color;
+}
+
+// voxel_cone_trace_45_degrees: a cone of 45 degrees each side, each step as far as its radius
+// and a level coarser.
+float4 voxel_cone_trace_45_degrees(uint index, float3 cell_size, float max_distance, float3 pos,
+                                   float3 direction, float bias) {
+    float dist = bias;
+    float4 color = (float4)0.0;
+    float radius = max(0.5, dist);
+    float lod = log2(radius * 2.0);
+    [loop] while (dist < max_distance && color.a < 1.0) {
+        float3 uvw = (pos + direction * dist) * cell_size;
+        if (any(abs(uvw - 0.5) > 0.5 + radius * cell_size)) {
+            break;
+        }
+        float4 scolor = voxel_gi_sample(index, uvw, lod);
+        lod += 1.0;
+        float a = 1.0 - color.a;
+        color += scolor * a;
+        dist += radius;
+        radius = max(0.5, dist);
+    }
+    return color;
+}
+
+// gi.glsl's cone directions about +z: six narrower ones with their weights for high quality, else
+// four of 45 degrees, a quarter each.
+static const float3 kHighQualityCones[6] = {
+    float3(0.0, 0.0, 1.0),           float3(0.866025, 0.0, 0.5),
+    float3(0.267617, 0.823639, 0.5), float3(-0.700629, 0.509037, 0.5),
+    float3(-0.700629, -0.509037, 0.5), float3(0.267617, -0.823639, 0.5)};
+static const float kHighQualityWeights[6] = {0.25, 0.15, 0.15, 0.15, 0.15, 0.15};
+static const float3 kCones[4] = {float3(0.707107, 0.0, 0.707107), float3(0.0, 0.707107, 0.707107),
+                                 float3(-0.707107, 0.0, 0.707107),
+                                 float3(0.0, -0.707107, 0.707107)};
+
+// voxel_gi_compute: one VoxelGI's cones from a point, weighed by how far inside its box it is. A
+// cone about +z turns to about the normal by tangent, bitangent and normal.
+void voxel_gi_compute(uint index, float3 world, float3 normal, float3 reflection, float3 tangent,
+                      float3 bitangent, float roughness, inout float4 ambient_accum,
+                      inout float4 reflection_accum, inout float blend_accum) {
+    VoxelGI gi = voxel_gis[index];
+    float3 position = float3(dot(gi.rows[0], float4(world, 1.0)),
+                             dot(gi.rows[1], float4(world, 1.0)),
+                             dot(gi.rows[2], float4(world, 1.0)));
+    float3 ref_vec = normalize(float3(dot(gi.rows[0].xyz, reflection),
+                                      dot(gi.rows[1].xyz, reflection),
+                                      dot(gi.rows[2].xyz, reflection)));
+    float3 n = normalize(float3(dot(gi.rows[0].xyz, normal), dot(gi.rows[1].xyz, normal),
+                                dot(gi.rows[2].xyz, normal)));
+    position += n * gi.params.z;
+    float3 bounds = gi.size.xyz;
+    if (any(position < 0.0) || any(position > bounds)) {
+        return;
+    }
+    float3 blendv = abs(position / bounds * 2.0 - 1.0);
+    float blend = saturate(1.0 - max(blendv.x, max(blendv.y, blendv.z)));
+    float max_distance = length(bounds);
+    float3 cell_size = 1.0 / bounds;
+    float4 light = (float4)0.0;
+    if (scene_voxel_gi.y != 0.0) {
+        for (uint i = 0u; i < 6u; ++i) {
+            float3 c = kHighQualityCones[i];
+            float3 turned = tangent * c.x + bitangent * c.y + normal * c.z;
+            float3 dir = normalize(float3(dot(gi.rows[0].xyz, turned), dot(gi.rows[1].xyz, turned),
+                                          dot(gi.rows[2].xyz, turned)));
+            light += kHighQualityWeights[i] * voxel_cone_trace(index, cell_size, max_distance,
+                                                               position, dir, 0.577, gi.params.y);
+        }
+    } else {
+        for (uint i = 0u; i < 4u; ++i) {
+            float3 c = kCones[i];
+            float3 turned = tangent * c.x + bitangent * c.y + normal * c.z;
+            float3 dir = normalize(float3(dot(gi.rows[0].xyz, turned), dot(gi.rows[1].xyz, turned),
+                                          dot(gi.rows[2].xyz, turned)));
+            light += 0.25 * voxel_cone_trace_45_degrees(index, cell_size, max_distance, position,
+                                                        dir, gi.params.y);
+        }
+    }
+    float4 irradiance = voxel_cone_trace(index, cell_size, max_distance, position, ref_vec,
+                                         tan(roughness * 0.5 * 3.14159265 * 0.99), gi.params.y);
+    light.rgb *= gi.params.x;
+    irradiance.rgb *= gi.params.x;
+    if (gi.params.w == 0.0) {
+        light.a = 1.0;
+        irradiance.a = 1.0;
+    }
+    ambient_accum += light * blend;
+    reflection_accum += irradiance * blend;
+    blend_accum += blend;
+}
+
+// Godot's process_gi: what the pixel's VoxelGIs give it, ambient light and reflections, each with
+// how much of the sky's it replaces in alpha.
+void trace_voxel_gis(float3 world, float3 normal, float3 view, float roughness,
+                     out float4 ambient_accum, out float4 reflection_accum) {
+    float3 reflection = normalize(reflect(-view, normal));
+    roughness *= roughness;
+    float3 v0 = abs(normal.z) < 0.999 ? float3(0.0, 0.0, 1.0) : float3(0.0, 1.0, 0.0);
+    float3 tangent = normalize(cross(v0, normal));
+    float3 bitangent = normalize(cross(tangent, normal));
+    ambient_accum = (float4)0.0;
+    reflection_accum = (float4)0.0;
+    float blend_accum = 0.0;
+    uint count = min((uint)voxel_gi.x, 2u);
+    for (uint i = 0u; i < count; ++i) {
+        voxel_gi_compute(i, world, normal, reflection, tangent, bitangent, roughness,
+                         ambient_accum, reflection_accum, blend_accum);
+    }
+    if (blend_accum > 0.0) {
+        ambient_accum /= blend_accum;
+        reflection_accum /= blend_accum;
+    }
+}
+#endif
+
 // Godot's textureArray_bicubic (scene_forward_clustered.glsl): a cubic B-spline over the 4x4
 // texels around uv, as four bilinear taps. w0 to w3 are its basis functions, g0 and g1 the taps'
 // amplitudes and h0 and h1 their offsets.
@@ -757,6 +949,15 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
         ambient_light = lerp(ambient_light, srgb_to_linear(texel) * sky.z, sky.w);
     }
 #ifdef CLUSTERED
+    if (scene_voxel_gi.x != 0.0 && voxel_gi.x > 0.0 && !lightmapped && !captured) {
+        // Forward+'s VoxelGIs, as Godot's GI buffers light a pixel: their ambient light and
+        // reflections go over the sky's by how much of their cones met something.
+        float4 gi_ambient;
+        float4 gi_reflection;
+        trace_voxel_gis(input.world, normal, view, roughness, gi_ambient, gi_reflection);
+        ambient_light = lerp(ambient_light, gi_ambient.rgb, gi_ambient.a);
+        reflected = lerp(reflected, gi_reflection.rgb, gi_reflection.a);
+    }
     if (reflections.x > 0.0) {
         // Forward+'s reflection probes, as Godot's scene_forward_clustered.glsl takes them: where
         // they reach, their reflections and ambient light go over the sky's by how much they

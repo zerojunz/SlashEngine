@@ -5,6 +5,7 @@
 #include "slash/render/image.hpp"
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/model.hpp"
+#include "slash/scene3d/voxel_gi.hpp"
 #include "slash/world/components.hpp"
 
 #include <memory>
@@ -12,6 +13,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace slash::command {
 namespace {
@@ -52,6 +54,49 @@ Reply unknown_entity(const world::World& world, std::string_view id, std::string
     return param_error(code::kNotFound, path, message);
 }
 
+// The images and models a bake reads, through the session's assets.
+scene3d::LightmapSources sources(asset::Assets& assets) {
+    return {
+        .images =
+            [&assets](const std::string& image) -> Result<std::shared_ptr<const render::Image>> {
+            auto loaded = assets.load<render::Image>(image);
+            if (!loaded) {
+                return loaded.error();
+            }
+            return loaded.value().share();
+        },
+        .models =
+            [&assets](const std::string& model) -> Result<std::shared_ptr<const scene3d::Model>> {
+            auto loaded = assets.load<scene3d::Model>(model);
+            if (!loaded) {
+                return loaded.error();
+            }
+            return loaded.value().share();
+        },
+    };
+}
+
+// A bake's problems in its result, each with its entity's ID.
+void add_problems(const world::World& world, const std::vector<scene3d::Problem>& found,
+                  json::Value& result) {
+    if (found.empty()) {
+        return;
+    }
+    json::Array problems;
+    for (const scene3d::Problem& problem : found) {
+        json::Value item;
+        if (problem.entity != entt::null) {
+            item["id"] = world.id_of(problem.entity);
+        }
+        if (!problem.path.empty()) {
+            item["path"] = problem.path;
+        }
+        item["message"] = problem.message;
+        problems.emplace_back(std::move(item));
+    }
+    result["problems"] = std::move(problems);
+}
+
 // Where a LightmapGI with no light_data bakes to, as Godot's: beside the scene, named after it,
 // or after the entity when the scene isn't saved.
 std::string default_path(const Session& session, std::string_view id) {
@@ -90,26 +135,7 @@ Reply lightmap_bake(Session& session, const json::Value& params) {
                                " file");
     }
 
-    asset::Assets& assets = session.assets();
-    const scene3d::LightmapSources sources{
-        .images =
-            [&assets](const std::string& image) -> Result<std::shared_ptr<const render::Image>> {
-            auto loaded = assets.load<render::Image>(image);
-            if (!loaded) {
-                return loaded.error();
-            }
-            return loaded.value().share();
-        },
-        .models =
-            [&assets](const std::string& model) -> Result<std::shared_ptr<const scene3d::Model>> {
-            auto loaded = assets.load<scene3d::Model>(model);
-            if (!loaded) {
-                return loaded.error();
-            }
-            return loaded.value().share();
-        },
-    };
-    auto baked = scene3d::bake_lightmap(world, entity, sources);
+    auto baked = scene3d::bake_lightmap(world, entity, sources(session.assets()));
     if (!baked) {
         return Reply::failure(baked.error());
     }
@@ -130,21 +156,7 @@ Reply lightmap_bake(Session& session, const json::Value& params) {
     result["size"] = json::Array{bake.data.width, bake.data.height};
     result["slices"] = bake.data.slices;
     result["probes"] = bake.data.probes.points.size();
-    if (!bake.problems.empty()) {
-        json::Array problems;
-        for (const scene3d::Problem& problem : bake.problems) {
-            json::Value item;
-            if (problem.entity != entt::null) {
-                item["id"] = world.id_of(problem.entity);
-            }
-            if (!problem.path.empty()) {
-                item["path"] = problem.path;
-            }
-            item["message"] = problem.message;
-            problems.emplace_back(std::move(item));
-        }
-        result["problems"] = std::move(problems);
-    }
+    add_problems(world, bake.problems, result);
 
     auto data_before = session.read_project_file(path);
     if (!data_before) {
@@ -177,6 +189,78 @@ Reply lightmap_bake(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+// Where a VoxelGI with no data bakes to, as Godot's editor offers: beside the scene, named after
+// it and the entity, or after the entity when the scene isn't saved.
+std::string default_voxel_gi_path(const Session& session, std::string_view id) {
+    std::string_view scene = session.scene_path();
+    if (scene.ends_with(".scene.json")) {
+        scene.remove_suffix(std::string_view(".scene.json").size());
+        return std::string(scene) + "." + std::string(id) + std::string(scene3d::kVoxelGISuffix);
+    }
+    return std::string(id) + std::string(scene3d::kVoxelGISuffix);
+}
+
+Reply voxel_gi_bake(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    const std::string& id = params.find("id")->as_string();
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        return unknown_entity(world, id, "/id");
+    }
+    auto* gi = world.ecs().try_get<world::VoxelGI>(entity);
+    if (gi == nullptr) {
+        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no VoxelGI");
+    }
+    std::string path;
+    std::string_view pointer = "/id";
+    if (const json::Value* file = params.find("file")) {
+        path = file->as_string();
+        pointer = "/file";
+    } else if (!gi->data.empty()) {
+        path = gi->data;
+    } else {
+        path = default_voxel_gi_path(session, id);
+    }
+    if (!path.ends_with(scene3d::kVoxelGISuffix)) {
+        return param_error(code::kInvalidArgument, pointer,
+                           quoted(path) + " is not a " + std::string(scene3d::kVoxelGISuffix) +
+                               " file");
+    }
+    auto baked = scene3d::bake_voxel_gi(world, entity, sources(session.assets()));
+    if (!baked) {
+        return Reply::failure(baked.error());
+    }
+    const scene3d::VoxelGIBake& bake = baked.value();
+    std::string text = json::write(scene3d::voxel_gi_json(bake.data)) + "\n";
+
+    json::Value result;
+    result["file"] = path;
+    result["meshes"] = bake.meshes;
+    result["cells"] = bake.data.cells.size();
+    result["size"] =
+        json::Array{bake.data.octree_size[0], bake.data.octree_size[1], bake.data.octree_size[2]};
+    result["levels"] = bake.data.level_counts.size();
+    add_problems(world, bake.problems, result);
+
+    auto before = session.read_project_file(path);
+    if (!before) {
+        return Reply::failure(before.error());
+    }
+    if (before.value() == text && gi->data == path) {
+        session.mark_unchanged();
+        result["unchanged"] = true;
+        return Reply::success(std::move(result));
+    }
+    gi->data = path;
+    if (before.value() != text) {
+        if (auto staged = session.stage_file(path, text); !staged) {
+            return Reply::failure(staged.error());
+        }
+        session.add_undo_file(path, std::move(before).value(), std::move(text));
+    }
+    return Reply::success(std::move(result));
+}
+
 } // namespace
 
 void register_lightmap_commands(Registry& registry) {
@@ -198,6 +282,26 @@ void register_lightmap_commands(Registry& registry) {
         .effect = Effect::Edit,
         .params = params_schema({{"id", std::move(id)}, {"file", std::move(file)}}, {"id"}),
         .handler = lightmap_bake,
+    });
+
+    json::Value voxel_gi = property("string", "An entity with a VoxelGI.");
+    voxel_gi["minLength"] = 1;
+    json::Value voxel_gi_file =
+        property("string", "The .voxelgi.json file to write, project path. Default: the "
+                           "VoxelGI's data, else beside the scene, named after it and the entity.");
+    voxel_gi_file["minLength"] = 1;
+    registry.add({
+        .name = "voxel_gi.bake",
+        .description = "Bakes a VoxelGI's cells into a .voxelgi.json file, as Godot's VoxelGI "
+                       "bake: the static meshes under its parent that touch its box, voxelized "
+                       "at its subdiv with their albedo, emission and normals. Lights are "
+                       "injected as the game runs. Sets data. Returns the file, counts, cells "
+                       "along each axis, levels and problems.",
+        .capabilities = {Edit, Filesystem},
+        .effect = Effect::Edit,
+        .params = params_schema({{"id", std::move(voxel_gi)}, {"file", std::move(voxel_gi_file)}},
+                                {"id"}),
+        .handler = voxel_gi_bake,
     });
 }
 

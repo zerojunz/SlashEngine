@@ -36,6 +36,7 @@
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/scene3d/terrain.hpp"
+#include "slash/scene3d/voxel_gi.hpp"
 #include "slash/shader_compiler/shader_compiler.hpp"
 #include "slash/text/text.hpp"
 #include "slash/ui/ui.hpp"
@@ -178,6 +179,7 @@ enum class DataFile : std::uint8_t {
     MeshLibrary,
     Lightmap,
     LightmapTexels,
+    VoxelGI,
     Model,
     Buffer
 };
@@ -244,6 +246,9 @@ DataFile data_file(std::string_view name) {
     }
     if (name.ends_with(scene3d::kLightmapSuffix)) {
         return DataFile::Lightmap;
+    }
+    if (name.ends_with(scene3d::kVoxelGISuffix)) {
+        return DataFile::VoxelGI;
     }
     // A lightmap's texels, light past 1 kept as a Radiance HDR file.
     if (name.ends_with(".hdr")) {
@@ -337,6 +342,8 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
         return scene3d::validate_mesh_library(parsed.value());
     case DataFile::Lightmap:
         return scene3d::validate_lightmap(parsed.value());
+    case DataFile::VoxelGI:
+        return scene3d::validate_voxel_gi(parsed.value());
     case DataFile::Prefab:
         errors = world::validate_prefab(components, parsed.value(), reader);
         break;
@@ -505,7 +512,8 @@ std::set<std::string, std::less<>> terrain_maps(const fs::path& project_dir) {
 
 // Copies project.json, providers.json and every scene, prefab, texture, .frames.json,
 // .material.json, .anim.json, .animtree.json, .tileset.json, font, .theme.json, sound, .audio.json,
-// .bus_layout.json, .navmesh.json, .navpoly.json, .meshlib.json and .lightmap.json file, heightmap,
+// .bus_layout.json, .navmesh.json, .navpoly.json, .meshlib.json, .lightmap.json and .voxelgi.json
+// file, heightmap,
 // lightmap's .hdr texels and model into data, checking each on the way.
 // Materials take their shaders compiled for the platform, and textures ship in the forms
 // project.json's rendering.textures asks for, kept in library_dir's cache.

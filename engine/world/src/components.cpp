@@ -2278,8 +2278,8 @@ void register_3d_components(ComponentRegistry& registry) {
                    .choices = {"off", "on", "double_sided", "shadows_only"}})
         .describe("gi_mode",
                   {.doc = "\"static\" meshes are baked into a LightmapGI's lightmap and lit by "
-                          "it; \"dynamic\" ones take ambient light from its light probes; "
-                          "\"disabled\" ones from neither.",
+                          "it, and voxelized by a VoxelGI's bake; \"dynamic\" ones take ambient "
+                          "light from its light probes; \"disabled\" ones from neither.",
                    .choices = {"disabled", "static", "dynamic"}})
         .describe("gi_lightmap_texel_scale",
                   {.doc = "Times the texels across its lightmap.", .min = 0.01, .max = 10.0});
@@ -2434,7 +2434,7 @@ void register_3d_components(ComponentRegistry& registry) {
     const FieldMeta bake_mode{
         .doc = "How a LightmapGI bakes it: \"disabled\" leaves it out; \"dynamic\" bakes its "
                "bounces only and it lights live; \"static\" bakes it whole and it doesn't light "
-               "lightmapped meshes live.",
+               "lightmapped meshes live. VoxelGIs light their cells with lights not disabled.",
         .choices = {"disabled", "static", "dynamic"}};
     const FieldMeta shadow_blur{
         .doc = "How far its baked shadows blur, times the light's size.", .min = 0.0, .max = 10.0};
@@ -2660,6 +2660,31 @@ void register_3d_components(ComponentRegistry& registry) {
     registry.add<LightmapProbe>().set_doc(
         "A place a LightmapGI bakes a light probe, under its parent as its meshes are, as "
         "Godot's LightmapProbe: where moving meshes' light changes quickly.");
+    registry.add<VoxelGI>()
+        .set_doc("Light bounced around a box of the world in real time, as Godot's VoxelGI: "
+                 "voxel_gi.bake voxelizes the static MeshInstance3Ds under its entity's parent "
+                 "in the box into data, lights are injected as they change, and meshes in the box "
+                 "take ambient light and reflections from it.")
+        .describe("subdiv", {.doc = "Cells along the box's longest side.",
+                             .choices = {"64", "128", "256", "512"}})
+        .describe("size", {.doc = "The box, centered on the entity, in its space."})
+        .describe("camera_attributes",
+                  {.doc = "ID of the entity whose CameraAttributesPractical's exposure_multiplier "
+                          "emission is baked with; \"\" for 1."})
+        .describe("data", {.doc = "Project path of the .voxelgi.json file voxel_gi.bake writes."})
+        .describe("dynamic_range",
+                  {.doc = "The brightest light the cells hold.", .min = 1, .max = 8})
+        .describe("energy", {.doc = "Times the light meshes take.", .min = 0, .max = 64})
+        .describe("bias", {.doc = "Cells cones start out from surfaces, against self-lighting.",
+                           .min = 0,
+                           .max = 8})
+        .describe("normal_bias",
+                  {.doc = "Cells cones start out along surfaces' normals.", .min = 0, .max = 8})
+        .describe("propagation",
+                  {.doc = "How much light spreads up into bigger cells.", .min = 0, .max = 1})
+        .describe("use_two_bounces", {.doc = "Light bounces twice inside the cells, not once."})
+        .describe("interior",
+                  {.doc = "Leaves out the environment's light: meshes take only the cells'."});
     registry.add<WorldEnvironment>()
         .set_doc("The 3D world's background, ambient and reflected light, tonemap, glow, fog and "
                  "adjustments, as Godot's WorldEnvironment. The first one applies; with none, the "

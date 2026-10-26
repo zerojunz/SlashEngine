@@ -728,7 +728,8 @@ ones cast only where their pixels are kept.
 Its `gi_mode` (default `"static"`) and `gi_lightmap_texel_scale` (default `1`) are Godot's: a
 `"static"` mesh is baked into a [LightmapGI's lightmap](#baked-lightmaps) and lit by it, with
 `gi_lightmap_texel_scale` times the texels; a `"dynamic"` mesh isn't baked but takes its ambient
-light from the LightmapGI's [light probes](#light-probes), and a `"disabled"` one from neither.
+light from the LightmapGI's [light probes](#light-probes), and a `"disabled"` one from neither. A
+[VoxelGI](#voxelgi) voxelizes `"static"` meshes too, and lights every other mesh in its box.
 
 The primitive meshes are Godot's, made as Godot makes them: the same corners, normals, tangents
 and texture coordinates, so a texture wraps them as it does in Godot. An entity has at most one.
@@ -1384,7 +1385,7 @@ lights each pixel with only the omni and spot lights whose range reaches it, and
 | `directional_shadow_pancake_size` | `20` | directional | How far behind each cascade casters still cast, in meters |
 | `light_angular_distance` | `0` | directional | Degrees across its sun's radius in the [sky](#skies), 0 to 90 |
 | `sky_mode` | `"light_and_sky"` | directional | `"light_only"` lights meshes and shows no sun in the sky; `"sky_only"` shows a sun and lights nothing |
-| `light_bake_mode` | `"dynamic"` | all | How a [LightmapGI](#baked-lightmaps) bakes it: `"disabled"` leaves it out, `"dynamic"` bakes only its bounces and it lights live, `"static"` bakes it whole and it doesn't light lightmapped meshes live |
+| `light_bake_mode` | `"dynamic"` | all | How a [LightmapGI](#baked-lightmaps) bakes it: `"disabled"` leaves it out, `"dynamic"` bakes only its bounces and it lights live, `"static"` bakes it whole and it doesn't light lightmapped meshes live. [VoxelGIs](#voxelgi) leave out omni and spot lights that are `"disabled"` |
 | `light_indirect_energy` | `1` | all | Times its light in baked bounces |
 | `light_size` | `0` | omni, spot | Its radius when baked, for soft shadows (a directional light's is `light_angular_distance`) |
 | `shadow_blur` | `1` | all | How much its baked shadows soften |
@@ -1751,6 +1752,63 @@ and as base64 the `points`, their `sh` light (27 floats each), the `tetrahedra` 
 indices each) and the `bsp` tree (24-byte nodes: a plane, then the node or tetrahedron on each
 side). `scene validate` reports light, tetrahedra or nodes that don't fit the points.
 
+### VoxelGI
+
+A `VoxelGI` lights what is in a box with light that bounces, as Godot 4.6's `VoxelGI`: the static
+meshes in it are voxelized into cells once, and the lights are injected into the cells as the game
+runs, so lights that move or change bounce too. Meshes in the box take their ambient light and
+reflections from it, by tracing cones through the cells. It is Forward+ only, as Godot's.
+
+[`voxel_gi.bake`](commands.md#voxel_gibake) voxelizes the `MeshInstance3D`s whose `gi_mode` is
+`"static"`, visible under the entity's parent (the whole world for a root), that touch its box, as
+Godot's `Voxelizer`: each triangle goes down an octree to cells `subdiv` across the box's longest
+side, and each cell takes the albedo, emission and normal of the triangles in it. It writes a
+`.voxelgi.json` file and names it in `data`. A bake is the same on every machine.
+
+As the game runs, the renderer:
+
+- Injects the lights into the cells whenever they, the VoxelGI's place or its settings change,
+  as Godot's `voxel_gi.glsl` does on the GPU, here on the CPU on the job pool: the omni and spot
+  lights whose `light_bake_mode` isn't `"disabled"` and whose range reaches the box, then every
+  directional light, at most 32, each at its `light_energy` times its `light_indirect_energy`,
+  shadowed through the cells where it casts shadows. A second bounce is traced through the first
+  with `use_two_bounces`, and the light spreads up the octree by `propagation`.
+- Gives each mesh the VoxelGIs its bounds touch, at most two in the order they were made, as
+  Godot pairs them. Lightmapped meshes, `"dynamic"` meshes lit by [light probes](#light-probes),
+  terrains and meshes drawn only into shadows take none.
+- Traces cones from each pixel through the cells' light, as Godot's `gi.glsl`: four cones of 45
+  degrees for its ambient light, or six narrower ones with project.json's
+  `rendering.global_illumination.voxel_gi.quality` set to `"high"`, and one as wide as its
+  roughness for its reflection. Where the cones find cells, their light goes over the
+  environment's ambient light and sky reflections by how much they cover, before
+  [reflection probes](#reflection-probes); where they find none, the environment shows through,
+  except in an `interior` VoxelGI.
+
+Moving meshes take the cells' light but don't light them yet, as Godot's dynamic objects do.
+Every Forward+ device traces VoxelGIs, including the software one, so `frame.capture` shows
+them; Compatibility draws without them.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `subdiv` | `"128"` | Cells along the box's longest side: `"64"`, `"128"`, `"256"` or `"512"` |
+| `size` | `[20, 20, 20]` | The box, centered on the entity, in its space |
+| `camera_attributes` | `""` | An entity whose `CameraAttributesPractical`'s `exposure_multiplier` emission is baked with; a camera's over it scales the light |
+| `data` | `""` | The `.voxelgi.json` file it bakes into and draws from |
+| `dynamic_range` | `2` | The brightest light the cells hold, 1 to 8 |
+| `energy` | `1` | Times the light meshes take |
+| `bias` | `1.5` | Cells cones start out from surfaces, against lighting themselves |
+| `normal_bias` | `0` | Cells cones start out along surfaces' normals |
+| `propagation` | `0.5` | How much light spreads up into bigger cells, 0 to 1 |
+| `use_two_bounces` | `true` | Light bounces twice inside the cells, not once |
+| `interior` | `false` | Leaves out the environment's light: meshes take only the cells' |
+
+A `.voxelgi.json` file is Godot's `VoxelGIData` in text (`slash-cli schema voxel_gi`): the
+`bounds` it voxelized (position, then size, in the VoxelGI's space), its `octree_size` (cells
+along each axis), the `baked_exposure`, the `level_counts` of the octree from the root, and its
+`cells` as base64, level by level, each sorted as Godot sorts them: a cell's place, albedo,
+emission and normal. `scene validate` checks a VoxelGI's `subdiv`, `size`, `camera_attributes`
+and `data`, and exports ship the file.
+
 ### Checks
 
 `scene validate` and exports report an entity with two primitive meshes (at
@@ -1758,8 +1816,8 @@ side). `scene validate` reports light, tetrahedra or nodes that don't fit the po
 `TorusMesh` whose radii are equal, and a `mesh` that isn't a `.gltf`, `.glb`, `.obj` or `.fbx` file in the
 project, doesn't load, or sits beside a primitive mesh (at its `mesh`), as drawing would, and
 [CSG shapes](#csg-shapes) that can't be made, [grid maps](#grid-maps) whose cells can't
-be made, [path followers](#paths) that can't follow and [LightmapGIs](#baked-lightmaps) whose
-`light_data` doesn't load.
+be made, [path followers](#paths) that can't follow, [LightmapGIs](#baked-lightmaps) whose
+`light_data` doesn't load and [VoxelGIs](#voxelgi) whose `data` doesn't load.
 Exports
 check every `.gltf`, `.glb`, `.obj` and `.fbx` file as `scene validate` does, and ship them with their
 `.bin` buffers, `.mtl` libraries and images. `frame.summary` doesn't describe 3D meshes
