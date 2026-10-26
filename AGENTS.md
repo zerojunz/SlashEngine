@@ -824,8 +824,9 @@ SSAO is Godot 4.6's Forward+ SSAO (Intel's ASSAO): `WorldEnvironment`'s `ssao_*`
 size, blur and fade (`render::SsaoSettings`). Forward+ devices draw the opaque meshes' depth and
 normals in a prepass (`mesh_normal.hlsl`), then `ssao.hlsl`'s passes as `ssao_plan` lists them
 (`src/ssao.hpp`): linear depth in four deinterleaved slices, the gather (ultra's base pass,
-importance map and adaptive gather), the edge-aware blur and the interleave. `mesh.hlsl` applies
-the result as Godot's scene shader does. The passes load texels and filter in code, so
+importance map and adaptive gather), the edge-aware blur and the interleave; Direct3D 12 makes
+a shader for each group of them (`kSsaoShaderGroups`), since WARP loses the device running one
+with every pass in it. `mesh.hlsl` applies the result as Godot's scene shader does. The passes load texels and filter in code, so
 `run_ssao_pass`, their CPU twin, matches every device. `examples/ssao-3d` darkens a room's
 corners.
 
