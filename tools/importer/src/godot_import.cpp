@@ -1849,6 +1849,12 @@ private:
         if (!ssao.is_null()) {
             project["rendering"]["environment"]["ssao"] = std::move(ssao);
         }
+        if (const Value* half =
+                setting("rendering", "environment/screen_space_reflection/half_size");
+            half != nullptr && half->kind == Value::Kind::Bool) {
+            project["rendering"]["environment"]["screen_space_reflection"]["half_size"] =
+                half->boolean;
+        }
         if (const Value* gravity = number("physics", "2d/default_gravity")) {
             project["physics_2d"]["gravity"] = gravity->number();
         }

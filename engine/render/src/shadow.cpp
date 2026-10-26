@@ -463,6 +463,10 @@ void plan_positional(const Scene3D& scene, std::size_t index, int slot, std::uin
 
 } // namespace
 
+std::array<double, 16> inverse_matrix(const Mat4& m) {
+    return inverse(m);
+}
+
 std::vector<int> shadow_slots(const Scene3D& scene) {
     std::vector<int> slots(scene.lights.size(), -1);
     int directional = 0;

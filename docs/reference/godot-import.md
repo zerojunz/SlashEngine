@@ -567,6 +567,7 @@ on its top.
 | `rendering/rendering_device/fallback_to_opengl3` | `rendering.fallback_to_opengl` |
 | `rendering/camera/depth_of_field/*` | `rendering.camera.depth_of_field` |
 | `rendering/environment/ssao/quality`, `half_size`, `adaptive_target`, `blur_passes`, `fadeout_from`, `fadeout_to` | `rendering.environment.ssao` |
+| `rendering/environment/screen_space_reflection/half_size` | `rendering.environment.screen_space_reflection` |
 | `gui/theme/custom` | `gui.theme`, the theme's `.theme.json` file |
 | `audio/buses/default_bus_layout` | `audio.bus_layout`, the layout's `.bus_layout.json` file |
 | `audio/driver/mix_rate`, `audio/driver/output_latency` | `audio.mix_rate`, `audio.output_latency` |

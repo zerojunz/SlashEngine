@@ -97,6 +97,9 @@ struct Project {
     render::DepthOfFieldSettings depth_of_field{};
     // Screen-space ambient occlusion's quality, as Godot's rendering/environment/ssao.
     render::SsaoSettings ssao{};
+    // Screen-space reflections' resolution, as Godot's
+    // rendering/environment/screen_space_reflection.
+    render::SsrSettings ssr{};
     // How exports ship textures.
     TextureImport texture_import;
     // Gravity and default damping for 2D physics.

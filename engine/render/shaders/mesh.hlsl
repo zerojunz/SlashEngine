@@ -9,9 +9,9 @@
 // conventions: vertex uniforms in space1, fragment textures and samplers in space2, fragment
 // uniforms in space3. mesh_clustered.hlsl defines CLUSTERED and includes this file for Forward+,
 // whose omni and spot lights come from clusters of the screen instead of the scene's uniforms,
-// and which reads screen-space ambient occlusion (ssao.hlsl draws it). mesh_normal.hlsl defines
-// NORMAL_ROUGHNESS for Forward+'s prepass, which draws the normals and roughness that ssao.hlsl
-// reads.
+// and which reads screen-space ambient occlusion and reflections (ssao.hlsl and ssr.hlsl draw
+// them). mesh_normal.hlsl defines NORMAL_ROUGHNESS for Forward+'s prepass, which draws the normals
+// and roughness that ssao.hlsl and ssr.hlsl read.
 
 cbuffer Camera : register(b0, space1) {
     float4x4 view_projection; // world to clip space
@@ -146,7 +146,8 @@ cbuffer Scene : register(b1, space3) {
     // Forward+'s clusters: tiles across, a tile's words of light bits, depth slices per unit of
     // view depth (how many over the far plane's distance).
     float4 cluster;
-    // 1 when ao_texture holds the frame's SSAO, its light affect and its AO channel affect.
+    // 1 when ao_texture holds the frame's SSAO, its light affect and its AO channel affect, then
+    // 1 when ssr_texture holds its SSR.
     float4 ssao;
     float4 view_rows[3]; // the world to the camera's space, a row each, for normals
     // Every light in Compatibility; in Forward+, only the directional ones.
@@ -185,9 +186,13 @@ cbuffer Shadows : register(b2, space3) {
 // lights in the slice and one past the last (src/clusters.cpp). SDL binds a fragment stage's
 // storage buffers after its textures, and in Metal after its uniforms; WebGPU binds them as a
 // group of their own, the mesh pipeline's otherwise empty group 0. The screen-space ambient
-// occlusion is a texture of the frame's size, white when the frame draws none.
+// occlusion is a texture of the frame's size, white when the frame draws none, and so are the
+// screen-space reflections: each pixel's reflection in RGB, premultiplied by how much of the
+// sky's it replaces, in A.
 Texture2D<float4> ao_texture : register(t14, space2);
+Texture2D<float4> ssr_texture : register(t15, space2);
 SamplerState ao_sampler : register(s14, space2);
+SamplerState ssr_sampler : register(s15, space2);
 #if defined(SLASH_MSL)
 StructuredBuffer<Light> clustered_lights : register(t3, space2);
 StructuredBuffer<uint> clusters : register(t4, space2);
@@ -195,8 +200,8 @@ StructuredBuffer<uint> clusters : register(t4, space2);
 StructuredBuffer<Light> clustered_lights : register(t0, space0);
 StructuredBuffer<uint> clusters : register(t1, space0);
 #else
-StructuredBuffer<Light> clustered_lights : register(t15, space2);
-StructuredBuffer<uint> clusters : register(t16, space2);
+StructuredBuffer<Light> clustered_lights : register(t16, space2);
+StructuredBuffer<uint> clusters : register(t17, space2);
 #endif
 static const uint kClusterSize = 32u;
 static const uint kClusterSlices = 32u;
@@ -527,7 +532,7 @@ uint range_mask(uint word, uint first, uint end) {
 // albedo, with the shading normal and the one shadows offset along (geometry), its ambient light
 // darkened by ao and its direct light by ao_direct.
 float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry, float metallic,
-                 float roughness, float3 emitted, float ao, float ao_direct) {
+                 float roughness, float3 emitted, float ao, float ao_direct, float4 ssr) {
     float specular = surface.z;
     float3 view = normalize(camera.xyz - input.world);
     float3 f0 = lerp((float3)(0.16 * specular * specular), base, metallic);
@@ -592,7 +597,16 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
                float4(1.0, 0.0425, 1.04, -0.04);
     float a004 = min(r.x * r.x, exp2(-9.28 * n_dot_v)) * r.x + r.y;
     float2 env = float2(-1.04, 1.04) * a004 + r.zw;
-    reflected *= occlusion * (env.x * f0 + env.y * clamp(50.0 * f0.g, metallic, 1.0));
+    if (ssr.a < 0.0) {
+        reflected *= occlusion * (env.x * f0 + env.y * clamp(50.0 * f0.g, metallic, 1.0));
+    } else {
+        // Godot's SSR: the reflection, faded out toward the trace's roughness cutoff, put over
+        // the sky's by its premultiplied alpha.
+        reflected *= occlusion;
+        float4 faded = ssr * smoothstep(0.0, 1.0, 1.0 - saturate((roughness - 0.6) / 0.1));
+        reflected = reflected * (1.0 - faded.a) + faded.rgb;
+        reflected *= env.x * f0 + env.y * clamp(50.0 * f0.g, metallic, 1.0);
+    }
 
     ambient_light *= base * (1.0 - metallic);
     diffuse_light *= base * ao_direct * (1.0 - metallic);
@@ -698,13 +712,19 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
     return float4(view_normal * 0.5 + 0.5, roughness * (127.0 / 255.0));
 #else
     // Godot's SSAO: the frame's occlusion at the pixel darkens the opaque meshes' ambient light,
-    // and their direct light by its light affect times its AO channel affect.
+    // and their direct light by its light affect times its AO channel affect. Its SSR (alpha
+    // below 0 for none) goes over their reflections of the sky.
     float ao = 1.0;
     float ao_direct = 1.0;
+    float4 ssr = float4(0.0, 0.0, 0.0, -1.0);
 #ifdef CLUSTERED
-    if (ssao.x != 0.0 && ((flags & kHasAlpha) == 0u || (flags & kAlphaScissor) != 0u)) {
+    bool opaque = (flags & kHasAlpha) == 0u || (flags & kAlphaScissor) != 0u;
+    if (ssao.x != 0.0 && opaque) {
         ao = ao_texture.Load(int3((int2)input.position.xy, 0)).r;
         ao_direct = lerp(1.0, ao, lerp(0.0, max(0.0, ssao.y), ssao.z));
+    }
+    if (ssao.w != 0.0 && opaque) {
+        ssr = ssr_texture.Load(int3((int2)input.position.xy, 0));
     }
 #endif
     float3 lit = base;
@@ -718,7 +738,7 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         // normal_interp; a terrain's along its shape's.
         float3 geometry = terrain ? frame_direction(input, shape) : normalize(input.normal);
         lit = lit_color(input, base, normal, geometry, metallic, roughness, emitted, ao,
-                        ao_direct);
+                        ao_direct, ssr);
     }
     // One call, so the tonemappers are inlined once and the shader stays small.
     return finish(lit, alpha, input.world);

@@ -580,7 +580,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         `OmniLight3D`, `SpotLight3D` and `WorldEnvironment`, drawn under the canvas by every
         game and by `frame.capture`
 - [x] Cascaded, omni and spot shadows
-- [ ] Post-processing: tonemap, bloom, SSAO, SSR, depth of field, auto exposure, color grading
+- [x] Post-processing: tonemap, bloom, SSAO, SSR, depth of field, auto exposure, color grading
   - [x] Godot's Compatibility renderer's tonemappers (linear, Reinhard, filmic, ACES, AgX),
         exposure, glow, brightness, contrast, saturation and 1D or 3D color correction LUTs in
         every render device, set by `WorldEnvironment`
@@ -597,6 +597,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] SSAO, as Godot 4.6's Forward+: a normal prepass and Intel's ASSAO passes at every
         quality (deinterleaved depth, adaptive samples at ultra, edge-aware blur), set by
         `WorldEnvironment` and `rendering.environment.ssao`, on every Forward+ device
+  - [x] SSR, as Godot 4.6's Forward+: a Hi-Z trace reading the frame before, blurred levels
+        by roughness and a resolve at half size, set by `WorldEnvironment` and
+        `rendering.environment.screen_space_reflection`, on every Forward+ device
 - [ ] Baked lightmaps and probe-based global illumination
 - [ ] Render scale and upscalers, as Godot's `scaling_3d` setting: bilinear, FSR 1 and FSR 2/3
       (AMD's FidelityFX code, MIT) on every backend and MetalFX on Apple, set in `project.json`
@@ -848,7 +851,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | 3D physics | Jolt: rigid bodies, joints, character controller, vehicles | 7 | In part: bodies, areas, shapes, character movement and queries are done; joints and vehicles in 7 |
 | 3D renderer | Clustered forward+ with PBR, plus a low-end path for web and mobile | 7 | Done |
 | Shadows | Cascaded, omni and spot shadow maps | 7 | Done |
-| Post-processing | Tonemap, bloom, SSAO, SSR, DoF, auto exposure, color grading | 7 | Planned |
+| Post-processing | Tonemap, bloom, SSAO, SSR, DoF, auto exposure, color grading | 7 | Done |
 | Materials and shaders | HLSL shaders plus a JSON material graph | 5, 7 | In part: canvas material graphs, a game's own HLSL canvas shaders and `StandardMaterial3D`'s inputs on meshes are done; 3D shaders and material files in 7 |
 | Keyframe animation | Keyframe tracks on any reflected property | 5 | Done |
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Done |
