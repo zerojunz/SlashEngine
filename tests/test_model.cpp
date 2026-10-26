@@ -2254,3 +2254,288 @@ TEST_CASE("generate_collision makes a model's trimesh, convex hull or convex dec
     CHECK(scene3d::generate_collision(card, "trimesh").ok());
     CHECK(error_of(scene3d::generate_collision(card, "box")).starts_with("collision is"));
 }
+
+namespace {
+
+// A cube one meter across whose faces each sample a 32 by 32 cell of a 96 by 64 texture (three
+// cells across, two down), painted with a gray checkered albedo lit by light that came from
+// light_from: an ambient part and a directional one, as a scan or a generator bakes it in.
+struct LitCube {
+    std::string obj;
+    std::string mtl = "newmtl Paint\nKd 1 1 1\nmap_Kd paint.png\n";
+    render::Image texture;
+};
+
+constexpr std::array<std::array<float, 3>, 6> kCubeFaces{
+    {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}}};
+
+float baked_light(std::array<float, 3> normal, std::array<float, 3> light_from) {
+    const float length =
+        std::sqrt((light_from[0] * light_from[0]) + (light_from[1] * light_from[1]) +
+                  (light_from[2] * light_from[2]));
+    return 0.6F + (0.35F *
+                   ((normal[0] * light_from[0]) + (normal[1] * light_from[1]) +
+                    (normal[2] * light_from[2])) /
+                   length);
+}
+
+std::uint8_t srgb_code(float linear) {
+    const float c =
+        linear <= 0.0031308F ? linear * 12.92F : (1.055F * std::pow(linear, 1.0F / 2.4F)) - 0.055F;
+    return static_cast<std::uint8_t>(std::clamp(c, 0.0F, 1.0F) * 255.0F + 0.5F);
+}
+
+float linear_of(std::uint8_t code) {
+    const float c = static_cast<float>(code) / 255.0F;
+    return c <= 0.04045F ? c / 12.92F : std::pow((c + 0.055F) / 1.055F, 2.4F);
+}
+
+LitCube lit_cube(std::array<float, 3> light_from) {
+    LitCube cube;
+    cube.texture.width = 96;
+    cube.texture.height = 64;
+    cube.texture.pixels.assign(static_cast<std::size_t>(96) * 64 * 4, 255);
+    std::string& obj = cube.obj;
+    obj = "mtllib cube.mtl\nusemtl Paint\n";
+    for (std::size_t f = 0; f < kCubeFaces.size(); ++f) {
+        const auto& n = kCubeFaces[f];
+        // Two axes across the face, so its corners go round it.
+        std::array<float, 3> a{n[1] != 0 ? 1.0F : 0.0F, n[1] == 0 ? 1.0F : 0.0F, 0.0F};
+        if (n[2] != 0) {
+            a = {1.0F, 0.0F, 0.0F};
+        }
+        const std::array<float, 3> b{(n[1] * a[2]) - (n[2] * a[1]), (n[2] * a[0]) - (n[0] * a[2]),
+                                     (n[0] * a[1]) - (n[1] * a[0])};
+        const float u0 = static_cast<float>(f % 3) / 3.0F;
+        const float v0 = static_cast<float>(f / 3) / 2.0F;
+        const std::array<std::array<float, 2>, 4> corners{{{-1, -1}, {1, -1}, {1, 1}, {-1, 1}}};
+        for (const auto& c : corners) {
+            obj += "v " + std::to_string((n[0] + (a[0] * c[0]) + (b[0] * c[1])) * 0.5F) + " " +
+                   std::to_string((n[1] + (a[1] * c[0]) + (b[1] * c[1])) * 0.5F) + " " +
+                   std::to_string((n[2] + (a[2] * c[0]) + (b[2] * c[1])) * 0.5F) + "\n";
+            // OBJ's v runs up the image, so the texture's rows are turned over.
+            obj += "vt " + std::to_string(u0 + ((c[0] + 1.0F) / 6.0F)) + " " +
+                   std::to_string(1.0F - (v0 + ((c[1] + 1.0F) / 4.0F))) + "\n";
+        }
+        obj += "vn " + std::to_string(n[0]) + " " + std::to_string(n[1]) + " " +
+               std::to_string(n[2]) + "\n";
+        const std::size_t base = (f * 4) + 1;
+        const std::size_t vn = f + 1;
+        const auto corner = [&](std::size_t k) {
+            return std::to_string(base + k) + "/" + std::to_string(base + k) + "/" +
+                   std::to_string(vn);
+        };
+        obj += "f " + corner(0) + " " + corner(1) + " " + corner(2) + " " + corner(3) + "\n";
+        const float lit = baked_light(n, light_from);
+        for (std::uint32_t y = 0; y < 32; ++y) {
+            for (std::uint32_t x = 0; x < 32; ++x) {
+                const float albedo = ((x / 4) + (y / 4)) % 2 == 0 ? 0.55F : 0.45F;
+                const std::size_t at =
+                    ((static_cast<std::size_t>((f / 3) * 32 + y) * 96) + ((f % 3) * 32) + x) * 4;
+                const std::uint8_t code = srgb_code(albedo * lit);
+                cube.texture.pixels[at] = code;
+                cube.texture.pixels[at + 1] = code;
+                cube.texture.pixels[at + 2] = code;
+            }
+        }
+    }
+    return cube;
+}
+
+// The average linear value of a face's cell, away from its edges, and of its light and dark
+// checks there.
+struct FaceLight {
+    float mean = 0.0F;
+    float light = 0.0F;
+    float dark = 0.0F;
+};
+
+FaceLight face_light(const render::Image& image, std::size_t face) {
+    FaceLight out;
+    int lights = 0;
+    int darks = 0;
+    for (std::uint32_t y = 4; y < 28; ++y) {
+        for (std::uint32_t x = 4; x < 28; ++x) {
+            const std::size_t at =
+                ((static_cast<std::size_t>((face / 3) * 32 + y) * 96) + ((face % 3) * 32) + x) * 4;
+            const float value = linear_of(image.pixels[at]);
+            if (((x / 4) + (y / 4)) % 2 == 0) {
+                out.light += value;
+                ++lights;
+            } else {
+                out.dark += value;
+                ++darks;
+            }
+        }
+    }
+    out.mean = (out.light + out.dark) / static_cast<float>(lights + darks);
+    out.light /= static_cast<float>(lights);
+    out.dark /= static_cast<float>(darks);
+    return out;
+}
+
+float spread(const render::Image& image) {
+    float least = 1e9F;
+    float most = 0.0F;
+    for (std::size_t f = 0; f < kCubeFaces.size(); ++f) {
+        least = std::min(least, face_light(image, f).mean);
+        most = std::max(most, face_light(image, f).mean);
+    }
+    return most / least;
+}
+
+} // namespace
+
+TEST_CASE("delight_textures takes the light baked into a model's albedo out of it") {
+    const std::array<float, 3> from{0.3F, 1.0F, 0.2F};
+    const LitCube cube = lit_cube(from);
+    MemoryFiles files;
+    files.files["props/cube.obj"] = cube.obj;
+    files.files["props/cube.mtl"] = cube.mtl;
+    files.files["props/paint.png"] = render::encode_png(cube.texture).value();
+    auto model = load(files, "props/cube.obj");
+    REQUIRE(model.ok());
+    REQUIRE(model.value().materials.size() == 1);
+    const int albedo = model.value().materials[0].albedo_image;
+    REQUIRE(albedo >= 0);
+    CHECK(model.value().images[static_cast<std::size_t>(albedo)].path == "props/paint.png");
+    CHECK(spread(cube.texture) > 1.8F);
+
+    scene3d::Model delit = model.value();
+    auto report = scene3d::delight_textures(delit, files.reader());
+    REQUIRE_MESSAGE(report.ok(), error_of(report));
+    CHECK(report.value().textures == 1);
+    REQUIRE(report.value().light.has_value());
+    const float length = std::sqrt((from[0] * from[0]) + (from[1] * from[1]) + (from[2] * from[2]));
+    const Vec3 light = *report.value().light;
+    CHECK(((light.x * from[0]) + (light.y * from[1]) + (light.z * from[2])) / length > 0.99F);
+    // The image is inside the model now, its faces lit alike and its checks kept.
+    const scene3d::ModelImage& image =
+        delit.images[static_cast<std::size_t>(delit.materials[0].albedo_image)];
+    CHECK(image.path.empty());
+    CHECK(spread(image.image) < 1.05F);
+    for (std::size_t f = 0; f < kCubeFaces.size(); ++f) {
+        const FaceLight face = face_light(image.image, f);
+        CHECK(face.light / face.dark == doctest::Approx(0.55F / 0.45F).epsilon(0.03));
+    }
+    // The light's average stays, so the albedo is as bright as it was overall.
+    float before = 0.0F;
+    float after = 0.0F;
+    for (std::size_t f = 0; f < kCubeFaces.size(); ++f) {
+        before += face_light(cube.texture, f).mean;
+        after += face_light(image.image, f).mean;
+    }
+    CHECK(after == doctest::Approx(before).epsilon(0.05));
+
+    // Again, the same texels; at half strength, half the way.
+    scene3d::Model again = model.value();
+    REQUIRE(scene3d::delight_textures(again, files.reader()).ok());
+    CHECK(again.images[static_cast<std::size_t>(again.materials[0].albedo_image)].image.pixels ==
+          image.image.pixels);
+    scene3d::Model half = model.value();
+    REQUIRE(scene3d::delight_textures(half, files.reader(), 0.5F).ok());
+    const float half_spread =
+        spread(half.images[static_cast<std::size_t>(half.materials[0].albedo_image)].image);
+    CHECK(half_spread > 1.1F);
+    CHECK(half_spread < spread(cube.texture));
+
+    // Through cleanup_model, before the turn moves the light with the model.
+    scene3d::Model cleaned = model.value();
+    auto cleanup =
+        scene3d::cleanup_model(cleaned, {.up = "z", .delight = 1.0F, .read = files.reader()});
+    REQUIRE_MESSAGE(cleanup.ok(), error_of(cleanup));
+    CHECK(cleanup.value().delit == 1);
+    REQUIRE(cleanup.value().light.has_value());
+    CHECK(cleanup.value().light->z < -0.9F);
+
+    // A texture it can't read is an error that names it.
+    MemoryFiles missing = files;
+    scene3d::Model unread = model.value();
+    missing.files.erase("props/paint.png");
+    auto failed = scene3d::delight_textures(unread, missing.reader());
+    REQUIRE_FALSE(failed.ok());
+    CHECK(failed.error().message.find("props/paint.png") != std::string::npos);
+}
+
+TEST_CASE("delight_textures leaves a texture lit evenly, or on surfaces facing one way, alone") {
+    // An evenly lit cube: no light from a side, and the same texels.
+    const LitCube even = [] {
+        LitCube cube = lit_cube({0.0F, 1.0F, 0.0F});
+        for (std::size_t i = 0; i < cube.texture.pixels.size(); i += 4) {
+            cube.texture.pixels[i] = cube.texture.pixels[i + 1] = cube.texture.pixels[i + 2] = 140;
+        }
+        return cube;
+    }();
+    MemoryFiles files;
+    files.files["cube.obj"] = even.obj;
+    files.files["cube.mtl"] = even.mtl;
+    files.files["paint.png"] = render::encode_png(even.texture).value();
+    auto model = load(files, "cube.obj");
+    REQUIRE(model.ok());
+    auto report = scene3d::delight_textures(model.value(), files.reader());
+    REQUIRE(report.ok());
+    CHECK(report.value().textures == 1);
+    CHECK_FALSE(report.value().light.has_value());
+    CHECK(model.value()
+              .images[static_cast<std::size_t>(model.value().materials[0].albedo_image)]
+              .image.pixels == even.texture.pixels);
+
+    // No textures, nothing to do; strength 0 does nothing either.
+    MemoryFiles plain;
+    plain.files["box.obj"] = "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
+    auto box = load(plain, "box.obj");
+    REQUIRE(box.ok());
+    CHECK(scene3d::delight_textures(box.value(), plain.reader()).value().textures == 0);
+    scene3d::Model untouched = load(files, "cube.obj").value();
+    CHECK(scene3d::delight_textures(untouched, files.reader(), 0.0F).value().textures == 0);
+}
+
+TEST_CASE("delight_textures counts the shade of a model's own corners as baked light") {
+    // A floor and the wall at its edge, painted one gray: as if nothing shaded the corner, so
+    // taking the corner's occlusion out brightens the floor beside the wall.
+    MemoryFiles files;
+    files.files["corner.obj"] = R"(mtllib corner.mtl
+usemtl Paint
+v 0 0 -1
+v 2 0 -1
+v 2 0 1
+v 0 0 1
+v 0 0 -1
+v 0 2 -1
+v 0 2 1
+v 0 0 1
+vt 0 1
+vt 0.5 1
+vt 0.5 0
+vt 0 0
+vt 0.5 1
+vt 1 1
+vt 1 0
+vt 0.5 0
+vn 0 1 0
+vn 1 0 0
+f 1/1/1 4/4/1 3/3/1 2/2/1
+f 5/5/2 6/6/2 7/7/2 8/8/2
+)";
+    files.files["corner.mtl"] = "newmtl Paint\nmap_Kd gray.png\n";
+    render::Image gray;
+    gray.width = 64;
+    gray.height = 32;
+    gray.pixels.assign(static_cast<std::size_t>(64) * 32 * 4, 128);
+    for (std::size_t i = 3; i < gray.pixels.size(); i += 4) {
+        gray.pixels[i] = 255;
+    }
+    files.files["gray.png"] = render::encode_png(gray).value();
+    auto model = load(files, "corner.obj");
+    REQUIRE(model.ok());
+    REQUIRE(scene3d::delight_textures(model.value(), files.reader()).ok());
+    const render::Image& out =
+        model.value()
+            .images[static_cast<std::size_t>(model.value().materials[0].albedo_image)]
+            .image;
+    const auto at = [&out](std::uint32_t x, std::uint32_t y) {
+        return out.pixels[((static_cast<std::size_t>(y) * out.width) + x) * 4];
+    };
+    // The floor is the image's left half, the wall at its left edge.
+    CHECK(at(1, 16) > at(30, 16) + 10);
+}

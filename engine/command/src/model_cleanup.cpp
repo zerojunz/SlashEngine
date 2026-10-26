@@ -123,6 +123,20 @@ Reply model_cleanup(Session& session, const json::Value& params) {
         options.max_hulls = static_cast<std::size_t>(max_hulls->as_int());
     }
 
+    const scene3d::ModelReader read = [&session](std::string_view file) -> Result<std::string> {
+        auto bytes = session.read_project_file(file);
+        if (!bytes) {
+            return bytes.error();
+        }
+        if (!bytes.value()) {
+            return make_error(ErrorCode::NotFound, quoted(file) + " doesn't exist");
+        }
+        return std::move(*bytes.value());
+    };
+    if (const json::Value* delight = params.find("delight"); delight != nullptr) {
+        options.delight = static_cast<float>(delight->as_double());
+        options.read = read;
+    }
     auto loaded = session.assets().load<scene3d::Model>(path);
     if (!loaded) {
         return param_error(code::kInvalidParams, "/path", loaded.error().message);
@@ -136,6 +150,8 @@ Reply model_cleanup(Session& session, const json::Value& params) {
             at = "/up";
         } else if (message.starts_with("the simplifier")) {
             at = budget ? "/out" : "/triangles";
+        } else if (options.delight > 0.0F && message.starts_with("\"")) {
+            at = "/delight";
         } else if (message.starts_with("the model has no triangles") ||
                    message.starts_with("the model's triangles span")) {
             at = "/collision";
@@ -148,16 +164,6 @@ Reply model_cleanup(Session& session, const json::Value& params) {
         }
         return param_error(code::kInvalidParams, at, text);
     }
-    const scene3d::ModelReader read = [&session](std::string_view file) -> Result<std::string> {
-        auto bytes = session.read_project_file(file);
-        if (!bytes) {
-            return bytes.error();
-        }
-        if (!bytes.value()) {
-            return make_error(ErrorCode::NotFound, quoted(file) + " doesn't exist");
-        }
-        return std::move(*bytes.value());
-    };
     auto glb = scene3d::write_glb(model, out, read);
     if (!glb) {
         return Reply::failure(glb.error());
@@ -175,6 +181,12 @@ Reply model_cleanup(Session& session, const json::Value& params) {
     result["pivot"] = numbers(summary.pivot);
     if (report.value().unwrapped > 0) {
         result["unwrapped"] = static_cast<std::int64_t>(report.value().unwrapped);
+    }
+    if (report.value().delit > 0) {
+        result["delit"] = static_cast<std::int64_t>(report.value().delit);
+        if (const std::optional<Vec3>& light = report.value().light; light) {
+            result["light"] = numbers(*light);
+        }
     }
     if (!summary.collision.empty()) {
         // How many shapes of each kind it collides as.
@@ -240,6 +252,11 @@ void register_model_cleanup_commands(Registry& registry) {
                   "\"Generate > Physics\": \"trimesh\", \"convex\" (one hull) or \"decompose\" "
                   "(convex hulls). Default: keep its own.");
     collision["enum"] = json::Array{"trimesh", "convex", "decompose"};
+    json::Value delight = property(
+        "number", "Take this much of the light baked into its albedo textures out of them, 0 to "
+                  "1: 1 for scans and generated models lit in their textures.");
+    delight["minimum"] = 0.0;
+    delight["maximum"] = 1.0;
     json::Value max_hulls = property("integer", "The most hulls \"decompose\" makes. Default 16.");
     max_hulls["minimum"] = 1;
     max_hulls["maximum"] = 256;
@@ -247,8 +264,9 @@ void register_model_cleanup_commands(Registry& registry) {
         .name = "model.cleanup",
         .description = "Makes a model game-ready as a .glb file: turns its up to y, scales it to "
                        "real size, puts its origin at a pivot, simplifies it under its triangle "
-                       "budget, unwraps surfaces without texture coordinates and makes its "
-                       "collision. Returns triangles before and after, size and pivot.",
+                       "budget, unwraps surfaces without texture coordinates, takes baked light "
+                       "out of its textures and makes its collision. Returns triangles before and "
+                       "after, size and pivot.",
         .capabilities = {Capability::Edit, Capability::Filesystem},
         .effect = Effect::Edit,
         .params = params_schema({{"path", std::move(path)},
@@ -259,6 +277,7 @@ void register_model_cleanup_commands(Registry& registry) {
                                  {"pivot", std::move(pivot)},
                                  {"triangles", std::move(triangles)},
                                  {"uvs", std::move(uvs)},
+                                 {"delight", std::move(delight)},
                                  {"collision", std::move(collision)},
                                  {"max_hulls", std::move(max_hulls)}},
                                 {"path"}),
