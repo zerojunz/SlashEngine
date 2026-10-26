@@ -984,6 +984,69 @@ TEST_CASE("a library recipe keeps the variants its model parts name") {
     CHECK(copied["parts"].as_array()[1]["model"] == "yard/parts/" + crate + ".model.json::open");
 }
 
+TEST_CASE("library models keep to the storyboard's triangle budget, and asset.style drafts the "
+          "style from accepted assets") {
+    const fs::path root = fresh("library_model_style");
+    const fs::path project = root / "project";
+    write(project / "storyboard" / "style.json", R"({"format": 1, "entries": {
+        "budget/props": {"name": "Props", "triangles": 1, "links": ["props"]}
+    }})");
+    write(project / "props" / "sign.glb", slash::test::quad().glb());
+    write(project / "art" / "dot.png", square(4, {255, 255, 255}));
+    const Engine engine(root);
+    const std::string sign =
+        engine.call("asset.add", R"({"path": "props/sign.glb", "description": "A sign"})")["id"]
+            .as_string();
+    const std::string dot =
+        engine.call("asset.add", R"({"path": "art/dot.png", "description": "A dot"})")["id"]
+            .as_string();
+    engine.call("asset.feedback",
+                R"({"id": ")" + sign + R"(", "verdict": "accepted", "reason": "reads from afar"})");
+    engine.call("asset.feedback",
+                R"({"id": ")" + dot + R"(", "verdict": "accepted", "reason": "clean edges"})");
+
+    // Used again, the model breaks the budget: asset.use says so and records it, and asset.check
+    // finds it in both places.
+    json::Value used =
+        engine.call("asset.use", R"({"id": ")" + sign + R"(", "path": "props/sign2.glb"})");
+    CHECK(json::write(used["problems"], json::Style::Compact) ==
+          R"(["has 2 triangles; budget/props allows 1"])");
+    json::Value info = engine.call("asset.info", R"({"id": ")" + sign + R"("})");
+    const json::Array& feedback = info["feedback"].as_array();
+    REQUIRE(feedback.size() == 2);
+    CHECK(json::write(feedback[1], json::Style::Compact) ==
+          R"({"reason":"has 2 triangles; budget/props allows 1","source":"storyboard.check",)"
+          R"("verdict":"rejected"})");
+    json::Array problems = engine.call("asset.check", "{}")["problems"].as_array();
+    std::vector<std::string> found;
+    for (json::Value& problem : problems) {
+        found.push_back(problem["path"].as_string() + " " + problem["message"].as_string());
+    }
+    CHECK(found == std::vector<std::string>{
+                       "props/sign.glb has 2 triangles; budget/props allows 1",
+                       "props/sign2.glb has 2 triangles; budget/props allows 1",
+                   });
+    json::Value checked = engine.call("storyboard.check", "{}");
+    CHECK(checked["errors"].as_array().size() == 2);
+
+    // The check's verdict isn't a person's: both assets were accepted, so asset.style drafts a
+    // palette from the dot, a texture budget, and a reference for each, once.
+    json::Value style = engine.call("asset.style", "{}");
+    CHECK(style["accepted"] == 2);
+    CHECK(json::write(style["edits"], json::Style::Compact) ==
+          R"([{"id":"palette/main","set":{"colors":{"white":"#ffffff"},"links":["art"],)"
+          R"("name":"Main palette","summary":"The colors of the accepted images.","tolerance":8},)"
+          R"("version":null},{"id":"budget/assets","set":{"name":"Asset budgets","summary":)"
+          R"("What the accepted assets need at most.","texture_size":4},"version":null},)"
+          R"({"id":"reference/dot","set":{"links":["art/dot.png"],"name":"A dot","summary":)"
+          R"("clean edges"},"version":null},{"id":"reference/sign","set":{"links":)"
+          R"(["props/sign.glb"],"name":"A sign","summary":"reads from afar"},"version":null}])");
+    json::Value edit;
+    edit["edits"] = style["edits"];
+    engine.call("storyboard.edit", json::write(edit, json::Style::Compact));
+    CHECK(engine.call("asset.style", "{}")["edits"].as_array().empty());
+}
+
 TEST_CASE("a library model keeps its checks, every version passes them, and asset.check and "
           "test.run check the project's copy again") {
     const fs::path root = fresh("library_model_checks");
