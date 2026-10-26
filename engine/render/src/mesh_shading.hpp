@@ -51,6 +51,7 @@ inline constexpr std::uint32_t kMeshSideCheck = 32;
 inline constexpr std::uint32_t kMeshHasAlpha = 64;
 inline constexpr std::uint32_t kMeshDisableFog = 128;
 inline constexpr std::uint32_t kMeshLightmap = 256;
+inline constexpr std::uint32_t kMeshLightmapCapture = 512;
 
 // mesh.hlsl's terrain flags, in MeshSurfaceUniforms::options' w: terrain shading, depth blending,
 // and from kMeshTerrainNormals up, which layers have a normal_roughness texture.
@@ -81,6 +82,7 @@ struct MeshSurfaceUniforms {
     Float4 terrain_uv{};      // each ground layer's tiling: the maps' resolution over its uv_scale
     Float4 terrain_opacity{}; // how much the color map tints each ground layer
     Float4 lightmap{};        // the lightmap's exposure, then 1 for the bicubic filter
+    std::array<Float4, 9> capture{}; // the light probes' spherical harmonics, RGB
 };
 
 // A draw's textures in mesh.hlsl's slots. A StandardMaterial3D's albedo, metallic, roughness,
@@ -168,7 +170,7 @@ struct MeshShadowPassUniforms {
 };
 
 static_assert(sizeof(MeshInstanceUniforms) == 160);
-static_assert(sizeof(MeshSurfaceUniforms) == 144);
+static_assert(sizeof(MeshSurfaceUniforms) == 288);
 static_assert(sizeof(MeshSceneUniforms) == 256 + (80 * kMaxLights3D));
 static_assert(sizeof(MeshDirectionalShadowUniforms) == 320);
 static_assert(sizeof(MeshPositionalShadowUniforms) == 576);
@@ -400,6 +402,8 @@ struct FloatImage {
 // surface's lightmap uniform, times its exposure.
 [[nodiscard]] Float3 lightmap_light(const MeshSurfaceUniforms& surface, const FloatImage& image,
                                     std::array<float, 2> uv);
+// capture_light in shaders/mesh.hlsl: the light probes' light along a world normal.
+[[nodiscard]] Float3 capture_light(const MeshSurfaceUniforms& surface, const Float3& n);
 
 // The pixel's color, as fs_main gives it, or nullopt where it discards the pixel.
 [[nodiscard]] std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface,
@@ -465,6 +469,12 @@ Result<void> check_material_3d(const Material3D& material, TextureId target, con
                  m.lightmap.uv_rect[3],
                  m.lightmap.exposure})) {
         return make_error(ErrorCode::InvalidArgument, "a 3D material's numbers are finite");
+    }
+    for (const std::array<float, 3>& coefficient : m.capture.sh) {
+        if (!finite({coefficient[0], coefficient[1], coefficient[2]})) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a 3D material's light probe capture is finite");
+        }
     }
     if (m.terrain.enabled) {
         if (m.terrain.resolution == 0 || m.terrain.resolution > kMaxTextureSize) {
