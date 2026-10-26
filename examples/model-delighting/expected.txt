@@ -1,0 +1,27 @@
+source/crate.png, the scan's texture:
+  right  mean 155  light 167  dark 144
+  left   mean 133  light 143  dark 124
+  top    mean 176  light 189  dark 164
+  bottom mean 100  light 108  dark  93
+  front  mean 152  light 163  dark 141
+  back   mean 137  light 147  dark 127
+model.cleanup {"delight":1,"out":"props/crate.glb","path":"source/crate.obj"}
+{"delit":1,"light":[0.2859,0.9383,0.1944],"out":"props/crate.glb","pivot":[0.5,0.5,0.5],"size":[1.0,1.0,1.0],"triangles":[12,12]}
+props/crate.glb's texture, delit:
+  right  mean 145  light 156  dark 134
+  left   mean 145  light 155  dark 135
+  top    mean 144  light 155  dark 134
+  bottom mean 145  light 155  dark 135
+  front  mean 144  light 155  dark 134
+  back   mean 144  light 155  dark 134
+model.cleanup {"delight":0.5,"out":"props/crate_half.glb","path":"source/crate.obj"}
+{"delit":1,"light":[0.2859,0.9383,0.1944],"out":"props/crate_half.glb","pivot":[0.5,0.5,0.5],"size":[1.0,1.0,1.0],"triangles":[12,12]}
+props/crate_half.glb's texture:
+  right  mean 150  light 162  dark 139
+  left   mean 139  light 149  dark 130
+  top    mean 161  light 173  dark 150
+  bottom mean 125  light 134  dark 116
+  front  mean 148  light 159  dark 138
+  back   mean 141  light 151  dark 131
+model.cleanup {"delight":1,"out":"props/crate.glb","path":"source/crate.obj"}
+"/delight: \"source/missing.png\" doesn't exist"

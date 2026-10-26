@@ -1046,9 +1046,10 @@ reload, and `check_model` backs `scene validate`, exports and `model.inspect`; a
 buffer embedded, images by their paths or embedded as PNGs), which importers use to pick one mesh
 out of a model, and `write_glb` as one `.glb` file holding everything. `model.cleanup`
 (`engine/command/src/model_cleanup.cpp`, on `scene3d::cleanup_model` in `src/cleanup.cpp`) makes a
-generated or imported model game-ready as a `.glb`: up turned to y, simplified with meshoptimizer
-to the storyboard's triangle budget (`storyboard::budget_for`) with LODs made again, sized, moved
-to a pivot, unwrapped with xatlas where it has no texture coordinates and given collision;
+generated or imported model game-ready as a `.glb`: up turned to y, delit, simplified with
+meshoptimizer to the storyboard's triangle budget (`storyboard::budget_for`) with LODs made again,
+sized, moved to a pivot, unwrapped with xatlas where it has no texture coordinates and given
+collision;
 `examples/model-cleanup` cleans a CAD crate and a dense boulder. Models collide as Godot's
 importer makes them (`slash/scene3d/collision.hpp`, `src/collision.cpp`): `apply_import_hints`
 reads `-col`, `-convcol`, `-colonly` and `-convcolonly` on nodes' names into `Model::collision`
@@ -1057,7 +1058,12 @@ decomposition (`src/vhacd_build.cpp`, built with `-ffp-contract=off` and patched
 `cmake/patches/vhacd-deterministic.cmake` so hulls are the same everywhere), and `write_glb`
 writes them back as hinted nodes. physics3d makes each `MeshInstance3D` whose model collides a
 static body of `model_shapes`, or adds them to the body it is on or under (`add_model_shapes` in
-`engine/physics3d/src/space.cpp`). `examples/model-collision` drops balls on a yard and an arch. JPEG textures decode with stb_image's integer decoder
+`engine/physics3d/src/space.cpp`). `examples/model-collision` drops balls on a yard and an arch.
+`delight_textures` (`src/delight.cpp`) takes the light baked into albedo textures out, as Unity's
+De-Lighting tool: it places each covered texel on the model, traces its sky with the
+`OccluderScene` of `src/occlusion.cpp`, fits an ambient and directional light to the texels by
+least squares and divides it out, with `slash::exp` and `ln` for sRGB so results are the same
+everywhere; `examples/model-delighting` delights a scanned crate. JPEG textures decode with stb_image's integer decoder
 (`engine/render/src/jpeg.c`). `tests/gltf.hpp` writes test models in code, so none is committed;
 `examples/models-3d` is a house from a `.gltf` file.
 
