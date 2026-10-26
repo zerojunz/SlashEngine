@@ -12,13 +12,14 @@
 // One call converts it. Its level becomes a .scene.json file beside the .umap, in Godot's axes and
 // meters: meshes as MeshInstance3D entities over the exported glTF files (with the collision Unreal
 // gives them, and a copy drawn with a component's override material), the hero's skeletal mesh
-// playing its animation sequence, the landscape as an HTerrain, lights, the sky, fog, the camera
-// on the player's spring arm, physics bodies, trigger and blocking volumes, and sounds; its
-// settings and both input systems become project.json; each C++ class becomes a C++ skeleton with
-// its properties as a component the level's actors fill in, as Unity's scripts do; and each
-// Blueprint and C++ class becomes a storyboard task to port it, since SlashEngine games are plain
-// C++. The report lists what didn't convert, and why. The glTF files, the landscape's heights and
-// the sound are made in code here, so the repository holds no binary files.
+// playing its animation sequence, the guard's Animation Blueprint's sequences as an AnimationTree's
+// states, the landscape as an HTerrain, lights, the sky, fog, the camera on the player's spring
+// arm, physics bodies, trigger and blocking volumes, and sounds; its settings and both input
+// systems become project.json; each C++ class becomes a C++ skeleton with its properties as a
+// component the level's actors fill in, as Unity's scripts do; and each Blueprint and C++ class
+// becomes a storyboard task to port it, since SlashEngine games are plain C++. The report lists
+// what didn't convert, and why. The glTF files, the landscape's heights and the sound are made in
+// code here, so the repository holds no binary files.
 
 #include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"
@@ -225,15 +226,30 @@ int main() {
                                       {0.0F, 0.05F, 0.0F, 0.0F},
                                       {0.0F, 0.0F, 0.0F, 0.0F}}});
     write_model(exported + "animations/Game/Characters/A_Idle.glb", idle);
+    // The guard's Animation Blueprint plays the idle and a wave: a turn back and forth.
+    scene3d::Model wave = hero;
+    scene3d::ModelAnimation& turn = wave.animations.emplace_back();
+    turn.name = "Wave";
+    turn.length = 1.0;
+    turn.tracks.push_back({.node = 0,
+                           .property = scene3d::NodeProperty::Rotation,
+                           .step = false,
+                           .loop_wrap = true,
+                           .times = {0.0F, 0.5F, 1.0F},
+                           .values = {{0.0F, 0.0F, 0.0F, 1.0F},
+                                      {0.0F, 0.258819F, 0.0F, 0.9659258F},
+                                      {0.0F, 0.0F, 0.0F, 1.0F}}});
+    write_model(exported + "animations/Game/Characters/A_Wave.glb", wave);
     write_wind(exported + "sounds/Game/Audio/Wind.wav");
     write_landscape(exported + "landscapes/Game/Maps/Main/Landscape_0.r16");
     // The Blueprints the import's tasks link to, which only Unreal reads: stand-ins here.
     if (!slash::platform::create_directories("unreal/Content/Blueprints").ok() ||
-        !slash::platform::create_directories("unreal/Content/UI").ok()) {
+        !slash::platform::create_directories("unreal/Content/UI").ok() ||
+        !slash::platform::create_directories("unreal/Content/Characters").ok()) {
         return 1;
     }
-    for (const char* blueprint :
-         {"Blueprints/BP_Coin", "Blueprints/BP_CrateRunMode", "Blueprints/BP_Hero", "UI/WBP_Hud"}) {
+    for (const char* blueprint : {"Blueprints/BP_Coin", "Blueprints/BP_CrateRunMode",
+                                  "Blueprints/BP_Hero", "UI/WBP_Hud", "Characters/ABP_Guard"}) {
         write_file(std::string("unreal/Content/") + blueprint + ".uasset", "stand-in");
     }
 
@@ -255,6 +271,10 @@ int main() {
     // The hero's mesh plays its idle sequence, as the component played it in Unreal: a second
     // and a half in.
     agent.call("world.query", R"({"with": ["AnimationPlayer"], "include": ["AnimationPlayer"]})");
+    // The guard's Animation Blueprint is a state machine of its sequences, idling as it starts;
+    // its task adds the transitions its graph has.
+    agent.call("world.query", R"({"with": ["AnimationTree"], "include": ["AnimationTree"],
+                                  "omit_defaults": true})");
     // The coin's Blueprint is made from the C++ class ACoinPickup, which became a skeleton in
     // src/imported/: the coin holds its component with the values the level gave it.
     agent.call("world.query", R"({"with": ["CoinPickup"], "include": ["CoinPickup"]})");
