@@ -4826,6 +4826,11 @@ private:
             convert_environment(value, file, components, node);
             return true;
         }
+        if ((name == "camera_attributes" && components.contains("WorldEnvironment")) ||
+            (name == "attributes" && components.contains("Camera3D"))) {
+            convert_camera_attributes(value, file, components, node, node.type + "." + name);
+            return true;
+        }
         if (name == "shape" && components.contains("CollisionShape3D")) {
             convert_shape_3d(value, file, components["CollisionShape3D"], node);
             return true;
@@ -5425,6 +5430,29 @@ private:
                 problems_.add("Sky." + name, node.declared);
             }
         }
+    }
+
+    // A WorldEnvironment's or Camera3D's CameraAttributesPractical as the component of the same
+    // name on its entity.
+    void convert_camera_attributes(const Value& reference, const TextFile& file,
+                                   json::Object& components, const Node& node,
+                                   const std::string& property) {
+        if (reference.kind == Value::Kind::Nil) {
+            return;
+        }
+        const auto [section, owner] = resource_section(reference, file);
+        const std::string type = section != nullptr ? resource_type(*section, *owner) : "";
+        if (type != "CameraAttributesPractical") {
+            problems_.add(property, node.declared,
+                          type == "CameraAttributesPhysical"
+                              ? "physical camera attributes aren't supported yet"
+                              : "not a CameraAttributesPractical resource");
+            return;
+        }
+        resources_used_.insert(type);
+        json::Value& out = components[type];
+        out = json::Object{};
+        resource_fields(*section, *owner, type, out, node);
     }
 
     // A Shape3D as a CollisionShape3D's shape and the fields it sets.

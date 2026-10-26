@@ -21,14 +21,14 @@ until the tonemap. The `environment` entity's `WorldEnvironment` sets `tonemap_m
 
 ```text
 frame.capture {"points":[[130,60],[130,45],[200,70],[215,70],[20,160]]}
-{"colors":[[1,0.988,1,1],[0.941,0.537,0.733,1],[0.976,1,1,1],[0.478,0.749,0.792,1],
+{"colors":[[1,0.796,0.898,1],[0.584,0.165,0.365,1],[0.812,0.929,0.945,1],[0.075,0.294,0.349,1],
  [0.004,0.004,0.012,1]],"drawn":{"meshes":4},"height":180,"width":320}
 ```
 
 - `frame.capture` draws the frame on the CPU, glow included, so it needs no GPU and gives the
   same pixels on every machine. `points` reads the pink sign, the wall just above it, the cyan
-  sign, the wall beside it and the ground in a corner. Both signs burn nearly white, as bright
-  neon does through AgX, and their glow colors the wall around them.
+  sign, the wall beside it and the ground in a corner. Both signs burn pale, nearly white, as
+  bright neon does through AgX, and their glow colors the wall around them.
 - `"softlight"` blends glow in after the tonemap, at most as bright as white, so the halos dim.
 - Back to `"screen"`, `glow_levels` of only the sixth level (a 64th of the window's size) spreads
   the glow across the whole street as a haze, dimmer by the signs and brighter far from them.

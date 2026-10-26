@@ -1,0 +1,133 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 60.0
+        },
+        "CameraAttributesPractical": {
+          "auto_exposure_enabled": true,
+          "auto_exposure_max_sensitivity": 3200.0,
+          "auto_exposure_speed": 1.0
+        },
+        "Transform3D": {
+          "position": [0.0, 1.5, 6.0]
+        }
+      }
+    },
+    "ceiling": {
+      "components": {
+        "BoxMesh": {
+          "size": [4.4, 0.2, 14.0]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.35, 0.32, 0.3, 1.0],
+          "roughness": 0.9
+        },
+        "Transform3D": {
+          "position": [0.0, 3.1, 0.0]
+        }
+      }
+    },
+    "daylight": {
+      "components": {
+        "BoxMesh": {
+          "size": [20.0, 12.0, 0.2]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.0, 0.0, 0.0, 1.0],
+          "emission": [0.8, 0.9, 1.0, 1.0],
+          "emission_enabled": true,
+          "emission_energy_multiplier": 6.0
+        },
+        "Transform3D": {
+          "position": [0.0, 1.5, -9.0]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.4, 0.35, 0.3, 1.0],
+          "ambient_light_energy": 0.05,
+          "ambient_light_source": "color",
+          "background_mode": "color",
+          "tonemap_mode": "filmic"
+        }
+      }
+    },
+    "floor": {
+      "components": {
+        "BoxMesh": {
+          "size": [4.4, 0.2, 14.0]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.45, 0.4, 0.35, 1.0],
+          "roughness": 0.9
+        },
+        "Transform3D": {
+          "position": [0.0, -0.1, 0.0]
+        }
+      }
+    },
+    "left_wall": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.2, 3.0, 14.0]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.4, 0.36, 0.32, 1.0],
+          "roughness": 0.9
+        },
+        "Transform3D": {
+          "position": [-2.1, 1.5, 0.0]
+        }
+      }
+    },
+    "right_wall": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.2, 3.0, 14.0]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.4, 0.36, 0.32, 1.0],
+          "roughness": 0.9
+        },
+        "Transform3D": {
+          "position": [2.1, 1.5, 0.0]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [0.9, 0.95, 1.0, 1.0],
+          "light_energy": 4.0,
+          "omni_range": 6.0
+        },
+        "Transform3D": {
+          "position": [0.0, 1.5, -7.5]
+        }
+      }
+    },
+    "torch": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.6, 0.3, 1.0],
+          "light_energy": 1.5,
+          "omni_range": 6.0
+        },
+        "Transform3D": {
+          "position": [1.6, 2.2, 4.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

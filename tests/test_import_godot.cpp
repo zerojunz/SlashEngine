@@ -1868,6 +1868,14 @@ ssao_enabled = true
 fog_enabled = true
 fog_density = 0.02
 
+[sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_1"]
+exposure_multiplier = 1.5
+auto_exposure_enabled = true
+auto_exposure_speed = 2.0
+dof_blur_far_enabled = true
+
+[sub_resource type="CameraAttributesPhysical" id="CameraAttributesPhysical_1"]
+
 [sub_resource type="BoxShape3D" id="BoxShape3D_1"]
 size = Vector3(1, 2, 1)
 
@@ -1914,6 +1922,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 8)
 fov = 60.0
 keep_aspect = 0
 current = true
+attributes = SubResource("CameraAttributesPhysical_1")
 
 [node name="Sun" type="DirectionalLight3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 10, 0)
@@ -1932,6 +1941,7 @@ spot_angle = 30.0
 
 [node name="Environment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_1")
+camera_attributes = SubResource("CameraAttributesPractical_1")
 
 [node name="Crate" type="RigidBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4, 0)
@@ -2068,6 +2078,9 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
         "fog_enabled": true, "fog_density": 0.02, "sky_radiance_size": 128})"));
     CHECK(*environment.find("ProceduralSkyMaterial") ==
           parse(R"({"sky_top_color": [0.2, 0.4, 0.8, 1.0], "sun_angle_max": 20.0})"));
+    CHECK(*environment.find("CameraAttributesPractical") == parse(R"({
+        "exposure_multiplier": 1.5, "auto_exposure_enabled": true, "auto_exposure_speed": 2.0})"));
+    CHECK(entity(files, level, "camera").find("CameraAttributesPractical") == nullptr);
 
     // Bodies and their shapes.
     CHECK(*entity(files, level, "crate").find("RigidBody3D") == parse(R"({
@@ -2113,6 +2126,8 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     CHECK(why("model root type") == "its instances become Node3D entities that draw it; add the "
                                     "VehicleBody3D component to them by hand");
     CHECK(unsupported(report, "Environment.glow_levels").is_null());
+    CHECK(why("Camera3D.attributes") == "physical camera attributes aren't supported yet");
+    CHECK(!unsupported(report, "CameraAttributesPractical.dof_blur_far_enabled").is_null());
     CHECK(!unsupported(report, "Environment.ssao_enabled").is_null());
     CHECK(!unsupported(report, "SpotLight3D.light_indirect_energy").is_null());
     CHECK(why("node type GPUParticles3D") == "no SlashEngine component for it yet");

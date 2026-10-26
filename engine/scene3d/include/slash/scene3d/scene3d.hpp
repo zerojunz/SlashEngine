@@ -62,7 +62,8 @@ struct Problem {
 
 // The background a frame clears to, the sky and fog, the light every lit pixel gets and
 // reflects and what happens to colors after, from the first WorldEnvironment made
-// (WorldEnvironment's docs); clear is the project's clear color.
+// (WorldEnvironment's docs) and the CameraAttributesPractical camera uses (camera_attributes);
+// clear is the project's clear color.
 struct Environment {
     render::Color background;
     render::Sky3D sky; // with no texture made yet and no lights
@@ -81,9 +82,21 @@ struct Environment {
     render::Filter sky_filter = render::Filter::Linear;
     std::string sky_texture_field;
     entt::entity entity = entt::null; // the WorldEnvironment, if there is one
-    std::vector<Problem> problems;    // such as more than one sky material
+    // The entity whose CameraAttributesPractical the camera uses, or entt::null, and its
+    // exposure_multiplier, as Godot's exposure normalization without physical light units: the
+    // background, the sky (and so its light) and post's auto exposure have it already, and the
+    // frame's lights, the sky's suns and emission take it too.
+    entt::entity attributes = entt::null;
+    float exposure = 1.0F;
+    std::vector<Problem> problems; // such as more than one sky material
 };
-[[nodiscard]] Environment environment(const world::World& world, render::Color clear);
+[[nodiscard]] Environment environment(const world::World& world, render::Color clear,
+                                      entt::entity camera = entt::null);
+
+// The entity whose CameraAttributesPractical a camera uses, as Godot's Camera3D.attributes and
+// WorldEnvironment.camera_attributes: the camera's own, else the first WorldEnvironment's;
+// entt::null when neither has one.
+[[nodiscard]] entt::entity camera_attributes(const world::World& world, entt::entity camera);
 
 // The lights of the world that shine, as a frame's lights: those visible in the tree whose
 // sky_mode isn't "sky_only", placed by global, the directional ones first, each kind in tree
@@ -165,12 +178,12 @@ public:
     void before_tick(const world::World& world);
 
     // Works out the frame for a target of width by height pixels, interpolation of the way from
-    // the transforms before the last tick to the current ones, its shadows drawn with shadows:
-    // nullopt when the world has no camera, and nothing 3D draws. The mesh draws wait for draw().
-    [[nodiscard]] std::optional<Frame3D> prepare(const world::World& world, float width,
-                                                 float height, double interpolation,
-                                                 render::Color clear,
-                                                 const render::ShadowSettings& shadows = {});
+    // the transforms before the last tick to the current ones, its shadows drawn with shadows,
+    // shown at time seconds of game time, over which auto exposure adapts: nullopt when the world
+    // has no camera, and nothing 3D draws. The mesh draws wait for draw().
+    [[nodiscard]] std::optional<Frame3D>
+    prepare(const world::World& world, float width, float height, double interpolation,
+            render::Color clear, const render::ShadowSettings& shadows = {}, double time = 0.0);
     // Draws the meshes prepare found into the frame begun with its scene.
     [[nodiscard]] Result<void> draw();
 
@@ -273,6 +286,11 @@ private:
     std::vector<Problem> problems_;
     std::uint64_t frame_ = 0;
     std::size_t lights_ = 0;
+    // Auto exposure, as Godot's auto exposure version: the attributes it follows, the version of
+    // its measure (0 for none) and the game time of the last frame.
+    entt::entity exposure_entity_ = entt::null;
+    std::uint64_t exposure_version_ = 0;
+    double exposure_time_ = 0.0;
 };
 
 } // namespace slash::scene3d

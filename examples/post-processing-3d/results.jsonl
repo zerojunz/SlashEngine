@@ -1,8 +1,8 @@
 {"id":1,"jsonrpc":"2.0","result":{"entities":7,"path":"main.scene.json"}}
-{"id":2,"jsonrpc":"2.0","result":{"colors":[[1,1,1,1],[0.071,0.086,0.196,1],[0.514,0.18,0.039,1],[0.82,0.635,0.541,1],[0,0,0.016,1]],"drawn":{"meshes":3},"height":180,"width":320}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[1,1,0.898,1],[0.067,0.082,0.125,1],[0.514,0.18,0.039,1],[0.82,0.635,0.541,1],[0,0,0.016,1]],"drawn":{"meshes":3},"height":180,"width":320}}
 {"id":3,"jsonrpc":"2.0","result":{"changed":{"WorldEnvironment":{"glow_enabled":false}},"id":"environment"}}
-{"id":4,"jsonrpc":"2.0","result":{"colors":[[1,1,1,1],[0,0,0.016,1]],"drawn":{"meshes":3},"height":180,"width":320}}
+{"id":4,"jsonrpc":"2.0","result":{"colors":[[1,1,0.867,1],[0,0,0.016,1]],"drawn":{"meshes":3},"height":180,"width":320}}
 {"id":5,"jsonrpc":"2.0","result":{"changed":{"WorldEnvironment":{"tonemap_mode":"linear"}},"id":"environment"}}
 {"id":6,"jsonrpc":"2.0","result":{"colors":[[0.431,0.2,0.082,1],[0.639,0.482,0.408,1]],"drawn":{"meshes":3},"height":180,"width":320}}
 {"id":7,"jsonrpc":"2.0","result":{"changed":{"WorldEnvironment":{"adjustment_saturation":0.3,"glow_enabled":true,"tonemap_mode":"agx"}},"id":"environment"}}
-{"id":8,"jsonrpc":"2.0","result":{"colors":[[0.125,0.133,0.153,1],[0.275,0.212,0.173,1],[0.525,0.494,0.478,1]],"drawn":{"meshes":3},"height":180,"path":"shots/night.png","width":320}}
+{"id":8,"jsonrpc":"2.0","result":{"colors":[[0.106,0.11,0.122,1],[0.275,0.212,0.173,1],[0.525,0.494,0.478,1]],"drawn":{"meshes":3},"height":180,"path":"shots/night.png","width":320}}

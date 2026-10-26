@@ -267,6 +267,8 @@ float glow_place(int n, float size) {
 constexpr std::array<float, 5> kGlowKernel{0.2024F, 0.1790F, 0.1240F, 0.0672F, 0.0285F};
 constexpr std::array<int, 9> kGlowTaps{0, 1, 2, 3, -1, -2, -3, 4, -4};
 constexpr int kGlowReach = 4;
+// The side of the blocks each luminance pass averages, as luminance_reduce.glsl's BLOCK_SIZE.
+constexpr std::uint32_t kLuminanceBlock = 8;
 
 float glow_kernel(int offset) {
     return kGlowKernel.at(static_cast<std::size_t>(std::abs(offset)));
@@ -407,6 +409,52 @@ Float3 lut_3d(const Image& lut, float size, const Float3& color) {
             lerp(low[2], high[2], blend)};
 }
 
+// The pixels of a luminance pass's target, each the average of its 8 x 8 block of the source,
+// whose texels value gives (the world's brightest channel, or the luminance before), summed in
+// luminance_reduce.glsl's order: each of the first half of the block's 64 values adds the one
+// half a block on, then the first quarter the one a quarter on, down to one. Texels past the
+// source's edge count 0 and the sum is divided by those inside. The last pass moves from
+// previous by the adjust uniform and keeps it from the least to the most.
+template <typename Value>
+void reduce_luminance(const ForwardPostUniforms& uniforms, float previous, LuminanceImage& target,
+                      const Value& value) {
+    target.width = static_cast<std::uint32_t>(uniforms.target[0]);
+    target.height = static_cast<std::uint32_t>(uniforms.target[1]);
+    const auto source_width = static_cast<std::uint32_t>(uniforms.source[0]);
+    const auto source_height = static_cast<std::uint32_t>(uniforms.source[1]);
+    const bool final =
+        uniforms.options[0] == static_cast<std::uint32_t>(ForwardPass::LuminanceFinal);
+    target.values.assign(std::size_t{target.width} * target.height, 0.0F);
+    for (std::uint32_t y = 0; y < target.height; ++y) {
+        for (std::uint32_t x = 0; x < target.width; ++x) {
+            const std::uint32_t left = x * kLuminanceBlock;
+            const std::uint32_t top = y * kLuminanceBlock;
+            std::array<float, std::size_t{kLuminanceBlock} * kLuminanceBlock> block{};
+            for (std::uint32_t t = 0; t < block.size(); ++t) {
+                const std::uint32_t at_x = left + (t % kLuminanceBlock);
+                const std::uint32_t at_y = top + (t / kLuminanceBlock);
+                block.at(t) =
+                    at_x < source_width && at_y < source_height ? value(at_x, at_y) : 0.0F;
+            }
+            for (std::size_t half = block.size() / 2; half >= 1; half /= 2) {
+                for (std::size_t t = 0; t < half; ++t) {
+                    block.at(t) += block.at(t + half);
+                }
+            }
+            const std::uint32_t inside_x = std::min(source_width - left, kLuminanceBlock);
+            const std::uint32_t inside_y = std::min(source_height - top, kLuminanceBlock);
+            float average = block[0] / static_cast<float>(inside_x * inside_y);
+            if (final) {
+                average =
+                    std::min(std::max(previous + ((average - previous) * uniforms.exposure[3]),
+                                      uniforms.exposure[1]),
+                             uniforms.exposure[2]);
+            }
+            target.values[(std::size_t{y} * target.width) + x] = average;
+        }
+    }
+}
+
 std::uint8_t to_byte(float value) {
     return static_cast<std::uint8_t>(std::lround(std::clamp(value, 0.0F, 1.0F) * 255.0F));
 }
@@ -495,6 +543,8 @@ ForwardPostUniforms forward_post_uniforms(const PostProcess& post, ForwardPass p
                    correction == kCorrection3D ? static_cast<float>(lut_height) : 0.0F, 0.0F};
     out.tonemapper = tonemapper_parameters(post, white);
     out.adjust = {post.brightness, post.contrast, post.saturation, 0.0F};
+    out.exposure = {post.auto_exposure_scale, post.auto_exposure_min, post.auto_exposure_max,
+                    std::clamp(post.auto_exposure_adjust, 0.0F, 1.0F)};
     std::uint32_t flags = 0;
     if (post.glow) {
         flags |= 1U;
@@ -502,13 +552,55 @@ ForwardPostUniforms forward_post_uniforms(const PostProcess& post, ForwardPass p
     if (post.adjustments) {
         flags |= 2U | (correction << 2U);
     }
+    if (post.auto_exposure) {
+        flags |= kForwardAutoExposure;
+    }
     out.options = {static_cast<std::uint32_t>(pass), static_cast<std::uint32_t>(post.tonemapper),
                    flags, static_cast<std::uint32_t>(post.glow_blend_mode)};
     return out;
 }
 
+std::vector<PostSize> luminance_plan(std::uint32_t width, std::uint32_t height) {
+    std::vector<PostSize> plan;
+    PostSize size{.width = width, .height = height};
+    do {
+        size = {.width = std::max(size.width / kLuminanceBlock, 1U),
+                .height = std::max(size.height / kLuminanceBlock, 1U)};
+        plan.push_back(size);
+    } while (size.width != 1 || size.height != 1);
+    return plan;
+}
+
+ForwardPostUniforms luminance_uniforms(const PostProcess& post, ForwardPass pass, PostSize source,
+                                       PostSize target) {
+    ForwardPostUniforms out;
+    const auto width = static_cast<float>(target.width);
+    const auto height = static_cast<float>(target.height);
+    out.target = {width, height, 1.0F / width, 1.0F / height};
+    out.exposure = {post.auto_exposure_scale, post.auto_exposure_min, post.auto_exposure_max,
+                    std::clamp(post.auto_exposure_adjust, 0.0F, 1.0F)};
+    out.source = {static_cast<float>(source.width), static_cast<float>(source.height), 0.0F, 0.0F};
+    out.options = {static_cast<std::uint32_t>(pass), 0, 0, 0};
+    return out;
+}
+
+void run_luminance_pass(const ForwardPostUniforms& uniforms, const HdrImage& world,
+                        LuminanceImage& target) {
+    reduce_luminance(uniforms, 0.0F, target, [&](std::uint32_t x, std::uint32_t y) {
+        const std::size_t at = ((std::size_t{y} * world.width) + x) * 4;
+        return std::max(world.pixels[at], std::max(world.pixels[at + 1], world.pixels[at + 2]));
+    });
+}
+
+void run_luminance_pass(const ForwardPostUniforms& uniforms, const LuminanceImage& source,
+                        float previous, LuminanceImage& target) {
+    reduce_luminance(uniforms, previous, target, [&](std::uint32_t x, std::uint32_t y) {
+        return source.values[(std::size_t{y} * source.width) + x];
+    });
+}
+
 void run_forward_glow_pass(const ForwardPostUniforms& uniforms, const HdrImage& source,
-                           HdrImage& target) {
+                           HdrImage& target, float luminance) {
     target.width = static_cast<std::uint32_t>(uniforms.target[0]);
     target.height = static_cast<std::uint32_t>(uniforms.target[1]);
     const auto width = static_cast<int>(target.width);
@@ -516,9 +608,9 @@ void run_forward_glow_pass(const ForwardPostUniforms& uniforms, const HdrImage& 
     const bool first = uniforms.options[0] == static_cast<std::uint32_t>(ForwardPass::GlowFirst);
     const float cap = uniforms.glow_first[1];
     const float scale = 1.0F / std::max(cap, 6.0F);
-    const Float3 luminance{0.299F * scale, 0.587F * scale, 0.114F * scale};
+    const Float3 weights{0.299F * scale, 0.587F * scale, 0.114F * scale};
     const auto karis = [&](const Float4& color) {
-        return (color[0] * luminance[0]) + (color[1] * luminance[1]) + (color[2] * luminance[2]);
+        return (color[0] * weights[0]) + (color[1] * weights[1]) + (color[2] * weights[2]);
     };
 
     // Every sample the pixels' taps take, from kGlowReach before the first pixel to kGlowReach
@@ -568,6 +660,12 @@ void run_forward_glow_pass(const ForwardPostUniforms& uniforms, const HdrImage& 
                 color = scale4(color, 1.0F / (1.0F - karis(color)));
             }
             color = scale4(color, uniforms.glow[0]);
+            if (first && (uniforms.options[2] & kForwardAutoExposure) != 0) {
+                const float divisor = std::max(luminance, kMinLuminance) / uniforms.exposure[0];
+                for (float& channel : color) {
+                    channel /= divisor;
+                }
+            }
             if (first) {
                 color = scale4(color, uniforms.glow_first[0]);
                 const float brightest = std::max(color[0], std::max(color[1], color[2]));
@@ -588,7 +686,8 @@ void run_forward_glow_pass(const ForwardPostUniforms& uniforms, const HdrImage& 
 }
 
 void run_forward_tonemap_pass(const ForwardPostUniforms& uniforms, const HdrImage& world,
-                              std::span<const HdrImage> levels, const Image& lut, Image& target) {
+                              std::span<const HdrImage> levels, const Image& lut, Image& target,
+                              float luminance) {
     target.pixels.resize(std::size_t{target.width} * target.height * 4);
     const auto tonemapper = static_cast<Tonemapper>(uniforms.options[1]);
     const std::uint32_t flags = uniforms.options[2];
@@ -596,14 +695,17 @@ void run_forward_tonemap_pass(const ForwardPostUniforms& uniforms, const HdrImag
     const bool glowing = (flags & 1U) != 0;
     const float intensity = uniforms.levels_high[3];
     const float white = uniforms.tonemap[1];
+    float exposure = uniforms.tonemap[0];
+    if ((flags & kForwardAutoExposure) != 0) {
+        exposure *= 1.0F / (std::max(luminance, kMinLuminance) / uniforms.exposure[0]);
+    }
     for (std::uint32_t y = 0; y < target.height; ++y) {
         for (std::uint32_t x = 0; x < target.width; ++x) {
             const float u = (static_cast<float>(x) + 0.5F) * uniforms.target[2];
             const float v = (static_cast<float>(y) + 0.5F) * uniforms.target[3];
             const std::size_t texel = ((std::size_t{y} * world.width) + x) * 4;
-            Float3 rgb{world.pixels[texel] * uniforms.tonemap[0],
-                       world.pixels[texel + 1] * uniforms.tonemap[0],
-                       world.pixels[texel + 2] * uniforms.tonemap[0]};
+            Float3 rgb{world.pixels[texel] * exposure, world.pixels[texel + 1] * exposure,
+                       world.pixels[texel + 2] * exposure};
             Float3 bloom{};
             if (glowing) {
                 bloom = gather_glow(uniforms, levels, u, v);
@@ -634,7 +736,7 @@ void run_forward_tonemap_pass(const ForwardPostUniforms& uniforms, const HdrImag
                 for (float& channel : rgb) {
                     channel = lerp(gray, channel, uniforms.adjust[2]);
                 }
-                const std::uint32_t correction = flags >> 2U;
+                const std::uint32_t correction = (flags >> 2U) & 3U;
                 if (correction != 0) {
                     for (float& channel : rgb) {
                         channel = std::clamp(channel, 0.0F, 1.0F);
