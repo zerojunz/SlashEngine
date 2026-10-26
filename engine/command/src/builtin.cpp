@@ -18,8 +18,8 @@
 #include "slash/canvas/tilemap.hpp"
 #include "slash/command/lightmap.hpp"
 #include "slash/command/navigation.hpp"
-#include "slash/command/place.hpp"
 #include "slash/command/perf.hpp"
+#include "slash/command/place.hpp"
 #include "slash/command/replay.hpp"
 #include "slash/command/services.hpp"
 #include "slash/command/session.hpp"
@@ -5246,6 +5246,18 @@ json::Array file_errors(const std::vector<storyboard::FileError>& errors) {
     return items;
 }
 
+// What a storyboard budget limits in a model: its triangles and the images it holds.
+storyboard::ModelFacts model_facts(const scene3d::Model& model) {
+    storyboard::ModelFacts facts;
+    facts.triangles = scene3d::summarize(model).triangles;
+    for (const scene3d::ModelImage& image : model.images) {
+        if (image.path.empty()) {
+            facts.images.push_back({.width = image.image.width, .height = image.image.height});
+        }
+    }
+    return facts;
+}
+
 Reply storyboard_check(Session& session, const json::Value& /*params*/) {
     auto loaded = storyboard::load(
         [&session](std::string_view path) { return session.read_project_file(path); });
@@ -5269,10 +5281,14 @@ Reply storyboard_check(Session& session, const json::Value& /*params*/) {
         return Reply::failure(files.error());
     }
     std::vector<std::string> textures;
+    std::vector<std::string> models;
     std::vector<std::string> scenes;
     for (const std::string& path : files.value()) {
         if (render::is_image_path(path)) {
             textures.push_back(path);
+        }
+        if (scene3d::is_model_path(path)) {
+            models.push_back(path);
         }
         if (path.ends_with(world::kSceneSuffix)) {
             scenes.push_back(path);
@@ -5308,6 +5324,18 @@ Reply storyboard_check(Session& session, const json::Value& /*params*/) {
             return storyboard::Texture{.width = image.value().width,
                                        .height = image.value().height,
                                        .pixels = std::move(image.value().pixels)};
+        },
+        errors);
+    // Models against the budgets that cover them; a .blend file that may not be imported here is
+    // left alone.
+    storyboard::check_models(
+        entries, models,
+        [&session](std::string_view path) -> std::optional<storyboard::ModelFacts> {
+            auto model = session.assets().load<scene3d::Model>(path);
+            if (!model) {
+                return std::nullopt;
+            }
+            return model_facts(*model.value());
         },
         errors);
     // Scenes and story beats the cue sheet gives no music.
