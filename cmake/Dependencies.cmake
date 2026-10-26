@@ -260,6 +260,12 @@ slash_add_dependency(xatlas DOWNLOAD_ONLY TRUE)
 # (engine/scene3d builds its simplifier with no fused multiply-adds, so LODs are the same
 # everywhere).
 slash_add_dependency(meshoptimizer DOWNLOAD_ONLY TRUE)
+# Convex decomposition, with V-HACD 4.1 as Godot's importer decomposes meshes into collision hulls
+# (engine/scene3d builds its one header through src/vhacd_build.cpp; the patch makes its hulls the
+# same everywhere).
+slash_add_dependency(vhacd
+    DOWNLOAD_ONLY TRUE
+    PATCH_COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_LIST_DIR}/patches/vhacd-deterministic.cmake)
 
 # Baking navigation meshes, as Godot does (engine/navigation): Recast voxelizes 3D geometry into
 # polygons, and Clipper2 and PolyPartition merge, cut and split 2D outlines. No fused multiply-adds,

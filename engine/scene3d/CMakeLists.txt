@@ -29,10 +29,19 @@ target_include_directories(slash_meshoptimizer SYSTEM PUBLIC ${meshoptimizer_SOU
 target_compile_options(slash_meshoptimizer PRIVATE
     "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w;-ffp-contract=off>")
 
+# Collision hulls (src/collision.cpp) are V-HACD's convex hulls and decompositions, built through
+# src/vhacd_build.cpp on one thread with no fused multiply-adds, its pow the engine's own, so
+# hulls are the same on every platform.
+add_library(slash_vhacd STATIC src/vhacd_build.cpp)
+target_include_directories(slash_vhacd SYSTEM PRIVATE ${vhacd_SOURCE_DIR}/include)
+target_link_libraries(slash_vhacd PRIVATE slash::core)
+target_compile_options(slash_vhacd PRIVATE "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w;-ffp-contract=off>")
+
 add_library(slash_scene3d
     src/blend.cpp
     src/bone_attachment.cpp
     src/cleanup.cpp
+    src/collision.cpp
     src/csg.cpp
     src/fbx.cpp
     src/gltf_writer.cpp
@@ -59,7 +68,8 @@ add_library(slash::scene3d ALIAS slash_scene3d)
 target_include_directories(slash_scene3d PUBLIC include)
 # CSG shapes (src/csg.cpp) combine on Manifold, built in cmake/Dependencies.cmake.
 target_link_libraries(slash_scene3d PUBLIC slash::asset slash::core slash::render slash::world
-    PRIVATE slash::platform slash_cgltf slash_manifold slash_meshoptimizer slash_ufbx slash_xatlas)
+    PRIVATE slash::platform slash_cgltf slash_manifold slash_meshoptimizer slash_ufbx slash_vhacd
+    slash_xatlas)
 slash_engine_target(slash_scene3d)
 # Meshes and cameras are the same bits on every platform: no fused multiply-adds, which arm64
 # compilers would otherwise emit and x86-64 ones not.
