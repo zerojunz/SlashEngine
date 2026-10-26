@@ -21,7 +21,8 @@
 // effects and "elevenlabs-music" and "stability-audio" make music, "stability-3d" makes a model
 // from a concept image and "meshy-rig" rigs a model of a humanoid figure. The built-in "test"
 // generator makes placeholders on the machine, so agents and CI use the library with no model or
-// key.
+// key, and the built-in "blender" generator builds models with an agent's Python script in the
+// machine's own Blender.
 namespace slash::library {
 
 struct GenerateRequest {
@@ -46,6 +47,11 @@ struct GenerateRequest {
     // To rig a model, the parent: the skeleton asked for, "humanoid". Its record's size says how
     // tall the figure is.
     std::string rig{}; // NOLINT(readability-redundant-member-init)
+    // A model built by a script: its Python and the parameters it reads (a JSON object), and a
+    // folder the generator may run it in and log to.
+    std::string script{};     // NOLINT(readability-redundant-member-init)
+    json::Value parameters{}; // NOLINT(readability-redundant-member-init)
+    std::string folder{};     // NOLINT(readability-redundant-member-init)
 };
 
 struct Generated {
@@ -66,12 +72,14 @@ struct GeneratorCapabilities {
     bool refines_sounds = false;
     bool music = false;
     bool refines_music = false;
-    bool models = false; // makes a model from a concept image
-    bool rigs = false;   // rigs a model of a humanoid figure (GenerateRequest::rig)
+    bool models = false;  // makes a model from a concept image
+    bool rigs = false;    // rigs a model of a humanoid figure (GenerateRequest::rig)
+    bool scripts = false; // builds a model with a script (GenerateRequest::script), and again
+                          // with another script or parameters
 };
 
-// Whether the generator makes assets of the type ("rig" for one that rigs models), and refines
-// them.
+// Whether the generator makes assets of the type ("rig" for one that rigs models, "script" for
+// one that builds them with scripts), and refines them.
 [[nodiscard]] bool makes(const GeneratorCapabilities& can, std::string_view type) noexcept;
 [[nodiscard]] bool refines(const GeneratorCapabilities& can, std::string_view type) noexcept;
 
@@ -96,6 +104,13 @@ public:
 // lightens or darkens an image, raises, lowers, lengthens or shortens a sound, and makes music
 // faster, slower, higher, lower, longer or shorter, as the prompt says.
 [[nodiscard]] std::shared_ptr<Generator> test_generator();
+
+// Builds models with scripts in Blender, run in the background as .blend files are imported
+// (scene3d::run_blender_script): the program given, else the one scene3d::find_blender finds. The
+// script runs in an empty scene with params and seed, and what it builds there is exported as a
+// .glb file with the options Godot imports .blend files with. Its model is "blender <version>".
+[[nodiscard]] std::shared_ptr<Generator> blender_generator(std::string program = {},
+                                                           int timeout_seconds = 600);
 
 // How generators reach their services.
 struct GeneratorOptions {

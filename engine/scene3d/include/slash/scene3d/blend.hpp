@@ -3,6 +3,7 @@
 #include "slash/asset/assets.hpp"
 #include "slash/core/result.hpp"
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -35,6 +36,14 @@ struct Blender {
 [[nodiscard]] std::string blend_export_script(const Blender& blender, std::string_view source,
                                               std::string_view destination);
 
+// The Python Blender runs to build a model with an agent's script and export it to destination
+// (a .glb file) as blend_export_script does. Blender starts from its factory settings with an
+// empty scene, and the script runs with bpy, params (a dict, params decoded as JSON) and seed
+// (an integer) in scope, building what is exported in that scene.
+[[nodiscard]] std::string blend_build_script(const Blender& blender, std::string_view script,
+                                             std::string_view params, std::int64_t seed,
+                                             std::string_view destination);
+
 // Where the glTF Blender made from a .blend file is kept, by project path: in .slash/imported/,
 // named after the file and a hash of its bytes, so an edited file is converted again.
 [[nodiscard]] std::string blend_import_path(std::string_view path, std::string_view bytes);
@@ -62,6 +71,26 @@ struct BlendOptions {
 // failure gives its last lines.
 [[nodiscard]] Result<std::string> convert_blend(std::string_view path, std::string_view bytes,
                                                 const BlendOptions& options);
+
+// A model built by a script in Blender (blend_build_script).
+struct BlenderScript {
+    std::string script;        // Python
+    std::string params = "{}"; // a JSON object
+    std::int64_t seed = 0;
+    std::string folder;         // where Blender runs, writing its glTF and log
+    std::string name = "build"; // the glTF is <name>.part.glb there and the log <name>.log
+    std::string blender;        // the program; empty finds it as find_blender does
+    int timeout_seconds = 600;
+};
+
+struct BlenderBuild {
+    std::string glb;     // the .glb file's bytes
+    std::string version; // Blender's, such as "4.2"
+};
+
+// Runs the script in Blender in the background and returns the model it exported. A failure
+// gives the last lines Blender printed, such as the script's Python error, and where its log is.
+[[nodiscard]] Result<BlenderBuild> run_blender_script(const BlenderScript& job);
 
 // Reads a file by project path.
 using FileRead = std::function<Result<std::string>(std::string_view path)>;

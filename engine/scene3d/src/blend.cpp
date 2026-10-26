@@ -7,6 +7,7 @@
 #include <array>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -86,6 +87,49 @@ std::string python_string(std::string_view text) {
 
 // The version a Blender program prints for --version ("Blender 4.2.1 LTS"), as Godot's
 // _get_blender_version reads it.
+// The glTF exporter's options Godot imports .blend files with in this version of Blender, as
+// Python dict entries, writing destination.
+std::string gltf_options(const Blender& blender, std::string_view destination) {
+    const auto at_least = [&](int major, int minor) {
+        return blender.major > major || (blender.major == major && blender.minor >= minor);
+    };
+    std::vector<std::pair<std::string_view, std::string>> gltf = {
+        {"filepath", python_string(destination)},
+        {"export_format", "'GLB'"},
+        {"export_yup", "True"},
+        {"export_extras", "True"},
+        {"export_skins", "True"},
+        {"export_all_influences", "True"},
+        {"export_materials", "'EXPORT'"},
+        {"export_cameras", "True"},
+        {"export_lights", "True"},
+    };
+    if (at_least(4, 2)) {
+        gltf.emplace_back("export_vertex_color", "'NONE'");
+    } else {
+        gltf.emplace_back("export_colors", "False");
+    }
+    gltf.emplace_back("use_renderable", "False");
+    gltf.emplace_back("use_visible", "False");
+    gltf.emplace_back("export_texcoords", "True");
+    gltf.emplace_back("export_normals", "True");
+    gltf.emplace_back("export_tangents", "True");
+    if (at_least(3, 6)) {
+        gltf.emplace_back("export_animation_mode", "'ACTIONS'");
+    } else {
+        gltf.emplace_back("export_nla_strips", "True");
+    }
+    gltf.emplace_back("export_frame_range", "True");
+    gltf.emplace_back("export_force_sampling", "True");
+    gltf.emplace_back("export_def_bones", "False");
+    gltf.emplace_back("export_apply", "True");
+    std::string options;
+    for (const auto& [key, value] : gltf) {
+        options += python_string(key) + ": " + value + ",";
+    }
+    return options;
+}
+
 Result<Blender> blender_at(const std::string& program) {
     auto run = platform::run_process({program, "--version"}, {.working_directory = {},
                                                               .environment = {},
@@ -247,47 +291,10 @@ Result<Blender> find_blender(std::string_view program) {
 // PYTHON_SCRIPT_DIRECT.
 std::string blend_export_script(const Blender& blender, std::string_view source,
                                 std::string_view destination) {
-    const auto at_least = [&](int major, int minor) {
-        return blender.major > major || (blender.major == major && blender.minor >= minor);
-    };
-    std::vector<std::pair<std::string_view, std::string>> gltf = {
-        {"filepath", python_string(destination)},
-        {"export_format", "'GLB'"},
-        {"export_yup", "True"},
-        {"export_extras", "True"},
-        {"export_skins", "True"},
-        {"export_all_influences", "True"},
-        {"export_materials", "'EXPORT'"},
-        {"export_cameras", "True"},
-        {"export_lights", "True"},
-    };
-    if (at_least(4, 2)) {
-        gltf.emplace_back("export_vertex_color", "'NONE'");
-    } else {
-        gltf.emplace_back("export_colors", "False");
-    }
-    gltf.emplace_back("use_renderable", "False");
-    gltf.emplace_back("use_visible", "False");
-    gltf.emplace_back("export_texcoords", "True");
-    gltf.emplace_back("export_normals", "True");
-    gltf.emplace_back("export_tangents", "True");
-    if (at_least(3, 6)) {
-        gltf.emplace_back("export_animation_mode", "'ACTIONS'");
-    } else {
-        gltf.emplace_back("export_nla_strips", "True");
-    }
-    gltf.emplace_back("export_frame_range", "True");
-    gltf.emplace_back("export_force_sampling", "True");
-    gltf.emplace_back("export_def_bones", "False");
-    gltf.emplace_back("export_apply", "True");
-    std::string options;
-    for (const auto& [key, value] : gltf) {
-        options += python_string(key) + ": " + value + ",";
-    }
     // Paths are relative to the project folder, which Blender starts in.
     return "import bpy, os, sys\n"
            "opts = {'path': " +
-           python_string(source) + ",'gltf_options': {" + options +
+           python_string(source) + ",'gltf_options': {" + gltf_options(blender, destination) +
            "},}\n"
            "if bpy.app.version < (3, 0, 0):\n"
            "  print('Blender 3.0 or higher is required.', file=sys.stderr)\n"
@@ -295,6 +302,25 @@ std::string blend_export_script(const Blender& blender, std::string_view source,
            "opts['gltf_options']['filepath'] = "
            "os.path.abspath(opts['gltf_options']['filepath'])\n"
            "bpy.ops.wm.open_mainfile(filepath=source)\n"
+           "bpy.ops.export_scene.gltf(**opts['gltf_options'])\n";
+}
+
+std::string blend_build_script(const Blender& blender, std::string_view script,
+                               std::string_view params, std::int64_t seed,
+                               std::string_view destination) {
+    return "import bpy, json, os, sys\n"
+           "opts = {'script': " +
+           python_string(script) + ",'params': " + python_string(params) +
+           ",'seed': " + std::to_string(seed) + ",'gltf_options': {" +
+           gltf_options(blender, destination) +
+           "},}\n"
+           "if bpy.app.version < (3, 0, 0):\n"
+           "  print('Blender 3.0 or higher is required.', file=sys.stderr)\n"
+           "opts['gltf_options']['filepath'] = "
+           "os.path.abspath(opts['gltf_options']['filepath'])\n"
+           "bpy.ops.wm.read_factory_settings(use_empty=True)\n"
+           "exec(compile(opts['script'], 'script.py', 'exec'), {'__name__': '__main__', "
+           "'bpy': bpy, 'params': json.loads(opts['params']), 'seed': opts['seed']})\n"
            "bpy.ops.export_scene.gltf(**opts['gltf_options'])\n";
 }
 
@@ -308,6 +334,60 @@ std::string blend_import_path(std::string_view path, std::string_view bytes) {
 bool is_converted_blend(std::string_view bytes) {
     return bytes.starts_with(kGlbMagic);
 }
+
+namespace {
+
+// What Blender is doing, for messages: "converting it", "convert it" and "for it".
+struct Task {
+    std::string_view doing;
+    std::string_view verb;
+    std::string_view object;
+};
+
+// Runs script in Blender in the background in folder, logging to log, and returns the .glb file
+// it writes to part (both relative to folder), which a failure removes. A failure gives the last
+// lines Blender printed and where its log is (as named).
+Result<std::string> run_job(const Blender& blender, const std::string& script,
+                            const std::string& folder, const std::string& part,
+                            const std::string& log, int timeout_seconds, const Task& task) {
+    (void)platform::remove_file(join(folder, log));
+    auto process = platform::start_process(
+        {blender.program, "--background", "--python-exit-code", "1", "--python-expr", script},
+        {.working_directory = folder,
+         .environment = {},
+         .log_path = join(folder, log),
+         .tail_lines = 20,
+         .input = {}});
+    if (!process) {
+        return make_error(process.error().code, "Blender didn't start: " + process.error().message);
+    }
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeout_seconds);
+    while (process.value()->running() && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    const bool timed_out = process.value()->running();
+    const int exit_code = process.value()->stop();
+    const std::string output = process.value()->output();
+    auto made = platform::read_file(join(folder, part));
+    if (timed_out || exit_code != 0 || !made || !is_converted_blend(made.value())) {
+        (void)platform::remove_file(join(folder, part));
+        std::string why;
+        if (timed_out) {
+            why = "Blender was stopped after " + std::to_string(timeout_seconds) +
+                  " s, before it finished " + std::string(task.doing);
+        } else if (exit_code != 0) {
+            why = "Blender couldn't " + std::string(task.verb) + " (exit code " +
+                  std::to_string(exit_code) + "): " + last_lines(output, 3);
+        } else {
+            why = "Blender wrote no glTF file " + std::string(task.object) + ": " +
+                  last_lines(output, 3);
+        }
+        return make_error(ErrorCode::InvalidArgument, why + "; its log is " + log);
+    }
+    return made;
+}
+
+} // namespace
 
 Result<std::string> convert_blend(std::string_view path, std::string_view bytes,
                                   const BlendOptions& options) {
@@ -328,46 +408,16 @@ Result<std::string> convert_blend(std::string_view path, std::string_view bytes,
     }
     const std::string stem = target.substr(0, target.size() - 4); // without ".glb"
     const std::string part = stem + ".part.glb";
-    const std::string log = stem + ".log";
     const std::size_t slash = target.rfind('/');
     const std::string folder = join(options.project_root, target.substr(0, slash));
     if (auto made = platform::create_directories(folder); !made) {
         return made.error();
     }
-    (void)platform::remove_file(join(options.project_root, log));
-    auto process =
-        platform::start_process({blender.value().program, "--background", "--python-exit-code", "1",
-                                 "--python-expr", blend_export_script(blender.value(), path, part)},
-                                {.working_directory = options.project_root,
-                                 .environment = {},
-                                 .log_path = join(options.project_root, log),
-                                 .tail_lines = 20,
-                                 .input = {}});
-    if (!process) {
-        return make_error(process.error().code, "Blender didn't start: " + process.error().message);
-    }
-    const auto deadline =
-        std::chrono::steady_clock::now() + std::chrono::seconds(options.timeout_seconds);
-    while (process.value()->running() && std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
-    const bool timed_out = process.value()->running();
-    const int exit_code = process.value()->stop();
-    const std::string output = process.value()->output();
-    auto made = platform::read_file(join(options.project_root, part));
-    if (timed_out || exit_code != 0 || !made || !is_converted_blend(made.value())) {
-        (void)platform::remove_file(join(options.project_root, part));
-        std::string why;
-        if (timed_out) {
-            why = "Blender was stopped after " + std::to_string(options.timeout_seconds) +
-                  " s, before it finished converting it";
-        } else if (exit_code != 0) {
-            why = "Blender couldn't convert it (exit code " + std::to_string(exit_code) +
-                  "): " + last_lines(output, 3);
-        } else {
-            why = "Blender wrote no glTF file for it: " + last_lines(output, 3);
-        }
-        return make_error(ErrorCode::InvalidArgument, why + "; its log is " + log);
+    auto made = run_job(blender.value(), blend_export_script(blender.value(), path, part),
+                        options.project_root, part, stem + ".log", options.timeout_seconds,
+                        {.doing = "converting it", .verb = "convert it", .object = "for it"});
+    if (!made) {
+        return made.error();
     }
     if (auto moved = platform::rename_file(join(options.project_root, part),
                                            join(options.project_root, target));
@@ -377,6 +427,29 @@ Result<std::string> convert_blend(std::string_view path, std::string_view bytes,
     const std::string file(path.substr(path.rfind('/') + 1));
     remove_stale(folder, file + "-", stem.substr(slash + 1) + ".");
     return made;
+}
+
+Result<BlenderBuild> run_blender_script(const BlenderScript& job) {
+    auto blender = find_blender(job.blender);
+    if (!blender) {
+        return blender.error();
+    }
+    if (auto made = platform::create_directories(job.folder); !made) {
+        return made.error();
+    }
+    const std::string part = job.name + ".part.glb";
+    auto made = run_job(
+        blender.value(),
+        blend_build_script(blender.value(), job.script, job.params, job.seed, part), job.folder,
+        part, job.name + ".log", job.timeout_seconds,
+        {.doing = "running the script", .verb = "run the script", .object = "for the script"});
+    (void)platform::remove_file(join(job.folder, part));
+    if (!made) {
+        return made.error();
+    }
+    return BlenderBuild{.glb = std::move(made).value(),
+                        .version = std::to_string(blender.value().major) + "." +
+                                   std::to_string(blender.value().minor)};
 }
 
 FileRead with_blender(FileRead read, BlendOptions options) {
