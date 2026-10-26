@@ -140,7 +140,7 @@ Sessions that run tests (`test.run`) record nothing.
 
 ## Generators
 
-`generators` names the image, sound and music generators the [asset library](commands.md#asset-library)
+`generators` names the image, sound, music and model generators the [asset library](commands.md#asset-library)
 calls, as `providers` names language models: by name, each with a `type`, and a `model`, `url`,
 `api_key_env` and `headers` where the type takes them. `license` is the terms its outputs come
 under, recorded with every asset it makes; `options` are merged into every request's body, as the
@@ -158,7 +158,10 @@ service names them; and `timeout_seconds` and `max_retries` work as a provider's
                "options": {"voice": "marin", "instructions": "A tired old innkeeper."}},
     "sfx": {"type": "elevenlabs-sound", "api_key_env": "ELEVENLABS_API_KEY"},
     "score": {"type": "stability-audio", "api_key_env": "STABILITY_API_KEY",
-              "license": "Stability AI Community License", "options": {"output_format": "wav"}}
+              "license": "Stability AI Community License", "options": {"output_format": "wav"}},
+    "sculptor": {"type": "stability-3d", "api_key_env": "STABILITY_API_KEY",
+                 "license": "Stability AI Community License",
+                 "options": {"texture_resolution": 1024, "remesh": "quad"}}
   }
 }
 ```
@@ -172,7 +175,8 @@ service names them; and `timeout_seconds` and `max_retries` work as a provider's
 | `elevenlabs-sound` | Sound effects, through ElevenLabs' sound generation | No | `eleven_text_to_sound_v2`, `https://api.elevenlabs.io` |
 | `elevenlabs-music` | Music, through ElevenLabs' music generation (`/v1/music`), instrumental | No | `music_v1`, `https://api.elevenlabs.io` |
 | `stability-audio` | Music, through Stability AI's Stable Audio 2 and 2.5 (`/v2beta/audio/stable-audio-2/text-to-audio`) | No | `stable-audio-2.5`, `https://api.stability.ai` |
-| `test` | Placeholder images, tones and music made on the machine, the same on every platform, for tests and CI. Always there as `test`, even with no `generators` | Yes | |
+| `stability-3d` | Models (`.glb`) from a concept image, through Stability AI's Stable Fast 3D or, with `model` `stable-point-aware-3d`, Stable Point Aware 3D (`/v2beta/3d/<model>`) | No | `stable-fast-3d`, `https://api.stability.ai` |
+| `test` | Placeholder images, tones, music and models made on the machine, the same on every platform, for tests and CI. Always there as `test`, even with no `generators` | Yes, but not models | |
 
 Services make images at their own sizes, so the library fits each one to the `width` and `height`
 asked for (a refine's parent's when it asks for none): the middle of the image at that shape,
@@ -201,6 +205,13 @@ yet. The `test` generator's music is a chord progression in the key asked for (A
 prompts with words such as "dark" or "boss", C major otherwise) at the tempo asked for (120 bpm by
 default), with whole bars that loop on the beat; refining its music with "faster", "slower",
 "higher", "lower", "longer" or "shorter" changes that, and anything else makes a variation.
+
+`stability-3d` sends a form: the concept image (PNG, JPEG or WebP) as `image`, the seed for Stable
+Point Aware 3D (Stable Fast 3D takes none) and its options (`texture_resolution`,
+`foreground_ratio`, `remesh`, `vertex_count`, or Stable Point Aware 3D's `target_type` and
+`target_count`). The prompt isn't sent: the image is the request. It keeps the `.glb` file it gets
+back. The `test` generator's models are reliefs of the concept image (see
+[`asset.generate`](commands.md#models-from-a-concept-image)).
 
 `asset.generate` uses the one generator that makes the type asked for, or the one its `generator`
 param names. [`ai.providers`](commands.md#aiproviders) lists them, with whether each one's key is
