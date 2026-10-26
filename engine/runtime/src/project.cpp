@@ -121,6 +121,44 @@ json::Value scaling_schema() {
     return scaling;
 }
 
+// rendering.camera, as Godot's rendering/camera settings: depth of field's blur.
+json::Value camera_schema() {
+    const render::DepthOfFieldSettings defaults;
+    const auto choice = [](const auto& names, std::size_t default_index, std::string description) {
+        json::Array choices;
+        for (const std::string_view name : names) {
+            choices.emplace_back(std::string(name));
+        }
+        json::Value out;
+        out["enum"] = std::move(choices);
+        out["default"] = std::string(names.at(default_index));
+        out["description"] = std::move(description);
+        return out;
+    };
+    json::Value jitter;
+    jitter["type"] = "boolean";
+    jitter["default"] = defaults.use_jitter;
+    jitter["description"] = "Moves each pixel's samples by a random part of a step, which turns "
+                            "banding into noise.";
+    json::Value dof;
+    dof["type"] = "object";
+    dof["additionalProperties"] = false;
+    dof["description"] = "Depth of field's blur, for every camera's CameraAttributesPractical.";
+    dof["properties"]["depth_of_field_bokeh_shape"] =
+        choice(render::kBokehShapeNames, static_cast<std::size_t>(defaults.bokeh_shape),
+               "The blur's shape: box is fastest, then hexagon, then circle.");
+    dof["properties"]["depth_of_field_bokeh_quality"] =
+        choice(render::kBokehQualityNames, static_cast<std::size_t>(defaults.bokeh_quality),
+               "How many samples the blur takes: very_low and low blur at half size.");
+    dof["properties"]["depth_of_field_use_jitter"] = std::move(jitter);
+    json::Value out;
+    out["type"] = "object";
+    out["additionalProperties"] = false;
+    out["description"] = "3D cameras, as Godot's rendering/camera settings.";
+    out["properties"]["depth_of_field"] = std::move(dof);
+    return out;
+}
+
 // rendering.lights_and_shadows, as Godot's rendering/lights_and_shadows settings.
 json::Value lights_and_shadows_schema() {
     const render::ShadowSettings defaults;
@@ -294,6 +332,7 @@ json::Value project_schema() {
     rendering["properties"]["interpolation"] = std::move(interpolation);
     rendering["properties"]["scaling"] = scaling_schema();
     rendering["properties"]["lights_and_shadows"] = lights_and_shadows_schema();
+    rendering["properties"]["camera"] = camera_schema();
     json::Value compress_mode;
     compress_mode["enum"] = json::Array{"lossless", "vram_compressed", "vram_uncompressed"};
     compress_mode["description"] =
@@ -605,6 +644,11 @@ Result<Project> parse_project(const json::Value& project) {
         if (const json::Value* shadows = rendering->find("lights_and_shadows");
             shadows != nullptr) {
             out.shadows = render::shadow_settings_from_json(*shadows);
+        }
+        if (const json::Value* camera = rendering->find("camera"); camera != nullptr) {
+            if (const json::Value* dof = camera->find("depth_of_field"); dof != nullptr) {
+                out.depth_of_field = render::depth_of_field_settings_from_json(*dof);
+            }
         }
         if (const json::Value* textures = rendering->find("textures"); textures != nullptr) {
             if (const json::Value* mode = textures->find("compress_mode"); mode != nullptr) {

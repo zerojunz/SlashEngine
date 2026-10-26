@@ -40,6 +40,7 @@ checks it.
 | `rendering.texture_filter` | No | `linear` | How sprites whose `texture_filter` is `inherit` are sampled when scaled: `linear` is smooth, `nearest` keeps pixel art sharp |
 | `rendering.scaling` | No | no scaling | Draw the world at another size and scale it to the window, under controls drawn at full size: see [Render scale](#render-scale) |
 | `rendering.lights_and_shadows` | No | 4096-texel atlases, `soft_low` | The 3D shadow atlases' sizes and edge filters: see [Shadows](#shadows) |
+| `rendering.camera.depth_of_field` | No | `hexagon`, `low`, no jitter | The bokeh shape and quality of 3D [depth of field](scene-format.md#cameraattributespractical): see [Depth of field](#depth-of-field) |
 | `rendering.textures` | No | `lossless` | How exports ship textures: as their files, or compressed for each platform's GPUs: see [Texture forms](#texture-forms) |
 | `rendering.interpolation` | No | `true` | Draw sprites part of the way between fixed ticks, from where they were before the last tick to where they are, so motion looks smooth when the display refreshes faster than the game ticks. Drawing lags the simulation by up to one tick; set `false` to draw exactly where things are |
 | `physics_2d.gravity` | No | `980` | Gravity's strength in pixels per second squared, as Godot's `physics/2d/default_gravity` |
@@ -167,6 +168,24 @@ A device draws an atlas at most as large as its largest texture (8192 texels for
 frame with no shadowed light draws none. Larger atlases make sharper shadows and cost GPU
 memory: a 4096-texel atlas takes 64 MB. Godot's Compatibility renderer splits the positional
 atlas into quadrants of different tile sizes; here every tile is the same size.
+
+## Depth of field
+
+`rendering.camera.depth_of_field` says how a camera's
+[depth of field](scene-format.md#cameraattributespractical) blurs, as Godot's
+`rendering/camera/depth_of_field` settings.
+
+```json
+"rendering": {"camera": {"depth_of_field": {
+  "depth_of_field_bokeh_shape": "circle", "depth_of_field_bokeh_quality": "medium"
+}}}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `depth_of_field_bokeh_shape` | `hexagon` | The shape out-of-focus lights spread into: `box` blurs across then down, `hexagon` along three directions, and `circle` gathers a spiral of samples, the softest and the slowest |
+| `depth_of_field_bokeh_quality` | `low` | `very_low`, `low`, `medium` or `high`: more samples each pass (6, 12, 12 and 24). The box and hexagon blur at half size at `very_low` and `low`, and the circle always does |
+| `depth_of_field_use_jitter` | `false` | Turns the samples a little each frame by game time, trading banding for noise |
 
 ## Texture forms
 

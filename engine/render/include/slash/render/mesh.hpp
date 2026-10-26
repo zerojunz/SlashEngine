@@ -195,6 +195,33 @@ inline constexpr std::array<std::string_view, 5> kGlowBlendModeNames{"additive",
 // Glow's levels with Forward+, each half the size of the last, as Godot's RS::MAX_GLOW_LEVELS.
 inline constexpr std::size_t kMaxGlowLevels = 7;
 
+// The shape of depth of field's blur, as Godot's RS::DOFBokehShape: a box (two straight passes),
+// a hexagon (a straight pass, then two slanted ones) or a circle (one pass, at half size).
+enum class BokehShape : std::uint8_t { Box, Hexagon, Circle };
+inline constexpr std::array<std::string_view, 3> kBokehShapeNames{"box", "hexagon", "circle"};
+// How many samples depth of field's blur takes, as Godot's RS::DOFBlurQuality: a box or hexagon
+// blurs at half size with 6 or 12 samples a side for very_low and low, and at full size with 12
+// or 24 for medium and high; a circle steps 8, 4, 1 or 0.5 pixels further each sample.
+enum class BokehQuality : std::uint8_t { VeryLow, Low, Medium, High };
+inline constexpr std::array<std::string_view, 4> kBokehQualityNames{"very_low", "low", "medium",
+                                                                    "high"};
+
+// Godot's rendering/camera/depth_of_field settings.
+struct DepthOfFieldSettings {
+    BokehShape bokeh_shape = BokehShape::Hexagon;
+    BokehQuality bokeh_quality = BokehQuality::Low;
+    // Moves each pixel's samples along the blur by a random part of a step, which smooths banding
+    // into noise. Godot picks a new seed each frame; here it comes from the game time, so the
+    // same frames come out the same.
+    bool use_jitter = false;
+
+    bool operator==(const DepthOfFieldSettings&) const = default;
+};
+// Reads project.json's rendering.camera.depth_of_field: {"depth_of_field_bokeh_shape",
+// "depth_of_field_bokeh_quality", "depth_of_field_use_jitter"}. What is missing or not valid keeps
+// its default.
+[[nodiscard]] DepthOfFieldSettings depth_of_field_settings_from_json(const json::Value& value);
+
 // What happens to the 3D world's colors after it is lit, as Godot's Environment's tonemap, glow
 // and adjustments.
 //
@@ -253,6 +280,22 @@ struct PostProcess {
     float auto_exposure_max = 1.0F;
     float auto_exposure_adjust = 1.0F; // from 0 (stays) to 1 (the new brightness)
     std::uint64_t auto_exposure_version = 0;
+    // Forward+: depth of field, as Godot's CameraAttributes, before auto exposure and glow. Each
+    // pixel's blur size comes from its distance from the camera along its view: past
+    // dof_far_distance it grows to dof_amount times 64 pixels over dof_far_transition, and nearer
+    // than dof_near_distance over dof_near_transition. A negative transition grows it the
+    // physical way instead, as Godot's automatic transition. The world is blurred by the shape and
+    // quality of depth_of_field and blended in by each pixel's blur size, as Godot's
+    // bokeh_dof.glsl.
+    bool dof_far = false;
+    float dof_far_distance = 10.0F;
+    float dof_far_transition = 5.0F;
+    bool dof_near = false;
+    float dof_near_distance = 2.0F;
+    float dof_near_transition = 1.0F;
+    float dof_amount = 0.1F;
+    DepthOfFieldSettings depth_of_field{};
+    float dof_jitter_seed = 0.0F; // with use_jitter: from 0 up to 1000
 
     bool operator==(const PostProcess&) const = default;
 };

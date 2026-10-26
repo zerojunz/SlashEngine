@@ -933,11 +933,19 @@ public:
             }
         }
         if (frame.scene && frame.scene->method == RenderMethod::ForwardPlus) {
-            if (auto ready = prepare_forward(format, width, height, frame.scene->post.glow,
-                                             frame.scene->post.auto_exposure);
+            if (auto ready =
+                    prepare_forward(format, width, height, frame.scene->post.glow,
+                                    frame.scene->post.auto_exposure, uses_dof(frame.scene->post));
                 !ready) {
                 SDL_CancelGPUCommandBuffer(commands);
                 return ready.error();
+            }
+            // Depth of field reads the depth buffer, which a frame without meshes clears.
+            if (uses_dof(frame.scene->post)) {
+                if (auto depth = depth_target(width, height); !depth) {
+                    SDL_CancelGPUCommandBuffer(commands);
+                    return depth.error();
+                }
             }
         } else if (frame.scene && post_processes(frame.scene->post)) {
             if (auto ready = prepare_post(format, width, height); !ready) {
@@ -1064,14 +1072,16 @@ public:
         // The sky and meshes draw first, in a pass of their own, and the 2D draws go over them.
         // Mesh draws need a scene, so a frame with them has one.
         const bool meshes = frame_.scene && shadow_plan_ && !mesh_draws_.empty();
-        const bool world = meshes || (frame_.scene && sky_draws(*frame_.scene));
         const bool forward = frame_.scene && frame_.scene->method == RenderMethod::ForwardPlus;
+        // Depth of field needs the depth buffer cleared, even with nothing drawn over it.
+        const bool world = meshes || (frame_.scene && sky_draws(*frame_.scene)) ||
+                           (forward && uses_dof(frame_.scene->post));
         const bool post = !forward && frame_.scene && post_processes(frame_.scene->post);
         if (world) {
             draw_meshes(commands, *frame_.scene, meshes ? &*shadow_plan_ : nullptr);
         }
         if (forward) {
-            draw_forward_post(commands, frame_.scene->post, !world);
+            draw_forward_post(commands, *frame_.scene, !world);
         } else if (post) {
             draw_post(commands, frame_.scene->post, !world);
         }
@@ -1703,14 +1713,14 @@ private:
             pending_release_.push_back(std::exchange(depth_, nullptr));
         }
         // 32-bit floats suit reversed depth best; every GPU without them has 24-bit depth.
+        // Depth of field samples it.
         SDL_GPUTextureCreateInfo info{};
         info.type = SDL_GPU_TEXTURETYPE_2D;
         info.format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
-        if (!SDL_GPUTextureSupportsFormat(device_, info.format, info.type,
-                                          SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
+        info.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+        if (!SDL_GPUTextureSupportsFormat(device_, info.format, info.type, info.usage)) {
             info.format = SDL_GPU_TEXTUREFORMAT_D24_UNORM;
         }
-        info.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
         info.width = width;
         info.height = height;
         info.layer_count_or_depth = 1;
@@ -2112,7 +2122,10 @@ private:
         depth.texture = depth_;
         depth.clear_depth = 0.0F;
         depth.load_op = SDL_GPU_LOADOP_CLEAR;
-        depth.store_op = SDL_GPU_STOREOP_DONT_CARE;
+        // Kept for depth of field, which reads it after.
+        depth.store_op = scene.method == RenderMethod::ForwardPlus && uses_dof(scene.post)
+                             ? SDL_GPU_STOREOP_STORE
+                             : SDL_GPU_STOREOP_DONT_CARE;
         depth.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
         depth.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
         depth.cycle = true;
@@ -2464,11 +2477,11 @@ private:
     }
 
     // Forward+'s post passes: their shaders, their pipeline for each target format, the world's
-    // texture of half floats at the frame's size and, with glow, glow's seven levels, and with
-    // auto exposure the luminance textures of floats. Made at the start of a frame that needs
-    // them.
+    // texture of half floats at the frame's size and, with glow, glow's seven levels, with auto
+    // exposure the luminance textures of floats, and with depth of field its textures. Made at
+    // the start of a frame that needs them.
     Result<void> prepare_forward(SDL_GPUTextureFormat format, std::uint32_t width,
-                                 std::uint32_t height, bool glow, bool auto_exposure) {
+                                 std::uint32_t height, bool glow, bool auto_exposure, bool dof) {
         if (forward_shaders_[0] == nullptr) {
             const ShaderCode code{.vertex_spirv = shaders::kForwardPostVertexSpirv,
                                   .fragment_spirv = shaders::kForwardPostFragmentSpirv,
@@ -2550,6 +2563,20 @@ private:
             forward_targets_.brightness = brightness.value();
             forward_targets_.measured = false;
         }
+        if (dof && forward_targets_.dof[0] == nullptr) {
+            // Sized, Secondary, Half0, Half1 and Out, as DofTexture after World
+            const std::uint32_t half_width = std::max(width >> 1U, 1U);
+            const std::uint32_t half_height = std::max(height >> 1U, 1U);
+            for (std::size_t i = 0; i < forward_targets_.dof.size(); ++i) {
+                const bool half = i == 2 || i == 3;
+                auto texture = made(half ? half_width : width, half ? half_height : height);
+                if (!texture) {
+                    release_forward_targets();
+                    return texture.error();
+                }
+                forward_targets_.dof.at(i) = texture.value();
+            }
+        }
         return {};
     }
 
@@ -2568,16 +2595,20 @@ private:
         }
         forward_targets_.luminance.clear();
         release(forward_targets_.brightness);
+        for (SDL_GPUTexture*& texture : forward_targets_.dof) {
+            release(texture);
+        }
         forward_targets_.measured = false;
         forward_targets_.width = 0;
         forward_targets_.height = 0;
     }
 
-    // forward_post.hlsl's passes: with auto exposure the luminance passes, from the world's texture
-    // down to one texel, then glow's levels, each from the one before, then the tonemap pass from
-    // the world's texture over the frame's target. A frame with no sky or mesh draws clears the
-    // world's texture first.
-    void draw_forward_post(SDL_GPUCommandBuffer* commands, const PostProcess& post, bool clear) {
+    // forward_post.hlsl's passes: depth of field's, whose result the rest read for the world; with
+    // auto exposure the luminance passes, from the world's texture down to one texel, then glow's
+    // levels, each from the one before, then the tonemap pass from the world's texture over the
+    // frame's target. A frame with no sky or mesh draws clears the world's texture first.
+    void draw_forward_post(SDL_GPUCommandBuffer* commands, const Scene3D& scene, bool clear) {
+        const PostProcess& post = scene.post;
         if (clear) {
             SDL_GPUColorTargetInfo color{};
             color.texture = forward_targets_.world;
@@ -2589,12 +2620,15 @@ private:
         }
         SDL_GPUSampler* sampler = samplers_.at(sampler_index(Filter::Linear, false));
         SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
+        // The world's texture, or after depth of field its result.
+        SDL_GPUTexture* scene_world = forward_targets_.world;
         // A glow pass reads only its source; the tonemap pass reads glow's levels too. Passes
-        // read the measured brightness given them, or white.
+        // read the measured brightness given them, or white, and depth of field's the depth
+        // buffer and the world.
         const auto pass = [&](SDL_GPUTexture* target, SDL_GPUTextureFormat format,
                               const ForwardPostUniforms& uniforms, SDL_GPUTexture* source,
-                              bool levels, SDL_GPUTexture* lut,
-                              SDL_GPUTexture* measured = nullptr) {
+                              bool levels, SDL_GPUTexture* lut, SDL_GPUTexture* measured = nullptr,
+                              SDL_GPUTexture* depth = nullptr, SDL_GPUTexture* world = nullptr) {
             SDL_GPUColorTargetInfo color{};
             color.texture = target;
             color.load_op = SDL_GPU_LOADOP_DONT_CARE;
@@ -2611,9 +2645,8 @@ private:
             std::array<SDL_GPUTextureSamplerBinding, kForwardPostTextures> bindings{};
             // A luminance pass after the first loads the level before, a texture of floats, from
             // a slot of its own.
-            const bool from_level = format == kLuminanceFormat && source != forward_targets_.world;
-            bindings[0] = {.texture = from_level ? forward_targets_.world : source,
-                           .sampler = sampler};
+            const bool from_level = format == kLuminanceFormat && source != scene_world;
+            bindings[0] = {.texture = from_level ? scene_world : source, .sampler = sampler};
             for (std::size_t i = 0; i < kMaxGlowLevels; ++i) {
                 SDL_GPUTexture* level = forward_targets_.glow.at(i);
                 bindings.at(1 + i) = {.texture = levels && level != nullptr ? level : white_,
@@ -2624,11 +2657,27 @@ private:
                                             .sampler = nearest};
             bindings.at(kLuminanceSourceSlot) = {.texture = from_level ? source : white_,
                                                  .sampler = nearest};
+            bindings.at(kDepthSlot) = {.texture = depth != nullptr ? depth : white_,
+                                       .sampler = nearest};
+            bindings.at(kDofWorldSlot) = {.texture = world != nullptr ? world : white_,
+                                          .sampler = nearest};
             SDL_BindGPUFragmentSamplers(render, 0, bindings.data(),
                                         static_cast<std::uint32_t>(bindings.size()));
             SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
             SDL_EndGPURenderPass(render);
         };
+        if (uses_dof(post)) {
+            const auto texture = [&](DofTexture which) {
+                return which == DofTexture::World
+                           ? forward_targets_.world
+                           : forward_targets_.dof.at(static_cast<std::size_t>(which) - 1);
+            };
+            for (const DofStep& step : dof_plan(post, frame_width_, frame_height_)) {
+                pass(texture(step.target), kHdrFormat, dof_uniforms(post, step, scene.projection),
+                     texture(step.source), false, white_, nullptr, depth_, forward_targets_.world);
+            }
+            scene_world = texture(DofTexture::Out);
+        }
         SDL_GPUTexture* brightness = nullptr;
         if (post.auto_exposure) {
             // As Godot's Luminance::luminance_reduction: the last pass moves from the last
@@ -2645,7 +2694,7 @@ private:
                 }
                 pass(levels.at(i), kLuminanceFormat,
                      luminance_uniforms(post, kind, source, plan.at(i)),
-                     i == 0 ? forward_targets_.world : levels.at(i - 1), false, white_,
+                     i == 0 ? scene_world : levels.at(i - 1), false, white_,
                      forward_targets_.brightness);
                 source = plan.at(i);
             }
@@ -2662,8 +2711,8 @@ private:
                      forward_post_uniforms(post,
                                            i == 0 ? ForwardPass::GlowFirst : ForwardPass::GlowNext,
                                            size.width, size.height, frame_width_, frame_height_),
-                     i == 0 ? forward_targets_.world : forward_targets_.glow.at(i - 1), false,
-                     white_, brightness);
+                     i == 0 ? scene_world : forward_targets_.glow.at(i - 1), false, white_,
+                     brightness);
             }
         }
         SDL_GPUTexture* lut = white_;
@@ -2676,7 +2725,7 @@ private:
         pass(frame_texture_, frame_format_,
              forward_post_uniforms(post, ForwardPass::Tonemap, frame_width_, frame_height_,
                                    frame_width_, frame_height_, lut_desc.width, lut_desc.height),
-             forward_targets_.world, post.glow, lut, brightness);
+             scene_world, post.glow, lut, brightness);
     }
 
     // The post passes' shaders, their pipeline for a target format, and their textures at the
@@ -3339,6 +3388,9 @@ private:
         SDL_GPUTexture* brightness = nullptr;
         bool measured = false;
         std::uint64_t version = 0;
+        // Depth of field's textures, as DofTexture after World, made with the first frame that
+        // uses it.
+        std::array<SDL_GPUTexture*, 5> dof{};
         std::uint32_t width = 0;
         std::uint32_t height = 0;
     };
