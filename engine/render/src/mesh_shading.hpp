@@ -539,6 +539,42 @@ struct VoxelGILight {
 [[nodiscard]] std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface,
                                                const MeshSceneUniforms& scene, const MeshMaps& maps,
                                                const MeshPixel& pixel);
+// What the path tracer (path_trace.hpp) takes from a surface at a point, as fs_main reads it:
+// its albedo (linear), alpha, metallic, roughness and shading normal, the light it emits
+// (linear, times its energy) and whether it is unshaded, or nullopt where the alpha scissor
+// discards it.
+struct PathSurface {
+    Float3 base{};
+    float alpha = 1.0F;
+    float metallic = 0.0F;
+    float roughness = 0.0F;
+    Float3 normal{};
+    Float3 emitted{};
+    bool unshaded = false;
+};
+[[nodiscard]] std::optional<PathSurface> path_surface(const MeshSurfaceUniforms& surface,
+                                                      const MeshPixel& pixel);
+// light_compute in shaders/mesh.hlsl: the diffuse light (before the albedo) and specular light a
+// light of light_color sends toward v along l, at a point with normal n.
+struct LightResponse {
+    Float3 diffuse{};
+    Float3 specular{};
+};
+[[nodiscard]] LightResponse light_response(const Float3& n, const Float3& l, const Float3& v,
+                                           const Float3& light_color, float attenuation,
+                                           const Float3& f0, float roughness, float metallic,
+                                           float specular_amount);
+// How a light reaches a point of the world, as fs_main works it out before its shadow: the
+// direction toward it, how far it is (infinity for a directional light) and its attenuation by
+// distance and spot cone; nullopt where it doesn't.
+struct LightReach {
+    Float3 toward{};
+    float distance = 0.0F;
+    float attenuation = 1.0F;
+};
+[[nodiscard]] std::optional<LightReach> light_reach(const MeshLightUniforms& light,
+                                                    const Float3& world);
+
 // fs_main in shaders/mesh_normal.hlsl, Forward+'s normal-roughness prepass: the pixel's normal in
 // the camera's space (scaled from -1 to 1 into 0 to 1) and its roughness times 127 / 255, or
 // nullopt where it discards the pixel.

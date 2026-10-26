@@ -51,7 +51,7 @@ Result<Capture> capture(world::World& world, asset::Assets& assets, const Captur
     if (!ctx.contains<CapturerHandle>() || ctx.get<CapturerHandle>()->assets != &assets) {
         auto made = std::make_shared<Capturer>();
         made->assets = &assets;
-        made->device = render::create_software_device();
+        made->device = render::create_software_device(&world.pool());
         made->renderer = std::make_unique<CanvasRenderer>(*made->device, assets);
         ctx.insert_or_assign<CapturerHandle>(std::move(made));
     }
@@ -87,6 +87,7 @@ Result<Capture> capture(world::World& world, asset::Assets& assets, const Captur
     draw.time =
         options.time >= 0.0 ? options.time : material_time(world.tick(), frame.tick_seconds, 1.0);
     draw.collisions = options.collisions;
+    draw.path_trace = options.path_trace;
     for (std::uint32_t frame_index = 0; frame_index < std::max(options.frames, 1U); ++frame_index) {
         if (auto drawn = capturer.renderer->draw(world, draw); !drawn) {
             return drawn.error();
@@ -107,7 +108,9 @@ Result<Capture> capture(world::World& world, asset::Assets& assets, const Captur
                    .meshes = renderer.meshes_drawn(),
                    .lods = renderer.lods_drawn(),
                    .occluded = renderer.meshes_occluded(),
-                   .scaled = renderer.scaled()};
+                   .scaled = renderer.scaled(),
+                   .path_samples =
+                       options.path_trace ? capturer.device->path_samples(capturer.target) : 0};
 }
 
 } // namespace slash::canvas

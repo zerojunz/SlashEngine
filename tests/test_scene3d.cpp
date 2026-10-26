@@ -959,6 +959,37 @@ TEST_CASE("a captured frame darkens a wall where a slab stands against it, with 
     CHECK(occluded.at(62) >= plain.at(62) - 2);
 }
 
+TEST_CASE("a path-traced capture shades a wall darker where a slab stands against it") {
+    Scene scene;
+    scene.create("camera", R"({"Transform3D": {"position": [0, 0, 3]}, "Camera3D": {}})");
+    scene.create("env", R"({"WorldEnvironment": {
+        "background_mode": "color", "background_color": [0, 0, 0, 1],
+        "ambient_light_source": "color", "ambient_light_color": [1, 1, 1, 1],
+        "ambient_light_energy": 0.5}})");
+    scene.create("wall", R"({"Transform3D": {"position": [0, 0, -1]}, "MeshInstance3D": {},
+        "BoxMesh": {"size": [8, 8, 0.2]}, "StandardMaterial3D": {}})");
+    scene.create("slab", R"({"Transform3D": {"position": [0, 0, -0.75]}, "MeshInstance3D": {},
+        "BoxMesh": {"size": [1, 1, 0.3]},
+        "StandardMaterial3D": {"albedo_color": [0.5, 0.5, 0.5, 1]}})");
+    canvas::CaptureOptions options;
+    options.path_trace = render::PathTrace3D{.samples = 32, .bounces = 2};
+    const auto captured = canvas::capture(scene.world, scene.assets, options);
+    REQUIRE(captured.ok());
+    CHECK(captured.value().path_samples == 32);
+    const auto red = [&](std::uint32_t x) { return pixel(captured.value().image, x, 32)[0]; };
+    // Light from the sky reaches the wall beside the slab only from the side away from it.
+    std::uint32_t edge = 32; // the first pixel of wall right of the slab
+    while (edge < 60 && std::abs(red(edge) - red(32)) < 8) {
+        ++edge;
+    }
+    REQUIRE(edge < 60);
+    CHECK(red(edge + 1) + 10 < red(63));
+    // A capture without paths has none.
+    const auto drawn = canvas::capture(scene.world, scene.assets, {});
+    REQUIRE(drawn.ok());
+    CHECK(drawn.value().path_samples == 0);
+}
+
 TEST_CASE("the WorldEnvironment's SSR fields and the project's settings reach the frame") {
     Scene scene;
     scene.create("camera", R"({"Transform3D": {}, "Camera3D": {}})");

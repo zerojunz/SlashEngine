@@ -65,6 +65,8 @@ struct SkyRay {
     std::array<float, 2> coords{};
 };
 [[nodiscard]] SkyRay sky_ray(const SkyUniforms& uniforms, float x, float y);
+// The ray looking along a direction of the sky's space, unit length.
+[[nodiscard]] SkyRay sky_ray_toward(const Float3& eye);
 
 // The CPU twin of sky.hlsl's fragment stage: the pixel at x, y's color, sRGB, from its ray and the
 // texel the sky's texture has at the ray's coordinate.
