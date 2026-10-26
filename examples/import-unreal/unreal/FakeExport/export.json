@@ -9,8 +9,8 @@
  "blueprints": [
   {
    "kind": "Blueprint",
-   "native_parent": "/Script/Engine.Actor",
-   "parent": "/Script/Engine.Actor",
+   "native_parent": "/Script/CrateRun.CoinPickup",
+   "parent": "/Script/CrateRun.CoinPickup",
    "path": "/Game/Blueprints/BP_Coin"
   },
   {
@@ -1112,6 +1112,13 @@
      ],
      "label": "Coin",
      "name": "BP_Coin_C_0",
+     "properties": {
+      "class": "/Script/CrateRun.CoinPickup",
+      "values": {
+       "SpinSpeed": 180.0,
+       "Value": 5
+      }
+     },
      "root": "DefaultSceneRoot",
      "transform": {
       "location": [

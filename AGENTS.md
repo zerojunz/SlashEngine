@@ -669,7 +669,11 @@ lights turn to face Godot's way), gives each mesh's `.glb` the collision Unreal 
 `generate_collision`, draws a component's override materials with a copy of its mesh's `.glb`
 (`mesh_with_overrides`), plays a skeletal mesh's animation sequence with an `AnimationPlayer`
 (`convert_animation`), converts lights by Unreal's units, the sky, fog, bodies, shapes, volumes,
-sounds and both input systems, and makes a task per Blueprint and `UCLASS`. Unreal projects need
+sounds and both input systems, and makes a task per Blueprint and `UCLASS`. Each `UCLASS` is
+also a C++ skeleton: `src/unreal_cpp.cpp` (`read_unreal_class`) reads its header and source into
+a `Script` for `src/scripts.cpp` to write, as C# scripts are, and the export's `request.json`
+asks the script for the values of its edited properties on each actor (`add_class_component`).
+Unreal projects need
 the `build` capability. `tests/fake_unreal.cpp` is the editor's stand-in for tests and
 `examples/import-unreal`, copying a project's `FakeExport/` folder;
 `docs/reference/unreal-import.md` maps each component and setting.
