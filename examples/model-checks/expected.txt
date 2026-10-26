@@ -1,0 +1,18 @@
+asset.add {"description":"A cafe stool.","license":"CC0-1.0","path":"props/stool.model.json"}
+{"id":"8ccb4abf0d8c","size":[0.36,0.45,0.36],"triangles":96,"type":"model"}
+asset.add {"checks":{"nodes":["bulb"],"size":{"max":[0.5,1.8,0.5]}},"description":"A floor lamp.","license":"CC0-1.0","path":"props/lamp.model.json"}
+{"id":"6e701aad28d7","size":[0.4,1.65,0.4],"triangles":48,"type":"model"}
+game/library.json {"checks":{"nodes":["bulb"],"size":{"max":[0.5,1.8,0.5]}},"id":"6e701aad28d7bcf6cff0145d7a3a17283b239e94eefe067975a9125f23896fa9","license":"CC0-1.0"}
+test.run {}
+{"failed":[],"passed":0,"tests":0}
+edit game/props/stool.model.json
+asset.add {"path":"props/stool.model.json"}
+"/path: /checks/size/max/1: the model is 0.75 m along y, more than 0.6"
+edit game/props/stool.model.json
+edit game/props/lamp.model.json
+asset.check {}
+{"checked":2,"problems":[{"check":"/assets/props~1lamp.model.json/checks/nodes/0","id":"6e701aad28d7","message":"the model has no node \"bulb\" (did you mean \"bub\"?)","path":"props/lamp.model.json"}],"scenes":0}
+test.run {}
+{"failed":[{"file":"library.json","message":"the model has no node \"bulb\" (did you mean \"bub\"?)","path":"/assets/props~1lamp.model.json/checks/nodes/0"}],"passed":0,"tests":0}
+asset.add {"path":"props/lamp.model.json"}
+"/path: it fails the checks of the version before: checks/nodes/0: the model has no node \"bulb\" (did you mean \"bub\"?)"

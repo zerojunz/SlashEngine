@@ -85,8 +85,9 @@ std::string recipe_texture(const json::Value& recipe) {
     return {};
 }
 
-// Fills in a model's size, triangles, pivot, parts and points.
-void describe_model(const scene3d::Model& model, Record& record);
+// Fills in a model's size, triangles, pivot, parts and points, and checks it passes the record's
+// checks.
+Result<void> describe_model(const scene3d::Model& model, Record& record);
 
 // Fills in a model recipe's summary, and checks it builds as written, its model parts read
 // through read by their library references.
@@ -141,8 +142,7 @@ Result<void> describe_recipe(std::string_view data, Record& record,
     if (!model) {
         return model.error();
     }
-    describe_model(model.value(), record);
-    return {};
+    return describe_model(model.value(), record);
 }
 
 // Fills in a .glb model's summary, and checks it loads with nothing outside the file.
@@ -174,11 +174,10 @@ Result<void> describe_glb(std::string_view data, std::string_view path, Record& 
     if (!outside.empty()) {
         return reads_outside();
     }
-    describe_model(model.value(), record);
-    return {};
+    return describe_model(model.value(), record);
 }
 
-void describe_model(const scene3d::Model& model, Record& record) {
+Result<void> describe_model(const scene3d::Model& model, Record& record) {
     const scene3d::ModelSummary summary = scene3d::summarize(model);
     const scene3d::Bounds& box = summary.bounds;
     record.size = {rounded(box.max.x - box.min.x), rounded(box.max.y - box.min.y),
@@ -193,6 +192,21 @@ void describe_model(const scene3d::Model& model, Record& record) {
     for (const scene3d::ModelSummary::Point& point : summary.points) {
         record.points.push_back(point.name);
     }
+    if (record.checks.is_null()) {
+        return {};
+    }
+    if (auto wrong = json::validate(record.checks, scene3d::model_checks_schema());
+        !wrong.empty()) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "checks" + wrong.front().path + ": " + wrong.front().message);
+    }
+    const std::vector<json::ValidationError> failed =
+        scene3d::check_model_against(model, record.checks);
+    if (!failed.empty()) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "checks" + failed.front().path + ": " + failed.front().message);
+    }
+    return {};
 }
 
 // A name no other writer uses at the same time, for a file written whole then moved into place.
@@ -356,6 +370,9 @@ json::Value to_json(const Record& record) {
         }
         out["uses"] = std::move(uses);
     }
+    if (record.checks.is_object()) {
+        out["checks"] = record.checks;
+    }
     return out;
 }
 
@@ -462,6 +479,10 @@ Result<Record> record_from_json(const json::Value& value) {
                 record.uses.push_back(item.as_string());
             }
         }
+    }
+    if (const json::Value* checks = value.find("checks");
+        checks != nullptr && checks->is_object()) {
+        record.checks = *checks;
     }
     return record;
 }

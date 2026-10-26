@@ -3597,7 +3597,8 @@ Needs: `run`, `filesystem`. With neither `paths` nor `tests`, it also runs
 `slash-cli` and `slash-mcp`) and adds its errors, and, where the session may, runs
 [`asset.check`](#assetcheck) on the files the project took from the asset library, which
 records what it sees as their feedback: its problems come back as `assets` without failing a
-test. A name in `tests` that no test has fails with `-32001` and the closest name.
+test, but for a model that fails the checks it was kept with, which fails at its `check` in
+`library.json`. A name in `tests` that no test has fails with `-32001` and the closest name.
 
 The result counts the tests run and those that passed, and lists each failed check:
 
@@ -4866,7 +4867,7 @@ A [model recipe](scene-format.md#model-recipes) is refined by its `parameters` i
 generator is called: the new version is the recipe with those values, checked as it builds,
 with the parent's description (followed by `prompt` when there is one), tags, license and
 author. A name the recipe has no parameter for is reported with the closest one, and a value
-that makes the recipe fail to build is reported at `/parameters`. Only `description`, `tags`,
+that makes the recipe fail to build, or fail the parent's checks, is reported at `/parameters`. Only `description`, `tags`,
 `prompt` and `path` go with it. A recipe made of other models takes `parts` too, or instead:
 each model it is made of that `parts` names becomes the model it maps to, kept in the
 request's `parts` by full IDs. Naming a model the recipe isn't made of, or something that isn't
@@ -4983,8 +4984,14 @@ files ([model parts](scene-format.md#model-recipes)) goes in with them: each mus
 `library.json` says it came from, or described as a part of the recipe, with its tags, license
 and author); the library's copy of the recipe names each by its library ID
 (`"asset:<id>.glb"`), since the project's paths mean nothing elsewhere, and the reply's
-`model_parts` gives each file's ID. Music is measured, keeping the facts its author gives (see
-[music](#music)), and a track comes with its stems. Needs: `read`, `filesystem`.
+`model_parts` gives each file's ID. A model added with `checks` ([model
+checks](scene-format.md#model-checks): size, pivot, triangles, materials, nodes, bones,
+animations) must pass them, failing at `/checks/...`; the library keeps them, every new version
+must pass them unless the call gives new ones (`/path: it fails the checks of the version
+before: checks/nodes/0: ...`), and `library.json` keeps them beside the file for
+[`asset.check`](#assetcheck). A recipe's own `checks` hold as well. Music is measured, keeping
+the facts its author gives (see [music](#music)), and a track comes with its stems. Needs:
+`read`, `filesystem`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -4999,6 +5006,7 @@ and author); the library's copy of the recipe names each by its library ID
 | `bar_beats` | integer | 4 | Music: beats per bar |
 | `beat_count` | integer | the whole beats in it | Music: its length in beats |
 | `stems` | object | | Music: its stems by name (lowercase letters, digits, `_` and `-`), each a sound file within a second of the mix's length, such as `{"drums": "music/stems/drums.wav"}`; up to 32 |
+| `checks` | object | the last version's | A model: what it and its versions must be, as a recipe's [`checks`](scene-format.md#model-checks) |
 
 ```json
 {"path": "ui/heart.png", "description": "Red heart icon, 8x8", "tags": ["ui", "health"], "license": "CC-BY-4.0", "author": "Mira"}
@@ -5094,7 +5102,10 @@ checked:
 - drawn at a quarter of its size or less, where a smaller image would look the same and cost
   less memory and download.
 
-Images are also checked against the storyboard's palettes and budgets that cover their path.
+Images are also checked against the storyboard's palettes and budgets that cover their path,
+and models against the [checks](scene-format.md#model-checks) `library.json` keeps with them,
+which needs no library: such a problem has the `check`'s JSON Pointer into `library.json`
+(`/assets/props~1lamp.model.json/checks/nodes/0`), and `test.run` fails at it.
 An asset with a problem is recorded `rejected`, the reason its first problem and the scene, and
 one that shows clearly everywhere it shows is recorded `accepted`; an asset that doesn't show
 gets nothing. A result the same as the last from that check isn't recorded again, and a session
