@@ -3975,6 +3975,7 @@ no GPU. Nothing changes. [examples/frame-capture](../../examples/frame-capture/)
 | `time` | number | the tick's | Seconds of game time for materials' `time` nodes and [animated tiles](scene-format.md#animated-and-large-tiles) |
 | `collisions` | boolean | `false` | Draw every `CollisionShape2D` and `CollisionPolygon2D` over the world, as Godot's Visible Collision Shapes |
 | `frames` | integer, 1 to 120 | `1` | Draw the frame this many times and return the last, for [temporal antialiasing](project-format.md#temporal-antialiasing), which builds up over frames |
+| `path_trace` | object | | Path trace the 3D world instead of drawing it live: `samples` paths a pixel (1 to 4096, default 16) and `bounces` after the first surface (0 to 32, default 4) |
 
 Needs: `read`, and `filesystem` with `path`. A HUD with a health bar at 75%:
 
@@ -4000,6 +4001,20 @@ the window is an error at its path, and so is a `path` that doesn't end in `.png
 `batch`, `path` writes nothing. Captures keep TAA's, FSR 2's and FSR 3's history from one to the next,
 as a running game's frames do, so a still world's edges smooth out over captures and a moved
 mesh's history follows it.
+
+`path_trace` renders a reference still of the 3D world, for comparing the live frame with the
+light it only estimates. Each path meets the nearest triangle (every mesh at full detail, with
+no occlusion culling), shades it with the same `StandardMaterial3D` and light code the live
+frame draws with, adds each light it can see (shadows traced by ray for lights with shadows on),
+then bounces off the surface as its roughness and metallic say, `bounces` times. A bounce that
+meets nothing takes the `WorldEnvironment`'s ambient light, or its sky's when meshes are lit by
+the sky; with `bounces` 0 only the lights shine. Emission lights what is near it. The still is
+post-processed as the live frame is, without TAA or FSR. The reply's `path_samples` says how
+many paths each pixel holds: captures at the same size of a world that looks the same add their
+samples up, so the noise fades call by call, and any change to the meshes, materials, lights,
+camera, environment or `path_trace` starts over. Paths are traced on the CPU's threads, and the
+pixels are the same on every machine and any number of threads.
+[examples/path-tracing](../../examples/path-tracing/) calls it.
 
 ### frame.summary
 

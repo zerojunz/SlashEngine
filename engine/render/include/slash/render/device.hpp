@@ -16,6 +16,10 @@
 #include <string_view>
 #include <vector>
 
+namespace slash::jobs {
+class Pool;
+} // namespace slash::jobs
+
 struct SDL_Window;
 
 // The renderer's device layer: the few calls every drawing pass is built on, over SDL3's GPU API
@@ -546,6 +550,9 @@ public:
 
     // The MetalFX scalers the device runs; none but on Metal.
     [[nodiscard]] virtual MetalFxSupport metalfx() const { return {}; }
+    // How many samples a pixel of the target has summed over its path-traced frames
+    // (Scene3D::path_trace) since they started over; 0 on a device that doesn't trace paths.
+    [[nodiscard]] virtual std::uint32_t path_samples(TextureId /*target*/) const { return 0; }
     // Scales source, a render target, over target, a larger one made scaled_into, with MetalFX's
     // spatial scaler, outside any frame. Its colors are taken as they are drawn, not linear.
     // Fails where metalfx() has no spatial scaler.
@@ -603,7 +610,8 @@ struct DeviceOptions {
 // The software device: it draws on the CPU, into render-target textures only, as the GPU device's
 // shaders would, with their CPU twins (run_program, shade and distance_field_coverage), and
 // covers the same pixels a GPU does. Much slower than a GPU, but it needs none and draws the same
-// on every machine, so frame captures use it.
-[[nodiscard]] std::unique_ptr<RenderDevice> create_software_device();
+// on every machine, so frame captures use it. It traces paths (Scene3D::path_trace) on pool's
+// threads when given one, and gets the same pixels on any number of them.
+[[nodiscard]] std::unique_ptr<RenderDevice> create_software_device(jobs::Pool* pool = nullptr);
 
 } // namespace slash::render

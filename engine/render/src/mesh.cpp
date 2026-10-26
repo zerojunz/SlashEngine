@@ -940,6 +940,13 @@ Result<void> check_scene(const Scene3D& scene) {
         return make_error(ErrorCode::InvalidArgument,
                           "a scene's camera, projection and ambient light are finite");
     }
+    if (const std::optional<PathTrace3D>& paths = scene.path_trace;
+        paths && (paths->samples < 1 || paths->samples > kMaxPathSamples ||
+                  paths->bounces > kMaxPathBounces)) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a path-traced frame takes 1 to " + std::to_string(kMaxPathSamples) +
+                              " samples and up to " + std::to_string(kMaxPathBounces) + " bounces");
+    }
     const auto directional = static_cast<std::size_t>(
         std::ranges::count(scene.lights, LightType::Directional, &Light3D::type));
     if (directional > kMaxDirectionalLights3D) {
@@ -1241,6 +1248,68 @@ std::optional<SurfacePixel> surface_pixel(const MeshSurfaceUniforms& surface,
 }
 
 } // namespace
+
+std::optional<PathSurface> path_surface(const MeshSurfaceUniforms& surface,
+                                        const MeshPixel& pixel) {
+    const std::optional<SurfacePixel> found = surface_pixel(surface, pixel);
+    if (!found) {
+        return std::nullopt;
+    }
+    const std::uint32_t flags = surface.options[0];
+    PathSurface out{.base = found->base,
+                    .alpha = found->alpha,
+                    .metallic = found->metallic,
+                    .roughness = found->roughness,
+                    .normal = found->normal,
+                    .emitted = {},
+                    .unshaded = (flags & kMeshUnshaded) != 0};
+    if (!out.unshaded) {
+        Float3 emitted{surface.emission[0], surface.emission[1], surface.emission[2]};
+        if ((flags & kMeshEmissionTexture) != 0) {
+            emitted = add(emitted, xyz(pixel.texels[3]));
+        }
+        out.emitted = scale(srgb_to_linear(emitted), surface.emission[3]);
+    }
+    return out;
+}
+
+LightResponse light_response(const Float3& n, const Float3& l, const Float3& v,
+                             const Float3& light_color, float attenuation, const Float3& f0,
+                             float roughness, float metallic, float specular_amount) {
+    LightSum sum;
+    light_compute(n, l, v, light_color, attenuation, f0, roughness, metallic, specular_amount, sum);
+    return {.diffuse = sum.diffuse, .specular = sum.specular};
+}
+
+std::optional<LightReach> light_reach(const MeshLightUniforms& light, const Float3& world) {
+    const float type = light.direction[3];
+    if (type == 0.0F) {
+        return LightReach{
+            .toward = normalize({light.direction[0], light.direction[1], light.direction[2]}),
+            .distance = std::numeric_limits<float>::infinity(),
+            .attenuation = 1.0F};
+    }
+    const Float3 to_light = sub({light.position[0], light.position[1], light.position[2]}, world);
+    const float distance = length(to_light);
+    if (!(distance > 0.0F)) {
+        return std::nullopt;
+    }
+    const Float3 toward = scale(to_light, 1.0F / distance);
+    float attenuation = omni_attenuation(distance, light.position[3], light.params[0]);
+    if (type == 2.0F) {
+        const float cone = light.params[1];
+        const float scos =
+            std::max(dot3(scale(toward, -1.0F),
+                          {light.direction[0], light.direction[1], light.direction[2]}),
+                     cone);
+        const float rim = std::max(0.0001F, (1.0F - scos) / (1.0F - cone));
+        attenuation *= 1.0F - power(rim, light.params[2]);
+    }
+    if (!(attenuation > 0.0F)) {
+        return std::nullopt;
+    }
+    return LightReach{.toward = toward, .distance = distance, .attenuation = attenuation};
+}
 
 std::optional<Float4> mesh_normal_roughness(const MeshSurfaceUniforms& surface,
                                             const MeshSceneUniforms& scene,

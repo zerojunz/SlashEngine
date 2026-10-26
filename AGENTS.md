@@ -951,6 +951,20 @@ VoxelGIs its bounds touch as `Material3D::voxel_gi` (`render::VoxelGIShading`, t
 sampling of the slices, and `render::detail::trace_voxel_gis` (`engine/render/src/voxel_gi.cpp`)
 is its CPU twin. `examples/voxel-gi-3d` bounces a sun around a room.
 
+Path tracing makes reference stills on the CPU (`Scene3D::path_trace`, `render::PathTrace3D`;
+`frame.capture`'s `path_trace`). The software device, at `end_frame`, has `build_path_scene`
+(`src/path_trace.cpp`) put the frame's triangles in the world into a bounding volume hierarchy
+(median splits, ties by triangle index) and `trace_paths` trace them on the job pool: each path
+shades what it meets with `mesh.hlsl`'s CPU twins (`path_surface`, `light_response` and
+`light_reach` in `src/mesh.cpp`), adds each light it sees, traces shadows by ray for lights with
+`shadow`, and bounces by a mix of the diffuse lobe and GGX's visible normals, taking the sky
+(`sky_ray_toward`, `shade_sky`) or the ambient light where it leaves. Random numbers hash the
+pixel, the sample's number and the bounce, so a still is the same on any number of threads and
+samples summed over frames match those traced at once. Each target keeps its sums
+(`path_samples`) while `path_scene_key` and its textures' write counts stay the same, and
+forward_post runs over the result. `CanvasRenderer` turns off TAA, FSR 2, occlusion culling and
+LODs when tracing. `examples/path-tracing` traces the lightmaps room.
+
 TAA is Godot 4.6's `use_taa` (project.json's `rendering.anti_aliasing.quality.use_taa`,
 `Scene3D::use_taa`), in Forward+ only. `src/taa.hpp` holds what devices share: the jitter
 (`taa_jitter`, Halton bases 2 and 3 over 16 frames, `jittered`), the mesh passes' camera with the
