@@ -125,6 +125,7 @@ above the world.
 | `TileMap` | `Transform2D` and `TileMapLayer`, and an entity per layer (see [tile maps](#tile-sets-and-tile-maps)) |
 | `Node3D`, `Marker3D` | `Transform3D` |
 | `MeshInstance3D` | `Transform3D`, `MeshInstance3D`, and its mesh's and material's components (see [3D](#3d)) |
+| `CPUParticles3D` | `Transform3D`, `CPUParticles3D`, and its mesh's and material's components (see [3D particles](#3d-particles)) |
 | `Camera3D`, `DirectionalLight3D`, `OmniLight3D`, `SpotLight3D`, `AudioStreamPlayer3D`, `AudioListener3D` | `Transform3D` and the component of the same name |
 | `StaticBody3D`, `AnimatableBody3D`, `RigidBody3D`, `CharacterBody3D`, `Area3D` | `Transform3D` and the body; its `CollisionShape3D` children are its shapes |
 | `CollisionShape3D` | `Transform3D` and `CollisionShape3D`, with its shape's fields (see [3D](#3d)) |
@@ -413,6 +414,17 @@ file that its `process_material` names:
 - Points given as textures and rings that don't face the screen are reported: SlashEngine
   doesn't have them yet.
   `report.converted.process_materials` counts the files written.
+
+### 3D particles
+
+A `CPUParticles3D` keeps its settings in its component, with `emission_shape` and `draw_order`
+named (`3` is `"box"`, `2` `"view_depth"`) and its curves, `scale_curve_x`, `_y` and `_z` among
+them, and gradients as points. Its `mesh` converts as a `MeshInstance3D`'s: a primitive mesh
+becomes the entity's component of the same name and a model file its `mesh`, and
+`material_override`, else the mesh's own material, becomes its `StandardMaterial3D`, whose
+`billboard_mode`, `billboard_keep_scale` and `particles_anim_*` turn each particle to face the
+camera and play its frames as Godot's do. `visibility_aabb` only culls and is left out, and a
+`material_overlay` is reported.
 
 ## 3D
 
@@ -714,7 +726,7 @@ The report lists each of these once per kind, with how many and where it was fir
 | `ShaderMaterial` on a 3D mesh or a sky | A game's own 3D shaders aren't supported yet |
 | `HeightMapShape3D` | Use an [`HTerrain`](scene-format.md#heightmap-terrains), whose height field collides |
 | The HTerrain plugin's detail layers (`HTerrainDetailLayer`), texture arrays, splat maps past the first, triplanar mapping and tile reduction | Grass and other details aren't supported yet; a terrain mixes four textures by one splat map |
-| `GPUParticles3D`, `CPUParticles3D` and other 3D nodes with no SlashEngine component | Not supported yet; their entities keep their place in the tree |
+| `GPUParticles3D` and other 3D nodes with no SlashEngine component | Not supported yet; their entities keep their place in the tree |
 | Audio and animation tracks | Play the sound or the other animation from gameplay code, on an event track's event |
 | Bezier handles, the capture update mode, blend times and markers | A bezier track plays cubic through its keys, a capture track as continuous, and animations switch without blending |
 | Tracks on a control's `position` or `size` | Animate its offsets instead |

@@ -691,6 +691,7 @@ constexpr std::array kNodeTypes{
     NodeType{"Node3D", Family::Node3D, "", ""},
     NodeType{"Marker3D", Family::Node3D, "", ""},
     NodeType{"MeshInstance3D", Family::Node3D, "MeshInstance3D", ""},
+    NodeType{"CPUParticles3D", Family::Node3D, "CPUParticles3D", ""},
     NodeType{"Camera3D", Family::Node3D, "Camera3D", ""},
     NodeType{"DirectionalLight3D", Family::Node3D, "DirectionalLight3D", ""},
     NodeType{"OmniLight3D", Family::Node3D, "OmniLight3D", ""},
@@ -4791,7 +4792,7 @@ private:
             return json::Value(std::move(id));
         }
         if (fallback.is_array()) {
-            if (field.ends_with("_curve") &&
+            if ((field.ends_with("_curve") || field.starts_with("scale_curve_")) &&
                 (value.is_call("SubResource") || value.is_call("ExtResource"))) {
                 return curve_points(value, file, why);
             }
@@ -4970,6 +4971,10 @@ private:
             }
         }
         if (components.contains("MeshInstance3D") && mesh_property(node, property, components)) {
+            return true;
+        }
+        if (node.type == "CPUParticles3D" && components.contains("CPUParticles3D") &&
+            particles_3d_property(node, property, components)) {
             return true;
         }
         if (name == "environment" && components.contains("WorldEnvironment")) {
@@ -5405,6 +5410,46 @@ private:
             components["MeshInstance3D"]["mesh"] = std::move(model);
         }
         if (material.value != nullptr && !overridden && !surface) {
+            convert_material(*material.value, *material.file, components, node);
+        }
+        return true;
+    }
+
+    // CPUParticles3D's mesh and material: a primitive mesh as its component or a model file as
+    // its mesh, and material_override, else the mesh's own material, as its StandardMaterial3D,
+    // as MeshInstance3D's.
+    bool particles_3d_property(const Node& node, const Property& property,
+                               json::Object& components) {
+        const std::string& name = property.name;
+        const Value& value = *property.value;
+        const TextFile& file = *property.file;
+        // visibility_aabb only culls.
+        if (name == "visibility_aabb") {
+            return true;
+        }
+        if (name == "material_override") {
+            convert_material(value, file, components, node);
+            return true;
+        }
+        if (name == "material_overlay") {
+            if (value.kind != Value::Kind::Nil) {
+                problems_.add("CPUParticles3D.material_overlay", node.declared,
+                              "a mesh has one material");
+            }
+            return true;
+        }
+        if (name != "mesh") {
+            return false;
+        }
+        std::string model;
+        MeshMaterial material;
+        if (convert_mesh(value, file, node, "CPUParticles3D.mesh", model, components, material,
+                         false) &&
+            !model.empty()) {
+            components["CPUParticles3D"]["mesh"] = std::move(model);
+        }
+        const Property* own = node.find("material_override");
+        if (material.value != nullptr && (own == nullptr || own->value->kind == Value::Kind::Nil)) {
             convert_material(*material.value, *material.file, components, node);
         }
         return true;
