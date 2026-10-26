@@ -1,0 +1,20 @@
+asset.add {"author":"Ana","cleanup":{"collision":"convex","pivot":[0.5,0,0.5],"scale":0.01,"up":"z"},"description":"A wooden shipping crate.","license":"CC-BY-4.0","path":"props/crate.obj","review":true,"tags":["crate","prop"]}
+{"cleanup":{"collision":{"convex":1},"pivot":[0.5,0.0,0.5],"triangles":[12,12],"unwrapped":1},"id":"4a3332c29ac8","review":{"holes":0,"note":"no providers.json, so no model looked at the views","recorded":true,"size":[1.0,0.8,1.0],"triangles":12,"verdict":"accepted","views":4},"size":[1.0,0.8,1.0],"source":"crate.obj","triangles":12,"type":"model"}
+asset.info {"id":"4a3332c29ac8"}
+{"author":"Ana","bytes":3132,"cleanup":{"collision":"convex","pivot":[0.5,0,0.5],"scale":0.01,"up":"z"},"description":"A wooden shipping crate.","feedback":[{"reason":"passes its checks","source":"asset.review","verdict":"accepted"}],"format":"glb","id":"4a3332c29ac8","license":"CC-BY-4.0","parts":["Mesh"],"pivot":[0.5,0.0,0.5],"size":[1.0,0.8,1.0],"source":"crate.obj","source_sha256":"0bcaf93d43b7","tags":["crate","prop"],"triangles":12,"type":"model"}
+game/library.json {"author":"Ana","id":"4a3332c29ac8e07edb8bbac6fcbe0fcbf5d7ba74427b033c0e714bb526324a6a","license":"CC-BY-4.0","source_sha256":"0bcaf93d43b717f191d6b69debf1f605db32d82253cbd1d2277d51f1686b8a6a"}
+edit game/props/crate.obj
+asset.check {}
+{"checked":1,"problems":[{"id":"4a3332c29ac8","message":"changed since it was imported; asset.add it again to keep the change as a new version","path":"props/crate.obj"}],"scenes":0}
+asset.add {"path":"props/crate.obj"}
+{"cleanup":{"collision":{"convex":1},"pivot":[0.5,0.0,0.5],"triangles":[12,12],"unwrapped":1},"id":"58f44d35716b","parent":"4a3332c29ac8","size":[1.0,1.2,1.0],"source":"crate.obj","triangles":12,"type":"model"}
+asset.info {"id":"58f44d35716b"}
+{"author":"Ana","bytes":3132,"cleanup":{"collision":"convex","pivot":[0.5,0,0.5],"scale":0.01,"up":"z"},"description":"A wooden shipping crate.","format":"glb","id":"58f44d35716b","license":"CC-BY-4.0","parent":"4a3332c29ac8","parts":["Mesh"],"pivot":[0.5,0.0,0.5],"size":[1.0,1.2,1.0],"source":"crate.obj","source_sha256":"629ee389d7f6","tags":["crate","prop"],"triangles":12,"type":"model","versions":["4a3332c29ac8"]}
+asset.check {}
+{"checked":1,"problems":[],"scenes":0}
+asset.search {"text":"crate"}
+{"assets":[{"accepted":1,"description":"A wooden shipping crate.","id":"4a3332c29ac8","score":1.0,"size":[1.0,0.8,1.0],"tags":["crate","prop"],"triangles":12,"type":"model"},{"description":"A wooden shipping crate.","id":"58f44d35716b","score":1.0,"size":[1.0,1.2,1.0],"tags":["crate","prop"],"triangles":12,"type":"model"}]}
+asset.use {"id":"58f44d35716b","path":"props/crate.glb"}
+{"path":"props/crate.glb"}
+model.inspect {"brief":true,"path":"props/crate.glb"}
+{"collision":[{"name":"collision","points":8,"shape":"convex","triangles":12}],"materials":["wood"],"parts":[{"center":[0,0.6,0],"materials":["wood"],"name":"Mesh","size":[1,1.2,1],"triangles":12}],"pivot":[0.5,0,0.5],"size":[1,1.2,1],"triangles":12}
