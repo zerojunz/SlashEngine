@@ -5,6 +5,7 @@
 #include "slash/ai/config.hpp"
 #include "slash/asset/assets.hpp"
 #include "slash/canvas/canvas.hpp"
+#include "slash/command/model_cleanup.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/sha256.hpp"
 #include "slash/core/text.hpp"
@@ -486,8 +487,10 @@ Result<void> check_path(std::string_view path, std::string_view format) {
     return {};
 }
 
-// Records in library.json that the project's file at path came from the asset.
-Result<void> record_use(Session& session, const Record& record, const std::string& path) {
+// Records in library.json that the project's file at path came from the asset, or with source
+// that it is the file the asset was imported from, with the SHA-256 of its bytes then.
+Result<void> record_use(Session& session, const Record& record, const std::string& path,
+                        bool source = false) {
     auto list_path = session.resolve_path(kProjectFile);
     if (!list_path) {
         return list_path.error();
@@ -522,6 +525,9 @@ Result<void> record_use(Session& session, const Record& record, const std::strin
     // Kept with the project, so asset.check checks the file again where there is no library.
     if (record.checks.is_object()) {
         entry["checks"] = record.checks;
+    }
+    if (source && !record.source_sha256.empty()) {
+        entry["source_sha256"] = record.source_sha256;
     }
     list["assets"][path] = std::move(entry);
     return session.write_file(list_path.value(), json::write(list));
@@ -2265,6 +2271,9 @@ Reply asset_info(Session& session, const json::Value& params) {
     if (!record.value().track.empty()) {
         out["track"] = short_id(record.value().track);
     }
+    if (!record.value().source_sha256.empty()) {
+        out["source_sha256"] = short_id(record.value().source_sha256);
+    }
     if (json::Value* uses = out.find("uses"); uses != nullptr) {
         for (json::Value& use : uses->as_array()) {
             use = short_id(use.as_string());
@@ -2483,6 +2492,52 @@ Result<std::string> library_form(Session& session, Libraries& libs, std::string 
     return json::write(doc.value()) + "\n";
 }
 
+// Whether asset.add imports the file: a model the library doesn't keep as it is (.gltf, .obj,
+// .fbx or .blend), or one to clean up first.
+bool imports(std::string_view path, bool cleanup) {
+    return scene3d::is_model_path(path) &&
+           (!is_model_file(path) || (cleanup && path.ends_with(".glb")));
+}
+
+// The .glb file an imported model becomes: its path with its extensions replaced.
+std::string imported_path(std::string_view path) {
+    const std::size_t slash = path.rfind('/');
+    const std::size_t name = slash == std::string_view::npos ? 0 : slash + 1;
+    return std::string(path.substr(0, path.find('.', name))) + ".glb";
+}
+
+// The project's model at path as the .glb file the library keeps of it, into glb, cleaned up
+// first when cleanup (model.cleanup's options) isn't null, with what the cleanup did in done.
+// A failure points at /path or into /cleanup.
+Reply import_model(Session& session, const std::string& path, const json::Value* cleanup,
+                   std::string& glb, json::Value& done) {
+    auto loaded = session.assets().load<scene3d::Model>(path);
+    if (!loaded) {
+        return failure_at(loaded.error(), "/path");
+    }
+    scene3d::Model model = *loaded.value();
+    if (cleanup != nullptr) {
+        command::CleanupRequest request;
+        if (Reply read = command::read_cleanup(session, *cleanup, path, "/cleanup", request);
+            !read.ok) {
+            return read;
+        }
+        scene3d::CleanupReport report;
+        if (Reply cleaned = command::clean_up(request, model, "/cleanup", "/path", report);
+            !cleaned.ok) {
+            return cleaned;
+        }
+        done = command::cleanup_result(request, report, model);
+        done.as_object().erase("size"); // the reply's own
+    }
+    auto written = scene3d::write_glb(model, imported_path(path), project_reader(session));
+    if (!written) {
+        return failure_at(written.error(), "/path");
+    }
+    glb = std::move(written).value();
+    return Reply::success({});
+}
+
 Reply asset_add(Session& session, const json::Value& params) {
     auto libs = open_libraries(session);
     if (!libs) {
@@ -2497,6 +2552,32 @@ Reply asset_add(Session& session, const json::Value& params) {
         return failure_at(data.error(), "/path");
     }
     const std::optional<Record> earlier = used_version(session, libs.value(), path);
+    // A model in a format the library doesn't keep, or one to clean up, goes in as the .glb file
+    // it imports as, cleaned up as the call says, else as the version before was.
+    const json::Value* cleanup = params.find("cleanup");
+    if (cleanup != nullptr && !scene3d::is_model_path(path)) {
+        return invalid_at("/cleanup", "only a model is cleaned up");
+    }
+    if (cleanup != nullptr && path.ends_with(scene3d::kModelRecipeSuffix)) {
+        return invalid_at("/cleanup", "a recipe is made as its parameters say; clean up the "
+                                      "model files its parts are instead");
+    }
+    if (cleanup == nullptr && earlier && earlier->cleanup.is_object()) {
+        cleanup = &earlier->cleanup;
+    }
+    const bool imported = imports(path, cleanup != nullptr);
+    std::string source_sha256;
+    std::string kept_path = path; // the file as the library keeps it
+    json::Value cleaned;
+    if (imported) {
+        source_sha256 = sha256_hex(data.value());
+        std::string glb;
+        if (Reply converted = import_model(session, path, cleanup, glb, cleaned); !converted.ok) {
+            return converted;
+        }
+        data.value() = std::move(glb);
+        kept_path = imported_path(path);
+    }
     // What the call says it is; for a new version, what the last one was said to be.
     Record given;
     given.description = trimmed(text(params, "description"));
@@ -2529,17 +2610,17 @@ Reply asset_add(Session& session, const json::Value& params) {
     // Checks the call gives, else the last version's, which a new version passes too.
     const json::Value* checks = params.find("checks");
     if (checks != nullptr) {
-        if (!is_model_file(path)) {
+        if (!is_model_file(kept_path)) {
             return invalid_at("/checks", "only a model (.model.json or .glb) has checks");
         }
         if (auto wrong = json::validate(*checks, scene3d::model_checks_schema()); !wrong.empty()) {
             return invalid_at("/checks" + wrong.front().path, wrong.front().message);
         }
         record.checks = *checks;
-    } else if (earlier && is_model_file(path)) {
+    } else if (earlier && is_model_file(kept_path)) {
         record.checks = earlier->checks;
     }
-    if (auto described = describe_file(data.value(), path, record,
+    if (auto described = describe_file(data.value(), kept_path, record,
                                        parts_reader(session, libs.value(), work.added));
         !described) {
         const std::string& message = described.error().message;
@@ -2584,7 +2665,23 @@ Reply asset_add(Session& session, const json::Value& params) {
         return invalid_at("/description", "say what it is in a sentence, for agents to read "
                                           "instead of the file");
     }
+    const json::Value* review = params.find("review");
+    if (review != nullptr && review->as_bool() && record.type != "model") {
+        return invalid_at("/review", "only a model is reviewed");
+    }
     json::Array notes;
+    if (imported) {
+        const std::size_t slash = path.rfind('/');
+        record.source = path.substr(slash == std::string::npos ? 0 : slash + 1);
+        record.source_sha256 = source_sha256;
+        if (cleanup != nullptr) {
+            record.cleanup = *cleanup;
+        }
+        if (record.license.empty()) {
+            notes.emplace_back("no license is recorded: give the one it came with, such as its "
+                               "store's or CC0-1.0, so projects know how they may use it");
+        }
+    }
     if (type == "music") {
         MusicFacts facts;
         if (Reply music = read_music(params, facts); !music.ok) {
@@ -2671,7 +2768,7 @@ Reply asset_add(Session& session, const json::Value& params) {
     if (!stored) {
         return Reply::failure(stored.error());
     }
-    if (auto recorded = record_use(session, stored.value(), path); !recorded) {
+    if (auto recorded = record_use(session, stored.value(), path, imported); !recorded) {
         return failure_at(recorded.error(), "/path");
     }
     for (const auto& [part, part_data] : parts) {
@@ -2692,8 +2789,25 @@ Reply asset_add(Session& session, const json::Value& params) {
     if (!model_parts.is_null()) {
         out["model_parts"] = std::move(model_parts);
     }
+    if (imported) {
+        out["source"] = stored.value().source;
+    }
+    if (!cleaned.is_null()) {
+        out["cleanup"] = std::move(cleaned);
+    }
     if (!notes.empty()) {
         out["problems"] = std::move(notes);
+    }
+    // Looked at as a generated model is, its verdict recorded as its feedback.
+    if (review != nullptr && review->as_bool()) {
+        json::Value look;
+        look["id"] = out["id"];
+        look["path"] = path;
+        Reply looked = asset_review(session, look);
+        if (!looked.ok) {
+            return looked;
+        }
+        out["review"] = std::move(looked.value);
     }
     return libs.value().noted(Reply::success(std::move(out)));
 }
@@ -2783,6 +2897,32 @@ std::map<std::string, json::Value> project_checks(Session& session) {
         if (const json::Value* checks = entry.is_object() ? entry.find("checks") : nullptr;
             checks != nullptr && checks->is_object()) {
             out.emplace(path, *checks);
+        }
+    }
+    return out;
+}
+
+// The SHA-256 of each file the project imported into the library as it was then, by project
+// path, from library.json.
+std::map<std::string, std::string> project_sources(Session& session) {
+    std::map<std::string, std::string> out;
+    auto read = session.read_project_file(kProjectFile);
+    if (!read) {
+        return out;
+    }
+    const std::optional<std::string>& text = read.value();
+    if (!text) {
+        return out;
+    }
+    auto list = json::parse(*text);
+    const json::Value* entries = list ? list.value().find("assets") : nullptr;
+    if (entries == nullptr || !entries->is_object()) {
+        return out;
+    }
+    for (const auto& [path, entry] : entries->as_object()) {
+        if (const json::Value* sha256 = entry.is_object() ? entry.find("source_sha256") : nullptr;
+            sha256 != nullptr && sha256->is_string()) {
+            out.emplace(path, sha256->as_string());
         }
     }
     return out;
@@ -3075,6 +3215,19 @@ Reply asset_check(Session& session, const json::Value& params) {
                                : "shows clearly in " + std::to_string(clear.size()) + " scenes",
                  .source = std::string(kFrameCheck)});
         }
+    }
+    // Files imported into the library that were edited since, to add again as new versions.
+    for (const auto& [path, sha256] : project_sources(session)) {
+        const auto id = assets.value().find(path);
+        auto data = session.read_project_file(path);
+        if (id == assets.value().end() || !data || !data.value() ||
+            sha256_hex(*data.value()) == sha256) {
+            continue;
+        }
+        problems.push_back(problem_value(id->second, path,
+                                         {"", "",
+                                          "changed since it was imported; asset.add it "
+                                          "again to keep the change as a new version"}));
     }
     // Models again against the checks they were kept with, which need no library.
     for (const auto& [path, checks] : project_checks(session)) {
@@ -3711,18 +3864,30 @@ void register_commands(command::Registry& registry) {
         .handler = asset_sync,
     });
 
+    json::Value cleanup = property("object", "Model: import it cleaned up with model.cleanup's "
+                                             "options. Default for a new version: the last "
+                                             "one's.");
+    // model.cleanup's options, described there.
+    json::Object options = command::cleanup_properties();
+    for (auto& [name, option] : options) {
+        option.as_object().erase("description");
+    }
+    cleanup["properties"] = std::move(options);
+    cleanup["additionalProperties"] = false;
     registry.add({
         .name = "asset.add",
         .description = "Adds a project's image, sound, music or model to the asset library, "
-                       "with its author and license, so other projects find it. A file taken "
-                       "from the library and edited becomes a new version of it. A composer's "
-                       "track comes with its stems; music is measured for bpm and key.",
+                       "with its author and license, so other projects find it. Models in other "
+                       "formats are imported as .glb, cleaned up and reviewed as asked. A file "
+                       "taken from the library, or imported, and edited becomes a new version. A "
+                       "composer's track comes with its stems; music is measured for bpm and key.",
         .capabilities = {Capability::Read, Capability::Filesystem},
         .effect = command::Effect::Read,
         .params = params_schema(
             {
                 {"path", property("string", "A .png, .bmp, .wav, .ogg, .mp3, .model.json or "
-                                            ".glb file; a track's full mix.")},
+                                            ".glb file, a model to import (.gltf, .obj, .fbx, "
+                                            ".blend) or a track's full mix.")},
                 {"description", property("string", "A sentence for agents to read instead of "
                                                    "the file. Default for a new version: the "
                                                    "last one's.")},
@@ -3739,6 +3904,9 @@ void register_commands(command::Registry& registry) {
                                               "recipe's checks: size, pivot, max_triangles, "
                                               "materials, nodes, bones, animations. Default for "
                                               "a new version: the last one's.")},
+                {"cleanup", std::move(cleanup)},
+                {"review", property("boolean", "Model: review it as asset.review does, recording "
+                                               "the verdict.")},
             },
             {"path"}),
         .handler = asset_add,

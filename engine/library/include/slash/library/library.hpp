@@ -100,6 +100,13 @@ struct Record {
     // A model's checks (scene3d::model_checks_schema), which it and every version made of it
     // pass; null for none.
     json::Value checks;
+    // An imported model: the file it was converted from (its name, such as "crate.fbx", and the
+    // SHA-256 of its bytes) and the cleanup it was imported with (model.cleanup's options; null
+    // for none), which its next version is imported with too, as Godot's .import files keep a
+    // source's import settings.
+    std::string source;
+    std::string source_sha256;
+    json::Value cleanup;
 };
 
 inline constexpr std::size_t kMaxFeedback = 20;

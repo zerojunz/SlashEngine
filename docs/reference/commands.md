@@ -5116,7 +5116,9 @@ Returns an asset's whole record: `type`, `format`, `bytes`, size or length (`sec
 `channels` and `sample_rate`; a model's `size`, `triangles`, `pivot` and the names of its `parts` and attachment `points`, as [`model.inspect`](#modelinspect)'s brief form gives them), `description`, `tags`, the `request` its generator was asked,
 `generator`, `model`, `seed`, `license`, `author` and `parent`; music's `bpm`, `beat_count`,
 `bar_beats` and `key`, a track's `stems` (`name` and `id` each) and a stem's `track`; a recipe's
-`uses`, the library models its parts are made of; then `versions`, every version before it,
+`uses`, the library models its parts are made of; an imported model's `source` (the file's
+name), `source_sha256` (the start of its bytes' SHA-256) and `cleanup`; then `versions`, every
+version before it,
 oldest first, `children`, the versions made from it, and `used_by`, the recipes on this machine
 made of it. Needs: `read`.
 
@@ -5197,8 +5199,9 @@ animations) must pass them, failing at `/checks/...`; the library keeps them, ev
 must pass them unless the call gives new ones (`/path: it fails the checks of the version
 before: checks/nodes/0: ...`), and `library.json` keeps them beside the file for
 [`asset.check`](#assetcheck). A recipe's own `checks` hold as well. Music is measured, keeping
-the facts its author gives (see [music](#music)), and a track comes with its stems. Needs:
-`read`, `filesystem`.
+the facts its author gives (see [music](#music)), and a track comes with its stems. A model in
+another format is imported (see [importing models](#importing-models)). Needs: `read`,
+`filesystem`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -5214,6 +5217,8 @@ the facts its author gives (see [music](#music)), and a track comes with its ste
 | `beat_count` | integer | the whole beats in it | Music: its length in beats |
 | `stems` | object | | Music: its stems by name (lowercase letters, digits, `_` and `-`), each a sound file within a second of the mix's length, such as `{"drums": "music/stems/drums.wav"}`; up to 32 |
 | `checks` | object | the last version's | A model: what it and its versions must be, as a recipe's [`checks`](scene-format.md#model-checks) |
+| `cleanup` | object | the last version's | A model: import it cleaned up with [`model.cleanup`](#modelcleanup)'s options (`up`, `scale`, `height`, `pivot`, `triangles`, `uvs`, `delight`, `collision`, `max_hulls`) |
+| `review` | boolean | false | A model: review it as [`asset.review`](#assetreview) does once kept, recording the verdict; the reply's `review` is its result |
 
 ```json
 {"path": "ui/heart.png", "description": "Red heart icon, 8x8", "tags": ["ui", "health"], "license": "CC-BY-4.0", "author": "Mira"}
@@ -5249,6 +5254,47 @@ A picnic set made of that bench:
 
 ```json
 {"id":"9552a4cbc07f","model_parts":{"props/bench.model.json":"193f1c58e2f7"},"size":[1.2,0.75,1.65],"triangles":84,"type":"model"}
+```
+
+#### Importing models
+
+Models made in other tools, bought from asset stores or drawn by a team's own artists go into
+the library as generated ones do. A `.gltf`, `.obj`, `.fbx` or `.blend` file (a `.blend` file
+through the artist's own Blender, with the `build` capability; see
+[Blender models](scene-format.md#blender-models)), or a `.glb` file with `cleanup`, is loaded as
+[`MeshInstance3D`](scene-format.md#models) loads it and kept as the self-contained `.glb` file
+[`model.cleanup`](#modelcleanup) writes, cleaned up first with `cleanup`'s options (a storyboard
+triangle budget covering the file's path applies unless `triangles` is given). The record keeps
+the file's name as `source`, the SHA-256 of its bytes as `source_sha256` and the `cleanup`, as
+Godot's `.import` files keep a source's hash and import settings; `library.json` keeps the hash
+beside the file's path. When the file changes, [`asset.check`](#assetcheck) says so, and adding
+it again keeps a new version, imported with the last one's cleanup, description, tags, license
+and author unless the call gives others. The reply adds `source`, `cleanup` (what the cleanup did,
+as `model.cleanup` returns it: `triangles` before and after, `pivot`, `unwrapped`, `collision`
+and the rest) and, with `review`, the review. An import with no `license` lists a problem, so
+an agent asks where the file came from. Errors in the options point into `/cleanup`
+(`/cleanup/height: give scale or height, not both`), and a file that doesn't load at `/path`;
+`cleanup` on a file that isn't a model, or on a recipe, is refused at `/cleanup`.
+
+From [examples/imported-assets](../../examples/imported-assets/), a crate exported from a CAD
+tool in centimeters with z up:
+
+```json
+{"path": "props/crate.obj", "description": "A wooden shipping crate.", "tags": ["crate", "prop"], "author": "Ana", "license": "CC-BY-4.0", "review": true, "cleanup": {"up": "z", "scale": 0.01, "pivot": [0.5, 0, 0.5], "collision": "convex"}}
+```
+
+```json
+{"cleanup":{"collision":{"convex":1},"pivot":[0.5,0.0,0.5],"triangles":[12,12],"unwrapped":1},"id":"4a3332c29ac8","review":{"holes":0,"note":"no providers.json, so no model looked at the views","recorded":true,"size":[1.0,0.8,1.0],"triangles":12,"verdict":"accepted","views":4},"size":[1.0,0.8,1.0],"source":"crate.obj","triangles":12,"type":"model"}
+```
+
+After the artist makes it taller and saves over the file:
+
+```json
+{"path": "props/crate.obj"}
+```
+
+```json
+{"cleanup":{"collision":{"convex":1},"pivot":[0.5,0.0,0.5],"triangles":[12,12],"unwrapped":1},"id":"58f44d35716b","parent":"4a3332c29ac8","size":[1.0,1.2,1.0],"source":"crate.obj","triangles":12,"type":"model"}
 ```
 
 ### asset.feedback
@@ -5312,7 +5358,10 @@ checked:
 Images are also checked against the storyboard's palettes and budgets that cover their path,
 models against the budgets that cover theirs, and models against the [checks](scene-format.md#model-checks) `library.json` keeps with them,
 which needs no library: such a problem has the `check`'s JSON Pointer into `library.json`
-(`/assets/props~1lamp.model.json/checks/nodes/0`), and `test.run` fails at it.
+(`/assets/props~1lamp.model.json/checks/nodes/0`), and `test.run` fails at it. A file
+[imported](#importing-models) into the library that changed since is a problem too ("changed
+since it was imported; asset.add it again to keep the change as a new version"), which
+`test.run` lists as advice.
 An asset with a problem is recorded `rejected`, the reason its first problem and the scene, and
 one that shows clearly everywhere it shows is recorded `accepted`; an asset that doesn't show
 gets nothing. A result the same as the last from that check isn't recorded again, and a session

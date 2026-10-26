@@ -64,6 +64,20 @@ std::string glb_path(std::string_view path) {
     return std::string(path.substr(0, dot)) + ".glb";
 }
 
+// Reads the project's files, for write_glb and delighting.
+scene3d::ModelReader project_files(Session& session) {
+    return [&session](std::string_view file) -> Result<std::string> {
+        auto bytes = session.read_project_file(file);
+        if (!bytes) {
+            return bytes.error();
+        }
+        if (!bytes.value()) {
+            return make_error(ErrorCode::NotFound, quoted(file) + " doesn't exist");
+        }
+        return std::move(*bytes.value());
+    };
+}
+
 Reply model_cleanup(Session& session, const json::Value& params) {
     const std::string& path = params.find("path")->as_string();
     if (!scene3d::is_model_path(path) || path.find("::") != std::string::npos) {
@@ -81,133 +95,31 @@ Reply model_cleanup(Session& session, const json::Value& params) {
     if (auto full = session.resolve_path(out); !full) {
         return param_error(code::kInvalidParams, "/out", full.error().message);
     }
-
-    scene3d::CleanupOptions options;
-    if (const json::Value* up = params.find("up"); up != nullptr) {
-        options.up = up->as_string();
-    }
-    if (const json::Value* scale = params.find("scale"); scale != nullptr) {
-        options.scale = static_cast<float>(scale->as_double());
-    }
-    if (const json::Value* height = params.find("height"); height != nullptr) {
-        if (params.find("scale") != nullptr) {
-            return param_error(code::kInvalidParams, "/height", "give scale or height, not both");
-        }
-        options.height = static_cast<float>(height->as_double());
-    }
-    if (const json::Value* pivot = params.find("pivot"); pivot != nullptr) {
-        const json::Array& at = pivot->as_array();
-        options.pivot =
-            Vec3{static_cast<float>(at[0].as_double()), static_cast<float>(at[1].as_double()),
-                 static_cast<float>(at[2].as_double())};
-    }
-    // The budget: the call's, else the storyboard's tightest for the file written.
-    std::optional<storyboard::BudgetLimit> budget;
-    if (const json::Value* triangles = params.find("triangles"); triangles != nullptr) {
-        options.triangles = static_cast<std::size_t>(triangles->as_int());
-    } else {
-        auto loaded = storyboard::load(
-            [&session](std::string_view file) { return session.read_project_file(file); });
-        if (loaded) {
-            budget = storyboard::budget_for(loaded.value().entries, out, "triangles");
-        }
-        if (budget) {
-            options.triangles = static_cast<std::size_t>(budget->most);
-        }
-    }
-    const json::Value* uvs = params.find("uvs");
-    options.uvs = uvs == nullptr || uvs->as_bool();
-    if (const json::Value* collision = params.find("collision"); collision != nullptr) {
-        options.collision = collision->as_string();
-    }
-    if (const json::Value* max_hulls = params.find("max_hulls"); max_hulls != nullptr) {
-        if (options.collision != "decompose") {
-            return param_error(code::kInvalidParams, "/max_hulls",
-                               "max_hulls goes with collision \"decompose\"");
-        }
-        options.max_hulls = static_cast<std::size_t>(max_hulls->as_int());
-    }
-
-    const scene3d::ModelReader read = [&session](std::string_view file) -> Result<std::string> {
-        auto bytes = session.read_project_file(file);
-        if (!bytes) {
-            return bytes.error();
-        }
-        if (!bytes.value()) {
-            return make_error(ErrorCode::NotFound, quoted(file) + " doesn't exist");
-        }
-        return std::move(*bytes.value());
-    };
-    if (const json::Value* delight = params.find("delight"); delight != nullptr) {
-        options.delight = static_cast<float>(delight->as_double());
-        options.read = read;
+    CleanupRequest request;
+    if (Reply read = read_cleanup(session, params, out, "", request); !read.ok) {
+        return read;
     }
     auto loaded = session.assets().load<scene3d::Model>(path);
     if (!loaded) {
         return param_error(code::kInvalidParams, "/path", loaded.error().message);
     }
     scene3d::Model model = *loaded.value();
-    auto report = scene3d::cleanup_model(model, options);
-    if (!report) {
-        std::string at = "/path";
-        const std::string& message = report.error().message;
-        if (message.starts_with("up ")) {
-            at = "/up";
-        } else if (message.starts_with("the simplifier")) {
-            at = budget ? "/out" : "/triangles";
-        } else if (options.delight > 0.0F && message.starts_with("\"")) {
-            at = "/delight";
-        } else if (message.starts_with("the model has no triangles") ||
-                   message.starts_with("the model's triangles span")) {
-            at = "/collision";
-        } else if (message.find("height") != std::string::npos) {
-            at = "/height";
+    scene3d::CleanupReport report;
+    if (Reply cleaned = clean_up(request, model, "", "/path", report); !cleaned.ok) {
+        // A budget from the storyboard is the one for out.
+        if (!request.budget.empty() && cleaned.data["path"] == "/triangles") {
+            return param_error(code::kInvalidParams, "/out",
+                               cleaned.message.substr(std::string_view("/triangles: ").size()));
         }
-        std::string text = message;
-        if (budget && at == "/out") {
-            text += ", which " + budget->id + " allows; pass triangles to aim elsewhere";
-        }
-        return param_error(code::kInvalidParams, at, text);
+        return cleaned;
     }
-    auto glb = scene3d::write_glb(model, out, read);
+    auto glb = scene3d::write_glb(model, out, project_files(session));
     if (!glb) {
         return Reply::failure(glb.error());
     }
 
-    const scene3d::ModelSummary summary = scene3d::summarize(model);
-    json::Value result;
+    json::Value result = cleanup_result(request, report, model);
     result["out"] = out;
-    result["triangles"] = json::Array{static_cast<std::int64_t>(report.value().triangles_before),
-                                      static_cast<std::int64_t>(report.value().triangles)};
-    if (budget) {
-        result["budget"] = budget->id;
-    }
-    result["size"] = numbers(summary.bounds.max - summary.bounds.min);
-    result["pivot"] = numbers(summary.pivot);
-    if (report.value().unwrapped > 0) {
-        result["unwrapped"] = static_cast<std::int64_t>(report.value().unwrapped);
-    }
-    if (report.value().delit > 0) {
-        result["delit"] = static_cast<std::int64_t>(report.value().delit);
-        if (const std::optional<Vec3>& light = report.value().light; light) {
-            result["light"] = numbers(*light);
-        }
-    }
-    if (!summary.collision.empty()) {
-        // How many shapes of each kind it collides as.
-        std::int64_t convex = 0;
-        for (const scene3d::ModelSummary::Collision& shape : summary.collision) {
-            convex += shape.convex ? 1 : 0;
-        }
-        json::Value shapes;
-        if (convex > 0) {
-            shapes["convex"] = convex;
-        }
-        if (convex < static_cast<std::int64_t>(summary.collision.size())) {
-            shapes["trimesh"] = static_cast<std::int64_t>(summary.collision.size()) - convex;
-        }
-        result["collision"] = std::move(shapes);
-    }
     auto before = session.read_project_file(out);
     if (!before) {
         return Reply::failure(before.error());
@@ -297,16 +209,7 @@ Reply model_retarget(Session& session, const json::Value& params) {
                            params.find("bone_map") != nullptr ? "/bone_map" : "/path",
                            report.error().message);
     }
-    const scene3d::ModelReader read = [&session](std::string_view file) -> Result<std::string> {
-        auto bytes = session.read_project_file(file);
-        if (!bytes) {
-            return bytes.error();
-        }
-        if (!bytes.value()) {
-            return make_error(ErrorCode::NotFound, quoted(file) + " doesn't exist");
-        }
-        return std::move(*bytes.value());
-    };
+    const scene3d::ModelReader read = project_files(session);
     auto glb = scene3d::write_glb(model, out, read);
     if (!glb) {
         return Reply::failure(glb.error());
@@ -359,12 +262,7 @@ Reply model_retarget(Session& session, const json::Value& params) {
 
 } // namespace
 
-void register_model_cleanup_commands(Registry& registry) {
-    json::Value path = property("string", "The model file: .gltf, .glb, .obj, .fbx, .blend or "
-                                          ".model.json, project path.");
-    path["minLength"] = 1;
-    json::Value out = property("string", "The .glb file to write. Default: path as a .glb.");
-    out["minLength"] = 1;
+json::Object cleanup_properties() {
     json::Value up = property("string", "The axis the model's up is along in its file, turned to "
                                         "y: \"z\" for most CAD and Blender exports without "
                                         "glTF's conversion. Default \"y\".");
@@ -398,6 +296,151 @@ void register_model_cleanup_commands(Registry& registry) {
     json::Value max_hulls = property("integer", "The most hulls \"decompose\" makes. Default 16.");
     max_hulls["minimum"] = 1;
     max_hulls["maximum"] = 256;
+    return {{"up", std::move(up)},
+            {"scale", std::move(scale)},
+            {"height", std::move(height)},
+            {"pivot", std::move(pivot)},
+            {"triangles", std::move(triangles)},
+            {"uvs", std::move(uvs)},
+            {"delight", std::move(delight)},
+            {"collision", std::move(collision)},
+            {"max_hulls", std::move(max_hulls)}};
+}
+
+Reply read_cleanup(Session& session, const json::Value& params, const std::string& out,
+                   std::string_view at, CleanupRequest& request) {
+    const std::string base(at);
+    scene3d::CleanupOptions& options = request.options;
+    if (const json::Value* up = params.find("up"); up != nullptr) {
+        options.up = up->as_string();
+    }
+    if (const json::Value* scale = params.find("scale"); scale != nullptr) {
+        options.scale = static_cast<float>(scale->as_double());
+    }
+    if (const json::Value* height = params.find("height"); height != nullptr) {
+        if (params.find("scale") != nullptr) {
+            return param_error(code::kInvalidParams, base + "/height",
+                               "give scale or height, not both");
+        }
+        options.height = static_cast<float>(height->as_double());
+    }
+    if (const json::Value* pivot = params.find("pivot"); pivot != nullptr) {
+        const json::Array& point = pivot->as_array();
+        options.pivot =
+            Vec3{static_cast<float>(point[0].as_double()), static_cast<float>(point[1].as_double()),
+                 static_cast<float>(point[2].as_double())};
+    }
+    // The budget: the params', else the storyboard's tightest for the file written.
+    if (const json::Value* triangles = params.find("triangles"); triangles != nullptr) {
+        options.triangles = static_cast<std::size_t>(triangles->as_int());
+    } else {
+        auto loaded = storyboard::load(
+            [&session](std::string_view file) { return session.read_project_file(file); });
+        std::optional<storyboard::BudgetLimit> budget;
+        if (loaded) {
+            budget = storyboard::budget_for(loaded.value().entries, out, "triangles");
+        }
+        if (budget) {
+            options.triangles = static_cast<std::size_t>(budget->most);
+            request.budget = budget->id;
+        }
+    }
+    const json::Value* uvs = params.find("uvs");
+    options.uvs = uvs == nullptr || uvs->as_bool();
+    if (const json::Value* collision = params.find("collision"); collision != nullptr) {
+        options.collision = collision->as_string();
+    }
+    if (const json::Value* max_hulls = params.find("max_hulls"); max_hulls != nullptr) {
+        if (options.collision != "decompose") {
+            return param_error(code::kInvalidParams, base + "/max_hulls",
+                               "max_hulls goes with collision \"decompose\"");
+        }
+        options.max_hulls = static_cast<std::size_t>(max_hulls->as_int());
+    }
+    if (const json::Value* delight = params.find("delight"); delight != nullptr) {
+        options.delight = static_cast<float>(delight->as_double());
+        options.read = project_files(session);
+    }
+    return Reply::success({});
+}
+
+Reply clean_up(const CleanupRequest& request, scene3d::Model& model, std::string_view at,
+               std::string_view path_at, scene3d::CleanupReport& report) {
+    const scene3d::CleanupOptions& options = request.options;
+    auto cleaned = scene3d::cleanup_model(model, options);
+    if (cleaned) {
+        report = std::move(cleaned).value();
+        return Reply::success({});
+    }
+    const std::string base(at);
+    std::string where(path_at);
+    const std::string& message = cleaned.error().message;
+    if (message.starts_with("up ")) {
+        where = base + "/up";
+    } else if (message.starts_with("the simplifier")) {
+        where = base + "/triangles";
+    } else if (options.delight > 0.0F && message.starts_with("\"")) {
+        where = base + "/delight";
+    } else if (message.starts_with("the model has no triangles") ||
+               message.starts_with("the model's triangles span")) {
+        where = base + "/collision";
+    } else if (message.find("height") != std::string::npos) {
+        where = base + "/height";
+    }
+    std::string text = message;
+    if (!request.budget.empty() && where == base + "/triangles") {
+        text += ", which " + request.budget + " allows; pass triangles to aim elsewhere";
+    }
+    return param_error(code::kInvalidParams, where, text);
+}
+
+json::Value cleanup_result(const CleanupRequest& request, const scene3d::CleanupReport& report,
+                           const scene3d::Model& model) {
+    const scene3d::ModelSummary summary = scene3d::summarize(model);
+    json::Value result;
+    result["triangles"] = json::Array{static_cast<std::int64_t>(report.triangles_before),
+                                      static_cast<std::int64_t>(report.triangles)};
+    if (!request.budget.empty()) {
+        result["budget"] = request.budget;
+    }
+    result["size"] = numbers(summary.bounds.max - summary.bounds.min);
+    result["pivot"] = numbers(summary.pivot);
+    if (report.unwrapped > 0) {
+        result["unwrapped"] = static_cast<std::int64_t>(report.unwrapped);
+    }
+    if (report.delit > 0) {
+        result["delit"] = static_cast<std::int64_t>(report.delit);
+        if (const std::optional<Vec3>& light = report.light; light) {
+            result["light"] = numbers(*light);
+        }
+    }
+    if (!summary.collision.empty()) {
+        // How many shapes of each kind it collides as.
+        std::int64_t convex = 0;
+        for (const scene3d::ModelSummary::Collision& shape : summary.collision) {
+            convex += shape.convex ? 1 : 0;
+        }
+        json::Value shapes;
+        if (convex > 0) {
+            shapes["convex"] = convex;
+        }
+        if (convex < static_cast<std::int64_t>(summary.collision.size())) {
+            shapes["trimesh"] = static_cast<std::int64_t>(summary.collision.size()) - convex;
+        }
+        result["collision"] = std::move(shapes);
+    }
+    return result;
+}
+
+void register_model_cleanup_commands(Registry& registry) {
+    json::Value path = property("string", "The model file: .gltf, .glb, .obj, .fbx, .blend or "
+                                          ".model.json, project path.");
+    path["minLength"] = 1;
+    json::Value out = property("string", "The .glb file to write. Default: path as a .glb.");
+    out["minLength"] = 1;
+    json::Object properties = cleanup_properties();
+    properties.emplace("path", std::move(path));
+    properties.emplace("out", std::move(out));
     registry.add({
         .name = "model.cleanup",
         .description = "Makes a model game-ready as a .glb file: turns its up to y, scales it to "
@@ -407,18 +450,7 @@ void register_model_cleanup_commands(Registry& registry) {
                        "after, size and pivot.",
         .capabilities = {Capability::Edit, Capability::Filesystem},
         .effect = Effect::Edit,
-        .params = params_schema({{"path", std::move(path)},
-                                 {"out", std::move(out)},
-                                 {"up", std::move(up)},
-                                 {"scale", std::move(scale)},
-                                 {"height", std::move(height)},
-                                 {"pivot", std::move(pivot)},
-                                 {"triangles", std::move(triangles)},
-                                 {"uvs", std::move(uvs)},
-                                 {"delight", std::move(delight)},
-                                 {"collision", std::move(collision)},
-                                 {"max_hulls", std::move(max_hulls)}},
-                                {"path"}),
+        .params = params_schema(std::move(properties), {"path"}),
         .handler = model_cleanup,
     });
 
