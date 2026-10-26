@@ -1,5 +1,7 @@
 #include "slash/library/commands.hpp"
 
+#include "review.hpp"
+
 #include "slash/ai/config.hpp"
 #include "slash/asset/assets.hpp"
 #include "slash/canvas/canvas.hpp"
@@ -12,6 +14,7 @@
 #include "slash/library/team.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
+#include "slash/scene3d/geometry.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/recipe.hpp"
 #include "slash/storyboard/storyboard.hpp"
@@ -64,6 +67,10 @@ constexpr std::string_view kFrameCheck = "asset.check";
 // An image drawn at this share of its size or less would look the same as a smaller file.
 constexpr float kOversized = 0.25F;
 constexpr std::int64_t kMaxCheckTicks = 600;
+// asset.review warns about a model larger or smaller than these, in meters on its longest side:
+// likely made in other units.
+constexpr float kLargestModel = 100.0F;
+constexpr float kSmallestModel = 0.01F;
 // How many files deep asset.check follows what a scene names to find the images it draws.
 constexpr int kNamedDepth = 4;
 
@@ -790,18 +797,6 @@ Result<json::Array> place_music(Session& session, Libraries& libs, const Record&
     return written;
 }
 
-// What a storyboard budget limits in a model: its triangles and the images it holds.
-storyboard::ModelFacts model_facts(const scene3d::Model& model) {
-    storyboard::ModelFacts facts;
-    facts.triangles = scene3d::summarize(model).triangles;
-    for (const scene3d::ModelImage& image : model.images) {
-        if (image.path.empty()) {
-            facts.images.push_back({.width = image.image.width, .height = image.image.height});
-        }
-    }
-    return facts;
-}
-
 // Reads the files a project's model names from the project.
 scene3d::ModelReader project_reader(Session& session) {
     return [&session](std::string_view name) -> Result<std::string> {
@@ -814,6 +809,22 @@ scene3d::ModelReader project_reader(Session& session) {
         }
         return std::move(*bytes.value());
     };
+}
+
+// What a storyboard budget limits in a model: its triangles, the images it holds and its texel
+// density.
+storyboard::ModelFacts model_facts(Session& session, const scene3d::Model& model) {
+    storyboard::ModelFacts facts;
+    facts.triangles = scene3d::summarize(model).triangles;
+    for (const scene3d::ModelImage& image : model.images) {
+        if (image.path.empty()) {
+            facts.images.push_back({.width = image.image.width, .height = image.image.height});
+        }
+    }
+    if (auto geometry = scene3d::check_geometry(model, project_reader(session)); geometry) {
+        facts.texel_density = geometry.value().texel_density;
+    }
+    return facts;
 }
 
 // The problems the storyboard's palettes and budgets that cover a project path find in an image
@@ -836,7 +847,7 @@ std::optional<std::vector<std::string>> style_problems(Session& session, const s
                 if (!model) {
                     return std::nullopt;
                 }
-                return model_facts(model.value());
+                return model_facts(session, model.value());
             },
             errors);
     } else {
@@ -2703,6 +2714,266 @@ json::Value stems_property() {
     return stems;
 }
 
+// A model's size in meters as an agent reads it: "1.2 x 0.8 x 0.6".
+std::string size_text(Vec3 size) {
+    const auto meters = [](float value) {
+        std::string text = std::to_string(std::lround(value * 100.0F));
+        while (text.size() < 3) {
+            text.insert(text.begin(), '0');
+        }
+        text.insert(text.size() - 2, ".");
+        while (text.back() == '0') {
+            text.pop_back();
+        }
+        if (text.back() == '.') {
+            text.pop_back();
+        }
+        return text;
+    };
+    return meters(size.x) + " x " + meters(size.y) + " x " + meters(size.z) + " m";
+}
+
+Reply asset_review(Session& session, const json::Value& params) {
+    const std::string id = text(params, "id");
+    const std::string path = text(params, "path");
+    if (id.empty() && path.empty()) {
+        return invalid_at("", "give the library model's id, or the project model's path");
+    }
+    std::string request = text(params, "request");
+    const json::Value* record_param = params.find("record");
+    if (id.empty() && record_param != nullptr && record_param->as_bool()) {
+        return invalid_at("/record", "only a library model's review is recorded as its feedback");
+    }
+    if (!path.empty()) {
+        if (auto full = session.resolve_path(path); !full) {
+            return failure_at(full.error(), "/path");
+        }
+    }
+
+    // The model, in a folder a session can read: the project, or for a library model a copy of
+    // it (and its parts) in .slash/review/<id>.
+    std::optional<Libraries> libs;
+    std::optional<Record> record;
+    std::string root = session.options().project_root;
+    std::string model_path = path;
+    if (!id.empty()) {
+        auto opened = open_libraries(session);
+        if (!opened) {
+            return Reply::failure(opened.error());
+        }
+        libs.emplace(std::move(opened).value());
+        auto found = find_asset(session, *libs, id);
+        if (!found) {
+            return failure_at(found.error(), "/id");
+        }
+        record = std::move(found).value();
+        if (record->type != "model") {
+            const char* article = record->type == "image" ? " is an " : " is a ";
+            return invalid_at("/id",
+                              short_id(record->id) + article + record->type + ", not a model");
+        }
+        if (request.empty()) {
+            const json::Value* prompt =
+                record->request.is_object() ? record->request.find("prompt") : nullptr;
+            request = prompt != nullptr && prompt->is_string() ? prompt->as_string()
+                                                               : record->description;
+        }
+        auto scratch = session.resolve_path(".slash/review/" + short_id(record->id));
+        if (!scratch) {
+            return Reply::failure(scratch.error());
+        }
+        root = scratch.value();
+        command::SessionOptions options = session.options();
+        options.project_root = root;
+        options.capture_logs = false;
+        Session copier(session.components(), session.commands(), options);
+        model_path = "model." + record->format;
+        if (auto copied = copy_into_project(copier, *libs, *record, model_path); !copied) {
+            return failure_at(copied.error(), "/id");
+        }
+    }
+
+    command::SessionOptions reading = session.options();
+    reading.project_root = root;
+    reading.capture_logs = false;
+    reading.write_files = false;
+    Session reader(session.components(), session.commands(), reading);
+    const scene3d::ModelReader read = project_reader(reader);
+    auto bytes = read(model_path);
+    if (!bytes) {
+        return failure_at(bytes.error(), id.empty() ? "/path" : "/id");
+    }
+    auto model = scene3d::load_model(bytes.value(), model_path, read);
+    if (!model) {
+        return failure_at(model.error(), id.empty() ? "/path" : "/id");
+    }
+    const scene3d::ModelSummary summary = scene3d::summarize(model.value());
+    auto geometry = scene3d::check_geometry(model.value(), read);
+    if (!geometry) {
+        return failure_at(geometry.error(), id.empty() ? "/path" : "/id");
+    }
+    const Vec3 size = summary.bounds.max - summary.bounds.min;
+
+    // What the storyboard's budgets and the model's own checks say.
+    json::Array errors;
+    json::Array warnings;
+    const json::Object entries = storyboard_entries(session);
+    if (!entries.empty()) {
+        std::vector<storyboard::FileError> found;
+        storyboard::check_models(
+            entries, {path},
+            [&](std::string_view /*path*/) -> std::optional<storyboard::ModelFacts> {
+                storyboard::ModelFacts facts = model_facts(reader, model.value());
+                return facts;
+            },
+            found);
+        for (const storyboard::FileError& error : found) {
+            errors.emplace_back(error.message);
+        }
+    }
+    if (record && !record->checks.is_null()) {
+        for (const json::ValidationError& error :
+             scene3d::check_model_against(model.value(), record->checks)) {
+            errors.emplace_back("checks" + error.path + ": " + error.message);
+        }
+    }
+    const float largest = std::max({size.x, size.y, size.z});
+    if (largest > kLargestModel) {
+        warnings.emplace_back("is " + size_text(size) +
+                              "; one made in centimeters needs a scale of 0.01");
+    } else if (largest < kSmallestModel) {
+        warnings.emplace_back("is " + size_text(size) +
+                              "; one made in kilometers or with a tiny scale needs sizing");
+    }
+    if (geometry.value().holes > 0) {
+        warnings.emplace_back("has " + std::to_string(geometry.value().holes) + " hole" +
+                              (geometry.value().holes == 1 ? "" : "s") + " (" +
+                              std::to_string(geometry.value().open_edges) +
+                              " open edges), which show unless it is open on purpose");
+    }
+    if (geometry.value().degenerate > 0) {
+        warnings.emplace_back("has " + std::to_string(geometry.value().degenerate) +
+                              " triangles with no area");
+    }
+
+    // The views, and what a model sees in them.
+    review::Views views;
+    if (const json::Value* count = params.find("views"); count != nullptr) {
+        views.count = static_cast<std::uint32_t>(count->as_int());
+    }
+    if (const json::Value* pixels = params.find("size"); pixels != nullptr) {
+        views.size = static_cast<std::uint32_t>(pixels->as_int());
+    }
+    auto images = review::turntable(session, root, model_path, summary.bounds, views);
+    if (!images) {
+        return Reply::failure(images.error());
+    }
+    json::Array written;
+    if (const std::string out = text(params, "out"); !out.empty()) {
+        for (std::size_t i = 0; i < images.value().size(); ++i) {
+            const std::string file = out + "/view-" + std::to_string(i + 1) + ".png";
+            auto full = session.resolve_path(file);
+            if (!full) {
+                return failure_at(full.error(), "/out");
+            }
+            auto png = render::encode_png(images.value()[i]);
+            if (!png) {
+                return Reply::failure(png.error());
+            }
+            if (auto wrote = session.write_file(full.value(), png.value()); !wrote) {
+                return failure_at(wrote.error(), "/out");
+            }
+            written.emplace_back(file);
+        }
+    }
+    const json::Value* ask_param = params.find("ask");
+    const std::string role = text(params, "role");
+    bool ask = ask_param != nullptr ? ask_param->as_bool() : true;
+    std::optional<std::string> note;
+    if (ask_param == nullptr && role.empty()) {
+        auto config = ai::load_config(session.options().project_root);
+        if (config && config.value().providers.empty()) {
+            ask = false;
+            note = "no providers.json, so no model looked at the views";
+        }
+    }
+    if (ask && request.empty()) {
+        return invalid_at("/request", "say what the model should be, for the reviewing model");
+    }
+    std::optional<review::Verdict> verdict;
+    if (ask) {
+        const std::string facts =
+            size_text(size) + ", " + std::to_string(summary.triangles) + " triangles";
+        auto asked = review::ask(session, role, request, facts, images.value());
+        if (!asked) {
+            return role.empty() ? Reply::failure(asked.error())
+                                : failure_at(asked.error(), "/role");
+        }
+        verdict = std::move(asked).value();
+    }
+
+    // Rejected for a broken budget or check, or a model that saw it doesn't match.
+    const bool accepted = errors.empty() && (!verdict || verdict->matches);
+    std::string reason;
+    if (!errors.empty()) {
+        reason = errors.front().as_string();
+    } else if (verdict && !verdict->problems.empty()) {
+        reason = verdict->problems.front().find("problem")->as_string();
+    } else if (verdict && !verdict->matches) {
+        reason = "doesn't match the request";
+    } else {
+        reason = verdict ? "matches the request" : "passes its checks";
+    }
+    const bool record_it = record_param == nullptr || record_param->as_bool();
+    if (record_it && libs && record) {
+        record_check(session, *libs, *record,
+                     {.verdict = accepted ? "accepted" : "rejected",
+                      .reason = trimmed(reason),
+                      .source = "asset.review"});
+    }
+
+    json::Value out;
+    out["verdict"] = accepted ? "accepted" : "rejected";
+    if (!errors.empty()) {
+        out["errors"] = std::move(errors);
+    }
+    if (!warnings.empty()) {
+        out["warnings"] = std::move(warnings);
+    }
+    out["size"] = json::Array{std::round(size.x * 1e4) / 1e4, std::round(size.y * 1e4) / 1e4,
+                              std::round(size.z * 1e4) / 1e4};
+    out["triangles"] = static_cast<std::int64_t>(summary.triangles);
+    out["holes"] = static_cast<std::int64_t>(geometry.value().holes);
+    if (const std::optional<float> density = geometry.value().texel_density) {
+        out["texel_density"] = static_cast<std::int64_t>(std::lround(*density));
+    }
+    if (!written.empty()) {
+        out["views"] = std::move(written);
+    } else {
+        out["views"] = static_cast<std::int64_t>(images.value().size());
+    }
+    if (verdict) {
+        json::Value seen;
+        seen["matches"] = verdict->matches;
+        seen["problems"] = std::move(verdict->problems);
+        if (verdict->unverified > 0) {
+            seen["unverified"] = verdict->unverified;
+        }
+        seen["model"] = verdict->model;
+        if (verdict->replayed) {
+            seen["replayed"] = true;
+        }
+        out["review"] = std::move(seen);
+    }
+    if (note) {
+        out["note"] = *note;
+    }
+    if (record_it && record && session.options().write_files) {
+        out["recorded"] = true;
+    }
+    return libs ? libs->noted(Reply::success(std::move(out))) : Reply::success(std::move(out));
+}
+
 // The params generate and refine share.
 json::Object shared_properties() {
     json::Value seconds = property("number", "A sound's or music's length.");
@@ -2874,6 +3145,34 @@ void register_commands(command::Registry& registry) {
         .effect = command::Effect::Read,
         .params = params_schema({{"scenes", std::move(scenes)}, {"ticks", std::move(ticks)}}),
         .handler = asset_check,
+    });
+
+    json::Value view_count = integer("How many turntable views; default 4.", 1, 8);
+    json::Value view_size = integer("Their width and height in pixels; default 256.", 64, 1024);
+    registry.add({
+        .name = "asset.review",
+        .description = "Reviews a model: its triangles, size, holes and texel density against "
+                       "the storyboard's budgets and its checks, then turntable views drawn "
+                       "headless and judged by a vision model from providers.json against the "
+                       "request. A library model's verdict is recorded as its feedback.",
+        .capabilities = {Capability::Read, Capability::Filesystem, Capability::Network},
+        .effect = command::Effect::Read,
+        .params = params_schema({
+            {"id", property("string", "A library model, or the start of its ID.")},
+            {"path", property("string", "A project model; with id, where it will go, whose "
+                                        "budgets it is held to.")},
+            {"request", property("string", "What it should be. Default: what it was generated "
+                                           "from, or its description.")},
+            {"views", std::move(view_count)},
+            {"size", std::move(view_size)},
+            {"out", property("string", "A project folder to write the views to as "
+                                       "view-1.png and on.")},
+            {"ask", property("boolean", "false: no vision model. Default: ask when "
+                                        "providers.json names one.")},
+            {"role", property("string", "The role or provider to ask.")},
+            {"record", property("boolean", "false: don't record a library model's verdict.")},
+        }),
+        .handler = asset_review,
     });
 
     registry.add({

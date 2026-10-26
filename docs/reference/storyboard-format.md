@@ -79,7 +79,7 @@ the kind shown.
 | `palette` | style | `colors`: names mapped to `"#rrggbb"`; `tolerance` (integer, 0 to 255) | Named colors the art uses; the textures in its `links` may use only these |
 | `tone` | style | | The mood and voice of the game, or of a part |
 | `reference` | style | | Art or writing to follow; put the file in `links` |
-| `budget` | style | `triangles`, `texture_size` (integers) | Limits for the assets in its `links`, or for all |
+| `budget` | style | `triangles`, `texture_size`, `texel_density` (integers) | Limits for the assets in its `links`, or for all; `texel_density` is the texels a meter models' textures should have, from half to twice it |
 | `character` | world | `faction` (faction), `home` (place), `traits` (strings), `voice` | A person or creature |
 | `place` | world | `region` (place) | A location |
 | `faction` | world | `leader` (character) | A group, side or organization |
@@ -189,8 +189,10 @@ storyboard after a task. It reports as errors:
   and `tolerance` lets each channel be that far off, for art that was filtered or compressed.
 - a model (`.gltf`, `.glb`, `.obj`, `.fbx`, `.model.json`, and `.blend` where Blender may run)
   with more triangles than a `budget`'s `triangles`, or holding an image larger on a side than
-  its `texture_size` (an image in a file of its own is a texture, checked as above). Palettes
-  leave models alone, since lights change their colors.
+  its `texture_size` (an image in a file of its own is a texture, checked as above), or whose
+  albedo textures have less than half or more than twice a budget's `texel_density` texels a
+  meter, measured over every textured triangle. Palettes leave models alone, since lights change
+  their colors.
 
 A link to a file that does not exist is a warning, since open work can link files still to be
 made. So, once the storyboard has a `cue`, is each scene no cue plays in and each story beat no
