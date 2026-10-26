@@ -42,6 +42,7 @@
 #include "slash/scene3d/ik.hpp"
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/model.hpp"
+#include "slash/scene3d/recipe.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
 #include "slash/soundtrack/score.hpp"
@@ -461,6 +462,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "voxel_gi") {
         return Reply::success(scene3d::voxel_gi_schema());
+    }
+    if (kind == "model") {
+        return Reply::success(scene3d::model_recipe_schema());
     }
     if (kind == "replay") {
         return Reply::success(replay_schema());
@@ -2555,7 +2559,7 @@ Reply model_inspect(Session& session, const json::Value& params) {
     if (id.empty() == path.empty()) {
         return param_error(code::kInvalidParams, "",
                            "give id (an entity whose MeshInstance3D draws a model) or path (a "
-                           ".gltf, .glb, .obj, .fbx or .blend file)");
+                           ".gltf, .glb, .obj, .fbx, .blend or .model.json file)");
     }
     const world::World& world = session.world();
     if (!id.empty()) {
@@ -2572,9 +2576,10 @@ Reply model_inspect(Session& session, const json::Value& params) {
         }
         path = instance->mesh;
     } else if (!scene3d::is_model_path(path)) {
-        return param_error(code::kInvalidParams, "/path",
-                           quoted(path) +
-                               " isn't a model: give a .gltf, .glb, .obj, .fbx or .blend file");
+        return param_error(
+            code::kInvalidParams, "/path",
+            quoted(path) +
+                " isn't a model: give a .gltf, .glb, .obj, .fbx, .blend or .model.json file");
     }
     auto loaded = session.assets().load<scene3d::Model>(path);
     if (!loaded) {
@@ -6153,16 +6158,16 @@ void register_builtin_commands(Registry& registry) {
                                           "\"navmesh\" (.navmesh.json), \"navpoly\" "
                                           "(.navpoly.json), \"meshlib\" (.meshlib.json), "
                                           "\"lightmap\" (.lightmap.json), \"voxel_gi\" "
-                                          "(.voxelgi.json), "
+                                          "(.voxelgi.json), \"model\" (.model.json), "
                                           "\"replay\" (.replay.json), \"score\" (.score.json) "
                                           "or \"storyboard\" for those files, \"component\" for "
                                           "one component's fields, \"command\" for a command's "
                                           "params.");
-    kind["enum"] = json::Array{"scene",      "prefab",           "frames",  "material", "animation",
-                               "animtree",   "process_material", "tileset", "font",     "theme",
-                               "audio",      "bus_layout",       "navmesh", "navpoly",  "meshlib",
-                               "lightmap",   "voxel_gi",         "replay",  "test",     "score",
-                               "storyboard", "component",        "command"};
+    kind["enum"] = json::Array{"scene",    "prefab",           "frames",    "material", "animation",
+                               "animtree", "process_material", "tileset",   "font",     "theme",
+                               "audio",    "bus_layout",       "navmesh",   "navpoly",  "meshlib",
+                               "lightmap", "voxel_gi",         "model",     "replay",   "test",
+                               "score",    "storyboard",       "component", "command"};
     registry.add({
         .name = "schema.get",
         .description =
@@ -6170,7 +6175,7 @@ void register_builtin_commands(Registry& registry) {
             ".anim.json, .animtree.json, .process_material.json, .tileset.json, .font.json, "
             ".theme.json, .audio.json, "
             ".bus_layout.json, .navmesh.json, .navpoly.json, .meshlib.json, .lightmap.json, "
-            ".voxelgi.json, "
+            ".voxelgi.json, .model.json, "
             ".replay.json, "
             ".test.json, "
             ".score.json or storyboard "
@@ -6982,7 +6987,9 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema({
             {"id", id_property("An entity whose MeshInstance3D draws a model. Or give path.")},
-            {"path", property("string", "A .gltf, .glb, .obj, .fbx or .blend file. Or give id.")},
+            {"path",
+             property("string",
+                      "A .gltf, .glb, .obj, .fbx, .blend or .model.json file. Or give id.")},
         }),
         .handler = model_inspect,
     });

@@ -3,6 +3,7 @@
 #include "slash/core/math.hpp"
 #include "slash/render/mesh.hpp"
 #include "slash/scene3d/model.hpp"
+#include "slash/scene3d/primitive.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/scene3d/surface.hpp"
@@ -88,6 +89,26 @@ struct CsgMesh {
 // without, it is made on each call, models read with the world's file reader.
 [[nodiscard]] std::shared_ptr<const CsgMesh> csg_mesh(const world::World& world,
                                                       const world::Tree3D& tree, entt::entity root);
+
+// A CSG shape and the shapes under it made in code rather than read from a world's entities, as
+// model recipes (recipe.hpp) make them. Each shape is placed by local in its parent (the root's
+// isn't used), drawn with material (Godot's default with none), and its problems are reported at
+// where, with no entity, its fields' below it ("<where>/radius").
+struct CsgTree {
+    CsgShape shape;
+    world::Affine3D local;
+    std::optional<world::StandardMaterial3D> material;
+    // A CSGMesh3D's meshes: a model's, placed as its parts are at rest, or a primitive mesh's.
+    std::shared_ptr<const Model> model;
+    std::optional<Primitive> primitive;
+    // A CSGPolygon3D's curve in path mode, in the shape's own space.
+    std::optional<world::Path3D> path;
+    std::string where;
+    std::vector<CsgTree> children;
+};
+
+// The mesh a tree makes, as a root shape's in a world.
+[[nodiscard]] std::shared_ptr<const CsgMesh> csg_mesh(const CsgTree& root);
 
 // Keeps each root's mesh in the world until it changes, reading CSGMesh3D models with load.
 // Sessions and games call it through canvas::install.

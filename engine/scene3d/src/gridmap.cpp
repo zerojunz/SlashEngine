@@ -90,8 +90,8 @@ json::Value make_schema() {
                           "cell's space, as Godot's MeshLibrary item.";
     json::Value& properties = item["properties"];
     properties["mesh"]["type"] = "string";
-    properties["mesh"]["description"] =
-        "A .gltf, .glb, .obj, .fbx or .blend file's meshes, at rest; or use primitive.";
+    properties["mesh"]["description"] = "A .gltf, .glb, .obj, .fbx, .blend or .model.json file's "
+                                        "meshes, at rest; or use primitive.";
     properties["primitive"] = std::move(primitive);
     properties["material"] = ref("StandardMaterial3D");
     properties["material"]["description"] =
@@ -207,7 +207,8 @@ void read_items(const json::Value& doc, MeshLibrary* out,
         if (const json::Value* mesh = value.find("mesh"); mesh != nullptr) {
             item.mesh = mesh->as_string();
             if (!item.mesh.empty() && !is_model_path(item.mesh)) {
-                errors.push_back({at + "/mesh", "is not a .gltf, .glb, .obj, .fbx or .blend file"});
+                errors.push_back(
+                    {at + "/mesh", "is not a .gltf, .glb, .obj, .fbx, .blend or .model.json file"});
             }
         }
         if (const json::Value* primitive = value.find("primitive"); primitive != nullptr) {
