@@ -226,7 +226,8 @@ public:
     // the ReflectionProbes' cubes that need it are drawn here, in frames of their own on the
     // device, into an atlas as reflection_atlas says; so call it before the frame begins. Its
     // VoxelGIs' cones are traced as Godot's high quality setting traces them where
-    // voxel_gi_high_quality is set.
+    // voxel_gi_high_quality is set. With use_taa, the frame is antialiased over time, as Godot's
+    // use_taa, its meshes given the transforms they were drawn at in the last frame.
     [[nodiscard]] std::optional<Frame3D>
     prepare(const world::World& world, float width, float height, double interpolation,
             render::Color clear, const render::ShadowSettings& shadows = {}, double time = 0.0,
@@ -234,7 +235,7 @@ public:
             const render::SsaoSettings& ssao = {}, const render::SsrSettings& ssr = {},
             const render::ReflectionAtlasSettings& reflection_atlas = {},
             render::RenderMethod method = render::RenderMethod::ForwardPlus,
-            bool voxel_gi_high_quality = false);
+            bool voxel_gi_high_quality = false, bool use_taa = false);
     // Draws the meshes prepare found into the frame begun with its scene.
     [[nodiscard]] Result<void> draw();
 
@@ -267,6 +268,9 @@ private:
         render::Material3D material;
         std::uint32_t layers = 1;
         render::ShadowCasting shadows = render::ShadowCasting::On;
+        entt::entity entity = entt::null; // the entity it draws
+        // Where it was drawn in the last frame with TAA, when that was somewhere else.
+        std::optional<std::array<float, 16>> previous;
     };
 
     // What a probe's cube was drawn from: it is drawn again when this changes.
@@ -451,6 +455,9 @@ private:
     std::unordered_map<entt::entity, Cached> cached_;
     std::unordered_map<std::string, Shared> shared_;
     std::vector<Draw> draws_;
+    // Where each entity's draws were drawn in the last frame with TAA, by the entity and the
+    // draw's place among its draws.
+    std::map<std::pair<entt::entity, std::size_t>, std::array<float, 16>> drawn_;
     std::vector<Problem> problems_;
     // The reflection probes' atlas, its cubes' size and count, and each probe's cube.
     render::TextureId atlas_ = render::TextureId::None;

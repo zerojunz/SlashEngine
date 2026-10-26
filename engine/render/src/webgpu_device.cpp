@@ -9,6 +9,7 @@
 #include "forward_post_shaders.hpp"
 #include "material_shaders.hpp"
 #include "mesh_clustered_shaders.hpp"
+#include "mesh_motion_shaders.hpp"
 #include "mesh_normal_shaders.hpp"
 #include "mesh_shaders.hpp"
 #include "mesh_shading.hpp"
@@ -30,6 +31,8 @@
 #include "ssr.hpp"
 #include "ssr_shaders.hpp"
 #include "ssr_trace_shaders.hpp"
+#include "taa.hpp"
+#include "taa_shaders.hpp"
 #include "uniforms.hpp"
 
 #include "slash/core/log.hpp"
@@ -98,6 +101,8 @@ constexpr WGPUTextureFormat kRadianceFormat = WGPUTextureFormat_RGB10A2Unorm;
 constexpr WGPUTextureFormat kDepthFormat = WGPUTextureFormat_Depth32Float;
 // Forward+'s normal-roughness prepass draws into bytes.
 constexpr WGPUTextureFormat kNormalFormat = WGPUTextureFormat_RGBA8Unorm;
+// TAA's motion vectors are two half floats, as Godot's velocity buffer.
+constexpr WGPUTextureFormat kVelocityFormat = WGPUTextureFormat_RG16Float;
 // The largest shadow atlas: WebGPU's default maxTextureDimension2D.
 constexpr std::uint32_t kMaxShadowAtlas = 8192;
 
@@ -162,7 +167,7 @@ constexpr std::uint64_t kLargestUniforms = std::max<std::uint64_t>(
      kComputeUniformBytes, sizeof(MeshInstanceUniforms), sizeof(MeshSurfaceUniforms),
      sizeof(MeshSceneUniforms), sizeof(MeshShadowUniforms), sizeof(MeshShadowPassUniforms),
      sizeof(PostUniforms), sizeof(SkyUniforms), sizeof(RadianceUniforms), sizeof(SsaoUniforms),
-     sizeof(SsrUniforms)});
+     sizeof(SsrUniforms), sizeof(MeshCameraUniforms), sizeof(TaaUniforms)});
 // The bind groups are SDL's GPU API's, which the HLSL's registers name and the WGSL keeps
 // (cmake/compile_shaders.cmake): a vertex stage's uniforms in group 1, a fragment stage's
 // textures in group 2 (samplers kSamplerBinding after their textures) and its uniforms in group
@@ -371,6 +376,7 @@ public:
         for (const auto& [id, mesh] : meshes_) {
             destroy_buffer(mesh.vertices);
             destroy_buffer(mesh.indices);
+            destroy_buffer(mesh.previous);
         }
         destroy_gpu_texture(depth_);
         for (const auto& [format, pipeline] : post_pipelines_) {
@@ -407,6 +413,14 @@ public:
                 wgpuRenderPipelineRelease(pipeline);
             }
         }
+        for (WGPURenderPipeline pipeline : motion_pipelines_) {
+            if (pipeline != nullptr) {
+                wgpuRenderPipelineRelease(pipeline);
+            }
+        }
+        if (taa_pipeline_ != nullptr) {
+            wgpuRenderPipelineRelease(taa_pipeline_);
+        }
         for (const auto& [format, pipeline] : ssao_pipelines_) {
             wgpuRenderPipelineRelease(pipeline);
         }
@@ -423,6 +437,9 @@ public:
         release_ssr_targets();
         while (!ssr_histories_.empty()) {
             forget_ssr_history(ssr_histories_.back().first);
+        }
+        while (!taa_histories_.empty()) {
+            forget_taa_history(taa_histories_.back().first);
         }
         release_pending();
         for (const GpuTexture& atlas :
@@ -486,7 +503,13 @@ public:
                                            forward_uniforms_layout_,
                                            sky_uniforms_layout_,
                                            cube_texture_layout_,
-                                           filter_uniforms_layout_}) {
+                                           filter_uniforms_layout_,
+                                           ssao_textures_layout_,
+                                           ssao_uniforms_layout_,
+                                           ssr_textures_layout_,
+                                           ssr_uniforms_layout_,
+                                           taa_textures_layout_,
+                                           taa_uniforms_layout_}) {
             if (layout != nullptr) {
                 wgpuBindGroupLayoutRelease(layout);
             }
@@ -654,6 +677,7 @@ public:
         }
         textures_.erase(it);
         forget_ssr_history(texture);
+        forget_taa_history(texture);
     }
 
     Result<ShaderId> create_shader(const CompiledShader& shader) override {
@@ -899,7 +923,9 @@ public:
                                                  indices.size_bytes()),
                         .index_count = static_cast<std::uint32_t>(indices.size()),
                         .vertex_count = vertices.size(),
-                        .bounds = mesh_bounds(vertices)};
+                        .bounds = mesh_bounds(vertices),
+                        .previous = nullptr,
+                        .moved = false};
         wgpuQueueWriteBuffer(queue_, mesh.vertices, 0, vertices.data(), vertices.size_bytes());
         wgpuQueueWriteBuffer(queue_, mesh.indices, 0, indices.data(), indices.size_bytes());
         const auto id = static_cast<MeshId>(next_mesh_++);
@@ -918,11 +944,21 @@ public:
         if (auto checked = check_mesh_update(vertices, it->second.vertex_count); !checked) {
             return checked;
         }
+        // The first update since a frame with TAA drew the mesh keeps the vertices it drew, for
+        // the motion of the next one's: the buffers swap, and the new vertices go in the other.
+        Mesh& found = it->second;
+        if (!found.moved) {
+            if (found.previous == nullptr) {
+                found.previous = create_buffer(WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst,
+                                               vertices.size_bytes());
+            }
+            std::swap(found.vertices, found.previous);
+            found.moved = true;
+        }
         // Queue writes land after the command buffers sent before them, so frames already sent
         // draw the old vertices.
-        wgpuQueueWriteBuffer(queue_, it->second.vertices, 0, vertices.data(),
-                             vertices.size_bytes());
-        it->second.bounds = mesh_bounds(vertices);
+        wgpuQueueWriteBuffer(queue_, found.vertices, 0, vertices.data(), vertices.size_bytes());
+        found.bounds = mesh_bounds(vertices);
         return {};
     }
 
@@ -931,7 +967,10 @@ public:
         if (it == meshes_.end()) {
             return;
         }
-        for (WGPUBuffer buffer : {it->second.vertices, it->second.indices}) {
+        for (WGPUBuffer buffer : {it->second.vertices, it->second.indices, it->second.previous}) {
+            if (buffer == nullptr) {
+                continue;
+            }
             // The frame being built may still draw it, so it goes once the frame is sent.
             if (in_frame_) {
                 pending_buffers_.push_back(buffer);
@@ -1023,9 +1062,12 @@ public:
         if (auto pipeline = pipeline_for(format, ShaderKind::Sprite, BlendMode::Mix); !pipeline) {
             return pipeline.error();
         }
-        // A target drawn without SSR keeps no frame before.
+        // The frames before are kept only while the target's frames draw SSR, or TAA.
         if (!frame.scene || !uses_ssr(*frame.scene)) {
             forget_ssr_history(frame.target);
+        }
+        if (!frame.scene || !uses_taa(*frame.scene)) {
+            forget_taa_history(frame.target);
         }
         if (frame.target == TextureId::None) {
             int pixels_wide = 0;
@@ -1080,6 +1122,9 @@ public:
             if (uses_ssao(*frame.scene) || uses_ssr(*frame.scene)) {
                 prepare_screen(width, height);
             }
+            if (uses_taa(*frame.scene)) {
+                prepare_taa(frame.target, width, height);
+            }
         } else if (frame.scene && post_processes(frame.scene->post)) {
             prepare_post(width, height);
         }
@@ -1118,7 +1163,8 @@ public:
     }
 
     Result<void> draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
-                           std::uint32_t layers, ShadowCasting shadows) override {
+                           std::uint32_t layers, ShadowCasting shadows,
+                           const std::optional<Mat4>& previous) override {
         if (!in_frame_) {
             return no_frame("draw_mesh");
         }
@@ -1129,24 +1175,30 @@ public:
             !checked) {
             return checked;
         }
+        if (auto checked = check_previous_transform(previous); !checked) {
+            return checked;
+        }
         if (!frame_drawn_) {
             return {}; // a skipped frame
         }
         make_depth_target(frame_width_, frame_height_);
         prepare_shadows(*frame_.scene);
         prepare_radiance(*frame_.scene);
-        MeshBatch batch{.vertices = it->second.vertices,
-                        .indices = it->second.indices,
-                        .index_count = it->second.index_count,
-                        .bounds = it->second.bounds,
-                        .pipeline =
-                            mesh_pipeline_for(world_format(*frame_.scene, frame_format_), material,
-                                              frame_.scene->method == RenderMethod::ForwardPlus),
-                        .normal_pipeline = nullptr,
-                        .bindings = {}};
-        // The prepass draws the opaque meshes' normals.
+        MeshBatch batch{
+            .vertices = it->second.vertices,
+            .indices = it->second.indices,
+            .index_count = it->second.index_count,
+            .bounds = it->second.bounds,
+            .pipeline = mesh_pipeline_for(world_format(*frame_.scene, frame_format_), material,
+                                          frame_.scene->method == RenderMethod::ForwardPlus),
+            .normal_pipeline = nullptr,
+            .bindings = {},
+            .previous_vertices = it->second.moved ? it->second.previous : it->second.vertices};
+        // SSAO's, SSR's and TAA's prepass draws the opaque meshes' normals, and with TAA their
+        // motion vectors.
         if (uses_prepass(*frame_.scene) && material.transparency != Transparency::Alpha) {
-            batch.normal_pipeline = normal_pipeline_for(material.cull);
+            batch.normal_pipeline = uses_taa(*frame_.scene) ? motion_pipeline_for(material.cull)
+                                                            : normal_pipeline_for(material.cull);
         }
         const std::array<MaterialTexture, kMeshTextures> slots = mesh_texture_slots(material);
         for (std::size_t slot = 0; slot < kMeshTextures; ++slot) {
@@ -1156,7 +1208,8 @@ public:
                                .transform = transform,
                                .material = material,
                                .layers = layers,
-                               .shadows = shadows});
+                               .shadows = shadows,
+                               .previous = previous.value_or(transform)});
         mesh_batches_.push_back(batch);
         ++stats_.draws;
         stats_.triangles += it->second.index_count / 3;
@@ -1273,6 +1326,18 @@ public:
             last_frame_at = uniforms_.add(gpu_ssr_uniforms(ssr_uniforms(
                 scene.ssr, ssr_last_frame_step(), seen, seen, frame_width_, frame_height_)));
         }
+        // TAA's pass, in a frame with meshes to blend with the target's frames before.
+        TaaHistory* taa = forward && !mesh_draws_.empty() && uses_taa(*frame_.scene)
+                              ? find_taa_history(frame_.target)
+                              : nullptr;
+        const std::uint32_t taa_uniforms_at =
+            taa != nullptr ? uniforms_.add(taa_uniforms(frame_width_, frame_height_)) : 0;
+        // TAA blends frames that draw meshes; one without starts it again.
+        if (mesh_draws_.empty() && frame_.scene && uses_taa(*frame_.scene)) {
+            if (TaaHistory* frames = find_taa_history(frame_.target); frames != nullptr) {
+                frames->primed = false;
+            }
+        }
         std::optional<ProbeOffsets> probe_offsets;
         if (capture && capture->face + 1 == kCubeFaces) {
             probe_offsets = add_probe_uniforms();
@@ -1289,8 +1354,8 @@ public:
         if (radiance_draws_) {
             encode_radiance(encoder, *frame_.scene, radiance_offsets);
         }
-        if (ssao || ssr) {
-            encode_prepass(encoder, mesh_uniforms);
+        if (ssao || ssr || taa != nullptr) {
+            encode_prepass(encoder, mesh_uniforms, taa);
         }
         if (ssao) {
             encode_ssao(encoder, *ssao, ssao_uniforms_at);
@@ -1305,6 +1370,10 @@ public:
         if (!mesh_draws_.empty() || sky || dof || capture) {
             encode_meshes(encoder, mesh_uniforms, sky_uniforms_at, ssao.has_value(),
                           ssr.has_value());
+        }
+        if (taa != nullptr) {
+            encode_taa(encoder, *taa, taa_uniforms_at,
+                       multiply(frame_.scene->projection, frame_.scene->camera));
         }
         if (capture) {
             if (probe_offsets) {
@@ -1552,13 +1621,17 @@ private:
         std::vector<std::uint32_t> filters;
     };
 
-    // A mesh's buffers; one without indices is given them in order.
+    // A mesh's buffers; one without indices is given them in order. Once update_mesh moves its
+    // vertices, previous holds them as the last frame with TAA that drew the mesh saw them,
+    // until another such frame draws it.
     struct Mesh {
         WGPUBuffer vertices = nullptr;
         WGPUBuffer indices = nullptr;
         std::uint32_t index_count = 0;
         std::size_t vertex_count = 0;
         Bounds bounds;
+        WGPUBuffer previous = nullptr;
+        bool moved = false;
     };
 
     // What a mesh draw binds, found when it is made: its mesh may be destroyed before end_frame.
@@ -1568,9 +1641,11 @@ private:
         std::uint32_t index_count = 0;
         Bounds bounds;
         WGPURenderPipeline pipeline = nullptr;
-        // The normal-roughness prepass's, for an opaque mesh in a frame with SSAO or SSR.
+        // The prepass's, for an opaque mesh in a frame with SSAO, SSR or TAA.
         WGPURenderPipeline normal_pipeline = nullptr;
         MeshBindings bindings{};
+        // Where its vertices were in the frame before, which TAA's prepass reads.
+        WGPUBuffer previous_vertices = nullptr;
     };
 
     struct MeshPipeline {
@@ -1613,6 +1688,21 @@ private:
         std::uint32_t width = 0;
         std::uint32_t height = 0;
         SsrCamera camera;
+        bool primed = false;
+    };
+
+    // A target's frames before for TAA, at the frame's size: how many it drew with TAA, which
+    // picks the next jitter, the last one's camera without its jitter, and two results and two
+    // motion vector textures that frames take turns to draw into, last the pair the last frame
+    // drew.
+    struct TaaHistory {
+        std::uint64_t frames = 0;
+        Mat4 view_projection{};
+        std::array<GpuTexture, 2> color{};
+        std::array<GpuTexture, 2> velocity{};
+        std::size_t last = 0;
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
         bool primed = false;
     };
 
@@ -1983,6 +2073,16 @@ private:
         const std::array ssr_entries{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(SsrUniforms))};
         ssr_uniforms_layout_ = layout(ssr_entries);
+        // TAA's pass loads its five textures, as SSR's do.
+        std::array<WGPUBindGroupLayoutEntry, kTaaSlots> taa_textures{};
+        for (std::uint32_t slot = 0; slot < kTaaSlots; ++slot) {
+            taa_textures.at(slot) = texture_entry(slot);
+            taa_textures.at(slot).texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
+        }
+        taa_textures_layout_ = layout(taa_textures);
+        const std::array taa_entries{
+            uniform_entry(0, WGPUShaderStage_Fragment, sizeof(TaaUniforms))};
+        taa_uniforms_layout_ = layout(taa_entries);
         const std::array filter{
             uniform_entry(0, WGPUShaderStage_Fragment, sizeof(RadianceUniforms))};
         filter_uniforms_layout_ = layout(filter);
@@ -2025,6 +2125,8 @@ private:
             {empty_layout_, empty_layout_, ssao_textures_layout_, ssao_uniforms_layout_});
         pipeline_layouts_.at(kSsrLayout) = pipeline_layout(
             {empty_layout_, empty_layout_, ssr_textures_layout_, ssr_uniforms_layout_});
+        pipeline_layouts_.at(kTaaLayout) = pipeline_layout(
+            {empty_layout_, empty_layout_, taa_textures_layout_, taa_uniforms_layout_});
     }
 
     WGPUShaderModule create_module(std::string_view wgsl) {
@@ -2248,6 +2350,8 @@ private:
         ssao_uniforms_group_ = bind_group(ssao_uniforms_layout_, ssao);
         const std::array ssr{buffer_entry(0, uniform_buffer_, sizeof(SsrUniforms))};
         ssr_uniforms_group_ = bind_group(ssr_uniforms_layout_, ssr);
+        const std::array taa{buffer_entry(0, uniform_buffer_, sizeof(TaaUniforms))};
+        taa_uniforms_group_ = bind_group(taa_uniforms_layout_, taa);
     }
 
     void release_uniform_groups() {
@@ -2256,7 +2360,7 @@ private:
               &mesh_vertex_group_, &mesh_fragment_group_, &shadow_vertex_group_,
               &shadow_fragment_group_, &post_uniforms_group_, &forward_uniforms_group_,
               &sky_uniforms_group_, &filter_uniforms_group_, &ssao_uniforms_group_,
-              &ssr_uniforms_group_}) {
+              &ssr_uniforms_group_, &taa_uniforms_group_}) {
             if (*group != nullptr) {
                 wgpuBindGroupRelease(*group);
                 *group = nullptr;
@@ -3078,8 +3182,17 @@ private:
             return at;
         }
         const Scene3D& scene = *frame_.scene;
-        MeshCameraUniforms camera = mesh_camera_uniforms(scene);
+        // TAA's frame: the next jitter, from the camera the target's frame before was seen from
+        // (this one's, for its first).
+        const TaaHistory* taa = uses_taa(scene) ? find_taa_history(frame_.target) : nullptr;
+        const Mat4 view_projection = multiply(scene.projection, scene.camera);
+        MeshCameraUniforms camera =
+            taa == nullptr
+                ? mesh_camera_uniforms(scene)
+                : taa_camera_uniforms(scene, taa_jitter(taa->frames, frame_width_, frame_height_),
+                                      taa->primed ? taa->view_projection : view_projection);
         camera.view_projection = transposed(camera.view_projection);
+        camera.previous_view_projection = transposed(camera.previous_view_projection);
         at.camera = uniforms_.add(camera);
         const auto lights = std::make_unique<MeshSceneUniforms>(mesh_scene_uniforms(scene));
         if (scene.method == RenderMethod::ForwardPlus) {
@@ -3113,9 +3226,11 @@ private:
         }
         at.draws.reserve(mesh_draws_.size());
         for (const MeshDraw& draw : mesh_draws_) {
-            MeshInstanceUniforms instance = mesh_instance_uniforms(draw.transform, draw.material);
+            MeshInstanceUniforms instance =
+                mesh_instance_uniforms(draw.transform, draw.material, draw.previous);
             instance.model = transposed(instance.model);
             instance.normal_model = transposed(instance.normal_model);
+            instance.previous_model = transposed(instance.previous_model);
             at.draws.emplace_back(uniforms_.add(instance),
                                   uniforms_.add(mesh_surface_uniforms(draw.material, draw.layers)));
         }
@@ -3229,6 +3344,8 @@ private:
                            bool ssao, bool ssr) {
         const std::uint32_t scene =
             !prepass && !ssr && uses_ssr(*frame_.scene) ? at.unreflected : at.scene;
+        // TAA's prepass reads where the vertices were from a second buffer.
+        const bool motion = prepass && uses_taa(*frame_.scene);
         WGPURenderPipeline bound = nullptr;
         for (const std::size_t i :
              mesh_draw_order(std::span<const MeshDraw>(mesh_draws_), *frame_.scene,
@@ -3269,6 +3386,10 @@ private:
             wgpuRenderPassEncoderSetBindGroup(pass, 3, mesh_fragment_group_,
                                               fragment_offsets.size(), fragment_offsets.data());
             wgpuRenderPassEncoderSetVertexBuffer(pass, 0, batch.vertices, 0, WGPU_WHOLE_SIZE);
+            if (motion) {
+                wgpuRenderPassEncoderSetVertexBuffer(pass, 1, batch.previous_vertices, 0,
+                                                     WGPU_WHOLE_SIZE);
+            }
             wgpuRenderPassEncoderSetIndexBuffer(pass, batch.indices, WGPUIndexFormat_Uint32, 0,
                                                 WGPU_WHOLE_SIZE);
             wgpuRenderPassEncoderDrawIndexed(pass, batch.index_count, 1, 0, 0, 0);
@@ -3306,6 +3427,61 @@ private:
         info.vertex.entryPoint = text_view("vs_main");
         info.vertex.bufferCount = 1;
         info.vertex.buffers = &buffer;
+        info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        info.primitive.frontFace = WGPUFrontFace_CW;
+        info.primitive.cullMode = gpu_cull(cull);
+        info.depthStencil = &depth;
+        info.fragment = &fragment;
+        made = wgpuDeviceCreateRenderPipeline(device_, &info);
+        return made;
+    }
+
+    // The pipeline drawing opaque meshes that cull as cull says into TAA's prepass, which draws
+    // their normals and their motion vectors from a second vertex buffer of where their vertices
+    // were in the frame before, made the first time a frame needs it.
+    WGPURenderPipeline motion_pipeline_for(CullMode cull) {
+        WGPURenderPipeline& made = motion_pipelines_.at(static_cast<std::size_t>(cull));
+        if (made != nullptr) {
+            return made;
+        }
+        const std::array attributes = mesh_attributes();
+        const WGPUVertexAttribute previous_attribute{
+            .nextInChain = nullptr,
+            .format = WGPUVertexFormat_Float32x3,
+            .offset = offsetof(Vertex3D, position),
+            .shaderLocation = static_cast<std::uint32_t>(attributes.size())};
+        std::array<WGPUVertexBufferLayout, 2> buffers{};
+        for (WGPUVertexBufferLayout& buffer : buffers) {
+            buffer = WGPU_VERTEX_BUFFER_LAYOUT_INIT;
+            buffer.stepMode = WGPUVertexStepMode_Vertex;
+            buffer.arrayStride = sizeof(Vertex3D);
+        }
+        buffers[0].attributeCount = attributes.size();
+        buffers[0].attributes = attributes.data();
+        buffers[1].attributeCount = 1;
+        buffers[1].attributes = &previous_attribute;
+        std::array<WGPUColorTargetState, 2> colors{};
+        colors[0] = WGPU_COLOR_TARGET_STATE_INIT;
+        colors[0].format = kNormalFormat;
+        colors[1] = WGPU_COLOR_TARGET_STATE_INIT;
+        colors[1].format = kVelocityFormat;
+        WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
+        fragment.module =
+            module(kMeshMotionFragmentModule, joined(shaders::kMeshMotionFragmentWgsl));
+        fragment.entryPoint = text_view("fs_main");
+        fragment.targetCount = colors.size();
+        fragment.targets = colors.data();
+        WGPUDepthStencilState depth = WGPU_DEPTH_STENCIL_STATE_INIT;
+        depth.format = kDepthFormat;
+        depth.depthWriteEnabled = WGPUOptionalBool_True;
+        depth.depthCompare = WGPUCompareFunction_Greater;
+        WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
+        info.layout = pipeline_layouts_.at(kMeshLayout);
+        info.vertex.module =
+            module(kMeshMotionVertexModule, joined(shaders::kMeshMotionVertexWgsl));
+        info.vertex.entryPoint = text_view("vs_main");
+        info.vertex.bufferCount = buffers.size();
+        info.vertex.buffers = buffers.data();
         info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
         info.primitive.frontFace = WGPUFrontFace_CW;
         info.primitive.cullMode = gpu_cull(cull);
@@ -3418,21 +3594,28 @@ private:
         ssao_targets_.height = 0;
     }
 
-    // The prepass, which draws the opaque meshes' normals and depth, which SSAO and SSR read.
-    void encode_prepass(WGPUCommandEncoder encoder, const MeshUniforms& at) {
-        WGPURenderPassColorAttachment normals = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
-        normals.view = prepass_.normals.view;
-        normals.loadOp = WGPULoadOp_Clear;
-        normals.storeOp = WGPUStoreOp_Store;
-        normals.clearValue = {.r = 0.0, .g = 0.0, .b = 0.0, .a = 0.0};
+    // The prepass, which draws the opaque meshes' normals and depth, which SSAO, SSR and TAA
+    // read, and with taa their motion vectors, into its history's next texture.
+    void encode_prepass(WGPUCommandEncoder encoder, const MeshUniforms& at, const TaaHistory* taa) {
+        std::array<WGPURenderPassColorAttachment, 2> colors{};
+        for (WGPURenderPassColorAttachment& color : colors) {
+            color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+            color.loadOp = WGPULoadOp_Clear;
+            color.storeOp = WGPUStoreOp_Store;
+            color.clearValue = {.r = 0.0, .g = 0.0, .b = 0.0, .a = 0.0};
+        }
+        colors[0].view = prepass_.normals.view;
+        if (taa != nullptr) {
+            colors[1].view = taa->velocity.at(1 - taa->last).view;
+        }
         WGPURenderPassDepthStencilAttachment depth = WGPU_RENDER_PASS_DEPTH_STENCIL_ATTACHMENT_INIT;
         depth.view = prepass_.depth.view;
         depth.depthLoadOp = WGPULoadOp_Clear;
         depth.depthStoreOp = WGPUStoreOp_Store;
         depth.depthClearValue = 0.0F;
         WGPURenderPassDescriptor prepass = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
-        prepass.colorAttachmentCount = 1;
-        prepass.colorAttachments = &normals;
+        prepass.colorAttachmentCount = taa != nullptr ? 2 : 1;
+        prepass.colorAttachments = colors.data();
         prepass.depthStencilAttachment = &depth;
         WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &prepass);
         encode_mesh_draws(pass, at, true, false, false);
@@ -3617,6 +3800,131 @@ private:
         ssr_histories_.erase(it);
     }
 
+    // target's history for TAA at width x height, made empty when it has none or it was drawn
+    // at another size.
+    void prepare_taa(TextureId target, std::uint32_t width, std::uint32_t height) {
+        TaaHistory* found = find_taa_history(target);
+        if (found == nullptr) {
+            found = &taa_histories_.emplace_back(target, TaaHistory{}).second;
+        }
+        TaaHistory& history = *found;
+        if (history.color[0].texture != nullptr && history.width == width &&
+            history.height == height) {
+            return;
+        }
+        release_taa_textures(history);
+        history = TaaHistory{};
+        for (std::size_t i = 0; i < 2; ++i) {
+            // Copied from the world, for a target's first frame, and back to it after.
+            history.color.at(i) = pass_texture(width, height, kHdrFormat,
+                                               WGPUTextureUsage_CopySrc | WGPUTextureUsage_CopyDst);
+            history.velocity.at(i) = pass_texture(width, height, kVelocityFormat);
+        }
+        history.width = width;
+        history.height = height;
+    }
+
+    // target's history for TAA, or null when it has none.
+    TaaHistory* find_taa_history(TextureId target) {
+        for (auto& [id, history] : taa_histories_) {
+            if (id == target) {
+                return &history;
+            }
+        }
+        return nullptr;
+    }
+
+    void release_taa_textures(TaaHistory& history) {
+        for (GpuTexture& texture : history.color) {
+            release_pass_texture(texture);
+        }
+        for (GpuTexture& texture : history.velocity) {
+            release_pass_texture(texture);
+        }
+    }
+
+    void forget_taa_history(TextureId target) {
+        const auto it = std::ranges::find_if(
+            taa_histories_, [&](const auto& entry) { return entry.first == target; });
+        if (it == taa_histories_.end()) {
+            return;
+        }
+        release_taa_textures(it->second);
+        taa_histories_.erase(it);
+    }
+
+    // TAA's pipeline, made the first time a frame needs it.
+    WGPURenderPipeline taa_pipeline() {
+        if (taa_pipeline_ != nullptr) {
+            return taa_pipeline_;
+        }
+        WGPUColorTargetState color = WGPU_COLOR_TARGET_STATE_INIT;
+        color.format = kHdrFormat;
+        WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
+        fragment.module = module(kTaaFragmentModule, shaders::kTaaFragmentWgsl);
+        fragment.entryPoint = text_view("fs_main");
+        fragment.targetCount = 1;
+        fragment.targets = &color;
+        WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
+        info.layout = pipeline_layouts_.at(kTaaLayout);
+        info.vertex.module = module(kTaaVertexModule, shaders::kTaaVertexWgsl);
+        info.vertex.entryPoint = text_view("vs_main");
+        info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        info.primitive.cullMode = WGPUCullMode_None;
+        info.fragment = &fragment;
+        taa_pipeline_ = wgpuDeviceCreateRenderPipeline(device_, &info);
+        return taa_pipeline_;
+    }
+
+    // TAA's pass, its uniforms at uniforms: the world, drawn with the frame's jitter, blended
+    // with the history by the prepass's depth and motion vectors (the history's next texture)
+    // into the history's next result, which is copied over the world; a target's first frame is
+    // kept as it is. The history keeps the camera the frame was seen from without its jitter,
+    // view_projection.
+    void encode_taa(WGPUCommandEncoder encoder, TaaHistory& history, std::uint32_t uniforms,
+                    const Mat4& view_projection) {
+        const std::size_t next = 1 - history.last;
+        const GpuTexture& resolved = history.color.at(next);
+        if (history.primed) {
+            const std::array<WGPUTextureView, kTaaSlots> views{
+                forward_targets_.world.view, prepass_.depth.view, history.velocity.at(next).view,
+                history.velocity.at(history.last).view, history.color.at(history.last).view};
+            std::array<WGPUBindGroupEntry, kTaaSlots> entries{};
+            for (std::uint32_t slot = 0; slot < kTaaSlots; ++slot) {
+                entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
+                entries.at(slot).binding = slot;
+                entries.at(slot).textureView = views.at(slot);
+            }
+            WGPUBindGroup textures = bind_group(taa_textures_layout_, entries);
+            WGPURenderPassColorAttachment color = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+            color.view = resolved.view;
+            color.loadOp = WGPULoadOp_Clear;
+            color.storeOp = WGPUStoreOp_Store;
+            WGPURenderPassDescriptor descriptor = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+            descriptor.colorAttachmentCount = 1;
+            descriptor.colorAttachments = &color;
+            WGPURenderPassEncoder draw = wgpuCommandEncoderBeginRenderPass(encoder, &descriptor);
+            wgpuRenderPassEncoderSetPipeline(draw, taa_pipeline());
+            wgpuRenderPassEncoderSetBindGroup(draw, 2, textures, 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(draw, 3, taa_uniforms_group_, 1, &uniforms);
+            wgpuRenderPassEncoderDraw(draw, 3, 1, 0, 0);
+            wgpuRenderPassEncoderEnd(draw);
+            wgpuRenderPassEncoderRelease(draw);
+            wgpuBindGroupRelease(textures);
+        }
+        WGPUTexelCopyTextureInfo from = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+        from.texture = history.primed ? resolved.texture : forward_targets_.world.texture;
+        WGPUTexelCopyTextureInfo to = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+        to.texture = history.primed ? forward_targets_.world.texture : resolved.texture;
+        const WGPUExtent3D extent{
+            .width = frame_width_, .height = frame_height_, .depthOrArrayLayers = 1};
+        wgpuCommandEncoderCopyTextureToTexture(encoder, &from, &to, &extent);
+        history.last = next;
+        history.view_projection = view_projection;
+        history.primed = true;
+        ++history.frames;
+    }
+
     // ssr.hlsl's passes, from the prepass's depth and normals and history, to the reflections at
     // the frame's size, in the order plan gives, their uniforms at uniforms.
     void encode_ssr(WGPUCommandEncoder encoder, const SsrPlan& plan,
@@ -3769,9 +4077,11 @@ private:
     void prepare_forward(std::uint32_t width, std::uint32_t height, bool glow, bool auto_exposure,
                          bool dof) {
         const auto made = [&](std::uint32_t w, std::uint32_t h,
-                              WGPUTextureFormat format = kHdrFormat) {
+                              WGPUTextureFormat format = kHdrFormat,
+                              WGPUTextureUsage copies = WGPUTextureUsage_None) {
             WGPUTextureDescriptor info = WGPU_TEXTURE_DESCRIPTOR_INIT;
-            info.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment;
+            info.usage =
+                WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment | copies;
             info.size = {.width = w, .height = h, .depthOrArrayLayers = 1};
             info.format = format;
             WGPUTexture texture = wgpuDeviceCreateTexture(device_, &info);
@@ -3782,7 +4092,9 @@ private:
         if (forward_targets_.world.texture == nullptr || forward_targets_.width != width ||
             forward_targets_.height != height) {
             release_forward_targets();
-            forward_targets_.world = made(width, height);
+            // TAA copies the world to its history and back.
+            forward_targets_.world = made(width, height, kHdrFormat,
+                                          WGPUTextureUsage_CopySrc | WGPUTextureUsage_CopyDst);
             forward_targets_.width = width;
             forward_targets_.height = height;
         }
@@ -4259,6 +4571,14 @@ private:
     }
 
     void finish_frame() {
+        // A frame with TAA saw its meshes' vertices as they are now.
+        if (frame_.scene && uses_taa(*frame_.scene)) {
+            for (const MeshDraw& draw : mesh_draws_) {
+                if (const auto found = meshes_.find(draw.mesh); found != meshes_.end()) {
+                    found->second.moved = false;
+                }
+            }
+        }
         if (frame_texture_ != nullptr) {
             wgpuTextureViewRelease(frame_view_);
             wgpuTextureRelease(frame_texture_);
@@ -4321,6 +4641,10 @@ private:
     static constexpr std::size_t kSsrVertexModule = 23;
     static constexpr std::size_t kSsrFragmentModule = 24;
     static constexpr std::size_t kSsrTraceFragmentModule = 25;
+    static constexpr std::size_t kMeshMotionVertexModule = 26;
+    static constexpr std::size_t kMeshMotionFragmentModule = 27;
+    static constexpr std::size_t kTaaVertexModule = 28;
+    static constexpr std::size_t kTaaFragmentModule = 29;
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
@@ -4335,6 +4659,7 @@ private:
     static constexpr std::size_t kForwardPostLayout = 11;
     static constexpr std::size_t kSsaoLayout = 12;
     static constexpr std::size_t kSsrLayout = 13;
+    static constexpr std::size_t kTaaLayout = 14;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -4347,7 +4672,7 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 4> sampled_{true, false, false, true};
-    std::array<WGPUShaderModule, 26> modules_{};
+    std::array<WGPUShaderModule, 30> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -4380,7 +4705,9 @@ private:
     WGPUBindGroupLayout ssao_uniforms_layout_ = nullptr;
     WGPUBindGroupLayout ssr_textures_layout_ = nullptr;
     WGPUBindGroupLayout ssr_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, 14> pipeline_layouts_{};
+    WGPUBindGroupLayout taa_textures_layout_ = nullptr;
+    WGPUBindGroupLayout taa_uniforms_layout_ = nullptr;
+    std::array<WGPUPipelineLayout, 15> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -4407,6 +4734,7 @@ private:
     WGPUBindGroup filter_uniforms_group_ = nullptr;
     WGPUBindGroup ssao_uniforms_group_ = nullptr;
     WGPUBindGroup ssr_uniforms_group_ = nullptr;
+    WGPUBindGroup taa_uniforms_group_ = nullptr;
     std::unordered_map<ParticlesId, ParticleSystem> particle_systems_;
     std::uint32_t next_particles_ = 1;
     std::vector<WGPUBuffer> pending_buffers_;
@@ -4476,6 +4804,10 @@ private:
     SsrTargets ssr_targets_;
     // Each target's frame before, by the target (TextureId::None for the window).
     std::vector<std::pair<TextureId, SsrHistory>> ssr_histories_;
+    std::array<WGPURenderPipeline, 3> motion_pipelines_{}; // TAA's prepass's, by CullMode
+    WGPURenderPipeline taa_pipeline_ = nullptr;
+    // Each target's frames before for TAA, by the target.
+    std::vector<std::pair<TextureId, TaaHistory>> taa_histories_;
     // The radiance meshes are lit by: the raw cube the sky draws into and the one filtered from
     // it, and what they hold (nullopt to draw them again).
     struct RadianceCubes {

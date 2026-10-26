@@ -273,6 +273,26 @@ json::Value global_illumination_schema() {
     return out;
 }
 
+// rendering.anti_aliasing, as Godot's rendering/anti_aliasing settings.
+json::Value anti_aliasing_schema() {
+    json::Value use_taa;
+    use_taa["type"] = "boolean";
+    use_taa["default"] = false;
+    use_taa["description"] =
+        "Temporal antialiasing of the 3D world in Forward+: each frame is drawn with the camera "
+        "moved within a pixel and blended with the frames before it.";
+    json::Value quality;
+    quality["type"] = "object";
+    quality["additionalProperties"] = false;
+    quality["properties"]["use_taa"] = std::move(use_taa);
+    json::Value out;
+    out["type"] = "object";
+    out["additionalProperties"] = false;
+    out["description"] = "Antialiasing, as Godot's rendering/anti_aliasing settings.";
+    out["properties"]["quality"] = std::move(quality);
+    return out;
+}
+
 // rendering.lights_and_shadows, as Godot's rendering/lights_and_shadows settings.
 json::Value lights_and_shadows_schema() {
     const render::ShadowSettings defaults;
@@ -450,6 +470,7 @@ json::Value project_schema() {
     rendering["properties"]["environment"] = environment_schema();
     rendering["properties"]["reflections"] = reflections_schema();
     rendering["properties"]["global_illumination"] = global_illumination_schema();
+    rendering["properties"]["anti_aliasing"] = anti_aliasing_schema();
     json::Value compress_mode;
     compress_mode["enum"] = json::Array{"lossless", "vram_compressed", "vram_uncompressed"};
     compress_mode["description"] =
@@ -785,6 +806,7 @@ Result<Project> parse_project(const json::Value& project) {
             }
         }
         out.voxel_gi_high_quality = render::voxel_gi_high_quality(*rendering);
+        out.use_taa = render::use_taa(*rendering);
         if (const json::Value* textures = rendering->find("textures"); textures != nullptr) {
             if (const json::Value* mode = textures->find("compress_mode"); mode != nullptr) {
                 out.texture_import.compress_mode = mode->as_string();

@@ -1366,6 +1366,7 @@ void Renderer::add_model(const world::World& world, entt::entity entity,
             }
             Draw draw;
             draw.mesh = made.value();
+            draw.entity = entity;
             draw.transform = skinned ? place.matrix() : transform;
             if (override) {
                 draw.material = *override;
@@ -1477,6 +1478,7 @@ void Renderer::add_csg(const world::World& world, const world::Tree3D& tree, ent
         Draw draw;
         draw.mesh = made.value();
         draw.transform = transform;
+        draw.entity = root;
         draw.material = surface_material(surface.material, root, "/components/CSGMesh3D/mesh");
         draw.layers = settings.layers;
         draw.shadows = casting;
@@ -1510,6 +1512,7 @@ void Renderer::add_gridmap(const world::World& world, entt::entity entity,
             }
             Draw draw;
             draw.mesh = made.value();
+            draw.entity = entity;
             draw.transform = transform;
             draw.material =
                 surface_material(surface.mesh.material, entity, "/components/GridMap/mesh_library");
@@ -1680,6 +1683,7 @@ void Renderer::add_terrain(const world::World& world, entt::entity entity,
         }
         Draw draw;
         draw.mesh = made.value();
+        draw.entity = entity;
         draw.transform = transform;
         draw.material = material;
         draw.layers = terrain.render_layers;
@@ -2148,14 +2152,13 @@ void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& t
     }
 }
 
-std::optional<Frame3D> Renderer::prepare(const world::World& world, float width, float height,
-                                         double interpolation, render::Color clear,
-                                         const render::ShadowSettings& shadows, double time,
-                                         const render::DepthOfFieldSettings& depth_of_field,
-                                         const render::SsaoSettings& ssao,
-                                         const render::SsrSettings& ssr,
-                                         const render::ReflectionAtlasSettings& reflection_atlas,
-                                         render::RenderMethod method, bool voxel_gi_high_quality) {
+std::optional<Frame3D>
+Renderer::prepare(const world::World& world, float width, float height, double interpolation,
+                  render::Color clear, const render::ShadowSettings& shadows, double time,
+                  const render::DepthOfFieldSettings& depth_of_field,
+                  const render::SsaoSettings& ssao, const render::SsrSettings& ssr,
+                  const render::ReflectionAtlasSettings& reflection_atlas,
+                  render::RenderMethod method, bool voxel_gi_high_quality, bool use_taa) {
     ++frame_;
     draws_.clear();
     problems_.clear();
@@ -2187,6 +2190,7 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
         voxel_objects_.clear();
         destroy_voxel_gis();
         exposure_version_ = 0;
+        drawn_.clear();
         return std::nullopt;
     }
 
@@ -2299,6 +2303,7 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
     }
     frame.scene.shadows = shadows;
     frame.scene.voxel_gi_high_quality = voxel_gi_high_quality;
+    frame.scene.use_taa = use_taa;
     lights_ = frame.scene.lights.size();
     capture_time_ = time;
     find_lightmaps(world, env.exposure, global);
@@ -2333,6 +2338,7 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
         Draw draw;
         draw.mesh = mesh.value();
         draw.transform = global(entity).matrix();
+        draw.entity = entity;
         if (const auto* standard = ecs.try_get<world::StandardMaterial3D>(entity);
             standard != nullptr) {
             draw.material = material(*standard, textures_, problems_, entity);
@@ -2390,6 +2396,21 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
             draw.material.emission_energy *= env.exposure;
         }
     }
+    // TAA moves each mesh's pixels by how far it moved since the last frame, as Godot's
+    // prev_transform: each entity's draws, in order, keep where they were drawn.
+    std::map<std::pair<entt::entity, std::size_t>, std::array<float, 16>> drawn;
+    if (use_taa && method == render::RenderMethod::ForwardPlus) {
+        std::map<entt::entity, std::size_t> counts;
+        for (Draw& draw : draws_) {
+            const std::pair key{draw.entity, counts[draw.entity]++};
+            if (const auto found = drawn_.find(key);
+                found != drawn_.end() && found->second != draw.transform) {
+                draw.previous = found->second;
+            }
+            drawn.emplace(key, draw.transform);
+        }
+    }
+    drawn_ = std::move(drawn);
     // Meshes no entity drew this frame go, and so do the entities' records of them.
     for (auto it = shared_.begin(); it != shared_.end();) {
         if (it->second.used != frame_) {
@@ -2600,7 +2621,7 @@ Result<void> Renderer::reflect(const world::World& world, Frame3D& frame, render
 Result<void> Renderer::draw() {
     for (const Draw& draw : draws_) {
         if (auto drawn = device_->draw_mesh(draw.mesh, draw.transform, draw.material, draw.layers,
-                                            draw.shadows);
+                                            draw.shadows, draw.previous);
             !drawn) {
             return drawn;
         }

@@ -15,6 +15,7 @@ if(EMSCRIPTEN)
         test_sky.cpp
         test_ssao.cpp
         test_ssr.cpp
+        test_taa.cpp
         test_upscaler.cpp)
     target_link_libraries(slash_web_tests PRIVATE slash::core slash::platform slash::render
         doctest::doctest SDL3::SDL3-static)
@@ -128,6 +129,7 @@ add_executable(slash_tests
     test_ssr.cpp
     test_storyboard.cpp
     test_syntax_highlighter.cpp
+    test_taa.cpp
     test_test_run.cpp
     test_text.cpp
     test_text_edit.cpp

@@ -3745,6 +3745,7 @@ no GPU. Nothing changes. [examples/frame-capture](../../examples/frame-capture/)
 | `path` | string | | A `.png` file to write, relative to the project |
 | `time` | number | the tick's | Seconds of game time for materials' `time` nodes and [animated tiles](scene-format.md#animated-and-large-tiles) |
 | `collisions` | boolean | `false` | Draw every `CollisionShape2D` and `CollisionPolygon2D` over the world, as Godot's Visible Collision Shapes |
+| `frames` | integer, 1 to 120 | `1` | Draw the frame this many times and return the last, for [temporal antialiasing](project-format.md#temporal-antialiasing), which builds up over frames |
 
 Needs: `read`, and `filesystem` with `path`. A HUD with a health bar at 75%:
 
@@ -3765,7 +3766,9 @@ pixels, `[width, height]`. `colors` are
 `[r, g, b, a]` from 0 to 1, one per point, read from the whole window whatever `region` says.
 Over MCP, `png` is sent as an image content block rather than as text. A point or region outside
 the window is an error at its path, and so is a `path` that doesn't end in `.png`. In a dry-run
-`batch`, `path` writes nothing.
+`batch`, `path` writes nothing. Captures keep TAA's history from one to the next, as a running
+game's frames do, so a still world's edges smooth out over captures and a moved mesh's history
+follows it.
 
 ### frame.summary
 

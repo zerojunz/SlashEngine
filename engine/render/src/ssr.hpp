@@ -2,6 +2,7 @@
 
 #include "post_shading.hpp"
 #include "ssao.hpp"
+#include "taa.hpp"
 
 #include "slash/render/mesh.hpp"
 
@@ -29,9 +30,10 @@ namespace slash::render::detail {
     return scene.method == RenderMethod::ForwardPlus && scene.ssr.enabled;
 }
 
-// Whether a scene's frame draws Forward+'s normal-roughness prepass, which SSAO and SSR read.
+// Whether a scene's frame draws Forward+'s normal-roughness prepass, which SSAO and SSR read, and
+// with TAA its motion vectors.
 [[nodiscard]] inline bool uses_prepass(const Scene3D& scene) {
-    return uses_ssao(scene) || uses_ssr(scene);
+    return uses_ssao(scene) || uses_ssr(scene) || uses_taa(scene);
 }
 
 // ssr.hlsl's passes.

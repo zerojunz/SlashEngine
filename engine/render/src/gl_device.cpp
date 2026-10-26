@@ -886,7 +886,8 @@ public:
     }
 
     Result<void> draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
-                           std::uint32_t layers, ShadowCasting shadows) override {
+                           std::uint32_t layers, ShadowCasting shadows,
+                           const std::optional<Mat4>& previous) override {
         if (!in_frame_) {
             return no_frame("draw_mesh");
         }
@@ -895,6 +896,9 @@ public:
                                            transform, material, frame_.target,
                                            [&](TextureId id) { return textures_.contains(id); });
             !checked) {
+            return checked;
+        }
+        if (auto checked = check_previous_transform(previous); !checked) {
             return checked;
         }
         if (frame_width_ == 0 || !frame_.scene) {
@@ -923,7 +927,8 @@ public:
                                .transform = transform,
                                .material = material,
                                .layers = layers,
-                               .shadows = shadows});
+                               .shadows = shadows,
+                               .previous = previous.value_or(transform)});
         mesh_batches_.push_back(batch);
         ++stats_.draws;
         stats_.triangles += static_cast<std::uint64_t>(it->second.index_count / 3);

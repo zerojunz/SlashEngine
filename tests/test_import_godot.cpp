@@ -1817,6 +1817,7 @@ jolt_physics_3d/simulation/areas_detect_static_bodies=true
 
 [rendering]
 
+anti_aliasing/quality/use_taa=true
 camera/depth_of_field/depth_of_field_bokeh_shape=2
 camera/depth_of_field/depth_of_field_bokeh_quality=3
 camera/depth_of_field/depth_of_field_use_jitter=true
@@ -2182,6 +2183,8 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
         "screen_space_reflection": {"half_size": false}})"));
     CHECK(*project_file.find("rendering")->find("reflections") ==
           parse(R"({"reflection_atlas": {"reflection_size": 512, "reflection_count": 16}})"));
+    CHECK(*project_file.find("rendering")->find("anti_aliasing") ==
+          parse(R"({"quality": {"use_taa": true}})"));
 
     const json::Value& report = plan.report;
     const auto why = [&](std::string_view what) {
