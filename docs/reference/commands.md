@@ -4340,7 +4340,7 @@ so is a game built with Unity, whose project AssetRipper rebuilds
 files beside the `.umap` files, read through the project's own Unreal Editor, which runs in the
 background and exports them, with its static meshes as `.glb` files and its sounds as WAV files
 ([unreal-import.md](unreal-import.md#how-it-reads-the-project)); each Blueprint and C++ class
-becomes a storyboard task. [godot-import.md](godot-import.md),
+becomes a storyboard task, and each C++ class a C++ skeleton. [godot-import.md](godot-import.md),
 [unity-import.md](unity-import.md) and [unreal-import.md](unreal-import.md) say what converts to
 what. Registered by `slash-cli` and
 `slash-mcp`.
@@ -4392,7 +4392,7 @@ and `tasks` the task of each Blueprint and C++ class:
 ```
 
 ```json
-{"converted":{"animations":1,"blueprints":4,"classes":1,"input_actions":10,"material_variants":1,"meshes":4,"scenes":1,"sounds":1},"engine":"unreal","engine_version":"5.4.4-35576357+++UE5+Release-5.4","files":13,"log":".slash/import/unreal/unreal.log","main_scene":"unreal/Content/Maps/Main.scene.json","project":"Crate Run","report":"import/unreal.json","tasks":[{"source":"unreal/Content/Blueprints/BP_Coin.uasset","task":"task/port-bp-coin"},{"source":"unreal/Content/Blueprints/BP_CrateRunMode.uasset","task":"task/port-bp-crate-run-mode"},{"source":"unreal/Content/Blueprints/BP_Hero.uasset","task":"task/port-bp-hero"},{"source":"unreal/Content/UI/WBP_Hud.uasset","task":"task/port-wbp-hud"},{"source":"unreal/Source/CrateRun/CoinPickup.h","task":"task/port-coin-pickup"}],"unsupported":[{"count":1,"what":"landscape","where":"/Game/Maps/Main: Landscape","why":"landscapes don't convert yet"},{"count":1,"what":"static light","where":"/Game/Maps/Main: Lamp","why":"baked in Unreal; it lights the scene as it runs here, or bake it into a LightmapGI"}]}
+{"classes":[{"class":"ACoinPickup","code":"src/imported/coin_pickup.cpp","component":"CoinPickup","entities":2,"header":"unreal/Source/CrateRun/CoinPickup.h","task":"task/port-coin-pickup"}],"converted":{"animations":1,"blueprints":4,"classes":1,"input_actions":10,"material_variants":1,"meshes":4,"scenes":1,"sounds":1},"engine":"unreal","engine_version":"5.4.4-35576357+++UE5+Release-5.4","files":16,"log":".slash/import/unreal/unreal.log","main_scene":"unreal/Content/Maps/Main.scene.json","module":"src/game.cpp","project":"Crate Run","report":"import/unreal.json","tasks":[{"source":"unreal/Content/Blueprints/BP_Coin.uasset","task":"task/port-bp-coin"},{"source":"unreal/Content/Blueprints/BP_CrateRunMode.uasset","task":"task/port-bp-crate-run-mode"},{"source":"unreal/Content/Blueprints/BP_Hero.uasset","task":"task/port-bp-hero"},{"source":"unreal/Content/UI/WBP_Hud.uasset","task":"task/port-wbp-hud"},{"source":"unreal/Source/CrateRun/CoinPickup.h","task":"task/port-coin-pickup"}],"unsupported":[{"count":1,"what":"landscape","where":"/Game/Maps/Main: Landscape","why":"landscapes don't convert yet"},{"count":1,"what":"static light","where":"/Game/Maps/Main: Lamp","why":"baked in Unreal; it lights the scene as it runs here, or bake it into a LightmapGI"}]}
 ```
 
 (`unsupported` shortened here.) For an exported game, `unpacked` says what came back out of it: the pack's format and the

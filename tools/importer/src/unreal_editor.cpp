@@ -291,12 +291,19 @@ std::vector<std::string> export_command(const Editor& editor, const fs::path& pr
             "-FullStdOutLogOutput"};
 }
 
-Result<json::Value> run_export(const Editor& editor, const fs::path& project,
-                               const fs::path& work) {
+Result<json::Value> run_export(const Editor& editor, const fs::path& project, const fs::path& work,
+                               const json::Value& request) {
     std::error_code error;
     fs::remove_all(work, error);
     if (auto made = platform::create_directories(work.string()); !made) {
         return made.error();
+    }
+    if (request.is_object()) {
+        const fs::path asked = work / "request.json";
+        if (auto written = platform::write_file(asked.string(), json::write(request) + "\n");
+            !written) {
+            return written.error();
+        }
     }
     const fs::path script = work / "unreal_export.py";
     if (auto written = platform::write_file(script.string(), export_script()); !written) {

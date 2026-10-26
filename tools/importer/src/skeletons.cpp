@@ -70,7 +70,8 @@ Skeleton& Skeletons::add(const std::string& source, Script script,
             fields.push_back(field.name);
         }
         components.add_stand_in(code.component, std::move(fields))
-            .set_doc("What the " + std::string(engine_name(code.source)) + " script " + code.path +
+            .set_doc("What the " + std::string(engine_name(code.source)) +
+                     (code.source == ScriptSource::UnrealCpp ? " class " : " script ") + code.path +
                      " keeps.");
     }
     return skeletons_.insert_or_assign(source, std::move(skeleton)).first->second;

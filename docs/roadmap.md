@@ -779,8 +779,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         Blueprint and C++ class
   - [x] Unreal's materials and their overrides (a copy of the mesh drawn with them) and skeletal
         meshes playing their animation sequences
-  - [ ] Unreal's landscapes, Animation Blueprints, Niagara particles, and C++ classes as
-        skeletons as Unity's scripts are
+  - [x] Unreal's C++ classes as skeletons, as Unity's scripts are: properties as a component the
+        level's actors fill in, delegates as events and functions as stubs the system calls
+  - [ ] Unreal's landscapes, Animation Blueprints and Niagara particles
 - [x] 3D in the asset library and generator ([design](design.md#3d-assets))
   - [x] Parametric models: agents write a `.model.json` recipe of shapes, CSG on Manifold,
         extrusions, lathes, bevels and arrays, and the engine builds the mesh; the library keeps
