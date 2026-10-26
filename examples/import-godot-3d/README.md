@@ -3,7 +3,7 @@
 `project.import` converts a Godot 4 project's 3D scenes too. [godot/](godot/) holds
 "Courtyard" as Godot saves it: [project.godot](godot/project.godot) and one scene,
 [main.tscn](godot/main.tscn), with a grass ground, a crate that falls onto it, a lamp post from an
-OBJ file ([lamp.obj](godot/models/lamp.obj)) with a light on top, a statue instanced from a glTF
+OBJ file ([lamp.obj](godot/models/lamp.obj)) with a light and smoke on top, a statue instanced from a glTF
 file ([statue.gltf](godot/models/statue.gltf)), the sun, a camera and a `WorldEnvironment` with a
 procedural sky. [calls.jsonl](calls.jsonl) imports it, opens the scene, lets the crate fall and
 looks at the frame, as an agent would over MCP or JSON-RPC; [results.jsonl](results.jsonl) holds
@@ -22,6 +22,10 @@ the replies.
 - Bodies, collision shapes and lights keep Godot's names and fields: the ground's `BoxShape3D`
   becomes its `CollisionShape3D` `size`, and the glow's `OmniLight3D` keeps its color, energy and
   range.
+- The lamp's smoke is a `CPUParticles3D`: its settings keep their names, `draw_order = 2` becomes
+  `"view_depth"`, its `Gradient` becomes `color_ramp` points, and its `QuadMesh` and the quad's
+  material (`billboard_mode = 3`, `"particles"`) become the entity's own, so each puff faces the
+  camera. `particles.eval` finds all 16 alive after two seconds, rising from the lamp's top.
 - The `WorldEnvironment`'s `Environment` (its SSAO included) and `Sky` become its
   `WorldEnvironment` fields and a `ProceduralSkyMaterial` component; `project.godot`'s
   `3d/default_gravity` becomes `project.json`'s `physics_3d` gravity.
