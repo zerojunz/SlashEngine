@@ -1860,6 +1860,10 @@ ambient_light_source = 3
 tonemap_mode = 3
 glow_enabled = true
 glow_levels/2 = 0.5
+glow_levels/5 = 1
+glow_normalized = true
+glow_strength = 1.5
+glow_blend_mode = 4
 ssao_enabled = true
 fog_enabled = true
 fog_density = 0.02
@@ -2059,8 +2063,9 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     CHECK(environment.find("Transform2D") == nullptr);
     CHECK(*environment.find("WorldEnvironment") == parse(R"({
         "background_mode": "sky", "ambient_light_source": "sky", "tonemap_mode": "aces",
-        "glow_enabled": true, "fog_enabled": true, "fog_density": 0.02,
-        "sky_radiance_size": 128})"));
+        "glow_enabled": true, "glow_levels": [0.0, 0.5, 0.4, 0.1, 1.0, 0.0, 0.0],
+        "glow_normalized": true, "glow_strength": 1.5, "glow_blend_mode": "mix",
+        "fog_enabled": true, "fog_density": 0.02, "sky_radiance_size": 128})"));
     CHECK(*environment.find("ProceduralSkyMaterial") ==
           parse(R"({"sky_top_color": [0.2, 0.4, 0.8, 1.0], "sun_angle_max": 20.0})"));
 
@@ -2107,7 +2112,7 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
           "the model draws at its file's own scale; scale the entities that draw it instead");
     CHECK(why("model root type") == "its instances become Node3D entities that draw it; add the "
                                     "VehicleBody3D component to them by hand");
-    CHECK(!unsupported(report, "Environment.glow_levels").is_null());
+    CHECK(unsupported(report, "Environment.glow_levels").is_null());
     CHECK(!unsupported(report, "Environment.ssao_enabled").is_null());
     CHECK(!unsupported(report, "SpotLight3D.light_indirect_energy").is_null());
     CHECK(why("node type GPUParticles3D") == "no SlashEngine component for it yet");

@@ -1,6 +1,8 @@
 #include "gpu_device.hpp"
 
 #include "checks.hpp"
+#include "forward_post.hpp"
+#include "forward_post_shaders.hpp"
 #include "hlsl_compiler.hpp"
 #include "material_shaders.hpp"
 #include "mesh_clustered_shaders.hpp"
@@ -47,6 +49,8 @@ namespace {
 constexpr SDL_GPUTextureFormat kTextureFormat = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
 // The radiance's cubes are RGB10A2, as Godot's.
 constexpr SDL_GPUTextureFormat kRadianceFormat = SDL_GPU_TEXTUREFORMAT_R10G10B10A2_UNORM;
+// A Forward+ frame's world and glow's levels are half floats, as Godot's Forward+ buffers.
+constexpr SDL_GPUTextureFormat kHdrFormat = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT;
 
 constexpr SDL_GPUTextureFormat gpu_format(TextureFormat format) {
     switch (format) {
@@ -296,6 +300,15 @@ public:
             SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
         }
         release_post_targets();
+        for (SDL_GPUShader* shader : forward_shaders_) {
+            if (shader != nullptr) {
+                SDL_ReleaseGPUShader(device_, shader);
+            }
+        }
+        for (const auto& [format, pipeline] : forward_pipelines_) {
+            SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+        }
+        release_forward_targets();
         for (SDL_GPUShader* shader : sky_shaders_) {
             if (shader != nullptr) {
                 SDL_ReleaseGPUShader(device_, shader);
@@ -917,17 +930,22 @@ public:
                 return false;
             }
         }
-        if (frame.scene && post_processes(frame.scene->post)) {
+        if (frame.scene && frame.scene->method == RenderMethod::ForwardPlus) {
+            if (auto ready = prepare_forward(format, width, height, frame.scene->post.glow);
+                !ready) {
+                SDL_CancelGPUCommandBuffer(commands);
+                return ready.error();
+            }
+        } else if (frame.scene && post_processes(frame.scene->post)) {
             if (auto ready = prepare_post(format, width, height); !ready) {
                 SDL_CancelGPUCommandBuffer(commands);
                 return ready.error();
             }
         }
         if (frame.scene && sky_draws(*frame.scene)) {
-            // The sky draws where the meshes do: into the post passes' texture with them.
-            const SDL_GPUTextureFormat world =
-                post_processes(frame.scene->post) ? kTextureFormat : format;
-            if (auto ready = prepare_sky(world, width, height); !ready) {
+            // The sky draws where the meshes do.
+            if (auto ready = prepare_sky(world_format(*frame.scene, format), width, height);
+                !ready) {
                 SDL_CancelGPUCommandBuffer(commands);
                 return ready.error();
             }
@@ -993,10 +1011,8 @@ public:
         if (auto ready = prepare_radiance(*frame_.scene); !ready) {
             return ready;
         }
-        // With post-processing, meshes draw into the post passes' texture instead of the target.
-        auto pipeline =
-            mesh_pipeline_for(post_processes(frame_.scene->post) ? kTextureFormat : frame_format_,
-                              material, frame_.scene->method == RenderMethod::ForwardPlus);
+        auto pipeline = mesh_pipeline_for(world_format(*frame_.scene, frame_format_), material,
+                                          frame_.scene->method == RenderMethod::ForwardPlus);
         if (!pipeline) {
             return pipeline.error();
         }
@@ -1046,18 +1062,21 @@ public:
         // Mesh draws need a scene, so a frame with them has one.
         const bool meshes = frame_.scene && shadow_plan_ && !mesh_draws_.empty();
         const bool world = meshes || (frame_.scene && sky_draws(*frame_.scene));
-        const bool post = frame_.scene && post_processes(frame_.scene->post);
+        const bool forward = frame_.scene && frame_.scene->method == RenderMethod::ForwardPlus;
+        const bool post = !forward && frame_.scene && post_processes(frame_.scene->post);
         if (world) {
             draw_meshes(commands, *frame_.scene, meshes ? &*shadow_plan_ : nullptr);
         }
-        if (post) {
+        if (forward) {
+            draw_forward_post(commands, frame_.scene->post, !world);
+        } else if (post) {
             draw_post(commands, frame_.scene->post, !world);
         }
 
         SDL_GPUColorTargetInfo color{};
         color.texture = frame_texture_;
         color.clear_color = {frame_.clear.r, frame_.clear.g, frame_.clear.b, frame_.clear.a};
-        color.load_op = world || post ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_CLEAR;
+        color.load_op = world || post || forward ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_CLEAR;
         color.store_op = SDL_GPU_STOREOP_STORE;
         SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
         if (!batches_.empty()) {
@@ -2082,8 +2101,8 @@ private:
             draw_radiance(commands, scene);
         }
         SDL_GPUColorTargetInfo color{};
-        color.texture = post_processes(scene.post) ? post_targets_.world : frame_texture_;
-        color.clear_color = {frame_.clear.r, frame_.clear.g, frame_.clear.b, frame_.clear.a};
+        color.texture = world_texture(scene);
+        color.clear_color = world_clear(scene);
         color.load_op = SDL_GPU_LOADOP_CLEAR;
         color.store_op = SDL_GPU_STOREOP_STORE;
         SDL_GPUDepthStencilTargetInfo depth{};
@@ -2096,8 +2115,7 @@ private:
         depth.cycle = true;
         SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(commands, &color, 1, &depth);
         if (sky_draws(scene)) {
-            const SDL_GPUTextureFormat format =
-                post_processes(scene.post) ? kTextureFormat : frame_format_;
+            const SDL_GPUTextureFormat format = world_format(scene, frame_format_);
             const SkyUniforms sky = sky_uniforms(scene, frame_width_, frame_height_);
             SDL_PushGPUFragmentUniformData(commands, 0, &sky,
                                            static_cast<std::uint32_t>(sizeof(sky)));
@@ -2388,6 +2406,213 @@ private:
         }
     }
 
+    // The format the sky and meshes draw in, for a frame whose target has frame's: half floats for
+    // Forward+, whose post passes draw them over the target; RGBA8 for a Compatibility scene the
+    // post passes process; otherwise the target's own.
+    static SDL_GPUTextureFormat world_format(const Scene3D& scene, SDL_GPUTextureFormat frame) {
+        if (scene.method == RenderMethod::ForwardPlus) {
+            return kHdrFormat;
+        }
+        return post_processes(scene.post) ? kTextureFormat : frame;
+    }
+
+    // The texture the sky and meshes draw into, and what it is cleared to: for Forward+ the
+    // clear color made linear.
+    [[nodiscard]] SDL_GPUTexture* world_texture(const Scene3D& scene) const {
+        if (scene.method == RenderMethod::ForwardPlus) {
+            return forward_targets_.world;
+        }
+        return post_processes(scene.post) ? post_targets_.world : frame_texture_;
+    }
+    [[nodiscard]] SDL_FColor world_clear(const Scene3D& scene) const {
+        if (scene.method == RenderMethod::ForwardPlus) {
+            const Float4 clear = forward_clear(frame_.clear);
+            return {clear[0], clear[1], clear[2], clear[3]};
+        }
+        return {frame_.clear.r, frame_.clear.g, frame_.clear.b, frame_.clear.a};
+    }
+
+    // A pipeline drawing one triangle over a target of format with shaders (vertex, then
+    // fragment), made once per format into made.
+    Result<SDL_GPUGraphicsPipeline*> fullscreen_pipeline(
+        std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>>& made,
+        const std::array<SDL_GPUShader*, 2>& shaders, SDL_GPUTextureFormat format) {
+        for (const auto& [made_format, pipeline] : made) {
+            if (made_format == format) {
+                return pipeline;
+            }
+        }
+        SDL_GPUColorTargetDescription color{};
+        color.format = format;
+        SDL_GPUGraphicsPipelineCreateInfo info{};
+        info.vertex_shader = shaders[0];
+        info.fragment_shader = shaders[1];
+        info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+        info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+        info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+        info.target_info.color_target_descriptions = &color;
+        info.target_info.num_color_targets = 1;
+        SDL_GPUGraphicsPipeline* pipeline = SDL_CreateGPUGraphicsPipeline(device_, &info);
+        if (pipeline == nullptr) {
+            return sdl_error("creating the post-processing pipeline failed");
+        }
+        made.emplace_back(format, pipeline);
+        return pipeline;
+    }
+
+    // Forward+'s post passes: their shaders, their pipeline for each target format, the world's
+    // texture of half floats at the frame's size and, with glow, glow's seven levels. Made at the
+    // start of a frame that needs them.
+    Result<void> prepare_forward(SDL_GPUTextureFormat format, std::uint32_t width,
+                                 std::uint32_t height, bool glow) {
+        if (forward_shaders_[0] == nullptr) {
+            const ShaderCode code{.vertex_spirv = shaders::kForwardPostVertexSpirv,
+                                  .fragment_spirv = shaders::kForwardPostFragmentSpirv,
+                                  .vertex_msl = shaders::kForwardPostVertexMsl,
+                                  .fragment_msl = shaders::kForwardPostFragmentMsl,
+                                  .hlsl = shaders::kForwardPostHlsl};
+            auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, code, 0, 0);
+            if (!vertex) {
+                return vertex.error();
+            }
+            auto fragment =
+                make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, code, kForwardPostTextures, 1);
+            if (!fragment) {
+                SDL_ReleaseGPUShader(device_, vertex.value());
+                return fragment.error();
+            }
+            forward_shaders_ = {vertex.value(), fragment.value()};
+        }
+        for (const SDL_GPUTextureFormat needed : {kHdrFormat, format}) {
+            if (auto pipeline = fullscreen_pipeline(forward_pipelines_, forward_shaders_, needed);
+                !pipeline) {
+                return pipeline.error();
+            }
+        }
+        const auto made = [&](std::uint32_t w, std::uint32_t h) -> Result<SDL_GPUTexture*> {
+            SDL_GPUTextureCreateInfo info{};
+            info.type = SDL_GPU_TEXTURETYPE_2D;
+            info.format = kHdrFormat;
+            info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+            info.width = w;
+            info.height = h;
+            info.layer_count_or_depth = 1;
+            info.num_levels = 1;
+            SDL_GPUTexture* texture = SDL_CreateGPUTexture(device_, &info);
+            if (texture == nullptr) {
+                return sdl_error("creating a " + std::to_string(w) + "x" + std::to_string(h) +
+                                 " texture of half floats failed");
+            }
+            return texture;
+        };
+        if (forward_targets_.world == nullptr || forward_targets_.width != width ||
+            forward_targets_.height != height) {
+            release_forward_targets();
+            auto world = made(width, height);
+            if (!world) {
+                return world.error();
+            }
+            forward_targets_.world = world.value();
+            forward_targets_.width = width;
+            forward_targets_.height = height;
+        }
+        if (glow && forward_targets_.glow[0] == nullptr) {
+            const GlowPlan plan = forward_glow_plan(PostProcess{}, width, height);
+            for (std::size_t i = 0; i < kMaxGlowLevels; ++i) {
+                auto level = made(plan.sizes.at(i).width, plan.sizes.at(i).height);
+                if (!level) {
+                    release_forward_targets();
+                    return level.error();
+                }
+                forward_targets_.glow.at(i) = level.value();
+            }
+        }
+        return {};
+    }
+
+    void release_forward_targets() {
+        const auto release = [this](SDL_GPUTexture*& texture) {
+            if (texture != nullptr) {
+                pending_release_.push_back(std::exchange(texture, nullptr));
+            }
+        };
+        release(forward_targets_.world);
+        for (SDL_GPUTexture*& texture : forward_targets_.glow) {
+            release(texture);
+        }
+        forward_targets_.width = 0;
+        forward_targets_.height = 0;
+    }
+
+    // forward_post.hlsl's passes: glow's levels, each from the one before, then the tonemap pass
+    // from the world's texture over the frame's target. A frame with no sky or mesh draws clears
+    // the world's texture first.
+    void draw_forward_post(SDL_GPUCommandBuffer* commands, const PostProcess& post, bool clear) {
+        if (clear) {
+            SDL_GPUColorTargetInfo color{};
+            color.texture = forward_targets_.world;
+            const Float4 linear = forward_clear(frame_.clear);
+            color.clear_color = {linear[0], linear[1], linear[2], linear[3]};
+            color.load_op = SDL_GPU_LOADOP_CLEAR;
+            color.store_op = SDL_GPU_STOREOP_STORE;
+            SDL_EndGPURenderPass(SDL_BeginGPURenderPass(commands, &color, 1, nullptr));
+        }
+        SDL_GPUSampler* sampler = samplers_.at(sampler_index(Filter::Linear, false));
+        // A glow pass reads only its source; the tonemap pass reads glow's levels too.
+        const auto pass = [&](SDL_GPUTexture* target, SDL_GPUTextureFormat format,
+                              const ForwardPostUniforms& uniforms, SDL_GPUTexture* source,
+                              bool levels, SDL_GPUTexture* lut) {
+            SDL_GPUColorTargetInfo color{};
+            color.texture = target;
+            color.load_op = SDL_GPU_LOADOP_DONT_CARE;
+            color.store_op = SDL_GPU_STOREOP_STORE;
+            // Made in prepare_forward, at the start of the frame.
+            auto pipeline = fullscreen_pipeline(forward_pipelines_, forward_shaders_, format);
+            if (!pipeline) {
+                return;
+            }
+            SDL_GPURenderPass* render = SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
+            SDL_BindGPUGraphicsPipeline(render, pipeline.value());
+            SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
+                                           static_cast<std::uint32_t>(sizeof(uniforms)));
+            std::array<SDL_GPUTextureSamplerBinding, kForwardPostTextures> bindings{};
+            bindings[0] = {.texture = source, .sampler = sampler};
+            for (std::size_t i = 0; i < kMaxGlowLevels; ++i) {
+                SDL_GPUTexture* level = forward_targets_.glow.at(i);
+                bindings.at(1 + i) = {.texture = levels && level != nullptr ? level : white_,
+                                      .sampler = sampler};
+            }
+            bindings.back() = {.texture = lut, .sampler = sampler};
+            SDL_BindGPUFragmentSamplers(render, 0, bindings.data(),
+                                        static_cast<std::uint32_t>(bindings.size()));
+            SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
+            SDL_EndGPURenderPass(render);
+        };
+        if (post.glow) {
+            const GlowPlan plan = forward_glow_plan(post, frame_width_, frame_height_);
+            for (std::size_t i = 0; i < plan.count; ++i) {
+                const PostSize size = plan.sizes.at(i);
+                pass(forward_targets_.glow.at(i), kHdrFormat,
+                     forward_post_uniforms(post,
+                                           i == 0 ? ForwardPass::GlowFirst : ForwardPass::GlowNext,
+                                           size.width, size.height, frame_width_, frame_height_),
+                     i == 0 ? forward_targets_.world : forward_targets_.glow.at(i - 1), false,
+                     white_);
+            }
+        }
+        SDL_GPUTexture* lut = white_;
+        TextureDesc lut_desc{};
+        if (post.adjustments && post.color_correction != TextureId::None) {
+            const Texture& found = textures_.at(post.color_correction);
+            lut = found.gpu;
+            lut_desc = found.desc;
+        }
+        pass(frame_texture_, frame_format_,
+             forward_post_uniforms(post, ForwardPass::Tonemap, frame_width_, frame_height_,
+                                   frame_width_, frame_height_, lut_desc.width, lut_desc.height),
+             forward_targets_.world, post.glow, lut);
+    }
+
     // The post passes' shaders, their pipeline for a target format, and their textures at the
     // frame's size: the meshes' and glow's four. Made at the start of a frame that needs them.
     Result<void> prepare_post(SDL_GPUTextureFormat format, std::uint32_t width,
@@ -2510,27 +2735,7 @@ private:
     }
 
     Result<SDL_GPUGraphicsPipeline*> post_pipeline(SDL_GPUTextureFormat format) {
-        for (const auto& [made, pipeline] : post_pipelines_) {
-            if (made == format) {
-                return pipeline;
-            }
-        }
-        SDL_GPUColorTargetDescription color{};
-        color.format = format;
-        SDL_GPUGraphicsPipelineCreateInfo info{};
-        info.vertex_shader = post_shaders_[0];
-        info.fragment_shader = post_shaders_[1];
-        info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
-        info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
-        info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
-        info.target_info.color_target_descriptions = &color;
-        info.target_info.num_color_targets = 1;
-        SDL_GPUGraphicsPipeline* pipeline = SDL_CreateGPUGraphicsPipeline(device_, &info);
-        if (pipeline == nullptr) {
-            return sdl_error("creating the post-processing pipeline failed");
-        }
-        post_pipelines_.emplace_back(format, pipeline);
-        return pipeline;
+        return fullscreen_pipeline(post_pipelines_, post_shaders_, format);
     }
 
     void release_post_targets() {
@@ -3056,6 +3261,18 @@ private:
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> post_pipelines_;
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> sky_pipelines_;
     PostTargets post_targets_;
+    // What Forward+'s post passes draw with: their shaders, a pipeline for each target format,
+    // the world's texture of half floats at the frame's size and glow's levels, made with the
+    // first frame that glows.
+    struct ForwardTargets {
+        SDL_GPUTexture* world = nullptr;
+        std::array<SDL_GPUTexture*, kMaxGlowLevels> glow{};
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+    };
+    std::array<SDL_GPUShader*, 2> forward_shaders_{}; // vertex, then fragment
+    std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> forward_pipelines_;
+    ForwardTargets forward_targets_;
     // The radiance meshes are lit by: the raw cube the sky draws into and the one filtered from
     // it, and what they hold (nullopt to draw them again).
     struct RadianceCubes {

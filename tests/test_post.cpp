@@ -51,9 +51,11 @@ std::vector<Vertex3D> square(float half) {
             corner(-1, 1), corner(1, -1), corner(-1, -1)};
 }
 
-// An orthogonal camera on +Z looking at the origin, seeing from -1 to 1 both ways.
+// An orthogonal camera on +Z looking at the origin, seeing from -1 to 1 both ways, drawn as
+// Compatibility (test_forward_post.cpp has Forward+'s post-processing).
 render::Scene3D facing(const PostProcess& post) {
     render::Scene3D scene;
+    scene.method = render::RenderMethod::Compatibility;
     scene.camera = render::look_at({0.0F, 0.0F, 5.0F}, {0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F});
     scene.projection = render::orthogonal(2.0F, 1.0F, 0.1F, 10.0F);
     scene.post = post;
@@ -290,6 +292,11 @@ TEST_CASE("devices check post-processing settings") {
         CHECK(refused({.tonemapper = static_cast<Tonemapper>(9)}).find("one of five") !=
               std::string::npos);
         CHECK(refused({.exposure = std::nanf("")}).find("finite") != std::string::npos);
+        CHECK(refused({.glow_strength = std::nanf("")}).find("finite") != std::string::npos);
+        CHECK(refused({.glow_blend_mode = static_cast<render::GlowBlendMode>(7)})
+                  .find("blend mode is one of five") != std::string::npos);
+        CHECK(refused({.glow_levels = {0.0F, -1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F}})
+                  .find("at least 0") != std::string::npos);
         CHECK(
             refused({.adjustments = true, .color_correction = render::TextureId{77}}).find("77") !=
             std::string::npos);

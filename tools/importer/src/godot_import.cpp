@@ -21,6 +21,7 @@
 #include "slash/navigation/navigation.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
+#include "slash/render/mesh.hpp"
 #include "slash/runtime/gameplay.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/scene3d/gridmap.hpp"
@@ -5362,7 +5363,26 @@ private:
         }
         resources_used_.insert("Environment");
         json::Value& environment = components["WorldEnvironment"];
-        resource_fields(*section, *owner, "WorldEnvironment", environment, node, {"sky"});
+        resource_fields(*section, *owner, "WorldEnvironment", environment, node,
+                        {"sky", "glow_levels/1", "glow_levels/2", "glow_levels/3", "glow_levels/4",
+                         "glow_levels/5", "glow_levels/6", "glow_levels/7"});
+        // Godot's glow_levels/1 to /7 are one array, from Godot's defaults.
+        std::array<double, render::kMaxGlowLevels> levels{0.0, 0.8, 0.4, 0.1, 0.0, 0.0, 0.0};
+        bool leveled = false;
+        for (std::size_t i = 0; i < levels.size(); ++i) {
+            const std::string name = "glow_levels/" + std::to_string(i + 1);
+            if (const Value* level = section->property(name); level != nullptr) {
+                if (level->is_number()) {
+                    levels.at(i) = level->number();
+                    leveled = true;
+                } else {
+                    problems_.add("Environment." + name, node.declared, "not a number");
+                }
+            }
+        }
+        if (leveled) {
+            environment["glow_levels"] = json::Array(levels.begin(), levels.end());
+        }
         const Value* sky_reference = section->property("sky");
         if (sky_reference == nullptr || sky_reference->kind == Value::Kind::Nil) {
             return;

@@ -185,20 +185,47 @@ enum class Tonemapper : std::uint8_t { Linear, Reinhard, Filmic, Aces, Agx };
 inline constexpr std::array<std::string_view, 5> kTonemapperNames{"linear", "reinhard", "filmic",
                                                                   "aces", "agx"};
 
+// How glow blends into the lit 3D world, as Godot's Environment.glow_blend_mode with its Forward+
+// renderer: added, screened (never past white), soft light (after tonemapping), replacing it, or
+// mixed in by glow_mix.
+enum class GlowBlendMode : std::uint8_t { Additive, Screen, Softlight, Replace, Mix };
+inline constexpr std::array<std::string_view, 5> kGlowBlendModeNames{"additive", "screen",
+                                                                     "softlight", "replace", "mix"};
+
+// Glow's levels with Forward+, each half the size of the last, as Godot's RS::MAX_GLOW_LEVELS.
+inline constexpr std::size_t kMaxGlowLevels = 7;
+
 // What happens to the 3D world's colors after it is lit, as Godot's Environment's tonemap, glow
-// and adjustments in its Compatibility renderer. Without glow or adjustments, meshes tonemap as
-// they draw. With either, they draw untonemapped into a texture of the target's size, glow blurs
-// its bright parts into four textures each half the size of the last, and a pass over the target
-// blends the glow in, tonemaps, then adjusts brightness, contrast and saturation and corrects
-// colors, before the frame's 2D draws go over it. The textures are 8 bits a channel, as the
-// Compatibility renderer's are, so glow comes from colors above glow_hdr_threshold only when it
-// is below 1, or from glow_bloom.
+// and adjustments.
+//
+// Forward+ draws the sky and meshes linear into a texture of 16-bit floats the target's size, as
+// Godot's Forward+ renderer does: glow blurs its parts brighter than glow_hdr_threshold into
+// glow_levels textures, the first half the target's size and each next one half the last, and a
+// pass over the target exposes the colors, blends the glow in by glow_blend_mode, tonemaps, then
+// adjusts brightness, contrast and saturation and corrects colors, before the frame's 2D draws go
+// over it.
+//
+// Compatibility follows Godot's Compatibility renderer. Without glow or adjustments, meshes
+// tonemap as they draw. With either, they draw untonemapped into a texture of the target's size,
+// glow blurs its bright parts into four textures each half the size of the last, and a pass over
+// the target screens the glow in, tonemaps, adjusts and corrects colors. The textures are 8 bits a
+// channel, so glow comes from colors above glow_hdr_threshold only when it is below 1, or from
+// glow_bloom, and glow_levels, glow_strength, glow_mix and glow_blend_mode do nothing.
 struct PostProcess {
     Tonemapper tonemapper = Tonemapper::Linear;
     float exposure = 1.0F; // multiplies the lit colors before they are tonemapped
-    float white = 1.0F;    // the color tonemapped to white; AgX ignores it
+    // The color tonemapped to white: with Forward+ at least 1 (2 for AgX), and Compatibility's
+    // AgX ignores it.
+    float white = 1.0F;
+    float agx_contrast = 1.25F; // Forward+'s AgX: how steep its curve is, as tonemap_agx_contrast
     bool glow = false;
-    float glow_intensity = 0.8F;
+    float glow_intensity = 0.3F;
+    // Forward+: how much each level adds, already divided by their sum when the environment
+    // normalizes them. Levels at 0.01 or less are neither blurred nor added.
+    std::array<float, kMaxGlowLevels> glow_levels{0.0F, 0.8F, 0.4F, 0.1F, 0.0F, 0.0F, 0.0F};
+    float glow_strength = 1.0F; // Forward+: multiplies each level as it is blurred
+    float glow_mix = 0.05F;     // Forward+: how much glow replaces the colors in the mix mode
+    GlowBlendMode glow_blend_mode = GlowBlendMode::Screen; // Forward+
     float glow_bloom = 0.0F;              // how much of every color glows, from 0 to 1
     float glow_hdr_threshold = 1.0F;      // colors above it glow
     float glow_hdr_scale = 2.0F;          // how far above it they reach full glow
