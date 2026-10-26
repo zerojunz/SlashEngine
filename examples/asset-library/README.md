@@ -1,6 +1,6 @@
 # Asset library
 
-Images and sounds kept once on the machine and reused by every project, so agents stop making
+Images, sounds and models kept once on the machine and reused by every project, so agents stop making
 the same asset again. [main.cpp](main.cpp) has two projects, `game/` and `sequel/`, share one
 library and calls the commands as an agent does over MCP (tools `asset_search`,
 `asset_generate` and the rest) or JSON-RPC. `expected.txt` holds each call and its reply.
@@ -32,5 +32,8 @@ library and calls the commands as an agent does over MCP (tools `asset_search`,
   `contrast`: the red slime's dark outline is lost against the night sky, so it is rejected
   with the reason, and the green slime and the heart are accepted. Every whole-project
   `test.run` runs it.
+- Models go in as [`.model.json` recipes](../../docs/reference/scene-format.md#model-recipes),
+  kept with their size and triangles. `asset.refine` makes a version of the bench with its
+  `length` parameter doubled: no generator is called, and the legs move out with the seat.
 - The library is `~/.slash/library`, or `SLASH_LIBRARY_DIR`; this example keeps its own in
   `library/`.

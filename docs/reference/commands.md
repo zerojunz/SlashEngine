@@ -4666,7 +4666,7 @@ no `text`, every asset with the tags and type matches. Needs: `read`.
 | --- | --- | --- | --- |
 | `text` | string | | Words to find |
 | `tags` | string[] | | Tags every result must have |
-| `type` | string | every type | `image`, `sound` or `music` |
+| `type` | string | every type | `image`, `sound`, `music` or `model` |
 | `limit` | integer | 10 | Most results, up to 50 |
 
 ```json
@@ -4678,7 +4678,7 @@ no `text`, every asset with the tags and type matches. Needs: `read`.
 ```
 
 Music results have their `seconds`, `bpm`, `beat_count`, `bar_beats` and `key`, and a track the
-names of its `stems`.
+names of its `stems`. Model results have their `size` (meters along x, y and z) and `triangles`.
 
 ### asset.generate
 
@@ -4771,8 +4771,24 @@ prompt. A repeat is reused as with `asset.generate`. The parent's generator is u
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `id` | string | required | The asset to change |
-| `prompt` | string | required | What to change |
+| `prompt` | string | required, but for a model | What to change |
 | `loop` | boolean | false | Music: loop it in the settings written beside `path` |
+| `parameters` | object | | A model: new values for its [recipe's](scene-format.md#model-recipes) parameters, numbers or expressions |
+
+A [model recipe](scene-format.md#model-recipes) is refined by its `parameters` instead, and no
+generator is called: the new version is the recipe with those values, checked as it builds,
+with the parent's description (followed by `prompt` when there is one), tags, license and
+author. A name the recipe has no parameter for is reported with the closest one, and a value
+that makes the recipe fail to build is reported at `/parameters`. Only `description`, `tags`,
+`prompt` and `path` go with it.
+
+```json
+{"id": "edc8a071", "parameters": {"length": 2.4}, "prompt": "long enough for four", "path": "props/long_bench.model.json"}
+```
+
+```json
+{"id":"55d18dff10bf","parent":"edc8a0716505","path":"props/long_bench.model.json","size":[2.4,0.45,0.35],"triangles":36}
+```
 
 ```json
 {"id": "0b2fd1b5", "prompt": "make it red", "description": "Red slime sprite", "path": "art/slime_red.png"}
@@ -4791,7 +4807,7 @@ understands none of makes a variation.
 ### asset.info
 
 Returns an asset's whole record: `type`, `format`, `bytes`, size or length (`seconds`,
-`channels` and `sample_rate`), `description`, `tags`, the `request` its generator was asked,
+`channels` and `sample_rate`; a model's `size` and `triangles`), `description`, `tags`, the `request` its generator was asked,
 `generator`, `model`, `seed`, `license`, `author` and `parent`; music's `bpm`, `beat_count`,
 `bar_beats` and `key`, a track's `stems` (`name` and `id` each) and a stem's `track`; then
 `versions`, every version before it, oldest first, and `children`, the versions made from it.
@@ -4838,8 +4854,10 @@ budgets that cover the path, as with `asset.generate`'s `path`, and the reply li
 
 ### asset.add
 
-Adds a project's `.png`, `.bmp`, `.wav`, `.ogg` or `.mp3` file to the library, with its
-`description` (required), `tags`, `license` and `author`, and records it in `library.json`. A
+Adds a project's `.png`, `.bmp`, `.wav`, `.ogg`, `.mp3` or `.model.json` file to the library,
+with its `description` (required), `tags`, `license` and `author`, and records it in
+`library.json`. A [model recipe](scene-format.md#model-recipes) must build as written and name no
+texture files, whose paths are a project's; it is kept with its `size` and `triangles`. A
 file the library already holds keeps its record, with the new tags added; a sound added again
 as music becomes music. Music is measured, keeping the facts its author gives (see
 [music](#music)), and a track comes with its stems. Needs: `read`, `filesystem`.

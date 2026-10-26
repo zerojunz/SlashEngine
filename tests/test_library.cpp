@@ -184,7 +184,8 @@ TEST_CASE("library stores each asset once by the hash of its bytes") {
 
     library::Record unknown;
     CHECK(library::describe_file("text", "notes.txt", unknown).error().message ==
-          "\"notes.txt\" is not a file the library keeps: .png, .bmp, .wav, .ogg or .mp3");
+          "\"notes.txt\" is not a file the library keeps: .png, .bmp, .wav, .ogg, .mp3 or "
+          ".model.json");
     CHECK_FALSE(library::describe_file("not a png", "broken.png", unknown).ok());
 
     // Requests remember what they made.
@@ -454,6 +455,81 @@ TEST_CASE("asset.use and asset.add move files between the project and the librar
               .fail("asset.use",
                     R"({"id": ")" + added["id"].as_string() + R"(", "path": "../gem.png"})")
               .data["path"] == "/path");
+}
+
+TEST_CASE("model recipes go into the library, and refining one changes its parameters") {
+    const fs::path root = fresh("library_models");
+    const Engine engine(root);
+    const std::string recipe = R"({"format": 1, "parameters": {"width": 1, "height": 0.5},
+        "materials": {"oak": {"albedo_color": [0.6, 0.4, 0.2, 1]}},
+        "parts": [{"name": "crate", "shape": "box", "material": "oak",
+                   "size": ["=width", "=height", 1]}]})";
+    write(root / "project" / "props" / "crate.model.json", recipe);
+    json::Value added = engine.call(
+        "asset.add", R"({"path": "props/crate.model.json", "description": "A wooden crate.",
+                         "license": "CC0-1.0", "author": "Mira"})");
+    CHECK(added["type"] == "model");
+    CHECK(added["size"] == parse("[1, 0.5, 1]"));
+    CHECK(added["triangles"] == 12);
+    const std::string first = added["id"].as_string();
+    CHECK(engine.call("asset.search", R"({"type": "model"})")["assets"].as_array()[0]["id"] ==
+          first);
+
+    // A wider version, with no generator, linked to the first and copied into the project.
+    json::Value wider = engine.call(
+        "asset.refine", R"({"id": ")" + first +
+                            R"(", "parameters": {"width": 2}, "path": "props/wide.model.json"})");
+    CHECK(wider["parent"] == first);
+    CHECK(wider["size"] == parse("[2, 0.5, 1]"));
+    json::Value written = parse(read(root / "project" / "props" / "wide.model.json"));
+    CHECK(written["parameters"]["width"] == 2);
+    CHECK(written["parameters"]["height"] == 0.5);
+    json::Value info = engine.call("asset.info", R"({"id": ")" + wider["id"].as_string() + R"("})");
+    CHECK(info["description"] == "A wooden crate.");
+    CHECK(info["author"] == "Mira");
+    CHECK(info["request"]["parameters"] == parse(R"({"width": 2})"));
+    CHECK(info["versions"] == parse(R"([")" + first + R"("])"));
+    CHECK(info.find("generator") == nullptr);
+    CHECK(engine.call("asset.refine", R"({"id": ")" + first +
+                                          R"(", "parameters": {"width": 2}})")["reused"] == true);
+    // Another project uses a version as any model file.
+    CHECK(engine.call("asset.use",
+                      R"({"id": ")" + first + R"(", "path": "props/again.model.json"})")["path"] ==
+          "props/again.model.json");
+    CHECK(read(root / "project" / "props" / "again.model.json") == recipe);
+
+    CHECK(engine.fail("asset.refine", R"({"id": ")" + first + R"(", "parameters": {"widht": 2}})")
+              .message ==
+          "/parameters/widht: \"widht\" isn't one of the recipe's parameters (did you mean "
+          "\"width\"?)");
+    CHECK(
+        engine
+            .fail("asset.refine", R"({"id": ")" + first + R"(", "parameters": {"width": "=1 +"}})")
+            .data["path"] == "/parameters");
+    CHECK(engine.fail("asset.refine", R"({"id": ")" + first + R"("})").data["path"] ==
+          "/parameters");
+    CHECK(engine
+              .fail("asset.refine",
+                    R"({"id": ")" + first + R"(", "parameters": {"width": 2}, "seed": 1})")
+              .data["path"] == "/seed");
+    CHECK(engine.fail("asset.use", R"({"id": ")" + first + R"(", "path": "props/crate.json"})")
+              .message == "/path: the asset is a .model.json file; name the path so");
+    CHECK(engine.fail("asset.generate", R"({"prompt": "a chair", "type": "model"})").data["path"] ==
+          "/type");
+    // Texture paths are a project's, so recipes that name them stay out of the library.
+    write(root / "project" / "props" / "stone.model.json",
+          R"({"format": 1, "materials": {"stone": {"albedo_texture": "stone.png"}},
+              "parts": [{"shape": "sphere", "material": "stone"}]})");
+    CHECK(
+        engine.fail("asset.add", R"({"path": "props/stone.model.json", "description": "A ball."})")
+            .message.starts_with("/path: /materials/stone/albedo_texture: "));
+    // An image's versions come from prompts, not parameters.
+    const std::string icon =
+        engine.call("asset.generate", R"({"prompt": "gem icon", "generator": "test"})")["id"]
+            .as_string();
+    CHECK(engine.fail("asset.refine", R"({"id": ")" + icon + R"(", "parameters": {"width": 2}})")
+              .message == "/parameters: only a model takes parameters; the asset is an image");
+    CHECK(engine.fail("asset.refine", R"({"id": ")" + icon + R"("})").data["path"] == "/prompt");
 }
 
 TEST_CASE("asset commands report bad params with their paths") {
