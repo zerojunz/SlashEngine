@@ -6,6 +6,10 @@
 #                      be read, in Unreal's units and axes (centimeters, Z up, left-handed)
 #   meshes/<path>.glb  each static and skeletal mesh a level uses, written by Epic's glTF
 #                      exporter
+#   materials/<path>.glb  each material a component puts over its mesh's own, on the exporter's
+#                      preview mesh
+#   animations/<path>.glb  each animation sequence a skeletal mesh component plays, with its
+#                      skeletal mesh
 #   sounds/<path>.wav  each sound wave an ambient sound or audio component plays
 #
 # It only reads the project: nothing is saved, and the editor quits when it is done. Everything
@@ -89,6 +93,8 @@ def subsystem(name):
 # --- Meshes and sounds ---
 
 meshes = {}
+materials = {}
+animations = {}
 sounds = {}
 
 
@@ -148,12 +154,55 @@ def use_mesh(asset, skeletal):
         entry['bounds'] = bounds
     if not skeletal:
         static_collision(asset, entry)
-        materials = []
-        for slot in prop(asset, 'static_materials', []) or []:
-            material = prop(slot, 'material_interface')
-            materials.append(package_of(material))
-        entry['materials'] = materials
+    # Its material slots in order, as components' override_materials name them.
+    slots = []
+    for slot in prop(asset, 'materials' if skeletal else 'static_materials', []) or []:
+        material = prop(slot, 'material_interface')
+        slots.append(package_of(material))
+    entry['materials'] = slots
     meshes[package] = entry
+    return package
+
+
+def use_material(asset):
+    package = package_of(asset)
+    if not package or package in materials:
+        return package
+    entry = {'class': asset.get_class().get_name()}
+    path = file_for(OUT + '/materials', package, '.glb')
+    try:
+        if export_gltf(asset, path):
+            entry['file'] = file_for('materials', package, '.glb')
+        else:
+            problem('material the glTF exporter did not write', package)
+    except Exception as error:
+        problem('material the glTF exporter did not write', package, str(error))
+    materials[package] = entry
+    return package
+
+
+def use_animation(asset):
+    package = package_of(asset)
+    if not package or package in animations:
+        return package
+    entry = {'class': asset.get_class().get_name()}
+    if not isinstance(asset, unreal.AnimSequence):
+        problem('animation that is not a sequence', package,
+                entry['class'] + ': only animation sequences export with their keys')
+        animations[package] = entry
+        return package
+    path = file_for(OUT + '/animations', package, '.glb')
+    try:
+        if export_gltf(asset, path):
+            entry['file'] = file_for('animations', package, '.glb')
+        else:
+            problem('animation the glTF exporter did not write', package)
+    except Exception as error:
+        problem('animation the glTF exporter did not write', package, str(error))
+    length = call(None, asset.get_play_length)
+    if length is not None:
+        entry['length'] = float(length)
+    animations[package] = entry
     return package
 
 
@@ -243,6 +292,38 @@ def light_of(comp, kind):
     return light
 
 
+def overrides_of(comp, out):
+    # The materials the component draws its mesh's slots with in place of the mesh's own; ''
+    # keeps a slot's.
+    overrides = [use_material(m) if m is not None else ''
+                 for m in (prop(comp, 'override_materials', []) or [])]
+    if any(overrides):
+        out['override_materials'] = overrides
+
+
+def animation_of(comp):
+    mode = enum_name(prop(comp, 'animation_mode', 'animation_blueprint'))
+    if 'single' in mode:
+        data = prop(comp, 'animation_data')
+        anim = prop(data, 'anim_to_play') if data is not None else None
+        out = {'mode': 'single_node'}
+        if anim is not None:
+            out['animation'] = use_animation(anim)
+        if data is not None:
+            out['looping'] = bool(prop(data, 'saved_looping', True))
+            out['playing'] = bool(prop(data, 'saved_playing', True))
+            out['position'] = float(prop(data, 'saved_position', 0.0))
+            out['play_rate'] = float(prop(data, 'saved_play_rate', 1.0))
+        return out
+    if 'blueprint' in mode:
+        anim_class = prop(comp, 'anim_class')
+        out = {'mode': 'blueprint'}
+        if anim_class is not None:
+            out['blueprint'] = package_of(anim_class)
+        return out
+    return {'mode': mode}
+
+
 def component_of(actor, comp):
     out = {'name': comp.get_name(), 'class': comp.get_class().get_name()}
     scene = isinstance(comp, unreal.SceneComponent)
@@ -264,9 +345,7 @@ def component_of(actor, comp):
         mesh = prop(comp, 'static_mesh')
         if mesh is not None:
             out['mesh'] = use_mesh(mesh, False)
-        overrides = [package_of(m) for m in (prop(comp, 'override_materials', []) or [])]
-        if any(overrides):
-            out['override_materials'] = overrides
+        overrides_of(comp, out)
         body_of(comp, out)
         if isinstance(comp, unreal.InstancedStaticMeshComponent):
             instances = []
@@ -281,7 +360,9 @@ def component_of(actor, comp):
         mesh = prop(comp, 'skeletal_mesh_asset') or prop(comp, 'skeletal_mesh')
         if mesh is not None:
             out['mesh'] = use_mesh(mesh, True)
+        overrides_of(comp, out)
         body_of(comp, out)
+        out['animation'] = animation_of(comp)
     elif isinstance(comp, unreal.BoxComponent):
         out['shape'] = {'type': 'box', 'extent': vector(prop(comp, 'box_extent', unreal.Vector()))}
         body_of(comp, out)
@@ -501,6 +582,8 @@ def main():
         if level is not None:
             result['levels'].append(level)
     result['meshes'] = meshes
+    result['materials'] = materials
+    result['animations'] = animations
     result['sounds'] = sounds
     result['problems'] = problems
     with open(os.path.join(OUT, 'export.json'), 'w', encoding='utf-8') as out:

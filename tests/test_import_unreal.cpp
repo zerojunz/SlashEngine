@@ -66,10 +66,10 @@ struct FileAxes {
 // Unreal's glTF exporter: x, z and y.
 constexpr FileAxes kGltfAxes{.axis = {0, 2, 1}, .sign = {1.0F, 1.0F, 1.0F}};
 
-// Writes a box mesh, Unreal's bounds (centimeters) in a file's axes and meters, as the exporter
-// writes a static mesh.
-void write_box(const fs::path& path, std::array<float, 3> low, std::array<float, 3> high,
-               const FileAxes& axes) {
+// A box mesh, Unreal's bounds (centimeters) in a file's axes and meters, as the exporter writes a
+// static mesh.
+scene3d::Model box_model(std::array<float, 3> low, std::array<float, 3> high,
+                         const FileAxes& axes) {
     std::array<float, 3> a{};
     std::array<float, 3> b{};
     for (std::size_t i = 0; i < 3; ++i) {
@@ -105,10 +105,30 @@ void write_box(const fs::path& path, std::array<float, 3> low, std::array<float,
     model.nodes.push_back(node);
     model.parts.push_back(
         {.node = "Mesh", .mesh = 0, .transform = {}, .node_index = 0, .skin = -1});
+    return model;
+}
+
+void write_model(const fs::path& path, const scene3d::Model& model) {
     const scene3d::ModelReader none = [](std::string_view) -> slash::Result<std::string> {
         return slash::make_error(slash::ErrorCode::NotFound, "no files");
     };
     write(path, scene3d::write_glb(model, path.string(), none).value());
+}
+
+void write_box(const fs::path& path, std::array<float, 3> low, std::array<float, 3> high,
+               const FileAxes& axes) {
+    write_model(path, box_model(low, high, axes));
+}
+
+// A box drawn with one material, of a name and a color.
+scene3d::Model painted_box(std::array<float, 3> low, std::array<float, 3> high,
+                           std::string_view material, std::array<float, 4> color) {
+    scene3d::Model model = box_model(low, high, kGltfAxes);
+    scene3d::ModelMaterial& paint = model.materials.emplace_back();
+    paint.name = material;
+    paint.standard.albedo_color = {color[0], color[1], color[2], color[3]};
+    model.meshes.at(0).surfaces.at(0).material = 0;
+    return model;
 }
 
 // A small Unreal project, "Box Drop", with what its editor's export would write in FakeExport:
@@ -425,6 +445,135 @@ TEST_CASE("an Unreal project imports through its editor into scenes, settings an
         tasks.push_back(task.find("task")->as_string());
     }
     CHECK(tasks == std::vector<std::string>{"task/port-bp-player", "task/port-dropper"});
+}
+
+TEST_CASE("an Unreal import draws meshes' override materials and plays their animations") {
+    const fs::path project = fs::absolute("import_unreal_looks");
+    fs::remove_all(project);
+    const fs::path exported = project / "unreal/FakeExport";
+    write_project(project / "unreal");
+    // The crate draws M_Wood, and a second crate draws it red.
+    write_model(exported / "meshes/Game/SM_Crate.glb",
+                painted_box({-50, -30, 0}, {50, 30, 100}, "M_Wood", {0.6F, 0.4F, 0.2F, 1.0F}));
+    write_model(exported / "materials/Game/M_Red.glb",
+                painted_box({-50, -50, -50}, {50, 50, 50}, "M_Red", {1.0F, 0.0F, 0.0F, 1.0F}));
+    // A figure and a sequence that turns it, exported on its skeleton.
+    const scene3d::Model figure = box_model({-20, -20, 0}, {20, 20, 180}, kGltfAxes);
+    write_model(exported / "meshes/Game/SK_Figure.glb", figure);
+    scene3d::Model wave = figure;
+    scene3d::ModelAnimation& clip = wave.animations.emplace_back();
+    clip.name = "Wave";
+    clip.length = 1.0;
+    clip.tracks.push_back(
+        {.node = 0,
+         .property = scene3d::NodeProperty::Rotation,
+         .step = false,
+         .loop_wrap = true,
+         .times = {0.0F, 1.0F},
+         .values = {{0.0F, 0.0F, 0.0F, 1.0F}, {0.0F, 0.7071068F, 0.0F, 0.7071068F}}});
+    write_model(exported / "animations/Game/A_Wave.glb", wave);
+
+    json::Value description =
+        parse(slash::platform::read_file((exported / "export.json").string()).value());
+    json::Value& meshes = description["meshes"];
+    meshes["/Game/SM_Crate"]["materials"] = json::Array{json::Value("/Game/M_Wood")};
+    meshes["/Game/SK_Figure"] = parse(R"({"file": "meshes/Game/SK_Figure.glb",
+        "skeletal": true, "bounds": {"origin": [0, 0, 90], "extent": [20, 20, 90]},
+        "materials": []})");
+    description["materials"] =
+        parse(R"({"/Game/M_Red": {"class": "Material", "file": "materials/Game/M_Red.glb"}})");
+    description["animations"] = parse(R"({"/Game/A_Wave": {"class": "AnimSequence",
+        "file": "animations/Game/A_Wave.glb", "length": 1.0}})");
+    json::Array& actors = description["levels"].as_array().at(0)["actors"].as_array();
+    actors.push_back(parse(R"({"name": "StaticMeshActor_2", "label": "Red Crate",
+        "class": "StaticMeshActor", "class_path": "/Script/Engine.StaticMeshActor",
+        "root": "StaticMeshComponent0",
+        "transform": {"location": [300, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
+        "components": [{"name": "StaticMeshComponent0", "class": "StaticMeshComponent",
+          "mesh": "/Game/SM_Crate", "override_materials": ["/Game/M_Red"],
+          "collision": "query_and_physics", "profile": "BlockAll", "mobility": "static",
+          "transform": {"location": [300, 0, 0], "rotation": [0, 0, 0, 1],
+                        "scale": [1, 1, 1]}}]})"));
+    actors.push_back(parse(R"({"name": "SkeletalMeshActor_0", "label": "Figure",
+        "class": "SkeletalMeshActor", "class_path": "/Script/Engine.SkeletalMeshActor",
+        "root": "SkeletalMeshComponent0",
+        "transform": {"location": [-200, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
+        "components": [{"name": "SkeletalMeshComponent0", "class": "SkeletalMeshComponent",
+          "mesh": "/Game/SK_Figure", "collision": "no_collision", "mobility": "movable",
+          "animation": {"mode": "single_node", "animation": "/Game/A_Wave", "looping": true,
+                        "playing": true, "position": 0.25, "play_rate": 2.0},
+          "transform": {"location": [-200, 0, 0], "rotation": [0, 0, 0, 1],
+                        "scale": [1, 1, 1]}}]})"));
+    actors.push_back(parse(R"({"name": "SkeletalMeshActor_1", "label": "Statue",
+        "class": "SkeletalMeshActor", "class_path": "/Script/Engine.SkeletalMeshActor",
+        "root": "SkeletalMeshComponent0",
+        "transform": {"location": [-400, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
+        "components": [{"name": "SkeletalMeshComponent0", "class": "SkeletalMeshComponent",
+          "mesh": "/Game/SK_Figure", "collision": "no_collision", "mobility": "movable",
+          "animation": {"mode": "blueprint", "blueprint": "/Game/ABP_Figure"},
+          "transform": {"location": [-400, 0, 0], "rotation": [0, 0, 0, 1],
+                        "scale": [1, 1, 1]}}]})"));
+    write(exported / "export.json", json::write(description));
+
+    auto planned = importer::plan_import({.source = (project / "unreal").string(),
+                                          .destination = project.string(),
+                                          .unpack_to = {},
+                                          .assetripper = {},
+                                          .unreal_editor = SLASH_FAKE_UNREAL});
+    REQUIRE_MESSAGE(planned.ok(), (planned.ok() ? std::string() : planned.error().message));
+    const importer::ImportPlan& plan = planned.value();
+    const auto file = [&](std::string_view path) {
+        for (const auto& [planned_path, contents] : plan.files) {
+            if (planned_path == path) {
+                return contents;
+            }
+        }
+        FAIL("no " << path);
+        return std::string();
+    };
+    const json::Value scene = file_json(plan, "unreal/Content/Maps/Drop.scene.json");
+
+    // The red crate draws a copy of the crate's mesh with M_Red in M_Wood's place.
+    CHECK(component(scene, "crate", "MeshInstance3D").find("mesh")->as_string() ==
+          "unreal/Content/SM_Crate.glb");
+    CHECK(component(scene, "red_crate", "MeshInstance3D").find("mesh")->as_string() ==
+          "unreal/Content/SM_Crate_M_Red.glb");
+    const scene3d::ModelReader none = [](std::string_view) -> slash::Result<std::string> {
+        return slash::make_error(slash::ErrorCode::NotFound, "no files");
+    };
+    auto red = scene3d::load_model(file("unreal/Content/SM_Crate_M_Red.glb"),
+                                   "unreal/Content/SM_Crate_M_Red.glb", none);
+    REQUIRE(red.ok());
+    REQUIRE(red.value().materials.size() == 1);
+    CHECK(red.value().materials[0].name == "M_Red");
+    CHECK(red.value().materials[0].standard.albedo_color.x == doctest::Approx(1.0));
+    CHECK(red.value().materials[0].standard.albedo_color.y == doctest::Approx(0.0));
+    // It still collides as the crate's mesh does.
+    CHECK_FALSE(red.value().collision.empty());
+
+    // The figure plays its sequence from where Unreal left it, looping, at twice the speed.
+    const json::Value& player = component(scene, "figure", "AnimationPlayer");
+    CHECK(player.find("library")->as_string() == "unreal/Content/A_Wave.anim.json");
+    CHECK(player.find("animation")->as_string() == "Wave");
+    CHECK(player.find("speed_scale")->as_double() == doctest::Approx(2.0));
+    CHECK(player.find("time")->as_double() == doctest::Approx(0.25));
+    const json::Value library = file_json(plan, "unreal/Content/A_Wave.anim.json");
+    const json::Value* animation = library.find("animations")->find("Wave");
+    REQUIRE(animation != nullptr);
+    CHECK(animation->find("from")->find("model")->as_string() == "unreal/Content/A_Wave.glb");
+    CHECK(animation->find("loop")->as_string() == "linear");
+    CHECK_FALSE(file("unreal/Content/A_Wave.glb").empty());
+    // An Animation Blueprint is left for its task.
+    CHECK(scene.find("entities")->find("statue")->find("components")->find("AnimationPlayer") ==
+          nullptr);
+    bool reported = false;
+    for (const json::Value& problem : plan.report.find("unsupported")->as_array()) {
+        reported = reported || problem.find("what")->as_string() == "Animation Blueprint";
+    }
+    CHECK(reported);
+
+    CHECK(plan.report.find("converted")->find("animations")->as_int() == 1);
+    CHECK(plan.report.find("converted")->find("material_variants")->as_int() == 1);
 }
 
 TEST_CASE("an Unreal export's axes and scale come from its meshes") {

@@ -1,4 +1,11 @@
 {
+ "animations": {
+  "/Game/Characters/A_Idle": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/A_Idle.glb",
+   "length": 2.0
+  }
+ },
  "blueprints": [
   {
    "kind": "Blueprint",
@@ -1221,6 +1228,43 @@
        }
       },
       {
+       "animation": {
+        "animation": "/Game/Characters/A_Idle",
+        "looping": true,
+        "mode": "single_node",
+        "play_rate": 1.0,
+        "playing": true,
+        "position": 0.0
+       },
+       "cast_shadow": true,
+       "class": "SkeletalMeshComponent",
+       "collision": "no_collision",
+       "mesh": "/Game/Characters/SK_Hero",
+       "mobility": "movable",
+       "name": "CharacterMesh0",
+       "overlaps": false,
+       "parent": "CollisionCylinder",
+       "simulate": false,
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         -92.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      },
+      {
        "class": "ArrowComponent",
        "mobility": "movable",
        "name": "Arrow",
@@ -1355,7 +1399,32 @@
    "path": "/Game/Maps/Main"
   }
  ],
+ "materials": {
+  "/Game/Props/MI_CrateDark": {
+   "class": "MaterialInstanceConstant",
+   "file": "materials/Game/Props/MI_CrateDark.glb"
+  }
+ },
  "meshes": {
+  "/Game/Characters/SK_Hero": {
+   "bounds": {
+    "extent": [
+     20.0,
+     20.0,
+     90.0
+    ],
+    "origin": [
+     0.0,
+     0.0,
+     90.0
+    ]
+   },
+   "file": "meshes/Game/Characters/SK_Hero.glb",
+   "materials": [
+    "/Game/Characters/M_Hero"
+   ],
+   "skeletal": true
+  },
   "/Game/Props/SM_Coin": {
    "bounds": {
     "extent": [
