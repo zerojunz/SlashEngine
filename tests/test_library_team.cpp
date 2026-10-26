@@ -268,6 +268,34 @@ TEST_CASE("a team folder shares what teammates make, use and say about assets") 
               shared.generic_string() + "\" doesn't exist; is the share mounted?");
 }
 
+TEST_CASE("a team folder shares a recipe with the model files it is made of") {
+    const fs::path root = fs::absolute("team_composite");
+    fs::remove_all(root);
+    const fs::path shared = root / "share";
+    fs::create_directories(shared);
+    const Teammate alice(root, "alice", team_providers(shared));
+    const Teammate bob(root, "bob", team_providers(shared));
+    const library::Library team(shared.string());
+    write(alice.root / "project" / "props" / "crate.model.json",
+          R"({"format": 1, "parts": [{"shape": "box", "size": [1, 1, 1]}]})");
+    write(alice.root / "project" / "props" / "stall.model.json",
+          R"({"format": 1, "parts": [{"shape": "box", "size": [3, 1, 1]},
+              {"name": "crate", "model": "props/crate.model.json", "position": [2, 0, 0]}]})");
+    const json::Value added = alice.call(
+        "asset.add", R"({"path": "props/stall.model.json", "description": "A market stall."})");
+    CHECK(added.find("team_error") == nullptr);
+    const std::string stall = text_of(added, "id");
+    const std::string crate = text_of(*added.find("model_parts"), "props/crate.model.json");
+    CHECK(team.get(stall).value().uses == std::vector{team.get(crate).value().id});
+
+    // Bob's copy brings the crate it is made of from the team too.
+    const json::Value used =
+        bob.call("asset.use", R"({"id": ")" + stall + R"(", "path": "stall.model.json"})");
+    CHECK(used.find("parts")->as_array().size() == 1);
+    CHECK(bob.library().get(crate).ok());
+    CHECK(fs::exists(bob.root / "project" / "parts" / (crate + ".model.json")));
+}
+
 TEST_CASE("a library server shares assets with teammates who send its token") {
     const fs::path root = fs::absolute("team_server");
     fs::remove_all(root);
