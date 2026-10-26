@@ -352,6 +352,13 @@ CanvasRenderer::CanvasRenderer(render::RenderDevice& device, asset::Assets& asse
                   it = voxel_gis_.emplace(path, std::move(loaded).value()).first;
               }
               return it->second.share();
+          },
+          [this](const std::string& path) -> Result<std::shared_ptr<const render::Image>> {
+              auto loaded = light_image(path);
+              if (!loaded) {
+                  return loaded.error();
+              }
+              return light_images_.at(path).share();
           }) {}
 
 CanvasRenderer::~CanvasRenderer() {

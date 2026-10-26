@@ -87,15 +87,18 @@ void add_voxel_gi_types(asset::Assets& assets);
 
 // What a voxelized surface is made of, as Godot's Voxelizer bakes a material: its albedo and its
 // emission, linear, as kVoxelGIMaterialSize texels square, the textures shrunk with Godot's cubic
-// filter and read at a point's texture coordinate wrapped.
+// filter and read at a point's texture coordinate wrapped, and the faces a moving mesh's material
+// hides when it is plotted (the voxelizer takes every face).
 inline constexpr std::uint32_t kVoxelGIMaterialSize = 128;
 struct VoxelGIMaterial {
     std::vector<std::array<float, 3>> albedo;
     std::vector<std::array<float, 3>> emission; // times its energy and the bake's exposure
+    render::CullMode cull_mode = render::CullMode::Back;
 };
 // A StandardMaterial3D as a VoxelGI bakes it (Voxelizer::_get_material_cache): its albedo color
 // times its albedo texture, and when emission_enabled, its emission color plus its emission
-// texture, both times emission_energy_multiplier and exposure. Images left out are not there.
+// texture, both times emission_energy_multiplier and exposure, and its cull_mode. Images left out
+// are not there.
 [[nodiscard]] VoxelGIMaterial voxel_gi_material(const world::StandardMaterial3D& standard,
                                                 const render::Image* albedo,
                                                 const render::Image* emission, float exposure);
@@ -181,6 +184,26 @@ struct VoxelGITexture {
                                             std::span<const VoxelGILight> lights,
                                             const VoxelGISettings& settings,
                                             jobs::Pool* pool = nullptr);
+
+// The meshes of a MeshInstance3D entity as a VoxelGI takes them, each in the entity's own space:
+// its primitive mesh, or each part of its model at rest, with its StandardMaterial3D or else the
+// model's own materials, read through sources (lightmap.hpp's) with their emission at exposure.
+// What can't be read is a problem.
+[[nodiscard]] std::vector<VoxelGIMesh>
+voxel_gi_meshes(const world::World& world, entt::entity entity, const LightmapSources& sources,
+                float exposure, std::vector<Problem>& problems);
+
+// Moving meshes plotted into a VoxelGI's light, as Godot's dynamic objects
+// (VoxelGIInstance::update): each object (its transform into the VoxelGI's space) is drawn from
+// the six faces of its box into maps 16 times finer than the cells, its nearest surfaces' albedo,
+// normal and emission lit by lights as the cells are (MODE_DYNAMIC_LIGHTING), then halved level by
+// level and blended over each level of texture from level 0 (MODE_DYNAMIC_SHRINK_PLOT). Pixels
+// are lit on pool's threads where given; the same texels on every platform and for any number of
+// threads. A texture that isn't the data's light is left alone.
+void plot_voxel_gi_objects(VoxelGITexture& texture, const VoxelGIData& data,
+                           const VoxelGIOctree& octree, std::span<const VoxelGIMesh> objects,
+                           std::span<const VoxelGILight> lights, const VoxelGISettings& settings,
+                           jobs::Pool* pool = nullptr);
 
 // A VoxelGI's texture as the atlas render devices sample (render::VoxelGIShading): each level's z
 // slices side by side, as many a row as fit in a width of at most 4096 texels (8192 or 16384
