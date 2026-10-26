@@ -651,6 +651,11 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [ ] Path tracing: a GPU path tracer that bakes the lightmaps above, as Godot's LightmapGI
       does, and renders progressive reference stills that `frame.capture` can return, so agents
       compare the real-time frame with ground truth
+  - [x] Progressive reference stills on the CPU: `frame.capture`'s `path_trace` traces paths
+        through a bounding volume hierarchy of the frame's triangles, shaded as the live frame
+        shades them, and adds samples up over captures
+  - [ ] The same tracer on the GPU, through the ray queries above
+  - [ ] Lightmaps baked on the GPU
 - [x] Procedural, physical and panorama skies and fog, and the sky's light on meshes (ambient
       light and reflections), as Godot's Compatibility renderer
 - [x] Volumetric fog

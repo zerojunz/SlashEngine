@@ -452,8 +452,11 @@ SkyRay sky_ray(const SkyUniforms& uniforms, float x, float y) {
     const float ndc_x = (u * 2.0F) - 1.0F;
     const float ndc_y = 1.0F - (v * 2.0F);
     const Float4& p = uniforms.projection;
-    const Float3 eye = normalize3(
-        times3(uniforms.orientation, {(ndc_x + p[0]) / p[1], (ndc_y + p[2]) / p[3], -1.0F}));
+    return sky_ray_toward(normalize3(
+        times3(uniforms.orientation, {(ndc_x + p[0]) / p[1], (ndc_y + p[2]) / p[3], -1.0F})));
+}
+
+SkyRay sky_ray_toward(const Float3& eye) {
     std::array<float, 2> coords{atan2_approx(eye[0], -eye[2]), acos_approx(eye[1])};
     if (coords[0] < 0.0F) {
         coords[0] += kPi * 2.0F;

@@ -1149,15 +1149,22 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                                    .upscaler = render::temporal_upscaler_on(
                                        scaling, settings(world).rendering_method, *device_)};
     }
+    // A path-traced frame sees every mesh as it is, and antialiases itself.
+    const bool traced = options.path_trace.has_value();
+    if (traced) {
+        fsr2.reset();
+    }
     std::optional<scene3d::Frame3D> scene = scene3d_.prepare(
         world, viewport.x, viewport.y, options.interpolation, options.clear,
         settings(world).shadows, options.time, settings(world).depth_of_field, settings(world).ssao,
         settings(world).ssr, settings(world).reflection_atlas, settings(world).rendering_method,
-        settings(world).voxel_gi_high_quality, settings(world).use_taa, fsr2,
+        settings(world).voxel_gi_high_quality, settings(world).use_taa && !traced, fsr2,
         settings(world).decal_filter, settings(world).volumetric_fog,
-        settings(world).mesh_lod_threshold, settings(world).occlusion_culling);
+        traced ? 0.0F : settings(world).mesh_lod_threshold,
+        traced ? render::OcclusionCulling{} : settings(world).occlusion_culling);
     if (scene) {
         scene->scene.method = settings(world).rendering_method;
+        scene->scene.path_trace = options.path_trace;
     }
     for (const scene3d::Problem& unseen : scene3d_.problems()) {
         problem(unseen.entity, unseen.path, unseen.message);

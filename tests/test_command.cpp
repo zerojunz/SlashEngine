@@ -3275,6 +3275,14 @@ TEST_CASE("frame.capture draws the window on the CPU and returns pixels, a PNG o
                  command::code::kInvalidArgument);
     engine.fails("frame.capture", R"({"path": "frame.jpg"})", command::code::kInvalidArgument);
     engine.fails("frame.capture", R"({"scale": 8})", command::code::kInvalidParams);
+    // Path tracing is for the 3D world; a frame with none has no paths to add up.
+    CHECK(engine.ok("frame.capture", R"({"points": [[0, 0]], "path_trace": {"samples": 4}})")
+              .find("path_samples")
+              ->as_int() == 0);
+    engine.fails("frame.capture", R"({"path_trace": {"samples": 0}})",
+                 command::code::kInvalidParams);
+    engine.fails("frame.capture", R"({"path_trace": {"bounces": 33}})",
+                 command::code::kInvalidParams);
 
     // Writing a capture needs the filesystem capability.
     options.capabilities = {Capability::Read};

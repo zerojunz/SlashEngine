@@ -4677,12 +4677,23 @@ Reply frame_capture(Session& session, const json::Value& params) {
 
     const json::Value* collisions = params.find("collisions");
     const json::Value* frames = params.find("frames");
+    std::optional<render::PathTrace3D> path_trace;
+    if (const json::Value* given = params.find("path_trace"); given != nullptr) {
+        path_trace = render::PathTrace3D{};
+        if (const json::Value* samples = given->find("samples"); samples != nullptr) {
+            path_trace->samples = static_cast<std::uint32_t>(samples->as_int());
+        }
+        if (const json::Value* bounces = given->find("bounces"); bounces != nullptr) {
+            path_trace->bounces = static_cast<std::uint32_t>(bounces->as_int());
+        }
+    }
     auto captured = canvas::capture(
         world, session.assets(),
         {.scale = static_cast<float>(scale),
          .time = time != nullptr ? time->as_double() : -1.0,
          .collisions = collisions != nullptr && collisions->as_bool(),
-         .frames = frames != nullptr ? static_cast<std::uint32_t>(frames->as_int()) : 1U});
+         .frames = frames != nullptr ? static_cast<std::uint32_t>(frames->as_int()) : 1U,
+         .path_trace = path_trace});
     if (!captured) {
         return param_error(captured.error(), scale_param != nullptr ? "/scale" : "");
     }
@@ -4721,6 +4732,9 @@ Reply frame_capture(Session& session, const json::Value& params) {
         }
     }
     result["drawn"] = std::move(drawn);
+    if (path_trace) {
+        result["path_samples"] = capture.path_samples;
+    }
     // The world drawn smaller or larger and scaled, by project.json's rendering.scaling.
     if (!capture.scaled.upscaler.empty()) {
         result["upscaler"] = capture.scaled.upscaler;
@@ -6695,6 +6709,12 @@ void register_builtin_commands(Registry& registry) {
                             "antialiasing, which builds up over frames. Default 1.");
     capture_frames["minimum"] = 1;
     capture_frames["maximum"] = 120;
+    json::Value capture_paths = params_schema({
+        {"samples", integer_property("Paths per pixel.", 1, render::kMaxPathSamples, 16)},
+        {"bounces", integer_property("0 is direct light only.", 0, render::kMaxPathBounces, 4)},
+    });
+    capture_paths["description"] =
+        "Path trace the 3D world as a reference still; repeat captures add samples.";
     registry.add({
         .name = "frame.capture",
         .description = "Draws the frame the window shows now, on the CPU, the same on every "
@@ -6709,6 +6729,7 @@ void register_builtin_commands(Registry& registry) {
                                  "Collision Shapes.")},
             {"frames", std::move(capture_frames)},
             {"image", property("boolean", "Return the PNG, base64, as \"png\".")},
+            {"path_trace", std::move(capture_paths)},
             {"path", property("string", "A .png file to write.")},
             {"points", std::move(capture_points)},
             {"region", std::move(capture_region)},
