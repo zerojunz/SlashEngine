@@ -211,7 +211,7 @@ a lock.
 
 ## Asset library
 
-`engine/library` keeps generated and added images, sounds and music once per machine
+`engine/library` keeps generated and added images, sounds, music and model recipes once per machine
 (`~/.slash/library`, or `SLASH_LIBRARY_DIR`; `SessionOptions::library_dir` in tests), stored by
 the SHA-256 of their bytes (`slash/core/sha256.hpp`) with a record of how each was made: request,
 generator, model, seed, license, tags, a short description and the parent it was refined from.
@@ -231,7 +231,10 @@ of candidates and, with the storyboard's tone and palette, goes into later promp
 project, records feedback by itself: it opens each scene that draws a library file and checks
 what `canvas::summarize` sees with `SummaryOptions::contrast` (the edge contrast of each thing
 in the frame `canvas::capture` draws, `Shown::contrast`) and how small each file is drawn, from
-the texture paths on `FramePiece`s.
+the texture paths on `FramePiece`s. Models are `.model.json` recipes kept with their `size` and
+`triangles` (`describe_recipe` in `src/library.cpp`, which refuses recipes naming texture files,
+whose paths are a project's); `asset.refine` with `parameters` makes a version with new parameter
+values and no generator (`refine_model` in `src/commands.cpp`).
 
 A team shares a library it hosts (`slash/library/team.hpp`): `providers.json`'s `library`, or
 `SLASH_LIBRARY_TEAM`, names a folder every teammate reaches or a library server

@@ -3,6 +3,7 @@
 #include "slash/core/json.hpp"
 #include "slash/core/result.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -53,15 +54,19 @@ struct Stem {
 };
 
 struct Record {
-    std::string id;     // the SHA-256 of the bytes, 64 hex digits
-    std::string type;   // "image", "sound" or "music"
-    std::string format; // the file's extension without the dot: "png", "bmp", "wav", "ogg", "mp3"
+    std::string id;   // the SHA-256 of the bytes, 64 hex digits
+    std::string type; // "image", "sound", "music" or "model"
+    // The file's extension without the dot: "png", "bmp", "wav", "ogg", "mp3", "model.json"
+    std::string format;
     std::int64_t bytes = 0;
     int width = 0; // images
     int height = 0;
     double seconds = 0.0; // sounds
     int channels = 0;
     int sample_rate = 0;
+    // Models: the size of their bounds in meters, x, y and z, and their triangles.
+    std::array<double, 3> size{};
+    std::int64_t triangles = 0;
     std::string description; // a sentence or two for agents to read instead of the file
     std::vector<std::string> tags;
     json::Value request;   // what the generator was asked; null for an added file
@@ -95,8 +100,8 @@ void add_feedback(Record& record, Feedback feedback);
 [[nodiscard]] json::Value to_json(const Record& record);
 [[nodiscard]] Result<Record> record_from_json(const json::Value& value);
 
-// "image" or "sound" for a file extension such as ".png", or "" for one the library doesn't keep.
-// Music is kept in sound files.
+// "image", "sound" or "model" for a file extension such as ".png" or ".model.json", or "" for one
+// the library doesn't keep. Music is kept in sound files.
 [[nodiscard]] std::string_view type_of(std::string_view extension);
 // Whether a file of the extension can be an asset of the type.
 [[nodiscard]] bool holds(std::string_view type, std::string_view extension);
