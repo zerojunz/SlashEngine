@@ -1,11 +1,11 @@
 # Importing Unreal Engine projects
 
 [`project.import`](commands.md#projectimport) and [`slash-cli import`](cli.md#import) convert an
-Unreal Engine 5 project's levels into a SlashEngine project in one pass: static meshes, lights,
-the sky and fog, cameras, physics bodies and collision, trigger and blocking volumes, sounds,
-both input systems and the project's settings. Blueprints and C++ classes don't run, since
-SlashEngine games are plain C++: each becomes a storyboard task to port it, and each C++ class a
-C++ skeleton whose component the level's actors fill in.
+Unreal Engine 5 project's levels into a SlashEngine project in one pass: static meshes, landscapes,
+lights, the sky and fog, cameras, physics bodies and collision, trigger and blocking volumes,
+sounds, both input systems and the project's settings. Blueprints and C++ classes don't run, since
+SlashEngine games are plain C++: each becomes a storyboard task to port it, and each C++ class a C++
+skeleton whose component the level's actors fill in.
 [examples/import-unreal](../../examples/import-unreal/) imports a small 3D game.
 
 ## How it reads the project
@@ -26,6 +26,7 @@ editor you installed. The editor runs `UnrealEditor-Cmd <project>.uproject -run=
 | `materials/<package>.glb` | Each material a component overrides a mesh's slot with, on a preview mesh |
 | `animations/<package>.glb` | Each animation sequence a skeletal mesh component plays, on its skeleton |
 | `sounds/<package>.wav` | Each sound wave the levels play |
+| `landscapes/<level>/<actor>.r16` | Each landscape's heights, its streaming proxies' too, as Unreal's own `.r16` heightmaps are |
 | `unreal.log` | The editor's log; the end of it is in the error when the export fails |
 
 The importer reads the C++ headers and sources in `Source/` itself first, and hands the script a
@@ -56,6 +57,7 @@ minutes and needs the session's `build` capability, and a running game refuses i
 | `<mesh>_<materials>.glb` beside a mesh's `.glb` | The mesh drawn with a component's override materials (see [Materials](#materials)) |
 | `<sequence>.glb` beside each animation sequence's `.uasset`, and `<sequence>.anim.json` for a looping one | The sequence (see [Animation](#animation)) |
 | `<sound>.wav` beside each sound's `.uasset`, and `<sound>.audio.json` for a looping one | The sound wave |
+| `<level>_<entity>.height.png` and `<level>_<entity>.color.png` beside the level | A landscape's heights and holes (see [Landscapes](#landscapes)) |
 | `project.json` | The project's name, version, main level, gravity and input, merged into the project's own if it has one |
 | `src/imported/<name>.cpp` | A C++ skeleton per C++ class, in the gameplay sources (see [Blueprints and C++](#blueprints-and-c)) |
 | `src/imported/scripts.cpp`, `src/game.cpp` | The file registering every skeleton, and a game module calling it when the project's code has none |
@@ -179,6 +181,26 @@ file, and `converted` counts them. Animation Blueprints, montages and blend spac
 an Animation Blueprint's task is to rebuild it as an `AnimationTree`, and a sequence's file is
 there for it to use.
 
+## Landscapes
+
+A `Landscape` actor becomes an entity with an `HTerrain` (the HTerrain plugin's terrain, which
+SlashEngine has in Godot's place), its heights from the `.r16` file the export writes: 16-bit
+numbers, 32768 at the landscape's own height and 128 a unit of its space, with its streaming
+proxies' heights in it (the script writes it with the landscape's `ExportHeightmap`, or where the
+editor lacks that, renders it with `LandscapeExportHeightmapToRenderTarget`). The HTerrain keeps the
+numbers as they are: its `height_range` is -256 to 32767/128, so each value stands for the height
+Unreal gives it, and its `map_scale` is the actor's scale in meters, so a vertex is as far from the
+next as in Unreal. An HTerrain is square and a power of two plus one across, 65 to 4097, so the
+landscape fills the corner of the smallest that holds it and the rest is a hole in the color map,
+which neither draws nor collides; one over 4097 vertices across keeps every second (or fourth)
+vertex, and says so. The entity is placed at the landscape's first vertex, in the world's axes; its
+streaming proxies make no entities.
+
+The landscape collides unless its collision is off. Its material and its paint layers' weights don't
+convert, and are reported: an HTerrain shades with HTerrain's Classic4 shader and up to four
+textures mixed by a splat map, which the port sets. Nor do its holes from a visibility layer,
+splines, grass or foliage.
+
 ## Blueprints and C++
 
 Each Blueprint becomes a storyboard task (`task/port-<name>`) linking to its `.uasset` and the
@@ -227,10 +249,10 @@ Importing again leaves a skeleton that exists as it is and rewrites `scripts.cpp
 
 ## Not yet converted
 
-Landscapes, foliage, BSP brushes (convert them to static meshes in Unreal first), Niagara and
-Cascade particles, material graphs (meshes draw with what the glTF exporter bakes them to),
-Animation Blueprints, montages and blend spaces, Nanite meshes without a fallback,
-movement components such as `RotatingMovementComponent`, light temperature and IES profiles,
-level streaming and World Partition data layers (a partitioned level's actors are loaded all at
-once), and Blueprint logic (C++ classes become skeletons to port). What a project has of these is listed in the result's
-`unsupported`, once per kind with where it was first seen and why.
+Landscapes' materials and paint layers, foliage, BSP brushes (convert them to static meshes in
+Unreal first), Niagara and Cascade particles, material graphs (meshes draw with what the glTF
+exporter bakes them to), Animation Blueprints, montages and blend spaces, Nanite meshes without a
+fallback, movement components such as `RotatingMovementComponent`, light temperature and IES
+profiles, level streaming and World Partition data layers (a partitioned level's actors are loaded
+all at once), and Blueprint logic (C++ classes become skeletons to port). What a project has of
+these is listed in the result's `unsupported`, once per kind with where it was first seen and why.

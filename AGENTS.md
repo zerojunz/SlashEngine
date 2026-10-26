@@ -668,7 +668,8 @@ glTF files' bounds to Unreal's, places the levels in them (so meshes need no tur
 lights turn to face Godot's way), gives each mesh's `.glb` the collision Unreal gives it with
 `generate_collision`, draws a component's override materials with a copy of its mesh's `.glb`
 (`mesh_with_overrides`), plays a skeletal mesh's animation sequence with an `AnimationPlayer`
-(`convert_animation`), converts lights by Unreal's units, the sky, fog, bodies, shapes, volumes,
+(`convert_animation`), makes each landscape an `HTerrain` from the `.r16` heights the script
+writes (`convert_landscape`), converts lights by Unreal's units, the sky, fog, bodies, shapes, volumes,
 sounds and both input systems, and makes a task per Blueprint and `UCLASS`. Each `UCLASS` is
 also a C++ skeleton: `src/unreal_cpp.cpp` (`read_unreal_class`) reads its header and source into
 a `Script` for `src/scripts.cpp` to write, as C# scripts are, and the export's `request.json`

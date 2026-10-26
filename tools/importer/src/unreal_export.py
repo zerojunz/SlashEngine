@@ -11,6 +11,9 @@
 #   animations/<path>.glb  each animation sequence a skeletal mesh component plays, with its
 #                      skeletal mesh
 #   sounds/<path>.wav  each sound wave an ambient sound or audio component plays
+#   landscapes/<level>/<actor>.r16  each landscape's heights, its streaming proxies' too, as
+#                      Unreal's .r16 heightmaps are: 16-bit and little-endian, a row per vertex
+#                      along its y, 32768 at its own height and 128 a unit of its space
 #
 # The importer can leave a request.json there first: its "properties" name, by class path, the
 # properties of the project's C++ classes to read of each actor and component of those classes
@@ -522,6 +525,94 @@ def component_of(actor, comp):
     return out
 
 
+# --- Landscapes ---
+
+level_package = ''
+level_actors = []
+
+
+def export_heights(actor, path, width, height):
+    # Unreal 5.1 and later export a landscape's heights to a file as its editor's Export does;
+    # before, they render into a render target, each height's high and low bytes in red and green.
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    size = width * height * 2
+    try:
+        actor.export_heightmap(path)
+    except Exception:
+        pass
+    if os.path.isfile(path) and os.path.getsize(path) == size:
+        return True
+    world = call(None, actor.get_world)
+    library = unreal.RenderingLibrary
+    target = call(None, library.create_render_target2d, world, width, height,
+                  unreal.TextureRenderTargetFormat.RTF_RGBA8)
+    if target is None or not call(False, actor.landscape_export_heightmap_to_render_target,
+                                  target, True, True):
+        return False
+    pixels = call([], library.read_render_target, world, target, False)
+    if len(pixels) != width * height:
+        return False
+    data = bytearray()
+    for c in pixels:
+        data += (int(c.r) * 256 + int(c.g)).to_bytes(2, 'little')
+    with open(path, 'wb') as f:
+        f.write(bytes(data))
+    return True
+
+
+def landscape_of(actor):
+    where = level_package + ': ' + actor.get_actor_label()
+    guid = prop(actor, 'landscape_guid')
+    t = actor.get_actor_transform()
+    low = None
+    high = None
+    # Its vertices in its own space: the bounds of its components and its proxies'.
+    for proxy in level_actors:
+        if not isinstance(proxy, unreal.LandscapeProxy):
+            continue
+        if proxy is not actor and (guid is None or prop(proxy, 'landscape_guid') != guid):
+            continue
+        origin, extent = proxy.get_actor_bounds(False)
+        if extent.x <= 0.0 and extent.y <= 0.0:
+            continue
+        for sx in (-1.0, 1.0):
+            for sy in (-1.0, 1.0):
+                corner = unreal.Vector(origin.x + sx * extent.x, origin.y + sy * extent.y,
+                                       origin.z)
+                local = t.inverse_transform_location(corner)
+                point = (round(local.x), round(local.y))
+                low = point if low is None else (min(low[0], point[0]), min(low[1], point[1]))
+                high = point if high is None else (max(high[0], point[0]),
+                                                   max(high[1], point[1]))
+    if low is None:
+        problem('landscape without components', where)
+        return None
+    width = high[0] - low[0] + 1
+    height = high[1] - low[1] + 1
+    path = file_for('landscapes', level_package + '/' + actor.get_name(), '.r16')
+    if not export_heights(actor, os.path.join(OUT, path), width, height):
+        problem('landscape the export could not read', where,
+                'its heights are not ' + str(width) + ' by ' + str(height))
+        return None
+    out = {'heightmap': path, 'size': [width, height], 'min': [low[0], low[1]]}
+    material = prop(actor, 'landscape_material')
+    if material is not None:
+        out['material'] = package_of(material)
+    layers = []
+    for layer in prop(actor, 'editor_layer_settings', []) or []:
+        info = prop(layer, 'layer_info_obj')
+        if info is not None:
+            layers.append(str(prop(info, 'layer_name', info.get_name())))
+    if layers:
+        out['layers'] = layers
+    body = prop(actor, 'body_instance')
+    if body is not None:
+        out['collision'] = enum_name(prop(body, 'collision_enabled', 'query_and_physics'))
+    if not prop(actor, 'cast_shadow', True):
+        out['cast_shadow'] = False
+    return out
+
+
 # --- Actors and levels ---
 
 def actor_of(actor):
@@ -548,6 +639,14 @@ def actor_of(actor):
     if isinstance(actor, unreal.Volume) or isinstance(actor, unreal.Brush):
         origin, extent = actor.get_actor_bounds(False)
         out['bounds'] = {'origin': vector(origin), 'extent': vector(extent)}
+    if isinstance(actor, unreal.LandscapeProxy):
+        # A landscape's components are its heights' tiles; its proxies' are in its heights.
+        if isinstance(actor, unreal.Landscape):
+            landscape = landscape_of(actor)
+            if landscape is not None:
+                out['landscape'] = landscape
+        out['components'] = []
+        return out
     components = []
     for comp in actor.get_components_by_class(unreal.ActorComponent):
         try:
@@ -590,6 +689,9 @@ def level_of(package):
     actors = call(None, unreal.GameplayStatics.get_all_actors_of_class, world, unreal.Actor)
     if actors is None:
         actors = subsystem('EditorActorSubsystem').get_all_level_actors()
+    global level_package, level_actors
+    level_package = package
+    level_actors = list(actors)
     level = {'path': package, 'actors': []}
     settings = call(None, world.get_world_settings)
     if settings is not None:

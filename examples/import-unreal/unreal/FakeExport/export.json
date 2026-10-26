@@ -1021,16 +1021,28 @@
     },
     {
      "class": "Landscape",
-     "class_path": "/Script/Engine.Landscape",
+     "class_path": "/Script/Landscape.Landscape",
      "components": [],
-     "label": "Landscape",
+     "label": "Hills",
+     "landscape": {
+      "collision": "query_and_physics",
+      "heightmap": "landscapes/Game/Maps/Main/Landscape_0.r16",
+      "material": "/Game/Maps/M_Ground",
+      "min": [
+       0,
+       0
+      ],
+      "size": [
+       33,
+       33
+      ]
+     },
      "name": "Landscape_0",
-     "root": "RootComponent0",
      "transform": {
       "location": [
-       0.0,
-       0.0,
-       0.0
+       -8000.0,
+       -1600.0,
+       -100.0
       ],
       "rotation": [
        0.0,
@@ -1039,9 +1051,9 @@
        1.0
       ],
       "scale": [
-       1.0,
-       1.0,
-       1.0
+       100.0,
+       100.0,
+       100.0
       ]
      }
     },

@@ -8,6 +8,7 @@
 #include "slash/importer/scripts.hpp"
 #include "slash/importer/unreal.hpp"
 #include "slash/platform/file.hpp"
+#include "slash/render/image.hpp"
 #include "slash/render/mesh.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/world/component_registry.hpp"
@@ -22,6 +23,7 @@
 #include <filesystem>
 #include <map>
 #include <numbers>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -803,6 +805,145 @@ TEST_CASE("an Unreal import draws meshes' override materials and plays their ani
 
     CHECK(plan.report.find("converted")->find("animations")->as_int() == 1);
     CHECK(plan.report.find("converted")->find("material_variants")->as_int() == 1);
+}
+
+namespace {
+
+// A landscape of 5 by 3 vertices whose heights are a + 10b units over its own height at its
+// vertex (a, b), and a streaming proxy of it, in the project write_project made with axes.
+importer::ImportPlan landscape_import(const fs::path& project, const FileAxes& axes) {
+    fs::remove_all(project);
+    const fs::path exported = project / "unreal/FakeExport";
+    write_project(project / "unreal", axes);
+    std::string heights;
+    for (int b = 0; b < 3; ++b) {
+        for (int a = 0; a < 5; ++a) {
+            const int value = 32768 + (128 * (a + (10 * b)));
+            heights.push_back(static_cast<char>(value & 0xFF));
+            heights.push_back(static_cast<char>(value >> 8));
+        }
+    }
+    write(exported / "landscapes/Game/Maps/Drop/Landscape_0.r16", heights);
+    json::Value description =
+        parse(slash::platform::read_file((exported / "export.json").string()).value());
+    json::Array& actors = description["levels"].as_array().at(0)["actors"].as_array();
+    actors.push_back(parse(R"({"name": "Landscape_0", "label": "Hills", "class": "Landscape",
+        "class_path": "/Script/Landscape.Landscape", "components": [],
+        "transform": {"location": [1000, 500, 200], "rotation": [0, 0, 0, 1],
+                      "scale": [100, 100, 50]},
+        "landscape": {"heightmap": "landscapes/Game/Maps/Drop/Landscape_0.r16",
+                      "size": [5, 3], "min": [-2, 0], "material": "/Game/M_Ground",
+                      "layers": ["Grass", "Rock"], "collision": "query_and_physics"}})"));
+    actors.push_back(parse(R"({"name": "LandscapeStreamingProxy_0", "label": "Hills Part",
+        "class": "LandscapeStreamingProxy",
+        "class_path": "/Script/Landscape.LandscapeStreamingProxy", "components": [],
+        "transform": {"location": [1000, 500, 200], "rotation": [0, 0, 0, 1],
+                      "scale": [100, 100, 50]}})"));
+    write(exported / "export.json", json::write(description));
+    auto planned = importer::plan_import({.source = (project / "unreal").string(),
+                                          .destination = project.string(),
+                                          .unpack_to = {},
+                                          .assetripper = {},
+                                          .unreal_editor = SLASH_FAKE_UNREAL});
+    REQUIRE_MESSAGE(planned.ok(), (planned.ok() ? std::string() : planned.error().message));
+    return std::move(planned).value();
+}
+
+// The file a plan writes at path.
+std::string planned_file(const importer::ImportPlan& plan, std::string_view path) {
+    for (const auto& [planned, contents] : plan.files) {
+        if (planned == path) {
+            return contents;
+        }
+    }
+    FAIL("no " << path);
+    return {};
+}
+
+// The landscape's height values at an HTerrain's (column, row).
+std::uint16_t terrain_value(const slash::render::Gray16& heights, int column, int row) {
+    return heights.values.at((static_cast<std::size_t>(row) * heights.width) +
+                             static_cast<std::size_t>(column));
+}
+
+std::uint16_t landscape_value(int a, int b) {
+    return static_cast<std::uint16_t>(32768 + (128 * (a + (10 * b))));
+}
+
+} // namespace
+
+TEST_CASE("an Unreal landscape becomes an HTerrain") {
+    const importer::ImportPlan plan = landscape_import(fs::absolute("import_unreal_land"), {});
+    const json::Value scene = file_json(plan, "unreal/Content/Maps/Drop.scene.json");
+    CHECK(scene.find("entities")->find("hills_part") == nullptr); // in the landscape's heights
+    const json::Value& terrain = component(scene, "hills", "HTerrain");
+    CHECK(terrain.find("heightmap")->as_string() == "unreal/Content/Maps/Drop_hills.height.png");
+    CHECK(terrain.find("resolution")->as_int() == 65);
+    CHECK(terrain.find("height_range")->as_array().at(0).as_double() == -256.0);
+    CHECK(terrain.find("height_range")->as_array().at(1).as_double() ==
+          doctest::Approx(32767.0 / 128.0));
+    CHECK(terrain.find("collision_enabled") == nullptr);
+    // Its first vertex, two units along Unreal's -x, is where the HTerrain starts; the actor's
+    // scale makes a unit a meter across and half a meter up.
+    const json::Value& transform = component(scene, "hills", "Transform3D");
+    const auto at = triple(*transform.find("position"));
+    CHECK(at[0] == doctest::Approx(8.0));
+    CHECK(at[1] == doctest::Approx(2.0));
+    CHECK(at[2] == doctest::Approx(5.0));
+    CHECK(transform.find("scale") == nullptr);
+    const auto scale = triple(*terrain.find("map_scale"));
+    CHECK(scale[0] == doctest::Approx(1.0));
+    CHECK(scale[1] == doctest::Approx(0.5));
+    CHECK(scale[2] == doctest::Approx(1.0));
+
+    // Unreal's values as they are: columns along its x, rows along its y.
+    auto heights = slash::render::decode_gray16(
+        planned_file(plan, "unreal/Content/Maps/Drop_hills.height.png"));
+    REQUIRE(heights.ok());
+    CHECK(heights.value().width == 65);
+    CHECK(terrain_value(heights.value(), 0, 0) == landscape_value(0, 0));
+    CHECK(terrain_value(heights.value(), 4, 0) == landscape_value(4, 0));
+    CHECK(terrain_value(heights.value(), 1, 2) == landscape_value(1, 2));
+    CHECK(terrain_value(heights.value(), 9, 1) == landscape_value(4, 1)); // past it: its edge
+    // Past the landscape is a hole.
+    auto color =
+        slash::render::decode_image(planned_file(plan, "unreal/Content/Maps/Drop_hills.color.png"));
+    REQUIRE(color.ok());
+    const auto alpha = [&](int column, int row) {
+        return color.value().pixels.at(
+            (((static_cast<std::size_t>(row) * 65) + static_cast<std::size_t>(column)) * 4) + 3);
+    };
+    CHECK(alpha(4, 2) == 255);
+    CHECK(alpha(5, 0) == 0);
+    CHECK(alpha(0, 3) == 0);
+
+    std::set<std::string> reported;
+    for (const json::Value& problem : plan.report.find("unsupported")->as_array()) {
+        reported.insert(problem.find("what")->as_string());
+    }
+    CHECK(reported.contains("landscape material"));
+    CHECK(reported.contains("landscape paint layers"));
+    CHECK_FALSE(reported.contains("landscape"));
+    CHECK(plan.report.find("converted")->find("landscapes")->as_int() == 1);
+}
+
+TEST_CASE("an Unreal landscape follows the world's axes") {
+    // Unreal's x is the world's z and its y the world's -x: the HTerrain's columns run along
+    // the landscape's -y, so its first is the landscape's last.
+    const importer::ImportPlan plan = landscape_import(
+        fs::absolute("import_unreal_land_axes"), {.axis = {1, 2, 0}, .sign = {-1.0F, 1.0F, 1.0F}});
+    const json::Value scene = file_json(plan, "unreal/Content/Maps/Drop.scene.json");
+    const auto at = triple(*component(scene, "hills", "Transform3D").find("position"));
+    CHECK(at[0] == doctest::Approx(-7.0));
+    CHECK(at[1] == doctest::Approx(2.0));
+    CHECK(at[2] == doctest::Approx(8.0));
+    auto heights = slash::render::decode_gray16(
+        planned_file(plan, "unreal/Content/Maps/Drop_hills.height.png"));
+    REQUIRE(heights.ok());
+    CHECK(terrain_value(heights.value(), 0, 0) == landscape_value(0, 2));
+    CHECK(terrain_value(heights.value(), 1, 0) == landscape_value(0, 1));
+    CHECK(terrain_value(heights.value(), 0, 1) == landscape_value(1, 2));
+    CHECK(terrain_value(heights.value(), 2, 4) == landscape_value(4, 0));
 }
 
 TEST_CASE("an Unreal export's axes and scale come from its meshes") {
