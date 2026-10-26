@@ -37,20 +37,24 @@ using ModelPartLoader = std::function<Result<Model>(std::string_view path)>;
 // Every error in a recipe, each at its JSON Pointer: the schema's, expressions that don't parse
 // or run, unknown parameters and materials (with the closest name), fields its shape doesn't
 // have, bevels that don't fit, shapes the CSG can't make, such as a polygon with no area or a
-// part that comes out empty, and, with load, model parts whose files don't load. None for a
-// recipe that builds as written.
+// part that comes out empty, with load, model parts whose files don't load, and with files,
+// material files (material.hpp) that don't read. None for a recipe that builds as written.
 [[nodiscard]] std::vector<json::ValidationError>
-validate_model_recipe(const json::Value& doc, const ModelPartLoader& load = {});
+validate_model_recipe(const json::Value& doc, const ModelPartLoader& load = {},
+                      const ModelReader& files = {});
 
 // The model a recipe builds: a node named after each top-level part (and each copy its array
 // makes, numbered from 2 as Godot names nodes) placing a mesh of one surface per material, as a
 // CSG root's, or for a model part, the nodes of the model it names, loaded with load, under it,
 // as Godot instances a scene: their names kept unless taken, then numbered, and the model's
-// animations left out. Fails with the first error when the schema, an expression, a field or a
-// material is wrong, or a model part's file doesn't load or there is no load; shapes the CSG
-// can't make are left out, as validate_model_recipe reports them.
+// animations left out. A material that names a material file takes the file's fields, read
+// through files, with its own over them. Fails with the first error when the schema, an
+// expression, a field or a material is wrong, a model part's file doesn't load or there is no
+// load, or a material file doesn't read or there are no files; shapes the CSG can't make are
+// left out, as validate_model_recipe reports them.
 [[nodiscard]] Result<Model> build_model_recipe(const json::Value& doc,
-                                               const ModelPartLoader& load = {});
+                                               const ModelPartLoader& load = {},
+                                               const ModelReader& files = {});
 
 // The names of a recipe's forms in group (kVariants or kQuality), in the file's order.
 [[nodiscard]] std::vector<std::string> recipe_forms(const json::Value& doc, std::string_view group);

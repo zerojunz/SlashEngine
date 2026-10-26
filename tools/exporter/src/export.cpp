@@ -34,6 +34,7 @@
 #include "slash/scene3d/blend.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/lightmap.hpp"
+#include "slash/scene3d/material.hpp"
 #include "slash/scene3d/recipe.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/scene3d/terrain.hpp"
@@ -178,6 +179,7 @@ enum class DataFile : std::uint8_t {
     NavigationMesh,
     NavigationPolygon,
     MeshLibrary,
+    StandardMaterial,
     Lightmap,
     LightmapTexels,
     VoxelGI,
@@ -245,6 +247,9 @@ DataFile data_file(std::string_view name) {
     if (name.ends_with(scene3d::kMeshLibrarySuffix)) {
         return DataFile::MeshLibrary;
     }
+    if (name.ends_with(scene3d::kStandardMaterialSuffix)) {
+        return DataFile::StandardMaterial;
+    }
     if (name.ends_with(scene3d::kLightmapSuffix)) {
         return DataFile::Lightmap;
     }
@@ -304,6 +309,9 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     }
     if (kind == DataFile::Buffer) {
         return {};
+    }
+    if (kind == DataFile::StandardMaterial) {
+        return scene3d::check_standard_material(text, reader);
     }
     auto parsed = json::parse(text);
     if (!parsed) {
@@ -540,7 +548,7 @@ std::optional<std::string> with_quality(std::string_view text, const std::string
         return scene3d::load_model(bytes.value(), path, reader);
     };
     for (const json::ValidationError& error :
-         scene3d::validate_model_recipe(applied.value(), load)) {
+         scene3d::validate_model_recipe(applied.value(), load, reader)) {
         errors.push_back({"/quality/" + json::pointer_escape(tier),
                           "as the export's tier makes it: " +
                               (error.path.empty() ? "" : error.path + ": ") + error.message});

@@ -6,6 +6,7 @@
 #include "slash/core/math.hpp"
 #include "slash/core/text.hpp"
 #include "slash/scene3d/csg.hpp"
+#include "slash/scene3d/material.hpp"
 #include "slash/scene3d/primitive.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -358,7 +359,20 @@ json::Value make_schema(bool loose) {
     properties["children"]["description"] =
         "Shapes in its space, combined with it in order, as a CSG shape's children.";
 
-    json::Value material = components().find("StandardMaterial3D")->schema(builder);
+    (void)components().find("StandardMaterial3D")->schema(builder);
+    json::Value fields = builder.definition("StandardMaterial3D");
+    fields["properties"]["extends"]["type"] = "string";
+    fields["properties"]["extends"]["minLength"] = 1;
+    fields["properties"]["extends"]["description"] =
+        "A material file (.standard_material.json) by project path, which the other fields "
+        "change.";
+    fields = builder.define("Material", std::move(fields));
+    json::Value file;
+    file["type"] = "string";
+    file["minLength"] = 1;
+    file["description"] = "A material file (.standard_material.json) by project path, as it is.";
+    json::Value material;
+    material["anyOf"] = json::Array{std::move(file), std::move(fields)};
 
     json::Value schema;
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
@@ -389,7 +403,8 @@ json::Value make_schema(bool loose) {
     form["properties"]["parameters"]["additionalProperties"] = parameter;
     form["properties"]["materials"]["type"] = "object";
     form["properties"]["materials"]["description"] =
-        "StandardMaterial3D fields by material name, over the recipe's, or new materials.";
+        "StandardMaterial3D fields by material name, over the recipe's, or new materials; a "
+        "material file's path replaces the material.";
     form["properties"]["materials"]["additionalProperties"] = material;
     json::Value changed_part;
     changed_part["anyOf"] =
@@ -404,7 +419,8 @@ json::Value make_schema(bool loose) {
     schema["properties"]["parameters"]["additionalProperties"] = std::move(parameter);
     schema["properties"]["materials"]["type"] = "object";
     schema["properties"]["materials"]["description"] =
-        "StandardMaterial3D fields by name, which parts' material names.";
+        "Materials by name, which parts' material names: StandardMaterial3D fields, a material "
+        "file's path, or fields with extends naming the file they change.";
     schema["properties"]["materials"]["additionalProperties"] = std::move(material);
     schema["properties"]["parts"]["type"] = "array";
     schema["properties"]["parts"]["minItems"] = 1;
@@ -1144,7 +1160,85 @@ void read_model_part(const json::Value& part, const std::string& at, const std::
     }
 }
 
-Read read_recipe(const json::Value& doc, std::vector<json::ValidationError>& errors) {
+// The material file a recipe's material names, alone or under extends, or "".
+std::string material_file(const json::Value& material) {
+    if (material.is_string()) {
+        return material.as_string();
+    }
+    const json::Value* extends = material.is_object() ? material.find("extends") : nullptr;
+    return extends != nullptr && extends->is_string() ? extends->as_string() : std::string();
+}
+
+// The JSON Pointer of the first material that names a material file, or "".
+std::string first_material_file(const json::Value& doc) {
+    const json::Value* materials = doc.is_object() ? doc.find("materials") : nullptr;
+    if (materials == nullptr || !materials->is_object()) {
+        return {};
+    }
+    for (const auto& [name, material] : materials->as_object()) {
+        if (!material_file(material).empty()) {
+            return "/materials/" + json::pointer_escape(name);
+        }
+    }
+    return {};
+}
+
+// Turns each material that names a material file into the file's fields with its own over them,
+// the file read through files. Without files only the material's own fields are kept, as when
+// a recipe is checked on its own.
+void resolve_materials(json::Value& doc, const ModelReader& files,
+                       std::vector<json::ValidationError>& errors) {
+    json::Value* materials = doc.find("materials");
+    if (materials == nullptr) {
+        return;
+    }
+    for (auto& [name, material] : materials->as_object()) {
+        const std::string file = material_file(material);
+        if (file.empty()) {
+            continue;
+        }
+        const std::string at = "/materials/" + json::pointer_escape(name);
+        if (!file.ends_with(kStandardMaterialSuffix)) {
+            errors.push_back({material.is_string() ? at : at + "/extends",
+                              quoted(file) + " isn't a material file (" +
+                                  std::string(kStandardMaterialSuffix) + ")"});
+            continue;
+        }
+        json::Value over = material.is_string() ? json::Value(json::Object{}) : material;
+        over.as_object().erase("extends");
+        if (!files) {
+            material = std::move(over);
+            continue;
+        }
+        auto text = files(file);
+        if (!text) {
+            errors.push_back({at, quoted(file) + " could not be read: " + text.error().message});
+            continue;
+        }
+        auto parsed = json::parse(text.value());
+        if (!parsed) {
+            errors.push_back({at, quoted(file) + ": " + parsed.error().message});
+            continue;
+        }
+        if (const std::vector<json::ValidationError> wrong =
+                validate_standard_material(parsed.value());
+            !wrong.empty()) {
+            errors.push_back(
+                {at, quoted(file) +
+                         (wrong.front().path.empty() ? "" : " at " + wrong.front().path) + ": " +
+                         wrong.front().message});
+            continue;
+        }
+        json::Value fields = standard_material_fields(parsed.value());
+        for (auto& [field, value] : over.as_object()) {
+            fields[field] = std::move(value);
+        }
+        material = std::move(fields);
+    }
+}
+
+Read read_recipe(const json::Value& doc, std::vector<json::ValidationError>& errors,
+                 const ModelReader& files) {
     Read out;
     out.doc = doc;
     if (auto loose = json::validate(doc, model_recipe_schema()); !loose.empty()) {
@@ -1163,6 +1257,10 @@ Read read_recipe(const json::Value& doc, std::vector<json::ValidationError>& err
     static const json::Value strict = make_schema(false);
     if (auto checked = json::validate(out.doc, strict); !checked.empty()) {
         errors.insert(errors.end(), checked.begin(), checked.end());
+        return out;
+    }
+    resolve_materials(out.doc, files, errors);
+    if (!errors.empty()) {
         return out;
     }
     Reader reader(errors);
@@ -1553,8 +1651,16 @@ Result<json::Value> recipe_form(const json::Value& doc, std::string_view group,
     }
     if (const json::Value* materials = form->find("materials"); materials != nullptr) {
         for (const auto& [material, fields] : materials->as_object()) {
+            json::Value& into = out["materials"][material];
+            if (fields.is_string()) {
+                into = json::Object{{"extends", fields}};
+                continue;
+            }
+            if (into.is_string()) {
+                into = json::Object{{"extends", into}};
+            }
             for (const auto& [field, value] : fields.as_object()) {
-                out["materials"][material][field] = value;
+                into[field] = value;
             }
         }
     }
@@ -1595,7 +1701,7 @@ Result<json::Value> recipe_form(const json::Value& doc, std::string_view group,
 namespace {
 
 // Every form's errors, each at the form, saying where in the recipe it made them.
-void check_forms(const json::Value& doc, const ModelPartLoader& load,
+void check_forms(const json::Value& doc, const ModelPartLoader& load, const ModelReader& files,
                  std::vector<json::ValidationError>& errors) {
     for (const std::string_view group : {kQuality, kVariants}) {
         for (const std::string& name : recipe_forms(doc, group)) {
@@ -1610,7 +1716,7 @@ void check_forms(const json::Value& doc, const ModelPartLoader& load,
             applied.value().as_object().erase(std::string(kVariants));
             applied.value().as_object().erase(std::string(kQuality));
             for (const json::ValidationError& error :
-                 validate_model_recipe(applied.value(), load)) {
+                 validate_model_recipe(applied.value(), load, files)) {
                 errors.push_back(
                     {at, (error.path.empty() ? "" : error.path + ": ") + error.message});
             }
@@ -1626,9 +1732,10 @@ json::Value model_recipe_schema() {
 }
 
 std::vector<json::ValidationError> validate_model_recipe(const json::Value& doc,
-                                                         const ModelPartLoader& load) {
+                                                         const ModelPartLoader& load,
+                                                         const ModelReader& files) {
     std::vector<json::ValidationError> errors;
-    const Read read = read_recipe(doc, errors);
+    const Read read = read_recipe(doc, errors, files);
     if (!errors.empty()) {
         return errors;
     }
@@ -1641,14 +1748,22 @@ std::vector<json::ValidationError> validate_model_recipe(const json::Value& doc,
         errors.push_back(std::move(error));
     }
     if (errors.empty()) {
-        check_forms(doc, load, errors);
+        check_forms(doc, load, files, errors);
     }
     return errors;
 }
 
-Result<Model> build_model_recipe(const json::Value& doc, const ModelPartLoader& load) {
+Result<Model> build_model_recipe(const json::Value& doc, const ModelPartLoader& load,
+                                 const ModelReader& files) {
     std::vector<json::ValidationError> errors;
-    const Read read = read_recipe(doc, errors);
+    if (!files) {
+        if (const std::string at = first_material_file(doc); !at.empty()) {
+            return make_error(ErrorCode::InvalidArgument,
+                              at + ": a material file is read from the project: load the recipe "
+                                   "as a model, through its MeshInstance3D or load_model");
+        }
+    }
+    const Read read = read_recipe(doc, errors, files);
     const auto failed = [&] {
         return make_error(
             ErrorCode::InvalidArgument,

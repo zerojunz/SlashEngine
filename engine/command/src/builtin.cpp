@@ -44,6 +44,7 @@
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/ik.hpp"
 #include "slash/scene3d/lightmap.hpp"
+#include "slash/scene3d/material.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/recipe.hpp"
 #include "slash/scene3d/skeleton.hpp"
@@ -465,6 +466,9 @@ Reply schema_get(Session& session, const json::Value& params) {
     }
     if (kind == "voxel_gi") {
         return Reply::success(scene3d::voxel_gi_schema());
+    }
+    if (kind == "standard_material") {
+        return Reply::success(scene3d::standard_material_schema());
     }
     if (kind == "model") {
         return Reply::success(scene3d::model_recipe_schema());
@@ -6272,15 +6276,17 @@ void register_builtin_commands(Registry& registry) {
                                           "(.navpoly.json), \"meshlib\" (.meshlib.json), "
                                           "\"lightmap\" (.lightmap.json), \"voxel_gi\" "
                                           "(.voxelgi.json), \"model\" (.model.json), "
+                                          "\"standard_material\" (.standard_material.json), "
                                           "\"replay\" (.replay.json), \"score\" (.score.json) "
                                           "or \"storyboard\" for those files, \"component\" for "
                                           "one component's fields, \"command\" for a command's "
                                           "params.");
-    kind["enum"] = json::Array{"scene",    "prefab",           "frames",    "material", "animation",
-                               "animtree", "process_material", "tileset",   "font",     "theme",
-                               "audio",    "bus_layout",       "navmesh",   "navpoly",  "meshlib",
-                               "lightmap", "voxel_gi",         "model",     "replay",   "test",
-                               "score",    "storyboard",       "component", "command"};
+    kind["enum"] =
+        json::Array{"scene",    "prefab",           "frames",    "material", "animation",
+                    "animtree", "process_material", "tileset",   "font",     "theme",
+                    "audio",    "bus_layout",       "navmesh",   "navpoly",  "meshlib",
+                    "lightmap", "voxel_gi",         "model",     "replay",   "test",
+                    "score",    "storyboard",       "component", "command",  "standard_material"};
     registry.add({
         .name = "schema.get",
         .description =
@@ -6288,7 +6294,7 @@ void register_builtin_commands(Registry& registry) {
             ".anim.json, .animtree.json, .process_material.json, .tileset.json, .font.json, "
             ".theme.json, .audio.json, "
             ".bus_layout.json, .navmesh.json, .navpoly.json, .meshlib.json, .lightmap.json, "
-            ".voxelgi.json, .model.json, "
+            ".voxelgi.json, .model.json, .standard_material.json, "
             ".replay.json, "
             ".test.json, "
             ".score.json or storyboard "

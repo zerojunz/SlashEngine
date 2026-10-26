@@ -135,7 +135,9 @@ file, a [`.theme.json`](scene-format.md#themes) file, an
 [`.score.json`](scene-format.md#scores) file, a
 [`.navmesh.json` or `.navpoly.json`](scene-format.md#navigation-meshes-and-polygons) file, a
 [`.meshlib.json`](scene-format.md#mesh-libraries) file, a
-[`.lightmap.json`](scene-format.md#baked-lightmaps) file, or a [model](scene-format.md#models)
+[`.lightmap.json`](scene-format.md#baked-lightmaps) file, a
+[`.standard_material.json`](scene-format.md#material-files) file (and that its textures
+decode), or a [model](scene-format.md#models)
 (`.gltf`, `.glb`, `.obj`, `.fbx` or `.blend`), and lists every error, each with its JSON Pointer path. Exit code 1 if the file is invalid. The [prefabs](scene-format.md#prefabs) and
 [scenes](scene-format.md#instanced-scenes) a file extends, the tile sets its layers use, the animation libraries and trees its players and trees use, the navigation meshes and polygons its regions place, the mesh libraries its grid maps use, the maps its terrains read and the project's window size and theme are read from its
 project: the nearest folder above it with a `project.json`, else the current folder. A `.blend`
@@ -275,7 +277,8 @@ for [`.score.json` files](scene-format.md#scores), for
 [`.meshlib.json` files](scene-format.md#mesh-libraries), for
 [`.lightmap.json` files](scene-format.md#baked-lightmaps), for
 [`.voxelgi.json` files](scene-format.md#voxelgi), for
-[`.model.json` recipes](scene-format.md#model-recipes), for [storyboard files](storyboard-format.md),
+[`.model.json` recipes](scene-format.md#model-recipes), for
+[`.standard_material.json` files](scene-format.md#material-files), for [storyboard files](storyboard-format.md),
 for [`project.json`](project-format.md), for [`export_presets.json`](project-format.md#export-presets),
 for [`sdk.json`](sdk-format.md), for [`providers.json`](providers.md) or for a
 [benchmark task's `task.json`](benchmark.md#tasks).
@@ -302,6 +305,7 @@ slash-cli schema meshlib
 slash-cli schema lightmap
 slash-cli schema voxel_gi
 slash-cli schema model
+slash-cli schema standard_material
 slash-cli schema storyboard
 slash-cli schema project
 slash-cli schema presets

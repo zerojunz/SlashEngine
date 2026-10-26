@@ -184,7 +184,19 @@ Result<std::string> make_image(const GenerateRequest& request, std::int64_t seed
     }
     const bool transparent =
         has_any(found, {"transparent", "sprite", "icon", "cutout", "isolated"});
+    // A texture fills the image: rows of stones in mortar, as a material's image is asked to.
+    const bool texture = !transparent && has_any(found, {"texture", "tileable", "seamless"});
     const int band = 2 + hash.below(6);
+    const int cell = std::max(4, width / 6);
+    const auto stone = [&](int row, int column) {
+        auto mixed = static_cast<std::uint32_t>(row * 73856093) ^
+                     static_cast<std::uint32_t>(column * 19349663) ^
+                     static_cast<std::uint32_t>(seed);
+        mixed ^= mixed >> 13;
+        mixed *= 0x5bd1e995U;
+        mixed ^= mixed >> 15;
+        return static_cast<int>(mixed % 41U) - 20;
+    };
     render::Image image;
     image.width = static_cast<std::uint32_t>(width);
     image.height = static_cast<std::uint32_t>(height);
@@ -193,7 +205,22 @@ Result<std::string> make_image(const GenerateRequest& request, std::int64_t seed
         for (int x = 0; x < width; ++x) {
             Rgb color{main.r / 4, main.g / 4, main.b / 4};
             int alpha = transparent ? 0 : 255;
-            if (inside(shape, x, y, width, height)) {
+            if (texture) {
+                // Off the image's edges, as a photograph's stones are.
+                const int down = y + cell / 3;
+                const int row = down / cell;
+                const int along = x + cell / 3 + (row % 2) * (cell / 2);
+                // Lit unevenly, brighter at the top left, so it doesn't tile as it is.
+                const int light = 40 - (80 * (x + y)) / (width + height);
+                if (down % cell == 0 || along % cell == 0) {
+                    color = {main.r / 3, main.g / 3, main.b / 3};
+                } else if ((x * 7 + y * 13) % 17 == 0) {
+                    color = accent;
+                } else {
+                    const int shade = stone(row, along / cell) + light;
+                    color = {main.r + shade, main.g + shade, main.b + shade};
+                }
+            } else if (inside(shape, x, y, width, height)) {
                 const bool edge = !inside(shape, x - 1, y, width, height) ||
                                   !inside(shape, x + 1, y, width, height) ||
                                   !inside(shape, x, y - 1, width, height) ||

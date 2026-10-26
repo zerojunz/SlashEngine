@@ -56,9 +56,9 @@ struct Stem {
 
 struct Record {
     std::string id;   // the SHA-256 of the bytes, 64 hex digits
-    std::string type; // "image", "sound", "music" or "model"
+    std::string type; // "image", "sound", "music", "model" or "material"
     // The file's extension without the dot: "png", "bmp", "wav", "ogg", "mp3", "model.json",
-    // "glb"
+    // "glb", "standard_material.json"
     std::string format;
     std::int64_t bytes = 0;
     int width = 0; // images
@@ -92,8 +92,11 @@ struct Record {
     std::string key; // such as "D minor"
     std::vector<Stem> stems;
     std::string track; // for a stem: the track it is part of
-    // A model recipe: the library models its parts are made of, in the order they appear.
+    // A model recipe: the library models its parts are made of and the materials it names; a
+    // material: its textures. In the order they appear.
     std::vector<std::string> uses;
+    // A material: how its albedo tiles, as seam_ratio (material.hpp) measures it.
+    double seam = 0.0;
     // A model's checks (scene3d::model_checks_schema), which it and every version made of it
     // pass; null for none.
     json::Value checks;
@@ -112,8 +115,9 @@ void add_feedback(Record& record, Feedback feedback);
 [[nodiscard]] json::Value to_json(const Record& record);
 [[nodiscard]] Result<Record> record_from_json(const json::Value& value);
 
-// "image", "sound" or "model" for a file extension such as ".png", ".model.json" or ".glb", or ""
-// for one the library doesn't keep. Music is kept in sound files.
+// "image", "sound", "model" or "material" for a file extension such as ".png", ".model.json",
+// ".glb" or ".standard_material.json", or "" for one the library doesn't keep. Music is kept in
+// sound files.
 [[nodiscard]] std::string_view type_of(std::string_view extension);
 // Whether a file of the extension can be an asset of the type.
 [[nodiscard]] bool holds(std::string_view type, std::string_view extension);
@@ -121,15 +125,17 @@ void add_feedback(Record& record, Feedback feedback);
 // Fills in a record's type, format, size, image size, sound length or model summary from the
 // file's bytes, and checks they are a file of that format; a .glb model must read nothing
 // outside itself, and a recipe's model parts must be library references, which read reads
-// (part_reader). A model must pass the record's checks; a failure's message starts with
+// (part_reader), as must a material's textures and the material files a recipe names. A model
+// must pass the record's checks; a failure's message starts with
 // "checks" and the JSON Pointer of the check in them ("checks/size/max/1: ..."). path names the
 // file, for its extension.
 [[nodiscard]] Result<void>
 describe_file(std::string_view data, std::string_view path, Record& record,
               const std::function<Result<std::string>(std::string_view path)>& read = {});
 
-// A library recipe names the models its parts are made of as "asset:<id>.<format>", such as
-// "asset:3fa4...9a.glb", since a project's paths mean nothing in another project.
+// A library recipe names the models its parts are made of and its material files, and a library
+// material its textures, as "asset:<id>.<format>", such as "asset:3fa4...9a.glb", since a
+// project's paths mean nothing in another project.
 inline constexpr std::string_view kAssetRef = "asset:";
 
 // The reference to a library model that a recipe's part names.
@@ -140,6 +146,18 @@ inline constexpr std::string_view kAssetRef = "asset:";
 [[nodiscard]] std::string_view ref_id_of(const json::Value& model);
 // The "model" value of each of a recipe's top-level parts that has one, in order.
 [[nodiscard]] std::vector<json::Value*> model_refs(json::Value& recipe);
+
+// A value in a file that names another file the library keeps as an asset of its own.
+struct AssetRef {
+    json::Value* value = nullptr;
+    // What it is: "model" (a recipe's model part), "material" (a material file a recipe's
+    // material names) or the material field naming a texture, such as "albedo_texture".
+    std::string role;
+};
+
+// The values naming other files in a recipe (its model parts, then its material files) or a
+// material file (its textures), by the file's path, in order; none for other files.
+[[nodiscard]] std::vector<AssetRef> asset_refs(json::Value& doc, std::string_view path);
 
 // The bytes of the library asset with this ID.
 using AssetBytes = std::function<Result<std::string>(std::string_view id)>;
