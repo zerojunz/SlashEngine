@@ -122,6 +122,8 @@ constexpr int kSkinnedMeshRenderer = 137;
 constexpr int kCharacterController = 143;
 constexpr int kTerrainCollider = 154;
 constexpr int kLodGroup = 205;
+constexpr int kParticleSystem = 198;
+constexpr int kParticleSystemRenderer = 199;
 constexpr int kReflectionProbe = 215;
 constexpr int kTerrain = 218;
 // Not one of Unity's: an instance of a model file, which the import makes for a PrefabInstance of
@@ -152,11 +154,18 @@ constexpr std::int64_t kPlaneMesh = 10209;
 constexpr std::int64_t kQuadMesh = 10210;
 constexpr std::int64_t kDefaultMaterial = 10303;
 constexpr std::int64_t kDefaultSkybox = 10304;
+// The materials Unity gives new particle systems: Default-ParticleSystem, and Default-Particle
+// before Unity 2018.
+constexpr std::int64_t kDefaultParticleSystem = 10308;
+constexpr std::int64_t kDefaultParticle = 10301;
 constexpr std::int64_t kSpecularShader = 45; // Standard (Specular setup)
 // URP's shaders, whose GUIDs are the same in every project.
 constexpr std::string_view kUrpLit = "933532a4fcc9baf4fa0491de14d08ed7";
 constexpr std::string_view kUrpSimpleLit = "8d2bb70cbf9db8d4da26e15b26e74248";
 constexpr std::string_view kUrpUnlit = "650dd9526735d5b46b79224bc6e94025";
+constexpr std::string_view kUrpParticlesLit = "b7839dad95683814aa64166edc107ae2";
+constexpr std::string_view kUrpParticlesSimpleLit = "8516d7a69675844a7a0b7095af7c46af";
+constexpr std::string_view kUrpParticlesUnlit = "0406db5a14f94604a8c57ccfbc9f3b46";
 // The IDs a model's top object and its Transform have in the model: since Unity 2019.3, then
 // before it.
 constexpr std::array<std::int64_t, 2> kModelRootObjects{919132149155446097, 100000};
@@ -3388,7 +3397,7 @@ private:
             return "sprites under it keep their own z_index";
         }
         if (type == "ParticleSystem" || type == "ParticleSystemRenderer") {
-            return "Unity particle systems don't convert; CPUParticles2D is Godot's";
+            return "particle systems convert in 3D scenes, as CPUParticles3D; not yet in 2D ones";
         }
         if (type == "MeshRenderer" || type == "MeshFilter" || type == "SkinnedMeshRenderer" ||
             type == "Light" || type == "BoxCollider" || type == "SphereCollider" ||
@@ -11458,6 +11467,8 @@ private:
         const Component* controller = nullptr;
         const Component* terrain = nullptr;
         const Component* terrain_collider = nullptr;
+        const Component* particles = nullptr;
+        const Component* particle_renderer = nullptr;
         std::vector<const Component*> colliders;
     };
 
@@ -11533,6 +11544,12 @@ private:
             case kTerrainCollider:
                 parts.terrain_collider = &component;
                 break;
+            case kParticleSystem:
+                parts.particles = &component;
+                break;
+            case kParticleSystemRenderer:
+                parts.particle_renderer = &component;
+                break;
             case kSkinnedMeshRenderer:
                 problems_.add("component SkinnedMeshRenderer", ctx.where,
                               "a skinned mesh draws with the model it is part of; instance the "
@@ -11601,6 +11618,7 @@ private:
         }
         physics_3d(ctx, parts, out);
         terrain_3d(ctx, parts, place, out);
+        particles_3d(ctx, parts, out);
         if (const auto body = out.components.find("RigidBody3D");
             out.collisions && body != out.components.end()) {
             body->second["contact_monitor"] = true;
@@ -12452,6 +12470,35 @@ private:
 
     // A MeshFilter and its MeshRenderer, or a model instance: a MeshInstance3D with its mesh and
     // material.
+    // One of Unity's built-in meshes as its primitive mesh component, added to mesh; false, and
+    // reported, for one that doesn't convert.
+    bool builtin_mesh(std::int64_t file_id, json::Object& mesh, const std::string& where) {
+        switch (file_id) {
+        case kCubeMesh:
+            mesh["BoxMesh"] = json::Object{};
+            return true;
+        case kCylinderMesh:
+            mesh["CylinderMesh"] = json::Object{};
+            return true;
+        case kSphereMesh:
+            mesh["SphereMesh"] = json::Object{};
+            return true;
+        case kCapsuleMesh:
+            mesh["CapsuleMesh"] = json::Object{};
+            return true;
+        case kPlaneMesh:
+            mesh["PlaneMesh"]["size"] = json::Array{10.0, 10.0};
+            return true;
+        case kQuadMesh:
+            mesh["QuadMesh"] = json::Object{};
+            return true;
+        default:
+            problems_.add("built-in mesh", where,
+                          "Unity's cube, sphere, capsule, cylinder, plane and quad convert");
+            return false;
+        }
+    }
+
     void mesh_3d(const Context& ctx, const Parts3D& parts, Converted& out, Turned& turned) {
         const GameObject& go = ctx.file->objects[static_cast<std::size_t>(ctx.index)];
         if (parts.model != nullptr) {
@@ -12478,31 +12525,10 @@ private:
         bool quad = false;
         std::optional<PickedMesh> picked;
         if (ref->guid == kBuiltinExtraGuid) {
-            switch (ref->file_id) {
-            case kCubeMesh:
-                mesh["BoxMesh"] = json::Object{};
-                break;
-            case kCylinderMesh:
-                mesh["CylinderMesh"] = json::Object{};
-                break;
-            case kSphereMesh:
-                mesh["SphereMesh"] = json::Object{};
-                break;
-            case kCapsuleMesh:
-                mesh["CapsuleMesh"] = json::Object{};
-                break;
-            case kPlaneMesh:
-                mesh["PlaneMesh"]["size"] = json::Array{10.0, 10.0};
-                break;
-            case kQuadMesh:
-                mesh["QuadMesh"] = json::Object{};
-                quad = true;
-                break;
-            default:
-                problems_.add("built-in mesh", ctx.where,
-                              "Unity's cube, sphere, capsule, cylinder, plane and quad convert");
+            if (!builtin_mesh(ref->file_id, mesh, ctx.where)) {
                 return;
             }
+            quad = ref->file_id == kQuadMesh;
         } else {
             const Asset* asset = ref->guid.empty() ? nullptr : asset_of(ref->guid);
             if (ref->guid.empty()) {
@@ -12570,6 +12596,763 @@ private:
         }
         for (auto& [name, fields] : mesh) {
             out.components[name] = std::move(fields);
+        }
+    }
+
+    // --- Particles ---
+
+    // A ParticleSystem's MinMaxCurve: a constant (state 0) or two (3) as they are, a curve or two
+    // (1, 2) as the lowest and highest values their keys reach times the multiplier.
+    struct Spread {
+        double min = 0.0;
+        double max = 0.0;
+        bool curved = false;
+    };
+
+    static Spread spread_of(const Node* curve, double fallback) {
+        if (curve == nullptr) {
+            return {.min = fallback, .max = fallback, .curved = false};
+        }
+        const double scalar = curve->number_at("scalar", fallback);
+        const std::int64_t state = curve->integer_at("minMaxState", 0);
+        if (state == 3) {
+            const double low = curve->number_at("minScalar", scalar);
+            return {.min = std::min(low, scalar), .max = std::max(low, scalar), .curved = false};
+        }
+        if (state != 1 && state != 2) {
+            return {.min = scalar, .max = scalar, .curved = false};
+        }
+        Spread out{.min = 0.0, .max = 0.0, .curved = true};
+        bool first = true;
+        for (const std::string_view name : {"maxCurve", "minCurve"}) {
+            if (name == "minCurve" && state == 1) {
+                break;
+            }
+            for (const CurveKey& key : read_curve(curve->get(name), "")) {
+                const double value = key.value * scalar;
+                out.min = first ? value : std::min(out.min, value);
+                out.max = first ? value : std::max(out.max, value);
+                first = false;
+            }
+        }
+        if (first) {
+            out.min = out.max = scalar;
+        }
+        return out;
+    }
+
+    // A curve over a particle's life as [offset, value] points, times a multiplier: its keys, and
+    // where a curved segment joins two, a point each sixteenth of a life between them, since the
+    // points join in straight lines.
+    static json::Array life_points(const Curve& curve, double scale) {
+        constexpr int kSteps = 16;
+        std::set<double> times;
+        for (std::size_t i = 0; i < curve.size(); ++i) {
+            times.insert(std::clamp(curve[i].time, 0.0, 1.0));
+            if (i + 1 == curve.size() || segment(curve[i], curve[i + 1]) != Segment::Curved) {
+                continue;
+            }
+            for (int n = 1; n < kSteps; ++n) {
+                const double t = static_cast<double>(n) / kSteps;
+                if (t > curve[i].time && t < curve[i + 1].time) {
+                    times.insert(t);
+                }
+            }
+        }
+        json::Array points;
+        for (const double t : times) {
+            points.emplace_back(
+                json::Array{tidy_number(t), tidy_number(evaluate(curve, t) * scale)});
+        }
+        return points;
+    }
+
+    // A Unity Gradient as Godot's points: Unity keeps its color and alpha keys apart, so a point
+    // goes at each key of either, with both there.
+    json::Array gradient_points(const Node& gradient, const std::string& where) {
+        constexpr double kMostTime = 65535.0;
+        using Keys = std::vector<std::pair<double, std::array<double, 4>>>;
+        const auto keys = [&](std::string_view count, std::string_view time) {
+            Keys out;
+            const std::int64_t n = std::clamp<std::int64_t>(gradient.integer_at(count, 2), 1, 8);
+            for (std::int64_t i = 0; i < n; ++i) {
+                const std::string key = "key" + std::to_string(i);
+                out.emplace_back(
+                    gradient.number_at(std::string(time) + std::to_string(i)) / kMostTime,
+                    std::array<double, 4>{
+                        gradient.number_at(key + ".r", 1.0), gradient.number_at(key + ".g", 1.0),
+                        gradient.number_at(key + ".b", 1.0), gradient.number_at(key + ".a", 1.0)});
+            }
+            std::ranges::stable_sort(out, {}, [](const auto& key) { return key.first; });
+            return out;
+        };
+        const Keys colors = keys("m_NumColorKeys", "ctime");
+        const Keys alphas = keys("m_NumAlphaKeys", "atime");
+        if (gradient.integer_at("m_Mode", 0) == 1) {
+            problems_.add("gradient of fixed colors", where, "its colors blend from key to key");
+        }
+        // A channel's value at a time, blended between the keys around it.
+        const auto at = [](const Keys& from, double t, std::size_t channel) {
+            if (t <= from.front().first) {
+                return from.front().second.at(channel);
+            }
+            for (std::size_t i = 0; i + 1 < from.size(); ++i) {
+                const auto& [t0, v0] = from[i];
+                const auto& [t1, v1] = from[i + 1];
+                if (t <= t1) {
+                    const double part = t1 > t0 ? (t - t0) / (t1 - t0) : 1.0;
+                    return v0.at(channel) + ((v1.at(channel) - v0.at(channel)) * part);
+                }
+            }
+            return from.back().second.at(channel);
+        };
+        std::set<double> times;
+        for (const Keys* from : {&colors, &alphas}) {
+            for (const auto& key : *from) {
+                times.insert(std::clamp(key.first, 0.0, 1.0));
+            }
+        }
+        json::Array points;
+        for (const double t : times) {
+            json::Value point;
+            point["offset"] = tidy_number(t);
+            point["color"] =
+                json::Array{tidy_number(at(colors, t, 0)), tidy_number(at(colors, t, 1)),
+                            tidy_number(at(colors, t, 2)), tidy_number(at(alphas, t, 3))};
+            points.push_back(std::move(point));
+        }
+        return points;
+    }
+
+    // Unity's default particle texture, a soft white dot, drawn here: a texture of Unity's own
+    // isn't in the project to copy.
+    std::string default_particle_texture() {
+        constexpr std::uint32_t kSize = 64;
+        const std::string path = destination("Assets/particles/Default-Particle.png");
+        add_light_texture(path, kSize, kSize, [](double x, double y) {
+            constexpr double kHalf = kSize / 2.0;
+            const double dx = (x - kHalf) / kHalf;
+            const double dy = (y - kHalf) / kHalf;
+            const double fade = std::clamp(1.0 - std::sqrt((dx * dx) + (dy * dy)), 0.0, 1.0);
+            return fade * fade;
+        });
+        return path;
+    }
+
+    // Unity's +z turned by a shape's rotation (Euler angles in degrees, turned about z, then x,
+    // then y), mirrored in x.
+    static std::array<double, 3> shape_forward(const Node& shape) {
+        const double x = shape.number_at("m_Rotation.x") * std::numbers::pi / 180.0;
+        const double y = shape.number_at("m_Rotation.y") * std::numbers::pi / 180.0;
+        return {tidy_number(-std::cos(x) * std::sin(y)), tidy_number(-std::sin(x)),
+                tidy_number(std::cos(x) * std::cos(y))};
+    }
+
+    // Where particles start and which way they go, from a ParticleSystem's shape module.
+    void particle_shape(const Node& shape, json::Value& particles, const std::string& where) {
+        const std::array<double, 3> forward = shape_forward(shape);
+        particles["direction"] = triple(forward);
+        particles["spread"] = 0.0;
+        if (!shape.flag_at("enabled", true)) {
+            return; // from the object's origin, along its +z
+        }
+        const double radius = shape.number_at("radius.value", 1.0);
+        const double thickness = std::clamp(shape.number_at("radiusThickness", 1.0), 0.0, 1.0);
+        const double sx = shape.number_at("m_Scale.x", 1.0);
+        const double sy = shape.number_at("m_Scale.y", 1.0);
+        const double sz = shape.number_at("m_Scale.z", 1.0);
+        const auto report = [&](std::string_view what, std::string_view why) {
+            problems_.add(std::string(what), where, std::string(why));
+        };
+        if (shape.number_at("m_Position.x") != 0.0 || shape.number_at("m_Position.y") != 0.0 ||
+            shape.number_at("m_Position.z") != 0.0) {
+            report("particle shape moved from the object", "particles start around the object");
+        }
+        if (shape.number_at("randomDirectionAmount") != 0.0 ||
+            shape.number_at("sphericalDirectionAmount") != 0.0 ||
+            shape.number_at("randomPositionAmount") != 0.0) {
+            report("randomized particle directions or positions",
+                   "particles start and leave as the shape alone says");
+        }
+        const std::int64_t type = shape.integer_at("type", 4);
+        const bool round = type == 0 || type == 1 || type == 2 || type == 3 || type == 4 ||
+                           type == 7 || type == 8 || type == 9 || type == 10 || type == 11 ||
+                           type == 17;
+        if (round && shape.number_at("arc.value", 360.0) < 360.0) {
+            report("particle shape's arc", "particles start all the way round");
+        }
+        if (round && (sx != sy || (type <= 3 && sx != sz))) {
+            report("particle shape scaled unevenly", "it is scaled by its x scale");
+        }
+        const double size = radius * std::abs(sx);
+        // A ring around the shape's axis, of no height: the base of a cone, a circle or a donut.
+        const auto ring = [&](double inner) {
+            particles["emission_shape"] = "ring";
+            particles["emission_ring_axis"] = triple(forward);
+            particles["emission_ring_radius"] = tidy_number(size);
+            particles["emission_ring_inner_radius"] = tidy_number(inner);
+            particles["emission_ring_height"] = 0.0;
+        };
+        switch (type) {
+        case 0: // sphere
+        case 1: // its shell, before Unity 2017.1
+        case 2: // hemisphere
+        case 3: {
+            const bool shell = type == 1 || type == 3 || thickness == 0.0;
+            particles["emission_shape"] = shell ? "sphere_surface" : "sphere";
+            particles["emission_sphere_radius"] = tidy_number(size);
+            particles["spread"] = type <= 1 ? 180.0 : 90.0;
+            if (!shell && thickness < 1.0) {
+                report("particle sphere's radius thickness", "particles start anywhere inside it");
+            }
+            if (type >= 2) {
+                report("hemisphere particle shape",
+                       "particles start anywhere on the sphere, leaving on its side");
+            }
+            break;
+        }
+        case 4: // cone
+        case 7: // its base's edge, before Unity 2017.1
+        case 8: // its volume
+        case 9: {
+            particles["spread"] =
+                tidy_number(std::clamp(shape.number_at("angle", 25.0), 0.0, 90.0));
+            if (size > 0.0) {
+                ring(type == 7 || type == 9 ? size : size * (1.0 - thickness));
+            }
+            if (type >= 8) {
+                report("particle cone's volume", "particles start on its base");
+            }
+            break;
+        }
+        case 5:    // box
+        case 15:   // its shell
+        case 16:   // its edges
+        case 18: { // rectangle
+            particles["emission_shape"] = "box";
+            particles["emission_box_extents"] = triple(
+                {std::abs(sx) / 2.0, std::abs(sy) / 2.0, type == 18 ? 0.0 : std::abs(sz) / 2.0});
+            if (shape.number_at("m_Rotation.z") != 0.0 ||
+                (type != 18 && (shape.number_at("m_Rotation.x") != 0.0 ||
+                                shape.number_at("m_Rotation.y") != 0.0))) {
+                report("turned particle box", "the box stays square to the object");
+            }
+            if (type == 15 || type == 16) {
+                report("particle box shell or edges", "particles start anywhere inside the box");
+            }
+            break;
+        }
+        case 10:   // circle
+        case 11:   // its edge, before Unity 2017.1
+        case 17: { // donut
+            if (type == 17) {
+                const double tube = shape.number_at("donutRadius", 0.2) * std::abs(sx);
+                ring(std::max(size - tube, 0.0));
+                particles["emission_ring_radius"] = tidy_number(size + tube);
+            } else {
+                ring(type == 11 ? size : size * (1.0 - thickness));
+            }
+            report("particles leaving a circle or donut outward",
+                   "they leave along its axis, from a ring as wide as it");
+            break;
+        }
+        default:
+            report("particle shape from a mesh, sprite or edge",
+                   "particles start at the object's origin");
+            break;
+        }
+    }
+
+    // A MinMaxGradient's colors: the color, or Godot's initial color ramp, which picks a color
+    // along it at random as Unity's random colors do.
+    void start_color(const Node* color, json::Value& particles, const std::string& where) {
+        if (color == nullptr) {
+            return;
+        }
+        const std::int64_t state = color->integer_at("minMaxState", 0);
+        const Node* max = color->get("maxColor");
+        switch (state) {
+        case 0:
+            if (max != nullptr) {
+                particles["color"] = rgba(*max);
+            }
+            return;
+        case 2: { // between two colors
+            json::Array ramp;
+            for (const auto& [name, offset] :
+                 {std::pair<std::string_view, double>{"minColor", 0.0}, {"maxColor", 1.0}}) {
+                json::Value point;
+                point["offset"] = offset;
+                const Node* at = color->get(name);
+                point["color"] = at != nullptr ? rgba(*at) : json::Array{1.0, 1.0, 1.0, 1.0};
+                ramp.push_back(std::move(point));
+            }
+            particles["color_initial_ramp"] = std::move(ramp);
+            return;
+        }
+        default: { // a gradient, two or a random color from one
+            if (state == 1 || state == 3) {
+                problems_.add(state == 1 ? "start color over the system's duration"
+                                         : "start color between two gradients",
+                              where, "particles start with any color of the gradient");
+            }
+            if (const Node* gradient = color->get("maxGradient")) {
+                particles["color_initial_ramp"] = gradient_points(*gradient, where);
+            }
+            return;
+        }
+        }
+    }
+
+    // The modules of Unity's particle systems that have nothing like them in Godot's
+    // CPUParticles3D, by the name Unity's inspector gives each.
+    static constexpr std::array<std::pair<std::string_view, std::string_view>, 14> kParticleModules{
+        {{"VelocityModule", "Velocity over Lifetime"},
+         {"ClampVelocityModule", "Limit Velocity over Lifetime"},
+         {"InheritVelocityModule", "Inherit Velocity"},
+         {"LifetimeByEmitterSpeedModule", "Lifetime by Emitter Speed"},
+         {"ExternalForcesModule", "External Forces"},
+         {"ColorBySpeedModule", "Color by Speed"},
+         {"SizeBySpeedModule", "Size by Speed"},
+         {"RotationBySpeedModule", "Rotation by Speed"},
+         {"NoiseModule", "Noise"},
+         {"CollisionModule", "Collision"},
+         {"TriggerModule", "Triggers"},
+         {"SubModule", "Sub Emitters"},
+         {"LightsModule", "Lights"},
+         {"TrailModule", "Trails"}}};
+
+    // A ParticleSystem and its renderer as Godot's CPUParticles3D, with the mesh it draws at each
+    // particle and its material: on the object, or on an entity under it when the object draws a
+    // mesh of its own. Particles leave along the shape's +z, mirrored in x as the scene is.
+    void particles_3d(const Context& ctx, const Parts3D& parts, Converted& out) {
+        if (parts.particles == nullptr) {
+            return;
+        }
+        const GameObject& go = ctx.file->objects[static_cast<std::size_t>(ctx.index)];
+        const std::string& where = ctx.where;
+        const auto report = [&](std::string_view what, std::string_view why) {
+            problems_.add(std::string(what), where, std::string(why));
+        };
+        const Node* renderer =
+            parts.particle_renderer != nullptr ? &parts.particle_renderer->body : nullptr;
+        const std::int64_t mode = renderer != nullptr ? renderer->integer_at("m_RenderMode", 0) : 5;
+        if (mode == 5) {
+            report("particle system that draws nothing",
+                   "it has no renderer, or its render mode is None, so it doesn't convert");
+            return;
+        }
+        const Node& system = parts.particles->body;
+        const Node none;
+        const auto module = [&](std::string_view name) -> const Node& {
+            const Node* found = system.get(name);
+            return found != nullptr ? *found : none;
+        };
+        const Node& initial = module("InitialModule");
+        // A start value, which Unity can also change over the system's duration.
+        const auto start = [&](std::string_view field, std::string_view label, double fallback) {
+            const Spread spread = spread_of(initial.get(field), fallback);
+            if (spread.curved) {
+                report("particle " + std::string(label) + " over the system's duration",
+                       "each particle's is any of the curve's values");
+            }
+            return spread;
+        };
+        json::Value particles = json::Object{};
+
+        // The main module.
+        const Spread life = start("startLifetime", "start lifetime", 5.0);
+        const double lifetime = std::max(life.max, 0.001);
+        particles["lifetime"] = tidy_number(lifetime);
+        if (life.min < life.max) {
+            particles["lifetime_randomness"] =
+                tidy_number(1.0 - (std::max(life.min, 0.0) / lifetime));
+        }
+        const Spread speed = start("startSpeed", "start speed", 5.0);
+        particles["initial_velocity_min"] = tidy_number(speed.min);
+        particles["initial_velocity_max"] = tidy_number(speed.max);
+        Spread size = start("startSize", "start size", 1.0);
+        if (initial.flag_at("size3D")) {
+            report("particle start size per axis", "particles start with their x size on each");
+        }
+        const Spread angle = start("startRotation", "start rotation", 0.0);
+        particles["angle_min"] = tidy(angle.min * 180.0 / std::numbers::pi);
+        particles["angle_max"] = tidy(angle.max * 180.0 / std::numbers::pi);
+        if (initial.flag_at("rotation3D")) {
+            report("particle start rotation per axis", "particles turn about the view only");
+        }
+        if (initial.number_at("randomizeRotationDirection") > 0.0) {
+            report("particles turning either way", "they turn as their rotation says");
+        }
+        start_color(initial.get("startColor"), particles, where);
+        // Gravity, mirrored in x, with the force module's constant force.
+        const Spread pull = spread_of(initial.get("gravityModifier"), 0.0);
+        if (pull.min != pull.max) {
+            report("particle gravity modifier that varies", "its highest value holds throughout");
+        }
+        std::array<double, 3> gravity{-physics3d_.number_at("m_Gravity.x", 0.0) * pull.max,
+                                      physics3d_.number_at("m_Gravity.y", -9.81) * pull.max,
+                                      physics3d_.number_at("m_Gravity.z", 0.0) * pull.max};
+        if (const Node& force = module("ForceModule"); force.flag_at("enabled")) {
+            std::array<double, 3> push{};
+            bool varies = false;
+            for (std::size_t i = 0; i < 3; ++i) {
+                const Spread axis = spread_of(force.get(std::array{"x", "y", "z"}.at(i)), 0.0);
+                varies = varies || axis.curved || axis.min != axis.max;
+                push.at(i) = axis.max;
+            }
+            push[0] = -push[0];
+            if (varies || force.flag_at("randomizePerFrame")) {
+                report("particle force that varies", "its highest value pushes throughout");
+            }
+            if (!force.flag_at("inWorldSpace") && push != std::array<double, 3>{}) {
+                report("particle force in the object's axes", "it pushes along the world's");
+            }
+            for (std::size_t i = 0; i < 3; ++i) {
+                gravity.at(i) += push.at(i);
+            }
+        }
+        particles["gravity"] = triple(gravity);
+
+        // Emission: Godot emits amount particles each lifetime, Unity a rate each second and its
+        // bursts.
+        const Node& emission = module("EmissionModule");
+        const bool emits = emission.flag_at("enabled", true);
+        const Spread rate = emits ? spread_of(emission.get("rateOverTime"), 10.0) : Spread{};
+        if (rate.curved || rate.min != rate.max) {
+            report("particle emission rate that varies", "particles emit at its highest rate");
+        }
+        if (emits && spread_of(emission.get("rateOverDistance"), 0.0).max > 0.0) {
+            report("particle emission by distance moved", "particles emit by time alone");
+        }
+        double burst = 0.0;
+        bool bursts_at_start = true;
+        const Node* bursts = emits ? emission.get("m_Bursts") : nullptr;
+        for (const Node& item : bursts != nullptr ? bursts->items : std::vector<Node>{}) {
+            const Node* count = item.get("countCurve");
+            const double particles_in = count != nullptr
+                                            ? spread_of(count, 30.0).max
+                                            : item.number_at("maxCount", 30.0); // before 2018.3
+            const std::int64_t cycles = item.integer_at("cycleCount", 1);
+            burst += particles_in * static_cast<double>(std::max<std::int64_t>(cycles, 1));
+            bursts_at_start = bursts_at_start && item.number_at("time") == 0.0 && cycles == 1;
+        }
+        const double duration = std::max(system.number_at("lengthInSec", 5.0), 0.001);
+        const bool looping = system.flag_at("looping", true);
+        if (burst > 0.0) {
+            if (rate.max > 0.0) {
+                report("particle bursts with a steady emission",
+                       "the bursts' particles join the stream, spread over each cycle");
+            } else {
+                particles["explosiveness"] = 1.0;
+                if (!bursts_at_start) {
+                    report("particle bursts after the start or repeated",
+                           "they emit together at the start of each cycle");
+                }
+            }
+        }
+        double amount = std::ceil((rate.max * (looping ? lifetime : duration)) + burst - 1e-9);
+        amount = std::min(amount, initial.number_at("maxNumParticles", 1000.0));
+        if (amount < 1.0) {
+            amount = 1.0;
+            particles["emitting"] = false;
+        }
+        particles["amount"] = static_cast<std::int64_t>(amount);
+        if (!looping) {
+            particles["one_shot"] = true;
+        } else if (system.flag_at("prewarm")) {
+            particles["preprocess"] = tidy_number(duration);
+        }
+        if (!system.flag_at("playOnAwake", true)) {
+            particles["emitting"] = false;
+        }
+        if (spread_of(system.get("startDelay"), 0.0).max > 0.0) {
+            report("particle system's start delay", "it starts at once");
+        }
+        if (const double scale = system.number_at("simulationSpeed", 1.0); scale != 1.0) {
+            particles["speed_scale"] = tidy_number(scale);
+        }
+        if (const std::int64_t space = system.integer_at("moveWithTransform", 0); space == 0) {
+            // Godot's local particles fall along the object's axes, Unity's along the world's:
+            // gravity turns into the object's.
+            particles["local_coords"] = true;
+            Quaternion turn{0.0, 0.0, 0.0, 1.0};
+            for (int at = ctx.index; at >= 0;
+                 at = ctx.file->objects[static_cast<std::size_t>(at)].parent) {
+                if (const Component* transform =
+                        transform_of(ctx.file->objects[static_cast<std::size_t>(at)])) {
+                    turn = multiply(place_of(transform->body).rotation, turn);
+                }
+            }
+            const Quaternion local =
+                multiply(multiply(inverse(normalized(turn)),
+                                  Quaternion{gravity[0], gravity[1], gravity[2], 0.0}),
+                         normalized(turn));
+            particles["gravity"] = triple({local[0], local[1], local[2]});
+        } else if (space == 2) {
+            report("particles simulated in another object's space", "they move in the world's");
+        }
+        if (!system.flag_at("autoRandomSeed", true)) {
+            particles["seed"] = system.integer_at("randomSeed") & 0x7FFFFFFF;
+        }
+
+        particle_shape(module("ShapeModule"), particles, where);
+
+        // Over each particle's life.
+        if (const Node& color = module("ColorModule"); color.flag_at("enabled")) {
+            const Node* gradient = color.get("gradient");
+            const std::int64_t state =
+                gradient != nullptr ? gradient->integer_at("minMaxState") : 0;
+            if (state == 0 && gradient != nullptr) {
+                const json::Value tint =
+                    rgba(gradient->get("maxColor") != nullptr ? *gradient->get("maxColor") : none);
+                json::Value point;
+                point["offset"] = 0.0;
+                point["color"] = tint;
+                particles["color_ramp"] = json::Array{point};
+            } else if (const Node* ramp =
+                           gradient != nullptr ? gradient->get("maxGradient") : nullptr) {
+                if (state != 1) {
+                    report("particle color over lifetime chosen at random",
+                           "every particle takes one gradient");
+                }
+                particles["color_ramp"] = gradient_points(*ramp, where);
+            }
+        }
+        if (const Node& sizes = module("SizeModule"); sizes.flag_at("enabled")) {
+            const bool axes = sizes.flag_at("separateAxes");
+            std::array<const Node*, 3> curves{sizes.get(axes ? "x" : "curve"), sizes.get("y"),
+                                              sizes.get("z")};
+            if (axes && curves[0] == nullptr) {
+                curves[0] = sizes.get("curve");
+            }
+            const auto points = [&](const Node* curve) -> std::optional<json::Array> {
+                const std::int64_t state = curve != nullptr ? curve->integer_at("minMaxState") : 0;
+                if (curve == nullptr || (state != 1 && state != 2)) {
+                    return std::nullopt;
+                }
+                if (state == 2) {
+                    report("particle size over lifetime between two curves",
+                           "particles follow the higher one");
+                }
+                return life_points(read_curve(curve->get("maxCurve"), ""),
+                                   curve->number_at("scalar", 1.0));
+            };
+            if (axes) {
+                particles["split_scale"] = true;
+                for (std::size_t i = 0; i < 3; ++i) {
+                    if (auto made = points(curves.at(i))) {
+                        particles[std::string("scale_curve_") + "xyz"[i]] = *std::move(made);
+                    } else {
+                        const double value = spread_of(curves.at(i), 1.0).max;
+                        particles[std::string("scale_curve_") + "xyz"[i]] =
+                            json::Array{json::Array{0.0, tidy_number(value)}};
+                    }
+                }
+            } else if (auto made = points(curves[0])) {
+                particles["scale_amount_curve"] = *std::move(made);
+            } else {
+                // A constant scale over the whole life.
+                const Spread by = spread_of(curves[0], 1.0);
+                if (by.min != by.max) {
+                    report("particle size over lifetime between two values",
+                           "particles take the higher one");
+                }
+                size.min *= by.max;
+                size.max *= by.max;
+            }
+        }
+        particles["scale_amount_min"] = tidy_number(size.min);
+        particles["scale_amount_max"] = tidy_number(size.max);
+        if (const Node& turn = module("RotationModule"); turn.flag_at("enabled")) {
+            const Spread spin = spread_of(turn.get("curve"), 0.7853982);
+            if (spin.curved) {
+                report("particle rotation over lifetime that changes",
+                       "each particle turns at a steady speed between its values");
+            }
+            if (turn.flag_at("separateAxes")) {
+                report("particle rotation per axis", "particles turn about the view only");
+            }
+            particles["angular_velocity_min"] = tidy(spin.min * 180.0 / std::numbers::pi);
+            particles["angular_velocity_max"] = tidy(spin.max * 180.0 / std::numbers::pi);
+        }
+        for (const auto& [name, label] : kParticleModules) {
+            if (module(name).flag_at("enabled")) {
+                report("particle " + std::string(label), "Godot's CPUParticles3D has none");
+            }
+        }
+
+        // The renderer: the mesh at each particle and its material.
+        json::Object made;
+        json::Value material = json::Object{};
+        bool material_set = false;
+        if (const Node* materials = renderer->get("m_Materials");
+            materials != nullptr && !materials->items.empty()) {
+            if (const auto ref = unity::object_ref(materials->items.front()); ref && !ref->null()) {
+                if (ref->guid == kBuiltinSprites &&
+                    (ref->file_id == kDefaultParticleSystem || ref->file_id == kDefaultParticle)) {
+                    material["albedo_texture"] = default_particle_texture();
+                    material["transparency"] = "alpha";
+                    material["shading_mode"] = "unshaded";
+                    material_set = true;
+                } else if (const json::Value* surface = surface_material(*ref, where)) {
+                    material = *surface;
+                    material_set = true;
+                }
+            }
+        }
+        switch (mode) {
+        case 2: // horizontal billboards, facing up
+            made["QuadMesh"]["orientation"] = "y";
+            break;
+        case 4: { // meshes
+            const auto ref = unity::object_ref_at(*renderer, "m_Mesh");
+            if (!ref || ref->null()) {
+                report("particle system drawing meshes without one", "it doesn't convert");
+                return;
+            }
+            if (ref->guid == kBuiltinExtraGuid) {
+                if (!builtin_mesh(ref->file_id, made, where)) {
+                    return;
+                }
+                break;
+            }
+            const Asset* asset = ref->guid.empty() ? nullptr : asset_of(ref->guid);
+            std::optional<PickedMesh> picked;
+            if (asset != nullptr && is_model_file(extension_of(asset->path))) {
+                picked = picked_mesh(*asset, ref->file_id, renderer->get("m_Materials"), where);
+            } else {
+                report("particle mesh", "only meshes of model files convert");
+            }
+            if (!picked) {
+                return;
+            }
+            particles["mesh"] = picked->path;
+            if (!material_set && picked->material) {
+                material = *std::move(picked->material);
+            }
+            if (renderer->integer_at("m_MeshDistribution", 0) != 0 ||
+                unity::object_ref_at(*renderer, "m_Mesh1").value_or(ObjectRef{}).file_id != 0) {
+                report("particles drawing several meshes", "each draws the first");
+            }
+            break;
+        }
+        default: // billboards, facing the camera: stretched ones (1) aren't stretched
+            made["QuadMesh"] = json::Object{};
+            material["billboard_mode"] = mode == 3 ? "fixed_y" : "particles";
+            material["billboard_keep_scale"] = true;
+            if (mode == 1) {
+                report("stretched particle billboards", "they draw as plain billboards");
+            }
+            if (const std::int64_t align = renderer->integer_at("m_RenderAlignment", 0);
+                mode != 3 && align != 0 && align != 3) {
+                report("particles aligned to the world, the object or their velocity",
+                       "they face the camera");
+            }
+            break;
+        }
+        material["vertex_color_use_as_albedo"] = true;
+        if (const Node& sheet = module("UVModule"); sheet.flag_at("enabled")) {
+            texture_sheet(sheet, particles, material, where);
+        }
+        if (renderer->number_at("m_Pivot.x") != 0.0 || renderer->number_at("m_Pivot.y") != 0.0 ||
+            renderer->number_at("m_Pivot.z") != 0.0) {
+            report("particle pivot", "particles turn about their middle");
+        }
+        if (renderer->number_at("m_Flip.x") != 0.0 || renderer->number_at("m_Flip.y") != 0.0) {
+            report("flipped particles", "particles don't flip");
+        }
+        switch (renderer->integer_at("m_SortMode", 0)) {
+        case 1:
+            particles["draw_order"] = "view_depth";
+            break;
+        case 2:
+            report("oldest particles in front", "particles draw in the order they were made");
+            break;
+        case 3:
+            particles["draw_order"] = "lifetime";
+            break;
+        default:
+            break;
+        }
+        static constexpr std::array<std::string_view, 4> kShadows{"off", "on", "double_sided",
+                                                                  "shadows_only"};
+        if (const std::int64_t shadows = renderer->integer_at("m_CastShadows", 0);
+            shadows != 1 && shadows >= 0 && shadows < 4) {
+            particles["cast_shadow"] = std::string(kShadows.at(static_cast<std::size_t>(shadows)));
+        }
+        if (const std::int64_t layer = go.body.integer_at("m_Layer", 0); layer != 0) {
+            particles["layers"] = render_layers(layer, where);
+        }
+        made["CPUParticles3D"] = std::move(particles);
+        made["StandardMaterial3D"] = std::move(material);
+
+        static constexpr std::array<std::string_view, 9> kDrawn{
+            "MeshInstance3D", "BoxMesh",  "SphereMesh", "CylinderMesh",      "CapsuleMesh",
+            "PlaneMesh",      "QuadMesh", "PrismMesh",  "StandardMaterial3D"};
+        const bool taken = std::ranges::any_of(kDrawn, [&](std::string_view name) {
+            return out.components.contains(std::string(name));
+        });
+        if (taken || !renderer->flag_at("m_Enabled", true)) {
+            // Under the object; a renderer switched off hides it, as gameplay code can show it.
+            made["Transform3D"] = json::Object{};
+            if (!renderer->flag_at("m_Enabled", true)) {
+                made["Transform3D"]["visible"] = false;
+            }
+            out.added.emplace_back("particles", std::move(made));
+            return;
+        }
+        for (auto& [name, fields] : made) {
+            out.components[name] = std::move(fields);
+        }
+    }
+
+    // A texture sheet animation as Godot's: the frames of a grid of tiles, played through as many
+    // times as Unity's cycles over each life, or a frame held.
+    void texture_sheet(const Node& sheet, json::Value& particles, json::Value& material,
+                       const std::string& where) {
+        if (sheet.integer_at("mode", 0) != 0) {
+            problems_.add("particle texture sheet of sprites", where, "it doesn't convert");
+            return;
+        }
+        const std::int64_t frames_x = std::max<std::int64_t>(sheet.integer_at("tilesX", 1), 1);
+        const std::int64_t frames_y = std::max<std::int64_t>(sheet.integer_at("tilesY", 1), 1);
+        material["particles_anim_h_frames"] = frames_x;
+        material["particles_anim_v_frames"] = frames_y;
+        if (sheet.integer_at("animationType", 0) != 0) {
+            problems_.add("particle texture sheet's single row", where, "particles play every row");
+        }
+        if (spread_of(sheet.get("startFrame"), 0.0).max != 0.0) {
+            problems_.add("particle texture sheet's start frame", where,
+                          "particles start on the first frame");
+        }
+        const Node* frames = sheet.get("frameOverTime");
+        const std::int64_t state = frames != nullptr ? frames->integer_at("minMaxState", 1) : 1;
+        if (frames != nullptr && (state == 0 || state == 3)) {
+            // A frame held through each life, chosen at random between two.
+            const Spread held = spread_of(frames, 0.0);
+            particles["anim_offset_min"] = tidy_number(held.min);
+            particles["anim_offset_max"] = tidy_number(held.max);
+            return;
+        }
+        const Curve curve = frames != nullptr ? read_curve(frames->get("maxCurve"), "") : Curve{};
+        const bool even = curve.size() == 2 && curve[0].time == 0.0 && curve[0].value == 0.0 &&
+                          curve[1].time == 1.0 && curve[1].value == 1.0 &&
+                          segment(curve[0], curve[1]) == Segment::Linear;
+        if (frames != nullptr && (!even || state == 2)) {
+            problems_.add("particle frames over time that don't run evenly", where,
+                          "frames run evenly through each cycle");
+        }
+        // Unity's multiplier is just under 1 by default, so the last frame shows at the end.
+        double scalar = frames != nullptr ? frames->number_at("scalar", 1.0) : 1.0;
+        if (scalar > 0.999) {
+            scalar = 1.0;
+        }
+        const double cycles = std::max(sheet.number_at("cycleCount", 1.0), 1.0);
+        particles["anim_speed_min"] = tidy_number(cycles * scalar);
+        particles["anim_speed_max"] = tidy_number(cycles * scalar);
+        if (cycles > 1.0) {
+            material["particles_anim_loop"] = true;
         }
     }
 
@@ -13490,7 +14273,9 @@ private:
         const MaterialFile& file = *read;
         const std::string& at = file.path;
         const std::string& shader = file.shader.guid;
-        const bool urp = shader == kUrpLit || shader == kUrpSimpleLit || shader == kUrpUnlit;
+        const bool urp = shader == kUrpLit || shader == kUrpSimpleLit || shader == kUrpUnlit ||
+                         shader == kUrpParticlesLit || shader == kUrpParticlesSimpleLit ||
+                         shader == kUrpParticlesUnlit;
         const bool standard = shader == kBuiltinSprites;
         if (!urp && !standard) {
             problems_.add("material with a shader of its own", at,
@@ -13590,7 +14375,7 @@ private:
                 material["transparency"] = "alpha_scissor";
                 material["alpha_scissor_threshold"] = file.number("_Cutoff", 0.5);
             }
-            if (shader == kUrpUnlit) {
+            if (shader == kUrpUnlit || shader == kUrpParticlesUnlit) {
                 material["shading_mode"] = "unshaded";
             }
         } else if (const double mode = file.number("_Mode", 0.0); mode == 1.0) {

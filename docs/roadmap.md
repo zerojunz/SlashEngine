@@ -781,6 +781,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         motion taken out of the pose by the `AnimationTree`
   - [x] Unity's skinned meshes: nodes posed in a scene as the model's `Skeleton3D`, objects on
         nodes as `BoneAttachment3D`s, and models unpacked into objects folded back into one
+  - [x] Unity's particle systems in 3D scenes as `CPUParticles3D`: shapes, emission and bursts,
+        start values, gravity and force, color, size and rotation over each life, texture
+        sheets, billboards and mesh particles, with Unity's default particle material
   - [x] Unreal Engine levels and assets through the user's own Unreal Editor: a Python script
         the editor runs headless exports each level's actors and components, Enhanced Input,
         static meshes as glTF and sounds as WAV; the importer converts meshes with their

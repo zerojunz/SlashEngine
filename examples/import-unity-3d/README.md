@@ -4,9 +4,9 @@
 Unity 2022.3 saves it: its project settings and one scene,
 [Courtyard.unity](unity/Assets/Scenes/Courtyard.unity), with a grass plane, a crate that falls onto
 it, a lamp post from an OBJ file ([Lamp.obj](unity/Assets/Models/Lamp.obj)) with a light under it,
-the sun, the main camera and Unity's Default-Skybox. [calls.jsonl](calls.jsonl) imports it, opens
-the scene, lets the crate fall and looks at the frame, as an agent would over MCP or JSON-RPC;
-[results.jsonl](results.jsonl) holds the replies.
+the sun, the main camera, a campfire and Unity's Default-Skybox. [calls.jsonl](calls.jsonl) imports
+it, opens the scene, lets the crate fall, lists the fire's particles and looks at the frame, as an
+agent would over MCP or JSON-RPC; [results.jsonl](results.jsonl) holds the replies.
 
 - The scene has more of Unity's 3D components than 2D ones, so it converts in 3D: objects nest
   through `Transform3D` `children`, and sizes stay in meters.
@@ -36,7 +36,15 @@ the scene, lets the crate fall and looks at the frame, as an agent would over MC
   clip plane as `max_distance`; the crate's faint reflections now show the courtyard rather than
   the sky. Unity's probes give no ambient light, so its `ambient_mode` is `"disabled"`. The
   reply lists the skybox under `unsupported`, since it is approximated.
+- The campfire is a `ParticleSystem` as Unity makes one, turned up, with Unity's default particle
+  material: it becomes a `CPUParticles3D` drawing a `QuadMesh` billboard at each particle. Godot
+  emits `amount` particles each lifetime, so 30 a second for up to 1.2 seconds is 36; the cone is
+  a `ring` at its base with its angle as `spread`, the color over lifetime a `color_ramp` and the
+  size over lifetime a `scale_amount_curve`. Its particles simulate in local space, so its gravity
+  modifier of -0.1 (rising) turns into the object's axes, `[0.0, 0.0, 0.981]`. The import draws
+  Unity's default particle texture, a soft dot.
 
 After 120 ticks the crate rests on the grass, its center about half a meter (`0.48`) above the
-ground. `frame.capture` reads the sky, the grass, the crate, the lamp post, the sky's ground
-beyond the plane and the post in the crate's colors from the frame the camera sees.
+ground, and `particles.eval` lists the fire's 29 live particles rising. `frame.capture` reads the
+sky, the grass, the crate, the lamp post, the sky's ground beyond the plane and the post in the
+crate's colors from the frame the camera sees.
