@@ -575,8 +575,8 @@ saved under older code (`undo`, `world.restore`) leaves out what no longer fits.
 
 ## Importing games from other engines
 
-`tools/importer` converts a game made in another engine into a SlashEngine project: Godot 4 and
-Unity (Unreal is on the roadmap). It registers `project.import`, which
+`tools/importer` converts a game made in another engine into a SlashEngine project: Godot 4,
+Unity and Unreal Engine 5. It registers `project.import`, which
 `slash-cli import <folder>` and slash-mcp serve; `--dry-run` and `"dry_run": true` return the
 report and the files it would write. `src/godot_text.cpp` parses Godot's text formats
 (`.tscn`, `.tres`, `project.godot`) and `src/godot_import.cpp` converts them: a `.scene.json`
@@ -654,6 +654,22 @@ Objects a prefab brings are written whole, so `format_scene` keeps only what dif
 `src/common.cpp` holds what both importers share: paths, the report and the tasks.
 `docs/reference/unity-import.md` maps each component and setting; `examples/import-unity`
 imports a small platformer.
+
+Unreal Engine 5 projects (a folder with a `.uproject` file) import through the project's own
+Unreal Editor, which only ever runs as a program of its own, as Blender does:
+`src/unreal_editor.cpp` (`slash/importer/unreal.hpp`) finds it (`ImportOptions::unreal_editor`,
+`SLASH_UNREAL_EDITOR`, then the Epic Games Launcher's installs), reads Unreal's `.ini` files
+(`parse_config`, `parse_struct`) and runs `UnrealEditor-Cmd <project> -run=pythonscript` on
+`src/unreal_export.py` (embedded in the tools), which writes each level's actors and components,
+Enhanced Input, static meshes as glTF and sounds as WAV into `.slash/import/unreal/`.
+`src/unreal_import.cpp` converts that: it finds the exporter's axes and scale by matching the
+glTF files' bounds to Unreal's, places the levels in them (so meshes need no turn; cameras and
+lights turn to face Godot's way), gives each mesh's `.glb` the collision Unreal gives it with
+`generate_collision`, converts lights by Unreal's units, the sky, fog, bodies, shapes, volumes,
+sounds and both input systems, and makes a task per Blueprint and `UCLASS`. Unreal projects need
+the `build` capability. `tests/fake_unreal.cpp` is the editor's stand-in for tests and
+`examples/import-unreal`, copying a project's `FakeExport/` folder;
+`docs/reference/unreal-import.md` maps each component and setting.
 
 ## Rendering
 

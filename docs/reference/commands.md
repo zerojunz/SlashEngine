@@ -4316,8 +4316,8 @@ Needs: `read`; it changes nothing in the world, and a recording leaves it out.
 
 ### project.import
 
-Converts a Godot 4 or Unity project, in a folder inside this project, into this project, as
-[`slash-cli import`](cli.md#import) does. A Godot project's scenes become `.scene.json` files
+Converts a Godot 4, Unity or Unreal Engine 5 project, in a folder inside this project, into this
+project, as [`slash-cli import`](cli.md#import) does. A Godot project's scenes become `.scene.json` files
 beside the originals, its `SpriteFrames` `.frames.json` files, each `AnimationPlayer`'s
 animation libraries a `.anim.json` file, its tile sets `.tileset.json` files, its themes
 `.theme.json` files, its bus layouts `.bus_layout.json` files and its settings and input map
@@ -4335,25 +4335,31 @@ gameplay host, as slash-cli's and slash-mcp's have, those components are stand-i
 their values until the code is built. A game exported with Godot 4, its `.pck` file or its executable with the pack inside,
 is first unpacked back into the Godot project it was made from, then converted the same way, and
 so is a game built with Unity, whose project AssetRipper rebuilds
-([Unity builds](unity-import.md#unity-builds)).
-[godot-import.md](godot-import.md) and
-[unity-import.md](unity-import.md) say what converts to what. Registered by `slash-cli` and
+([Unity builds](unity-import.md#unity-builds)). An Unreal project's levels become `.scene.json`
+files beside the `.umap` files, read through the project's own Unreal Editor, which runs in the
+background and exports them, with its static meshes as `.glb` files and its sounds as WAV files
+([unreal-import.md](unreal-import.md#how-it-reads-the-project)); each Blueprint and C++ class
+becomes a storyboard task. [godot-import.md](godot-import.md),
+[unity-import.md](unity-import.md) and [unreal-import.md](unreal-import.md) say what converts to
+what. Registered by `slash-cli` and
 `slash-mcp`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `source` | string | required | The folder holding the Godot project's `project.godot`, or the Unity project's `Assets/` and `ProjectSettings/`; a game exported with Godot 4: its `.pck` file or executable; or a game built with Unity: its folder, executable, `.app`, `.apk` or `.ipa` file or web build |
+| `source` | string | required | The folder holding the Godot project's `project.godot`, the Unity project's `Assets/` and `ProjectSettings/`, or the Unreal project's `.uproject` file (or that file); a game exported with Godot 4: its `.pck` file or executable; or a game built with Unity: its folder, executable, `.app`, `.apk` or `.ipa` file or web build |
 | `unpack_to` | string | | For an exported or built game, a folder of this project to write the Godot or Unity project unpacked from it to; the import then uses its assets there. Left out, only the assets come along, under the paths they had in the game |
 | `dry_run` | boolean | `false` | Return the report and the files it would write; write nothing |
 
-Needs: `read`, `filesystem`, and `build` for a Unity build, since AssetRipper runs as a program
-of its own; a game served with `slash-cli run --serve` refuses Unity builds. It writes files and changes no scene, so there is nothing to undo;
+Needs: `read`, `filesystem`, and `build` for a Unity build or an Unreal project, since
+AssetRipper and Unreal's editor run as programs of their own; a game served with
+`slash-cli run --serve` refuses both. The Unreal Editor is `SLASH_UNREAL_EDITOR`, else one the
+Epic Games Launcher installed. It writes files and changes no scene, so there is nothing to undo;
 importing again rewrites the converted files, keeps each task's status and leaves skeletons
 that exist as they are. The result counts what converted, lists each script's task (and, for a
 skeleton, its `code` file and `component`; `module` is the game module it wrote, if any), and
 lists what didn't convert, once per kind with how
 many, the first place it was seen and why. The full report, with the values scripts need, is
-written to `import/godot.json` or `import/unity.json`. The settings it writes to `project.json`
+written to `import/godot.json`, `import/unity.json` or `import/unreal.json`. The settings it writes to `project.json`
 (the window, physics, input and audio) apply to the session at the next command.
 
 From [examples/import-godot](../../examples/import-godot/):
@@ -4377,7 +4383,18 @@ scale Unity's units convert at:
 {"converted":{"animation_libraries":1,"assets":9,"bus_layouts":1,"input_actions":12,"prefabs":3,"scenes":1,"tile_sets":1},"engine":"unity","files":18,"main_scene":"unity/Assets/Scenes/Pond.scene.json","module":"src/game.cpp","pixels_per_unit":32.0,"project":"Pond Hop","report":"import/unity.json","scripts":[{"code":"src/imported/camera_follow.cpp","component":"CameraFollow","entities":1,"script":"unity/Assets/Scripts/CameraFollow.cs","task":"task/port-camera-follow"},{"code":"src/imported/coin.cpp","component":"Coin","entities":6,"script":"unity/Assets/Scripts/Coin.cs","task":"task/port-coin"},{"code":"src/imported/frog.cpp","component":"Frog","entities":2,"script":"unity/Assets/Scripts/Frog.cs","task":"task/port-frog"},{"code":"src/imported/hud.cpp","component":"Hud","entities":1,"script":"unity/Assets/Scripts/Hud.cs","task":"task/port-hud"}],"unity_version":"2022.3.20f1","unsupported":[{"count":1,"what":"component EventSystem","where":"Assets/Scenes/Pond.unity: EventSystem","why":"not needed: SlashEngine's gui system sends input to controls itself"},{"count":1,"what":"component StandaloneInputModule","where":"Assets/Scenes/Pond.unity: EventSystem","why":"not needed: SlashEngine's gui system sends input to controls itself"},{"count":1,"what":"exposed mixer parameters","where":"Assets/Audio/Pond.mixer","why":"MusicVolume: scripts that set them set buses with audio.set_bus or gameplay code instead"},{"count":1,"what":"inactive object","where":"Assets/Scenes/Pond.unity: Coin (2)","why":"converted hidden, with its shapes disabled; there is no inactive state, so its other components still run"},{"count":1,"what":"input axis Mouse X","where":"ProjectSettings/InputManager.asset","why":"mouse movement axes: read the mouse's motion in code"},{"count":1,"what":"input binding","where":"Assets/Input/Controls.inputactions: Player/Croak","why":"\"<XRController>/trigger\": XRController bindings"},{"count":1,"what":"input interaction","where":"Assets/Input/Controls.inputactions: Player/Croak","why":"Hold: gameplay code times holds and taps"}]}
 ```
 
-For an exported game, `unpacked` says what came back out of it: the pack's format and the
+From [examples/import-unreal](../../examples/import-unreal/), where `log` is the editor's log
+and `tasks` the task of each Blueprint and C++ class:
+
+```json
+{"source": "unreal"}
+```
+
+```json
+{"converted":{"blueprints":4,"classes":1,"input_actions":10,"meshes":3,"scenes":1,"sounds":1},"engine":"unreal","engine_version":"5.4.4-35576357+++UE5+Release-5.4","files":9,"log":".slash/import/unreal/unreal.log","main_scene":"unreal/Content/Maps/Main.scene.json","project":"Crate Run","report":"import/unreal.json","tasks":[{"source":"unreal/Content/Blueprints/BP_Coin.uasset","task":"task/port-bp-coin"},{"source":"unreal/Content/Blueprints/BP_CrateRunMode.uasset","task":"task/port-bp-crate-run-mode"},{"source":"unreal/Content/Blueprints/BP_Hero.uasset","task":"task/port-bp-hero"},{"source":"unreal/Content/UI/WBP_Hud.uasset","task":"task/port-wbp-hud"},{"source":"unreal/Source/CrateRun/CoinPickup.h","task":"task/port-coin-pickup"}],"unsupported":[{"count":1,"what":"landscape","where":"/Game/Maps/Main: Landscape","why":"landscapes don't convert yet"},{"count":1,"what":"static light","where":"/Game/Maps/Main: Lamp","why":"baked in Unreal; it lights the scene as it runs here, or bake it into a LightmapGI"}]}
+```
+
+(`unsupported` shortened here.) For an exported game, `unpacked` says what came back out of it: the pack's format and the
 Godot version that exported it, whether it was inside an executable, the folder `unpack_to`
 wrote, counts of scenes, resources, scripts (`scripts_from_tokens` of them from binary tokens),
 textures, sounds and fonts, `renamed` for files that came back under another extension, and its
@@ -4411,7 +4428,10 @@ that is neither a Godot nor a Unity project, a Godot 3 project or a project from
 with the game's own key, a Unity build with encrypted bundles, a Unity build in a session without
 `build` (`data.capability` is `"build"`) or in a running game, and a path outside the project,
 with `-32003`; AssetRipper failing to start or to rebuild the project, with `-32004` and the end
-of its output. `data.path` is `/source`, or `/unpack_to` for an `unpack_to` outside the project.
+of its output. An Unreal project with no Unreal Editor to export it fails with `-32001`, and an
+editor that doesn't run or writes no export (the export script failing, or its plugins missing)
+with `-32004` and the script's error or the end of the editor's log; an Unreal project in a
+session without `build`, or in a running game, with `-32003`. `data.path` is `/source`, or `/unpack_to` for an `unpack_to` outside the project.
 
 ## Export
 
