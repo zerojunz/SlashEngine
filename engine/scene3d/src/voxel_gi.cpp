@@ -19,6 +19,7 @@
 #include "slash/world/world.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
