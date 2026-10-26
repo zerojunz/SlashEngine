@@ -15,6 +15,7 @@ project.import {"dry_run":true,"source":"unreal"}
     "blueprints": 4,
     "classes": 1,
     "input_actions": 10,
+    "landscapes": 1,
     "material_variants": 1,
     "meshes": 4,
     "scenes": 1,
@@ -23,7 +24,7 @@ project.import {"dry_run":true,"source":"unreal"}
   "dry_run": true,
   "engine": "unreal",
   "engine_version": "5.4.4-35576357+++UE5+Release-5.4",
-  "files": ["unreal/Content/Characters/SK_Hero.glb", "unreal/Content/Props/SM_Coin.glb", "unreal/Content/Props/SM_Crate.glb", "unreal/Content/Props/SM_Floor.glb", "unreal/Content/Audio/Wind.wav", "unreal/Content/Audio/Wind.audio.json", "unreal/Content/Characters/A_Idle.glb", "unreal/Content/Props/SM_Crate_MI_CrateDark.glb", "unreal/Content/Characters/A_Idle.anim.json", "unreal/Content/Maps/Main.scene.json", "project.json", "storyboard/work.json", "src/imported/coin_pickup.cpp", "src/imported/scripts.cpp", "src/game.cpp", "import/unreal.json"],
+  "files": ["unreal/Content/Characters/SK_Hero.glb", "unreal/Content/Props/SM_Coin.glb", "unreal/Content/Props/SM_Crate.glb", "unreal/Content/Props/SM_Floor.glb", "unreal/Content/Audio/Wind.wav", "unreal/Content/Audio/Wind.audio.json", "unreal/Content/Characters/A_Idle.glb", "unreal/Content/Props/SM_Crate_MI_CrateDark.glb", "unreal/Content/Maps/Main_hills.height.png", "unreal/Content/Maps/Main_hills.color.png", "unreal/Content/Characters/A_Idle.anim.json", "unreal/Content/Maps/Main.scene.json", "project.json", "storyboard/work.json", "src/imported/coin_pickup.cpp", "src/imported/scripts.cpp", "src/game.cpp", "import/unreal.json"],
   "log": ".slash/import/unreal/unreal.log",
   "main_scene": "unreal/Content/Maps/Main.scene.json",
   "module": "src/game.cpp",
@@ -90,9 +91,9 @@ project.import {"dry_run":true,"source":"unreal"}
     },
     {
       "count": 1,
-      "what": "landscape",
-      "where": "/Game/Maps/Main: Landscape",
-      "why": "landscapes don't convert yet"
+      "what": "landscape material",
+      "where": "/Game/Maps/Main: Hills",
+      "why": "an HTerrain shades as HTerrain's Classic4 shader; give it textures"
     },
     {
       "count": 1,
@@ -149,6 +150,7 @@ project.import {"source":"unreal"}
     "blueprints": 4,
     "classes": 1,
     "input_actions": 10,
+    "landscapes": 1,
     "material_variants": 1,
     "meshes": 4,
     "scenes": 1,
@@ -156,7 +158,7 @@ project.import {"source":"unreal"}
   },
   "engine": "unreal",
   "engine_version": "5.4.4-35576357+++UE5+Release-5.4",
-  "files": 16,
+  "files": 18,
   "log": ".slash/import/unreal/unreal.log",
   "main_scene": "unreal/Content/Maps/Main.scene.json",
   "module": "src/game.cpp",
@@ -223,9 +225,9 @@ project.import {"source":"unreal"}
     },
     {
       "count": 1,
-      "what": "landscape",
-      "where": "/Game/Maps/Main: Landscape",
-      "why": "landscapes don't convert yet"
+      "what": "landscape material",
+      "where": "/Game/Maps/Main: Hills",
+      "why": "an HTerrain shades as HTerrain's Classic4 shader; give it textures"
     },
     {
       "count": 1,
@@ -417,6 +419,19 @@ project.import {"source":"unreal"}
         }
       }
     },
+    "hills": {
+      "components": {
+        "HTerrain": {
+          "colormap": "unreal/Content/Maps/Main_hills.color.png",
+          "height_range": [-256.0, 255.99219],
+          "heightmap": "unreal/Content/Maps/Main_hills.height.png",
+          "resolution": 65
+        },
+        "Transform3D": {
+          "position": [-80.0, -1.0, -16.0]
+        }
+      }
+    },
     "lamp": {
       "components": {
         "OmniLight3D": {
@@ -546,6 +561,9 @@ project.import {"source":"unreal"}
           },
           "class": "/Game/Blueprints/BP_Hero.BP_Hero_C"
         },
+        "hills": {
+          "class": "/Script/Landscape.Landscape"
+        },
         "lamp": {
           "class": "/Script/Engine.PointLight"
         },
@@ -575,6 +593,7 @@ project.import {"source":"unreal"}
         "BlockingVolume_0": "wall",
         "CoinPickup_0": "bonus_coin",
         "DirectionalLight_0": "sun",
+        "Landscape_0": "hills",
         "NavMeshBoundsVolume_0": "nav_mesh_bounds_volume",
         "PlayerStart_0": "player_start",
         "PointLight_0": "lamp",
@@ -660,9 +679,9 @@ project.import {"source":"unreal"}
     },
     {
       "count": 1,
-      "what": "landscape",
-      "where": "/Game/Maps/Main: Landscape",
-      "why": "landscapes don't convert yet"
+      "what": "landscape material",
+      "where": "/Game/Maps/Main: Hills",
+      "why": "an HTerrain shades as HTerrain's Classic4 shader; give it textures"
     },
     {
       "count": 1,
@@ -830,7 +849,7 @@ project.import {"source":"unreal"}
 }
 scene.open {"path":"unreal/Content/Maps/Main.scene.json"}
 {
-  "entities": 19,
+  "entities": 20,
   "path": "unreal/Content/Maps/Main.scene.json"
 }
 step {"ticks":90}
@@ -987,6 +1006,15 @@ physics.raycast {"from":[-6,5,-3],"to":[-6,-5,-3]}
     "id": "floor",
     "normal": [0, 1, 0],
     "point": [-6, 0, -3]
+  }
+}
+physics.raycast {"from":[-64,50,0],"to":[-64,-50,0]}
+{
+  "hit": {
+    "fraction": 0.31,
+    "id": "hills",
+    "normal": [0.1005, 0.9898, -0.1005],
+    "point": [-64, 19, 0]
   }
 }
 physics.overlap {"collide_with_areas":true,"position":[8,0.5,1],"shape":{"radius":0.1,"shape":"sphere"}}
