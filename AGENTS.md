@@ -240,6 +240,14 @@ values and no generator (`refine_model` in `src/commands.cpp`). `asset.add` of a
 project's `library.json` says came from an asset, changed since, keeps it as a new version of
 that asset (`used_version`).
 
+`entity.place` (`engine/command/src/place.cpp`) assembles scenes of such assets by constraints:
+each entity goes to a point (`at`) or along a `Path3D` (`along`, turned to face it with
+`rotate`), is dropped onto what is below as Godot's Snap Object to Floor drops a node (a ray from
+a meter above the bottom of its bounds; `on` limits what it may stand on), and is moved to the
+nearest free spot in rings around it when its bounds overlap anything but what it stands on.
+What it stands on and avoids is `navigation::world_geometry`, each entity's own geometry as a
+navigation bake reads it, in world space. `examples/scene-assembly` lays out a yard.
+
 A team shares a library it hosts (`slash/library/team.hpp`): `providers.json`'s `library`, or
 `SLASH_LIBRARY_TEAM`, names a folder every teammate reaches or a library server
 (`slash-cli library serve`, `library::TeamServer`, answering `POST /v1/library/<op>` with a

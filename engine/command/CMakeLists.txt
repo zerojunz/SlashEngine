@@ -7,6 +7,7 @@ add_library(slash_command
     src/mcp.cpp
     src/navigation.cpp
     src/perf.cpp
+    src/place.cpp
     src/playtest.cpp
     src/project_map.cpp
     src/replay.cpp
@@ -22,3 +23,6 @@ target_link_libraries(slash_command PUBLIC slash::asset slash::core slash::world
     PRIVATE slash::ai slash::animation slash::audio slash::canvas slash::gameplay slash::input slash::navigation slash::physics2d slash::physics3d slash::platform slash::render
             slash::scene3d slash::services slash::soundtrack slash::storyboard slash::ui)
 slash_engine_target(slash_command)
+# Placing is the same everywhere, as the navigation geometry it reads.
+set_source_files_properties(src/place.cpp PROPERTIES
+    COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")

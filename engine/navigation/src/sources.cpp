@@ -207,7 +207,7 @@ void add_obstacle(SourceGeometry3D& out, const world::NavigationObstacle3D& obst
 
 void parse_3d(const world::World& world, asset::Assets& assets, const world::Tree3D& tree,
               const Affine3D& root, entt::entity entity, const NavigationMesh& settings,
-              SourceGeometry3D& out, std::vector<std::string>* warnings) {
+              SourceGeometry3D& out, std::vector<std::string>* warnings, bool children = true) {
     const entt::registry& registry = world.ecs();
     if (const auto* obstacle = registry.try_get<world::NavigationObstacle3D>(entity);
         obstacle != nullptr) {
@@ -328,7 +328,7 @@ void parse_3d(const world::World& world, asset::Assets& assets, const world::Tre
         }
     }
     if (const auto* transform = registry.try_get<world::Transform3D>(entity);
-        transform != nullptr) {
+        children && transform != nullptr) {
         for (const entt::entity child : transform->children) {
             if (registry.valid(child) && tree.parent(child) == entity) {
                 parse_3d(world, assets, tree, root, child, settings, out, warnings);
@@ -583,6 +583,21 @@ SourceGeometry3D parse_source_geometry(const world::World& world, asset::Assets&
     SourceGeometry3D out;
     const world::Tree3D tree(world);
     parse_3d(world, assets, tree, tree.global(root).inverse(), root, settings, out, warnings);
+    return out;
+}
+
+std::vector<EntityGeometry> world_geometry(const world::World& world, asset::Assets& assets,
+                                           const NavigationMesh& settings,
+                                           std::vector<std::string>* warnings) {
+    std::vector<EntityGeometry> out;
+    const world::Tree3D tree(world);
+    for (const entt::entity entity : tree.order()) {
+        EntityGeometry each{.entity = entity, .geometry = {}};
+        parse_3d(world, assets, tree, Affine3D{}, entity, settings, each.geometry, warnings, false);
+        if (!each.geometry.indices.empty()) {
+            out.push_back(std::move(each));
+        }
+    }
     return out;
 }
 
