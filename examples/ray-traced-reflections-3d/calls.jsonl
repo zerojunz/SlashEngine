@@ -1,0 +1,6 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[118,92],[200,88],[60,84],[160,147]],"path":"shots/hall.png"}}
+{"jsonrpc":"2.0","id":3,"method":"component.set","params":{"id":"floor","components":{"StandardMaterial3D":{"roughness":0.4}}}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"points":[[118,92],[200,88],[60,84],[160,147]],"path":"shots/rough.png"}}
+{"jsonrpc":"2.0","id":5,"method":"batch","params":{"commands":[{"command":"component.set","params":{"id":"floor","components":{"StandardMaterial3D":{"roughness":0.05}}}},{"command":"component.set","params":{"id":"environment","components":{"WorldEnvironment":{"ssr_enabled":false}}}}]}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[118,92],[200,88],[60,84],[160,147]]}}

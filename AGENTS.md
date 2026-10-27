@@ -1021,8 +1021,12 @@ environment's SSAO instead (`ray_occlusion` and `run_ray_occlusion` in `src/ray_
 `ambient_occlusion_samples` cosine-weighted rays a pixel up to `ssao_radius`, made occlusion with
 Godot's intensity and power), into the screen's layer 0 where SSAO's goes; the compute shader
 writes it to a third texture. A change to the ray math goes in both.
+`reflections` traces the environment's SSR on the software device (`run_ray_reflections`: rays
+reflected about GGX's visible normals, lit by `path_reflection` in `src/path_trace.cpp` as a path's
+bounce), into the SSR layer; the GPU device draws SSR for now.
 `tests/test_ray_tracing.cpp` holds Vulkan to the software device,
-`examples/ray-traced-shadows-3d` traces an avenue and `examples/ray-traced-ao-3d` a room.
+`examples/ray-traced-shadows-3d` traces an avenue, `examples/ray-traced-ao-3d` a room and
+`examples/ray-traced-reflections-3d` a hall's floor.
 
 TAA is Godot 4.6's `use_taa` (project.json's `rendering.anti_aliasing.quality.use_taa`,
 `Scene3D::use_taa`), in Forward+ only. `src/taa.hpp` holds what devices share: the jitter

@@ -1,0 +1,128 @@
+{
+  "entities": {
+    "back_wall": {
+      "components": {
+        "BoxMesh": {
+          "size": [12.0, 4.0, 0.2]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.9, 0.75, 0.55, 1.0],
+          "roughness": 0.9
+        },
+        "Transform3D": {
+          "position": [0.0, 2.0, -2.6]
+        }
+      }
+    },
+    "banner": {
+      "components": {
+        "BoxMesh": {
+          "size": [3.0, 0.6, 0.1]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.2, 0.75, 0.3, 1.0],
+          "roughness": 0.9
+        },
+        "Transform3D": {
+          "position": [0.0, 3.6, -2.45]
+        }
+      }
+    },
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 60.0
+        },
+        "Transform3D": {
+          "position": [0.0, 1.5, 3.6],
+          "rotation": [-0.35, 0.0, 0.0]
+        }
+      }
+    },
+    "crate": {
+      "components": {
+        "BoxMesh": {},
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.75, 0.15, 0.1, 1.0],
+          "roughness": 0.7
+        },
+        "Transform3D": {
+          "position": [-1.2, 0.5, -1.2]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.8, 0.8, 0.85, 1.0],
+          "ambient_light_energy": 0.5,
+          "ambient_light_source": "color",
+          "background_color": [0.05, 0.05, 0.07, 1.0],
+          "background_mode": "color",
+          "ssr_enabled": true
+        }
+      }
+    },
+    "floor": {
+      "components": {
+        "BoxMesh": {
+          "size": [12.0, 0.2, 10.0]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.75, 0.75, 0.8, 1.0],
+          "metallic": 0.8,
+          "roughness": 0.05
+        },
+        "Transform3D": {
+          "position": [0.0, -0.1, 0.0]
+        }
+      }
+    },
+    "lamp": {
+      "components": {
+        "OmniLight3D": {
+          "light_energy": 1.5,
+          "omni_range": 8.0
+        },
+        "Transform3D": {
+          "position": [0.0, 2.5, 1.0]
+        }
+      }
+    },
+    "pillar": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.4, 2.4, 0.4]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.15, 0.3, 0.75, 1.0],
+          "roughness": 0.7
+        },
+        "Transform3D": {
+          "position": [1.3, 1.2, -1.6]
+        }
+      }
+    },
+    "rug": {
+      "components": {
+        "BoxMesh": {
+          "size": [1.6, 0.02, 1.0]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.5, 0.4, 0.3, 1.0]
+        },
+        "Transform3D": {
+          "position": [0.4, 0.01, 1.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

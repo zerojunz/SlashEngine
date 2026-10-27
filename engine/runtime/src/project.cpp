@@ -370,6 +370,19 @@ json::Value ray_tracing_schema() {
     occlusion_samples["default"] = render::RayTracing3D{}.ambient_occlusion_samples;
     occlusion_samples["description"] =
         "Rays a pixel sends for its ambient occlusion: more is less noisy and costs more.";
+    json::Value reflections;
+    reflections["type"] = "boolean";
+    reflections["default"] = false;
+    reflections["description"] =
+        "The environment's SSR is traced by rays reflected off each opaque pixel, through every "
+        "mesh, in Forward+, on devices that trace reflections; others draw SSR.";
+    json::Value reflection_samples;
+    reflection_samples["type"] = "integer";
+    reflection_samples["minimum"] = 1;
+    reflection_samples["maximum"] = render::kMaxRayShadowSamples;
+    reflection_samples["default"] = render::RayTracing3D{}.reflection_samples;
+    reflection_samples["description"] =
+        "Rays a pixel reflects: more make rough reflections less noisy and cost more.";
     json::Value out;
     out["type"] = "object";
     out["additionalProperties"] = false;
@@ -378,6 +391,8 @@ json::Value ray_tracing_schema() {
     out["properties"]["shadow_samples"] = std::move(samples);
     out["properties"]["ambient_occlusion"] = std::move(occlusion);
     out["properties"]["ambient_occlusion_samples"] = std::move(occlusion_samples);
+    out["properties"]["reflections"] = std::move(reflections);
+    out["properties"]["reflection_samples"] = std::move(reflection_samples);
     return out;
 }
 

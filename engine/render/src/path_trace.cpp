@@ -491,6 +491,61 @@ Float3 direct_light(const PathScene& scene, const PathTextures& textures, const 
     return sum;
 }
 
+// What a ray along direction meets where trace found it, as a path's bounce sees it: its surface
+// (its normal turned toward the ray where it faced away), the point, its face's normal on the
+// ray's side, the way back along the ray, f0, and the light the lights send back along the ray,
+// through their shadows. An unshaded surface is only its base color; nullopt where alpha tests
+// would have let the ray through, which trace leaves out.
+struct Met {
+    PathSurface surface;
+    Float3 point{};
+    Float3 face{};
+    Float3 v{};
+    Float3 f0{};
+    Float3 direct{};
+    bool unshaded = false;
+};
+std::optional<Met> meet(const PathScene& scene, const PathTextures& textures, const Found& found,
+                        const Float3& direction, Random& random) {
+    const PathTriangle& triangle = scene.triangles[found.triangle];
+    const PathDraw& draw = scene.draws[triangle.draw];
+    MeshPixel pixel =
+        pixel_at(scene, triangle, found.crossing.u, found.crossing.v, found.crossing.front);
+    sample_texels(scene, textures, triangle.draw,
+                  uv_at(scene, triangle, found.crossing.u, found.crossing.v), pixel);
+    std::optional<PathSurface> surface = path_surface(draw.surface, pixel);
+    if (!surface) {
+        return std::nullopt;
+    }
+    Met met;
+    if (surface->unshaded) {
+        met.surface = *surface;
+        met.unshaded = true;
+        return met;
+    }
+    met.point = pixel.world;
+    met.v = scale(direction, -1.0F);
+    Float3 face = normalize(
+        cross(sub(corner_position(scene, triangle, 1), corner_position(scene, triangle, 0)),
+              sub(corner_position(scene, triangle, 2), corner_position(scene, triangle, 0))));
+    if (dot(face, met.v) < 0.0F) {
+        face = scale(face, -1.0F);
+    }
+    if (dot(surface->normal, met.v) <= 0.0F) {
+        surface->normal = face;
+    }
+    met.face = face;
+    const float specular = draw.surface.surface[2];
+    const float dielectric = 0.16F * specular * specular;
+    for (std::size_t i = 0; i < 3; ++i) {
+        met.f0.at(i) = dielectric + ((surface->base.at(i) - dielectric) * surface->metallic);
+    }
+    met.direct =
+        direct_light(scene, textures, draw, *surface, met.point, met.face, met.v, met.f0, random);
+    met.surface = *surface;
+    return met;
+}
+
 // One path through the target at x, y.
 Float3 trace_path(const PathScene& scene, const PathTextures& textures, float x, float y,
                   Random& random) {
@@ -529,41 +584,21 @@ Float3 trace_path(const PathScene& scene, const PathTextures& textures, float x,
             light = add(light, mul(throughput, seen));
             break;
         }
-        const PathTriangle& triangle = scene.triangles[found->triangle];
-        const PathDraw& draw = scene.draws[triangle.draw];
-        MeshPixel pixel =
-            pixel_at(scene, triangle, found->crossing.u, found->crossing.v, found->crossing.front);
-        sample_texels(scene, textures, triangle.draw,
-                      uv_at(scene, triangle, found->crossing.u, found->crossing.v), pixel);
-        std::optional<PathSurface> surface = path_surface(draw.surface, pixel);
-        if (!surface) {
+        std::optional<Met> met = meet(scene, textures, *found, direction, random);
+        if (!met) {
             break; // alpha tests kept it, so this doesn't happen
         }
-        if (surface->unshaded) {
-            light = add(light, mul(throughput, surface->base));
+        if (met->unshaded) {
+            light = add(light, mul(throughput, met->surface.base));
             break;
         }
-        light = add(light, mul(throughput, surface->emitted));
-
-        const Float3 point = pixel.world;
-        const Float3 v = scale(direction, -1.0F);
-        Float3 face = normalize(
-            cross(sub(corner_position(scene, triangle, 1), corner_position(scene, triangle, 0)),
-                  sub(corner_position(scene, triangle, 2), corner_position(scene, triangle, 0))));
-        if (dot(face, v) < 0.0F) {
-            face = scale(face, -1.0F);
-        }
-        if (dot(surface->normal, v) <= 0.0F) {
-            surface->normal = face;
-        }
-        const float specular = draw.surface.surface[2];
-        const float dielectric = 0.16F * specular * specular;
-        Float3 f0{};
-        for (std::size_t i = 0; i < 3; ++i) {
-            f0.at(i) = dielectric + ((surface->base.at(i) - dielectric) * surface->metallic);
-        }
-        light = add(light, mul(throughput, direct_light(scene, textures, draw, *surface, point,
-                                                        face, v, f0, random)));
+        light = add(light, mul(throughput, met->surface.emitted));
+        light = add(light, mul(throughput, met->direct));
+        const PathSurface* surface = &met->surface;
+        const Float3& point = met->point;
+        const Float3& face = met->face;
+        const Float3& v = met->v;
+        const Float3& f0 = met->f0;
         if (bounce >= scene.bounces) {
             break;
         }
@@ -798,6 +833,41 @@ void trace_paths(const PathScene& scene, const PathTextures& textures, std::uint
             row(y);
         }
     }
+}
+
+Float3 path_reflection_ray(const Float3& n, const Float3& v, float roughness, float u1, float u2) {
+    const float r = std::max(roughness, kMinBounceRoughness);
+    const Float3 h = sample_visible_normal(n, v, r * r, u1, u2);
+    return normalize(sub(scale(h, 2.0F * dot(v, h)), v));
+}
+
+std::optional<Float3> path_reflection(const PathScene& scene, const PathTextures& textures,
+                                      const Float3& origin, const Float3& direction,
+                                      std::uint32_t seed) {
+    Random random{.seed = seed, .counter = 0};
+    const std::uint32_t trace_seed = mix(random.seed ^ mix(random.counter++));
+    const std::optional<Found> found =
+        trace(scene, &textures, origin, direction, std::numeric_limits<float>::max(),
+              RayKind::Camera, 0, trace_seed);
+    if (!found) {
+        return std::nullopt;
+    }
+    const std::optional<Met> met = meet(scene, textures, *found, direction, random);
+    if (!met) {
+        return std::nullopt;
+    }
+    const PathSurface& surface = met->surface;
+    if (met->unshaded) {
+        return surface.base;
+    }
+    // The environment's light where the paths' bounces would gather it: its diffuse share from
+    // along the normal, its specular share from along the mirror direction.
+    const Float3& n = surface.normal;
+    const Float3 mirror = normalize(sub(scale(n, 2.0F * dot(met->v, n)), met->v));
+    const Float3 ambient =
+        mul(environment(scene, textures, n), scale(surface.base, 1.0F - surface.metallic));
+    const Float3 shine = mul(environment(scene, textures, mirror), met->f0);
+    return add(add(surface.emitted, met->direct), add(ambient, shine));
 }
 
 std::optional<PathHit> path_hit(const PathScene& scene, const Float3& origin,

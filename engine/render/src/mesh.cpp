@@ -510,6 +510,15 @@ RayTracing3D ray_tracing(const json::Value& rendering) {
         out.ambient_occlusion_samples = static_cast<std::uint32_t>(
             std::clamp(samples->as_double(), 1.0, static_cast<double>(kMaxRayShadowSamples)));
     }
+    if (const json::Value* reflections = found->find("reflections");
+        reflections != nullptr && reflections->is_bool()) {
+        out.reflections = reflections->as_bool();
+    }
+    if (const json::Value* samples = found->find("reflection_samples");
+        samples != nullptr && samples->is_number()) {
+        out.reflection_samples = static_cast<std::uint32_t>(
+            std::clamp(samples->as_double(), 1.0, static_cast<double>(kMaxRayShadowSamples)));
+    }
     return out;
 }
 

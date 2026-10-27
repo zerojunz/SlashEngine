@@ -9,6 +9,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -124,6 +125,22 @@ public:
 // another in order. Rows are shared out over pool's threads when there is one.
 void trace_paths(const PathScene& scene, const PathTextures& textures, std::uint32_t first,
                  std::uint32_t samples, std::span<float> sums, jobs::Pool* pool);
+
+// A reflection ray about n (unit length) seen along v (from the surface toward the eye, unit
+// length): reflected about one of GGX's visible microfacet normals for roughness (at least the
+// paths' least), picked by u1 and u2 from 0 to 1, as trace_paths's specular bounces pick theirs.
+[[nodiscard]] Float3 path_reflection_ray(const Float3& n, const Float3& v, float roughness,
+                                         float u1, float u2);
+
+// The light a reflection ray from origin along direction (unit length) brings back: what it meets
+// first, lit as a path's bounce lights it (what it gives off and what the lights send it through
+// their shadows) and by the environment (its light along the normal for the diffuse share and
+// along the mirror direction times f0 for the specular), or nullopt where it meets nothing. seed
+// picks shadow rays' alpha as trace_paths's do.
+[[nodiscard]] std::optional<Float3> path_reflection(const PathScene& scene,
+                                                    const PathTextures& textures,
+                                                    const Float3& origin, const Float3& direction,
+                                                    std::uint32_t seed);
 
 // What a ray meets: the triangle (index into PathScene::triangles), how far along it, and where
 // on the triangle (the second and third corners' shares).
