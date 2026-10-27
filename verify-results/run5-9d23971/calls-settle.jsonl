@@ -1,0 +1,7 @@
+{"jsonrpc":"2.0","id":1,"method":"frame.capture","params":{"time":0,"points":[[640,40],[640,240],[640,620],[200,530],[477,400]]}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"time":0.5,"points":[[640,40],[640,240],[640,620],[200,530],[477,400]]}}
+{"jsonrpc":"2.0","id":3,"method":"frame.capture","params":{"time":2,"points":[[640,40],[640,240],[640,620],[200,530],[477,400]]}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"time":5,"points":[[640,40],[640,240],[640,620],[200,530],[477,400]]}}
+{"jsonrpc":"2.0","id":5,"method":"frame.capture","params":{"time":10,"points":[[640,40],[640,240],[640,620],[200,530],[477,400]]}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"time":20,"points":[[640,40],[640,240],[640,620],[200,530],[477,400]]}}
+{"jsonrpc":"2.0","id":7,"method":"frame.capture","params":{"time":30,"points":[[640,40],[640,240],[640,620],[200,530],[477,400]],"path":"captures/diag/DemoLevel_after60_t30.png"}}

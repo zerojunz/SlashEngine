@@ -1,0 +1,531 @@
+{
+  "animations": {
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Bwd": "Content/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Bwd.glb",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Bwd_Left": "Content/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Bwd_Left.glb",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Bwd_Right": "Content/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Bwd_Right.glb",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd": "Content/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd.glb",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd_Left": "Content/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd_Left.glb",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd_Right": "Content/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd_Right.glb",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Left": "Content/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Left.glb",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Right": "Content/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Right.glb",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jump/MM_Fall_Loop": "Content/Characters/Mannequins/Anims/Unarmed/Jump/MM_Fall_Loop.glb",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jump/MM_Jump": "Content/Characters/Mannequins/Anims/Unarmed/Jump/MM_Jump.glb",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jump/MM_Land": "Content/Characters/Mannequins/Anims/Unarmed/Jump/MM_Land.glb",
+    "/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle": "Content/Characters/Mannequins/Anims/Unarmed/MM_Idle.glb",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Bwd": "Content/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Bwd.glb",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Bwd_Left": "Content/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Bwd_Left.glb",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Bwd_Right": "Content/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Bwd_Right.glb",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd": "Content/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd.glb",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd_Left": "Content/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd_Left.glb",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd_Right": "Content/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd_Right.glb",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Left": "Content/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Left.glb",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Right": "Content/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Right.glb"
+  },
+  "axes": "x = x, y = z, z = y",
+  "engine": "unreal",
+  "engine_version": "5.8.4-58902052+++UE5+Release-5.8",
+  "format": 1,
+  "levels": {
+    "/Game/Demo/DemoLevel": {
+      "actors": {
+        "buoyancy_manager0": {
+          "class": "/Script/Water.BuoyancyManager"
+        },
+        "demo_camera": {
+          "class": "/Script/Engine.CameraActor"
+        },
+        "floor": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "goal_trigger": {
+          "class": "/Script/Engine.TriggerBox"
+        },
+        "height_fog": {
+          "class": "/Script/Engine.ExponentialHeightFog"
+        },
+        "jump_pad_fx": {
+          "class": "/Script/Niagara.NiagaraActor"
+        },
+        "mannequin": {
+          "character_movement": {
+            "jump_velocity": 5.0,
+            "max_step_height": 0.45,
+            "max_walk_speed": 6.0
+          },
+          "class": "/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter.BP_ThirdPersonCharacter_C"
+        },
+        "player_start": {
+          "class": "/Script/Engine.PlayerStart"
+        },
+        "point_light": {
+          "class": "/Script/Engine.PointLight"
+        },
+        "shape_cube": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "shape_cylinder": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "shape_sphere": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sky_atmosphere": {
+          "class": "/Script/Engine.SkyAtmosphere"
+        },
+        "sky_light": {
+          "class": "/Script/Engine.SkyLight"
+        },
+        "spot_light": {
+          "class": "/Script/Engine.SpotLight"
+        },
+        "sun": {
+          "class": "/Script/Engine.DirectionalLight"
+        },
+        "tone": {
+          "class": "/Script/Engine.AmbientSound"
+        }
+      },
+      "entities": {
+        "AmbientSound_0": "tone",
+        "BP_ThirdPersonCharacter_C_0": "mannequin",
+        "BuoyancyManager_0": "buoyancy_manager0",
+        "CameraActor_0": "demo_camera",
+        "DirectionalLight_0": "sun",
+        "ExponentialHeightFog_0": "height_fog",
+        "NiagaraActor_0": "jump_pad_fx",
+        "PlayerStart_0": "player_start",
+        "PointLight_0": "point_light",
+        "SkyAtmosphere_0": "sky_atmosphere",
+        "SkyLight_0": "sky_light",
+        "SpotLight_0": "spot_light",
+        "StaticMeshActor_0": "floor",
+        "StaticMeshActor_1": "shape_cube",
+        "StaticMeshActor_2": "shape_sphere",
+        "StaticMeshActor_3": "shape_cylinder",
+        "TriggerBox_0": "goal_trigger"
+      },
+      "scene": "Content/Demo/DemoLevel.scene.json"
+    },
+    "/Game/ThirdPerson/Lvl_ThirdPerson": {
+      "actors": {
+        "actor2": {
+          "class": "/Script/Engine.Actor"
+        },
+        "buoyancy_manager0": {
+          "class": "/Script/Water.BuoyancyManager"
+        },
+        "directional_light": {
+          "class": "/Script/Engine.DirectionalLight"
+        },
+        "exponential_height_fog": {
+          "class": "/Script/Engine.ExponentialHeightFog"
+        },
+        "floor": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "player_start": {
+          "class": "/Script/Engine.PlayerStart"
+        },
+        "post_process_volume": {
+          "class": "/Script/Engine.PostProcessVolume"
+        },
+        "sky_atmosphere": {
+          "class": "/Script/Engine.SkyAtmosphere"
+        },
+        "sky_light": {
+          "class": "/Script/Engine.SkyLight"
+        },
+        "sm_cube": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cube10": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cube11": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cube12": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cube13": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cube14": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cube15": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cube16": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cube17": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cube18": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cube19": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cube2": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cube20": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cube3": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cube4": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cube5": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cube6": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cube7": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cube8": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cube9": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cylinder": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cylinder2": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cylinder3": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cylinder4": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cylinder5": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cylinder6": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cylinder7": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cylinder8": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_cylinder9": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_quarter_cylinder": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_quarter_cylinder10": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_quarter_cylinder11": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_quarter_cylinder12": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_quarter_cylinder2": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_quarter_cylinder3": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_quarter_cylinder4": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_quarter_cylinder5": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_quarter_cylinder6": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_quarter_cylinder7": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_quarter_cylinder8": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_quarter_cylinder9": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_ramp": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_ramp10": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_ramp11": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_ramp12": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_ramp2": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_ramp3": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_ramp4": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_ramp5": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_ramp6": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_ramp7": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_ramp8": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_ramp9": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "sm_sky_sphere": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "volumetric_cloud": {
+          "class": "/Script/Engine.VolumetricCloud"
+        }
+      },
+      "camera_added": "player_start_camera",
+      "entities": {
+        "BuoyancyManager_0": "buoyancy_manager0",
+        "ChaosDebugDrawActor_UAID_F4A475FF15A3736A02_1961891673": "actor2",
+        "DirectionalLight_UAID_F4A475FF15A3736A02_1961932697": "directional_light",
+        "ExponentialHeightFog_UAID_F4A475FF15A3736A02_1961936700": "exponential_height_fog",
+        "Floor_UAID_F4A475FF15A3736A02_1961940706": "floor",
+        "PlayerStart_UAID_F4A475FF15A3736A02_1961960731": "player_start",
+        "PostProcessVolume_UAID_F4A475FF15A3736A02_1961895679": "post_process_volume",
+        "SkyAtmosphere_UAID_F4A475FF15A3736A02_1961927691": "sky_atmosphere",
+        "SkyLight_UAID_F4A475FF15A3736A02_1961943709": "sky_light",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961891674": "sm_ramp4",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961892675": "sm_cube12",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961893676": "sm_cylinder7",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961894677": "sm_cylinder6",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961895678": "sm_ramp10",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961896680": "sm_quarter_cylinder4",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961897681": "sm_ramp3",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961898682": "sm_cube19",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961899683": "sm_cube4",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961899684": "sm_quarter_cylinder5",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961922686": "sm_quarter_cylinder6",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961923687": "sm_cylinder2",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961924688": "sm_quarter_cylinder7",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961925689": "sm_cube16",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961926690": "sm_cube7",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961928692": "sm_sky_sphere",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961929693": "sm_cube20",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961929694": "sm_ramp11",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961930695": "sm_cylinder4",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961931696": "sm_ramp7",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961934698": "sm_cylinder3",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961935699": "sm_quarter_cylinder10",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961937701": "sm_cylinder9",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961937702": "sm_cylinder",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961938703": "sm_ramp9",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961939704": "sm_quarter_cylinder12",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961940705": "sm_cube13",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961941707": "sm_cube8",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961942708": "sm_quarter_cylinder9",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961944710": "sm_quarter_cylinder3",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961945711": "sm_cube3",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961946712": "sm_cube18",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961946713": "sm_cube6",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961947714": "sm_ramp8",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961948715": "sm_cylinder5",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961949716": "sm_cube9",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961949717": "sm_cylinder8",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961950718": "sm_cube5",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961951719": "sm_ramp12",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961952720": "sm_cube14",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961952721": "sm_ramp2",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961953722": "sm_quarter_cylinder11",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961954723": "sm_ramp5",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961955724": "sm_cube",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961955725": "sm_ramp",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961956726": "sm_cube17",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961957727": "sm_cube11",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961957728": "sm_ramp6",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961958729": "sm_cube15",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961959730": "sm_cube2",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961962732": "sm_quarter_cylinder2",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961962733": "sm_quarter_cylinder",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961963734": "sm_quarter_cylinder8",
+        "StaticMeshActor_UAID_F4A475FF15A3736A02_1961964736": "sm_cube10",
+        "VolumetricCloud_UAID_F4A475FF15A3736A02_1961900685": "volumetric_cloud"
+      },
+      "game_mode": "/Game/ThirdPerson/Blueprints/BP_ThirdPersonGameMode.BP_ThirdPersonGameMode_C",
+      "scene": "Content/ThirdPerson/Lvl_ThirdPerson.scene.json"
+    }
+  },
+  "meshes": {
+    "/Engine/BasicShapes/Cube": "Engine/Content/BasicShapes/Cube.glb",
+    "/Engine/BasicShapes/Cylinder": "Engine/Content/BasicShapes/Cylinder.glb",
+    "/Engine/BasicShapes/Sphere": "Engine/Content/BasicShapes/Sphere.glb",
+    "/Engine/EngineSky/SM_SkySphere": "Engine/Content/EngineSky/SM_SkySphere.glb",
+    "/Engine/MapTemplates/SM_Template_Map_Floor": "Engine/Content/MapTemplates/SM_Template_Map_Floor.glb",
+    "/Game/Characters/Mannequins/Meshes/SKM_Quinn_Simple": "Content/Characters/Mannequins/Meshes/SKM_Quinn_Simple.glb",
+    "/Game/LevelPrototyping/Interactable/JumpPad/Assets/Meshes/SM_CircularBand": "Content/LevelPrototyping/Interactable/JumpPad/Assets/Meshes/SM_CircularBand.glb",
+    "/Game/LevelPrototyping/Interactable/JumpPad/Assets/Meshes/SM_CircularGlow": "Content/LevelPrototyping/Interactable/JumpPad/Assets/Meshes/SM_CircularGlow.glb",
+    "/Game/LevelPrototyping/Meshes/SM_Cube": "Content/LevelPrototyping/Meshes/SM_Cube.glb",
+    "/Game/LevelPrototyping/Meshes/SM_Cylinder": "Content/LevelPrototyping/Meshes/SM_Cylinder.glb",
+    "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder": "Content/LevelPrototyping/Meshes/SM_QuarterCylinder.glb",
+    "/Game/LevelPrototyping/Meshes/SM_Ramp": "Content/LevelPrototyping/Meshes/SM_Ramp.glb"
+  },
+  "meters_per_unit": 0.01,
+  "sounds": {
+    "/Engine/EngineSounds/1kSineTonePing": "Engine/Content/EngineSounds/1kSineTonePing.wav"
+  },
+  "tasks": [
+    {
+      "source": "Content/Input/Touch/UI_TouchSimple.uasset",
+      "task": "task/port-ui-touch-simple"
+    },
+    {
+      "source": "Content/Input/Touch/UI_Thumbstick.uasset",
+      "task": "task/port-ui-thumbstick"
+    },
+    {
+      "source": "Content/Input/Touch/BPI_TouchInterface.uasset",
+      "task": "task/port-bpi-touch-interface"
+    },
+    {
+      "source": "Content/ThirdPerson/Blueprints/BP_ThirdPersonGameMode.uasset",
+      "task": "task/port-bp-third-person-game-mode"
+    },
+    {
+      "source": "Content/ThirdPerson/Blueprints/BP_ThirdPersonCharacter.uasset",
+      "task": "task/port-bp-third-person-character"
+    },
+    {
+      "source": "Content/ThirdPerson/Blueprints/BP_ThirdPersonPlayerController.uasset",
+      "task": "task/port-bp-third-person-player-controller"
+    },
+    {
+      "source": "Content/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed.uasset",
+      "task": "task/port-abp-unarmed"
+    },
+    {
+      "source": "Content/LevelPrototyping/Interactable/Target/BP_WobbleTarget.uasset",
+      "task": "task/port-bp-wobble-target"
+    },
+    {
+      "source": "Content/LevelPrototyping/Interactable/JumpPad/BP_JumpPad.uasset",
+      "task": "task/port-bp-jump-pad"
+    },
+    {
+      "source": "Content/LevelPrototyping/Interactable/Door/BP_DoorFrame.uasset",
+      "task": "task/port-bp-door-frame"
+    }
+  ],
+  "unsupported": [
+    {
+      "also": ["/Engine/BasicShapes/Cylinder", "/Engine/BasicShapes/Sphere", "/Engine/MapTemplates/SM_Template_Map_Floor", "/Game/LevelPrototyping/Meshes/SM_Cube", "/Game/LevelPrototyping/Meshes/SM_Cylinder", "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder", "/Game/LevelPrototyping/Meshes/SM_Ramp"],
+      "count": 8,
+      "what": "simple collision shape",
+      "where": "/Engine/BasicShapes/Cube",
+      "why": "the mesh's convex hull stands for it"
+    },
+    {
+      "count": 4,
+      "what": "input modifier InputModifierScalar",
+      "where": "/Game/Input/IMC_Default",
+      "why": "the binding moves its action as is"
+    },
+    {
+      "also": ["/Game/Demo/DemoLevel: Jump Pad FX (/Game/LevelPrototyping/Interactable/JumpPad/Assets/NS_JumpPad: Spores)"],
+      "count": 2,
+      "what": "Niagara module ScaleColor",
+      "where": "/Game/Demo/DemoLevel: Jump Pad FX (/Game/LevelPrototyping/Interactable/JumpPad/Assets/NS_JumpPad: Bands)",
+      "why": "curves over a particle's life don't convert yet"
+    },
+    {
+      "also": ["/Game/ThirdPerson/Lvl_ThirdPerson: ExponentialHeightFog"],
+      "count": 2,
+      "what": "exponential height fog",
+      "where": "/Game/Demo/DemoLevel: Height Fog",
+      "why": "Godot's height fog stands for it: as thick, thinning upward by the same falloff"
+    },
+    {
+      "also": ["/Game/LevelPrototyping/Materials/MI_PrototypeGrid_Gray"],
+      "count": 2,
+      "what": "world-aligned material",
+      "where": "/Engine/EngineSky/M_Sky_Panning_Clouds2",
+      "why": "it places its textures by where each pixel is in the world, which the bake can't keep: it is drawn over the mesh's texture coordinates, so its pattern doesn't keep its size"
+    },
+    {
+      "count": 1,
+      "what": "Animation Blueprint",
+      "where": "/Game/Demo/DemoLevel: Mannequin",
+      "why": "its graph doesn't convert: an AnimationTree plays its sequences as a state machine's states with no transitions, which its task adds"
+    },
+    {
+      "count": 1,
+      "what": "CharacterMovementComponent",
+      "where": "/Game/Demo/DemoLevel: Mannequin",
+      "why": "a CharacterBody3D, moved by gameplay code; its speeds are in the report"
+    },
+    {
+      "count": 1,
+      "what": "Niagara module ScaleMeshSize",
+      "where": "/Game/Demo/DemoLevel: Jump Pad FX (/Game/LevelPrototyping/Interactable/JumpPad/Assets/NS_JumpPad: Bands)",
+      "why": "curves over a particle's life don't convert yet"
+    },
+    {
+      "count": 1,
+      "what": "Niagara sprite material",
+      "where": "/Game/Demo/DemoLevel: Jump Pad FX (/Game/LevelPrototyping/Interactable/JumpPad/Assets/NS_JumpPad: Spores)",
+      "why": "particles draw in their color; Unreal's material graph doesn't convert"
+    },
+    {
+      "count": 1,
+      "what": "PostProcessVolume",
+      "where": "/Game/ThirdPerson/Lvl_ThirdPerson: PostProcessVolume",
+      "why": "it has no counterpart; the entity marks where it was"
+    },
+    {
+      "count": 1,
+      "what": "component ChaosDebugDrawComponent",
+      "where": "/Game/ThirdPerson/Lvl_ThirdPerson: Actor2",
+      "why": "it has no counterpart yet"
+    },
+    {
+      "count": 1,
+      "what": "component VolumetricCloudComponent",
+      "where": "/Game/ThirdPerson/Lvl_ThirdPerson: VolumetricCloud",
+      "why": "it has no counterpart yet"
+    },
+    {
+      "count": 1,
+      "what": "input key Mouse2D",
+      "where": "/Game/Input/IMC_MouseLook",
+      "why": "no binding moves it"
+    },
+    {
+      "count": 1,
+      "what": "light temperature",
+      "where": "/Game/ThirdPerson/Lvl_ThirdPerson: DirectionalLight",
+      "why": "the light has its color alone"
+    },
+    {
+      "count": 1,
+      "what": "spring arm",
+      "where": "/Game/Demo/DemoLevel: Mannequin",
+      "why": "what hangs from it stays at the end of its arm; it doesn't pull in at walls"
+    }
+  ]
+}

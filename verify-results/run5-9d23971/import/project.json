@@ -1,0 +1,127 @@
+{
+  "format": 1,
+  "input": {
+    "IA_Jump": {
+      "events": [
+        {
+          "key": "Space",
+          "type": "key"
+        },
+        {
+          "button": "a",
+          "type": "joypad_button"
+        }
+      ]
+    },
+    "IA_Look/down": {
+      "events": [
+        {
+          "axis": "right_y",
+          "axis_value": 1,
+          "type": "joypad_motion"
+        }
+      ]
+    },
+    "IA_Look/left": {
+      "events": [
+        {
+          "axis": "right_x",
+          "axis_value": -1,
+          "type": "joypad_motion"
+        }
+      ]
+    },
+    "IA_Look/right": {
+      "events": [
+        {
+          "axis": "right_x",
+          "axis_value": 1,
+          "type": "joypad_motion"
+        }
+      ]
+    },
+    "IA_Look/up": {
+      "events": [
+        {
+          "axis": "right_y",
+          "axis_value": -1,
+          "type": "joypad_motion"
+        }
+      ]
+    },
+    "IA_Move/down": {
+      "events": [
+        {
+          "key": "S",
+          "type": "key"
+        },
+        {
+          "key": "Down",
+          "type": "key"
+        },
+        {
+          "axis": "left_y",
+          "axis_value": 1,
+          "type": "joypad_motion"
+        }
+      ]
+    },
+    "IA_Move/left": {
+      "events": [
+        {
+          "key": "A",
+          "type": "key"
+        },
+        {
+          "key": "Left",
+          "type": "key"
+        },
+        {
+          "axis": "left_x",
+          "axis_value": -1,
+          "type": "joypad_motion"
+        }
+      ]
+    },
+    "IA_Move/right": {
+      "events": [
+        {
+          "key": "D",
+          "type": "key"
+        },
+        {
+          "key": "Right",
+          "type": "key"
+        },
+        {
+          "axis": "left_x",
+          "axis_value": 1,
+          "type": "joypad_motion"
+        }
+      ]
+    },
+    "IA_Move/up": {
+      "events": [
+        {
+          "key": "W",
+          "type": "key"
+        },
+        {
+          "key": "Up",
+          "type": "key"
+        },
+        {
+          "axis": "left_y",
+          "axis_value": -1,
+          "type": "joypad_motion"
+        }
+      ]
+    }
+  },
+  "main_scene": "Content/Demo/DemoLevel.scene.json",
+  "name": "Third Person BP Game Template",
+  "physics_3d": {
+    "gravity": 9.8
+  },
+  "version": "0.1.0"
+}
