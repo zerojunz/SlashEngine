@@ -25,3 +25,17 @@
 
 No Unreal screenshot: the full editor exits at startup with "cannot execute tool 'metal' due to
 missing Metal Toolchain; use: xcodebuild -downloadComponent MetalToolchain".
+
+## Run 2: importer fixes f66c526, with Xcode's Metal Toolchain installed
+
+| Path | What |
+| --- | --- |
+| `run2-f66c526/` | The same import into a fresh project (`unreal-demo-slash-2`): reports, exporter log and export, validation, captures |
+| `unreal-reference/unreal-DemoLevel-180s.png` | Unreal Editor 5.8.4's view through "Demo Camera", 180 s after the level opened (shaders compiled) |
+| `unreal-reference/compare-DemoLevel.png` | That shot beside SlashEngine's `frame.capture` after 60 ticks |
+| `probes/probe3.py`, `probes/probe3.json` | Light units of the demo's lights, and what Python reaches of NS_JumpPad |
+| `probes/NS_JumpPad.t3d.gz` | NS_JumpPad exported as T3D text with `AssetExportTask` + `ObjectExporterT3D` (6.8 MB uncompressed) |
+
+- The import returned on its own (2 min 28 s, most of it baking materials) and left no UnrealTraceServer.
+- `run --headless --save captures/...` failed the first time because `captures/` didn't exist yet
+  (`frame.capture` creates its folder; `run --save` doesn't); `run-and-capture.txt` keeps both tries.

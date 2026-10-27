@@ -1,0 +1,22 @@
+## run --headless --ticks 60 --save
+{"level":"info","msg":"platform started","headless":true,"video_driver":"none","width":1280,"height":720}
+{"level":"info","msg":"run finished","ticks":60,"quit_requested":false,"headless":true}
+{"level":"error","msg":"could not save the scene","code":"platform_failure","detail":"could not write \"captures/DemoLevel.after60.scene.json\": Couldn't open captures/DemoLevel.after60.scene.json: No such file or directory"}
+exit 1
+## call frame.capture DemoLevel
+{"drawn":{"lods":5,"meshes":6},"height":720,"path":"captures/DemoLevel.png","width":1280}
+exit 0
+## call frame.capture DemoLevel_after60
+{"drawn":{},"height":720,"path":"captures/DemoLevel_after60.png","width":1280}
+exit 0
+## call frame.capture Lvl_ThirdPerson
+{"drawn":{"lods":21,"meshes":55},"height":720,"path":"captures/Lvl_ThirdPerson.png","width":1280}
+exit 0
+## (re-run after captures/ existed) run --headless --ticks 60 --save
+{"level":"info","msg":"platform started","headless":true,"video_driver":"none","width":1280,"height":720}
+{"level":"info","msg":"run finished","ticks":60,"quit_requested":false,"headless":true}
+{"entities":22,"headless":true,"quit_requested":false,"renderer":"null","ticks":60}
+exit 0
+## call frame.capture DemoLevel_after60
+{"drawn":{"lods":5,"meshes":6},"height":720,"path":"captures/DemoLevel_after60.png","width":1280}
+exit 0
