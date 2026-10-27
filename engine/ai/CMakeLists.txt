@@ -26,11 +26,12 @@ if(APPLE)
 endif()
 slash_engine_target(slash_ai)
 
-# The engine's commands as tools for a model, the ai.* commands and storyboard.review.
-add_library(slash_ai_commands src/commands.cpp src/review.cpp)
+# The engine's commands as tools for a model, the ai.* commands, storyboard.review and
+# l10n.translate.
+add_library(slash_ai_commands src/commands.cpp src/review.cpp src/translate.cpp)
 add_library(slash::ai_commands ALIAS slash_ai_commands)
 
 target_link_libraries(slash_ai_commands
     PUBLIC slash::ai slash::command
-    PRIVATE slash::platform slash::storyboard)
+    PRIVATE slash::l10n slash::platform slash::storyboard)
 slash_engine_target(slash_ai_commands)

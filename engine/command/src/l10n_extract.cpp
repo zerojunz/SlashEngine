@@ -5,6 +5,7 @@
 #include "l10n_extract.hpp"
 
 #include "slash/command/cpp_outline.hpp"
+#include "slash/command/l10n.hpp"
 #include "slash/core/text.hpp"
 #include "slash/l10n/locale.hpp"
 #include "slash/l10n/translation.hpp"
@@ -255,101 +256,11 @@ bool inside(std::string_view path, std::string_view folder) {
            (path.starts_with(folder) && path.size() > folder.size() && path[folder.size()] == '/');
 }
 
-// Text for a .po file's quotes, as Godot's c_escape.
-std::string c_escape(std::string_view text) {
-    std::string out;
-    for (const char c : text) {
-        switch (c) {
-        case '\\':
-            out += "\\\\";
-            break;
-        case '"':
-            out += "\\\"";
-            break;
-        case '\n':
-            out += "\\n";
-            break;
-        case '\t':
-            out += "\\t";
-            break;
-        default:
-            out += c;
-        }
-    }
-    return out;
-}
-
-// A msgid or msgid_plural, a line per line of text, as POTGenerator::_write_msgid.
-void write_msgid(std::string& out, std::string_view keyword, std::string_view id) {
-    out += keyword;
-    out += ' ';
-    if (id.empty()) {
-        out += "\"\"\n";
-        return;
-    }
-    std::vector<std::string_view> lines;
-    for (std::size_t start = 0;;) {
-        const std::size_t end = id.find('\n', start);
-        lines.push_back(id.substr(start, end == std::string_view::npos ? end : end - start));
-        if (end == std::string_view::npos) {
-            break;
-        }
-        start = end + 1;
-    }
-    const std::size_t printed = id.ends_with('\n') ? lines.size() - 1 : lines.size();
-    if (printed > 1) {
-        out += "\"\"\n";
-    }
-    for (std::size_t i = 0; i + 1 < printed; ++i) {
-        out += "\"" + c_escape(lines[i]) + "\\n\"\n";
-    }
-    const std::string_view last = lines[printed - 1];
-    out += "\"" + c_escape(last) + (id.ends_with('\n') ? "\\n" : "") + "\"\n";
-}
-
-// A CSV field, quoted when it must be, as Godot's FileAccess::store_csv_line.
-std::string csv_field(std::string_view text, char delimiter) {
-    const bool quote = text.find_first_of(std::string{'"', '\n', delimiter}) != std::string::npos;
-    if (!quote) {
-        return std::string(text);
-    }
-    std::string out = "\"";
-    for (const char c : text) {
-        out += c == '"' ? "\"\"" : std::string(1, c);
-    }
-    return out + "\"";
-}
-
 std::string to_lower(std::string_view text) {
     std::string out(text);
     for (char& c : out) {
         if (c >= 'A' && c <= 'Z') {
             c = static_cast<char>(c - 'A' + 'a');
-        }
-    }
-    return out;
-}
-
-// The columns of a CSV translation file's header, as read_csv reads them.
-std::vector<std::string> csv_header(std::string_view text, char delimiter) {
-    std::vector<std::string> out{""};
-    bool quoted = false;
-    for (std::size_t i = 0; i < text.size(); ++i) {
-        const char c = text[i];
-        if (!quoted && (c == '\n' || c == '\r')) {
-            break;
-        }
-        if (c == '"') {
-            if (quoted && i + 1 < text.size() && text[i + 1] == '"') {
-                out.back() += '"';
-                ++i;
-            } else {
-                quoted = !quoted;
-            }
-        } else if (!quoted && c == delimiter) {
-            out.emplace_back();
-        } else {
-            out.back() += c;
         }
     }
     return out;
@@ -373,14 +284,14 @@ std::string with_messages(std::string_view path, std::string text,
         for (const ExtractedMessage* message : missing) {
             text += '\n';
             if (!message->context.empty()) {
-                text += "msgctxt \"" + c_escape(message->context) + "\"\n";
+                text += "msgctxt \"" + l10n::po_escape(message->context) + "\"\n";
             }
-            write_msgid(text, "msgid", message->message);
+            text += l10n::po_string("msgid", message->message);
             if (message->plural.empty()) {
                 text += "msgstr \"\"\n";
                 continue;
             }
-            write_msgid(text, "msgid_plural", message->plural);
+            text += l10n::po_string("msgid_plural", message->plural);
             for (int i = 0; i < forms; ++i) {
                 text += "msgstr[" + std::to_string(i) + "] \"\"\n";
             }
@@ -388,7 +299,9 @@ std::string with_messages(std::string_view path, std::string text,
         return text;
     }
     const char delimiter = ',';
-    const std::vector<std::string> header = csv_header(text, delimiter);
+    const std::vector<l10n::CsvRow> rows = l10n::csv_rows(text, delimiter);
+    const std::vector<std::string> header =
+        rows.empty() ? std::vector<std::string>{""} : rows.front().fields;
     std::optional<std::size_t> context_column;
     std::optional<std::size_t> plural_column;
     for (std::size_t i = 1; i < header.size(); ++i) {
@@ -418,7 +331,7 @@ std::string with_messages(std::string_view path, std::string text,
             if (i > 0) {
                 line += delimiter;
             }
-            line += csv_field(row[i], delimiter);
+            line += l10n::csv_field(row[i], delimiter);
         }
         text += line + '\n';
     }
@@ -642,7 +555,7 @@ std::string write_pot(std::string_view project_name, const std::vector<std::stri
            "msgid \"\"\n"
            "msgstr \"\"\n"
            "\"Project-Id-Version: " +
-           c_escape(project_name) +
+           l10n::po_escape(project_name) +
            "\\n\"\n"
            "\"MIME-Version: 1.0\\n\"\n"
            "\"Content-Type: text/plain; charset=UTF-8\\n\"\n"
@@ -653,13 +566,13 @@ std::string write_pot(std::string_view project_name, const std::vector<std::stri
             out += "#: " + place + "\n";
         }
         if (!message.context.empty()) {
-            out += "msgctxt \"" + c_escape(message.context) + "\"\n";
+            out += "msgctxt \"" + l10n::po_escape(message.context) + "\"\n";
         }
-        write_msgid(out, "msgid", message.message);
+        out += l10n::po_string("msgid", message.message);
         if (message.plural.empty()) {
             out += "msgstr \"\"\n";
         } else {
-            write_msgid(out, "msgid_plural", message.plural);
+            out += l10n::po_string("msgid_plural", message.plural);
             out += "msgstr[0] \"\"\nmsgstr[1] \"\"\n";
         }
     }

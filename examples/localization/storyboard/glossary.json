@@ -1,0 +1,10 @@
+{
+  "entries": {
+    "term/treasure-hunt": {
+      "name": "Treasure Hunt",
+      "summary": "The game's title. In Polish it is Poszukiwanie skarbu.",
+      "avoid": ["Skarbołowy"]
+    }
+  },
+  "format": 1
+}

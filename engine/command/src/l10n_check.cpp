@@ -3,8 +3,7 @@
 // messages l10n.extract finds, and lays out every scene in each language to see what doesn't fit.
 #include "l10n_check.hpp"
 
-#include "l10n_extract.hpp"
-
+#include "slash/command/l10n.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/text.hpp"
 #include "slash/l10n/l10n.hpp"

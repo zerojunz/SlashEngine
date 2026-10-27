@@ -1725,3 +1725,134 @@ TEST_CASE("storyboard.review asks a model for contradictions and keeps only thos
     CHECK(missing.message == "no file \"nope.txt\"");
     std::filesystem::remove_all(root);
 }
+
+TEST_CASE("l10n.translate drafts what a locale lacks and keeps only drafts that check") {
+    const std::string root = "ai_translate_project";
+    std::filesystem::remove_all(root);
+    const std::string drafts = json::write(parse(R"({"translations": [
+        {"item": 1, "forms": ["Wyjdź"]},
+        {"item": 1, "forms": ["Koniec"]},
+        {"item": 2, "forms": ["Wskazówka", "Wskazówki"]},
+        {"item": 3, "forms": ["%s z %d"]},
+        {"item": 4, "forms": ["%d moneta", "%d monety", "%d monet"]},
+        {"item": 5, "forms": ["Witaj, Tulacz"]},
+        {"item": 9, "forms": ["?"]}]})"),
+                                           json::Style::Compact);
+    FakeModelServer server({chat_reply(drafts), chat_reply(R"({"translations": []})"),
+                            chat_reply(R"({"translations": [{"item": 1, "forms": ["Quitter"]},
+                                                            {"item": 2, "forms": ["Indice"]}]})"),
+                            chat_reply(R"({"translated": []})")});
+    write(root + "/providers.json", R"({"providers": {"local": {"type": "openai",
+        "model": "local-model", "url": ")" +
+                                        server.url() + R"("}}})");
+    write(root + "/project.json", R"({"format": 1, "name": "Menu",
+        "main_scene": "main.scene.json", "gameplay": {"sources": ["src"]},
+        "internationalization": {"locale": {"translations": ["menu.csv", "pl.po"]}}})");
+    write(root + "/main.scene.json", R"({"format": 1, "entities": {
+        "a": {"components": {"Control": {}, "Label": {"text": "Quit"}}},
+        "b": {"components": {"Control": {}, "Label": {"text": "Hint"}}},
+        "c": {"components": {"Control": {}, "Label": {"text": "Paused"}}},
+        "d": {"components": {"Control": {}, "Label": {"text": "Play"}}}}})");
+    write(root + "/src/hud.cpp", "void hud(World& world, int coins) {\n"
+                                 "    show(tr(world, \"%d of %s\"));\n"
+                                 "    show(tr_n(world, \"%d coin\", \"%d coins\", coins));\n"
+                                 "    show(tr(world, \"Hello, wanderer\"));\n"
+                                 "}\n");
+    write(root + "/storyboard/glossary.json", R"({"entries": {
+        "term/wanderer": {"name": "Wanderer", "avoid": ["Tulacz"]}}, "format": 1})");
+    write(root + "/menu.csv", "keys,fr\nPlay,Jouer\nQuit,\n");
+    const std::string po = "msgid \"\"\n"
+                           "msgstr \"\"\n"
+                           "\"Language: pl\\n\"\n"
+                           "\"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && "
+                           "(n%100<10 || n%100>=20) ? 1 : 2);\\n\"\n"
+                           "\n"
+                           "msgid \"Play\"\n"
+                           "msgstr \"Graj\"\n"
+                           "\n"
+                           "#: main.scene.json\n"
+                           "#, no-c-format\n"
+                           "msgid \"Quit\"\n"
+                           "msgstr \"\"\n"
+                           "\n"
+                           "#, fuzzy\n"
+                           "msgid \"Paused\"\n"
+                           "msgstr \"Pauza\"\n";
+    write(root + "/pl.po", po);
+    Engine engine(root);
+
+    // Polish lacks five messages ("Paused" waits for review): the drafts that check are written
+    // marked fuzzy, and those that break a placeholder, the plural forms or the glossary aren't.
+    const json::Value translated = engine.ok("l10n.translate", parse(R"({"locale": "pl"})"));
+    CHECK(translated == parse(R"({
+        "locale": "pl", "file": "pl.po", "drafted": 2,
+        "drafts": [{"message": "Quit", "forms": ["Wyjdź"]},
+                   {"message": "%d coin", "forms": ["%d moneta", "%d monety", "%d monet"]}],
+        "review": "fuzzy",
+        "rejected": [
+          {"message": "Hint", "problem": "gave 2 forms where 1 is needed"},
+          {"message": "%d of %s", "problem": "has %s %d where the source has %d %s"},
+          {"message": "Hello, wanderer",
+           "problem": "uses \"Tulacz\", which the glossary says to avoid"}],
+        "model": "local-model", "usage": {"input_tokens": 12, "output_tokens": 3}})"));
+    CHECK(read(root + "/pl.po") == po.substr(0, po.find("#: main")) + "#: main.scene.json\n"
+                                                                      "#, fuzzy, no-c-format\n"
+                                                                      "msgid \"Quit\"\n"
+                                                                      "msgstr \"Wyjdź\"\n"
+                                                                      "\n"
+                                                                      "#, fuzzy\n"
+                                                                      "msgid \"Paused\"\n"
+                                                                      "msgstr \"Pauza\"\n"
+                                                                      "\n"
+                                                                      "#, fuzzy\n"
+                                                                      "msgid \"%d coin\"\n"
+                                                                      "msgid_plural \"%d coins\"\n"
+                                                                      "msgstr[0] \"%d moneta\"\n"
+                                                                      "msgstr[1] \"%d monety\"\n"
+                                                                      "msgstr[2] \"%d monet\"\n");
+
+    // The model was told the glossary, what the file already has, the plural rule and each
+    // numbered message.
+    const json::Value sent = server.bodies()[0];
+    const std::string& prompt = sent.find("messages")->as_array()[1].find("content")->as_string();
+    CHECK(prompt.starts_with("Target language: pl (3 plural forms, numbered by the gettext rule "));
+    CHECK(prompt.find("term/wanderer") != std::string::npos);
+    CHECK(prompt.find("\"Play\" -> \"Graj\"\n") != std::string::npos);
+    CHECK(prompt.find("[1] \"Quit\"\n") != std::string::npos);
+    CHECK(prompt.find("[4] \"%d coin\" plural: \"%d coins\"\n") != std::string::npos);
+    CHECK(prompt.find("Paused") == std::string::npos);
+
+    // Drafts waiting for review aren't drafted again; a reply with none changes nothing.
+    const json::Value again = engine.ok("l10n.translate", parse(R"({"locale": "pl"})"));
+    CHECK(again.find("drafted")->as_int() == 0);
+    CHECK(again.find("unanswered")->as_int() == 3);
+    const std::string second =
+        server.bodies()[1].find("messages")->as_array()[1].find("content")->as_string();
+    CHECK(second.find("Quit") == std::string::npos);
+    CHECK(second.find("[3] \"Hello, wanderer\"") != std::string::npos);
+
+    // Undo puts the file back.
+    engine.ok("undo", json::Object{});
+    CHECK(read(root + "/pl.po") == po);
+
+    // A CSV file takes drafts in the locale's column: an empty cell is filled and a message with
+    // no row is added. Plural messages need a .po file.
+    const json::Value csv = engine.ok(
+        "l10n.translate", parse(R"({"locale": "fr", "messages": ["Quit", "Hint", "%d coin"]})"));
+    CHECK(csv.find("review")->as_string() == "none");
+    CHECK(csv.find("skipped")->as_int() == 1);
+    CHECK(read(root + "/menu.csv") == "keys,fr\nPlay,Jouer\nQuit,Quitter\nHint,Indice\n");
+
+    const command::Reply unknown = engine.call("l10n.translate", parse(R"({"locale": "de"})"));
+    CHECK(unknown.data == parse(R"({"path":"/locale"})"));
+    const command::Reply other =
+        engine.call("l10n.translate", parse(R"({"locale": "fr", "file": "pl.po"})"));
+    CHECK(other.message == "/file: its Language is another locale's");
+    const command::Reply misspelled =
+        engine.call("l10n.translate", parse(R"({"locale": "pl", "file": "pl.pot"})"));
+    CHECK(misspelled.message.find("did you mean \"pl.po\"") != std::string::npos);
+    const command::Reply bad = engine.call("l10n.translate", parse(R"({"locale": "pl"})"));
+    CHECK(bad.message.find("does not match output_schema") != std::string::npos);
+    CHECK(read(root + "/pl.po") == po);
+    std::filesystem::remove_all(root);
+}
