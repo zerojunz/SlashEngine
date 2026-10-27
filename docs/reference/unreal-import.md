@@ -25,6 +25,7 @@ editor you installed. The editor runs `UnrealEditor-Cmd <project>.uproject -run=
 | `export.json` | Each level's actors and their components with their settings and the values of their C++ classes' properties, the Blueprints, the Enhanced Input actions and mapping contexts, and each mesh's bounds and collision |
 | `meshes/<package>.glb` | Each static and skeletal mesh the levels place, as Unreal's glTF exporter writes it |
 | `materials/<package>.glb` | Each material a component overrides a mesh's slot with, on a preview mesh |
+| `text/<package>.t3d` | Base materials and material functions as Unreal writes them as text, read for world-aligned materials |
 | `animations/<package>.glb` | Each animation sequence a skeletal mesh component plays, on its skeleton |
 | `sounds/<package>.wav` | Each sound wave the levels play |
 | `landscapes/<level>/<actor>.r16` | Each landscape's heights, its streaming proxies' too, as Unreal's own `.r16` heightmaps are |
@@ -103,7 +104,7 @@ name to its entity.
 | `SpotLightComponent` | `SpotLight3D`, its outer cone angle as `spot_angle` |
 | `RectLightComponent` | A `SpotLight3D` of 89 degrees |
 | `SkyLightComponent` | The `WorldEnvironment`'s ambient light, from the sky or its color, at its intensity |
-| `SkyAtmosphereComponent` | A `sky` background with a `PhysicalSkyMaterial` |
+| `SkyAtmosphereComponent` | A `sky` background with a `PhysicalSkyMaterial`. Godot's defaults are Unreal's air in Godot's color space, so only a changed Rayleigh color (made linear at the default's brightness), Rayleigh scale (`rayleigh_coefficient`), Mie scale (`mie_coefficient`) and anisotropy (`mie_eccentricity`) are written. Godot's physical sky is far dimmer for a sun than Unreal's, so `energy_multiplier` makes its zenith, with the sun 45° up, a sixth as bright as a white surface facing the level's first directional light, as a clear sky is |
 | `ExponentialHeightFogComponent` | The `WorldEnvironment`'s height fog: density / 10, its inscattering color (when that is black, as Unreal 5.8's default is, the sky's color through `fog_aerial_perspective` 1, as Unreal takes it from the sky atmosphere), its height and falloff, and volumetric fog |
 | `AudioComponent`, `AmbientSound` | `AudioStreamPlayer3D` with attenuation (`unit_size` the inner radius, `max_distance` its end), else `AudioStreamPlayer`; volume in dB, pitch and auto activate |
 | `BoxComponent`, `SphereComponent`, `CapsuleComponent` | `CollisionShape3D` (see [Collision](#collision)) |
@@ -111,8 +112,15 @@ name to its entity.
 | `NiagaraComponent` | `CPUParticles3D` or `GPUParticles3D` per enabled emitter (see [Particles](#particles)) |
 | `ArrowComponent`, `BillboardComponent` | Nothing: they show only in Unreal's editor |
 
-The level's `WorldEnvironment` is an `environment` entity, made when the level has a sky, a sky
-light or fog. A level with no camera views from the eyes of the pawn player 0 possesses, or else
+The level's `WorldEnvironment` is an `environment` entity. It tonemaps with `aces` (white 6), as
+Unreal's filmic tonemapper does, and unless the project's `r.DefaultFeature.AutoExposure` is off it
+has a `CameraAttributesPractical` with Unreal's auto exposure: `auto_exposure_scale` is Godot's
+0.4 at Unreal's default exposure compensation (`r.DefaultFeature.AutoExposure.Bias`, 1), doubled
+for each stop over it, and the sensitivities span Unreal's range (EV100 from -10 to 20 with
+`ExtendDefaultLuminanceRange`, 0.03 to 8 cd/m² without) in the import's light units. Godot meters
+the whole frame's average where Unreal leaves out its brightest and darkest tenth, so a level lit
+mostly by a few bright pools comes out darker than in Unreal. A `PostProcessVolume`'s own settings
+aren't read. A level with no camera views from the eyes of the pawn player 0 possesses, or else
 the player start: a `Camera3D` 64 cm up (Unreal's `BaseEyeHeight`), named in the report's
 `camera_added`. The world settings' `KillZ` is the report's `kill_y` and its game mode
 `game_mode`.
@@ -171,6 +179,14 @@ material, found by the slot's material's name or, failing that, by its place, is
 override's, with its images, and the copy keeps the mesh's collision. Components with the same
 overrides share one copy. A Godot scene has no per-surface override that `MeshInstance3D` takes,
 so the copy stands for it. The result's `converted` counts the copies as `material_variants`.
+The override's material is named after its package, not the exporter's preview mesh.
+
+A material that places its textures by world position (its base material, or a material
+function it calls two deep, has a `WorldPosition` node or calls `WorldAlignedTexture`,
+`WorldAlignedNormal` or `WorldCoordinate3Way`) is baked over the mesh's texture coordinates like
+any other, so its pattern loses its size in the world; the export script finds these in the
+materials' text (T3D, as the editor copies nodes) and the result's `unsupported` lists each as a
+`world-aligned material`.
 
 ## Animation
 

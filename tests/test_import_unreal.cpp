@@ -688,8 +688,10 @@ TEST_CASE("an Unreal import draws meshes' override materials and plays their ani
     // The crate draws M_Wood, and a second crate draws it red.
     write_model(exported / "meshes/Game/SM_Crate.glb",
                 painted_box({-50, -30, 0}, {50, 30, 100}, "M_Wood", {0.6F, 0.4F, 0.2F, 1.0F}));
-    write_model(exported / "materials/Game/M_Red.glb",
-                painted_box({-50, -50, -50}, {50, 50, 50}, "M_Red", {1.0F, 0.0F, 0.0F, 1.0F}));
+    // The exporter names a material after its preview mesh; the import names it as Unreal does.
+    write_model(
+        exported / "materials/Game/M_Red.glb",
+        painted_box({-50, -50, -50}, {50, 50, 50}, "M_Red_EditorSphere", {1.0F, 0.0F, 0.0F, 1.0F}));
     // A figure and a sequence that turns it, exported on its skeleton.
     const scene3d::Model figure = box_model({-20, -20, 0}, {20, 20, 180}, kGltfAxes);
     write_model(exported / "meshes/Game/SK_Figure.glb", figure);
@@ -1332,5 +1334,107 @@ TEST_CASE("an Unreal import keeps what a hidden component holds and black fog's 
         }
     }
     CHECK(aerial);
+    fs::remove_all(project);
+}
+
+TEST_CASE("an Unreal import lights its sky, exposes and tonemaps as Unreal does") {
+    const fs::path project = fs::absolute("import_unreal_exposure");
+    fs::remove_all(project);
+    write_project(project / "unreal");
+    write(project / "unreal/Config/DefaultEngine.ini", R"([/Script/EngineSettings.GameMapsSettings]
+GameDefaultMap=/Game/Maps/Drop.Drop
+
+[/Script/Engine.RendererSettings]
+r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange=True
+r.DefaultFeature.AutoExposure.Bias=2.0
+)");
+    const fs::path exported = project / "unreal/FakeExport/export.json";
+    json::Value document = parse(slash::platform::read_file(exported.string()).value());
+    json::Array& actors =
+        document.find("levels")->as_array()[0].as_object().at("actors").as_array();
+    // An atmosphere with redder air than Unreal's and twice its haze.
+    json::Value sky = parse(R"({"name": "SkyAtmosphere_0", "label": "Sky",
+        "class": "SkyAtmosphere", "class_path": "/Script/Engine.SkyAtmosphere",
+        "root": "SkyAtmosphereComponent",
+        "components": [{"name": "SkyAtmosphereComponent", "class": "SkyAtmosphereComponent",
+          "sky_atmosphere": {"rayleigh_scattering": [0.5, 0.5, 1.0],
+                             "rayleigh_scattering_scale": 0.0331,
+                             "mie_scattering_scale": 0.007992, "mie_anisotropy": 0.8}}]})");
+    json::Value place;
+    place["location"] = json::Array{0.0, 0.0, 0.0};
+    place["rotation"] = json::Array{0.0, 0.0, 0.0, 1.0};
+    place["scale"] = json::Array{1.0, 1.0, 1.0};
+    sky["transform"] = place;
+    sky.find("components")->as_array()[0]["transform"] = place;
+    actors.push_back(std::move(sky));
+    document["world_aligned_materials"] = json::Array{json::Value("/Game/M_Grid")};
+    REQUIRE(slash::platform::write_file(exported.string(), json::write(document)).ok());
+
+    auto planned = importer::plan_import({.source = (project / "unreal").string(),
+                                          .destination = project.string(),
+                                          .unpack_to = {},
+                                          .assetripper = {},
+                                          .unreal_editor = SLASH_FAKE_UNREAL});
+    REQUIRE_MESSAGE(planned.ok(), (planned.ok() ? std::string() : planned.error().message));
+    const json::Value scene = file_json(planned.value(), "unreal/Content/Maps/Drop.scene.json");
+    const json::Value& environment = component(scene, "environment", "WorldEnvironment");
+    CHECK(environment.find("tonemap_mode")->as_string() == "aces");
+    CHECK(environment.find("background_mode")->as_string() == "sky");
+
+    // Unreal's air, made linear and as bright as Godot's default blue, and twice the haze.
+    const json::Value& physical = component(scene, "environment", "PhysicalSkyMaterial");
+    INFO(json::write(physical));
+    const json::Array& rayleigh = physical.find("rayleigh_color")->as_array();
+    CHECK(rayleigh[0].as_double() == doctest::Approx(0.436).epsilon(0.01));
+    CHECK(rayleigh[1].as_double() == doctest::Approx(0.436).epsilon(0.01));
+    CHECK(rayleigh[2].as_double() == doctest::Approx(0.6).epsilon(0.01));
+    CHECK(physical.find("rayleigh_coefficient") == nullptr);
+    CHECK(physical.find("mie_coefficient")->as_double() == doctest::Approx(0.01));
+    CHECK(physical.find("mie_eccentricity") == nullptr);
+    // The sun of 5 lux (energy 0.5) makes the zenith a sixth as bright as what it lights.
+    const double multiplier = physical.find("energy_multiplier")->as_double();
+    CHECK(multiplier > 1.0);
+    CHECK(multiplier < 10.0);
+
+    // Auto exposure over the extended range, two stops over Godot's default scale's one.
+    const json::Value& exposure = component(scene, "environment", "CameraAttributesPractical");
+    CHECK(exposure.find("auto_exposure_enabled")->as_bool());
+    CHECK(exposure.find("auto_exposure_scale")->as_double() == doctest::Approx(0.8));
+    CHECK(exposure.find("auto_exposure_min_sensitivity")->as_double() ==
+          doctest::Approx(std::numbers::pi / 10.0 * 100.0 * std::exp2(-10.0)));
+    CHECK(exposure.find("auto_exposure_max_sensitivity")->as_double() ==
+          doctest::Approx(std::numbers::pi / 10.0 * 100.0 * std::exp2(20.0)));
+
+    bool aligned = false;
+    for (const json::Value& problem : planned.value().report.find("unsupported")->as_array()) {
+        aligned = aligned || (problem.find("what")->as_string() == "world-aligned material" &&
+                              problem.find("where")->as_string() == "/Game/M_Grid");
+    }
+    CHECK(aligned);
+    fs::remove_all(project);
+}
+
+TEST_CASE("an Unreal project with auto exposure turned off keeps a fixed exposure") {
+    const fs::path project = fs::absolute("import_unreal_no_exposure");
+    fs::remove_all(project);
+    write_project(project / "unreal");
+    write(project / "unreal/Config/DefaultEngine.ini", R"([/Script/EngineSettings.GameMapsSettings]
+GameDefaultMap=/Game/Maps/Drop.Drop
+
+[/Script/Engine.RendererSettings]
+r.DefaultFeature.AutoExposure=False
+)");
+    auto planned = importer::plan_import({.source = (project / "unreal").string(),
+                                          .destination = project.string(),
+                                          .unpack_to = {},
+                                          .assetripper = {},
+                                          .unreal_editor = SLASH_FAKE_UNREAL});
+    REQUIRE_MESSAGE(planned.ok(), (planned.ok() ? std::string() : planned.error().message));
+    const json::Value scene = file_json(planned.value(), "unreal/Content/Maps/Drop.scene.json");
+    const json::Value* entity = scene.find("entities")->find("environment");
+    REQUIRE(entity != nullptr);
+    CHECK(entity->find("components")->find("CameraAttributesPractical") == nullptr);
+    CHECK(entity->find("components")->find("WorldEnvironment")->find("tonemap_mode")->as_string() ==
+          "aces");
     fs::remove_all(project);
 }

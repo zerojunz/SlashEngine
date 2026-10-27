@@ -8,6 +8,9 @@
 #                      exporter
 #   materials/<path>.glb  each material a component puts over its mesh's own, on the exporter's
 #                      preview mesh
+#   text/<path>.t3d    assets Unreal wrote as text (T3D) for what Python can't reach: materials'
+#                      nodes, to find those placed by world position (world_aligned_materials
+#                      in export.json)
 #   animations/<path>.glb  each animation sequence a skeletal mesh component or an Animation
 #                      Blueprint plays, with its skeletal mesh
 #   sounds/<path>.wav  each sound wave an ambient sound or audio component plays
@@ -30,6 +33,7 @@
 
 import json
 import os
+import re
 import traceback
 
 import unreal
@@ -194,9 +198,72 @@ def use_mesh(asset, skeletal):
     for slot in prop(asset, 'materials' if skeletal else 'static_materials', []) or []:
         material = prop(slot, 'material_interface')
         slots.append(package_of(material))
+        check_aligned(material)
     entry['materials'] = slots
     meshes[package] = entry
     return package
+
+
+def text_export(obj, name):
+    # An asset as Unreal writes it as text (T3D, as copying it in the editor does), or None.
+    # It holds what Python can't reach: a material's nodes, a Niagara system's module stacks.
+    path = os.path.join(OUT, 'text', name + '.t3d')
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    task = unreal.AssetExportTask()
+    for key, value in (('object', obj), ('filename', path), ('automated', True),
+                       ('prompt', False), ('replace_identical', True)):
+        call(None, task.set_editor_property, key, value)
+    exporter = getattr(unreal, 'ObjectExporterT3D', None)
+    if exporter is not None:
+        call(None, task.set_editor_property, 'exporter', exporter())
+    if not call(False, unreal.Exporter.run_asset_export_task, task) or not os.path.isfile(path):
+        return None
+    with open(path, encoding='utf-8', errors='replace') as text:
+        return text.read()
+
+
+# Nodes and functions that place a texture by where a pixel is in the world, not by the mesh's
+# texture coordinates, which a bake onto the mesh can't keep.
+WORLD_ALIGNED = ('MaterialExpressionWorldPosition', 'WorldAlignedTexture', 'WorldAlignedNormal',
+                 'WorldCoordinate3Way')
+
+
+def world_aligned(material, depth=0, seen=None):
+    # Whether a material (or the material functions it calls, two deep) places textures by
+    # world position, read from its text.
+    seen = set() if seen is None else seen
+    package = package_of(material)
+    if not package or package in seen:
+        return False
+    seen.add(package)
+    text = text_export(material, 'materials' + package)
+    if text is None:
+        return False
+    if any(word in text for word in WORLD_ALIGNED):
+        return True
+    if depth >= 2:
+        return False
+    paths = {p for p in re.findall(r"MaterialFunction'?\"?(/[^'\".]+)", text)
+             if not p.startswith('/Script/')}
+    for path in sorted(paths)[:8]:
+        function = call(None, unreal.load_asset, path)
+        if function is not None and world_aligned(function, depth + 1, seen):
+            return True
+    return False
+
+
+aligned = {}  # material package: whether it places textures by world position
+
+
+def check_aligned(material):
+    # Records a material a mesh draws with that places textures by world position, by its base
+    # material's nodes; the bake loses that, so the import says so.
+    package = package_of(material)
+    if not package or package in aligned:
+        return
+    base = call(None, material.get_base_material) if hasattr(material, 'get_base_material') \
+        else None
+    aligned[package] = base is not None and bool(call(False, world_aligned, base))
 
 
 def use_material(asset):
@@ -204,6 +271,7 @@ def use_material(asset):
     if not package or package in materials:
         return package
     entry = {'class': asset.get_class().get_name()}
+    check_aligned(asset)
     path = file_for(OUT + '/materials', package, '.glb')
     try:
         if export_gltf(asset, path):
@@ -762,7 +830,15 @@ def component_of(actor, comp):
     elif isinstance(comp, getattr(unreal, 'NiagaraComponent', ())):
         out['niagara'] = niagara_of(comp)
     elif isinstance(comp, unreal.SkyAtmosphereComponent):
-        out['sky_atmosphere'] = {}
+        sky = {}
+        rayleigh = prop(comp, 'rayleigh_scattering')
+        if rayleigh is not None:
+            sky['rayleigh_scattering'] = [float(rayleigh.r), float(rayleigh.g), float(rayleigh.b)]
+        for name in ('rayleigh_scattering_scale', 'mie_scattering_scale', 'mie_anisotropy'):
+            value = prop(comp, name)
+            if value is not None:
+                sky[name] = float(value)
+        out['sky_atmosphere'] = sky
     elif isinstance(comp, unreal.CharacterMovementComponent):
         out['character'] = {'max_walk_speed': float(prop(comp, 'max_walk_speed', 600.0)),
                             'jump_z_velocity': float(prop(comp, 'jump_z_velocity', 420.0)),
@@ -1044,6 +1120,7 @@ def main():
     result['animations'] = animations
     result['sounds'] = sounds
     result['niagara_systems'] = niagara_systems
+    result['world_aligned_materials'] = sorted(p for p, found in aligned.items() if found)
     result['problems'] = problems
     with open(os.path.join(OUT, 'export.json'), 'w', encoding='utf-8') as out:
         json.dump(result, out, indent=1, sort_keys=True)

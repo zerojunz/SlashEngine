@@ -1096,6 +1096,14 @@ private:
     // The materials components draw meshes with in place of the meshes' own: each was exported on
     // a mesh of its own, and its file's first material is it.
     void read_materials() {
+        for (const json::Value& package : items(export_, "world_aligned_materials")) {
+            if (package.is_string()) {
+                problems_.add("world-aligned material", package.as_string(),
+                              "it places its textures by where each pixel is in the world, which "
+                              "the bake can't keep: it is drawn over the mesh's texture "
+                              "coordinates, so its pattern doesn't keep its size");
+            }
+        }
         const json::Value* materials = member(export_, "materials");
         if (materials == nullptr || !materials->is_object()) {
             return;
@@ -1123,6 +1131,8 @@ private:
                               "it holds no material");
                 continue;
             }
+            // Named as Unreal names it, not after the exporter's preview mesh.
+            model.value().materials.front().name = package_stem(package);
             materials_[package] = std::move(model.value());
         }
     }
@@ -1422,6 +1432,8 @@ private:
         std::string possessed; // the first pawn a player possesses as the level starts
         double sky_light = -1.0;
         json::Array sky_color;
+        json::Value sky_atmosphere; // the SkyAtmosphere component's settings
+        double sun_energy = -1.0;   // the first directional light's, which lights the sky
         // Entities left out when nothing but a transform is left of them: editor-only
         // components, and actors the environment took in.
         std::set<std::string> droppable;
@@ -2169,8 +2181,9 @@ private:
                           "same falloff");
             return;
         }
-        if (member(comp, "sky_atmosphere") != nullptr) {
+        if (const json::Value* sky = member(comp, "sky_atmosphere"); sky != nullptr) {
             level.sky = true;
+            level.sky_atmosphere = *sky;
             return;
         }
         if (cls == "ArrowComponent" || cls == "BillboardComponent" ||
@@ -2995,6 +3008,9 @@ private:
             }
         }
         out["light_energy"] = tidy(energy);
+        if (type == "directional" && level.sun_energy < 0.0) {
+            level.sun_energy = energy;
+        }
         const V3 color = vec(light, "color", {255, 255, 255});
         if (color != V3{255, 255, 255}) {
             out["light_color"] = json::Array{tidy(color[0] / 255.0), tidy(color[1] / 255.0),
@@ -3087,17 +3103,159 @@ private:
                 level.environment["reflected_light_source"] = "sky";
             }
         }
-        if (level.environment.empty()) {
-            return;
-        }
+        // Unreal tonemaps with its filmic curve, ACES's, always.
+        level.environment["tonemap_mode"] = "aces";
+        level.environment["tonemap_white"] = 6.0;
         const std::string id = take(level.used, "environment");
         Entity& entity = level.entities[id];
         entity.components["WorldEnvironment"] = json::Value(level.environment);
         if (level.sky) {
-            // Unreal's sky atmosphere scatters sunlight as Godot's physical sky does.
-            entity.components["PhysicalSkyMaterial"] = json::Object{};
+            entity.components["PhysicalSkyMaterial"] = physical_sky(level);
+        }
+        if (json::Value exposure = auto_exposure(); !exposure.is_null()) {
+            entity.components["CameraAttributesPractical"] = std::move(exposure);
         }
         level.roots.push_back(id);
+    }
+
+    // Unreal's sky atmosphere scatters sunlight as Godot's physical sky does. Godot's defaults
+    // are Unreal's air in its color space (Unreal's Rayleigh scattering of 0.175, 0.41 and 1 is
+    // Godot's 0.3, 0.405 and 0.6 made linear, nearly), so only what an atmosphere changes is
+    // written. Godot's sky is far dimmer for a sun: energy_multiplier makes its zenith, with the
+    // sun 45 degrees up, a sixth as bright as a white surface facing the sun, as a clear sky is.
+    [[nodiscard]] json::Value physical_sky(const Level& level) const {
+        json::Value out = json::Object{};
+        const json::Value& sky = level.sky_atmosphere;
+        if (const json::Value* rayleigh = member(sky, "rayleigh_scattering");
+            rayleigh != nullptr && rayleigh->is_array() && rayleigh->as_array().size() == 3) {
+            const V3 color = vec(sky, "rayleigh_scattering", {0.175287, 0.409607, 1.0});
+            const double most = std::max({color[0], color[1], color[2]});
+            const V3 standard{0.175287, 0.409607, 1.0};
+            bool same = most > 0.0;
+            for (std::size_t i = 0; i < 3 && same; ++i) {
+                same = std::abs((color[i] / most) - standard[i]) < 0.01;
+            }
+            if (!same && most > 0.0) {
+                // Linear, as Unreal's, at Godot's default's brightness, then as Godot keeps it.
+                out["rayleigh_color"] =
+                    json::Array{tidy(linear_to_srgb(color[0] / most * kSkyBlue)),
+                                tidy(linear_to_srgb(color[1] / most * kSkyBlue)),
+                                tidy(linear_to_srgb(color[2] / most * kSkyBlue)), 1.0};
+            }
+        }
+        if (const double scale = number(sky, "rayleigh_scattering_scale", 0.0331);
+            std::abs(scale - 0.0331) > 1e-4) {
+            out["rayleigh_coefficient"] = tidy(2.0 * scale / 0.0331);
+        }
+        if (const double scale = number(sky, "mie_scattering_scale", 0.003996);
+            std::abs(scale - 0.003996) > 1e-5) {
+            out["mie_coefficient"] = tidy(0.005 * scale / 0.003996);
+        }
+        if (const double g = number(sky, "mie_anisotropy", 0.8); std::abs(g - 0.8) > 1e-4) {
+            out["mie_eccentricity"] = tidy(g);
+        }
+        if (level.sun_energy > 0.0) {
+            const double zenith = physical_sky_zenith(out, level.sun_energy);
+            if (zenith > 0.0) {
+                out["energy_multiplier"] = tidy(kClearSky * level.sun_energy / zenith);
+            }
+        }
+        return out;
+    }
+
+    // The default sky's blue, Godot's 0.6 made linear.
+    static constexpr double kSkyBlue = 0.318547; // NOLINT(modernize-use-std-numbers): not 1/pi
+    // A clear sky's zenith over a white surface facing the sun: about 0.055 candelas a square
+    // meter a lux of sunlight, times pi.
+    static constexpr double kClearSky = 0.17;
+
+    static double srgb_to_linear(double c) {
+        return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
+    }
+
+    static double linear_to_srgb(double c) {
+        return c <= 0.0031308 ? c * 12.92 : (1.055 * std::pow(c, 1.0 / 2.4)) - 0.055;
+    }
+
+    // The luminance of Godot's physical sky straight up with the sun 45 degrees above the
+    // horizon, as its Forward+ renderer draws it: PhysicalSkyMaterial's shader
+    // (scene/resources/3d/sky_material.cpp), with its colors made linear and before
+    // energy_multiplier.
+    static double physical_sky_zenith(const json::Value& sky, double sun_energy) {
+        const auto field = [&](const char* name, double fallback) {
+            return number(sky, name, fallback);
+        };
+        const auto color = [&](const char* name, V3 fallback) {
+            const V3 c = vec(sky, name, fallback);
+            return V3{srgb_to_linear(c[0]), srgb_to_linear(c[1]), srgb_to_linear(c[2])};
+        };
+        const double up = std::sqrt(0.5); // the sun's height, and the cosine to it from the zenith
+        const double energy = std::max(0.0, 0.757 * up) * sun_energy;
+        const double sun_fade = 1.0 - std::clamp(1.0 - std::exp(up), 0.0, 1.0);
+        const double rayleigh_coefficient = field("rayleigh_coefficient", 2.0) - (1.0 - sun_fade);
+        const V3 rayleigh = color("rayleigh_color", {0.3, 0.405, 0.6});
+        const V3 mie = color("mie_color", {0.69, 0.729, 0.812});
+        const double mie_scale =
+            field("turbidity", 10.0) * field("mie_coefficient", 0.005) * 0.000434;
+        const double optical_mass = 1.0 / (1.0 + (0.15 * std::pow(3.885 + 54.5, -1.253)));
+        const double rayleigh_phase =
+            (3.0 / (16.0 * std::numbers::pi)) * (1.0 + std::pow((up * 0.5) + 0.5, 2.0));
+        const double g = field("mie_eccentricity", 0.8);
+        const double mie_phase =
+            0.0795774715459 * (1.0 - (g * g)) / std::pow(1.0 + (g * g) - (2.0 * g * up), 1.5);
+        const double horizon = std::clamp(std::pow(1.0 - up, 5.0), 0.0, 1.0);
+        const V3 weights{0.2126, 0.7152, 0.0722};
+        double luminance = 0.0;
+        for (std::size_t i = 0; i < 3; ++i) {
+            const double beta_r = rayleigh_coefficient * rayleigh[i] * 0.0001;
+            const double beta_m = mie_scale * mie[i];
+            const double extinction =
+                std::exp(-((beta_r * 8.4e3) + (beta_m * 1.25e3)) * optical_mass);
+            const double scattered =
+                energy * (((beta_r * rayleigh_phase) + (beta_m * mie_phase)) / (beta_r + beta_m));
+            double lin = std::pow(scattered * (1.0 - extinction), 1.5);
+            lin *= 1.0 + ((std::sqrt(scattered * extinction) - 1.0) * horizon);
+            luminance += weights[i] * std::pow(lin, 1.0 / (1.2 + (1.2 * sun_fade)));
+        }
+        return luminance;
+    }
+
+    // Unreal's auto exposure, on by default (r.DefaultFeature.AutoExposure), as Godot's: its
+    // exposure compensation (Bias, 1 by default) scales Godot's default scale, and its range,
+    // EV100 from -10 to 20 with the extended luminance range or 0.03 to 8 candelas a square
+    // meter without, becomes ISO sensitivities over the import's light units (a sun of 10 lux is
+    // energy 1, so a white surface it lights is 1 where Unreal's is 10 / pi).
+    [[nodiscard]] json::Value auto_exposure() const {
+        static constexpr std::string_view kSection = "/Script/Engine.RendererSettings";
+        const auto on = [&](std::string_view key, bool fallback) {
+            std::string value = engine_ini_.value(kSection, key);
+            std::ranges::transform(value, value.begin(), [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+            return value.empty() ? fallback : (value == "true" || value == "1");
+        };
+        if (!on("r.DefaultFeature.AutoExposure", true)) {
+            return {};
+        }
+        const double bias =
+            parse_double(engine_ini_.value(kSection, "r.DefaultFeature.AutoExposure.Bias"))
+                .value_or(1.0);
+        // From Unreal's luminance in candelas a square meter to Godot's sensitivity in ISO.
+        const auto sensitivity = [](double luminance) {
+            return luminance * (std::numbers::pi / 10.0) * 100.0 / 0.125;
+        };
+        double least = sensitivity(0.03);
+        double most = sensitivity(8.0);
+        if (on("r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange", false)) {
+            least = sensitivity(std::exp2(-10.0) * 0.125);
+            most = sensitivity(std::exp2(20.0) * 0.125);
+        }
+        json::Value out;
+        out["auto_exposure_enabled"] = true;
+        out["auto_exposure_scale"] = tidy(0.4 * std::exp2(bias - 1.0));
+        out["auto_exposure_min_sensitivity"] = tidy(least);
+        out["auto_exposure_max_sensitivity"] = tidy(most);
+        return out;
     }
 
     // Leaves out the droppable entities that hold nothing but a transform.
