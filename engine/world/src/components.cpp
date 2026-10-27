@@ -1964,6 +1964,74 @@ void register_particle_components(ComponentRegistry& registry) {
         .describe("light_mask", {.doc = "Lit by lights whose range_item_cull_mask shares a bit.",
                                  .min = 0,
                                  .max = kMaxMask});
+
+    const FieldMeta pass{.doc = "Project path of a .gltf, .glb, .obj, .fbx, .blend or .model.json "
+                                "file drawn at each particle; \"\" for none."};
+    registry.add<GPUParticles3D>()
+        .set_doc("Emits particles from the entity's Transform3D and moves them on the device, as "
+                 "Godot's GPUParticles3D, as its process_material file says, drawing each draw "
+                 "pass's mesh at every particle; a StandardMaterial3D on the entity takes the "
+                 "place of the meshes' materials. Lengths in meters. Emits finished when a "
+                 "one_shot's cycle has had time to end.")
+        .describe("emitting", {.doc = "Emit new particles. Setting it again restarts a one_shot, "
+                                      "which sets it back to false after one lifetime."})
+        .describe("amount", {.doc = "Particles alive at most: one cycle emits this many, spread "
+                                    "over lifetime.",
+                             .min = 1,
+                             .max = 1000000})
+        .describe("amount_ratio", {.doc = "The share of amount it emits.", .min = 0, .max = 1})
+        .describe("process_material",
+                  {.doc = "Project path of a .process_material.json file: how particles start "
+                          "and move. \"\" leaves them still at the emitter."})
+        .describe("lifetime",
+                  {.doc = "Seconds each particle lives and each cycle lasts.", .min = 0.001})
+        .describe(
+            "interp_to_end",
+            {.doc = "Ages every particle toward the end of its life, 0 to 1.", .min = 0, .max = 1})
+        .describe("one_shot", {.doc = "Emit one cycle, then stop."})
+        .describe("preprocess",
+                  {.doc = "Seconds it runs ahead when it starts, so it starts full.", .min = 0})
+        .describe("speed_scale", {.doc = "Multiplies time for its particles.", .min = 0})
+        .describe(
+            "explosiveness",
+            {.doc = "0 spreads emission over the cycle; 1 emits all at once.", .min = 0, .max = 1})
+        .describe("randomness",
+                  {.doc = "Randomizes when each particle is emitted, 0 to 1.", .min = 0, .max = 1})
+        .describe("use_fixed_seed", {.doc = "As GPUParticles2D's."})
+        .describe("seed", {.doc = "The random seed; see use_fixed_seed."})
+        .describe("fixed_fps", {.doc = "Steps per second the particles move in; 0 steps once a "
+                                       "tick.",
+                                .min = 0,
+                                .max = 1000})
+        .describe("interpolate", {.doc = "Draw particles where they are between steps."})
+        .describe("fract_delta", {.doc = "As GPUParticles2D's."})
+        .describe("visibility_aabb_position",
+                  {.doc = "The corner of the box, in the entity's space, the particles are "
+                          "drawn in: none is drawn when it is out of every camera's view."})
+        .describe("visibility_aabb_size", {.doc = "The box's size in meters.", .min = 0})
+        .describe("local_coords", {.doc = "Particles move with the entity; false leaves them "
+                                          "where they were emitted."})
+        .describe("draw_order",
+                  {.doc = "\"index\" draws in emission slots' order, \"lifetime\" the oldest "
+                          "first, \"reverse_lifetime\" the youngest first and \"view_depth\" "
+                          "the farthest from the camera first.",
+                   .choices = {"index", "lifetime", "reverse_lifetime", "view_depth"}})
+        .describe(
+            "transform_align",
+            {.doc = "Turns each particle: its z toward the camera (z_billboard), its y "
+                    "along its velocity, or both.",
+             .choices = {"disabled", "z_billboard", "y_to_velocity", "z_billboard_y_to_velocity"}})
+        .describe("draw_passes", {.doc = "How many of the draw passes draw.", .min = 1, .max = 4})
+        .describe("draw_pass_1",
+                  {.doc = "Project path of a .gltf, .glb, .obj, .fbx, .blend or .model.json file "
+                          "drawn at each particle; \"\" draws the entity's primitive mesh, such "
+                          "as a QuadMesh."})
+        .describe("draw_pass_2", pass)
+        .describe("draw_pass_3", pass)
+        .describe("draw_pass_4", pass)
+        .describe("layers", {.doc = "As MeshInstance3D's.", .min = 0, .max = kMaxMask})
+        .describe("cast_shadow", {.doc = "As MeshInstance3D's.",
+                                  .choices = {"off", "on", "double_sided", "shadows_only"}});
 }
 
 void register_audio_components(ComponentRegistry& registry) {
