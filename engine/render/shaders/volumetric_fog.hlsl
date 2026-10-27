@@ -371,9 +371,13 @@ float4 filter_pass(uint3 id) {
     uint axis = size.w == kPassFilterX ? 0u : 1u;
     float4 sum = (float4)0.0;
     for (int i = -3; i <= 3; ++i) {
+        // Each component written by name: d3dcompiler can't write a vector's component by index.
         uint3 tap = id;
-        int moved = (int)id[axis] + i;
-        tap[axis] = (uint)clamp(moved, 0, (int)size[axis] - 1);
+        if (axis == 0u) {
+            tap.x = (uint)clamp((int)id.x + i, 0, (int)size.x - 1);
+        } else {
+            tap.y = (uint)clamp((int)id.y + i, 0, (int)size.y - 1);
+        }
         sum += source[froxel(tap)] * kGauss[i + 3];
     }
     return sum;
