@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <set>
 #include <string>
 #include <vector>
@@ -347,13 +348,58 @@ TEST_CASE("ray-traced shadows are the same on any number of threads") {
     CHECK(draw_shadow(*alone, scene, {}, 48).pixels == draw_shadow(*shared, scene, {}, 48).pixels);
 }
 
-TEST_CASE("devices that don't trace rays draw ray-traced shadows the raster way") {
+// How many of two images' pixels differ by more than tolerance in a channel.
+int differing(const Image& a, const Image& b, int tolerance) {
+    REQUIRE(a.pixels.size() == b.pixels.size());
+    int count = 0;
+    for (std::size_t i = 0; i < a.pixels.size(); i += 4) {
+        for (std::size_t c = 0; c < 3; ++c) {
+            if (std::abs(int{a.pixels[i + c]} - int{b.pixels[i + c]}) > tolerance) {
+                ++count;
+                break;
+            }
+        }
+    }
+    return count;
+}
+
+TEST_CASE("devices trace shadows' rays as the software device does, or draw them the raster way") {
+    const auto software = render::create_software_device();
     for (const auto& device : slash::test::hardware_devices()) {
         CAPTURE(static_cast<int>(device->backend()));
-        CHECK_FALSE(device->ray_tracing());
+        CAPTURE(device->ray_tracing());
+        if (!device->ray_tracing()) {
+            Light3D sun = shadowed(LightType::Directional);
+            CHECK(draw_shadow(*device, above(sun)).pixels ==
+                  draw_shadow(*device, above(sun, false)).pixels);
+            continue;
+        }
+        std::vector<render::Scene3D> scenes;
+        for (const LightType type : {LightType::Directional, LightType::Omni, LightType::Spot}) {
+            scenes.push_back(above(shadowed(type)));
+        }
+        render::Scene3D soft = above(shadowed(LightType::Omni));
+        soft.lights[0].size = 0.4F;
+        soft.ray_tracing.shadow_samples = 8;
+        scenes.push_back(soft);
+        render::Scene3D masked = above(shadowed(LightType::Directional));
+        masked.lights[0].shadow_caster_mask = 2;
+        scenes.push_back(masked);
+        for (std::size_t i = 0; i < scenes.size(); ++i) {
+            CAPTURE(i);
+            const Image traced = draw_shadow(*device, scenes[i], {}, 48);
+            const Image twin = draw_shadow(*software, scenes[i], {}, 48);
+            // The GPU's float math and the CPU's part at a few pixels along shadows' edges.
+            CHECK(differing(traced, twin, 3) <= 12);
+            CHECK(differing(traced, twin, 40) <= 4);
+        }
+        const Image off = draw_shadow(*device, scenes[0], {.shadows = ShadowCasting::Off});
+        CHECK(at(off, kShaded) == at(off, kLit));
+        // Past where the sun's shadow maps end, its rays still shade the floor.
         Light3D sun = shadowed(LightType::Directional);
-        CHECK(draw_shadow(*device, above(sun)).pixels ==
-              draw_shadow(*device, above(sun, false)).pixels);
+        sun.shadow_max_distance = 1.0F;
+        const Image far = draw_shadow(*device, above(sun));
+        CHECK(at(far, kShaded) < at(far, kLit) - 20);
     }
 }
 

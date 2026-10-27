@@ -1748,8 +1748,10 @@ reach as far as the camera sees, past `directional_shadow_max_distance`. Lights 
 keep their shadow maps, and so do transparent meshes, which the prepass doesn't draw.
 
 Rays are traced on the CPU by the software device, so `frame.capture` returns them, the same on
-every machine and any number of threads. GPUs that can't trace rays yet (`RenderDevice::ray_tracing`
-is false) draw with shadow maps; native ray queries on Vulkan, Direct3D 12 and Metal come next.
+every machine and any number of threads, and with ray queries on Vulkan GPUs that have
+`VK_KHR_ray_query` (and Mesa's software Vulkan), which match it to a few pixels along shadows'
+edges; there alpha-tested meshes cast whole shadows for now. Other GPUs (`RenderDevice::ray_tracing`
+is false: Direct3D 12 and Metal, which come next, OpenGL and the web) draw with shadow maps.
 [examples/ray-traced-shadows-3d](../../examples/ray-traced-shadows-3d) traces an avenue.
 
 ### WorldEnvironment

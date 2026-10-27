@@ -1000,7 +1000,8 @@ LODs when tracing. `examples/path-tracing` traces the lightmaps room.
 
 Ray tracing is SlashEngine's own (Godot 4.6 has none): project.json's `rendering.ray_tracing`
 (`render::RayTracing3D`, `Scene3D::ray_tracing`) turns on ray-traced shadows in Forward+ on
-devices whose `RenderDevice::ray_tracing()` says so, which is only the software device for now.
+devices whose `RenderDevice::ray_tracing()` says so: the software device, and the GPU device on
+Vulkan where the GPU has ray queries.
 `ray_shadow_slots` (`src/shadow.cpp`) gives the first `kMaxRayShadowLights` (8) shadowed lights a
 slot (`MeshLightUniforms::shadow.w`, slot + 1). After the prepass, `run_ray_shadows`
 (`src/ray_shadows.cpp`, built with `-ffp-contract=off`) puts each pixel back in the world from its
@@ -1008,8 +1009,16 @@ depth and normal and traces `shadow_samples` rays a light through the path trace
 (`path_blocked`), spread over the light's disk by `Light3D::size`, into `MeshMaps::ray_shadows`, which
 `ray_shadow` in `src/mesh.cpp` reads in place of the shadow maps. `mesh.hlsl`'s `add_light` is its
 twin, reading them from the screen texture's layers 2 and 3 (four lights a layer) when `screen.z`
-is set, which hardware devices will write from native ray queries. `tests/test_ray_tracing.cpp`
-checks it and `examples/ray-traced-shadows-3d` traces an avenue.
+is set. On Vulkan, `create_gpu_device` asks SDL for `VK_KHR_acceleration_structure` and
+`VK_KHR_ray_query` (`VulkanRayOptions`; `cmake/patches/sdl-ray-tracing.cmake` chains their
+features, which SDL's options don't take) and falls back to a device without them, and
+`src/vulkan_rays.cpp` records into SDL's command buffer with Vulkan's own calls: a bottom-level
+structure per mesh and LOD from copies of its SDL buffers (kept while `Mesh::version` stays), a
+top-level one a frame and `shaders/ray_shadows.comp` (GLSL with `GL_EXT_ray_query`, as glslang's
+HLSL has none; `cmake/compile_ray_shaders.cmake` writes `ray_shadows_shaders.hpp`), whose two
+textures the GPU device copies into the screen's layers 2 and 3. A change to the ray math goes in
+both. `tests/test_ray_tracing.cpp` holds Vulkan to the software device and
+`examples/ray-traced-shadows-3d` traces an avenue.
 
 TAA is Godot 4.6's `use_taa` (project.json's `rendering.anti_aliasing.quality.use_taa`,
 `Scene3D::use_taa`), in Forward+ only. `src/taa.hpp` holds what devices share: the jitter

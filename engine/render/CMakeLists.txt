@@ -73,7 +73,8 @@ add_library(slash_render
     src/uniforms.cpp
     src/upscaler.cpp
     src/volumetric_fog.cpp
-    src/voxel_gi.cpp)
+    src/voxel_gi.cpp
+    src/vulkan_rays.cpp)
 add_library(slash::render ALIAS slash_render)
 # Rays decide which triangles they meet, so their math is the same on every machine.
 set_source_files_properties(src/path_trace.cpp src/ray_shadows.cpp PROPERTIES
@@ -84,6 +85,9 @@ target_link_libraries(slash_render
     PUBLIC slash::core
     PRIVATE slash_astcenc slash_bc7 slash_image_codecs SDL3::SDL3-static)
 slash_engine_target(slash_render)
+# Vulkan's headers, which SDL carries, for the ray queries the GPU device records itself
+# (src/vulkan_rays.cpp).
+target_include_directories(slash_render SYSTEM PRIVATE ${SDL3_SOURCE_DIR}/src/video/khronos)
 
 # Apple's MetalFX scalers (src/metalfx.mm), linked weakly so games still start on macOS 11 and
 # iOS 14, where MetalFX isn't. The iOS Simulator has none.
@@ -257,6 +261,26 @@ foreach(entry IN LISTS slash_shaders)
             shaders/tonemap.hlsl
             ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake
         COMMENT "Compiling ${shader}.hlsl"
+        VERBATIM)
+    list(APPEND slash_shader_headers ${stamp})
+endforeach()
+# The GLSL compute shaders that trace rays, as glslang's HLSL has none; see
+# cmake/compile_ray_shaders.cmake.
+foreach(entry IN ITEMS ray_shadows:RayShadows)
+    string(REPLACE ":" ";" parts ${entry})
+    list(GET parts 0 shader)
+    list(GET parts 1 name)
+    set(stamp ${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}.stamp)
+    add_custom_command(
+        OUTPUT ${stamp}
+        COMMAND ${CMAKE_COMMAND}
+            -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/shaders/${shader}.comp
+            -DOUTPUT=${CMAKE_CURRENT_SOURCE_DIR}/src/${shader}_shaders.hpp -DNAME=${name}
+            -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/shaders -DGLSLANG=${SLASH_GLSLANG}
+            -P ${PROJECT_SOURCE_DIR}/cmake/compile_ray_shaders.cmake
+        COMMAND ${CMAKE_COMMAND} -E touch ${stamp}
+        DEPENDS shaders/${shader}.comp ${PROJECT_SOURCE_DIR}/cmake/compile_ray_shaders.cmake
+        COMMENT "Compiling ${shader}.comp"
         VERBATIM)
     list(APPEND slash_shader_headers ${stamp})
 endforeach()
