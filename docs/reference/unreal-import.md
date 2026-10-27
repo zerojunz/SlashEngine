@@ -181,12 +181,16 @@ overrides share one copy. A Godot scene has no per-surface override that `MeshIn
 so the copy stands for it. The result's `converted` counts the copies as `material_variants`.
 The override's material is named after its package, not the exporter's preview mesh.
 
-A material that places its textures by world position (its base material, or a material
-function it calls two deep, has a `WorldPosition` node or calls `WorldAlignedTexture`,
-`WorldAlignedNormal` or `WorldCoordinate3Way`) is baked over the mesh's texture coordinates like
-any other, so its pattern loses its size in the world; the export script finds these in the
-materials' text (T3D, as the editor copies nodes) and the result's `unsupported` lists each as a
-`world-aligned material`.
+A material that places its textures or works out its colors by world position is baked over the
+mesh's texture coordinates like any other, so its pattern loses its size in the world. The
+export script finds these in the materials' text (T3D, as the editor copies nodes) by following
+the base material's nodes back: a texture sampled at coordinates made from a `WorldPosition`
+node or a material function whose outputs are (two deep), a call to `WorldAlignedTexture`,
+`WorldAlignedNormal`, `WorldCoordinate3Way` or a function that samples by world position, or a
+base color, emissive color, normal, metallic, roughness or specular input made from a
+`WorldPosition` node (a procedural grid). One that reads the world position only for its opacity
+mask or offsets, such as a fade near the camera, bakes as it looks on the mesh. The result's
+`unsupported` lists each as a `world-aligned material`.
 
 ## Animation
 
@@ -335,5 +339,5 @@ exporter bakes them to), Animation Blueprints' graphs, montages and blend spaces
 without a fallback, movement components such as `RotatingMovementComponent`, light temperature and
 IES profiles, level streaming and World Partition data layers (a partitioned level's actors are
 loaded all at once), and Blueprint logic (C++ classes become skeletons to port). What a project has
-of these is listed in the result's `unsupported`, once per kind with where it was first seen and
-why.
+of these is listed in the result's `unsupported`, once per kind with where it was first seen, up
+to eight other places (`also`) and why.
