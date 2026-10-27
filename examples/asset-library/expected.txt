@@ -29,3 +29,9 @@ asset.check {}
 {"checked":3,"problems":[{"entity":"red_slime","id":"833c6cd1f6e5","message":"hard to see: its edge has 1.2:1 contrast with the darker colors around it","path":"art/slime_red.png","scene":"levels/night.scene.json"}],"scenes":1}
 asset.info {"id":"833c6cd1"}
 {"bytes":303,"description":"Red slime sprite","feedback":[{"reason":"too dark on the night level","source":"playtest","verdict":"rejected"},{"reason":"hard to see: its edge has 1.2:1 contrast with the darker colors around it (levels/night.scene.json)","source":"asset.check","verdict":"rejected"}],"format":"png","generator":"test","height":32,"id":"833c6cd1f6e5","license":"CC0-1.0","model":"test","parent":"0b2fd1b5cf5a","request":{"parent":"0b2fd1b5cf5a","prompt":"make it red","type":"image"},"seed":0,"tags":["enemy"],"type":"image","versions":["0b2fd1b5cf5a"],"width":32}
+asset.add {"description":"Pine bench for one or two","license":"CC0-1.0","path":"props/bench.model.json","tags":["prop"]}
+{"id":"edc8a0716505","size":[1.2,0.45,0.35],"triangles":36,"type":"model"}
+asset.search {"type":"model"}
+{"assets":[{"description":"Pine bench for one or two","id":"edc8a0716505","size":[1.2,0.45,0.35],"tags":["prop"],"triangles":36,"type":"model"}]}
+asset.refine {"id":"edc8a071","parameters":{"length":2.4},"path":"props/long_bench.model.json","prompt":"long enough for four"}
+{"id":"55d18dff10bf","parent":"edc8a0716505","path":"props/long_bench.model.json","size":[2.4,0.45,0.35],"triangles":36}

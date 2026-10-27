@@ -768,7 +768,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         nodes as `BoneAttachment3D`s, and models unpacked into objects folded back into one
   - [ ] Unreal Engine levels and assets through the user's own Unreal Editor
 - [ ] 3D in the asset library and generator ([design](design.md#3d-assets))
-  - [ ] Parametric models: agents write a `.model.json` recipe of shapes, CSG on Manifold,
+  - [x] Parametric models: agents write a `.model.json` recipe of shapes, CSG on Manifold,
         extrusions, lathes, bevels and arrays, and the engine builds the mesh; the library keeps
         the recipe, so refining means changing a number
   - [ ] Concept image first: generate and review a cheap image, then make the 3D model from it,
@@ -913,7 +913,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Navigation | Godot's navigation server, Recast baking, 2D and 3D, avoidance | 7 | Done |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Done |
 | Profiling | Tracy, plus `perf.stats` over the command API | 5, 6 | Done: Tracy, and `perf.stats` reports frame pacing, tick and system times and memory by part of the engine |
-| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | In progress: the library, search, refining, hosted and test generators, feedback, team sharing and ready-to-use texture forms done; 3D in 7 |
+| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | In progress: the library, search, refining, hosted and test generators, feedback, team sharing, ready-to-use texture forms and parametric model recipes done; the rest of 3D in 7 |
 | Global illumination | Baked lightmaps and probe-based GI | 7 | Done: reflection probes, baked lightmaps and their light probes, and VoxelGI with its dynamic objects, all imported from Godot |
 | Ray tracing | Acceleration structures and ray queries in the render device on Vulkan, Direct3D 12 and Metal: ray-traced shadows, reflections, AO and GI, with raster and probe fallbacks | 7 | Planned |
 | Path tracing | A GPU path tracer for baked lightmaps and progressive reference stills | 7 | Planned |

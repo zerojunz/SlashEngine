@@ -6,6 +6,8 @@
 #include "slash/platform/file.hpp"
 #include "slash/platform/process.hpp"
 #include "slash/render/image.hpp"
+#include "slash/scene3d/model.hpp"
+#include "slash/scene3d/recipe.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -41,13 +43,78 @@ std::string lowercase(std::string_view text) {
     return out;
 }
 
+double rounded(double value) {
+    return std::round(value * 1000.0) / 1000.0;
+}
+
 std::string extension_of(std::string_view path) {
     const std::size_t slash = path.find_last_of('/');
     const std::size_t dot = path.rfind('.');
     if (dot == std::string_view::npos || (slash != std::string_view::npos && dot < slash)) {
         return {};
     }
-    return lowercase(path.substr(dot));
+    std::string extension = lowercase(path.substr(dot));
+    // A model recipe's extension is its whole suffix, as a .model.json file stays one.
+    if (extension == ".json" && lowercase(path).ends_with(scene3d::kModelRecipeSuffix)) {
+        extension = std::string(scene3d::kModelRecipeSuffix);
+    }
+    return extension;
+}
+
+// The first texture a recipe's materials name, as "/materials/<name>/<field>", or "".
+std::string recipe_texture(const json::Value& recipe) {
+    const json::Value* materials = recipe.find("materials");
+    if (materials == nullptr || !materials->is_object()) {
+        return {};
+    }
+    for (const auto& [name, material] : materials->as_object()) {
+        if (!material.is_object()) {
+            continue;
+        }
+        for (const auto& [field, value] : material.as_object()) {
+            if (field.ends_with("_texture") && value.is_string() && !value.as_string().empty()) {
+                std::string pointer = "/materials/";
+                pointer += name;
+                pointer += '/';
+                pointer += field;
+                return pointer;
+            }
+        }
+    }
+    return {};
+}
+
+// Fills in a model recipe's size and triangles, and checks it builds as written.
+Result<void> describe_recipe(std::string_view data, Record& record) {
+    auto doc = json::parse(data);
+    if (!doc) {
+        return doc.error();
+    }
+    const std::vector<json::ValidationError> errors = scene3d::validate_model_recipe(doc.value());
+    if (!errors.empty()) {
+        return make_error(ErrorCode::InvalidArgument,
+                          errors.front().path + ": " + errors.front().message);
+    }
+    // Texture paths are a project's, so a recipe that names one couldn't be used elsewhere.
+    if (const std::string texture = recipe_texture(doc.value()); !texture.empty()) {
+        return make_error(ErrorCode::InvalidArgument,
+                          texture + ": the library keeps recipes that name no texture files; "
+                                    "give the material colors instead");
+    }
+    auto model = scene3d::build_model_recipe(doc.value());
+    if (!model) {
+        return model.error();
+    }
+    const scene3d::Bounds box = scene3d::bounds(model.value());
+    record.size = {rounded(box.max.x - box.min.x), rounded(box.max.y - box.min.y),
+                   rounded(box.max.z - box.min.z)};
+    record.triangles = 0;
+    for (const scene3d::ModelMesh& mesh : model.value().meshes) {
+        for (const scene3d::ModelSurface& surface : mesh.surfaces) {
+            record.triangles += static_cast<std::int64_t>(surface.indices.size() / 3);
+        }
+    }
+    return {};
 }
 
 // A name no other writer uses at the same time, for a file written whole then moved into place.
@@ -60,10 +127,6 @@ std::string temporary_name(const std::string& path) {
     const std::size_t thread = std::hash<std::thread::id>{}(std::this_thread::get_id());
     return path.substr(0, slash + 1) + "." + path.substr(slash + 1) + "." +
            std::to_string(stamp ^ thread) + "." + std::to_string(counter++) + ".tmp";
-}
-
-double rounded(double value) {
-    return std::round(value * 1000.0) / 1000.0;
 }
 
 std::string text_of(const json::Value& value, std::string_view key) {
@@ -122,6 +185,10 @@ json::Value to_json(const Record& record) {
         out["seconds"] = record.seconds;
         out["channels"] = record.channels;
         out["sample_rate"] = record.sample_rate;
+    }
+    if (record.triangles > 0) {
+        out["size"] = json::Array{record.size[0], record.size[1], record.size[2]};
+        out["triangles"] = record.triangles;
     }
     if (!record.description.empty()) {
         out["description"] = record.description;
@@ -221,6 +288,14 @@ Result<Record> record_from_json(const json::Value& value) {
         seconds != nullptr && seconds->is_number()) {
         record.seconds = seconds->as_double();
     }
+    if (const json::Value* size = value.find("size");
+        size != nullptr && size->is_array() && size->as_array().size() == 3) {
+        for (std::size_t i = 0; i < 3; ++i) {
+            const json::Value& side = size->as_array()[i];
+            record.size.at(i) = side.is_number() ? side.as_double() : 0.0;
+        }
+    }
+    record.triangles = integer("triangles");
     record.description = text_of(value, "description");
     if (const json::Value* tags = value.find("tags"); tags != nullptr && tags->is_array()) {
         for (const json::Value& tag : tags->as_array()) {
@@ -303,6 +378,9 @@ std::string_view type_of(std::string_view extension) {
     if (lower == ".wav" || lower == ".ogg" || lower == ".mp3") {
         return "sound";
     }
+    if (lower == scene3d::kModelRecipeSuffix) {
+        return "model";
+    }
     return {};
 }
 
@@ -317,11 +395,15 @@ Result<void> describe_file(std::string_view data, std::string_view path, Record&
     if (type.empty()) {
         return make_error(ErrorCode::InvalidArgument,
                           "\"" + std::string(path) +
-                              "\" is not a file the library keeps: .png, .bmp, .wav, .ogg or .mp3");
+                              "\" is not a file the library keeps: .png, .bmp, .wav, .ogg, .mp3 "
+                              "or .model.json");
     }
     record.type = std::string(type);
     record.format = extension.substr(1);
     record.bytes = static_cast<std::int64_t>(data.size());
+    if (type == "model") {
+        return describe_recipe(data, record);
+    }
     if (type == "image") {
         auto image = render::decode_image(data);
         if (!image) {

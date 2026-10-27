@@ -383,6 +383,10 @@ json::Value summary(const Record& record) {
     if (record.sample_rate > 0) {
         out["seconds"] = record.seconds;
     }
+    if (record.triangles > 0) {
+        out["size"] = json::Array{record.size[0], record.size[1], record.size[2]};
+        out["triangles"] = record.triangles;
+    }
     if (record.bpm > 0.0) {
         out["bpm"] = bpm_json(record.bpm);
         out["beat_count"] = record.beat_count;
@@ -426,15 +430,18 @@ json::Object storyboard_entries(Session& session) {
     return std::move(loaded.value().entries);
 }
 
-// The file's extension must be the asset's format: a .png stays a .png.
+// The file's extension must be the asset's format: a .png stays a .png, and a .model.json file a
+// .model.json file.
 Result<void> check_path(std::string_view path, std::string_view format) {
-    const std::size_t dot = path.rfind('.');
-    std::string extension(dot == std::string_view::npos ? std::string_view()
-                                                        : path.substr(dot + 1));
-    std::ranges::transform(extension, extension.begin(), [](char c) {
+    std::string lower(path);
+    std::ranges::transform(lower, lower.begin(), [](char c) {
         return static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
     });
-    if (extension != format) {
+    const std::string extension = "." + std::string(format);
+    const std::size_t slash = lower.find_last_of('/');
+    const std::string_view name =
+        std::string_view(lower).substr(slash == std::string::npos ? 0 : slash + 1);
+    if (!name.ends_with(extension) || name.size() == extension.size()) {
         return make_error(ErrorCode::InvalidArgument,
                           "the asset is a ." + std::string(format) + " file; name the path so");
     }
@@ -1057,6 +1064,14 @@ Reply read_shared(const json::Value& params, Asked& asked) {
     return Reply::success({});
 }
 
+// "an image", "a sound", "music" or "a model", for messages.
+std::string with_article(std::string_view type) {
+    if (type == "music") {
+        return "music";
+    }
+    return (type == "image" ? "an " : "a ") + std::string(type);
+}
+
 Reply invalid_at(std::string_view path, const std::string& message) {
     return Reply::failure(command::code::kInvalidParams, std::string(path) + ": " + message,
                           json::Value(json::Object{{"path", path}}));
@@ -1167,6 +1182,11 @@ Reply asset_generate(Session& session, const json::Value& params) {
     Asked asked;
     asked.request.prompt = text(params, "prompt");
     asked.request.type = params.find("type") != nullptr ? text(params, "type") : "image";
+    if (asked.request.type == "model") {
+        return invalid_at("/type", "models aren't generated yet: write a .model.json recipe, add "
+                                   "it with asset.add and refine it with asset.refine's "
+                                   "parameters");
+    }
     asked.keyed["type"] = asked.request.type;
     if (Reply shared = read_shared(params, asked); !shared.ok) {
         return shared;
@@ -1213,6 +1233,83 @@ Reply asset_generate(Session& session, const json::Value& params) {
     return run_generator(session, params, std::move(asked), nullptr);
 }
 
+// A model's next version: its recipe with the parameters given, kept as an asset of its own
+// linked to the one it came from. No generator is called, so refining a model is changing a
+// number.
+Reply refine_model(Session& session, Libraries& libs, const Record& parent, std::string_view data,
+                   const json::Value& params) {
+    for (const std::string_view key :
+         {"generator", "width", "height", "seconds", "seed", "context", "loop"}) {
+        if (params.find(key) != nullptr) {
+            return invalid_at("/" + std::string(key),
+                              "a model's versions change its parameters, not a generator's; give "
+                              "parameters, such as {\"width\": 1.6}");
+        }
+    }
+    const json::Value* given = params.find("parameters");
+    if (given == nullptr) {
+        return invalid_at("/parameters", "a model changes by its parameters: give the ones to "
+                                         "change, such as {\"width\": 1.6}");
+    }
+    auto parsed = json::parse(data);
+    if (!parsed) {
+        return Reply::failure(parsed.error());
+    }
+    json::Value recipe = std::move(parsed).value();
+    std::vector<std::string> names;
+    if (const json::Value* known = recipe.find("parameters");
+        known != nullptr && known->is_object()) {
+        for (const auto& entry : known->as_object()) {
+            names.push_back(entry.first);
+        }
+    }
+    for (const auto& [name, value] : given->as_object()) {
+        if (std::ranges::find(names, name) != names.end()) {
+            recipe["parameters"][name] = value;
+            continue;
+        }
+        std::string message = "\"" + name + "\" isn't one of the recipe's parameters";
+        if (names.empty()) {
+            message += "; it has none";
+        } else if (const std::string_view hint = closest_match(name, names); !hint.empty()) {
+            message += " (did you mean \"" + std::string(hint) + "\"?)";
+        }
+        return invalid_at("/parameters/" + name, message);
+    }
+    const std::string bytes = json::write(recipe) + "\n";
+    Record record;
+    if (auto described = describe_file(bytes, "version.model.json", record); !described) {
+        return invalid_at("/parameters", described.error().message);
+    }
+    const std::string prompt = text(params, "prompt");
+    record.description = trimmed(text(params, "description"));
+    if (record.description.empty()) {
+        record.description = parent.description;
+        if (!prompt.empty()) {
+            record.description =
+                record.description.empty() ? prompt : record.description + "; " + prompt;
+        }
+    }
+    record.tags = params.find("tags") != nullptr ? strings(params, "tags") : parent.tags;
+    record.license = parent.license;
+    record.author = parent.author;
+    record.parent = parent.id;
+    record.request["parent"] = parent.id;
+    record.request["parameters"] = *given;
+    if (!prompt.empty()) {
+        record.request["prompt"] = prompt;
+    }
+    const bool reused = libs.local().get(sha256_hex(bytes)).ok();
+    auto stored = libs.local().put(bytes, std::move(record));
+    if (!stored) {
+        return Reply::failure(stored.error());
+    }
+    share(libs, stored.value(), bytes, {});
+    Asked asked;
+    asked.path = text(params, "path");
+    return finish(session, libs, stored.value(), asked, reused);
+}
+
 Reply asset_refine(Session& session, const json::Value& params) {
     auto libs = open_libraries(session);
     if (!libs) {
@@ -1228,6 +1325,16 @@ Reply asset_refine(Session& session, const json::Value& params) {
     auto data = libs.value().local().read(parent.value());
     if (!data) {
         return Reply::failure(data.error());
+    }
+    if (parent.value().type == "model") {
+        return refine_model(session, libs.value(), parent.value(), data.value(), params);
+    }
+    if (params.find("parameters") != nullptr) {
+        return invalid_at("/parameters", "only a model takes parameters; the asset is " +
+                                             with_article(parent.value().type));
+    }
+    if (params.find("prompt") == nullptr) {
+        return invalid_at("/prompt", "say what to change");
     }
     Asked asked;
     asked.request.type = parent.value().type;
@@ -1250,8 +1357,7 @@ Reply asset_refine(Session& session, const json::Value& params) {
     }
     if (asked.request.type != "music" && params.find("loop") != nullptr) {
         return invalid_at("/loop", "only music takes loop; the asset is " +
-                                       std::string(asked.request.type == "image" ? "an " : "a ") +
-                                       asked.request.type);
+                                       with_article(asked.request.type));
     }
     // A version of music keeps its meter; its tempo and key are what it measures.
     asked.request.bar_beats = parent.value().bar_beats;
@@ -1394,11 +1500,9 @@ Reply asset_add(Session& session, const json::Value& params) {
     if (params.find("type") != nullptr) {
         type = text(params, "type");
     }
-    const std::size_t dot = path.rfind('.');
-    if (!holds(type, dot == std::string::npos ? std::string_view() : path.substr(dot))) {
-        return invalid_at("/type", "\"" + path + "\" is " +
-                                       (record.type == "image" ? "an image" : "a sound") +
-                                       ", not " + (type == "image" ? "an image" : type));
+    if (!holds(type, "." + record.format)) {
+        return invalid_at("/type", "\"" + path + "\" is " + with_article(record.type) + ", not " +
+                                       with_article(type));
     }
     if (Reply only = music_only(params, type, {"bpm", "key", "bar_beats", "beat_count", "stems"});
         !only.ok) {
@@ -1889,7 +1993,7 @@ Reply asset_sync(Session& session, const json::Value& params) {
 
 json::Value type_property(std::string_view description) {
     json::Value type = property("string", description);
-    type["enum"] = json::Array{"image", "sound", "music"};
+    type["enum"] = json::Array{"image", "sound", "music", "model"};
     return type;
 }
 
@@ -1937,7 +2041,8 @@ void register_commands(command::Registry& registry) {
     registry.add({
         .name = "asset.search",
         .description = "Searches the machine's asset library (generated and added images, "
-                       "sounds and music, shared by every project) by words, tags and type. "
+                       "sounds, music and model recipes, shared by every project) by words, tags "
+                       "and type. "
                        "Returns IDs with descriptions, best first; music with its bpm and key. "
                        "Search before generating.",
         .capabilities = {Capability::Read},
@@ -1945,7 +2050,7 @@ void register_commands(command::Registry& registry) {
         .params = params_schema({
             {"text", property("string", "Words to find in descriptions, prompts and tags.")},
             {"tags", string_array("Tags every result must have.")},
-            {"type", type_property("Only images, sounds or music.")},
+            {"type", type_property("Only images, sounds, music or models.")},
             {"limit", std::move(limit)},
         }),
         .handler = asset_search,
@@ -1980,13 +2085,20 @@ void register_commands(command::Registry& registry) {
     refine.emplace("id", property("string", "The asset to change."));
     refine.emplace("prompt", property("string", "What to change."));
     refine.emplace("loop", property("boolean", "Music: loop it in its settings."));
+    json::Value parameters = property("object", "A model: new values for its recipe's "
+                                                "parameters, such as {\"width\": 1.6}; no "
+                                                "generator is called.");
+    parameters["additionalProperties"]["type"] = json::Array{"number", "string"};
+    parameters["minProperties"] = 1;
+    refine.emplace("parameters", std::move(parameters));
     registry.add({
         .name = "asset.refine",
-        .description = "Makes a new version of a library asset, changed as the prompt says and "
-                       "linked to it, so earlier versions stay to compare and go back to.",
+        .description = "Makes a new version of a library asset, changed as the prompt (or a "
+                       "model's parameters) says and linked to it, so earlier versions stay to "
+                       "compare and go back to.",
         .capabilities = {Capability::Read, Capability::Filesystem, Capability::Network},
         .effect = command::Effect::Read,
-        .params = params_schema(std::move(refine), {"id", "prompt"}),
+        .params = params_schema(std::move(refine), {"id"}),
         .handler = asset_refine,
     });
 
@@ -2069,22 +2181,21 @@ void register_commands(command::Registry& registry) {
 
     registry.add({
         .name = "asset.add",
-        .description = "Adds a project's image, sound or music file to the asset library, with "
-                       "its author and license, so other projects find it. A composer's track "
-                       "comes with its stems; music is measured for bpm and key.",
+        .description = "Adds a project's image, sound, music or model recipe to the asset "
+                       "library, with its author and license, so other projects find it. A "
+                       "composer's track comes with its stems; music is measured for bpm and key.",
         .capabilities = {Capability::Read, Capability::Filesystem},
         .effect = command::Effect::Read,
         .params = params_schema(
             {
-                {"path", property("string", "A .png, .bmp, .wav, .ogg or .mp3 file; a track's "
-                                            "full mix.")},
+                {"path", property("string", "A .png, .bmp, .wav, .ogg, .mp3 or .model.json "
+                                            "file; a track's full mix.")},
                 {"description", property("string", "A sentence for agents to read instead of "
                                                    "the file.")},
                 {"tags", string_array("Words to find it by.")},
                 {"license", property("string", "Its license, such as CC0-1.0.")},
                 {"author", property("string", "Who made it.")},
-                {"type", type_property("music for a track; default image or sound, by the "
-                                       "file.")},
+                {"type", type_property("music for a track; default by the file.")},
                 {"bpm", bpm_property("Music: its tempo, as its author gives it.")},
                 {"key", property("string", "Music: its key, such as \"D minor\".")},
                 {"bar_beats", integer("Music: beats per bar.", 2, 32)},

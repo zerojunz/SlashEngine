@@ -133,5 +133,24 @@ int main() {
     call(sequel, "asset.use", R"({"id": "833c6cd1", "path": "art/slime_red.png"})");
     call(sequel, "asset.check", "{}");
     call(sequel, "asset.info", R"({"id": "833c6cd1"})");
+
+    // Models go in as .model.json recipes. A version of one changes its parameters: no generator
+    // is called, and the parts move with the numbers.
+    (void)slash::platform::create_directories("game/props");
+    (void)slash::platform::write_file("game/props/bench.model.json", R"({"format": 1,
+        "parameters": {"length": 1.2, "height": 0.45, "depth": 0.35},
+        "materials": {"pine": {"albedo_color": [0.75, 0.6, 0.4, 1]}},
+        "parts": [
+            {"name": "seat", "shape": "box", "material": "pine",
+             "size": ["=length", 0.05, "=depth"], "position": [0, "=height - 0.025", 0]},
+            {"name": "leg", "shape": "box", "material": "pine",
+             "size": [0.05, "=height - 0.05", "=depth"],
+             "position": ["=-length / 2 + 0.1", "=(height - 0.05) / 2", 0],
+             "array": {"count": 2, "position": ["=length - 0.2", 0, 0]}}]})");
+    call(game, "asset.add", R"({"path": "props/bench.model.json",
+        "description": "Pine bench for one or two", "tags": ["prop"], "license": "CC0-1.0"})");
+    call(sequel, "asset.search", R"({"type": "model"})");
+    call(sequel, "asset.refine", R"({"id": "edc8a071", "parameters": {"length": 2.4},
+        "prompt": "long enough for four", "path": "props/long_bench.model.json"})");
     return 0;
 }
