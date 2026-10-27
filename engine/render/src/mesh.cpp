@@ -534,9 +534,6 @@ MeshInstanceUniforms mesh_instance_uniforms(const Mat4& transform, const Materia
     return out;
 }
 
-namespace {
-
-// A VoxelGI as mesh.hlsl's Surface holds it.
 MeshVoxelGIUniforms voxel_gi_uniforms(const VoxelGIProbe& probe) {
     MeshVoxelGIUniforms out;
     const std::array<float, 12>& m = probe.to_cell;
@@ -554,8 +551,6 @@ MeshVoxelGIUniforms voxel_gi_uniforms(const VoxelGIProbe& probe) {
     }
     return out;
 }
-
-} // namespace
 
 std::array<MaterialTexture, kMeshTextures> mesh_texture_slots(const Material3D& material) {
     std::array<MaterialTexture, kMeshTextures> slots{};

@@ -940,7 +940,13 @@ A change to the fog math goes in both. `examples/volumetric-fog-3d` lights a mis
 `kMaxFogVolumes`): `fog_volume_froxels` picks each one's froxels as Godot's
 `volumetric_fog_update` does, and the density pass (`fog_volumes` in the shader and its twin)
 adds each one's shape, material and Godot's default material's cull in Godot's fixed point.
-`examples/fog-volumes-3d` fills a cellar.
+`examples/fog-volumes-3d` fills a cellar. The density pass also takes the light of the first
+`kMaxFogVoxelGIs` VoxelGIs (`VolumetricFog3D::voxel_gis` and `voxel_gi_atlas`, which
+`trace_voxel_gis` fills) by `gi_inject`, every level of each front to back as Godot's
+`volumetric_fog_process.glsl` reads them (`fog_voxel_gi_light` in the shader and in
+`src/voxel_gi.cpp`). Both reach the pass in a storage buffer (`fog_items`), not its uniforms:
+SDL's Vulkan device shows a shader only the first 4 KiB of a uniform push.
+`examples/fog-voxel-gi-3d` lights a misty hall with its bounce.
 
 Compatibility's post-processing: without glow or adjustments, `mesh.hlsl` tonemaps as it draws.
 With either, each device draws the meshes into an RGBA8 texture at `end_frame` and runs
