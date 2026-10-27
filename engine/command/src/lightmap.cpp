@@ -2,6 +2,7 @@
 
 #include "slash/command/session.hpp"
 #include "slash/core/text.hpp"
+#include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/model.hpp"
@@ -76,7 +77,20 @@ scene3d::LightmapSources sources(asset::Assets& assets) {
             }
             return loaded.value().share();
         },
+        .device = nullptr,
     };
+}
+
+// A device that traces a bake's light on its GPU: the GPU backend SDL picks, else Vulkan, where
+// either has ray queries; null where neither does.
+std::unique_ptr<render::RenderDevice> bake_device() {
+    for (const char* driver : {"auto", "vulkan"}) {
+        auto made = render::create_device({.window = nullptr, .driver = driver, .debug = false});
+        if (made && made.value()->ray_tracing()) {
+            return std::move(made).value();
+        }
+    }
+    return nullptr;
 }
 
 // A bake's problems in its result, each with its entity's ID.
@@ -138,7 +152,15 @@ Reply lightmap_bake(Session& session, const json::Value& params) {
                                " file");
     }
 
-    auto baked = scene3d::bake_lightmap(world, entity, sources(session.assets()));
+    scene3d::LightmapSources from = sources(session.assets());
+    const json::Value* device = params.find("device");
+    const bool on_gpu = device != nullptr && device->as_string() == "gpu";
+    std::unique_ptr<render::RenderDevice> gpu;
+    if (on_gpu) {
+        gpu = bake_device();
+        from.device = gpu.get();
+    }
+    auto baked = scene3d::bake_lightmap(world, entity, from);
     if (!baked) {
         return Reply::failure(baked.error());
     }
@@ -159,6 +181,9 @@ Reply lightmap_bake(Session& session, const json::Value& params) {
     result["size"] = json::Array{bake.data.width, bake.data.height};
     result["slices"] = bake.data.slices;
     result["probes"] = bake.data.probes.points.size();
+    if (on_gpu) {
+        result["device"] = bake.traced_on_gpu ? "gpu" : "cpu";
+    }
     add_problems(world, bake.problems, result);
 
     auto data_before = session.read_project_file(path);
@@ -391,6 +416,9 @@ void register_lightmap_commands(Registry& registry) {
         property("string", "The .lightmap.json file to write, project path. Default: the "
                            "LightmapGI's light_data, else beside the scene, named after it.");
     file["minLength"] = 1;
+    json::Value device = property("string", "\"gpu\" traces on a GPU that traces rays, else the "
+                                            "CPU, and returns which did. Default \"cpu\".");
+    device["enum"] = json::Array{"cpu", "gpu"};
     registry.add({
         .name = "lightmap.bake",
         .description = "Bakes a LightmapGI's light into a .lightmap.json file and its .hdr "
@@ -400,7 +428,9 @@ void register_lightmap_commands(Registry& registry) {
                        "meshes. Sets light_data. Returns the files, counts, size and problems.",
         .capabilities = {Edit, Filesystem},
         .effect = Effect::Edit,
-        .params = params_schema({{"id", std::move(id)}, {"file", std::move(file)}}, {"id"}),
+        .params = params_schema(
+            {{"id", std::move(id)}, {"file", std::move(file)}, {"device", std::move(device)}},
+            {"id"}),
         .handler = lightmap_bake,
     });
 

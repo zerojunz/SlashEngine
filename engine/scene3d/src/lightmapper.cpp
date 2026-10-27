@@ -36,6 +36,7 @@
 
 #include "slash/core/bits.hpp"
 #include "slash/core/jobs.hpp"
+#include "slash/core/log.hpp"
 #include "slash/core/math.hpp"
 #include "slash/scene3d/lightmap.hpp"
 
@@ -796,11 +797,14 @@ public:
         build_scene();
         raster();
         unocclude();
-        direct_light();
-        if (settings_.bounces > 0) {
-            bounce_light();
+        out.traced_on_gpu = trace_on_device(out);
+        if (!out.traced_on_gpu) {
+            direct_light();
+            if (settings_.bounces > 0) {
+                bounce_light();
+            }
+            out.probe_sh = light_probes();
         }
-        out.probe_sh = light_probes();
         if (settings_.use_denoiser) {
             denoise();
         }
@@ -1497,6 +1501,88 @@ private:
     [[nodiscard]] Vec3 position_at(int slice, int x, int y) const {
         const Rgba p = position_.fetch(slice, x, y);
         return {p[0], p[1], p[2]};
+    }
+
+    // The direct light, bounces and light probes traced on settings_.device's GPU, which ports
+    // the three passes below (render/shaders/lightmap_light.comp); false where there is none, or
+    // it can't, and they are traced on the CPU.
+    bool trace_on_device(LightmapBake& out) {
+        if (settings_.device == nullptr || !settings_.device->ray_tracing()) {
+            return false;
+        }
+        render::LightmapTrace trace;
+        trace.vertices.reserve(vertices_.size());
+        for (const Vertex& v : vertices_) {
+            trace.vertices.push_back({.position = {v.position.x, v.position.y, v.position.z},
+                                      .u = v.uv[0],
+                                      .normal = {v.normal.x, v.normal.y, v.normal.z},
+                                      .v = v.uv[1]});
+        }
+        for (const Triangle& t : triangles_) {
+            trace.indices.insert(trace.indices.end(), t.indices.begin(), t.indices.end());
+            trace.triangles.push_back({.slice = t.slice, .cull = t.cull});
+        }
+        for (const Light& l : lights_) {
+            trace.lights.push_back({.type = l.type,
+                                    .position = {l.position.x, l.position.y, l.position.z},
+                                    .direction = {l.direction.x, l.direction.y, l.direction.z},
+                                    .color = {l.color.x, l.color.y, l.color.z},
+                                    .energy = l.energy,
+                                    .indirect_energy = l.indirect_energy,
+                                    .size = l.size,
+                                    .range = l.range,
+                                    .attenuation = l.attenuation,
+                                    .cos_spot_angle = l.cos_spot_angle,
+                                    .inv_spot_attenuation = l.inv_spot_attenuation,
+                                    .shadow_blur = l.shadow_blur,
+                                    .static_bake = l.static_bake});
+        }
+        trace.width = static_cast<std::uint32_t>(albedo_.width);
+        trace.height = static_cast<std::uint32_t>(albedo_.height);
+        trace.slices = static_cast<std::uint32_t>(albedo_.slices);
+        std::vector<Rgba> normals(normal_.texels.size());
+        for (std::size_t i = 0; i < normals.size(); ++i) {
+            const Vec3 n = normal_.texels[i];
+            normals[i] = {n.x, n.y, n.z, 0.0F};
+        }
+        trace.albedo = albedo_.texels;
+        trace.emission = emission_.texels;
+        trace.position = position_.texels;
+        trace.normal = normals;
+        trace.environment_width = static_cast<std::uint32_t>(environment_.width);
+        trace.environment_height = static_cast<std::uint32_t>(environment_.height);
+        trace.environment = environment_.texels;
+        trace.rays = settings_.rays;
+        trace.bounces = settings_.bounces;
+        trace.bounce_indirect_energy = settings_.bounce_indirect_energy;
+        trace.use_texture_for_bounces = settings_.use_texture_for_bounces;
+        trace.bias = settings_.bias;
+        trace.supersampling = settings_.supersampling;
+        trace.exposure = settings_.exposure;
+        trace.world_size = world_size_;
+        trace.probe_points = probes_->points;
+        trace.probe_rays = probes_->rays;
+        const world::Affine3D space = world::orthonormalized(probes_->space);
+        for (std::size_t c = 0; c < 3; ++c) {
+            const Vec3 column =
+                space.basis({c == 0 ? 1.0F : 0.0F, c == 1 ? 1.0F : 0.0F, c == 2 ? 1.0F : 0.0F});
+            trace.probe_space.at(c) = {column.x, column.y, column.z};
+        }
+        auto traced = settings_.device->trace_lightmap(trace);
+        if (!traced) {
+            if (traced.error().code != ErrorCode::NotFound) {
+                log::warn("the GPU couldn't trace the lightmap; the CPU traces it",
+                          {{"error", traced.error().message}});
+            }
+            return false;
+        }
+        render::LightmapTraced& light = traced.value();
+        light_source_.resize(albedo_.width, albedo_.height, albedo_.slices, Rgba{});
+        accum_.resize(albedo_.width, albedo_.height, albedo_.slices, Rgba{});
+        light_source_.texels = std::move(light.light_source);
+        accum_.texels = std::move(light.accum);
+        out.probe_sh = std::move(light.probe_sh);
+        return true;
     }
 
     // MODE_DIRECT_LIGHT: each texel's light from the lights, those that bake whole into the

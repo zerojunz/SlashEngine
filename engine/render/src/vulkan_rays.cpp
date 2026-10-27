@@ -2,6 +2,7 @@
 
 #if !defined(__EMSCRIPTEN__)
 
+#include "lightmap_light_shaders.hpp"
 #include "ray_light_shaders.hpp"
 #include "ray_shadows_shaders.hpp"
 
@@ -106,6 +107,36 @@ struct RayLightRecord {
     Float4 shadow{};
 };
 static_assert(sizeof(RayLightRecord) == std::size_t{6} * 16);
+
+// shaders/lightmap_light.comp's passes (its kPass): the direct light, a pass of bounces, a pass
+// of the probes' rays.
+constexpr std::size_t kBakePasses = 3;
+constexpr std::uint32_t kBakeGroupSize = 64;
+// Godot's rendering/lightmapping/bake_performance/region_size, squared: the texels a dispatch
+// lights at most; max_rays_per_pass and max_rays_per_probe_pass, the rays.
+constexpr std::uint32_t kBakeRegionTexels = 512U * 512U;
+constexpr std::uint32_t kBakeRaysPerPass = 32;
+constexpr std::uint32_t kBakeRaysPerProbePass = 64;
+
+// Its Params and Light, in std430.
+struct LightmapParams {
+    std::array<std::uint32_t, 4> size{};
+    std::array<std::uint32_t, 4> counts{};
+    std::array<std::uint32_t, 4> step{};
+    std::array<std::uint32_t, 4> flags{};
+    std::array<float, 4> values{};
+    std::array<float, 4> more{};
+    std::array<std::array<float, 4>, 3> space{};
+};
+static_assert(sizeof(LightmapParams) == std::size_t{9} * 16);
+struct LightmapLightRecord {
+    std::array<float, 4> position{};
+    std::array<float, 4> direction{};
+    std::array<float, 4> color{};
+    std::array<float, 4> shape{};
+    std::array<float, 4> more{};
+};
+static_assert(sizeof(LightmapLightRecord) == std::size_t{5} * 16);
 
 // Vulkan's calls this needs, from the device SDL made.
 struct Calls {
@@ -327,15 +358,21 @@ public:
                 calls_.destroy_pipeline(device_, pipeline, nullptr);
             }
         }
+        for (VkPipeline pipeline : bake_pipelines_) {
+            if (pipeline != VK_NULL_HANDLE) {
+                calls_.destroy_pipeline(device_, pipeline, nullptr);
+            }
+        }
         if (pipeline_ != VK_NULL_HANDLE) {
             calls_.destroy_pipeline(device_, pipeline_, nullptr);
         }
-        for (VkPipelineLayout layout : {pipeline_layout_, light_pipeline_layout_}) {
+        for (VkPipelineLayout layout :
+             {pipeline_layout_, light_pipeline_layout_, bake_pipeline_layout_}) {
             if (layout != VK_NULL_HANDLE) {
                 calls_.destroy_pipeline_layout(device_, layout, nullptr);
             }
         }
-        for (VkDescriptorSetLayout layout : {set_layout_, light_set_layout_}) {
+        for (VkDescriptorSetLayout layout : {set_layout_, light_set_layout_, bake_set_layout_}) {
             if (layout != VK_NULL_HANDLE) {
                 calls_.destroy_set_layout(device_, layout, nullptr);
             }
@@ -359,6 +396,7 @@ public:
         calls_.get_properties2(physical_, &properties);
         scratch_alignment_ =
             std::max<VkDeviceSize>(1, structures.minAccelerationStructureScratchOffsetAlignment);
+        max_storage_range_ = properties.properties.limits.maxStorageBufferRange;
 
         // The prepass's texels, read whole; the draws' textures, filtered and wrapped as their
         // draws sample them, at their first level as the software device's rays sample them;
@@ -902,6 +940,410 @@ private:
                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                        VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_SHADER_READ_BIT);
         return {};
+    }
+
+    Result<LightmapTraced> trace_lightmap(const LightmapTrace& trace) override {
+        const std::size_t texels = std::size_t{trace.width} * trace.height * trace.slices;
+        if (trace.indices.empty() || trace.indices.size() != trace.triangles.size() * 3 ||
+            texels == 0 || trace.albedo.size() != texels || trace.emission.size() != texels ||
+            trace.position.size() != texels || trace.normal.size() != texels ||
+            trace.environment.size() !=
+                std::size_t{trace.environment_width} * trace.environment_height ||
+            trace.environment.empty()) {
+            return Error{ErrorCode::InvalidArgument, "a lightmap trace's layers don't fit it"};
+        }
+        const VkDeviceSize texel_bytes = VkDeviceSize{texels} * sizeof(std::array<float, 4>);
+        const VkDeviceSize probe_bytes =
+            VkDeviceSize{trace.probe_points.size()} * 9 * sizeof(std::array<float, 4>);
+        if (texel_bytes > max_storage_range_ || probe_bytes > max_storage_range_) {
+            return Error{ErrorCode::PlatformFailure,
+                         "the lightmap's atlas is larger than this GPU's storage buffers"};
+        }
+        if (auto made = make_bake_pipelines(); !made) {
+            return made.error();
+        }
+        Bake bake(*this);
+
+        // The inputs, through staging buffers into the GPU's memory; the outputs, cleared.
+        std::vector<std::array<float, 4>> probes(trace.probe_points.size());
+        for (std::size_t i = 0; i < probes.size(); ++i) {
+            probes[i] = {trace.probe_points[i][0], trace.probe_points[i][1],
+                         trace.probe_points[i][2], 0.0F};
+        }
+        std::vector<std::array<std::uint32_t, 2>> triangles(trace.triangles.size());
+        for (std::size_t i = 0; i < triangles.size(); ++i) {
+            const BakeTriangle& t = trace.triangles[i];
+            // CullMode's order is the shader's: back, front, none.
+            triangles[i] = {t.slice, static_cast<std::uint32_t>(t.cull)};
+        }
+        std::vector<LightmapLightRecord> lights(trace.lights.size());
+        for (std::size_t i = 0; i < lights.size(); ++i) {
+            const BakeLight& l = trace.lights[i];
+            // LightType's order is the shader's: directional, omni, spot.
+            const auto kind = static_cast<float>(l.type);
+            lights[i] = {
+                .position = {l.position[0], l.position[1], l.position[2], kind},
+                .direction = {l.direction[0], l.direction[1], l.direction[2], l.energy},
+                .color = {l.color[0], l.color[1], l.color[2], l.indirect_energy},
+                .shape = {l.size, l.range, l.attenuation, l.cos_spot_angle},
+                .more = {l.inv_spot_attenuation, l.shadow_blur, l.static_bake ? 1.0F : 0.0F, 0.0F}};
+        }
+        struct Input {
+            const void* data;
+            VkDeviceSize bytes;
+        };
+        // By binding, from 2: vertices, indices, triangles, lights, albedo, emission, positions,
+        // normals, environment, then 13: the probes.
+        const std::array<Input, 10> inputs{{
+            {trace.vertices.data(), trace.vertices.size() * sizeof(BakeVertex)},
+            {trace.indices.data(), trace.indices.size() * sizeof(std::uint32_t)},
+            {triangles.data(), triangles.size() * sizeof(triangles[0])},
+            {lights.data(), lights.size() * sizeof(LightmapLightRecord)},
+            {trace.albedo.data(), trace.albedo.size_bytes()},
+            {trace.emission.data(), trace.emission.size_bytes()},
+            {trace.position.data(), trace.position.size_bytes()},
+            {trace.normal.data(), trace.normal.size_bytes()},
+            {trace.environment.data(), trace.environment.size_bytes()},
+            {probes.data(), probes.size() * sizeof(probes[0])},
+        }};
+        static_assert(sizeof(BakeVertex) == 32);
+        constexpr VkBufferUsageFlags kInput =
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+            VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+        constexpr VkBufferUsageFlags kOutput = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                                               VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                               VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        std::array<Buffer, 10> in{};
+        std::array<Buffer, 10> staging{};
+        for (std::size_t i = 0; i < inputs.size(); ++i) {
+            auto made = bake.buffer(inputs.at(i).bytes, kInput, false);
+            if (!made) {
+                return made.error();
+            }
+            in.at(i) = made.value();
+            if (inputs.at(i).bytes == 0) {
+                continue;
+            }
+            auto stage = bake.buffer(inputs.at(i).bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, true);
+            if (!stage) {
+                return stage.error();
+            }
+            staging.at(i) = stage.value();
+            std::memcpy(staging.at(i).mapped, inputs.at(i).data, inputs.at(i).bytes);
+        }
+        // light_source, accum, probe sums.
+        const std::array<VkDeviceSize, 3> output_bytes{texel_bytes, texel_bytes, probe_bytes};
+        std::array<Buffer, 3> out{};
+        for (std::size_t i = 0; i < out.size(); ++i) {
+            auto made = bake.buffer(output_bytes.at(i), kOutput, false);
+            if (!made) {
+                return made.error();
+            }
+            out.at(i) = made.value();
+        }
+        auto params_made =
+            bake.buffer(sizeof(LightmapParams), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true);
+        if (!params_made) {
+            return params_made.error();
+        }
+        const Buffer params_buffer = params_made.value();
+        auto instance_made =
+            bake.buffer(sizeof(VkAccelerationStructureInstanceKHR),
+                        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, true);
+        if (!instance_made) {
+            return instance_made.error();
+        }
+        const Buffer instance_buffer = instance_made.value();
+
+        // One bottom-level structure of every triangle, and a top-level one with it once.
+        VkAccelerationStructureGeometryKHR geometry{};
+        geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+        geometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+        geometry.flags = 0; // not opaque, so the shader tests each triangle as the CPU does
+        VkAccelerationStructureGeometryTrianglesDataKHR& data = geometry.geometry.triangles;
+        data.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+        data.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
+        data.vertexData.deviceAddress = in[0].address;
+        data.vertexStride = sizeof(BakeVertex);
+        data.maxVertex = static_cast<std::uint32_t>(trace.vertices.size() - 1);
+        data.indexType = VK_INDEX_TYPE_UINT32;
+        data.indexData.deviceAddress = in[1].address;
+        VkAccelerationStructureBuildGeometryInfoKHR bottom{};
+        bottom.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+        bottom.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+        bottom.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+        bottom.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+        bottom.geometryCount = 1;
+        bottom.pGeometries = &geometry;
+        const auto triangle_count = static_cast<std::uint32_t>(trace.triangles.size());
+        VkAccelerationStructureBuildSizesInfoKHR bottom_sizes{};
+        bottom_sizes.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+        calls_.build_sizes(device_, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &bottom,
+                           &triangle_count, &bottom_sizes);
+        auto bottom_made = make_structure(bottom_sizes.accelerationStructureSize,
+                                          VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
+        if (!bottom_made) {
+            return bottom_made.error();
+        }
+        bake.structures.push_back(bottom_made.value());
+        const Structure bottom_structure = bottom_made.value();
+
+        VkAccelerationStructureInstanceKHR instance{};
+        instance.transform.matrix[0][0] = 1.0F;
+        instance.transform.matrix[1][1] = 1.0F;
+        instance.transform.matrix[2][2] = 1.0F;
+        instance.mask = 0xFF;
+        instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+        instance.accelerationStructureReference = bottom_structure.address;
+        std::memcpy(instance_buffer.mapped, &instance, sizeof(instance));
+        VkAccelerationStructureGeometryKHR instances{};
+        instances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+        instances.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+        instances.geometry.instances.sType =
+            VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
+        instances.geometry.instances.arrayOfPointers = VK_FALSE;
+        instances.geometry.instances.data.deviceAddress = instance_buffer.address;
+        VkAccelerationStructureBuildGeometryInfoKHR top{};
+        top.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+        top.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+        top.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+        top.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+        top.geometryCount = 1;
+        top.pGeometries = &instances;
+        const std::uint32_t one = 1;
+        VkAccelerationStructureBuildSizesInfoKHR top_sizes{};
+        top_sizes.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+        calls_.build_sizes(device_, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &top, &one,
+                           &top_sizes);
+        auto top_made = make_structure(top_sizes.accelerationStructureSize,
+                                       VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
+        if (!top_made) {
+            return top_made.error();
+        }
+        bake.structures.push_back(top_made.value());
+        const Structure top_structure = top_made.value();
+        auto scratch_made =
+            bake.buffer(std::max(bottom_sizes.buildScratchSize, top_sizes.buildScratchSize) +
+                            scratch_alignment_,
+                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, false);
+        if (!scratch_made) {
+            return scratch_made.error();
+        }
+        const VkDeviceAddress scratch = aligned(scratch_made.value().address);
+        bottom.dstAccelerationStructure = bottom_structure.structure;
+        bottom.scratchData.deviceAddress = scratch;
+        top.dstAccelerationStructure = top_structure.structure;
+        top.scratchData.deviceAddress = scratch;
+
+        if (auto set_up = run_commands([&](VkCommandBuffer native) -> Result<void> {
+                for (std::size_t i = 0; i < inputs.size(); ++i) {
+                    if (inputs.at(i).bytes > 0) {
+                        const VkBufferCopy region{
+                            .srcOffset = 0, .dstOffset = 0, .size = inputs.at(i).bytes};
+                        calls_.copy_buffer(native, staging.at(i).buffer, in.at(i).buffer, 1,
+                                           &region);
+                    }
+                }
+                for (const Buffer& buffer : out) {
+                    calls_.fill_buffer(native, buffer.buffer, 0, VK_WHOLE_SIZE, 0);
+                }
+                memory_barrier(native, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                               VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR |
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+                const VkAccelerationStructureBuildRangeInfoKHR bottom_range{.primitiveCount =
+                                                                                triangle_count,
+                                                                            .primitiveOffset = 0,
+                                                                            .firstVertex = 0,
+                                                                            .transformOffset = 0};
+                const VkAccelerationStructureBuildRangeInfoKHR* bottom_ranges = &bottom_range;
+                calls_.build_structures(native, 1, &bottom, &bottom_ranges);
+                // The top level's build waits for the bottom's, and reuses its scratch.
+                memory_barrier(native, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                               VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
+                               VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                               VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR |
+                                   VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR);
+                const VkAccelerationStructureBuildRangeInfoKHR top_range{.primitiveCount = 1,
+                                                                         .primitiveOffset = 0,
+                                                                         .firstVertex = 0,
+                                                                         .transformOffset = 0};
+                const VkAccelerationStructureBuildRangeInfoKHR* top_ranges = &top_range;
+                calls_.build_structures(native, 1, &top, &top_ranges);
+                memory_barrier(native, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                               VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                               VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR);
+                return {};
+            });
+            !set_up) {
+            return set_up.error();
+        }
+
+        // The descriptors: the structure, Params, the inputs and the outputs.
+        const std::array<VkDescriptorPoolSize, 2> sizes{{
+            {VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 14},
+        }};
+        VkDescriptorPoolCreateInfo pool{};
+        pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        pool.maxSets = 1;
+        pool.poolSizeCount = 2;
+        pool.pPoolSizes = sizes.data();
+        if (const VkResult pooled = calls_.create_pool(device_, &pool, nullptr, &bake.pool);
+            pooled != VK_SUCCESS) {
+            return vulkan_error("making a bake's descriptor pool", pooled);
+        }
+        VkDescriptorSet set = VK_NULL_HANDLE;
+        VkDescriptorSetAllocateInfo allocate{};
+        allocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocate.descriptorPool = bake.pool;
+        allocate.descriptorSetCount = 1;
+        allocate.pSetLayouts = &bake_set_layout_;
+        if (const VkResult allocated = calls_.allocate_sets(device_, &allocate, &set);
+            allocated != VK_SUCCESS) {
+            return vulkan_error("allocating a bake's descriptor set", allocated);
+        }
+        VkWriteDescriptorSetAccelerationStructureKHR structure{};
+        structure.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+        structure.accelerationStructureCount = 1;
+        structure.pAccelerationStructures = &top_structure.structure;
+        // Bindings 1 to 14.
+        const std::array<VkBuffer, 14> bound{
+            params_buffer.buffer, in[0].buffer,  in[1].buffer, in[2].buffer, in[3].buffer,
+            in[4].buffer,         in[5].buffer,  in[6].buffer, in[7].buffer, in[8].buffer,
+            out[0].buffer,        out[1].buffer, in[9].buffer, out[2].buffer};
+        std::array<VkDescriptorBufferInfo, 14> buffers{};
+        std::array<VkWriteDescriptorSet, 15> writes{};
+        for (std::uint32_t i = 0; i < writes.size(); ++i) {
+            VkWriteDescriptorSet& write = writes.at(i);
+            write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            write.dstSet = set;
+            write.dstBinding = i;
+            write.descriptorCount = 1;
+            if (i == 0) {
+                write.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+                write.pNext = &structure;
+                continue;
+            }
+            buffers.at(i - 1) = {.buffer = bound.at(i - 1), .offset = 0, .range = VK_WHOLE_SIZE};
+            write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            write.pBufferInfo = &buffers.at(i - 1);
+        }
+        calls_.update_sets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0,
+                           nullptr);
+
+        LightmapParams params;
+        params.size = {trace.width, trace.height, trace.slices, trace.environment_width};
+        params.counts = {trace.environment_height, static_cast<std::uint32_t>(lights.size()),
+                         trace.rays, trace.bounces};
+        params.flags = {trace.use_texture_for_bounces ? 1U : 0U, 0, 0, 0};
+        params.values = {trace.bias, trace.supersampling, trace.exposure, trace.world_size};
+        params.more = {trace.bounce_indirect_energy, 0.0F, 0.0F, 0.0F};
+        for (std::size_t c = 0; c < 3; ++c) {
+            params.space.at(c) = {trace.probe_space.at(c)[0], trace.probe_space.at(c)[1],
+                                  trace.probe_space.at(c)[2], 0.0F};
+        }
+        // One dispatch of a pass over count invocations, its Params set first.
+        const auto dispatch = [&](std::size_t pass, std::uint32_t count) -> Result<void> {
+            std::memcpy(params_buffer.mapped, &params, sizeof(params));
+            return run_commands([&](VkCommandBuffer native) -> Result<void> {
+                memory_barrier(native,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_HOST_BIT,
+                               VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_HOST_WRITE_BIT,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+                calls_.bind_pipeline(native, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                     bake_pipelines_.at(pass));
+                calls_.bind_sets(native, VK_PIPELINE_BIND_POINT_COMPUTE, bake_pipeline_layout_, 0,
+                                 1, &set, 0, nullptr);
+                calls_.dispatch(native, (count + kBakeGroupSize - 1) / kBakeGroupSize, 1, 1);
+                return {};
+            });
+        };
+        // Each slice's texels a region at a time: the direct light, then each pass of bounces.
+        const std::uint32_t slice_texels = trace.width * trace.height;
+        const auto each_region = [&](std::size_t pass) -> Result<void> {
+            for (std::uint32_t slice = 0; slice < trace.slices; ++slice) {
+                for (std::uint32_t first = 0; first < slice_texels; first += kBakeRegionTexels) {
+                    const std::uint32_t end = std::min(first + kBakeRegionTexels, slice_texels);
+                    params.step[0] = slice;
+                    params.flags[1] = first;
+                    params.flags[2] = end;
+                    if (auto ran = dispatch(pass, end - first); !ran) {
+                        return ran;
+                    }
+                }
+            }
+            return {};
+        };
+        if (auto ran = each_region(0); !ran) {
+            return ran.error();
+        }
+        if (trace.bounces > 0) {
+            for (std::uint32_t from = 0; from < trace.rays; from += kBakeRaysPerPass) {
+                params.step[1] = from;
+                params.step[2] = std::min(from + kBakeRaysPerPass, trace.rays);
+                if (auto ran = each_region(1); !ran) {
+                    return ran.error();
+                }
+            }
+        }
+        const auto probe_count = static_cast<std::uint32_t>(trace.probe_points.size());
+        const std::uint32_t probe_rays = std::clamp(trace.probe_rays, 16U, 8192U);
+        if (probe_count > 0) {
+            params.step[3] = probe_count;
+            for (std::uint32_t from = 0; from < probe_rays; from += kBakeRaysPerProbePass) {
+                params.step[1] = from;
+                params.step[2] = std::min(from + kBakeRaysPerProbePass, probe_rays);
+                if (auto ran = dispatch(2, probe_count); !ran) {
+                    return ran.error();
+                }
+            }
+        }
+
+        // Back to the CPU.
+        std::array<Buffer, 3> back{};
+        for (std::size_t i = 0; i < back.size(); ++i) {
+            auto made = bake.buffer(output_bytes.at(i), VK_BUFFER_USAGE_TRANSFER_DST_BIT, true);
+            if (!made) {
+                return made.error();
+            }
+            back.at(i) = made.value();
+        }
+        if (auto read = run_commands([&](VkCommandBuffer native) -> Result<void> {
+                memory_barrier(native, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                               VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               VK_ACCESS_TRANSFER_READ_BIT);
+                for (std::size_t i = 0; i < back.size(); ++i) {
+                    if (output_bytes.at(i) > 0) {
+                        const VkBufferCopy region{
+                            .srcOffset = 0, .dstOffset = 0, .size = output_bytes.at(i)};
+                        calls_.copy_buffer(native, out.at(i).buffer, back.at(i).buffer, 1, &region);
+                    }
+                }
+                memory_barrier(native, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                               VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+                return {};
+            });
+            !read) {
+            return read.error();
+        }
+        LightmapTraced traced;
+        traced.light_source.resize(texels);
+        traced.accum.resize(texels);
+        std::memcpy(traced.light_source.data(), back[0].mapped, texel_bytes);
+        std::memcpy(traced.accum.data(), back[1].mapped, texel_bytes);
+        traced.probe_sh.resize(probe_count);
+        const float scale = 4.0F / static_cast<float>(probe_rays);
+        const auto* sums = static_cast<const std::array<float, 4>*>(back[2].mapped);
+        for (std::size_t probe = 0; probe < probe_count; ++probe) {
+            for (std::size_t j = 0; j < 9; ++j) {
+                const std::array<float, 4>& sum = sums[(probe * 9) + j];
+                traced.probe_sh[probe].at(j) = {sum[0] * scale, sum[1] * scale, sum[2] * scale};
+            }
+        }
+        return traced;
     }
 
     // An SDL texture's Vulkan image and view.
@@ -1543,12 +1985,112 @@ private:
         release(mesh.indices);
     }
 
+    // A bake's buffers, structures and descriptors, let go of when it ends.
+    struct Bake {
+        explicit Bake(VulkanRaysImpl& rays) : rays_(rays) {}
+        Bake(const Bake&) = delete;
+        Bake& operator=(const Bake&) = delete;
+        Bake(Bake&&) = delete;
+        Bake& operator=(Bake&&) = delete;
+        ~Bake() {
+            SDL_WaitForGPUIdle(rays_.sdl_);
+            for (Buffer& buffer : buffers) {
+                rays_.release(buffer);
+            }
+            for (Structure& structure : structures) {
+                rays_.release(structure);
+            }
+            if (pool != VK_NULL_HANDLE) {
+                rays_.calls_.destroy_pool(rays_.device_, pool, nullptr);
+            }
+        }
+
+        // A buffer the bake keeps until it ends.
+        Result<Buffer> buffer(VkDeviceSize size, VkBufferUsageFlags usage, bool host) {
+            auto made = rays_.make_buffer(size, usage, host);
+            if (made) {
+                buffers.push_back(made.value());
+            }
+            return made;
+        }
+
+        VulkanRaysImpl& rays_;
+        std::vector<Buffer> buffers;
+        std::vector<Structure> structures;
+        VkDescriptorPool pool = VK_NULL_HANDLE;
+    };
+
+    // Runs record on a command buffer of its own, submitted and waited for.
+    template <typename F>
+    Result<void> run_commands(F&& record) {
+        SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(sdl_);
+        if (commands == nullptr) {
+            return Error{ErrorCode::PlatformFailure,
+                         std::string("acquiring a command buffer for a bake failed: ") +
+                             SDL_GetError()};
+        }
+        auto* native = static_cast<VkCommandBuffer>(SDL_SlashGPUNativeCommandBuffer(commands));
+        if (native == VK_NULL_HANDLE) {
+            SDL_CancelGPUCommandBuffer(commands);
+            return Error{ErrorCode::PlatformFailure,
+                         "a bake's command buffer has no Vulkan command buffer"};
+        }
+        if (auto recorded = record(native); !recorded) {
+            // Commands recorded through Vulkan can't be taken back, so they run, harmlessly.
+            if (SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commands)) {
+                SDL_WaitForGPUFences(sdl_, true, &fence, 1);
+                SDL_ReleaseGPUFence(sdl_, fence);
+            }
+            return recorded;
+        }
+        SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commands);
+        if (fence == nullptr) {
+            return Error{ErrorCode::PlatformFailure,
+                         std::string("submitting a bake's commands failed: ") + SDL_GetError()};
+        }
+        const bool waited = SDL_WaitForGPUFences(sdl_, true, &fence, 1);
+        SDL_ReleaseGPUFence(sdl_, fence);
+        if (!waited) {
+            return Error{ErrorCode::PlatformFailure,
+                         std::string("waiting for a bake's commands failed: ") + SDL_GetError()};
+        }
+        return {};
+    }
+
+    Result<void> make_bake_pipelines() {
+        if (bake_pipelines_[0] != VK_NULL_HANDLE) {
+            return {};
+        }
+        // By binding: the structure, then shaders/lightmap_light.comp's buffers.
+        constexpr std::pair<VkDescriptorType, std::uint32_t> kStorage{
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1};
+        return make_pipeline({{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1},
+                              kStorage,
+                              kStorage,
+                              kStorage,
+                              kStorage,
+                              kStorage,
+                              kStorage,
+                              kStorage,
+                              kStorage,
+                              kStorage,
+                              kStorage,
+                              kStorage,
+                              kStorage,
+                              kStorage,
+                              kStorage},
+                             shaders::kLightmapLightSpirv, sizeof(shaders::kLightmapLightSpirv),
+                             bake_set_layout_, bake_pipeline_layout_, bake_pipelines_,
+                             "lightmap's");
+    }
+
     SDL_GPUDevice* sdl_;
     VkPhysicalDevice physical_;
     VkDevice device_;
     Calls calls_;
     VkPhysicalDeviceMemoryProperties memory_{};
     VkDeviceSize scratch_alignment_ = 256;
+    VkDeviceSize max_storage_range_ = 1U << 27U;
     VkSampler sampler_ = VK_NULL_HANDLE;
     // Linear or (1) nearest, clamped or (2) repeating.
     std::array<VkSampler, 4> texture_samplers_{};
@@ -1559,6 +2101,9 @@ private:
     VkDescriptorSetLayout light_set_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout light_pipeline_layout_ = VK_NULL_HANDLE;
     std::array<VkPipeline, kLightPasses> light_pipelines_{};
+    VkDescriptorSetLayout bake_set_layout_ = VK_NULL_HANDLE;
+    VkPipelineLayout bake_pipeline_layout_ = VK_NULL_HANDLE;
+    std::array<VkPipeline, kBakePasses> bake_pipelines_{};
     VkDescriptorPool pool_ = VK_NULL_HANDLE;
     std::array<Slot, kSlots> slots_{};
     std::size_t next_slot_ = 0;
