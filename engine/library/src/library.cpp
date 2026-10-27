@@ -84,7 +84,10 @@ std::string recipe_texture(const json::Value& recipe) {
     return {};
 }
 
-// Fills in a model recipe's size and triangles, and checks it builds as written.
+// Fills in a model's size, triangles, pivot, parts and points.
+void describe_model(const scene3d::Model& model, Record& record);
+
+// Fills in a model recipe's summary, and checks it builds as written.
 Result<void> describe_recipe(std::string_view data, Record& record) {
     auto doc = json::parse(data);
     if (!doc) {
@@ -105,7 +108,45 @@ Result<void> describe_recipe(std::string_view data, Record& record) {
     if (!model) {
         return model.error();
     }
-    const scene3d::ModelSummary summary = scene3d::summarize(model.value());
+    describe_model(model.value(), record);
+    return {};
+}
+
+// Fills in a .glb model's summary, and checks it loads with nothing outside the file.
+Result<void> describe_glb(std::string_view data, std::string_view path, Record& record) {
+    std::string outside;
+    const auto reads_outside = [&] {
+        return make_error(ErrorCode::InvalidArgument,
+                          "the library keeps .glb files that hold their own buffers and images, "
+                          "and this one reads \"" +
+                              outside + "\"");
+    };
+    auto model = scene3d::load_model(data, path, [&](std::string_view name) -> Result<std::string> {
+        outside = std::string(name);
+        return make_error(ErrorCode::NotFound, "outside the file");
+    });
+    if (!outside.empty()) {
+        return reads_outside();
+    }
+    if (!model) {
+        return model.error();
+    }
+    // Images are read when the model draws, so look for them here.
+    for (const scene3d::ModelImage& image : model.value().images) {
+        if (!image.path.empty()) {
+            outside = image.path;
+            break;
+        }
+    }
+    if (!outside.empty()) {
+        return reads_outside();
+    }
+    describe_model(model.value(), record);
+    return {};
+}
+
+void describe_model(const scene3d::Model& model, Record& record) {
+    const scene3d::ModelSummary summary = scene3d::summarize(model);
     const scene3d::Bounds& box = summary.bounds;
     record.size = {rounded(box.max.x - box.min.x), rounded(box.max.y - box.min.y),
                    rounded(box.max.z - box.min.z)};
@@ -119,7 +160,6 @@ Result<void> describe_recipe(std::string_view data, Record& record) {
     for (const scene3d::ModelSummary::Point& point : summary.points) {
         record.points.push_back(point.name);
     }
-    return {};
 }
 
 // A name no other writer uses at the same time, for a file written whole then moved into place.
@@ -413,7 +453,7 @@ std::string_view type_of(std::string_view extension) {
     if (lower == ".wav" || lower == ".ogg" || lower == ".mp3") {
         return "sound";
     }
-    if (lower == scene3d::kModelRecipeSuffix) {
+    if (lower == scene3d::kModelRecipeSuffix || lower == ".glb") {
         return "model";
     }
     return {};
@@ -430,14 +470,15 @@ Result<void> describe_file(std::string_view data, std::string_view path, Record&
     if (type.empty()) {
         return make_error(ErrorCode::InvalidArgument,
                           "\"" + std::string(path) +
-                              "\" is not a file the library keeps: .png, .bmp, .wav, .ogg, .mp3 "
-                              "or .model.json");
+                              "\" is not a file the library keeps: .png, .bmp, .wav, .ogg, .mp3, "
+                              ".model.json or .glb");
     }
     record.type = std::string(type);
     record.format = extension.substr(1);
     record.bytes = static_cast<std::int64_t>(data.size());
     if (type == "model") {
-        return describe_recipe(data, record);
+        return extension == ".glb" ? describe_glb(data, path, record)
+                                   : describe_recipe(data, record);
     }
     if (type == "image") {
         auto image = render::decode_image(data);

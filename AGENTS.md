@@ -232,10 +232,13 @@ project, records feedback by itself: it opens each scene that draws a library fi
 what `canvas::summarize` sees with `SummaryOptions::contrast` (the edge contrast of each thing
 in the frame `canvas::capture` draws, `Shown::contrast`) and how small each file is drawn, from
 the texture paths on `FramePiece`s. Models are `.model.json` recipes kept with their `size`,
-`triangles`, `pivot`, parts and points from `scene3d::summarize` (`describe_recipe` in
-`src/library.cpp`, which refuses recipes naming texture files,
+`triangles`, `pivot`, parts and points from `scene3d::summarize`, and `.glb` files that hold
+their own buffers and images (`describe_recipe` and `describe_glb` in `src/library.cpp`; recipes
+naming texture files are refused,
 whose paths are a project's); `asset.refine` with `parameters` makes a version with new parameter
-values and no generator (`refine_model` in `src/commands.cpp`).
+values and no generator (`refine_model` in `src/commands.cpp`). `asset.add` of a file the
+project's `library.json` says came from an asset, changed since, keeps it as a new version of
+that asset (`used_version`).
 
 A team shares a library it hosts (`slash/library/team.hpp`): `providers.json`'s `library`, or
 `SLASH_LIBRARY_TEAM`, names a folder every teammate reaches or a library server

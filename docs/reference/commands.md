@@ -4807,7 +4807,8 @@ generator is called: the new version is the recipe with those values, checked as
 with the parent's description (followed by `prompt` when there is one), tags, license and
 author. A name the recipe has no parameter for is reported with the closest one, and a value
 that makes the recipe fail to build is reported at `/parameters`. Only `description`, `tags`,
-`prompt` and `path` go with it.
+`prompt` and `path` go with it. A `.glb` model has no parameters and no generator refines it yet:
+edit the file and [`asset.add`](#assetadd) it again, which keeps it as a new version.
 
 ```json
 {"id": "edc8a071", "parameters": {"length": 2.4}, "prompt": "long enough for four", "path": "props/long_bench.model.json"}
@@ -4881,18 +4882,22 @@ budgets that cover the path, as with `asset.generate`'s `path`, and the reply li
 
 ### asset.add
 
-Adds a project's `.png`, `.bmp`, `.wav`, `.ogg`, `.mp3` or `.model.json` file to the library,
-with its `description` (required), `tags`, `license` and `author`, and records it in
+Adds a project's `.png`, `.bmp`, `.wav`, `.ogg`, `.mp3`, `.model.json` or `.glb` file to the
+library, with its `description`, `tags`, `license` and `author`, and records it in
 `library.json`. A [model recipe](scene-format.md#model-recipes) must build as written and name no
-texture files, whose paths are a project's; it is kept with its `size` and `triangles`. A
-file the library already holds keeps its record, with the new tags added; a sound added again
-as music becomes music. Music is measured, keeping the facts its author gives (see
+texture files, whose paths are a project's, and a `.glb` model must hold its own buffers and
+images; models are kept with what [`model.inspect`](#modelinspect)'s brief form gives: `size`,
+`triangles`, `pivot`, `parts` and `points`. A file the library already holds keeps its record,
+with the new tags added; a sound added again as music becomes music. A file the project took
+from the library (as `library.json` says) and changed since is a new version of that asset: its
+`parent` is the one it came from, and its description, tags, license and author are that one's
+unless the call gives them. Music is measured, keeping the facts its author gives (see
 [music](#music)), and a track comes with its stems. Needs: `read`, `filesystem`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `path` | string | required | The file; a track's full mix |
-| `description` | string | required | A sentence for agents to read instead of the file |
+| `description` | string | the last version's | A sentence for agents to read instead of the file; required for a file that isn't a new version |
 | `tags` | string[] | | Words to find it by |
 | `license` | string | | Its license, such as `CC0-1.0` |
 | `author` | string | | Who made it |
@@ -4917,6 +4922,16 @@ as music becomes music. Music is measured, keeping the facts its author gives (s
 
 ```json
 {"beat_count":16,"bpm":140,"id":"bce0fcbcf493","key":"E minor","seconds":6.857,"stems":["drums","pads"],"type":"music"}
+```
+
+The game's copy of a bench, its seat made deeper by hand:
+
+```json
+{"path": "props/bench.model.json"}
+```
+
+```json
+{"id":"193f1c58e2f7","parent":"edc8a0716505","size":[1.2,0.45,0.45],"triangles":36,"type":"model"}
 ```
 
 ### asset.feedback
