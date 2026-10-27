@@ -36,6 +36,16 @@ inline constexpr std::size_t kMaxFrameVertices = std::size_t{1} << 22;
 [[nodiscard]] Result<void> check_particle_process(const ParticleProcess& process,
                                                   std::span<const ParticleStep> steps,
                                                   std::span<const ParticleShape> shapes);
+// A 3D system's amount (RenderDevice::create_particles_3d).
+[[nodiscard]] Result<void> check_particle_amount_3d(std::uint32_t amount);
+// That a 3D process material's curves, gradients and points fit, as the GPU devices take them,
+// and its steps' numbers are sound; every device checks the same.
+[[nodiscard]] Result<void> check_particle_process_3d(const ParticleProcess3D& process,
+                                                     std::span<const ParticleStep3D> steps);
+// That a mesh of mesh_vertices takes a draw pass of corners vertices at each of amount particles
+// (RenderDevice::fill_particle_mesh).
+[[nodiscard]] Result<void> check_particle_mesh(std::size_t amount, std::size_t corners,
+                                               std::size_t mesh_vertices);
 // That a chain names known and different systems (known says which are), from 1 to
 // kMaxParticleChain of them with as many steps each, and each run is sound.
 [[nodiscard]] Result<void> check_particle_chain(std::span<const ParticleRun> chain,

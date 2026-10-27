@@ -1603,10 +1603,17 @@ priority 1110) steps each emitter as `gpu_particles_2d` does and keeps its
 `render::ParticleStep3D`s; `scene3d::Renderer::add_gpu_particles` runs the steps its device
 hasn't (`RenderDevice::process_particles_3d`) and has `fill_particle_mesh` write each draw pass's
 mesh at every live particle into a mesh of world-space corners, culled by the visibility box.
+The GPU and WebGPU devices run them in compute shaders: `particles_process_3d.hlsl` steps the
+particles a thread each, `particles_sort_3d.hlsl` sorts a view depth pass's slots with a bitonic
+sort (keys of depth bits and index, so ties keep slot order) and `particles_mesh_3d.hlsl` writes
+the mesh's vertex buffer a thread a vertex, its box `ParticleMeshDraw3D::box_low` and `box_high`
+(the visibility box, which every device gives the mesh through `set_mesh_bounds`, so blended
+draws order alike); `src/particle_layout_3d.cpp` lays out the words they read.
 `render::process_particles_3d` and `particle_mesh_vertices_3d` (`engine/render/src/particles3d.cpp`,
-built with `-ffp-contract=off`) are the CPU twin every device runs for now; the compute shaders
-come next, and a change to one goes in both. `particles.eval` runs the steps kept on the CPU;
-`examples/gpu-particles-3d` has sparks, leaves and streaks.
+built with `-ffp-contract=off`) are their CPU twin, which the software and OpenGL devices run,
+and `tests/test_particle_compute_3d.cpp` holds every device to it; a change to one goes in both,
+and `check_particle_process_3d` checks what every device takes. `particles.eval` runs the steps
+kept on the CPU; `examples/gpu-particles-3d` has sparks, leaves and streaks.
 
 ## Job system
 

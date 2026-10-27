@@ -202,7 +202,15 @@ struct ParticleMeshDraw3D {
     // The material's uv1_scale and uv1_offset, applied before the frame moves them.
     std::array<float, 2> uv_scale{1.0F, 1.0F};
     std::array<float, 2> uv_offset{0.0F, 0.0F};
+    // The box the mesh is drawn in, which orders it among blended draws and culls its shadows:
+    // the emitter's visibility box, in the mesh's space, as Godot's visibility_aabb. A box whose
+    // low is above its high, as by default, is the box round the vertices made.
+    std::array<float, 3> box_low{1.0F, 1.0F, 1.0F};
+    std::array<float, 3> box_high{0.0F, 0.0F, 0.0F};
 
+    [[nodiscard]] bool has_box() const {
+        return box_low[0] <= box_high[0] && box_low[1] <= box_high[1] && box_low[2] <= box_high[2];
+    }
     bool operator==(const ParticleMeshDraw3D&) const = default;
 };
 

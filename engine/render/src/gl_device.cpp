@@ -866,6 +866,13 @@ public:
         return check_errors("updating a mesh");
     }
 
+    void set_mesh_bounds(MeshId mesh, std::array<float, 3> low,
+                         std::array<float, 3> high) override {
+        if (const auto it = meshes_.find(mesh); it != meshes_.end()) {
+            it->second.bounds = {.low = low, .high = high};
+        }
+    }
+
     void destroy_mesh(MeshId mesh) override {
         const auto it = meshes_.find(mesh);
         if (it == meshes_.end()) {
