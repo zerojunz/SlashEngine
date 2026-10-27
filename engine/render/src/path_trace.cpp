@@ -870,6 +870,11 @@ std::optional<Float3> path_reflection(const PathScene& scene, const PathTextures
     return add(add(surface.emitted, met->direct), add(ambient, shine));
 }
 
+Float3 path_environment(const PathScene& scene, const PathTextures& textures,
+                        const Float3& direction) {
+    return environment(scene, textures, direction);
+}
+
 std::optional<PathHit> path_hit(const PathScene& scene, const Float3& origin,
                                 const Float3& direction, float distance) {
     const std::optional<Found> found =

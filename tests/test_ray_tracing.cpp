@@ -640,3 +640,81 @@ TEST_CASE("hardware devices draw SSR where reflections would be traced, for now"
               draw_mirror(*device, mirrored(false)).pixels);
     }
 }
+
+TEST_CASE("project.json's rendering.ray_tracing turns ray-traced global illumination on") {
+    auto rendering = slash::json::parse(
+        R"({"ray_tracing": {"global_illumination": true, "global_illumination_samples": 0}})");
+    REQUIRE(rendering.ok());
+    const render::RayTracing3D read = render::ray_tracing(rendering.value());
+    CHECK(read.global_illumination);
+    CHECK(read.global_illumination_samples == 1);
+    CHECK(render::RayTracing3D{}.global_illumination_samples == 4);
+}
+
+TEST_CASE("light rays spread over the half of the sphere a surface faces") {
+    const Float3 normal{0.6F, 0.0F, 0.8F};
+    float facing = 0.0F;
+    constexpr std::uint32_t kSamples = 256;
+    for (std::uint32_t s = 0; s < kSamples; ++s) {
+        const Float3 way = render::detail::light_ray(normal, 5, 7, 32, s);
+        const float cosine = (way[0] * normal[0]) + (way[1] * normal[1]) + (way[2] * normal[2]);
+        CHECK(cosine >= 0.0F);
+        facing += cosine;
+        // Apart from occlusion rays'.
+        CHECK(way != render::detail::occlusion_ray(normal, 5, 7, 32, s));
+    }
+    CHECK(facing / kSamples == doctest::Approx(2.0F / 3.0F).epsilon(0.02));
+}
+
+namespace {
+
+// The camera above the floor and the red cube, lit by the sun from -X and no ambient light, its
+// ambient light traced where traced.
+render::Scene3D bounced(bool traced = true) {
+    render::Scene3D scene = above(shadowed(LightType::Directional), false);
+    scene.ambient = {0.0F, 0.0F, 0.0F};
+    scene.ray_tracing.global_illumination = traced;
+    scene.ray_tracing.global_illumination_samples = 16;
+    return scene;
+}
+
+// Where the 32-pixel image shows the floor beside the cube's lit face.
+constexpr std::array<std::uint32_t, 2> kBounce{12, 16};
+
+} // namespace
+
+TEST_CASE("ray-traced global illumination bounces the cube's light onto the floor") {
+    auto device = render::create_software_device();
+    CHECK(render::detail::ray_gi(bounced()).has_value());
+    render::Scene3D compatibility = bounced();
+    compatibility.method = render::RenderMethod::Compatibility;
+    CHECK_FALSE(render::detail::ray_gi(compatibility).has_value());
+
+    const Image traced = draw_shadow(*device, bounced());
+    const Image plain = draw_shadow(*device, bounced(false));
+    // Beside the cube's lit red face the floor turns red; the floor itself was gray.
+    CHECK(channel(plain, kBounce[0], kBounce[1], 0) == channel(plain, kBounce[0], kBounce[1], 1));
+    CHECK(channel(traced, kBounce[0], kBounce[1], 0) >
+          channel(traced, kBounce[0], kBounce[1], 1) + 4);
+    CHECK(channel(traced, kBounce[0], kBounce[1], 0) > channel(plain, kBounce[0], kBounce[1], 0));
+    // The same on any number of threads.
+    slash::jobs::Pool pool(4);
+    auto shared = render::create_software_device(&pool);
+    CHECK(draw_shadow(*shared, bounced()).pixels == traced.pixels);
+}
+
+TEST_CASE("open sky gives traced ambient light as the ambient light does") {
+    // With nothing around to bounce off, a pixel's rays all reach the environment: the ambient
+    // light, as without them.
+    auto device = render::create_software_device();
+    render::Scene3D traced = bounced();
+    traced.lights.clear();
+    traced.ambient = {0.3F, 0.3F, 0.3F};
+    render::Scene3D plain = traced;
+    plain.ray_tracing.global_illumination = false;
+    const Image with = draw_shadow(*device, traced);
+    const Image without = draw_shadow(*device, plain);
+    CHECK(std::abs(green(with, 1, 1) - green(without, 1, 1)) <= 1);
+    // Beside the cube, part of it is hidden, so it is darker, as ambient occlusion would make it.
+    CHECK(at(with, kBeside) < at(without, kBeside));
+}

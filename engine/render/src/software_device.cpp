@@ -1707,7 +1707,8 @@ private:
                               .probe_cubes = nullptr,
                               .decal_atlas = clustered ? &decal_atlas : nullptr,
                               .fog = {},
-                              .ray_shadows = {}};
+                              .ray_shadows = {},
+                              .gi = {}};
 
         std::vector<float> depth(std::size_t{target.width()} * target.height(), 0.0F);
         // TAA's frame: the next jitter, from the camera the target's frame before was seen from
@@ -1818,9 +1819,12 @@ private:
         std::vector<float> velocity;
         std::vector<float> ray_shadows;
         std::vector<float> ray_reflections;
+        std::vector<float> ray_light;
+        const std::optional<detail::RayGI> gi =
+            clustered ? detail::ray_gi(scene) : std::optional<detail::RayGI>{};
         const std::vector<detail::RayShadowLight> traced =
             clustered ? detail::ray_shadow_lights(scene) : std::vector<detail::RayShadowLight>{};
-        if (lights->ssao[0] != 0.0F || ssr || motion || !traced.empty()) {
+        if (lights->ssao[0] != 0.0F || ssr || motion || !traced.empty() || gi) {
             prepass_depth.assign(pixels, 0.0F);
             if (motion) {
                 // FSR 2 works the sky's motion vectors out from the depth, as Godot's.
@@ -1866,7 +1870,7 @@ private:
             // And its SSR.
             const std::optional<detail::RayReflection> reflection =
                 ssr ? detail::ray_reflection(scene) : std::nullopt;
-            if (!traced.empty() || occlusion || reflection) {
+            if (!traced.empty() || occlusion || reflection || gi) {
                 // Rays from each pixel the prepass drew, through every mesh the frame draws.
                 const std::vector<detail::PathMesh> meshes = path_meshes();
                 const detail::PathScene paths =
@@ -1890,6 +1894,13 @@ private:
                 if (reflection) {
                     ray_reflections = detail::run_ray_reflections(
                         paths, bindings, *reflection, rays, prepass_depth, normals.values, pool_);
+                }
+                if (gi) {
+                    ray_light = detail::run_ray_gi(paths, bindings, *gi, rays, prepass_depth,
+                                                   normals.values, pool_);
+                    maps.gi = ray_light;
+                    maps.ao_width = target.width();
+                    lights->screen[3] = 1.0F;
                 }
             }
             if (lights->ssao[0] != 0.0F) {
