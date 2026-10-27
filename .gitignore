@@ -10,3 +10,6 @@ node_modules/
 /import_godot_*/
 /import_unity_*/
 /bench_live_*/
+/import_unreal*/
+/unreal_editor_lookup/
+__pycache__/
