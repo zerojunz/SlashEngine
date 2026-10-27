@@ -5,6 +5,8 @@
 #include "slash/render/image.hpp"
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/model.hpp"
+#include "slash/scene3d/occlusion.hpp"
+#include "slash/scene3d/scene3d.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
 #include "slash/world/components.hpp"
 
@@ -261,6 +263,42 @@ Reply voxel_gi_bake(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+Reply occluder_bake(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    const std::string& id = params.find("id")->as_string();
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        return unknown_entity(world, id, "/id");
+    }
+    auto* occluder = world.ecs().try_get<world::OccluderInstance3D>(entity);
+    if (occluder == nullptr) {
+        return param_error(code::kInvalidParams, "/id", quoted(id) + " has no OccluderInstance3D");
+    }
+    std::vector<scene3d::Problem> problems;
+    scene3d::OccluderMesh baked =
+        scene3d::bake_occluder(world, entity, sources(session.assets()).models, problems);
+    json::Value result;
+    add_problems(world, problems, result);
+    // OccluderInstance3D::bake_scene's BAKE_ERROR_NO_MESHES.
+    if (baked.vertices.empty() || baked.indices.empty()) {
+        std::string message = "no meshes to bake: none is visible, opaque and on a layer of "
+                              "bake_mask";
+        return Reply::failure(code::kInvalidArgument, std::move(message), std::move(result));
+    }
+    result["vertices"] = baked.vertices.size();
+    result["triangles"] = baked.indices.size() / 3;
+    if (occluder->shape == "array" && occluder->vertices == baked.vertices &&
+        occluder->indices == baked.indices) {
+        session.mark_unchanged();
+        result["unchanged"] = true;
+        return Reply::success(std::move(result));
+    }
+    occluder->shape = "array";
+    occluder->vertices = std::move(baked.vertices);
+    occluder->indices = std::move(baked.indices);
+    return Reply::success(std::move(result));
+}
+
 } // namespace
 
 void register_lightmap_commands(Registry& registry) {
@@ -302,6 +340,20 @@ void register_lightmap_commands(Registry& registry) {
         .params = params_schema({{"id", std::move(voxel_gi)}, {"file", std::move(voxel_gi_file)}},
                                 {"id"}),
         .handler = voxel_gi_bake,
+    });
+
+    json::Value occluder = property("string", "An entity with an OccluderInstance3D.");
+    occluder["minLength"] = 1;
+    registry.add({
+        .name = "occluder.bake",
+        .description = "Bakes an OccluderInstance3D's shape from the visible, opaque meshes on "
+                       "layers of its bake_mask, as Godot's Bake Occluders: simplified to its "
+                       "bake_simplification_distance and set as its array shape. Returns the "
+                       "vertex and triangle counts and problems.",
+        .capabilities = {Edit},
+        .effect = Effect::Edit,
+        .params = params_schema({{"id", std::move(occluder)}}, {"id"}),
+        .handler = occluder_bake,
     });
 }
 

@@ -102,6 +102,7 @@ add_executable(slash_tests
     test_mesh.cpp
     test_model.cpp
     test_navigation.cpp
+    test_occlusion.cpp
     test_particle_graphs.cpp
     test_particles.cpp
     test_path.cpp

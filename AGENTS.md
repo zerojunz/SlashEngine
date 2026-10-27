@@ -1059,6 +1059,18 @@ every device draws from one index buffer (`mesh_index_buffer`, `IndexRange`).
 `rendering.mesh_lod.lod_change.threshold_pixels`; shadow maps draw the camera's LODs and
 reflection probes pick their own. `examples/mesh-lods` draws boulders near and far.
 
+Occlusion culling is Godot 4.6's raycast culler (`slash/scene3d/occlusion.hpp`,
+`src/occlusion.cpp`, after `raycast_occlusion_cull.cpp`). `OccluderInstance3D`'s quad, box,
+sphere, polygon and array shapes (`occluder_mesh`, as Godot's `Occluder3D`s make them) go into an
+`OccluderScene`, a bounding volume hierarchy of its own where Godot's uses Embree; with
+project.json's `rendering.occlusion_culling` on, `scene3d::Renderer::prepare` has an
+`OcclusionBuffer` cast a ray through each texel (sized and jittered as Godot's) and keep the
+farthest depth in its mipmaps, then hides each draw whose placed bounds `occluded` says are
+behind it, keeping shadow casters as `ShadowsOnly`. `bake_occluder` (`occluder.bake`) follows
+`OccluderInstance3D::bake_scene`: meshoptimizer simplifies each opaque surface, then corners and
+triangles are merged as Godot's `_bake_surface` does. `examples/occlusion-culling` hides houses
+behind a wall.
+
 Skinned meshes and model animations follow Godot's glTF importer, `Skeleton3D` and
 `AnimationMixer` (`engine/scene3d/src/skeleton.cpp`). A glTF model keeps its nodes (named as
 Godot's `validate_node_name` and made unique), skins (joints and inverse bind matrices),

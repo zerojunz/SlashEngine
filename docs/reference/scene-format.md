@@ -735,6 +735,9 @@ move, and lights every other mesh in its box.
 Its `lod_bias` (default `1`) is Godot's `GeometryInstance3D.lod_bias`: a model's surfaces pick
 their [LODs](#mesh-lods) as if the entity were that many times larger.
 
+Its `ignore_occlusion_culling` (default `false`) is Godot's: [occluders](#occlusion-culling) never
+hide the mesh.
+
 The primitive meshes are Godot's, made as Godot makes them: the same corners, normals, tangents
 and texture coordinates, so a texture wraps them as it does in Godot. An entity has at most one.
 Meshes of equal settings share one mesh on the GPU.
@@ -1964,6 +1967,53 @@ without them, as Godot's. A mesh takes a decal when its `layers` share a bit wit
 | `layers` | `1` | The render layers it is on, which cameras' `cull_mask` see |
 | `sorting_offset` | `0` | Meters taken off its distance when ordering decals, so it draws over closer ones |
 
+### Occlusion culling
+
+An `OccluderInstance3D` hides the meshes behind it from the camera, as Godot 4.6's: while
+project.json's [`rendering.occlusion_culling.use_occlusion_culling`](project-format.md#occlusion-culling)
+is on, each frame the renderer casts a ray through each texel of a small depth buffer into every
+occluder's triangles, as Godot's raycast occlusion culler does (on a bounding volume hierarchy of
+its own, where Godot's uses Embree), keeps the farthest depth in each texel of its mipmaps, and
+leaves out each mesh whose bounds are behind that depth everywhere they cover. Occluders draw
+nothing; put them a little inside the walls they stand for, so they don't hide what shows past
+the walls' edges.
+
+- The buffer has `occlusion_rays_per_thread` times 8 texels, at the view's aspect, and at most a
+  quarter of the view's pixels. With `jitter_projection` on, as in Godot, its rays move through
+  nine places across a texel, one a frame, and a mesh that was seen stays drawn for nine frames,
+  so thin gaps don't make meshes flicker.
+- Each mesh is tested by its own bounds where it is placed. Meshes whose `cast_shadow` is
+  `"double_sided"` or `"shadows_only"` and those with `ignore_occlusion_culling` are never hidden.
+  A hidden mesh still casts its shadow unless its `cast_shadow` is `"off"`, and shadow maps and
+  [reflection probes](#reflection-probes) draw every mesh, as in Godot.
+- Hidden occluders (`visible` off in their tree) hide nothing.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `shape` | `"quad"` | Godot's occluder: `"quad"` (`QuadOccluder3D`, `size`'s x and y, facing +Z), `"box"` (`BoxOccluder3D`, `size`), `"sphere"` (`SphereOccluder3D`, `radius`), `"polygon"` (`PolygonOccluder3D`) or `"array"` (`ArrayOccluder3D`, as `occluder.bake` writes it) |
+| `size` | `[1, 1, 1]` | `quad` and `box`: meters across, centered on the entity |
+| `radius` | `1` | `sphere`: meters |
+| `polygon` | `[]` | `polygon`: at least 3 points `[x, y]` in the entity's XY plane, in meters, triangulated as Godot's |
+| `vertices` | `[]` | `array`: points `[x, y, z]` in the entity's space |
+| `indices` | `[]` | `array`: into `vertices`, every three a triangle |
+| `bake_mask` | `0xFFFFFFFF` | `occluder.bake` takes the meshes whose `layers` share a bit with it |
+| `bake_simplification_distance` | `0.1` | `occluder.bake` simplifies meshes until they would stray this many meters; `0` keeps them whole |
+
+```json
+"wall": {"components": {
+  "Transform3D": {"position": [0, 2, 0]},
+  "MeshInstance3D": {}, "BoxMesh": {"size": [12, 4, 0.5]},
+  "OccluderInstance3D": {"shape": "box", "size": [11.8, 3.8, 0.3]}
+}}
+```
+
+[`occluder.bake`](commands.md#occluderbake) makes an `"array"` occluder of the scene's meshes as
+Godot's `OccluderInstance3D` bake does: every visible `MeshInstance3D` on `bake_mask`, whose
+material isn't transparent, simplified with meshoptimizer to `bake_simplification_distance`, its
+duplicate corners and triangles merged. [`frame.capture`](commands.md#framecapture)'s `drawn`
+counts the meshes hidden as `occluded`. [examples/occlusion-culling](../../examples/occlusion-culling/)
+hides three houses behind a wall.
+
 ### Checks
 
 `scene validate` and exports report an entity with two primitive meshes (at
@@ -1972,7 +2022,9 @@ without them, as Godot's. A mesh takes a decal when its `layers` share a bit wit
 project, doesn't load, or sits beside a primitive mesh (at its `mesh`), as drawing would, and
 [CSG shapes](#csg-shapes) that can't be made, [grid maps](#grid-maps) whose cells can't
 be made, [path followers](#paths) that can't follow, [LightmapGIs](#baked-lightmaps) whose
-`light_data` doesn't load and [VoxelGIs](#voxelgi) whose `data` doesn't load.
+`light_data` doesn't load and [VoxelGIs](#voxelgi) whose `data` doesn't load, and [occluders](#occlusion-culling) whose
+`polygon` or `indices` can't make triangles (too few, an index out of range, or a polygon that
+can't be triangulated).
 Exports
 check every `.gltf`, `.glb`, `.obj` and `.fbx` file as `scene validate` does, and ship them with their
 `.bin` buffers, `.mtl` libraries and images. `frame.summary` doesn't describe 3D meshes
