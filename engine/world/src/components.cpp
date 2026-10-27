@@ -2723,6 +2723,27 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("sorting_offset",
                   {.doc = "Meters taken off its distance from the camera, to draw it over "
                           "nearer decals."});
+    registry.add<FogVolume>()
+        .set_doc("Forward+: a place where the volumetric fog is thicker, thinner or glows, as "
+                 "Godot's FogVolume, filled as the FogMaterial on the entity says (with none, a "
+                 "density of 1). Shows while the WorldEnvironment has volumetric fog.")
+        .describe("size",
+                  {.doc = "The shape's size, centered on the entity, in its space; not used by "
+                          "\"world\".",
+                   .min = 0})
+        .describe("shape", {.doc = "Its shape; \"world\" fills the whole fog.",
+                            .choices = {"ellipsoid", "cone", "cylinder", "box", "world"}})
+        .describe("layers", {.doc = "Cameras whose cull_mask shares a bit see it."});
+    registry.add<FogMaterial>()
+        .set_doc("How the FogVolume on the entity fills its shape, as Godot's FogMaterial.")
+        .describe("density", {.doc = "Added to the fog's density; below 0 takes fog away."})
+        .describe("albedo", {.doc = "The color it scatters light with. " + color.doc})
+        .describe("emission", {.doc = "The light it gives off. " + color.doc})
+        .describe("height_falloff",
+                  {.doc = "How fast it thins with height above the entity; 0 not at all."})
+        .describe(
+            "edge_fade",
+            {.doc = "How it fades toward the shape's edges: the curve's power; 0 none.", .min = 0});
     registry.add<WorldEnvironment>()
         .set_doc("The 3D world's background, ambient and reflected light, tonemap, glow, fog and "
                  "adjustments, as Godot's WorldEnvironment. The first one applies; with none, the "

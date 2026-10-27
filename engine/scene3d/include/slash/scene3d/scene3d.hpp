@@ -409,6 +409,11 @@ private:
     void add_decals(const world::World& world, const world::Tree3D& tree,
                     const std::function<world::Affine3D(entt::entity)>& global,
                     std::uint32_t cull_mask, float exposure, render::Decals3D& out);
+    // The FogVolumes the camera's cull_mask sees, in the order they were made, each with the
+    // FogMaterial on its entity; past render::kMaxFogVolumes they are left out and reported.
+    void add_fog_volumes(const world::World& world, const world::Tree3D& tree,
+                         const std::function<world::Affine3D(entt::entity)>& global,
+                         std::uint32_t cull_mask, std::vector<render::FogVolume3D>& out);
     // The light probes' light for the entity's moving mesh, centered at center in the world:
     // set at once the first frame, then eased toward it; nothing where no probes hold it.
     render::LightmapCapture capture(entt::entity entity, const Vec3& center);

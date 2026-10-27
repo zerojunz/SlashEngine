@@ -725,6 +725,32 @@ SLASH_COMPONENT(Decal, size, texture_albedo, texture_normal, texture_orm, textur
                 distance_fade_enabled, distance_fade_begin, distance_fade_length, cull_mask, layers,
                 sorting_offset)
 
+// Forward+: a place where the volumetric fog is thicker, thinner or glows, as Godot's FogVolume:
+// a shape of size centered on the entity, in its space, or the whole fog ("world"), filled as the
+// FogMaterial on the same entity says (with none, a density of 1 and white light scattered, as
+// Godot's default fog material). It shows only while the WorldEnvironment has volumetric fog.
+struct FogVolume {
+    Vec3 size{2.0F, 2.0F, 2.0F};
+    std::string shape = "box"; // "ellipsoid", "cone", "cylinder", "box" or "world"
+    std::uint32_t layers = 1;  // as MeshInstance3D's: the cameras that see it
+
+    friend bool operator==(const FogVolume&, const FogVolume&) = default;
+};
+SLASH_COMPONENT(FogVolume, size, shape, layers)
+
+// How a FogVolume on the same entity fills its shape, as Godot's FogMaterial: its density, faded
+// toward the shape's edges and with height, and the colors it scatters light with and glows.
+struct FogMaterial {
+    float density = 1.0F;                  // added to the fog's own; below 0 takes fog away
+    Vec4 albedo{1.0F, 1.0F, 1.0F, 1.0F};   // sRGB
+    Vec4 emission{0.0F, 0.0F, 0.0F, 1.0F}; // sRGB
+    float height_falloff = 0.0F;           // how fast it thins above the entity
+    float edge_fade = 0.1F; // how far in from the shape's edges it fades: the curve's power
+
+    friend bool operator==(const FogMaterial&, const FogMaterial&) = default;
+};
+SLASH_COMPONENT(FogMaterial, density, albedo, emission, height_falloff, edge_fade)
+
 // The 3D world's background, ambient light, tonemap, reflections, ambient occlusion, glow, fog,
 // volumetric fog and adjustments, as Godot's WorldEnvironment and its Environment. The first one
 // made applies; without one the background is the project's clear color, there is no ambient light

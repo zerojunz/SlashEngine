@@ -1,0 +1,117 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 60.0
+        },
+        "Transform3D": {
+          "position": [0.0, 2.0, 7.0],
+          "rotation": [-0.2, 0.0, 0.0]
+        }
+      }
+    },
+    "clearing": {
+      "components": {
+        "FogMaterial": {
+          "density": -1.0,
+          "edge_fade": 0.0
+        },
+        "FogVolume": {
+          "shape": "cylinder",
+          "size": [1.6, 3.0, 1.6]
+        },
+        "Transform3D": {
+          "position": [1.5, 1.0, 1.0]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.4, 0.45, 0.6, 1.0],
+          "ambient_light_energy": 0.3,
+          "ambient_light_source": "color",
+          "background_color": [0.05, 0.05, 0.08, 1.0],
+          "background_mode": "color",
+          "volumetric_fog_ambient_inject": 1.0,
+          "volumetric_fog_density": 0.01,
+          "volumetric_fog_enabled": true,
+          "volumetric_fog_length": 24.0
+        }
+      }
+    },
+    "floor": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [16.0, 16.0]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.5, 0.45, 0.4, 1.0]
+        },
+        "Transform3D": {}
+      }
+    },
+    "lamp": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.7, 0.4, 1.0],
+          "light_energy": 3.0,
+          "light_volumetric_fog_energy": 2.0,
+          "omni_range": 6.0
+        },
+        "Transform3D": {
+          "position": [2.5, 2.5, 1.0]
+        }
+      }
+    },
+    "mist": {
+      "components": {
+        "FogMaterial": {
+          "albedo": [0.8, 0.85, 1.0, 1.0],
+          "density": 0.8,
+          "edge_fade": 0.3,
+          "height_falloff": 1.5
+        },
+        "FogVolume": {
+          "size": [8.0, 1.5, 6.0]
+        },
+        "Transform3D": {
+          "position": [0.0, 0.5, 0.0]
+        }
+      }
+    },
+    "wall": {
+      "components": {
+        "BoxMesh": {
+          "size": [12.0, 4.0, 0.4]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.55, 0.5, 0.45, 1.0]
+        },
+        "Transform3D": {
+          "position": [0.0, 2.0, -3.0]
+        }
+      }
+    },
+    "wisp": {
+      "components": {
+        "FogMaterial": {
+          "density": 0.5,
+          "emission": [0.3, 0.9, 0.4, 1.0]
+        },
+        "FogVolume": {
+          "shape": "ellipsoid",
+          "size": [1.6, 1.6, 1.6]
+        },
+        "Transform3D": {
+          "position": [-2.0, 2.0, -1.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

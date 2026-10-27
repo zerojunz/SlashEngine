@@ -1,0 +1,8 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":8,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.196,0.275,0.212,1],[0.18,0.192,0.29,1],[0.631,0.471,0.404,1],[0.188,0.141,0.137,1]],"drawn":{"meshes":2},"height":90,"path":"shots/cellar.png","width":160}}
+{"id":3,"jsonrpc":"2.0","result":{"changed":{"FogMaterial":{"density":1.0,"emission":[1.0,0.3,0.2,1.0]}},"id":"wisp"}}
+{"id":4,"jsonrpc":"2.0","result":{"colors":[[0.31,0.231,0.212,1],[0.18,0.192,0.286,1],[0.631,0.471,0.404,1],[0.188,0.141,0.137,1]],"drawn":{"meshes":2},"height":90,"path":"shots/red.png","width":160}}
+{"id":5,"jsonrpc":"2.0","result":{"changed":{"FogMaterial":{"density":0.05,"edge_fade":0.0,"height_falloff":0.0},"FogVolume":{"shape":"world"}},"id":"mist"}}
+{"id":6,"jsonrpc":"2.0","result":{"colors":[[0.341,0.231,0.255,1],[0.161,0.173,0.255,1],[0.604,0.435,0.357,1],[0.192,0.149,0.165,1]],"drawn":{"meshes":2},"height":90,"path":"shots/everywhere.png","width":160}}
+{"id":7,"jsonrpc":"2.0","result":{"changed":{"WorldEnvironment":{"volumetric_fog_enabled":false}},"id":"environment"}}
+{"id":8,"jsonrpc":"2.0","result":{"colors":[[0.102,0.106,0.137,1],[0.09,0.09,0.118,1],[0.584,0.373,0.216,1],[0.184,0.133,0.125,1]],"drawn":{"meshes":2},"height":90,"path":"shots/clear.png","width":160}}
