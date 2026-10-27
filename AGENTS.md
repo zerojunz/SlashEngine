@@ -1023,10 +1023,13 @@ Godot's intensity and power), into the screen's layer 0 where SSAO's goes; the c
 writes it to a third texture. A change to the ray math goes in both.
 `reflections` traces the environment's SSR on the software device (`run_ray_reflections`: rays
 reflected about GGX's visible normals, lit by `path_reflection` in `src/path_trace.cpp` as a path's
-bounce), into the SSR layer; the GPU device draws SSR for now.
+bounce), into the SSR layer; the GPU device draws SSR for now. `global_illumination` traces each
+pixel's ambient light there too (`run_ray_gi`: cosine-weighted rays lit by `path_reflection` or
+`path_environment`, smoothed by normal and plane), which `MeshMaps::gi` hands the shading when
+`screen.w` is set.
 `tests/test_ray_tracing.cpp` holds Vulkan to the software device,
 `examples/ray-traced-shadows-3d` traces an avenue, `examples/ray-traced-ao-3d` a room and
-`examples/ray-traced-reflections-3d` a hall's floor.
+`examples/ray-traced-reflections-3d` a hall's floor and `examples/ray-traced-gi-3d` a room's walls.
 
 TAA is Godot 4.6's `use_taa` (project.json's `rendering.anti_aliasing.quality.use_taa`,
 `Scene3D::use_taa`), in Forward+ only. `src/taa.hpp` holds what devices share: the jitter
