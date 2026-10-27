@@ -9,6 +9,7 @@
 #include <cstring>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -818,6 +819,78 @@ Result<TranslationFile> read_translation_file(std::string_view path, std::string
         return read_mo(text);
     }
     return read_csv(text);
+}
+
+namespace {
+
+bool is_letter(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+bool is_digit(char c) {
+    return c >= '0' && c <= '9';
+}
+
+std::string joined(const std::vector<std::string>& parts) {
+    if (parts.empty()) {
+        return "none";
+    }
+    std::string out;
+    for (const std::string& part : parts) {
+        out += out.empty() ? "" : " ";
+        out += part;
+    }
+    return out;
+}
+
+} // namespace
+
+Placeholders placeholders_of(std::string_view text) {
+    Placeholders out;
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '%') {
+            std::size_t at = i + 1;
+            if (at < text.size() && text[at] == '%') {
+                i = at; // "%%" is a percent sign
+                continue;
+            }
+            // Godot's modifiers: flags, a width or "*", and a precision.
+            while (at < text.size() &&
+                   std::string_view("+-0123456789.* ").find(text[at]) != std::string_view::npos) {
+                ++at;
+            }
+            if (at < text.size() &&
+                std::string_view("sdioxXbcfv").find(text[at]) != std::string_view::npos) {
+                out.conversions.push_back(std::string("%") + text[at]);
+                i = at;
+            }
+        } else if (text[i] == '{') {
+            std::size_t at = i + 1;
+            while (at < text.size() &&
+                   (is_letter(text[at]) || is_digit(text[at]) || text[at] == '_')) {
+                ++at;
+            }
+            if (at > i + 1 && at < text.size() && text[at] == '}') {
+                out.names.insert(std::string(text.substr(i, at - i + 1)));
+                i = at;
+            }
+        }
+    }
+    return out;
+}
+
+std::string placeholder_problem(std::string_view source, std::string_view translated) {
+    const Placeholders want = placeholders_of(source);
+    const Placeholders got = placeholders_of(translated);
+    if (want.conversions != got.conversions) {
+        return "has " + joined(got.conversions) + " where the source has " +
+               joined(want.conversions);
+    }
+    for (const std::string& name : got.names) {
+        if (!want.names.contains(name)) {
+            return "has " + name + ", which the source doesn't";
+        }
+    }
+    return {};
 }
 
 } // namespace slash::l10n

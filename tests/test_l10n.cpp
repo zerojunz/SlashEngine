@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -369,6 +370,17 @@ TEST_CASE("CSV files read as Godot's CSV translation importer") {
     REQUIRE(none.ok());
     CHECK(none.value().translations.empty());
     CHECK(none.value().problems.size() == 1);
+}
+
+TEST_CASE("placeholders are read as Godot's sprintf and format read them") {
+    const l10n::Placeholders found = l10n::placeholders_of("%d%% of %-5.2f by {name} {0} {} %q");
+    CHECK(found.conversions == std::vector<std::string>{"%d", "%f"});
+    CHECK(found.names == std::set<std::string>{"{name}", "{0}"});
+    CHECK(l10n::placeholder_problem("%d of %s", "%d sur %s").empty());
+    CHECK(l10n::placeholder_problem("%d of %s", "%s sur %d") ==
+          "has %s %d where the source has %d %s");
+    CHECK(l10n::placeholder_problem("Hi", "Salut %s") == "has %s where the source has none");
+    CHECK(l10n::placeholder_problem("Hi {name}", "Salut").empty());
 }
 
 TEST_CASE("pseudolocalization makes text as Godot's") {
@@ -736,4 +748,91 @@ TEST_CASE("l10n.extract collects messages as Godot's POT generator") {
     reply = project.call("l10n.extract", R"({"pot": "menu.po"})");
     REQUIRE_FALSE(reply.ok);
     CHECK(reply.data.find("path")->as_string() == "/pot");
+}
+
+TEST_CASE("l10n.check finds placeholders, missing messages and text that doesn't fit") {
+    Project project(
+        "check", R"({"locale": {"translations": ["menu.csv"]}})",
+        {{"menu.csv", "keys,fr,de\n"
+                      "Play,Jouer à ce jeu maintenant,Spielen\n"
+                      "%d of %s,%s sur %d,%d von %s\n"
+                      "Hi {name},Salut {nom},Hallo {name}\n"
+                      "Gone,Parti,Weg\n"
+                      "Quit,Quitter,\n"}},
+        R"({"play": {"components": {"Control": {"offset_right": 60.0, "offset_bottom": 30.0},
+                                    "Label": {"text": "Play", "clip_text": true}}},
+            "quit": {"components": {"Control": {"offset_top": 40.0}, "Label": {"text": "Quit"}}},
+            "hint": {"components": {"Control": {"offset_top": 80.0},
+                                    "Label": {"text": "Hint"}}}})");
+    project.write("src/hud.cpp", "void hud(World& world) {\n"
+                                 "    show(tr(world, \"%d of %s\"));\n"
+                                 "    show(tr(world, \"Hi {name}\"));\n"
+                                 "}\n");
+    project.write("project.json", R"({"format": 1, "name": "Menu",
+        "main_scene": "main.scene.json", "gameplay": {"sources": ["src"]},
+        "gui": {"allow_system_fallback": false},
+        "internationalization": {"locale": {"translations": ["menu.csv"]}}})");
+
+    command::Reply reply = project.call("l10n.check", "{}");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    std::vector<std::string> errors;
+    for (const json::Value& error : reply.value.find("errors")->as_array()) {
+        errors.push_back(error.find("check")->as_string() + " " +
+                         error.find("locale")->as_string() + ": " +
+                         error.find("message")->as_string());
+    }
+    CHECK(errors == std::vector<std::string>{
+                        R"(placeholders fr: "%d of %s" has %s %d where the source has %d %s)",
+                        R"(placeholders fr: "Hi {name}" has {nom}, which the source doesn't)",
+                        R"(overflow fr: "Jouer à ce jeu maintenant" doesn't fit its control )"
+                        R"(in fr; "Play" does)",
+                    });
+    const json::Value& overflow = reply.value.find("errors")->as_array()[2];
+    CHECK(overflow.find("file")->as_string() == "main.scene.json");
+    CHECK(overflow.find("path")->as_string() == "/entities/play");
+    std::vector<std::string> warnings;
+    for (const json::Value& warning : reply.value.find("warnings")->as_array()) {
+        warnings.push_back(warning.find("check")->as_string() + " " +
+                           warning.find("locale")->as_string() + ": " +
+                           warning.find("message")->as_string());
+    }
+    CHECK(warnings == std::vector<std::string>{
+                          R"(missing fr: "Hint" has no translation)",
+                          R"(stale fr: "Gone" is translated but no scene or tr call shows it)",
+                          R"(missing de: "Hint" has no translation)",
+                          R"(missing de: "Quit" has no translation)",
+                          R"(stale de: "Gone" is translated but no scene or tr call shows it)",
+                      });
+    CHECK(compact(*reply.value.find("checked")) ==
+          R"({"locales":["fr","de"],"messages":5,"scenes":1})");
+
+    // One locale, at most one of each.
+    reply = project.call("l10n.check", R"({"locales": ["de"], "max": 1})");
+    REQUIRE(reply.ok);
+    CHECK(reply.value.find("errors") == nullptr);
+    CHECK(reply.value.find("warnings")->as_array().size() == 1);
+    CHECK(reply.value.find("warnings_more")->as_int() == 2);
+    reply = project.call("l10n.check", R"({"locales": ["es"]})");
+    REQUIRE_FALSE(reply.ok);
+    CHECK(reply.data.find("path")->as_string() == "/locales/0");
+
+    // Pseudolocalized, as the project's settings make it: twice as long, "Play" no longer fits.
+    project.write("project.json", R"({"format": 1, "name": "Menu",
+        "main_scene": "main.scene.json", "gameplay": {"sources": ["src"]},
+        "gui": {"allow_system_fallback": false},
+        "internationalization": {"locale": {"translations": ["menu.csv"]},
+                                 "pseudolocalization": {"expansion_ratio": 1.0}}})");
+    reply = project.call("l10n.check", R"({"locales": ["de"], "pseudolocalization": true})");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    REQUIRE(reply.value.find("errors") != nullptr);
+    const json::Array& pseudo = reply.value.find("errors")->as_array();
+    REQUIRE(pseudo.size() == 1);
+    CHECK(pseudo[0].find("id")->as_string() == "play");
+    CHECK(pseudo[0].find("locale") == nullptr);
+    CHECK(pseudo[0].find("message")->as_string().find("pseudolocalized") != std::string::npos);
+
+    // test.run fails on the errors.
+    reply = project.call("test.run", "{}");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    CHECK(reply.value.find("failed")->as_array().size() == 3);
 }
