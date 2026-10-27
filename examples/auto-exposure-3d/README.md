@@ -40,6 +40,10 @@ frame.capture {"time":0,"points":[[160,90],[40,90],[160,170]],"path":"shots/tunn
   they are as they were at first.
 - `auto_exposure_scale` 0.8 brightens the adjusted frame at once: the scale is applied after the
   measurement, which goes on unchanged.
+- `auto_exposure_metering` `"log_average"`, with the scale back at 0.4, measures the mean of each
+  pixel's logarithm instead, as Unreal's auto exposure meters (SlashEngine's own; Godot has only
+  the average). The daylight at the far end counts for less, so six seconds later the tunnel's
+  walls and floor are about twice as bright as at the start. `shots/log_average.png` saves it.
 
 Godot's Compatibility renderer (`"rendering_method": "gl_compatibility"`, and always with the
 OpenGL drivers) has no auto exposure: it uses `exposure_multiplier` alone, which every renderer

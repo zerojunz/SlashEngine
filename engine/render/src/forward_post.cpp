@@ -446,6 +446,9 @@ void reduce_luminance(const ForwardPostUniforms& uniforms, float previous, Lumin
             const std::uint32_t inside_x = std::min(source_width - left, kLuminanceBlock);
             const std::uint32_t inside_y = std::min(source_height - top, kLuminanceBlock);
             float average = block[0] / static_cast<float>(inside_x * inside_y);
+            if (final && uniforms.options[1] != 0) {
+                average = slash::exp(average);
+            }
             if (final) {
                 average =
                     std::min(std::max(previous + ((average - previous) * uniforms.exposure[3]),
@@ -719,7 +722,7 @@ ForwardPostUniforms luminance_uniforms(const PostProcess& post, ForwardPass pass
     out.exposure = {post.auto_exposure_scale, post.auto_exposure_min, post.auto_exposure_max,
                     std::clamp(post.auto_exposure_adjust, 0.0F, 1.0F)};
     out.source = {static_cast<float>(source.width), static_cast<float>(source.height), 0.0F, 0.0F};
-    out.options = {static_cast<std::uint32_t>(pass), 0, 0, 0};
+    out.options = {static_cast<std::uint32_t>(pass), post.auto_exposure_log ? 1U : 0U, 0, 0};
     return out;
 }
 
@@ -727,7 +730,9 @@ void run_luminance_pass(const ForwardPostUniforms& uniforms, const HdrImage& wor
                         LuminanceImage& target) {
     reduce_luminance(uniforms, 0.0F, target, [&](std::uint32_t x, std::uint32_t y) {
         const std::size_t at = ((std::size_t{y} * world.width) + x) * 4;
-        return std::max(world.pixels[at], std::max(world.pixels[at + 1], world.pixels[at + 2]));
+        const float brightest =
+            std::max(world.pixels[at], std::max(world.pixels[at + 1], world.pixels[at + 2]));
+        return uniforms.options[1] != 0 ? slash::ln(std::max(brightest, kMinLuminance)) : brightest;
     });
 }
 
