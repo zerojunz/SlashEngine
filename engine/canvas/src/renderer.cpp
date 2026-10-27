@@ -2196,10 +2196,14 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
     frame.clear = options.clear;
     frame.lighting = lights;
     // The 3D world draws under the world's canvas, in whichever frame draws that.
+    path_target_.reset();
     const auto with_scene = [&](render::Frame& world_frame) {
         if (submission.scene) {
             world_frame.scene = submission.scene->scene;
             world_frame.clear = submission.scene->clear;
+            if (world_frame.scene->path_trace) {
+                path_target_ = world_frame.target;
+            }
         }
     };
     const auto draw_scene = [&]() -> Result<void> {
