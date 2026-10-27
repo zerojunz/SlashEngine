@@ -2184,7 +2184,7 @@ Renderer::prepare(const world::World& world, float width, float height, double i
                   const render::SsaoSettings& ssao, const render::SsrSettings& ssr,
                   const render::ReflectionAtlasSettings& reflection_atlas,
                   render::RenderMethod method, bool voxel_gi_high_quality, bool use_taa,
-                  std::optional<render::Fsr2Scaling> fsr2, render::DecalFilter decal_filter,
+                  const std::optional<render::Fsr2Scaling>& fsr2, render::DecalFilter decal_filter,
                   const render::VolumetricFogSettings& volumetric_fog) {
     ++frame_;
     draws_.clear();
