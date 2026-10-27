@@ -2,6 +2,7 @@
 
 #include "common.hpp"
 #include "skeletons.hpp"
+#include "unreal_text.hpp"
 
 #include "slash/animation/animation.hpp"
 #include "slash/animation/tree.hpp"
@@ -153,103 +154,8 @@ const json::Array& items(const json::Value& value, std::string_view key) {
 
 // --- Unreal's text values ---
 
-std::string_view trimmed(std::string_view text) {
-    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())) != 0) {
-        text.remove_prefix(1);
-    }
-    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())) != 0) {
-        text.remove_suffix(1);
-    }
-    return text;
-}
-
-// Where each of text's top-level parts ends: at commas outside quotes and parentheses.
-std::vector<std::string_view> top_level_parts(std::string_view text) {
-    std::vector<std::string_view> out;
-    std::size_t start = 0;
-    int depth = 0;
-    bool quoted = false;
-    for (std::size_t i = 0; i <= text.size(); ++i) {
-        const char c = i < text.size() ? text[i] : ',';
-        if (c == '"' && (i == 0 || text[i - 1] != '\\')) {
-            quoted = !quoted;
-        } else if (!quoted && c == '(') {
-            ++depth;
-        } else if (!quoted && c == ')') {
-            --depth;
-        } else if (!quoted && depth == 0 && c == ',') {
-            if (const std::string_view part = trimmed(text.substr(start, i - start));
-                !part.empty()) {
-                out.push_back(part);
-            }
-            start = i + 1;
-        }
-    }
-    return out;
-}
-
-// Where a part's '=' is, outside quotes and parentheses; npos for an item with no key.
-std::size_t key_end(std::string_view part) {
-    int depth = 0;
-    bool quoted = false;
-    for (std::size_t i = 0; i < part.size(); ++i) {
-        const char c = part[i];
-        if (c == '"') {
-            quoted = !quoted;
-        } else if (!quoted && c == '(') {
-            ++depth;
-        } else if (!quoted && c == ')') {
-            --depth;
-        } else if (!quoted && depth == 0 && c == '=') {
-            return i;
-        }
-    }
-    return std::string_view::npos;
-}
-
-// A value as Unreal writes it as text (ExportText: (Key=Value,...), (Item,Item), "quoted" or a
-// bare word) as JSON: structs as objects, lists as arrays, the rest as strings. Keys written with
-// an index, Inputs(0)=..., gather into arrays.
-json::Value text_tree(std::string_view text) {
-    text = trimmed(text);
-    if (text.size() >= 2 && text.front() == '"' && text.back() == '"') {
-        return std::string(text.substr(1, text.size() - 2));
-    }
-    if (text.size() < 2 || text.front() != '(' || text.back() != ')') {
-        return std::string(text);
-    }
-    const std::vector<std::string_view> parts = top_level_parts(text.substr(1, text.size() - 2));
-    const bool keyed = std::ranges::any_of(
-        parts, [](std::string_view part) { return key_end(part) != std::string_view::npos; });
-    if (!keyed) {
-        json::Array list;
-        for (const std::string_view part : parts) {
-            list.push_back(text_tree(part));
-        }
-        return list;
-    }
-    json::Object out;
-    for (const std::string_view part : parts) {
-        const std::size_t equals = key_end(part);
-        if (equals == std::string_view::npos) {
-            continue;
-        }
-        std::string key(trimmed(part.substr(0, equals)));
-        json::Value value = text_tree(part.substr(equals + 1));
-        if (const std::size_t open = key.find('(');
-            open != std::string::npos && key.back() == ')') {
-            key.resize(open);
-            json::Value& list = out[key];
-            if (!list.is_array()) {
-                list = json::Array{};
-            }
-            list.as_array().push_back(std::move(value));
-            continue;
-        }
-        out[key] = std::move(value);
-    }
-    return out;
-}
+using unreal_text::text_tree;
+using unreal_text::trimmed;
 
 // A name's letters and digits, lowercased: "Spawn Rate", "SpawnRate" and "spawn_rate" alike.
 std::string plain_name(std::string_view name) {
@@ -861,6 +767,7 @@ public:
         for (const json::Value& entry : items(export_, "problems")) {
             problems_.add(text(entry, "what"), text(entry, "where"), text(entry, "why"));
         }
+        read_niagara_text();
         read_meshes();
         detect_axes();
         mark_mesh_uses();
@@ -881,6 +788,33 @@ public:
     }
 
 private:
+    // Niagara systems the export wrote as text (T3D) rather than reading them through
+    // NiagaraExternalEditUtilities: their emitters and user parameters, read from the text.
+    void read_niagara_text() {
+        json::Value* systems = export_.find("niagara_systems");
+        if (systems == nullptr || !systems->is_object()) {
+            return;
+        }
+        for (auto& [package, system] : systems->as_object()) {
+            const std::string file = text(system, "text");
+            if (file.empty() || member(system, "emitters") != nullptr) {
+                continue;
+            }
+            auto read = platform::read_file((work_ / file).string());
+            const json::Value* enums = member(system, "enums");
+            json::Value found = read ? unreal_text::niagara_from_text(
+                                           read.value(), enums != nullptr ? *enums : json::Object{})
+                                     : json::Value(json::Object{});
+            if (member(found, "emitters") == nullptr) {
+                problems_.add("Niagara emitters", package,
+                              "the system Unreal wrote as text (" + file + ") couldn't be read");
+                continue;
+            }
+            system["emitters"] = std::move(found["emitters"]);
+            system["user_variables"] = std::move(found["user_variables"]);
+        }
+    }
+
     // --- Paths ---
 
     void add_file(std::string path, std::string contents) {
@@ -2328,7 +2262,10 @@ private:
                                                        std::string_view name) {
         const auto ends =
             niagara_ends<std::vector<double>>(emitter, module, name, [](const json::Value& tree) {
-                return fields_in(tree, {"r", "g", "b", "a"}, 3);
+                // A four-float value read from a parameter store, whose bytes don't say it is a
+                // color, comes as (X=..,Y=..,Z=..,W=..).
+                auto found = fields_in(tree, {"r", "g", "b", "a"}, 3);
+                return found ? found : fields_in(tree, {"x", "y", "z", "w"}, 4);
             });
         if (!ends) {
             return std::nullopt;
@@ -2541,8 +2478,20 @@ private:
                 continue;
             }
             if (kind == "initializeparticle") {
-                if (const auto found = niagara_numbers(context, module, "Lifetime")) {
-                    lifetime = *found;
+                // Its modes are static switches: Direct Set or Random lifetimes, and Uniform,
+                // Random Uniform, Non-Uniform or Random Non-Uniform sizes.
+                const bool random_lifetime =
+                    has_word(niagara_words(context, module, "Lifetime Mode"), "random");
+                const std::vector<std::string> size_mode =
+                    niagara_words(context, module, "Sprite Size Mode");
+                const bool random_size = has_word(size_mode, "random");
+                const bool square = !has_word(size_mode, "nonuniform");
+                std::optional<std::pair<double, double>> direct;
+                if (!random_lifetime) {
+                    direct = niagara_numbers(context, module, "Lifetime");
+                }
+                if (direct) {
+                    lifetime = *direct;
                 } else {
                     const auto low = niagara_numbers(context, module, "Lifetime Min");
                     const auto high = niagara_numbers(context, module, "Lifetime Max");
@@ -2554,9 +2503,11 @@ private:
                     settings["color"] = json::Array{tidy((*color)[0]), tidy((*color)[1]),
                                                     tidy((*color)[2]), tidy((*color)[3])};
                 }
-                std::optional<std::pair<double, double>> size =
-                    niagara_numbers(context, module, "Uniform Sprite Size");
-                if (!size) {
+                std::optional<std::pair<double, double>> size;
+                if (square && !random_size) {
+                    size = niagara_numbers(context, module, "Uniform Sprite Size");
+                }
+                if (!size && square) {
                     const auto low = niagara_numbers(context, module, "Uniform Sprite Size Min");
                     const auto high = niagara_numbers(context, module, "Uniform Sprite Size Max");
                     if (low && high) {
