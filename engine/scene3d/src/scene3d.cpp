@@ -2079,6 +2079,9 @@ void Renderer::add_gpu_particles(const world::World& world, entt::entity entity,
     look.sort_direction = normalized(sort);
     look.align_up = normalized(camera.y);
     look.camera = particle_transform(camera);
+    // The meshes are in the world, drawn in the visibility box.
+    look.box_low = {box.min.x, box.min.y, box.min.z};
+    look.box_high = {box.max.x, box.max.y, box.max.z};
     if (emitter.interpolate) {
         // Drawn between ticks, as the rest of the world is: where they were that much before the
         // tick ended.
