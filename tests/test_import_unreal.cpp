@@ -17,6 +17,7 @@
 #include <SDL3/SDL_stdinc.h>
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -372,6 +373,7 @@ TEST_CASE("the Unreal Editor is the one given, then SLASH_UNREAL_EDITOR's") {
     CHECK(run.at(1) == project.generic_string());
     CHECK(run.at(2) == "-run=pythonscript");
     CHECK(run.at(3) == "-script=" + (folder / "unreal_export.py").generic_string());
+    CHECK(std::ranges::find(run, "-AllowCommandletRendering") != run.end());
     CHECK(unreal::export_script().find("SLASH_UNREAL_EXPORT") != std::string_view::npos);
 }
 
@@ -1258,5 +1260,77 @@ TEST_CASE("an Unreal import turns Niagara emitters into Godot's particles") {
     CHECK(reported("Cascade particle system"));
     CHECK_FALSE(reported("invalid value"));
     CHECK(scene.find("entities")->find("torch_fire") == nullptr);
+    fs::remove_all(project);
+}
+
+TEST_CASE("an Unreal import keeps what a hidden component holds and black fog's sky color") {
+    const fs::path project = fs::absolute("import_unreal_hidden");
+    fs::remove_all(project);
+    write_project(project / "unreal");
+    const fs::path exported = project / "unreal/FakeExport/export.json";
+    json::Value document = parse(slash::platform::read_file(exported.string()).value());
+    json::Array& actors =
+        document.find("levels")->as_array()[0].as_object().at("actors").as_array();
+    const auto at = [](double x, double y, double z) {
+        json::Value transform;
+        transform["location"] = json::Array{x, y, z};
+        transform["rotation"] = json::Array{0.0, 0.0, 0.0, 1.0};
+        transform["scale"] = json::Array{1.0, 1.0, 1.0};
+        return transform;
+    };
+    // A character's capsule is hidden in game, but its mesh shows; a hidden mesh with nothing
+    // under it stays hidden.
+    json::Value hero = parse(R"({"name": "Hero_0", "label": "Hero", "class": "Character",
+        "class_path": "/Script/Engine.Character", "root": "CollisionCylinder", "components": [
+        {"name": "CollisionCylinder", "class": "CapsuleComponent", "visible": false,
+         "collision": "query_and_physics", "profile": "Pawn",
+         "shape": {"type": "capsule", "radius": 34.0, "half_height": 88.0}},
+        {"name": "Body", "class": "StaticMeshComponent", "parent": "CollisionCylinder",
+         "mesh": "/Game/SM_Crate"},
+        {"name": "Marker", "class": "StaticMeshComponent", "parent": "CollisionCylinder",
+         "mesh": "/Game/SM_Crate", "visible": false}]})");
+    hero["transform"] = at(0, 400, 100);
+    for (json::Value& comp : hero.find("components")->as_array()) {
+        comp["transform"] = at(0, 0, 0);
+    }
+    actors.push_back(std::move(hero));
+    // Fog whose own color is black takes the sky atmosphere's.
+    json::Value fog = parse(R"({"name": "Fog_0", "label": "Fog", "class": "ExponentialHeightFog",
+        "class_path": "/Script/Engine.ExponentialHeightFog", "root": "HeightFogComponent0",
+        "components": [{"name": "HeightFogComponent0", "class": "ExponentialHeightFogComponent",
+          "fog": {"density": 0.02, "height_falloff": 0.2, "color": [0, 0, 0],
+                  "sky_contribution": [1, 1, 1]}}]})");
+    fog["transform"] = at(0, 0, 0);
+    fog.find("components")->as_array()[0]["transform"] = at(0, 0, 0);
+    actors.push_back(std::move(fog));
+    REQUIRE(slash::platform::write_file(exported.string(), json::write(document)).ok());
+
+    auto planned = importer::plan_import({.source = (project / "unreal").string(),
+                                          .destination = project.string(),
+                                          .unpack_to = {},
+                                          .assetripper = {},
+                                          .unreal_editor = SLASH_FAKE_UNREAL});
+    REQUIRE_MESSAGE(planned.ok(), (planned.ok() ? std::string() : planned.error().message));
+    const json::Value scene = file_json(planned.value(), "unreal/Content/Maps/Drop.scene.json");
+    std::map<std::string, bool> shown;
+    for (const auto& [id, entity] : scene.find("entities")->as_object()) {
+        if (id.starts_with("hero")) {
+            const json::Value* transform = entity.find("components")->find("Transform3D");
+            const json::Value* visible =
+                transform != nullptr ? transform->find("visible") : nullptr;
+            shown[id] = visible == nullptr || visible->as_bool();
+        }
+    }
+    CHECK(shown ==
+          std::map<std::string, bool>{{"hero", true}, {"hero_body", true}, {"hero_marker", false}});
+    bool aerial = false;
+    for (const auto& [id, entity] : scene.find("entities")->as_object()) {
+        if (const json::Value* environment = entity.find("components")->find("WorldEnvironment")) {
+            aerial = environment->find("fog_aerial_perspective") != nullptr &&
+                     environment->find("fog_aerial_perspective")->as_double() == 1.0;
+            CHECK(environment->find("fog_light_color") == nullptr);
+        }
+    }
+    CHECK(aerial);
     fs::remove_all(project);
 }

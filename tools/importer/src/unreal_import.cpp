@@ -1551,9 +1551,11 @@ private:
         const std::string root = text(actor, "root");
         std::map<std::string, const json::Value*> components;
         std::vector<const json::Value*> others;
+        std::set<std::string> parents;
         for (const json::Value& comp : items(actor, "components")) {
             if (member(comp, "transform") != nullptr) {
                 components[text(comp, "name")] = &comp;
+                parents.insert(text(comp, "parent"));
             } else {
                 others.push_back(&comp);
             }
@@ -1618,8 +1620,18 @@ private:
                 }
             }
             json::Value placed = transform_3d(*transform, parent_turn, entity.turn, offset);
-            if (!flag(comp, "visible", true) || (is_root && !flag(actor, "visible", true))) {
+            // A hidden actor hides all of it, but a hidden component hides only itself in
+            // Unreal, where a Transform3D's visible hides its children too: a hidden component
+            // with children (a character's capsule) stays shown.
+            if (is_root && !flag(actor, "visible", true)) {
                 placed["visible"] = false;
+            } else if (!flag(comp, "visible", true)) {
+                if (!parents.contains(comp_name)) {
+                    placed["visible"] = false;
+                } else if (!text(comp, "mesh").empty()) {
+                    problems_.add("hidden mesh with children", where,
+                                  "it shows, since hiding it would hide what hangs from it");
+                }
             }
             entity.components["Transform3D"] = std::move(placed);
             if (parent_entity.empty()) {
@@ -2138,8 +2150,15 @@ private:
             level.environment["fog_enabled"] = true;
             level.environment["fog_density"] = tidy(number(*fog, "density", 0.02) / 10.0);
             const V3 color = vec(*fog, "color", {0.447, 0.638, 1.0});
-            level.environment["fog_light_color"] =
-                json::Array{tidy(color[0]), tidy(color[1]), tidy(color[2]), 1.0};
+            const V3 sky = vec(*fog, "sky_contribution", {1.0, 1.0, 1.0});
+            if (color[0] + color[1] + color[2] <= 0.0 && sky[0] + sky[1] + sky[2] > 0.0) {
+                // Black fog takes its color from the sky atmosphere, as Godot's fog does from
+                // the sky with all of its aerial perspective.
+                level.environment["fog_aerial_perspective"] = 1.0;
+            } else {
+                level.environment["fog_light_color"] =
+                    json::Array{tidy(color[0]), tidy(color[1]), tidy(color[2]), 1.0};
+            }
             level.environment["fog_height"] = tidy(at[1] * axes_.scale);
             level.environment["fog_height_density"] = tidy(number(*fog, "height_falloff", 0.2));
             if (flag(*fog, "volumetric")) {

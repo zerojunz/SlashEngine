@@ -123,6 +123,13 @@ def export_gltf(asset, path):
     except TypeError:
         result = unreal.GLTFExporter.export_to_gltf(asset, path, options, unreal.Set(unreal.Actor))
     ok = result[0] if isinstance(result, tuple) else result
+    # Its messages: a material it couldn't bake is written plain, so the import says so.
+    messages = result[-1] if isinstance(result, tuple) and len(result) > 1 else None
+    for kind in ('errors', 'warnings'):
+        for message in (prop(messages, kind, []) or []) if messages is not None else []:
+            text = str(message)
+            if 'bake' in text.lower():
+                problem('material the glTF exporter could not bake', package_of(asset), text)
     return bool(ok) and os.path.isfile(path)
 
 
@@ -134,12 +141,29 @@ def bounds_of(asset):
 
 
 def static_collision(mesh, entry):
+    # The mesh's body setup holds its simple shapes. In a commandlet (-run=pythonscript) there is
+    # no StaticMeshEditorSubsystem and EditorStaticMeshLibrary answers -1, so they come second.
+    geometry = prop(prop(mesh, 'body_setup'), 'agg_geom')
+    if geometry is not None:
+        kinds = ('box_elems', 'sphere_elems', 'sphyl_elems', 'convex_elems',
+                 'tapered_capsule_elems')
+        counts = {kind: len(prop(geometry, kind, []) or []) for kind in kinds}
+        entry['simple_collision'] = sum(counts.values())
+        entry['convex_collision'] = counts['convex_elems']
+        flag = prop(prop(mesh, 'body_setup'), 'collision_trace_flag')
+        if flag is not None:
+            entry['collision_complexity'] = enum_name(flag)
+        return
     tools = subsystem('StaticMeshEditorSubsystem') or getattr(unreal, 'EditorStaticMeshLibrary',
                                                               None)
     if tools is None:
         return
-    entry['simple_collision'] = call(0, tools.get_simple_collision_count, mesh)
-    entry['convex_collision'] = call(0, tools.get_convex_collision_count, mesh)
+    simple = call(-1, tools.get_simple_collision_count, mesh)
+    if simple is None or simple < 0:
+        problem('mesh whose collision Unreal does not report', package_of(mesh))
+        return
+    entry['simple_collision'] = simple
+    entry['convex_collision'] = max(0, call(0, tools.get_convex_collision_count, mesh) or 0)
     flag = call(None, tools.get_collision_complexity, mesh)
     if flag is not None:
         entry['collision_complexity'] = enum_name(flag)
@@ -718,9 +742,18 @@ def component_of(actor, comp):
                'height_falloff': float(prop(comp, 'fog_height_falloff', 0.2)),
                'start_distance': float(prop(comp, 'start_distance', 0.0)),
                'volumetric': bool(prop(comp, 'volumetric_fog', False))}
-        c = prop(comp, 'fog_inscattering_luminance') or prop(comp, 'fog_inscattering_color')
-        if c is not None:
-            fog['color'] = color(c)
+        # A LinearColor is never false, so each is looked at in turn: 5.8's luminance is black
+        # by default, and the fog takes its color from the sky atmosphere then.
+        for name in ('fog_inscattering_luminance', 'fog_inscattering_color'):
+            c = prop(comp, name)
+            if c is not None and (c.r > 0 or c.g > 0 or c.b > 0):
+                fog['color'] = color(c)
+                break
+        else:
+            fog['color'] = [0.0, 0.0, 0.0]
+        scale = prop(comp, 'sky_atmosphere_ambient_contribution_color_scale')
+        if scale is not None:
+            fog['sky_contribution'] = color(scale)
         out['fog'] = fog
     elif isinstance(comp, unreal.SpringArmComponent):
         out['spring_arm'] = {'length': float(prop(comp, 'target_arm_length', 300.0)),
@@ -949,8 +982,9 @@ def tag(data, name):
 
 
 def mappings_of(context):
+    # Unreal 5.8 keeps a context's mappings in default_key_mappings and leaves mappings empty.
     found = prop(context, 'mappings')
-    if found is None:
+    if not found:
         keys = prop(context, 'default_key_mappings')
         found = prop(keys, 'mappings') if keys is not None else None
     out = []

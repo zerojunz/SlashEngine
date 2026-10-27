@@ -143,22 +143,28 @@ Result<SDL_Process*> create_process(const std::vector<std::string>& args,
     return process;
 }
 
-// Reads a process's output until it ends, handing each piece to sink.
+// Reads a process's output until it ends, or until it has exited and what it wrote is read,
+// handing each piece to sink. A program it left running may hold the pipe open (Unreal Editor's
+// trace server does), so the end of the output can come long after the process does.
 template <typename Sink>
 void read_output(SDL_Process* process, Sink&& sink) {
     SDL_IOStream* output = SDL_GetProcessOutput(process);
     std::array<char, 4096> buffer{};
+    bool exited = false;
     for (;;) {
         const std::size_t read = SDL_ReadIO(output, buffer.data(), buffer.size());
         if (read > 0) {
             sink(buffer.data(), read);
             continue;
         }
-        if (SDL_GetIOStatus(output) == SDL_IO_STATUS_NOT_READY) {
-            SDL_Delay(1);
-            continue;
+        if (SDL_GetIOStatus(output) != SDL_IO_STATUS_NOT_READY || exited) {
+            break; // the end of the output, an error, or all it wrote before it exited
         }
-        break; // end of output or an error
+        // Whatever it wrote before exiting is in the pipe, so one more pass reads it.
+        exited = SDL_WaitProcess(process, false, nullptr);
+        if (!exited) {
+            SDL_Delay(1);
+        }
     }
 }
 

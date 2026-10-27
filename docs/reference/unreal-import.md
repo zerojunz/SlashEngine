@@ -15,7 +15,8 @@ the import runs the project's own Unreal Editor in the background, as Godot runs
 `.blend` files: no Unreal code is linked or shipped, and Unreal's license covers running the
 editor you installed. The editor runs `UnrealEditor-Cmd <project>.uproject -run=pythonscript
 -script=unreal_export.py` with the Python Editor Script Plugin and the glTF Exporter plugin
-(both ship with Unreal 5 and are enabled for the run), headless and unattended. The script
+(both ship with Unreal 5 and are enabled for the run), headless and unattended, with
+`-AllowCommandletRendering` so the glTF exporter can bake materials. The script
 (`tools/importer/src/unreal_export.py`) opens each level and writes into
 `<project>/.slash/import/unreal/`:
 
@@ -87,7 +88,7 @@ quarter about y, and what hangs from them is turned back.
 Each actor becomes an entity named after its label in snake case (`Crate Stack` is
 `crate_stack`); its root component is that entity, and every other scene component a child
 entity named `<actor>_<component>`. Attached actors hang under the component they are attached
-to. Hidden components and actors are `visible: false`. The report's `entities` maps each actor's
+to. Hidden actors are `visible: false`, and so are hidden components with nothing under them; a hidden component that holds others, such as a character's capsule, stays shown, since Unreal hides only the component itself and a `Transform3D` hides its children too. The report's `entities` maps each actor's
 name to its entity.
 
 | Unreal | SlashEngine |
@@ -103,7 +104,7 @@ name to its entity.
 | `RectLightComponent` | A `SpotLight3D` of 89 degrees |
 | `SkyLightComponent` | The `WorldEnvironment`'s ambient light, from the sky or its color, at its intensity |
 | `SkyAtmosphereComponent` | A `sky` background with a `PhysicalSkyMaterial` |
-| `ExponentialHeightFogComponent` | The `WorldEnvironment`'s height fog: density / 10, its inscattering color, its height and falloff, and volumetric fog |
+| `ExponentialHeightFogComponent` | The `WorldEnvironment`'s height fog: density / 10, its inscattering color (when that is black, as Unreal 5.8's default is, the sky's color through `fog_aerial_perspective` 1, as Unreal takes it from the sky atmosphere), its height and falloff, and volumetric fog |
 | `AudioComponent`, `AmbientSound` | `AudioStreamPlayer3D` with attenuation (`unit_size` the inner radius, `max_distance` its end), else `AudioStreamPlayer`; volume in dB, pitch and auto activate |
 | `BoxComponent`, `SphereComponent`, `CapsuleComponent` | `CollisionShape3D` (see [Collision](#collision)) |
 | `CharacterMovementComponent` | `CharacterBody3D` with its walkable floor angle; its speeds and jump in the report |
@@ -121,7 +122,9 @@ the player start: a `Camera3D` 64 cm up (Unreal's `BaseEyeHeight`), named in the
 Each mesh's `.glb` gets the collision Unreal gives it, as Godot's importer makes it (see
 [`model.cleanup`](commands.md#modelcleanup)): its triangles when it uses its complex collision as
 simple (and isn't simulated), a convex decomposition when it has several simple shapes, a convex
-hull for one, and none when it has no simple collision (reported). A static mesh that collides is
+hull for one, and none when it has no simple collision (reported). The script counts the simple
+shapes in the mesh's body setup, since a commandlet has no static mesh editor subsystem. A
+static mesh that collides is
 then a static body, as every model with collision is; a movable one is an
 `AnimatableBody3D`, and one Unreal simulates a `RigidBody3D` with its mass and damping.
 
