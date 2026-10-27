@@ -5,6 +5,7 @@
 
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -128,5 +129,17 @@ struct CsvOptions {
 // A translation file by its suffix: .po, .mo, or else CSV.
 [[nodiscard]] Result<TranslationFile> read_translation_file(std::string_view path,
                                                             std::string_view text);
+
+// The placeholders of a text: the conversions of Godot's String::sprintf ("%d", "%.2f", "%s"),
+// which take their values in order, and the names of String::format ("{name}", "{0}").
+struct Placeholders {
+    std::vector<std::string> conversions; // "%d", "%s": each one's letter, in order
+    std::set<std::string> names;          // "{name}"
+};
+[[nodiscard]] Placeholders placeholders_of(std::string_view text);
+// Why a translation's placeholders don't fit its source's, or "": sprintf's conversions must
+// come in the same order, since they take their values so; String::format's names must be the
+// source's (an unknown one would show as written).
+[[nodiscard]] std::string placeholder_problem(std::string_view source, std::string_view translated);
 
 } // namespace slash::l10n

@@ -424,7 +424,7 @@ with `SessionOptions::write_files` off (commands write files only through `Sessi
 which refuses then) and no `build` capability. A test fails at a step whose command fails, a
 reply that doesn't hold what it expects, or a warning or error logged while it runs, which it
 sees by wrapping the log sink (`log::sink`). Run with no `paths` or `tests`, it also runs
-`storyboard.check`, and `soundtrack.check` where it is registered. Games made by `$cli init` start with `tests/main.test.json`, and their
+`storyboard.check`, `soundtrack.check` where it is registered, and `l10n.check` once the project lists translations. Games made by `$cli init` start with `tests/main.test.json`, and their
 workflow runs `$cli test`. `examples/headless-tests` breaks a scene and reads the failures.
 
 ## Game projects and exports
@@ -1910,7 +1910,10 @@ Exports ship the listed files and `project validate` checks them. `l10n.state` a
 `l10n.set_locale` (`engine/command/src/l10n.cpp`) read and switch it, and `l10n.extract`
 (`src/l10n_extract.cpp`, Godot's POT generator and scene parser) collects controls' text from
 scenes and prefabs by their translate modes and `tr` and `tr_n` literals from the game's sources
-(through `outline_cpp`), writes a `.pot` file and adds what each translation file lacks;
+(through `outline_cpp`), writes a `.pot` file and adds what each translation file lacks; `l10n.check`
+(`src/l10n_check.cpp`) holds the files to those messages (placeholders, missing and stale
+messages) and lays out every scene in a session of its own in each locale, and pseudolocalized,
+for text that stops fitting or lacks glyphs, which `test.run` fails on.
 `examples/localization` translates a title menu.
 
 ## Input

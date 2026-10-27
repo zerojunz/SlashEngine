@@ -915,7 +915,7 @@ Exit: an agent builds a small 3D sample end to end.
         into the tables, so no text is missed
   - [ ] `l10n.translate`: draft translations through `ai::Provider`, using the storyboard's
         glossary and characters so names and tone stay consistent, marked for review
-  - [ ] `l10n.check`: missing or stale keys, placeholders that don't match, text that overflows
+  - [x] `l10n.check`: missing or stale keys, placeholders that don't match, text that overflows
         its UI box in a given font, and glyphs a font lacks; run by the headless test command
         and CI
   - [x] Pseudo-localization: a fake language with longer, accented text that shows untranslated
@@ -1017,7 +1017,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Level geometry | CSG and grid-based tile placement | 7 | In progress: CSG shapes, paths and `GridMap` done; heightmap terrain planned |
 | LOD and culling | Generated LODs with meshoptimizer, occlusion culling | 7 | Done, imported from Godot |
 | XR | OpenXR | 8 | Planned |
-| Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | In progress: translation tables, the language setting, auto-translated controls, pseudo-localization and `l10n.extract` are done |
+| Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | In progress: translation tables, the language setting, auto-translated controls, pseudo-localization, `l10n.extract` and `l10n.check` are done |
 | Video playback | AV1 through dav1d | 8 | Planned |
 | Accessibility | AccessKit | 8 | Planned |
 | Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | Done: files, commands and checks, palette, texture and triangle budget checks included, model review, the project map, and the style refined from accepted assets |
