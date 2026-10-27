@@ -676,7 +676,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         billboard modes and particle frames, sorted by view depth; the same particles on every
         platform and thread count, `particles.eval` in 3D, and Godot's `CPUParticles3D` nodes
         imported
-  - [ ] `GPUParticles3D` with process materials, attractors and collision shapes, and Godot's
+  - [x] `GPUParticles3D` with process materials, attractors and collision shapes, and Godot's
         imported
     - [x] `GPUParticles3D` stepped as Godot's (emission cycles, `fixed_fps`, preprocess,
           one-shots), process materials read with Godot's 3D fields (ring emission, flatness,
@@ -692,7 +692,8 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
             `collision_base_size`
       - [x] Signed distance fields baked by `particles.bake_sdf` and height fields drawn from
             above, following the camera
-    - [ ] Godot's `GPUParticles3D` nodes and 3D process materials imported
+    - [x] Godot's `GPUParticles3D` nodes and 3D process materials imported, with their
+          attractors and colliders
 - [x] Generated LODs with meshoptimizer and occlusion culling
   - [x] Generated LODs, as Godot 4.6's importer makes them with meshoptimizer and its renderers
         pick them by distance, `lod_bias` and the project's threshold, imported from Godot
@@ -964,7 +965,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Keyframe animation | Keyframe tracks on any reflected property | 5 | Done |
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Done |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Done |
-| Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials, particle graphs, turbulence, collision, sub-emitters and trails are done, `CPUParticles3D`, `GPUParticles3D` in compute shaders, its attractors and its colliders (sphere, box, SDF and height field); importing them in 7 |
+| Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials, particle graphs, turbulence, collision, sub-emitters and trails are done, `CPUParticles3D`, `GPUParticles3D` in compute shaders, its attractors and its colliders (sphere, box, SDF and height field), all imported from Godot |
 | Soundtracks | Music planned in the storyboard, written as scores or generated, arranged into interactive music and checked by analysis, all through commands | 6 | Done |
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | Done |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |
