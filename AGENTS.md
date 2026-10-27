@@ -926,6 +926,16 @@ then the frame before's jitter) and `run_fsr3`, the CPU twin, which `tests/test_
 every device to; a change to one goes in both. `examples/fsr3-3d` rebuilds, turns and recolors a
 card.
 
+MetalFX is Godot's `metalfx_spatial` and `metalfx_temporal`, after its `metal_fx.mm`: Apple's
+scalers run in the GPU device on Metal (`src/metalfx.mm`, `metalfx_none.cpp` elsewhere), encoded
+into SDL's command buffer through three calls `cmake/patches/sdl-metal-handles.cmake` adds to
+SDL, with MetalFX linked weakly so games still start on macOS 11 and iOS 14.
+`RenderDevice::metalfx()` says which scalers a device has and `render::scaling_mode_on` falls
+back as Godot does where it lacks one. The spatial scaler is a built-in `render::Upscaler`
+(`metalfx_spatial`, into a texture made `scaled_into`); the temporal one takes FSR 2's jittered
+frame, depth and dilated motion (`upscale_metalfx` in `gpu_device.cpp`). The software device has
+neither, so tests see the fallbacks; only a Mac draws them.
+
 Decals are Godot 4.6's Forward+ `Decal` (`render::Decals3D`, `Scene3D::decals`; the `Decal`
 component, gathered by `scene3d::Renderer::add_decals`). `src/decal.hpp` holds what devices
 share: `pack_decal_atlas` packs a frame's textures as Godot's `update_decal_atlas` (skyline

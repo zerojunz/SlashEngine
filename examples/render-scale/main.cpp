@@ -178,8 +178,11 @@ int main() {
     call(session, "display.set", R"({"scaling": {"upscaler": "pixel", "scale": 0.25}})");
     call(session, "frame.capture", points);
 
-    // MetalFX isn't built; unknown upscalers get the closest name.
-    call(session, "display.set", R"({"scaling": {"mode": "metalfx_temporal"}})");
+    // MetalFX's spatial scaler where the device has it; here, as Godot falls back, FSR.
+    call(session, "display.set", R"({"scaling": {"mode": "metalfx_spatial", "upscaler": ""}})");
+    call(session, "frame.capture", points);
+
+    // Unknown upscalers get the closest name.
     call(session, "display.set", R"({"scaling": {"upscaler": "pixle"}})");
     return 0;
 }

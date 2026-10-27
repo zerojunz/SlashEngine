@@ -636,8 +636,11 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         TAA and FSR 2, as Godot's
   - [x] FSR 3.1's upscaler, the scaling mode `fsr3`: AMD's passes over the depth, motion vectors
         and jittered camera that FSR 2 uses, on every Forward+ device
-  - [ ] MetalFX, and temporal upscalers through `render::Upscaler`, on the depth, motion vectors
-        and jittered camera that FSR 2 uses
+  - [x] MetalFX on Apple's GPUs, as Godot's `metalfx_spatial` and `metalfx_temporal`: Apple's
+        spatial scaler over the world, and its temporal one over the depth, motion vectors and
+        jittered camera that FSR 2 uses, falling back as Godot's where Metal has neither
+  - [ ] Temporal upscalers through `render::Upscaler`, on the depth, motion vectors and jittered
+        camera that FSR 2 uses
   - [ ] FSR 3 frame generation, once the render device controls presenting frames
 - [ ] Hardware ray tracing: acceleration structures and ray queries in `render::RenderDevice`,
       native on Vulkan, Direct3D 12 and Metal beside SDL3's GPU API (which has none), with a CPU
