@@ -30,6 +30,15 @@ constexpr std::uint32_t kOcclusionSeed = 0xA0U;
 constexpr float kMostObscurance = 0.98F;
 // What reflection rays' hashes take in place of a light's slot.
 constexpr std::uint32_t kReflectionSeed = 0xB0U;
+// And global illumination rays'.
+constexpr std::uint32_t kLightSeed = 0xC0U;
+// How far around a pixel its traced ambient light is smoothed, in pixels, and how sharply
+// neighbors facing other ways (a power of their normals' cosine, as squarings) and off its plane
+// (a share of its distance from the camera, and a least amount) count less.
+constexpr int kSmoothRadius = 2;
+constexpr int kNormalSquarings = 3;
+constexpr float kPlaneShare = 0.02F;
+constexpr float kPlaneLeast = 0.01F;
 
 Float3 add(const Float3& a, const Float3& b) {
     return {a[0] + b[0], a[1] + b[1], a[2] + b[2]};
@@ -87,6 +96,36 @@ Float3 disk_point(const Float3& n, float r, float u, float v) {
     const float reach = std::sqrt(u) * r;
     const Vec2 turn = slash::cos_sin(2.0F * kPi * v);
     return add(scale(t, reach * turn.x), scale(b, reach * turn.y));
+}
+
+// A pixel's sample-th ray over the half of the sphere normal faces, cosine weighted, by the R2
+// sequence from a hash of the pixel and seed (in place of a light's slot): Malley's method, a
+// point of the unit disk lifted onto the half sphere.
+Float3 cosine_ray(const Float3& normal, std::uint32_t x, std::uint32_t y, std::uint32_t width,
+                  std::uint32_t sample, std::uint32_t seed) {
+    const std::uint32_t hashed = mix(((y * width) + x) ^ mix(seed));
+    const float u = fraction(unit(hashed) + (static_cast<float>(sample) * kR2X));
+    const float v = fraction(unit(mix(hashed)) + (static_cast<float>(sample) * kR2Y));
+    const Float3 across = disk_point(normal, 1.0F, u, v);
+    const float up = std::sqrt(std::max(0.0F, 1.0F - u));
+    return normalize(add(across, scale(normal, up)));
+}
+
+// A pixel's point on the near plane (depth is reversed: 1 there), on the line to the eye.
+Float3 near_point(const RayShadowFrame& frame, std::uint32_t x, std::uint32_t y) {
+    const double ndc_x = ((static_cast<double>(x) + 0.5) / frame.width * 2.0) - 1.0;
+    const double ndc_y = 1.0 - ((static_cast<double>(y) + 0.5) / frame.height * 2.0);
+    const std::array<double, 16>& m = frame.to_world;
+    std::array<double, 4> clip{};
+    for (std::size_t row = 0; row < 4; ++row) {
+        clip.at(row) =
+            (m.at(row) * ndc_x) + (m.at(4 + row) * ndc_y) + m.at(8 + row) + m.at(12 + row);
+    }
+    if (clip[3] == 0.0) {
+        return {};
+    }
+    return {static_cast<float>(clip[0] / clip[3]), static_cast<float>(clip[1] / clip[3]),
+            static_cast<float>(clip[2] / clip[3])};
 }
 
 } // namespace
@@ -273,14 +312,7 @@ std::optional<RayOcclusion> ray_occlusion(const Scene3D& scene) {
 
 Float3 occlusion_ray(const Float3& normal, std::uint32_t x, std::uint32_t y, std::uint32_t width,
                      std::uint32_t sample) {
-    // Its own seed, apart from the lights' (whose slots are below 8).
-    const std::uint32_t seed = mix(((y * width) + x) ^ mix(kOcclusionSeed));
-    const float u = fraction(unit(seed) + (static_cast<float>(sample) * kR2X));
-    const float v = fraction(unit(mix(seed)) + (static_cast<float>(sample) * kR2Y));
-    // Malley's method: a point of the unit disk lifted onto the half sphere.
-    const Float3 across = disk_point(normal, 1.0F, u, v);
-    const float up = std::sqrt(std::max(0.0F, 1.0F - u));
-    return normalize(add(across, scale(normal, up)));
+    return cosine_ray(normal, x, y, width, sample, kOcclusionSeed);
 }
 
 std::vector<float> run_ray_occlusion(const PathScene& scene, const PathTextures* textures,
@@ -339,21 +371,7 @@ std::optional<RayReflection> ray_reflection(const Scene3D& scene) {
 
 Float3 ray_view(const RayShadowFrame& frame, std::uint32_t x, std::uint32_t y,
                 const Float3& origin) {
-    // The pixel's point on the near plane (depth is reversed: 1 there), on the line to the eye.
-    const double ndc_x = ((static_cast<double>(x) + 0.5) / frame.width * 2.0) - 1.0;
-    const double ndc_y = 1.0 - ((static_cast<double>(y) + 0.5) / frame.height * 2.0);
-    const std::array<double, 16>& m = frame.to_world;
-    std::array<double, 4> clip{};
-    for (std::size_t row = 0; row < 4; ++row) {
-        clip.at(row) =
-            (m.at(row) * ndc_x) + (m.at(4 + row) * ndc_y) + m.at(8 + row) + m.at(12 + row);
-    }
-    if (clip[3] == 0.0) {
-        return {};
-    }
-    const Float3 near{static_cast<float>(clip[0] / clip[3]), static_cast<float>(clip[1] / clip[3]),
-                      static_cast<float>(clip[2] / clip[3])};
-    return normalize(sub(near, origin));
+    return normalize(sub(near_point(frame, x, y), origin));
 }
 
 Float3 reflection_ray(const Float3& normal, const Float3& view, float roughness, std::uint32_t x,
@@ -415,6 +433,107 @@ std::vector<float> run_ray_reflections(const PathScene& scene, const PathTexture
             row(y);
         }
     }
+    return out;
+}
+
+std::optional<RayGI> ray_gi(const Scene3D& scene) {
+    if (scene.method != RenderMethod::ForwardPlus || !scene.ray_tracing.global_illumination) {
+        return std::nullopt;
+    }
+    return RayGI{.samples = std::clamp<std::uint32_t>(scene.ray_tracing.global_illumination_samples,
+                                                      1, kMaxRayShadowSamples)};
+}
+
+Float3 light_ray(const Float3& normal, std::uint32_t x, std::uint32_t y, std::uint32_t width,
+                 std::uint32_t sample) {
+    return cosine_ray(normal, x, y, width, sample, kLightSeed);
+}
+
+std::vector<float> run_ray_gi(const PathScene& scene, const PathTextures& textures, const RayGI& gi,
+                              const RayShadowFrame& frame, std::span<const float> depth,
+                              std::span<const float> normals, jobs::Pool* pool) {
+    const std::size_t pixels = std::size_t{frame.width} * frame.height;
+    std::vector<std::optional<RaySurface>> surfaces(pixels);
+    std::vector<float> distances(pixels, 0.0F);
+    std::vector<Float3> traced(pixels);
+    const auto each_row = [&](const auto& row) {
+        if (pool != nullptr) {
+            pool->parallel_for(frame.height, row);
+        } else {
+            for (std::size_t y = 0; y < frame.height; ++y) {
+                row(y);
+            }
+        }
+    };
+    // Each pixel's rays: the light what they meet sends back, or the environment's.
+    each_row([&](std::size_t y) {
+        for (std::uint32_t x = 0; x < frame.width; ++x) {
+            const std::size_t at = (y * frame.width) + x;
+            const std::optional<RaySurface> surface =
+                ray_surface(frame, x, static_cast<std::uint32_t>(y), depth[at],
+                            {normals[at * 4], normals[(at * 4) + 1], normals[(at * 4) + 2]});
+            if (!surface || dot(surface->normal, surface->normal) == 0.0F) {
+                continue;
+            }
+            surfaces[at] = surface;
+            distances[at] =
+                length(sub(near_point(frame, x, static_cast<std::uint32_t>(y)), surface->origin));
+            Float3 sum{};
+            for (std::uint32_t s = 0; s < gi.samples; ++s) {
+                const Float3 way =
+                    light_ray(surface->normal, x, static_cast<std::uint32_t>(y), frame.width, s);
+                const std::uint32_t seed =
+                    mix(static_cast<std::uint32_t>(at) ^ mix((kLightSeed << 16U) ^ s));
+                const std::optional<Float3> light =
+                    path_reflection(scene, textures, surface->origin, way, seed);
+                sum = add(sum, light ? *light : path_environment(scene, textures, way));
+            }
+            traced[at] = scale(sum, 1.0F / static_cast<float>(gi.samples));
+        }
+    });
+    // Smoothed across the neighbors on the same surface, weighed by how alike their normals are
+    // and how near they are to its plane.
+    std::vector<float> out(pixels * 3, 0.0F);
+    each_row([&](std::size_t y) {
+        for (std::uint32_t x = 0; x < frame.width; ++x) {
+            const std::size_t at = (y * frame.width) + x;
+            const std::optional<RaySurface>& center = surfaces[at];
+            if (!center) {
+                continue;
+            }
+            const float reach = (kPlaneShare * distances[at]) + kPlaneLeast;
+            Float3 sum{};
+            float total = 0.0F;
+            for (int dy = -kSmoothRadius; dy <= kSmoothRadius; ++dy) {
+                for (int dx = -kSmoothRadius; dx <= kSmoothRadius; ++dx) {
+                    const std::int64_t nx = std::int64_t{x} + dx;
+                    const std::int64_t ny = static_cast<std::int64_t>(y) + dy;
+                    if (nx < 0 || ny < 0 || nx >= frame.width || ny >= frame.height) {
+                        continue;
+                    }
+                    const auto near =
+                        static_cast<std::size_t>((ny * std::int64_t{frame.width}) + nx);
+                    const std::optional<RaySurface>& other = surfaces[near];
+                    if (!other) {
+                        continue;
+                    }
+                    float facing = std::max(0.0F, dot(center->normal, other->normal));
+                    for (int i = 0; i < kNormalSquarings; ++i) {
+                        facing *= facing;
+                    }
+                    const float off =
+                        std::abs(dot(center->normal, sub(other->origin, center->origin)));
+                    const float weight = facing * std::max(0.0F, 1.0F - (off / reach));
+                    sum = add(sum, scale(traced[near], weight));
+                    total += weight;
+                }
+            }
+            // The pixel itself always counts fully, so total is at least 1.
+            for (std::size_t c = 0; c < 3; ++c) {
+                out[(at * 3) + c] = round_half(sum.at(c) / total);
+            }
+        }
+    });
     return out;
 }
 
