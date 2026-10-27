@@ -28,6 +28,8 @@ constexpr float kR2Y = 0.5698402910F;
 constexpr std::uint32_t kOcclusionSeed = 0xA0U;
 // The most a pixel's occlusion takes away, as Godot's SSAO holds it.
 constexpr float kMostObscurance = 0.98F;
+// What reflection rays' hashes take in place of a light's slot.
+constexpr std::uint32_t kReflectionSeed = 0xB0U;
 
 Float3 add(const Float3& a, const Float3& b) {
     return {a[0] + b[0], a[1] + b[1], a[2] + b[2]};
@@ -314,6 +316,96 @@ std::vector<float> run_ray_occlusion(const PathScene& scene, const PathTextures*
             const float open = 1.0F - std::min(occlusion.intensity * share, kMostObscurance);
             // slash::exp and ln, the same bits everywhere, rather than std::pow.
             out[at] = round_half(slash::exp(occlusion.power * slash::ln(open)));
+        }
+    };
+    if (pool != nullptr) {
+        pool->parallel_for(frame.height, row);
+    } else {
+        for (std::size_t y = 0; y < frame.height; ++y) {
+            row(y);
+        }
+    }
+    return out;
+}
+
+std::optional<RayReflection> ray_reflection(const Scene3D& scene) {
+    if (scene.method != RenderMethod::ForwardPlus || !scene.ssr.enabled ||
+        !scene.ray_tracing.reflections) {
+        return std::nullopt;
+    }
+    return RayReflection{.samples = std::clamp<std::uint32_t>(scene.ray_tracing.reflection_samples,
+                                                              1, kMaxRayShadowSamples)};
+}
+
+Float3 ray_view(const RayShadowFrame& frame, std::uint32_t x, std::uint32_t y,
+                const Float3& origin) {
+    // The pixel's point on the near plane (depth is reversed: 1 there), on the line to the eye.
+    const double ndc_x = ((static_cast<double>(x) + 0.5) / frame.width * 2.0) - 1.0;
+    const double ndc_y = 1.0 - ((static_cast<double>(y) + 0.5) / frame.height * 2.0);
+    const std::array<double, 16>& m = frame.to_world;
+    std::array<double, 4> clip{};
+    for (std::size_t row = 0; row < 4; ++row) {
+        clip.at(row) =
+            (m.at(row) * ndc_x) + (m.at(4 + row) * ndc_y) + m.at(8 + row) + m.at(12 + row);
+    }
+    if (clip[3] == 0.0) {
+        return {};
+    }
+    const Float3 near{static_cast<float>(clip[0] / clip[3]), static_cast<float>(clip[1] / clip[3]),
+                      static_cast<float>(clip[2] / clip[3])};
+    return normalize(sub(near, origin));
+}
+
+Float3 reflection_ray(const Float3& normal, const Float3& view, float roughness, std::uint32_t x,
+                      std::uint32_t y, std::uint32_t width, std::uint32_t sample) {
+    const std::uint32_t seed = mix(((y * width) + x) ^ mix(kReflectionSeed));
+    const float u = fraction(unit(seed) + (static_cast<float>(sample) * kR2X));
+    const float v = fraction(unit(mix(seed)) + (static_cast<float>(sample) * kR2Y));
+    return path_reflection_ray(normal, view, roughness, u, v);
+}
+
+std::vector<float> run_ray_reflections(const PathScene& scene, const PathTextures& textures,
+                                       const RayReflection& reflection, const RayShadowFrame& frame,
+                                       std::span<const float> depth, std::span<const float> normals,
+                                       jobs::Pool* pool) {
+    std::vector<float> out(std::size_t{frame.width} * frame.height * 4, 0.0F);
+    const auto row = [&](std::size_t y) {
+        for (std::uint32_t x = 0; x < frame.width; ++x) {
+            const std::size_t at = (y * frame.width) + x;
+            // The prepass keeps roughness in 0 to 127 of its alpha byte.
+            const float roughness = normals[(at * 4) + 3] * (255.0F / 127.0F);
+            if (!(roughness < kRayReflectionCutoff)) {
+                continue;
+            }
+            const std::optional<RaySurface> surface =
+                ray_surface(frame, x, static_cast<std::uint32_t>(y), depth[at],
+                            {normals[at * 4], normals[(at * 4) + 1], normals[(at * 4) + 2]});
+            if (!surface || dot(surface->normal, surface->normal) == 0.0F) {
+                continue;
+            }
+            const Float3 view = ray_view(frame, x, static_cast<std::uint32_t>(y), surface->origin);
+            Float3 sum{};
+            std::uint32_t met = 0;
+            for (std::uint32_t s = 0; s < reflection.samples; ++s) {
+                const Float3 way = reflection_ray(surface->normal, view, roughness, x,
+                                                  static_cast<std::uint32_t>(y), frame.width, s);
+                if (dot(way, surface->normal) <= 0.0F) {
+                    continue; // into the surface: the environment's reflection stays
+                }
+                const std::uint32_t seed =
+                    mix(static_cast<std::uint32_t>(at) ^ mix((kReflectionSeed << 16U) ^ s));
+                const std::optional<Float3> light =
+                    path_reflection(scene, textures, surface->origin, way, seed);
+                if (light) {
+                    sum = add(sum, *light);
+                    ++met;
+                }
+            }
+            const float share = 1.0F / static_cast<float>(reflection.samples);
+            for (std::size_t c = 0; c < 3; ++c) {
+                out[(at * 4) + c] = round_half(sum.at(c) * share);
+            }
+            out[(at * 4) + 3] = round_half(static_cast<float>(met) * share);
         }
     };
     if (pool != nullptr) {
