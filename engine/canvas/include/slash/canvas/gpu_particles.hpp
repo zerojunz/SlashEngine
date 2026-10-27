@@ -5,6 +5,7 @@
 #include "slash/core/json_schema.hpp"
 #include "slash/core/result.hpp"
 #include "slash/render/particles.hpp"
+#include "slash/render/particles3d.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/world.hpp"
 
@@ -58,6 +59,19 @@ inline constexpr std::string_view kProcessMaterialSuffix = ".process_material.js
 
 // The process a .process_material.json document describes, or its first error.
 [[nodiscard]] Result<render::ParticleProcess> parse_process_material(const json::Value& doc);
+
+// The process the document describes for 3D (GPUParticles3D), or its first error. Particle
+// graphs, collision and sub-emitters are 2D's only for now.
+[[nodiscard]] Result<render::ParticleProcess3D> parse_process_material_3d(const json::Value& doc);
+
+// A .process_material.json file as assets load it: its process in 2D and in 3D.
+struct ProcessMaterial {
+    render::ParticleProcess flat;
+    render::ParticleProcess3D space;
+};
+
+// Both of the document's processes, or its first error.
+[[nodiscard]] Result<ProcessMaterial> parse_process_material_both(const json::Value& doc);
 
 // The most steps an emitter keeps.
 inline constexpr std::size_t kMaxParticleSteps = 4096;

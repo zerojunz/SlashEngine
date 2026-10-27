@@ -2243,7 +2243,9 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     CHECK(unsupported(report, "Environment.ssao_enabled").is_null());
     CHECK(unsupported(report, "Environment.ssr_enabled").is_null());
     CHECK(unsupported(report, "SpotLight3D.light_indirect_energy").is_null());
-    CHECK(why("node type GPUParticles3D") == "no SlashEngine component for it yet");
+    CHECK(
+        why("node type GPUParticles3D") ==
+        "the importer doesn't convert it yet; add SlashEngine's GPUParticles3D component by hand");
     CHECK(why("node type Skeleton3D") ==
           "a skeleton a scene builds itself doesn't convert yet; one "
           "an instance of a model file brings does");

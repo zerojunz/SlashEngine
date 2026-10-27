@@ -359,7 +359,23 @@ CanvasRenderer::CanvasRenderer(render::RenderDevice& device, asset::Assets& asse
                   return loaded.error();
               }
               return light_images_.at(path).share();
-          }) {}
+          }) {
+    scene3d_.set_particle_processes(
+        [this](
+            const std::string& path) -> Result<std::shared_ptr<const render::ParticleProcess3D>> {
+            auto it = processes_.find(path);
+            if (it == processes_.end()) {
+                auto loaded = assets_->load<ProcessMaterial>(path);
+                if (!loaded) {
+                    return loaded.error();
+                }
+                it = processes_.emplace(path, std::move(loaded).value()).first;
+            }
+            std::shared_ptr<const ProcessMaterial> material = it->second.share();
+            const render::ParticleProcess3D* space = &material->space;
+            return std::shared_ptr<const render::ParticleProcess3D>(std::move(material), space);
+        });
+}
 
 CanvasRenderer::~CanvasRenderer() {
     for (const auto& [key, texture] : textures_) {
@@ -438,13 +454,13 @@ Result<const TileSet*> CanvasRenderer::tile_set(const std::string& path) {
 Result<const render::ParticleProcess*> CanvasRenderer::process_material(const std::string& path) {
     auto it = processes_.find(path);
     if (it == processes_.end()) {
-        auto loaded = assets_->load<render::ParticleProcess>(path);
+        auto loaded = assets_->load<ProcessMaterial>(path);
         if (!loaded) {
             return loaded.error();
         }
         it = processes_.emplace(path, std::move(loaded).value()).first;
     }
-    return it->second.get();
+    return &it->second->flat;
 }
 
 namespace {
@@ -1154,6 +1170,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
     if (traced) {
         fsr2.reset();
     }
+    scene3d_.set_tick_seconds(settings(world).tick_seconds);
     std::optional<scene3d::Frame3D> scene = scene3d_.prepare(
         world, viewport.x, viewport.y, options.interpolation, options.clear,
         settings(world).shadows, options.time, settings(world).depth_of_field, settings(world).ssao,

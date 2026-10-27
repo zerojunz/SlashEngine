@@ -6,6 +6,7 @@
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/mesh.hpp"
+#include "slash/scene3d/gpu_particles.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/occlusion.hpp"
 #include "slash/scene3d/primitive.hpp"
@@ -249,6 +250,12 @@ public:
             render::DecalFilter decal_filter = render::DecalFilter::LinearMipmaps,
             const render::VolumetricFogSettings& volumetric_fog = {},
             float mesh_lod_threshold = 1.0F, const render::OcclusionCulling& occlusion = {});
+    // Where GPUParticles3D's process materials load from, and the seconds a tick lasts, which
+    // particles drawn between ticks are moved back by.
+    void set_particle_processes(ParticleProcessSource processes) {
+        processes_ = std::move(processes);
+    }
+    void set_tick_seconds(double seconds) { tick_seconds_ = seconds; }
     // Draws the meshes prepare found into the frame begun with its scene.
     [[nodiscard]] Result<void> draw();
 
@@ -389,12 +396,34 @@ private:
     // BaseMaterial3D's billboard_mode.
     void face_camera(const world::StandardMaterial3D& standard, const world::Affine3D& place,
                      Draw& draw) const;
+    // A mesh drawn at each particle: one of its surfaces, where its part puts it, with what it is
+    // made of.
+    struct ParticlePiece {
+        const MeshData* mesh = nullptr;
+        const ModelSurface* surface = nullptr;
+        world::Affine3D place;
+        SurfaceMaterial material;
+    };
+    // The pieces of the mesh path names (a model file) or, for "", the entity's primitive mesh;
+    // the entity's StandardMaterial3D takes the place of a model's materials. False, with a
+    // problem at field (no_mesh where there is no mesh), when it can't draw.
+    bool particle_pieces(const world::World& world, entt::entity entity, const std::string& path,
+                         std::string_view field, std::vector<ParticlePiece>& pieces,
+                         std::shared_ptr<const Model>& model, std::string_view no_mesh);
     // A CPUParticles3D's mesh at each of its particles, part of the way (interpolation) from
     // where they were before the last tick, placed by place with local_coords and turned toward
     // a camera at camera by a billboard material, as Godot draws its MultiMesh: one mesh per
     // surface on the device, its vertices made again each frame.
     void add_particles(const world::World& world, entt::entity entity, const world::Affine3D& place,
                        const world::Affine3D& camera, std::uint32_t cull_mask, float interpolation);
+    // A GPUParticles3D: its system on the device runs the steps it hasn't (or is made again from
+    // those kept), then each draw pass's mesh is filled with a copy at every particle, drawn
+    // between ticks interpolation of the way along, placed by place with local_coords and turned
+    // toward the camera of view as transform_align and a billboard material say. None draws when
+    // its visibility box is out of view.
+    void add_gpu_particles(const world::World& world, entt::entity entity,
+                           const world::Affine3D& place, const CameraView& view,
+                           std::uint32_t cull_mask, float interpolation);
     // An HTerrain's chunks for a camera at camera, as HTerrain draws them.
     void add_terrain(const world::World& world, entt::entity entity, const world::Affine3D& place,
                      const world::Affine3D& camera, const world::Camera3D& lens);
@@ -528,6 +557,18 @@ private:
         std::uint64_t used = 0;
     };
     std::unordered_map<std::string, ParticleMesh> particle_meshes_;
+    // A GPUParticles3D's system on the device: the emitter's serial and amount it was made for,
+    // the step it runs next and the last frame that drew it.
+    struct GpuParticles3D {
+        render::Particles3DId id = render::Particles3DId::None;
+        std::uint64_t serial = 0;
+        std::uint32_t amount = 0;
+        std::uint64_t next = 0;
+        std::uint64_t used = 0;
+    };
+    std::unordered_map<entt::entity, GpuParticles3D> gpu_particles_;
+    ParticleProcessSource processes_;
+    double tick_seconds_ = 1.0 / 60.0;
     world::Affine3D camera_place_; // where the current camera is, for billboards
     std::unordered_map<std::string, std::pair<MeshData, std::uint64_t>> particle_shapes_;
     std::vector<render::Vertex3D> particle_vertices_;
