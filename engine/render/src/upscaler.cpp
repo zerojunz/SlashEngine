@@ -228,15 +228,18 @@ std::vector<UpscalerInfo> built_in() {
         {.name = std::string(kBilinear),
          .temporal = false,
          .supports = {},
-         .make = [] { return std::unique_ptr<Upscaler>(std::make_unique<Bilinear>()); }},
+         .make = [] { return std::unique_ptr<Upscaler>(std::make_unique<Bilinear>()); },
+         .make_temporal = {}},
         {.name = std::string(kFsr),
          .temporal = false,
          .supports = {},
-         .make = [] { return std::unique_ptr<Upscaler>(std::make_unique<Fsr>()); }},
+         .make = [] { return std::unique_ptr<Upscaler>(std::make_unique<Fsr>()); },
+         .make_temporal = {}},
         {.name = std::string(kMetalFxSpatial),
          .temporal = false,
          .supports = [](const RenderDevice& device) { return device.metalfx().spatial; },
-         .make = [] { return std::unique_ptr<Upscaler>(std::make_unique<MetalFxSpatial>()); }},
+         .make = [] { return std::unique_ptr<Upscaler>(std::make_unique<MetalFxSpatial>()); },
+         .make_temporal = {}},
     };
 }
 
@@ -335,14 +338,11 @@ Result<void> add_upscaler(UpscalerInfo info) {
             "an upscaler's name is lowercase letters, digits and underscores, not \"" + info.name +
                 "\"");
     }
-    if (info.temporal) {
+    if (info.temporal ? !info.make_temporal : !info.make) {
         return make_error(ErrorCode::InvalidArgument,
-                          "upscaler " + info.name +
-                              " is temporal: it needs depth, motion vectors and a jittered "
-                              "camera, which only the 3D renderer will make");
-    }
-    if (!info.make) {
-        return make_error(ErrorCode::InvalidArgument, "upscaler " + info.name + " makes nothing");
+                          "upscaler " + info.name + " makes nothing: " +
+                              (info.temporal ? "a temporal upscaler needs make_temporal"
+                                             : "an upscaler needs make"));
     }
     if (find_upscaler(info.name)) {
         return make_error(ErrorCode::Conflict, "upscaler " + info.name + " already exists");
@@ -388,18 +388,57 @@ void clear_added_upscalers() {
     added.added.clear();
 }
 
-bool uses_fsr2(const Scaling& scaling, RenderMethod method, const RenderDevice& device) {
+namespace {
+
+// Whether a frame can upscale its 3D in the device, as Godot's temporal modes do: in Forward+, at a
+// scale under 1, on a device that draws Forward+.
+bool temporal_frame(const Scaling& scaling, RenderMethod method, const RenderDevice& device) {
     const Backend backend = device.backend();
+    return scaling.scale < 1.0F && method == RenderMethod::ForwardPlus &&
+           backend != Backend::OpenGl && backend != Backend::OpenGlEs;
+}
+
+// The game's temporal upscaler named by scaling, if it runs on device.
+std::optional<UpscalerInfo> added_temporal(const Scaling& scaling, const RenderDevice& device) {
+    if (scaling.upscaler.empty()) {
+        return std::nullopt;
+    }
+    const Backend backend = device.backend();
+    if (backend != Backend::Vulkan && backend != Backend::D3D12 && backend != Backend::Metal &&
+        backend != Backend::Software) {
+        return std::nullopt;
+    }
+    std::optional<UpscalerInfo> info = find_upscaler(scaling.upscaler);
+    if (!info || !info->temporal || (info->supports && !info->supports(device))) {
+        return std::nullopt;
+    }
+    return info;
+}
+
+} // namespace
+
+bool uses_fsr2(const Scaling& scaling, RenderMethod method, const RenderDevice& device) {
+    if (!temporal_frame(scaling, method, device)) {
+        return false;
+    }
     const std::string_view mode = scaling_mode_on(scaling, device);
-    return (mode == kFsr2 || mode == kFsr3 || mode == kMetalFxTemporal) && scaling.scale < 1.0F &&
-           method == RenderMethod::ForwardPlus && backend != Backend::OpenGl &&
-           backend != Backend::OpenGlEs;
+    return mode == kFsr2 || mode == kFsr3 || mode == kMetalFxTemporal ||
+           added_temporal(scaling, device).has_value();
+}
+
+std::string temporal_upscaler_on(const Scaling& scaling, RenderMethod method,
+                                 const RenderDevice& device) {
+    if (!temporal_frame(scaling, method, device)) {
+        return {};
+    }
+    const std::optional<UpscalerInfo> info = added_temporal(scaling, device);
+    return info ? info->name : std::string{};
 }
 
 std::string choose_upscaler(const Scaling& scaling, const RenderDevice& device) {
     if (!scaling.upscaler.empty()) {
         if (const std::optional<UpscalerInfo> info = find_upscaler(scaling.upscaler);
-            info && (!info->supports || info->supports(device))) {
+            info && !info->temporal && (!info->supports || info->supports(device))) {
             return info->name;
         }
     }

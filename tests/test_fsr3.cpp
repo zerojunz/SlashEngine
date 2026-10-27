@@ -23,7 +23,7 @@ using namespace slash::test::upscale;
 namespace {
 
 // FSR 3 at half the size, as the FSR 2 tests' default.
-constexpr render::Fsr2Scaling kFsr3{.scale = 0.5F, .sharpness = 0.2F, .fsr3 = true};
+const render::Fsr2Scaling kFsr3{.scale = 0.5F, .sharpness = 0.2F, .fsr3 = true};
 
 } // namespace
 

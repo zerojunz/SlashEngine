@@ -240,7 +240,7 @@ public:
             const render::ReflectionAtlasSettings& reflection_atlas = {},
             render::RenderMethod method = render::RenderMethod::ForwardPlus,
             bool voxel_gi_high_quality = false, bool use_taa = false,
-            std::optional<render::Fsr2Scaling> fsr2 = std::nullopt,
+            const std::optional<render::Fsr2Scaling>& fsr2 = std::nullopt,
             render::DecalFilter decal_filter = render::DecalFilter::LinearMipmaps,
             const render::VolumetricFogSettings& volumetric_fog = {});
     // Draws the meshes prepare found into the frame begun with its scene.

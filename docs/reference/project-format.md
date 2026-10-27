@@ -156,9 +156,23 @@ Upscalers a game adds are `render::Upscaler` classes (`slash/render/upscaler.hpp
 gives the render target the world draws into, `upscale` runs the upscaler's passes and returns
 the texture and material the window's frame draws over the screen, and `release` frees what it
 made on the device. `render::UpscalerInfo::supports` says which devices one runs on, such as a
-vendor's on its own GPUs. One that is `temporal` (DLSS, XeSS, FSR 3 and later) needs depth,
-motion vectors and a jittered camera, so `add_upscaler` refuses it until those are passed to
-upscalers a game adds, as they are to the built-in `fsr2` and `fsr3`.
+vendor's on its own GPUs.
+
+One that is `temporal` (DLSS, XeSS, FSR 4 from a vendor's SDK) rebuilds the 3D world from its
+depth, motion vectors and jittered camera, as `fsr2` does: `make_temporal` makes a
+`render::TemporalUpscaler`, and where `scaling.upscaler` names it and FSR 2 would run (Forward+, a
+`scale` under 1, the GPU device on Vulkan, Direct3D 12 or Metal, or the software device, and
+`supports` says yes) the device runs it in FSR 2's place. Its `upscale` gets a
+`render::TemporalFrame`: the device's native objects (the `VkDevice` and `VkQueue`, the
+`ID3D12Device`, the `MTLDevice`), the command buffer it records into, the color, depth and
+motion textures at the render size and the output at the window's size as native images, the
+jitter in render pixels, whether the history starts over, the sharpness and the camera, as
+Godot hands its `RenderingDevice`'s objects to a `CompositorEffect`. The textures are left in the
+state shaders read them in. On the software device the textures are float pixels instead, so a
+game's tests see what its upscaler gets. Elsewhere `mode` scales the world, and `frame.capture`'s
+`upscaler` says which ran. A vendor's upscaler on Vulkan may need device extensions SDL doesn't
+turn on (DLSS asks for NVIDIA's), so check its requirements in `supports`.
+[examples/temporal-upscaler](../../examples/temporal-upscaler/) adds one and reads its frames.
 
 ## Rendering methods
 
