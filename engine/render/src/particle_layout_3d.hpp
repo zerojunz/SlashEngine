@@ -39,14 +39,22 @@ inline constexpr std::uint32_t kProcessDampingAsFriction = 8U;
 inline constexpr std::uint32_t kProcessTurbulence = 16U;
 inline constexpr std::uint32_t kProcessDirectionalGlobal = 32U;
 inline constexpr std::uint32_t kProcessAttractors = 64U;
-// A step's words. Its last word holds the cycle, the seed, the flags (particle_layout.hpp's, with
-// the attractor count from bit kStepAttractorShift) and where its attractors' words are. Each
-// attractor is kAttractorWords3D words: its transform (3), {extents, strength} and {shape, where
-// its field is, attenuation, directionality}. A field is {width, height, depth, 0}, then a word a
-// texel.
-inline constexpr std::uint32_t kStepWords3D = 7;
+inline constexpr std::uint32_t kProcessCollisionUseScale = 128U;
+inline constexpr std::uint32_t kProcessCollisionRigid = 256U;
+inline constexpr std::uint32_t kProcessCollisionHide = 512U;
+// The gradients' stop counts' word holds the collision friction and bounce after them.
+// A step's words. Word 6 holds the cycle, the seed, the flags (particle_layout.hpp's, with the
+// attractor count from bit kStepAttractorShift and the collider count from bit
+// kStepColliderShift) and where its attractors' words are; word 7 where its colliders' words are
+// and its collision size. Each attractor is kAttractorWords3D words: its transform (3), {extents,
+// strength} and {shape, where its field is, attenuation, directionality}. A field is {width,
+// height, depth, 0}, then a word a texel. Each collider is kColliderWords3D words: its transform
+// (3) and {extents, shape}.
+inline constexpr std::uint32_t kStepWords3D = 8;
 inline constexpr std::uint32_t kStepAttractorShift = 8;
+inline constexpr std::uint32_t kStepColliderShift = 16;
 inline constexpr std::uint32_t kAttractorWords3D = 5;
+inline constexpr std::uint32_t kColliderWords3D = 4;
 
 // Appends a 3D process material's words.
 void pack_particle_process_3d(const ParticleProcess3D& process, std::vector<Word>& out);
