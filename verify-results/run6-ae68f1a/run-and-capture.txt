@@ -1,0 +1,10 @@
+## call frame.capture --scene captures/DemoLevel.after60.scene.json (time 0, single process)
+{"colors":[[0.353,0.427,0.494,1],[0.173,0.18,0.184,1],[1,0.976,0.933,1],[0.357,0.373,0.396,1],[0.38,0.392,0.38,1]],"drawn":{"lods":5,"meshes":6},"height":720,"path":"captures/run6/DemoLevel_after60_call_t0.png","width":1280}
+exit 0
+## rpc --scene captures/DemoLevel.after60.scene.json < calls.jsonl
+{"jsonrpc":"2.0","id":1,"method":"frame.capture","params":{"time":0,"points":[[640,40],[640,240],[640,620],[200,530],[477,400]],"path":"captures/run6/DemoLevel_after60_rpc_t0.png"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"time":10,"points":[[640,40],[640,240],[640,620],[200,530],[477,400]],"path":"captures/run6/DemoLevel_after60_rpc_t10.png"}}
+## replies
+{"id":1,"jsonrpc":"2.0","result":{"colors":[[0.353,0.427,0.494,1],[0.173,0.18,0.184,1],[1,0.976,0.933,1],[0.357,0.373,0.396,1],[0.38,0.392,0.38,1]],"drawn":{"lods":5,"meshes":6},"height":720,"path":"captures/run6/DemoLevel_after60_rpc_t0.png","width":1280}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.353,0.427,0.494,1],[0.173,0.18,0.184,1],[1,0.976,0.933,1],[0.357,0.373,0.396,1],[0.38,0.392,0.38,1]],"drawn":{"lods":5,"meshes":6},"height":720,"path":"captures/run6/DemoLevel_after60_rpc_t10.png","width":1280}}
+exit 0

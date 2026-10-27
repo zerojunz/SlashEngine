@@ -1,0 +1,2 @@
+{"jsonrpc":"2.0","id":1,"method":"frame.capture","params":{"time":0,"points":[[640,40],[640,240],[640,620],[200,530],[477,400]],"path":"captures/run6/DemoLevel_after60_rpc_t0.png"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"time":10,"points":[[640,40],[640,240],[640,620],[200,530],[477,400]],"path":"captures/run6/DemoLevel_after60_rpc_t10.png"}}
