@@ -24,17 +24,19 @@
 #include "fsr2.hlsl"
 
 // The dilate pass's motion vectors and depths, the world, the frame before's dilated motion vectors
-// and the prepass's motion vectors.
+// and the prepass's motion vectors and depth, which make the sky's motion vectors.
 Texture2D<float4> dilated_motion : register(t0, space2);
 Texture2D<float4> dilated_depth : register(t1, space2);
 Texture2D<float4> input_color : register(t2, space2);
 Texture2D<float4> previous_dilated_motion : register(t3, space2);
 Texture2D<float4> input_motion : register(t4, space2);
+Texture2D<float4> input_depth : register(t5, space2);
 SamplerState dilated_motion_sampler : register(s0, space2);
 SamplerState dilated_depth_sampler : register(s1, space2);
 SamplerState input_color_sampler : register(s2, space2);
 SamplerState previous_dilated_motion_sampler : register(s3, space2);
 SamplerState input_motion_sampler : register(s4, space2);
+SamplerState input_depth_sampler : register(s5, space2);
 
 // The reconstruct pass's depths as bits. Metal numbers storage buffers after the uniforms, and
 // WebGPU's go in a bind group of their own.
@@ -43,7 +45,7 @@ StructuredBuffer<uint> reconstructed : register(t1, space2);
 #elif defined(SLASH_WGSL)
 StructuredBuffer<uint> reconstructed : register(t0, space0);
 #else
-StructuredBuffer<uint> reconstructed : register(t5, space2);
+StructuredBuffer<uint> reconstructed : register(t6, space2);
 #endif
 
 float2 LoadDilatedMotionVector(int2 iPxPos) {
@@ -59,7 +61,9 @@ float2 LoadPreviousDilatedMotionVector(int2 iPxPos) {
     return previous_dilated_motion.Load(int3(Inside(iPxPos, RenderSize()), 0)).xy;
 }
 float2 LoadInputMotionVector(int2 iPxPos) {
-    return input_motion.Load(int3(Inside(iPxPos, RenderSize()), 0)).xy;
+    int2 iPos = Inside(iPxPos, RenderSize());
+    return ValidMotionVector(input_motion.Load(int3(iPos, 0)).xy, iPos,
+                             input_depth.Load(int3(iPos, 0)).r);
 }
 float LoadReconstructedPrevDepth(int2 iPxPos) {
     int2 iPos = Inside(iPxPos, RenderSize());
