@@ -57,7 +57,10 @@ void pack_particle_process_3d(const ParticleProcess3D& process, std::vector<Word
         (process.damping_as_friction ? kProcessDampingAsFriction : 0U) |
         (process.turbulence_enabled ? kProcessTurbulence : 0U) |
         (process.directional_velocity_global ? kProcessDirectionalGlobal : 0U) |
-        (process.attractor_interaction ? kProcessAttractors : 0U);
+        (process.attractor_interaction ? kProcessAttractors : 0U) |
+        (process.collision_use_scale ? kProcessCollisionUseScale : 0U) |
+        (process.collision_mode == ParticleCollision::Rigid ? kProcessCollisionRigid : 0U) |
+        (process.collision_mode == ParticleCollision::HideOnContact ? kProcessCollisionHide : 0U);
     out.push_back({static_cast<std::uint32_t>(process.emission_shape),
                    bits(process.emission_sphere_radius), bits(process.emission_ring_radius),
                    bits(process.emission_ring_inner_radius)});
@@ -106,7 +109,8 @@ void pack_particle_process_3d(const ParticleProcess3D& process, std::vector<Word
         out.push_back(counts);
     }
     out.push_back({static_cast<std::uint32_t>(process.color_ramp.size()),
-                   static_cast<std::uint32_t>(process.color_initial_ramp.size()), 0U, 0U});
+                   static_cast<std::uint32_t>(process.color_initial_ramp.size()),
+                   bits(process.collision_friction), bits(process.collision_bounce)});
     for (const ParticleCurve* curve : curves) {
         for (std::size_t word = 0; word < kCurveWords; ++word) {
             const std::size_t first = word * 2;
@@ -153,8 +157,26 @@ void pack_particle_steps_3d(std::span<const ParticleStep3D> steps, std::vector<W
         const std::uint32_t flags =
             (step.emitting ? kStepEmitting : 0U) |
             (step.fractional_delta ? kStepFractionalDelta : 0U) | (step.clear ? kStepClear : 0U) |
-            (static_cast<std::uint32_t>(step.attractors.size()) << kStepAttractorShift);
+            (static_cast<std::uint32_t>(step.attractors.size()) << kStepAttractorShift) |
+            (static_cast<std::uint32_t>(step.colliders.size()) << kStepColliderShift);
         out.push_back({step.cycle, step.seed, flags, 0U});
+        out.push_back({0U, bits(step.collision_size), 0U, 0U});
+    }
+    // Then each step's colliders.
+    for (std::size_t i = 0; i < steps.size(); ++i) {
+        const ParticleStep3D& step = steps[i];
+        if (step.colliders.empty()) {
+            continue;
+        }
+        out[first + (i * kStepWords3D) + 7].at(0) = static_cast<std::uint32_t>(out.size());
+        for (const ParticleCollider3D& collider : step.colliders) {
+            const ParticleTransform& t = collider.transform;
+            out.push_back(floats(t[0], t[1], t[2], t[3]));
+            out.push_back(floats(t[4], t[5], t[6], t[7]));
+            out.push_back(floats(t[8], t[9], t[10], t[11]));
+            out.push_back({bits(collider.extents.x), bits(collider.extents.y),
+                           bits(collider.extents.z), static_cast<std::uint32_t>(collider.shape)});
+        }
     }
     // Then each step's attractors, and the fields they sample once each.
     std::vector<std::pair<const ParticleField3D*, std::uint32_t>> fields;

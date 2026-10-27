@@ -557,6 +557,75 @@ TEST_CASE("GPUParticles3D pairs with the attractors its box touches, as Godot's 
     CHECK(live[0].origin.x == doctest::Approx(1.0));
 }
 
+TEST_CASE("GPUParticles3D falls onto a collision box and bounces off a sphere, as Godot's") {
+    Scene scene;
+    scene.files["drop.process_material.json"] =
+        R"({"format": 1, "gravity": [0, -9.8, 0], "emission_shape": "points",
+            "emission_points": [[0, 2, 0]], "collision_mode": "rigid", "collision_bounce": 0.5})";
+    const entt::entity emitter = scene.create("drops", R"({"Transform3D": {},
+        "GPUParticles3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
+                           "collision_base_size": 0.1,
+                           "process_material": "drop.process_material.json"},
+        "QuadMesh": {}})");
+    scene.create("floor",
+                 R"({"Transform3D": {"position": [0, -1, 0]},
+                     "GPUParticlesCollisionBox3D": {"size": [6, 2, 6]}})");
+    // Another layer, too far and hidden: none of these collide with it.
+    scene.create("masked",
+                 R"({"Transform3D": {}, "GPUParticlesCollisionSphere3D": {"cull_mask": 2}})");
+    scene.create(
+        "far", R"({"Transform3D": {"position": [20, 0, 0]}, "GPUParticlesCollisionSphere3D": {}})");
+    scene.create("hidden",
+                 R"({"Transform3D": {"visible": false}, "GPUParticlesCollisionBox3D": {}})");
+    scene.step();
+    auto kept = scene3d::particle_steps_3d(scene.world, emitter);
+    REQUIRE(kept.has_value());
+    const render::ParticleStep3D& step = kept->steps.back();
+    REQUIRE(step.colliders.size() == 1);
+    CHECK(step.colliders[0].shape == render::ColliderShape3D::Box);
+    CHECK(step.colliders[0].extents.x == doctest::Approx(3.0));
+    CHECK(step.colliders[0].transform[10] == doctest::Approx(-1.0));
+    CHECK(step.collision_size == doctest::Approx(0.1));
+
+    // The drop falls, bounces and comes to rest on the floor's top, its size above it.
+    float highest_after_bounce = -1.0F;
+    bool bounced = false;
+    for (int i = 0; i < 120; ++i) {
+        scene.step();
+        auto live = scene.live(emitter);
+        REQUIRE(live.size() == 1);
+        if (live[0].velocity.y > 0.0F) {
+            bounced = true;
+        }
+        if (bounced) {
+            highest_after_bounce = std::max(highest_after_bounce, live[0].origin.y);
+        }
+    }
+    CHECK(bounced);
+    CHECK(highest_after_bounce > 0.2F);
+    CHECK(highest_after_bounce < 2.0F);
+    auto live = scene.live(emitter);
+    REQUIRE(live.size() == 1);
+    CHECK(live[0].origin.y == doctest::Approx(0.1).epsilon(0.05));
+    CHECK(live[0].origin.x == doctest::Approx(0.0));
+
+    // A ball of hide_on_contact hides what it touches.
+    scene.files["hide.process_material.json"] =
+        R"({"format": 1, "gravity": [0, -9.8, 0], "emission_shape": "points",
+            "emission_points": [[4, 2, 0]], "collision_mode": "hide_on_contact"})";
+    const entt::entity hiding = scene.create("hiding", R"({"Transform3D": {},
+        "GPUParticles3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
+                           "visibility_aabb_size": [12, 8, 8],
+                           "process_material": "hide.process_material.json"},
+        "QuadMesh": {}})");
+    scene.create("ball", R"({"Transform3D": {"position": [4, 0, 0]},
+        "GPUParticlesCollisionSphere3D": {"radius": 0.5}})");
+    scene.step(5);
+    CHECK(scene.live(hiding).size() == 1);
+    scene.step(60);
+    CHECK(scene.live(hiding).empty());
+}
+
 TEST_CASE("a vector field attractor cuts its texture into slices, as Godot's Texture3D importer") {
     // Four 1x2 slices side by side, two across and two down, each texel its own red.
     render::Image image;

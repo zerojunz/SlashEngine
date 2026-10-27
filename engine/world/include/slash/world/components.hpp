@@ -2719,6 +2719,8 @@ struct GPUParticles3D {
     float speed_scale = 1.0F;
     float explosiveness = 0.0F;
     float randomness = 0.0F;
+    // How near a particle comes to a GPUParticlesCollision3D before it touches, in meters.
+    float collision_base_size = 0.01F;
     // The box particles are drawn in, in the entity's space: none is drawn when it is out of
     // view, as Godot's culling.
     Vec3 visibility_aabb_position{-4.0F, -4.0F, -4.0F};
@@ -2734,9 +2736,10 @@ struct GPUParticles3D {
 };
 SLASH_COMPONENT(GPUParticles3D, emitting, amount, amount_ratio, process_material, lifetime,
                 interp_to_end, one_shot, preprocess, speed_scale, explosiveness, randomness,
-                use_fixed_seed, seed, fixed_fps, interpolate, fract_delta, visibility_aabb_position,
-                visibility_aabb_size, local_coords, draw_order, transform_align, draw_passes,
-                draw_pass_1, draw_pass_2, draw_pass_3, draw_pass_4, layers, cast_shadow)
+                use_fixed_seed, seed, fixed_fps, interpolate, fract_delta, collision_base_size,
+                visibility_aabb_position, visibility_aabb_size, local_coords, draw_order,
+                transform_align, draw_passes, draw_pass_1, draw_pass_2, draw_pass_3, draw_pass_4,
+                layers, cast_shadow)
 
 // Pulls the particles of GPUParticles3Ds inside a sphere toward its center (a negative strength
 // pushes them away), as Godot's GPUParticlesAttractorSphere3D. Each tick the gpu_particles_3d
@@ -2788,6 +2791,29 @@ struct GPUParticlesAttractorVectorField3D {
 };
 SLASH_COMPONENT(GPUParticlesAttractorVectorField3D, strength, attenuation, directionality,
                 cull_mask, size, texture, slices_horizontal, slices_vertical)
+
+// A sphere the particles of GPUParticles3Ds collide with, as Godot's
+// GPUParticlesCollisionSphere3D: what they do on touching it is their process material's
+// collision_mode. Each tick the gpu_particles_3d system pairs it with emitters as it pairs
+// attractors, at most 32 colliders an emitter.
+struct GPUParticlesCollisionSphere3D {
+    std::uint32_t cull_mask = 0xFFFFFU; // every layer
+    float radius = 1.0F;
+
+    friend bool operator==(const GPUParticlesCollisionSphere3D&,
+                           const GPUParticlesCollisionSphere3D&) = default;
+};
+SLASH_COMPONENT(GPUParticlesCollisionSphere3D, cull_mask, radius)
+
+// As GPUParticlesCollisionSphere3D, a box, as Godot's GPUParticlesCollisionBox3D.
+struct GPUParticlesCollisionBox3D {
+    std::uint32_t cull_mask = 0xFFFFFU; // every layer
+    Vec3 size{2.0F, 2.0F, 2.0F};
+
+    friend bool operator==(const GPUParticlesCollisionBox3D&,
+                           const GPUParticlesCollisionBox3D&) = default;
+};
+SLASH_COMPONENT(GPUParticlesCollisionBox3D, cull_mask, size)
 
 // ---- Audio, as Godot's AudioStreamPlayer nodes.
 

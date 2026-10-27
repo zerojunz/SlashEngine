@@ -2005,6 +2005,10 @@ void register_particle_components(ComponentRegistry& registry) {
                                 .max = 1000})
         .describe("interpolate", {.doc = "Draw particles where they are between steps."})
         .describe("fract_delta", {.doc = "As GPUParticles2D's."})
+        .describe("collision_base_size",
+                  {.doc = "How near a particle comes to a GPUParticlesCollision3D before it "
+                          "touches, in meters.",
+                   .min = 0})
         .describe("visibility_aabb_position",
                   {.doc = "The corner of the box, in the entity's space, the particles are "
                           "drawn in: none is drawn when it is out of every camera's view."})
@@ -2080,6 +2084,21 @@ void register_particle_components(ComponentRegistry& registry) {
         .describe(
             "slices_vertical",
             {.doc = "Slices down the texture, as Godot's slices/vertical.", .min = 1, .max = 256});
+
+    const FieldMeta collides{.doc = "Collides with GPUParticles3Ds whose layers share a bit.",
+                             .min = 0,
+                             .max = kMaxMask};
+    registry.add<GPUParticlesCollisionSphere3D>()
+        .set_doc("A sphere the particles of GPUParticles3Ds collide with, as Godot's "
+                 "GPUParticlesCollisionSphere3D, when their process material's collision_mode "
+                 "is rigid or hide_on_contact; at most 32 colliders act on an emitter.")
+        .describe("cull_mask", collides)
+        .describe("radius", {.doc = "The sphere's radius in meters.", .min = 0});
+    registry.add<GPUParticlesCollisionBox3D>()
+        .set_doc("A box the particles of GPUParticles3Ds collide with, as Godot's "
+                 "GPUParticlesCollisionBox3D.")
+        .describe("cull_mask", collides)
+        .describe("size", box);
 }
 
 void register_audio_components(ComponentRegistry& registry) {
