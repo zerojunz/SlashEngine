@@ -59,6 +59,7 @@
 #include "volumetric_fog.hpp"
 #include "volumetric_fog_shaders.hpp"
 #include "volumetric_fog_sky_shaders.hpp"
+#include "vulkan_rays.hpp"
 
 #include "slash/core/log.hpp"
 #include "slash/render/image.hpp"
@@ -545,6 +546,8 @@ public:
             SDL_SubmitGPUCommandBuffer(frame_commands_);
         }
         SDL_WaitForGPUIdle(device_);
+        rays_.reset();
+        release_ray_shadows();
         release_pending();
         for (const auto& [id, texture] : textures_) {
             SDL_ReleaseGPUTexture(device_, texture.gpu);
@@ -812,6 +815,9 @@ public:
         if (window_ != nullptr && !SDL_ClaimWindowForGPUDevice(device_, window_)) {
             window_ = nullptr;
             return sdl_error("the GPU device couldn't draw to the window");
+        }
+        if (backend_ == Backend::Vulkan) {
+            rays_ = make_vulkan_rays(device_);
         }
         if (auto made = make_shaders(ShaderKind::Sprite); !made) {
             return made;
@@ -1275,6 +1281,7 @@ public:
             return unknown_mesh(mesh);
         }
         Mesh& found = it->second;
+        found.version = ++mesh_versions_;
         const std::uint32_t amount = system->second.amount;
         if (auto checked = check_particle_mesh(amount, source.size(), found.vertex_count);
             !checked) {
@@ -1449,6 +1456,7 @@ public:
             return sdl_error("uploading a mesh failed");
         }
         const auto id = static_cast<MeshId>(next_mesh_++);
+        mesh.version = ++mesh_versions_;
         meshes_[id] = mesh;
         return id;
     }
@@ -1468,6 +1476,7 @@ public:
         // The first update since a frame with TAA drew the mesh keeps the vertices it drew, for
         // the motion of the next one's: the buffers swap, and the new vertices go in the other.
         Mesh& found = it->second;
+        found.version = ++mesh_versions_;
         if (!found.moved) {
             if (found.previous == nullptr) {
                 SDL_GPUBufferCreateInfo info{};
@@ -1627,6 +1636,7 @@ public:
         }
         // The sky and meshes draw at FSR 2's render size, the post passes at the frame's.
         const auto [scene_width, scene_height] = scene_size(frame, width, height);
+        traced_ = false;
         if (frame.scene && frame.scene->method == RenderMethod::ForwardPlus) {
             if (auto ready =
                     prepare_forward(format, width, height, frame.scene->post.glow,
@@ -1642,7 +1652,8 @@ public:
                     return depth.error();
                 }
             }
-            if (uses_prepass(*frame.scene)) {
+            traced_ = traces_shadows(*frame.scene);
+            if (uses_prepass(*frame.scene) || traced_) {
                 if (auto ready = prepare_prepass(scene_width, scene_height); !ready) {
                     SDL_CancelGPUCommandBuffer(commands);
                     return ready.error();
@@ -1693,8 +1704,14 @@ public:
                     return ready.error();
                 }
             }
-            if (uses_ssao(*frame.scene) || uses_ssr(*frame.scene)) {
+            if (uses_ssao(*frame.scene) || uses_ssr(*frame.scene) || traced_) {
                 if (auto ready = prepare_screen(scene_width, scene_height); !ready) {
+                    SDL_CancelGPUCommandBuffer(commands);
+                    return ready.error();
+                }
+            }
+            if (traced_) {
+                if (auto ready = prepare_ray_shadows(scene_width, scene_height); !ready) {
                     SDL_CancelGPUCommandBuffer(commands);
                     return ready.error();
                 }
@@ -1760,6 +1777,16 @@ public:
         const std::uint32_t size = textures_.at(capture.atlas).desc.width;
         if (auto ready = prepare_forward(kTextureFormat, size, size, false, false, false); !ready) {
             return ready.error();
+        }
+        // Captures trace their shadows' rays as frames do.
+        traced_ = traces_shadows(scene);
+        if (traced_) {
+            for (const auto& ready : {prepare_prepass(size, size), prepare_screen(size, size),
+                                      prepare_ray_shadows(size, size)}) {
+                if (!ready) {
+                    return ready.error();
+                }
+            }
         }
         if (sky_draws(scene)) {
             if (auto ready = prepare_sky(kHdrFormat, size, size); !ready) {
@@ -1940,9 +1967,12 @@ public:
                         .bounds = it->second.bounds,
                         .pipeline = pipeline.value()};
         batch.previous_vertices = it->second.moved ? it->second.previous : it->second.vertices;
-        // SSAO's, SSR's, TAA's and FSR 2's prepass draws the opaque meshes' normals, and with TAA
-        // or FSR 2 their motion vectors.
-        if (uses_prepass(*frame_.scene) && material.transparency != Transparency::Alpha) {
+        batch.vertex_count = static_cast<std::uint32_t>(it->second.vertex_count);
+        batch.version = it->second.version;
+        // SSAO's, SSR's, ray-traced shadows', TAA's and FSR 2's prepass draws the opaque meshes'
+        // normals, and with TAA or FSR 2 their motion vectors.
+        if ((uses_prepass(*frame_.scene) || traced_) &&
+            material.transparency != Transparency::Alpha) {
             auto normal = uses_motion_vectors(*frame_.scene) ? motion_pipeline_for(material.cull)
                                                              : normal_pipeline_for(material.cull);
             if (!normal) {
@@ -2170,6 +2200,7 @@ public:
     }
 
     [[nodiscard]] MetalFxSupport metalfx() const override { return metalfx_; }
+    [[nodiscard]] bool ray_tracing() const override { return rays_ != nullptr; }
 
     Result<void> metalfx_spatial(TextureId source, TextureId target) override {
         if (!metalfx_.spatial) {
@@ -2259,6 +2290,8 @@ private:
         // fill_particle_mesh makes them.
         bool storage = false;
         bool previous_storage = false;
+        // Changes whenever its vertices do, so rays build its structure again.
+        std::uint64_t version = 0;
     };
 
     // What a mesh draw binds, found when it is made: its mesh may be destroyed before end_frame.
@@ -2273,6 +2306,9 @@ private:
         std::array<SDL_GPUTextureSamplerBinding, kMeshTextures> samplers{};
         // Where its vertices were in the frame before, which TAA's prepass reads.
         SDL_GPUBuffer* previous_vertices = nullptr;
+        // Its mesh's vertices and their version, for rays.
+        std::uint32_t vertex_count = 0;
+        std::uint64_t version = 0;
     };
 
     // A shadow atlas: a depth texture the shadow passes draw into and the mesh pass samples.
@@ -3438,6 +3474,7 @@ private:
         }
         const bool ssao = plan != nullptr && uses_ssao(scene);
         const bool ssr = plan != nullptr && uses_ssr(scene);
+        const bool traced = plan != nullptr && traced_;
         // What every draw samples besides its material's textures: the shadow atlases, the
         // radiance and, in Forward+, the SSAO and the SSR.
         std::array<SDL_GPUTextureSamplerBinding, kMeshTextures + 5> samplers{};
@@ -3454,7 +3491,7 @@ private:
                                                                               : no_radiance_,
                                               .sampler = radiance_sampler_};
             samplers.at(kMeshTextures +
-                        3) = {.texture = ssao || ssr ? screen_.texture : no_screen_,
+                        3) = {.texture = ssao || ssr || traced ? screen_.texture : no_screen_,
                               .sampler = samplers_.at(sampler_index(Filter::Nearest, false))};
             samplers.at(kMeshTextures + 4) = {
                 .texture = lights->reflections[0] > 0.0F ? textures_.at(scene.reflections.atlas).gpu
@@ -3517,11 +3554,11 @@ private:
                 SDL_DrawGPUIndexedPrimitives(pass, batch.range.count, 1, batch.range.first, 0, 0);
             }
         };
-        if (ssao || ssr || motion) {
+        if (ssao || ssr || motion || traced) {
             // The prepass draws the opaque meshes' normals and depth, from which SSAO's passes
-            // make the occlusion the meshes are then lit with, and SSR's their reflections, and
-            // with TAA their motion vectors, into the history's next texture, or with FSR 2 into
-            // its own.
+            // make the occlusion the meshes are then lit with, SSR's their reflections and the
+            // rays their shadows, and with TAA their motion vectors, into the history's next
+            // texture, or with FSR 2 into its own.
             std::array<SDL_GPUColorTargetInfo, 2> targets{};
             SDL_GPUColorTargetInfo& normals = targets[0];
             normals.texture = prepass_.normals;
@@ -3552,6 +3589,9 @@ private:
             if (ssao) {
                 draw_ssao(commands, scene);
                 copy_to_screen(commands, ssao_targets_.textures.at(kSsaoFinal), 0);
+            }
+            if (traced && trace_ray_shadows(commands, scene, camera.view_projection)) {
+                lights->screen[2] = 1.0F;
             }
         } else if (fsr2 != nullptr) {
             // A frame with no meshes is all sky.
@@ -4130,13 +4170,95 @@ private:
         if (screen_.texture != nullptr) {
             pending_release_.push_back(std::exchange(screen_.texture, nullptr));
         }
+        // Layers 2 and 3 hold the ray-traced shadows on a device with rays.
         auto texture = pass_texture(width, height, kHdrFormat, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, 1,
-                                    "SSAO", 2);
+                                    "SSAO", rays_ != nullptr ? 4 : 2);
         if (!texture) {
             return texture.error();
         }
         screen_ = {.texture = texture.value(), .width = width, .height = height};
         return {};
+    }
+
+    // Whether a frame traces its shadows' rays: on a device with rays, in Forward+ with
+    // ray-traced shadows and a light that has a ray slot.
+    [[nodiscard]] bool traces_shadows(const Scene3D& scene) const {
+        return rays_ != nullptr && !ray_shadow_lights(scene).empty();
+    }
+
+    // The two textures of visibilities the rays write, for a frame of width x height.
+    Result<void> prepare_ray_shadows(std::uint32_t width, std::uint32_t height) {
+        if (ray_shadows_.textures[0] != nullptr && ray_shadows_.width == width &&
+            ray_shadows_.height == height) {
+            return {};
+        }
+        release_ray_shadows();
+        for (SDL_GPUTexture*& texture : ray_shadows_.textures) {
+            auto made =
+                pass_texture(width, height, kHdrFormat, SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
+                             1, "ray-traced shadows");
+            if (!made) {
+                release_ray_shadows();
+                return made.error();
+            }
+            texture = made.value();
+        }
+        ray_shadows_.width = width;
+        ray_shadows_.height = height;
+        return {};
+    }
+
+    void release_ray_shadows() {
+        for (SDL_GPUTexture*& texture : ray_shadows_.textures) {
+            if (texture != nullptr) {
+                pending_release_.push_back(std::exchange(texture, nullptr));
+            }
+        }
+        ray_shadows_.width = 0;
+        ray_shadows_.height = 0;
+    }
+
+    // After the prepass: the frame's shadows traced through the draws that cast them, into the
+    // screen array's layers 2 and 3. False, with the shadow maps left to light the frame, where
+    // the rays failed.
+    bool trace_ray_shadows(SDL_GPUCommandBuffer* commands, const Scene3D& scene,
+                           const Mat4& view_projection) {
+        std::vector<RayDraw> draws;
+        draws.reserve(mesh_draws_.size());
+        for (std::size_t i = 0; i < mesh_draws_.size(); ++i) {
+            const MeshDraw& draw = mesh_draws_[i];
+            const MeshBatch& batch = mesh_batches_[i];
+            if (draw.shadows == ShadowCasting::Off) {
+                continue;
+            }
+            draws.push_back({.mesh = static_cast<std::uint64_t>(draw.mesh),
+                             .version = batch.version,
+                             .vertices = batch.vertices,
+                             .indices = batch.indices,
+                             .vertex_count = batch.vertex_count,
+                             .first_index = batch.range.first,
+                             .index_count = batch.range.count,
+                             .transform = draw.transform,
+                             .layers = draw.layers});
+        }
+        const std::vector<RayShadowLight> lights = ray_shadow_lights(scene);
+        if (auto traced = rays_->trace_shadows(
+                commands, draws, lights,
+                ray_shadow_frame(scene, view_projection, scene_width_, scene_height_),
+                {.depth = prepass_.depth,
+                 .normals = prepass_.normals,
+                 .visibility = ray_shadows_.textures});
+            !traced) {
+            if (!ray_failure_logged_) {
+                log::warn("ray-traced shadows failed; shadow maps light the frame",
+                          {{"error", traced.error().message}});
+                ray_failure_logged_ = true;
+            }
+            return false;
+        }
+        copy_to_screen(commands, ray_shadows_.textures[0], 2);
+        copy_to_screen(commands, ray_shadows_.textures[1], 3);
+        return true;
     }
 
     // The normal-roughness prepass's normals and depth for a frame of width x height, which
@@ -6430,6 +6552,18 @@ private:
     };
     Screen screen_;
     SDL_GPUTexture* no_screen_ = nullptr;
+    // Ray queries on Vulkan where the GPU has them (src/vulkan_rays.hpp), the textures they
+    // write a frame's shadows into, and whether this frame traces them.
+    std::unique_ptr<VulkanRays> rays_;
+    struct RayShadowTextures {
+        std::array<SDL_GPUTexture*, 2> textures{};
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+    };
+    RayShadowTextures ray_shadows_;
+    bool traced_ = false;
+    bool ray_failure_logged_ = false;
+    std::uint64_t mesh_versions_ = 0;
     // A black atlas for frames with no probes, and the cube captures draw into, before their
     // levels are filtered into an atlas's cube.
     SDL_GPUTexture* no_probes_ = nullptr;
@@ -6657,6 +6791,34 @@ bool gpu_backend_works(const std::string& driver) {
     return works;
 }
 
+// SDL's device for options: on Vulkan, with ray queries where the GPU has them
+// (VulkanRayOptions), else as SDL makes it.
+SDL_GPUDevice* create_sdl_device(const DeviceOptions& options) {
+    const VulkanRayOptions rays;
+    const SDL_PropertiesID props = SDL_CreateProperties();
+    SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN, true);
+    SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_MSL_BOOLEAN, true);
+    SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_DXBC_BOOLEAN,
+                           (kShaderFormats & SDL_GPU_SHADERFORMAT_DXBC) != 0);
+    SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, options.debug);
+    SDL_SetStringProperty(props, SDL_PROP_GPU_DEVICE_CREATE_NAME_STRING,
+                          sdl_driver_name(options.driver));
+    SDL_GPUDevice* device = nullptr;
+    if (rays.options() != nullptr) {
+        SDL_SetPointerProperty(props, SDL_PROP_GPU_DEVICE_CREATE_VULKAN_OPTIONS_POINTER,
+                               rays.options());
+        if (SDL_GPUSupportsProperties(props)) {
+            device = SDL_CreateGPUDeviceWithProperties(props);
+        }
+    }
+    SDL_DestroyProperties(props);
+    if (device == nullptr) {
+        device =
+            SDL_CreateGPUDevice(kShaderFormats, options.debug, sdl_driver_name(options.driver));
+    }
+    return device;
+}
+
 Result<std::unique_ptr<RenderDevice>> create_gpu_device(const DeviceOptions& options) {
     const bool owns_video = options.window == nullptr;
     if (owns_video) {
@@ -6664,8 +6826,7 @@ Result<std::unique_ptr<RenderDevice>> create_gpu_device(const DeviceOptions& opt
             return started.error();
         }
     }
-    SDL_GPUDevice* device =
-        SDL_CreateGPUDevice(kShaderFormats, options.debug, sdl_driver_name(options.driver));
+    SDL_GPUDevice* device = create_sdl_device(options);
     if (device == nullptr) {
         Error error = sdl_error(options.driver == "auto"
                                     ? std::string("no GPU backend works here")

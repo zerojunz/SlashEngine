@@ -271,6 +271,12 @@ foreach(shader IN ITEMS sprite material mesh mesh_clustered mesh_normal mesh_mot
             -DOUTPUT=${PROJECT_SOURCE_DIR}/engine/render/src/${shader}_shaders.hpp -DCHECK=ON
             -P ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake)
 endforeach()
+foreach(shader IN ITEMS ray_shadows)
+    add_test(NAME shaders_up_to_date_${shader}
+        COMMAND ${CMAKE_COMMAND} -DSOURCE=${PROJECT_SOURCE_DIR}/engine/render/shaders/${shader}.comp
+            -DOUTPUT=${PROJECT_SOURCE_DIR}/engine/render/src/${shader}_shaders.hpp -DCHECK=ON
+            -P ${PROJECT_SOURCE_DIR}/cmake/compile_ray_shaders.cmake)
+endforeach()
 
 # Every dependency this build fetched is pinned in cmake/dependencies.json with an allowed license
 # and the license text that was reviewed; see cmake/check_licenses.cmake.
