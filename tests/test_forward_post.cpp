@@ -393,14 +393,46 @@ TEST_CASE("log-average auto exposure measures a frame's geometric mean, as Unrea
             detail::luminance_uniforms(post, detail::ForwardPass::LuminanceFirst, {16, 8}, {2, 1}),
             world, blocks);
         detail::LuminanceImage out;
-        detail::run_luminance_pass(
-            detail::luminance_uniforms(post, detail::ForwardPass::LuminanceFinal, {2, 1}, {1, 1}),
-            blocks, 0.0F, out);
+        detail::run_luminance_pass(detail::luminance_uniforms(post,
+                                                              detail::ForwardPass::LuminanceFinal,
+                                                              {2, 1}, {1, 1}, true),
+                                   blocks, 0.0F, out);
         REQUIRE(out.values.size() == 1);
         return out.values[0];
     };
     CHECK(measure(false) == 32.5F);
     CHECK(measure(true) == doctest::Approx(8.0F).epsilon(1e-5));
+
+    // The first frame of a version takes its own brightness, its last pass not LuminanceFinal:
+    // that pass takes the exponential too.
+    const PostProcess post{.auto_exposure = true, .auto_exposure_log = true};
+    detail::LuminanceImage blocks;
+    detail::run_luminance_pass(
+        detail::luminance_uniforms(post, detail::ForwardPass::LuminanceFirst, {16, 8}, {2, 1}),
+        world, blocks);
+    detail::LuminanceImage out;
+    detail::run_luminance_pass(
+        detail::luminance_uniforms(post, detail::ForwardPass::Luminance, {2, 1}, {1, 1}, true),
+        blocks, 0.0F, out);
+    REQUIRE(out.values.size() == 1);
+    CHECK(out.values[0] == doctest::Approx(8.0F).epsilon(1e-5));
+
+    // On every device, a version's first frame shows what the frames after it do.
+    const render::Color clear{0.1F, 0.2F, 0.3F, 1.0F};
+    const Material3D shining{.albedo = {0.0F, 0.0F, 0.0F, 1.0F},
+                             .emission = {1.0F, 0.5F, 0.25F},
+                             .emission_energy = 2.0F};
+    for (auto& device : forward_devices()) {
+        CAPTURE(render::backend_name(device->backend()));
+        const PostProcess logged{.auto_exposure = true,
+                                 .auto_exposure_max = 100.0F,
+                                 .auto_exposure_version = 1,
+                                 .auto_exposure_log = true};
+        const Image first = draw(*device, logged, shining, clear, 48);
+        const Image second = draw(*device, logged, shining, clear, 48);
+        CHECK(pixel(first, 0, 0)[0] < 255);
+        CHECK(difference(first, second) <= 1);
+    }
 }
 
 TEST_CASE("Forward+ auto exposure brightens a dark frame and darkens a bright one") {

@@ -122,7 +122,8 @@ float exposure_divisor() {
 // one a quarter on, down to one. The first pass takes the world's brightest channel, and the
 // rest the luminance texture before. Texels past the source's edge count 0, and the sum is divided
 // by those inside. With options.y, the first pass takes the brightness's natural logarithm and the
-// last its exponential (a geometric mean, as Unreal meters). The last pass moves from the last
+// frame's last pass (options.z) its exponential (a geometric mean, as Unreal meters). The
+// LuminanceFinal pass moves from the last
 // frame's brightness by exposure.w and keeps it from exposure.y to exposure.z.
 float luminance_pass(int2 pixel, uint kind) {
     float block[64];
@@ -149,7 +150,7 @@ float luminance_pass(int2 pixel, uint kind) {
     }
     int2 inside = min(size - origin, int2(8, 8));
     float average = block[0] / (float)(inside.x * inside.y);
-    if (kind == kLuminanceFinal && options.y != 0u) {
+    if (options.y != 0u && options.z != 0u) {
         average = exp(average);
     }
     if (kind == kLuminanceFinal) {

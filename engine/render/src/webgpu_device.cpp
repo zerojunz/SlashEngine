@@ -5718,7 +5718,7 @@ private:
                     kind = ForwardPass::LuminanceFinal;
                 }
                 add(levels.at(i).view, kLuminanceFormat,
-                    luminance_uniforms(post, kind, source, plan.at(i)),
+                    luminance_uniforms(post, kind, source, plan.at(i), i + 1 == levels.size()),
                     i == 0 ? scene_world : levels.at(i - 1).view, false, white_.view,
                     forward_targets_.brightness.view);
                 source = plan.at(i);
