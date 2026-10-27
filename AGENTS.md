@@ -1047,6 +1047,18 @@ files read as their glTF: sessions run Blender only with the `build` capability,
 `slash-cli scene validate` always may; exports ship the glTF under the `.blend` file's name.
 `tests/fake_blender.cpp` is Blender's stand-in for tests and `examples/blend-models`.
 
+Models' surfaces get LODs when they load, as Godot 4.6's importer generates them
+(`engine/scene3d/src/lod.cpp`: `generate_lods`, ported from `ImporterMesh::generate_lods`, on
+meshoptimizer 1.0's simplifier, built with `-ffp-contract=off` so LODs are the same everywhere):
+corners merged as Godot merges them, each LOD about half the last, skinned surfaces simplified
+in their rest pose, and lightmapped meshes' LODs made again from their unwrap.
+`RenderDevice::create_mesh` takes a mesh's LOD index lists and `draw_mesh` the LOD to draw, which
+every device draws from one index buffer (`mesh_index_buffer`, `IndexRange`).
+`scene3d::Renderer::pick_lods` picks each draw's LOD as Godot's `_fill_render_list` and
+`mesh_surface_get_lod` do (`pick_lod`), by `MeshInstance3D.lod_bias` and project.json's
+`rendering.mesh_lod.lod_change.threshold_pixels`; shadow maps draw the camera's LODs and
+reflection probes pick their own. `examples/mesh-lods` draws boulders near and far.
+
 Skinned meshes and model animations follow Godot's glTF importer, `Skeleton3D` and
 `AnimationMixer` (`engine/scene3d/src/skeleton.cpp`). A glTF model keeps its nodes (named as
 Godot's `validate_node_name` and made unique), skins (joints and inverse bind matrices),

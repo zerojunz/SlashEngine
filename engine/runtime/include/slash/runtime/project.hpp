@@ -74,6 +74,9 @@ struct Project {
     double tick_hz = 60.0;
     // Frames per second at most; 0 means no cap.
     int max_fps = 0;
+    // rendering.mesh_lod.lod_change.threshold_pixels: how many pixels a coarser LOD may be off by,
+    // as Godot's rendering/mesh_lod/lod_change/threshold_pixels.
+    float mesh_lod_threshold = 1.0F;
     // What the window shows behind everything, as RGBA from 0 to 1: Godot's default gray.
     std::array<float, 4> clear_color{0.3F, 0.3F, 0.3F, 1.0F};
     // How sprites that inherit their filter are sampled: "linear" or "nearest".

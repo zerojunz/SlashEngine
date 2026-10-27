@@ -196,6 +196,13 @@
       "repository": "https://github.com/Mbed-TLS/mbedtls.git",
       "tag": "v3.6.7"
     },
+    "meshoptimizer": {
+      "license": "MIT",
+      "license_file": "LICENSE.md",
+      "license_sha256": "e4a26033e3551fb2722888949fbb41e77aee628e8e8f04dcffeee301aa7e5634",
+      "repository": "https://github.com/zeux/meshoptimizer.git",
+      "tag": "73583c335e541c139821d0de2bf5f12960a04941"
+    },
     "mikktspace": {
       "license": "Zlib",
       "license_file": "mikktspace.h",

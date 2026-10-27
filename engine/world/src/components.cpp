@@ -2282,7 +2282,10 @@ void register_3d_components(ComponentRegistry& registry) {
                           "light from its light probes; \"disabled\" ones from neither.",
                    .choices = {"disabled", "static", "dynamic"}})
         .describe("gi_lightmap_texel_scale",
-                  {.doc = "Times the texels across its lightmap.", .min = 0.01, .max = 10.0});
+                  {.doc = "Times the texels across its lightmap.", .min = 0.01, .max = 10.0})
+        .describe("lod_bias", {.doc = "Times its size when picking a model's coarser LODs: "
+                                      "above 1 keeps detail further away.",
+                               .min = 0.001});
     registry.add<Skeleton3D>()
         .set_doc("Poses bones of the model the entity's MeshInstance3D draws, by name, in place of "
                  "their animation or rest pose, as Godot's Skeleton3D bone poses.")
@@ -2607,7 +2610,9 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("cull_mask", {.doc = "The layers the cube shows."})
         .describe("reflection_mask", {.doc = "The layers whose meshes reflect it."})
         .describe("mesh_lod_threshold",
-                  {.doc = "Kept for Godot; meshes have no LOD here.", .min = 0.0})
+                  {.doc = "Pixels a coarser LOD may be off by in the cube, as the project's "
+                          "mesh_lod threshold_pixels; 0 draws every mesh in full.",
+                   .min = 0.0})
         .describe("ambient_mode",
                   {.doc = "Ambient light inside it: none of its own, the cube's, or ambient_color.",
                    .choices = {"disabled", "environment", "color"}})

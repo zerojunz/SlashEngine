@@ -1206,21 +1206,17 @@ public:
     }
 
     Result<MeshId> create_mesh(std::span<const Vertex3D> vertices,
-                               std::span<const std::uint32_t> indices) override {
-        if (auto checked = check_mesh(vertices, indices); !checked) {
+                               std::span<const std::uint32_t> indices,
+                               std::span<const std::span<const std::uint32_t>> lods) override {
+        if (auto checked = check_mesh(vertices, indices, lods); !checked) {
             return checked.error();
         }
-        std::vector<std::uint32_t> implicit;
-        if (indices.empty()) {
-            implicit.resize(vertices.size());
-            std::iota(implicit.begin(), implicit.end(), 0U);
-            indices = implicit;
-        }
+        Mesh mesh{.vertex_count = vertices.size(), .bounds = mesh_bounds(vertices)};
+        const std::vector<std::uint32_t> all =
+            mesh_index_buffer(vertices.size(), indices, lods, mesh.ranges);
+        indices = all;
         const auto vertex_bytes = static_cast<std::uint32_t>(vertices.size_bytes());
         const auto index_bytes = static_cast<std::uint32_t>(indices.size_bytes());
-        Mesh mesh{.index_count = static_cast<std::uint32_t>(indices.size()),
-                  .vertex_count = vertices.size(),
-                  .bounds = mesh_bounds(vertices)};
         SDL_GPUBufferCreateInfo info{};
         info.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
         info.size = vertex_bytes;
@@ -1702,7 +1698,7 @@ public:
 
     Result<void> draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
                            std::uint32_t layers, ShadowCasting shadows,
-                           const std::optional<Mat4>& previous) override {
+                           const std::optional<Mat4>& previous, std::uint32_t lod) override {
         if (!in_frame_) {
             return no_frame("draw_mesh");
         }
@@ -1714,6 +1710,9 @@ public:
             return checked;
         }
         if (auto checked = check_previous_transform(previous); !checked) {
+            return checked;
+        }
+        if (auto checked = check_lod(lod, it->second.ranges.size() - 1); !checked) {
             return checked;
         }
         if (frame_commands_ == nullptr || !frame_.scene) {
@@ -1736,7 +1735,7 @@ public:
         }
         MeshBatch batch{.vertices = it->second.vertices,
                         .indices = it->second.indices,
-                        .index_count = it->second.index_count,
+                        .range = it->second.ranges[lod],
                         .bounds = it->second.bounds,
                         .pipeline = pipeline.value()};
         batch.previous_vertices = it->second.moved ? it->second.previous : it->second.vertices;
@@ -1759,10 +1758,11 @@ public:
                                .material = material,
                                .layers = layers,
                                .shadows = shadows,
-                               .previous = previous.value_or(transform)});
+                               .previous = previous.value_or(transform),
+                               .lod = lod});
         mesh_batches_.push_back(batch);
         ++stats_.draws;
-        stats_.triangles += it->second.index_count / 3;
+        stats_.triangles += batch.range.count / 3;
         return {};
     }
 
@@ -2048,8 +2048,9 @@ private:
     struct Mesh {
         SDL_GPUBuffer* vertices = nullptr;
         SDL_GPUBuffer* indices = nullptr;
-        std::uint32_t index_count = 0;
         std::size_t vertex_count = 0;
+        // Its own triangles' indices, then each LOD's.
+        std::vector<IndexRange> ranges{}; // NOLINT(readability-redundant-member-init)
         Bounds bounds;
         SDL_GPUBuffer* previous = nullptr;
         bool moved = false;
@@ -2059,7 +2060,7 @@ private:
     struct MeshBatch {
         SDL_GPUBuffer* vertices = nullptr;
         SDL_GPUBuffer* indices = nullptr;
-        std::uint32_t index_count = 0;
+        IndexRange range; // the triangles it draws: the mesh's own or a LOD's
         Bounds bounds;
         SDL_GPUGraphicsPipeline* pipeline = nullptr;
         // The prepass's, for an opaque mesh in a frame with SSAO, SSR or TAA.
@@ -3044,7 +3045,8 @@ private:
                     const SDL_GPUBufferBinding indices{.buffer = batch.indices, .offset = 0};
                     SDL_BindGPUIndexBuffer(render, &indices, SDL_GPU_INDEXELEMENTSIZE_32BIT);
                     SDL_BindGPUFragmentSamplers(render, 0, batch.samplers.data(), 1);
-                    SDL_DrawGPUIndexedPrimitives(render, batch.index_count, 1, 0, 0, 0);
+                    SDL_DrawGPUIndexedPrimitives(render, batch.range.count, 1, batch.range.first, 0,
+                                                 0);
                 }
             }
             SDL_EndGPURenderPass(render);
@@ -3166,7 +3168,7 @@ private:
                 std::copy(batch.samplers.begin(), batch.samplers.end(), samplers.begin());
                 SDL_BindGPUFragmentSamplers(pass, 0, samplers.data(),
                                             static_cast<std::uint32_t>(bound_samplers));
-                SDL_DrawGPUIndexedPrimitives(pass, batch.index_count, 1, 0, 0, 0);
+                SDL_DrawGPUIndexedPrimitives(pass, batch.range.count, 1, batch.range.first, 0, 0);
             }
         };
         if (ssao || ssr || motion) {

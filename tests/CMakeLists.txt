@@ -95,6 +95,7 @@ add_executable(slash_tests
     test_light.cpp
     test_lightmap.cpp
     test_line_edit.cpp
+    test_lod.cpp
     test_log.cpp
     test_material.cpp
     test_mcp.cpp

@@ -469,8 +469,9 @@ public:
     }
     slash::Result<slash::render::MeshId>
     create_mesh(std::span<const slash::render::Vertex3D> vertices,
-                std::span<const std::uint32_t> indices) override {
-        return null_->create_mesh(vertices, indices);
+                std::span<const std::uint32_t> indices,
+                std::span<const std::span<const std::uint32_t>> lods) override {
+        return null_->create_mesh(vertices, indices, lods);
     }
     slash::Result<void> update_mesh(slash::render::MeshId mesh,
                                     std::span<const slash::render::Vertex3D> vertices) override {
@@ -487,8 +488,9 @@ public:
     slash::Result<void> draw_mesh(slash::render::MeshId mesh, const slash::render::Mat4& transform,
                                   const slash::render::Material3D& material, std::uint32_t layers,
                                   slash::render::ShadowCasting shadows,
-                                  const std::optional<slash::render::Mat4>& previous) override {
-        return null_->draw_mesh(mesh, transform, material, layers, shadows, previous);
+                                  const std::optional<slash::render::Mat4>& previous,
+                                  std::uint32_t lod) override {
+        return null_->draw_mesh(mesh, transform, material, layers, shadows, previous, lod);
     }
     slash::Result<void> end_frame() override { return null_->end_frame(); }
     slash::Result<Image> read_texture(TextureId texture) override {
