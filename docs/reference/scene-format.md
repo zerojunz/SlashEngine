@@ -2039,6 +2039,20 @@ does, and its direct light by `ssao_light_affect` times `ssao_ao_channel_affect`
 blur and fade. Transparent meshes get none, and `gl_compatibility` has no SSAO, as in Godot. The
 software device draws the same passes on the CPU, so `frame.capture` shows it too.
 
+With the project's `rendering.ray_tracing.ambient_occlusion` on
+([project-format.md](project-format.md#ray-tracing)), devices that trace rays trace the occlusion
+instead of gathering it from the screen. After the prepass, each opaque pixel sends
+`ambient_occlusion_samples` rays over the half of the sphere its normal faces, cosine weighted, up
+to `ssao_radius` meters. The share that hits a mesh whose `cast_shadow` isn't `"off"`, times
+`ssao_intensity` (at most 0.98) and to `ssao_power`, is its occlusion, as Godot's SSAO makes its
+occlusion from what it gathers, and lights it as above. Rays find what the screen doesn't show,
+such as the backs of things and what is off the screen, so creases come out darker than SSAO's;
+there is no fade with distance, and `rendering.environment.ssao`'s settings don't apply.
+`ssao_enabled` still turns it on and off. As with [ray-traced shadows](#ray-traced-shadows), the
+software device traces it on the CPU and Vulkan GPUs with ray queries on the GPU, alpha-tested
+meshes there occluding whole; other devices draw SSAO.
+[examples/ray-traced-ao-3d](../../examples/ray-traced-ao-3d) traces a room's corners.
+
 ### Screen-space reflections
 
 With `forward_plus`, `ssr_enabled` reflects what is on the screen in shiny surfaces, as Godot

@@ -1,0 +1,1 @@
+{"format": 1, "main_scene": "main.scene.json", "name": "Ray-traced AO 3D", "rendering": {"ray_tracing": {"ambient_occlusion": true, "ambient_occlusion_samples": 16}}, "version": "1.0.0", "window": {"height": 180, "width": 320}}

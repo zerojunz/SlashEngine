@@ -8,7 +8,11 @@
 // with a ray slot, to points spread over the light's size, through the frame's acceleration
 // structure. The share of rays that nothing stops, through the light's shadow opacity, is the
 // light's visibility there: lights 0 to 3 in low's channels and 4 to 7 in high's, which the mesh
-// pass reads from the screen texture's layers 2 and 3 (add_light in mesh.hlsl).
+// pass reads from the screen texture's layers 2 and 3 (add_light in mesh.hlsl). With ray-traced
+// ambient occlusion (options.y), each pixel also sends occlusion.z rays over the half of the sphere
+// its normal faces, up to occlusion.x; 1 less occlusion.w times the share something stops, to the
+// power occlusion.y, goes in occlusion_image's red, which the screen texture's layer 0 takes as
+// SSAO's (run_ray_occlusion).
 //
 // GLSL rather than HLSL, as glslang's HLSL has no ray queries; cmake/compile_ray_shaders.cmake
 // compiles it into ray_shadows_shaders.hpp.
@@ -21,6 +25,7 @@ layout(set = 0, binding = 1) uniform sampler2D depth_texture;   // the prepass's
 layout(set = 0, binding = 2) uniform sampler2D normal_texture;  // its view-space normals, 0 to 1
 layout(set = 0, binding = 3, rgba16f) uniform writeonly image2D low;
 layout(set = 0, binding = 4, rgba16f) uniform writeonly image2D high;
+layout(set = 0, binding = 7, rgba16f) uniform writeonly image2D occlusion_image;
 
 // RayShadowsUniforms in src/ray_shadows.hpp.
 struct Light {
@@ -33,7 +38,9 @@ layout(set = 0, binding = 5, std140) uniform Frame {
     mat4 to_world;     // the prepass's clip space to the world
     vec4 view_rows[3]; // the world to the camera's space, a row each
     uvec4 size;        // width, height, samples a light, lights
-    uvec4 options;     // x: 1 when every draw is opaque to every light's rays
+    uvec4 options;     // x: 1 when every draw is opaque to every light's rays, y: 1 when the
+                       // occlusion is traced
+    vec4 occlusion;    // x: how far occlusion rays go, y: its power, z: rays a pixel, w: intensity
     Light lights[8];
 };
 layout(set = 0, binding = 6, std430) readonly buffer Draws {
@@ -46,6 +53,8 @@ const float kShortOfLight = 1e-4;
 const float kR2X = 0.7548776662;
 const float kR2Y = 0.5698402910;
 const float kPi = 3.14159265358979;
+const uint kOcclusionSeed = 0xA0u;
+const float kMostObscurance = 0.98;
 
 uint mix_bits(uint x) {
     x ^= x >> 16u;
@@ -101,6 +110,7 @@ void main() {
         return;
     }
     vec4 visible[2] = vec4[2](vec4(1.0), vec4(1.0));
+    float ao = 1.0;
     float depth = texelFetch(depth_texture, ivec2(pixel), 0).r;
     if (depth > 0.0) {
         // Its place in the world, then its normal turned to face the camera.
@@ -117,11 +127,28 @@ void main() {
         }
         vec3 origin = world;
         float normal_size = length(normal);
+        vec3 out_normal = vec3(0.0);
         if (normal_size > 0.0) {
-            vec3 out_normal = (view_rows[0].xyz * (normal.x / normal_size)) +
-                              (view_rows[1].xyz * (normal.y / normal_size)) +
-                              (view_rows[2].xyz * (normal.z / normal_size));
+            out_normal = (view_rows[0].xyz * (normal.x / normal_size)) +
+                         (view_rows[1].xyz * (normal.y / normal_size)) +
+                         (view_rows[2].xyz * (normal.z / normal_size));
             origin += out_normal * ((kOffsetShare * length(seen)) + kOffsetLeast);
+        }
+        if (options.y != 0u && normal_size > 0.0 && occlusion.x > 0.0) {
+            uint samples = uint(occlusion.z);
+            uint seed = mix_bits(((pixel.y * size.x) + pixel.x) ^ mix_bits(kOcclusionSeed));
+            uint stopped = 0u;
+            for (uint s = 0u; s < samples; ++s) {
+                float u = fract(unit_of(seed) + (float(s) * kR2X));
+                float v = fract(unit_of(mix_bits(seed)) + (float(s) * kR2Y));
+                vec3 way = normalize(disk_point(out_normal, 1.0, u, v) +
+                                     (out_normal * sqrt(max(0.0, 1.0 - u))));
+                if (blocked(origin, way, occlusion.x, 0xFFFFFFFFu)) {
+                    ++stopped;
+                }
+            }
+            float share = float(stopped) / float(samples);
+            ao = exp(occlusion.y * log(1.0 - min(occlusion.w * share, kMostObscurance)));
         }
         for (uint k = 0u; k < size.w; ++k) {
             Light light = lights[k];
@@ -167,4 +194,7 @@ void main() {
     }
     imageStore(low, ivec2(pixel), visible[0]);
     imageStore(high, ivec2(pixel), visible[1]);
+    if (options.y != 0u) {
+        imageStore(occlusion_image, ivec2(pixel), vec4(ao, ao, ao, 1.0));
+    }
 }

@@ -10,6 +10,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -55,13 +56,13 @@ struct RayDraw {
     std::uint32_t layers = 0; // its render layers, which lights' caster masks pick
 };
 
-// Where a frame's ray-traced shadows come from and go: the prepass's depth and normals, and the
-// two RGBA16F textures of visibilities (lights 0 to 3, then 4 to 7), sampled and written by
-// compute, at the frame's render size.
-struct RayShadowTargets {
+// Where a frame's rays come from and go: the prepass's depth and normals, and three RGBA16F
+// textures, sampled and written by compute, at the frame's render size: the visibilities of
+// lights 0 to 3, then 4 to 7, then the ambient occlusion in red.
+struct RayTargets {
     SDL_GPUTexture* depth = nullptr;
     SDL_GPUTexture* normals = nullptr;
-    std::array<SDL_GPUTexture*, 2> visibility{};
+    std::array<SDL_GPUTexture*, 3> outputs{};
 };
 
 // The GPU device's rays on Vulkan.
@@ -74,14 +75,14 @@ public:
     VulkanRays& operator=(VulkanRays&&) = delete;
     virtual ~VulkanRays() = default;
 
-    // Records the frame's ray-traced shadows into commands, between SDL's passes: the
-    // structures of draws (those that cast shadows) and the shader writing targets' visibilities
-    // of lights, as run_ray_shadows does on the CPU.
-    virtual Result<void> trace_shadows(SDL_GPUCommandBuffer* commands,
-                                       std::span<const RayDraw> draws,
-                                       std::span<const RayShadowLight> lights,
-                                       const RayShadowFrame& frame,
-                                       const RayShadowTargets& targets) = 0;
+    // Records the frame's rays into commands, between SDL's passes: the structures of draws (those
+    // that cast shadows) and the shader writing targets' visibilities of lights, as
+    // run_ray_shadows does on the CPU, and with occlusion the ambient occlusion, as
+    // run_ray_occlusion does.
+    virtual Result<void> trace(SDL_GPUCommandBuffer* commands, std::span<const RayDraw> draws,
+                               std::span<const RayShadowLight> lights,
+                               const std::optional<RayOcclusion>& occlusion,
+                               const RayShadowFrame& frame, const RayTargets& targets) = 0;
 };
 
 // The rays of a device made with VulkanRayOptions, or null where it has no ray queries (another
