@@ -25,10 +25,14 @@ using Float3 = std::array<float, 3>;
 // sky.hlsl's options.z.
 inline constexpr std::uint32_t kSkyDeband = 1;
 inline constexpr std::uint32_t kSkyTexture = 2;
+// Forward+'s sky, as Godot's RD renderer draws it: the material's colors, its texture and the
+// lights' colors are linear, and so is what it works out. Without it, as the Compatibility
+// renderer, they are sRGB and the result is made linear.
+inline constexpr std::uint32_t kSkyLinear = 4;
 
 struct SkyLightUniforms {
     Float4 direction_energy{}; // toward the light; its energy
-    Float4 color_size{};       // sRGB; the cosine of its angular radius
+    Float4 color_size{};       // sRGB (linear with kSkyLinear); the cosine of its angular radius
     Float4 disk{};             // the cosines of a physical sky's sun disk's radius and half that
 };
 
