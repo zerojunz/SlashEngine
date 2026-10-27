@@ -541,11 +541,23 @@ render::Scene3D mirrored(bool traced = true) {
 }
 
 // The mirror wall (white, metallic, as rough as roughness) and the cube behind the camera, size
-// pixels across.
+// pixels across; checkered, the cube's albedo is a texture of red and blue texels, two to a face.
 Image draw_mirror(RenderDevice& device, const render::Scene3D& scene, float roughness = 0.0F,
-                  ShadowCasting cube_shadows = ShadowCasting::On, std::uint32_t size = 32) {
+                  ShadowCasting cube_shadows = ShadowCasting::On, std::uint32_t size = 32,
+                  bool checkered = false) {
     auto target = device.create_texture({.width = size, .height = size, .render_target = true});
     REQUIRE(target.ok());
+    const std::array<std::uint8_t, 16> checker{230, 40, 40,  255, 40,  40, 230, 255,
+                                               40,  40, 230, 255, 230, 40, 40,  255};
+    auto texture = device.create_texture(
+        {.width = 2, .height = 2, .filter = render::Filter::Nearest}, checker);
+    REQUIRE(texture.ok());
+    render::Material3D box_material{.albedo = {0.2F, 0.9F, 0.2F, 1.0F}};
+    if (checkered) {
+        box_material.albedo = {1.0F, 1.0F, 1.0F, 1.0F};
+        box_material.albedo_texture = {.texture = texture.value(), .repeat = true};
+        box_material.uv1_scale = {2.0F, 2.0F};
+    }
     auto box = device.create_mesh(cube(), {});
     REQUIRE(box.ok());
     auto wall = device.create_mesh(quad({0, 1, 1}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, 8.0F), {});
@@ -562,7 +574,7 @@ Image draw_mirror(RenderDevice& device, const render::Scene3D& scene, float roug
         REQUIRE_MESSAGE(wall_drawn.ok(), error_of(wall_drawn));
         const auto box_drawn =
             device.draw_mesh(box.value(), {2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 1.0F, 5.0F, 1},
-                             {.albedo = {0.2F, 0.9F, 0.2F, 1.0F}}, 1, cube_shadows);
+                             box_material, 1, cube_shadows);
         REQUIRE_MESSAGE(box_drawn.ok(), error_of(box_drawn));
         const auto ended = device.end_frame();
         REQUIRE_MESSAGE(ended.ok(), error_of(ended));
@@ -571,6 +583,7 @@ Image draw_mirror(RenderDevice& device, const render::Scene3D& scene, float roug
     REQUIRE_MESSAGE(image.ok(), error_of(image));
     device.destroy_mesh(box.value());
     device.destroy_mesh(wall.value());
+    device.destroy_texture(texture.value());
     device.destroy_texture(target.value());
     return image.value();
 }
@@ -633,11 +646,38 @@ TEST_CASE("reflected surfaces are lit by the frame's lights") {
     CHECK(channel(draw_mirror(*device, scene), 16, 16, 1) < channel(lit, 16, 16, 1) - 20);
 }
 
-TEST_CASE("hardware devices draw SSR where reflections would be traced, for now") {
+TEST_CASE("devices trace reflections as the software device does, or draw SSR") {
+    const auto software = render::create_software_device();
     for (const auto& device : slash::test::hardware_devices()) {
         CAPTURE(static_cast<int>(device->backend()));
-        CHECK(draw_mirror(*device, mirrored()).pixels ==
-              draw_mirror(*device, mirrored(false)).pixels);
+        CAPTURE(device->ray_tracing());
+        if (!device->ray_tracing()) {
+            CHECK(draw_mirror(*device, mirrored()).pixels ==
+                  draw_mirror(*device, mirrored(false)).pixels);
+            continue;
+        }
+        render::Scene3D lit = mirrored();
+        lit.lights[0].direction = {0.0F, -0.9397F, 0.3420F};
+        lit.lights[0].up = {0.0F, 0.3420F, 0.9397F};
+        render::Scene3D many = mirrored();
+        many.ray_tracing.reflection_samples = 8;
+        const std::array<std::pair<render::Scene3D, float>, 4> cases{
+            {{mirrored(), 0.0F}, {lit, 0.0F}, {many, 0.3F}, {mirrored(), 0.8F}}};
+        for (std::size_t i = 0; i < cases.size(); ++i) {
+            CAPTURE(i);
+            const Image traced = draw_mirror(*device, cases[i].first, cases[i].second);
+            const Image twin = draw_mirror(*software, cases[i].first, cases[i].second);
+            CHECK(differing(traced, twin, 3) <= 12);
+            CHECK(differing(traced, twin, 40) <= 4);
+        }
+        // The cube behind the camera shows in the mirror, which SSR can't see, with its texture.
+        const Image traced = draw_mirror(*device, mirrored());
+        CHECK(channel(traced, 16, 16, 1) > channel(traced, 16, 16, 0) + 40);
+        const Image checkered = draw_mirror(*device, mirrored(), 0.0F, ShadowCasting::On, 32, true);
+        CHECK(differing(checkered,
+                        draw_mirror(*software, mirrored(), 0.0F, ShadowCasting::On, 32, true),
+                        3) <= 12);
+        CHECK(differing(checkered, traced, 40) > 100);
     }
 }
 

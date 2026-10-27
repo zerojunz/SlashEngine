@@ -2,6 +2,7 @@
 
 #if !defined(__EMSCRIPTEN__)
 
+#include "ray_light_shaders.hpp"
 #include "ray_shadows_shaders.hpp"
 
 #include "slash/core/log.hpp"
@@ -35,8 +36,15 @@ constexpr std::uint32_t kGroupSize = 8;
 // Frames whose rays can be in flight at once, each with its own descriptors, uniforms and
 // top-level structure; a frame waits for the GPU when all are busy.
 constexpr std::size_t kSlots = 4;
-// The textures the shader writes: two of lights' visibilities, then the ambient occlusion.
+// The textures the shadows' shader writes: two of lights' visibilities, then the ambient
+// occlusion.
 constexpr std::size_t kOutputs = 3;
+// The most textures the reflections' shader samples (its textures array); the rest read white.
+constexpr std::uint32_t kRayTextures = 64;
+constexpr std::uint32_t kNoTexture = 0xFFFFFFFFU;
+// Instance masks: the draws rays from the camera's side see, and those that cast shadows.
+constexpr std::uint8_t kSeeMask = 1;
+constexpr std::uint8_t kCastMask = 2;
 
 // The uniforms of shaders/ray_shadows.comp's Frame, in std140.
 struct RayLightUniforms {
@@ -53,6 +61,41 @@ struct RayShadowsUniforms {
     std::array<RayLightUniforms, kMaxRayShadowLights> lights{};
 };
 static_assert(sizeof(RayShadowsUniforms) == 64 + 48 + 16 + 16 + 16 + (48 * kMaxRayShadowLights));
+
+// shaders/ray_light.comp's Frame, in std140.
+struct RayLightFrame {
+    std::array<float, 16> to_world{};
+    std::array<std::array<float, 4>, 3> view_rows{};
+    std::array<std::uint32_t, 4> size{};
+    Float4 ambient{};
+    std::array<Float4, 3> sky_rows{};
+};
+static_assert(sizeof(RayLightFrame) == 64 + 48 + 16 + 16 + 48);
+
+// Its Draw and Light, in std430.
+struct RayDrawRecord {
+    Float4 albedo{};
+    Float4 emission{};
+    Float4 surface{};
+    Float4 metallic_channel{};
+    Float4 roughness_channel{};
+    std::array<std::uint32_t, 4> options{};
+    std::array<Float4, 3> normal_rows{};
+    Float4 uv1{};
+    std::array<std::uint32_t, 4> buffers{};
+    std::array<std::uint32_t, 4> textures{};
+    std::array<std::uint32_t, 4> more{};
+};
+static_assert(sizeof(RayDrawRecord) == std::size_t{13} * 16);
+struct RayLightRecord {
+    Float4 position{};
+    Float4 direction{};
+    Float4 color{};
+    Float4 params{};
+    std::array<std::uint32_t, 4> masks{};
+    Float4 shadow{};
+};
+static_assert(sizeof(RayLightRecord) == std::size_t{6} * 16);
 
 // Vulkan's calls this needs, from the device SDL made.
 struct Calls {
@@ -215,6 +258,11 @@ struct Slot {
     Buffer layers;    // host-visible, a uint a draw
     Buffer instances; // host-visible, a VkAccelerationStructureInstanceKHR a draw
     Buffer scratch;
+    // The reflections' shader's.
+    VkDescriptorSet light_set = VK_NULL_HANDLE;
+    Buffer light_frame;   // host-visible
+    Buffer draw_records;  // host-visible, a RayDrawRecord a draw
+    Buffer light_records; // host-visible, a RayLightRecord a light
     Structure top;
     VkDeviceSize top_size = 0;
 };
@@ -245,6 +293,9 @@ public:
             release(slot.layers);
             release(slot.instances);
             release(slot.scratch);
+            release(slot.light_frame);
+            release(slot.draw_records);
+            release(slot.light_records);
             release(slot.top);
             if (slot.done != VK_NULL_HANDLE) {
                 calls_.destroy_event(device_, slot.done, nullptr);
@@ -253,17 +304,27 @@ public:
         if (pool_ != VK_NULL_HANDLE) {
             calls_.destroy_pool(device_, pool_, nullptr);
         }
-        if (pipeline_ != VK_NULL_HANDLE) {
-            calls_.destroy_pipeline(device_, pipeline_, nullptr);
+        for (VkPipeline pipeline : {pipeline_, light_pipeline_}) {
+            if (pipeline != VK_NULL_HANDLE) {
+                calls_.destroy_pipeline(device_, pipeline, nullptr);
+            }
         }
-        if (pipeline_layout_ != VK_NULL_HANDLE) {
-            calls_.destroy_pipeline_layout(device_, pipeline_layout_, nullptr);
+        for (VkPipelineLayout layout : {pipeline_layout_, light_pipeline_layout_}) {
+            if (layout != VK_NULL_HANDLE) {
+                calls_.destroy_pipeline_layout(device_, layout, nullptr);
+            }
         }
-        if (set_layout_ != VK_NULL_HANDLE) {
-            calls_.destroy_set_layout(device_, set_layout_, nullptr);
+        for (VkDescriptorSetLayout layout : {set_layout_, light_set_layout_}) {
+            if (layout != VK_NULL_HANDLE) {
+                calls_.destroy_set_layout(device_, layout, nullptr);
+            }
         }
-        if (sampler_ != VK_NULL_HANDLE) {
-            calls_.destroy_sampler(device_, sampler_, nullptr);
+        for (VkSampler sampler :
+             {sampler_, texture_samplers_[0], texture_samplers_[1], texture_samplers_[2],
+              texture_samplers_[3], environment_sampler_}) {
+            if (sampler != VK_NULL_HANDLE) {
+                calls_.destroy_sampler(device_, sampler, nullptr);
+            }
         }
     }
 
@@ -278,88 +339,71 @@ public:
         scratch_alignment_ =
             std::max<VkDeviceSize>(1, structures.minAccelerationStructureScratchOffsetAlignment);
 
-        VkSamplerCreateInfo sampler{};
-        sampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        sampler.magFilter = VK_FILTER_NEAREST;
-        sampler.minFilter = VK_FILTER_NEAREST;
-        sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-        sampler.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        sampler.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        sampler.maxLod = 0.0F;
-        if (const VkResult made = calls_.create_sampler(device_, &sampler, nullptr, &sampler_);
-            made != VK_SUCCESS) {
-            return vulkan_error("making the rays' sampler", made);
+        // The prepass's texels, read whole; the draws' textures, filtered and wrapped as their
+        // draws sample them, at their first level as the software device's rays sample them;
+        // and the sky's radiance.
+        if (auto made = make_sampler(VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+            made) {
+            sampler_ = made.value();
+        } else {
+            return made.error();
+        }
+        for (std::size_t i = 0; i < texture_samplers_.size(); ++i) {
+            auto made = make_sampler((i & 1U) != 0 ? VK_FILTER_NEAREST : VK_FILTER_LINEAR,
+                                     (i & 2U) != 0 ? VK_SAMPLER_ADDRESS_MODE_REPEAT
+                                                   : VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+            if (!made) {
+                return made.error();
+            }
+            texture_samplers_.at(i) = made.value();
+        }
+        if (auto made = make_sampler(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+            made) {
+            environment_sampler_ = made.value();
+        } else {
+            return made.error();
         }
 
-        // By binding: shaders/ray_shadows.comp's.
-        const std::array<VkDescriptorType, 8> types{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
-                                                    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                                                    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                                                    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-                                                    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-                                                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                                                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                                                    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE};
-        std::array<VkDescriptorSetLayoutBinding, types.size()> bindings{};
-        for (std::uint32_t i = 0; i < types.size(); ++i) {
-            bindings.at(i).binding = i;
-            bindings.at(i).descriptorType = types.at(i);
-            bindings.at(i).descriptorCount = 1;
-            bindings.at(i).stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        // By binding: shaders/ray_shadows.comp's, then shaders/ray_light.comp's.
+        if (auto made = make_pipeline({{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1},
+                                       {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
+                                       {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
+                                       {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1},
+                                       {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1},
+                                       {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},
+                                       {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1},
+                                       {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}},
+                                      shaders::kRayShadowsSpirv, sizeof(shaders::kRayShadowsSpirv),
+                                      set_layout_, pipeline_layout_, pipeline_, "ray shadows'");
+            !made) {
+            return made;
         }
-        VkDescriptorSetLayoutCreateInfo layout{};
-        layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
-        layout.pBindings = bindings.data();
-        if (const VkResult made = calls_.create_set_layout(device_, &layout, nullptr, &set_layout_);
-            made != VK_SUCCESS) {
-            return vulkan_error("making the rays' descriptor set layout", made);
-        }
-        VkPipelineLayoutCreateInfo pipeline_layout{};
-        pipeline_layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipeline_layout.setLayoutCount = 1;
-        pipeline_layout.pSetLayouts = &set_layout_;
-        if (const VkResult made = calls_.create_pipeline_layout(device_, &pipeline_layout, nullptr,
-                                                                &pipeline_layout_);
-            made != VK_SUCCESS) {
-            return vulkan_error("making the rays' pipeline layout", made);
-        }
-
-        VkShaderModuleCreateInfo module{};
-        module.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        module.codeSize = sizeof(shaders::kRayShadowsSpirv);
-        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast): SPIR-V is 4-byte aligned
-        module.pCode = reinterpret_cast<const std::uint32_t*>(shaders::kRayShadowsSpirv);
-        VkShaderModule shader = VK_NULL_HANDLE;
-        if (const VkResult made = calls_.create_shader(device_, &module, nullptr, &shader);
-            made != VK_SUCCESS) {
-            return vulkan_error("making the ray shadows' shader", made);
-        }
-        VkComputePipelineCreateInfo pipeline{};
-        pipeline.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-        pipeline.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        pipeline.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-        pipeline.stage.module = shader;
-        pipeline.stage.pName = "main";
-        pipeline.layout = pipeline_layout_;
-        const VkResult made =
-            calls_.create_pipelines(device_, VK_NULL_HANDLE, 1, &pipeline, nullptr, &pipeline_);
-        calls_.destroy_shader(device_, shader, nullptr);
-        if (made != VK_SUCCESS) {
-            return vulkan_error("making the ray shadows' pipeline", made);
+        if (auto made = make_pipeline({{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1},
+                                       {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
+                                       {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
+                                       {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1},
+                                       {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},
+                                       {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1},
+                                       {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1},
+                                       {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
+                                       {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kRayTextures}},
+                                      shaders::kRayLightSpirv, sizeof(shaders::kRayLightSpirv),
+                                      light_set_layout_, light_pipeline_layout_, light_pipeline_,
+                                      "ray reflections'");
+            !made) {
+            return made;
         }
 
         std::array<VkDescriptorPoolSize, 5> sizes{{
-            {VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, kSlots},
-            {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 * kSlots},
-            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 * kSlots},
-            {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, kSlots},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kSlots},
+            {VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 2 * kSlots},
+            {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (2 + 3 + kRayTextures) * kSlots},
+            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4 * kSlots},
+            {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2 * kSlots},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 * kSlots},
         }};
         VkDescriptorPoolCreateInfo pool{};
         pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        pool.maxSets = kSlots;
+        pool.maxSets = 2 * kSlots;
         pool.poolSizeCount = static_cast<std::uint32_t>(sizes.size());
         pool.pPoolSizes = sizes.data();
         if (const VkResult pooled = calls_.create_pool(device_, &pool, nullptr, &pool_);
@@ -367,14 +411,17 @@ public:
             return vulkan_error("making the rays' descriptor pool", pooled);
         }
         for (Slot& slot : slots_) {
-            VkDescriptorSetAllocateInfo allocate{};
-            allocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-            allocate.descriptorPool = pool_;
-            allocate.descriptorSetCount = 1;
-            allocate.pSetLayouts = &set_layout_;
-            if (const VkResult allocated = calls_.allocate_sets(device_, &allocate, &slot.set);
-                allocated != VK_SUCCESS) {
-                return vulkan_error("allocating the rays' descriptor sets", allocated);
+            for (const auto& [set, layout] : {std::pair{&slot.set, &set_layout_},
+                                              std::pair{&slot.light_set, &light_set_layout_}}) {
+                VkDescriptorSetAllocateInfo allocate{};
+                allocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+                allocate.descriptorPool = pool_;
+                allocate.descriptorSetCount = 1;
+                allocate.pSetLayouts = layout;
+                if (const VkResult allocated = calls_.allocate_sets(device_, &allocate, set);
+                    allocated != VK_SUCCESS) {
+                    return vulkan_error("allocating the rays' descriptor sets", allocated);
+                }
             }
             VkEventCreateInfo event{};
             event.sType = VK_STRUCTURE_TYPE_EVENT_CREATE_INFO;
@@ -382,26 +429,28 @@ public:
                 created != VK_SUCCESS) {
                 return vulkan_error("making the rays' events", created);
             }
-            if (auto made_buffer = make_buffer(sizeof(RayShadowsUniforms),
-                                               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, true);
-                made_buffer) {
-                slot.uniforms = made_buffer.value();
-            } else {
-                return made_buffer.error();
+            for (const auto& [buffer, size] :
+                 {std::pair{&slot.uniforms, sizeof(RayShadowsUniforms)},
+                  std::pair{&slot.light_frame, sizeof(RayLightFrame)}}) {
+                auto made_buffer = make_buffer(size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, true);
+                if (!made_buffer) {
+                    return made_buffer.error();
+                }
+                *buffer = made_buffer.value();
             }
         }
         return {};
     }
 
     Result<void> trace(SDL_GPUCommandBuffer* commands, std::span<const RayDraw> draws,
-                       std::span<const RayShadowLight> lights,
-                       const std::optional<RayOcclusion>& occlusion, const RayShadowFrame& frame,
+                       const RayWork& work, const RayShadowFrame& frame,
                        const RayTargets& targets) override {
         auto* native = static_cast<VkCommandBuffer>(SDL_SlashGPUNativeCommandBuffer(commands));
         if (native == VK_NULL_HANDLE) {
             return Error{ErrorCode::PlatformFailure,
                          "the frame's command buffer has no Vulkan command buffer"};
         }
+        const bool reflect = work.reflection.has_value() && work.lighting != nullptr;
         ++frame_;
         Slot& slot = free_slot();
         release_unused();
@@ -418,13 +467,14 @@ public:
                            VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR |
                            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
 
-        // The meshes' structures: built again for meshes that are new or changed.
+        // The meshes' structures: built again for meshes that are new or changed. Without
+        // reflections only the draws that cast shadows take part.
         std::vector<const MeshStructure*> placed;
         placed.reserve(draws.size());
         bool copied = false;
         std::vector<std::pair<MeshStructure*, const RayDraw*>> to_build;
         for (const RayDraw& draw : draws) {
-            if (draw.index_count < 3 || draw.vertex_count == 0) {
+            if (draw.index_count < 3 || draw.vertex_count == 0 || mask_of(draw, reflect) == 0) {
                 placed.push_back(nullptr);
                 continue;
             }
@@ -449,7 +499,8 @@ public:
         }
         if (copied) {
             memory_barrier(native, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-                           VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                           VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR |
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                            VK_ACCESS_SHADER_READ_BIT);
         }
         if (auto built = build_meshes(native, to_build); !built) {
@@ -459,6 +510,8 @@ public:
         // The frame's instances, a draw each, and its top-level structure.
         std::vector<VkAccelerationStructureInstanceKHR> instances;
         std::vector<std::uint32_t> layers;
+        std::vector<std::size_t> instanced; // each instance's draw
+        bool every_layer = true;            // every draw that casts shadows does for every light
         for (std::size_t i = 0; i < draws.size(); ++i) {
             if (placed[i] == nullptr) {
                 continue;
@@ -471,18 +524,72 @@ public:
                 }
             }
             instance.instanceCustomIndex = static_cast<std::uint32_t>(layers.size()) & 0xFFFFFFU;
-            instance.mask = 0xFF;
+            instance.mask = mask_of(draws[i], reflect);
             instance.instanceShaderBindingTableRecordOffset = 0;
             instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
             instance.accelerationStructureReference = placed[i]->built.address;
             instances.push_back(instance);
             layers.push_back(draws[i].layers);
+            instanced.push_back(i);
+            if ((instance.mask & kCastMask) != 0) {
+                every_layer = every_layer && draws[i].layers != 0;
+            }
         }
         if (auto top = build_top(native, slot, instances, layers); !top) {
             return top;
         }
 
-        // The shader's uniforms and descriptors, then the shader.
+        void* depth_view = nullptr;
+        void* normal_view = nullptr;
+        Uint32 format = 0;
+        SDL_SlashGPUNativeTexture(sdl_, targets.depth, &depth_view, &format);
+        SDL_SlashGPUNativeTexture(sdl_, targets.normals, &normal_view, &format);
+        if (depth_view == nullptr || normal_view == nullptr) {
+            return Error{ErrorCode::PlatformFailure,
+                         "the prepass's textures have no Vulkan images"};
+        }
+        // Pointers on 64-bit platforms and numbers on 32-bit ones, so not auto*.
+        // NOLINTNEXTLINE(readability-qualified-auto)
+        const auto depth = handle_of<VkImageView>(depth_view);
+        // NOLINTNEXTLINE(readability-qualified-auto)
+        const auto normals = handle_of<VkImageView>(normal_view);
+        if (!work.lights.empty() || work.occlusion) {
+            if (auto shadows =
+                    trace_shadows(native, slot, work, frame, targets, depth, normals, every_layer);
+                !shadows) {
+                return shadows;
+            }
+        }
+        if (reflect) {
+            if (auto reflected = trace_reflections(native, slot, draws, placed, instanced, work,
+                                                   frame, targets, depth, normals);
+                !reflected) {
+                return reflected;
+            }
+        }
+        calls_.set_event(native, slot.done, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        slot.recorded = true;
+        return {};
+    }
+
+private:
+    using MeshKey = std::tuple<std::uint64_t, std::uint32_t, std::uint32_t>;
+
+    // Which rays meet a draw: those from the camera's side, with reflections, unless it only
+    // casts shadows, and shadow rays unless it casts none.
+    static std::uint8_t mask_of(const RayDraw& draw, bool reflect) {
+        std::uint8_t mask = draw.shadows != ShadowCasting::Off ? kCastMask : 0;
+        if (reflect && draw.shadows != ShadowCasting::ShadowsOnly) {
+            mask |= kSeeMask;
+        }
+        return mask;
+    }
+
+    // The visibilities of the lights with ray slots and the ambient occlusion, into targets'
+    // first three outputs.
+    Result<void> trace_shadows(VkCommandBuffer native, Slot& slot, const RayWork& work,
+                               const RayShadowFrame& frame, const RayTargets& targets,
+                               VkImageView depth, VkImageView normals, bool every_layer) {
         RayShadowsUniforms uniforms{};
         for (std::size_t i = 0; i < 16; ++i) {
             uniforms.to_world.at(i) = static_cast<float>(frame.to_world.at(i));
@@ -492,12 +599,12 @@ public:
                 uniforms.view_rows.at(row).at(column) = frame.view_rows.at(row).at(column);
             }
         }
-        const auto light_count =
-            static_cast<std::uint32_t>(std::min<std::size_t>(lights.size(), kMaxRayShadowLights));
+        const auto light_count = static_cast<std::uint32_t>(
+            std::min<std::size_t>(work.lights.size(), kMaxRayShadowLights));
         uniforms.size = {frame.width, frame.height, frame.samples, light_count};
         bool every_mask = true;
         for (std::uint32_t k = 0; k < light_count; ++k) {
-            const RayShadowLight& light = lights[k];
+            const RayShadowLight& light = work.lights[k];
             const Float3& place = light.directional ? light.toward : light.position;
             uniforms.lights.at(k) = {.place = {place[0], place[1], place[2], light.size},
                                      .params = {light.opacity, light.directional ? 1.0F : 0.0F,
@@ -506,41 +613,26 @@ public:
             every_mask = every_mask && light.caster_mask == 0xFFFFFFFFU;
         }
         // Every draw casts for every light: rays need not ask which draw they meet.
-        bool every_layer = true;
-        for (const std::uint32_t layer : layers) {
-            every_layer = every_layer && layer != 0;
-        }
         uniforms.options = {every_mask && every_layer ? 1U : 0U, 0, 0, 0};
-        if (occlusion) {
+        if (work.occlusion) {
             uniforms.options[1] = 1;
-            uniforms.occlusion = {occlusion->radius, occlusion->power,
-                                  static_cast<float>(occlusion->samples), occlusion->intensity};
+            uniforms.occlusion = {work.occlusion->radius, work.occlusion->power,
+                                  static_cast<float>(work.occlusion->samples),
+                                  work.occlusion->intensity};
         }
         std::memcpy(slot.uniforms.mapped, &uniforms, sizeof(uniforms));
 
-        void* depth_view = nullptr;
-        void* normal_view = nullptr;
-        std::array<void*, kOutputs> output_views{};
-        std::array<VkImage, kOutputs> output_images{};
-        Uint32 format = 0;
-        SDL_SlashGPUNativeTexture(sdl_, targets.depth, &depth_view, &format);
-        SDL_SlashGPUNativeTexture(sdl_, targets.normals, &normal_view, &format);
         std::array<VkImageView, kOutputs> outputs{};
+        std::array<VkImage, kOutputs> output_images{};
         for (std::size_t i = 0; i < kOutputs; ++i) {
-            output_images.at(i) = handle_of<VkImage>(SDL_SlashGPUNativeTexture(
-                sdl_, targets.outputs.at(i), &output_views.at(i), &format));
-            if (output_views.at(i) == nullptr) {
-                return Error{ErrorCode::PlatformFailure,
-                             "the rays' textures have no Vulkan images"};
+            auto found = native_texture(targets.outputs.at(i));
+            if (!found) {
+                return found.error();
             }
-            outputs.at(i) = handle_of<VkImageView>(output_views.at(i));
+            output_images.at(i) = found.value().first;
+            outputs.at(i) = found.value().second;
         }
-        if (depth_view == nullptr || normal_view == nullptr) {
-            return Error{ErrorCode::PlatformFailure,
-                         "the prepass's textures have no Vulkan images"};
-        }
-        write_descriptors(slot, handle_of<VkImageView>(depth_view),
-                          handle_of<VkImageView>(normal_view), outputs);
+        write_descriptors(slot, depth, normals, outputs);
 
         // The visibilities are written in the general layout, and go back to the one SDL keeps
         // sampled textures in.
@@ -552,8 +644,6 @@ public:
                          0, nullptr);
         calls_.dispatch(native, (frame.width + kGroupSize - 1) / kGroupSize,
                         (frame.height + kGroupSize - 1) / kGroupSize, 1);
-        calls_.set_event(native, slot.done, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-        slot.recorded = true;
         image_barriers(native, output_images, VK_IMAGE_LAYOUT_GENERAL,
                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
@@ -563,8 +653,256 @@ public:
         return {};
     }
 
-private:
-    using MeshKey = std::tuple<std::uint64_t, std::uint32_t, std::uint32_t>;
+    // The reflections, into targets' fourth output: the draws each instance stands for as
+    // records the shader shades them by, their textures, the lights and the environment.
+    Result<void> trace_reflections(VkCommandBuffer native, Slot& slot,
+                                   std::span<const RayDraw> draws,
+                                   std::span<const MeshStructure* const> placed,
+                                   std::span<const std::size_t> instanced, const RayWork& work,
+                                   const RayShadowFrame& frame, const RayTargets& targets,
+                                   VkImageView depth, VkImageView normals) {
+        const RayLighting& lighting = *work.lighting;
+        // Each texture once, with the sampler its draws sample it with; past kRayTextures, white.
+        std::vector<std::pair<SDL_GPUTexture*, std::size_t>> used;
+        const auto texture_index = [&](const RayTexture& texture) {
+            if (texture.texture == nullptr) {
+                return kNoTexture;
+            }
+            const std::size_t sampler = (texture.nearest ? 1U : 0U) | (texture.repeat ? 2U : 0U);
+            const std::pair<SDL_GPUTexture*, std::size_t> key{texture.texture, sampler};
+            const auto found = std::find(used.begin(), used.end(), key);
+            if (found != used.end()) {
+                return static_cast<std::uint32_t>(found - used.begin());
+            }
+            if (used.size() >= kRayTextures) {
+                return kNoTexture;
+            }
+            used.push_back(key);
+            return static_cast<std::uint32_t>(used.size() - 1);
+        };
+        std::vector<RayDrawRecord> records;
+        records.reserve(instanced.size());
+        for (const std::size_t i : instanced) {
+            const RayDraw& draw = draws[i];
+            const MeshSurfaceUniforms& surface = draw.surface;
+            RayDrawRecord& record = records.emplace_back();
+            record.albedo = surface.albedo;
+            record.emission = surface.emission;
+            record.surface = surface.surface;
+            record.metallic_channel = surface.metallic_channel;
+            record.roughness_channel = surface.roughness_channel;
+            record.options = {surface.options[0], surface.options[1], draw.layers, 0};
+            for (std::size_t row = 0; row < 3; ++row) {
+                for (std::size_t column = 0; column < 3; ++column) {
+                    record.normal_rows.at(row).at(column) =
+                        draw.normal_model.at((column * 4) + row);
+                }
+            }
+            record.uv1 = draw.uv1;
+            const VkDeviceAddress vertices = placed[i]->vertices.address;
+            const VkDeviceAddress indices = placed[i]->indices.address;
+            record.buffers = {
+                static_cast<std::uint32_t>(vertices), static_cast<std::uint32_t>(vertices >> 32U),
+                static_cast<std::uint32_t>(indices), static_cast<std::uint32_t>(indices >> 32U)};
+            record.textures = {texture_index(draw.textures[0]), texture_index(draw.textures[1]),
+                               texture_index(draw.textures[2]), texture_index(draw.textures[3])};
+            std::uint32_t cull = 2;
+            if (draw.cull == CullMode::Back) {
+                cull = 0;
+            } else if (draw.cull == CullMode::Front) {
+                cull = 1;
+            }
+            record.more = {texture_index(draw.textures[4]), cull, 0, 0};
+        }
+        std::vector<RayLightRecord> light_records;
+        light_records.reserve(lighting.lights.size());
+        for (const PathLight& light : lighting.lights) {
+            light_records.push_back(
+                {.position = light.uniforms.position,
+                 .direction = light.uniforms.direction,
+                 .color = light.uniforms.color,
+                 .params = light.uniforms.params,
+                 // As direct_light in src/path_trace.cpp reads the layers it lights.
+                 .masks = {static_cast<std::uint32_t>(light.uniforms.params[3]), light.caster_mask,
+                           light.shadow ? 1U : 0U, 0},
+                 .shadow = {light.shadow_opacity, 0.0F, 0.0F, 0.0F}});
+        }
+        for (const auto& [buffer, bytes] :
+             {std::pair{&slot.draw_records,
+                        std::max<std::size_t>(1, records.size()) * sizeof(RayDrawRecord)},
+              std::pair{&slot.light_records,
+                        std::max<std::size_t>(1, light_records.size()) * sizeof(RayLightRecord)}}) {
+            if (auto fitted = fit(*buffer, bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true);
+                !fitted) {
+                return fitted;
+            }
+        }
+        if (!records.empty()) {
+            std::memcpy(slot.draw_records.mapped, records.data(),
+                        records.size() * sizeof(RayDrawRecord));
+        }
+        if (!light_records.empty()) {
+            std::memcpy(slot.light_records.mapped, light_records.data(),
+                        light_records.size() * sizeof(RayLightRecord));
+        }
+
+        RayLightFrame uniforms{};
+        for (std::size_t i = 0; i < 16; ++i) {
+            uniforms.to_world.at(i) = static_cast<float>(frame.to_world.at(i));
+        }
+        for (std::size_t row = 0; row < 3; ++row) {
+            for (std::size_t column = 0; column < 4; ++column) {
+                uniforms.view_rows.at(row).at(column) = frame.view_rows.at(row).at(column);
+            }
+        }
+        uniforms.size = {frame.width, frame.height, work.reflection->samples,
+                         static_cast<std::uint32_t>(light_records.size())};
+        uniforms.ambient = {lighting.ambient[0], lighting.ambient[1], lighting.ambient[2],
+                            lighting.sky ? 1.0F : 0.0F};
+        for (std::size_t row = 0; row < 3; ++row) {
+            const Float3& r = lighting.to_sky.at(row);
+            uniforms.sky_rows.at(row) = {r[0], r[1], r[2], 0.0F};
+        }
+        uniforms.sky_rows[0][3] = lighting.sky_energy;
+        uniforms.sky_rows[1][3] = lighting.sky_share;
+        std::memcpy(slot.light_frame.mapped, &uniforms, sizeof(uniforms));
+
+        auto output = native_texture(targets.outputs[3]);
+        if (!output) {
+            return output.error();
+        }
+        auto environment = native_texture(targets.environment);
+        if (!environment) {
+            return environment.error();
+        }
+        auto white = native_texture(targets.white);
+        if (!white) {
+            return white.error();
+        }
+        std::array<VkDescriptorImageInfo, kRayTextures> texture_infos{};
+        for (std::size_t i = 0; i < kRayTextures; ++i) {
+            texture_infos.at(i) = {.sampler = texture_samplers_[0],
+                                   .imageView = white.value().second,
+                                   .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        }
+        for (std::size_t i = 0; i < used.size(); ++i) {
+            auto found = native_texture(used[i].first);
+            if (!found) {
+                return found.error();
+            }
+            texture_infos.at(i).imageView = found.value().second;
+            texture_infos.at(i).sampler = texture_samplers_.at(used[i].second);
+        }
+        write_light_descriptors(slot, depth, normals, output.value().second,
+                                environment.value().second, texture_infos);
+
+        const std::array<VkImage, 1> images{output.value().first};
+        image_barriers(native, images, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                       VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+        calls_.bind_pipeline(native, VK_PIPELINE_BIND_POINT_COMPUTE, light_pipeline_);
+        calls_.bind_sets(native, VK_PIPELINE_BIND_POINT_COMPUTE, light_pipeline_layout_, 0, 1,
+                         &slot.light_set, 0, nullptr);
+        calls_.dispatch(native, (frame.width + kGroupSize - 1) / kGroupSize,
+                        (frame.height + kGroupSize - 1) / kGroupSize, 1);
+        image_barriers(native, images, VK_IMAGE_LAYOUT_GENERAL,
+                       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                       VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_SHADER_READ_BIT);
+        return {};
+    }
+
+    // An SDL texture's Vulkan image and view.
+    Result<std::pair<VkImage, VkImageView>> native_texture(SDL_GPUTexture* texture) {
+        void* view = nullptr;
+        Uint32 format = 0;
+        // NOLINTNEXTLINE(readability-qualified-auto): a number on 32-bit platforms
+        const auto image = handle_of<VkImage>(
+            texture != nullptr ? SDL_SlashGPUNativeTexture(sdl_, texture, &view, &format)
+                               : nullptr);
+        if (view == nullptr) {
+            return Error{ErrorCode::PlatformFailure, "a texture rays use has no Vulkan image"};
+        }
+        return std::pair{image, handle_of<VkImageView>(view)};
+    }
+
+    Result<VkSampler> make_sampler(VkFilter filter, VkSamplerAddressMode wrap) {
+        VkSamplerCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        info.magFilter = filter;
+        info.minFilter = filter;
+        info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        info.addressModeU = wrap;
+        info.addressModeV = wrap;
+        info.addressModeW = wrap;
+        info.maxLod = 0.0F;
+        VkSampler out = VK_NULL_HANDLE;
+        if (const VkResult made = calls_.create_sampler(device_, &info, nullptr, &out);
+            made != VK_SUCCESS) {
+            return vulkan_error("making a sampler for rays", made);
+        }
+        return out;
+    }
+
+    // A compute pipeline of a SPIR-V shader whose set 0 has a binding of each type, of count
+    // descriptors, in order.
+    Result<void>
+    make_pipeline(std::initializer_list<std::pair<VkDescriptorType, std::uint32_t>> types,
+                  const unsigned char* spirv, std::size_t spirv_size,
+                  VkDescriptorSetLayout& set_layout, VkPipelineLayout& pipeline_layout,
+                  VkPipeline& pipeline, const std::string& what) {
+        std::vector<VkDescriptorSetLayoutBinding> bindings;
+        for (const auto& [type, count] : types) {
+            VkDescriptorSetLayoutBinding& binding = bindings.emplace_back();
+            binding.binding = static_cast<std::uint32_t>(bindings.size() - 1);
+            binding.descriptorType = type;
+            binding.descriptorCount = count;
+            binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        }
+        VkDescriptorSetLayoutCreateInfo layout{};
+        layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
+        layout.pBindings = bindings.data();
+        if (const VkResult made = calls_.create_set_layout(device_, &layout, nullptr, &set_layout);
+            made != VK_SUCCESS) {
+            return vulkan_error("making the " + what + " descriptor set layout", made);
+        }
+        VkPipelineLayoutCreateInfo layout_info{};
+        layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layout_info.setLayoutCount = 1;
+        layout_info.pSetLayouts = &set_layout;
+        if (const VkResult made =
+                calls_.create_pipeline_layout(device_, &layout_info, nullptr, &pipeline_layout);
+            made != VK_SUCCESS) {
+            return vulkan_error("making the " + what + " pipeline layout", made);
+        }
+        VkShaderModuleCreateInfo module{};
+        module.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        module.codeSize = spirv_size;
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast): SPIR-V is 4-byte aligned
+        module.pCode = reinterpret_cast<const std::uint32_t*>(spirv);
+        VkShaderModule shader = VK_NULL_HANDLE;
+        if (const VkResult made = calls_.create_shader(device_, &module, nullptr, &shader);
+            made != VK_SUCCESS) {
+            return vulkan_error("making the " + what + " shader", made);
+        }
+        VkComputePipelineCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        info.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        info.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        info.stage.module = shader;
+        info.stage.pName = "main";
+        info.layout = pipeline_layout;
+        const VkResult made =
+            calls_.create_pipelines(device_, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline);
+        calls_.destroy_shader(device_, shader, nullptr);
+        if (made != VK_SUCCESS) {
+            return vulkan_error("making the " + what + " pipeline", made);
+        }
+        return {};
+    }
 
     // A slot the GPU is done with, waiting for it when every one is busy.
     Slot& free_slot() {
@@ -722,9 +1060,10 @@ private:
         }
         MeshStructure out;
         out.version = draw.version;
+        // Read by the structure's build, and by the reflections' shader at their addresses.
         constexpr VkBufferUsageFlags kInput =
             VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
         const VkDeviceSize vertex_bytes = VkDeviceSize{draw.vertex_count} * sizeof(Vertex3D);
         const VkDeviceSize index_bytes = VkDeviceSize{draw.index_count} * sizeof(std::uint32_t);
         auto vertex_copy = make_buffer(vertex_bytes, kInput, false);
@@ -949,6 +1288,63 @@ private:
                            nullptr);
     }
 
+    void write_light_descriptors(Slot& slot, VkImageView depth, VkImageView normals,
+                                 VkImageView output, VkImageView environment,
+                                 const std::array<VkDescriptorImageInfo, kRayTextures>& textures) {
+        VkWriteDescriptorSetAccelerationStructureKHR structure{};
+        structure.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+        structure.accelerationStructureCount = 1;
+        structure.pAccelerationStructures = &slot.top.structure;
+        const std::array<VkDescriptorImageInfo, 4> images{{
+            {.sampler = sampler_,
+             .imageView = depth,
+             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+            {.sampler = sampler_,
+             .imageView = normals,
+             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+            {.sampler = VK_NULL_HANDLE,
+             .imageView = output,
+             .imageLayout = VK_IMAGE_LAYOUT_GENERAL},
+            {.sampler = environment_sampler_,
+             .imageView = environment,
+             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+        }};
+        const std::array<VkDescriptorBufferInfo, 3> buffers{{
+            {.buffer = slot.light_frame.buffer, .offset = 0, .range = sizeof(RayLightFrame)},
+            {.buffer = slot.draw_records.buffer, .offset = 0, .range = VK_WHOLE_SIZE},
+            {.buffer = slot.light_records.buffer, .offset = 0, .range = VK_WHOLE_SIZE},
+        }};
+        std::array<VkWriteDescriptorSet, 9> writes{};
+        for (std::uint32_t i = 0; i < writes.size(); ++i) {
+            VkWriteDescriptorSet& write = writes.at(i);
+            write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            write.dstSet = slot.light_set;
+            write.dstBinding = i;
+            write.descriptorCount = 1;
+        }
+        writes[0].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+        writes[0].pNext = &structure;
+        for (const std::size_t i : {1U, 2U}) {
+            writes.at(i).descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            writes.at(i).pImageInfo = &images.at(i - 1);
+        }
+        writes[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        writes[3].pImageInfo = &images[2];
+        writes[4].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        writes[4].pBufferInfo = buffers.data();
+        for (const std::size_t i : {5U, 6U}) {
+            writes.at(i).descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            writes.at(i).pBufferInfo = &buffers.at(i - 4);
+        }
+        writes[7].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[7].pImageInfo = &images[3];
+        writes[8].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[8].descriptorCount = kRayTextures;
+        writes[8].pImageInfo = textures.data();
+        calls_.update_sets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0,
+                           nullptr);
+    }
+
     void memory_barrier(VkCommandBuffer native, VkPipelineStageFlags from,
                         VkAccessFlags from_access, VkPipelineStageFlags to,
                         VkAccessFlags to_access) const {
@@ -959,11 +1355,11 @@ private:
         calls_.barrier(native, from, to, 0, 1, &barrier, 0, nullptr, 0, nullptr);
     }
 
-    void image_barriers(VkCommandBuffer native, const std::array<VkImage, kOutputs>& images,
-                        VkImageLayout from, VkImageLayout to, VkPipelineStageFlags from_stage,
+    void image_barriers(VkCommandBuffer native, std::span<const VkImage> images, VkImageLayout from,
+                        VkImageLayout to, VkPipelineStageFlags from_stage,
                         VkAccessFlags from_access, VkPipelineStageFlags to_stage,
                         VkAccessFlags to_access) const {
-        std::array<VkImageMemoryBarrier, kOutputs> barriers{};
+        std::vector<VkImageMemoryBarrier> barriers(images.size());
         for (std::size_t i = 0; i < images.size(); ++i) {
             VkImageMemoryBarrier& barrier = barriers.at(i);
             barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -973,7 +1369,7 @@ private:
             barrier.newLayout = to;
             barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.image = images.at(i);
+            barrier.image = images[i];
             barrier.subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                                         .baseMipLevel = 0,
                                         .levelCount = 1,
@@ -1019,9 +1415,15 @@ private:
     VkPhysicalDeviceMemoryProperties memory_{};
     VkDeviceSize scratch_alignment_ = 256;
     VkSampler sampler_ = VK_NULL_HANDLE;
+    // Linear or (1) nearest, clamped or (2) repeating.
+    std::array<VkSampler, 4> texture_samplers_{};
+    VkSampler environment_sampler_ = VK_NULL_HANDLE;
     VkDescriptorSetLayout set_layout_ = VK_NULL_HANDLE;
     VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline pipeline_ = VK_NULL_HANDLE;
+    VkDescriptorSetLayout light_set_layout_ = VK_NULL_HANDLE;
+    VkPipelineLayout light_pipeline_layout_ = VK_NULL_HANDLE;
+    VkPipeline light_pipeline_ = VK_NULL_HANDLE;
     VkDescriptorPool pool_ = VK_NULL_HANDLE;
     std::array<Slot, kSlots> slots_{};
     std::size_t next_slot_ = 0;
@@ -1047,6 +1449,8 @@ VulkanRayOptions::VulkanRayOptions() : storage_(std::make_unique<Storage>()) {
     Storage& s = *storage_;
     s.vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
     s.vulkan12.bufferDeviceAddress = VK_TRUE;
+    // The reflections' shader picks each draw's textures from an array.
+    s.vulkan12.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
     s.vulkan12.pNext = &s.structures;
     s.structures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
     s.structures.accelerationStructure = VK_TRUE;
