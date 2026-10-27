@@ -123,6 +123,7 @@ render::Light3D light_base(const T& light, render::LightType type) {
     out.shadow_reverse_cull_face = light.shadow_reverse_cull_face;
     out.shadow_caster_mask = light.shadow_caster_mask;
     out.baked = light.light_bake_mode == "static";
+    out.volumetric_fog_energy = light.light_volumetric_fog_energy;
     return out;
 }
 
@@ -417,6 +418,21 @@ Environment world_environment(const world::World& world, render::Color clear) {
         fog.depth_curve = env.fog_depth_curve;
         fog.depth_begin = env.fog_depth_begin;
         fog.depth_end = env.fog_depth_end;
+    }
+    if (env.volumetric_fog_enabled) {
+        render::VolumetricFog3D& fog = out.volumetric_fog;
+        fog.enabled = true;
+        fog.density = env.volumetric_fog_density;
+        fog.albedo = rgb(env.volumetric_fog_albedo);
+        fog.emission = rgb(env.volumetric_fog_emission);
+        fog.emission_energy = env.volumetric_fog_emission_energy;
+        fog.anisotropy = env.volumetric_fog_anisotropy;
+        fog.length = env.volumetric_fog_length;
+        fog.detail_spread = env.volumetric_fog_detail_spread;
+        fog.ambient_inject = env.volumetric_fog_ambient_inject;
+        fog.sky_affect = env.volumetric_fog_sky_affect;
+        fog.temporal_reprojection = env.volumetric_fog_temporal_reprojection_enabled;
+        fog.temporal_reprojection_amount = env.volumetric_fog_temporal_reprojection_amount;
     }
     if (env.ssr_enabled) {
         out.ssr = {.enabled = true,
@@ -2159,7 +2175,8 @@ Renderer::prepare(const world::World& world, float width, float height, double i
                   const render::SsaoSettings& ssao, const render::SsrSettings& ssr,
                   const render::ReflectionAtlasSettings& reflection_atlas,
                   render::RenderMethod method, bool voxel_gi_high_quality, bool use_taa,
-                  std::optional<render::Fsr2Scaling> fsr2, render::DecalFilter decal_filter) {
+                  std::optional<render::Fsr2Scaling> fsr2, render::DecalFilter decal_filter,
+                  const render::VolumetricFogSettings& volumetric_fog) {
     ++frame_;
     draws_.clear();
     problems_.clear();
@@ -2255,6 +2272,8 @@ Renderer::prepare(const world::World& world, float width, float height, double i
     frame.scene.ssao.settings = ssao;
     frame.scene.ssr = env.ssr;
     frame.scene.ssr.settings = ssr;
+    frame.scene.volumetric_fog = env.volumetric_fog;
+    frame.scene.volumetric_fog.settings = volumetric_fog;
     if (depth_of_field.use_jitter) {
         // Godot seeds the jitter at random each frame; the game time keeps frames repeatable.
         frame.scene.post.dof_jitter_seed = static_cast<float>(time - std::floor(time)) * 1000.0F;

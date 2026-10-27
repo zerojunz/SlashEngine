@@ -1390,6 +1390,7 @@ lights each pixel with only the omni and spot lights whose range reaches it, and
 | `light_indirect_energy` | `1` | all | Times its light in baked bounces |
 | `light_size` | `0` | omni, spot | Its radius when baked, for soft shadows (a directional light's is `light_angular_distance`) |
 | `shadow_blur` | `1` | all | How much its baked shadows soften |
+| `light_volumetric_fog_energy` | `1` | all | `forward_plus`: how much it lights [volumetric fog](#volumetric-fog), times `light_energy` |
 
 Shadows are Godot's Compatibility renderer's shadow maps, drawn on every device and by
 `frame.capture`. A directional light's cascades share the directional atlas with the other
@@ -1455,6 +1456,16 @@ there is no ambient light and colors stay as they are.
 | `fog_sky_affect` | `1` | How much fog covers the sky or background, from 0 to 1 |
 | `fog_height`, `fog_height_density` | `0`, `0` | Fog thickens below this height, by this much; `0` for none |
 | `fog_depth_curve`, `fog_depth_begin`, `fog_depth_end` | `1`, `10`, `100` | How depth fog grows, where it begins and where it is thickest; an end of `0` or less is the camera's `far` |
+| `volumetric_fog_enabled` | `false` | `forward_plus`: [volumetric fog](#volumetric-fog) fills the view, lit by the lights and shaded by their shadows |
+| `volumetric_fog_density` | `0.05` | How thick it is |
+| `volumetric_fog_albedo` | `[1, 1, 1, 1]` | The color it scatters light with, sRGB |
+| `volumetric_fog_emission`, `volumetric_fog_emission_energy` | `[0, 0, 0, 1]`, `1` | The light it gives off itself, sRGB, and how bright |
+| `volumetric_fog_anisotropy` | `0.2` | Which way it scatters light, from -0.9 (back toward the light) through 0 (every way) to 0.9 (on, so it glows looked through toward a light) |
+| `volumetric_fog_length` | `64` | How far from the camera it reaches, in meters; what is past it is seen through all of it |
+| `volumetric_fog_detail_spread` | `2` | How its slices spread over its length: above 1, more of them are near the camera, from 0.5 to 6 |
+| `volumetric_fog_ambient_inject` | `0` | How much the ambient light (and the sky's, as meshes take it) lights it, from 0 to 16 |
+| `volumetric_fog_sky_affect` | `1` | How much it covers the sky, from 0 to 1 |
+| `volumetric_fog_temporal_reprojection_enabled`, `volumetric_fog_temporal_reprojection_amount` | `true`, `0.9` | Each frame blends in this much of the frame before's fog, from 0.5 to 0.99, smoothing it |
 
 How colors are finished depends on the project's
 [rendering method](project-format.md#rendering-methods), as in Godot.
@@ -1594,6 +1605,31 @@ the fog's color by distance (exponential fog, or depth fog between its begin and
 fades by `fog_sky_affect`, after `fog_aerial_perspective` mixes its colors into the fog's. A
 `"color"` or `"clear_color"` background is fogged as a sky of that color, which the background's
 energy multiplies twice, as Godot's does. A material's `disable_fog` leaves it clear.
+
+### Volumetric fog
+
+With `forward_plus`, `volumetric_fog_enabled` fills the view with fog that the lights shine
+through and the shadows fall in, as Godot 4.6's Forward+ renderer does. Each frame, the view out
+to `volumetric_fog_length` is cut into froxels (cells across, down and into the screen, set by
+the project's `rendering.environment.volumetric_fog`, see
+[project-format.md](project-format.md#volumetric-fog)), more of them near the camera by
+`volumetric_fog_detail_spread`. A compute pass works out each froxel's light: its emission, the
+directional lights through their shadow maps, the omni and spot lights that reach it (through
+the meshes' clusters, with their shadows), the ambient light by
+`volumetric_fog_ambient_inject`, each scattered toward the camera by
+`volumetric_fog_anisotropy` (the Henyey-Greenstein phase) and times each light's
+`light_volumetric_fog_energy`. With temporal reprojection, each froxel is sampled at a point
+that moves each frame and blends in the frame before's light where it was then. The volume is
+blurred across and down, then gathered along each column into the light the fog in front of
+each point adds and how much of it the fog lets through.
+
+Meshes are seen through the volume at their depth, after the [fog](#fog), as Godot blends them,
+and the sky through all of it by `volumetric_fog_sky_affect` (a `"color"` or `"clear_color"`
+background is left as it is unless the fog draws it as a sky). Transparent meshes take it too;
+a material's `disable_fog` leaves it out. Frames with no meshes and reflection probes' cubes go
+without it, `gl_compatibility` has none, as in Godot, and `FogVolume`s are still to come. Every
+device draws the same passes (the software device on the CPU, so `frame.capture` shows it), and
+a target's first frame starts from its own density instead of fading in from none.
 
 ### Ambient occlusion
 

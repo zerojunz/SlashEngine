@@ -458,7 +458,7 @@ void plan_positional(const Scene3D& scene, std::size_t index, int slot, std::uin
     out.light = view_of(basis, position);
     out.params = {light.shadow_normal_bias * 10.0F / static_cast<float>(tile), light.shadow_opacity,
                   1.0F / s, static_cast<float>(faces)};
-    out.position = {position[0], position[1], position[2], 0.0F};
+    out.position = {position[0], position[1], position[2], radius};
 }
 
 } // namespace

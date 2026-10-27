@@ -2436,6 +2436,8 @@ void register_3d_components(ComponentRegistry& registry) {
                "bounces only and it lights live; \"static\" bakes it whole and it doesn't light "
                "lightmapped meshes live. VoxelGIs light their cells with lights not disabled.",
         .choices = {"disabled", "static", "dynamic"}};
+    const FieldMeta fog_energy{
+        .doc = "Forward+: how much it lights volumetric fog, times light_energy.", .min = 0};
     const FieldMeta shadow_blur{
         .doc = "How far its baked shadows blur, times the light's size.", .min = 0.0, .max = 10.0};
     const FieldMeta light_size{
@@ -2486,7 +2488,8 @@ void register_3d_components(ComponentRegistry& registry) {
                    .choices = {"light_and_sky", "light_only", "sky_only"}})
         .describe("light_indirect_energy", indirect_energy)
         .describe("light_bake_mode", bake_mode)
-        .describe("shadow_blur", shadow_blur);
+        .describe("shadow_blur", shadow_blur)
+        .describe("light_volumetric_fog_energy", fog_energy);
     registry.add<OmniLight3D>()
         .set_doc("Light from the entity in every direction, such as a lamp, as Godot's "
                  "OmniLight3D.")
@@ -2506,7 +2509,8 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("light_indirect_energy", indirect_energy)
         .describe("light_size", light_size)
         .describe("light_bake_mode", bake_mode)
-        .describe("shadow_blur", shadow_blur);
+        .describe("shadow_blur", shadow_blur)
+        .describe("light_volumetric_fog_energy", fog_energy);
     registry.add<SpotLight3D>()
         .set_doc("Light from the entity in a cone down its -z, such as a torch, as Godot's "
                  "SpotLight3D.")
@@ -2530,7 +2534,8 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("light_indirect_energy", indirect_energy)
         .describe("light_size", light_size)
         .describe("light_bake_mode", bake_mode)
-        .describe("shadow_blur", shadow_blur);
+        .describe("shadow_blur", shadow_blur)
+        .describe("light_volumetric_fog_energy", fog_energy);
 
     const FieldMeta curve{
         .doc = "How sharply it changes; smaller is sharper.", .min = 0.001, .max = 1};
@@ -2863,6 +2868,31 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe(
             "fog_depth_end",
             {.doc = "Where depth fog is thickest, in meters; 0 for the camera's far.", .min = 0})
+        .describe("volumetric_fog_enabled",
+                  {.doc = "Forward+: fog fills the view up to volumetric_fog_length meters, lit "
+                          "by the lights and shaded by their shadows."})
+        .describe("volumetric_fog_density", {.doc = "How thick it is.", .min = 0})
+        .describe("volumetric_fog_albedo", {.doc = "The color it scatters light with."})
+        .describe("volumetric_fog_emission", {.doc = "The light it gives off itself."})
+        .describe("volumetric_fog_emission_energy", energy)
+        .describe("volumetric_fog_anisotropy",
+                  {.doc = "Which way it scatters light: -1 back toward the light, 0 every way, "
+                          "1 on.",
+                   .min = -0.9,
+                   .max = 0.9})
+        .describe("volumetric_fog_length",
+                  {.doc = "How far it reaches, in meters; what is past it is seen through it all.",
+                   .min = 0})
+        .describe("volumetric_fog_detail_spread",
+                  {.doc = "Above 1, more of its detail is near the camera.", .min = 0.5, .max = 6})
+        .describe("volumetric_fog_ambient_inject",
+                  {.doc = "How much the ambient light lights it.", .min = 0, .max = 16})
+        .describe("volumetric_fog_sky_affect",
+                  {.doc = "How much it covers the sky.", .min = 0, .max = 1})
+        .describe("volumetric_fog_temporal_reprojection_enabled",
+                  {.doc = "Each frame blends in the frame before's fog, smoothing it."})
+        .describe("volumetric_fog_temporal_reprojection_amount",
+                  {.doc = "How much of the frame before's fog it keeps.", .min = 0.5, .max = 0.99})
         .describe("adjustment_enabled",
                   {.doc = "Brightness, contrast, saturation and color correction apply."})
         .describe("adjustment_brightness", {.doc = "Multiplies colors.", .min = 0})
