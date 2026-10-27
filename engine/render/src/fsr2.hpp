@@ -53,8 +53,11 @@ struct Fsr2Uniforms {
     // The shading change mip's size, a pass's step (the reconstruct pass: 0 clears and 1
     // scatters; the sharpening pass: 1 copies), and 1 for an orthogonal projection.
     std::array<std::int32_t, 4> options{};
+    // Godot's reprojection matrix, by columns: a point in clip space now to where it was in the
+    // frame before's, each without its jitter, for the motion vectors the prepass left out.
+    std::array<Float4, 4> reprojection{};
 };
-static_assert(sizeof(Fsr2Uniforms) == 80);
+static_assert(sizeof(Fsr2Uniforms) == 144);
 
 // What a frame's uniforms are made from.
 struct Fsr2Frame {
@@ -64,11 +67,25 @@ struct Fsr2Frame {
     std::uint32_t display_height = 0;
     std::array<float, 2> jitter{}; // in clip space, as camera_jitter
     Mat4 projection{};             // the camera's, without the jitter
+    Mat4 view_projection{};        // the world to clip space, without the jitter
+    Mat4 previous{};               // view_projection in the frame before (the same for a first)
     float sharpness = 0.2F;        // Godot's scaling_3d/fsr_sharpness: 0 sharpest, 2 none
     std::uint32_t frame_index = 0; // frames since the target's last reset
     float phases = 0.0F;           // the jitter's phases, as FSR 2 eases them (Fsr2History)
 };
 [[nodiscard]] Fsr2Uniforms fsr2_uniforms(const Fsr2Frame& frame);
+
+// What the prepass's motion target is cleared to with FSR 2, as Godot's velocity buffer when it
+// upscales: a vector FSR 2 doesn't take, so that it works one out from the depth where no opaque
+// mesh drew, such as the sky.
+inline constexpr float kInvalidMotion = -1.0F;
+
+// Godot's derive_motion_vector: the motion vector of the render pixel at uv (texture coordinates,
+// y down) whose depth is depth, from where reprojection (Fsr2Uniforms::reprojection) puts it in the
+// frame before. FSR 2 takes it in place of a motion vector of kInvalidMotion both ways.
+[[nodiscard]] std::array<float, 2> derive_motion_vector(const std::array<Float4, 4>& reprojection,
+                                                        const std::array<float, 2>& uv,
+                                                        float depth);
 
 // The shading change mip's size for a render size: 1/32 of it, at least 1 x 1.
 [[nodiscard]] std::array<std::uint32_t, 2> fsr2_luma_mip_size(std::uint32_t render_width,
@@ -99,7 +116,7 @@ struct Fsr2History {
 
 // What a frame gives FSR 2, at the render size with rows top to bottom: the world (RGBA, half
 // floats), the prepass's depth (reversed: 1 at the near plane) and its motion vectors (two half
-// floats a pixel, in texture coordinates).
+// floats a pixel, in texture coordinates, kInvalidMotion where no opaque mesh drew).
 struct Fsr2Inputs {
     std::span<const float> color;
     std::span<const float> depth;
