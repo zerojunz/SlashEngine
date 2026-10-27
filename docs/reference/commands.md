@@ -619,6 +619,8 @@ Give one of them. Needs: `read`.
 
 - Each mesh lists the material of each of its surfaces, by index into `materials`, or `-1` for
   Godot's default material, and counts their vertices and triangles.
+  `lods`, for a mesh whose surfaces have [LODs](scene-format.md#mesh-lods), counts its
+  triangles at each coarser LOD, a surface with fewer counted at its coarsest.
 - Each material has the `StandardMaterial3D` fields that differ from the defaults, as the import
   sets them, and `textures`: the index into `images` its `albedo`, `metallic`, `roughness`,
   `normal` and `emission` textures sample (a glTF model's metallic and roughness are one image).
@@ -3758,7 +3760,8 @@ Needs: `read`, and `filesystem` with `path`. A HUD with a health bar at 75%:
 ```
 
 `width` and `height` are the image's, after `region` and `scale`. `drawn` counts what was drawn
-(`sprites`, `tiles`, `particles`, `lights`, `controls`, `shapes` and 3D `meshes`), leaving out
+(`sprites`, `tiles`, `particles`, `lights`, `controls`, `shapes`, 3D `meshes` and, of those,
+`lods`: the meshes drawn at a coarser [LOD](scene-format.md#mesh-lods)), leaving out
 zeros. When the
 project's `rendering.scaling` ([project-format.md](project-format.md#render-scale)) draws the
 world at another size, `upscaler` names what scaled it and `render_size` is the world's size in

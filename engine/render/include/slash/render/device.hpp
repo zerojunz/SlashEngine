@@ -492,9 +492,12 @@ public:
     [[nodiscard]] virtual Result<std::vector<Particle>> read_particles(ParticlesId particles) = 0;
 
     // A mesh of vertices, every three indices a triangle, each index below the vertex count, or
-    // every three vertices a triangle when there are no indices. At most kMaxMeshVertices.
-    [[nodiscard]] virtual Result<MeshId> create_mesh(std::span<const Vertex3D> vertices,
-                                                     std::span<const std::uint32_t> indices) = 0;
+    // every three vertices a triangle when there are no indices. At most kMaxMeshVertices. lods
+    // are coarser versions of its triangles over the same vertices, as a Godot mesh's surface
+    // LODs, each a list of indices that draw_mesh can draw in place of the mesh's own.
+    [[nodiscard]] virtual Result<MeshId>
+    create_mesh(std::span<const Vertex3D> vertices, std::span<const std::uint32_t> indices,
+                std::span<const std::span<const std::uint32_t>> lods = {}) = 0;
     // Replaces a mesh's vertices with as many new ones, keeping its triangles, as a skinned
     // mesh's are replaced each frame; not during a frame. A frame with TAA (Scene3D::use_taa)
     // moves its pixels by how far each vertex moved since the last such frame that drew it.
@@ -521,11 +524,12 @@ public:
     // as Godot sorts them; all before the frame's 2D draws. shadows says which lights' shadow
     // maps it is drawn into; alpha meshes cast no shadows, as in Godot. previous is where the
     // mesh was in the frame before, from which a frame with TAA works out how far its pixels
-    // moved; without it, the mesh stood still.
+    // moved; without it, the mesh stood still. lod picks the triangles: the mesh's own (0), or
+    // those of the lod-th of the LODs it was made with, in its shadows too.
     [[nodiscard]] virtual Result<void>
     draw_mesh(MeshId mesh, const Mat4& transform, const Material3D& material,
               std::uint32_t layers = 1, ShadowCasting shadows = ShadowCasting::On,
-              const std::optional<Mat4>& previous = std::nullopt) = 0;
+              const std::optional<Mat4>& previous = std::nullopt, std::uint32_t lod = 0) = 0;
     // Sends the frame to the GPU, and to the window when it is the target.
     [[nodiscard]] virtual Result<void> end_frame() = 0;
 

@@ -739,13 +739,10 @@ bool is_model_path(std::string_view path) {
            path.ends_with(".fbx") || path.ends_with(kBlendSuffix);
 }
 
-Result<Model> load_model(std::string_view bytes, std::string_view path, const ModelReader& read) {
-    if (path.ends_with(".obj")) {
-        return load_obj(bytes, path, read, nullptr);
-    }
-    if (path.ends_with(".fbx")) {
-        return load_fbx(bytes, path, read, nullptr);
-    }
+namespace {
+
+// A glTF model, or a .blend file's.
+Result<Model> read_gltf(std::string_view bytes, std::string_view path, const ModelReader& read) {
     // A .blend file is read as the glTF Blender made of it (blend.hpp).
     if (path.ends_with(kBlendSuffix) && !is_converted_blend(bytes)) {
         return make_error(ErrorCode::InvalidArgument,
@@ -871,6 +868,45 @@ Result<Model> load_model(std::string_view bytes, std::string_view path, const Mo
     return model;
 }
 
+// Gives each surface its LODs, as Godot's importer does with meshes/generate_lods on: a mesh a
+// skin deforms as the first part drawing it with that skin places it at rest.
+void add_lods(Model& model) {
+    std::vector<world::Affine3D> globals;
+    if (!model.skins.empty()) {
+        globals = node_globals(model, rest_pose(model));
+    }
+    for (std::size_t m = 0; m < model.meshes.size(); ++m) {
+        std::vector<world::Affine3D> bones;
+        for (const ModelPart& part : model.parts) {
+            if (part.mesh == m && part.skin >= 0 &&
+                static_cast<std::size_t>(part.skin) < model.skins.size()) {
+                bones = joint_transforms(model.skins[static_cast<std::size_t>(part.skin)], globals);
+                break;
+            }
+        }
+        for (ModelSurface& surface : model.meshes[m].surfaces) {
+            generate_lods(surface, bones);
+        }
+    }
+}
+
+} // namespace
+
+Result<Model> load_model(std::string_view bytes, std::string_view path, const ModelReader& read) {
+    Result<Model> model = make_error(ErrorCode::InvalidArgument, "");
+    if (path.ends_with(".obj")) {
+        model = load_obj(bytes, path, read, nullptr);
+    } else if (path.ends_with(".fbx")) {
+        model = load_fbx(bytes, path, read, nullptr);
+    } else {
+        model = read_gltf(bytes, path, read);
+    }
+    if (model) {
+        add_lods(model.value());
+    }
+    return model;
+}
+
 std::vector<json::ValidationError> check_model(std::string_view bytes, std::string_view path,
                                                const ModelReader& read) {
     const bool obj = path.ends_with(".obj");
@@ -882,7 +918,7 @@ std::vector<json::ValidationError> check_model(std::string_view bytes, std::stri
     } else if (fbx) {
         model = load_fbx(bytes, path, read, &errors);
     } else {
-        model = load_model(bytes, path, read);
+        model = read_gltf(bytes, path, read);
     }
     if (!model) {
         return {{"", model.error().message}};

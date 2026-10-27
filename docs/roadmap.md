@@ -664,6 +664,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [x] Clustered decals, as Godot 4.6's Forward+ `Decal`: albedo, normal, ORM and emission
       textures in one atlas, fades, cull masks and the project's decal filter, imported from Godot
 - [ ] Generated LODs with meshoptimizer and occlusion culling
+  - [x] Generated LODs, as Godot 4.6's importer makes them with meshoptimizer and its renderers
+        pick them by distance, `lod_bias` and the project's threshold, imported from Godot
+  - [ ] Occlusion culling, as Godot's `OccluderInstance3D`
 - [x] 3D physics on Jolt: rigid bodies, joints, character controller, vehicles
   - [x] Static, animatable, rigid and character bodies, areas with gravity and damping
         overrides, every Godot shape, `move_and_slide` and the queries, as Godot 4.4's Jolt
@@ -918,7 +921,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Networking | ENet transport, replication driven by reflection, WebSocket for web | 8 | Planned |
 | Terrain | Heightmap terrain with splat materials and LOD | 7 | Planned |
 | Level geometry | CSG and grid-based tile placement | 7 | In progress: CSG shapes, paths and `GridMap` done; heightmap terrain planned |
-| LOD and culling | Generated LODs with meshoptimizer, occlusion culling | 7 | Planned |
+| LOD and culling | Generated LODs with meshoptimizer, occlusion culling | 7 | In progress: generated LODs done; occlusion culling planned |
 | XR | OpenXR | 8 | Planned |
 | Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | Planned |
 | Video playback | AV1 through dav1d | 8 | Planned |
