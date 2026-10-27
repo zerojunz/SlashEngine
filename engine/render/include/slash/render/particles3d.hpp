@@ -144,22 +144,55 @@ struct ParticleAttractor3D {
     bool operator==(const ParticleAttractor3D&) const = default;
 };
 
-// The shapes of Godot's GPUParticlesCollision3D that collide in every device.
-enum class ColliderShape3D : std::uint8_t { Sphere, Box };
+// A GPUParticlesCollisionSDF3D's signed distance field, as its baked Texture3D holds it: width by
+// height by depth cells over its box, x fastest, then y, then z, each the distance from the
+// cell's center to the nearest surface in meters of the collider's unscaled space (less than 0
+// inside one) as a half float's bits, as Godot's RH texels.
+struct ParticleSdf3D {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::uint32_t depth = 0;
+    std::vector<std::uint16_t> distances;
+
+    bool operator==(const ParticleSdf3D&) const = default;
+};
+
+// A GPUParticlesCollisionHeightField3D's heights, as Godot draws its depth texture from above:
+// width by height texels over its box's x and z, x fastest, from its -x -z corner, each the
+// height of the highest surface over the texel's center, from 0 at the box's bottom (or nothing
+// there) to 1 at its top.
+struct ParticleHeightField3D {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::vector<float> heights;
+
+    bool operator==(const ParticleHeightField3D&) const = default;
+};
+
+// The shapes of Godot's GPUParticlesCollision3D.
+enum class ColliderShape3D : std::uint8_t { Sphere, Box, Sdf, HeightField };
 
 // A collider a step's particles touch, as Godot's particles storage hands one to its particles
 // shader: its transform in the particles' space with its basis made orthonormal, and the half
-// size of its box (or its radius, in x, y and z) scaled by its transform.
+// size of its box (or its radius, in x, y and z) scaled by its transform. An SDF's distances
+// are times scale, the average of its transform's scale; fields and height fields are shared by
+// every step that uses them.
 struct ParticleCollider3D {
     ColliderShape3D shape = ColliderShape3D::Sphere;
     ParticleTransform transform = kParticleIdentity;
     Vec3 extents{1.0F, 1.0F, 1.0F};
+    float scale = 1.0F;                                   // Sdf only
+    std::shared_ptr<const ParticleSdf3D> sdf;             // Sdf only
+    std::shared_ptr<const ParticleHeightField3D> heights; // HeightField only
 
     bool operator==(const ParticleCollider3D&) const = default;
 };
 
-// The most colliders one step takes, as Godot's MAX_COLLIDERS.
+// The most colliders one step takes, as Godot's MAX_COLLIDERS; of them at most one height field.
 inline constexpr std::size_t kMaxParticleColliders3D = 32;
+// The most cells an SDF holds (128 a side) and texels a height field holds (1024 a side).
+inline constexpr std::size_t kMaxParticleSdfCells3D = std::size_t{1} << 21U;
+inline constexpr std::size_t kMaxParticleHeightTexels3D = std::size_t{1} << 20U;
 
 // The most attractors one step takes, as Godot's MAX_ATTRACTORS.
 inline constexpr std::size_t kMaxParticleAttractors3D = 32;

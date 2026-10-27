@@ -32,7 +32,7 @@ Rules that apply to every command (see [concepts.md](../concepts.md#sessions)):
 
 Add `"dry_run": true` to the params of any command that changes the world (`scene.new`,
 `scene.open`, `entity.create`, `entity.destroy`, `component.set`, `component.remove`, `step`,
-`run.until`, `world.restore`, `storyboard.edit`, `navigation.bake`, `lightmap.bake`, `voxel_gi.bake`, `occluder.bake`, `replay.run`, `replay.seek` and `batch`) to see what it would do. The command runs, then
+`run.until`, `world.restore`, `storyboard.edit`, `navigation.bake`, `lightmap.bake`, `voxel_gi.bake`, `occluder.bake`, `particles.bake_sdf`, `replay.run`, `replay.seek` and `batch`) to see what it would do. The command runs, then
 the world, the scene's path, the next generated ID and the tick counter are put back, and no undo
 step is recorded. An error is returned as usual. The result holds the command's own result and the
 changes, in the same form as [`world.diff`](#worlddiff):
@@ -47,7 +47,7 @@ changes, in the same form as [`world.diff`](#worlddiff):
 
 A batch takes `dry_run` itself; the commands inside it cannot. In a dry-run batch, `scene.save`
 and `prefab.save` check everything and return their usual result but write no file, and
-`storyboard.edit` returns the versions it would write and `navigation.bake`, `lightmap.bake`, `voxel_gi.bake` and `occluder.bake` what they would bake. Commands that change nothing, such
+`storyboard.edit` returns the versions it would write and `navigation.bake`, `lightmap.bake`, `voxel_gi.bake`, `occluder.bake` and `particles.bake_sdf` what they would bake. Commands that change nothing, such
 as `entity.get`, reject it as an unknown param.
 
 ## Contents
@@ -68,7 +68,7 @@ as `entity.get`, reject it as an unknown param.
 | Tile maps | [`tilemap.paint`](#tilemappaint), [`tilemap.set`](#tilemapset), [`tilemap.get`](#tilemapget), [`tilemap.convert`](#tilemapconvert) |
 | Physics | [`physics.raycast`](#physicsraycast), [`physics.overlap`](#physicsoverlap), [`physics.contacts`](#physicscontacts), [`physics.gravity`](#physicsgravity) |
 | Navigation | [`navigation.path`](#navigationpath), [`navigation.closest`](#navigationclosest), [`navigation.random`](#navigationrandom), [`navigation.map`](#navigationmap), [`navigation.agent`](#navigationagent), [`navigation.bake`](#navigationbake) |
-| Particles | [`particles.eval`](#particleseval) |
+| Particles | [`particles.eval`](#particleseval), [`particles.bake_sdf`](#particlesbake_sdf) |
 | Lights | [`light.sample`](#lightsample) |
 | Global illumination | [`lightmap.bake`](#lightmapbake), [`voxel_gi.bake`](#voxel_gibake) |
 | Occlusion culling | [`occluder.bake`](#occluderbake) |
@@ -1641,6 +1641,39 @@ of its copies are live, the `length` in pixels from it through them and where it
 ```
 
 ## Lights
+
+### particles.bake_sdf
+
+Bakes a [`GPUParticlesCollisionSDF3D`'s](scene-format.md#sdf-and-height-field-collision-3d)
+signed distance field, as Godot's Bake SDF: the visible `MeshInstance3D`s on layers of its
+`bake_mask` under its parent (the whole world for a root), with the CSG roots and `GridMap`s
+there, whose triangles touch its box, at its `resolution` and `thickness`. It writes a `.sdf.png`
+file and sets the collider's `texture` to it, `slices_horizontal` to 1 and `slices_vertical` to
+the cells' depth. It returns the file, how many meshes and triangles it measured, the cells
+along each axis and `problems` when there are any: models that don't load, which it leaves out.
+A bake that comes out the same reports `"unchanged": true` and records no undo step. Undo puts
+the file back as it was, removing it if the bake made it, and sets the fields back.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | required | An entity with a `GPUParticlesCollisionSDF3D` |
+| `file` | string | its `texture`, else beside the scene, named after it and the entity | The `.sdf.png` file to write, project path |
+
+Needs: `edit` and `filesystem`. Takes `dry_run`. The statue of
+[examples/particle-sdf-collision-3d](../../examples/particle-sdf-collision-3d/):
+
+```json
+{"id": "statue_sdf"}
+```
+
+```json
+{"cells":[16,16,16],"file":"main.statue_sdf.sdf.png","meshes":1,"triangles":4224}
+```
+
+An unknown ID fails at `/id` with a "did you mean"; an entity with no `GPUParticlesCollisionSDF3D`
+fails at `/id`. A file that doesn't end in `.sdf.png` fails at `/file` (or `/id`, for its
+`texture`). A box no triangle touches fails, as Godot's bake does, and so does a resolution that
+isn't one or a field of more than 2097152 cells.
 
 ### light.sample
 

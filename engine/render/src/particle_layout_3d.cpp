@@ -162,20 +162,65 @@ void pack_particle_steps_3d(std::span<const ParticleStep3D> steps, std::vector<W
         out.push_back({step.cycle, step.seed, flags, 0U});
         out.push_back({0U, bits(step.collision_size), 0U, 0U});
     }
-    // Then each step's colliders.
+    // Then each step's colliders, and the SDFs and height fields they read once each.
+    std::vector<std::pair<const void*, std::uint32_t>> grids;
+    const auto grid_at = [&](const void* grid, const auto& write) {
+        const auto found = std::find_if(grids.begin(), grids.end(),
+                                        [&](const auto& g) { return g.first == grid; });
+        if (found != grids.end()) {
+            return found->second;
+        }
+        const auto at = static_cast<std::uint32_t>(out.size());
+        grids.emplace_back(grid, at);
+        write();
+        return at;
+    };
     for (std::size_t i = 0; i < steps.size(); ++i) {
         const ParticleStep3D& step = steps[i];
         if (step.colliders.empty()) {
             continue;
         }
         out[first + (i * kStepWords3D) + 7].at(0) = static_cast<std::uint32_t>(out.size());
-        for (const ParticleCollider3D& collider : step.colliders) {
+        const std::size_t block = out.size();
+        out.resize(block + (step.colliders.size() * kColliderWords3D));
+        for (std::size_t c = 0; c < step.colliders.size(); ++c) {
+            const ParticleCollider3D& collider = step.colliders[c];
+            std::uint32_t grid = 0;
+            if (collider.shape == ColliderShape3D::Sdf && collider.sdf != nullptr) {
+                const ParticleSdf3D& sdf = *collider.sdf;
+                grid = grid_at(&sdf, [&] {
+                    out.push_back({sdf.width, sdf.height, sdf.depth, 0U});
+                    for (std::size_t at = 0; at < sdf.distances.size(); at += 8) {
+                        Word word{};
+                        for (std::size_t k = 0; k < 8 && at + k < sdf.distances.size(); ++k) {
+                            word.at(k / 2) |= std::uint32_t{sdf.distances[at + k]}
+                                              << (16 * (k % 2));
+                        }
+                        out.push_back(word);
+                    }
+                });
+            } else if (collider.shape == ColliderShape3D::HeightField &&
+                       collider.heights != nullptr) {
+                const ParticleHeightField3D& field = *collider.heights;
+                grid = grid_at(&field, [&] {
+                    out.push_back({field.width, field.height, 0U, 0U});
+                    for (std::size_t at = 0; at < field.heights.size(); at += 4) {
+                        Word word{};
+                        for (std::size_t k = 0; k < 4 && at + k < field.heights.size(); ++k) {
+                            word.at(k) = bits(field.heights[at + k]);
+                        }
+                        out.push_back(word);
+                    }
+                });
+            }
             const ParticleTransform& t = collider.transform;
-            out.push_back(floats(t[0], t[1], t[2], t[3]));
-            out.push_back(floats(t[4], t[5], t[6], t[7]));
-            out.push_back(floats(t[8], t[9], t[10], t[11]));
-            out.push_back({bits(collider.extents.x), bits(collider.extents.y),
-                           bits(collider.extents.z), static_cast<std::uint32_t>(collider.shape)});
+            const std::size_t at = block + (c * kColliderWords3D);
+            out[at] = floats(t[0], t[1], t[2], t[3]);
+            out[at + 1] = floats(t[4], t[5], t[6], t[7]);
+            out[at + 2] = floats(t[8], t[9], t[10], t[11]);
+            out[at + 3] = {bits(collider.extents.x), bits(collider.extents.y),
+                           bits(collider.extents.z), static_cast<std::uint32_t>(collider.shape)};
+            out[at + 4] = {grid, bits(collider.scale), 0U, 0U};
         }
     }
     // Then each step's attractors, and the fields they sample once each.

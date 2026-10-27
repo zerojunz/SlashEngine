@@ -17,6 +17,7 @@
 #include "slash/scene3d/humanoid.hpp"
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/model.hpp"
+#include "slash/scene3d/particle_collision.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
 #include "slash/world/component_registry.hpp"
@@ -1352,10 +1353,12 @@ TEST_CASE("engine.describe lists systems in the order they run") {
         {"name": "gpu_particles_3d",
          "doc": "Steps each GPUParticles3D's emission for renderers to run.", "priority": 1110,
          "threaded": true, "stage": 16,
-         "reads": ["Transform3D", "GPUParticlesAttractorSphere3D", "GPUParticlesAttractorBox3D",
+         "reads": ["GPUParticlesAttractorSphere3D", "GPUParticlesAttractorBox3D",
                    "GPUParticlesAttractorVectorField3D", "GPUParticlesCollisionSphere3D",
-                   "GPUParticlesCollisionBox3D"],
-         "writes": ["GPUParticles3D", "assets"]},
+                   "GPUParticlesCollisionBox3D", "GPUParticlesCollisionSDF3D",
+                   "GPUParticlesCollisionHeightField3D", "Camera3D", "MeshInstance3D", "GridMap",
+                   "HTerrain", "csg"],
+         "writes": ["GPUParticles3D", "Transform3D", "assets"]},
         {"name": "ai",
          "doc": "Hands each finished reply from a language model to the game as an ai_reply or ai_failed event.",
          "priority": 1150},
@@ -2697,6 +2700,82 @@ TEST_CASE("occluder.bake sets an occluder's shape from the meshes around it, and
     CHECK(contains(reply.message, "no meshes to bake"));
     reply = engine.fails("occluder.bake", R"({"id": "wall"})", command::code::kInvalidParams);
     CHECK(reply.message == "/id: \"wall\" has no OccluderInstance3D");
+}
+
+TEST_CASE("particles.bake_sdf writes a collider's distances, and undo takes them back") {
+    const std::string root = "particles_bake_sdf_test_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root).ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "rock", "components": {
+            "Transform3D": {}, "MeshInstance3D": {}, "SphereMesh": {}}}},
+        {"command": "entity.create", "params": {"id": "sdf", "components": {
+            "Transform3D": {}, "GPUParticlesCollisionSDF3D": {
+                "size": [2, 1, 2], "resolution": "16"}}}}]})");
+    const auto read = [&](const std::string& path) -> std::optional<std::string> {
+        if (!std::filesystem::exists(root + "/" + path)) {
+            return std::nullopt;
+        }
+        return slash::platform::read_file(root + "/" + path).value();
+    };
+
+    // A dry run says what it would bake and writes nothing.
+    const json::Value dry = engine.ok("particles.bake_sdf", R"({"id": "sdf", "dry_run": true})");
+    const json::Value baked = *dry.find("result");
+    CHECK(*baked.find("file") == "sdf.sdf.png");
+    CHECK(*baked.find("meshes") == 1);
+    CHECK(baked.find("triangles")->as_int() > 0);
+    CHECK(*baked.find("cells") == parse("[16, 8, 16]"));
+    CHECK(*dry.find("changes") == parse(R"({"changed": {"sdf": {"GPUParticlesCollisionSDF3D": {
+              "texture": "sdf.sdf.png", "slices_vertical": 16}}}})"));
+    CHECK_FALSE(read("sdf.sdf.png"));
+
+    // The texture holds the cells' distances, less than 0 within a cell behind the sphere's faces
+    // (its thickness) and more than 0 elsewhere, deep inside too, as Godot's.
+    CHECK(engine.ok("particles.bake_sdf", R"({"id": "sdf"})") == baked);
+    const std::optional<std::string> png = read("sdf.sdf.png");
+    REQUIRE(png);
+    const render::Gray16 texture = render::decode_gray16(*png).value();
+    const render::ParticleSdf3D sdf = scene3d::particle_sdf(texture, 1, 16).value();
+    CHECK(sdf.width == 16);
+    CHECK(sdf.height == 8);
+    CHECK(sdf.depth == 16);
+    const auto at = [&](std::uint32_t x, std::uint32_t y, std::uint32_t z) {
+        return sdf.distances[x + (sdf.width * (y + (sdf.height * z)))];
+    };
+    CHECK((at(11, 4, 8) & 0x8000U) != 0); // just inside the surface
+    CHECK((at(8, 4, 8) & 0x8000U) == 0);  // the middle
+    CHECK((at(0, 0, 0) & 0x8000U) == 0);  // a corner, outside
+    const auto collider = [&] {
+        world::World& world = engine.session->world();
+        return world.ecs().get<world::GPUParticlesCollisionSDF3D>(world.find("sdf"));
+    };
+    CHECK(collider().texture == "sdf.sdf.png");
+    CHECK(collider().slices_vertical == 16);
+    CHECK(*engine.ok("particles.bake_sdf", R"({"id": "sdf"})").find("unchanged") == true);
+
+    // Undo takes the file and texture back.
+    engine.ok("undo");
+    CHECK_FALSE(read("sdf.sdf.png"));
+    CHECK(collider().texture.empty());
+
+    engine.ok("scene.save", R"({"path": "levels/cave.scene.json"})");
+    CHECK(*engine.ok("particles.bake_sdf", R"({"id": "sdf"})").find("file") ==
+          "levels/cave.sdf.sdf.png");
+    auto reply = engine.fails("particles.bake_sdf", R"({"id": "sdf", "file": "cave.png"})",
+                              command::code::kInvalidArgument);
+    CHECK(reply.message == "/file: \"cave.png\" is not a .sdf.png file");
+    reply = engine.fails("particles.bake_sdf", R"({"id": "rock"})", command::code::kInvalidParams);
+    CHECK(reply.message == "/id: \"rock\" has no GPUParticlesCollisionSDF3D");
+    // A box with nothing in it has nothing to bake.
+    engine.ok("component.set", R"({"id": "sdf", "components": {
+        "GPUParticlesCollisionSDF3D": {"bake_mask": 2}}})");
+    reply = engine.fails("particles.bake_sdf", R"({"id": "sdf"})", command::code::kInvalidArgument);
+    CHECK(contains(reply.message, "no triangles to bake"));
+    std::filesystem::remove_all(root);
 }
 
 TEST_CASE("physics commands find bodies by ray, point and shape, and what touches them") {
