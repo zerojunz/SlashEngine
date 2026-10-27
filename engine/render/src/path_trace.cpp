@@ -813,4 +813,11 @@ std::optional<PathHit> path_hit(const PathScene& scene, const Float3& origin,
                    .v = found->crossing.v};
 }
 
+bool path_blocked(const PathScene& scene, const PathTextures* textures, const Float3& origin,
+                  const Float3& direction, float distance, std::uint32_t caster_mask,
+                  std::uint32_t seed) {
+    return trace(scene, textures, origin, direction, distance, RayKind::Shadow, caster_mask, seed)
+        .has_value();
+}
+
 } // namespace slash::render::detail

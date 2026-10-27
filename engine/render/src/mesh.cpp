@@ -486,6 +486,24 @@ float mesh_lod_threshold(const json::Value& rendering) {
     return 1.0F;
 }
 
+RayTracing3D ray_tracing(const json::Value& rendering) {
+    RayTracing3D out;
+    const json::Value* found = rendering.is_object() ? rendering.find("ray_tracing") : nullptr;
+    if (found == nullptr || !found->is_object()) {
+        return out;
+    }
+    if (const json::Value* shadows = found->find("shadows");
+        shadows != nullptr && shadows->is_bool()) {
+        out.shadows = shadows->as_bool();
+    }
+    if (const json::Value* samples = found->find("shadow_samples");
+        samples != nullptr && samples->is_number()) {
+        out.shadow_samples = static_cast<std::uint32_t>(
+            std::clamp(samples->as_double(), 1.0, static_cast<double>(kMaxRayShadowSamples)));
+    }
+    return out;
+}
+
 OcclusionCulling occlusion_culling(const json::Value& rendering) {
     OcclusionCulling out;
     const json::Value* found =
@@ -757,19 +775,20 @@ MeshSceneUniforms mesh_scene_uniforms(const Scene3D& scene) {
     }
     // Every pixel takes these lights; Forward+'s omni and spot lights are in its clusters.
     const std::vector<int> slots = shadow_slots(scene);
+    const std::vector<int> rays = ray_shadow_slots(scene);
     std::size_t count = 0;
     for (std::size_t i = 0; i < lights_drawn(scene); ++i) {
         const Light3D& light = scene.lights[i];
         if (scene.method == RenderMethod::ForwardPlus && light.type != LightType::Directional) {
             continue;
         }
-        out.lights.at(count++) = mesh_light_uniforms(light, slots.at(i));
+        out.lights.at(count++) = mesh_light_uniforms(light, slots.at(i), rays.at(i));
     }
     out.camera[3] = static_cast<float>(count);
     return out;
 }
 
-MeshLightUniforms mesh_light_uniforms(const Light3D& light, int shadow_slot) {
+MeshLightUniforms mesh_light_uniforms(const Light3D& light, int shadow_slot, int ray_slot) {
     MeshLightUniforms packed;
     packed.position = {light.position[0], light.position[1], light.position[2],
                        1.0F / std::max(0.001F, light.range)};
@@ -791,7 +810,7 @@ MeshLightUniforms mesh_light_uniforms(const Light3D& light, int shadow_slot) {
     packed.params = {light.attenuation, cone.x, 1.0F / light.spot_attenuation,
                      static_cast<float>(light.cull_mask & kRenderLayers)};
     packed.shadow = {static_cast<float>(shadow_slot), light.baked ? 1.0F : 0.0F,
-                     light.volumetric_fog_energy, 0.0F};
+                     light.volumetric_fog_energy, static_cast<float>(ray_slot + 1)};
     return packed;
 }
 
@@ -1311,6 +1330,10 @@ std::optional<LightReach> light_reach(const MeshLightUniforms& light, const Floa
     return LightReach{.toward = toward, .distance = distance, .attenuation = attenuation};
 }
 
+float ray_shadow(const MeshMaps& maps, std::size_t slot, std::uint32_t x, std::uint32_t y) {
+    return maps.ray_shadows[(((std::size_t{y} * maps.ao_width) + x) * kMaxRayShadowLights) + slot];
+}
+
 std::optional<Float4> mesh_normal_roughness(const MeshSurfaceUniforms& surface,
                                             const MeshSceneUniforms& scene,
                                             const MeshPixel& pixel) {
@@ -1426,6 +1449,8 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         const float affect = std::max(0.0F, scene.ssao[1]) * scene.ssao[2];
         ao_direct = 1.0F + ((ao - 1.0F) * affect);
     }
+    // An opaque pixel of a frame with ray-traced shadows takes its lights' from them.
+    const bool traced = scene.screen[2] != 0.0F && opaque && !maps.ray_shadows.empty();
     // Its SSR (alpha below 0 for none) goes over their reflections of the sky.
     Float4 ssr{0.0F, 0.0F, 0.0F, -1.0F};
     if (scene.ssao[3] != 0.0F && opaque && !maps.ssr.empty()) {
@@ -1453,14 +1478,20 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
         }
         const float type = light.direction[3];
         const Float3 light_color{light.color[0], light.color[1], light.color[2]};
-        const float slot = light.shadow[0];
+        float slot = light.shadow[0];
+        float traced_shadow = 1.0F;
+        if (traced && light.shadow[3] > 0.0F) {
+            traced_shadow =
+                ray_shadow(maps, static_cast<std::size_t>(light.shadow[3]) - 1, pixel.x, pixel.y);
+            slot = -1.0F;
+        }
         if (type == 0.0F) {
             const Float3 toward =
                 normalize({light.direction[0], light.direction[1], light.direction[2]});
             const float shadow = slot >= 0.0F && maps.uniforms != nullptr
                                      ? directional_shadow(maps, static_cast<std::size_t>(slot),
                                                           pixel.world, geometry, toward)
-                                     : 1.0F;
+                                     : traced_shadow;
             light_compute(normal, toward, view, light_color, shadow, f0, roughness, metallic,
                           light.color[3], light_sum);
             return;
@@ -1482,6 +1513,7 @@ std::optional<Float4> shade_mesh(const MeshSurfaceUniforms& surface, const MeshS
             attenuation *=
                 positional_shadow(maps, static_cast<std::size_t>(slot), pixel.world, geometry);
         }
+        attenuation *= traced_shadow;
         light_compute(normal, normalize(to_light), view, light_color, attenuation, f0, roughness,
                       metallic, light.color[3], light_sum);
     };
