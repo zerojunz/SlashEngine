@@ -13,7 +13,7 @@ add_library(slash::library ALIAS slash_library)
 target_include_directories(slash_library PUBLIC include)
 target_link_libraries(slash_library
     PUBLIC slash::ai slash::core
-    PRIVATE slash::audio slash::platform slash::render slash_httplib)
+    PRIVATE slash::audio slash::platform slash::render slash::scene3d slash_httplib)
 slash_engine_target(slash_library)
 # The test generator's placeholders, and images fitted to a size, are the same on every platform.
 target_compile_options(slash_library PRIVATE $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)
