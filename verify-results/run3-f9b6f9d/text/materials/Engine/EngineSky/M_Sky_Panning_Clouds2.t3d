@@ -1,0 +1,868 @@
+Begin Object Class=/Script/Engine.Material Name="M_Sky_Panning_Clouds2" ExportPath="/Script/Engine.Material'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2'"
+   Begin Object Class=/Script/UnrealEd.SceneThumbnailInfoWithPrimitive Name="SceneThumbnailInfoWithPrimitive_1" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:SceneThumbnailInfoWithPrimitive_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionWorldPosition Name="MaterialExpressionWorldPosition_0" ExportPath="/Script/Engine.MaterialExpressionWorldPosition'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionWorldPosition_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionVectorParameter Name="MaterialExpressionVectorParameter_17" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_17'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionVectorParameter Name="MaterialExpressionVectorParameter_16" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_16'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionVectorParameter Name="MaterialExpressionVectorParameter_15" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_15'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionVectorParameter Name="MaterialExpressionVectorParameter_14" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_14'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionVectorParameter Name="MaterialExpressionVectorParameter_13" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_13'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionVectorParameter Name="MaterialExpressionVectorParameter_12" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_12'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTime Name="MaterialExpressionTime_2" ExportPath="/Script/Engine.MaterialExpressionTime'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionTime_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSample Name="MaterialExpressionTextureSample_8" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionTextureSample_8'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSample Name="MaterialExpressionTextureSample_7" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionTextureSample_7'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSample Name="MaterialExpressionTextureSample_5" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionTextureSample_5'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSample Name="MaterialExpressionTextureSample_0" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionTextureSample_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureCoordinate Name="MaterialExpressionTextureCoordinate_5" ExportPath="/Script/Engine.MaterialExpressionTextureCoordinate'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionTextureCoordinate_5'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureCoordinate Name="MaterialExpressionTextureCoordinate_1" ExportPath="/Script/Engine.MaterialExpressionTextureCoordinate'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionTextureCoordinate_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSubtract Name="MaterialExpressionSubtract_0" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionSubtract_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSphereMask Name="MaterialExpressionSphereMask_5" ExportPath="/Script/Engine.MaterialExpressionSphereMask'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionSphereMask_5'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSphereMask Name="MaterialExpressionSphereMask_4" ExportPath="/Script/Engine.MaterialExpressionSphereMask'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionSphereMask_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_54" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_54'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_26" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_26'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_25" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_25'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_24" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_24'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_23" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_23'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_22" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_22'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_20" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_20'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_19" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_19'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_18" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_18'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionPower Name="MaterialExpressionPower_8" ExportPath="/Script/Engine.MaterialExpressionPower'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionPower_8'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionPower Name="MaterialExpressionPower_7" ExportPath="/Script/Engine.MaterialExpressionPower'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionPower_7'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionPower Name="MaterialExpressionPower_1" ExportPath="/Script/Engine.MaterialExpressionPower'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionPower_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionPanner Name="MaterialExpressionPanner_4" ExportPath="/Script/Engine.MaterialExpressionPanner'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionPanner_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionPanner Name="MaterialExpressionPanner_2" ExportPath="/Script/Engine.MaterialExpressionPanner'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionPanner_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionOneMinus Name="MaterialExpressionOneMinus_12" ExportPath="/Script/Engine.MaterialExpressionOneMinus'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionOneMinus_12'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionOneMinus Name="MaterialExpressionOneMinus_1" ExportPath="/Script/Engine.MaterialExpressionOneMinus'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionOneMinus_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionObjectRadius Name="MaterialExpressionObjectRadius_1" ExportPath="/Script/Engine.MaterialExpressionObjectRadius'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionObjectRadius_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionObjectPositionWS Name="MaterialExpressionObjectPositionWS_1" ExportPath="/Script/Engine.MaterialExpressionObjectPositionWS'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionObjectPositionWS_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNormalize Name="MaterialExpressionNormalize_2" ExportPath="/Script/Engine.MaterialExpressionNormalize'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionNormalize_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_51" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_51'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_50" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_50'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_44" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_44'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_43" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_43'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_41" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_41'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_39" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_39'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_37" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_37'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_36" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_36'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_34" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_34'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_3" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_2" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_18" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_18'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_11" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_11'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_1" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_0" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_8" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_8'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_7" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_7'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_6" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_6'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_5" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_5'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_0" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionDotProduct Name="MaterialExpressionDotProduct_6" ExportPath="/Script/Engine.MaterialExpressionDotProduct'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionDotProduct_6'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionDotProduct Name="MaterialExpressionDotProduct_5" ExportPath="/Script/Engine.MaterialExpressionDotProduct'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionDotProduct_5'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionDivide Name="MaterialExpressionDivide_0" ExportPath="/Script/Engine.MaterialExpressionDivide'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionDivide_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant3Vector Name="MaterialExpressionConstant3Vector_3" ExportPath="/Script/Engine.MaterialExpressionConstant3Vector'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionConstant3Vector_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant Name="MaterialExpressionConstant_9" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionConstant_9'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant Name="MaterialExpressionConstant_13" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionConstant_13'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant Name="MaterialExpressionConstant_12" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionConstant_12'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComponentMask Name="MaterialExpressionComponentMask_0" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionComponentMask_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_26" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionComment_26'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_23" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionComment_23'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_22" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionComment_22'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_21" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionComment_21'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_20" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionComment_20'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_19" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionComment_19'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_18" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionComment_18'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionClamp Name="MaterialExpressionClamp_14" ExportPath="/Script/Engine.MaterialExpressionClamp'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionClamp_14'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionClamp Name="MaterialExpressionClamp_13" ExportPath="/Script/Engine.MaterialExpressionClamp'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionClamp_13'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionClamp Name="MaterialExpressionClamp_12" ExportPath="/Script/Engine.MaterialExpressionClamp'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionClamp_12'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionClamp Name="MaterialExpressionClamp_10" ExportPath="/Script/Engine.MaterialExpressionClamp'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionClamp_10'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionClamp Name="MaterialExpressionClamp_1" ExportPath="/Script/Engine.MaterialExpressionClamp'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionClamp_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionCameraVectorWS Name="MaterialExpressionCameraVectorWS_5" ExportPath="/Script/Engine.MaterialExpressionCameraVectorWS'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionCameraVectorWS_5'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionCameraVectorWS Name="MaterialExpressionCameraVectorWS_4" ExportPath="/Script/Engine.MaterialExpressionCameraVectorWS'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionCameraVectorWS_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionAdd Name="MaterialExpressionAdd_18" ExportPath="/Script/Engine.MaterialExpressionAdd'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionAdd_18'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionAdd Name="MaterialExpressionAdd_17" ExportPath="/Script/Engine.MaterialExpressionAdd'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionAdd_17'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionAdd Name="MaterialExpressionAdd_15" ExportPath="/Script/Engine.MaterialExpressionAdd'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionAdd_15'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialEditorOnlyData Name="M_Sky_Panning_Clouds2EditorOnlyData" ExportPath="/Script/Engine.MaterialEditorOnlyData'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:M_Sky_Panning_Clouds2EditorOnlyData'"
+   End Object
+   Begin Object Name="SceneThumbnailInfoWithPrimitive_1" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:SceneThumbnailInfoWithPrimitive_1'"
+   End Object
+   Begin Object Name="MaterialExpressionWorldPosition_0" ExportPath="/Script/Engine.MaterialExpressionWorldPosition'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionWorldPosition_0'"
+      MaterialExpressionEditorX=-9711
+      MaterialExpressionEditorY=-980
+      MaterialExpressionGuid=33DB86824D35B9F0D6A0EF98E46894B1
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionVectorParameter_17" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_17'"
+      DefaultValue=(R=0.940601,G=1.000000,B=1.000000,A=1.000000)
+      ParameterName="Horizon color"
+      ExpressionGUID=AD9B44AB414AA889C1A1EC8F7A36F472
+      Group="Sky"
+      MaterialExpressionEditorX=-6600
+      MaterialExpressionEditorY=2900
+      MaterialExpressionGuid=AC9B193A44B4EFCBC9B596B1FA654A82
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionVectorParameter_16" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_16'"
+      DefaultValue=(R=0.085177,G=0.153746,B=0.350000,A=1.000000)
+      ParameterName="Zenith Color"
+      ExpressionGUID=AAE7CA0943A7555CC449108AA5CDAFD7
+      Group="Sky"
+      MaterialExpressionEditorX=-6700
+      MaterialExpressionEditorY=2340
+      MaterialExpressionGuid=4C66D8284CADFE5FAEF1A290C7049378
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionVectorParameter_15" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_15'"
+      DefaultValue=(R=1.000000,G=0.800000,B=0.400000,A=1.000000)
+      ParameterName="Sun color"
+      ExpressionGUID=6556594345402B37C6737B92C13F7579
+      Group="Sun"
+      MaterialExpressionEditorX=-7120
+      MaterialExpressionEditorY=1500
+      MaterialExpressionGuid=C565CCD645CF9DF04A0F38A17A585707
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionVectorParameter_14" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_14'"
+      DefaultValue=(R=0.716850,G=0.782221,B=0.885000,A=0.000000)
+      ParameterName="Cloud color"
+      ExpressionGUID=0A4AB9F24C0D22C523D1F98EE1E8415E
+      Group="CloudColors"
+      MaterialExpressionEditorX=-6380
+      MaterialExpressionEditorY=-500
+      MaterialExpressionGuid=512DDA704EBB851158AAE7A8B5D7BCA3
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionVectorParameter_13" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_13'"
+      DefaultValue=(R=-2.000000,G=0.000000,B=-1.000000,A=1.000000)
+      ParameterName="Light direction"
+      ExpressionGUID=3B5753444B29634FFBF294B6A825EAED
+      Group="Sun"
+      MaterialExpressionEditorX=-8460
+      MaterialExpressionEditorY=740
+      MaterialExpressionGuid=F941405445CA8BE259B8968A9A0865B1
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionVectorParameter_12" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_12'"
+      DefaultValue=(R=1.000000,G=1.000000,B=1.000000,A=1.000000)
+      ParameterName="Overall Color"
+      ExpressionGUID=FE10B63B4B1AE188D64D879C955D6924
+      Group="Global"
+      MaterialExpressionEditorX=-3000
+      MaterialExpressionEditorY=1000
+      MaterialExpressionGuid=E739A4DC4CE6D113CFFE70B0B1FB0AEB
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionTime_2" ExportPath="/Script/Engine.MaterialExpressionTime'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionTime_2'"
+      MaterialExpressionEditorX=-9660
+      MaterialExpressionEditorY=-400
+      MaterialExpressionGuid=4555A82C44E17F94EAA67A85548A87DD
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureSample_8" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionTextureSample_8'"
+      Coordinates=(Expression="/Script/Engine.MaterialExpressionTextureCoordinate'M_Sky_Panning_Clouds2:MaterialExpressionTextureCoordinate_1'")
+      Texture="/Script/Engine.Texture2D'/Engine/EngineSky/T_Sky_Clouds_M.T_Sky_Clouds_M'"
+      SamplerType=SAMPLERTYPE_Grayscale
+      MaterialExpressionEditorX=-9020
+      MaterialExpressionEditorY=-280
+      MaterialExpressionGuid=1442EE0147C03223A7AB9B993EE57DA8
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureSample_7" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionTextureSample_7'"
+      Coordinates=(Expression="/Script/Engine.MaterialExpressionPanner'M_Sky_Panning_Clouds2:MaterialExpressionPanner_4'")
+      Texture="/Script/Engine.Texture2D'/Engine/EngineSky/T_Sky_Clouds_M.T_Sky_Clouds_M'"
+      SamplerType=SAMPLERTYPE_Grayscale
+      MaterialExpressionEditorX=-8860
+      MaterialExpressionEditorY=-720
+      MaterialExpressionGuid=B6C9429241740507F0B9A5956A001210
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureSample_5" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionTextureSample_5'"
+      Coordinates=(Expression="/Script/Engine.MaterialExpressionTextureCoordinate'M_Sky_Panning_Clouds2:MaterialExpressionTextureCoordinate_5'")
+      Texture="/Script/Engine.Texture2D'/Engine/EngineSky/T_Sky_Stars.T_Sky_Stars'"
+      MaterialExpressionEditorX=-7060
+      MaterialExpressionEditorY=2520
+      MaterialExpressionGuid=3E3E400D42E0C4F5F05598A026CE3CF7
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureSample_0" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionTextureSample_0'"
+      Coordinates=(Expression="/Script/Engine.MaterialExpressionPanner'M_Sky_Panning_Clouds2:MaterialExpressionPanner_2'")
+      Texture="/Script/Engine.Texture2D'/Engine/EngineSky/T_Sky_Blue.T_Sky_Blue'"
+      MaterialExpressionEditorX=-8900
+      MaterialExpressionEditorY=-40
+      MaterialExpressionGuid=16CC1E5A44F743F9A25A38931A282D04
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureCoordinate_5" ExportPath="/Script/Engine.MaterialExpressionTextureCoordinate'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionTextureCoordinate_5'"
+      CoordinateIndex=1
+      UTiling=12.000000
+      VTiling=12.000000
+      MaterialExpressionEditorX=-7260
+      MaterialExpressionEditorY=2520
+      MaterialExpressionGuid=9374E4994F46007846CC42BB5E85309D
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureCoordinate_1" ExportPath="/Script/Engine.MaterialExpressionTextureCoordinate'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionTextureCoordinate_1'"
+      UTiling=0.500000
+      VTiling=0.500000
+      MaterialExpressionEditorX=-9200
+      MaterialExpressionEditorY=-280
+      MaterialExpressionGuid=F8A51362401A77CF0CDA58A3BDE825BB
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionSubtract_0" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionSubtract_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionWorldPosition'M_Sky_Panning_Clouds2:MaterialExpressionWorldPosition_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionObjectPositionWS'M_Sky_Panning_Clouds2:MaterialExpressionObjectPositionWS_1'")
+      MaterialExpressionEditorX=-9411
+      MaterialExpressionEditorY=-920
+      MaterialExpressionGuid=6D9E2B664E78F25656F51A98BAEC61F0
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionSphereMask_5" ExportPath="/Script/Engine.MaterialExpressionSphereMask'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionSphereMask_5'"
+      A=(Expression="/Script/Engine.MaterialExpressionDotProduct'M_Sky_Panning_Clouds2:MaterialExpressionDotProduct_5'")
+      B=(Expression="/Script/Engine.MaterialExpressionConstant'M_Sky_Panning_Clouds2:MaterialExpressionConstant_12'")
+      Radius=(Expression="/Script/Engine.MaterialExpressionConstant'M_Sky_Panning_Clouds2:MaterialExpressionConstant_13'")
+      AttenuationRadius=0.000010
+      HardnessPercent=0.000000
+      MaterialExpressionEditorX=-6600
+      MaterialExpressionEditorY=160
+      MaterialExpressionGuid=6747B7234FDD900A1825CCA538B07686
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionSphereMask_4" ExportPath="/Script/Engine.MaterialExpressionSphereMask'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionSphereMask_4'"
+      A=(Expression="/Script/Engine.MaterialExpressionDotProduct'M_Sky_Panning_Clouds2:MaterialExpressionDotProduct_5'")
+      B=(Expression="/Script/Engine.MaterialExpressionConstant'M_Sky_Panning_Clouds2:MaterialExpressionConstant_9'")
+      Radius=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_22'")
+      AttenuationRadius=0.001000
+      HardnessPercent=0.000000
+      MaterialExpressionEditorX=-6920
+      MaterialExpressionEditorY=1240
+      MaterialExpressionGuid=61C9C1FC4DE1A1E82F074E91F223FA1D
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_54" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_54'"
+      DefaultValue=0.100000
+      ParameterName="Stars brightness"
+      ExpressionGUID=3C60315C4A508C09CC678CB6A3057918
+      MaterialExpressionEditorX=-7060
+      MaterialExpressionEditorY=2760
+      MaterialExpressionGuid=1F5A348B475477289A1A7DA4B8AF7AF4
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_26" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_26'"
+      DefaultValue=1.000000
+      ParameterName="Cloud opacity"
+      ExpressionGUID=94FEEF0147BB5DB8E416CDA149721809
+      MaterialExpressionEditorX=-8400
+      MaterialExpressionEditorY=-640
+      MaterialExpressionGuid=B269FBD0476932989944FC91443916C6
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_25" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_25'"
+      DefaultValue=1.000000
+      ParameterName="Sun height"
+      ExpressionGUID=0F948FA04C1FEBA3B125308A1945E699
+      MaterialExpressionEditorX=-6820
+      MaterialExpressionEditorY=2800
+      MaterialExpressionGuid=8F8E8A59446B2234B97F539321E16981
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_24" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_24'"
+      DefaultValue=50.000000
+      ParameterName="Sun brightness"
+      ExpressionGUID=D00867C843F5B27E65FDA49CA89BB2E9
+      MaterialExpressionEditorX=-7100
+      MaterialExpressionEditorY=1740
+      MaterialExpressionGuid=9D5F63524356E880C478E0B5C70F1DB7
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_23" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_23'"
+      DefaultValue=3.000000
+      ParameterName="Horizon Falloff"
+      ExpressionGUID=C672B98746E7EAF021A16E8B302024A3
+      Group="Sky"
+      MaterialExpressionEditorX=-8800
+      MaterialExpressionEditorY=1620
+      MaterialExpressionGuid=5E3E2B734A2EB07B704654A265190EA5
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_22" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_22'"
+      DefaultValue=0.000300
+      ParameterName="Sun Radius"
+      ExpressionGUID=8C57162A4EAB55DFABF8CEBE3A911C76
+      Group="Sun"
+      MaterialExpressionEditorX=-7120
+      MaterialExpressionEditorY=1380
+      MaterialExpressionGuid=1AABB31A483734E16E65B4B3BA8885F1
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_20" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_20'"
+      DefaultValue=0.100000
+      ParameterName="Cloud speed"
+      ExpressionGUID=83298BDD42D55C9BABAD44863ED07F16
+      Group="Animation"
+      MaterialExpressionEditorX=-9680
+      MaterialExpressionEditorY=-200
+      MaterialExpressionGuid=E4CDC55640C90A504F06108A4D71CA17
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_19" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_19'"
+      DefaultValue=1.000000
+      ParameterName="NoisePower1"
+      ExpressionGUID=D90C962F4A5CBBD2104F2EACEC190702
+      Group="Animation"
+      MaterialExpressionEditorX=-9000
+      MaterialExpressionEditorY=-480
+      MaterialExpressionGuid=6E28FC824F955F4FF5EBC4BA43E6CAE7
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_18" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_18'"
+      DefaultValue=4.000000
+      ParameterName="NoisePower2"
+      ExpressionGUID=868C9A27412C65F63C7D63A4FACA5D61
+      Group="Animation"
+      MaterialExpressionEditorX=-9000
+      MaterialExpressionEditorY=-380
+      MaterialExpressionGuid=CDA1274444481207C9B3AF93E34C9F6A
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionPower_8" ExportPath="/Script/Engine.MaterialExpressionPower'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionPower_8'"
+      Base=(Expression="/Script/Engine.MaterialExpressionSphereMask'M_Sky_Panning_Clouds2:MaterialExpressionSphereMask_5'")
+      ConstExponent=10.000000
+      MaterialExpressionEditorX=-6420
+      MaterialExpressionEditorY=160
+      MaterialExpressionGuid=A37C255A44A8FC60C1F885B9BDCBF53D
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionPower_7" ExportPath="/Script/Engine.MaterialExpressionPower'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionPower_7'"
+      Base=(Expression="/Script/Engine.MaterialExpressionOneMinus'M_Sky_Panning_Clouds2:MaterialExpressionOneMinus_12'")
+      Exponent=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_23'")
+      MaterialExpressionEditorX=-8600
+      MaterialExpressionEditorY=1500
+      MaterialExpressionGuid=2AF314A84F385BB6951D1A9C7E538E09
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionPower_1" ExportPath="/Script/Engine.MaterialExpressionPower'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionPower_1'"
+      Base=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_8'")
+      Exponent=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_7'")
+      MaterialExpressionEditorX=-7240
+      MaterialExpressionEditorY=-480
+      MaterialExpressionGuid=754612A447D40B1B1DDD3E8143839114
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionPanner_4" ExportPath="/Script/Engine.MaterialExpressionPanner'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionPanner_4'"
+      Coordinate=(OutputIndex=-1)
+      Time=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_36'")
+      SpeedX=0.001000
+      MaterialExpressionEditorX=-9140
+      MaterialExpressionEditorY=-720
+      MaterialExpressionGuid=FCE3C8804E9CD37AB8215990EE11FBD8
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionPanner_2" ExportPath="/Script/Engine.MaterialExpressionPanner'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionPanner_2'"
+      Time=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_2'")
+      SpeedX=0.000200
+      MaterialExpressionEditorX=-9180
+      MaterialExpressionEditorY=-40
+      MaterialExpressionGuid=4A90958E40E6D72E28CC4C82A0C7988A
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionOneMinus_12" ExportPath="/Script/Engine.MaterialExpressionOneMinus'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionOneMinus_12'"
+      Input=(Expression="/Script/Engine.MaterialExpressionClamp'M_Sky_Panning_Clouds2:MaterialExpressionClamp_10'")
+      MaterialExpressionEditorX=-8760
+      MaterialExpressionEditorY=1500
+      MaterialExpressionGuid=D811CDDE4D4E9331A14824A36DA73E36
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionOneMinus_1" ExportPath="/Script/Engine.MaterialExpressionOneMinus'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionOneMinus_1'"
+      Input=(Expression="/Script/Engine.MaterialExpressionClamp'M_Sky_Panning_Clouds2:MaterialExpressionClamp_1'")
+      MaterialExpressionEditorX=-8580
+      MaterialExpressionEditorY=-860
+      MaterialExpressionGuid=FDCBBD054DFE8ABB4AC5A68639143450
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionObjectRadius_1" ExportPath="/Script/Engine.MaterialExpressionObjectRadius'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionObjectRadius_1'"
+      MaterialExpressionEditorX=-9660
+      MaterialExpressionEditorY=-780
+      MaterialExpressionGuid=8A89B1C4448C6BB8175D68BD43F53803
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionObjectPositionWS_1" ExportPath="/Script/Engine.MaterialExpressionObjectPositionWS'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionObjectPositionWS_1'"
+      MaterialExpressionEditorX=-9640
+      MaterialExpressionEditorY=-880
+      MaterialExpressionGuid=1DE0D7114C1F6C296E8EF3B13A07AAFB
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionNormalize_2" ExportPath="/Script/Engine.MaterialExpressionNormalize'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionNormalize_2'"
+      VectorInput=(Expression="/Script/Engine.MaterialExpressionVectorParameter'M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_13'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      MaterialExpressionEditorX=-8200
+      MaterialExpressionEditorY=760
+      MaterialExpressionGuid=9DC71CE24A9154EF6012B0931F2570BE
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_51" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_51'"
+      A=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_50'")
+      B=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_25'")
+      MaterialExpressionEditorX=-6660
+      MaterialExpressionEditorY=2660
+      MaterialExpressionGuid=EC7283804F5E94123D6DB18566DA5B75
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_50" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_50'"
+      A=(Expression="/Script/Engine.MaterialExpressionTextureSample'M_Sky_Panning_Clouds2:MaterialExpressionTextureSample_5'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      B=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_54'")
+      ConstB=0.020000
+      MaterialExpressionEditorX=-6860
+      MaterialExpressionEditorY=2540
+      MaterialExpressionGuid=4F639463454422FB3C1EAC9DCB0E3ED9
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_44" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_44'"
+      A=(Expression="/Script/Engine.MaterialExpressionVectorParameter'M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_15'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      B=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_24'")
+      MaterialExpressionEditorX=-6840
+      MaterialExpressionEditorY=1600
+      MaterialExpressionGuid=A247902A42526BF1AADD4AA5A61F5386
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_43" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_43'"
+      A=(Expression="/Script/Engine.MaterialExpressionSphereMask'M_Sky_Panning_Clouds2:MaterialExpressionSphereMask_4'")
+      B=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_44'")
+      MaterialExpressionEditorX=-6320
+      MaterialExpressionEditorY=1500
+      MaterialExpressionGuid=33F20D0841C6D4304AD7809AA623DCEB
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_41" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_41'"
+      A=(Expression="/Script/Engine.MaterialExpressionClamp'M_Sky_Panning_Clouds2:MaterialExpressionClamp_13'")
+      B=(Expression="/Script/Engine.MaterialExpressionVectorParameter'M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_15'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      MaterialExpressionEditorX=-5980
+      MaterialExpressionEditorY=220
+      MaterialExpressionGuid=63A130104AEE07D263D885B67757C540
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_39" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_39'"
+      A=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_41'")
+      B=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_11'")
+      MaterialExpressionEditorX=-5640
+      MaterialExpressionEditorY=420
+      MaterialExpressionGuid=A479A7D844008AFCE758ECA5BAD8DBDD
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_37" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_37'"
+      A=(Expression="/Script/Engine.MaterialExpressionVectorParameter'M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_14'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      B=(Expression="/Script/Engine.MaterialExpressionPower'M_Sky_Panning_Clouds2:MaterialExpressionPower_1'")
+      MaterialExpressionEditorX=-6060
+      MaterialExpressionEditorY=-360
+      MaterialExpressionGuid=C51BEDBD4D80A1B0FC2D9D9120F42BE8
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_36" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_36'"
+      A=(Expression="/Script/Engine.MaterialExpressionTime'M_Sky_Panning_Clouds2:MaterialExpressionTime_2'")
+      B=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_20'")
+      MaterialExpressionEditorX=-9400
+      MaterialExpressionEditorY=-500
+      MaterialExpressionGuid=AFB11815400467C24D03F09CD3EAFC6C
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_34" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_34'"
+      A=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_6'")
+      B=(Expression="/Script/Engine.MaterialExpressionVectorParameter'M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_12'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      MaterialExpressionEditorX=-2608
+      MaterialExpressionEditorY=880
+      MaterialExpressionGuid=A3C274D9491C3B87C7C6AFADAEB39A0D
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_3" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_3'"
+      A=(Expression="/Script/Engine.MaterialExpressionObjectRadius'M_Sky_Panning_Clouds2:MaterialExpressionObjectRadius_1'")
+      ConstB=-0.100000
+      MaterialExpressionEditorX=-9480
+      MaterialExpressionEditorY=-780
+      MaterialExpressionGuid=1ED4CF9341FF8ECAFC7A438180D5A59B
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_2" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_2'"
+      A=(Expression="/Script/Engine.MaterialExpressionTime'M_Sky_Panning_Clouds2:MaterialExpressionTime_2'")
+      B=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_20'")
+      MaterialExpressionEditorX=-9320
+      MaterialExpressionEditorY=20
+      MaterialExpressionGuid=9639CEC04398B8032DB28EBBBC9780FE
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_18" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_18'"
+      A=(Expression="/Script/Engine.MaterialExpressionPower'M_Sky_Panning_Clouds2:MaterialExpressionPower_1'")
+      B=(Expression="/Script/Engine.MaterialExpressionPower'M_Sky_Panning_Clouds2:MaterialExpressionPower_1'")
+      ConstB=0.500000
+      MaterialExpressionEditorX=-6920
+      MaterialExpressionEditorY=-220
+      MaterialExpressionGuid=9DB3A2854E216D10DA19708C0D5BA78A
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_11" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_11'"
+      A=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_18'")
+      ConstB=0.400000
+      MaterialExpressionEditorX=-6200
+      MaterialExpressionEditorY=480
+      MaterialExpressionGuid=A09FE2A144D27089F450359071E61C24
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_1" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_1'"
+      A=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_34'")
+      ConstB=1.500000
+      MaterialExpressionEditorX=-2245
+      MaterialExpressionEditorY=849
+      MaterialExpressionGuid=6F0D35ED41B20CAAFE20F4A8595B39BD
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_0" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionMultiply_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionOneMinus'M_Sky_Panning_Clouds2:MaterialExpressionOneMinus_1'")
+      B=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_26'")
+      MaterialExpressionEditorX=-8220
+      MaterialExpressionEditorY=-700
+      MaterialExpressionGuid=9761400449E610CC426DD3A2CFEFD974
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_8" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_8'"
+      B=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_5'")
+      Alpha=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_0'")
+      MaterialExpressionEditorX=-7840
+      MaterialExpressionEditorY=-700
+      MaterialExpressionGuid=B2097A9D4941E55D2136B4928ED3C069
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_7" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_7'"
+      A=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_19'")
+      B=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_18'")
+      Alpha=(Expression="/Script/Engine.MaterialExpressionTextureSample'M_Sky_Panning_Clouds2:MaterialExpressionTextureSample_8'",OutputIndex=1,Mask=1,MaskR=1)
+      ConstA=0.100000
+      ConstB=4.000000
+      MaterialExpressionEditorX=-8800
+      MaterialExpressionEditorY=-340
+      MaterialExpressionGuid=D5393DDD4B69482AC2A4BD817E89A0BB
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_6" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_6'"
+      A=(Expression="/Script/Engine.MaterialExpressionAdd'M_Sky_Panning_Clouds2:MaterialExpressionAdd_17'")
+      B=(Expression="/Script/Engine.MaterialExpressionAdd'M_Sky_Panning_Clouds2:MaterialExpressionAdd_15'")
+      Alpha=(Expression="/Script/Engine.MaterialExpressionClamp'M_Sky_Panning_Clouds2:MaterialExpressionClamp_12'")
+      MaterialExpressionEditorX=-3220
+      MaterialExpressionEditorY=860
+      MaterialExpressionGuid=C8AD41714AB72D7956E9BABC409A2062
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_5" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_5'"
+      A=(Expression="/Script/Engine.MaterialExpressionTextureSample'M_Sky_Panning_Clouds2:MaterialExpressionTextureSample_0'",OutputIndex=1,Mask=1,MaskR=1)
+      B=(Expression="/Script/Engine.MaterialExpressionTextureSample'M_Sky_Panning_Clouds2:MaterialExpressionTextureSample_7'",OutputIndex=1,Mask=1,MaskR=1)
+      Alpha=(Expression="/Script/Engine.MaterialExpressionClamp'M_Sky_Panning_Clouds2:MaterialExpressionClamp_10'")
+      MaterialExpressionEditorX=-8500
+      MaterialExpressionEditorY=-240
+      MaterialExpressionGuid=326F996A49F603236F3CDF81529178CC
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_0" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionAdd'M_Sky_Panning_Clouds2:MaterialExpressionAdd_18'")
+      B=(Expression="/Script/Engine.MaterialExpressionVectorParameter'M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_17'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      Alpha=(Expression="/Script/Engine.MaterialExpressionClamp'M_Sky_Panning_Clouds2:MaterialExpressionClamp_14'")
+      MaterialExpressionEditorX=-6200
+      MaterialExpressionEditorY=2780
+      MaterialExpressionGuid=248D4FC240C9BC6EF2A833B71DBD3219
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionDotProduct_6" ExportPath="/Script/Engine.MaterialExpressionDotProduct'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionDotProduct_6'"
+      A=(Expression="/Script/Engine.MaterialExpressionCameraVectorWS'M_Sky_Panning_Clouds2:MaterialExpressionCameraVectorWS_5'")
+      B=(Expression="/Script/Engine.MaterialExpressionConstant3Vector'M_Sky_Panning_Clouds2:MaterialExpressionConstant3Vector_3'")
+      MaterialExpressionEditorX=-9180
+      MaterialExpressionEditorY=1480
+      MaterialExpressionGuid=9CCCDFAB46D76C0DA8C3868F6F64CE8A
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionDotProduct_5" ExportPath="/Script/Engine.MaterialExpressionDotProduct'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionDotProduct_5'"
+      A=(Expression="/Script/Engine.MaterialExpressionCameraVectorWS'M_Sky_Panning_Clouds2:MaterialExpressionCameraVectorWS_4'")
+      B=(Expression="/Script/Engine.MaterialExpressionNormalize'M_Sky_Panning_Clouds2:MaterialExpressionNormalize_2'")
+      MaterialExpressionEditorX=-8000
+      MaterialExpressionEditorY=700
+      MaterialExpressionGuid=D93878904CD9F6E7B6FB97BC8B00110D
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionDivide_0" ExportPath="/Script/Engine.MaterialExpressionDivide'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionDivide_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionSubtract'M_Sky_Panning_Clouds2:MaterialExpressionSubtract_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_3'")
+      ConstB=2000.000000
+      MaterialExpressionEditorX=-9240
+      MaterialExpressionEditorY=-920
+      MaterialExpressionGuid=216E0F4049CE30112EA49CB58DAE6554
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant3Vector_3" ExportPath="/Script/Engine.MaterialExpressionConstant3Vector'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionConstant3Vector_3'"
+      Constant=(R=0.000000,G=0.000000,B=-1.000000,A=0.000000)
+      MaterialExpressionEditorX=-9380
+      MaterialExpressionEditorY=1600
+      MaterialExpressionGuid=F8CD253542D442B42F3203BBE9CA28C0
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant_9" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionConstant_9'"
+      R=1.000000
+      MaterialExpressionEditorX=-7040
+      MaterialExpressionEditorY=1260
+      MaterialExpressionGuid=F969E3204BAFD22171E1CD9D5449CD77
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant_13" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionConstant_13'"
+      R=1.300000
+      MaterialExpressionEditorX=-6704
+      MaterialExpressionEditorY=272
+      MaterialExpressionGuid=FA71B8294DF64214DC657FA7A6AA78F8
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant_12" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionConstant_12'"
+      R=1.000000
+      MaterialExpressionEditorX=-6700
+      MaterialExpressionEditorY=200
+      MaterialExpressionGuid=1DD317ED498A9936D41A3392817E3D00
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionComponentMask_0" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionComponentMask_0'"
+      Input=(Expression="/Script/Engine.MaterialExpressionDivide'M_Sky_Panning_Clouds2:MaterialExpressionDivide_0'")
+      B=True
+      MaterialExpressionEditorX=-9040
+      MaterialExpressionEditorY=-920
+      MaterialExpressionGuid=F86530B14C24DB2361A099A8AB696C26
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_26" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionComment_26'"
+      SizeX=2220
+      SizeY=1360
+      Text="CloudTextures"
+      MaterialExpressionEditorX=-9860
+      MaterialExpressionEditorY=-1120
+      MaterialExpressionGuid=40D685694F6B96CA64DD0794CEBE1EE3
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_23" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionComment_23'"
+      SizeX=1900
+      SizeY=1440
+      Text="RimLight"
+      MaterialExpressionEditorX=-7320
+      MaterialExpressionEditorY=-640
+      MaterialExpressionGuid=A43B796A4477A48189E49EA698250F6E
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_22" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionComment_22'"
+      SizeX=1340
+      SizeY=880
+      Text="Sun"
+      MaterialExpressionEditorX=-7300
+      MaterialExpressionEditorY=1060
+      MaterialExpressionGuid=D1EF6F3944D7460A2FAA14BEDC4FD2D7
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_21" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionComment_21'"
+      SizeX=1800
+      SizeY=1100
+      Text="SkyColors"
+      MaterialExpressionEditorX=-7320
+      MaterialExpressionEditorY=2200
+      MaterialExpressionGuid=21396E644EAC796F0BCD6DB322D94E60
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_20" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionComment_20'"
+      SizeX=1400
+      SizeY=700
+      Text="GlobalParameters"
+      MaterialExpressionEditorX=-3720
+      MaterialExpressionEditorY=620
+      MaterialExpressionGuid=5F4FE5B0498922E20C465EBED4125026
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_19" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionComment_19'"
+      SizeX=1300
+      SizeY=580
+      Text="HorizonDistribution"
+      MaterialExpressionEditorX=-9460
+      MaterialExpressionEditorY=1280
+      MaterialExpressionGuid=98EDE09842331EA06AEFFC9F0039BD7B
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_18" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionComment_18'"
+      SizeX=1140
+      SizeY=600
+      Text="SunVector"
+      MaterialExpressionEditorX=-8780
+      MaterialExpressionEditorY=440
+      MaterialExpressionGuid=6F20831B44B48DFB0233F8A0DD56E6F7
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionClamp_14" ExportPath="/Script/Engine.MaterialExpressionClamp'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionClamp_14'"
+      Input=(Expression="/Script/Engine.MaterialExpressionPower'M_Sky_Panning_Clouds2:MaterialExpressionPower_7'")
+      MaterialExpressionEditorX=-8440
+      MaterialExpressionEditorY=1500
+      MaterialExpressionGuid=B04BB2A54FCFA9F8880351A26E9EE5C0
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionClamp_13" ExportPath="/Script/Engine.MaterialExpressionClamp'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionClamp_13'"
+      Input=(Expression="/Script/Engine.MaterialExpressionPower'M_Sky_Panning_Clouds2:MaterialExpressionPower_8'")
+      MaterialExpressionEditorX=-6260
+      MaterialExpressionEditorY=160
+      MaterialExpressionGuid=34C54B6F443321C2189FE8B0D1A242A9
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionClamp_12" ExportPath="/Script/Engine.MaterialExpressionClamp'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionClamp_12'"
+      Input=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_18'")
+      MaterialExpressionEditorX=-3620
+      MaterialExpressionEditorY=1080
+      MaterialExpressionGuid=F7ADB4484BF071D8AEEC819DE2CC9ADC
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionClamp_10" ExportPath="/Script/Engine.MaterialExpressionClamp'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionClamp_10'"
+      Input=(Expression="/Script/Engine.MaterialExpressionDotProduct'M_Sky_Panning_Clouds2:MaterialExpressionDotProduct_6'")
+      MaterialExpressionEditorX=-9040
+      MaterialExpressionEditorY=1500
+      MaterialExpressionGuid=28B8C2E94C4DA2E43B3636AB0B39323D
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionClamp_1" ExportPath="/Script/Engine.MaterialExpressionClamp'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionClamp_1'"
+      Input=(Expression="/Script/Engine.MaterialExpressionComponentMask'M_Sky_Panning_Clouds2:MaterialExpressionComponentMask_0'")
+      MaterialExpressionEditorX=-8880
+      MaterialExpressionEditorY=-940
+      MaterialExpressionGuid=A70FE58C4BA96DE857653F93E90C74FF
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionCameraVectorWS_5" ExportPath="/Script/Engine.MaterialExpressionCameraVectorWS'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionCameraVectorWS_5'"
+      MaterialExpressionEditorX=-9360
+      MaterialExpressionEditorY=1440
+      MaterialExpressionGuid=4CB5DE5E45046A79FB401FB14D7AD40D
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionCameraVectorWS_4" ExportPath="/Script/Engine.MaterialExpressionCameraVectorWS'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionCameraVectorWS_4'"
+      MaterialExpressionEditorX=-8180
+      MaterialExpressionEditorY=640
+      MaterialExpressionGuid=6C26C07B4AFB98E6487E668AEC2310CC
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionAdd_18" ExportPath="/Script/Engine.MaterialExpressionAdd'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionAdd_18'"
+      A=(Expression="/Script/Engine.MaterialExpressionVectorParameter'M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_16'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      B=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_51'")
+      MaterialExpressionEditorX=-6360
+      MaterialExpressionEditorY=2580
+      MaterialExpressionGuid=F11EF16F4267204CD34A5D82C802E6FB
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionAdd_17" ExportPath="/Script/Engine.MaterialExpressionAdd'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionAdd_17'"
+      A=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_43'")
+      MaterialExpressionEditorX=-5120
+      MaterialExpressionEditorY=1840
+      MaterialExpressionGuid=B9FFCDAE490CF6342FE5CCBA9BA57AE1
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="MaterialExpressionAdd_15" ExportPath="/Script/Engine.MaterialExpressionAdd'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:MaterialExpressionAdd_15'"
+      A=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_37'")
+      B=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_39'")
+      MaterialExpressionEditorX=-4940
+      MaterialExpressionEditorY=40
+      MaterialExpressionGuid=9844F36F498C24F3F0E49593ABB0015A
+      Material="/Script/Engine.Material'M_Sky_Panning_Clouds2'"
+   End Object
+   Begin Object Name="M_Sky_Panning_Clouds2EditorOnlyData" ExportPath="/Script/Engine.MaterialEditorOnlyData'/Engine/EngineSky/M_Sky_Panning_Clouds2.M_Sky_Panning_Clouds2:M_Sky_Panning_Clouds2EditorOnlyData'"
+      EmissiveColor=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_1'")
+      ExpressionCollection=(Expressions=("/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_1'","/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_34'","/Script/Engine.MaterialExpressionVectorParameter'M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_12'","/Script/Engine.MaterialExpressionLinearInterpolate'M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_6'","/Script/Engine.MaterialExpressionLinearInterpolate'M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_7'","/Script/Engine.MaterialExpressionTextureCoordinate'M_Sky_Panning_Clouds2:MaterialExpressionTextureCoordinate_1'","/Script/Engine.MaterialExpressionScalarParameter'M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_18'","/Script/Engine.MaterialExpressionScalarParameter'M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_19'","/Script/Engine.MaterialExpressionPanner'M_Sky_Panning_Clouds2:MaterialExpressionPanner_4'","/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_36'","/Script/Engine.MaterialExpressionScalarParameter'M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_20'","/Script/Engine.MaterialExpressionTime'M_Sky_Panning_Clouds2:MaterialExpressionTime_2'","/Script/Engine.MaterialExpressionAdd'M_Sky_Panning_Clouds2:MaterialExpressionAdd_15'","/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_37'","/Script/Engine.MaterialExpressionNormalize'M_Sky_Panning_Clouds2:MaterialExpressionNormalize_2'","/Script/Engine.MaterialExpressionVectorParameter'M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_13'","/Script/Engine.MaterialExpressionVectorParameter'M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_14'","/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_39'","/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_41'","/Script/Engine.MaterialExpressionAdd'M_Sky_Panning_Clouds2:MaterialExpressionAdd_17'","/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_43'","/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_44'","/Script/Engine.MaterialExpressionVectorParameter'M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_15'","/Script/Engine.MaterialExpressionSphereMask'M_Sky_Panning_Clouds2:MaterialExpressionSphereMask_4'","/Script/Engine.MaterialExpressionScalarParameter'M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_22'","/Script/Engine.MaterialExpressionConstant'M_Sky_Panning_Clouds2:MaterialExpressionConstant_9'","/Script/Engine.MaterialExpressionDotProduct'M_Sky_Panning_Clouds2:MaterialExpressionDotProduct_5'","/Script/Engine.MaterialExpressionCameraVectorWS'M_Sky_Panning_Clouds2:MaterialExpressionCameraVectorWS_4'","/Script/Engine.MaterialExpressionPower'M_Sky_Panning_Clouds2:MaterialExpressionPower_7'","/Script/Engine.MaterialExpressionScalarParameter'M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_23'","/Script/Engine.MaterialExpressionOneMinus'M_Sky_Panning_Clouds2:MaterialExpressionOneMinus_12'","/Script/Engine.MaterialExpressionClamp'M_Sky_Panning_Clouds2:MaterialExpressionClamp_10'","/Script/Engine.MaterialExpressionDotProduct'M_Sky_Panning_Clouds2:MaterialExpressionDotProduct_6'","/Script/Engine.MaterialExpressionConstant3Vector'M_Sky_Panning_Clouds2:MaterialExpressionConstant3Vector_3'","/Script/Engine.MaterialExpressionCameraVectorWS'M_Sky_Panning_Clouds2:MaterialExpressionCameraVectorWS_5'","/Script/Engine.MaterialExpressionVectorParameter'M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_16'","/Script/Engine.MaterialExpressionVectorParameter'M_Sky_Panning_Clouds2:MaterialExpressionVectorParameter_17'","/Script/Engine.MaterialExpressionTextureSample'M_Sky_Panning_Clouds2:MaterialExpressionTextureSample_7'","/Script/Engine.MaterialExpressionScalarParameter'M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_24'","/Script/Engine.MaterialExpressionClamp'M_Sky_Panning_Clouds2:MaterialExpressionClamp_12'","/Script/Engine.MaterialExpressionSphereMask'M_Sky_Panning_Clouds2:MaterialExpressionSphereMask_5'","/Script/Engine.MaterialExpressionConstant'M_Sky_Panning_Clouds2:MaterialExpressionConstant_12'","/Script/Engine.MaterialExpressionPower'M_Sky_Panning_Clouds2:MaterialExpressionPower_8'","/Script/Engine.MaterialExpressionClamp'M_Sky_Panning_Clouds2:MaterialExpressionClamp_13'","/Script/Engine.MaterialExpressionAdd'M_Sky_Panning_Clouds2:MaterialExpressionAdd_18'","/Script/Engine.MaterialExpressionTextureSample'M_Sky_Panning_Clouds2:MaterialExpressionTextureSample_5'","/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_50'","/Script/Engine.MaterialExpressionTextureCoordinate'M_Sky_Panning_Clouds2:MaterialExpressionTextureCoordinate_5'","/Script/Engine.MaterialExpressionScalarParameter'M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_25'","/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_51'","/Script/Engine.MaterialExpressionConstant'M_Sky_Panning_Clouds2:MaterialExpressionConstant_13'","/Script/Engine.MaterialExpressionLinearInterpolate'M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_8'","/Script/Engine.MaterialExpressionScalarParameter'M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_26'","/Script/Engine.MaterialExpressionClamp'M_Sky_Panning_Clouds2:MaterialExpressionClamp_14'","/Script/Engine.MaterialExpressionTextureSample'M_Sky_Panning_Clouds2:MaterialExpressionTextureSample_8'","/Script/Engine.MaterialExpressionScalarParameter'M_Sky_Panning_Clouds2:MaterialExpressionScalarParameter_54'","/Script/Engine.MaterialExpressionTextureSample'M_Sky_Panning_Clouds2:MaterialExpressionTextureSample_0'","/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_2'","/Script/Engine.MaterialExpressionPanner'M_Sky_Panning_Clouds2:MaterialExpressionPanner_2'","/Script/Engine.MaterialExpressionLinearInterpolate'M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_0'","/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_11'","/Script/Engine.MaterialExpressionPower'M_Sky_Panning_Clouds2:MaterialExpressionPower_1'","/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_18'","/Script/Engine.MaterialExpressionLinearInterpolate'M_Sky_Panning_Clouds2:MaterialExpressionLinearInterpolate_5'","/Script/Engine.MaterialExpressionObjectPositionWS'M_Sky_Panning_Clouds2:MaterialExpressionObjectPositionWS_1'","/Script/Engine.MaterialExpressionWorldPosition'M_Sky_Panning_Clouds2:MaterialExpressionWorldPosition_0'","/Script/Engine.MaterialExpressionSubtract'M_Sky_Panning_Clouds2:MaterialExpressionSubtract_0'","/Script/Engine.MaterialExpressionDivide'M_Sky_Panning_Clouds2:MaterialExpressionDivide_0'","/Script/Engine.MaterialExpressionClamp'M_Sky_Panning_Clouds2:MaterialExpressionClamp_1'","/Script/Engine.MaterialExpressionComponentMask'M_Sky_Panning_Clouds2:MaterialExpressionComponentMask_0'","/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_0'","/Script/Engine.MaterialExpressionObjectRadius'M_Sky_Panning_Clouds2:MaterialExpressionObjectRadius_1'","/Script/Engine.MaterialExpressionMultiply'M_Sky_Panning_Clouds2:MaterialExpressionMultiply_3'","/Script/Engine.MaterialExpressionOneMinus'M_Sky_Panning_Clouds2:MaterialExpressionOneMinus_1'"),EditorComments=("/Script/Engine.MaterialExpressionComment'M_Sky_Panning_Clouds2:MaterialExpressionComment_18'","/Script/Engine.MaterialExpressionComment'M_Sky_Panning_Clouds2:MaterialExpressionComment_19'","/Script/Engine.MaterialExpressionComment'M_Sky_Panning_Clouds2:MaterialExpressionComment_20'","/Script/Engine.MaterialExpressionComment'M_Sky_Panning_Clouds2:MaterialExpressionComment_21'","/Script/Engine.MaterialExpressionComment'M_Sky_Panning_Clouds2:MaterialExpressionComment_22'","/Script/Engine.MaterialExpressionComment'M_Sky_Panning_Clouds2:MaterialExpressionComment_23'","/Script/Engine.MaterialExpressionComment'M_Sky_Panning_Clouds2:MaterialExpressionComment_26'"))
+   End Object
+   ShadingModel=MSM_Unlit
+   ShadingModels=(ShadingModelField=1)
+   bUsedWithStaticLighting=True
+   bFullyRough=True
+   EditorX=-1664
+   EditorY=560
+   bCanMaskedBeAssumedOpaque=True
+   PixelDepthOffsetMode=PDOM_Legacy
+   StateId=B9AC2130A86B3EF4AF5C9CA8FA7B418F
+   ReferencedTextureGuids(0)=176EE41E465BFAB6AEB85FBBC9FCAD8F
+   ReferencedTextureGuids(1)=DE7F91FA4D57CF4CA115CABE2AF1225E
+   ReferencedTextureGuids(2)=9C995DBB453D9568054E658F761F0E1F
+   EditorOnlyData="/Script/Engine.MaterialEditorOnlyData'M_Sky_Panning_Clouds2EditorOnlyData'"
+   ReferencedDefaultTextures(0)="/Script/Engine.Texture2D'/Engine/EngineSky/T_Sky_Clouds_M.T_Sky_Clouds_M'"
+   ReferencedDefaultTextures(1)="/Script/Engine.Texture2D'/Engine/EngineSky/T_Sky_Stars.T_Sky_Stars'"
+   ReferencedDefaultTextures(2)="/Script/Engine.Texture2D'/Engine/EngineSky/T_Sky_Blue.T_Sky_Blue'"
+   ThumbnailInfo="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'SceneThumbnailInfoWithPrimitive_1'"
+   LightingGuid=D52C20D64D141787D369D89281CF3FAE
+End Object

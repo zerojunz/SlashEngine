@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagara_TransformOrder" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/Transforms/ENiagara_TransformOrder.ENiagara_TransformOrder'"
+   UniqueNameIndex=3
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[044E80F249D25803421E688D98B596D3]", "AD9521184D22924B683D668CFA8D607B", "Scale / Rotate / Offset")),("NewEnumerator1", NSLOCTEXT("[044E80F249D25803421E688D98B596D3]", "DD7CA97A49EE33B799BEC7B1326BB6E1", "Scale / Offset / Rotate")))
+End Object

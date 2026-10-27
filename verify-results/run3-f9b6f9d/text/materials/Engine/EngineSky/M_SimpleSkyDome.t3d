@@ -1,0 +1,69 @@
+Begin Object Class=/Script/Engine.Material Name="M_SimpleSkyDome" ExportPath="/Script/Engine.Material'/Engine/EngineSky/M_SimpleSkyDome.M_SimpleSkyDome'"
+   Begin Object Class=/Script/UnrealEd.SceneThumbnailInfoWithPrimitive Name="SceneThumbnailInfoWithPrimitive_0" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Engine/EngineSky/M_SimpleSkyDome.M_SimpleSkyDome:SceneThumbnailInfoWithPrimitive_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSkyAtmosphereViewLuminance Name="MaterialExpressionSkyAtmosphereViewLuminance_0" ExportPath="/Script/Engine.MaterialExpressionSkyAtmosphereViewLuminance'/Engine/EngineSky/M_SimpleSkyDome.M_SimpleSkyDome:MaterialExpressionSkyAtmosphereViewLuminance_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSkyAtmosphereLightDiskLuminance Name="MaterialExpressionSkyAtmosphereLightDiskLuminance_0" ExportPath="/Script/Engine.MaterialExpressionSkyAtmosphereLightDiskLuminance'/Engine/EngineSky/M_SimpleSkyDome.M_SimpleSkyDome:MaterialExpressionSkyAtmosphereLightDiskLuminance_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionAdd Name="MaterialExpressionAdd_0" ExportPath="/Script/Engine.MaterialExpressionAdd'/Engine/EngineSky/M_SimpleSkyDome.M_SimpleSkyDome:MaterialExpressionAdd_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialEditorOnlyData Name="M_SimpleSkyDomeEditorOnlyData" ExportPath="/Script/Engine.MaterialEditorOnlyData'/Engine/EngineSky/M_SimpleSkyDome.M_SimpleSkyDome:M_SimpleSkyDomeEditorOnlyData'"
+   End Object
+   Begin Object Name="SceneThumbnailInfoWithPrimitive_0" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Engine/EngineSky/M_SimpleSkyDome.M_SimpleSkyDome:SceneThumbnailInfoWithPrimitive_0'"
+   End Object
+   Begin Object Name="MaterialExpressionSkyAtmosphereViewLuminance_0" ExportPath="/Script/Engine.MaterialExpressionSkyAtmosphereViewLuminance'/Engine/EngineSky/M_SimpleSkyDome.M_SimpleSkyDome:MaterialExpressionSkyAtmosphereViewLuminance_0'"
+      MaterialExpressionEditorX=-452
+      MaterialExpressionEditorY=112
+      MaterialExpressionGuid=502A026B4CAD1E63EEB47C96CF9188B8
+      Material="/Script/Engine.Material'M_SimpleSkyDome'"
+   End Object
+   Begin Object Name="MaterialExpressionSkyAtmosphereLightDiskLuminance_0" ExportPath="/Script/Engine.MaterialExpressionSkyAtmosphereLightDiskLuminance'/Engine/EngineSky/M_SimpleSkyDome.M_SimpleSkyDome:MaterialExpressionSkyAtmosphereLightDiskLuminance_0'"
+      MaterialExpressionEditorX=-496
+      MaterialExpressionEditorY=208
+      MaterialExpressionGuid=16909AE24DBCC0A1B3BC7B8EF1C1BBF1
+      Material="/Script/Engine.Material'M_SimpleSkyDome'"
+   End Object
+   Begin Object Name="MaterialExpressionAdd_0" ExportPath="/Script/Engine.MaterialExpressionAdd'/Engine/EngineSky/M_SimpleSkyDome.M_SimpleSkyDome:MaterialExpressionAdd_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionSkyAtmosphereViewLuminance'M_SimpleSkyDome:MaterialExpressionSkyAtmosphereViewLuminance_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionSkyAtmosphereLightDiskLuminance'M_SimpleSkyDome:MaterialExpressionSkyAtmosphereLightDiskLuminance_0'")
+      MaterialExpressionEditorX=-160
+      MaterialExpressionEditorY=144
+      MaterialExpressionGuid=1C310E904554BE9FD8399DB79497793C
+      Material="/Script/Engine.Material'M_SimpleSkyDome'"
+   End Object
+   Begin Object Name="M_SimpleSkyDomeEditorOnlyData" ExportPath="/Script/Engine.MaterialEditorOnlyData'/Engine/EngineSky/M_SimpleSkyDome.M_SimpleSkyDome:M_SimpleSkyDomeEditorOnlyData'"
+      BaseColor=(UseConstant=True,Constant=(R=0.500000,G=0.500000,B=0.500000,A=1.000000))
+      Metallic=(UseConstant=True)
+      Specular=(UseConstant=True)
+      Roughness=(UseConstant=True)
+      Normal=(UseConstant=True)
+      Tangent=(UseConstant=True)
+      EmissiveColor=(Expression="/Script/Engine.MaterialExpressionAdd'M_SimpleSkyDome:MaterialExpressionAdd_0'")
+      Opacity=(UseConstant=True)
+      OpacityMask=(UseConstant=True)
+      SubsurfaceColor=(UseConstant=True)
+      ClearCoat=(UseConstant=True)
+      ClearCoatRoughness=(UseConstant=True)
+      AmbientOcclusion=(UseConstant=True)
+      Refraction=(UseConstant=True)
+      CustomizedUVs(0)=(UseConstant=True)
+      CustomizedUVs(1)=(UseConstant=True)
+      CustomizedUVs(2)=(UseConstant=True)
+      CustomizedUVs(3)=(UseConstant=True)
+      CustomizedUVs(4)=(UseConstant=True)
+      CustomizedUVs(5)=(UseConstant=True)
+      CustomizedUVs(6)=(UseConstant=True)
+      CustomizedUVs(7)=(UseConstant=True)
+      SurfaceThickness=(UseConstant=True)
+      ExpressionCollection=(Expressions=("/Script/Engine.MaterialExpressionAdd'M_SimpleSkyDome:MaterialExpressionAdd_0'","/Script/Engine.MaterialExpressionSkyAtmosphereViewLuminance'M_SimpleSkyDome:MaterialExpressionSkyAtmosphereViewLuminance_0'","/Script/Engine.MaterialExpressionSkyAtmosphereLightDiskLuminance'M_SimpleSkyDome:MaterialExpressionSkyAtmosphereLightDiskLuminance_0'"))
+   End Object
+   ShadingModel=MSM_Unlit
+   ShadingModels=(ShadingModelField=1)
+   bCanMaskedBeAssumedOpaque=True
+   bIsSky=True
+   PixelDepthOffsetMode=PDOM_Legacy
+   StateId=7F825BB54B5D00A735F0C3ACA102F49F
+   EditorOnlyData="/Script/Engine.MaterialEditorOnlyData'M_SimpleSkyDomeEditorOnlyData'"
+   ThumbnailInfo="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'SceneThumbnailInfoWithPrimitive_0'"
+   LightingGuid=E4DD76A44169CE5254DFE39B8DADE62F
+End Object

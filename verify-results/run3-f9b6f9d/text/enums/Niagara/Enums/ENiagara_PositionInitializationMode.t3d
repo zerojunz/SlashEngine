@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagara_PositionInitializationMode" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/ENiagara_PositionInitializationMode.ENiagara_PositionInitializationMode'"
+   UniqueNameIndex=3
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[85C9AC10450489F7A2C62487D25111CF]", "8F0AA8F9457CA359822F1D9EA707FF30", "Unset")),("NewEnumerator1", NSLOCTEXT("[85C9AC10450489F7A2C62487D25111CF]", "A2AEF63942FBDD799D9A6891B290AC0A", "Direct Set")),("NewEnumerator2", NSLOCTEXT("[85C9AC10450489F7A2C62487D25111CF]", "55FE0AFC4E754FBADBC32AB1FF0934FA", "Simulation Position")))
+End Object

@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagaraSystemInactiveMode" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/ENiagaraSystemInactiveMode.ENiagaraSystemInactiveMode'"
+   UniqueNameIndex=3
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[F915F41B4AC194C35F5CA5B7E1A2FCA1]", "64707B4B47CCAFCCDBDA079C9A4F564A", "Complete (Let Emitters Finish then Kill The System)")),("NewEnumerator1", NSLOCTEXT("[F915F41B4AC194C35F5CA5B7E1A2FCA1]", "42F22BC54CC1B2AC9C8882A5D4872C6A", "Kill (System and Emitters Die Immediately)")))
+End Object

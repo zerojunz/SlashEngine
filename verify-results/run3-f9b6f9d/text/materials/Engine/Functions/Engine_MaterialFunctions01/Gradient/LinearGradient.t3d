@@ -1,0 +1,88 @@
+Begin Object Class=/Script/Engine.MaterialFunction Name="LinearGradient" ExportPath="/Script/Engine.MaterialFunction'/Engine/Functions/Engine_MaterialFunctions01/Gradient/LinearGradient.LinearGradient'"
+   Begin Object Class=/Script/Engine.MaterialFunctionEditorOnlyData Name="LinearGradientEditorOnlyData" ExportPath="/Script/Engine.MaterialFunctionEditorOnlyData'/Engine/Functions/Engine_MaterialFunctions01/Gradient/LinearGradient.LinearGradient:LinearGradientEditorOnlyData'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComponentMask Name="MaterialExpressionComponentMask_4" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Engine/Functions/Engine_MaterialFunctions01/Gradient/LinearGradient.LinearGradient:MaterialExpressionComponentMask_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComponentMask Name="MaterialExpressionComponentMask_8" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Engine/Functions/Engine_MaterialFunctions01/Gradient/LinearGradient.LinearGradient:MaterialExpressionComponentMask_8'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionInput Name="MaterialExpressionFunctionInput_0" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions01/Gradient/LinearGradient.LinearGradient:MaterialExpressionFunctionInput_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionOutput Name="MaterialExpressionFunctionOutput_0" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Engine/Functions/Engine_MaterialFunctions01/Gradient/LinearGradient.LinearGradient:MaterialExpressionFunctionOutput_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionOutput Name="MaterialExpressionFunctionOutput_3" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Engine/Functions/Engine_MaterialFunctions01/Gradient/LinearGradient.LinearGradient:MaterialExpressionFunctionOutput_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureCoordinate Name="MaterialExpressionTextureCoordinate_4" ExportPath="/Script/Engine.MaterialExpressionTextureCoordinate'/Engine/Functions/Engine_MaterialFunctions01/Gradient/LinearGradient.LinearGradient:MaterialExpressionTextureCoordinate_4'"
+   End Object
+   Begin Object Class=/Script/UnrealEd.SceneThumbnailInfoWithPrimitive Name="SceneThumbnailInfoWithPrimitive_0" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Engine/Functions/Engine_MaterialFunctions01/Gradient/LinearGradient.LinearGradient:SceneThumbnailInfoWithPrimitive_0'"
+   End Object
+   Begin Object Name="LinearGradientEditorOnlyData" ExportPath="/Script/Engine.MaterialFunctionEditorOnlyData'/Engine/Functions/Engine_MaterialFunctions01/Gradient/LinearGradient.LinearGradient:LinearGradientEditorOnlyData'"
+      ExpressionCollection=(Expressions=("/Script/Engine.MaterialExpressionFunctionOutput'LinearGradient:MaterialExpressionFunctionOutput_3'","/Script/Engine.MaterialExpressionComponentMask'LinearGradient:MaterialExpressionComponentMask_8'","/Script/Engine.MaterialExpressionTextureCoordinate'LinearGradient:MaterialExpressionTextureCoordinate_4'","/Script/Engine.MaterialExpressionFunctionOutput'LinearGradient:MaterialExpressionFunctionOutput_0'","/Script/Engine.MaterialExpressionComponentMask'LinearGradient:MaterialExpressionComponentMask_4'","/Script/Engine.MaterialExpressionFunctionInput'LinearGradient:MaterialExpressionFunctionInput_0'"))
+   End Object
+   Begin Object Name="MaterialExpressionComponentMask_4" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Engine/Functions/Engine_MaterialFunctions01/Gradient/LinearGradient.LinearGradient:MaterialExpressionComponentMask_4'"
+      Input=(Expression="/Script/Engine.MaterialExpressionFunctionInput'LinearGradient:MaterialExpressionFunctionInput_0'")
+      R=True
+      MaterialExpressionEditorX=-821
+      MaterialExpressionEditorY=-167
+      MaterialExpressionGuid=246F76FA482E325E99DE8B91E1A233C8
+      Function="/Script/Engine.MaterialFunction'LinearGradient'"
+   End Object
+   Begin Object Name="MaterialExpressionComponentMask_8" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Engine/Functions/Engine_MaterialFunctions01/Gradient/LinearGradient.LinearGradient:MaterialExpressionComponentMask_8'"
+      Input=(Expression="/Script/Engine.MaterialExpressionFunctionInput'LinearGradient:MaterialExpressionFunctionInput_0'")
+      G=True
+      MaterialExpressionEditorX=-830
+      MaterialExpressionEditorY=-2
+      MaterialExpressionGuid=834F3B3041CDDAA925FA91A7CD28C4BF
+      Function="/Script/Engine.MaterialFunction'LinearGradient'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionInput_0" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions01/Gradient/LinearGradient.LinearGradient:MaterialExpressionFunctionInput_0'"
+      Preview=(Expression="/Script/Engine.MaterialExpressionTextureCoordinate'LinearGradient:MaterialExpressionTextureCoordinate_4'")
+      InputName="UV Channel"
+      Id=956846354D2549E665DAC68533EC21EC
+      InputType=FunctionInput_Vector2
+      bUsePreviewValueAsDefault=True
+      MaterialExpressionEditorX=-1083
+      MaterialExpressionEditorY=-131
+      MaterialExpressionGuid=8345A69C46FC424CF019D58E70DDB2AA
+      Function="/Script/Engine.MaterialFunction'LinearGradient'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionOutput_0" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Engine/Functions/Engine_MaterialFunctions01/Gradient/LinearGradient.LinearGradient:MaterialExpressionFunctionOutput_0'"
+      OutputName="UGradient"
+      Description="Gradient along U axis of UV0"
+      A=(Expression="/Script/Engine.MaterialExpressionComponentMask'LinearGradient:MaterialExpressionComponentMask_4'")
+      bLastPreviewed=True
+      Id=0F11154B443B1137CC9914998FC01F5E
+      MaterialExpressionEditorX=-508
+      MaterialExpressionEditorY=-161
+      MaterialExpressionGuid=0CFA2A474A1EAF1581DE5D835028E9D5
+      Function="/Script/Engine.MaterialFunction'LinearGradient'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionOutput_3" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Engine/Functions/Engine_MaterialFunctions01/Gradient/LinearGradient.LinearGradient:MaterialExpressionFunctionOutput_3'"
+      OutputName="VGradient"
+      Description="Gradient along V axis of UV0"
+      SortPriority=1
+      A=(Expression="/Script/Engine.MaterialExpressionComponentMask'LinearGradient:MaterialExpressionComponentMask_8'")
+      bLastPreviewed=True
+      Id=D0E9AADC4F9EEDBBFD95F9B3A5165013
+      MaterialExpressionEditorX=-510
+      MaterialExpressionEditorY=8
+      MaterialExpressionGuid=06E7903F4BE0212DD9D7C899FD340791
+      Function="/Script/Engine.MaterialFunction'LinearGradient'"
+      bRealtimePreview=True
+   End Object
+   Begin Object Name="MaterialExpressionTextureCoordinate_4" ExportPath="/Script/Engine.MaterialExpressionTextureCoordinate'/Engine/Functions/Engine_MaterialFunctions01/Gradient/LinearGradient.LinearGradient:MaterialExpressionTextureCoordinate_4'"
+      MaterialExpressionEditorX=-1461
+      MaterialExpressionEditorY=-182
+      MaterialExpressionGuid=D473CA18420A6EFD3C65A7B8944C9CBF
+      Function="/Script/Engine.MaterialFunction'LinearGradient'"
+   End Object
+   Begin Object Name="SceneThumbnailInfoWithPrimitive_0" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Engine/Functions/Engine_MaterialFunctions01/Gradient/LinearGradient.LinearGradient:SceneThumbnailInfoWithPrimitive_0'"
+   End Object
+   Description="Uses UV Channel 0 to generate a linear gradient along the U or V axis"
+   bExposeToLibrary=True
+   LibraryCategoriesText(1)=NSLOCTEXT("", "6775ECF64CBD57F89949DEAF5012B53B", "Gradient")
+   EditorOnlyData="/Script/Engine.MaterialFunctionEditorOnlyData'LinearGradientEditorOnlyData'"
+   StateId=B7C71B914E2BB667772D6CBE2AB55665
+   CombinedInputTypes=2
+   CombinedOutputTypes=15
+   ThumbnailInfo="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'SceneThumbnailInfoWithPrimitive_0'"
+End Object

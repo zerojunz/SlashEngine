@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagaraEmitterLifeCycleMode" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/ENiagaraEmitterLifeCycleMode.ENiagaraEmitterLifeCycleMode'"
+   UniqueNameIndex=3
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[1457A1AB4997CF508B3BC2BDADA6D961]", "EE33CB3345D717571B02C2BF29DE9BF2", "System")),("NewEnumerator1", NSLOCTEXT("[1457A1AB4997CF508B3BC2BDADA6D961]", "FA4C280448F071BEC2E7DCBB93AAD39C", "Self")))
+End Object

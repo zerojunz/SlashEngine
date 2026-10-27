@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagara_AngleInput" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/Angles/ENiagara_AngleInput.ENiagara_AngleInput'"
+   UniqueNameIndex=3
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[30102CFE443646AD531D3BA3D6B3B3E6]", "519FE9954354D4F2E5C4069AC2F9952C", "Degrees")),("NewEnumerator1", NSLOCTEXT("[30102CFE443646AD531D3BA3D6B3B3E6]", "36815211441A756A246F94A5C60E7267", "Normalized Angle (0-1)")),("NewEnumerator2", NSLOCTEXT("[30102CFE443646AD531D3BA3D6B3B3E6]", "301EA99E4A4A7A281A8A7BAB115302E4", "Radians")))
+End Object

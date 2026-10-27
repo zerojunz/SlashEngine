@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagaraRandomnessEvaluation" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/ENiagaraRandomnessEvaluation.ENiagaraRandomnessEvaluation'"
+   UniqueNameIndex=2
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[9F2B5CD04DB2E4D2903E52AFB7585AAD]", "A18CF9DA4BFB3A2244B978A992D6EB5A", "Spawn Only")),("NewEnumerator1", NSLOCTEXT("[9F2B5CD04DB2E4D2903E52AFB7585AAD]", "20843AF24DED2633BC873683D32B31D6", "Every Frame")))
+End Object

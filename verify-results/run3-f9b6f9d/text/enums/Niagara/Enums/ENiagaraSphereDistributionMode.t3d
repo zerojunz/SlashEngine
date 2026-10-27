@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagaraSphereDistributionMode" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/ENiagaraSphereDistributionMode.ENiagaraSphereDistributionMode'"
+   UniqueNameIndex=4
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[DF828F1C4AC74B176EC5E4BE7518A41F]", "BA4A47B147D2CDCDB68DA9A900EA83BA", "Random")),("NewEnumerator1", NSLOCTEXT("[DF828F1C4AC74B176EC5E4BE7518A41F]", "C6287364436F79B6695EA6A72D6B9C30", "Direct")),("NewEnumerator3", NSLOCTEXT("[DF828F1C4AC74B176EC5E4BE7518A41F]", "B457966947726D3AFE9933A04F80942C", "Uniform")))
+End Object

@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagara_ColorInitializationMode" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/ENiagara_ColorInitializationMode.ENiagara_ColorInitializationMode'"
+   UniqueNameIndex=4
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[CC78DD2D4C0D7DF3E62477A0656BE4F9]", "CA202E56484936787214D58C7ED32F16", "Unset")),("NewEnumerator1", NSLOCTEXT("[CC78DD2D4C0D7DF3E62477A0656BE4F9]", "DF3A1A6E40C75C0EADD2B6915E17AD8D", "Direct Set")),("NewEnumerator2", NSLOCTEXT("[CC78DD2D4C0D7DF3E62477A0656BE4F9]", "F2621A0F48EB3C760C98CFB47564F4A6", "Random Range")),("NewEnumerator3", NSLOCTEXT("[CC78DD2D4C0D7DF3E62477A0656BE4F9]", "65239E684A4863CAB30083967D4806C0", "Random Hue/Saturation/Value")))
+End Object

@@ -1,0 +1,7032 @@
+{
+ "animations": {
+  "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Bwd": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Bwd.glb",
+   "length": 1.5
+  },
+  "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Bwd_Left": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Bwd_Left.glb",
+   "length": 1.5
+  },
+  "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Bwd_Right": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Bwd_Right.glb",
+   "length": 1.5
+  },
+  "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd.glb",
+   "length": 1.7666666507720947
+  },
+  "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd_Left": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd_Left.glb",
+   "length": 1.7666666507720947
+  },
+  "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd_Right": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd_Right.glb",
+   "length": 1.7666666507720947
+  },
+  "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Left": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Left.glb",
+   "length": 1.5333333015441895
+  },
+  "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Right": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Right.glb",
+   "length": 1.7333333492279053
+  },
+  "/Game/Characters/Mannequins/Anims/Unarmed/Jump/MM_Fall_Loop": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/Jump/MM_Fall_Loop.glb",
+   "length": 3.0
+  },
+  "/Game/Characters/Mannequins/Anims/Unarmed/Jump/MM_Jump": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/Jump/MM_Jump.glb",
+   "length": 0.8666666746139526
+  },
+  "/Game/Characters/Mannequins/Anims/Unarmed/Jump/MM_Land": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/Jump/MM_Land.glb",
+   "length": 0.8666666746139526
+  },
+  "/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle.glb",
+   "length": 7.566666603088379
+  },
+  "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Bwd": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Bwd.glb",
+   "length": 2.133333444595337
+  },
+  "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Bwd_Left": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Bwd_Left.glb",
+   "length": 2.133333444595337
+  },
+  "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Bwd_Right": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Bwd_Right.glb",
+   "length": 2.133333444595337
+  },
+  "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd.glb",
+   "length": 1.5
+  },
+  "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd_Left": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd_Left.glb",
+   "length": 1.5
+  },
+  "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd_Right": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd_Right.glb",
+   "length": 1.5
+  },
+  "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Left": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Left.glb",
+   "length": 1.5333333015441895
+  },
+  "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Right": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Right.glb",
+   "length": 1.5333333015441895
+  }
+ },
+ "blueprints": [
+  {
+   "kind": "WidgetBlueprint",
+   "native_parent": "/Script/UMG.UserWidget",
+   "parent": "/Script/UMG.UserWidget",
+   "path": "/Game/Input/Touch/UI_TouchSimple"
+  },
+  {
+   "kind": "WidgetBlueprint",
+   "native_parent": "/Script/UMG.UserWidget",
+   "parent": "/Script/UMG.UserWidget",
+   "path": "/Game/Input/Touch/UI_Thumbstick"
+  },
+  {
+   "kind": "Blueprint",
+   "native_parent": "/Script/CoreUObject.Interface",
+   "parent": "/Script/CoreUObject.Interface",
+   "path": "/Game/Input/Touch/BPI_TouchInterface"
+  },
+  {
+   "kind": "Blueprint",
+   "native_parent": "/Script/Engine.GameModeBase",
+   "parent": "/Script/Engine.GameModeBase",
+   "path": "/Game/ThirdPerson/Blueprints/BP_ThirdPersonGameMode"
+  },
+  {
+   "kind": "Blueprint",
+   "native_parent": "/Script/Engine.Character",
+   "parent": "/Script/Engine.Character",
+   "path": "/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter"
+  },
+  {
+   "kind": "Blueprint",
+   "native_parent": "/Script/Engine.PlayerController",
+   "parent": "/Script/Engine.PlayerController",
+   "path": "/Game/ThirdPerson/Blueprints/BP_ThirdPersonPlayerController"
+  },
+  {
+   "animations": [
+    "/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd_Left",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Bwd",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Bwd_Left",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd_Right",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Bwd_Right",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Right",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Left",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Bwd_Left",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd_Left",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Bwd",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Bwd_Right",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Left",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Right",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Walk/MF_Unarmed_Walk_Fwd_Right",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jump/MM_Land",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jump/MM_Jump",
+    "/Game/Characters/Mannequins/Anims/Unarmed/Jump/MM_Fall_Loop"
+   ],
+   "kind": "AnimBlueprint",
+   "native_parent": "/Script/Engine.AnimInstance",
+   "parent": "/Script/Engine.AnimInstance",
+   "path": "/Game/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed",
+   "skeleton": "/Game/Characters/Mannequins/Meshes/SK_Mannequin"
+  },
+  {
+   "kind": "Blueprint",
+   "native_parent": "/Script/Engine.Actor",
+   "parent": "/Script/Engine.Actor",
+   "path": "/Game/LevelPrototyping/Interactable/Target/BP_WobbleTarget"
+  },
+  {
+   "kind": "Blueprint",
+   "native_parent": "/Script/Engine.Actor",
+   "parent": "/Script/Engine.Actor",
+   "path": "/Game/LevelPrototyping/Interactable/JumpPad/BP_JumpPad"
+  },
+  {
+   "kind": "Blueprint",
+   "native_parent": "/Script/Engine.Actor",
+   "parent": "/Script/Engine.Actor",
+   "path": "/Game/LevelPrototyping/Interactable/Door/BP_DoorFrame"
+  }
+ ],
+ "engine_version": "5.8.4-58902052+++UE5+Release-5.8",
+ "format": 1,
+ "input_actions": {
+  "/Game/Input/Actions/IA_Jump": "boolean",
+  "/Game/Input/Actions/IA_Look": "axis2d",
+  "/Game/Input/Actions/IA_MouseLook": "axis2d",
+  "/Game/Input/Actions/IA_Move": "axis2d"
+ },
+ "input_contexts": {
+  "/Game/Input/IMC_Default": [
+   {
+    "action": "/Game/Input/Actions/IA_Jump",
+    "key": "SpaceBar",
+    "modifiers": []
+   },
+   {
+    "action": "/Game/Input/Actions/IA_Jump",
+    "key": "Gamepad_FaceButton_Bottom",
+    "modifiers": []
+   },
+   {
+    "action": "/Game/Input/Actions/IA_Move",
+    "key": "W",
+    "modifiers": [
+     {
+      "class": "InputModifierSwizzleAxis",
+      "order": "yxz"
+     }
+    ]
+   },
+   {
+    "action": "/Game/Input/Actions/IA_Move",
+    "key": "S",
+    "modifiers": [
+     {
+      "class": "InputModifierSwizzleAxis",
+      "order": "yxz"
+     },
+     {
+      "class": "InputModifierNegate",
+      "x": true,
+      "y": true,
+      "z": true
+     }
+    ]
+   },
+   {
+    "action": "/Game/Input/Actions/IA_Move",
+    "key": "A",
+    "modifiers": [
+     {
+      "class": "InputModifierNegate",
+      "x": true,
+      "y": true,
+      "z": true
+     }
+    ]
+   },
+   {
+    "action": "/Game/Input/Actions/IA_Move",
+    "key": "D",
+    "modifiers": []
+   },
+   {
+    "action": "/Game/Input/Actions/IA_Move",
+    "key": "Up",
+    "modifiers": [
+     {
+      "class": "InputModifierSwizzleAxis",
+      "order": "yxz"
+     }
+    ]
+   },
+   {
+    "action": "/Game/Input/Actions/IA_Move",
+    "key": "Down",
+    "modifiers": [
+     {
+      "class": "InputModifierSwizzleAxis",
+      "order": "yxz"
+     },
+     {
+      "class": "InputModifierNegate",
+      "x": true,
+      "y": true,
+      "z": true
+     }
+    ]
+   },
+   {
+    "action": "/Game/Input/Actions/IA_Move",
+    "key": "Right",
+    "modifiers": []
+   },
+   {
+    "action": "/Game/Input/Actions/IA_Move",
+    "key": "Left",
+    "modifiers": [
+     {
+      "class": "InputModifierNegate",
+      "x": true,
+      "y": true,
+      "z": true
+     }
+    ]
+   },
+   {
+    "action": "/Game/Input/Actions/IA_Move",
+    "key": "Gamepad_Left2D",
+    "modifiers": [
+     {
+      "class": "InputModifierDeadZone"
+     },
+     {
+      "class": "InputModifierScalar"
+     }
+    ]
+   },
+   {
+    "action": "/Game/Input/Actions/IA_Look",
+    "key": "Gamepad_Right2D",
+    "modifiers": [
+     {
+      "class": "InputModifierDeadZone"
+     }
+    ]
+   }
+  ],
+  "/Game/Input/IMC_MouseLook": [
+   {
+    "action": "/Game/Input/Actions/IA_MouseLook",
+    "key": "Mouse2D",
+    "modifiers": [
+     {
+      "class": "InputModifierNegate",
+      "x": false,
+      "y": true,
+      "z": false
+     }
+    ]
+   }
+  ]
+ },
+ "levels": [
+  {
+   "actors": [
+    {
+     "class": "WorldSettings",
+     "class_path": "/Script/Engine.WorldSettings",
+     "components": [],
+     "label": "WorldSettings",
+     "name": "WorldSettings",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "bounds": {
+      "extent": [
+       128.0,
+       128.0,
+       128.0
+      ],
+      "origin": [
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "class": "Brush",
+     "class_path": "/Script/Engine.Brush",
+     "components": [
+      {
+       "cast_shadow": false,
+       "class": "BrushComponent",
+       "mobility": "static",
+       "name": "BrushComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      }
+     ],
+     "label": "Brush0",
+     "name": "Brush_0",
+     "root": "BrushComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Engine/BasicShapes/Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/LevelPrototyping/Materials/MI_PrototypeGrid_Gray"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         -5.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         30.0,
+         30.0,
+         0.1
+        ]
+       }
+      }
+     ],
+     "label": "Floor",
+     "name": "StaticMeshActor_0",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       -5.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       30.0,
+       30.0,
+       0.1
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Engine/BasicShapes/Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         0.0,
+         -250.0,
+         50.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "Shape Cube",
+     "name": "StaticMeshActor_1",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       -250.0,
+       50.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Engine/BasicShapes/Sphere",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/MI_GlowNT"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         50.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "Shape Sphere",
+     "name": "StaticMeshActor_2",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       50.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Engine/BasicShapes/Cylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         0.0,
+         250.0,
+         50.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "Shape Cylinder",
+     "name": "StaticMeshActor_3",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       250.0,
+       50.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "DirectionalLight",
+     "class_path": "/Script/Engine.DirectionalLight",
+     "components": [
+      {
+       "class": "DirectionalLightComponent",
+       "light": {
+        "color": [
+         255.0,
+         255.0,
+         255.0
+        ],
+        "indirect_lighting_intensity": 1.0,
+        "intensity": 10.0,
+        "light_source_angle": 0.5357000231742859,
+        "mobility": "stationary",
+        "shadows": true,
+        "type": "directional",
+        "volumetric_scattering_intensity": 1.0
+       },
+       "mobility": "stationary",
+       "name": "LightComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         500.0
+        ],
+        "rotation": [
+         -0.09904576051673901,
+         0.3696438105740502,
+         0.23911761836824183,
+         0.8923991008589465
+        ],
+        "scale": [
+         2.5,
+         2.5,
+         2.5
+        ]
+       }
+      },
+      {
+       "cast_shadow": false,
+       "class": "ArrowComponent",
+       "mobility": "movable",
+       "name": "ArrowComponent0",
+       "parent": "LightComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      },
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "BillboardComponent_0",
+       "parent": "LightComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         0.0,
+         0.0,
+         0.0
+        ]
+       },
+       "visible": false
+      }
+     ],
+     "label": "Sun",
+     "name": "DirectionalLight_0",
+     "root": "LightComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       500.0
+      ],
+      "rotation": [
+       -0.09904576051673902,
+       0.36964381057405027,
+       0.23911761836824183,
+       0.8923991008589465
+      ],
+      "scale": [
+       2.5,
+       2.5,
+       2.5
+      ]
+     }
+    },
+    {
+     "class": "PointLight",
+     "class_path": "/Script/Engine.PointLight",
+     "components": [
+      {
+       "class": "PointLightComponent",
+       "light": {
+        "attenuation_radius": 1000.0,
+        "color": [
+         255.0,
+         188.0,
+         124.0
+        ],
+        "indirect_lighting_intensity": 1.0,
+        "intensity": 5000.0,
+        "mobility": "stationary",
+        "shadows": true,
+        "source_radius": 0.0,
+        "type": "point",
+        "units": "candelas",
+        "volumetric_scattering_intensity": 1.0
+       },
+       "mobility": "stationary",
+       "name": "LightComponent0",
+       "transform": {
+        "location": [
+         150.0,
+         -150.0,
+         200.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      },
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "BillboardComponent_0",
+       "parent": "LightComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         0.0,
+         0.0,
+         0.0
+        ]
+       },
+       "visible": false
+      }
+     ],
+     "label": "Point Light",
+     "name": "PointLight_0",
+     "root": "LightComponent0",
+     "transform": {
+      "location": [
+       150.0,
+       -150.0,
+       200.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "SpotLight",
+     "class_path": "/Script/Engine.SpotLight",
+     "components": [
+      {
+       "class": "SpotLightComponent",
+       "light": {
+        "attenuation_radius": 1000.0,
+        "color": [
+         149.0,
+         203.0,
+         255.0
+        ],
+        "indirect_lighting_intensity": 1.0,
+        "inner_cone_angle": 0.0,
+        "intensity": 20000.0,
+        "mobility": "stationary",
+        "outer_cone_angle": 44.0,
+        "shadows": true,
+        "source_radius": 0.0,
+        "type": "spot",
+        "units": "candelas",
+        "volumetric_scattering_intensity": 1.0
+       },
+       "mobility": "stationary",
+       "name": "LightComponent0",
+       "transform": {
+        "location": [
+         150.0,
+         250.0,
+         400.0
+        ],
+        "rotation": [
+         -0.0,
+         0.7071067811865475,
+         0.0,
+         0.7071067811865476
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      },
+      {
+       "cast_shadow": false,
+       "class": "ArrowComponent",
+       "mobility": "movable",
+       "name": "ArrowComponent0",
+       "parent": "LightComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      },
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "BillboardComponent_0",
+       "parent": "LightComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         0.0,
+         0.0,
+         0.0
+        ]
+       },
+       "visible": false
+      }
+     ],
+     "label": "Spot Light",
+     "name": "SpotLight_0",
+     "root": "LightComponent0",
+     "transform": {
+      "location": [
+       150.0,
+       250.0,
+       400.0
+      ],
+      "rotation": [
+       -0.0,
+       0.7071067811518649,
+       0.0,
+       0.707106781151865
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "SkyAtmosphere",
+     "class_path": "/Script/Engine.SkyAtmosphere",
+     "components": [
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "Sprite",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      },
+      {
+       "class": "SkyAtmosphereComponent",
+       "mobility": "movable",
+       "name": "SkyAtmosphereComponent",
+       "sky_atmosphere": {
+        "mie_anisotropy": 0.800000011920929,
+        "mie_scattering_scale": 0.003996000159531832,
+        "rayleigh_scattering": [
+         0.17528699338436127,
+         0.4096072316169739,
+         1.0
+        ],
+        "rayleigh_scattering_scale": 0.03310000151395798
+       },
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      },
+      {
+       "cast_shadow": false,
+       "class": "ArrowComponent",
+       "mobility": "movable",
+       "name": "ArrowComponent",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      }
+     ],
+     "label": "Sky Atmosphere",
+     "name": "SkyAtmosphere_0",
+     "root": "SkyAtmosphereComponent",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "SkyLight",
+     "class_path": "/Script/Engine.SkyLight",
+     "components": [
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "Sprite",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      },
+      {
+       "class": "SkyLightComponent",
+       "light": {
+        "color": [
+         255.0,
+         255.0,
+         255.0
+        ],
+        "indirect_lighting_intensity": 1.0,
+        "intensity": 1.0,
+        "mobility": "stationary",
+        "shadows": true,
+        "type": "sky",
+        "volumetric_scattering_intensity": 1.0
+       },
+       "mobility": "stationary",
+       "name": "SkyLightComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         300.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      },
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "BillboardComponent_0",
+       "parent": "SkyLightComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         0.0,
+         0.0,
+         0.0
+        ]
+       },
+       "visible": false
+      }
+     ],
+     "label": "Sky Light",
+     "name": "SkyLight_0",
+     "root": "SkyLightComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       300.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "ExponentialHeightFog",
+     "class_path": "/Script/Engine.ExponentialHeightFog",
+     "components": [
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "Sprite",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      },
+      {
+       "class": "ExponentialHeightFogComponent",
+       "fog": {
+        "color": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "density": 0.019999999552965164,
+        "height_falloff": 0.20000000298023224,
+        "sky_contribution": [
+         1.0,
+         1.0,
+         1.0
+        ],
+        "start_distance": 0.0,
+        "volumetric": false
+       },
+       "mobility": "movable",
+       "name": "HeightFogComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "Height Fog",
+     "name": "ExponentialHeightFog_0",
+     "root": "HeightFogComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "CameraActor",
+     "class_path": "/Script/Engine.CameraActor",
+     "components": [
+      {
+       "class": "SceneComponent",
+       "mobility": "movable",
+       "name": "SceneComponent",
+       "transform": {
+        "location": [
+         -700.0,
+         0.0,
+         300.0
+        ],
+        "rotation": [
+         -0.0,
+         0.13052619222005157,
+         0.0,
+         0.9914448613738104
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      },
+      {
+       "camera": {
+        "aspect_ratio": 1.7777780294418335,
+        "constrain_aspect_ratio": true,
+        "fov": 90.0,
+        "ortho_width": 1536.0,
+        "projection": "perspective"
+       },
+       "class": "CameraComponent",
+       "mobility": "movable",
+       "name": "CameraComponent",
+       "parent": "SceneComponent",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "Demo Camera",
+     "name": "CameraActor_0",
+     "root": "SceneComponent",
+     "transform": {
+      "location": [
+       -700.0,
+       0.0,
+       300.0
+      ],
+      "rotation": [
+       -0.0,
+       0.13052619222005157,
+       0.0,
+       0.9914448613738104
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "PlayerStart",
+     "class_path": "/Script/Engine.PlayerStart",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "cast_shadow": false,
+       "class": "CapsuleComponent",
+       "collision": "no_collision",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mobility": "static",
+       "name": "CollisionCapsule",
+       "overlaps": true,
+       "profile": "NoCollision",
+       "shape": {
+        "half_height": 92.0,
+        "radius": 40.0,
+        "type": "capsule"
+       },
+       "simulate": false,
+       "transform": {
+        "location": [
+         -400.0,
+         0.0,
+         100.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      },
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "Sprite",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      },
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "Sprite2",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      },
+      {
+       "cast_shadow": false,
+       "class": "ArrowComponent",
+       "mobility": "movable",
+       "name": "Arrow",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      }
+     ],
+     "label": "Player Start",
+     "name": "PlayerStart_0",
+     "root": "CollisionCapsule",
+     "transform": {
+      "location": [
+       -400.0,
+       0.0,
+       100.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "TriggerBox",
+     "class_path": "/Script/Engine.TriggerBox",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "cast_shadow": false,
+       "class": "BoxComponent",
+       "collision": "query_only",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mobility": "movable",
+       "name": "CollisionComp",
+       "overlaps": true,
+       "profile": "Trigger",
+       "shape": {
+        "extent": [
+         100.0,
+         100.0,
+         100.0
+        ],
+        "type": "box"
+       },
+       "simulate": false,
+       "transform": {
+        "location": [
+         300.0,
+         0.0,
+         100.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      },
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "Sprite",
+       "parent": "CollisionComp",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         0.5,
+         0.5,
+         0.5
+        ]
+       }
+      }
+     ],
+     "label": "Goal Trigger",
+     "name": "TriggerBox_0",
+     "root": "CollisionComp",
+     "transform": {
+      "location": [
+       300.0,
+       0.0,
+       100.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     },
+     "visible": false
+    },
+    {
+     "class": "AmbientSound",
+     "class_path": "/Script/Engine.AmbientSound",
+     "components": [
+      {
+       "audio": {
+        "auto_activate": true,
+        "pitch": 1.0,
+        "sound": "/Engine/EngineSounds/1kSineTonePing",
+        "volume": 1.0
+       },
+       "class": "AudioComponent",
+       "mobility": "movable",
+       "name": "AudioComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         150.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      },
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "BillboardComponent_0",
+       "parent": "AudioComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         0.5,
+         0.5,
+         0.5
+        ]
+       },
+       "visible": false
+      }
+     ],
+     "label": "Tone",
+     "name": "AmbientSound_0",
+     "root": "AudioComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       150.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     },
+     "visible": false
+    },
+    {
+     "class": "NiagaraActor",
+     "class_path": "/Script/Niagara.NiagaraActor",
+     "components": [
+      {
+       "cast_shadow": false,
+       "class": "NiagaraComponent",
+       "mobility": "movable",
+       "name": "NiagaraComponent0",
+       "niagara": {
+        "auto_activate": true,
+        "system": "/Game/LevelPrototyping/Interactable/JumpPad/Assets/NS_JumpPad"
+       },
+       "transform": {
+        "location": [
+         -200.0,
+         250.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      },
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "Sprite",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      },
+      {
+       "cast_shadow": false,
+       "class": "ArrowComponent",
+       "mobility": "movable",
+       "name": "ArrowComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      }
+     ],
+     "label": "Jump Pad FX",
+     "name": "NiagaraActor_0",
+     "root": "NiagaraComponent0",
+     "transform": {
+      "location": [
+       -200.0,
+       250.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "auto_possess": "disabled",
+     "class": "BP_ThirdPersonCharacter_C",
+     "class_path": "/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter.BP_ThirdPersonCharacter_C",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "cast_shadow": false,
+       "class": "CapsuleComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mobility": "movable",
+       "name": "CollisionCylinder",
+       "overlaps": true,
+       "profile": "Custom",
+       "shape": {
+        "half_height": 90.0,
+        "radius": 35.0,
+        "type": "capsule"
+       },
+       "simulate": false,
+       "transform": {
+        "location": [
+         -150.0,
+         -150.0,
+         100.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.38268343233304725,
+         0.9238795325245592
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      },
+      {
+       "cast_shadow": false,
+       "class": "ArrowComponent",
+       "mobility": "movable",
+       "name": "Arrow",
+       "parent": "CollisionCylinder",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      },
+      {
+       "character": {
+        "jump_z_velocity": 500.0,
+        "max_step_height": 45.0,
+        "max_walk_speed": 600.0,
+        "walkable_floor_angle": 44.76508331298828
+       },
+       "class": "CharacterMovementComponent",
+       "name": "CharMoveComp"
+      },
+      {
+       "angular_damping": 0.0,
+       "animation": {
+        "blueprint": "/Game/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed",
+        "mode": "blueprint"
+       },
+       "class": "SkeletalMeshComponent",
+       "collision": "query_only",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/Characters/Mannequins/Meshes/SKM_Quinn_Simple",
+       "mobility": "movable",
+       "name": "CharacterMesh0",
+       "overlaps": false,
+       "parent": "CollisionCylinder",
+       "profile": "Custom",
+       "simulate": false,
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         -89.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.7071067811865476,
+         -0.7071067811865475
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      },
+      {
+       "class": "SpringArmComponent",
+       "mobility": "movable",
+       "name": "CameraBoom",
+       "parent": "CollisionCylinder",
+       "spring_arm": {
+        "length": 400.0,
+        "socket_offset": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "target_offset": [
+         0.0,
+         0.0,
+         0.0
+        ]
+       },
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         8.492263793945312
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      },
+      {
+       "camera": {
+        "aspect_ratio": 1.7777780294418335,
+        "constrain_aspect_ratio": false,
+        "fov": 90.0,
+        "ortho_width": 512.0,
+        "projection": "perspective"
+       },
+       "class": "CameraComponent",
+       "mobility": "movable",
+       "name": "FollowCamera",
+       "parent": "CameraBoom",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "Mannequin",
+     "name": "BP_ThirdPersonCharacter_C_0",
+     "root": "CollisionCylinder",
+     "transform": {
+      "location": [
+       -150.0,
+       -150.0,
+       100.0
+      ],
+      "rotation": [
+       0.0,
+       -0.0,
+       0.38268343233304725,
+       0.9238795325245592
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "BuoyancyManager",
+     "class_path": "/Script/Water.BuoyancyManager",
+     "components": [],
+     "label": "BuoyancyManager0",
+     "name": "BuoyancyManager_0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "bounds": {
+      "extent": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "origin": [
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "class": "DefaultPhysicsVolume",
+     "class_path": "/Script/Engine.DefaultPhysicsVolume",
+     "components": [
+      {
+       "cast_shadow": false,
+       "class": "BrushComponent",
+       "mobility": "static",
+       "name": "BrushComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      }
+     ],
+     "label": "DefaultPhysicsVolume0",
+     "name": "DefaultPhysicsVolume_0",
+     "root": "BrushComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     },
+     "visible": false
+    },
+    {
+     "class": "GameplayDebuggerPlayerManager",
+     "class_path": "/Script/GameplayDebugger.GameplayDebuggerPlayerManager",
+     "components": [
+      {
+       "class": "InputComponent",
+       "name": "GameplayDebug_Input"
+      }
+     ],
+     "label": "GameplayDebuggerPlayerManager0",
+     "name": "GameplayDebuggerPlayerManager_0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "AbstractNavData",
+     "class_path": "/Script/NavigationSystem.AbstractNavData",
+     "components": [
+      {
+       "class": "SceneComponent",
+       "mobility": "static",
+       "name": "SceneComp",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "AbstractNavData-Default",
+     "name": "AbstractNavData-Default",
+     "root": "SceneComp",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    }
+   ],
+   "kill_z": -1048575.0,
+   "path": "/Game/Demo/DemoLevel"
+  },
+  {
+   "actors": [
+    {
+     "class": "WorldSettings",
+     "class_path": "/Script/Engine.WorldSettings",
+     "components": [],
+     "label": "WorldSettings",
+     "name": "WorldSettings",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "bounds": {
+      "extent": [
+       128.0,
+       128.0,
+       128.0
+      ],
+      "origin": [
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "class": "Brush",
+     "class_path": "/Script/Engine.Brush",
+     "components": [
+      {
+       "cast_shadow": false,
+       "class": "BrushComponent",
+       "mobility": "static",
+       "name": "BrushComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      }
+     ],
+     "label": "Brush0",
+     "name": "Brush_0",
+     "root": "BrushComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "WorldDataLayers",
+     "class_path": "/Script/Engine.WorldDataLayers",
+     "components": [],
+     "label": "WorldDataLayers",
+     "name": "WorldDataLayers",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     },
+     "visible": false
+    },
+    {
+     "class": "BuoyancyManager",
+     "class_path": "/Script/Water.BuoyancyManager",
+     "components": [],
+     "label": "BuoyancyManager0",
+     "name": "BuoyancyManager_0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "bounds": {
+      "extent": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "origin": [
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "class": "DefaultPhysicsVolume",
+     "class_path": "/Script/Engine.DefaultPhysicsVolume",
+     "components": [
+      {
+       "cast_shadow": false,
+       "class": "BrushComponent",
+       "mobility": "static",
+       "name": "BrushComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      }
+     ],
+     "label": "DefaultPhysicsVolume0",
+     "name": "DefaultPhysicsVolume_0",
+     "root": "BrushComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     },
+     "visible": false
+    },
+    {
+     "class": "GameplayDebuggerPlayerManager",
+     "class_path": "/Script/GameplayDebugger.GameplayDebuggerPlayerManager",
+     "components": [
+      {
+       "class": "InputComponent",
+       "name": "GameplayDebug_Input"
+      }
+     ],
+     "label": "GameplayDebuggerPlayerManager0",
+     "name": "GameplayDebuggerPlayerManager_0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         1500.0,
+         -1200.0,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -0.7071067750158768,
+         0.7071067873572182
+        ],
+        "scale": [
+         6.0,
+         3.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube8",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961941707",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       1500.0,
+       -1200.0,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.7071067750158768,
+       0.7071067873572182
+      ],
+      "scale": [
+       6.0,
+       3.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Ramp",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         200.0,
+         -500.0,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -1.0,
+         8.726646355709176e-09
+        ],
+        "scale": [
+         4.000001,
+         4.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Ramp10",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961895678",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       200.0,
+       -500.0,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -1.0,
+       8.726646355709176e-09
+      ],
+      "scale": [
+       4.000001,
+       4.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Ramp",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -500.0,
+         -200.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         -0.7071067935278891,
+         -0.7071067688452058
+        ],
+        "scale": [
+         4.000001,
+         4.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Ramp9",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961938703",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -500.0,
+       -200.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       -0.0,
+       0.7071067935278889,
+       0.707106768845206
+      ],
+      "scale": [
+       4.000001,
+       4.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         0.0,
+         -10.0,
+         200.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         7.0,
+         7.0,
+         0.1
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cylinder",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961937702",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       -10.0,
+       200.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       7.0,
+       7.0,
+       0.1
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         200.0,
+         -200.000014,
+         -100.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -0.7071067565038641,
+         0.70710680586923
+        ],
+        "scale": [
+         6.5,
+         6.5,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_QuarterCylinder12",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961939704",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       200.0,
+       -200.000014,
+       -100.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.7071067565038641,
+       0.70710680586923
+      ],
+      "scale": [
+       6.5,
+       6.5,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Ramp",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         500.0,
+         200.0,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -0.7071067811865475,
+         0.7071067811865476
+        ],
+        "scale": [
+         4.000001,
+         4.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Ramp11",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961929694",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       500.0,
+       200.0,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.7071067811865475,
+       0.7071067811865476
+      ],
+      "scale": [
+       4.000001,
+       4.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "no_collision",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Engine/EngineSky/SM_SkySphere",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Engine/EngineSky/M_SimpleSkyDome"
+       ],
+       "profile": "NoCollision",
+       "simulate": false,
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         400.0,
+         400.0,
+         400.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_SkySphere",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961928692",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       400.0,
+       400.0,
+       400.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Ramp",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -1500.0,
+         1200.0,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -0.999999999999999,
+         4.3633231311571906e-08
+        ],
+        "scale": [
+         3.0,
+         4.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Ramp8",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961947714",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -1500.0,
+       1200.0,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.999999999999999,
+       4.3633231311571906e-08
+      ],
+      "scale": [
+       3.0,
+       4.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -1500.000021,
+         1500.0,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -0.7071067565038641,
+         0.70710680586923
+        ],
+        "scale": [
+         6.0,
+         6.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_QuarterCylinder4",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961896680",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -1500.000021,
+       1500.0,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.7071067565038641,
+       0.70710680586923
+      ],
+      "scale": [
+       6.0,
+       6.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -1200.0,
+         -1500.0,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -0.9999999999999999,
+         1.7453292428141407e-08
+        ],
+        "scale": [
+         6.0,
+         3.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube10",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961964736",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -1200.0,
+       -1500.0,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.9999999999999999,
+       1.7453292428141407e-08
+      ],
+      "scale": [
+       6.0,
+       3.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "VolumetricCloud",
+     "class_path": "/Script/Engine.VolumetricCloud",
+     "components": [
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "Sprite",
+       "parent": "VolumetricCloudComponent",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      },
+      {
+       "class": "VolumetricCloudComponent",
+       "mobility": "movable",
+       "name": "VolumetricCloudComponent",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         820.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "VolumetricCloud",
+     "name": "VolumetricCloud_UAID_F4A475FF15A3736A02_1961900685",
+     "root": "VolumetricCloudComponent",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       820.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         1900.0,
+         -10.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.7071067750158768,
+         0.7071067873572182
+        ],
+        "scale": [
+         5.0,
+         5.0,
+         4.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cylinder9",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961937701",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       1900.0,
+       -10.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       -0.0,
+       0.7071067750158768,
+       0.7071067873572182
+      ],
+      "scale": [
+       5.0,
+       5.0,
+       4.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         200.0,
+         209.999986,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         -2.617993878385058e-08,
+         -0.9999999999999997
+        ],
+        "scale": [
+         6.0,
+         6.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_QuarterCylinder5",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961899684",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       200.0,
+       209.999986,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       -0.0,
+       2.617993871381695e-08,
+       0.9999999999999997
+      ],
+      "scale": [
+       6.0,
+       6.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         1900.0,
+         -10.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.9999999999999999,
+         1.7453292428141407e-08
+        ],
+        "scale": [
+         5.0,
+         5.0,
+         4.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cylinder8",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961949717",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       1900.0,
+       -10.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       -0.0,
+       0.9999999999999999,
+       1.7453292428141407e-08
+      ],
+      "scale": [
+       5.0,
+       5.0,
+       4.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         200.0,
+         210.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.7071067750158768,
+         0.7071067873572182
+        ],
+        "scale": [
+         3.0,
+         4.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube14",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961952720",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       200.0,
+       210.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       -0.0,
+       0.7071067750158768,
+       0.7071067873572182
+      ],
+      "scale": [
+       3.0,
+       4.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         10.0,
+         -1900.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         5.000005,
+         5.000005,
+         4.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cylinder2",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961923687",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       10.0,
+       -1900.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       5.000005,
+       5.000005,
+       4.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -1500.0,
+         1200.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         -0.7071067996985595,
+         -0.7071067626745351
+        ],
+        "scale": [
+         6.0,
+         3.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube12",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961892675",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -1500.0,
+       1200.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       -0.0,
+       0.7071067996985595,
+       0.7071067626745351
+      ],
+      "scale": [
+       6.0,
+       3.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         10.0,
+         1900.0,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -1.0,
+         8.726646355709176e-09
+        ],
+        "scale": [
+         5.0,
+         5.0,
+         4.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cylinder5",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961948715",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       10.0,
+       1900.0,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -1.0,
+       8.726646355709176e-09
+      ],
+      "scale": [
+       5.0,
+       5.0,
+       4.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -2000.0,
+         -2000.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         2.0,
+         40.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube3",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961945711",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -2000.0,
+       -2000.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       2.0,
+       40.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -2000.0,
+         -2000.0,
+         200.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         40.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube20",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961929693",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -2000.0,
+       -2000.0,
+       200.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       40.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Ramp",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         1200.0,
+         1500.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         -0.7071067935278891,
+         -0.7071067688452058
+        ],
+        "scale": [
+         3.0,
+         4.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Ramp2",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961952721",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       1200.0,
+       1500.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       -0.0,
+       0.7071067935278889,
+       0.707106768845206
+      ],
+      "scale": [
+       3.0,
+       4.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         1900.0,
+         -2000.0,
+         200.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         40.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube17",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961956726",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       1900.0,
+       -2000.0,
+       200.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       40.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -199.999966,
+         209.999986,
+         -100.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         -0.7071067996985595,
+         -0.7071067626745351
+        ],
+        "scale": [
+         6.5,
+         6.5,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_QuarterCylinder10",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961935699",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -199.999966,
+       209.999986,
+       -100.0
+      ],
+      "rotation": [
+       0.0,
+       -0.0,
+       0.7071067996985595,
+       0.7071067626745351
+      ],
+      "scale": [
+       6.5,
+       6.5,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Ramp",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -1200.0,
+         -1500.0,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -0.7071067565038641,
+         0.70710680586923
+        ],
+        "scale": [
+         3.0,
+         4.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Ramp6",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961957728",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -1200.0,
+       -1500.0,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.7071067565038641,
+       0.70710680586923
+      ],
+      "scale": [
+       3.0,
+       4.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Ramp",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         1500.0,
+         -1200.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         -2.617993878385058e-08,
+         -0.9999999999999997
+        ],
+        "scale": [
+         3.0,
+         4.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Ramp4",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961891674",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       1500.0,
+       -1200.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       -0.0,
+       2.617993871381695e-08,
+       0.9999999999999997
+      ],
+      "scale": [
+       3.0,
+       4.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -1500.000014,
+         -1200.000014,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -0.9999999999999999,
+         1.7453292428141407e-08
+        ],
+        "scale": [
+         3.0,
+         3.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube9",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961949716",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -1500.000014,
+       -1200.000014,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.9999999999999999,
+       1.7453292428141407e-08
+      ],
+      "scale": [
+       3.0,
+       3.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Ramp",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -1800.000014,
+         -1200.00003,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         -2.617993878385058e-08,
+         -0.9999999999999997
+        ],
+        "scale": [
+         3.0,
+         4.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Ramp5",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961954723",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -1800.000014,
+       -1200.00003,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       -0.0,
+       2.617993871381695e-08,
+       0.9999999999999997
+      ],
+      "scale": [
+       3.0,
+       4.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Ramp",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -1200.000045,
+         1800.000021,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -0.7071067565038641,
+         0.70710680586923
+        ],
+        "scale": [
+         3.0,
+         4.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Ramp7",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961931696",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -1200.000045,
+       1800.000021,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.7071067565038641,
+       0.70710680586923
+      ],
+      "scale": [
+       3.0,
+       4.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -199.999966,
+         209.999986,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         -0.7071067996985595,
+         -0.7071067626745351
+        ],
+        "scale": [
+         6.0,
+         6.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_QuarterCylinder7",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961924688",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -199.999966,
+       209.999986,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       -0.0,
+       0.7071067996985595,
+       0.7071067626745351
+      ],
+      "scale": [
+       6.0,
+       6.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -1800.0,
+         2000.0,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -0.7071067750158768,
+         0.7071067873572182
+        ],
+        "scale": [
+         2.0,
+         36.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube5",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961950718",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -1800.0,
+       2000.0,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.7071067750158768,
+       0.7071067873572182
+      ],
+      "scale": [
+       2.0,
+       36.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         10.0,
+         1900.0,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -0.7071067811865475,
+         0.7071067811865476
+        ],
+        "scale": [
+         5.0,
+         5.0,
+         4.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cylinder4",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961930695",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       10.0,
+       1900.0,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.7071067811865475,
+       0.7071067811865476
+      ],
+      "scale": [
+       5.0,
+       5.0,
+       4.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -1900.0,
+         2000.0,
+         200.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -0.7071067750158768,
+         0.7071067873572182
+        ],
+        "scale": [
+         1.0,
+         38.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube19",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961898682",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -1900.0,
+       2000.0,
+       200.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.7071067750158768,
+       0.7071067873572182
+      ],
+      "scale": [
+       1.0,
+       38.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Ramp",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -200.0,
+         510.0,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -8.726646259971647e-09,
+         1.0
+        ],
+        "scale": [
+         4.000001,
+         3.9,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Ramp12",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961951719",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -200.0,
+       510.0,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -8.726646237938984e-09,
+       1.0
+      ],
+      "scale": [
+       4.000001,
+       3.9,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "DirectionalLight",
+     "class_path": "/Script/Engine.DirectionalLight",
+     "components": [
+      {
+       "class": "DirectionalLightComponent",
+       "light": {
+        "color": [
+         255.0,
+         255.0,
+         255.0
+        ],
+        "indirect_lighting_intensity": 1.0,
+        "intensity": 3.0,
+        "light_source_angle": 0.7357000112533569,
+        "mobility": "movable",
+        "shadows": true,
+        "temperature": 6500.0,
+        "type": "directional",
+        "volumetric_scattering_intensity": 1.0
+       },
+       "mobility": "movable",
+       "name": "LightComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         920.0
+        ],
+        "rotation": [
+         -0.1248047076376779,
+         0.5140174917238359,
+         0.0012086667932434542,
+         0.8486508954087026
+        ],
+        "scale": [
+         2.5,
+         2.5,
+         2.5
+        ]
+       }
+      },
+      {
+       "cast_shadow": false,
+       "class": "ArrowComponent",
+       "mobility": "movable",
+       "name": "ArrowComponent0",
+       "parent": "LightComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      },
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "BillboardComponent_0",
+       "parent": "LightComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         0.0,
+         0.0,
+         0.0
+        ]
+       },
+       "visible": false
+      }
+     ],
+     "label": "DirectionalLight",
+     "name": "DirectionalLight_UAID_F4A475FF15A3736A02_1961932697",
+     "root": "LightComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       920.0
+      ],
+      "rotation": [
+       -0.12480470763767794,
+       0.5140174917238362,
+       0.0012086667932435513,
+       0.8486508954087028
+      ],
+      "scale": [
+       2.5,
+       2.5,
+       2.5
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -200.0,
+         -200.000014,
+         -100.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -0.9999999999999999,
+         1.7453292428141407e-08
+        ],
+        "scale": [
+         6.5,
+         6.5,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_QuarterCylinder11",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961953722",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -200.0,
+       -200.000014,
+       -100.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.9999999999999999,
+       1.7453292428141407e-08
+      ],
+      "scale": [
+       6.5,
+       6.5,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         10.0,
+         -1900.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.7071067750158768,
+         0.7071067873572182
+        ],
+        "scale": [
+         5.000005,
+         5.000005,
+         4.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cylinder3",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961934698",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       10.0,
+       -1900.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       -0.0,
+       0.7071067750158768,
+       0.7071067873572182
+      ],
+      "scale": [
+       5.000005,
+       5.000005,
+       4.0
+      ]
+     }
+    },
+    {
+     "class": "Actor",
+     "class_path": "/Script/Engine.Actor",
+     "components": [
+      {
+       "class": "ChaosDebugDrawComponent",
+       "name": "ChaosDebugDrawComponent_0"
+      }
+     ],
+     "label": "Actor2",
+     "name": "ChaosDebugDrawActor_UAID_F4A475FF15A3736A02_1961891673",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         1200.000007,
+         -1500.000007,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -0.7071067750158768,
+         0.7071067873572182
+        ],
+        "scale": [
+         3.0,
+         3.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube7",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961926690",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       1200.000007,
+       -1500.000007,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.7071067750158768,
+       0.7071067873572182
+      ],
+      "scale": [
+       3.0,
+       3.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         200.0,
+         -200.000014,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -0.7071067565038641,
+         0.70710680586923
+        ],
+        "scale": [
+         6.0,
+         6.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_QuarterCylinder6",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961922686",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       200.0,
+       -200.000014,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.7071067565038641,
+       0.70710680586923
+      ],
+      "scale": [
+       6.0,
+       6.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "WorldPartitionMiniMap",
+     "class_path": "/Script/Engine.WorldPartitionMiniMap",
+     "components": [],
+     "label": "WorldPartitionMiniMap",
+     "name": "WorldPartitionMiniMap_UAID_F4A475FF15A3736A02_1958925671",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     },
+     "visible": false
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         1500.000007,
+         -1500.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         -0.7071067935278891,
+         -0.7071067688452058
+        ],
+        "scale": [
+         6.0,
+         6.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_QuarterCylinder2",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961962732",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       1500.000007,
+       -1500.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       -0.0,
+       0.7071067935278889,
+       0.707106768845206
+      ],
+      "scale": [
+       6.0,
+       6.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         200.0,
+         209.999986,
+         -100.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         -2.617993878385058e-08,
+         -0.9999999999999997
+        ],
+        "scale": [
+         6.5,
+         6.5,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_QuarterCylinder9",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961942708",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       200.0,
+       209.999986,
+       -100.0
+      ],
+      "rotation": [
+       0.0,
+       -0.0,
+       2.617993871381695e-08,
+       0.9999999999999997
+      ],
+      "scale": [
+       6.5,
+       6.5,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -500.0,
+         -200.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         -2.617993878385058e-08,
+         -0.9999999999999997
+        ],
+        "scale": [
+         3.0,
+         4.1,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube16",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961925689",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -500.0,
+       -200.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       -0.0,
+       2.617993871381695e-08,
+       0.9999999999999997
+      ],
+      "scale": [
+       3.0,
+       4.1,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Ramp",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         1200.000015,
+         -1800.000007,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         -0.7071067935278891,
+         -0.7071067688452058
+        ],
+        "scale": [
+         3.0,
+         4.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Ramp3",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961897681",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       1200.000015,
+       -1800.000007,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       -0.0,
+       0.7071067935278889,
+       0.707106768845206
+      ],
+      "scale": [
+       3.0,
+       4.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         1500.0,
+         1500.0,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -1.0,
+         8.726646355709176e-09
+        ],
+        "scale": [
+         6.0,
+         6.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_QuarterCylinder",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961962733",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       1500.0,
+       1500.0,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -1.0,
+       8.726646355709176e-09
+      ],
+      "scale": [
+       6.0,
+       6.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -1200.000021,
+         1500.000021,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         -0.7071067996985595,
+         -0.7071067626745351
+        ],
+        "scale": [
+         3.0,
+         3.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube11",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961957727",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -1200.000021,
+       1500.000021,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       -0.0,
+       0.7071067996985595,
+       0.7071067626745351
+      ],
+      "scale": [
+       3.0,
+       3.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         1200.0,
+         1500.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         6.0,
+         3.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961955724",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       1200.0,
+       1500.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       6.0,
+       3.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -200.0,
+         -200.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         7.000001,
+         4.100001,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube13",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961940705",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -200.0,
+       -200.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       7.000001,
+       4.100001,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         1500.0,
+         1200.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         3.0,
+         3.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube6",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961946713",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       1500.0,
+       1200.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       3.0,
+       3.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -200.0,
+         -200.000014,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -0.9999999999999999,
+         1.7453292428141407e-08
+        ],
+        "scale": [
+         6.0,
+         6.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_QuarterCylinder8",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961963734",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -200.0,
+       -200.000014,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.9999999999999999,
+       1.7453292428141407e-08
+      ],
+      "scale": [
+       6.0,
+       6.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -1900.0,
+         -9.999908,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -8.726646259971647e-09,
+         1.0
+        ],
+        "scale": [
+         5.0,
+         5.0,
+         4.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cylinder6",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961894677",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -1900.0,
+       -9.999908,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -8.726646237938984e-09,
+       1.0
+      ],
+      "scale": [
+       5.0,
+       5.0,
+       4.0
+      ]
+     }
+    },
+    {
+     "class": "SkyAtmosphere",
+     "class_path": "/Script/Engine.SkyAtmosphere",
+     "components": [
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "Sprite",
+       "parent": "SkyAtmosphereComponent",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      },
+      {
+       "class": "SkyAtmosphereComponent",
+       "mobility": "movable",
+       "name": "SkyAtmosphereComponent",
+       "sky_atmosphere": {
+        "mie_anisotropy": 0.800000011920929,
+        "mie_scattering_scale": 0.003996000159531832,
+        "rayleigh_scattering": [
+         0.17528699338436127,
+         0.4096072316169739,
+         1.0
+        ],
+        "rayleigh_scattering_scale": 0.03310000151395798
+       },
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         1020.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      },
+      {
+       "cast_shadow": false,
+       "class": "ArrowComponent",
+       "mobility": "movable",
+       "name": "ArrowComponent",
+       "parent": "SkyAtmosphereComponent",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      }
+     ],
+     "label": "SkyAtmosphere",
+     "name": "SkyAtmosphere_UAID_F4A475FF15A3736A02_1961927691",
+     "root": "SkyAtmosphereComponent",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       1020.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "PlayerStart",
+     "class_path": "/Script/Engine.PlayerStart",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "cast_shadow": false,
+       "class": "CapsuleComponent",
+       "collision": "no_collision",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mobility": "static",
+       "name": "CollisionCapsule",
+       "overlaps": true,
+       "profile": "NoCollision",
+       "shape": {
+        "half_height": 92.0,
+        "radius": 40.0,
+        "type": "capsule"
+       },
+       "simulate": false,
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         302.012643
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      },
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "Sprite",
+       "parent": "CollisionCapsule",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      },
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "Sprite2",
+       "parent": "CollisionCapsule",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      },
+      {
+       "cast_shadow": false,
+       "class": "ArrowComponent",
+       "mobility": "movable",
+       "name": "Arrow",
+       "parent": "CollisionCapsule",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      }
+     ],
+     "label": "PlayerStart",
+     "name": "PlayerStart_UAID_F4A475FF15A3736A02_1961960731",
+     "root": "CollisionCapsule",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       302.012643
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -1900.0,
+         -9.999908,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -0.7071067811865475,
+         0.7071067811865476
+        ],
+        "scale": [
+         5.0,
+         5.0,
+         4.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cylinder7",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961893676",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -1900.0,
+       -9.999908,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.7071067811865475,
+       0.7071067811865476
+      ],
+      "scale": [
+       5.0,
+       5.0,
+       4.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -1500.0,
+         -1500.000014,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         -2.617993878385058e-08,
+         -0.9999999999999997
+        ],
+        "scale": [
+         6.0,
+         6.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_QuarterCylinder3",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961944710",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -1500.0,
+       -1500.000014,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       -0.0,
+       2.617993871381695e-08,
+       0.9999999999999997
+      ],
+      "scale": [
+       6.0,
+       6.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -1900.0,
+         -1900.0,
+         200.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -0.7071067750158768,
+         0.7071067873572182
+        ],
+        "scale": [
+         1.0,
+         38.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube18",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961946712",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -1900.0,
+       -1900.0,
+       200.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.7071067750158768,
+       0.7071067873572182
+      ],
+      "scale": [
+       1.0,
+       38.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "SkyLight",
+     "class_path": "/Script/Engine.SkyLight",
+     "components": [
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "Sprite",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      },
+      {
+       "class": "SkyLightComponent",
+       "light": {
+        "color": [
+         255.0,
+         255.0,
+         255.0
+        ],
+        "indirect_lighting_intensity": 1.0,
+        "intensity": 1.0,
+        "mobility": "movable",
+        "shadows": true,
+        "type": "sky",
+        "volumetric_scattering_intensity": 1.0
+       },
+       "mobility": "movable",
+       "name": "SkyLightComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         690.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      },
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "BillboardComponent_0",
+       "parent": "SkyLightComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         0.0,
+         0.0,
+         0.0
+        ]
+       },
+       "visible": false
+      }
+     ],
+     "label": "SkyLight",
+     "name": "SkyLight_UAID_F4A475FF15A3736A02_1961943709",
+     "root": "SkyLightComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       690.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Engine/MapTemplates/SM_Template_Map_Floor",
+       "mobility": "movable",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/LevelPrototyping/Materials/MI_PrototypeGrid_Gray"
+       ],
+       "profile": "BlockAllDynamic",
+       "simulate": false,
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         4.0,
+         4.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "Floor",
+     "name": "Floor_UAID_F4A475FF15A3736A02_1961940706",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       4.0,
+       4.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -1800.0,
+         -1800.0,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -0.7071067750158768,
+         0.7071067873572182
+        ],
+        "scale": [
+         2.0,
+         36.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube4",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961899683",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -1800.0,
+       -1800.0,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.7071067750158768,
+       0.7071067873572182
+      ],
+      "scale": [
+       2.0,
+       36.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Ramp",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/ThirdPerson/MI_ThirdPersonColWay"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         1800.0,
+         1200.0,
+         0.0
+        ],
+        "rotation": [
+         -0.0,
+         0.0,
+         -1.0,
+         8.726646355709176e-09
+        ],
+        "scale": [
+         3.0,
+         4.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Ramp",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961955725",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       1800.0,
+       1200.0,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -1.0,
+       8.726646355709176e-09
+      ],
+      "scale": [
+       3.0,
+       4.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "ExponentialHeightFog",
+     "class_path": "/Script/Engine.ExponentialHeightFog",
+     "components": [
+      {
+       "cast_shadow": false,
+       "class": "BillboardComponent",
+       "mobility": "movable",
+       "name": "Sprite",
+       "parent": "HeightFogComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      },
+      {
+       "class": "ExponentialHeightFogComponent",
+       "fog": {
+        "color": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "density": 0.04360000044107437,
+        "height_falloff": 0.20000000298023224,
+        "sky_contribution": [
+         1.0,
+         1.0,
+         1.0
+        ],
+        "start_distance": 0.0,
+        "volumetric": false
+       },
+       "mobility": "movable",
+       "name": "HeightFogComponent0",
+       "transform": {
+        "location": [
+         -5600.0,
+         -50.0,
+         -6850.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "ExponentialHeightFog",
+     "name": "ExponentialHeightFog_UAID_F4A475FF15A3736A02_1961936700",
+     "root": "HeightFogComponent0",
+     "transform": {
+      "location": [
+       -5600.0,
+       -50.0,
+       -6850.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -200.0,
+         -200.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.7071067935278891,
+         -0.7071067688452058
+        ],
+        "scale": [
+         3.0,
+         4.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube15",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961958729",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -200.0,
+       -200.0,
+       0.0
+      ],
+      "rotation": [
+       -0.0,
+       0.0,
+       -0.7071067935278889,
+       0.707106768845206
+      ],
+      "scale": [
+       3.0,
+       4.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.009999999776482582,
+       "mesh": "/Game/LevelPrototyping/Meshes/SM_Cube",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         1800.0,
+         -2000.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         2.0,
+         40.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "SM_Cube2",
+     "name": "StaticMeshActor_UAID_F4A475FF15A3736A02_1961959730",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       1800.0,
+       -2000.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       2.0,
+       40.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "bounds": {
+      "extent": [
+       100.0,
+       100.0,
+       100.0
+      ],
+      "origin": [
+       100.0,
+       100.0,
+       500.0
+      ]
+     },
+     "class": "PostProcessVolume",
+     "class_path": "/Script/Engine.PostProcessVolume",
+     "components": [
+      {
+       "cast_shadow": false,
+       "class": "BrushComponent",
+       "mobility": "movable",
+       "name": "BrushComponent0",
+       "transform": {
+        "location": [
+         100.0,
+         100.0,
+         500.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       },
+       "visible": false
+      }
+     ],
+     "label": "PostProcessVolume",
+     "name": "PostProcessVolume_UAID_F4A475FF15A3736A02_1961895679",
+     "root": "BrushComponent0",
+     "transform": {
+      "location": [
+       100.0,
+       100.0,
+       500.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "AbstractNavData",
+     "class_path": "/Script/NavigationSystem.AbstractNavData",
+     "components": [
+      {
+       "class": "SceneComponent",
+       "mobility": "static",
+       "name": "SceneComp",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         -0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "AbstractNavData-Default",
+     "name": "AbstractNavData-Default",
+     "root": "SceneComp",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    }
+   ],
+   "game_mode": "/Game/ThirdPerson/Blueprints/BP_ThirdPersonGameMode.BP_ThirdPersonGameMode_C",
+   "kill_z": -1048575.0,
+   "path": "/Game/ThirdPerson/Lvl_ThirdPerson"
+  }
+ ],
+ "materials": {
+  "/Engine/EngineSky/M_SimpleSkyDome": {
+   "class": "Material",
+   "file": "materials/Engine/EngineSky/M_SimpleSkyDome.glb"
+  },
+  "/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/MI_GlowNT": {
+   "class": "MaterialInstanceConstant",
+   "file": "materials/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/MI_GlowNT.glb"
+  },
+  "/Game/LevelPrototyping/Materials/MI_PrototypeGrid_Gray": {
+   "class": "MaterialInstanceConstant",
+   "file": "materials/Game/LevelPrototyping/Materials/MI_PrototypeGrid_Gray.glb"
+  },
+  "/Game/ThirdPerson/MI_ThirdPersonColWay": {
+   "class": "MaterialInstanceConstant",
+   "file": "materials/Game/ThirdPerson/MI_ThirdPersonColWay.glb"
+  }
+ },
+ "meshes": {
+  "/Engine/BasicShapes/Cube": {
+   "bounds": {
+    "extent": [
+     50.0,
+     50.0,
+     50.0
+    ],
+    "origin": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "collision_complexity": "ctf_use_default",
+   "convex_collision": 0,
+   "file": "meshes/Engine/BasicShapes/Cube.glb",
+   "materials": [
+    "/Engine/EngineMaterials/WorldGridMaterial"
+   ],
+   "simple_collision": 1,
+   "skeletal": false
+  },
+  "/Engine/BasicShapes/Cylinder": {
+   "bounds": {
+    "extent": [
+     50.0,
+     50.0,
+     50.0
+    ],
+    "origin": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "collision_complexity": "ctf_use_default",
+   "convex_collision": 1,
+   "file": "meshes/Engine/BasicShapes/Cylinder.glb",
+   "materials": [
+    "/Engine/EngineMaterials/DefaultMaterial"
+   ],
+   "simple_collision": 1,
+   "skeletal": false
+  },
+  "/Engine/BasicShapes/Sphere": {
+   "bounds": {
+    "extent": [
+     50.0,
+     50.0,
+     50.0
+    ],
+    "origin": [
+     0.0,
+     3.814697265625e-06,
+     0.0
+    ]
+   },
+   "collision_complexity": "ctf_use_default",
+   "convex_collision": 0,
+   "file": "meshes/Engine/BasicShapes/Sphere.glb",
+   "materials": [
+    "/Engine/EngineMaterials/DefaultMaterial"
+   ],
+   "simple_collision": 1,
+   "skeletal": false
+  },
+  "/Engine/EngineSky/SM_SkySphere": {
+   "bounds": {
+    "extent": [
+     4096.0,
+     4096.0,
+     4096.0
+    ],
+    "origin": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "collision_complexity": "ctf_use_default",
+   "convex_collision": 0,
+   "file": "meshes/Engine/EngineSky/SM_SkySphere.glb",
+   "materials": [
+    "/Engine/EngineSky/M_Sky_Panning_Clouds2"
+   ],
+   "simple_collision": 0,
+   "skeletal": false
+  },
+  "/Engine/MapTemplates/SM_Template_Map_Floor": {
+   "bounds": {
+    "extent": [
+     500.00018310546875,
+     500.0,
+     25.000015258789062
+    ],
+    "origin": [
+     -0.0001220703125,
+     6.103515625e-05,
+     -25.000015258789062
+    ]
+   },
+   "collision_complexity": "ctf_use_default",
+   "convex_collision": 1,
+   "file": "meshes/Engine/MapTemplates/SM_Template_Map_Floor.glb",
+   "materials": [
+    "/Engine/EngineMaterials/DefaultMaterial"
+   ],
+   "simple_collision": 1,
+   "skeletal": false
+  },
+  "/Game/Characters/Mannequins/Meshes/SKM_Quinn_Simple": {
+   "bounds": {
+    "extent": [
+     51.937191009521484,
+     18.293385982513428,
+     90.08436334133148
+    ],
+    "origin": [
+     0.0,
+     7.110689640045166,
+     90.0531793832779
+    ]
+   },
+   "file": "meshes/Game/Characters/Mannequins/Meshes/SKM_Quinn_Simple.glb",
+   "materials": [
+    "/Game/Characters/Mannequins/Materials/Quinn/MI_Quinn_01",
+    "/Game/Characters/Mannequins/Materials/Quinn/MI_Quinn_02"
+   ],
+   "skeletal": true
+  },
+  "/Game/LevelPrototyping/Interactable/JumpPad/Assets/Meshes/SM_CircularBand": {
+   "bounds": {
+    "extent": [
+     70.0,
+     70.0,
+     6.469536304473877
+    ],
+    "origin": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "collision_complexity": "ctf_use_default",
+   "convex_collision": 1,
+   "file": "meshes/Game/LevelPrototyping/Interactable/JumpPad/Assets/Meshes/SM_CircularBand.glb",
+   "materials": [
+    "/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_SimpleGlow"
+   ],
+   "simple_collision": 1,
+   "skeletal": false
+  },
+  "/Game/LevelPrototyping/Interactable/JumpPad/Assets/Meshes/SM_CircularGlow": {
+   "bounds": {
+    "extent": [
+     86.39083099365234,
+     86.39083099365234,
+     9.242194533348083
+    ],
+    "origin": [
+     0.0,
+     0.0,
+     10.253042817115784
+    ]
+   },
+   "collision_complexity": "ctf_use_default",
+   "convex_collision": 1,
+   "file": "meshes/Game/LevelPrototyping/Interactable/JumpPad/Assets/Meshes/SM_CircularGlow.glb",
+   "materials": [
+    "/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow"
+   ],
+   "simple_collision": 1,
+   "skeletal": false
+  },
+  "/Game/LevelPrototyping/Meshes/SM_Cube": {
+   "bounds": {
+    "extent": [
+     50.0,
+     50.0,
+     50.0
+    ],
+    "origin": [
+     50.0,
+     50.0,
+     50.0
+    ]
+   },
+   "collision_complexity": "ctf_use_default",
+   "convex_collision": 1,
+   "file": "meshes/Game/LevelPrototyping/Meshes/SM_Cube.glb",
+   "materials": [
+    "/Game/LevelPrototyping/Materials/MI_PrototypeGrid_Gray"
+   ],
+   "simple_collision": 1,
+   "skeletal": false
+  },
+  "/Game/LevelPrototyping/Meshes/SM_Cylinder": {
+   "bounds": {
+    "extent": [
+     50.0,
+     50.0,
+     50.0
+    ],
+    "origin": [
+     0.0,
+     0.0,
+     50.0
+    ]
+   },
+   "collision_complexity": "ctf_use_simple_and_complex",
+   "convex_collision": 1,
+   "file": "meshes/Game/LevelPrototyping/Meshes/SM_Cylinder.glb",
+   "materials": [
+    "/Game/LevelPrototyping/Materials/MI_PrototypeGrid_Gray"
+   ],
+   "simple_collision": 1,
+   "skeletal": false
+  },
+  "/Game/LevelPrototyping/Meshes/SM_QuarterCylinder": {
+   "bounds": {
+    "extent": [
+     25.000001490116233,
+     25.000001887447524,
+     50.0
+    ],
+    "origin": [
+     24.999998509883767,
+     24.999998112552476,
+     50.0
+    ]
+   },
+   "collision_complexity": "ctf_use_simple_and_complex",
+   "convex_collision": 1,
+   "file": "meshes/Game/LevelPrototyping/Meshes/SM_QuarterCylinder.glb",
+   "materials": [
+    "/Game/LevelPrototyping/Materials/MI_PrototypeGrid_Gray"
+   ],
+   "simple_collision": 1,
+   "skeletal": false
+  },
+  "/Game/LevelPrototyping/Meshes/SM_Ramp": {
+   "bounds": {
+    "extent": [
+     50.0,
+     50.0,
+     50.0
+    ],
+    "origin": [
+     50.0,
+     50.0,
+     50.0
+    ]
+   },
+   "collision_complexity": "ctf_use_default",
+   "convex_collision": 1,
+   "file": "meshes/Game/LevelPrototyping/Meshes/SM_Ramp.glb",
+   "materials": [
+    "/Game/LevelPrototyping/Materials/MI_PrototypeGrid_Gray"
+   ],
+   "simple_collision": 1,
+   "skeletal": false
+  }
+ },
+ "niagara_systems": {
+  "/Game/LevelPrototyping/Interactable/JumpPad/Assets/NS_JumpPad": {
+   "determinism": false,
+   "enums": {
+    "/Niagara/Enums/Angles/ENiagara_AngleInput.ENiagara_AngleInput": {
+     "NewEnumerator0": "Degrees",
+     "NewEnumerator1": "Normalized Angle (0-1)",
+     "NewEnumerator2": "Radians"
+    },
+    "/Niagara/Enums/ENiagaraChannelCorrelation.ENiagaraChannelCorrelation": {
+     "NewEnumerator0": "Link RGBA",
+     "NewEnumerator1": "Link RGB / Link A",
+     "NewEnumerator2": "Random Individual Channels"
+    },
+    "/Niagara/Enums/ENiagaraEmitterLifeCycleMode.ENiagaraEmitterLifeCycleMode": {
+     "NewEnumerator0": "System",
+     "NewEnumerator1": "Self"
+    },
+    "/Niagara/Enums/ENiagaraEmitterScalabilityMode_Limited.ENiagaraEmitterScalabilityMode_Limited": {
+     "NewEnumerator0": "System",
+     "NewEnumerator1": "Self"
+    },
+    "/Niagara/Enums/ENiagaraInactiveMode.ENiagaraInactiveMode": {
+     "NewEnumerator0": "Complete (Let Particles Finish then Kill Emitter)",
+     "NewEnumerator1": "Kill (Emitter and Particles Die Immediately)",
+     "NewEnumerator2": "Continue (Emitter Deactivates But Doesn\\'t Die Until System Does)"
+    },
+    "/Niagara/Enums/ENiagaraRandomnessEvaluation.ENiagaraRandomnessEvaluation": {
+     "NewEnumerator0": "Spawn Only",
+     "NewEnumerator1": "Every Frame"
+    },
+    "/Niagara/Enums/ENiagaraRandomnessMode.ENiagaraRandomnessMode": {
+     "NewEnumerator0": "Simulation Defaults",
+     "NewEnumerator1": "Determinisitic",
+     "NewEnumerator2": "Non-Deterministic"
+    },
+    "/Niagara/Enums/ENiagaraScaleColorMode.ENiagaraScaleColorMode": {
+     "NewEnumerator0": "RGB and Alpha Separately",
+     "NewEnumerator1": "RGBA Together",
+     "NewEnumerator2": "RGBA Linear Color Curve"
+    },
+    "/Niagara/Enums/ENiagaraShapeTorusMode.ENiagaraShapeTorusMode": {
+     "NewEnumerator0": "Torus",
+     "NewEnumerator1": "TorusKnot"
+    },
+    "/Niagara/Enums/ENiagaraSphereDistributionMode.ENiagaraSphereDistributionMode": {
+     "NewEnumerator0": "Random",
+     "NewEnumerator1": "Direct",
+     "NewEnumerator3": "Uniform"
+    },
+    "/Niagara/Enums/ENiagaraSystemInactiveMode.ENiagaraSystemInactiveMode": {
+     "NewEnumerator0": "Complete (Let Emitters Finish then Kill The System)",
+     "NewEnumerator1": "Kill (System and Emitters Die Immediately)"
+    },
+    "/Niagara/Enums/ENiagaraTorusDistributionMode.ENiagaraTorusDistributionMode": {
+     "NewEnumerator0": "Random",
+     "NewEnumerator1": "Direct"
+    },
+    "/Niagara/Enums/ENiagara_AttributeSamplingApplyOutput.ENiagara_AttributeSamplingApplyOutput": {
+     "NewEnumerator0": "Apply",
+     "NewEnumerator1": "Output"
+    },
+    "/Niagara/Enums/ENiagara_ColorInitializationMode.ENiagara_ColorInitializationMode": {
+     "NewEnumerator0": "Unset",
+     "NewEnumerator1": "Direct Set",
+     "NewEnumerator2": "Random Range",
+     "NewEnumerator3": "Random Hue/Saturation/Value"
+    },
+    "/Niagara/Enums/ENiagara_EmitterStateOptions.ENiagara_EmitterStateOptions": {
+     "NewEnumerator0": "Infinite",
+     "NewEnumerator1": "Once",
+     "NewEnumerator2": "Multiple"
+    },
+    "/Niagara/Enums/ENiagara_InfiniteLoopDuration.ENiagara_InfiniteLoopDuration": {
+     "NewEnumerator0": "Fixed",
+     "NewEnumerator1": "Infinite"
+    },
+    "/Niagara/Enums/ENiagara_LifetimeMode.ENiagara_LifetimeMode": {
+     "NewEnumerator0": "Direct Set",
+     "NewEnumerator1": "Random"
+    },
+    "/Niagara/Enums/ENiagara_MassInitializationMode.ENiagara_MassInitializationMode": {
+     "NewEnumerator0": "Unset / (Mass of 1)",
+     "NewEnumerator1": "Direct Set",
+     "NewEnumerator3": "Random"
+    },
+    "/Niagara/Enums/ENiagara_PositionInitializationMode.ENiagara_PositionInitializationMode": {
+     "NewEnumerator0": "Unset",
+     "NewEnumerator1": "Direct Set",
+     "NewEnumerator2": "Simulation Position"
+    },
+    "/Niagara/Enums/ENiagara_SizeScaleMode.ENiagara_SizeScaleMode": {
+     "NewEnumerator0": "Unset",
+     "NewEnumerator1": "Random Uniform",
+     "NewEnumerator2": "Random Non-Uniform",
+     "NewEnumerator3": "Uniform",
+     "NewEnumerator4": "Non-Uniform"
+    },
+    "/Niagara/Enums/ENiagara_SpriteRotationMode.ENiagara_SpriteRotationMode": {
+     "NewEnumerator0": "Direct Angle (Degrees)",
+     "NewEnumerator1": "Direct Normalized Angle (0-1)",
+     "NewEnumerator2": "Random",
+     "NewEnumerator3": "Unset"
+    },
+    "/Niagara/Enums/ENiagara_UVFlippingMode.ENiagara_UVFlippingMode": {
+     "NewEnumerator0": "Unset",
+     "NewEnumerator1": "Random X",
+     "NewEnumerator2": "Random Y",
+     "NewEnumerator3": "Random X / Y",
+     "NewEnumerator4": "Custom"
+    },
+    "/Niagara/Enums/Location/ENiagaraRingDiscMode.ENiagaraRingDiscMode": {
+     "NewEnumerator0": "Circle",
+     "NewEnumerator1": "Hexagon"
+    },
+    "/Niagara/Enums/Location/ENiagara_BoxPlaneMode.ENiagara_BoxPlaneMode": {
+     "NewEnumerator0": "Box",
+     "NewEnumerator1": "Plane"
+    },
+    "/Niagara/Enums/Location/ENiagara_ConeMode.ENiagara_ConeMode": {
+     "NewEnumerator0": "Spherical Cone",
+     "NewEnumerator1": "Spherical Wedge"
+    },
+    "/Niagara/Enums/Location/ENiagara_CylinderMode.ENiagara_CylinderMode": {
+     "NewEnumerator0": "Random",
+     "NewEnumerator2": "Direct"
+    },
+    "/Niagara/Enums/Location/ENiagara_LocationShapes.ENiagara_LocationShapes": {
+     "NewEnumerator0": "Sphere",
+     "NewEnumerator1": "Cylinder",
+     "NewEnumerator2": "Box / Plane",
+     "NewEnumerator3": "Torus",
+     "NewEnumerator4": "Ring / Disc",
+     "NewEnumerator5": "Cone"
+    },
+    "/Niagara/Enums/Ribbons/ENiagara_UnsetDirectSet.ENiagara_UnsetDirectSet": {
+     "NewEnumerator0": "Unset",
+     "NewEnumerator1": "Direct Set"
+    },
+    "/Niagara/Enums/Ribbons/ENiagara_UnsetDirectSetRandom.ENiagara_UnsetDirectSetRandom": {
+     "NewEnumerator0": "Unset",
+     "NewEnumerator1": "Direct Set",
+     "NewEnumerator3": "Random"
+    },
+    "/Niagara/Enums/Transforms/ENiagara_OffsetMode.ENiagara_OffsetMode": {
+     "NewEnumerator0": "Default",
+     "NewEnumerator1": "None"
+    },
+    "/Niagara/Enums/Transforms/ENiagara_RotationMode.ENiagara_RotationMode": {
+     "NewEnumerator0": "Default",
+     "NewEnumerator1": "Axis Angle",
+     "NewEnumerator2": "Yaw / Pitch / Roll",
+     "NewEnumerator3": "Quaternion",
+     "NewEnumerator4": "Matrix",
+     "NewEnumerator5": "None"
+    },
+    "/Niagara/Enums/Transforms/ENiagara_ScaleMode.ENiagara_ScaleMode": {
+     "NewEnumerator0": "Default",
+     "NewEnumerator1": "None"
+    },
+    "/Niagara/Enums/Transforms/ENiagara_TransformOrder.ENiagara_TransformOrder": {
+     "NewEnumerator0": "Scale / Rotate / Offset",
+     "NewEnumerator1": "Scale / Offset / Rotate"
+    },
+    "/Niagara/Enums/Transforms/ENiagara_TransformType.ENiagara_TransformType": {
+     "NewEnumerator0": "Default",
+     "NewEnumerator1": "Custom Matrix"
+    }
+   },
+   "fixed_bounds": {
+    "max": [
+     100.0,
+     100.0,
+     100.0
+    ],
+    "min": [
+     -100.0,
+     -100.0,
+     -100.0
+    ]
+   },
+   "random_seed": 0,
+   "text": "text/Game/LevelPrototyping/Interactable/JumpPad/Assets/NS_JumpPad.t3d",
+   "warmup_time": 0.0
+  }
+ },
+ "problems": [],
+ "project": {
+  "name": "DemoThird"
+ },
+ "sounds": {
+  "/Engine/EngineSounds/1kSineTonePing": {
+   "duration": 0.2758541703224182,
+   "file": "sounds/Engine/EngineSounds/1kSineTonePing.wav",
+   "looping": false
+  }
+ },
+ "world_aligned_materials": [
+  "/Engine/EngineMaterials/DefaultMaterial",
+  "/Engine/EngineMaterials/WorldGridMaterial",
+  "/Engine/EngineSky/M_Sky_Panning_Clouds2",
+  "/Game/Characters/Mannequins/Materials/Quinn/MI_Quinn_01",
+  "/Game/Characters/Mannequins/Materials/Quinn/MI_Quinn_02",
+  "/Game/LevelPrototyping/Materials/MI_PrototypeGrid_Gray"
+ ]
+}

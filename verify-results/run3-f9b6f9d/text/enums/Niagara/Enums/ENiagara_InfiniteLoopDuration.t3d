@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagara_InfiniteLoopDuration" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/ENiagara_InfiniteLoopDuration.ENiagara_InfiniteLoopDuration'"
+   UniqueNameIndex=2
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[D2E92CFB4CAE60A0F5345A9E66A0DAC6]", "A30E092241F0992AFAFAED9B8BC9C652", "Fixed")),("NewEnumerator1", NSLOCTEXT("[D2E92CFB4CAE60A0F5345A9E66A0DAC6]", "56E0AA8B46C852157AE694A845C48CEC", "Infinite")))
+End Object

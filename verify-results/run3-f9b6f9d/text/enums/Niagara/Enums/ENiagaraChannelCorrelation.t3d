@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagaraChannelCorrelation" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/ENiagaraChannelCorrelation.ENiagaraChannelCorrelation'"
+   UniqueNameIndex=3
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[7F8234034126541F4BB632A24E7BA9AB]", "18F6784344BB124AB9D906994025F8E2", "Link RGBA")),("NewEnumerator1", NSLOCTEXT("[7F8234034126541F4BB632A24E7BA9AB]", "D66A1558402A624F734D048629820C39", "Link RGB / Link A")),("NewEnumerator2", NSLOCTEXT("[7F8234034126541F4BB632A24E7BA9AB]", "12B134DE41AD8E96A53C04A5CFFA002B", "Random Individual Channels")))
+End Object

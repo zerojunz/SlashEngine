@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagara_ScaleMode" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/Transforms/ENiagara_ScaleMode.ENiagara_ScaleMode'"
+   UniqueNameIndex=2
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[098701E149F80DF7D584FB97E919D0CE]", "44F1F2FC49AC4784F72CD08B016A1036", "Default")),("NewEnumerator1", NSLOCTEXT("[098701E149F80DF7D584FB97E919D0CE]", "0871356F40469A3F79C32690E2EBE552", "None")))
+End Object

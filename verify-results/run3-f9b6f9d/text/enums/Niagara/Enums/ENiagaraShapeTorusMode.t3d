@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagaraShapeTorusMode" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/ENiagaraShapeTorusMode.ENiagaraShapeTorusMode'"
+   UniqueNameIndex=3
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[6DD8D1BD4A8C6F98F2B9F788D81F2C6E]", "6CC3EC7D4CF36AF7E2D945B591AA11FE", "Torus")),("NewEnumerator1", NSLOCTEXT("[6DD8D1BD4A8C6F98F2B9F788D81F2C6E]", "6C3E3E8A4FC2127EFAE2E5BFA5D988AE", "TorusKnot")))
+End Object

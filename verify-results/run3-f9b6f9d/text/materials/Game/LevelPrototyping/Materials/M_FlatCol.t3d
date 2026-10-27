@@ -1,0 +1,67 @@
+Begin Object Class=/Script/Engine.Material Name="M_FlatCol" ExportPath="/Script/Engine.Material'/Game/LevelPrototyping/Materials/M_FlatCol.M_FlatCol'"
+   Begin Object Class=/Script/UnrealEd.SceneThumbnailInfoWithPrimitive Name="SceneThumbnailInfoWithPrimitive_0" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Game/LevelPrototyping/Materials/M_FlatCol.M_FlatCol:SceneThumbnailInfoWithPrimitive_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionVectorParameter Name="MaterialExpressionVectorParameter_0" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Game/LevelPrototyping/Materials/M_FlatCol.M_FlatCol:MaterialExpressionVectorParameter_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_1" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/LevelPrototyping/Materials/M_FlatCol.M_FlatCol:MaterialExpressionScalarParameter_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_0" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/LevelPrototyping/Materials/M_FlatCol.M_FlatCol:MaterialExpressionScalarParameter_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialEditorOnlyData Name="M_FlatColEditorOnlyData" ExportPath="/Script/Engine.MaterialEditorOnlyData'/Game/LevelPrototyping/Materials/M_FlatCol.M_FlatCol:M_FlatColEditorOnlyData'"
+   End Object
+   Begin Object Name="SceneThumbnailInfoWithPrimitive_0" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Game/LevelPrototyping/Materials/M_FlatCol.M_FlatCol:SceneThumbnailInfoWithPrimitive_0'"
+   End Object
+   Begin Object Name="MaterialExpressionVectorParameter_0" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Game/LevelPrototyping/Materials/M_FlatCol.M_FlatCol:MaterialExpressionVectorParameter_0'"
+      DefaultValue=(R=0.180000,G=0.180000,B=0.180000,A=1.000000)
+      ParameterName="Base Color"
+      ExpressionGUID=1DD28B08431842EF2C7BE7AACE9A5E0D
+      Group="Surface Properties"
+      MaterialExpressionEditorX=-480
+      MaterialExpressionEditorY=-96
+      MaterialExpressionGuid=63FB74B6437C89AEB9F0BA8642117BDD
+      Material="/Script/Engine.Material'M_FlatCol'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_1" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/LevelPrototyping/Materials/M_FlatCol.M_FlatCol:MaterialExpressionScalarParameter_1'"
+      DefaultValue=1.000000
+      SliderMax=1.000000
+      ParameterName="Roughness"
+      ExpressionGUID=9F6EB999409F109F0B76C48CF15A203E
+      Group="Surface Properties"
+      MaterialExpressionEditorX=-432
+      MaterialExpressionEditorY=176
+      MaterialExpressionGuid=0EB6F8E24761AA87FE44CBAEE881A1EC
+      Material="/Script/Engine.Material'M_FlatCol'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_0" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/LevelPrototyping/Materials/M_FlatCol.M_FlatCol:MaterialExpressionScalarParameter_0'"
+      SliderMax=1.000000
+      ParameterName="Metallic"
+      ExpressionGUID=3301A4CC43429C81194E1A91B1296F6A
+      Group="Surface Properties"
+      MaterialExpressionEditorX=-416
+      MaterialExpressionEditorY=96
+      MaterialExpressionGuid=0EB6F8E24761AA87FE44CBAEE881A1EC
+      Material="/Script/Engine.Material'M_FlatCol'"
+   End Object
+   Begin Object Name="M_FlatColEditorOnlyData" ExportPath="/Script/Engine.MaterialEditorOnlyData'/Game/LevelPrototyping/Materials/M_FlatCol.M_FlatCol:M_FlatColEditorOnlyData'"
+      BaseColor=(Constant=(R=0.501961,G=0.501961,B=0.501961,A=1.000000),Expression="/Script/Engine.MaterialExpressionVectorParameter'M_FlatCol:MaterialExpressionVectorParameter_0'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      Metallic=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_FlatCol:MaterialExpressionScalarParameter_0'")
+      Roughness=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_FlatCol:MaterialExpressionScalarParameter_1'")
+      ExpressionCollection=(Expressions=("/Script/Engine.MaterialExpressionVectorParameter'M_FlatCol:MaterialExpressionVectorParameter_0'","/Script/Engine.MaterialExpressionScalarParameter'M_FlatCol:MaterialExpressionScalarParameter_0'","/Script/Engine.MaterialExpressionScalarParameter'M_FlatCol:MaterialExpressionScalarParameter_1'"))
+      ParameterGroupData(0)=(GroupName="Surface Properties")
+      ParameterGroupData(1)=(GroupName="Surface Properties")
+      ParameterGroupData(2)=(GroupName="Surface Properties")
+   End Object
+   bUsedWithSkeletalMesh=True
+   bUsedWithMeshDeformer=True
+   bUsedWithGeometryCollections=True
+   bUsedWithNanite=True
+   EditorX=-32
+   EditorY=-16
+   bCanMaskedBeAssumedOpaque=True
+   PixelDepthOffsetMode=PDOM_Legacy
+   StateId=5B1A388F47FCD6CB3958E58D73260EAB
+   EditorOnlyData="/Script/Engine.MaterialEditorOnlyData'M_FlatColEditorOnlyData'"
+   ThumbnailInfo="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'SceneThumbnailInfoWithPrimitive_0'"
+   ParameterOverviewExpansion=(("-12Global", True),("-12Global Surface Properties", True))
+   LightingGuid=24D249EC457373EEF481739F31146FC2
+End Object
