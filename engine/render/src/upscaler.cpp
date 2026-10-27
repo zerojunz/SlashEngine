@@ -15,10 +15,6 @@ namespace slash::render {
 
 namespace {
 
-// Godot's modes that need the 3D renderer's depth and motion vectors, or Metal's own API.
-// Godot's modes that need Apple's MetalFX, which isn't built.
-constexpr std::array<std::string_view, 2> kMetalFxModes{"metalfx_spatial", "metalfx_temporal"};
-
 // Two triangles over a width x height rectangle at the origin, texture coordinates 0 to 1.
 std::array<Vertex2D, 6> quad(float width, float height) {
     const Vertex2D top_left{.x = 0.0F, .y = 0.0F, .u = 0.0F, .v = 0.0F};
@@ -166,6 +162,57 @@ private:
     ShaderId rcas_shader_ = ShaderId::None;
 };
 
+// Apple's MetalFX spatial scaler, as Godot's metalfx_spatial mode, on a device that has it: the
+// device scales the render up into a texture of the screen's size, which draws over the screen.
+// The world is drawn as it shows (its colors aren't linear), so it scales perceptually.
+class MetalFxSpatial final : public Upscaler {
+public:
+    Result<TextureId> input(RenderDevice& device, const UpscaleSize& size) override {
+        return input_.get(device, size.render_width, size.render_height, Filter::Nearest);
+    }
+
+    Result<UpscaleDraw> upscale(RenderDevice& device, const UpscaleSize& size,
+                                const Scaling& /*scaling*/) override {
+        if (output_ == TextureId::None || width_ != size.output_width ||
+            height_ != size.output_height) {
+            release_output(device);
+            auto made = device.create_texture({.width = size.output_width,
+                                               .height = size.output_height,
+                                               .filter = Filter::Nearest,
+                                               .render_target = true,
+                                               .scaled_into = true});
+            if (!made) {
+                return made.error();
+            }
+            output_ = made.value();
+            width_ = size.output_width;
+            height_ = size.output_height;
+        }
+        if (auto scaled = device.metalfx_spatial(input_.texture(), output_); !scaled) {
+            return scaled.error();
+        }
+        return UpscaleDraw{.texture = output_, .material = {}};
+    }
+
+    void release(RenderDevice& device) override {
+        input_.release(device);
+        release_output(device);
+    }
+
+private:
+    void release_output(RenderDevice& device) {
+        if (output_ != TextureId::None) {
+            device.destroy_texture(output_);
+            output_ = TextureId::None;
+        }
+    }
+
+    Target input_;
+    TextureId output_ = TextureId::None;
+    std::uint32_t width_ = 0;
+    std::uint32_t height_ = 0;
+};
+
 struct Registry {
     std::mutex mutex;
     std::vector<UpscalerInfo> added;
@@ -186,6 +233,10 @@ std::vector<UpscalerInfo> built_in() {
          .temporal = false,
          .supports = {},
          .make = [] { return std::unique_ptr<Upscaler>(std::make_unique<Fsr>()); }},
+        {.name = std::string(kMetalFxSpatial),
+         .temporal = false,
+         .supports = [](const RenderDevice& device) { return device.metalfx().spatial; },
+         .make = [] { return std::unique_ptr<Upscaler>(std::make_unique<MetalFxSpatial>()); }},
     };
 }
 
@@ -233,24 +284,43 @@ json::Value scaling_json(const Scaling& scaling) {
 }
 
 std::vector<std::string_view> scaling_modes() {
-    return {kBilinear, kFsr, kFsr2, kFsr3};
+    return {kBilinear, kFsr, kFsr2, kFsr3, kMetalFxSpatial, kMetalFxTemporal};
 }
 
 std::string scaling_mode_problem(std::string_view mode) {
-    if (mode == kBilinear || mode == kFsr || mode == kFsr2 || mode == kFsr3) {
+    const std::vector<std::string_view> modes = scaling_modes();
+    if (std::ranges::find(modes, mode) != modes.end()) {
         return {};
     }
-    if (std::ranges::find(kMetalFxModes, mode) != kMetalFxModes.end()) {
-        return std::string(mode) +
-               " needs Apple's MetalFX, which isn't built yet; use bilinear, fsr, fsr2 or fsr3";
-    }
-    std::string problem =
-        "unknown scaling mode " + std::string(mode) + "; expected bilinear, fsr, fsr2 or fsr3";
-    const std::vector<std::string_view> modes = scaling_modes();
+    std::string problem = "unknown scaling mode " + std::string(mode) +
+                          "; expected bilinear, fsr, fsr2, fsr3, metalfx_spatial or "
+                          "metalfx_temporal";
     if (const std::string_view near = closest_match(mode, modes); !near.empty()) {
         problem += " (did you mean " + std::string(near) + "?)";
     }
     return problem;
+}
+
+std::string_view scaling_mode_on(const Scaling& scaling, const RenderDevice& device) {
+    const MetalFxSupport metalfx = device.metalfx();
+    if (scaling.mode == kMetalFxTemporal) {
+        if (!metalfx.temporal) {
+            return metalfx.spatial ? kMetalFxSpatial : kFsr2;
+        }
+        if (scaling.scale < metalfx.min_scale || scaling.scale > metalfx.max_scale) {
+            return kFsr2;
+        }
+        return kMetalFxTemporal;
+    }
+    if (scaling.mode == kMetalFxSpatial && !metalfx.spatial) {
+        return kFsr;
+    }
+    for (const std::string_view mode : scaling_modes()) {
+        if (mode == scaling.mode) {
+            return mode;
+        }
+    }
+    return kBilinear;
 }
 
 std::uint32_t render_size(std::uint32_t output, float scale) {
@@ -320,7 +390,8 @@ void clear_added_upscalers() {
 
 bool uses_fsr2(const Scaling& scaling, RenderMethod method, const RenderDevice& device) {
     const Backend backend = device.backend();
-    return (scaling.mode == kFsr2 || scaling.mode == kFsr3) && scaling.scale < 1.0F &&
+    const std::string_view mode = scaling_mode_on(scaling, device);
+    return (mode == kFsr2 || mode == kFsr3 || mode == kMetalFxTemporal) && scaling.scale < 1.0F &&
            method == RenderMethod::ForwardPlus && backend != Backend::OpenGl &&
            backend != Backend::OpenGlEs;
 }
@@ -333,8 +404,9 @@ std::string choose_upscaler(const Scaling& scaling, const RenderDevice& device) 
         }
     }
     const bool up = !(scaling.scale > 1.0F);
-    if (scaling.mode == kFsr && up) {
-        return std::string(kFsr);
+    const std::string_view mode = scaling_mode_on(scaling, device);
+    if ((mode == kFsr || mode == kMetalFxSpatial) && up) {
+        return std::string(mode);
     }
     if (scaling.scale == 1.0F) {
         return {};

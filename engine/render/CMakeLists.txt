@@ -78,6 +78,16 @@ target_link_libraries(slash_render
     PRIVATE slash_astcenc slash_bc7 slash_image_codecs SDL3::SDL3-static)
 slash_engine_target(slash_render)
 
+# Apple's MetalFX scalers (src/metalfx.mm), linked weakly so games still start on macOS 11 and
+# iOS 14, where MetalFX isn't. The iOS Simulator has none.
+if(APPLE AND NOT CMAKE_OSX_SYSROOT MATCHES "[Ss]imulator")
+    target_sources(slash_render PRIVATE src/metalfx.mm)
+    set_source_files_properties(src/metalfx.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(slash_render PRIVATE "-framework Metal" "-weak_framework MetalFX")
+else()
+    target_sources(slash_render PRIVATE src/metalfx_none.cpp)
+endif()
+
 # Web builds draw with WebGPU where the browser has it, through Dawn's webgpu.h for Emscripten
 # (emdawnwebgpu), which Emscripten fetches as a port pinned to its version. web/webgpu.js asks the
 # browser for the device before main() runs.

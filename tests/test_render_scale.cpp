@@ -366,9 +366,12 @@ TEST_CASE("project.json's rendering.scaling is read and checked") {
     };
     project["rendering"]["scaling"] = parse(R"({"mode": "fsr2", "scale": 0.67})");
     CHECK(slash::runtime::validate_project(project).empty());
-    auto error = first_error(R"({"mode": "metalfx_temporal"})");
+    // Godot's MetalFX modes are valid everywhere: where MetalFX isn't, they fall back.
+    project["rendering"]["scaling"] = parse(R"({"mode": "metalfx_temporal", "scale": 0.67})");
+    CHECK(slash::runtime::validate_project(project).empty());
+    auto error = first_error(R"({"mode": "metalfx_temporl"})");
     CHECK(error.path == "/rendering/scaling/mode");
-    CHECK(contains(error.message, "MetalFX"));
+    CHECK(contains(error.message, "did you mean metalfx_temporal?"));
     error = first_error(R"({"mode": "bilinar"})");
     CHECK(error.path == "/rendering/scaling/mode");
     CHECK(contains(error.message, "did you mean bilinear?"));
@@ -458,6 +461,14 @@ TEST_CASE("display.set changes the render scale, and frame.capture and display.l
         ok("display.set", R"({"scaling": {"mode": "fsr2"}})");
         captured = ok("frame.capture", R"({"points": [[3, 1], [4, 1]]})");
         CHECK(captured.find("upscaler")->as_string() == "bilinear");
+        // MetalFX's modes fall back as Godot's do where MetalFX isn't: the spatial one to FSR, and
+        // the temporal one to FSR 2, which here is bilinear too.
+        ok("display.set", R"({"scaling": {"mode": "metalfx_spatial"}})");
+        captured = ok("frame.capture", R"({"points": [[3, 1], [4, 1]]})");
+        CHECK(captured.find("upscaler")->as_string() == "fsr");
+        ok("display.set", R"({"scaling": {"mode": "metalfx_temporal"}})");
+        captured = ok("frame.capture", R"({"points": [[3, 1], [4, 1]]})");
+        CHECK(captured.find("upscaler")->as_string() == "bilinear");
         CHECK(*captured.find("colors") ==
               parse("[[0.251, 0.251, 0.251, 1], [0.749, 0.749, 0.749, 1]]"));
         ok("display.set", R"({"scaling": {"mode": "bilinear", "scale": 1}})");
@@ -467,14 +478,14 @@ TEST_CASE("display.set changes the render scale, and frame.capture and display.l
 
         // Bad settings change nothing.
         command::Reply bad =
-            session.call("display.set", parse(R"({"scaling": {"mode": "metalfx_spatial"}})"));
+            session.call("display.set", parse(R"({"scaling": {"mode": "metalfx_spatail"}})"));
         CHECK(bad.code == command::code::kInvalidArgument);
         CHECK(contains(bad.message, "/scaling/mode"));
-        CHECK(contains(bad.message, "MetalFX"));
+        CHECK(contains(bad.message, "did you mean metalfx_spatial?"));
         bad = session.call("display.set",
                            parse(R"({"scaling": {"upscaler": "fsrr"}, "max_fps": 30})"));
         CHECK(bad.code == command::code::kNotFound);
-        CHECK(contains(bad.message, "it has bilinear, fsr (did you mean fsr?)"));
+        CHECK(contains(bad.message, "it has bilinear, fsr, metalfx_spatial (did you mean fsr?)"));
         CHECK(loop.value().max_fps() != 30);
         bad = session.call("display.set", parse(R"({"scaling": {"scale": 0.1}})"));
         CHECK(bad.code == command::code::kInvalidParams);

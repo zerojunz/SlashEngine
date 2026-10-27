@@ -1136,13 +1136,15 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                               ? Vec2{options.width, options.height}
                               : ui::settings(world).viewport;
     // The 3D world, seen through its current Camera3D, which fills the viewport, upscaled with FSR
-    // 2 where the scaling settings and the device take it.
+    // 2, FSR 3 or MetalFX where the scaling settings and the device take it.
     const render::Scaling& scaling = settings(world).scaling;
     std::optional<render::Fsr2Scaling> fsr2;
     if (render::uses_fsr2(scaling, settings(world).rendering_method, *device_)) {
+        const std::string_view mode = render::scaling_mode_on(scaling, *device_);
         fsr2 = render::Fsr2Scaling{.scale = scaling.scale,
                                    .sharpness = scaling.fsr_sharpness,
-                                   .fsr3 = scaling.mode == render::kFsr3};
+                                   .fsr3 = mode == render::kFsr3,
+                                   .metalfx = mode == render::kMetalFxTemporal};
     }
     std::optional<scene3d::Frame3D> scene = scene3d_.prepare(
         world, viewport.x, viewport.y, options.interpolation, options.clear,
@@ -2142,8 +2144,7 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
     }
     scaled_ = {};
     if (fsr2 && output_width > 0 && output_height > 0) {
-        scaled_ = {.upscaler =
-                       std::string(scaling.mode == render::kFsr3 ? render::kFsr3 : render::kFsr2),
+        scaled_ = {.upscaler = std::string(render::scaling_mode_on(scaling, *device_)),
                    .size = {.render_width = render::render_size(output_width, scaling.scale),
                             .render_height = render::render_size(output_height, scaling.scale),
                             .output_width = output_width,

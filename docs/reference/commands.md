@@ -3955,8 +3955,8 @@ Mesa's software Vulkan on an offscreen window has no mode that skips V-Sync:
 {"max_fps":0,"scaling":{"fsr_sharpness":0.2,"mode":"bilinear","scale":1.0},"vsync_mode":"enabled"}
 ```
 
-A scaling `mode` that isn't `bilinear`, `fsr`, `fsr2` or `fsr3` is an error at `/scaling/mode` (Godot's
-MetalFX modes aren't built yet), and an `upscaler` the game hasn't added is a `-32001`
+A scaling `mode` that isn't `bilinear`, `fsr`, `fsr2`, `fsr3`, `metalfx_spatial` or
+`metalfx_temporal` is an error at `/scaling/mode`, and an `upscaler` the game hasn't added is a `-32001`
 error at `/scaling/upscaler` that lists the ones it has. Either way nothing changes.
 [examples/render-scale](../../examples/render-scale/) changes the render scale while the game
 runs.
