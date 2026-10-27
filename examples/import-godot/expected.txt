@@ -495,6 +495,12 @@ project.import {"source":"godot"}
       ]
     }
   },
+  "internationalization": {
+    "locale": {
+      "fallback": "en",
+      "translations": ["godot/text/strings.csv"]
+    }
+  },
   "main_scene": "godot/main.scene.json",
   "name": "Coin Run",
   "physics_2d": {

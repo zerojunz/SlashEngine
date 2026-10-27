@@ -5675,3 +5675,60 @@ heightfield_mask = 3
     CHECK(unsupported(plan.report, "GPUParticlesCollisionHeightField3D.resolution") != nullptr);
     fs::remove_all(project);
 }
+
+TEST_CASE("importing a Godot project keeps its translations and internationalization settings") {
+    const fs::path project = "import_godot_translations";
+    fs::remove_all(project);
+    const fs::path folder = make_project(project / "godot");
+    std::string settings_text(kProject);
+    settings_text += R"(
+[internationalization]
+
+locale/translations=PackedStringArray("res://text/menu.en.translation", "res://text/menu.fr.translation", "res://text/pl.po", "res://text/old.de.translation", "res://text/gone.po")
+locale/fallback="fr"
+locale/test="pl"
+pseudolocalization/use_pseudolocalization=true
+pseudolocalization/expansion_ratio=0.25
+pseudolocalization/prefix="<"
+rendering/root_node_layout_direction=2
+)";
+    write(folder / "project.godot", settings_text);
+    write(folder / "text/menu.csv", "keys,en,fr\nPLAY,Play,Jouer\n");
+    write(folder / "text/menu.csv.import", R"([remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://b8l3q2v5n6m7k"
+
+[deps]
+
+files=["res://text/menu.en.translation", "res://text/menu.fr.translation"]
+
+source_file="res://text/menu.csv"
+dest_files=["res://text/menu.en.translation", "res://text/menu.fr.translation"]
+
+[params]
+
+compress=true
+delimiter=1
+)");
+    write(folder / "text/pl.po", "msgid \"\"\nmsgstr \"\"\n\"Language: pl\\n\"\n");
+    const importer::ImportPlan plan = plan_inside(project);
+    const json::Value settings = parse(files_of(plan).at("project.json"));
+    CHECK(slash::runtime::validate_project(settings).empty());
+    // The CSV file stands for both of its compiled translations, listed once.
+    CHECK(*settings.find("internationalization") == parse(R"({
+        "locale": {"translations": ["godot/text/menu.csv", "godot/text/pl.po"],
+                   "fallback": "fr", "test": "pl"},
+        "pseudolocalization": {"use_pseudolocalization": true, "expansion_ratio": 0.25,
+                               "prefix": "<"},
+        "rendering": {"root_node_layout_direction": "rtl"}})"));
+    const json::Value& report = plan.report;
+    CHECK(unsupported(report, "compiled translation").find("where")->as_string() ==
+          "res://text/old.de.translation");
+    CHECK(unsupported(report, "missing translation file").find("where")->as_string() ==
+          "res://text/gone.po");
+    CHECK(unsupported(report, "CSV translation delimiter").find("where")->as_string() ==
+          "text/menu.csv.import");
+    fs::remove_all(project);
+}

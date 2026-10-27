@@ -1584,8 +1584,50 @@ private:
 
     // Keeps a sound's import settings, its .import file's [params], and reports a model's
     // that change how it draws.
+    // A CSV file imported as translations: the .translation files Godot compiled it into, which
+    // project.godot lists, stand for it.
+    void learn_csv_translation(std::string_view text, const std::string& file,
+                               const std::string& csv) {
+        auto sections = godot::parse_project_settings(text);
+        if (!sections) {
+            problems_.add("unreadable file", file, sections.error().message);
+            return;
+        }
+        bool translation = false;
+        for (const Section& section : sections.value()) {
+            const Value* importer = section.property("importer");
+            translation =
+                translation || (section.tag == "remap" && importer != nullptr &&
+                                importer->is_string() && importer->text == "csv_translation");
+        }
+        if (!translation) {
+            return;
+        }
+        for (const Section& section : sections.value()) {
+            if (section.tag == "deps") {
+                if (const Value* files = section.property("dest_files"); files != nullptr) {
+                    for (const Value& dest : files->items) {
+                        if (dest.is_string()) {
+                            translation_sources_[strip_res(dest.text)] = csv;
+                        }
+                    }
+                }
+            }
+            if (const Value* delimiter = section.property("delimiter");
+                section.tag == "params" && delimiter != nullptr && delimiter->number() != 0.0) {
+                problems_.add("CSV translation delimiter", file,
+                              "SlashEngine reads translation CSV files with commas; write the "
+                              "file with commas");
+            }
+        }
+    }
+
     void learn_import_settings(std::string_view text, const std::string& file) {
         const std::string asset = without_extension(file);
+        if (extension_of(asset) == ".csv") {
+            learn_csv_translation(text, file, asset);
+            return;
+        }
         const bool sound = is_sound_file(extension_of(asset));
         const bool texture = is_texture_file(extension_of(asset));
         if (!sound && !texture && !is_model_file(extension_of(asset))) {
@@ -2068,6 +2110,7 @@ private:
             project["audio"]["enable_input"] = true;
         }
         convert_input(settings, project);
+        convert_internationalization(settings, project);
         for (const Section& section : settings) {
             if (section.tag != "autoload") {
                 continue;
@@ -2125,6 +2168,88 @@ private:
             }
         }
         add_file("project.json", json::write(project) + "\n");
+    }
+
+    // project.godot's [internationalization], which project.json's keeps by the same names. A
+    // CSV file's compiled .translation files stand for it, so the CSV file is listed once.
+    void convert_internationalization(const std::vector<Section>& settings, json::Value& project) {
+        const auto setting = [&](std::string_view key) {
+            return find_setting(settings, "internationalization", key);
+        };
+        json::Value out;
+        if (const Value* listed = setting("locale/translations"); listed != nullptr) {
+            json::Array translations;
+            for (const Value& item : listed->items) {
+                if (!item.is_string()) {
+                    continue;
+                }
+                std::string path = strip_res(item.text);
+                if (extension_of(path) == ".translation") {
+                    if (const auto found = translation_sources_.find(path);
+                        found != translation_sources_.end()) {
+                        path = found->second;
+                    } else {
+                        // name.<locale>.translation, compiled from name.csv
+                        const std::string csv = without_extension(without_extension(path)) + ".csv";
+                        if (!contains(files_, csv)) {
+                            problems_.add("compiled translation", item.text,
+                                          "no CSV file it was compiled from is in the project");
+                            continue;
+                        }
+                        path = csv;
+                    }
+                } else if (!contains(files_, path)) {
+                    problems_.add("missing translation file", item.text);
+                    continue;
+                }
+                if (const json::Value entry(destination(path)); !contains(translations, entry)) {
+                    translations.push_back(entry);
+                }
+            }
+            out["locale"]["translations"] = std::move(translations);
+        }
+        for (const char* key : {"fallback", "test"}) {
+            if (const Value* value = setting(std::string("locale/") + key);
+                value != nullptr && value->is_string()) {
+                out["locale"][key] = value->text;
+            }
+        }
+        for (const char* key : {"use_pseudolocalization", "replace_with_accents", "double_vowels",
+                                "fake_bidi", "override", "skip_placeholders"}) {
+            if (const Value* value = setting(std::string("pseudolocalization/") + key);
+                value != nullptr && value->kind == Value::Kind::Bool) {
+                out["pseudolocalization"][key] = value->boolean;
+            }
+        }
+        if (const Value* ratio = setting("pseudolocalization/expansion_ratio");
+            ratio != nullptr && ratio->is_number()) {
+            out["pseudolocalization"]["expansion_ratio"] = ratio->number();
+        }
+        for (const char* key : {"prefix", "suffix"}) {
+            if (const Value* value = setting(std::string("pseudolocalization/") + key);
+                value != nullptr && value->is_string()) {
+                out["pseudolocalization"][key] = value->text;
+            }
+        }
+        // Godot's enum: based on the application's locale, left to right, right to left, based on
+        // the system's locale.
+        if (const Value* direction = setting("rendering/root_node_layout_direction");
+            direction != nullptr && direction->is_number()) {
+            static constexpr std::array<std::string_view, 4> kDirections{
+                "application_locale", "ltr", "rtl", "system_locale"};
+            const auto index = static_cast<std::int64_t>(direction->number());
+            if (index >= 0 && index < 4) {
+                out["rendering"]["root_node_layout_direction"] =
+                    kDirections.at(static_cast<std::size_t>(index));
+            }
+        }
+        if (const Value* forced = setting("rendering/force_right_to_left_layout_direction");
+            forced != nullptr && forced->kind == Value::Kind::Bool) {
+            out["rendering"]["force_right_to_left_layout_direction"] = forced->boolean;
+        }
+        if (!out.is_null()) {
+            project["internationalization"] = std::move(out);
+        }
     }
 
     void convert_input(const std::vector<Section>& settings, json::Value& project) {
@@ -10712,10 +10837,11 @@ private:
     std::map<std::string, std::string> voxel_gis_written_; // by file and resource, its file or ""
     // Each converted mesh library's item names by Godot's item IDs, by the library's path.
     std::map<std::string, std::map<std::int64_t, std::string>> mesh_library_items_;
-    std::map<std::string, Section> sound_settings_;      // .import [params], by sound
-    std::map<std::string, Section> texture_3d_settings_; // .import [params], by Texture3D image
-    std::map<std::string, std::string> sounds_written_;  // by sound
-    std::map<std::string, std::string> streams_written_; // by file and resource
+    std::map<std::string, std::string> translation_sources_; // .translation -> its CSV file
+    std::map<std::string, Section> sound_settings_;          // .import [params], by sound
+    std::map<std::string, Section> texture_3d_settings_;     // .import [params], by Texture3D image
+    std::map<std::string, std::string> sounds_written_;      // by sound
+    std::map<std::string, std::string> streams_written_;     // by file and resource
     std::map<std::string, TileSetFile> tile_sets_;
     std::map<std::string, std::string> themes_written_;
     std::set<std::string> bus_layouts_written_;
