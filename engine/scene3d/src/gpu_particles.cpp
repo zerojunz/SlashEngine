@@ -28,7 +28,7 @@ std::uint64_t next_serial() {
 }
 
 // One GPUParticles3D's state: Godot's GPUParticles3D node and its particles storage, and the steps
-// kept. As canvas's GPUParticles2D emitter, without sub-emitters, trails or collision.
+// kept. As canvas's GPUParticles2D emitter, without sub-emitters or trails.
 struct Emitter {
     std::uint64_t serial = next_serial();
     // The node, and what the component said when last seen.
@@ -150,12 +150,18 @@ void set_emitting(Emitter& e, const GPUParticles3D& settings, bool emitting, boo
     e.storage_emitting = emitting;
 }
 
+// The attractors and colliders an emitter's steps take, in the particles' space.
+struct Touching {
+    std::vector<render::ParticleAttractor3D> attractors;
+    std::vector<render::ParticleCollider3D> colliders;
+};
+
 class Stepper {
 public:
     Stepper(const GPUParticles3D& settings, const Affine3D& transform, Vec3 velocity,
-            std::uint32_t seed, const std::vector<render::ParticleAttractor3D>& attractors)
+            std::uint32_t seed, const Touching& touching)
         : s_(settings), transform_(transform), velocity_(velocity), seed_(seed),
-          attractors_(attractors) {}
+          touching_(touching) {}
 
     // ParticlesStorage::_particles_process.
     void process(Emitter& e, double delta) const {
@@ -190,7 +196,9 @@ public:
         step.seed = seed_;
         step.fractional_delta = s_.fract_delta;
         step.clear = e.clear;
-        step.attractors = attractors_;
+        step.attractors = touching_.attractors;
+        step.colliders = touching_.colliders;
+        step.collision_size = std::max(s_.collision_base_size, 0.0F);
         e.clear = false;
         e.keep(step);
     }
@@ -253,13 +261,13 @@ private:
     const Affine3D& transform_;
     Vec3 velocity_;
     std::uint32_t seed_;
-    const std::vector<render::ParticleAttractor3D>& attractors_;
+    const Touching& touching_;
 };
 
 // One tick of an emitter: the node's part, which may set the component's emitting, then the
 // storage's. Returns whether a one_shot finished.
 bool tick(Emitter& e, GPUParticles3D& settings, const Affine3D& transform, std::string_view id,
-          double seconds, const std::vector<render::ParticleAttractor3D>& attractors = {}) {
+          double seconds, const Touching& touching = {}) {
     const std::uint32_t amount = amount_of(settings);
     if (!e.seen) {
         // As a node made with these properties: emitting set last.
@@ -308,7 +316,7 @@ bool tick(Emitter& e, GPUParticles3D& settings, const Affine3D& transform, std::
         velocity = (transform.origin - e.previous_position) * per_second;
     }
     e.previous_position = transform.origin;
-    Stepper(settings, transform, velocity, gpu_particle_seed(settings, id, e.restarts), attractors)
+    Stepper(settings, transform, velocity, gpu_particle_seed(settings, id, e.restarts), touching)
         .update(e, seconds);
     return finished;
 }
@@ -404,6 +412,35 @@ render::ParticleAttractor3D for_particles(const FoundAttractor& found,
         out.extents = {found.extents.x * scale.x, found.extents.y * scale.y,
                        found.extents.z * scale.z};
         out.field = found.field;
+    }
+    return out;
+}
+
+// A collider in the world, as the gpu_particles_3d system found it this tick.
+struct FoundCollider {
+    render::ColliderShape3D shape = render::ColliderShape3D::Sphere;
+    Affine3D transform;
+    Box3 bounds;
+    std::uint32_t cull_mask = 0;
+    float radius = 1.0F;
+    Vec3 extents;
+};
+
+// The collider as an emitter's steps take it, as for_particles places attractors.
+render::ParticleCollider3D collider_for_particles(const FoundCollider& found,
+                                                  const Affine3D* to_particles) {
+    const Affine3D to_collider =
+        to_particles != nullptr ? *to_particles * found.transform : found.transform;
+    const Vec3 scale = scale_of(to_collider);
+    render::ParticleCollider3D out;
+    out.shape = found.shape;
+    out.transform = particle_transform(world::orthonormalized(to_collider));
+    if (found.shape == render::ColliderShape3D::Sphere) {
+        const float radius = found.radius * ((scale.x + scale.y + scale.z) / 3.0F);
+        out.extents = {radius, radius, radius};
+    } else {
+        out.extents = {found.extents.x * scale.x, found.extents.y * scale.y,
+                       found.extents.z * scale.z};
     }
     return out;
 }
@@ -508,6 +545,37 @@ struct GpuParticleSystem3D {
         return found;
     }
 
+    // Every collider visible in the tree, in the order entities are stored.
+    static std::vector<FoundCollider> colliders(const world::World& world,
+                                                const world::Tree3D& tree) {
+        std::vector<FoundCollider> found;
+        const auto& ecs = world.ecs();
+        const auto add = [&](entt::entity entity, FoundCollider collider, Vec3 size) {
+            if (!tree.visible(entity)) {
+                return;
+            }
+            collider.transform = tree.global(entity);
+            collider.bounds = placed(collider.transform, size * -0.5F, size);
+            found.push_back(collider);
+        };
+        for (const entt::entity entity : ecs.view<const world::GPUParticlesCollisionSphere3D>()) {
+            const auto& c = ecs.get<const world::GPUParticlesCollisionSphere3D>(entity);
+            FoundCollider sphere;
+            sphere.cull_mask = c.cull_mask;
+            sphere.radius = c.radius;
+            add(entity, sphere, Vec3{c.radius, c.radius, c.radius} * 2.0F);
+        }
+        for (const entt::entity entity : ecs.view<const world::GPUParticlesCollisionBox3D>()) {
+            const auto& c = ecs.get<const world::GPUParticlesCollisionBox3D>(entity);
+            FoundCollider box;
+            box.shape = render::ColliderShape3D::Box;
+            box.cull_mask = c.cull_mask;
+            box.extents = c.size * 0.5F;
+            add(entity, box, c.size);
+        }
+        return found;
+    }
+
     void run_all(world::World& world, double tick_seconds) {
         auto& ecs = world.ecs();
         std::map<std::string, entt::entity, std::less<>> by_key;
@@ -520,19 +588,21 @@ struct GpuParticleSystem3D {
         }
         const world::Tree3D tree(world);
         const std::vector<FoundAttractor> found = attractors(world, tree);
-        std::vector<render::ParticleAttractor3D> paired;
+        const std::vector<FoundCollider> found_colliders = colliders(world, tree);
+        Touching paired;
         for (const entt::entity entity : ecs.view<GPUParticles3D>()) {
             auto& component = ecs.get<GPUParticles3D>(entity);
             const Affine3D transform = tree.global(entity);
             // The attractors whose bounds touch its visibility box and whose cull_mask shares a
             // bit with its layers, as Godot's scene cull pairs them; at most 32, and 7 fields.
-            paired.clear();
+            paired.attractors.clear();
+            paired.colliders.clear();
             const Box3 box = placed(transform, component.visibility_aabb_position,
                                     component.visibility_aabb_size);
             const Affine3D to_particles = transform.inverse();
             std::size_t fields_used = 0;
             for (const FoundAttractor& attractor : found) {
-                if (paired.size() >= render::kMaxParticleAttractors3D) {
+                if (paired.attractors.size() >= render::kMaxParticleAttractors3D) {
                     break;
                 }
                 if ((attractor.cull_mask & component.layers) == 0 ||
@@ -545,8 +615,20 @@ struct GpuParticleSystem3D {
                     }
                     ++fields_used;
                 }
-                paired.push_back(
+                paired.attractors.push_back(
                     for_particles(attractor, component.local_coords ? &to_particles : nullptr));
+            }
+            // The colliders, paired the same way; at most 32.
+            for (const FoundCollider& collider : found_colliders) {
+                if (paired.colliders.size() >= render::kMaxParticleColliders3D) {
+                    break;
+                }
+                if ((collider.cull_mask & component.layers) == 0 ||
+                    !intersects(collider.bounds, box)) {
+                    continue;
+                }
+                paired.colliders.push_back(collider_for_particles(
+                    collider, component.local_coords ? &to_particles : nullptr));
             }
             if (tick(emitters[key_of(world, entity)], component, transform, world.id_of(entity),
                      tick_seconds, paired)) {
@@ -564,7 +646,8 @@ struct GpuParticleSystem3D {
             part.bytes += world::kMapNodeBytes<decltype(emitters)> + json::heap_bytes(key) +
                           (emitter.steps.capacity() * sizeof(render::ParticleStep3D));
             for (const render::ParticleStep3D& step : emitter.steps) {
-                part.bytes += step.attractors.capacity() * sizeof(render::ParticleAttractor3D);
+                part.bytes += (step.attractors.capacity() * sizeof(render::ParticleAttractor3D)) +
+                              (step.colliders.capacity() * sizeof(render::ParticleCollider3D));
             }
             amount += emitter.amount;
             steps += emitter.kept().size();
@@ -682,7 +765,8 @@ void add_gpu_particles_system(world::World& world, ImageLoader images) {
          .priority = 1110,
          .threaded = true,
          .reads = {"Transform3D", "GPUParticlesAttractorSphere3D", "GPUParticlesAttractorBox3D",
-                   "GPUParticlesAttractorVectorField3D"},
+                   "GPUParticlesAttractorVectorField3D", "GPUParticlesCollisionSphere3D",
+                   "GPUParticlesCollisionBox3D"},
          .writes = {"GPUParticles3D", "assets"}});
 }
 

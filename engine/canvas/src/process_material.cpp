@@ -404,8 +404,8 @@ json::Value schema(bool list_ops) {
     properties["collision_mode"]["enum"] = std::move(modes);
     properties["collision_mode"]["default"] = "disabled";
     properties["collision_mode"]["description"] =
-        "What particles do on touching a LightOccluder2D with sdf_collision: bounce off "
-        "(rigid) or die (hide_on_contact).";
+        "What particles do on touching a collider (in 2D a LightOccluder2D with sdf_collision, "
+        "in 3D a GPUParticlesCollision3D): bounce off (rigid) or die (hide_on_contact).";
     properties["collision_friction"] =
         number("For rigid, the fraction of the speed along the surface lost.", 0.0, 0.0, 1.0);
     properties["collision_bounce"] =
@@ -766,6 +766,16 @@ Result<render::ParticleProcess3D> parse_process_material_3d(const json::Value& d
     triple("turbulence_noise_speed", out.turbulence_noise_speed);
     real("turbulence_noise_speed_random", out.turbulence_noise_speed_random);
     flag("attractor_interaction_enabled", out.attractor_interaction);
+    if (const json::Value* mode = doc.find("collision_mode"); mode != nullptr) {
+        for (const auto& [name, value] : kCollisionModes) {
+            if (mode->as_string() == name) {
+                out.collision_mode = value;
+            }
+        }
+    }
+    real("collision_friction", out.collision_friction);
+    real("collision_bounce", out.collision_bounce);
+    flag("collision_use_scale", out.collision_use_scale);
     return out;
 }
 

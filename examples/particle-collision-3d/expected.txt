@@ -1,0 +1,13 @@
+scene.open {"path":"main.scene.json"}
+{"entities":6,"path":"main.scene.json"}
+step {"ticks":120}
+{"tick":120,"ticks":120}
+particles.eval {"id":"sparks"}
+{"alive":43,"bounds":[-1.7964,-0.0098,-2.0533,3.9976,1.0174,4.1345]}
+sparks: 43 alive, 0 below the floor, 14 resting on it
+rain below the umbrella's middle: 0 under it, 21 beside it
+component.set {"components":{"GPUParticlesCollisionSphere3D":{"cull_mask":2}},"id":"umbrella"}
+{"changed":{"GPUParticlesCollisionSphere3D":{"cull_mask":2}},"id":"umbrella"}
+step {"ticks":60}
+{"tick":180,"ticks":60}
+rain below the umbrella's middle: 3 under it, 28 beside it

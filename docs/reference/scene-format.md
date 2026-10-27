@@ -4590,6 +4590,7 @@ software and OpenGL devices, `particles.eval` and headless runs run the same ste
 | `transform_align` | `std::string` | `"disabled"` | `z_billboard` turns each particle's z toward the camera, `y_to_velocity` its y along its velocity, `z_billboard_y_to_velocity` both |
 | `visibility_aabb_position`, `visibility_aabb_size` | `Vec3` | `[-4, -4, -4]`, `[8, 8, 8]` | A box in the emitter's space, as Godot's `visibility_aabb`: the emitter isn't drawn when it is out of view |
 | `cast_shadow`, `layers` | | `"on"`, `1` | As `MeshInstance3D`'s |
+| `collision_base_size` | `float` | `0.01` | How near, in meters, a particle comes to a [collider](#particle-collision-3d) before it touches |
 
 A process material's 3D fields, beside the [2D ones](#process-materials):
 
@@ -4605,6 +4606,7 @@ A process material's 3D fields, beside the [2D ones](#process-materials):
 | `particle_flag_rotate_y` | `false` | Turn each particle about its y axis by its angle |
 | `particle_flag_disable_z` | `false` | Keep particles in the xy plane |
 | `attractor_interaction_enabled` | `true` | [Attractors](#particle-attractors) push the particles |
+| `collision_mode`, `collision_friction`, `collision_bounce`, `collision_use_scale` | `"disabled"`, `0`, `0`, `false` | As in 2D, against [colliders](#particle-collision-3d) |
 
 - `scale_curve`, `orbit_velocity_curve`, `directional_velocity_curve` and
   `scale_over_velocity_curve` take one curve or one per axis, `{"x": [...], "y": [...], "z":
@@ -4666,6 +4668,36 @@ blows it with a gust and turns it in a swirl.
 - A process material with `attractor_interaction_enabled` off ignores attractors.
 - `particles.eval` with a `time` runs an emitter's settings apart from the world, so no
   attractor acts there.
+
+#### Particle collision (3D)
+
+`GPUParticlesCollisionSphere3D` and `GPUParticlesCollisionBox3D` are Godot 4.6's colliders: the
+particles of `GPUParticles3D`s whose process material has a `collision_mode` collide with them,
+by Godot's particle shader's formulas. Each tick the `gpu_particles_3d` system pairs every emitter
+with colliders as it pairs [attractors](#particle-attractors), at most 32 an emitter, and puts
+them into that tick's steps the same way. A particle touches a collider when it comes within the
+emitter's `collision_base_size` (times the average length of its axes with the process
+material's `collision_use_scale`), or is inside it; touching several, it leaves them all at
+once. `rigid` pushes it out and bounces it off by `collision_bounce` (sending back that share of
+its speed into the surface, when that speed is enough to bounce) and `collision_friction`
+(losing that share of its speed along it), and turbulence leaves it alone in that step;
+`hide_on_contact` kills it. [examples/particle-collision-3d](../../examples/particle-collision-3d/)
+bounces sparks off a floor and keeps rain off the ground under an umbrella.
+
+```json
+"floor": {
+  "components": {
+    "GPUParticlesCollisionBox3D": {"size": [12.0, 1.0, 8.0]},
+    "Transform3D": {"position": [1.5, -0.5, 0.0]}
+  }
+}
+```
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `cull_mask` | `uint32` | every layer | Collides with emitters whose `layers` share a bit |
+| `radius` | `float` | `1` | The sphere's radius (sphere only) |
+| `size` | `Vec3` | `[2, 2, 2]` | The box's size, centered on the entity (box only) |
 
 ## UI and text
 

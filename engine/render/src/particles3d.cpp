@@ -563,8 +563,90 @@ Vec3 attractor_force(const ParticleStep3D& step, Vec3 pos) {
     return force;
 }
 
+// Where a particle touches the step's colliders: the way out of them and how deep it is.
+struct Contact {
+    bool collided = false;
+    Vec3 normal;
+    float depth = 0.0F;
+};
+
+// How near a particle comes to a collider before it touches: collision_size, times the average
+// of its axes' lengths with collision_use_scale, as Godot's.
+float collision_size(const Particle3D& particle, const ParticleProcess3D& p,
+                     const ParticleStep3D& step) {
+    if (!p.collision_use_scale) {
+        return step.collision_size;
+    }
+    const float scale = length(xyz(particle.x)) + length(xyz(particle.y)) + length(xyz(particle.z));
+    return step.collision_size * (scale * 0.33333333333F);
+}
+
+// particles.glsl's collider loop: each sphere and box the particle at pos of the given size
+// touches, their ways out added up so it leaves them all.
+Contact collider_contact(const ParticleStep3D& step, Vec3 pos, float size) {
+    // Particles just touching a collider count as touching it.
+    constexpr float kEpsilon = 0.001F;
+    Contact contact;
+    for (const ParticleCollider3D& collider : step.colliders) {
+        const Affine place = Affine::of(collider.transform);
+        const Vec3 rel = pos - place.origin;
+        Vec3 normal;
+        float depth = 0.0F;
+        bool touches = false;
+        if (collider.shape == ColliderShape3D::Sphere) {
+            const float d = length(rel) - (size + collider.extents.x);
+            if (d <= kEpsilon) {
+                touches = true;
+                depth = -d;
+                normal = normalize(rel);
+            }
+        } else {
+            const Vec3 local{dot(rel, place.x), dot(rel, place.y), dot(rel, place.z)};
+            const Vec3 abs_pos{std::abs(local.x), std::abs(local.y), std::abs(local.z)};
+            const Vec3 sgn{sign(local.x), sign(local.y), sign(local.z)};
+            const Vec3 ext = collider.extents;
+            if (abs_pos.x > ext.x || abs_pos.y > ext.y || abs_pos.z > ext.z) {
+                // Outside the box: from its nearest point.
+                const Vec3 closest{std::min(abs_pos.x, ext.x), std::min(abs_pos.y, ext.y),
+                                   std::min(abs_pos.z, ext.z)};
+                const Vec3 out = abs_pos - closest;
+                depth = length(out) - size;
+                if (depth <= kEpsilon) {
+                    touches = true;
+                    normal = place.basis(times(normalize(out), sgn));
+                    depth = -depth;
+                }
+            } else {
+                // Inside: out through the nearest face.
+                const Vec3 axis_len = ext - abs_pos;
+                Vec3 axis{0.0F, 0.0F, 1.0F};
+                if (axis_len.x < axis_len.y && axis_len.x < axis_len.z) {
+                    axis = {1.0F, 0.0F, 0.0F};
+                } else if (axis_len.y < axis_len.x && axis_len.y < axis_len.z) {
+                    axis = {0.0F, 1.0F, 0.0F};
+                }
+                touches = true;
+                depth = dot(times(axis, axis_len), Vec3{1.0F, 1.0F, 1.0F}) + size;
+                normal = place.basis(times(axis, sgn));
+            }
+        }
+        if (!touches) {
+            continue;
+        }
+        if (!contact.collided) {
+            contact = {.collided = true, .normal = normal, .depth = depth};
+        } else {
+            Vec3 c = contact.normal * contact.depth;
+            c = c + (normal * std::max(0.0F, depth - dot(normal, c)));
+            contact.normal = normalize(c);
+            contact.depth = length(c);
+        }
+    }
+    return contact;
+}
+
 void process(Particle3D& particle, const ParticleProcess3D& p, const ParticleStep3D& step,
-             std::uint32_t number, float delta, bool& active) {
+             std::uint32_t number, float delta, const Contact& contact, bool& active) {
     std::uint32_t seed = hash(number + 1U + step.seed);
     Display display;
     Dynamics dynamics;
@@ -634,8 +716,22 @@ void process(Particle3D& particle, const ParticleProcess3D& p, const ParticleSte
         velocity = v < 0.0F ? Vec3{} : normalize(velocity) * v;
     }
 
-    // Turbulence before limiting.
-    if (p.turbulence_enabled) {
+    const bool bounced = contact.collided && p.collision_mode == ParticleCollision::Rigid;
+    if (bounced) {
+        const float response = dot(contact.normal, velocity);
+        const float bounces =
+            std::abs(response) >= 2.0F / std::clamp(p.collision_bounce + 1.0F, 1.0F, 2.0F) ? 1.0F
+                                                                                           : 0.0F;
+        origin = origin + (contact.normal * contact.depth);
+        velocity = velocity - (contact.normal * response);
+        velocity = mix(velocity, Vec3{}, std::clamp(p.collision_friction, 0.0F, 1.0F));
+        velocity = velocity - (contact.normal * (response * (p.collision_bounce * bounces)));
+    } else if (contact.collided && p.collision_mode == ParticleCollision::HideOnContact) {
+        active = false;
+    }
+
+    // Turbulence before limiting, but not in a bounce.
+    if (p.turbulence_enabled && !bounced) {
         const float influence =
             sample_curve(curve(p, ParticleParam::TurbulenceInfluence), life, 1.0F);
         const Vec3 direction = normalize(noise_direction(p, step, origin));
@@ -780,8 +876,12 @@ void step_particle(Particle3D& particle, std::uint32_t index, std::uint32_t tota
     if (restart && active) {
         start(particle, p, step, number, active);
     }
+    Contact contact;
+    if (active && p.collision_mode != ParticleCollision::Disabled && !step.colliders.empty()) {
+        contact = collider_contact(step, xyz(particle.origin), collision_size(particle, p, step));
+    }
     if (active) {
-        process(particle, p, step, number, delta, active);
+        process(particle, p, step, number, delta, contact, active);
     }
     particle.flags &= ~kParticleActive;
     if (active) {
