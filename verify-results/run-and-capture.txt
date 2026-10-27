@@ -1,0 +1,11 @@
+## run --headless --ticks 60
+{"level":"info","msg":"platform started","headless":true,"video_driver":"none","width":1280,"height":720}
+{"level":"info","msg":"run finished","ticks":60,"quit_requested":false,"headless":true}
+{"entities":22,"headless":true,"quit_requested":false,"renderer":"null","ticks":60}
+exit 0
+## call frame.capture
+{"drawn":{"lods":3,"meshes":4},"height":720,"path":"captures/DemoLevel.png","width":1280}
+exit 0
+## call frame.capture (Lvl_ThirdPerson)
+{"drawn":{"lods":21,"meshes":55},"height":720,"path":"captures/Lvl_ThirdPerson.png","width":1280}
+exit 0

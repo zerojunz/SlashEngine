@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "main_scene": "Content/Demo/DemoLevel.scene.json",
+  "name": "Third Person BP Game Template",
+  "physics_3d": {
+    "gravity": 9.8
+  },
+  "version": "0.1.0"
+}

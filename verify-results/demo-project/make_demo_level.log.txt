@@ -1,0 +1,38 @@
+[2026.10.27-10.59.57:505][  0]LogPython: Warning: [demo] made floor
+[2026.10.27-10.59.57:505][  0]LogPython: Warning: [demo] made cube
+[2026.10.27-10.59.57:505][  0]LogPython: Warning: [demo] made sphere with override material
+[2026.10.27-10.59.57:506][  0]LogPython: Warning: [demo] made cylinder
+[2026.10.27-10.59.57:507][  0]LogPython: Warning: [demo] made directional light
+[2026.10.27-10.59.57:507][  0]LogPython: Warning: [demo] made point light
+[2026.10.27-10.59.57:507][  0]LogPython: Warning: [demo] made spot light
+[2026.10.27-10.59.57:507][  0]LogPython: Warning: [demo] made sky atmosphere
+[2026.10.27-10.59.57:507][  0]LogPython: Warning: [demo] made sky light
+[2026.10.27-10.59.57:507][  0]LogPython: Warning: [demo] made exponential height fog
+[2026.10.27-10.59.57:507][  0]LogPython: Warning: [demo] made camera actor
+[2026.10.27-10.59.57:508][  0]LogPython: Warning: [demo] made player start
+[2026.10.27-10.59.57:508][  0]LogPython: Warning: [demo] made trigger box
+[2026.10.27-10.59.57:509][  0]LogPython: Warning: [demo] made ambient sound
+[2026.10.27-10.59.57:651][  0]LogPython: Warning: [demo] skipped niagara system:
+[2026.10.27-10.59.59:921][  0]LogPython: Warning: [demo] made third person character
+[2026.10.27-10.59.59:921][  0]LogPython: Warning: [demo] Landscape API: create_input_component, create_pcg_data_from_actor, landscape_export_heightmap_to_render_target, landscape_import_heightmap_from_render_target, landscape_import_weightmap_from_render_target, render_heightmap
+[2026.10.27-10.59.59:921][  0]LogPython: Warning: [demo] skipped landscape:
+[2026.10.27-10.59.59:929][  0]LogPython: Warning: [demo] saved /Game/Demo/DemoLevel: True
+[2026.10.27-10.59.59:929][  0]LogInit: Display: LogPython: Warning: [demo] made floor
+[2026.10.27-10.59.59:929][  0]LogInit: Display: LogPython: Warning: [demo] made cube
+[2026.10.27-10.59.59:929][  0]LogInit: Display: LogPython: Warning: [demo] made sphere with override material
+[2026.10.27-10.59.59:929][  0]LogInit: Display: LogPython: Warning: [demo] made cylinder
+[2026.10.27-10.59.59:929][  0]LogInit: Display: LogPython: Warning: [demo] made directional light
+[2026.10.27-10.59.59:929][  0]LogInit: Display: LogPython: Warning: [demo] made point light
+[2026.10.27-10.59.59:929][  0]LogInit: Display: LogPython: Warning: [demo] made spot light
+[2026.10.27-10.59.59:929][  0]LogInit: Display: LogPython: Warning: [demo] made sky atmosphere
+[2026.10.27-10.59.59:929][  0]LogInit: Display: LogPython: Warning: [demo] made sky light
+[2026.10.27-10.59.59:929][  0]LogInit: Display: LogPython: Warning: [demo] made exponential height fog
+[2026.10.27-10.59.59:929][  0]LogInit: Display: LogPython: Warning: [demo] made camera actor
+[2026.10.27-10.59.59:929][  0]LogInit: Display: LogPython: Warning: [demo] made player start
+[2026.10.27-10.59.59:929][  0]LogInit: Display: LogPython: Warning: [demo] made trigger box
+[2026.10.27-10.59.59:929][  0]LogInit: Display: LogPython: Warning: [demo] made ambient sound
+[2026.10.27-10.59.59:929][  0]LogInit: Display: LogPython: Warning: [demo] skipped niagara system:
+[2026.10.27-10.59.59:929][  0]LogInit: Display: LogPython: Warning: [demo] made third person character
+[2026.10.27-10.59.59:929][  0]LogInit: Display: LogPython: Warning: [demo] Landscape API: create_input_component, create_pcg_data_from_actor, landscape_export_heightmap_to_render_target, landscape_import_heightmap_from_render_target, landscape_import_weightmap_from_render_target, render_heightmap
+[2026.10.27-10.59.59:929][  0]LogInit: Display: LogPython: Warning: [demo] skipped landscape:
+[2026.10.27-10.59.59:929][  0]LogInit: Display: LogPython: Warning: [demo] saved /Game/Demo/DemoLevel: True

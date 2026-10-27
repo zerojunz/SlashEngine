@@ -1,0 +1,16 @@
+{
+ "context_dir": [
+  "assign",
+  "cast",
+  "copy",
+  "export_text",
+  "get_editor_property",
+  "import_text",
+  "set_editor_properties",
+  "set_editor_property",
+  "static_struct",
+  "to_dict",
+  "to_tuple"
+ ],
+ "classes_with_get_system_summary": []
+}

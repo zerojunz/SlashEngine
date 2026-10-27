@@ -1,0 +1,27 @@
+{
+ "level": "/Game/Demo/DemoLevel",
+ "saved": true,
+ "made": [
+  "floor",
+  "cube",
+  "sphere with override material",
+  "cylinder",
+  "directional light",
+  "point light",
+  "spot light",
+  "sky atmosphere",
+  "sky light",
+  "exponential height fog",
+  "camera actor",
+  "player start",
+  "trigger box",
+  "ambient sound",
+  "third person character"
+ ],
+ "skipped": {
+  "niagara system": "Traceback (most recent call last):\n  File \"/Users/daniellee/SlashRunner/unreal-demo/make_demo_level.py\", line 21, in wrap\n    fn()\n  File \"/Users/daniellee/SlashRunner/unreal-demo/make_demo_level.py\", line 150, in _\n    raise RuntimeError('spawn_actor_from_object gave nothing for NS_JumpPad')\nRuntimeError: spawn_actor_from_object gave nothing for NS_JumpPad\n",
+  "landscape": "Traceback (most recent call last):\n  File \"/Users/daniellee/SlashRunner/unreal-demo/make_demo_level.py\", line 21, in wrap\n    fn()\n  File \"/Users/daniellee/SlashRunner/unreal-demo/make_demo_level.py\", line 165, in _\n    raise RuntimeError('no Python call creates landscape components (looked at: %s)' % names)\nRuntimeError: no Python call creates landscape components (looked at: ['create_input_component', 'create_pcg_data_from_actor', 'landscape_export_heightmap_to_render_target', 'landscape_import_heightmap_from_render_target', 'landscape_import_weightmap_from_render_target', 'render_heightmap'])\n"
+ },
+ "error": "",
+ "engine": "5.8.4-58902052+++UE5+Release-5.8"
+}

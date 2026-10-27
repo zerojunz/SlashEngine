@@ -1,0 +1,40 @@
+[2026.10.27-11.14.23:598][  0]LogConfig: Set CVar [[SplineComponent.OnlyUpdateActiveSpline:0]]
+[2026.10.27-11.14.23:599][  0]LogInit: macOS 27.0.1 (26A434)
+[2026.10.27-11.14.23:599][  0]LogInit: Model: Mac17,8
+[2026.10.27-11.14.23:599][  0]LogInit: CPU: Apple M5 Pro
+[2026.10.27-11.14.23:599][  0]LogInit: CPU Page size=16384, Cores=18, HT=18
+[2026.10.27-11.14.23:599][  0]LogInit: Computer: Daniels-MacBook-Pro.local
+[2026.10.27-11.14.23:599][  0]LogInit: User: daniellee
+[2026.10.27-11.14.23:599][  0]LogInit: High frequency timer resolution =24.000000 MHz
+[2026.10.27-11.14.23:599][  0]LogInit: Power Source: Battery Power
+[2026.10.27-11.14.23:599][  0]LogInit: Xcode developer folder path: /Applications/Xcode.app/Contents/Developer, version 27.1.0
+[2026.10.27-11.14.23:599][  0]LogInit: Memory total: Physical=48.0GB (48GB approx) Pagefile=2.0GB Virtual=50.0GB
+[2026.10.27-11.14.23:599][  0]LogCsvProfiler: Display: Metadata set : extradevelopmentmemorymb="0"
+[2026.10.27-11.14.23:599][  0]LogModuleManager: InternalLoadLibrary: 'IoStoreOnDemandCore' ('/Users/Shared/Epic Games/UE_5.8/Engine/Binaries/Mac/libUnrealEditor-IoStoreOnDemandCore.dylib')
+[2026.10.27-11.14.23:599][  0]LogModuleManager: InternalLoadLibrary: 'BandwidthDebugDelegates' ('/Users/Shared/Epic Games/UE_5.8/Engine/Binaries/Mac/libUnrealEditor-BandwidthDebugDelegates.dylib')
+[2026.10.27-11.14.23:599][  0]LogModuleManager: InternalLoadLibrary: 'ClientBandwidthDebugVisualizer' ('/Users/Shared/Epic Games/UE_5.8/Engine/Binaries/Mac/libUnrealEditor-ClientBandwidthDebugVisualizer.dylib')
+[2026.10.27-11.14.23:606][  0]LogModuleManager: InternalLoadLibrary: 'BandwidthMeasurementTool' ('/Users/Shared/Epic Games/UE_5.8/Engine/Binaries/Mac/libUnrealEditor-BandwidthMeasurementTool.dylib')
+[2026.10.27-11.14.23:607][  0]LogModuleManager: InternalLoadLibrary: 'DownlinkBandwidthManager' ('/Users/Shared/Epic Games/UE_5.8/Engine/Binaries/Mac/libUnrealEditor-DownlinkBandwidthManager.dylib')
+[2026.10.27-11.14.23:607][  0]LogObj: Display: Attempting to load config data for Default__DownlinkBandwidthManagerConfig before the Class has been constructed/registered/linked (likely during module loading or early startup). This will result in the load silently failing and should be fixed.
+[2026.10.27-11.14.23:607][  0]LogModuleManager: InternalLoadLibrary: 'Chaos' ('/Users/Shared/Epic Games/UE_5.8/Engine/Binaries/Mac/libUnrealEditor-Chaos.dylib')
+[2026.10.27-11.14.23:607][  0]LogModuleManager: InternalLoadLibrary: 'GeometryCore' ('/Users/Shared/Epic Games/UE_5.8/Engine/Binaries/Mac/libUnrealEditor-GeometryCore.dylib')
+[2026.10.27-11.14.23:607][  0]LogSpline: Registered spline type: TypeId=0x54E3AD22, Impl=MultiSpline, Value=Vector
+[2026.10.27-11.14.23:607][  0]LogModuleManager: InternalLoadLibrary: 'ChaosSolverEngine' ('/Users/Shared/Epic Games/UE_5.8/Engine/Binaries/Mac/libUnrealEditor-ChaosSolverEngine.dylib')
+[2026.10.27-11.14.23:607][  0]LogChaosDD: Chaos Debug Draw Startup
+[2026.10.27-11.14.23:607][  0]LogInit: Physics initialised using underlying interface: Chaos
+[2026.10.27-11.14.23:607][  0]LogModuleManager: InternalLoadLibrary: 'DirectoryWatcher' ('/Users/Shared/Epic Games/UE_5.8/Engine/Binaries/Mac/libUnrealEditor-DirectoryWatcher.dylib')
+[2026.10.27-11.14.23:610][  0]LogInit: Using OS detected language (en-US).
+[2026.10.27-11.14.23:610][  0]LogInit: Using OS detected locale (en-MY).
+[2026.10.27-11.14.23:611][  0]LogTextLocalizationManager: No specific localization for 'en-US' exists, so 'en' will be used for the language.
+[2026.10.27-11.14.23:620][  0]LogApplePlatformMisc: Network path changed (IsConstrained=0, IsExpensive=0)
+[2026.10.27-11.14.23:864][  0]LogAppleController: [HandleMouseConnected] Handling physical mouse connection...
+[2026.10.27-11.14.23:865][  0]LogObj: Display: Attempting to load config data for Default__SlateThemeManager before the Class has been constructed/registered/linked (likely during module loading or early startup). This will result in the load silently failing and should be fixed.
+[2026.10.27-11.14.23:866][  0]LogModuleManager: InternalLoadLibrary: 'Settings' ('/Users/Shared/Epic Games/UE_5.8/Engine/Binaries/Mac/libUnrealEditor-Settings.dylib')
+[2026.10.27-11.14.23:866][  0]LogModuleManager: InternalLoadLibrary: 'InputCore' ('/Users/Shared/Epic Games/UE_5.8/Engine/Binaries/Mac/libUnrealEditor-InputCore.dylib')
+[2026.10.27-11.14.23:866][  0]LogSlate: New Slate User Created. Platform User Id 0, User Index 0, Is Virtual User: 0
+[2026.10.27-11.14.23:866][  0]LogSlate: Slate User Registered.  User Index 0, Is Virtual User: 0
+[2026.10.27-11.14.23:910][  0]LogInit: Running DelayedAutoRegister Phase PreRHIInit
+[2026.10.27-11.14.23:912][  0]LogModuleManager: InternalLoadLibrary: 'MetalRHI' ('/Users/Shared/Epic Games/UE_5.8/Engine/Binaries/Mac/libUnrealEditor-MetalRHI.dylib')
+[2026.10.27-11.14.24:442][  0]Message dialog closed, result: Ok, title: Message, text: Xcode Metal Compiler error: error: error: cannot execute tool 'metal' due to missing Metal Toolchain; use: xcodebuild -downloadComponent MetalToolchain
+
+[2026.10.27-11.14.24:442][  0]LogMac: FPlatformMisc::RequestExit(1, <NoCallSiteInfo>)
