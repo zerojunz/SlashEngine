@@ -25,7 +25,7 @@ editor you installed. The editor runs `UnrealEditor-Cmd <project>.uproject -run=
 | `export.json` | Each level's actors and their components with their settings and the values of their C++ classes' properties, the Blueprints, the Enhanced Input actions and mapping contexts, and each mesh's bounds and collision |
 | `meshes/<package>.glb` | Each static and skeletal mesh the levels place, as Unreal's glTF exporter writes it |
 | `materials/<package>.glb` | Each material a component overrides a mesh's slot with, on a preview mesh |
-| `text/<package>.t3d` | Base materials and material functions as Unreal writes them as text, read for world-aligned materials |
+| `text/<package>.t3d` | Base materials, material functions and Niagara systems as Unreal writes them as text: materials read for world-aligned textures, systems for their emitters |
 | `animations/<package>.glb` | Each animation sequence a skeletal mesh component plays, on its skeleton |
 | `sounds/<package>.wav` | Each sound wave the levels play |
 | `landscapes/<level>/<actor>.r16` | Each landscape's heights, its streaming proxies' too, as Unreal's own `.r16` heightmaps are |
@@ -231,10 +231,17 @@ splines, grass or foliage.
 
 ## Particles
 
-A `NiagaraComponent`'s system becomes Godot's particles. The export reads each emitter's stack
-through `NiagaraExternalEditUtilities`, which Unreal Engine 5.8 added (an older editor reports
-"Niagara emitters" and the component emits nothing): its sim target, its emitter data, each
-module of its four scripts with its inputs' values and dynamic input chains, and its renderers.
+A `NiagaraComponent`'s system becomes Godot's particles. Python can't reach a Niagara system's
+module stacks, so the export writes the system as text (T3D, as copying it in the editor does)
+to `text/<package>.t3d`, with the display names of the enums its modules' static switches use,
+and the importer reads each emitter from that text (`niagara_from_text` in
+`tools/importer/src/unreal_text.cpp`): its sim target, `bLocalSpace`, each script's modules in
+stack order (walked back from the script's output node along the parameter map, a module
+turned off in the stack left out), and its enabled renderers with their meshes. An input's value
+is what the stack's override node feeds it (a linked parameter, a dynamic input with its own
+inputs, or a typed value), else the script's rapid iteration parameter for it, else the module's
+static switch. A system the editor can't write as text is reported as "Niagara emitters", and
+its component emits nothing.
 An emitter simulated on the CPU becomes a `CPUParticles3D`; one simulated on the GPU becomes a
 `GPUParticles3D` and a `.process_material.json` file beside the system's `.uasset`, named
 `<system>_<emitter>`. A system of one emitter is the component's entity; with several, each enabled
@@ -249,7 +256,7 @@ parameter's link is read from the system's user variables.
 | --- | --- |
 | `EmitterState` | `one_shot` for `Loop Behavior` `Once`; a number of loops is reported and loops for ever |
 | `SpawnRate`, `SpawnBurst_Instantaneous` | `amount` as the rate times the longest lifetime plus the burst; a burst alone is `explosiveness: 1` |
-| `InitializeParticle` | `lifetime` (the longest) and `lifetime_randomness`, `color`, the sprite size or mesh scale as `scale_min`/`scale_max`, and the sprite rotation angle |
+| `InitializeParticle` | `lifetime` (the longest) and `lifetime_randomness`, `color`, the sprite size or mesh scale as `scale_min`/`scale_max`, and the sprite rotation angle; `Lifetime Mode` and `Sprite Size Mode` pick the direct or random values |
 | `AddVelocity` (in particle spawn) | `direction`, `initial_velocity_min`/`max` and, for a random vector, the `spread` of a cone through its range's corners |
 | `AddVelocityInCone` | `direction` along `Cone Axis`, `spread` half of `Cone Angle`, and the speed |
 | `GravityForce` | `gravity` |
@@ -267,10 +274,12 @@ parameter's link is read from the system's user variables.
 
 Over-life modules (`ScaleColor`, `ColorFromCurve`, `ScaleSpriteSize`, `SubUVAnimation` and the
 like), event handlers, other renderers, sprite materials (particles draw in their color) and
-every other module are reported, once per kind. Unreal 5.8's documentation doesn't spell out how
-an input's value is written, so the converter reads Unreal's exported text loosely (numbers,
-vectors, colors, enums and dynamic inputs' `Minimum`/`Maximum` by name) and reports a value it
-can't read as "Niagara input that couldn't be read" rather than guessing it.
+every other module (Set Parameters among them) are reported, once per kind. A parameter store's
+bytes don't say their types, so four bytes are read as a float unless they hold a small whole
+number or -1 (true), and four floats as a vector a color input also takes. The converter reads
+values loosely (numbers, vectors, colors, enums and dynamic inputs' `Minimum`/`Maximum` by name)
+and reports a value it can't read as "Niagara input that couldn't be read" rather than guessing
+it.
 
 ## Blueprints and C++
 
