@@ -887,16 +887,23 @@ struct PathTrace3D {
 // with a size (Light3D::size) sends shadow_samples rays to points across it, so its shadows are
 // soft, each pixel's at points of its own. The opaque meshes are shaded with what the rays found
 // in place of the light's shadow map, which blended meshes still sample.
+// With ambient_occlusion, the environment's SSAO (Ssao3D, which must be enabled) is traced instead:
+// each opaque pixel sends ambient_occlusion_samples rays over the half of the sphere its normal
+// faces, cosine weighted, up to the SSAO's radius, and the share nothing stops, to the SSAO's
+// power, is its occlusion, which lights it as SSAO's does.
 inline constexpr std::size_t kMaxRayShadowLights = 8;
 inline constexpr std::uint32_t kMaxRayShadowSamples = 64;
 struct RayTracing3D {
     bool shadows = false;
     std::uint32_t shadow_samples = 1; // 1 to kMaxRayShadowSamples
+    bool ambient_occlusion = false;
+    std::uint32_t ambient_occlusion_samples = 4; // 1 to kMaxRayShadowSamples
 
     bool operator==(const RayTracing3D&) const = default;
 };
-// Reads project.json's rendering object's ray_tracing: shadows and shadow_samples. What is missing
-// or of the wrong type keeps its default, and samples are held to their range.
+// Reads project.json's rendering object's ray_tracing: shadows, shadow_samples,
+// ambient_occlusion and ambient_occlusion_samples. What is missing or of the wrong type keeps its
+// default, and samples are held to their range.
 [[nodiscard]] RayTracing3D ray_tracing(const json::Value& rendering);
 
 // What a frame's meshes are seen from and lit by. Matrices are column-major, as Mat4.

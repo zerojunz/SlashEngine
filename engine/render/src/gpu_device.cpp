@@ -1644,7 +1644,7 @@ public:
                     return depth.error();
                 }
             }
-            traced_ = traces_shadows(*frame.scene);
+            traced_ = traces_rays(*frame.scene);
             if (uses_prepass(*frame.scene) || traced_) {
                 if (auto ready = prepare_prepass(scene_width, scene_height); !ready) {
                     SDL_CancelGPUCommandBuffer(commands);
@@ -1680,7 +1680,8 @@ public:
                     return ready.error();
                 }
             }
-            if (uses_ssao(*frame.scene)) {
+            // Rays trace the occlusion in SSAO's place where the project asks.
+            if (uses_ssao(*frame.scene) && !(traced_ && ray_occlusion(*frame.scene))) {
                 if (auto ready =
                         prepare_ssao(scene_width, scene_height, frame.scene->ssao.settings);
                     !ready) {
@@ -1771,7 +1772,7 @@ public:
             return ready.error();
         }
         // Captures trace their shadows' rays as frames do.
-        traced_ = traces_shadows(scene);
+        traced_ = traces_rays(scene);
         if (traced_) {
             for (const auto& ready : {prepare_prepass(size, size), prepare_screen(size, size),
                                       prepare_ray_shadows(size, size)}) {
@@ -3578,12 +3579,19 @@ private:
                 SDL_BeginGPURenderPass(commands, targets.data(), motion ? 2 : 1, &prepass_depth);
             draw_batches(pass, true);
             SDL_EndGPURenderPass(pass);
-            if (ssao) {
+            const std::optional<RayOcclusion> occlusion =
+                traced ? ray_occlusion(scene) : std::nullopt;
+            if (ssao && !occlusion) {
                 draw_ssao(commands, scene);
                 copy_to_screen(commands, ssao_targets_.textures.at(kSsaoFinal), 0);
             }
-            if (traced && trace_ray_shadows(commands, scene, camera.view_projection)) {
-                lights->screen[2] = 1.0F;
+            if (traced) {
+                const std::vector<RayShadowLight> traced_lights = ray_shadow_lights(scene);
+                if (trace_rays(commands, scene, traced_lights, occlusion, camera.view_projection)) {
+                    lights->screen[2] = traced_lights.empty() ? 0.0F : 1.0F;
+                } else if (occlusion) {
+                    lights->ssao[0] = 0.0F;
+                }
             }
         } else if (fsr2 != nullptr) {
             // A frame with no meshes is all sky.
@@ -4172,13 +4180,15 @@ private:
         return {};
     }
 
-    // Whether a frame traces its shadows' rays: on a device with rays, in Forward+ with
-    // ray-traced shadows and a light that has a ray slot.
-    [[nodiscard]] bool traces_shadows(const Scene3D& scene) const {
-        return rays_ != nullptr && !ray_shadow_lights(scene).empty();
+    // Whether a frame traces rays: on a device with rays, in Forward+ with ray-traced shadows and
+    // a light that has a ray slot, or with ray-traced ambient occlusion and SSAO.
+    [[nodiscard]] bool traces_rays(const Scene3D& scene) const {
+        return rays_ != nullptr &&
+               (!ray_shadow_lights(scene).empty() || ray_occlusion(scene).has_value());
     }
 
-    // The two textures of visibilities the rays write, for a frame of width x height.
+    // The textures the rays write (lights' visibilities, then the occlusion), for a frame of
+    // width x height.
     Result<void> prepare_ray_shadows(std::uint32_t width, std::uint32_t height) {
         if (ray_shadows_.textures[0] != nullptr && ray_shadows_.width == width &&
             ray_shadows_.height == height) {
@@ -4186,9 +4196,8 @@ private:
         }
         release_ray_shadows();
         for (SDL_GPUTexture*& texture : ray_shadows_.textures) {
-            auto made =
-                pass_texture(width, height, kHdrFormat, SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE,
-                             1, "ray-traced shadows");
+            auto made = pass_texture(width, height, kHdrFormat,
+                                     SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE, 1, "rays");
             if (!made) {
                 release_ray_shadows();
                 return made.error();
@@ -4210,11 +4219,12 @@ private:
         ray_shadows_.height = 0;
     }
 
-    // After the prepass: the frame's shadows traced through the draws that cast them, into the
-    // screen array's layers 2 and 3. False, with the shadow maps left to light the frame, where
-    // the rays failed.
-    bool trace_ray_shadows(SDL_GPUCommandBuffer* commands, const Scene3D& scene,
-                           const Mat4& view_projection) {
+    // After the prepass: the frame's lights' shadows and its occlusion traced through the draws
+    // that cast shadows, into the screen array's layers 2 and 3, and 0. False, with the shadow
+    // maps left to light the frame and no occlusion, where the rays failed.
+    bool trace_rays(SDL_GPUCommandBuffer* commands, const Scene3D& scene,
+                    std::span<const RayShadowLight> lights,
+                    const std::optional<RayOcclusion>& occlusion, const Mat4& view_projection) {
         std::vector<RayDraw> draws;
         draws.reserve(mesh_draws_.size());
         for (std::size_t i = 0; i < mesh_draws_.size(); ++i) {
@@ -4233,23 +4243,27 @@ private:
                              .transform = draw.transform,
                              .layers = draw.layers});
         }
-        const std::vector<RayShadowLight> lights = ray_shadow_lights(scene);
-        if (auto traced = rays_->trace_shadows(
-                commands, draws, lights,
-                ray_shadow_frame(scene, view_projection, scene_width_, scene_height_),
-                {.depth = prepass_.depth,
-                 .normals = prepass_.normals,
-                 .visibility = ray_shadows_.textures});
+        if (auto traced =
+                rays_->trace(commands, draws, lights, occlusion,
+                             ray_shadow_frame(scene, view_projection, scene_width_, scene_height_),
+                             {.depth = prepass_.depth,
+                              .normals = prepass_.normals,
+                              .outputs = ray_shadows_.textures});
             !traced) {
             if (!ray_failure_logged_) {
-                log::warn("ray-traced shadows failed; shadow maps light the frame",
+                log::warn("tracing rays failed; shadow maps light the frame",
                           {{"error", traced.error().message}});
                 ray_failure_logged_ = true;
             }
             return false;
         }
-        copy_to_screen(commands, ray_shadows_.textures[0], 2);
-        copy_to_screen(commands, ray_shadows_.textures[1], 3);
+        if (!lights.empty()) {
+            copy_to_screen(commands, ray_shadows_.textures[0], 2);
+            copy_to_screen(commands, ray_shadows_.textures[1], 3);
+        }
+        if (occlusion) {
+            copy_to_screen(commands, ray_shadows_.textures[2], 0);
+        }
         return true;
     }
 
@@ -6545,10 +6559,10 @@ private:
     Screen screen_;
     SDL_GPUTexture* no_screen_ = nullptr;
     // Ray queries on Vulkan where the GPU has them (src/vulkan_rays.hpp), the textures they
-    // write a frame's shadows into, and whether this frame traces them.
+    // write a frame's shadows and occlusion into, and whether this frame traces them.
     std::unique_ptr<VulkanRays> rays_;
     struct RayShadowTextures {
-        std::array<SDL_GPUTexture*, 2> textures{};
+        std::array<SDL_GPUTexture*, 3> textures{};
         std::uint32_t width = 0;
         std::uint32_t height = 0;
     };

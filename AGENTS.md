@@ -1016,9 +1016,13 @@ features, which SDL's options don't take) and falls back to a device without the
 structure per mesh and LOD from copies of its SDL buffers (kept while `Mesh::version` stays), a
 top-level one a frame and `shaders/ray_shadows.comp` (GLSL with `GL_EXT_ray_query`, as glslang's
 HLSL has none; `cmake/compile_ray_shaders.cmake` writes `ray_shadows_shaders.hpp`), whose two
-textures the GPU device copies into the screen's layers 2 and 3. A change to the ray math goes in
-both. `tests/test_ray_tracing.cpp` holds Vulkan to the software device and
-`examples/ray-traced-shadows-3d` traces an avenue.
+textures the GPU device copies into the screen's layers 2 and 3. `ambient_occlusion` traces the
+environment's SSAO instead (`ray_occlusion` and `run_ray_occlusion` in `src/ray_shadows.cpp`:
+`ambient_occlusion_samples` cosine-weighted rays a pixel up to `ssao_radius`, made occlusion with
+Godot's intensity and power), into the screen's layer 0 where SSAO's goes; the compute shader
+writes it to a third texture. A change to the ray math goes in both.
+`tests/test_ray_tracing.cpp` holds Vulkan to the software device,
+`examples/ray-traced-shadows-3d` traces an avenue and `examples/ray-traced-ao-3d` a room.
 
 TAA is Godot 4.6's `use_taa` (project.json's `rendering.anti_aliasing.quality.use_taa`,
 `Scene3D::use_taa`), in Forward+ only. `src/taa.hpp` holds what devices share: the jitter

@@ -35,6 +35,8 @@ constexpr std::uint32_t kGroupSize = 8;
 // Frames whose rays can be in flight at once, each with its own descriptors, uniforms and
 // top-level structure; a frame waits for the GPU when all are busy.
 constexpr std::size_t kSlots = 4;
+// The textures the shader writes: two of lights' visibilities, then the ambient occlusion.
+constexpr std::size_t kOutputs = 3;
 
 // The uniforms of shaders/ray_shadows.comp's Frame, in std140.
 struct RayLightUniforms {
@@ -47,9 +49,10 @@ struct RayShadowsUniforms {
     std::array<std::array<float, 4>, 3> view_rows{};
     std::array<std::uint32_t, 4> size{};
     std::array<std::uint32_t, 4> options{};
+    std::array<float, 4> occlusion{}; // radius, power, samples, then intensity
     std::array<RayLightUniforms, kMaxRayShadowLights> lights{};
 };
-static_assert(sizeof(RayShadowsUniforms) == 64 + 48 + 16 + 16 + (48 * kMaxRayShadowLights));
+static_assert(sizeof(RayShadowsUniforms) == 64 + 48 + 16 + 16 + 16 + (48 * kMaxRayShadowLights));
 
 // Vulkan's calls this needs, from the device SDL made.
 struct Calls {
@@ -289,13 +292,15 @@ public:
             return vulkan_error("making the rays' sampler", made);
         }
 
-        const std::array<VkDescriptorType, 7> types{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
+        // By binding: shaders/ray_shadows.comp's.
+        const std::array<VkDescriptorType, 8> types{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
                                                     VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                                                     VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                                                     VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
                                                     VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
                                                     VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                                                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
+                                                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                                    VK_DESCRIPTOR_TYPE_STORAGE_IMAGE};
         std::array<VkDescriptorSetLayoutBinding, types.size()> bindings{};
         for (std::uint32_t i = 0; i < types.size(); ++i) {
             bindings.at(i).binding = i;
@@ -348,7 +353,7 @@ public:
         std::array<VkDescriptorPoolSize, 5> sizes{{
             {VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, kSlots},
             {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 * kSlots},
-            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2 * kSlots},
+            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 * kSlots},
             {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, kSlots},
             {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kSlots},
         }};
@@ -388,9 +393,10 @@ public:
         return {};
     }
 
-    Result<void> trace_shadows(SDL_GPUCommandBuffer* commands, std::span<const RayDraw> draws,
-                               std::span<const RayShadowLight> lights, const RayShadowFrame& frame,
-                               const RayShadowTargets& targets) override {
+    Result<void> trace(SDL_GPUCommandBuffer* commands, std::span<const RayDraw> draws,
+                       std::span<const RayShadowLight> lights,
+                       const std::optional<RayOcclusion>& occlusion, const RayShadowFrame& frame,
+                       const RayTargets& targets) override {
         auto* native = static_cast<VkCommandBuffer>(SDL_SlashGPUNativeCommandBuffer(commands));
         if (native == VK_NULL_HANDLE) {
             return Error{ErrorCode::PlatformFailure,
@@ -505,32 +511,40 @@ public:
             every_layer = every_layer && layer != 0;
         }
         uniforms.options = {every_mask && every_layer ? 1U : 0U, 0, 0, 0};
+        if (occlusion) {
+            uniforms.options[1] = 1;
+            uniforms.occlusion = {occlusion->radius, occlusion->power,
+                                  static_cast<float>(occlusion->samples), occlusion->intensity};
+        }
         std::memcpy(slot.uniforms.mapped, &uniforms, sizeof(uniforms));
 
         void* depth_view = nullptr;
         void* normal_view = nullptr;
-        std::array<void*, 2> visibility_views{};
-        std::array<VkImage, 2> visibility_images{};
+        std::array<void*, kOutputs> output_views{};
+        std::array<VkImage, kOutputs> output_images{};
         Uint32 format = 0;
         SDL_SlashGPUNativeTexture(sdl_, targets.depth, &depth_view, &format);
         SDL_SlashGPUNativeTexture(sdl_, targets.normals, &normal_view, &format);
-        for (std::size_t i = 0; i < 2; ++i) {
-            visibility_images.at(i) = handle_of<VkImage>(SDL_SlashGPUNativeTexture(
-                sdl_, targets.visibility.at(i), &visibility_views.at(i), &format));
+        std::array<VkImageView, kOutputs> outputs{};
+        for (std::size_t i = 0; i < kOutputs; ++i) {
+            output_images.at(i) = handle_of<VkImage>(SDL_SlashGPUNativeTexture(
+                sdl_, targets.outputs.at(i), &output_views.at(i), &format));
+            if (output_views.at(i) == nullptr) {
+                return Error{ErrorCode::PlatformFailure,
+                             "the rays' textures have no Vulkan images"};
+            }
+            outputs.at(i) = handle_of<VkImageView>(output_views.at(i));
         }
-        if (depth_view == nullptr || normal_view == nullptr || visibility_views[0] == nullptr ||
-            visibility_views[1] == nullptr) {
+        if (depth_view == nullptr || normal_view == nullptr) {
             return Error{ErrorCode::PlatformFailure,
-                         "the ray shadows' textures have no Vulkan images"};
+                         "the prepass's textures have no Vulkan images"};
         }
         write_descriptors(slot, handle_of<VkImageView>(depth_view),
-                          handle_of<VkImageView>(normal_view),
-                          {handle_of<VkImageView>(visibility_views[0]),
-                           handle_of<VkImageView>(visibility_views[1])});
+                          handle_of<VkImageView>(normal_view), outputs);
 
         // The visibilities are written in the general layout, and go back to the one SDL keeps
         // sampled textures in.
-        image_barriers(native, visibility_images, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        image_barriers(native, output_images, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                        VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
         calls_.bind_pipeline(native, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_);
@@ -540,7 +554,7 @@ public:
                         (frame.height + kGroupSize - 1) / kGroupSize, 1);
         calls_.set_event(native, slot.done, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         slot.recorded = true;
-        image_barriers(native, visibility_images, VK_IMAGE_LAYOUT_GENERAL,
+        image_barriers(native, output_images, VK_IMAGE_LAYOUT_GENERAL,
                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
                        VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
@@ -884,12 +898,12 @@ private:
     }
 
     void write_descriptors(Slot& slot, VkImageView depth, VkImageView normals,
-                           const std::array<VkImageView, 2>& visibility) {
+                           const std::array<VkImageView, kOutputs>& outputs) {
         VkWriteDescriptorSetAccelerationStructureKHR structure{};
         structure.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
         structure.accelerationStructureCount = 1;
         structure.pAccelerationStructures = &slot.top.structure;
-        const std::array<VkDescriptorImageInfo, 4> images{{
+        const std::array<VkDescriptorImageInfo, 5> images{{
             {.sampler = sampler_,
              .imageView = depth,
              .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
@@ -897,17 +911,20 @@ private:
              .imageView = normals,
              .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
             {.sampler = VK_NULL_HANDLE,
-             .imageView = visibility[0],
+             .imageView = outputs[0],
              .imageLayout = VK_IMAGE_LAYOUT_GENERAL},
             {.sampler = VK_NULL_HANDLE,
-             .imageView = visibility[1],
+             .imageView = outputs[1],
+             .imageLayout = VK_IMAGE_LAYOUT_GENERAL},
+            {.sampler = VK_NULL_HANDLE,
+             .imageView = outputs[2],
              .imageLayout = VK_IMAGE_LAYOUT_GENERAL},
         }};
         const VkDescriptorBufferInfo uniforms{
             .buffer = slot.uniforms.buffer, .offset = 0, .range = sizeof(RayShadowsUniforms)};
         const VkDescriptorBufferInfo layers{
             .buffer = slot.layers.buffer, .offset = 0, .range = VK_WHOLE_SIZE};
-        std::array<VkWriteDescriptorSet, 7> writes{};
+        std::array<VkWriteDescriptorSet, 8> writes{};
         for (std::uint32_t i = 0; i < writes.size(); ++i) {
             VkWriteDescriptorSet& write = writes.at(i);
             write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -926,6 +943,8 @@ private:
         writes[5].pBufferInfo = &uniforms;
         writes[6].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         writes[6].pBufferInfo = &layers;
+        writes[7].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        writes[7].pImageInfo = &images[4];
         calls_.update_sets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0,
                            nullptr);
     }
@@ -940,11 +959,11 @@ private:
         calls_.barrier(native, from, to, 0, 1, &barrier, 0, nullptr, 0, nullptr);
     }
 
-    void image_barriers(VkCommandBuffer native, const std::array<VkImage, 2>& images,
+    void image_barriers(VkCommandBuffer native, const std::array<VkImage, kOutputs>& images,
                         VkImageLayout from, VkImageLayout to, VkPipelineStageFlags from_stage,
                         VkAccessFlags from_access, VkPipelineStageFlags to_stage,
                         VkAccessFlags to_access) const {
-        std::array<VkImageMemoryBarrier, 2> barriers{};
+        std::array<VkImageMemoryBarrier, kOutputs> barriers{};
         for (std::size_t i = 0; i < images.size(); ++i) {
             VkImageMemoryBarrier& barrier = barriers.at(i);
             barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
