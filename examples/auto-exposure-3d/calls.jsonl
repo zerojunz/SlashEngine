@@ -8,3 +8,5 @@
 {"jsonrpc":"2.0","id":8,"method":"frame.capture","params":{"time":12,"points":[[160,90],[40,90],[160,170]]}}
 {"jsonrpc":"2.0","id":9,"method":"component.set","params":{"id":"camera","components":{"CameraAttributesPractical":{"auto_exposure_scale":0.8}}}}
 {"jsonrpc":"2.0","id":10,"method":"frame.capture","params":{"time":12.25,"points":[[160,90],[40,90],[160,170]]}}
+{"jsonrpc":"2.0","id":11,"method":"component.set","params":{"id":"camera","components":{"CameraAttributesPractical":{"auto_exposure_metering":"log_average","auto_exposure_scale":0.4}}}}
+{"jsonrpc":"2.0","id":12,"method":"frame.capture","params":{"time":18.25,"points":[[160,90],[40,90],[160,170]],"path":"shots/log_average.png"}}

@@ -3175,7 +3175,8 @@ private:
     // exposure compensation (Bias, 1 by default) scales Godot's default scale, and its range,
     // EV100 from -10 to 20 with the extended luminance range or 0.03 to 8 candelas a square
     // meter without, becomes ISO sensitivities over the import's light units (a sun of 10 lux is
-    // energy 1, so a white surface it lights is 1 where Unreal's is 10 / pi).
+    // energy 1, so a white surface it lights is 1 where Unreal's is 10 / pi). It meters in log
+    // space, as Unreal's histogram does, so a few bright pools don't darken the rest.
     [[nodiscard]] json::Value auto_exposure() const {
         static constexpr std::string_view kSection = "/Script/Engine.RendererSettings";
         const auto on = [&](std::string_view key, bool fallback) {
@@ -3206,6 +3207,7 @@ private:
         out["auto_exposure_scale"] = tidy(0.4 * std::exp2(bias - 1.0));
         out["auto_exposure_min_sensitivity"] = tidy(least);
         out["auto_exposure_max_sensitivity"] = tidy(most);
+        out["auto_exposure_metering"] = "log_average";
         return out;
     }
 
