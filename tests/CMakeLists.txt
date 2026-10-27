@@ -13,6 +13,7 @@ if(EMSCRIPTEN)
         test_particle_compute_3d.cpp
         test_mesh.cpp
         test_post.cpp
+        test_ray_tracing.cpp
         test_reflection.cpp
         test_render.cpp
         test_shadow.cpp
@@ -121,6 +122,7 @@ add_executable(slash_tests
     test_post.cpp
     test_project_map.cpp
     test_ragdoll.cpp
+    test_ray_tracing.cpp
     test_reflect.cpp
     test_reflection.cpp
     test_render.cpp

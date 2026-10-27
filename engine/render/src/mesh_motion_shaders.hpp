@@ -2506,7 +2506,9 @@ cbuffer Shadows : register(b2, space3) {
 // group of their own, the mesh pipeline's otherwise empty group 0. The screen's layers are the
 // frame's size, white when the frame draws neither: layer 0 the screen-space ambient occlusion,
 // layer 1 the screen-space reflections (each pixel's reflection in RGB, premultiplied by how much
-// of the sky's it replaces, in A). The reflection probes' cubes are in probe_atlas, mirrored along
+// of the sky's it replaces, in A), and with ray-traced shadows (screen.z) layers 2 and 3 their
+// lights' visibility, a light a channel in order of its ray slot (light.shadow.w - 1), four a layer
+// (src/ray_shadows.hpp). The reflection probes' cubes are in probe_atlas, mirrored along
 // z (src/reflection.cpp), each linear, its levels filtered as radiance.hlsl filters the sky's.
 Texture2DArray<float4> screen_texture : register(t14, space2);
 TextureCubeArray<float4> probe_atlas : register(t15, space2);
@@ -2732,10 +2734,10 @@ float4 volumetric_fog_process(float2 uv, float view_depth) {
 }
 #endif
 
-// A lit color at a point in the world, linear, as the frame's target takes it: fogged unless the
-// material disables it, then left linear for Forward+, or times the exposure, tonemapped unless
 )hlsl",
-R"hlsl(// the post pass does it, and as sRGB, as Godot's scene.glsl ends. In Forward+ with volumetric
+R"hlsl(// A lit color at a point in the world, linear, as the frame's target takes it: fogged unless the
+// material disables it, then left linear for Forward+, or times the exposure, tonemapped unless
+// the post pass does it, and as sRGB, as Godot's scene.glsl ends. In Forward+ with volumetric
 // fog, the plain fog is seen through the volumetric fog in front of it, as Godot's
 // scene_forward_clustered.glsl blends them; pixel is the fragment's place on the target.
 float4 finish(float3 color, float alpha, float3 world, float2 pixel) {
@@ -2997,16 +2999,19 @@ float3 frame_direction(VertexOutput input, float3 v) {
 }
 
 // One light's share of a pixel's diffuse and specular light, unless its cull mask leaves out the
-// draw's layers, with the shading normal and the one shadows offset along (geometry).
+// draw's layers, with the shading normal and the one shadows offset along (geometry). An opaque
+// pixel of a frame with ray-traced shadows (ray_pixel, else -1) takes a light's with a ray slot
+// from the screen texture in place of its shadow map's.
 void add_light(Light light, float3 world, float3 normal, float3 geometry, float3 view, float3 f0,
-               float roughness, float metallic, inout float3 diffuse_light,
+               float roughness, float metallic, int2 ray_pixel, inout float3 diffuse_light,
                inout float3 specular_light) {
     if (((uint)light.params.w & options.z) == 0u) {
         return;
     }
     // A baked light's light is in the lightmap already, as Godot skips BAKE_STATIC lights.
     if (light.shadow.y != 0.0 && (options.x & kLightmap) != 0u) {
-        return;
+)hlsl",
+R"hlsl(        return;
     }
     float type = light.direction.w;
     float slot = light.shadow.x;
@@ -3016,8 +3021,7 @@ void add_light(Light light, float3 world, float3 normal, float3 geometry, float3
     float attenuation = 1.0;
     if (!directional) {
         float distance = length(to_light);
-)hlsl",
-R"hlsl(        attenuation = omni_attenuation(distance, light.position.w, light.params.x);
+        attenuation = omni_attenuation(distance, light.position.w, light.params.x);
         if (type == kSpot) {
             float cone = light.params.y;
             float scos = max(dot(-normalize(to_light), light.direction.xyz), cone);
@@ -3025,7 +3029,15 @@ R"hlsl(        attenuation = omni_attenuation(distance, light.position.w, light.
             attenuation *= 1.0 - pow(rim, light.params.z);
         }
     }
-    if (slot >= 0.0) {
+    float ray = light.shadow.w;
+#ifdef CLUSTERED
+    if (ray_pixel.x >= 0 && ray > 0.0) {
+        uint k = (uint)ray - 1u;
+        attenuation *= screen_texture.Load(int4(ray_pixel, 2 + (int)(k >> 2u), 0))[k & 3u];
+        ray = -1.0;
+    }
+#endif
+    if (ray >= 0.0 && slot >= 0.0) {
         attenuation *= light_shadow(directional, (uint)slot, world, geometry, toward);
     }
     light_compute(normal, toward, view, light.color.rgb, attenuation, f0, roughness, metallic,
@@ -3263,7 +3275,8 @@ float3 sample_probe(Probe probe, float3 direction, float level) {
 // first. reflect_probes in src/reflection.cpp is its CPU twin.
 void reflect_probes(float3 world, float3 ray, float3 normal, float roughness,
                     inout float4 reflection_accum, inout float4 ambient_accum) {
-    uint count = (uint)reflections.x;
+)hlsl",
+R"hlsl(    uint count = (uint)reflections.x;
     for (uint index = 0u; index < ((count + 31u) / 32u) * 32u; ++index) {
         uint at = (index / 32u) * 32u + (31u - index % 32u);
         if (at >= count) {
@@ -3278,8 +3291,7 @@ void reflect_probes(float3 world, float3 ray, float3 normal, float roughness,
         }
         float3 extents = probe.extents.xyz;
         float3 local_pos = float3(dot(probe.rows[0], float4(world, 1.0)),
-)hlsl",
-R"hlsl(                                  dot(probe.rows[1], float4(world, 1.0)),
+                                  dot(probe.rows[1], float4(world, 1.0)),
                                   dot(probe.rows[2], float4(world, 1.0)));
         if (any(abs(local_pos) > extents)) {
             continue;
@@ -3515,7 +3527,8 @@ float bicubic_w1(float a) {
 float bicubic_w2(float a) {
     return (1.0 / 6.0) * (a * (a * (-3.0 * a + 3.0) + 3.0) + 1.0);
 }
-float bicubic_w3(float a) {
+)hlsl",
+R"hlsl(float bicubic_w3(float a) {
     return (1.0 / 6.0) * (a * a * a);
 }
 
@@ -3531,8 +3544,7 @@ float3 lightmap_light(float2 uv) {
         float2 at = uv * size + 0.5;
         float2 iuv = floor(at);
         float2 fuv = at - iuv;
-)hlsl",
-R"hlsl(        float2 w0 = float2(bicubic_w0(fuv.x), bicubic_w0(fuv.y));
+        float2 w0 = float2(bicubic_w0(fuv.x), bicubic_w0(fuv.y));
         float2 w1 = float2(bicubic_w1(fuv.x), bicubic_w1(fuv.y));
         float2 w2 = float2(bicubic_w2(fuv.x), bicubic_w2(fuv.y));
         float2 w3 = float2(bicubic_w3(fuv.x), bicubic_w3(fuv.y));
@@ -3569,9 +3581,11 @@ float3 capture_light(float3 n) {
 // albedo, with the shading normal and the one shadows offset along (geometry), its ambient light
 // darkened by ao and its direct light by ao_direct. A lightmapped pixel's ambient light is its
 // lightmap's, and a captured one's its light probes', either standing in for the scene's and the
-// probes', as Godot's USE_LIGHTMAP.
+// probes', as Godot's USE_LIGHTMAP. An opaque pixel of a frame with ray-traced shadows is at
+// ray_pixel, else -1.
 float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry, float metallic,
-                 float roughness, float3 emitted, float ao, float ao_direct, float4 ssr) {
+                 float roughness, float3 emitted, float ao, float ao_direct, float4 ssr,
+                 int2 ray_pixel) {
     bool lightmapped = (options.x & kLightmap) != 0u;
     bool captured = (options.x & kLightmapCapture) != 0u;
     float specular = surface.z;
@@ -3583,7 +3597,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
     uint count = (uint)camera.w;
     for (uint i = 0u; i < count; ++i) {
         add_light(lights[i], input.world, normal, geometry, view, f0, roughness, metallic,
-                  diffuse_light, specular_light);
+                  ray_pixel, diffuse_light, specular_light);
     }
 #ifdef CLUSTERED
     // The omni and spot lights of the pixel's cluster: its tile's lights within its slice's
@@ -3602,7 +3616,7 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
             uint bit = firstbitlow(mask);
             mask &= mask - 1u;
             add_light(clustered_lights[word * 32u + bit], input.world, normal, geometry, view, f0,
-                      roughness, metallic, diffuse_light, specular_light);
+                      roughness, metallic, ray_pixel, diffuse_light, specular_light);
         }
     }
 #endif
@@ -3743,7 +3757,8 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
         float4 bumps = float4(albedo_bump[0].a, albedo_bump[1].a, albedo_bump[2].a,
                               albedo_bump[3].a);
         float4 weights = (terrain_flags & kTerrainDepthBlending) != 0u
-                             ? depth_blended_weights(metallic_texel, bumps)
+)hlsl",
+R"hlsl(                             ? depth_blended_weights(metallic_texel, bumps)
                              : metallic_texel;
         // Splat weights that are all 0 leave the ground black rather than undefined.
         float sum = max(weights.x + weights.y + weights.z + weights.w, 1.0e-6);
@@ -3755,8 +3770,7 @@ float4 fs_main(VertexOutput input, bool front : SV_IsFrontFace) : SV_Target0 {
                             ? normal_roughness[i]
                             : float4(0.5, 0.5, 1.0, 1.0);
             float share = weights[i] / sum;
-)hlsl",
-R"hlsl(            blended += srgb_to_linear(albedo_bump[i].rgb) *
+            blended += srgb_to_linear(albedo_bump[i].rgb) *
                        lerp((float3)1.0, texel.rgb, terrain_opacity[i]) * share;
             rough += nr.a * share;
             ground += unpack_ground_normal(nr) * share;
@@ -3825,6 +3839,7 @@ R"hlsl(            blended += srgb_to_linear(albedo_bump[i].rgb) *
     float ao = 1.0;
     float ao_direct = 1.0;
     float4 ssr = float4(0.0, 0.0, 0.0, -1.0);
+    int2 ray_pixel = int2(-1, -1);
 #ifdef CLUSTERED
     if (decal_info.x > 0.0) {
         // Forward+'s decals change the surface before it is lit.
@@ -3840,11 +3855,14 @@ R"hlsl(            blended += srgb_to_linear(albedo_bump[i].rgb) *
     if (ssao.w != 0.0 && opaque) {
         ssr = screen_texture.Load(int4((int2)input.position.xy, 1, 0));
     }
+    if (screen.z != 0.0 && opaque) {
+        ray_pixel = (int2)input.position.xy;
+    }
 #endif
     float3 lit = base;
     if ((flags & kUnshaded) == 0u) {
         lit = lit_color(input, base, normal, geometry, metallic, roughness, emitted, ao,
-                        ao_direct, ssr);
+                        ao_direct, ssr, ray_pixel);
     }
     // One call, so the tonemappers are inlined once and the shader stays small.
     return finish(lit, alpha, input.world, input.position.xy);

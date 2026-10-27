@@ -489,6 +489,8 @@ struct Settings {
     float mesh_lod_threshold = 1.0F;
     // rendering.occlusion_culling: whether OccluderInstance3Ds hide meshes from the camera.
     render::OcclusionCulling occlusion_culling{};
+    // rendering.ray_tracing: the ray-traced effects devices that trace rays draw.
+    render::RayTracing3D ray_tracing{};
 };
 void set_settings(world::World& world, const Settings& settings);
 // The settings given to the world, or the defaults.

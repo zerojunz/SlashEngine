@@ -184,6 +184,10 @@ struct Light3D {
     bool baked = false;
     // How much it lights volumetric fog, as Godot's light_volumetric_fog_energy.
     float volumetric_fog_energy = 1.0F;
+    // How big it is, which softens its ray-traced shadows (RayTracing3D): an omni or spot light's
+    // radius, as Godot's light_size, or a directional light's angular diameter in degrees, as
+    // light_angular_distance. 0 is a point, whose shadows are hard.
+    float size = 0.0F;
 
     bool operator==(const Light3D&) const = default;
 };
@@ -875,6 +879,26 @@ struct PathTrace3D {
     bool operator==(const PathTrace3D&) const = default;
 };
 
+// Ray-traced effects in Forward+, drawn by devices that trace rays (RenderDevice::ray_tracing)
+// and the raster way by the rest. With shadows, after the prepass draws the opaque meshes' depth
+// and normals, rays from each opaque pixel toward each of the first kMaxRayShadowLights lights
+// with shadow set find what is in the way, through every mesh drawn (but those whose shadows are
+// off or whose layers miss the light's caster mask) and not just what a shadow map sees; a light
+// with a size (Light3D::size) sends shadow_samples rays to points across it, so its shadows are
+// soft, each pixel's at points of its own. The opaque meshes are shaded with what the rays found
+// in place of the light's shadow map, which blended meshes still sample.
+inline constexpr std::size_t kMaxRayShadowLights = 8;
+inline constexpr std::uint32_t kMaxRayShadowSamples = 64;
+struct RayTracing3D {
+    bool shadows = false;
+    std::uint32_t shadow_samples = 1; // 1 to kMaxRayShadowSamples
+
+    bool operator==(const RayTracing3D&) const = default;
+};
+// Reads project.json's rendering object's ray_tracing: shadows and shadow_samples. What is missing
+// or of the wrong type keeps its default, and samples are held to their range.
+[[nodiscard]] RayTracing3D ray_tracing(const json::Value& rendering);
+
 // What a frame's meshes are seen from and lit by. Matrices are column-major, as Mat4.
 struct Scene3D {
     // The world to the camera's space: the inverse of the camera's transform.
@@ -915,6 +939,8 @@ struct Scene3D {
     std::optional<ProbeCapture> capture{}; // NOLINT(readability-redundant-member-init)
     // Set for a frame whose 3D is path traced (PathTrace3D).
     std::optional<PathTrace3D> path_trace{}; // NOLINT(readability-redundant-member-init)
+    // Ray-traced shadows, in Forward+ (RayTracing3D).
+    RayTracing3D ray_tracing;
 
     // Godot's default Camera3D: 75 degrees across a square target, from 0.05 to 4000.
     static std::array<float, 16> perspective_default();

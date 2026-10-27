@@ -138,4 +138,11 @@ struct PathHit {
 [[nodiscard]] std::optional<PathHit> path_hit(const PathScene& scene, const Float3& origin,
                                               const Float3& direction, float distance);
 
+// Whether a shadow ray from origin along direction (unit length) meets a triangle within distance
+// that casts shadows for caster_mask, as trace_paths's shadow rays find one: alpha tested, with
+// textures, through alpha scissors and by seed through blended alpha.
+[[nodiscard]] bool path_blocked(const PathScene& scene, const PathTextures* textures,
+                                const Float3& origin, const Float3& direction, float distance,
+                                std::uint32_t caster_mask, std::uint32_t seed);
+
 } // namespace slash::render::detail
