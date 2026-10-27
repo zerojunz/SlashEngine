@@ -3,6 +3,7 @@
 #include "slash/core/expression.hpp"
 #include "slash/core/result.hpp"
 
+#include <cstddef>
 #include <map>
 #include <memory>
 #include <set>
@@ -141,5 +142,22 @@ struct Placeholders {
 // come in the same order, since they take their values so; String::format's names must be the
 // source's (an unknown one would show as written).
 [[nodiscard]] std::string placeholder_problem(std::string_view source, std::string_view translated);
+
+// Writing translation files as Godot's tools write them.
+// Text for a .po file's quotes, as Godot's c_escape: backslashes, quotes, line breaks and tabs.
+[[nodiscard]] std::string po_escape(std::string_view text);
+// A keyword and its string, a line per line of text, as POTGenerator::_write_msgid:
+// "msgid \"Play\"\n".
+[[nodiscard]] std::string po_string(std::string_view keyword, std::string_view text);
+// A CSV field, quoted when it must be, as FileAccess::store_csv_line.
+[[nodiscard]] std::string csv_field(std::string_view text, char delimiter = ',');
+// A CSV record: where it is in the text (its line break left out) and its fields.
+struct CsvRow {
+    std::size_t begin = 0;
+    std::size_t end = 0;
+    std::vector<std::string> fields;
+};
+// A CSV file's records, as read_csv reads them: lines joined while a quote is open.
+[[nodiscard]] std::vector<CsvRow> csv_rows(std::string_view text, char delimiter = ',');
 
 } // namespace slash::l10n

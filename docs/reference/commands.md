@@ -3111,6 +3111,45 @@ errors.
 {"checked":{"locales":["fr","ar","pl"],"messages":7,"scenes":1},"counts":{"glyphs":4,"missing":8,"stale":1},"errors":[{"check":"glyphs","file":"main.scene.json","id":"options","locale":"ar","message":"\"الخيارات\" needs 8 glyphs its font lacks in ar; give the control a font with them","path":"/entities/options"}],"errors_more":3,"warnings":[{"check":"missing","file":"translations/menu.csv","locale":"fr","message":"\"Open\" (shop) has no translation","path":""}],"warnings_more":8}
 ```
 
+### l10n.translate
+
+Drafts the translations a locale lacks with a model from
+[`providers.json`](providers.md), so a person or agent reviews them rather than writes them.
+The model is told the storyboard's glossary (`term/*`), characters and tone, up to 20
+translations the file already has, the locale's plural rule and each message with its context
+and plural. Each draft is checked before anything is written: it must have one form, or one per
+plural form, none empty, the source's placeholders as [`l10n.check`](#l10ncheck) holds them,
+and none of the glossary's words to `avoid`; drafts that fail are `rejected`, with why.
+
+The drafts go into the first listed `.po` or CSV file that has the locale, or `file`. A `.po`
+file marks each one `#, fuzzy`, gettext's mark for a translation to review, which Godot and the
+game leave out until the mark is taken off; drafts waiting there aren't drafted again. A CSV
+file has no such mark, so drafts go in as translations, filling the locale's empty cell or
+adding a row, and plural messages are `skipped` (they need a `.po` file). The file is staged
+with undo.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `locale` | string | | The locale to draft, such as `fr` or `pt_BR`; one no listed file has fails at `/locale` |
+| `file` | string | the first with the locale | A `.po` or CSV file project.json lists; `.mo` files are refused |
+| `messages` | array of strings | every one the locale lacks | Only these messages |
+| `max` | integer, 1 to 200 | 40 | Messages to draft in this call; `remaining` counts the rest |
+| `role` | string | `default` | A role or provider from `providers.json` |
+| `max_tokens` | integer | the provider's | The most tokens the model may reply with |
+
+Needs: `read`, `edit`, `filesystem`, `network`. Returns `drafted` and the `drafts`, `review`
+(`fuzzy`, or `none` for a CSV file), `rejected`, `unanswered` (messages the model left out),
+`remaining`, `skipped`, `awaiting_review` (when nothing was left to draft), `model`, `usage`
+and `replayed` when the answer came from the replay file.
+
+```json
+{"locale": "pl"}
+```
+
+```json
+{"drafted":2,"drafts":[{"forms":["Opcje"],"message":"Options"},{"forms":["Dziękujemy za zakupy!"],"message":"Thanks for shopping!"}],"file":"translations/pl.po","locale":"pl","model":"local-model","replayed":true,"review":"fuzzy","usage":{"input_tokens":412,"output_tokens":38}}
+```
+
 ## Services
 
 Ads, analytics, in-app purchases, achievements and leaderboards, as Unity's services and Social
