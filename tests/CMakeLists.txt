@@ -313,6 +313,16 @@ if(SLASH_BUILD_TOOLS)
     set_tests_properties(cli_run_bad_vsync PROPERTIES WILL_FAIL TRUE)
     add_test(NAME cli_run_bad_max_fps COMMAND slash-cli run --headless --ticks 5 --max-fps 1001)
     set_tests_properties(cli_run_bad_max_fps PROPERTIES WILL_FAIL TRUE)
+    # --save makes the folder it saves into, and call warns when its scene file doesn't exist.
+    add_test(NAME cli_run_save_makes_folder
+        COMMAND slash-cli run --headless --ticks 1 --scene ${scenes}/basic.scene.json
+            --save ${CMAKE_CURRENT_BINARY_DIR}/cli_save/$<CONFIG>/new/out.scene.json)
+    set_tests_properties(cli_run_save_makes_folder PROPERTIES PASS_REGULAR_EXPRESSION "\"ticks\":1")
+    add_test(NAME cli_call_missing_scene_warns
+        COMMAND slash-cli call world.query "{}" --scene no-such.scene.json
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+    set_tests_properties(cli_call_missing_scene_warns PROPERTIES
+        PASS_REGULAR_EXPRESSION "the scene file doesn't exist")
 
     # Exercises the real-time windowed loop on machines with no display. SDL's "dummy" video
     # driver works on every platform; "offscreen" needs EGL, which macOS lacks.
