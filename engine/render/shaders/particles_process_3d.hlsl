@@ -52,6 +52,12 @@ static const uint kDisableZ = 4u;
 static const uint kDampingAsFriction = 8u;
 static const uint kTurbulence = 16u;
 static const uint kDirectionalGlobal = 32u;
+static const uint kAttractors = 64u;
+// The attractor count's place in a step's flags, an attractor's words and AttractorShape3D.
+static const uint kStepAttractorShift = 8u;
+static const uint kAttractorWords = 5u;
+static const uint kAttractorSphere = 0u;
+static const uint kAttractorBox = 1u;
 
 // EmissionShape and ParticleParam.
 static const uint kShapePoint = 0u;
@@ -94,6 +100,8 @@ struct Step {
     bool emitting;
     bool fractional_delta;
     bool clear;
+    uint attractor_count;
+    uint attractors_at; // in words
 };
 
 struct Display {
@@ -644,6 +652,97 @@ float scaled(float s) {
 }
 
 // The generated process().
+// Godot's safe_normalize: zero below a length of 0.001.
+float3 safe_normalize(float3 v) {
+    return length_of(v) < 0.001 ? float3(0.0, 0.0, 0.0) : unit(v);
+}
+
+// GLSL's pow for a base of 0 or more, 0 for 0.
+float attractor_power(float base, float exponent) {
+    return base <= 0.0 ? 0.0 : exp(exponent * log(base));
+}
+
+float3 field_texel(uint field, uint3 size, uint x, uint y, uint z) {
+    return asfloat(data[field + 1u + (((z * size.y) + y) * size.x) + x]).xyz;
+}
+
+// A vector field's texel at uvw, filtered as a linear sampler that clamps to the edge filters a
+// Texture3D's first level; the field is {width, height, depth, 0}, then a word a texel.
+float3 sample_field(uint field, float3 uvw) {
+    uint3 size = data[field].xyz;
+    float3 texel = clamp((uvw * float3(size)) - 0.5, float3(0.0, 0.0, 0.0), float3(size - 1u));
+    uint3 low = uint3(texel);
+    uint3 high = min(low + 1u, size - 1u);
+    float3 t = texel - float3(low);
+    float3 near = mix(mix(field_texel(field, size, low.x, low.y, low.z),
+                            field_texel(field, size, high.x, low.y, low.z), t.x),
+                       mix(field_texel(field, size, low.x, high.y, low.z),
+                            field_texel(field, size, high.x, high.y, low.z), t.x),
+                       t.y);
+    float3 far = mix(mix(field_texel(field, size, low.x, low.y, high.z),
+                           field_texel(field, size, high.x, low.y, high.z), t.x),
+                      mix(field_texel(field, size, low.x, high.y, high.z),
+                           field_texel(field, size, high.x, high.y, high.z), t.x),
+                      t.y);
+    return mix(near, far, t.z);
+}
+
+// What a step's attractors push a particle at pos with, as particles.glsl's attractor loop (its
+// mass is 1). The loop runs to its end: FXC miscompiles returns and breaks inside loops.
+float3 attractor_force(Step step, float3 pos) {
+    float3 force = float3(0.0, 0.0, 0.0);
+    for (uint i = 0u; i < step.attractor_count; ++i) {
+        uint at = step.attractors_at + (i * kAttractorWords);
+        float4 a = asfloat(data[at]);
+        float4 b = asfloat(data[at + 1u]);
+        float4 c = asfloat(data[at + 2u]);
+        Affine place;
+        place.x = a.xyz;
+        place.y = float3(a.w, b.xy);
+        place.z = float3(b.zw, c.x);
+        place.origin = c.yzw;
+        float4 d = asfloat(data[at + 3u]);
+        float3 extents = d.xyz;
+        float strength = d.w;
+        uint4 e = data[at + 4u];
+        float attenuation = asfloat(e.z);
+        float directionality = asfloat(e.w);
+
+        float3 rel = pos - place.origin;
+        float3 local = float3(dot(rel, place.x), dot(rel, place.y), dot(rel, place.z));
+        float3 dir = float3(0.0, 0.0, 0.0);
+        float amount = 0.0;
+        bool inside = true;
+        if (e.x == kAttractorSphere) {
+            dir = safe_normalize(rel);
+            float dist = length_of(local) / extents.x;
+            inside = !(dist > 1.0);
+            amount = max(0.0, 1.0 - dist);
+        } else if (e.x == kAttractorBox) {
+            dir = safe_normalize(rel);
+            float dist = max(abs(local.x / extents.x),
+                             max(abs(local.y / extents.y), abs(local.z / extents.z)));
+            inside = !(dist > 1.0);
+            amount = max(0.0, 1.0 - dist);
+        } else {
+            float3 uvw = ((local / extents) + 1.0) * 0.5;
+            inside = e.y != 0u && !(uvw.x < 0.0 || uvw.y < 0.0 || uvw.z < 0.0 || uvw.x > 1.0 ||
+                                    uvw.y > 1.0 || uvw.z > 1.0);
+            if (inside) {
+                float3 s = (sample_field(e.y, uvw) * -2.0) + float3(1.0, 1.0, 1.0);
+                dir = basis(place, safe_normalize(s));
+                amount = length_of(s);
+            }
+        }
+        if (inside) {
+            amount = attractor_power(amount, attenuation);
+            dir = safe_normalize(mix(dir, place.z, directionality));
+            force -= (dir * amount) * strength;
+        }
+    }
+    return force;
+}
+
 void process(inout Particle3D particle, Step step, uint number, float delta, inout bool active) {
     uint seed = hash(number + 1u + step.seed);
     Display display;
@@ -689,13 +788,18 @@ void process(inout Particle3D particle, Step step, uint number, float delta, ino
         if (length_of(float3(diff.y, diff.x, 0.0)) > 0.0) {
             force += unit(float3(-diff.y, diff.x, 0.0)) * physical.tangent_accel;
         }
-        force.z = 0.0;
     } else {
         // Godot's normalize of a zero vector makes NaNs, which the length test then skips.
         float3 across = cross(unit(diff), unit(gravity));
         if (length_of(across) > 0.0) {
             force += unit(across) * physical.tangent_accel;
         }
+    }
+    if (flag(kAttractors) && step.attractor_count > 0u) {
+        force += attractor_force(step, origin);
+    }
+    if (flag(kDisableZ)) {
+        force.z = 0.0;
     }
     velocity += force * delta;
     if (physical.damping > 0.0) {
@@ -819,6 +923,8 @@ Step read_step(uint at) {
     step.emitting = (g.z & 1u) != 0u;
     step.fractional_delta = (g.z & 2u) != 0u;
     step.clear = (g.z & 4u) != 0u;
+    step.attractor_count = g.z >> kStepAttractorShift;
+    step.attractors_at = g.w;
     return step;
 }
 

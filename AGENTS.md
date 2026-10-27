@@ -1613,7 +1613,14 @@ draws order alike); `src/particle_layout_3d.cpp` lays out the words they read.
 built with `-ffp-contract=off`) are their CPU twin, which the software and OpenGL devices run,
 and `tests/test_particle_compute_3d.cpp` holds every device to it; a change to one goes in both,
 and `check_particle_process_3d` checks what every device takes. `particles.eval` runs the steps
-kept on the CPU; `examples/gpu-particles-3d` has sparks, leaves and streaks.
+kept on the CPU; `examples/gpu-particles-3d` has sparks, leaves and streaks. Attractors are Godot's
+`GPUParticlesAttractorSphere3D`, `Box3D` and `VectorField3D`: the system pairs each emitter
+with those visible whose bounds touch its visibility box and whose `cull_mask` meets its
+`layers` (Godot's scene cull), and puts them in its steps in the particles' space
+(`render::ParticleAttractor3D`, `for_particles` in `src/gpu_particles.cpp`); a vector field's
+texture is cut into slices by `particle_field` and read through the `ImageLoader`
+`canvas::install` gives it, and packed after the steps for the shaders
+(`src/particle_layout_3d.cpp`). `examples/particle-attractors-3d` gathers dust in a well.
 
 ## Job system
 
