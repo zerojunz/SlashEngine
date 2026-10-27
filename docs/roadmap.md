@@ -902,7 +902,7 @@ Exit: an agent builds a small 3D sample end to end.
 
 - [ ] Networking: ENet transport, replication driven by reflection, WebSocket for web
 - [ ] XR through OpenXR
-- [ ] Localization, following Godot ([design](design.md#languages))
+- [x] Localization, following Godot ([design](design.md#languages))
   - [x] Translation tables as CSV or gettext `.po` files, with plural forms, placeholders and a
         fallback chain (`es-MX`, then `es`, then the source language)
   - [x] Any language as the source: a game can be written in Japanese and translated to English
@@ -910,7 +910,7 @@ Exit: an agent builds a small 3D sample end to end.
         menu while it runs, with per-language fonts and right-to-left layout
   - [x] `l10n.extract`: every player-facing string in scenes and C++ (`tr("...")`) collected
         into the tables, so no text is missed
-  - [ ] `l10n.translate`: draft translations through `ai::Provider`, using the storyboard's
+  - [x] `l10n.translate`: draft translations through `ai::Provider`, using the storyboard's
         glossary and characters so names and tone stay consistent, marked for review
   - [x] `l10n.check`: missing or stale keys, placeholders that don't match, text that overflows
         its UI box in a given font, and glyphs a font lacks; run by the headless test command

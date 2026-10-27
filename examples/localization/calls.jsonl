@@ -15,3 +15,6 @@
 {"jsonrpc":"2.0","id":15,"method":"l10n.extract","params":{"list":true}}
 {"jsonrpc":"2.0","id":16,"method":"l10n.extract","params":{"pot":"translations/menu.pot","add_to":["translations/menu.csv","translations/pl.po"]}}
 {"jsonrpc":"2.0","id":17,"method":"l10n.check","params":{"max":3}}
+{"jsonrpc":"2.0","id":18,"method":"l10n.translate","params":{"locale":"pl"}}
+{"jsonrpc":"2.0","id":19,"method":"l10n.set_locale","params":{"locale":"pl"}}
+{"jsonrpc":"2.0","id":20,"method":"l10n.state","params":{"tr":["Options","Thanks for shopping!"]}}

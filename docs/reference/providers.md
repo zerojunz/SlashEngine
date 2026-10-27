@@ -97,7 +97,8 @@ role adds to every request.
 A request names a role or a provider directly. With neither, it uses the `default` role, or the
 only provider when there is one. Engine features that call a model take a `role` param the same
 way, such as [`storyboard.review`](commands.md#storyboardreview), which checks new material
-against the storyboard; a `review` role keeps its model apart from the one a game talks with.
+against the storyboard, and [`l10n.translate`](commands.md#l10ntranslate), which drafts
+translations; a `review` role keeps its model apart from the one a game talks with.
 
 ## Requests and replies
 
