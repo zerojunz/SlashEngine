@@ -2285,7 +2285,9 @@ void register_3d_components(ComponentRegistry& registry) {
                   {.doc = "Times the texels across its lightmap.", .min = 0.01, .max = 10.0})
         .describe("lod_bias", {.doc = "Times its size when picking a model's coarser LODs: "
                                       "above 1 keeps detail further away.",
-                               .min = 0.001});
+                               .min = 0.001})
+        .describe("ignore_occlusion_culling",
+                  {.doc = "Always drawn: OccluderInstance3Ds never hide it."});
     registry.add<Skeleton3D>()
         .set_doc("Poses bones of the model the entity's MeshInstance3D draws, by name, in place of "
                  "their animation or rest pose, as Godot's Skeleton3D bone poses.")
@@ -2695,6 +2697,24 @@ void register_3d_components(ComponentRegistry& registry) {
         .describe("use_two_bounces", {.doc = "Light bounces twice inside the cells, not once."})
         .describe("interior",
                   {.doc = "Leaves out the environment's light: meshes take only the cells'."});
+    registry.add<OccluderInstance3D>()
+        .set_doc("A shape that hides the meshes behind it from the camera, as Godot's "
+                 "OccluderInstance3D, while project.json's "
+                 "rendering.occlusion_culling.use_occlusion_culling is on. It draws nothing.")
+        .describe("shape", {.doc = "Godot's occluder: quad (size's x and y, facing +Z), box "
+                                   "(size), sphere (radius), polygon or array (as occluder.bake "
+                                   "writes).",
+                            .choices = {"quad", "box", "sphere", "polygon", "array"}})
+        .describe("size", {.doc = "quad and box: meters across, centered on the entity.", .min = 0})
+        .describe("radius", {.doc = "sphere: meters.", .min = 0})
+        .describe("polygon", {.doc = "polygon: points in the entity's XY plane, in meters."})
+        .describe("vertices", {.doc = "array: points in the entity's space."})
+        .describe("indices", {.doc = "array: into vertices, every three a triangle."})
+        .describe("bake_mask", {.doc = "occluder.bake takes meshes whose layers share a bit."})
+        .describe("bake_simplification_distance",
+                  {.doc = "occluder.bake simplifies meshes until they stray this many meters; 0 "
+                          "keeps them whole.",
+                   .min = 0});
     registry.add<Decal>()
         .set_doc("A box that projects textures down its -Y onto the meshes inside it, as Godot's "
                  "Decal, in Forward+. Nearer decals draw over further ones.")

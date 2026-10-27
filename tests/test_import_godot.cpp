@@ -1819,6 +1819,8 @@ jolt_physics_3d/simulation/areas_detect_static_bodies=true
 
 anti_aliasing/quality/use_taa=true
 mesh_lod/lod_change/threshold_pixels=2.5
+occlusion_culling/use_occlusion_culling=true
+occlusion_culling/occlusion_rays_per_thread=256
 camera/depth_of_field/depth_of_field_bokeh_shape=2
 camera/depth_of_field/depth_of_field_bokeh_quality=3
 camera/depth_of_field/depth_of_field_use_jitter=true
@@ -1914,6 +1916,12 @@ plane = Plane(0, 1, 0, -2)
 friction = 0.3
 bounce = 0.5
 
+[sub_resource type="QuadOccluder3D" id="QuadOccluder3D_1"]
+size = Vector2(4, 2)
+
+[sub_resource type="PolygonOccluder3D" id="PolygonOccluder3D_1"]
+polygon = PackedVector2Array(0, 0, 1, 0, 0, 1)
+
 [node name="Level" type="Node3D"]
 
 [node name="Wall" type="MeshInstance3D" parent="."]
@@ -1923,6 +1931,14 @@ cast_shadow = 2
 gi_mode = 2
 gi_lightmap_texel_scale = 2.0
 lod_bias = 3.0
+ignore_occlusion_culling = true
+
+[node name="WallOccluder" type="OccluderInstance3D" parent="."]
+occluder = SubResource("QuadOccluder3D_1")
+bake_mask = 3
+
+[node name="RoofOccluder" type="OccluderInstance3D" parent="."]
+occluder = SubResource("PolygonOccluder3D_1")
 
 [node name="Ball" type="MeshInstance3D" parent="Wall"]
 transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 1.5, 0)
@@ -2068,7 +2084,7 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
 
     // Transforms decompose as Godot's Node3D does, and Node3D children nest.
     CHECK(*entity(files, level, "level").find("Transform3D") == parse(R"({
-        "children": ["wall", "rock", "blob", "cart", "camera", "sun", "lamp", "torch", "probe",
+        "children": ["wall", "wall_occluder", "roof_occluder", "rock", "blob", "cart", "camera", "sun", "lamp", "torch", "probe",
                      "lightmap", "doorway", "crate", "ground", "hero", "mirror", "sparks", "rig"]})"));
     CHECK(*entity(files, level, "wall").find("Transform3D") ==
           parse(R"({"position": [3.0, 1.0, -2.0], "rotation": [0.0, 1.570796, 0.0],
@@ -2091,7 +2107,14 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
     const json::Value wall = entity(files, level, "wall");
     CHECK(*wall.find("BoxMesh") == parse(R"({"size": [4.0, 2.0, 0.5]})"));
     CHECK(*wall.find("MeshInstance3D") == parse(R"({"cast_shadow": "double_sided",
-        "gi_mode": "dynamic", "gi_lightmap_texel_scale": 2.0, "lod_bias": 3.0})"));
+        "gi_mode": "dynamic", "gi_lightmap_texel_scale": 2.0, "lod_bias": 3.0,
+        "ignore_occlusion_culling": true})"));
+    // Occluders keep their shapes (a quad, the default, is left out); a QuadOccluder3D's size is a
+    // Vector2.
+    CHECK(*entity(files, level, "wall_occluder").find("OccluderInstance3D") ==
+          parse(R"({"size": [4.0, 2.0, 1.0], "bake_mask": 3})"));
+    CHECK(*entity(files, level, "roof_occluder").find("OccluderInstance3D") ==
+          parse(R"({"shape": "polygon", "polygon": [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]})"));
     CHECK(*wall.find("StandardMaterial3D") == parse(R"({
         "transparency": "alpha_scissor", "albedo_color": [0.8, 0.4, 0.2, 1.0],
         "albedo_texture": "godot/art/bricks.jpg", "roughness": 0.6, "texture_filter": "nearest",
@@ -2192,6 +2215,8 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
           parse(R"({"quality": {"use_taa": true}})"));
     CHECK(*project_file.find("rendering")->find("mesh_lod") ==
           parse(R"({"lod_change": {"threshold_pixels": 2.5}})"));
+    CHECK(*project_file.find("rendering")->find("occlusion_culling") ==
+          parse(R"({"use_occlusion_culling": true, "occlusion_rays_per_thread": 256})"));
     CHECK(*project_file.find("rendering")->find("scaling") ==
           parse(R"({"mode": "fsr2", "scale": 0.67, "fsr_sharpness": 0.5})"));
 

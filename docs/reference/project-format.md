@@ -46,6 +46,7 @@ checks it.
 | `rendering.environment.volumetric_fog` | No | 64 x 64 x 64, filtered | The froxels of 3D [volumetric fog](scene-format.md#volumetric-fog): see [Volumetric fog](#volumetric-fog) |
 | `rendering.reflections.reflection_atlas` | No | 256 texels, 64 probes | The size of 3D [reflection probes'](scene-format.md#reflection-probes) cubes and how many a frame draws: see [Reflection probes](#reflection-probes) |
 | `rendering.global_illumination.voxel_gi.quality` | No | `low` | How many cones meshes trace through [VoxelGIs](scene-format.md#voxelgi): see [VoxelGI](#voxelgi) |
+| `rendering.occlusion_culling` | No | off | Leave out 3D meshes that [occluders](scene-format.md#occlusion-culling) hide: see [Occlusion culling](#occlusion-culling) |
 | `rendering.mesh_lod.lod_change.threshold_pixels` | No | `1` | How many pixels a model's coarser [LODs](scene-format.md#mesh-lods) may be off by where they draw: see [Mesh LODs](#mesh-lods) |
 | `rendering.textures` | No | `lossless`, `linear_mipmaps` | How exports ship textures: as their files, or compressed for each platform's GPUs, and how [decals](scene-format.md#decals) sample theirs: see [Texture forms](#texture-forms) |
 | `rendering.interpolation` | No | `true` | Draw sprites part of the way between fixed ticks, from where they were before the last tick to where they are, so motion looks smooth when the display refreshes faster than the game ticks. Drawing lags the simulation by up to one tick; set `false` to draw exactly where things are |
@@ -201,6 +202,23 @@ triangles. `0` draws every mesh in full.
 ```json
 "rendering": {"mesh_lod": {"lod_change": {"threshold_pixels": 2}}}
 ```
+
+## Occlusion culling
+
+`rendering.occlusion_culling` is Godot's `rendering/occlusion_culling` settings. With
+`use_occlusion_culling` on, each frame leaves out the 3D meshes that
+[`OccluderInstance3D`s](scene-format.md#occlusion-culling) hide from the camera, by rays cast
+into the occluders through a small depth buffer.
+
+```json
+"rendering": {"occlusion_culling": {"use_occlusion_culling": true}}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `use_occlusion_culling` | `false` | Whether occluders hide meshes |
+| `occlusion_rays_per_thread` | `512` | The buffer's texels over 8, as Godot's 8 threads each cast this many rays: 1 to 65536. More texels hide meshes more exactly and take longer |
+| `jitter_projection` | `true` | Move the rays through nine places across a texel, one a frame, and keep a mesh that was seen drawn for nine frames, so thin gaps between occluders don't make meshes flicker |
 
 ## Shadows
 

@@ -2506,6 +2506,42 @@ TEST_CASE("voxel_gi.bake writes a VoxelGI's cells, and undo takes them back") {
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("occluder.bake sets an occluder's shape from the meshes around it, and undo takes it "
+          "back") {
+    Engine engine;
+    engine.ok("batch", R"({"commands": [
+        {"command": "entity.create", "params": {"id": "wall", "components": {
+            "Transform3D": {"position": [0, 1, -4]}, "MeshInstance3D": {},
+            "BoxMesh": {"size": [4, 2, 0.2]}}}},
+        {"command": "entity.create", "params": {"id": "occluder", "components": {
+            "Transform3D": {"position": [0, 1, 0]},
+            "OccluderInstance3D": {"bake_simplification_distance": 0}}}}]})");
+    // A dry run says what it would bake and changes nothing.
+    const json::Value dry = engine.ok("occluder.bake", R"({"id": "occluder", "dry_run": true})");
+    CHECK(*dry.find("result") == parse(R"({"vertices": 8, "triangles": 12})"));
+    const auto shape = [&] {
+        world::World& world = engine.session->world();
+        return world.ecs().get<world::OccluderInstance3D>(world.find("occluder"));
+    };
+    CHECK(shape().shape == "quad");
+    CHECK(engine.ok("occluder.bake", R"({"id": "occluder"})") ==
+          parse(R"({"vertices": 8, "triangles": 12})"));
+    CHECK(shape().shape == "array");
+    CHECK(std::abs(shape().vertices.front().z + 4.0F) == doctest::Approx(0.1F));
+    CHECK(*engine.ok("occluder.bake", R"({"id": "occluder"})").find("unchanged") == true);
+    engine.ok("undo");
+    CHECK(shape().shape == "quad");
+    CHECK(shape().vertices.empty());
+    // With nothing to bake, it fails, as Godot's bake does.
+    engine.ok("component.set", R"({"id": "occluder", "components": {
+        "OccluderInstance3D": {"bake_mask": 2}}})");
+    auto reply =
+        engine.fails("occluder.bake", R"({"id": "occluder"})", command::code::kInvalidArgument);
+    CHECK(contains(reply.message, "no meshes to bake"));
+    reply = engine.fails("occluder.bake", R"({"id": "wall"})", command::code::kInvalidParams);
+    CHECK(reply.message == "/id: \"wall\" has no OccluderInstance3D");
+}
+
 TEST_CASE("physics commands find bodies by ray, point and shape, and what touches them") {
     Engine engine;
     engine.ok("batch", R"({"commands": [

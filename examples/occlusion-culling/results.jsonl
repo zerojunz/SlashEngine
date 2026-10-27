@@ -1,0 +1,9 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":11,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"drawn":{"meshes":7,"occluded":3},"height":90,"path":"shots/street.png","width":160}}
+{"id":3,"jsonrpc":"2.0","result":{"changed":{"Transform3D":{"position":[0.0,12.0,10.0],"rotation":[-0.7,0.0,0.0]}},"id":"camera"}}
+{"id":4,"jsonrpc":"2.0","result":{"colors":[[0.608,0.533,0.463,1]],"drawn":{"meshes":7},"height":90,"width":160}}
+{"id":5,"jsonrpc":"2.0","result":{"can_redo":1,"can_undo":0,"undone":"component.set"}}
+{"id":6,"jsonrpc":"2.0","result":{"changed":{"MeshInstance3D":{"ignore_occlusion_culling":true}},"id":"house_b"}}
+{"id":7,"jsonrpc":"2.0","result":{"colors":[[0.608,0.533,0.463,1]],"drawn":{"meshes":7,"occluded":2},"height":90,"width":160}}
+{"id":8,"jsonrpc":"2.0","result":{"triangles":12,"vertices":8}}
+{"id":9,"jsonrpc":"2.0","result":{"colors":[[0.608,0.533,0.463,1]],"drawn":{"meshes":7,"occluded":2},"height":90,"width":160}}

@@ -63,6 +63,20 @@ inline constexpr std::uint32_t kMaxMeshIndices = 1U << 26U;
 // off by where it is drawn; 0 draws every mesh in full. What is missing or not a number at or
 // above 0 keeps the default, 1.
 [[nodiscard]] float mesh_lod_threshold(const json::Value& rendering);
+// Occlusion culling, as Godot's rendering/occlusion_culling settings: whether the camera's
+// OccluderInstance3Ds hide meshes (use_occlusion_culling), the rays cast per thread into them
+// (occlusion_rays_per_thread, which sizes the depth buffer) and whether the rays move a little
+// each frame (jitter_projection), so thin gaps between occluders show.
+struct OcclusionCulling {
+    bool enabled = false;
+    int rays_per_thread = 512;
+    bool jitter = true;
+
+    friend bool operator==(const OcclusionCulling&, const OcclusionCulling&) = default;
+};
+// Reads project.json's rendering object's occlusion_culling. What is missing or of the wrong type
+// keeps its default.
+[[nodiscard]] OcclusionCulling occlusion_culling(const json::Value& rendering);
 // The most lights a frame's scene may have, Godot's Forward+ limits: directional lights
 // (MAX_DIRECTIONAL_LIGHTS), and omni and spot lights (rendering/limits/cluster_builder/
 // max_clustered_elements).

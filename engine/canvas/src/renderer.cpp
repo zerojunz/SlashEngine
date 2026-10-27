@@ -1155,7 +1155,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         settings(world).ssr, settings(world).reflection_atlas, settings(world).rendering_method,
         settings(world).voxel_gi_high_quality, settings(world).use_taa, fsr2,
         settings(world).decal_filter, settings(world).volumetric_fog,
-        settings(world).mesh_lod_threshold);
+        settings(world).mesh_lod_threshold, settings(world).occlusion_culling);
     if (scene) {
         scene->scene.method = settings(world).rendering_method;
     }
@@ -2079,6 +2079,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         shapes_drawn_ = shapes.shapes;
         meshes_drawn_ = scene3d_.meshes();
         lods_drawn_ = scene3d_.lods_drawn();
+        meshes_occluded_ = scene3d_.occluded();
         lights_3d_drawn_ = scene ? scene3d_.lights() : 0;
         return {};
     }
@@ -2356,6 +2357,7 @@ Result<void> CanvasRenderer::submit(const Submission& submission) {
     shapes_drawn_ = began.value() ? shapes.shapes : 0;
     meshes_drawn_ = began.value() ? scene3d_.meshes() : 0;
     lods_drawn_ = began.value() ? scene3d_.lods_drawn() : 0;
+    meshes_occluded_ = began.value() ? scene3d_.occluded() : 0;
     lights_3d_drawn_ = began.value() && submission.scene ? scene3d_.lights() : 0;
     return device_->end_frame();
 }

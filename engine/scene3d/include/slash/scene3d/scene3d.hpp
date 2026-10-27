@@ -7,6 +7,7 @@
 #include "slash/render/image.hpp"
 #include "slash/render/mesh.hpp"
 #include "slash/scene3d/model.hpp"
+#include "slash/scene3d/occlusion.hpp"
 #include "slash/scene3d/primitive.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/scene3d/surface.hpp"
@@ -47,6 +48,7 @@ namespace slash::scene3d {
 struct CameraView {
     std::array<float, 16> view{};
     std::array<float, 16> projection{};
+    world::Affine3D eye; // where the camera is, as Godot's get_camera_transform: view undone
 };
 
 // The view through a camera at global for a target of aspect width over height, as Godot's
@@ -233,6 +235,8 @@ public:
     // Its Decals' textures are sampled with decal_filter, and its volumetric fog's froxels are as
     // volumetric_fog says. A model's surfaces are drawn at the coarsest LOD that is off by no more
     // than mesh_lod_threshold pixels, as Godot's rendering/mesh_lod/lod_change/threshold_pixels.
+    // With occlusion on, meshes the OccluderInstance3Ds hide from the camera aren't drawn, though
+    // they still cast shadows and show in reflection probes, as Godot's raycast occlusion culling.
     [[nodiscard]] std::optional<Frame3D>
     prepare(const world::World& world, float width, float height, double interpolation,
             render::Color clear, const render::ShadowSettings& shadows = {}, double time = 0.0,
@@ -244,7 +248,7 @@ public:
             const std::optional<render::Fsr2Scaling>& fsr2 = std::nullopt,
             render::DecalFilter decal_filter = render::DecalFilter::LinearMipmaps,
             const render::VolumetricFogSettings& volumetric_fog = {},
-            float mesh_lod_threshold = 1.0F);
+            float mesh_lod_threshold = 1.0F, const render::OcclusionCulling& occlusion = {});
     // Draws the meshes prepare found into the frame begun with its scene.
     [[nodiscard]] Result<void> draw();
 
@@ -256,6 +260,12 @@ public:
     [[nodiscard]] std::size_t meshes_kept() const noexcept { return shared_.size(); }
     // How many of the last prepare's draws are at a coarser LOD than their surface's own.
     [[nodiscard]] std::size_t lods_drawn() const noexcept { return lods_drawn_; }
+    // How many of the last prepare's meshes the occluders hid from the camera.
+    [[nodiscard]] std::size_t occluded() const noexcept { return occluded_; }
+    // The occlusion buffer the last prepare cast, empty with occlusion off.
+    [[nodiscard]] const OcclusionBuffer& occlusion_buffer() const noexcept {
+        return occlusion_buffer_;
+    }
 
 private:
     struct Local {
@@ -294,6 +304,14 @@ private:
     // through projection at width pixels across with a threshold of threshold_pixels.
     void pick_lods(const Vec3& camera_position, const std::array<float, 16>& projection,
                    bool orthogonal, float width, float threshold_pixels);
+    // Casts the occlusion buffer for the camera from the world's occluders and leaves the meshes
+    // it hides out of the frame, as Godot's _scene_cull leaves them out of the camera's list:
+    // drawn only into shadow maps when they cast shadows.
+    void cull_occluded(const world::World& world, const world::Tree3D& tree, const CameraView& view,
+                       const world::Camera3D& lens, float width, float height,
+                       const render::OcclusionCulling& settings);
+    // The bounds of each mesh drawn this frame, in its own space.
+    [[nodiscard]] std::unordered_map<render::MeshId, Bounds> mesh_boxes() const;
 
     // What a probe's cube was drawn from: it is drawn again when this changes.
     struct ProbeKey {
@@ -496,6 +514,12 @@ private:
     std::unordered_map<std::string, Shared> shared_;
     std::vector<Draw> draws_;
     std::size_t lods_drawn_ = 0;
+    // Occlusion culling: the occluders' triangles, the depth buffer cast into them, each draw's
+    // jitter timeout by its entity and place among the entity's draws, and how many it hid.
+    OccluderScene occluder_scene_;
+    OcclusionBuffer occlusion_buffer_;
+    std::map<std::pair<entt::entity, std::size_t>, std::uint64_t> occlusion_timeouts_;
+    std::size_t occluded_ = 0;
     // Where each entity's draws were drawn in the last frame with TAA, by the entity and the
     // draw's place among its draws.
     std::map<std::pair<entt::entity, std::size_t>, std::array<float, 16>> drawn_;
