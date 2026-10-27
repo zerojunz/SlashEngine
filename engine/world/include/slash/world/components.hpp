@@ -933,6 +933,10 @@ struct CameraAttributesPractical {
     // sensitivity * 0.125 / exposure_sensitivity.
     float auto_exposure_min_sensitivity = 0.0F;
     float auto_exposure_max_sensitivity = 800.0F;
+    // How a frame's brightness is measured: "average" averages it, as Godot does; "log_average"
+    // (SlashEngine's own) averages its logarithm, as Unreal's auto exposure does, so a few bright
+    // spots don't darken the rest.
+    std::string auto_exposure_metering = "average";
     // Blur grows over the transition (in meters; below 0, the physical way) from the distance on.
     bool dof_blur_far_enabled = false;
     float dof_blur_far_distance = 10.0F;
@@ -947,9 +951,10 @@ struct CameraAttributesPractical {
 };
 SLASH_COMPONENT(CameraAttributesPractical, exposure_sensitivity, exposure_multiplier,
                 auto_exposure_enabled, auto_exposure_scale, auto_exposure_speed,
-                auto_exposure_min_sensitivity, auto_exposure_max_sensitivity, dof_blur_far_enabled,
-                dof_blur_far_distance, dof_blur_far_transition, dof_blur_near_enabled,
-                dof_blur_near_distance, dof_blur_near_transition, dof_blur_amount)
+                auto_exposure_min_sensitivity, auto_exposure_max_sensitivity,
+                auto_exposure_metering, dof_blur_far_enabled, dof_blur_far_distance,
+                dof_blur_far_transition, dof_blur_near_enabled, dof_blur_near_distance,
+                dof_blur_near_transition, dof_blur_amount)
 
 // ---- Paths, as Godot's Path2D and Path3D with their curves (path.hpp) ----
 //

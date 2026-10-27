@@ -1610,6 +1610,7 @@ r.DefaultFeature.AutoExposure.Bias=2.0
           doctest::Approx(std::numbers::pi / 10.0 * 100.0 * std::exp2(-10.0)));
     CHECK(exposure.find("auto_exposure_max_sensitivity")->as_double() ==
           doctest::Approx(std::numbers::pi / 10.0 * 100.0 * std::exp2(20.0)));
+    CHECK(exposure.find("auto_exposure_metering")->as_string() == "log_average");
 
     bool aligned = false;
     for (const json::Value& problem : planned.value().report.find("unsupported")->as_array()) {

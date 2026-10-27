@@ -121,8 +121,9 @@ float exposure_divisor() {
 // first half of the block's 64 values adds the one half a block on, then the first quarter the
 // one a quarter on, down to one. The first pass takes the world's brightest channel, and the
 // rest the luminance texture before. Texels past the source's edge count 0, and the sum is divided
-// by those inside. The last pass moves from the last frame's brightness by exposure.w and keeps
-// it from exposure.y to exposure.z.
+// by those inside. With options.y, the first pass takes the brightness's natural logarithm and the
+// last its exponential (a geometric mean, as Unreal meters). The last pass moves from the last
+// frame's brightness by exposure.w and keeps it from exposure.y to exposure.z.
 float luminance_pass(int2 pixel, uint kind) {
     float block[64];
     int2 origin = pixel * 8;
@@ -133,6 +134,9 @@ float luminance_pass(int2 pixel, uint kind) {
         if (at.x < size.x && at.y < size.y && kind == kLuminanceFirst) {
             float4 texel = source.Load(int3(at, 0));
             value = max(texel.r, max(texel.g, texel.b));
+            if (options.y != 0u) {
+                value = log(max(value, kMinLuminance));
+            }
         } else if (at.x < size.x && at.y < size.y) {
             value = luminance_source.Load(int3(at, 0)).r;
         }
@@ -145,6 +149,9 @@ float luminance_pass(int2 pixel, uint kind) {
     }
     int2 inside = min(size - origin, int2(8, 8));
     float average = block[0] / (float)(inside.x * inside.y);
+    if (kind == kLuminanceFinal && options.y != 0u) {
+        average = exp(average);
+    }
     if (kind == kLuminanceFinal) {
         float previous = brightness.Load(int3(0, 0, 0)).r;
         average = min(max(previous + (average - previous) * exposure.w, exposure.y), exposure.z);
