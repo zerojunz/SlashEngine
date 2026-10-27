@@ -16,8 +16,8 @@ namespace slash::render {
 namespace {
 
 // Godot's modes that need the 3D renderer's depth and motion vectors, or Metal's own API.
-constexpr std::array<std::string_view, 3> kModesNeeding3d{"fsr2", "metalfx_spatial",
-                                                          "metalfx_temporal"};
+// Godot's modes that need Apple's MetalFX, which isn't built.
+constexpr std::array<std::string_view, 2> kMetalFxModes{"metalfx_spatial", "metalfx_temporal"};
 
 // Two triangles over a width x height rectangle at the origin, texture coordinates 0 to 1.
 std::array<Vertex2D, 6> quad(float width, float height) {
@@ -233,20 +233,19 @@ json::Value scaling_json(const Scaling& scaling) {
 }
 
 std::vector<std::string_view> scaling_modes() {
-    return {kBilinear, kFsr};
+    return {kBilinear, kFsr, kFsr2};
 }
 
 std::string scaling_mode_problem(std::string_view mode) {
-    if (mode == kBilinear || mode == kFsr) {
+    if (mode == kBilinear || mode == kFsr || mode == kFsr2) {
         return {};
     }
-    if (std::ranges::find(kModesNeeding3d, mode) != kModesNeeding3d.end()) {
+    if (std::ranges::find(kMetalFxModes, mode) != kMetalFxModes.end()) {
         return std::string(mode) +
-               " needs the depth and motion vectors of the 3D renderer, which isn't built yet; "
-               "use bilinear or fsr";
+               " needs Apple's MetalFX, which isn't built yet; use bilinear, fsr or fsr2";
     }
     std::string problem =
-        "unknown scaling mode " + std::string(mode) + "; expected bilinear or fsr";
+        "unknown scaling mode " + std::string(mode) + "; expected bilinear, fsr or fsr2";
     const std::vector<std::string_view> modes = scaling_modes();
     if (const std::string_view near = closest_match(mode, modes); !near.empty()) {
         problem += " (did you mean " + std::string(near) + "?)";
@@ -317,6 +316,12 @@ void clear_added_upscalers() {
     Registry& added = registry();
     const std::scoped_lock lock(added.mutex);
     added.added.clear();
+}
+
+bool uses_fsr2(const Scaling& scaling, RenderMethod method, const RenderDevice& device) {
+    const Backend backend = device.backend();
+    return scaling.mode == kFsr2 && scaling.scale < 1.0F && method == RenderMethod::ForwardPlus &&
+           backend != Backend::OpenGl && backend != Backend::OpenGlEs;
 }
 
 std::string choose_upscaler(const Scaling& scaling, const RenderDevice& device) {

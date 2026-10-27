@@ -8,6 +8,7 @@
 #include "checks.hpp"
 #include "cpu_particles.hpp"
 #include "forward_post.hpp"
+#include "fsr2.hpp"
 #include "mesh_shading.hpp"
 #include "post_shading.hpp"
 #include "reflection.hpp"
@@ -187,6 +188,23 @@ struct TaaHistory {
     bool primed = false;
 };
 
+// A target's frames before for FSR 2: what the passes keep, the clock that picks the next jitter,
+// the last frame's camera without its jitter, and the sizes they were drawn at.
+struct Fsr2State {
+    detail::Fsr2History history;
+    detail::Fsr2Clock clock;
+    Mat4 view_projection{};
+    std::array<std::uint32_t, 4> sizes{}; // the render size, then the display size
+};
+
+// A frame's camera with FSR 2, for draw_meshes: its jitter, the camera the frame before was seen
+// from without its jitter, and where the prepass's motion vectors go.
+struct Fsr2Camera {
+    std::array<float, 2> jitter{};
+    Mat4 previous{};
+    std::vector<float>* velocity = nullptr;
+};
+
 // The GPU device's blend states (gpu_device.cpp), on a straight-alpha source color clamped to 0
 // to 1 and the target's color.
 Float4 blend(BlendMode mode, const Float4& src, const Float4& dst) {
@@ -317,6 +335,7 @@ public:
         textures_.erase(it);
         forget_ssr_history(texture);
         forget_taa_history(texture);
+        std::erase_if(fsr2_states_, [&](const auto& entry) { return entry.first == texture; });
     }
 
     Result<ShaderId> create_shader(const CompiledShader& shader) override {
@@ -522,6 +541,10 @@ public:
         if (!frame.scene || !detail::uses_taa(*frame.scene)) {
             forget_taa_history(frame.target);
         }
+        if (!frame.scene || !detail::uses_fsr2(*frame.scene)) {
+            std::erase_if(fsr2_states_,
+                          [&](const auto& entry) { return entry.first == frame.target; });
+        }
         frame_ = frame;
         in_frame_ = true;
         vertices_.clear();
@@ -616,19 +639,41 @@ public:
         }
         if (frame_.scene && frame_.scene->method == RenderMethod::ForwardPlus) {
             // The sky and meshes draw linear colors into a texture of half floats cleared to the
-            // clear color, and Forward+'s post passes draw that over the target.
-            detail::HdrImage world{.width = target.width, .height = target.height, .pixels = {}};
-            world.pixels.resize(std::size_t{target.width} * target.height * 4);
+            // clear color, and Forward+'s post passes draw that over the target. With FSR 2 they
+            // draw at the render size, and FSR 2 upscales them to the target's.
+            const Scene3D& scene = *frame_.scene;
+            const bool fsr2 = detail::uses_fsr2(scene);
+            const std::array<std::uint32_t, 2> size =
+                fsr2 ? detail::fsr2_render_size(scene, target.width, target.height)
+                     : std::array{target.width, target.height};
+            detail::HdrImage world{.width = size[0], .height = size[1], .pixels = {}};
+            world.pixels.resize(std::size_t{size[0]} * size[1] * 4);
             const Float4 clear_color = detail::forward_clear(frame_.clear);
             for (std::size_t i = 0; i < world.pixels.size(); i += 4) {
                 std::copy(clear_color.begin(), clear_color.end(),
                           world.pixels.begin() + static_cast<std::ptrdiff_t>(i));
             }
-            draw_sky(*frame_.scene, {.bytes = nullptr, .hdr = &world});
+            draw_sky(scene, {.bytes = nullptr, .hdr = &world});
             std::vector<float> depth;
+            std::vector<float> velocity;
+            Fsr2State* fsr2_state = nullptr;
+            Fsr2Camera fsr2_camera;
+            if (fsr2) {
+                fsr2_state = &this->fsr2_state(frame_.target,
+                                               {size[0], size[1], target.width, target.height});
+                const std::uint32_t phases = detail::fsr2_phase_count(size[0], target.width);
+                fsr2_state->clock.advance(phases);
+                fsr2_camera = Fsr2Camera{.jitter = detail::camera_jitter(fsr2_state->clock.frames,
+                                                                         phases, size[0], size[1]),
+                                         .previous = fsr2_state->clock.frames == 0
+                                                         ? multiply(scene.projection, scene.camera)
+                                                         : fsr2_state->view_projection,
+                                         .velocity = &velocity};
+            }
             if (!mesh_draws_.empty()) {
-                depth = draw_meshes(*frame_.scene, {.bytes = nullptr, .hdr = &world});
-            } else if (detail::uses_taa(*frame_.scene)) {
+                depth = draw_meshes(scene, {.bytes = nullptr, .hdr = &world},
+                                    fsr2_state != nullptr ? &fsr2_camera : nullptr);
+            } else if (detail::uses_taa(scene)) {
                 // TAA blends frames that draw meshes; one without starts it again.
                 for (auto& [id, history] : taa_histories_) {
                     if (id == frame_.target) {
@@ -636,11 +681,18 @@ public:
                     }
                 }
             }
-            if (detail::uses_dof(frame_.scene->post)) {
-                depth.resize(std::size_t{target.width} * target.height, 0.0F);
-                world = depth_of_field(*frame_.scene, world, depth);
+            depth.resize(std::size_t{size[0]} * size[1], 0.0F);
+            if (fsr2_state != nullptr) {
+                velocity.resize(std::size_t{size[0]} * size[1] * 2, 0.0F);
+                world = upscale_fsr2(scene, *fsr2_state, fsr2_camera, world, depth, velocity,
+                                     target.width, target.height);
             }
-            forward_post(frame_.scene->post, world, target);
+            if (detail::uses_dof(scene.post)) {
+                world =
+                    depth_of_field(scene, world, depth,
+                                   fsr2 ? detail::PostSize{size[0], size[1]} : detail::PostSize{});
+            }
+            forward_post(scene.post, world, target);
         } else if (frame_.scene && detail::post_processes(frame_.scene->post)) {
             // The sky and meshes draw untonemapped over a copy of the cleared target, and the
             // post passes draw that over the target.
@@ -663,8 +715,8 @@ public:
                        batch.material.transform ? multiply(view, *batch.material.transform) : view,
                        target);
         }
-        // A frame with TAA saw its meshes' vertices as they are now.
-        if (frame_.scene && detail::uses_taa(*frame_.scene)) {
+        // A frame with TAA or FSR 2 saw its meshes' vertices as they are now.
+        if (frame_.scene && detail::uses_motion_vectors(*frame_.scene)) {
             for (const detail::MeshDraw& draw : mesh_draws_) {
                 if (const auto found = meshes_.find(draw.mesh); found != meshes_.end()) {
                     found->second.moved = false;
@@ -1338,7 +1390,8 @@ private:
     // Depth of field's passes on the CPU, from the world and the depth buffer, as the GPU devices
     // draw them before the rest: the result is the world the rest draw from.
     static detail::HdrImage depth_of_field(const Scene3D& scene, const detail::HdrImage& world,
-                                           std::span<const float> depth) {
+                                           std::span<const float> depth,
+                                           detail::PostSize depth_size) {
         const std::vector<detail::DofStep> plan =
             detail::dof_plan(scene.post, world.width, world.height);
         if (plan.empty()) {
@@ -1350,7 +1403,7 @@ private:
         };
         for (const detail::DofStep& step : plan) {
             const detail::ForwardPostUniforms uniforms =
-                detail::dof_uniforms(scene.post, step, scene.projection);
+                detail::dof_uniforms(scene.post, step, scene.projection, depth_size);
             if (step.pass == detail::ForwardPass::DofSize) {
                 detail::run_dof_size_pass(uniforms, world, depth, texture(step.target));
             } else if (step.pass == detail::ForwardPass::DofComposite) {
@@ -1523,12 +1576,14 @@ private:
     }
 
     // Draws the frame's meshes over target and returns the depth buffer: a float a pixel, rows
-    // top to bottom. With SSAO, SSR or TAA, Forward+'s prepass draws the opaque meshes' depth and
-    // normals first, from which the SSAO passes make the occlusion the meshes are shaded with
-    // and the SSR passes their reflections of the frame before, and with TAA their motion
-    // vectors, with which the TAA pass blends the frame, drawn with its camera jittered, with the
-    // target's frames before.
-    std::vector<float> draw_meshes(const Scene3D& scene, const WorldTarget& target) {
+    // top to bottom. With SSAO, SSR, TAA or FSR 2, Forward+'s prepass draws the opaque meshes'
+    // depth and normals first, from which the SSAO passes make the occlusion the meshes are
+    // shaded with and the SSR passes their reflections of the frame before, and with TAA or FSR
+    // 2 their motion vectors, with which the TAA pass blends the frame, drawn with its camera
+    // jittered, with the target's frames before; FSR 2's camera (fsr2) is jittered by the caller,
+    // which gets the motion vectors and upscales the frame.
+    std::vector<float> draw_meshes(const Scene3D& scene, const WorldTarget& target,
+                                   const Fsr2Camera* fsr2 = nullptr) {
         const detail::ShadowPlan plan = detail::plan_shadows(scene, kMaxTextureSize);
         std::vector<float> directional(std::size_t{plan.directional_size} * plan.directional_size,
                                        0.0F);
@@ -1565,7 +1620,10 @@ private:
             camera = detail::taa_camera_uniforms(
                 scene, detail::taa_jitter(taa_history->frames, target.width(), target.height()),
                 taa_history->primed ? taa_history->view_projection : view_projection);
+        } else if (fsr2 != nullptr) {
+            camera = detail::taa_camera_uniforms(scene, fsr2->jitter, fsr2->previous);
         }
+        const bool motion = taa || fsr2 != nullptr;
         const auto lights =
             std::make_unique<detail::MeshSceneUniforms>(detail::mesh_scene_uniforms(scene));
         if (clustered) {
@@ -1617,9 +1675,9 @@ private:
         const std::size_t pixels = std::size_t{target.width()} * target.height();
         std::vector<float> prepass_depth;
         std::vector<float> velocity;
-        if (lights->ssao[0] != 0.0F || ssr || taa) {
+        if (lights->ssao[0] != 0.0F || ssr || motion) {
             prepass_depth.assign(pixels, 0.0F);
-            if (taa) {
+            if (motion) {
                 velocity.assign(pixels * 2, 0.0F);
             }
             detail::SsaoImage normals{.width = target.width(),
@@ -1644,16 +1702,16 @@ private:
                                      std::lround(std::clamp(value->at(c), 0.0F, 1.0F) * 255.0F)) /
                                  255.0F;
                          }
-                         if (taa) {
+                         if (motion) {
                              // As the GPU stores them in its two half floats.
                              const auto varying = [&](std::size_t k) {
                                  return fragment.varying(kMotionVaryings + k);
                              };
-                             const std::array<float, 2> motion = detail::motion_vector(
+                             const std::array<float, 2> moved = detail::motion_vector(
                                  {varying(0), varying(1), varying(2), varying(3)},
                                  {varying(4), varying(5), varying(6), varying(7)});
-                             velocity[at * 2] = detail::round_half(motion[0]);
-                             velocity[(at * 2) + 1] = detail::round_half(motion[1]);
+                             velocity[at * 2] = detail::round_half(moved[0]);
+                             velocity[(at * 2) + 1] = detail::round_half(moved[1]);
                          }
                          return true;
                      });
@@ -1695,11 +1753,58 @@ private:
         if (taa_history != nullptr) {
             resolve_taa(*target.hdr, prepass_depth, std::move(velocity), *taa_history,
                         view_projection);
+        } else if (fsr2 != nullptr) {
+            *fsr2->velocity = std::move(velocity);
         }
         if (history != nullptr) {
             keep_last_frame(scene, *target.hdr, *history, seen);
         }
         return depth;
+    }
+
+    // target's frames before for FSR 2 at sizes (the render size, then the display size), made
+    // empty when it has none or they were drawn at other sizes.
+    Fsr2State& fsr2_state(TextureId target, const std::array<std::uint32_t, 4>& sizes) {
+        for (auto& [id, state] : fsr2_states_) {
+            if (id == target) {
+                if (state.sizes != sizes) {
+                    state = Fsr2State{
+                        .history = {}, .clock = {}, .view_projection = {}, .sizes = sizes};
+                }
+                return state;
+            }
+        }
+        return fsr2_states_
+            .emplace_back(
+                target,
+                Fsr2State{.history = {}, .clock = {}, .view_projection = {}, .sizes = sizes})
+            .second;
+    }
+
+    // FSR 2's passes: world, drawn at the render size with camera's jitter, upscaled to width x
+    // height with its depth and motion vectors and the target's frames before, which keep it with
+    // the camera it was seen from without the jitter.
+    static detail::HdrImage upscale_fsr2(const Scene3D& scene, Fsr2State& state,
+                                         const Fsr2Camera& camera, const detail::HdrImage& world,
+                                         std::span<const float> depth,
+                                         std::span<const float> velocity, std::uint32_t width,
+                                         std::uint32_t height) {
+        const detail::Fsr2Uniforms uniforms =
+            detail::fsr2_uniforms({.render_width = world.width,
+                                   .render_height = world.height,
+                                   .display_width = width,
+                                   .display_height = height,
+                                   .jitter = camera.jitter,
+                                   .projection = scene.projection,
+                                   .sharpness = scene.fsr2.value_or(Fsr2Scaling{}).sharpness,
+                                   .frame_index = state.clock.frames,
+                                   .phases = state.clock.phases});
+        detail::HdrImage out{.width = width, .height = height, .pixels = {}};
+        out.pixels.resize(std::size_t{width} * height * 4);
+        detail::run_fsr2(uniforms, {.color = world.pixels, .depth = depth, .motion = velocity},
+                         state.history, out.pixels);
+        state.view_projection = multiply(scene.projection, scene.camera);
+        return out;
     }
 
     // target's frames before for TAA at width x height, made empty when it has none or they were
@@ -2097,6 +2202,7 @@ private:
     // Each target's frame before, which SSR reflects.
     std::vector<std::pair<TextureId, SsrHistory>> ssr_histories_;
     std::vector<std::pair<TextureId, TaaHistory>> taa_histories_;
+    std::vector<std::pair<TextureId, Fsr2State>> fsr2_states_;
     std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> shaders_;
     std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> retired_shaders_;
     std::uint32_t next_shader_ = 1;

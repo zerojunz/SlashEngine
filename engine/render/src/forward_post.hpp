@@ -88,7 +88,9 @@ struct ForwardPostUniforms {
     // The camera's projection's entries [10], [11], [14] and [15], which turn the depth buffer's
     // values back into distances from the camera
     Float4 dof_depth{};
-    Float4 dof_jitter{};                        // the jitter's seed
+    // The jitter's seed, then the depth buffer's width and height where it is not the frame's
+    // size (FSR 2's render size), or 0
+    Float4 dof_jitter{};
     std::array<std::uint32_t, 4> dof_options{}; // the samples a side, then the kDof flags
 };
 static_assert(sizeof(ForwardPostUniforms) == 256);
@@ -161,9 +163,12 @@ struct DofStep {
 [[nodiscard]] std::vector<DofStep> dof_plan(const PostProcess& post, std::uint32_t width,
                                             std::uint32_t height);
 
-// A depth of field pass's uniforms, for a frame seen through projection (the Scene3D's).
+// A depth of field pass's uniforms, for a frame seen through projection (the Scene3D's), with a
+// depth buffer of depth's size where it is not the frame's (FSR 2's render size; 0 x 0 for the
+// frame's).
 [[nodiscard]] ForwardPostUniforms dof_uniforms(const PostProcess& post, const DofStep& step,
-                                               const std::array<float, 16>& projection);
+                                               const std::array<float, 16>& projection,
+                                               PostSize depth = {});
 
 // A texture of one float a texel, its rows top to bottom, as auto exposure's luminance textures.
 struct LuminanceImage {
@@ -190,8 +195,9 @@ void run_luminance_pass(const ForwardPostUniforms& uniforms, const LuminanceImag
                         float previous, LuminanceImage& target);
 // Depth of field's passes, drawing over all of target and rounding to half floats. The size pass
 // copies world with each pixel's blur size, from depth (the depth buffer's values, a float a
-// pixel, rows top to bottom), in alpha. A blur pass blurs source; the one that draws the result
-// keeps world's alpha. The composite blends bokeh, the blur, over world by each pixel's blur size.
+// pixel, rows top to bottom, at the frame's size or the one the uniforms give), in alpha. A blur
+// pass blurs source; the one that draws the result keeps world's alpha. The composite blends bokeh,
+// the blur, over world by each pixel's blur size.
 void run_dof_size_pass(const ForwardPostUniforms& uniforms, const HdrImage& world,
                        std::span<const float> depth, HdrImage& target);
 void run_dof_blur_pass(const ForwardPostUniforms& uniforms, const HdrImage& source,

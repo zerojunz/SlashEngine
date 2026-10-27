@@ -1,5 +1,6 @@
 #pragma once
 
+#include "fsr2.hpp"
 #include "mesh_shading.hpp"
 #include "post_shading.hpp"
 
@@ -23,8 +24,15 @@
 namespace slash::render::detail {
 
 // Whether a scene's frame uses TAA: in Forward+ only, as Godot's, and never a probe's capture.
+// FSR 2 takes its place, as Godot turns TAA off with it.
 [[nodiscard]] inline bool uses_taa(const Scene3D& scene) {
-    return scene.method == RenderMethod::ForwardPlus && scene.use_taa && !scene.capture;
+    return scene.method == RenderMethod::ForwardPlus && scene.use_taa && !scene.capture &&
+           !uses_fsr2(scene);
+}
+// Whether a scene's frame draws its meshes' motion vectors in the prepass, with its camera
+// jittered: with TAA or FSR 2.
+[[nodiscard]] inline bool uses_motion_vectors(const Scene3D& scene) {
+    return uses_taa(scene) || uses_fsr2(scene);
 }
 
 // The jitter's points, as Godot's default for TAA.

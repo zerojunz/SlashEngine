@@ -3,6 +3,14 @@
 #include "checks.hpp"
 #include "forward_post.hpp"
 #include "forward_post_shaders.hpp"
+#include "fsr2.hpp"
+#include "fsr2_accumulate_shaders.hpp"
+#include "fsr2_depth_clip_shaders.hpp"
+#include "fsr2_dilate_shaders.hpp"
+#include "fsr2_lock_shaders.hpp"
+#include "fsr2_luma_shaders.hpp"
+#include "fsr2_rcas_shaders.hpp"
+#include "fsr2_reconstruct_shaders.hpp"
 #include "hlsl_compiler.hpp"
 #include "material_shaders.hpp"
 #include "mesh_clustered_shaders.hpp"
@@ -41,12 +49,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <initializer_list>
 #include <memory>
 #include <numeric>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -137,6 +147,22 @@ struct TaaHistory {
     bool primed = false;
 };
 
+// A target's frames before for FSR 2: its clock, the last one's camera without its jitter, and two
+// of each texture the passes keep between frames, which frames take turns to draw into, last the
+// ones the last frame drew: at the display size the accumulate pass's color, locks and luma
+// history, at the render size the dilate pass's motion vectors. sizes are the render size, then
+// the display size.
+struct Fsr2Frames {
+    Fsr2Clock clock;
+    Mat4 view_projection{};
+    std::array<SDL_GPUTexture*, 2> color{};
+    std::array<SDL_GPUTexture*, 2> lock_status{};
+    std::array<SDL_GPUTexture*, 2> luma_history{};
+    std::array<SDL_GPUTexture*, 2> dilated_motion{};
+    std::size_t last = 0;
+    std::array<std::uint32_t, 4> sizes{};
+};
+
 constexpr SDL_GPUTextureFormat gpu_format(TextureFormat format) {
     switch (format) {
     case TextureFormat::Bc7:
@@ -160,6 +186,8 @@ constexpr SDL_GPUShaderFormat kHlslFormats = 0;
 constexpr std::uint32_t kMinVertexBytes = 64 * 1024;
 // Threads in a group of the particle shaders, as their [numthreads].
 constexpr std::uint32_t kParticleThreads = 64;
+// Threads across and down a group of FSR 2's reconstruct pass, as its [numthreads].
+constexpr std::uint32_t kFsr2Threads = 8;
 
 // The two shaders: plain sprites, and materials that run a program.
 enum class ShaderKind : std::uint8_t { Sprite, Material };
@@ -188,6 +216,85 @@ ShaderCode shader_code(ShaderKind kind) {
             .vertex_msl = shaders::kSpriteVertexMsl,
             .fragment_msl = shaders::kSpriteFragmentMsl,
             .hlsl = shaders::kSpriteHlsl};
+}
+
+// FSR 2's passes that draw, in the order a frame draws them; its reconstruct pass is a compute
+// shader.
+enum class Fsr2Pass : std::uint8_t { Luma, Dilate, DepthClip, Lock, Accumulate, Rcas };
+constexpr std::size_t kFsr2Passes = 6;
+
+// What each pass draws into, in the formats of the CPU twin's values.
+constexpr std::array kFsr2LumaTargets{SDL_GPU_TEXTUREFORMAT_R16_FLOAT};
+constexpr std::array kFsr2DilateTargets{SDL_GPU_TEXTUREFORMAT_R32_FLOAT,
+                                        SDL_GPU_TEXTUREFORMAT_R16G16_FLOAT,
+                                        SDL_GPU_TEXTUREFORMAT_R16_FLOAT};
+constexpr std::array kFsr2DepthClipTargets{SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
+                                           SDL_GPU_TEXTUREFORMAT_R8G8_UNORM};
+constexpr std::array kFsr2LockTargets{SDL_GPU_TEXTUREFORMAT_R16_FLOAT};
+constexpr std::array kFsr2AccumulateTargets{SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
+                                            SDL_GPU_TEXTUREFORMAT_R16G16_FLOAT,
+                                            SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM};
+constexpr std::array kFsr2RcasTargets{SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT};
+
+// A pass's shaders, the textures it samples, the storage buffers it reads (the depth clip pass
+// reads the reconstructed depths) and the formats it draws into.
+struct Fsr2PassCode {
+    ShaderCode code;
+    std::uint32_t samplers = 1;
+    std::uint32_t storage_buffers = 0;
+    std::span<const SDL_GPUTextureFormat> targets;
+};
+
+Fsr2PassCode fsr2_pass_code(Fsr2Pass pass) {
+    switch (pass) {
+    case Fsr2Pass::Luma:
+        return {.code = {.vertex_spirv = shaders::kFsr2LumaVertexSpirv,
+                         .fragment_spirv = shaders::kFsr2LumaFragmentSpirv,
+                         .vertex_msl = shaders::kFsr2LumaVertexMsl,
+                         .fragment_msl = shaders::kFsr2LumaFragmentMsl,
+                         .hlsl = shaders::kFsr2LumaHlsl},
+                .targets = kFsr2LumaTargets};
+    case Fsr2Pass::Dilate:
+        return {.code = {.vertex_spirv = shaders::kFsr2DilateVertexSpirv,
+                         .fragment_spirv = shaders::kFsr2DilateFragmentSpirv,
+                         .vertex_msl = shaders::kFsr2DilateVertexMsl,
+                         .fragment_msl = shaders::kFsr2DilateFragmentMsl,
+                         .hlsl = shaders::kFsr2DilateHlsl},
+                .samplers = 3,
+                .targets = kFsr2DilateTargets};
+    case Fsr2Pass::DepthClip:
+        return {.code = {.vertex_spirv = shaders::kFsr2DepthClipVertexSpirv,
+                         .fragment_spirv = shaders::kFsr2DepthClipFragmentSpirv,
+                         .vertex_msl = shaders::kFsr2DepthClipVertexMsl,
+                         .fragment_msl = shaders::kFsr2DepthClipFragmentMsl,
+                         .hlsl = shaders::kFsr2DepthClipHlsl},
+                .samplers = 5,
+                .storage_buffers = 1,
+                .targets = kFsr2DepthClipTargets};
+    case Fsr2Pass::Lock:
+        return {.code = {.vertex_spirv = shaders::kFsr2LockVertexSpirv,
+                         .fragment_spirv = shaders::kFsr2LockFragmentSpirv,
+                         .vertex_msl = shaders::kFsr2LockVertexMsl,
+                         .fragment_msl = shaders::kFsr2LockFragmentMsl,
+                         .hlsl = shaders::kFsr2LockHlsl},
+                .targets = kFsr2LockTargets};
+    case Fsr2Pass::Accumulate:
+        return {.code = {.vertex_spirv = shaders::kFsr2AccumulateVertexSpirv,
+                         .fragment_spirv = shaders::kFsr2AccumulateFragmentSpirv,
+                         .vertex_msl = shaders::kFsr2AccumulateVertexMsl,
+                         .fragment_msl = shaders::kFsr2AccumulateFragmentMsl,
+                         .hlsl = shaders::kFsr2AccumulateHlsl},
+                .samplers = 8,
+                .targets = kFsr2AccumulateTargets};
+    case Fsr2Pass::Rcas:
+        break;
+    }
+    return {.code = {.vertex_spirv = shaders::kFsr2RcasVertexSpirv,
+                     .fragment_spirv = shaders::kFsr2RcasFragmentSpirv,
+                     .vertex_msl = shaders::kFsr2RcasVertexMsl,
+                     .fragment_msl = shaders::kFsr2RcasFragmentMsl,
+                     .hlsl = shaders::kFsr2RcasHlsl},
+            .targets = kFsr2RcasTargets};
 }
 
 // Godot's canvas blend modes, for straight-alpha colors.
@@ -430,6 +537,25 @@ public:
         for (const auto& [format, pipeline] : taa_pipelines_) {
             SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
         }
+        while (!fsr2_frames_.empty()) {
+            forget_fsr2_frames(fsr2_frames_.back().first);
+        }
+        release_fsr2_textures();
+        for (const std::array<SDL_GPUShader*, 2>& stages : fsr2_shaders_) {
+            for (SDL_GPUShader* shader : stages) {
+                if (shader != nullptr) {
+                    SDL_ReleaseGPUShader(device_, shader);
+                }
+            }
+        }
+        for (SDL_GPUGraphicsPipeline* pipeline : fsr2_pipelines_) {
+            if (pipeline != nullptr) {
+                SDL_ReleaseGPUGraphicsPipeline(device_, pipeline);
+            }
+        }
+        if (fsr2_reconstruct_ != nullptr) {
+            SDL_ReleaseGPUComputePipeline(device_, fsr2_reconstruct_);
+        }
         release_prepass();
         for (SDL_GPUShader* shader : shadow_shaders_) {
             if (shader != nullptr) {
@@ -488,6 +614,8 @@ public:
             SDL_ReleaseGPUShader(device_, game.vertex);
             SDL_ReleaseGPUShader(device_, game.fragment);
         }
+        // What was forgotten above.
+        release_pending();
         if (window_ != nullptr) {
             SDL_ReleaseWindowFromGPUDevice(device_, window_);
         }
@@ -622,6 +750,7 @@ public:
         textures_.erase(it);
         forget_ssr_history(texture);
         forget_taa_history(texture);
+        forget_fsr2_frames(texture);
     }
 
     Result<ShaderId> create_shader(const CompiledShader& shader) override {
@@ -1123,6 +1252,8 @@ public:
                 return false;
             }
         }
+        // The sky and meshes draw at FSR 2's render size, the post passes at the frame's.
+        const auto [scene_width, scene_height] = scene_size(frame, width, height);
         if (frame.scene && frame.scene->method == RenderMethod::ForwardPlus) {
             if (auto ready =
                     prepare_forward(format, width, height, frame.scene->post.glow,
@@ -1131,41 +1262,51 @@ public:
                 SDL_CancelGPUCommandBuffer(commands);
                 return ready.error();
             }
-            // Depth of field reads the depth buffer, which a frame without meshes clears.
-            if (uses_dof(frame.scene->post)) {
-                if (auto depth = depth_target(width, height); !depth) {
+            // Depth of field and FSR 2 read the depth buffer, which a frame without meshes clears.
+            if (uses_dof(frame.scene->post) || uses_fsr2(*frame.scene)) {
+                if (auto depth = depth_target(scene_width, scene_height); !depth) {
                     SDL_CancelGPUCommandBuffer(commands);
                     return depth.error();
                 }
             }
             if (uses_prepass(*frame.scene)) {
-                if (auto ready = prepare_prepass(width, height); !ready) {
+                if (auto ready = prepare_prepass(scene_width, scene_height); !ready) {
                     SDL_CancelGPUCommandBuffer(commands);
                     return ready.error();
                 }
             }
             if (uses_taa(*frame.scene)) {
-                if (auto ready = prepare_taa(frame.target, width, height); !ready) {
+                if (auto ready = prepare_taa(frame.target, scene_width, scene_height); !ready) {
+                    SDL_CancelGPUCommandBuffer(commands);
+                    return ready.error();
+                }
+            }
+            if (uses_fsr2(*frame.scene)) {
+                if (auto ready =
+                        prepare_fsr2(frame.target, {scene_width, scene_height, width, height});
+                    !ready) {
                     SDL_CancelGPUCommandBuffer(commands);
                     return ready.error();
                 }
             }
             if (uses_ssao(*frame.scene)) {
-                if (auto ready = prepare_ssao(width, height, frame.scene->ssao.settings); !ready) {
+                if (auto ready =
+                        prepare_ssao(scene_width, scene_height, frame.scene->ssao.settings);
+                    !ready) {
                     SDL_CancelGPUCommandBuffer(commands);
                     return ready.error();
                 }
             }
             if (uses_ssr(*frame.scene)) {
-                if (auto ready =
-                        prepare_ssr(frame.target, width, height, frame.scene->ssr.settings);
+                if (auto ready = prepare_ssr(frame.target, scene_width, scene_height,
+                                             frame.scene->ssr.settings);
                     !ready) {
                     SDL_CancelGPUCommandBuffer(commands);
                     return ready.error();
                 }
             }
             if (uses_ssao(*frame.scene) || uses_ssr(*frame.scene)) {
-                if (auto ready = prepare_screen(width, height); !ready) {
+                if (auto ready = prepare_screen(scene_width, scene_height); !ready) {
                     SDL_CancelGPUCommandBuffer(commands);
                     return ready.error();
                 }
@@ -1178,7 +1319,8 @@ public:
         }
         if (frame.scene && sky_draws(*frame.scene)) {
             // The sky draws where the meshes do.
-            if (auto ready = prepare_sky(world_format(*frame.scene, format), width, height);
+            if (auto ready =
+                    prepare_sky(world_format(*frame.scene, format), scene_width, scene_height);
                 !ready) {
                 SDL_CancelGPUCommandBuffer(commands);
                 return ready.error();
@@ -1190,6 +1332,9 @@ public:
         }
         if (!frame.scene || !uses_taa(*frame.scene)) {
             forget_taa_history(frame.target);
+        }
+        if (!frame.scene || !uses_fsr2(*frame.scene)) {
+            forget_fsr2_frames(frame.target);
         }
         start_frame(frame, commands, target, width, height);
         frame_format_ = format;
@@ -1381,7 +1526,7 @@ public:
             return {}; // a skipped frame (check_mesh_draw refused one with no scene)
         }
         // Made at the first draw that needs them, so a failure shows there.
-        if (auto depth = depth_target(frame_width_, frame_height_); !depth) {
+        if (auto depth = depth_target(scene_width_, scene_height_); !depth) {
             return depth.error();
         }
         if (auto ready = prepare_shadows(*frame_.scene); !ready) {
@@ -1401,11 +1546,11 @@ public:
                         .bounds = it->second.bounds,
                         .pipeline = pipeline.value()};
         batch.previous_vertices = it->second.moved ? it->second.previous : it->second.vertices;
-        // SSAO's, SSR's and TAA's prepass draws the opaque meshes' normals, and with TAA their
-        // motion vectors.
+        // SSAO's, SSR's, TAA's and FSR 2's prepass draws the opaque meshes' normals, and with TAA
+        // or FSR 2 their motion vectors.
         if (uses_prepass(*frame_.scene) && material.transparency != Transparency::Alpha) {
-            auto normal = uses_taa(*frame_.scene) ? motion_pipeline_for(material.cull)
-                                                  : normal_pipeline_for(material.cull);
+            auto normal = uses_motion_vectors(*frame_.scene) ? motion_pipeline_for(material.cull)
+                                                             : normal_pipeline_for(material.cull);
             if (!normal) {
                 return normal.error();
             }
@@ -1454,9 +1599,10 @@ public:
         const bool meshes = frame_.scene && shadow_plan_ && !mesh_draws_.empty();
         const bool forward = frame_.scene && frame_.scene->method == RenderMethod::ForwardPlus;
         const bool capture = frame_.scene && frame_.scene->capture;
-        // Depth of field needs the depth buffer cleared, even with nothing drawn over it.
+        // Depth of field needs the depth buffer cleared, even with nothing drawn over it, and FSR 2
+        // upscales the world whatever it holds.
         const bool world = meshes || capture || (frame_.scene && sky_draws(*frame_.scene)) ||
-                           (forward && uses_dof(frame_.scene->post));
+                           (forward && (uses_dof(frame_.scene->post) || uses_fsr2(*frame_.scene)));
         const bool post = !forward && frame_.scene && post_processes(frame_.scene->post);
         if (world) {
             draw_meshes(commands, *frame_.scene, meshes ? &*shadow_plan_ : nullptr);
@@ -1885,6 +2031,21 @@ private:
             hlsl = shaders::kParticlesEmitHlsl;
             break;
         }
+        auto made = create_compute_pipeline(info, spirv, pieces, hlsl, "particle");
+        if (!made) {
+            return made.error();
+        }
+        slot = made.value();
+        return slot;
+    }
+
+    // A compute pipeline with info's bindings and threads, from a shader's code in the format the
+    // backend takes, for what.
+    Result<SDL_GPUComputePipeline*> create_compute_pipeline(SDL_GPUComputePipelineCreateInfo info,
+                                                            std::span<const unsigned char> spirv,
+                                                            std::span<const char* const> pieces,
+                                                            std::string_view hlsl,
+                                                            std::string_view what) {
         const SDL_GPUShaderFormat formats = SDL_GetGPUShaderFormats(device_);
         std::vector<std::uint8_t> compiled;
         std::string msl;
@@ -1910,11 +2071,11 @@ private:
             return make_error(ErrorCode::PlatformFailure,
                               "the GPU backend takes no shader format SlashEngine ships");
         }
-        slot = SDL_CreateGPUComputePipeline(device_, &info);
-        if (slot == nullptr) {
-            return sdl_error("creating the particle pipeline failed");
+        SDL_GPUComputePipeline* pipeline = SDL_CreateGPUComputePipeline(device_, &info);
+        if (pipeline == nullptr) {
+            return sdl_error("creating the " + std::string(what) + " pipeline failed");
         }
-        return slot;
+        return pipeline;
     }
 
     // Where a process material's words are, packed after the others unless it is the one packed
@@ -2653,15 +2814,27 @@ private:
             draw_radiance(commands, scene);
         }
         // TAA's frame: the next jitter, from the camera the target's frame before was seen from
-        // (this one's, for its first).
+        // (this one's, for its first). FSR 2's: its clock's next frame, whose point of the jitter
+        // phases moves the camera, even with no meshes, as the software device's.
         TaaHistory* taa =
             plan != nullptr && uses_taa(scene) ? find_taa_history(frame_.target) : nullptr;
+        Fsr2Frames* fsr2 = uses_fsr2(scene) ? find_fsr2_frames(frame_.target) : nullptr;
         const Mat4 view_projection = multiply(scene.projection, scene.camera);
-        const MeshCameraUniforms camera =
-            taa == nullptr
-                ? mesh_camera_uniforms(scene)
-                : taa_camera_uniforms(scene, taa_jitter(taa->frames, frame_width_, frame_height_),
-                                      taa->primed ? taa->view_projection : view_projection);
+        std::array<float, 2> jitter{};
+        MeshCameraUniforms camera = mesh_camera_uniforms(scene);
+        if (taa != nullptr) {
+            camera =
+                taa_camera_uniforms(scene, taa_jitter(taa->frames, scene_width_, scene_height_),
+                                    taa->primed ? taa->view_projection : view_projection);
+        } else if (fsr2 != nullptr) {
+            const std::uint32_t phases = fsr2_phase_count(scene_width_, frame_width_);
+            fsr2->clock.advance(phases);
+            jitter = camera_jitter(fsr2->clock.frames, phases, scene_width_, scene_height_);
+            camera = taa_camera_uniforms(
+                scene, jitter, fsr2->clock.frames == 0 ? view_projection : fsr2->view_projection);
+        }
+        // Whether the prepass draws motion vectors, and where.
+        const bool motion = plan != nullptr && (taa != nullptr || fsr2 != nullptr);
         const auto lights = std::make_unique<MeshSceneUniforms>(mesh_scene_uniforms(scene));
         const bool clustered = scene.method == RenderMethod::ForwardPlus;
         if (clustered) {
@@ -2726,12 +2899,11 @@ private:
                     mesh_surface_uniforms(draw.material, draw.layers);
                 SDL_PushGPUFragmentUniformData(commands, 0, &surface,
                                                static_cast<std::uint32_t>(sizeof(surface)));
-                // TAA's prepass reads where the vertices were from a second buffer.
+                // The motion vectors' prepass reads where the vertices were from a second buffer.
                 const std::array vertices{
                     SDL_GPUBufferBinding{.buffer = batch.vertices, .offset = 0},
                     SDL_GPUBufferBinding{.buffer = batch.previous_vertices, .offset = 0}};
-                SDL_BindGPUVertexBuffers(pass, 0, vertices.data(),
-                                         prepass && taa != nullptr ? 2 : 1);
+                SDL_BindGPUVertexBuffers(pass, 0, vertices.data(), prepass && motion ? 2 : 1);
                 const SDL_GPUBufferBinding indices{.buffer = batch.indices, .offset = 0};
                 SDL_BindGPUIndexBuffer(pass, &indices, SDL_GPU_INDEXELEMENTSIZE_32BIT);
                 std::copy(batch.samplers.begin(), batch.samplers.end(), samplers.begin());
@@ -2740,19 +2912,21 @@ private:
                 SDL_DrawGPUIndexedPrimitives(pass, batch.index_count, 1, 0, 0, 0);
             }
         };
-        if (ssao || ssr || taa != nullptr) {
+        if (ssao || ssr || motion) {
             // The prepass draws the opaque meshes' normals and depth, from which SSAO's passes
             // make the occlusion the meshes are then lit with, and SSR's their reflections, and
-            // with TAA their motion vectors, into the history's next texture.
+            // with TAA their motion vectors, into the history's next texture, or with FSR 2 into
+            // its own.
             std::array<SDL_GPUColorTargetInfo, 2> targets{};
             SDL_GPUColorTargetInfo& normals = targets[0];
             normals.texture = prepass_.normals;
             normals.clear_color = {0.0F, 0.0F, 0.0F, 0.0F};
             normals.load_op = SDL_GPU_LOADOP_CLEAR;
             normals.store_op = SDL_GPU_STOREOP_STORE;
-            if (taa != nullptr) {
+            if (motion) {
                 targets[1] = normals;
-                targets[1].texture = taa->velocity.at(1 - taa->last);
+                targets[1].texture =
+                    taa != nullptr ? taa->velocity.at(1 - taa->last) : fsr2_textures_.velocity;
             }
             SDL_GPUDepthStencilTargetInfo prepass_depth{};
             prepass_depth.texture = prepass_.depth;
@@ -2762,14 +2936,17 @@ private:
             prepass_depth.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
             prepass_depth.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
             prepass_depth.cycle = true;
-            SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(
-                commands, targets.data(), taa != nullptr ? 2 : 1, &prepass_depth);
+            SDL_GPURenderPass* pass =
+                SDL_BeginGPURenderPass(commands, targets.data(), motion ? 2 : 1, &prepass_depth);
             draw_batches(pass, true);
             SDL_EndGPURenderPass(pass);
             if (ssao) {
                 draw_ssao(commands, scene);
                 copy_to_screen(commands, ssao_targets_.textures.at(kSsaoFinal), 0);
             }
+        } else if (fsr2 != nullptr) {
+            // Nothing moved in a frame with no meshes.
+            clear_texture(commands, fsr2_textures_.velocity);
         }
         // The sky, then the meshes over it.
         const auto draw_color = [&] {
@@ -2782,8 +2959,9 @@ private:
             depth.texture = depth_;
             depth.clear_depth = 0.0F;
             depth.load_op = SDL_GPU_LOADOP_CLEAR;
-            // Kept for depth of field, which reads it after.
-            depth.store_op = scene.method == RenderMethod::ForwardPlus && uses_dof(scene.post)
+            // Kept for depth of field and FSR 2, which read it after.
+            depth.store_op = scene.method == RenderMethod::ForwardPlus &&
+                                     (uses_dof(scene.post) || fsr2 != nullptr)
                                  ? SDL_GPU_STOREOP_STORE
                                  : SDL_GPU_STOREOP_DONT_CARE;
             depth.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
@@ -2792,7 +2970,7 @@ private:
             SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(commands, &color, 1, &depth);
             if (sky_draws(scene)) {
                 const SDL_GPUTextureFormat format = world_format(scene, frame_format_);
-                const SkyUniforms sky = sky_uniforms(scene, frame_width_, frame_height_);
+                const SkyUniforms sky = sky_uniforms(scene, scene_width_, scene_height_);
                 SDL_PushGPUFragmentUniformData(commands, 0, &sky,
                                                static_cast<std::uint32_t>(sizeof(sky)));
                 const SDL_GPUTextureSamplerBinding texture = binding(sky_texture(scene.sky), true);
@@ -2818,6 +2996,9 @@ private:
             if (taa != nullptr) {
                 resolve_taa(commands, *taa, view_projection);
             }
+            if (fsr2 != nullptr) {
+                upscale_fsr2(commands, scene, *fsr2, jitter);
+            }
             return;
         }
         // SSR reflects the frame before, which a target's first frame draws first without it.
@@ -2834,6 +3015,9 @@ private:
         draw_color();
         if (taa != nullptr) {
             resolve_taa(commands, *taa, view_projection);
+        }
+        if (fsr2 != nullptr) {
+            upscale_fsr2(commands, scene, *fsr2, jitter);
         }
         keep_last_frame(commands, scene, history, seen);
     }
@@ -3124,9 +3308,10 @@ private:
 
     // The texture the sky and meshes draw into, and what it is cleared to: for Forward+ the
     // clear color made linear.
+    // With FSR 2, its texture at the render size, which it upscales into Forward+'s world.
     [[nodiscard]] SDL_GPUTexture* world_texture(const Scene3D& scene) const {
         if (scene.method == RenderMethod::ForwardPlus) {
-            return forward_targets_.world;
+            return uses_fsr2(scene) ? fsr2_textures_.color : forward_targets_.world;
         }
         return post_processes(scene.post) ? post_targets_.world : frame_texture_;
     }
@@ -3472,7 +3657,8 @@ private:
         return texture == kSsaoFinal ? kHdrFormat : ssao_gpu_format(ssao_format(texture));
     }
 
-    // Copies a texture of the frame's size into a layer of the screen array the mesh pass reads.
+    // Copies a texture of the sky and meshes' size into a layer of the screen array the mesh pass
+    // reads.
     void copy_to_screen(SDL_GPUCommandBuffer* commands, SDL_GPUTexture* texture,
                         std::uint32_t layer) const {
         SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
@@ -3480,7 +3666,7 @@ private:
             .texture = texture, .mip_level = 0, .layer = 0, .x = 0, .y = 0, .z = 0};
         const SDL_GPUTextureLocation to{
             .texture = screen_.texture, .mip_level = 0, .layer = layer, .x = 0, .y = 0, .z = 0};
-        SDL_CopyGPUTextureToTexture(copy, &from, &to, frame_width_, frame_height_, 1, false);
+        SDL_CopyGPUTextureToTexture(copy, &from, &to, scene_width_, scene_height_, 1, false);
         SDL_EndGPUCopyPass(copy);
     }
 
@@ -3488,10 +3674,10 @@ private:
     // size, in the order ssao_plan gives.
     void draw_ssao(SDL_GPUCommandBuffer* commands, const Scene3D& scene) {
         SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
-        const SsaoPlan plan = ssao_plan(scene.ssao.settings, frame_width_, frame_height_);
+        const SsaoPlan plan = ssao_plan(scene.ssao.settings, scene_width_, scene_height_);
         for (const SsaoStep& step : plan.steps) {
             const SsaoUniforms uniforms =
-                ssao_uniforms(scene.ssao, step, scene.projection, frame_width_, frame_height_);
+                ssao_uniforms(scene.ssao, step, scene.projection, scene_width_, scene_height_);
             // Made in prepare_ssao, at the start of the frame.
             auto pipeline = ssao_pipeline(step);
             if (!pipeline) {
@@ -3785,7 +3971,7 @@ private:
             color.store_op = SDL_GPU_STOREOP_STORE;
             SDL_GPURenderPass* render = SDL_BeginGPURenderPass(commands, &color, 1, nullptr);
             SDL_BindGPUGraphicsPipeline(render, pipeline.value());
-            const TaaUniforms uniforms = taa_uniforms(frame_width_, frame_height_);
+            const TaaUniforms uniforms = taa_uniforms(scene_width_, scene_height_);
             SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
                                            static_cast<std::uint32_t>(sizeof(uniforms)));
             SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
@@ -3806,7 +3992,7 @@ private:
         SDL_GPUTextureLocation to{};
         from.texture = history.primed ? resolved : world;
         to.texture = history.primed ? world : resolved;
-        SDL_CopyGPUTextureToTexture(copy, &from, &to, frame_width_, frame_height_, 1, false);
+        SDL_CopyGPUTextureToTexture(copy, &from, &to, scene_width_, scene_height_, 1, false);
         SDL_EndGPUCopyPass(copy);
         history.last = next;
         history.view_projection = view_projection;
@@ -3814,16 +4000,321 @@ private:
         ++history.frames;
     }
 
+    // The size a frame of width x height draws its sky and meshes at: FSR 2's render size, or its
+    // own.
+    static std::array<std::uint32_t, 2> scene_size(const Frame& frame, std::uint32_t width,
+                                                   std::uint32_t height) {
+        if (frame.scene && uses_fsr2(*frame.scene)) {
+            return fsr2_render_size(*frame.scene, width, height);
+        }
+        return {width, height};
+    }
+
+    // FSR 2's shaders and pipelines, the textures a frame's passes draw into at sizes (the render
+    // size, then the display size), and target's frames before, made empty when it has none or
+    // they were drawn at other sizes. Made at the start of a frame that needs them.
+    Result<void> prepare_fsr2(TextureId target, const std::array<std::uint32_t, 4>& sizes) {
+        if (auto made = make_fsr2_pipelines(); !made) {
+            return made;
+        }
+        const std::uint32_t render_width = sizes[0];
+        const std::uint32_t render_height = sizes[1];
+        const std::uint32_t width = sizes[2];
+        const std::uint32_t height = sizes[3];
+        const auto texture = [&](std::uint32_t w, std::uint32_t h, SDL_GPUTextureFormat format,
+                                 SDL_GPUTexture*& made) -> Result<void> {
+            auto created =
+                pass_texture(w, h, format, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, 1, "FSR 2");
+            if (!created) {
+                return created.error();
+            }
+            made = created.value();
+            return {};
+        };
+        Fsr2Textures& t = fsr2_textures_;
+        if (t.color == nullptr || t.sizes != sizes) {
+            release_fsr2_textures();
+            const auto [mip_width, mip_height] = fsr2_luma_mip_size(render_width, render_height);
+            const std::array<
+                std::tuple<std::uint32_t, std::uint32_t, SDL_GPUTextureFormat, SDL_GPUTexture**>, 8>
+                made{{
+                    {render_width, render_height, kHdrFormat, &t.color},
+                    {render_width, render_height, kVelocityFormat, &t.velocity},
+                    {mip_width, mip_height, kFsr2LumaTargets[0], &t.luma_mip},
+                    {render_width, render_height, kFsr2DilateTargets[0], &t.dilated_depth},
+                    {render_width, render_height, kFsr2DilateTargets[2], &t.lock_luma},
+                    {render_width, render_height, kFsr2DepthClipTargets[0], &t.prepared},
+                    {render_width, render_height, kFsr2DepthClipTargets[1], &t.reactive},
+                    {width, height, kFsr2LockTargets[0], &t.new_locks},
+                }};
+            for (const auto& [w, h, format, slot] : made) {
+                if (auto created = texture(w, h, format, *slot); !created) {
+                    release_fsr2_textures();
+                    return created;
+                }
+            }
+            SDL_GPUBufferCreateInfo buffer{};
+            buffer.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE |
+                           SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ;
+            buffer.size = render_width * render_height * 4;
+            t.reconstructed = SDL_CreateGPUBuffer(device_, &buffer);
+            if (t.reconstructed == nullptr) {
+                release_fsr2_textures();
+                return sdl_error("creating FSR 2's depth buffer failed");
+            }
+            t.sizes = sizes;
+        }
+        Fsr2Frames* found = find_fsr2_frames(target);
+        if (found == nullptr) {
+            found = &fsr2_frames_.emplace_back(target, Fsr2Frames{}).second;
+        }
+        Fsr2Frames& frames = *found;
+        if (frames.color[0] != nullptr && frames.sizes == sizes) {
+            return {};
+        }
+        release_fsr2_frames(frames);
+        frames = Fsr2Frames{};
+        for (std::size_t i = 0; i < 2; ++i) {
+            for (const auto& [w, h, format, slot] :
+                 std::array<std::tuple<std::uint32_t, std::uint32_t, SDL_GPUTextureFormat,
+                                       SDL_GPUTexture**>,
+                            4>{{
+                     {width, height, kFsr2AccumulateTargets[0], &frames.color.at(i)},
+                     {width, height, kFsr2AccumulateTargets[1], &frames.lock_status.at(i)},
+                     {width, height, kFsr2AccumulateTargets[2], &frames.luma_history.at(i)},
+                     {render_width, render_height, kFsr2DilateTargets[1],
+                      &frames.dilated_motion.at(i)},
+                 }}) {
+                if (auto created = texture(w, h, format, *slot); !created) {
+                    release_fsr2_frames(frames);
+                    return created;
+                }
+            }
+        }
+        frames.sizes = sizes;
+        return {};
+    }
+
+    // FSR 2's shaders and pipelines, unless they are made already.
+    Result<void> make_fsr2_pipelines() {
+        for (std::size_t i = 0; i < kFsr2Passes; ++i) {
+            if (fsr2_pipelines_.at(i) != nullptr) {
+                continue;
+            }
+            const Fsr2PassCode pass = fsr2_pass_code(static_cast<Fsr2Pass>(i));
+            std::array<SDL_GPUShader*, 2>& stages = fsr2_shaders_.at(i);
+            if (stages[0] == nullptr) {
+                auto vertex = make_gpu_shader(SDL_GPU_SHADERSTAGE_VERTEX, pass.code, 0, 0);
+                if (!vertex) {
+                    return vertex.error();
+                }
+                auto fragment = make_gpu_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, pass.code,
+                                                pass.samplers, 1, pass.storage_buffers);
+                if (!fragment) {
+                    SDL_ReleaseGPUShader(device_, vertex.value());
+                    return fragment.error();
+                }
+                stages = {vertex.value(), fragment.value()};
+            }
+            std::array<SDL_GPUColorTargetDescription, 3> colors{};
+            for (std::size_t target = 0; target < pass.targets.size(); ++target) {
+                colors.at(target).format = pass.targets[target];
+            }
+            SDL_GPUGraphicsPipelineCreateInfo info{};
+            info.vertex_shader = stages[0];
+            info.fragment_shader = stages[1];
+            info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+            info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+            info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+            info.target_info.color_target_descriptions = colors.data();
+            info.target_info.num_color_targets = static_cast<std::uint32_t>(pass.targets.size());
+            fsr2_pipelines_.at(i) = SDL_CreateGPUGraphicsPipeline(device_, &info);
+            if (fsr2_pipelines_.at(i) == nullptr) {
+                return sdl_error("creating FSR 2's pipelines failed");
+            }
+        }
+        if (fsr2_reconstruct_ == nullptr) {
+            // The dilated depths and motion vectors; the depths as bits.
+            SDL_GPUComputePipelineCreateInfo info{};
+            info.entrypoint = "cs_main";
+            info.num_samplers = 2;
+            info.num_readwrite_storage_buffers = 1;
+            info.num_uniform_buffers = 1;
+            info.threadcount_x = kFsr2Threads;
+            info.threadcount_y = kFsr2Threads;
+            info.threadcount_z = 1;
+            auto made = create_compute_pipeline(info, shaders::kFsr2ReconstructComputeSpirv,
+                                                shaders::kFsr2ReconstructComputeMsl,
+                                                shaders::kFsr2ReconstructHlsl, "FSR 2 reconstruct");
+            if (!made) {
+                return made.error();
+            }
+            fsr2_reconstruct_ = made.value();
+        }
+        return {};
+    }
+
+    // target's frames before for FSR 2, or null when it has none.
+    Fsr2Frames* find_fsr2_frames(TextureId target) {
+        for (auto& [id, frames] : fsr2_frames_) {
+            if (id == target) {
+                return &frames;
+            }
+        }
+        return nullptr;
+    }
+
+    void release_fsr2_frames(Fsr2Frames& frames) {
+        for (std::array<SDL_GPUTexture*, 2>* pair :
+             {&frames.color, &frames.lock_status, &frames.luma_history, &frames.dilated_motion}) {
+            for (SDL_GPUTexture*& texture : *pair) {
+                if (texture != nullptr) {
+                    pending_release_.push_back(std::exchange(texture, nullptr));
+                }
+            }
+        }
+    }
+
+    void forget_fsr2_frames(TextureId target) {
+        const auto it = std::ranges::find_if(
+            fsr2_frames_, [&](const auto& entry) { return entry.first == target; });
+        if (it == fsr2_frames_.end()) {
+            return;
+        }
+        release_fsr2_frames(it->second);
+        fsr2_frames_.erase(it);
+    }
+
+    void release_fsr2_textures() {
+        Fsr2Textures& t = fsr2_textures_;
+        for (SDL_GPUTexture** texture : {&t.color, &t.velocity, &t.luma_mip, &t.dilated_depth,
+                                         &t.lock_luma, &t.prepared, &t.reactive, &t.new_locks}) {
+            if (*texture != nullptr) {
+                pending_release_.push_back(std::exchange(*texture, nullptr));
+            }
+        }
+        if (t.reconstructed != nullptr) {
+            pending_buffers_.push_back(std::exchange(t.reconstructed, nullptr));
+        }
+        t.sizes = {};
+    }
+
+    // Clears a texture the frame draws into to transparent black.
+    static void clear_texture(SDL_GPUCommandBuffer* commands, SDL_GPUTexture* texture) {
+        SDL_GPUColorTargetInfo color{};
+        color.texture = texture;
+        color.clear_color = {0.0F, 0.0F, 0.0F, 0.0F};
+        color.load_op = SDL_GPU_LOADOP_CLEAR;
+        color.store_op = SDL_GPU_STOREOP_STORE;
+        SDL_EndGPURenderPass(SDL_BeginGPURenderPass(commands, &color, 1, nullptr));
+    }
+
+    // FSR 2's passes, as Godot's FSR 2 effect dispatches them: the world, drawn at the render size
+    // with jitter, upscaled by the depth buffer, the prepass's motion vectors and the target's
+    // frames before into Forward+'s world at the frame's size, which the post passes read. The
+    // frames before keep the camera the frame was seen from without its jitter; a reset frame
+    // starts them at 0, as the software device's.
+    void upscale_fsr2(SDL_GPUCommandBuffer* commands, const Scene3D& scene, Fsr2Frames& frames,
+                      const std::array<float, 2>& jitter) {
+        const std::size_t last = frames.last;
+        const std::size_t next = 1 - last;
+        const Fsr2Uniforms uniforms =
+            fsr2_uniforms({.render_width = scene_width_,
+                           .render_height = scene_height_,
+                           .display_width = frame_width_,
+                           .display_height = frame_height_,
+                           .jitter = jitter,
+                           .projection = scene.projection,
+                           .sharpness = scene.fsr2.value_or(Fsr2Scaling{}).sharpness,
+                           .frame_index = frames.clock.frames,
+                           .phases = frames.clock.phases});
+        if (frames.clock.frames == 0) {
+            for (SDL_GPUTexture* texture :
+                 {frames.color.at(last), frames.lock_status.at(last), frames.luma_history.at(last),
+                  frames.dilated_motion.at(last)}) {
+                clear_texture(commands, texture);
+            }
+        }
+        const Fsr2Textures& t = fsr2_textures_;
+        SDL_GPUSampler* nearest = samplers_.at(sampler_index(Filter::Nearest, false));
+        const auto pass = [&](Fsr2Pass which, std::initializer_list<SDL_GPUTexture*> targets,
+                              std::initializer_list<SDL_GPUTexture*> sources) {
+            std::array<SDL_GPUColorTargetInfo, 3> colors{};
+            std::size_t count = 0;
+            for (SDL_GPUTexture* target : targets) {
+                SDL_GPUColorTargetInfo& color = colors.at(count++);
+                color.texture = target;
+                color.load_op = SDL_GPU_LOADOP_DONT_CARE;
+                color.store_op = SDL_GPU_STOREOP_STORE;
+            }
+            SDL_GPURenderPass* render = SDL_BeginGPURenderPass(
+                commands, colors.data(), static_cast<std::uint32_t>(count), nullptr);
+            SDL_BindGPUGraphicsPipeline(render,
+                                        fsr2_pipelines_.at(static_cast<std::size_t>(which)));
+            SDL_PushGPUFragmentUniformData(commands, 0, &uniforms,
+                                           static_cast<std::uint32_t>(sizeof(uniforms)));
+            std::array<SDL_GPUTextureSamplerBinding, 8> bindings{};
+            std::size_t bound = 0;
+            for (SDL_GPUTexture* source : sources) {
+                bindings.at(bound++) = {.texture = source, .sampler = nearest};
+            }
+            SDL_BindGPUFragmentSamplers(render, 0, bindings.data(),
+                                        static_cast<std::uint32_t>(bound));
+            if (which == Fsr2Pass::DepthClip) {
+                SDL_BindGPUFragmentStorageBuffers(render, 0, &t.reconstructed, 1);
+            }
+            SDL_DrawGPUPrimitives(render, 3, 1, 0, 0);
+            SDL_EndGPURenderPass(render);
+        };
+        pass(Fsr2Pass::Luma, {t.luma_mip}, {t.color});
+        pass(Fsr2Pass::Dilate, {t.dilated_depth, frames.dilated_motion.at(next), t.lock_luma},
+             {depth_, t.velocity, t.color});
+        // The reconstruct pass clears the depths, then scatters them.
+        const std::array<SDL_GPUTextureSamplerBinding, 2> dilated{{
+            {.texture = t.dilated_depth, .sampler = nearest},
+            {.texture = frames.dilated_motion.at(next), .sampler = nearest},
+        }};
+        for (const std::int32_t step : {0, 1}) {
+            Fsr2Uniforms stepped = uniforms;
+            stepped.options[2] = step;
+            const SDL_GPUStorageBufferReadWriteBinding buffer{.buffer = t.reconstructed,
+                                                              .cycle = false,
+                                                              .padding1 = 0,
+                                                              .padding2 = 0,
+                                                              .padding3 = 0};
+            SDL_GPUComputePass* compute = SDL_BeginGPUComputePass(commands, nullptr, 0, &buffer, 1);
+            SDL_BindGPUComputePipeline(compute, fsr2_reconstruct_);
+            SDL_BindGPUComputeSamplers(compute, 0, dilated.data(),
+                                       static_cast<std::uint32_t>(dilated.size()));
+            SDL_PushGPUComputeUniformData(commands, 0, &stepped,
+                                          static_cast<std::uint32_t>(sizeof(stepped)));
+            SDL_DispatchGPUCompute(compute, (scene_width_ + kFsr2Threads - 1) / kFsr2Threads,
+                                   (scene_height_ + kFsr2Threads - 1) / kFsr2Threads, 1);
+            SDL_EndGPUComputePass(compute);
+        }
+        pass(Fsr2Pass::DepthClip, {t.prepared, t.reactive},
+             {frames.dilated_motion.at(next), t.dilated_depth, t.color,
+              frames.dilated_motion.at(last), t.velocity});
+        pass(Fsr2Pass::Lock, {t.new_locks}, {t.lock_luma});
+        pass(Fsr2Pass::Accumulate,
+             {frames.color.at(next), frames.lock_status.at(next), frames.luma_history.at(next)},
+             {frames.dilated_motion.at(next), t.prepared, t.reactive, frames.color.at(last),
+              frames.lock_status.at(last), t.new_locks, t.luma_mip, frames.luma_history.at(last)});
+        pass(Fsr2Pass::Rcas, {forward_targets_.world}, {frames.color.at(next)});
+        frames.last = next;
+        frames.view_projection = multiply(scene.projection, scene.camera);
+    }
+
     // ssr.hlsl's passes, from the prepass's depth and normals and the frame before, seen from
     // history's camera, to the reflections at the frame's size, in the order ssr_plan gives.
     void draw_ssr(SDL_GPUCommandBuffer* commands, const Scene3D& scene, const SsrCamera& camera,
                   const SsrHistory& history) {
-        const SsrPlan plan = ssr_plan(scene.ssr.settings, frame_width_, frame_height_);
+        const SsrPlan plan = ssr_plan(scene.ssr.settings, scene_width_, scene_height_);
         for (const SsrStep& step : plan.steps) {
             if (step.pass != SsrPass::CopyLevels) {
                 draw_ssr_step(commands, step,
-                              ssr_uniforms(scene.ssr, step, camera, history.camera, frame_width_,
-                                           frame_height_),
+                              ssr_uniforms(scene.ssr, step, camera, history.camera, scene_width_,
+                                           scene_height_),
                               history);
                 continue;
             }
@@ -3889,7 +4380,7 @@ private:
             } else if (index == kSsrLastFrame) {
                 texture = history.texture;
             } else if (index == kSsrWorld) {
-                texture = forward_targets_.world;
+                texture = frame_.scene ? world_texture(*frame_.scene) : forward_targets_.world;
             } else if (index < kSsrTextures && ssr_targets_.textures.at(index) != nullptr) {
                 texture = ssr_targets_.textures.at(index);
             }
@@ -3906,7 +4397,7 @@ private:
                          const SsrCamera& camera) {
         const SsrStep step = ssr_last_frame_step();
         draw_ssr_step(commands, step,
-                      ssr_uniforms(scene.ssr, step, camera, camera, frame_width_, frame_height_),
+                      ssr_uniforms(scene.ssr, step, camera, camera, scene_width_, scene_height_),
                       history);
         history.camera = camera;
         history.primed = true;
@@ -3981,9 +4472,14 @@ private:
                            ? forward_targets_.world
                            : forward_targets_.dof.at(static_cast<std::size_t>(which) - 1);
             };
+            // With FSR 2 the depth buffer is at the render size.
+            const PostSize depth = uses_fsr2(scene)
+                                       ? PostSize{.width = scene_width_, .height = scene_height_}
+                                       : PostSize{};
             for (const DofStep& step : dof_plan(post, frame_width_, frame_height_)) {
-                pass(texture(step.target), kHdrFormat, dof_uniforms(post, step, scene.projection),
-                     texture(step.source), false, white_, nullptr, depth_, forward_targets_.world);
+                pass(texture(step.target), kHdrFormat,
+                     dof_uniforms(post, step, scene.projection, depth), texture(step.source), false,
+                     white_, nullptr, depth_, forward_targets_.world);
             }
             scene_world = texture(DofTexture::Out);
         }
@@ -4524,7 +5020,7 @@ private:
 
     // Builds the frame's Forward+ clusters and copies them to the GPU.
     Result<void> upload_clusters(SDL_GPUCopyPass* copy, const Scene3D& scene) {
-        clusters_ = build_clusters(scene, frame_width_, frame_height_);
+        clusters_ = build_clusters(scene, scene_width_, scene_height_);
         if (clusters_.lights.empty()) {
             clusters_.lights.emplace_back(); // a storage buffer is never empty
         }
@@ -4590,6 +5086,9 @@ private:
         frame_texture_ = target;
         frame_width_ = width;
         frame_height_ = height;
+        const auto [scene_width, scene_height] = scene_size(frame, width, height);
+        scene_width_ = scene_width;
+        scene_height_ = scene_height;
         vertices_.clear();
         batches_.clear();
         mesh_draws_.clear();
@@ -4601,8 +5100,8 @@ private:
     }
 
     void finish_frame() {
-        // A frame with TAA saw its meshes' vertices as they are now.
-        if (frame_.scene && uses_taa(*frame_.scene)) {
+        // A frame with TAA or FSR 2 saw its meshes' vertices as they are now.
+        if (frame_.scene && uses_motion_vectors(*frame_.scene)) {
             for (const MeshDraw& draw : mesh_draws_) {
                 if (const auto found = meshes_.find(draw.mesh); found != meshes_.end()) {
                     found->second.moved = false;
@@ -4787,6 +5286,26 @@ private:
     std::array<SDL_GPUShader*, 2> taa_shaders_{};                // vertex, then fragment
     std::vector<std::pair<SDL_GPUTextureFormat, SDL_GPUGraphicsPipeline*>> taa_pipelines_;
     std::vector<std::pair<TextureId, TaaHistory>> taa_histories_;
+    // FSR 2's shaders and pipelines by Fsr2Pass, its reconstruct pass's pipeline, the textures a
+    // frame's passes draw into at sizes (the render size, then the display size) and targets'
+    // frames before.
+    struct Fsr2Textures {
+        SDL_GPUTexture* color = nullptr;    // the world the sky and meshes draw into
+        SDL_GPUTexture* velocity = nullptr; // the prepass's motion vectors
+        SDL_GPUTexture* luma_mip = nullptr;
+        SDL_GPUTexture* dilated_depth = nullptr;
+        SDL_GPUTexture* lock_luma = nullptr;
+        SDL_GPUTexture* prepared = nullptr;
+        SDL_GPUTexture* reactive = nullptr;
+        SDL_GPUTexture* new_locks = nullptr; // at the display size
+        SDL_GPUBuffer* reconstructed = nullptr;
+        std::array<std::uint32_t, 4> sizes{};
+    };
+    std::array<std::array<SDL_GPUShader*, 2>, kFsr2Passes> fsr2_shaders_{};
+    std::array<SDL_GPUGraphicsPipeline*, kFsr2Passes> fsr2_pipelines_{};
+    SDL_GPUComputePipeline* fsr2_reconstruct_ = nullptr;
+    Fsr2Textures fsr2_textures_;
+    std::vector<std::pair<TextureId, Fsr2Frames>> fsr2_frames_;
     // The radiance meshes are lit by: the raw cube the sky draws into and the one filtered from
     // it, and what they hold (nullopt to draw them again).
     struct RadianceCubes {
@@ -4812,6 +5331,9 @@ private:
     SDL_GPUTextureFormat frame_format_ = kTextureFormat;
     std::uint32_t frame_width_ = 0;
     std::uint32_t frame_height_ = 0;
+    // The size its sky and meshes draw at: FSR 2's render size, or the frame's.
+    std::uint32_t scene_width_ = 0;
+    std::uint32_t scene_height_ = 0;
     std::vector<Vertex2D> vertices_;
     std::vector<Batch> batches_;
     // The frame's mesh draws, and what each binds.

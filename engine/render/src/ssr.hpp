@@ -31,9 +31,9 @@ namespace slash::render::detail {
 }
 
 // Whether a scene's frame draws Forward+'s normal-roughness prepass, which SSAO and SSR read, and
-// with TAA its motion vectors.
+// with TAA or FSR 2 its motion vectors.
 [[nodiscard]] inline bool uses_prepass(const Scene3D& scene) {
-    return uses_ssao(scene) || uses_ssr(scene) || uses_taa(scene);
+    return uses_ssao(scene) || uses_ssr(scene) || uses_motion_vectors(scene);
 }
 
 // ssr.hlsl's passes.

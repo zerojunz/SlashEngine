@@ -2152,13 +2152,15 @@ void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& t
     }
 }
 
-std::optional<Frame3D>
-Renderer::prepare(const world::World& world, float width, float height, double interpolation,
-                  render::Color clear, const render::ShadowSettings& shadows, double time,
-                  const render::DepthOfFieldSettings& depth_of_field,
-                  const render::SsaoSettings& ssao, const render::SsrSettings& ssr,
-                  const render::ReflectionAtlasSettings& reflection_atlas,
-                  render::RenderMethod method, bool voxel_gi_high_quality, bool use_taa) {
+std::optional<Frame3D> Renderer::prepare(const world::World& world, float width, float height,
+                                         double interpolation, render::Color clear,
+                                         const render::ShadowSettings& shadows, double time,
+                                         const render::DepthOfFieldSettings& depth_of_field,
+                                         const render::SsaoSettings& ssao,
+                                         const render::SsrSettings& ssr,
+                                         const render::ReflectionAtlasSettings& reflection_atlas,
+                                         render::RenderMethod method, bool voxel_gi_high_quality,
+                                         bool use_taa, std::optional<render::Fsr2Scaling> fsr2) {
     ++frame_;
     draws_.clear();
     problems_.clear();
@@ -2304,6 +2306,7 @@ Renderer::prepare(const world::World& world, float width, float height, double i
     frame.scene.shadows = shadows;
     frame.scene.voxel_gi_high_quality = voxel_gi_high_quality;
     frame.scene.use_taa = use_taa;
+    frame.scene.fsr2 = fsr2;
     lights_ = frame.scene.lights.size();
     capture_time_ = time;
     find_lightmaps(world, env.exposure, global);
@@ -2396,10 +2399,10 @@ Renderer::prepare(const world::World& world, float width, float height, double i
             draw.material.emission_energy *= env.exposure;
         }
     }
-    // TAA moves each mesh's pixels by how far it moved since the last frame, as Godot's
+    // TAA and FSR 2 move each mesh's pixels by how far it moved since the last frame, as Godot's
     // prev_transform: each entity's draws, in order, keep where they were drawn.
     std::map<std::pair<entt::entity, std::size_t>, std::array<float, 16>> drawn;
-    if (use_taa && method == render::RenderMethod::ForwardPlus) {
+    if ((use_taa || fsr2) && method == render::RenderMethod::ForwardPlus) {
         std::map<entt::entity, std::size_t> counts;
         for (Draw& draw : draws_) {
             const std::pair key{draw.entity, counts[draw.entity]++};
