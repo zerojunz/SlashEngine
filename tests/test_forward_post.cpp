@@ -373,6 +373,36 @@ TEST_CASE("auto exposure measures a frame in blocks of 8, as Godot's luminance_r
     CHECK(average.values == std::vector<float>{1.25F});
 }
 
+TEST_CASE("log-average auto exposure measures a frame's geometric mean, as Unreal meters") {
+    // A 16 x 8 frame whose right block is 64 times as bright as its left: the average is 32.5,
+    // but the mean of the logarithms is that of 8, so the bright block darkens the rest less.
+    detail::HdrImage world{
+        .width = 16, .height = 8, .pixels = std::vector<float>(std::size_t{16} * 8 * 4)};
+    for (std::uint32_t y = 0; y < 8; ++y) {
+        for (std::uint32_t x = 0; x < 16; ++x) {
+            const std::size_t at = ((std::size_t{y} * 16) + x) * 4;
+            world.pixels[at + 1] = x < 8 ? 1.0F : 64.0F;
+            world.pixels[at + 3] = 1.0F;
+        }
+    }
+    const auto measure = [&](bool log) {
+        const PostProcess post{
+            .auto_exposure = true, .auto_exposure_max = 100.0F, .auto_exposure_log = log};
+        detail::LuminanceImage blocks;
+        detail::run_luminance_pass(
+            detail::luminance_uniforms(post, detail::ForwardPass::LuminanceFirst, {16, 8}, {2, 1}),
+            world, blocks);
+        detail::LuminanceImage out;
+        detail::run_luminance_pass(
+            detail::luminance_uniforms(post, detail::ForwardPass::LuminanceFinal, {2, 1}, {1, 1}),
+            blocks, 0.0F, out);
+        REQUIRE(out.values.size() == 1);
+        return out.values[0];
+    };
+    CHECK(measure(false) == 32.5F);
+    CHECK(measure(true) == doctest::Approx(8.0F).epsilon(1e-5));
+}
+
 TEST_CASE("Forward+ auto exposure brightens a dark frame and darkens a bright one") {
     // The 32-pixel frame's square covers a quarter of it, so the frame's brightness is a quarter
     // of the square's, and a scale of 0.1 shows the square at 0.4 whatever its brightness.
@@ -438,15 +468,21 @@ TEST_CASE("GPUs measure auto exposure as the software device does") {
     // A frame big enough for two luminance levels and a remainder, then frames that move toward a
     // dimmer square.
     const std::array<std::pair<float, float>, 3> frames{{{1.0F, 4.0F}, {0.3F, 1.5F}, {0.3F, 1.5F}}};
-    for (std::size_t i = 0; i < frames.size(); ++i) {
-        CAPTURE(i);
-        post.auto_exposure_adjust = frames.at(i).first;
-        const Material3D material{.albedo = {0.0F, 0.0F, 0.0F, 1.0F},
-                                  .emission = {1.0F, 0.5F, 0.25F},
-                                  .emission_energy = frames.at(i).second};
-        const Image expected = draw(*software, post, material, clear, 75);
-        const Image image = draw(*gpu, post, material, clear, 75);
-        CHECK(difference(image, expected) <= 3);
+    // Each metering, the log average's with a version of its own.
+    for (const bool log : {false, true}) {
+        CAPTURE(log);
+        post.auto_exposure_log = log;
+        post.auto_exposure_version = log ? 8 : 7;
+        for (std::size_t i = 0; i < frames.size(); ++i) {
+            CAPTURE(i);
+            post.auto_exposure_adjust = frames.at(i).first;
+            const Material3D material{.albedo = {0.0F, 0.0F, 0.0F, 1.0F},
+                                      .emission = {1.0F, 0.5F, 0.25F},
+                                      .emission_energy = frames.at(i).second};
+            const Image expected = draw(*software, post, material, clear, 75);
+            const Image image = draw(*gpu, post, material, clear, 75);
+            CHECK(difference(image, expected) <= 3);
+        }
     }
 }
 

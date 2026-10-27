@@ -900,7 +900,9 @@ its `exposure_multiplier` scales lights, emission, the background and the sky in
 `forward_post.hlsl`'s luminance passes (`luminance_plan`, `run_luminance_pass`) into R32F
 textures down to a 1x1 brightness they keep between frames, moving `auto_exposure_adjust` of the
 way each frame, which `prepare` works out from game time; `auto_exposure_version` starts the
-measure over. `examples/auto-exposure-3d` walks out of a tunnel.
+measure over. `auto_exposure_metering`'s `"log_average"` (SlashEngine's own, `auto_exposure_log`,
+`options.y` in the luminance passes) averages the brightness's natural logarithm instead, as
+Unreal meters, which the Unreal importer sets. `examples/auto-exposure-3d` walks out of a tunnel.
 
 Depth of field is Godot 4.6's too: `CameraAttributesPractical`'s `dof_blur_*` fields set
 `PostProcess::dof_*`, and project.json's `rendering.camera.depth_of_field` the bokeh shape,

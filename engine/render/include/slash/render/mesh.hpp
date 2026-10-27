@@ -389,6 +389,10 @@ struct PostProcess {
     float auto_exposure_max = 1.0F;
     float auto_exposure_adjust = 1.0F; // from 0 (stays) to 1 (the new brightness)
     std::uint64_t auto_exposure_version = 0;
+    // Averages the natural logarithms of the brightnesses instead and takes the exponential of
+    // the last (a geometric mean, as Unreal's auto exposure meters in log space), so a few bright
+    // pixels don't darken the frame as much. SlashEngine's own: Godot averages the brightnesses.
+    bool auto_exposure_log = false;
     // Forward+: depth of field, as Godot's CameraAttributes, before auto exposure and glow. Each
     // pixel's blur size comes from its distance from the camera along its view: past
     // dof_far_distance it grows to dof_amount times 64 pixels over dof_far_transition, and nearer

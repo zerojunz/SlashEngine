@@ -1843,6 +1843,7 @@ the first `WorldEnvironment`'s, as `WorldEnvironment.camera_attributes`.
 | `auto_exposure_scale` | `0.4` | The brightness frames are exposed toward: higher is brighter |
 | `auto_exposure_speed` | `0.5` | How much of the way to a new brightness the exposure moves each second of game time |
 | `auto_exposure_min_sensitivity`, `auto_exposure_max_sensitivity` | `0`, `800` | The least and most brightness the exposure follows, in ISO: a scene darker than the least stays dark, and one brighter than the most stays bright |
+| `auto_exposure_metering` | `"average"` | How a frame's brightness is measured: `"average"`, as Godot; `"log_average"` (SlashEngine's own) averages its natural logarithm and takes the exponential, a geometric mean, as Unreal's auto exposure meters in log space, so a few bright spots darken the rest less |
 | `dof_blur_far_enabled` | `false` | `forward_plus`: blurs what is past `dof_blur_far_distance` |
 | `dof_blur_far_distance`, `dof_blur_far_transition` | `10`, `5` | Meters from the camera where the far blur starts, and over how many more it grows to full. A negative transition grows it as a lens does instead, by how far past the distance something is |
 | `dof_blur_near_enabled` | `false` | `forward_plus`: blurs what is nearer than `dof_blur_near_distance` |
@@ -1855,7 +1856,9 @@ frame is exposed by `auto_exposure_scale` over it, glow too. The brightness move
 new frame's by `auto_exposure_speed` per second of game time, so the same frames at the same
 times expose the same way. It starts from the first frame's own brightness when auto exposure
 turns on, when the camera follows other attributes, or when game time goes back, as after a
-restore. `gl_compatibility` has no auto exposure, as in Godot.
+restore. With `"log_average"` metering the first pass takes each pixel's logarithm and the last
+the average's exponential; the rest is the same. `gl_compatibility` has no auto exposure, as in
+Godot.
 
 Depth of field blurs as Godot 4.6's Forward+ renderer does, by each pixel's distance in the depth
 buffer, between the sky and meshes and glow. Each pixel's blur size is worked out from the

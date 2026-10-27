@@ -3270,6 +3270,11 @@ void register_3d_components(ComponentRegistry& registry) {
                   {.doc = "The darkest scene it brightens, in ISO.", .min = 0})
         .describe("auto_exposure_max_sensitivity",
                   {.doc = "The brightest scene it darkens, in ISO.", .min = 0})
+        .describe("auto_exposure_metering",
+                  {.doc = "\"average\" averages a frame's brightness, as Godot; "
+                          "\"log_average\" its logarithm, as Unreal, so bright spots darken "
+                          "less.",
+                   .choices = {"average", "log_average"}})
         .describe("dof_blur_far_enabled",
                   {.doc = "Forward+: blurs what is past dof_blur_far_distance."})
         .describe("dof_blur_far_distance",

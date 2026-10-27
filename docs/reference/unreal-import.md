@@ -117,9 +117,10 @@ Unreal's filmic tonemapper does, and unless the project's `r.DefaultFeature.Auto
 has a `CameraAttributesPractical` with Unreal's auto exposure: `auto_exposure_scale` is Godot's
 0.4 at Unreal's default exposure compensation (`r.DefaultFeature.AutoExposure.Bias`, 1), doubled
 for each stop over it, and the sensitivities span Unreal's range (EV100 from -10 to 20 with
-`ExtendDefaultLuminanceRange`, 0.03 to 8 cd/m² without) in the import's light units. Godot meters
-the whole frame's average where Unreal leaves out its brightest and darkest tenth, so a level lit
-mostly by a few bright pools comes out darker than in Unreal. A `PostProcessVolume`'s own settings
+`ExtendDefaultLuminanceRange`, 0.03 to 8 cd/m² without) in the import's light units. Its
+`auto_exposure_metering` is `"log_average"`, as Unreal meters the frame's brightness in log space,
+so a few bright pools don't darken the rest of the level as Godot's average would. Unreal also
+leaves out its histogram's brightest and darkest tenth, which this doesn't. A `PostProcessVolume`'s own settings
 aren't read. A level with no camera views from the eyes of the pawn player 0 possesses, or else
 the player start: a `Camera3D` 64 cm up (Unreal's `BaseEyeHeight`), named in the report's
 `camera_added`. The world settings' `KillZ` is the report's `kill_y` and its game mode

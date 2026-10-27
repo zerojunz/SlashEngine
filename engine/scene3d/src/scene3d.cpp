@@ -634,6 +634,7 @@ Environment environment(const world::World& world, render::Color clear, entt::en
     out.post.auto_exposure_scale = attributes.auto_exposure_scale;
     out.post.auto_exposure_min = attributes.auto_exposure_min_sensitivity * luminance;
     out.post.auto_exposure_max = attributes.auto_exposure_max_sensitivity * luminance;
+    out.post.auto_exposure_log = attributes.auto_exposure_metering == "log_average";
     return out;
 }
 
