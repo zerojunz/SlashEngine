@@ -4699,6 +4699,67 @@ bounces sparks off a floor and keeps rain off the ground under an umbrella.
 | `radius` | `float` | `1` | The sphere's radius (sphere only) |
 | `size` | `Vec3` | `[2, 2, 2]` | The box's size, centered on the entity (box only) |
 
+#### SDF and height field collision (3D)
+
+`GPUParticlesCollisionSDF3D` and `GPUParticlesCollisionHeightField3D` are Godot 4.6's colliders
+for shapes and ground, paired and collided as the [sphere and box](#particle-collision-3d) are.
+[examples/particle-sdf-collision-3d](../../examples/particle-sdf-collision-3d/) settles snow on a
+yard and sparks on a statue.
+
+An SDF collider holds a signed distance field of the meshes in its box: `particles.bake_sdf`
+bakes it as Godot's Bake SDF does, from the visible `MeshInstance3D`s on layers of its
+`bake_mask` under its parent (everything for a root), with the CSG roots and `GridMap`s there,
+whose triangles touch its box. The box is `resolution` cells along its longest side and as many
+whole cells along the others as fit, at least one; each cell holds its distance to the nearest
+triangle, less than 0 within `thickness` cells behind one (a shell, as Godot's: cells deeper
+inside a mesh hold positive distances again). The bake writes a `.sdf.png` file, 16-bit samples
+of half floats with the slices of cells stacked down, and sets `texture`, `slices_horizontal` 1
+and `slices_vertical` the cells' depth. A particle touches the field where its distance (times
+the average length of the collider's axes) is under its size; it leaves along the field's
+gradient. Without a texture the field is 1 everywhere, as Godot's white default, and holds
+nothing. `scene validate` reports a texture that isn't a `.sdf.png` file or can't be read or cut
+into its slices, and exports ship the file as it is, never in compressed forms.
+
+```json
+"statue_sdf": {
+  "components": {
+    "GPUParticlesCollisionSDF3D": {"bake_mask": 2, "resolution": "16", "size": [2.0, 2.0, 2.0],
+                                   "texture": "main.statue_sdf.sdf.png", "slices_vertical": 16,
+                                   "thickness": 2.0},
+    "Transform3D": {"position": [2.0, 1.0, 0.0]}
+  }
+}
+```
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `cull_mask` | `uint32` | every layer | Collides with emitters whose `layers` share a bit |
+| `size` | `Vec3` | `[2, 2, 2]` | The box's size, centered on the entity |
+| `resolution` | `string` | `"64"` | Cells along the longest side: `"16"`, `"32"`, `"64"`, `"128"`, `"256"` or `"512"` |
+| `thickness` | `float` | `1` | How far behind a face, in cells, distances are less than 0 |
+| `bake_mask` | `uint32` | every layer | The render layers whose meshes the bake reads |
+| `texture` | path | none | The `.sdf.png` file of distances |
+| `slices_horizontal`, `slices_vertical` | `int` | `1`, `1` | How the texture's slices are laid out, as a vector field's |
+
+A height field collider draws the ground under its box from above, as Godot draws it: each of
+its texels holds the highest point at its center of the opaque triangles of what draws on a
+layer of `heightfield_mask` (`MeshInstance3D`s, CSG roots, `GridMap`s on layer 1 and
+`HTerrain`s), clipped to the box. It draws again when it moves or its settings change, or every
+tick with `update_mode` `"always"`. A particle touches it where its bottom (its center less its
+size) is under the ground, and leaves upward; an emitter collides with only the first height
+field paired with it, as Godot's. With `follow_camera_enabled` it steps after the current
+`Camera3D` along its x and z axes, by their length (a meter unscaled) at a time, writing its
+`Transform3D`, as Godot's moves it.
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `cull_mask` | `uint32` | every layer | Collides with emitters whose `layers` share a bit |
+| `size` | `Vec3` | `[2, 2, 2]` | The box's size, centered on the entity |
+| `resolution` | `string` | `"1024"` | Texels along the longer of x and z, the other in proportion: `"256"`, `"512"` or `"1024"` |
+| `update_mode` | `string` | `"when_moved"` | `"when_moved"` or `"always"` |
+| `follow_camera_enabled` | `bool` | `false` | Steps after the current camera |
+| `heightfield_mask` | `uint32` | every layer | The render layers it draws |
+
 ## UI and text
 
 UI follows Godot's `Control` nodes. A `Control` places a rect in its parent's rect, or a

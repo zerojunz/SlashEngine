@@ -606,6 +606,113 @@ TEST_CASE("every device collides 3D particles with spheres and boxes as the CPU 
     }
 }
 
+TEST_CASE("every device collides 3D particles with SDFs and height fields as the CPU twin does") {
+    constexpr std::uint32_t kAmount = 100;
+    // A ball's distances in an SDF of 8 cells each way over a box 2 meters across.
+    auto sdf = std::make_shared<render::ParticleSdf3D>();
+    sdf->width = 8;
+    sdf->height = 8;
+    sdf->depth = 8;
+    for (std::uint32_t z = 0; z < 8; ++z) {
+        for (std::uint32_t y = 0; y < 8; ++y) {
+            for (std::uint32_t x = 0; x < 8; ++x) {
+                const auto at = [](std::uint32_t i) {
+                    return ((static_cast<float>(i) + 0.5F) / 4.0F) - 1.0F;
+                };
+                const Vec3 p{at(x), at(y), at(z)};
+                sdf->distances.push_back(render::float_to_half(
+                    std::sqrt((p.x * p.x) + (p.y * p.y) + (p.z * p.z)) - 0.5F));
+            }
+        }
+    }
+    // Rolling ground of 16 by 8 texels, from a quarter to three quarters of the box's height:
+    // through the emitter.
+    auto heights = std::make_shared<render::ParticleHeightField3D>();
+    heights->width = 16;
+    heights->height = 8;
+    for (std::uint32_t z = 0; z < 8; ++z) {
+        for (std::uint32_t x = 0; x < 16; ++x) {
+            heights->heights.push_back(
+                0.25F + (0.5F * std::fmod(static_cast<float>((x * 3) + (z * 5)) * 0.137F, 1.0F)));
+        }
+    }
+    std::vector<render::ParticleCollider3D> colliders(2);
+    colliders[0].shape = render::ColliderShape3D::HeightField;
+    colliders[0].transform = {1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0F, 0.0F, 0.0F};
+    colliders[0].extents = {3.0F, 1.0F, 1.5F};
+    colliders[0].heights = heights;
+    colliders[1].shape = render::ColliderShape3D::Sdf;
+    colliders[1].transform = {0.8F, 0.6F, 0.0F, -0.6F, 0.8F, 0.0F,
+                              0.0F, 0.0F, 1.0F, 0.1F,  0.5F, 0.0F};
+    colliders[1].extents = {1.0F, 1.0F, 1.0F};
+    colliders[1].scale = 1.0F;
+    colliders[1].sdf = sdf;
+    std::vector<ParticleStep3D> steps = run_steps(45, 0.02F, 0.6F);
+    for (std::size_t i = 0; i < steps.size(); ++i) {
+        steps[i].colliders = colliders;
+        steps[i].collision_size = 0.05F;
+        // The ball comes and goes, as colliders do.
+        if (i > 40) {
+            steps[i].colliders.pop_back();
+        }
+    }
+    ParticleProcess3D rigid = busy_process();
+    rigid.collision_mode = render::ParticleCollision::Rigid;
+    rigid.collision_bounce = 0.6F;
+    rigid.collision_friction = 0.2F;
+    ParticleProcess3D hide = busy_process();
+    hide.collision_mode = render::ParticleCollision::HideOnContact;
+
+    std::vector<ParticleStep3D> plain = steps;
+    for (ParticleStep3D& step : plain) {
+        step.colliders.clear();
+    }
+    std::vector<Particle3D> free(kAmount);
+    render::process_particles_3d(free, rigid, plain);
+    std::vector<Particle3D> bounced(kAmount);
+    render::process_particles_3d(bounced, rigid, steps);
+    // Each collider moves particles.
+    std::vector<ParticleStep3D> ball_only = steps;
+    for (ParticleStep3D& step : ball_only) {
+        step.colliders.erase(step.colliders.begin());
+    }
+    std::vector<Particle3D> balled(kAmount);
+    render::process_particles_3d(balled, rigid, ball_only);
+    int moved = 0;
+    int by_ball = 0;
+    for (std::uint32_t i = 0; i < kAmount; ++i) {
+        moved += close(bounced[i], free[i]) ? 0 : 1;
+        by_ball += close(balled[i], free[i]) ? 0 : 1;
+    }
+    CHECK(moved > 20);
+    CHECK(by_ball > 20);
+
+    std::vector<std::unique_ptr<RenderDevice>> devices = slash::test::hardware_devices();
+    devices.push_back(render::create_software_device());
+    for (auto& device : devices) {
+        CAPTURE(render::backend_name(device->backend()));
+        int which = 0;
+        for (const ParticleProcess3D& rules : {rigid, hide}) {
+            const int index = which++;
+            CAPTURE(index);
+            std::vector<Particle3D> twin(kAmount);
+            render::process_particles_3d(twin, rules, steps);
+            auto system = device->create_particles_3d(kAmount);
+            REQUIRE_MESSAGE(system.ok(), error_of(system));
+            const auto ran = device->process_particles_3d(system.value(), rules, steps);
+            REQUIRE_MESSAGE(ran.ok(), error_of(ran));
+            auto read = device->read_particles_3d(system.value());
+            REQUIRE_MESSAGE(read.ok(), error_of(read));
+            REQUIRE(read.value().size() == kAmount);
+            for (std::uint32_t i = 0; i < kAmount; ++i) {
+                CHECK_MESSAGE(close(read.value()[i], twin[i]), "particle ", i, ": device ",
+                              describe(read.value()[i]), ", twin ", describe(twin[i]));
+            }
+            device->destroy_particles_3d(system.value());
+        }
+    }
+}
+
 TEST_CASE("every device places 3D particles' meshes as the software device does") {
     const auto software = render::create_software_device();
     const Image expected = draw_particles(*software, 128);
@@ -693,6 +800,23 @@ TEST_CASE("every device refuses the same 3D particle mistakes") {
         bad = steps;
         bad[1].colliders.resize(render::kMaxParticleColliders3D + 1);
         CHECK_FALSE(device->process_particles_3d(system.value(), {}, bad).ok());
+        // SDFs with the wrong count of distances, and two height fields.
+        bad = steps;
+        bad[1].colliders.push_back({});
+        bad[1].colliders.back().shape = render::ColliderShape3D::Sdf;
+        bad[1].colliders.back().sdf = std::make_shared<render::ParticleSdf3D>(
+            render::ParticleSdf3D{.width = 2, .height = 2, .depth = 2, .distances = {0}});
+        CHECK_FALSE(device->process_particles_3d(system.value(), {}, bad).ok());
+        bad = steps;
+        bad[1].colliders.resize(2);
+        for (render::ParticleCollider3D& collider : bad[1].colliders) {
+            collider.shape = render::ColliderShape3D::HeightField;
+            collider.heights = std::make_shared<render::ParticleHeightField3D>(
+                render::ParticleHeightField3D{.width = 1, .height = 1, .heights = {0.5F}});
+        }
+        CHECK_FALSE(device->process_particles_3d(system.value(), {}, bad).ok());
+        bad[1].colliders.pop_back();
+        CHECK(device->process_particles_3d(system.value(), {}, bad).ok());
         bad = steps;
         bad[2].collision_size = -0.5F;
         CHECK_FALSE(device->process_particles_3d(system.value(), {}, bad).ok());

@@ -3,6 +3,7 @@
 #include "slash/core/result.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/particles3d.hpp"
+#include "slash/scene3d/skeleton.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/tree3d.hpp"
 #include "slash/world/world.hpp"
@@ -46,19 +47,29 @@ struct ParticleSteps3D {
 using ImageLoader =
     std::function<Result<std::shared_ptr<const render::Image>>(const std::string& path)>;
 
-// The most vector fields act on one emitter, as Godot's MAX_3D_TEXTURES.
+// Reads SDFs' textures, .sdf.png files, by project path.
+using SdfLoader =
+    std::function<Result<std::shared_ptr<const render::Gray16>>(const std::string& path)>;
+
+// The most vector fields and SDFs act on one emitter, as Godot's MAX_3D_TEXTURES.
 inline constexpr std::size_t kMaxParticleFields3D = 7;
 
 // Adds the "gpu_particles_3d" system, which steps every GPUParticles3D's emission each tick after
 // the CPU particles (priority 1110) and emits "finished" when a one_shot's cycle has had time to
 // end, as Godot's: lifetime times 2 - explosiveness after it started. Each tick it pairs each
-// emitter with the GPUParticlesAttractor3Ds visible in the tree whose bounds touch its
-// visibility box and whose cull_mask shares a bit with its layers, as Godot's scene cull does,
-// in the order entities are stored, and gives its steps that tick's attractors in its particles'
-// space. images reads vector fields' textures (through assets in canvas::install); without it,
-// or for a texture that can't be read or cut, a field reads as white, as Godot's without one.
-// Called again, it reads textures with the new images.
-void add_gpu_particles_system(world::World& world, ImageLoader images = {});
+// emitter with the GPUParticlesAttractor3Ds and GPUParticlesCollision3Ds visible in the tree
+// whose bounds touch its visibility box and whose cull_mask shares a bit with its layers, as
+// Godot's scene cull does, in the order entities are stored (attractors, then spheres, boxes,
+// SDFs and height fields), and gives its steps that tick's attractors and colliders in its
+// particles' space: at most 32 of each, 7 vector fields and SDFs together and one height field.
+// It draws each GPUParticlesCollisionHeightField3D's heights when it moves or changes, or every
+// tick with update_mode "always", after stepping one with follow_camera_enabled after the current
+// Camera3D by the length of its x and z axes, as Godot does. images reads vector fields' textures
+// and sdfs SDFs' (through assets in canvas::install); without them, or for a texture that can't be
+// read or cut, a field reads as white and an SDF as 1 everywhere, as Godot's without one. models
+// reads the models height fields draw. Called again, it reads with the new loaders.
+void add_gpu_particles_system(world::World& world, ImageLoader images = {}, SdfLoader sdfs = {},
+                              ModelLoader models = {});
 
 // A GPUParticlesAttractorVectorField3D's texels: image cut into slices_horizontal by
 // slices_vertical slices, each the image's size over the slices rounded down, left to right then

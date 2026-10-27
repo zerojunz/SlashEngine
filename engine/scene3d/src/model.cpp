@@ -9,6 +9,7 @@
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/material.hpp"
+#include "slash/scene3d/particle_collision.hpp"
 #include "slash/scene3d/recipe.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/scene3d/terrain.hpp"
@@ -1269,6 +1270,7 @@ void add_asset_types(asset::Assets& assets) {
         model_bytes);
     add_mesh_library_type(assets);
     add_heightmap_type(assets);
+    add_particle_sdf_type(assets);
     add_lightmap_types(assets);
     add_voxel_gi_types(assets);
 }

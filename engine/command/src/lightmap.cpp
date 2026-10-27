@@ -6,6 +6,7 @@
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/occlusion.hpp"
+#include "slash/scene3d/particle_collision.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
 #include "slash/world/components.hpp"
@@ -299,6 +300,87 @@ Reply occluder_bake(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+// Where a GPUParticlesCollisionSDF3D with no texture bakes to, as Godot's editor offers: beside the
+// scene, named after it and the entity, or after the entity when the scene isn't saved.
+std::string default_sdf_path(const Session& session, std::string_view id) {
+    std::string_view scene = session.scene_path();
+    if (scene.ends_with(".scene.json")) {
+        scene.remove_suffix(std::string_view(".scene.json").size());
+        return std::string(scene) + "." + std::string(id) +
+               std::string(scene3d::kParticleSdfSuffix);
+    }
+    return std::string(id) + std::string(scene3d::kParticleSdfSuffix);
+}
+
+Reply particles_bake_sdf(Session& session, const json::Value& params) {
+    world::World& world = session.world();
+    const std::string& id = params.find("id")->as_string();
+    const entt::entity entity = world.find(id);
+    if (entity == entt::null) {
+        return unknown_entity(world, id, "/id");
+    }
+    auto* collider = world.ecs().try_get<world::GPUParticlesCollisionSDF3D>(entity);
+    if (collider == nullptr) {
+        return param_error(code::kInvalidParams, "/id",
+                           quoted(id) + " has no GPUParticlesCollisionSDF3D");
+    }
+    std::string path;
+    std::string_view pointer = "/id";
+    if (const json::Value* file = params.find("file")) {
+        path = file->as_string();
+        pointer = "/file";
+    } else if (!collider->texture.empty()) {
+        path = collider->texture;
+    } else {
+        path = default_sdf_path(session, id);
+    }
+    if (!path.ends_with(scene3d::kParticleSdfSuffix)) {
+        return param_error(code::kInvalidArgument, pointer,
+                           quoted(path) + " is not a " + std::string(scene3d::kParticleSdfSuffix) +
+                               " file");
+    }
+    auto baked =
+        scene3d::bake_particle_sdf(world, entity, sources(session.assets()).models, &world.pool());
+    if (!baked) {
+        return Reply::failure(baked.error());
+    }
+    const scene3d::ParticleSdfBake& bake = baked.value();
+    auto encoded = scene3d::encode_particle_sdf(bake.sdf);
+    if (!encoded) {
+        return Reply::failure(encoded.error());
+    }
+    std::string bytes = std::move(encoded).value();
+
+    json::Value result;
+    result["file"] = path;
+    result["meshes"] = bake.meshes;
+    result["triangles"] = bake.triangles;
+    result["cells"] = json::Array{bake.sdf.width, bake.sdf.height, bake.sdf.depth};
+    add_problems(world, bake.problems, result);
+
+    auto before = session.read_project_file(path);
+    if (!before) {
+        return Reply::failure(before.error());
+    }
+    const auto depth = static_cast<int>(bake.sdf.depth);
+    if (before.value() == bytes && collider->texture == path && collider->slices_horizontal == 1 &&
+        collider->slices_vertical == depth) {
+        session.mark_unchanged();
+        result["unchanged"] = true;
+        return Reply::success(std::move(result));
+    }
+    collider->texture = path;
+    collider->slices_horizontal = 1;
+    collider->slices_vertical = depth;
+    if (before.value() != bytes) {
+        if (auto staged = session.stage_file(path, bytes); !staged) {
+            return Reply::failure(staged.error());
+        }
+        session.add_undo_file(path, std::move(before).value(), std::move(bytes));
+    }
+    return Reply::success(std::move(result));
+}
+
 } // namespace
 
 void register_lightmap_commands(Registry& registry) {
@@ -354,6 +436,25 @@ void register_lightmap_commands(Registry& registry) {
         .effect = Effect::Edit,
         .params = params_schema({{"id", std::move(occluder)}}, {"id"}),
         .handler = occluder_bake,
+    });
+
+    json::Value sdf = property("string", "An entity with a GPUParticlesCollisionSDF3D.");
+    sdf["minLength"] = 1;
+    json::Value sdf_file =
+        property("string", "The .sdf.png file to write, project path. Default: the collider's "
+                           "texture, else beside the scene, named after it and the entity.");
+    sdf_file["minLength"] = 1;
+    registry.add({
+        .name = "particles.bake_sdf",
+        .description = "Bakes a GPUParticlesCollisionSDF3D's signed distance field into a .sdf.png "
+                       "file, as Godot's bake: the visible meshes on layers of its bake_mask under "
+                       "its parent that touch its box, at its resolution and thickness. Sets "
+                       "texture and its slices. Returns the file, counts, cells along each axis "
+                       "and problems.",
+        .capabilities = {Edit, Filesystem},
+        .effect = Effect::Edit,
+        .params = params_schema({{"id", std::move(sdf)}, {"file", std::move(sdf_file)}}, {"id"}),
+        .handler = particles_bake_sdf,
     });
 }
 
