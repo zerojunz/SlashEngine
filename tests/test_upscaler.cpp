@@ -340,16 +340,19 @@ TEST_CASE("upscalers are built in or added by name, and temporal ones are refuse
         return std::unique_ptr<slash::render::Upscaler>(std::make_unique<Copy>());
     };
     auto temporal = slash::render::add_upscaler(
-        {.name = "dlss", .temporal = true, .supports = {}, .make = make});
+        {.name = "dlss", .temporal = true, .supports = {}, .make = make, .make_temporal = {}});
     REQUIRE_FALSE(temporal.ok());
     CHECK(temporal.error().message ==
-          "upscaler dlss is temporal: it needs depth, motion vectors and a jittered camera, which "
-          "only the 3D renderer will make");
-    CHECK_FALSE(slash::render::add_upscaler(
-                    {.name = "fsr", .temporal = false, .supports = {}, .make = make})
-                    .ok());
-    CHECK_FALSE(slash::render::add_upscaler(
-                    {.name = "Bad Name", .temporal = false, .supports = {}, .make = make})
+          "upscaler dlss makes nothing: a temporal upscaler needs make_temporal");
+    CHECK_FALSE(
+        slash::render::add_upscaler(
+            {.name = "fsr", .temporal = false, .supports = {}, .make = make, .make_temporal = {}})
+            .ok());
+    CHECK_FALSE(slash::render::add_upscaler({.name = "Bad Name",
+                                             .temporal = false,
+                                             .supports = {},
+                                             .make = make,
+                                             .make_temporal = {}})
                     .ok());
     // Only on the null device, standing in for a vendor's GPUs.
     REQUIRE(slash::render::add_upscaler({.name = "vendor",
@@ -359,7 +362,8 @@ TEST_CASE("upscalers are built in or added by name, and temporal ones are refuse
                                                  return device.backend() ==
                                                         slash::render::Backend::Null;
                                              },
-                                         .make = make})
+                                         .make = make,
+                                         .make_temporal = {}})
                 .ok());
     CHECK(slash::render::upscaler_names() ==
           std::vector<std::string>{"bilinear", "fsr", "metalfx_spatial", "vendor"});

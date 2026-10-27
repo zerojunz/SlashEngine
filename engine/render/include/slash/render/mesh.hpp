@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -820,11 +821,14 @@ inline constexpr std::array<std::string_view, 2> kRenderMethodNames{"forward_plu
 // FidelityFX Super Resolution 3.1's upscaler instead, AMD's later passes over the same inputs
 // (scaling_3d mode "fsr3", which Godot doesn't have), and metalfx with Apple's MetalFX temporal
 // scaler (mode "metalfx_temporal"), on a device whose metalfx() has it; it doesn't sharpen.
+// upscaler names a temporal upscaler the game added (render::add_upscaler), which takes the same
+// inputs in their place.
 struct Fsr2Scaling {
     float scale = 0.77F;
     float sharpness = 0.2F;
     bool fsr3 = false;
     bool metalfx = false;
+    std::string upscaler{}; // NOLINT(readability-redundant-member-init)
 
     bool operator==(const Fsr2Scaling&) const = default;
 };

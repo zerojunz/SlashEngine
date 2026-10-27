@@ -1,0 +1,41 @@
+scene.open {"path": "main.scene.json"}
+  -> {"entities":3,"path":"main.scene.json"}
+  splat: frame 1, 80x45 to 160x90, jitter (-0.500, 0.500), moved 0.0, reset
+frame.capture {"points": [[59, 45], [60, 45], [61, 45], [62, 45], [63, 45], [64, 45]]}
+  -> {"colors":[[0.051,0.078,0.149,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1]],"drawn":{"meshes":1},"height":90,"render_size":[80,45],"upscaler":"splat","width":160}
+  splat: frame 2, 80x45 to 160x90, jitter (0.000, 0.167), moved 0.0
+  splat: frame 3, 80x45 to 160x90, jitter (-0.250, -0.167), moved 0.0
+  splat: frame 4, 80x45 to 160x90, jitter (0.250, 0.389), moved 0.0
+  splat: frame 5, 80x45 to 160x90, jitter (-0.375, 0.056), moved 0.0
+  splat: frame 6, 80x45 to 160x90, jitter (0.125, -0.278), moved 0.0
+  splat: frame 7, 80x45 to 160x90, jitter (-0.125, 0.278), moved 0.0
+  splat: frame 8, 80x45 to 160x90, jitter (0.375, -0.056), moved 0.0
+frame.capture {"points": [[59, 45], [60, 45], [61, 45], [62, 45], [63, 45], [64, 45]], "frames": 7}
+  -> {"colors":[[0.051,0.078,0.149,1],[0.051,0.078,0.149,1],[0.051,0.078,0.149,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1]],"drawn":{"meshes":1},"height":90,"render_size":[80,45],"upscaler":"splat","width":160}
+display.set {"scaling": {"scale": 1.0}}
+  -> {"max_fps":0,"scaling":{"fsr_sharpness":0.2,"mode":"fsr2","scale":1.0,"upscaler":"splat"},"vsync_mode":"enabled"}
+frame.capture {"points": [[59, 45], [60, 45], [61, 45], [62, 45], [63, 45], [64, 45]]}
+  -> {"colors":[[0.051,0.078,0.149,1],[0.051,0.078,0.149,1],[0.051,0.078,0.149,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1]],"drawn":{"meshes":1},"height":90,"width":160}
+display.set {"scaling": {"scale": 0.5}}
+  -> {"max_fps":0,"scaling":{"fsr_sharpness":0.2,"mode":"fsr2","scale":0.5,"upscaler":"splat"},"vsync_mode":"enabled"}
+  splat: frame 1, 80x45 to 160x90, jitter (-0.500, 0.500), moved 0.0, reset
+frame.capture {"points": [[59, 45], [60, 45], [61, 45], [62, 45], [63, 45], [64, 45]]}
+  -> {"colors":[[0.051,0.078,0.149,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1]],"drawn":{"meshes":1},"height":90,"render_size":[80,45],"upscaler":"splat","width":160}
+  splat: frame 2, 80x45 to 160x90, jitter (0.000, 0.167), moved 0.0
+  splat: frame 3, 80x45 to 160x90, jitter (-0.250, -0.167), moved 0.0
+  splat: frame 4, 80x45 to 160x90, jitter (0.250, 0.389), moved 0.0
+  splat: frame 5, 80x45 to 160x90, jitter (-0.375, 0.056), moved 0.0
+  splat: frame 6, 80x45 to 160x90, jitter (0.125, -0.278), moved 0.0
+  splat: frame 7, 80x45 to 160x90, jitter (-0.125, 0.278), moved 0.0
+  splat: frame 8, 80x45 to 160x90, jitter (0.375, -0.056), moved 0.0
+frame.capture {"points": [[59, 45], [60, 45], [61, 45], [62, 45], [63, 45], [64, 45]], "frames": 7}
+  -> {"colors":[[0.051,0.078,0.149,1],[0.051,0.078,0.149,1],[0.051,0.078,0.149,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1]],"drawn":{"meshes":1},"height":90,"render_size":[80,45],"upscaler":"splat","width":160}
+component.set {"id": "card", "components": {"Transform3D": {"rotation": [0.0, 0.0, 0.6]}}}
+  -> {"changed":{"Transform3D":{"rotation":[0.0,0.0,0.6]}},"id":"card"}
+  splat: frame 9, 80x45 to 160x90, jitter (-0.438, -0.389), moved 2.2
+frame.capture {"points": [[59, 45], [60, 45], [61, 45], [62, 45], [63, 45], [64, 45]]}
+  -> {"colors":[[0.051,0.078,0.149,1],[0.051,0.078,0.149,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1]],"drawn":{"meshes":1},"height":90,"render_size":[80,45],"upscaler":"splat","width":160}
+display.set {"scaling": {"scale": 1.0}}
+  -> {"max_fps":0,"scaling":{"fsr_sharpness":0.2,"mode":"fsr2","scale":1.0,"upscaler":"splat"},"vsync_mode":"enabled"}
+frame.capture {"points": [[59, 45], [60, 45], [61, 45], [62, 45], [63, 45], [64, 45]]}
+  -> {"colors":[[0.051,0.078,0.149,1],[0.051,0.078,0.149,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1],[0.949,0.898,0.8,1]],"drawn":{"meshes":1},"height":90,"width":160}
