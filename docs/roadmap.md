@@ -908,7 +908,7 @@ Exit: an agent builds a small 3D sample end to end.
   - [x] Any language as the source: a game can be written in Japanese and translated to English
   - [x] A language setting: the player's OS language by default, changeable in a game's options
         menu while it runs, with per-language fonts and right-to-left layout
-  - [ ] `l10n.extract`: every player-facing string in scenes and C++ (`tr("...")`) collected
+  - [x] `l10n.extract`: every player-facing string in scenes and C++ (`tr("...")`) collected
         into the tables, so no text is missed
   - [ ] `l10n.translate`: draft translations through `ai::Provider`, using the storyboard's
         glossary and characters so names and tone stay consistent, marked for review
@@ -1014,7 +1014,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Level geometry | CSG and grid-based tile placement | 7 | In progress: CSG shapes, paths and `GridMap` done; heightmap terrain planned |
 | LOD and culling | Generated LODs with meshoptimizer, occlusion culling | 7 | Done, imported from Godot |
 | XR | OpenXR | 8 | Planned |
-| Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | In progress: translation tables, the language setting, auto-translated controls and pseudo-localization are done |
+| Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | In progress: translation tables, the language setting, auto-translated controls, pseudo-localization and `l10n.extract` are done |
 | Video playback | AV1 through dav1d | 8 | Planned |
 | Accessibility | AccessKit | 8 | Planned |
 | Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | Done: files, commands and checks, palette, texture and triangle budget checks included, model review, the project map, and the style refined from accepted assets |

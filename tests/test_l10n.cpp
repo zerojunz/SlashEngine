@@ -634,3 +634,106 @@ TEST_CASE("l10n.set_locale switches the game's language") {
     REQUIRE(reply.ok);
     CHECK(reply.value.find("events")->as_array().size() == 2);
 }
+
+TEST_CASE("l10n.extract collects messages as Godot's POT generator") {
+    constexpr std::string_view kPo =
+        "msgid \"\"\n"
+        "msgstr \"\"\n"
+        "\"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && "
+        "(n%100<10 || n%100>=20) ? 1 : 2);\\n\"\n"
+        "\n"
+        "msgid \"Play\"\n"
+        "msgstr \"Graj\"\n";
+    Project project(
+        "extract", R"({"locale": {"translations": ["menu.csv", "pl.po"]}})",
+        {{"menu.csv", "keys,fr\nPlay,Jouer\n"},
+         {"pl.po", std::string(kPo)},
+         {"hud.prefab.json",
+          R"({"format": 1, "components": {"Control": {"tooltip_text": "Health"},
+                                            "Label": {"text": "HP"}}})"},
+         {"src/hud.cpp", "#include \"slash/l10n/l10n.hpp\"\n"
+                         "void hud(slash::world::World& world, int coins) {\n"
+                         "    show(slash::l10n::tr(world, \"Paused\"));\n"
+                         "    show(slash::l10n::tr(world, \"Open\", \"door\"));\n"
+                         "    show(slash::l10n::tr_n(world, \"%d coin\", \"%d coins\", coins));\n"
+                         "    show(slash::l10n::tr(world, name));\n"
+                         "}\n"}},
+        R"({"menu": {"components": {"Control": {"children": ["play", "name"]}}},
+            "play": {"components": {"Control": {"tooltip_text": "Start a new game"},
+                                    "Button": {"text": "Play"}}},
+            "name": {"components": {"Control": {"auto_translate_mode": "disabled"},
+                                    "Label": {"text": "Mira"},
+                                    "LineEdit": {"placeholder_text": "Your name"}}},
+            "difficulty": {"components": {"Control": {}, "OptionButton": {"items": [
+                {"text": "Easy"}, {"text": "Hard", "auto_translate_mode": "disabled"}]}}}})");
+    // A project's code is in gameplay.sources.
+    project.write("project.json", R"({"format": 1, "name": "Menu",
+        "main_scene": "main.scene.json", "gameplay": {"sources": ["src"]},
+        "internationalization": {"locale": {"translations": ["menu.csv", "pl.po"]}}})");
+
+    command::Reply reply = project.call("l10n.extract", R"({"list": true})");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    std::vector<std::string> found;
+    for (const json::Value& item : reply.value.find("list")->as_array()) {
+        found.push_back(compact(item));
+    }
+    // Files in path order: the prefab, the scene, then the code.
+    CHECK(found == std::vector<std::string>{
+                       R"({"message":"HP","where":["hud.prefab.json"]})",
+                       R"({"message":"Health","where":["hud.prefab.json"]})",
+                       R"({"message":"Easy","where":["main.scene.json"]})",
+                       R"({"message":"Play","where":["main.scene.json"]})",
+                       R"({"message":"Start a new game","where":["main.scene.json"]})",
+                       R"({"message":"Paused","where":["src/hud.cpp:3"]})",
+                       R"({"context":"door","message":"Open","where":["src/hud.cpp:4"]})",
+                       R"({"message":"%d coin","plural":"%d coins","where":["src/hud.cpp:5"]})",
+                   });
+    CHECK(reply.value.find("messages")->as_int() == 8);
+
+    // The POT file, as Godot writes one.
+    reply = project.call("l10n.extract", R"({"pot": "menu.pot"})");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    auto pot = slash::platform::read_file((project.root / "menu.pot").string());
+    REQUIRE(pot.ok());
+    CHECK(pot.value().starts_with("# LANGUAGE translation for Menu for the following files:\n"
+                                  "# hud.prefab.json\n# main.scene.json\n# src/hud.cpp\n"));
+    CHECK(pot.value().find("\n#: src/hud.cpp:4\nmsgctxt \"door\"\nmsgid \"Open\"\nmsgstr \"\"\n") !=
+          std::string::npos);
+    CHECK(pot.value().find("#: src/hud.cpp:5\nmsgid \"%d coin\"\nmsgid_plural \"%d coins\"\n"
+                           "msgstr[0] \"\"\nmsgstr[1] \"\"\n") != std::string::npos);
+    // Writing the same again changes nothing.
+    reply = project.call("l10n.extract", R"({"pot": "menu.pot"})");
+    REQUIRE(reply.ok);
+    CHECK(project.call("undo", "{}").ok);
+    CHECK_FALSE(std::filesystem::exists(project.root / "menu.pot"));
+
+    // The messages each file lacks, added untranslated.
+    reply = project.call("l10n.extract", R"({"add_to": ["menu.csv", "pl.po"]})");
+    REQUIRE_MESSAGE(reply.ok, reply.message);
+    // menu.csv has no ?context or ?plural column, so those two are skipped.
+    CHECK(compact(*reply.value.find("added")) ==
+          R"({"menu.csv":{"added":5,"skipped":2},"pl.po":{"added":7}})");
+    auto csv = slash::platform::read_file((project.root / "menu.csv").string());
+    REQUIRE(csv.ok());
+    CHECK(csv.value() == "keys,fr\nPlay,Jouer\nHP,\nHealth,\nEasy,\nStart a new game,\nPaused,\n");
+    auto po = slash::platform::read_file((project.root / "pl.po").string());
+    REQUIRE(po.ok());
+    CHECK(po.value().ends_with("\nmsgid \"%d coin\"\nmsgid_plural \"%d coins\"\n"
+                               "msgstr[0] \"\"\nmsgstr[1] \"\"\nmsgstr[2] \"\"\n"));
+    // What was added reads back, so a second pass adds nothing.
+    reply = project.call("l10n.extract", R"({"add_to": ["pl.po"]})");
+    REQUIRE(reply.ok);
+    CHECK(compact(*reply.value.find("added")) == R"({"pl.po":{"added":0}})");
+    CHECK(project.call("undo", "{}").ok);
+    csv = slash::platform::read_file((project.root / "menu.csv").string());
+    CHECK(csv.value() == "keys,fr\nPlay,Jouer\n");
+
+    // Files project.json doesn't list, and .mo files, are refused.
+    reply = project.call("l10n.extract", R"({"add_to": ["menu.cvs"]})");
+    REQUIRE_FALSE(reply.ok);
+    CHECK(reply.data.find("path")->as_string() == "/add_to/0");
+    CHECK(reply.message.find("did you mean \"menu.csv\"") != std::string::npos);
+    reply = project.call("l10n.extract", R"({"pot": "menu.po"})");
+    REQUIRE_FALSE(reply.ok);
+    CHECK(reply.data.find("path")->as_string() == "/pot");
+}

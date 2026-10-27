@@ -1896,8 +1896,11 @@ translated by `Control.auto_translate_mode` (Godot's `can_auto_translate`, items
 `application_locale` and `system_locale`) and shapes text whose `language` is `""` in the locale
 once the project localizes (`l10n::text_language`), so fonts' `language_support` picks glyphs.
 Exports ship the listed files and `project validate` checks them. `l10n.state` and
-`l10n.set_locale` (`engine/command/src/l10n.cpp`) read and switch it; `examples/localization`
-translates a title menu.
+`l10n.set_locale` (`engine/command/src/l10n.cpp`) read and switch it, and `l10n.extract`
+(`src/l10n_extract.cpp`, Godot's POT generator and scene parser) collects controls' text from
+scenes and prefabs by their translate modes and `tr` and `tr_n` literals from the game's sources
+(through `outline_cpp`), writes a `.pot` file and adds what each translation file lacks;
+`examples/localization` translates a title menu.
 
 ## Input
 
