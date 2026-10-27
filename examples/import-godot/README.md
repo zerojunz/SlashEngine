@@ -46,7 +46,9 @@ project.import {"source":"godot"}
   settings loop it, so it gets a `.audio.json` file of its own that loops it, and the music's
   clip plays that.
 - `project.godot`'s name, main scene, window size, physics, clear color, texture filter, theme,
-  buses and input map become `project.json`.
+  buses, input map and translations become `project.json`. Its translations are the two
+  `.translation` files Godot compiled [text/strings.csv](godot/text/strings.csv) into, which its
+  `.import` file names, so the CSV file is listed once and read as it is.
 - SlashEngine games are plain C++, so each script becomes a C++ skeleton in `src/imported/` for
   the agent to port ([import-godot-scripts](../import-godot-scripts/) ports one) and a storyboard
   task with what the script declares. Its variables are a component on each entity whose node

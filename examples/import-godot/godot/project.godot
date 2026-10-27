@@ -32,6 +32,11 @@ window/size/viewport_height=180
 
 theme/custom="res://ui_theme.tres"
 
+[internationalization]
+
+locale/translations=PackedStringArray("res://text/strings.en.translation", "res://text/strings.fr.translation")
+locale/fallback="en"
+
 [input]
 
 move_left={

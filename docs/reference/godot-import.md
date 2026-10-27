@@ -645,6 +645,11 @@ on its top.
 | `audio/general/3d_panning_strength` | `audio.panning_strength_3d` |
 | `audio/driver/enable_input` | `audio.enable_input` |
 | `[input]` | `input` |
+| `internationalization/locale/translations` | `internationalization.locale.translations`: `.po` and `.mo` files as they are, and a CSV file once for the `.translation` files Godot compiled it into (by its `.import` file, else by name); a compiled one with no CSV source, a file that isn't there and a CSV `delimiter` other than commas are reported |
+| `internationalization/locale/fallback`, `locale/test` | `internationalization.locale.fallback`, `test` |
+| `internationalization/pseudolocalization/*` | `internationalization.pseudolocalization`, by the same names |
+| `internationalization/rendering/root_node_layout_direction` | `internationalization.rendering.root_node_layout_direction`: `0` is `"application_locale"`, `1` `"ltr"`, `2` `"rtl"`, `3` `"system_locale"` |
+| `internationalization/rendering/force_right_to_left_layout_direction` | `internationalization.rendering.force_right_to_left_layout_direction` |
 
 Each input action keeps its deadzone and its keys (`physical_keycode` as `physical_key`,
 `keycode` as `key`, by Godot's key names, with modifiers), mouse buttons, gamepad buttons and
