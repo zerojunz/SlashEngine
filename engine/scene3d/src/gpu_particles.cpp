@@ -1,6 +1,7 @@
 #include "slash/scene3d/gpu_particles.hpp"
 
 #include "slash/core/json.hpp"
+#include "slash/core/log.hpp"
 #include "slash/scene3d/particles.hpp"
 
 #include <algorithm>
@@ -9,7 +10,9 @@
 #include <cstddef>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
+#include <tuple>
 #include <utility>
 
 namespace slash::scene3d {
@@ -150,8 +153,9 @@ void set_emitting(Emitter& e, const GPUParticles3D& settings, bool emitting, boo
 class Stepper {
 public:
     Stepper(const GPUParticles3D& settings, const Affine3D& transform, Vec3 velocity,
-            std::uint32_t seed)
-        : s_(settings), transform_(transform), velocity_(velocity), seed_(seed) {}
+            std::uint32_t seed, const std::vector<render::ParticleAttractor3D>& attractors)
+        : s_(settings), transform_(transform), velocity_(velocity), seed_(seed),
+          attractors_(attractors) {}
 
     // ParticlesStorage::_particles_process.
     void process(Emitter& e, double delta) const {
@@ -186,6 +190,7 @@ public:
         step.seed = seed_;
         step.fractional_delta = s_.fract_delta;
         step.clear = e.clear;
+        step.attractors = attractors_;
         e.clear = false;
         e.keep(step);
     }
@@ -248,12 +253,13 @@ private:
     const Affine3D& transform_;
     Vec3 velocity_;
     std::uint32_t seed_;
+    const std::vector<render::ParticleAttractor3D>& attractors_;
 };
 
 // One tick of an emitter: the node's part, which may set the component's emitting, then the
 // storage's. Returns whether a one_shot finished.
 bool tick(Emitter& e, GPUParticles3D& settings, const Affine3D& transform, std::string_view id,
-          double seconds) {
+          double seconds, const std::vector<render::ParticleAttractor3D>& attractors = {}) {
     const std::uint32_t amount = amount_of(settings);
     if (!e.seen) {
         // As a node made with these properties: emitting set last.
@@ -302,9 +308,112 @@ bool tick(Emitter& e, GPUParticles3D& settings, const Affine3D& transform, std::
         velocity = (transform.origin - e.previous_position) * per_second;
     }
     e.previous_position = transform.origin;
-    Stepper(settings, transform, velocity, gpu_particle_seed(settings, id, e.restarts))
+    Stepper(settings, transform, velocity, gpu_particle_seed(settings, id, e.restarts), attractors)
         .update(e, seconds);
     return finished;
+}
+
+// An axis-aligned box, as Godot's AABB, by its corners.
+struct Box3 {
+    Vec3 low;
+    Vec3 high;
+};
+
+// A box in an entity's space placed by its transform, as Godot's Transform3D::xform(AABB).
+Box3 placed(const Affine3D& transform, Vec3 position, Vec3 size) {
+    Box3 out{transform.origin, transform.origin};
+    const std::array<Vec3, 3> axes{transform.x, transform.y, transform.z};
+    const std::array<float, 3> low{position.x, position.y, position.z};
+    const std::array<float, 3> high{position.x + size.x, position.y + size.y, position.z + size.z};
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+        const Vec3 a = axes.at(axis) * low.at(axis);
+        const Vec3 b = axes.at(axis) * high.at(axis);
+        out.low = out.low + Vec3{std::min(a.x, b.x), std::min(a.y, b.y), std::min(a.z, b.z)};
+        out.high = out.high + Vec3{std::max(a.x, b.x), std::max(a.y, b.y), std::max(a.z, b.z)};
+    }
+    return out;
+}
+
+// As Godot's AABB::intersects: boxes that only touch don't.
+bool intersects(const Box3& a, const Box3& b) {
+    return a.low.x < b.high.x && b.low.x < a.high.x && a.low.y < b.high.y && b.low.y < a.high.y &&
+           a.low.z < b.high.z && b.low.z < a.high.z;
+}
+
+float length_of(Vec3 v) {
+    return std::sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
+}
+
+// Basis::get_scale: the axes' lengths, negative when the basis mirrors.
+Vec3 scale_of(const Affine3D& t) {
+    const float determinant = (t.x.x * ((t.y.y * t.z.z) - (t.z.y * t.y.z))) -
+                              (t.y.x * ((t.x.y * t.z.z) - (t.z.y * t.x.z))) +
+                              (t.z.x * ((t.x.y * t.y.z) - (t.y.y * t.x.z)));
+    float sign = 0.0F;
+    if (determinant > 0.0F) {
+        sign = 1.0F;
+    } else if (determinant < 0.0F) {
+        sign = -1.0F;
+    }
+    return Vec3{length_of(t.x), length_of(t.y), length_of(t.z)} * sign;
+}
+
+// An attractor in the world, as the gpu_particles_3d system found it this tick.
+struct FoundAttractor {
+    render::AttractorShape3D shape = render::AttractorShape3D::Sphere;
+    Affine3D transform;
+    Box3 bounds;
+    std::uint32_t cull_mask = 0;
+    float strength = 1.0F;
+    float attenuation = 1.0F;
+    float directionality = 0.0F;
+    float radius = 1.0F;
+    Vec3 extents;
+    std::shared_ptr<const render::ParticleField3D> field;
+};
+
+// An attractor component's shape and settings; attractors() sets the rest.
+template <typename Attractor>
+FoundAttractor found_of(render::AttractorShape3D shape, const Attractor& attractor) {
+    FoundAttractor out;
+    out.shape = shape;
+    out.cull_mask = attractor.cull_mask;
+    out.strength = attractor.strength;
+    out.attenuation = attractor.attenuation;
+    out.directionality = attractor.directionality;
+    return out;
+}
+
+// The attractor as an emitter's steps take it (ParticlesStorage::_particles_process): in the
+// particles' space, its basis made orthonormal and its size scaled.
+render::ParticleAttractor3D for_particles(const FoundAttractor& found,
+                                          const Affine3D* to_particles) {
+    const Affine3D to_collider =
+        to_particles != nullptr ? *to_particles * found.transform : found.transform;
+    const Vec3 scale = scale_of(to_collider);
+    render::ParticleAttractor3D out;
+    out.shape = found.shape;
+    out.transform = particle_transform(world::orthonormalized(to_collider));
+    out.strength = found.strength;
+    out.attenuation = found.attenuation;
+    out.directionality = found.directionality;
+    if (found.shape == render::AttractorShape3D::Sphere) {
+        const float radius = found.radius * ((scale.x + scale.y + scale.z) / 3.0F);
+        out.extents = {radius, radius, radius};
+    } else {
+        out.extents = {found.extents.x * scale.x, found.extents.y * scale.y,
+                       found.extents.z * scale.z};
+        out.field = found.field;
+    }
+    return out;
+}
+
+// A field of one white texel, which Godot's vector fields without a texture read.
+std::shared_ptr<const render::ParticleField3D> white_field() {
+    static const auto kWhite =
+        std::make_shared<const render::ParticleField3D>(render::ParticleField3D{
+            .width = 1, .height = 1, .depth = 1, .texels = {Vec4{1.0F, 1.0F, 1.0F, 1.0F}}});
+    return kWhite;
 }
 
 // What an entity's emitter is kept under: its ID, which outlives the entity handles that restoring
@@ -316,6 +425,88 @@ std::string key_of(const world::World& world, entt::entity entity) {
 
 struct GpuParticleSystem3D {
     std::map<std::string, Emitter, std::less<>> emitters;
+    ImageLoader images;
+    // Each vector field's texels by texture and slices, made again when the image changes.
+    struct Field {
+        std::shared_ptr<const render::Image> image;
+        std::shared_ptr<const render::ParticleField3D> field;
+    };
+    std::map<std::tuple<std::string, int, int>, Field> fields;
+    // The textures that couldn't be used, warned about once.
+    std::set<std::tuple<std::string, int, int>> warned;
+
+    // A vector field's texels: its texture cut into slices, or white without one or when it
+    // can't be read or cut.
+    std::shared_ptr<const render::ParticleField3D>
+    field_of(const world::GPUParticlesAttractorVectorField3D& attractor) {
+        if (attractor.texture.empty()) {
+            return white_field();
+        }
+        auto key = std::make_tuple(attractor.texture, attractor.slices_horizontal,
+                                   attractor.slices_vertical);
+        const auto fail = [&](const std::string& message) {
+            if (warned.insert(key).second) {
+                log::warn("vector field reads as white",
+                          {{"texture", attractor.texture}, {"reason", message}});
+            }
+            return white_field();
+        };
+        if (!images) {
+            return fail("textures can't load here");
+        }
+        auto image = images(attractor.texture);
+        if (!image) {
+            return fail(image.error().message);
+        }
+        const auto found = fields.find(key);
+        if (found != fields.end() && found->second.image == image.value()) {
+            return found->second.field;
+        }
+        auto field =
+            particle_field(*image.value(), attractor.slices_horizontal, attractor.slices_vertical);
+        if (!field) {
+            return fail(field.error().message);
+        }
+        warned.erase(key);
+        auto made = std::make_shared<const render::ParticleField3D>(std::move(field).value());
+        fields.insert_or_assign(std::move(key), Field{.image = image.value(), .field = made});
+        return made;
+    }
+
+    // Every attractor visible in the tree, in the order entities are stored.
+    std::vector<FoundAttractor> attractors(const world::World& world, const world::Tree3D& tree) {
+        std::vector<FoundAttractor> found;
+        const auto& ecs = world.ecs();
+        const auto add = [&](entt::entity entity, FoundAttractor attractor, Vec3 size) {
+            if (!tree.visible(entity)) {
+                return;
+            }
+            attractor.transform = tree.global(entity);
+            attractor.bounds = placed(attractor.transform, size * -0.5F, size);
+            found.push_back(std::move(attractor));
+        };
+        for (const entt::entity entity : ecs.view<const world::GPUParticlesAttractorSphere3D>()) {
+            const auto& a = ecs.get<const world::GPUParticlesAttractorSphere3D>(entity);
+            FoundAttractor sphere = found_of(render::AttractorShape3D::Sphere, a);
+            sphere.radius = a.radius;
+            add(entity, std::move(sphere), Vec3{a.radius, a.radius, a.radius} * 2.0F);
+        }
+        for (const entt::entity entity : ecs.view<const world::GPUParticlesAttractorBox3D>()) {
+            const auto& a = ecs.get<const world::GPUParticlesAttractorBox3D>(entity);
+            FoundAttractor box = found_of(render::AttractorShape3D::Box, a);
+            box.extents = a.size * 0.5F;
+            add(entity, std::move(box), a.size);
+        }
+        for (const entt::entity entity :
+             ecs.view<const world::GPUParticlesAttractorVectorField3D>()) {
+            const auto& a = ecs.get<const world::GPUParticlesAttractorVectorField3D>(entity);
+            FoundAttractor field = found_of(render::AttractorShape3D::VectorField, a);
+            field.extents = a.size * 0.5F;
+            field.field = field_of(a);
+            add(entity, std::move(field), a.size);
+        }
+        return found;
+    }
 
     void run_all(world::World& world, double tick_seconds) {
         auto& ecs = world.ecs();
@@ -328,10 +519,37 @@ struct GpuParticleSystem3D {
             return;
         }
         const world::Tree3D tree(world);
+        const std::vector<FoundAttractor> found = attractors(world, tree);
+        std::vector<render::ParticleAttractor3D> paired;
         for (const entt::entity entity : ecs.view<GPUParticles3D>()) {
             auto& component = ecs.get<GPUParticles3D>(entity);
-            if (tick(emitters[key_of(world, entity)], component, tree.global(entity),
-                     world.id_of(entity), tick_seconds)) {
+            const Affine3D transform = tree.global(entity);
+            // The attractors whose bounds touch its visibility box and whose cull_mask shares a
+            // bit with its layers, as Godot's scene cull pairs them; at most 32, and 7 fields.
+            paired.clear();
+            const Box3 box = placed(transform, component.visibility_aabb_position,
+                                    component.visibility_aabb_size);
+            const Affine3D to_particles = transform.inverse();
+            std::size_t fields_used = 0;
+            for (const FoundAttractor& attractor : found) {
+                if (paired.size() >= render::kMaxParticleAttractors3D) {
+                    break;
+                }
+                if ((attractor.cull_mask & component.layers) == 0 ||
+                    !intersects(attractor.bounds, box)) {
+                    continue;
+                }
+                if (attractor.shape == render::AttractorShape3D::VectorField) {
+                    if (fields_used >= kMaxParticleFields3D) {
+                        continue;
+                    }
+                    ++fields_used;
+                }
+                paired.push_back(
+                    for_particles(attractor, component.local_coords ? &to_particles : nullptr));
+            }
+            if (tick(emitters[key_of(world, entity)], component, transform, world.id_of(entity),
+                     tick_seconds, paired)) {
                 world.emit("finished", world.id_of(entity), {});
             }
         }
@@ -345,8 +563,14 @@ struct GpuParticleSystem3D {
         for (const auto& [key, emitter] : emitters) {
             part.bytes += world::kMapNodeBytes<decltype(emitters)> + json::heap_bytes(key) +
                           (emitter.steps.capacity() * sizeof(render::ParticleStep3D));
+            for (const render::ParticleStep3D& step : emitter.steps) {
+                part.bytes += step.attractors.capacity() * sizeof(render::ParticleAttractor3D);
+            }
             amount += emitter.amount;
             steps += emitter.kept().size();
+        }
+        for (const auto& [key, field] : fields) {
+            part.bytes += field.field->texels.capacity() * sizeof(Vec4);
         }
         part.counts = {{"emitters", emitters.size()}, {"particles", amount}, {"steps", steps}};
         return part;
@@ -358,6 +582,53 @@ struct GpuParticleSystem3D {
 render::ParticleTransform particle_transform(const Affine3D& affine) {
     return {affine.x.x, affine.x.y, affine.x.z, affine.y.x,      affine.y.y,      affine.y.z,
             affine.z.x, affine.z.y, affine.z.z, affine.origin.x, affine.origin.y, affine.origin.z};
+}
+
+Result<render::ParticleField3D> particle_field(const render::Image& image, int slices_horizontal,
+                                               int slices_vertical) {
+    if (slices_horizontal < 1 || slices_vertical < 1) {
+        return make_error(ErrorCode::InvalidArgument, "slices must be at least 1");
+    }
+    const auto across = static_cast<std::uint32_t>(slices_horizontal);
+    const auto down = static_cast<std::uint32_t>(slices_vertical);
+    // ResourceImporterLayeredTexture: each slice is the image's size over the slices, rounded
+    // down, cut left to right, then top to bottom.
+    render::ParticleField3D field;
+    field.width = image.width / across;
+    field.height = image.height / down;
+    field.depth = across * down;
+    if (field.width == 0 || field.height == 0) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "a " + std::to_string(image.width) + "x" + std::to_string(image.height) +
+                              " image can't be cut into " + std::to_string(across) + "x" +
+                              std::to_string(down) + " slices");
+    }
+    const std::size_t count = std::size_t{field.width} * field.height * field.depth;
+    if (count > render::kMaxParticleFieldTexels3D) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "the field's " + std::to_string(count) + " texels are more than " +
+                              std::to_string(render::kMaxParticleFieldTexels3D));
+    }
+    if (image.pixels.size() < std::size_t{image.width} * image.height * 4) {
+        return make_error(ErrorCode::InvalidArgument, "the image has no pixels");
+    }
+    field.texels.reserve(count);
+    for (std::uint32_t row = 0; row < down; ++row) {
+        for (std::uint32_t column = 0; column < across; ++column) {
+            for (std::uint32_t y = 0; y < field.height; ++y) {
+                for (std::uint32_t x = 0; x < field.width; ++x) {
+                    const std::size_t across_at = (std::size_t{column} * field.width) + x;
+                    const std::size_t down_at = (std::size_t{row} * field.height) + y;
+                    const std::size_t at = ((down_at * image.width) + across_at) * 4;
+                    const auto texel = [&](std::size_t i) {
+                        return static_cast<float>(image.pixels[at + i]) / 255.0F;
+                    };
+                    field.texels.push_back({texel(0), texel(1), texel(2), texel(3)});
+                }
+            }
+        }
+    }
+    return field;
 }
 
 std::uint32_t gpu_particle_seed(const GPUParticles3D& settings, std::string_view id,
@@ -391,11 +662,15 @@ render::ParticleAlign particle_align(std::string_view transform_align) {
                : render::ParticleAlign::Disabled;
 }
 
-void add_gpu_particles_system(world::World& world) {
-    if (world.ecs().ctx().contains<std::shared_ptr<GpuParticleSystem3D>>()) {
+void add_gpu_particles_system(world::World& world, ImageLoader images) {
+    if (auto* found = world.ecs().ctx().find<std::shared_ptr<GpuParticleSystem3D>>();
+        found != nullptr) {
+        (*found)->images = std::move(images);
+        (*found)->fields.clear();
         return;
     }
     auto system = std::make_shared<GpuParticleSystem3D>();
+    system->images = std::move(images);
     world.ecs().ctx().emplace<std::shared_ptr<GpuParticleSystem3D>>(system);
     world.add_reset([system](world::World& /*world*/) { system->emitters.clear(); });
     world.add_memory_source("gpu_particles_3d",
@@ -406,8 +681,9 @@ void add_gpu_particles_system(world::World& world) {
         {.doc = "Steps each GPUParticles3D's emission for renderers to run.",
          .priority = 1110,
          .threaded = true,
-         .reads = {"Transform3D"},
-         .writes = {"GPUParticles3D"}});
+         .reads = {"Transform3D", "GPUParticlesAttractorSphere3D", "GPUParticlesAttractorBox3D",
+                   "GPUParticlesAttractorVectorField3D"},
+         .writes = {"GPUParticles3D", "assets"}});
 }
 
 std::optional<ParticleSteps3D> particle_steps_3d(const world::World& world, entt::entity entity) {

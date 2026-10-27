@@ -4555,7 +4555,7 @@ draws each draw pass's mesh at every live particle, in the visibility box. Metal
 Vulkan and WebGPU run the steps, the view depth sort and the meshes in compute shaders; the
 software and OpenGL devices, `particles.eval` and headless runs run the same steps on the CPU
 (`render::process_particles_3d`), so tests and replays see the same particles everywhere.
-Attractors and collision are on the [roadmap](../roadmap.md).
+[Attractors](#particle-attractors) pull them; collision is on the [roadmap](../roadmap.md).
 [examples/gpu-particles-3d](../../examples/gpu-particles-3d/) has sparks, leaves and streaks.
 
 ```json
@@ -4604,6 +4604,7 @@ A process material's 3D fields, beside the [2D ones](#process-materials):
 | `scale_over_velocity_min`, `_max`, `scale_over_velocity_curve` | `0`, `0`, `[]` | Scales each axis by the particle's speed, the curve's offset going from min to max meters per second |
 | `particle_flag_rotate_y` | `false` | Turn each particle about its y axis by its angle |
 | `particle_flag_disable_z` | `false` | Keep particles in the xy plane |
+| `attractor_interaction_enabled` | `true` | [Attractors](#particle-attractors) push the particles |
 
 - `scale_curve`, `orbit_velocity_curve`, `directional_velocity_curve` and
   `scale_over_velocity_curve` take one curve or one per axis, `{"x": [...], "y": [...], "z":
@@ -4619,6 +4620,52 @@ A process material's 3D fields, beside the [2D ones](#process-materials):
 - Particles are not saved: scenes, snapshots, [`undo`](commands.md#undo), dry runs and failed
   commands leave them as they are. [`particles.eval`](commands.md#particleseval) runs the steps
   kept on the CPU and returns them as a `CPUParticles3D`'s.
+
+#### Particle attractors
+
+`GPUParticlesAttractorSphere3D`, `GPUParticlesAttractorBox3D` and
+`GPUParticlesAttractorVectorField3D` are Godot 4.6's attractors: each pulls the particles of
+`GPUParticles3D`s inside its shape, by Godot's particle shader's formula. Each tick the
+`gpu_particles_3d` system pairs every emitter with the attractors that are visible in the tree,
+whose bounds (the sphere's or box's, placed by the entity's transform) touch the emitter's
+visibility box and whose `cull_mask` shares a bit with its `layers`, as Godot's scene cull pairs
+them: at most 32 an emitter, 7 of them vector fields, in the order entities are stored. The
+attractors go into that tick's steps in the particles' space (the emitter's with
+`local_coords`), their bases made orthonormal and their sizes scaled by their transforms (a
+sphere's radius by its scale's average), so every device moves the particles the same way.
+[examples/particle-attractors-3d](../../examples/particle-attractors-3d/) gathers dust in a well,
+blows it with a gust and turns it in a swirl.
+
+```json
+"well": {
+  "components": {
+    "GPUParticlesAttractorSphere3D": {"attenuation": 0.5, "radius": 1.5, "strength": 4.0},
+    "Transform3D": {"position": [0.0, 1.0, 0.0]}
+  }
+}
+```
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `strength` | `float` | `1` | How hard it pulls toward its center; negative pushes |
+| `attenuation` | `float` | `1` | How the pull falls off toward its edge: the share of the way in, raised to this power |
+| `directionality` | `float` | `0` | 0 pulls toward the center; 1 pushes along its -z instead, as a wind; between, a blend |
+| `cull_mask` | `uint32` | every layer | Acts on emitters whose `layers` share a bit |
+| `radius` | `float` | `1` | The sphere's radius (sphere only) |
+| `size` | `Vec3` | `[2, 2, 2]` | The box's size, centered on the entity (box and vector field) |
+| `texture` | `std::string` | `""` | The vector field's directions: a `.png`, `.jpg` or `.bmp` file cut into slices; `""` reads as white (vector field only) |
+| `slices_horizontal`, `slices_vertical` | `int` | `8`, `8` | How the texture is cut, as Godot's Texture3D importer's `slices/horizontal` and `slices/vertical` (vector field only) |
+
+- A vector field's texture is cut into `slices_horizontal` by `slices_vertical` slices, each
+  the image's size over the slices rounded down, left to right then top to bottom, and stacked
+  front to back (-z to +z of the box). Each texel's color `c` pushes along `c * 2 - 1` in the
+  box's space, by its length, sampled with linear filtering. A texture that can't be read or
+  cut reads as white, with a warning, and `scene validate` reports it; a field holds at most
+  262144 texels. Exports ship it as it is, never in compressed forms, so particles move the
+  same on every GPU.
+- A process material with `attractor_interaction_enabled` off ignores attractors.
+- `particles.eval` with a `time` runs an emitter's settings apart from the world, so no
+  attractor acts there.
 
 ## UI and text
 

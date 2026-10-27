@@ -425,6 +425,98 @@ TEST_CASE("every device steps 3D particles as the CPU twin does") {
     }
 }
 
+TEST_CASE("every device pulls 3D particles with attractors as the CPU twin does") {
+    constexpr std::uint32_t kAmount = 100;
+    // A field of 3 by 2 by 2 texels, each pushing its own way.
+    auto field = std::make_shared<render::ParticleField3D>();
+    field->width = 3;
+    field->height = 2;
+    field->depth = 2;
+    for (std::uint32_t i = 0; i < 12; ++i) {
+        const auto f = static_cast<float>(i);
+        field->texels.push_back({std::fmod(f * 0.37F, 1.0F), std::fmod(f * 0.61F, 1.0F),
+                                 std::fmod(0.2F + (f * 0.13F), 1.0F), 1.0F});
+    }
+    std::vector<render::ParticleAttractor3D> attractors;
+    attractors.push_back({.shape = render::AttractorShape3D::Sphere,
+                          .transform = {1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5F, 1.0F, 0.0F},
+                          .extents = {2.0F, 2.0F, 2.0F},
+                          .strength = 3.0F,
+                          .attenuation = 2.0F,
+                          .field = nullptr});
+    attractors.push_back(
+        {.shape = render::AttractorShape3D::Box,
+         .transform = {0.8F, 0.6F, 0.0F, -0.6F, 0.8F, 0.0F, 0.0F, 0.0F, 1.0F, -0.5F, 0.5F, 0.0F},
+         .extents = {1.5F, 1.0F, 2.0F},
+         .strength = -2.0F,
+         .attenuation = 0.5F,
+         .directionality = 0.5F,
+         .field = nullptr});
+    attractors.push_back({.shape = render::AttractorShape3D::VectorField,
+                          .transform = {1, 0, 0, 0, 0, -1, 0, 1, 0, 0.0F, 1.5F, 0.0F},
+                          .extents = {2.0F, 2.0F, 2.0F},
+                          .strength = 4.0F,
+                          .attenuation = 1.0F,
+                          .directionality = 0.25F,
+                          .field = field});
+    std::vector<ParticleStep3D> steps = run_steps(45, 0.02F, 0.6F);
+    for (std::size_t i = 5; i < steps.size(); ++i) {
+        // The field comes and goes, as attractors do.
+        steps[i].attractors = attractors;
+        if (i > 30) {
+            steps[i].attractors.pop_back();
+        }
+    }
+    ParticleProcess3D process = busy_process();
+    ParticleProcess3D flat = busy_process();
+    flat.disable_z = true;
+    ParticleProcess3D ignoring = busy_process();
+    ignoring.attractor_interaction = false;
+
+    // The attractors move the particles, and not where interaction is off.
+    std::vector<Particle3D> pulled(kAmount);
+    render::process_particles_3d(pulled, process, steps);
+    std::vector<ParticleStep3D> plain = steps;
+    for (ParticleStep3D& step : plain) {
+        step.attractors.clear();
+    }
+    std::vector<Particle3D> unpulled(kAmount);
+    render::process_particles_3d(unpulled, process, plain);
+    std::vector<Particle3D> ignored(kAmount);
+    render::process_particles_3d(ignored, ignoring, steps);
+    int moved = 0;
+    for (std::uint32_t i = 0; i < kAmount; ++i) {
+        CHECK(close(ignored[i], unpulled[i]));
+        moved += close(pulled[i], unpulled[i]) ? 0 : 1;
+    }
+    CHECK(moved > 20);
+
+    std::vector<std::unique_ptr<RenderDevice>> devices = slash::test::hardware_devices();
+    devices.push_back(render::create_software_device());
+    for (auto& device : devices) {
+        CAPTURE(render::backend_name(device->backend()));
+        int which = 0;
+        for (const ParticleProcess3D& rules : {process, flat}) {
+            const int index = which++;
+            CAPTURE(index);
+            std::vector<Particle3D> twin(kAmount);
+            render::process_particles_3d(twin, rules, steps);
+            auto system = device->create_particles_3d(kAmount);
+            REQUIRE_MESSAGE(system.ok(), error_of(system));
+            const auto ran = device->process_particles_3d(system.value(), rules, steps);
+            REQUIRE_MESSAGE(ran.ok(), error_of(ran));
+            auto read = device->read_particles_3d(system.value());
+            REQUIRE_MESSAGE(read.ok(), error_of(read));
+            REQUIRE(read.value().size() == kAmount);
+            for (std::uint32_t i = 0; i < kAmount; ++i) {
+                CHECK_MESSAGE(close(read.value()[i], twin[i]), "particle ", i, ": device ",
+                              describe(read.value()[i]), ", twin ", describe(twin[i]));
+            }
+            device->destroy_particles_3d(system.value());
+        }
+    }
+}
+
 TEST_CASE("every device places 3D particles' meshes as the software device does") {
     const auto software = render::create_software_device();
     const Image expected = draw_particles(*software, 128);
@@ -496,6 +588,17 @@ TEST_CASE("every device refuses the same 3D particle mistakes") {
         CHECK_FALSE(device->process_particles_3d(system.value(), {}, bad).ok());
         bad = steps;
         bad[2].delta = -1.0F;
+        CHECK_FALSE(device->process_particles_3d(system.value(), {}, bad).ok());
+        // Too many attractors, and vector fields without texels or with the wrong count.
+        bad = steps;
+        bad[1].attractors.resize(render::kMaxParticleAttractors3D + 1);
+        CHECK_FALSE(device->process_particles_3d(system.value(), {}, bad).ok());
+        bad = steps;
+        bad[1].attractors.push_back({});
+        bad[1].attractors.back().shape = render::AttractorShape3D::VectorField;
+        CHECK_FALSE(device->process_particles_3d(system.value(), {}, bad).ok());
+        bad[1].attractors.back().field = std::make_shared<render::ParticleField3D>(
+            render::ParticleField3D{.width = 2, .height = 2, .depth = 2, .texels = {{}}});
         CHECK_FALSE(device->process_particles_3d(system.value(), {}, bad).ok());
         CHECK_FALSE(device->process_particles_3d(render::Particles3DId{999}, {}, steps).ok());
         CHECK(device->process_particles_3d(system.value(), {}, steps).ok());

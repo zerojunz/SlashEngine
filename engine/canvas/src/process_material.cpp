@@ -292,6 +292,10 @@ json::Value schema(bool list_ops) {
     properties["particle_flag_disable_z"]["default"] = false;
     properties["particle_flag_disable_z"]["description"] =
         "3D: keep particles moving and turning in the emitter's xy plane.";
+    properties["attractor_interaction_enabled"]["type"] = "boolean";
+    properties["attractor_interaction_enabled"]["default"] = true;
+    properties["attractor_interaction_enabled"]["description"] =
+        "3D: GPUParticlesAttractor3Ds push the particles.";
     properties["particle_flag_damping_as_friction"]["type"] = "boolean";
     properties["particle_flag_damping_as_friction"]["default"] = false;
     properties["particle_flag_damping_as_friction"]["description"] =
@@ -761,6 +765,7 @@ Result<render::ParticleProcess3D> parse_process_material_3d(const json::Value& d
     real("turbulence_noise_scale", out.turbulence_noise_scale);
     triple("turbulence_noise_speed", out.turbulence_noise_speed);
     real("turbulence_noise_speed_random", out.turbulence_noise_speed_random);
+    flag("attractor_interaction_enabled", out.attractor_interaction);
     return out;
 }
 

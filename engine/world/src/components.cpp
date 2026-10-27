@@ -2032,6 +2032,54 @@ void register_particle_components(ComponentRegistry& registry) {
         .describe("layers", {.doc = "As MeshInstance3D's.", .min = 0, .max = kMaxMask})
         .describe("cast_shadow", {.doc = "As MeshInstance3D's.",
                                   .choices = {"off", "on", "double_sided", "shadows_only"}});
+
+    const FieldMeta strength{.doc = "How hard it pulls particles toward it; negative pushes."};
+    const FieldMeta attenuation{.doc = "How the pull falls off toward its edge: the share of the "
+                                       "way in raised to this power. 1 is linear.",
+                                .min = 0};
+    const FieldMeta directionality{
+        .doc = "0 pulls toward its center; 1 pushes along its -z instead, as a wind.",
+        .min = 0,
+        .max = 1};
+    const FieldMeta cull_mask{
+        .doc = "Acts on GPUParticles3Ds whose layers share a bit.", .min = 0, .max = kMaxMask};
+    const FieldMeta box{.doc = "The box's size in meters, centered on the entity.", .min = 0};
+    registry.add<GPUParticlesAttractorSphere3D>()
+        .set_doc("Pulls the particles of GPUParticles3Ds inside a sphere, as Godot's "
+                 "GPUParticlesAttractorSphere3D, when their process material has "
+                 "attractor_interaction_enabled; at most 32 attractors act on an emitter.")
+        .describe("strength", strength)
+        .describe("attenuation", attenuation)
+        .describe("directionality", directionality)
+        .describe("cull_mask", cull_mask)
+        .describe("radius", {.doc = "The sphere's radius in meters.", .min = 0});
+    registry.add<GPUParticlesAttractorBox3D>()
+        .set_doc("Pulls the particles of GPUParticles3Ds inside a box, as Godot's "
+                 "GPUParticlesAttractorBox3D.")
+        .describe("strength", strength)
+        .describe("attenuation", attenuation)
+        .describe("directionality", directionality)
+        .describe("cull_mask", cull_mask)
+        .describe("size", box);
+    registry.add<GPUParticlesAttractorVectorField3D>()
+        .set_doc("Pushes the particles of GPUParticles3Ds inside a box along a 3D texture of "
+                 "directions, as Godot's GPUParticlesAttractorVectorField3D; at most 7 vector "
+                 "fields act on an emitter.")
+        .describe("texture", {.doc = "Project path of a .png, .jpg or .bmp file cut into slices, "
+                                     "each texel's color c pushing along c * 2 - 1 in the box's "
+                                     "space; \"\" reads as white."})
+        .describe("strength", strength)
+        .describe("attenuation", attenuation)
+        .describe("directionality", directionality)
+        .describe("cull_mask", cull_mask)
+        .describe("size", box)
+        .describe("slices_horizontal",
+                  {.doc = "Slices across the texture, as Godot's slices/horizontal.",
+                   .min = 1,
+                   .max = 256})
+        .describe(
+            "slices_vertical",
+            {.doc = "Slices down the texture, as Godot's slices/vertical.", .min = 1, .max = 256});
 }
 
 void register_audio_components(ComponentRegistry& registry) {
