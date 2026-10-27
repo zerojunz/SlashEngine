@@ -2152,15 +2152,14 @@ void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& t
     }
 }
 
-std::optional<Frame3D> Renderer::prepare(const world::World& world, float width, float height,
-                                         double interpolation, render::Color clear,
-                                         const render::ShadowSettings& shadows, double time,
-                                         const render::DepthOfFieldSettings& depth_of_field,
-                                         const render::SsaoSettings& ssao,
-                                         const render::SsrSettings& ssr,
-                                         const render::ReflectionAtlasSettings& reflection_atlas,
-                                         render::RenderMethod method, bool voxel_gi_high_quality,
-                                         bool use_taa, std::optional<render::Fsr2Scaling> fsr2) {
+std::optional<Frame3D>
+Renderer::prepare(const world::World& world, float width, float height, double interpolation,
+                  render::Color clear, const render::ShadowSettings& shadows, double time,
+                  const render::DepthOfFieldSettings& depth_of_field,
+                  const render::SsaoSettings& ssao, const render::SsrSettings& ssr,
+                  const render::ReflectionAtlasSettings& reflection_atlas,
+                  render::RenderMethod method, bool voxel_gi_high_quality, bool use_taa,
+                  std::optional<render::Fsr2Scaling> fsr2, render::DecalFilter decal_filter) {
     ++frame_;
     draws_.clear();
     problems_.clear();
@@ -2310,6 +2309,10 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
     lights_ = frame.scene.lights.size();
     capture_time_ = time;
     find_lightmaps(world, env.exposure, global);
+    frame.scene.decals.filter = decal_filter;
+    if (method == render::RenderMethod::ForwardPlus) {
+        add_decals(world, tree, global, lens.cull_mask, env.exposure, frame.scene.decals);
+    }
 
     for (const entt::entity entity : made<world::MeshInstance3D>(world)) {
         const auto& instance = ecs.get<const world::MeshInstance3D>(entity);
@@ -2448,6 +2451,84 @@ std::optional<Frame3D> Renderer::prepare(const world::World& world, float width,
             {.entity = camera, .path = "ReflectionProbe", .message = reflected.error().message});
     }
     return frame;
+}
+
+void Renderer::add_decals(const world::World& world, const world::Tree3D& tree,
+                          const std::function<world::Affine3D(entt::entity)>& global,
+                          std::uint32_t cull_mask, float exposure, render::Decals3D& out) {
+    std::vector<entt::entity> entities;
+    for (const entt::entity entity : made<world::Decal>(world)) {
+        const auto& decal = world.ecs().get<const world::Decal>(entity);
+        if (!tree.visible(entity) || (decal.layers & cull_mask) == 0) {
+            continue;
+        }
+        bool loaded = true;
+        const auto image = [&](const char* field,
+                               const std::string& path) -> std::shared_ptr<const render::Image> {
+            if (path.empty()) {
+                return nullptr;
+            }
+            Result<std::shared_ptr<const render::Image>> read =
+                make_error(ErrorCode::NotFound, "this renderer reads no images for decals");
+            if (images_) {
+                read = images_(path);
+            }
+            if (!read) {
+                problems_.push_back({.entity = entity,
+                                     .path = std::string("/components/Decal/") + field,
+                                     .message = read.error().message});
+                loaded = false;
+                return nullptr;
+            }
+            return read.value();
+        };
+        render::Decal3D d;
+        d.transform = global(entity).matrix();
+        d.size = {decal.size.x, decal.size.y, decal.size.z};
+        d.albedo = image("texture_albedo", decal.texture_albedo);
+        d.normal = image("texture_normal", decal.texture_normal);
+        d.orm = image("texture_orm", decal.texture_orm);
+        d.emission = image("texture_emission", decal.texture_emission);
+        d.emission_energy = decal.emission_energy * exposure;
+        d.modulate = {decal.modulate.x, decal.modulate.y, decal.modulate.z, decal.modulate.w};
+        d.albedo_mix = decal.albedo_mix;
+        // Godot's setters keep the upper and lower fades at 0 or more, and its inspector the
+        // normal fade from 0 to 1.
+        d.normal_fade = std::clamp(decal.normal_fade, 0.0F, 1.0F);
+        d.upper_fade = std::max(decal.upper_fade, 0.0F);
+        d.lower_fade = std::max(decal.lower_fade, 0.0F);
+        d.distance_fade = decal.distance_fade_enabled;
+        d.distance_fade_begin = decal.distance_fade_begin;
+        d.distance_fade_length = std::max(decal.distance_fade_length, 0.0F);
+        d.cull_mask = decal.cull_mask;
+        d.sorting_offset = decal.sorting_offset;
+        if (!loaded) {
+            continue;
+        }
+        if (auto checked = render::check_decal(d); !checked) {
+            problems_.push_back({.entity = entity,
+                                 .path = "/components/Decal",
+                                 .message = checked.error().message});
+            continue;
+        }
+        out.decals.push_back(std::move(d));
+        entities.push_back(entity);
+    }
+    if (render::check_decals(out)) {
+        return;
+    }
+    // Their textures don't fit in one atlas: keep each that fits with those before it.
+    render::Decals3D kept{.decals = {}, .filter = out.filter};
+    for (std::size_t i = 0; i < out.decals.size(); ++i) {
+        kept.decals.push_back(std::move(out.decals[i]));
+        if (auto checked = render::check_decals(kept); !checked) {
+            kept.decals.pop_back();
+            problems_.push_back({.entity = entities[i],
+                                 .path = "/components/Decal",
+                                 .message = checked.error().message});
+        }
+    }
+    out = std::move(kept);
 }
 
 namespace {

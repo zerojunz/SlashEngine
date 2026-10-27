@@ -478,10 +478,25 @@ json::Value project_schema() {
         "How exports ship textures, as Godot's compress/mode: lossless as the file is; "
         "vram_compressed as BC7 (desktop, web) or ASTC 4x4 (phones, web) blocks, a quarter of the "
         "GPU memory; vram_uncompressed as RGBA8 texels ready for the GPU.";
+    json::Value decal_filter;
+    decal_filter["enum"] = json::Array{};
+    for (const std::string_view filter : render::kDecalFilterNames) {
+        decal_filter["enum"].push_back(std::string(filter));
+    }
+    decal_filter["default"] = "linear_mipmaps";
+    decal_filter["description"] =
+        "How Decals' textures are sampled, as Godot's rendering/textures/decals/filter: by the "
+        "nearest texel or linearly, and with mipmaps, blending smaller copies further away. "
+        "Anisotropic filters are drawn as the plain mipmap ones.";
+    json::Value decals;
+    decals["type"] = "object";
+    decals["additionalProperties"] = false;
+    decals["properties"]["filter"] = std::move(decal_filter);
     json::Value textures;
     textures["type"] = "object";
     textures["additionalProperties"] = false;
-    textures["description"] = "How exports ship textures.";
+    textures["description"] = "How exports ship textures, and how decals sample theirs.";
+    textures["properties"]["decals"] = std::move(decals);
     textures["properties"]["compress_mode"] = compress_mode;
     textures["properties"]["compress_mode"]["default"] = TextureImport{}.compress_mode;
     textures["properties"]["paths"]["type"] = "object";
@@ -808,6 +823,7 @@ Result<Project> parse_project(const json::Value& project) {
         }
         out.voxel_gi_high_quality = render::voxel_gi_high_quality(*rendering);
         out.use_taa = render::use_taa(*rendering);
+        out.decal_filter = render::decal_filter(*rendering);
         if (const json::Value* textures = rendering->find("textures"); textures != nullptr) {
             if (const json::Value* mode = textures->find("compress_mode"); mode != nullptr) {
                 out.texture_import.compress_mode = mode->as_string();

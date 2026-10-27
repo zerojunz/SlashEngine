@@ -3122,6 +3122,72 @@ data = SubResource("broken")
     fs::remove_all(project);
 }
 
+TEST_CASE("importing Godot's Decals keeps their textures, fades and the project's filter") {
+    const fs::path project = "import_godot_decal";
+    const fs::path folder = project / "godot";
+    fs::remove_all(project);
+    write(folder / "project.godot", R"(config_version=5
+
+[application]
+
+config/name="Street"
+run/main_scene="res://street.tscn"
+
+[rendering]
+
+textures/decals/filter=1
+)");
+    write(folder / "art" / "paint.png", "png");
+    write(folder / "art" / "bumps.png", "png");
+    write(folder / "street.tscn", R"([gd_scene load_steps=3 format=3]
+
+[ext_resource type="Texture2D" path="res://art/paint.png" id="1_paint"]
+[ext_resource type="Texture2D" path="res://art/bumps.png" id="2_bumps"]
+
+[node name="Street" type="Node3D"]
+
+[node name="Paint" type="Decal" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0, -3)
+size = Vector3(4, 1, 2)
+texture_albedo = ExtResource("1_paint")
+texture_normal = ExtResource("2_bumps")
+emission_energy = 2.0
+modulate = Color(1, 0.5, 0.5, 1)
+albedo_mix = 0.75
+normal_fade = 0.25
+upper_fade = 0.1
+lower_fade = 0.2
+distance_fade_enabled = true
+distance_fade_begin = 30.0
+distance_fade_length = 5.0
+cull_mask = 1048573
+sorting_offset = 1.5
+
+[node name="Old" type="Decal" parent="."]
+extents = Vector3(1, 0.5, 2)
+texture_albedo = ExtResource("1_paint")
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string street = "godot/street.scene.json";
+    REQUIRE(files.contains(street));
+    CHECK(*entity(files, street, "paint").find("Decal") == parse(R"({
+        "size": [4.0, 1.0, 2.0], "texture_albedo": "godot/art/paint.png",
+        "texture_normal": "godot/art/bumps.png", "emission_energy": 2.0,
+        "modulate": [1.0, 0.5, 0.5, 1.0], "albedo_mix": 0.75, "normal_fade": 0.25,
+        "upper_fade": 0.1, "lower_fade": 0.2, "distance_fade_enabled": true,
+        "distance_fade_begin": 30.0, "distance_fade_length": 5.0, "cull_mask": 1048573,
+        "sorting_offset": 1.5})"));
+    // Godot 4.0's extents were half the size.
+    CHECK(*entity(files, street, "old").find("Decal") == parse(R"({
+        "size": [2.0, 1.0, 4.0], "texture_albedo": "godot/art/paint.png"})"));
+    CHECK(unsupported(plan.report, "node type Decal").is_null());
+    const json::Value project_file = parse(files.at("project.json"));
+    CHECK(*project_file.find("rendering")->find("textures") ==
+          parse(R"({"decals": {"filter": "linear"}})"));
+    fs::remove_all(project);
+}
+
 TEST_CASE("importing Godot's top_level and z_as_relative keeps them") {
     const fs::path project = "import_godot_top_level";
     fs::remove_all(project);

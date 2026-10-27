@@ -2556,7 +2556,8 @@ fn fs_main(@builtin(position) position : vec4<f32>) -> tint_symbol {
 }
 )wgsl"};
 
-inline constexpr char kSsrTraceHlsl[] = R"hlsl(// ssr.hlsl's trace pass, which draws each pixel's reflection and its mip level into two targets.
+inline constexpr const char* kSsrTraceHlsl[] = {
+R"hlsl(// ssr.hlsl's trace pass, which draws each pixel's reflection and its mip level into two targets.
 // It draws with ssr.hlsl's vertex stage.
 #define SSR_TRACE
 // Screen-space reflections for a frame's 3D world, as Godot 4.6's Forward+ renderer makes them
@@ -2844,7 +2845,7 @@ void trace_pass(int2 p, out float4 color, out float mip_level_out) {
     if (roughness >= 0.7) {
         return;
     }
-)hlsl"
+)hlsl",
 R"hlsl(    float3 geom_normal = normalize(geometric_normal(p, screen_pos.z, pos));
     // A small bias towards the geometry's normal keeps the ray off its own surface.
     pos += geom_normal * (1.0 - power(saturate(dot(normal, geom_normal)), 8.0));
@@ -3120,7 +3121,7 @@ float4 fs_main(float4 position : SV_Position) : SV_Target0 {
         return float4(downsample(p).x, 0.0, 0.0, 1.0);
     }
     if (pass_kind == kDownsampleNormals) {
-)hlsl"
+)hlsl",
 R"hlsl(        float3 nearest = downsample(p);
         return texel(normals, int2((int)nearest.y, (int)nearest.z), (int2)frame.xy);
     }
@@ -3148,7 +3149,7 @@ R"hlsl(        float3 nearest = downsample(p);
     return float4(0.0, 0.0, 0.0, 0.0);
 }
 #endif
-)hlsl";
+)hlsl"};
 
 } // namespace slash::render::shaders
 // clang-format on

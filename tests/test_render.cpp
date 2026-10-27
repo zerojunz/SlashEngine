@@ -20,6 +20,7 @@
 #include "../engine/render/src/particles_emit_shaders.hpp"
 #include "../engine/render/src/particles_process_shaders.hpp"
 #include "../engine/render/src/post_shaders.hpp"
+#include "../engine/render/src/shader_code.hpp"
 #include "../engine/render/src/shadow_shaders.hpp"
 #include "../engine/render/src/sky_shaders.hpp"
 #include "../engine/render/src/sprite_shaders.hpp"
@@ -761,10 +762,11 @@ TEST_CASE("the software and GPU devices draw distance fields as distance_field_c
 TEST_CASE("every shader compiles with Windows' HLSL compiler") {
 #if defined(_WIN32)
     namespace shaders = slash::render::shaders;
+    const std::string mesh = slash::render::detail::joined(shaders::kMeshHlsl);
     const std::array<std::pair<const char*, std::string_view>, 6> sources{{
         {"sprite", shaders::kSpriteHlsl},
         {"material", shaders::kMaterialHlsl},
-        {"mesh", shaders::kMeshHlsl},
+        {"mesh", mesh},
         {"shadow", shaders::kShadowHlsl},
         {"post", shaders::kPostHlsl},
         {"sky", shaders::kSkyHlsl},
@@ -778,8 +780,8 @@ TEST_CASE("every shader compiles with Windows' HLSL compiler") {
         }
     }
     // Forward+'s mesh shader has only a fragment stage.
-    const auto clustered =
-        slash::render::detail::compile_hlsl(shaders::kMeshClusteredHlsl, "fs_main", "ps_5_1");
+    const auto clustered = slash::render::detail::compile_hlsl(
+        slash::render::detail::joined(shaders::kMeshClusteredHlsl), "fs_main", "ps_5_1");
     CHECK_MESSAGE(clustered.ok(), "mesh_clustered fs_main: ",
                   (clustered.ok() ? std::string() : clustered.error().message));
     for (const auto& [name, hlsl] : {std::pair{"particles_process", shaders::kParticlesProcessHlsl},

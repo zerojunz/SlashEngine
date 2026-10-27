@@ -40,6 +40,7 @@ target_compile_options(slash_image_codecs PRIVATE
 
 add_library(slash_render
     src/clusters.cpp
+    src/decal.cpp
     src/device.cpp
     src/forward_post.cpp
     src/fsr2.cpp
@@ -96,10 +97,10 @@ endif()
 # The software device draws the same pixels, and particles and their graphs move the same, on
 # every platform: no fused multiply-adds, which arm64 compilers would otherwise emit and x86-64
 # ones not.
-set_source_files_properties(src/clusters.cpp src/device.cpp src/forward_post.cpp src/fsr2.cpp
-    src/material.cpp src/mesh.cpp src/particles.cpp src/post.cpp src/resize.cpp src/shader_vm.cpp
-    src/shadow.cpp src/reflection.cpp src/sky.cpp src/software_device.cpp src/ssao.cpp src/ssr.cpp
-    src/taa.cpp src/upscaler.cpp src/voxel_gi.cpp
+set_source_files_properties(src/clusters.cpp src/decal.cpp src/device.cpp src/forward_post.cpp
+    src/fsr2.cpp src/material.cpp src/mesh.cpp src/particles.cpp src/post.cpp src/resize.cpp
+    src/shader_vm.cpp src/shadow.cpp src/reflection.cpp src/sky.cpp src/software_device.cpp
+    src/ssao.cpp src/ssr.cpp src/taa.cpp src/upscaler.cpp src/voxel_gi.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
