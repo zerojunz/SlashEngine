@@ -2099,6 +2099,43 @@ void register_particle_components(ComponentRegistry& registry) {
                  "GPUParticlesCollisionBox3D.")
         .describe("cull_mask", collides)
         .describe("size", box);
+    registry.add<GPUParticlesCollisionSDF3D>()
+        .set_doc("The shape of the meshes in a box, which the particles of GPUParticles3Ds "
+                 "collide with, as Godot's GPUParticlesCollisionSDF3D: particles.bake_sdf "
+                 "writes its signed distance field.")
+        .describe("cull_mask", collides)
+        .describe("size", box)
+        .describe("resolution", {.doc = "Cells along the box's longest side.",
+                                 .choices = {"16", "32", "64", "128", "256", "512"}})
+        .describe("thickness",
+                  {.doc = "How far behind a face counts as inside, in cells.", .min = 0})
+        .describe("bake_mask",
+                  {.doc = "The render layers of the meshes baked.", .min = 0, .max = 0xFFFFFFFF})
+        .describe("texture",
+                  {.doc = "Project path of the .sdf.png file particles.bake_sdf writes: 16-bit "
+                          "gray, each sample a half float's bits; "
+                          " collides with nothing."})
+        .describe("slices_horizontal",
+                  {.doc = "Slices across the texture, as Godot's slices/horizontal.",
+                   .min = 1,
+                   .max = 512})
+        .describe("slices_vertical",
+                  {.doc = "Slices down the texture, the cells' depth.", .min = 1, .max = 512});
+    registry.add<GPUParticlesCollisionHeightField3D>()
+        .set_doc("The ground under a box, drawn from above, which the particles of "
+                 "GPUParticles3Ds collide with, as Godot's GPUParticlesCollisionHeightField3D; "
+                 "one acts on an emitter.")
+        .describe("cull_mask", collides)
+        .describe("size", box)
+        .describe("resolution", {.doc = "Texels along the box's longer side across.",
+                                 .choices = {"256", "512", "1024"}})
+        .describe("update_mode",
+                  {.doc = "Draws the ground again when the box moves, or every tick.",
+                   .choices = {"when_moved", "always"}})
+        .describe("follow_camera_enabled",
+                  {.doc = "Steps the box after the current Camera3D, a meter at a time unscaled."})
+        .describe("heightfield_mask",
+                  {.doc = "The render layers of the meshes drawn.", .min = 0, .max = kMaxMask});
 }
 
 void register_audio_components(ComponentRegistry& registry) {

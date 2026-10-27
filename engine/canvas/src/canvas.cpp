@@ -345,7 +345,6 @@ void add_systems(world::World& world, asset::Assets& assets) {
         }
         return held(found.value());
     };
-    scene3d::add_gpu_particles_system(world, images);
     // CSG roots and GridMaps keep their meshes, and models their collision shapes, until they
     // change, models and mesh libraries read through assets.
     const scene3d::ModelLoader models =
@@ -356,6 +355,16 @@ void add_systems(world::World& world, asset::Assets& assets) {
         }
         return held(found.value());
     };
+    // SDF colliders' textures too, and height fields draw models.
+    const scene3d::SdfLoader sdfs =
+        [&assets](const std::string& path) -> Result<std::shared_ptr<const render::Gray16>> {
+        auto found = assets.load<render::Gray16>(path);
+        if (!found) {
+            return found.error();
+        }
+        return held(found.value());
+    };
+    scene3d::add_gpu_particles_system(world, images, sdfs, models);
     scene3d::install_csg(world, models);
     scene3d::install_model_collision(world, models);
     scene3d::install_gridmap(

@@ -2,7 +2,9 @@
 
 #include "slash/core/json.hpp"
 #include "slash/core/log.hpp"
+#include "slash/scene3d/particle_collision.hpp"
 #include "slash/scene3d/particles.hpp"
+#include "slash/scene3d/scene3d.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -352,6 +354,10 @@ float length_of(Vec3 v) {
     return std::sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
 }
 
+float dot_of(Vec3 a, Vec3 b) {
+    return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
+}
+
 // Basis::get_scale: the axes' lengths, negative when the basis mirrors.
 Vec3 scale_of(const Affine3D& t) {
     const float determinant = (t.x.x * ((t.y.y * t.z.z) - (t.z.y * t.y.z))) -
@@ -424,6 +430,8 @@ struct FoundCollider {
     std::uint32_t cull_mask = 0;
     float radius = 1.0F;
     Vec3 extents;
+    std::shared_ptr<const render::ParticleSdf3D> sdf;
+    std::shared_ptr<const render::ParticleHeightField3D> heights;
 };
 
 // The collider as an emitter's steps take it, as for_particles places attractors.
@@ -441,8 +449,20 @@ render::ParticleCollider3D collider_for_particles(const FoundCollider& found,
     } else {
         out.extents = {found.extents.x * scale.x, found.extents.y * scale.y,
                        found.extents.z * scale.z};
+        // Godot's SDFs take no scale that isn't uniform.
+        out.scale = (scale.x + scale.y + scale.z) * 0.333333333333F;
+        out.sdf = found.sdf;
+        out.heights = found.heights;
     }
     return out;
+}
+
+// An SDF of one cell 1 m from everything, which Godot's SDFs without a texture read (its default
+// white 3D texture).
+std::shared_ptr<const render::ParticleSdf3D> far_sdf() {
+    static const auto kFar = std::make_shared<const render::ParticleSdf3D>(
+        render::ParticleSdf3D{.width = 1, .height = 1, .depth = 1, .distances = {0x3C00}});
+    return kFar;
 }
 
 // A field of one white texel, which Godot's vector fields without a texture read.
@@ -463,6 +483,22 @@ std::string key_of(const world::World& world, entt::entity entity) {
 struct GpuParticleSystem3D {
     std::map<std::string, Emitter, std::less<>> emitters;
     ImageLoader images;
+    SdfLoader sdfs;
+    ModelLoader models;
+    // Each SDF's distances by texture and slices, made again when the texture changes.
+    struct Sdf {
+        std::shared_ptr<const render::Gray16> texture;
+        std::shared_ptr<const render::ParticleSdf3D> sdf;
+    };
+    std::map<std::tuple<std::string, int, int>, Sdf> sdf_cache;
+    std::set<std::tuple<std::string, int, int>> sdf_warned;
+    // Each height field's heights by entity ID, with what they were drawn for.
+    struct Heights {
+        Affine3D transform;
+        world::GPUParticlesCollisionHeightField3D settings;
+        std::shared_ptr<const render::ParticleHeightField3D> heights;
+    };
+    std::map<std::string, Heights, std::less<>> height_fields;
     // Each vector field's texels by texture and slices, made again when the image changes.
     struct Field {
         std::shared_ptr<const render::Image> image;
@@ -545,9 +581,132 @@ struct GpuParticleSystem3D {
         return found;
     }
 
+    // An SDF's distances: its texture cut into slices, or 1 everywhere without one or when it
+    // can't be read or cut.
+    std::shared_ptr<const render::ParticleSdf3D>
+    sdf_of(const world::GPUParticlesCollisionSDF3D& collider) {
+        if (collider.texture.empty()) {
+            return far_sdf();
+        }
+        auto key =
+            std::make_tuple(collider.texture, collider.slices_horizontal, collider.slices_vertical);
+        const auto fail = [&](const std::string& message) {
+            if (sdf_warned.insert(key).second) {
+                log::warn("SDF reads as 1 everywhere",
+                          {{"texture", collider.texture}, {"reason", message}});
+            }
+            return far_sdf();
+        };
+        if (!sdfs) {
+            return fail("SDFs can't load here");
+        }
+        auto texture = sdfs(collider.texture);
+        if (!texture) {
+            return fail(texture.error().message);
+        }
+        const auto found = sdf_cache.find(key);
+        if (found != sdf_cache.end() && found->second.texture == texture.value()) {
+            return found->second.sdf;
+        }
+        auto cut =
+            particle_sdf(*texture.value(), collider.slices_horizontal, collider.slices_vertical);
+        if (!cut) {
+            return fail(cut.error().message);
+        }
+        sdf_warned.erase(key);
+        auto made = std::make_shared<const render::ParticleSdf3D>(std::move(cut).value());
+        sdf_cache.insert_or_assign(std::move(key), Sdf{.texture = texture.value(), .sdf = made});
+        return made;
+    }
+
+    // Steps each height field with follow_camera_enabled after the current Camera3D by the
+    // length of its x and z axes, as GPUParticlesCollisionHeightField3D's internal process
+    // does; whether any moved.
+    static bool follow_camera(world::World& world) {
+        auto& ecs = world.ecs();
+        bool moved = false;
+        const world::Tree3D tree(world);
+        const entt::entity camera = scene3d::current_camera(world, tree);
+        if (camera == entt::null) {
+            return false;
+        }
+        const Vec3 eye = tree.global(camera).origin;
+        for (const entt::entity entity :
+             ecs.view<const world::GPUParticlesCollisionHeightField3D, world::Transform3D>()) {
+            if (!ecs.get<const world::GPUParticlesCollisionHeightField3D>(entity)
+                     .follow_camera_enabled) {
+                continue;
+            }
+            const Affine3D global = tree.global(entity);
+            const auto unit = [](Vec3 v) {
+                const float l = length_of(v);
+                return l > 0.0F ? v * (1.0F / l) : Vec3{};
+            };
+            const Vec3 x_axis = unit(global.x);
+            const Vec3 z_axis = unit(global.z);
+            const float x_len = length_of(global.x);
+            const float z_len = length_of(global.z);
+            Vec3 origin = global.origin;
+            const auto step = [&](Vec3 axis, float len) {
+                // A step too small to reach the camera soon stays put.
+                constexpr int kMostSteps = 65536;
+                if (!(len > 0.0F) || !(std::abs(dot_of(axis, eye - origin)) / len < kMostSteps)) {
+                    return;
+                }
+                while (dot_of(axis, eye - origin) > len) {
+                    origin = origin + (axis * len);
+                }
+                while (dot_of(axis, eye - origin) < -len) {
+                    origin = origin - (axis * len);
+                }
+            };
+            step(x_axis, x_len);
+            step(z_axis, z_len);
+            if (origin == global.origin) {
+                continue;
+            }
+            // Moved in its parent's space by as much as it moved in the world.
+            Vec3 by = origin - global.origin;
+            if (const entt::entity parent = tree.transform_parent(entity); parent != entt::null) {
+                const Affine3D inverse = tree.global(parent).inverse();
+                by = inverse.basis(by);
+            }
+            auto& transform = ecs.get<world::Transform3D>(entity);
+            transform.position = transform.position + by;
+            moved = true;
+        }
+        return moved;
+    }
+
+    // A height field's heights, drawn again when it moved (or every tick with update_mode
+    // "always") or its settings changed.
+    std::shared_ptr<const render::ParticleHeightField3D>
+    heights_of(const world::World& world, const world::Tree3D& tree, entt::entity entity,
+               const world::GPUParticlesCollisionHeightField3D& settings,
+               const Affine3D& transform) {
+        Heights& kept = height_fields[key_of(world, entity)];
+        if (kept.heights != nullptr && settings.update_mode != "always" &&
+            kept.settings == settings && kept.transform.x == transform.x &&
+            kept.transform.y == transform.y && kept.transform.z == transform.z &&
+            kept.transform.origin == transform.origin) {
+            return kept.heights;
+        }
+        std::vector<Problem> problems;
+        auto drawn = std::make_shared<const render::ParticleHeightField3D>(
+            particle_height_field(world, tree, entity, models, problems));
+        for (const Problem& problem : problems) {
+            log::warn("height field left a mesh out",
+                      {{"id", std::string(world.id_of(entity))}, {"reason", problem.message}});
+        }
+        if (kept.heights != nullptr && *kept.heights == *drawn) {
+            drawn = kept.heights;
+        }
+        kept = Heights{.transform = transform, .settings = settings, .heights = drawn};
+        return drawn;
+    }
+
     // Every collider visible in the tree, in the order entities are stored.
-    static std::vector<FoundCollider> colliders(const world::World& world,
-                                                const world::Tree3D& tree) {
+    std::vector<FoundCollider> colliders(const world::World& world, const world::Tree3D& tree) {
         std::vector<FoundCollider> found;
         const auto& ecs = world.ecs();
         const auto add = [&](entt::entity entity, FoundCollider collider, Vec3 size) {
@@ -556,7 +715,7 @@ struct GpuParticleSystem3D {
             }
             collider.transform = tree.global(entity);
             collider.bounds = placed(collider.transform, size * -0.5F, size);
-            found.push_back(collider);
+            found.push_back(std::move(collider));
         };
         for (const entt::entity entity : ecs.view<const world::GPUParticlesCollisionSphere3D>()) {
             const auto& c = ecs.get<const world::GPUParticlesCollisionSphere3D>(entity);
@@ -573,6 +732,35 @@ struct GpuParticleSystem3D {
             box.extents = c.size * 0.5F;
             add(entity, box, c.size);
         }
+        for (const entt::entity entity : ecs.view<const world::GPUParticlesCollisionSDF3D>()) {
+            const auto& c = ecs.get<const world::GPUParticlesCollisionSDF3D>(entity);
+            FoundCollider sdf;
+            sdf.shape = render::ColliderShape3D::Sdf;
+            sdf.cull_mask = c.cull_mask;
+            sdf.extents = c.size * 0.5F;
+            sdf.sdf = sdf_of(c);
+            add(entity, std::move(sdf), c.size);
+        }
+        std::set<std::string, std::less<>> kept;
+        for (const entt::entity entity :
+             ecs.view<const world::GPUParticlesCollisionHeightField3D>()) {
+            const auto& c = ecs.get<const world::GPUParticlesCollisionHeightField3D>(entity);
+            if (!tree.visible(entity)) {
+                continue;
+            }
+            FoundCollider field;
+            field.shape = render::ColliderShape3D::HeightField;
+            field.cull_mask = c.cull_mask;
+            field.extents = c.size * 0.5F;
+            field.heights = heights_of(world, tree, entity, c, tree.global(entity));
+            kept.insert(key_of(world, entity));
+            if (field.heights->heights.empty()) {
+                continue;
+            }
+            add(entity, std::move(field), c.size);
+        }
+        std::erase_if(height_fields,
+                      [&](const auto& entry) { return !kept.contains(entry.first); });
         return found;
     }
 
@@ -586,6 +774,7 @@ struct GpuParticleSystem3D {
         if (tick_seconds <= 0.0) {
             return;
         }
+        follow_camera(world);
         const world::Tree3D tree(world);
         const std::vector<FoundAttractor> found = attractors(world, tree);
         const std::vector<FoundCollider> found_colliders = colliders(world, tree);
@@ -618,7 +807,9 @@ struct GpuParticleSystem3D {
                 paired.attractors.push_back(
                     for_particles(attractor, component.local_coords ? &to_particles : nullptr));
             }
-            // The colliders, paired the same way; at most 32.
+            // The colliders, paired the same way; at most 32, SDFs sharing the vector fields'
+            // 7 textures, and the first height field.
+            bool height_field = false;
             for (const FoundCollider& collider : found_colliders) {
                 if (paired.colliders.size() >= render::kMaxParticleColliders3D) {
                     break;
@@ -626,6 +817,17 @@ struct GpuParticleSystem3D {
                 if ((collider.cull_mask & component.layers) == 0 ||
                     !intersects(collider.bounds, box)) {
                     continue;
+                }
+                if (collider.shape == render::ColliderShape3D::Sdf) {
+                    if (fields_used >= kMaxParticleFields3D) {
+                        continue;
+                    }
+                    ++fields_used;
+                } else if (collider.shape == render::ColliderShape3D::HeightField) {
+                    if (height_field) {
+                        continue;
+                    }
+                    height_field = true;
                 }
                 paired.colliders.push_back(collider_for_particles(
                     collider, component.local_coords ? &to_particles : nullptr));
@@ -654,6 +856,14 @@ struct GpuParticleSystem3D {
         }
         for (const auto& [key, field] : fields) {
             part.bytes += field.field->texels.capacity() * sizeof(Vec4);
+        }
+        for (const auto& [key, sdf] : sdf_cache) {
+            part.bytes += sdf.sdf->distances.capacity() * sizeof(std::uint16_t);
+        }
+        for (const auto& [key, field] : height_fields) {
+            part.bytes +=
+                world::kMapNodeBytes<decltype(height_fields)> + json::heap_bytes(key) +
+                (field.heights != nullptr ? field.heights->heights.capacity() * sizeof(float) : 0);
         }
         part.counts = {{"emitters", emitters.size()}, {"particles", amount}, {"steps", steps}};
         return part;
@@ -745,17 +955,27 @@ render::ParticleAlign particle_align(std::string_view transform_align) {
                : render::ParticleAlign::Disabled;
 }
 
-void add_gpu_particles_system(world::World& world, ImageLoader images) {
+void add_gpu_particles_system(world::World& world, ImageLoader images, SdfLoader sdfs,
+                              ModelLoader models) {
     if (auto* found = world.ecs().ctx().find<std::shared_ptr<GpuParticleSystem3D>>();
         found != nullptr) {
         (*found)->images = std::move(images);
+        (*found)->sdfs = std::move(sdfs);
+        (*found)->models = std::move(models);
         (*found)->fields.clear();
+        (*found)->sdf_cache.clear();
+        (*found)->height_fields.clear();
         return;
     }
     auto system = std::make_shared<GpuParticleSystem3D>();
     system->images = std::move(images);
+    system->sdfs = std::move(sdfs);
+    system->models = std::move(models);
     world.ecs().ctx().emplace<std::shared_ptr<GpuParticleSystem3D>>(system);
-    world.add_reset([system](world::World& /*world*/) { system->emitters.clear(); });
+    world.add_reset([system](world::World& /*world*/) {
+        system->emitters.clear();
+        system->height_fields.clear();
+    });
     world.add_memory_source("gpu_particles_3d",
                             [system](const world::World& /*world*/) { return system->memory(); });
     world.add_system(
@@ -764,10 +984,13 @@ void add_gpu_particles_system(world::World& world, ImageLoader images) {
         {.doc = "Steps each GPUParticles3D's emission for renderers to run.",
          .priority = 1110,
          .threaded = true,
-         .reads = {"Transform3D", "GPUParticlesAttractorSphere3D", "GPUParticlesAttractorBox3D",
+         .reads = {"GPUParticlesAttractorSphere3D", "GPUParticlesAttractorBox3D",
                    "GPUParticlesAttractorVectorField3D", "GPUParticlesCollisionSphere3D",
-                   "GPUParticlesCollisionBox3D"},
-         .writes = {"GPUParticles3D", "assets"}});
+                   "GPUParticlesCollisionBox3D", "GPUParticlesCollisionSDF3D",
+                   "GPUParticlesCollisionHeightField3D", "Camera3D", "MeshInstance3D", "GridMap",
+                   "HTerrain", "csg"},
+         // Height fields that follow the camera move.
+         .writes = {"GPUParticles3D", "Transform3D", "assets"}});
 }
 
 std::optional<ParticleSteps3D> particle_steps_3d(const world::World& world, entt::entity entity) {
