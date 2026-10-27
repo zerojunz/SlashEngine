@@ -1190,6 +1190,58 @@ TEST_CASE("decals whose textures overflow the atlas are reported, and those befo
     }
 }
 
+TEST_CASE("FogVolumes reach the frame's volumetric fog in Forward+, with their FogMaterials") {
+    Scene scene;
+    scene.create("camera", R"({"Transform3D": {}, "Camera3D": {"cull_mask": 3}})");
+    scene.create("env", R"({"WorldEnvironment": {"volumetric_fog_enabled": true}})");
+    scene.create("box", R"({"Transform3D": {"position": [1, 2, -5]},
+        "FogVolume": {"size": [4, -1, 2], "layers": 2}})");
+    scene.create("glow", R"({"Transform3D": {"position": [0, 0, -8]},
+        "FogVolume": {"shape": "ellipsoid"}, "FogMaterial": {"density": -0.5,
+        "albedo": [1, 0.5, 0.25, 1], "emission": [0, 1, 0, 1], "height_falloff": -2,
+        "edge_fade": 0.5}})");
+    const entt::entity hidden = scene.create(
+        "hidden", R"({"Transform3D": {"visible": false}, "FogVolume": {"shape": "world"}})");
+    scene.create("masked", R"({"Transform3D": {}, "FogVolume": {"layers": 4}})");
+    const auto device = render::create_null_device();
+    scene3d::Renderer renderer(*device, nullptr);
+    auto frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {});
+    REQUIRE(frame.has_value());
+    CHECK(renderer.problems().empty());
+    // The hidden volume and the one on a layer the camera doesn't see are left out.
+    const std::vector<render::FogVolume3D>& volumes = frame->scene.volumetric_fog.volumes;
+    REQUIRE(volumes.size() == 2);
+    CHECK(volumes[0].shape == render::FogVolumeShape::Box);
+    CHECK(volumes[0].transform.at(12) == 1.0F);
+    CHECK(volumes[0].transform.at(14) == -5.0F);
+    // Sizes and the material's falloff and fade are kept at 0 or more, as Godot's setters keep
+    // them; with no FogMaterial, Godot's default one fills the volume.
+    CHECK(volumes[0].size == std::array{4.0F, 0.0F, 2.0F});
+    CHECK_FALSE(volumes[0].material);
+    CHECK(volumes[1].shape == render::FogVolumeShape::Ellipsoid);
+    CHECK(volumes[1].material);
+    CHECK(volumes[1].density == -0.5F);
+    CHECK(volumes[1].albedo == std::array{1.0F, 0.5F, 0.25F});
+    CHECK(volumes[1].emission == std::array{0.0F, 1.0F, 0.0F});
+    CHECK(volumes[1].height_falloff == 0.0F);
+    CHECK(volumes[1].edge_fade == 0.5F);
+    // Compatibility draws no volumetric fog, as Godot's.
+    frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {}, {}, 0.0, {}, {}, {}, {},
+                             render::RenderMethod::Compatibility);
+    CHECK(frame->scene.volumetric_fog.volumes.empty());
+    // Past 32 volumes, the rest are reported.
+    scene.world.ecs().get<world::Transform3D>(hidden).visible = true;
+    for (int i = 0; i < 31; ++i) {
+        scene.create("more" + std::to_string(i), R"({"Transform3D": {}, "FogVolume": {}})");
+    }
+    frame = renderer.prepare(scene.world, 64.0F, 64.0F, 1.0, {});
+    CHECK(frame->scene.volumetric_fog.volumes.size() == render::kMaxFogVolumes);
+    REQUIRE(renderer.problems().size() == 2);
+    CHECK(renderer.problems()[0].path == "/components/FogVolume");
+    CHECK(renderer.problems()[0].message ==
+          "a frame draws at most 32 fog volumes; this one is left out");
+}
+
 TEST_CASE("a captured frame reflects a glowing cube in a polished floor, with a ReflectionProbe") {
     Scene scene;
     scene.create("camera", R"({"Transform3D": {"position": [0, 1, 3], "rotation": [-0.3, 0, 0]},

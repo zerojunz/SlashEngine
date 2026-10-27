@@ -1,0 +1,8 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[56,25],[40,55],[110,52],[80,85]],"frames":8,"path":"shots/cellar.png"}}
+{"jsonrpc":"2.0","id":3,"method":"component.set","params":{"id":"wisp","components":{"FogMaterial":{"density":1.0,"emission":[1.0,0.3,0.2,1.0]}}}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"points":[[56,25],[40,55],[110,52],[80,85]],"frames":8,"path":"shots/red.png"}}
+{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"mist","components":{"FogVolume":{"shape":"world"},"FogMaterial":{"density":0.05,"edge_fade":0.0,"height_falloff":0.0}}}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[56,25],[40,55],[110,52],[80,85]],"frames":8,"path":"shots/everywhere.png"}}
+{"jsonrpc":"2.0","id":7,"method":"component.set","params":{"id":"environment","components":{"WorldEnvironment":{"volumetric_fog_enabled":false}}}}
+{"jsonrpc":"2.0","id":8,"method":"frame.capture","params":{"points":[[56,25],[40,55],[110,52],[80,85]],"path":"shots/clear.png"}}

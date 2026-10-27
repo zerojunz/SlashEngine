@@ -700,6 +700,7 @@ constexpr std::array kNodeTypes{
     NodeType{"LightmapProbe", Family::Node3D, "LightmapProbe", ""},
     NodeType{"VoxelGI", Family::Node3D, "VoxelGI", ""},
     NodeType{"Decal", Family::Node3D, "Decal", ""},
+    NodeType{"FogVolume", Family::Node3D, "FogVolume", ""},
     NodeType{"CollisionShape3D", Family::Node3D, "CollisionShape3D", ""},
     NodeType{"StaticBody3D", Family::Node3D, "StaticBody3D", ""},
     NodeType{"AnimatableBody3D", Family::Node3D, "AnimatableBody3D", ""},
@@ -4991,6 +4992,20 @@ private:
             }
             return true;
         }
+        if (components.contains("FogVolume")) {
+            // Godot 4.0's FogVolume took half its size too.
+            if (name == "extents") {
+                if (const auto extents = value.numbers(); extents && extents->size() == 3) {
+                    components["FogVolume"]["size"] = json::Array{
+                        extents->at(0) * 2.0, extents->at(1) * 2.0, extents->at(2) * 2.0};
+                }
+                return true;
+            }
+            if (name == "material") {
+                convert_fog_material(value, file, components, node);
+                return true;
+            }
+        }
         if (components.contains("VoxelGI")) {
             if (name == "camera_attributes") {
                 convert_camera_attributes(value, file, components, node, "VoxelGI." + name);
@@ -5620,6 +5635,27 @@ private:
                           type == "CameraAttributesPhysical"
                               ? "physical camera attributes aren't supported yet"
                               : "not a CameraAttributesPractical resource");
+            return;
+        }
+        resources_used_.insert(type);
+        json::Value& out = components[type];
+        out = json::Object{};
+        resource_fields(*section, *owner, type, out, node);
+    }
+
+    // A FogVolume's FogMaterial as the component of that name on its entity. Godot's fog
+    // shaders aren't read; with none, the volume fills as Godot's default material does.
+    void convert_fog_material(const Value& reference, const TextFile& file,
+                              json::Object& components, const Node& node) {
+        if (reference.kind == Value::Kind::Nil) {
+            return;
+        }
+        const auto [section, owner] = resource_section(reference, file);
+        const std::string type = section != nullptr ? resource_type(*section, *owner) : "";
+        if (type != "FogMaterial") {
+            problems_.add("FogVolume.material", node.declared,
+                          type == "ShaderMaterial" ? "fog shaders aren't supported"
+                                                   : "not a FogMaterial resource");
             return;
         }
         resources_used_.insert(type);

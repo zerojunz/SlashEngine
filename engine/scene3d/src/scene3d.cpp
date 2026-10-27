@@ -2332,6 +2332,9 @@ Renderer::prepare(const world::World& world, float width, float height, double i
     if (method == render::RenderMethod::ForwardPlus) {
         add_decals(world, tree, global, lens.cull_mask, env.exposure, frame.scene.decals);
     }
+    if (method == render::RenderMethod::ForwardPlus && frame.scene.volumetric_fog.enabled) {
+        add_fog_volumes(world, tree, global, lens.cull_mask, frame.scene.volumetric_fog.volumes);
+    }
 
     for (const entt::entity entity : made<world::MeshInstance3D>(world)) {
         const auto& instance = ecs.get<const world::MeshInstance3D>(entity);
@@ -2548,6 +2551,58 @@ void Renderer::add_decals(const world::World& world, const world::Tree3D& tree,
         }
     }
     out = std::move(kept);
+}
+
+namespace {
+
+render::FogVolumeShape fog_volume_shape(const std::string& shape) {
+    if (shape == "ellipsoid") {
+        return render::FogVolumeShape::Ellipsoid;
+    }
+    if (shape == "cone") {
+        return render::FogVolumeShape::Cone;
+    }
+    if (shape == "cylinder") {
+        return render::FogVolumeShape::Cylinder;
+    }
+    return shape == "world" ? render::FogVolumeShape::World : render::FogVolumeShape::Box;
+}
+
+} // namespace
+
+void Renderer::add_fog_volumes(const world::World& world, const world::Tree3D& tree,
+                               const std::function<world::Affine3D(entt::entity)>& global,
+                               std::uint32_t cull_mask, std::vector<render::FogVolume3D>& out) {
+    const entt::registry& ecs = world.ecs();
+    for (const entt::entity entity : made<world::FogVolume>(world)) {
+        const auto& volume = ecs.get<const world::FogVolume>(entity);
+        if (!tree.visible(entity) || (volume.layers & cull_mask) == 0) {
+            continue;
+        }
+        if (out.size() == render::kMaxFogVolumes) {
+            problems_.push_back({.entity = entity,
+                                 .path = "/components/FogVolume",
+                                 .message = "a frame draws at most " +
+                                            std::to_string(render::kMaxFogVolumes) +
+                                            " fog volumes; this one is left out"});
+            continue;
+        }
+        render::FogVolume3D v;
+        v.transform = global(entity).matrix();
+        // Godot's set_size keeps each axis at 0 or more.
+        v.size = {std::max(volume.size.x, 0.0F), std::max(volume.size.y, 0.0F),
+                  std::max(volume.size.z, 0.0F)};
+        v.shape = fog_volume_shape(volume.shape);
+        if (const auto* material = ecs.try_get<const world::FogMaterial>(entity)) {
+            v.material = true;
+            v.density = material->density;
+            v.albedo = {material->albedo.x, material->albedo.y, material->albedo.z};
+            v.emission = {material->emission.x, material->emission.y, material->emission.z};
+            v.height_falloff = std::max(material->height_falloff, 0.0F);
+            v.edge_fade = std::max(material->edge_fade, 0.0F);
+        }
+        out.push_back(v);
+    }
 }
 
 namespace {
