@@ -23,6 +23,7 @@
 #include "slash/exporter/presets.hpp"
 #include "slash/exporter/sdk.hpp"
 #include "slash/exporter/toolchains.hpp"
+#include "slash/l10n/translation.hpp"
 #include "slash/library/library.hpp"
 #include "slash/navigation/navigation.hpp"
 #include "slash/platform/file.hpp"
@@ -185,7 +186,8 @@ enum class DataFile : std::uint8_t {
     LightmapTexels,
     VoxelGI,
     Model,
-    Buffer
+    Buffer,
+    Translation
 };
 
 DataFile data_file(std::string_view name) {
@@ -268,7 +270,27 @@ DataFile data_file(std::string_view name) {
     if (text::is_font_path(name)) {
         return DataFile::Font;
     }
+    // gettext files; CSV ones are translations when project.json lists them.
+    if (name.ends_with(".po") || name.ends_with(".mo")) {
+        return DataFile::Translation;
+    }
     return DataFile::None;
+}
+
+// Every problem in a translation file, each as the line it is on.
+std::vector<json::ValidationError> check_translation_file(std::string_view file,
+                                                          std::string_view text) {
+    auto read = l10n::read_translation_file(file, text);
+    if (!read) {
+        return {{"", read.error().message}};
+    }
+    std::vector<json::ValidationError> errors;
+    for (const l10n::TranslationFile::Problem& problem : read.value().problems) {
+        errors.push_back({"", problem.line > 0
+                                  ? "line " + std::to_string(problem.line) + ": " + problem.message
+                                  : problem.message});
+    }
+    return errors;
 }
 
 // Every problem in one of a game's files; none for a file it can use.
@@ -311,6 +333,9 @@ std::vector<json::ValidationError> check_data_file(DataFile kind, std::string_vi
     }
     if (kind == DataFile::Buffer) {
         return {};
+    }
+    if (kind == DataFile::Translation) {
+        return check_translation_file(file, text);
     }
     if (kind == DataFile::StandardMaterial) {
         return scene3d::check_standard_material(text, reader);
@@ -568,7 +593,7 @@ std::optional<std::string> with_quality(std::string_view text, const std::string
 // Copies project.json, providers.json and every scene, prefab, texture, .frames.json,
 // .material.json, .anim.json, .animtree.json, .tileset.json, font, .theme.json, sound, .audio.json,
 // .bus_layout.json, .navmesh.json, .navpoly.json, .meshlib.json, .lightmap.json and .voxelgi.json
-// file, heightmap,
+// file, translation file (.po, .mo and the CSV files project.json lists), heightmap,
 // lightmap's .hdr texels and model into data, checking each on the way.
 // Materials take their shaders compiled for the platform, and textures ship in the forms
 // project.json's rendering.textures asks for, kept in library_dir's cache. Model recipes ship
@@ -617,12 +642,17 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
             }
             continue;
         }
-        const DataFile kind = data_file(entry.path().filename().string());
+        const fs::path relative = entry.path().lexically_relative(project_dir);
+        const std::string file = relative.generic_string();
+        DataFile kind = data_file(entry.path().filename().string());
+        if (kind == DataFile::None &&
+            std::ranges::find(project.internationalization.translations, file) !=
+                project.internationalization.translations.end()) {
+            kind = DataFile::Translation;
+        }
         if (kind == DataFile::None) {
             continue;
         }
-        const fs::path relative = entry.path().lexically_relative(project_dir);
-        const std::string file = relative.generic_string();
         found_main = found_main || file == project.main_scene;
         auto text = platform::read_file(entry.path().string());
         const bool blend = kind == DataFile::Model && file.ends_with(scene3d::kBlendSuffix);

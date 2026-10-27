@@ -76,6 +76,7 @@ as `entity.get`, reject it as an unknown param.
 | Input | [`input.inject`](#inputinject), [`input.state`](#inputstate), [`input.actions`](#inputactions) |
 | Audio | [`audio.state`](#audiostate), [`audio.capture`](#audiocapture), [`audio.analyze`](#audioanalyze), [`audio.play`](#audioplay), [`audio.stop`](#audiostop), [`audio.set_bus`](#audioset_bus), [`audio.spectrum`](#audiospectrum), [`audio.record`](#audiorecord), [`audio.input`](#audioinput) |
 | Soundtrack | [`score.import`](#scoreimport), [`score.export`](#scoreexport), [`soundtrack.render`](#soundtrackrender), [`soundtrack.plan`](#soundtrackplan), [`soundtrack.arrange`](#soundtrackarrange), [`soundtrack.check`](#soundtrackcheck) |
+| Localization | [`l10n.state`](#l10nstate), [`l10n.set_locale`](#l10nset_locale) |
 | Services | [`services.state`](#servicesstate), [`services.test`](#servicestest) |
 | Storyboard | [`storyboard.query`](#storyboardquery), [`storyboard.brief`](#storyboardbrief), [`storyboard.check`](#storyboardcheck), [`storyboard.review`](#storyboardreview), [`storyboard.edit`](#storyboardedit) |
 | Components | [`component.set`](#componentset), [`component.remove`](#componentremove) |
@@ -2980,6 +2981,65 @@ Needs: `read`.
 ```json
 {"checked":13,"errors":[{"file":"music/chime.audio.json","message":"16 beats at 96 bpm last 10 s, longer than the sound's 3.34 s, so the music's beats run past its end; the sound holds 5 beats","path":"/beat_count"},{"file":"music/reef.audio.json","message":"measures -25.9 LUFS; loudness/music asks for -20 ± 3, so raise it 5.9 dB","path":""}],"warnings":[{"file":"music/soundtrack.audio.json","message":"harbor (E minor) and reef (Bb major) are 3 steps apart round the circle of fifths, and the music goes straight from one to the other; a filler clip, or a nearer key, joins them","path":"/clips/1"},{"file":"music/soundtrack.audio.json","message":"reef (Bb major) and storm (E minor) are 3 steps apart round the circle of fifths, and the music goes straight from one to the other; a filler clip, or a nearer key, joins them","path":"/clips/2"}]}
 ```
+
+## Localization
+
+Translations, as Godot's TranslationServer: `project.json`'s
+[`internationalization`](project-format.md#internationalization) lists CSV and gettext `.po` and
+`.mo` files, and controls show their text in the game's locale as their
+`Control.auto_translate_mode` says (see [scene-format.md](scene-format.md#control)). Games start
+in the player's locale; sessions start in the project's `test` locale, else its fallback, so they
+repeat on every machine. The examples here are from
+[examples/localization](../../examples/localization/), a title menu in French, Arabic and Polish.
+
+### l10n.state
+
+Returns the game's `locale`, the `system_locale` it started in when the two differ, the
+`fallback` locale, the `locales` of the translations loaded (in the order their files are
+listed, each once), `pseudolocalization` when it is on and the `problems` in the translation
+files (`file`, `line` from 1 when there is one, and `message`), at most 50.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `tr` | array of up to 256 | none | Messages to return as the game shows them: a string, as `l10n::tr` takes one, or `{"message", "context", "plural", "n"}`, as `tr_n` takes one with `plural` (`n` defaults to 1) |
+
+Needs: `read`. In Polish:
+
+```json
+{"tr": ["Options", {"message": "%d coin", "plural": "%d coins", "n": 12}, {"message": "Open", "context": "door"}]}
+```
+
+```json
+{"fallback":"en","locale":"pl","locales":["fr","ar","pl"],"system_locale":"en","tr":["Options","%d monet","Otwórz"]}
+```
+
+A message takes the translation of the locale that matches best and has it (`fr` answers
+`fr_CA`), then the fallback's, else comes back as written: Polish has no "Options". `tr` is
+pseudolocalized when the project's settings say so, as Godot's `tr`; plural lookups never are.
+
+### l10n.set_locale
+
+Switches the game's language, as its options menu would with `l10n::set_locale`. Controls show
+it at once, a root control inheriting its layout direction follows it (Arabic lays out right to
+left), and the game gets a `translation_changed` event with `{"locale"}` at the next tick.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `locale` | string, required | | Such as `fr`, `pt_BR` or `zh-Hant`; standardized as Godot's `standardize_locale` |
+
+Needs: `run`.
+
+```json
+{"locale": "fr-CA"}
+```
+
+```json
+{"locale":"fr_CA","was":"en"}
+```
+
+`was` is the locale before, when it changed. A locale no translation answers still switches, with
+a `warning`: texts show in the fallback or as written. A string whose language isn't two or
+three letters fails with `-32602` at `/locale`.
 
 ## Services
 

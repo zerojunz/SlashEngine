@@ -1155,6 +1155,52 @@ TEST_CASE("exports ship sounds, .audio.json and .bus_layout.json files and check
     std::filesystem::remove_all(folder);
 }
 
+TEST_CASE("exports ship translation files and check them first") {
+    const std::filesystem::path folder = "exporter_l10n_project";
+    std::filesystem::remove_all(folder);
+    std::filesystem::create_directories(folder / "lang");
+    const auto write = [&](const std::string& path, std::string_view text) {
+        REQUIRE(slash::platform::write_file((folder / path).string(), text).ok());
+    };
+    write("project.json", R"({"format": 1, "name": "Words", "main_scene": "main.scene.json",
+        "internationalization": {"locale": {"translations": ["lang/menu.csv", "lang/bad.csv"]}}})");
+    write("main.scene.json", R"({"format": 1, "entities": {}})");
+    write("lang/menu.csv", "keys,fr\nPlay,Jouer\n");
+    write("lang/bad.csv", "keys,fr,french\nPlay,Jouer,Jouer\n");
+    write("lang/de.po", "msgid \"Play\"\nmsgstr \"Spielen\"\nmsgid \"x\"\n");
+    write("lang/notes.csv", "not,a,translation\n"); // a CSV file the settings don't list
+
+#if defined(__APPLE__)
+    const std::string host = "macos";
+#elif defined(_WIN32)
+    const std::string host = "windows";
+#else
+    const std::string host = "linux";
+#endif
+    exporter::ExportOptions options;
+    options.target = host;
+    options.project = folder.string();
+    const exporter::ExportResult result = exporter::export_game(options);
+    CHECK_FALSE(result.ok);
+    const json::Value* error = result.json.find("error");
+    REQUIRE(error != nullptr);
+    CHECK(error->find("step")->as_string() == "validate");
+    REQUIRE(error->find("errors") != nullptr);
+    std::vector<std::string> problems;
+    for (const json::Value& problem : error->find("errors")->as_array()) {
+        problems.push_back(problem.find("file")->as_string() + " " +
+                           problem.find("message")->as_string());
+    }
+    std::ranges::sort(problems); // folders list in any order
+    REQUIRE(problems.size() == 2);
+    CHECK(problems[0] == "lang/bad.csv line 1: column 3 names no locale; it is left out");
+    CHECK(problems[1] == "lang/de.po line 4: the file ends in the middle of a message");
+    const std::filesystem::path data = folder / ".slash" / "export" / host / "data";
+    CHECK(std::filesystem::exists(data / "lang" / "menu.csv"));
+    CHECK_FALSE(std::filesystem::exists(data / "lang" / "notes.csv"));
+    std::filesystem::remove_all(folder);
+}
+
 TEST_CASE("exports ship glTF models with their buffers and images, and check them first") {
     const std::filesystem::path folder = "exporter_model_project";
     std::filesystem::remove_all(folder);

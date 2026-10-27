@@ -2994,10 +2994,18 @@ struct Control {
     // Whether it takes focus from clicks and the keyboard ("all"), clicks only ("click") or
     // never ("none"); "" takes its type's: all for buttons, none for the rest.
     std::string focus_mode;
-    // Which way it lays out: "inherited" (its parent's; left to right at the root), "ltr" or
-    // "rtl", which mirrors its anchors, offsets and grow directions, its children's order in
-    // containers and its text's alignment, as Godot's.
+    // Which way it lays out, as Godot's: "inherited" (its parent's; at the root, as
+    // project.json's internationalization.rendering.root_node_layout_direction says),
+    // "application_locale" (as the game's locale writes), "ltr", "rtl" or "system_locale" (as
+    // the player's machine's locale writes). Right to left mirrors its anchors, offsets and grow
+    // directions, its children's order in containers and its text's alignment.
     std::string layout_direction = "inherited";
+    // Whether its text shows translated into the game's locale (l10n::tr), as Godot's
+    // auto_translate_mode: "inherit" (as its parent; always at the root), "always" or
+    // "disabled".
+    std::string auto_translate_mode = "inherit";
+    // The same for its tooltip_text; "inherit" takes auto_translate_mode's.
+    std::string tooltip_auto_translate_mode = "inherit";
     std::map<std::string, Vec4> theme_override_colors;
     std::map<std::string, int> theme_override_constants;
     std::map<std::string, std::string> theme_override_fonts;
@@ -3046,10 +3054,11 @@ SLASH_COMPONENT(Control, children, anchor_left, anchor_top, anchor_right, anchor
                 size_flags_horizontal, size_flags_vertical, size_flags_stretch_ratio,
                 focus_neighbor_left, focus_neighbor_top, focus_neighbor_right,
                 focus_neighbor_bottom, focus_next, focus_previous, focus_mode, mouse_filter,
-                tooltip_text, layout_direction, visible, modulate, self_modulate, top_level,
-                z_index, z_as_relative, texture_filter, theme, theme_type_variation,
-                theme_override_colors, theme_override_constants, theme_override_fonts,
-                theme_override_font_sizes, theme_override_icons, theme_override_styles)
+                tooltip_text, tooltip_auto_translate_mode, layout_direction, auto_translate_mode,
+                visible, modulate, self_modulate, top_level, z_index, z_as_relative, texture_filter,
+                theme, theme_type_variation, theme_override_colors, theme_override_constants,
+                theme_override_fonts, theme_override_font_sizes, theme_override_icons,
+                theme_override_styles)
 
 // Lets a control be dragged and take what is dropped on it, as a Godot script's _get_drag_data,
 // _can_drop_data and _drop_data. Moving the mouse past the drag threshold with the left button
@@ -3288,11 +3297,13 @@ struct PopupMenuItem {
     bool checked = false;
     bool disabled = false;
     bool separator = false; // a line across the menu, around the text if it has some
+    // Whether its text shows translated: "inherit" (as its menu), "always" or "disabled".
+    std::string auto_translate_mode = "inherit";
 
     friend bool operator==(const PopupMenuItem&, const PopupMenuItem&) = default;
 };
 SLASH_REFLECT(PopupMenuItem, text, icon, checkable, checked, id, disabled, separator, indent,
-              tooltip)
+              tooltip, auto_translate_mode)
 
 // One option of an OptionButton, as Godot's OptionButton items.
 struct OptionButtonItem {
@@ -3302,10 +3313,12 @@ struct OptionButtonItem {
     int id = -1;         // what the option is known by; -1 for its index
     bool disabled = false;
     bool separator = false; // a line between options, around the text if it has some
+    // Whether its text shows translated: "inherit" (as its button), "always" or "disabled".
+    std::string auto_translate_mode = "inherit";
 
     friend bool operator==(const OptionButtonItem&, const OptionButtonItem&) = default;
 };
-SLASH_REFLECT(OptionButtonItem, text, icon, id, disabled, separator, tooltip)
+SLASH_REFLECT(OptionButtonItem, text, icon, id, disabled, separator, tooltip, auto_translate_mode)
 
 // A list of items shown over everything at a point of the viewport, as Godot's PopupMenu:
 // picked with a click, the arrow keys and ui_accept, or by typing the start of one. It shows
@@ -3315,9 +3328,10 @@ SLASH_REFLECT(OptionButtonItem, text, icon, id, disabled, separator, tooltip)
 // keys move to an item. Its theme items are PopupMenu's in the project's theme or its own.
 struct PopupMenu {
     std::vector<PopupMenuItem> items;
-    std::string theme;                          // project path of a .theme.json file; "" for none
-    std::string layout_direction = "inherited"; // "inherited" (left to right), "ltr" or "rtl"
-    Vec2 position;                              // its top left corner in the viewport, in pixels
+    std::string theme; // project path of a .theme.json file; "" for none
+    // "inherited", "application_locale", "ltr", "rtl" or "system_locale", as a Control's
+    std::string layout_direction = "inherited";
+    Vec2 position; // its top left corner in the viewport, in pixels
     bool visible = false;
     bool hide_on_item_selection = true;
     bool hide_on_checkable_item_selection = true;

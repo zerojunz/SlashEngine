@@ -6077,23 +6077,35 @@ void check_buttons(const world::World& world, std::vector<Problem>& problems) {
                  .message = "button groups are for toggle buttons; set toggle_mode too"});
         }
     };
-    // Items' checkable values, which the schema takes as any string.
-    const auto check_items = [&](const std::string& id, std::string_view type,
-                                 const std::vector<world::PopupMenuItem>& items) {
-        static const std::vector<std::string_view> kCheckable{"none", "check", "radio"};
+    // Items' checkable and auto_translate_mode values, which the schema takes as any string.
+    const auto check_choice = [&](const std::string& id, const std::string& path,
+                                  const std::string& value,
+                                  const std::vector<std::string_view>& choices) {
+        if (std::ranges::find(choices, value) != choices.end()) {
+            return;
+        }
+        std::string message = "\"" + value + "\" isn't ";
+        for (std::size_t i = 0; i < choices.size(); ++i) {
+            if (i > 0) {
+                message += i + 1 == choices.size() ? " or " : ", ";
+            }
+            message += "\"" + std::string(choices[i]) + "\"";
+        }
+        if (const std::string_view hint = closest_match(value, choices); !hint.empty()) {
+            message += "; did you mean \"" + std::string(hint) + "\"?";
+        }
+        problems.push_back({.id = id, .path = path, .message = std::move(message)});
+    };
+    static const std::vector<std::string_view> kCheckable{"none", "check", "radio"};
+    static const std::vector<std::string_view> kTranslate{"inherit", "always", "disabled"};
+    const auto check_items = [&](const std::string& id, std::string_view type, const auto& items) {
         for (std::size_t i = 0; i < items.size(); ++i) {
-            const std::string& checkable = items[i].checkable;
-            if (std::ranges::find(kCheckable, checkable) != kCheckable.end()) {
-                continue;
+            const std::string at =
+                "/components/" + std::string(type) + "/items/" + std::to_string(i) + "/";
+            if constexpr (requires { items[i].checkable; }) {
+                check_choice(id, at + "checkable", items[i].checkable, kCheckable);
             }
-            std::string message = "\"" + checkable + R"(" isn't "none", "check" or "radio")";
-            if (const std::string_view hint = closest_match(checkable, kCheckable); !hint.empty()) {
-                message += "; did you mean \"" + std::string(hint) + "\"?";
-            }
-            problems.push_back({.id = id,
-                                .path = "/components/" + std::string(type) + "/items/" +
-                                        std::to_string(i) + "/checkable",
-                                .message = std::move(message)});
+            check_choice(id, at + "auto_translate_mode", items[i].auto_translate_mode, kTranslate);
         }
     };
     for (const auto& entry : entities) {
@@ -6111,6 +6123,9 @@ void check_buttons(const world::World& world, std::vector<Problem>& problems) {
         }
         if (const auto* menu = ecs.try_get<world::MenuButton>(entity); menu != nullptr) {
             check_items(id, "MenuButton", menu->items);
+        }
+        if (const auto* option = ecs.try_get<world::OptionButton>(entity); option != nullptr) {
+            check_items(id, "OptionButton", option->items);
         }
         if (const auto* option = ecs.try_get<world::OptionButton>(entity);
             option != nullptr && option->selected >= 0 &&

@@ -36,6 +36,7 @@
 #include "slash/importer/commands.hpp"
 #include "slash/importer/import.hpp"
 #include "slash/input/sdl.hpp"
+#include "slash/l10n/translation.hpp"
 #include "slash/library/commands.hpp"
 #include "slash/library/team.hpp"
 #include "slash/navigation/navigation.hpp"
@@ -145,8 +146,8 @@ Usage:
                                      (sdk.json), providers (providers.json) or bench (a
                                      benchmark task's task.json)
   slash-cli project validate [dir]   Check project.json, export_presets.json, providers.json,
-                                     the project's theme, bus layout, storyboard and SDK
-                                     packages; lists
+                                     the project's theme, bus layout, translations,
+                                     storyboard and SDK packages; lists
                                      every error
   slash-cli test [path...]           Run the project's .test.json tests headless, or those in
                                      the files and folders given, and print only the checks
@@ -1434,6 +1435,40 @@ int cmd_project(const std::vector<std::string>& args) {
         check(project.value().gui_theme, "/gui/theme", slash::ui::validate_theme);
         check(project.value().audio.bus_layout, "/audio/bus_layout",
               slash::audio::validate_bus_layout);
+        // The translation files, as games read them.
+        const std::vector<std::string>& translations =
+            project.value().internationalization.translations;
+        for (std::size_t i = 0; i < translations.size(); ++i) {
+            const std::string& file = translations[i];
+            const std::string at = "/internationalization/locale/translations/" + std::to_string(i);
+            auto text = slash::platform::read_file(slash::runtime::join_path(folder, file));
+            if (!text) {
+                json::Value item;
+                item["file"] = std::string(slash::runtime::kProjectFile);
+                item["path"] = at;
+                item["message"] = "no file \"" + file + "\"";
+                errors.push_back(std::move(item));
+                continue;
+            }
+            auto read = slash::l10n::read_translation_file(file, text.value());
+            std::vector<std::string> messages;
+            if (!read) {
+                messages.push_back(read.error().message);
+            } else {
+                for (const auto& problem : read.value().problems) {
+                    messages.push_back(problem.line > 0 ? "line " + std::to_string(problem.line) +
+                                                              ": " + problem.message
+                                                        : problem.message);
+                }
+            }
+            for (std::string& message : messages) {
+                json::Value item;
+                item["file"] = file;
+                item["path"] = "";
+                item["message"] = std::move(message);
+                errors.push_back(std::move(item));
+            }
+        }
         // The icons project.json and the presets name.
         const auto presets = slash::exporter::load_presets(folder);
         std::vector<const slash::exporter::Preset*> preset_list;

@@ -6,6 +6,7 @@
 #include "slash/core/text.hpp"
 #include "slash/gameplay/host.hpp"
 #include "slash/input/input.hpp"
+#include "slash/l10n/l10n.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/runtime/icon.hpp"
 #include "slash/ui/ui.hpp"
@@ -204,6 +205,8 @@ Game::Game(Project project, platform::Platform platform, const std::string& data
     audio::install(world_, assets_, project_.audio);
     // With no backends until an SDK package's glue code gives some.
     services::install(world_, project_.services);
+    // In the player's language, unless the project tests another.
+    l10n::install(world_, assets_, project_.internationalization, l10n::preferred_locale());
     platform_.set_event_handler([this](const SDL_Event& event) { handle_event(event); });
     if (!platform_.headless()) {
         // Each tick's sound goes to the speakers; with no output device the game stays silent.

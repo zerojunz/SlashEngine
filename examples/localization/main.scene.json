@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "menu": {
+      "components": {
+        "BoxContainer": {
+          "vertical": true
+        },
+        "Control": {
+          "anchor_bottom": 1.0,
+          "anchor_right": 1.0,
+          "children": ["title", "start", "options", "quit", "version"]
+        }
+      }
+    },
+    "options": {
+      "components": {
+        "Button": {
+          "text": "Options"
+        },
+        "Control": {}
+      }
+    },
+    "quit": {
+      "components": {
+        "Button": {
+          "text": "Quit"
+        },
+        "Control": {}
+      }
+    },
+    "start": {
+      "components": {
+        "Button": {
+          "text": "Start game"
+        },
+        "Control": {}
+      }
+    },
+    "title": {
+      "components": {
+        "Control": {},
+        "Label": {
+          "text": "Treasure Hunt"
+        }
+      }
+    },
+    "version": {
+      "components": {
+        "Control": {
+          "auto_translate_mode": "disabled",
+          "size_flags_horizontal": "shrink_begin"
+        },
+        "Label": {
+          "text": "Version 1.0"
+        }
+      }
+    }
+  },
+  "format": 1
+}
