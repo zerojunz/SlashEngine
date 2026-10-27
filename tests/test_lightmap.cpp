@@ -314,6 +314,75 @@ TEST_CASE("bakes are the same for any number of threads") {
     }
 }
 
+TEST_CASE("devices that trace rays bake lightmaps as the CPU does") {
+    const auto bake_room = [](render::RenderDevice* device) {
+        Room room;
+        room.create("doorway", R"({"Transform3D": {"position": [1, 1, 1]}, "LightmapProbe": {}})");
+        room.world.ecs().get<world::LightmapGI>(room.gi).use_denoiser = false;
+        scene3d::LightmapSources sources;
+        sources.device = device;
+        return scene3d::bake_lightmap(room.world, room.gi, sources).value();
+    };
+    const scene3d::LightmapBake cpu = bake_room(nullptr);
+    CHECK_FALSE(cpu.traced_on_gpu);
+    // The software device traces frames' rays but leaves bakes to the CPU.
+    const auto software = render::create_software_device();
+    const scene3d::LightmapBake on_software = bake_room(software.get());
+    CHECK_FALSE(on_software.traced_on_gpu);
+    CHECK(on_software.texels == cpu.texels);
+
+    const auto gpu = slash::test::gpu_device();
+    if (gpu == nullptr) {
+        return;
+    }
+    const scene3d::LightmapBake baked = bake_room(gpu.get());
+    CHECK(baked.traced_on_gpu == gpu->ray_tracing());
+    if (!gpu->ray_tracing()) {
+        CHECK(baked.texels == cpu.texels);
+        return;
+    }
+    CHECK(baked.data.users == cpu.data.users);
+    REQUIRE(baked.texels.rgb.size() == cpu.texels.rgb.size());
+    // The same light but for rounding, which can end a path a bounce sooner or later.
+    double total = 0.0;
+    double off = 0.0;
+    std::size_t far = 0;
+    for (std::size_t i = 0; i < cpu.texels.rgb.size(); ++i) {
+        const float a = cpu.texels.rgb[i];
+        const float b = baked.texels.rgb[i];
+        total += a;
+        off += std::abs(a - b);
+        if (std::abs(a - b) > 0.05F + (0.1F * a)) {
+            ++far;
+        }
+    }
+    CAPTURE(total);
+    CAPTURE(off);
+    CHECK(off < total * 0.02);
+    CHECK(far <= cpu.texels.rgb.size() / 100);
+    // So the floor beside the box is lit, and in its shadow isn't.
+    const float lit = brightness(light_at(baked, "floor", floor_uv2(baked, -1.5F, -1.5F)));
+    const float shadowed = brightness(light_at(baked, "floor", floor_uv2(baked, -0.6F, -0.7F)));
+    CHECK(lit > 0.5F);
+    CHECK(shadowed < lit * 0.5F);
+    // And the probes.
+    const scene3d::LightmapProbes& probes = baked.data.probes;
+    REQUIRE(probes.sh.size() == cpu.data.probes.sh.size());
+    double probe_total = 0.0;
+    double probe_off = 0.0;
+    for (std::size_t p = 0; p < probes.sh.size(); ++p) {
+        for (std::size_t j = 0; j < 9; ++j) {
+            for (std::size_t c = 0; c < 3; ++c) {
+                probe_total += std::abs(cpu.data.probes.sh[p].at(j).at(c));
+                probe_off += std::abs(probes.sh[p].at(j).at(c) - cpu.data.probes.sh[p].at(j).at(c));
+            }
+        }
+    }
+    CAPTURE(probe_total);
+    CAPTURE(probe_off);
+    CHECK(probe_off < probe_total * 0.02);
+}
+
 namespace {
 
 using Point = std::array<float, 3>;

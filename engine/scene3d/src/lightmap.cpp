@@ -1068,6 +1068,7 @@ Result<LightmapBake> bake_lightmap(const world::World& world, entt::entity entit
     settings.texel_scale = gi.texel_scale;
     settings.max_texture_size = static_cast<std::uint32_t>(std::max(gi.max_texture_size, 1));
     settings.supersampling = gi.supersampling ? gi.supersampling_factor : 1.0F;
+    settings.device = sources.device;
     if (!gi.camera_attributes.empty()) {
         const entt::entity attributes = world.find(gi.camera_attributes);
         if (attributes == entt::null ||

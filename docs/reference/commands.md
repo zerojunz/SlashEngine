@@ -1725,10 +1725,11 @@ probes](scene-format.md#light-probes), as Godot's LightmapGI bake: the
 `MeshInstance3D`s whose `gi_mode` is `"static"` under its parent (the whole world for a root),
 lit by the lights there whose `light_bake_mode` isn't `"disabled"` and by its environment, with
 shadows and bounces. It unwraps the meshes into lightmap UVs, traces their light and the probes'
-on the CPU, then writes a `.lightmap.json` file and its texels in an `.hdr` file beside it, and
+on the CPU, or with `"device": "gpu"` on a GPU that traces rays (Vulkan with ray queries, as
+Godot's LightmapperRD traces on the GPU: the same light but for rounding), then writes a `.lightmap.json` file and its texels in an `.hdr` file beside it, and
 sets the LightmapGI's `light_data` to the file. It returns the files, how many meshes and lights
-it baked, how many `probes`, the size of a slice, how many slices and `problems` when there are
-any: models or textures that
+it baked, how many `probes`, the size of a slice, how many slices, with `device` the one that
+traced it (`"cpu"` where no GPU traces rays) and `problems` when there are any: models or textures that
 don't load, meshes with no entity ID and model parts with a skin, which it leaves out. A bake that comes out the same
 reports `"unchanged": true` and records no undo step. Undo puts both files back as they were,
 removing them if the bake made them, and sets `light_data` back; redo writes the bake again.
@@ -1739,6 +1740,7 @@ tick.
 | --- | --- | --- | --- |
 | `id` | string | required | An entity with a `LightmapGI` |
 | `file` | string | its `light_data`, else beside the scene, named after it | The `.lightmap.json` file to write, project path |
+| `device` | string | `"cpu"` | `"gpu"` traces on a GPU that traces rays, else on the CPU |
 
 Needs: `edit` and `filesystem`. Takes `dry_run`. The courtyard of
 [examples/lightmaps-3d](../../examples/lightmaps-3d/):
