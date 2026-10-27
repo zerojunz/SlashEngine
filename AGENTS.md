@@ -1099,7 +1099,9 @@ Skies and fog are the Compatibility renderer's too. `Scene3D::sky` (`render::Sky
 procedural, physical or panorama sky, from a `"sky"` background and the sky material on the
 `WorldEnvironment`'s entity) draws before the meshes, as one triangle over the target with no
 depth test: `shaders/sky.hlsl` works out each pixel's view direction and shades it as Godot's sky
-shaders do, with the suns of up to four `DirectionalLight3D`s. `Scene3D::fog` (`render::Fog3D`)
+shaders do, with the suns of up to four `DirectionalLight3D`s. In Forward+ (`kSkyLinear`) it
+works from linear colors and leaves the result linear, as Godot's RD sky does; in Compatibility
+it works in sRGB and makes the result linear, as `drivers/gles3` does. `Scene3D::fog` (`render::Fog3D`)
 fades meshes in `mesh.hlsl`'s `fog_process` and the sky by its `sky_affect`; fog over a color
 background draws that color as a sky, as Godot's fog sky does. `src/sky_shading.hpp` holds the
 uniforms, the checks and the CPU twins (`sky_ray`, `shade_sky`) the software device draws with;
