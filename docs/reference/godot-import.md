@@ -426,6 +426,25 @@ becomes the entity's component of the same name and a model file its `mesh`, and
 camera and play its frames as Godot's do. `visibility_aabb` only culls and is left out, and a
 `material_overlay` is reported.
 
+A `GPUParticles3D` keeps its settings in its component too, with `visibility_aabb` as
+`visibility_aabb_position` and `visibility_aabb_size`, and `seed` only when `use_fixed_seed` is on,
+since Godot picks one at random otherwise. Its `ParticleProcessMaterial` becomes a
+`.process_material.json` file read in 3D: 3D vectors, Godot's 3D default gravity (`[0, -9.8, 0]`),
+the ring emission, flatness, directional velocity, scale over velocity, the particle flags,
+`attractor_interaction_enabled` and the collision mode, and a `CurveXYZTexture`'s three curves as
+`{"x", "y", "z"}` points. `draw_pass_1` converts as a `CPUParticles3D`'s `mesh` (a primitive
+mesh becomes the entity's component, its material its `StandardMaterial3D` unless
+`material_override` gives one), and later passes keep their model files; a primitive mesh on a
+later pass, sub-emitters, trails, `draw_skin` and `material_overlay` are reported.
+
+Attractors (`GPUParticlesAttractorSphere3D`, `Box3D` and `VectorField3D`) and colliders
+(`GPUParticlesCollisionSphere3D`, `Box3D`, `SDF3D` and `HeightField3D`) keep Godot's fields. A
+vector field's `texture` keeps its image, with `slices_horizontal` and `slices_vertical` from its
+`.import` file's `slices/horizontal` and `slices/vertical`, as Godot's `Texture3D` importer cuts
+it. An SDF's baked `texture` (an `.exr` file Godot's bake writes) is reported, to be baked again
+with `particles.bake_sdf`. A height field's `resolution` above 1024 texels draws at 1024, which is
+reported.
+
 ## 3D
 
 Godot's 3D nodes keep their names and fields here, so most of a 3D scene converts as a 2D one
@@ -726,7 +745,8 @@ The report lists each of these once per kind, with how many and where it was fir
 | `ShaderMaterial` on a 3D mesh or a sky | A game's own 3D shaders aren't supported yet |
 | `HeightMapShape3D` | Use an [`HTerrain`](scene-format.md#heightmap-terrains), whose height field collides |
 | The HTerrain plugin's detail layers (`HTerrainDetailLayer`), texture arrays, splat maps past the first, triplanar mapping and tile reduction | Grass and other details aren't supported yet; a terrain mixes four textures by one splat map |
-| `GPUParticles3D` | Not converted yet: the report asks for SlashEngine's `GPUParticles3D` component by hand |
+| `GPUParticles3D`'s sub-emitters, trails, `draw_skin`, `material_overlay` and primitive meshes on passes after the first | 3D particles have no sub-emitters or trails yet; export a later pass's mesh as a glTF file |
+| A `GPUParticlesCollisionSDF3D`'s baked texture, and a height field's resolution above 1024 | Bake the SDF again with `particles.bake_sdf`; height fields draw at most 1024 texels across |
 | Other 3D nodes with no SlashEngine component | Not supported yet; their entities keep their place in the tree |
 | Audio and animation tracks | Play the sound or the other animation from gameplay code, on an event track's event |
 | Bezier handles, the capture update mode, blend times and markers | A bezier track plays cubic through its keys, a capture track as continuous, and animations switch without blending |

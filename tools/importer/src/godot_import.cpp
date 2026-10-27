@@ -692,6 +692,16 @@ constexpr std::array kNodeTypes{
     NodeType{"Marker3D", Family::Node3D, "", ""},
     NodeType{"MeshInstance3D", Family::Node3D, "MeshInstance3D", ""},
     NodeType{"CPUParticles3D", Family::Node3D, "CPUParticles3D", ""},
+    NodeType{"GPUParticles3D", Family::Node3D, "GPUParticles3D", ""},
+    NodeType{"GPUParticlesAttractorSphere3D", Family::Node3D, "GPUParticlesAttractorSphere3D", ""},
+    NodeType{"GPUParticlesAttractorBox3D", Family::Node3D, "GPUParticlesAttractorBox3D", ""},
+    NodeType{"GPUParticlesAttractorVectorField3D", Family::Node3D,
+             "GPUParticlesAttractorVectorField3D", ""},
+    NodeType{"GPUParticlesCollisionSphere3D", Family::Node3D, "GPUParticlesCollisionSphere3D", ""},
+    NodeType{"GPUParticlesCollisionBox3D", Family::Node3D, "GPUParticlesCollisionBox3D", ""},
+    NodeType{"GPUParticlesCollisionSDF3D", Family::Node3D, "GPUParticlesCollisionSDF3D", ""},
+    NodeType{"GPUParticlesCollisionHeightField3D", Family::Node3D,
+             "GPUParticlesCollisionHeightField3D", ""},
     NodeType{"Camera3D", Family::Node3D, "Camera3D", ""},
     NodeType{"DirectionalLight3D", Family::Node3D, "DirectionalLight3D", ""},
     NodeType{"OmniLight3D", Family::Node3D, "OmniLight3D", ""},
@@ -1577,12 +1587,28 @@ private:
     void learn_import_settings(std::string_view text, const std::string& file) {
         const std::string asset = without_extension(file);
         const bool sound = is_sound_file(extension_of(asset));
-        if (!sound && !is_model_file(extension_of(asset))) {
+        const bool texture = is_texture_file(extension_of(asset));
+        if (!sound && !texture && !is_model_file(extension_of(asset))) {
             return;
         }
         auto sections = godot::parse_project_settings(text);
         if (!sections) {
             problems_.add("unreadable file", file, sections.error().message);
+            return;
+        }
+        if (texture) {
+            // An image imported as a Texture3D: how many slices it's cut into.
+            bool three_d = false;
+            for (const Section& section : sections.value()) {
+                const Value* importer = section.property("importer");
+                three_d = three_d || (section.tag == "remap" && importer != nullptr &&
+                                      importer->is_string() && importer->text == "3d_texture");
+            }
+            for (Section& section : sections.value()) {
+                if (three_d && section.tag == "params") {
+                    texture_3d_settings_[asset] = std::move(section);
+                }
+            }
             return;
         }
         for (Section& section : sections.value()) {
@@ -4480,15 +4506,20 @@ private:
         return json::Value(std::move(points));
     }
 
-    // A ParticleProcessMaterial as a .process_material.json file, its 3D vectors cut to 2D and
-    // its CurveTextures and GradientTextures to their curves and gradients.
+    // A ParticleProcessMaterial as a .process_material.json file, its CurveTextures,
+    // CurveXYZTextures and GradientTextures as their curves and gradients: for a GPUParticles2D
+    // its 3D vectors cut to 2D, for a GPUParticles3D (three_d) as they are. A material both use
+    // is written twice, the 3D one with "_3d" after its name.
     std::string process_material_file(const TextFile& file, const Section& material,
-                                      const std::string& base) {
-        const std::string key = file.path + "#" + base;
+                                      const std::string& base, bool three_d = false) {
+        const std::string key = file.path + "#" + base + (three_d ? "#3d" : "");
         if (const auto done = process_written_.find(key); done != process_written_.end()) {
             return done->second;
         }
-        const std::string path = destination(base + std::string(canvas::kProcessMaterialSuffix));
+        const std::string other = file.path + "#" + base + (three_d ? "" : "#3d");
+        const std::string named =
+            process_written_.contains(other) ? base + (three_d ? "_3d" : "_2d") : base;
+        const std::string path = destination(named + std::string(canvas::kProcessMaterialSuffix));
         process_written_[key] = path;
         resources_used_.insert("ParticleProcessMaterial");
         const std::string where = resource_where(material, file);
@@ -4543,9 +4574,91 @@ private:
             }
             return section->property(property);
         };
+        // A CurveXYZTexture's three curves, as {"x", "y", "z"} points.
+        const auto curves_xyz = [&](const Value& value,
+                                    std::string& why) -> std::optional<json::Value> {
+            const auto [section, owner] = resource_section(value, file);
+            if (section == nullptr || owner != &file ||
+                resource_type(*section, file) != "CurveXYZTexture") {
+                return std::nullopt;
+            }
+            json::Value axes;
+            for (const char* axis : {"x", "y", "z"}) {
+                const Value* curve = section->property(std::string("curve_") + axis);
+                if (curve == nullptr || curve->kind == Value::Kind::Nil) {
+                    why = std::string("a CurveXYZTexture with no curve_") + axis;
+                    return std::nullopt;
+                }
+                auto points = curve_points(*curve, file, why);
+                if (!points) {
+                    return std::nullopt;
+                }
+                axes[axis] = std::move(*points);
+            }
+            return axes;
+        };
         for (const auto& [name, value] : material.properties) {
             std::string why;
             const auto vector = value.numbers();
+            if (three_d) {
+                // What only 3D particles read.
+                if (name == "resource_local_to_scene" || name == "resource_name") {
+                    continue;
+                }
+                if (name == "particle_flag_disable_z" || name == "particle_flag_rotate_y" ||
+                    name == "attractor_interaction_enabled" ||
+                    name == "directional_velocity_global") {
+                    if (value.kind == Value::Kind::Bool) {
+                        out[name] = value.boolean;
+                    } else {
+                        problems_.add("ParticleProcessMaterial." + name, where);
+                    }
+                    continue;
+                }
+                if (name == "flatness" || name == "emission_ring_height" ||
+                    name == "emission_ring_cone_angle" || name == "directional_velocity_min" ||
+                    name == "directional_velocity_max" || name == "scale_over_velocity_min" ||
+                    name == "scale_over_velocity_max") {
+                    if (value.is_number()) {
+                        out[name] = value.number();
+                    } else {
+                        problems_.add("ParticleProcessMaterial." + name, where);
+                    }
+                    continue;
+                }
+                if ((contains(kVectors, std::string_view(name)) || name == "gravity" ||
+                     name == "emission_ring_axis") &&
+                    vector && vector->size() == 3) {
+                    out[name] = json::Array{vector->at(0), vector->at(1), vector->at(2)};
+                    continue;
+                }
+                // Three curves where Godot's 3D particles read them.
+                if (name == "scale_curve" || name == "orbit_velocity_curve" ||
+                    name == "directional_velocity_curve" || name == "scale_over_velocity_curve") {
+                    if (auto axes = curves_xyz(value, why); axes) {
+                        out[name] = std::move(*axes);
+                        continue;
+                    }
+                    if (!why.empty()) {
+                        problems_.add("ParticleProcessMaterial." + name, where, why);
+                        continue;
+                    }
+                    if (name == "directional_velocity_curve" ||
+                        name == "scale_over_velocity_curve") {
+                        problems_.add("ParticleProcessMaterial." + name, where,
+                                      "only a CurveXYZTexture converts");
+                        continue;
+                    }
+                }
+                if (name.starts_with("sub_emitter_")) {
+                    if (name == "sub_emitter_mode" && value.kind == Value::Kind::Int &&
+                        value.integer != 0) {
+                        problems_.add("ParticleProcessMaterial.sub_emitter_mode", where,
+                                      "3D particles have no sub-emitters yet");
+                    }
+                    continue;
+                }
+            }
             if (contains(kIgnored, std::string_view(name))) {
                 disable_z = disable_z || (name == "particle_flag_disable_z" && value.boolean);
                 continue;
@@ -4636,7 +4749,11 @@ private:
         // Godot makes a material with the 3D default gravity a 2D one with 98 pixels a second
         // squared down, unless it was already 2D.
         if (out.find("gravity") == nullptr) {
-            out["gravity"] = disable_z ? json::Array{0.0, -9.8} : json::Array{0.0, 98.0};
+            if (three_d) {
+                out["gravity"] = json::Array{0.0, -9.8, 0.0};
+            } else {
+                out["gravity"] = disable_z ? json::Array{0.0, -9.8} : json::Array{0.0, 98.0};
+            }
         }
         for (const json::ValidationError& error : canvas::validate_process_material(out)) {
             problems_.add("ParticleProcessMaterial", where, error.path + ": " + error.message);
@@ -4975,6 +5092,15 @@ private:
         }
         if (node.type == "CPUParticles3D" && components.contains("CPUParticles3D") &&
             particles_3d_property(node, property, components)) {
+            return true;
+        }
+        if (node.type == "GPUParticles3D" && components.contains("GPUParticles3D") &&
+            gpu_particles_3d_property(node, property, components)) {
+            return true;
+        }
+        if (node.type.starts_with("GPUParticles") && node.type != "GPUParticles2D" &&
+            components.contains(node.type) &&
+            particle_field_property(node, property, components[node.type])) {
             return true;
         }
         if (name == "environment" && components.contains("WorldEnvironment")) {
@@ -5452,6 +5578,161 @@ private:
         if (material.value != nullptr && (own == nullptr || own->value->kind == Value::Kind::Nil)) {
             convert_material(*material.value, *material.file, components, node);
         }
+        return true;
+    }
+
+    // GPUParticles3D's process material (as a 3D .process_material.json file), its visibility
+    // box, its draw passes' meshes (draw_pass_1 as a CPUParticles3D's mesh, the others as model
+    // files), material_override, else the first pass's own material, and its seed.
+    bool gpu_particles_3d_property(const Node& node, const Property& property,
+                                   json::Object& components) {
+        const std::string& name = property.name;
+        const Value& value = *property.value;
+        const TextFile& file = *property.file;
+        json::Value& emitter = components["GPUParticles3D"];
+        if (name == "process_material") {
+            const auto [section, owner] = resource_section(value, file);
+            if (section == nullptr ||
+                resource_type(*section, *owner) != "ParticleProcessMaterial") {
+                if (value.kind != Value::Kind::Nil) {
+                    problems_.add("GPUParticles3D.process_material", node.declared,
+                                  "only a ParticleProcessMaterial converts");
+                }
+                return true;
+            }
+            emitter["process_material"] =
+                process_material_file(*owner, *section, resource_base(*section, *owner), true);
+            return true;
+        }
+        if (name == "visibility_aabb") {
+            if (const auto box = value.numbers(); box && box->size() == 6) {
+                emitter["visibility_aabb_position"] = json::Array{(*box)[0], (*box)[1], (*box)[2]};
+                emitter["visibility_aabb_size"] = json::Array{(*box)[3], (*box)[4], (*box)[5]};
+            }
+            return true;
+        }
+        if (name == "seed") {
+            // Godot's GPUParticles3D picks a seed at random unless use_fixed_seed.
+            const Property* fixed = node.find("use_fixed_seed");
+            if (fixed != nullptr && fixed->value->boolean && value.kind == Value::Kind::Int) {
+                emitter["seed"] =
+                    static_cast<std::int32_t>(static_cast<std::uint32_t>(value.integer));
+            }
+            return true;
+        }
+        if (name == "material_override") {
+            convert_material(value, file, components, node);
+            return true;
+        }
+        if (name == "sub_emitter" || name == "trail_enabled" || name == "trail_lifetime" ||
+            name == "draw_skin" || name == "material_overlay") {
+            const bool off = value.kind == Value::Kind::Nil ||
+                             (value.kind == Value::Kind::Bool && !value.boolean) ||
+                             (name == "sub_emitter" && value.is_string() && value.text.empty());
+            const bool set = !off && name != "trail_lifetime";
+            if (set) {
+                problems_.add("GPUParticles3D." + name, node.declared,
+                              name == "material_overlay" ? "a mesh has one material"
+                                                         : "3D particles don't have it yet");
+            }
+            return true;
+        }
+        if (!name.starts_with("draw_pass_") || name == "draw_passes") {
+            return false;
+        }
+        const std::string what = "GPUParticles3D." + name;
+        std::string model;
+        MeshMaterial material;
+        if (name == "draw_pass_1") {
+            if (convert_mesh(value, file, node, what, model, components, material, false) &&
+                !model.empty()) {
+                emitter[name] = std::move(model);
+            }
+            const Property* own = node.find("material_override");
+            if (material.value != nullptr &&
+                (own == nullptr || own->value->kind == Value::Kind::Nil)) {
+                convert_material(*material.value, *material.file, components, node);
+            }
+            return true;
+        }
+        // Later passes draw model files; the entity has one primitive mesh, the first pass's.
+        if (value.is_call("ExtResource")) {
+            json::Object ignored;
+            if (convert_mesh(value, file, node, what, model, ignored, material, false) &&
+                !model.empty()) {
+                emitter[name] = std::move(model);
+                return true;
+            }
+        } else if (value.kind != Value::Kind::Nil) {
+            problems_.add(what, node.declared,
+                          "only the first pass can be a primitive mesh; export the mesh as a "
+                          "glTF file");
+        }
+        return true;
+    }
+
+    // GPUParticles3D's attractors' and colliders' textures and resolutions: a vector field's
+    // texture with the slices its .import file cuts it into, an SDF's baked texture left for
+    // particles.bake_sdf, and a height field's resolution, at most 1024 texels.
+    bool particle_field_property(const Node& node, const Property& property,
+                                 json::Value& component) {
+        const std::string& name = property.name;
+        const Value& value = *property.value;
+        const std::string what = node.type + "." + name;
+        if (node.type == "GPUParticlesCollisionSDF3D" && name == "texture") {
+            if (value.kind != Value::Kind::Nil) {
+                problems_.add(what, node.declared,
+                              "Godot's baked SDF isn't read; bake again with particles.bake_sdf");
+            }
+            return true;
+        }
+        if (node.type == "GPUParticlesCollisionHeightField3D" && name == "resolution") {
+            static constexpr std::array<std::string_view, 3> kResolutions{"256", "512", "1024"};
+            if (value.kind == Value::Kind::Int && value.integer >= 0 && value.integer < 3) {
+                component[name] = kResolutions.at(static_cast<std::size_t>(value.integer));
+            } else {
+                component[name] = "1024";
+                problems_.add(what, node.declared, "at most 1024 texels; drawn at 1024");
+            }
+            return true;
+        }
+        if (node.type != "GPUParticlesAttractorVectorField3D" || name != "texture") {
+            return false;
+        }
+        if (value.kind == Value::Kind::Nil) {
+            return true;
+        }
+        const auto ext = value.is_call("ExtResource")
+                             ? property.file->ext.find(value.string_argument().value_or(""))
+                             : property.file->ext.end();
+        if (ext == property.file->ext.end() || !is_texture_file(extension_of(ext->second.path))) {
+            problems_.add(what, node.declared, "only an image imported as a Texture3D converts");
+            return true;
+        }
+        if (!std::ranges::binary_search(files_, ext->second.path)) {
+            problems_.add(what, node.declared, "missing file " + ext->second.path);
+            return true;
+        }
+        component["texture"] = destination(ext->second.path);
+        // Godot's Texture3D importer cuts it as its .import file says, 1 by 1 by default.
+        int horizontal = 1;
+        int vertical = 1;
+        if (const auto found = texture_3d_settings_.find(ext->second.path);
+            found != texture_3d_settings_.end()) {
+            if (const Value* h = found->second.property("slices/horizontal");
+                h != nullptr && h->kind == Value::Kind::Int) {
+                horizontal = static_cast<int>(h->integer);
+            }
+            if (const Value* v = found->second.property("slices/vertical");
+                v != nullptr && v->kind == Value::Kind::Int) {
+                vertical = static_cast<int>(v->integer);
+            }
+        } else {
+            problems_.add(what, node.declared,
+                          ext->second.path + " has no Texture3D import settings; cut as one slice");
+        }
+        component["slices_horizontal"] = horizontal;
+        component["slices_vertical"] = vertical;
         return true;
     }
 
@@ -10432,6 +10713,7 @@ private:
     // Each converted mesh library's item names by Godot's item IDs, by the library's path.
     std::map<std::string, std::map<std::int64_t, std::string>> mesh_library_items_;
     std::map<std::string, Section> sound_settings_;      // .import [params], by sound
+    std::map<std::string, Section> texture_3d_settings_; // .import [params], by Texture3D image
     std::map<std::string, std::string> sounds_written_;  // by sound
     std::map<std::string, std::string> streams_written_; // by file and resource
     std::map<std::string, TileSetFile> tile_sets_;

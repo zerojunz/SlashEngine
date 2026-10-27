@@ -29,8 +29,14 @@ the replies.
 - The `WorldEnvironment`'s `Environment` (its SSAO included) and `Sky` become its
   `WorldEnvironment` fields and a `ProceduralSkyMaterial` component; `project.godot`'s
   `3d/default_gravity` becomes `project.json`'s `physics_3d` gravity.
-- One thing doesn't convert, and the reply lists it under `unsupported`: the `GPUParticles3D`
-  fireflies, whose entity keeps its place in the tree with no particles.
+- The fireflies are a `GPUParticles3D`: its `ParticleProcessMaterial` becomes a
+  `.process_material.json` file in 3D (its sphere emission, `direction`, `spread`, zero gravity
+  and color), `visibility_aabb` becomes `visibility_aabb_position` and `visibility_aabb_size`, and
+  `draw_pass_1`'s `QuadMesh` and its material become the entity's own. The `Lure`
+  (`GPUParticlesAttractorSphere3D`) pulls them toward the lamp and the `Roof`
+  (`GPUParticlesCollisionBox3D`) keeps them under it, both with Godot's fields. `particles.eval`
+  finds 8 alive after two seconds, two thirds of the 12 a three-second lifetime keeps, glowing
+  yellow. Nothing is left in the reply's `unsupported` list.
 
 After 120 ticks the crate rests on the grass, its center about half a meter (`0.48`) above the
 ground. `frame.capture` reads the sky, the grass, the crate and the statue from the frame the
