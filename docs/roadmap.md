@@ -669,7 +669,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] VoxelGI's light in the fog (`gi_inject`), as Godot's density pass takes it
 - [x] Clustered decals, as Godot 4.6's Forward+ `Decal`: albedo, normal, ORM and emission
       textures in one atlas, fades, cull masks and the project's decal filter, imported from Godot
-- [ ] 3D particles, as Godot 4.6's
+- [x] 3D particles, as Godot 4.6's
   - [x] `CPUParticles3D`: Godot's emission shapes (ball, box, points, ring with its cone), cone
         spread with flatness, forces, damping, curves, color ramps and the align, rotate and
         disable-z flags, drawn as the entity's mesh at each particle with `StandardMaterial3D`'s
@@ -763,7 +763,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
 - [x] FBX models through ufbx, as Godot 4.3's importer reads them
 - [x] Blender `.blend` files the way Godot does it: the engine runs the artist's own Blender in
       the background to convert them to glTF, so no Blender code is linked or shipped
-- [ ] 3D scenes in `project.import` from Godot and Unity projects, and Unreal Engine projects
+- [x] 3D scenes in `project.import` from Godot and Unity projects, and Unreal Engine projects
       imported through the user's own Unreal Editor: its project files are a closed binary
       format, so the editor exports the levels and assets and the importer converts what it
       writes. GameMaker and RPG Maker projects come after
@@ -813,7 +813,8 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Unreal's landscapes as HTerrains, their heights exactly as Unreal keeps them
   - [x] Unreal's Animation Blueprints' sequences as an `AnimationTree` state machine for their
         task to join
-  - [ ] Unreal's Niagara particles, once there are 3D particles to convert them to
+  - [x] Unreal's Niagara particles as `CPUParticles3D` and `GPUParticles3D`, read through
+        Unreal 5.8's Niagara stack API
 - [x] 3D in the asset library and generator ([design](design.md#3d-assets))
   - [x] Parametric models: agents write a `.model.json` recipe of shapes, CSG on Manifold,
         extrusions, lathes, bevels and arrays, and the engine builds the mesh; the library keeps
@@ -965,7 +966,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Keyframe animation | Keyframe tracks on any reflected property | 5 | Done |
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Done |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Done |
-| Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials, particle graphs, turbulence, collision, sub-emitters and trails are done, `CPUParticles3D`, `GPUParticles3D` in compute shaders, its attractors and its colliders (sphere, box, SDF and height field), all imported from Godot |
+| Particles | CPU and GPU particles, particle graphs in text | 5, 7 | Done: CPU and GPU particles in 2D and 3D with process materials, particle graphs, turbulence, collision, sub-emitters, trails, attractors and colliders (sphere, box, SDF and height field), imported from Godot, Unity's particle systems and Unreal's Niagara |
 | Soundtracks | Music planned in the storyboard, written as scores or generated, arranged into interactive music and checked by analysis, all through commands | 6 | Done |
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | Done |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |

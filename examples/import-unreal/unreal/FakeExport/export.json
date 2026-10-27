@@ -48,7 +48,7 @@
    "path": "/Game/UI/WBP_Hud"
   }
  ],
- "engine_version": "5.4.4-35576357+++UE5+Release-5.4",
+ "engine_version": "5.8.0-0+++UE5+Release-5.8",
  "format": 1,
  "input_actions": {
   "/Game/Input/IA_Jump": "boolean",
@@ -475,6 +475,59 @@
        0.0,
        0.0,
        300.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "NiagaraActor",
+     "class_path": "/Script/Niagara.NiagaraActor",
+     "components": [
+      {
+       "class": "NiagaraComponent",
+       "name": "NiagaraComponent0",
+       "niagara": {
+        "auto_activate": true,
+        "system": "/Game/FX/NS_Embers"
+       },
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         320.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "Embers",
+     "name": "NiagaraActor_0",
+     "root": "NiagaraComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       320.0
       ],
       "rotation": [
        0.0,
@@ -1584,6 +1637,103 @@
    ],
    "simple_collision": 0,
    "skeletal": false
+  }
+ },
+ "niagara_systems": {
+  "/Game/FX/NS_Embers": {
+   "determinism": true,
+   "emitters": [
+    {
+     "data": {
+      "bLocalSpace": false
+     },
+     "enabled": true,
+     "name": "Embers",
+     "renderers": [
+      {
+       "class": "NiagaraSpriteRendererProperties",
+       "data": {}
+      }
+     ],
+     "scripts": {
+      "EmitterUpdateScript": [
+       {
+        "enabled": true,
+        "inputs": {
+         "SpawnRate": {
+          "value": "(Value=(Value=20.000000))"
+         }
+        },
+        "module": "Spawn Rate",
+        "script": "/Niagara/Modules/Emitter/SpawnRate"
+       }
+      ],
+      "ParticleSpawnScript": [
+       {
+        "enabled": true,
+        "inputs": {
+         "Color": {
+          "value": "(Value=(R=1.000000,G=0.450000,B=0.100000,A=1.000000))"
+         },
+         "Lifetime": {
+          "chain": "(Name=\"Lifetime\",Inputs=((Name=\"Minimum\",Value=(Value=0.500000)),(Name=\"Maximum\",Value=(Value=1.000000))))",
+          "value": "(DynamicInput=\"/Niagara/DynamicInputs/RandomRangeFloat\")"
+         },
+         "Uniform Sprite Size": {
+          "value": "(Value=(Value=5.000000))"
+         }
+        },
+        "module": "Initialize Particle",
+        "script": "/Niagara/Modules/Spawn/Initialization/InitializeParticle"
+       },
+       {
+        "enabled": true,
+        "inputs": {
+         "Cone Angle": {
+          "value": "(Value=(Value=40.000000))"
+         },
+         "Cone Axis": {
+          "value": "(Value=(X=0.000000,Y=0.000000,Z=1.000000))"
+         },
+         "Velocity Strength": {
+          "value": "(Value=(Value=150.000000))"
+         }
+        },
+        "module": "Add Velocity in Cone",
+        "script": "/Niagara/Modules/Spawn/Velocity/AddVelocityInCone"
+       }
+      ],
+      "ParticleUpdateScript": [
+       {
+        "enabled": true,
+        "inputs": {
+         "Gravity": {
+          "value": "(Value=(X=0.000000,Y=0.000000,Z=-200.000000))"
+         }
+        },
+        "module": "Gravity Force",
+        "script": "/Niagara/Modules/Update/Forces/GravityForce"
+       },
+       {
+        "enabled": true,
+        "inputs": {},
+        "module": "Scale Color",
+        "script": "/Niagara/Modules/Update/Color/ScaleColor"
+       },
+       {
+        "enabled": true,
+        "inputs": {},
+        "module": "Solve Forces and Velocity",
+        "script": "/Niagara/Modules/Solvers/SolveForcesAndVelocity"
+       }
+      ]
+     },
+     "sim_target": "cpusim"
+    }
+   ],
+   "random_seed": 7,
+   "user_variables": [],
+   "warmup_time": 0.0
   }
  },
  "problems": [

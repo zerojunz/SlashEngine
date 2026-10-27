@@ -19,12 +19,13 @@ project.import {"dry_run":true,"source":"unreal"}
     "landscapes": 1,
     "material_variants": 1,
     "meshes": 4,
+    "particle_systems": 1,
     "scenes": 1,
     "sounds": 1
   },
   "dry_run": true,
   "engine": "unreal",
-  "engine_version": "5.4.4-35576357+++UE5+Release-5.4",
+  "engine_version": "5.8.0-0+++UE5+Release-5.8",
   "files": ["unreal/Content/Characters/SK_Hero.glb", "unreal/Content/Props/SM_Coin.glb", "unreal/Content/Props/SM_Crate.glb", "unreal/Content/Props/SM_Floor.glb", "unreal/Content/Audio/Wind.wav", "unreal/Content/Audio/Wind.audio.json", "unreal/Content/Characters/A_Idle.glb", "unreal/Content/Characters/A_Wave.glb", "unreal/Content/Props/SM_Crate_MI_CrateDark.glb", "unreal/Content/Maps/Main_hills.height.png", "unreal/Content/Maps/Main_hills.color.png", "unreal/Content/Characters/A_Idle.anim.json", "unreal/Content/Characters/ABP_Guard.anim.json", "unreal/Content/Characters/ABP_Guard.animtree.json", "unreal/Content/Maps/Main.scene.json", "project.json", "storyboard/work.json", "src/imported/coin_pickup.cpp", "src/imported/scripts.cpp", "src/game.cpp", "import/unreal.json"],
   "log": ".slash/import/unreal/unreal.log",
   "main_scene": "unreal/Content/Maps/Main.scene.json",
@@ -75,6 +76,18 @@ project.import {"dry_run":true,"source":"unreal"}
       "what": "NavMeshBoundsVolume",
       "where": "/Game/Maps/Main: NavMeshBoundsVolume",
       "why": "bake navigation with a NavigationRegion3D and navigation.bake"
+    },
+    {
+      "count": 1,
+      "what": "Niagara module Scale Color",
+      "where": "/Game/Maps/Main: Embers (/Game/FX/NS_Embers: Embers)",
+      "why": "curves over a particle's life don't convert yet"
+    },
+    {
+      "count": 1,
+      "what": "Niagara sprite material",
+      "where": "/Game/Maps/Main: Embers (/Game/FX/NS_Embers: Embers)",
+      "why": "particles draw in their color; Unreal's material graph doesn't convert"
     },
     {
       "count": 1,
@@ -165,11 +178,12 @@ project.import {"source":"unreal"}
     "landscapes": 1,
     "material_variants": 1,
     "meshes": 4,
+    "particle_systems": 1,
     "scenes": 1,
     "sounds": 1
   },
   "engine": "unreal",
-  "engine_version": "5.4.4-35576357+++UE5+Release-5.4",
+  "engine_version": "5.8.0-0+++UE5+Release-5.8",
   "files": 21,
   "log": ".slash/import/unreal/unreal.log",
   "main_scene": "unreal/Content/Maps/Main.scene.json",
@@ -220,6 +234,18 @@ project.import {"source":"unreal"}
       "what": "NavMeshBoundsVolume",
       "where": "/Game/Maps/Main: NavMeshBoundsVolume",
       "why": "bake navigation with a NavigationRegion3D and navigation.bake"
+    },
+    {
+      "count": 1,
+      "what": "Niagara module Scale Color",
+      "where": "/Game/Maps/Main: Embers (/Game/FX/NS_Embers: Embers)",
+      "why": "curves over a particle's life don't convert yet"
+    },
+    {
+      "count": 1,
+      "what": "Niagara sprite material",
+      "where": "/Game/Maps/Main: Embers (/Game/FX/NS_Embers: Embers)",
+      "why": "particles draw in their color; Unreal's material graph doesn't convert"
     },
     {
       "count": 1,
@@ -352,6 +378,34 @@ project.import {"source":"unreal"}
         "Transform3D": {
           "position": [-2.0, 0.0, -1.5],
           "scale": [1.0, 2.0, 1.0]
+        }
+      }
+    },
+    "embers": {
+      "components": {
+        "CPUParticles3D": {
+          "amount": 20,
+          "color": [1.0, 0.45, 0.1, 1.0],
+          "direction": [0.0, 1.0, 0.0],
+          "gravity": [0.0, -2.0, 0.0],
+          "initial_velocity_max": 1.5,
+          "initial_velocity_min": 1.5,
+          "lifetime_randomness": 0.5,
+          "scale_amount_max": 0.05,
+          "scale_amount_min": 0.05,
+          "seed": 7,
+          "spread": 20.0
+        },
+        "QuadMesh": {},
+        "StandardMaterial3D": {
+          "billboard_keep_scale": true,
+          "billboard_mode": "particles",
+          "shading_mode": "unshaded",
+          "transparency": "alpha",
+          "vertex_color_use_as_albedo": true
+        },
+        "Transform3D": {
+          "position": [0.0, 3.2, 0.0]
         }
       }
     },
@@ -568,7 +622,7 @@ project.import {"source":"unreal"}
     }
   ],
   "engine": "unreal",
-  "engine_version": "5.4.4-35576357+++UE5+Release-5.4",
+  "engine_version": "5.8.0-0+++UE5+Release-5.8",
   "format": 1,
   "levels": {
     "/Game/Maps/Main": {
@@ -584,6 +638,9 @@ project.import {"source":"unreal"}
         },
         "crate_stack": {
           "class": "/Script/Engine.StaticMeshActor"
+        },
+        "embers": {
+          "class": "/Script/Niagara.NiagaraActor"
         },
         "floor": {
           "class": "/Script/Engine.StaticMeshActor"
@@ -637,6 +694,7 @@ project.import {"source":"unreal"}
         "DirectionalLight_0": "sun",
         "Landscape_0": "hills",
         "NavMeshBoundsVolume_0": "nav_mesh_bounds_volume",
+        "NiagaraActor_0": "embers",
         "PlayerStart_0": "player_start",
         "PointLight_0": "lamp",
         "SkeletalMeshActor_0": "guard",
@@ -705,6 +763,18 @@ project.import {"source":"unreal"}
       "what": "NavMeshBoundsVolume",
       "where": "/Game/Maps/Main: NavMeshBoundsVolume",
       "why": "bake navigation with a NavigationRegion3D and navigation.bake"
+    },
+    {
+      "count": 1,
+      "what": "Niagara module Scale Color",
+      "where": "/Game/Maps/Main: Embers (/Game/FX/NS_Embers: Embers)",
+      "why": "curves over a particle's life don't convert yet"
+    },
+    {
+      "count": 1,
+      "what": "Niagara sprite material",
+      "where": "/Game/Maps/Main: Embers (/Game/FX/NS_Embers: Embers)",
+      "why": "particles draw in their color; Unreal's material graph doesn't convert"
     },
     {
       "count": 1,
@@ -902,7 +972,7 @@ project.import {"source":"unreal"}
 }
 scene.open {"path":"unreal/Content/Maps/Main.scene.json"}
 {
-  "entities": 21,
+  "entities": 22,
   "path": "unreal/Content/Maps/Main.scene.json"
 }
 step {"ticks":90}
@@ -1106,6 +1176,21 @@ physics.raycast {"from":[-64,50,0],"to":[-64,-50,0]}
     "normal": [0.1005, 0.9898, -0.1005],
     "point": [-64, 19, 0]
   }
+}
+particles.eval {"id":"embers","list":true,"max_results":1}
+{
+  "alive": 17,
+  "bounds": [-0.2937, 3.2, -0.1988, 0.525, 0.5317, 0.2761],
+  "particles": [
+    {
+      "age": 0.5,
+      "angle": 0,
+      "color": [1, 0.45, 0.1, 1],
+      "position": [0.1416, 3.6747, 0.0721],
+      "scale": [0.05, 0.05, 0.05],
+      "velocity": [0.2831, 0.466, 0.1441]
+    }
+  ]
 }
 physics.overlap {"collide_with_areas":true,"position":[8,0.5,1],"shape":{"radius":0.1,"shape":"sphere"}}
 {
