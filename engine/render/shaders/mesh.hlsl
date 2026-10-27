@@ -199,7 +199,7 @@ cbuffer Scene : register(b1, space3) {
     float4 scene_voxel_gi;
     // Forward+'s decals: how many, the filter, the atlas's width and height in texels.
     float4 decal_info;
-    float4 screen; // the target's width and height in pixels
+    float4 screen; // the target's width and height in pixels, then the ray-traced layers' flags
     // The camera's view-projection without TAA's jitter: its x, y and w rows.
     float4 clip_rows[3];
     // Forward+'s volumetric fog: 1 when the frame has it, 1 over its length, 1 over its detail
@@ -247,9 +247,10 @@ cbuffer Shadows : register(b2, space3) {
 // group of their own, the mesh pipeline's otherwise empty group 0. The screen's layers are the
 // frame's size, white when the frame draws neither: layer 0 the screen-space ambient occlusion,
 // layer 1 the screen-space reflections (each pixel's reflection in RGB, premultiplied by how much
-// of the sky's it replaces, in A), and with ray-traced shadows (screen.z) layers 2 and 3 their
+// of the sky's it replaces, in A), with ray-traced shadows (screen.z) layers 2 and 3 their
 // lights' visibility, a light a channel in order of its ray slot (light.shadow.w - 1), four a layer
-// (src/ray_shadows.hpp). The reflection probes' cubes are in probe_atlas, mirrored along
+// (src/ray_shadows.hpp), and with ray-traced global illumination (screen.w) layer 4 each pixel's
+// ambient light in RGB. The reflection probes' cubes are in probe_atlas, mirrored along
 // z (src/reflection.cpp), each linear, its levels filtered as radiance.hlsl filters the sky's.
 Texture2DArray<float4> screen_texture : register(t14, space2);
 TextureCubeArray<float4> probe_atlas : register(t15, space2);
@@ -1299,6 +1300,11 @@ float3 lit_color(VertexOutput input, float3 base, float3 normal, float3 geometry
                                 ? ambient_light * (1.0 - ambient_accum.a) + ambient_accum.rgb
                                 : ambient_accum.rgb;
         }
+    }
+    if (screen.w != 0.0 && !lightmapped &&
+        ((options.x & kHasAlpha) == 0u || (options.x & kAlphaScissor) != 0u)) {
+        // Its ray-traced ambient light stands in for all of those but a lightmap's.
+        ambient_light = screen_texture.Load(int4((int2)input.position.xy, 4, 0)).rgb;
     }
 #endif
     ambient_light *= ao;

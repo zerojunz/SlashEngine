@@ -1030,7 +1030,8 @@ structure was built from (`GL_EXT_buffer_reference`), and it lights hits as `pat
 does, the sky from the radiance cube; the GPU device copies its texture into the screen's layer 1. `global_illumination` traces each
 pixel's ambient light there too (`run_ray_gi`: cosine-weighted rays lit by `path_reflection` or
 `path_environment`, smoothed by normal and plane), which `MeshMaps::gi` hands the shading when
-`screen.w` is set.
+`screen.w` is set; on Vulkan `ray_light.comp` traces and smooths it in two more pipelines (its
+`kPass` specialization constant) into the screen's layer 4, which `mesh.hlsl` reads then.
 `tests/test_ray_tracing.cpp` holds Vulkan to the software device,
 `examples/ray-traced-shadows-3d` traces an avenue, `examples/ray-traced-ao-3d` a room and
 `examples/ray-traced-reflections-3d` a hall's floor and `examples/ray-traced-gi-3d` a room's walls.
