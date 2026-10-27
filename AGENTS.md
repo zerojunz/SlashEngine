@@ -674,7 +674,9 @@ lights turn to face Godot's way), gives each mesh's `.glb` the collision Unreal 
 (`mesh_with_overrides`), plays a skeletal mesh's animation sequence with an `AnimationPlayer`
 (`convert_animation`) and an Animation Blueprint's sequences with an `AnimationTree` state machine
 (`anim_tree`), makes each landscape an `HTerrain` from the `.r16` heights the script
-writes (`convert_landscape`), converts lights by Unreal's units, the sky, fog, bodies, shapes, volumes,
+writes (`convert_landscape`), makes each Niagara emitter a `CPUParticles3D` or a `GPUParticles3D` with
+a `.process_material.json` from its module stack, which the script reads through Unreal 5.8's
+`NiagaraExternalEditUtilities` (`convert_niagara`), converts lights by Unreal's units, the sky, fog, bodies, shapes, volumes,
 sounds and both input systems, and makes a task per Blueprint and `UCLASS`. Each `UCLASS` is
 also a C++ skeleton: `src/unreal_cpp.cpp` (`read_unreal_class`) reads its header and source into
 a `Script` for `src/scripts.cpp` to write, as C# scripts are, and the export's `request.json`

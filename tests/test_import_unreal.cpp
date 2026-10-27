@@ -1071,3 +1071,192 @@ TEST_CASE("project.import runs Unreal's editor only where it may") {
     const auto at = triple(*crate.value.find("components")->find("Transform3D")->find("position"));
     CHECK(at[1] == doctest::Approx(0.0).epsilon(0.03));
 }
+
+TEST_CASE("an Unreal import turns Niagara emitters into Godot's particles") {
+    const fs::path project = fs::absolute("import_unreal_niagara");
+    fs::remove_all(project);
+    write_project(project / "unreal");
+    const fs::path exported = project / "unreal/FakeExport";
+    json::Value description =
+        parse(slash::platform::read_file((exported / "export.json").string()).value());
+    // NS_Sparks, as Unreal 5.8's NiagaraExternalEditUtilities describes it: inputs as the text
+    // Unreal writes of their values, a random range as its dynamic input chain.
+    description["niagara_systems"] = parse(R"json({
+      "/Game/FX/NS_Sparks": {
+        "random_seed": 42, "determinism": true, "warmup_time": 0.5,
+        "fixed_bounds": {"min": [-100, -100, 0], "max": [100, 100, 300]},
+        "user_variables": ["(Name=\"User.SmokeRate\",Value=(Value=10.000000))"],
+        "emitters": [
+          {"name": "Burst", "enabled": true, "sim_target": "gpucomputesim", "data": {},
+           "scripts": {
+             "EmitterUpdateScript": [
+               {"module": "Emitter State", "script": "/Niagara/Modules/Emitter/EmitterState",
+                "enabled": true, "inputs": {"Loop Behavior": {"value": "(Value=\"Once\")"}}},
+               {"module": "Spawn Burst Instantaneous",
+                "script": "/Niagara/Modules/Emitter/SpawnBurst_Instantaneous", "enabled": true,
+                "inputs": {"Spawn Count": {"value": "(Value=(Value=40))"},
+                           "Spawn Time": {"value": "(Value=(Value=0.000000))"}}}],
+             "ParticleSpawnScript": [
+               {"module": "Initialize Particle",
+                "script": "/Niagara/Modules/Spawn/Initialization/InitializeParticle",
+                "enabled": true, "inputs": {
+                  "Lifetime": {"value": "(DynamicInput=\"/Niagara/DynamicInputs/RandomRangeFloat\")",
+                               "chain": "(Name=\"Lifetime\",Inputs=((Name=\"Minimum\",Value=(Value=0.500000)),(Name=\"Maximum\",Value=(Value=1.500000))))"},
+                  "Color": {"value": "(Value=(R=1.000000,G=0.500000,B=0.100000,A=1.000000))"},
+                  "Uniform Sprite Size": {"value": "(Value=(Value=8.000000))"}}},
+               {"module": "Add Velocity in Cone",
+                "script": "/Niagara/Modules/Spawn/Velocity/AddVelocityInCone", "enabled": true,
+                "inputs": {"Velocity Strength": {"value": "(Value=(Value=500.000000))"},
+                           "Cone Angle": {"value": "(Value=(Value=60.000000))"},
+                           "Cone Axis": {"value": "(Value=(X=0.000000,Y=0.000000,Z=1.000000))"}}},
+               {"module": "Shape Location",
+                "script": "/Niagara/Modules/Spawn/Location/ShapeLocation", "enabled": true,
+                "inputs": {"Shape Primitive": {"value": "(Value=\"Sphere\")"},
+                           "Sphere Radius": {"value": "(Value=(Value=20.000000))"}}}],
+             "ParticleUpdateScript": [
+               {"module": "Gravity Force", "script": "/Niagara/Modules/Update/Forces/GravityForce",
+                "enabled": true,
+                "inputs": {"Gravity": {"value": "(Value=(X=0.000000,Y=0.000000,Z=-980.000000))"}}},
+               {"module": "Curl Noise Force",
+                "script": "/Niagara/Modules/Update/Forces/CurlNoiseForce", "enabled": true,
+                "inputs": {}},
+               {"module": "Scale Color", "script": "/Niagara/Modules/Update/Color/ScaleColor",
+                "enabled": true, "inputs": {}},
+               {"module": "Solve Forces and Velocity",
+                "script": "/Niagara/Modules/Solvers/SolveForcesAndVelocity", "enabled": true,
+                "inputs": {}}]},
+           "renderers": [{"class": "NiagaraSpriteRendererProperties", "data": {}}]},
+          {"name": "Smoke", "enabled": true, "sim_target": "cpusim",
+           "data": {"bLocalSpace": true},
+           "scripts": {
+             "EmitterUpdateScript": [
+               {"module": "Spawn Rate", "script": "/Niagara/Modules/Emitter/SpawnRate",
+                "enabled": true,
+                "inputs": {"SpawnRate": {"value": "(LinkedParameter=\"User.SmokeRate\")"}}}],
+             "ParticleSpawnScript": [
+               {"module": "Initialize Particle",
+                "script": "/Niagara/Modules/Spawn/Initialization/InitializeParticle",
+                "enabled": true, "inputs": {"Lifetime": {"value": "(Value=(Value=2.000000))"}}},
+               {"module": "Add Velocity", "script": "/Niagara/Modules/Spawn/Velocity/AddVelocity",
+                "enabled": true, "inputs": {"Velocity": {
+                  "value": "(DynamicInput=\"/Niagara/DynamicInputs/RandomRangeVector\")",
+                  "chain": "(Inputs=((Name=\"Minimum\",Value=(Value=(X=-10.000000,Y=0.000000,Z=50.000000))),(Name=\"Maximum\",Value=(Value=(X=10.000000,Y=0.000000,Z=150.000000)))))"}}}],
+             "ParticleUpdateScript": [
+               {"module": "Drag", "script": "/Niagara/Modules/Update/Forces/Drag",
+                "enabled": true, "inputs": {"Drag": {"value": "(Value=(Value=1.000000))"}}},
+               {"module": "Old Spin", "script": "/Niagara/Modules/Update/Spin",
+                "enabled": false, "inputs": {}}]},
+           "renderers": [{"class": "NiagaraMeshRendererProperties",
+                          "data": {"Meshes": [{"Mesh": "/Game/SM_Crate.SM_Crate"}]},
+                          "meshes": ["/Game/SM_Crate"]}]},
+          {"name": "Off", "enabled": false, "sim_target": "cpusim"}]},
+      "/Game/FX/NS_Old": {"random_seed": 0, "determinism": false, "warmup_time": 0.0}})json");
+    json::Array& actors = description["levels"].as_array().at(0)["actors"].as_array();
+    actors.push_back(parse(R"({"name": "NiagaraActor_0", "label": "Sparks",
+        "class": "NiagaraActor", "class_path": "/Script/Niagara.NiagaraActor",
+        "root": "NiagaraComponent0",
+        "transform": {"location": [0, 0, 200], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
+        "components": [{"name": "NiagaraComponent0", "class": "NiagaraComponent",
+          "niagara": {"auto_activate": true, "system": "/Game/FX/NS_Sparks"},
+          "transform": {"location": [0, 0, 200], "rotation": [0, 0, 0, 1],
+                        "scale": [1, 1, 1]}}]})"));
+    actors.push_back(parse(R"({"name": "NiagaraActor_1", "label": "Embers",
+        "class": "NiagaraActor", "class_path": "/Script/Niagara.NiagaraActor",
+        "root": "NiagaraComponent0",
+        "transform": {"location": [0, 300, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
+        "components": [{"name": "NiagaraComponent0", "class": "NiagaraComponent",
+          "niagara": {"auto_activate": false, "system": "/Game/FX/NS_Old"},
+          "transform": {"location": [0, 300, 0], "rotation": [0, 0, 0, 1],
+                        "scale": [1, 1, 1]}}]})"));
+    actors.push_back(parse(R"({"name": "Emitter_0", "label": "Torch Fire", "class": "Emitter",
+        "class_path": "/Script/Engine.Emitter", "components": [],
+        "transform": {"location": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]}})"));
+    description["problems"].as_array().push_back(parse(R"({"what": "Niagara emitters",
+        "where": "/Game/FX/NS_Old",
+        "why": "reading a Niagara system's emitters needs Unreal Engine 5.8 or later"})"));
+    write(exported / "export.json", json::write(description));
+
+    auto planned = importer::plan_import({.source = (project / "unreal").string(),
+                                          .destination = project.string(),
+                                          .unpack_to = {},
+                                          .assetripper = {},
+                                          .unreal_editor = SLASH_FAKE_UNREAL});
+    REQUIRE_MESSAGE(planned.ok(), (planned.ok() ? std::string() : planned.error().message));
+    const importer::ImportPlan& plan = planned.value();
+    CHECK(plan.report.find("converted")->find("particle_systems")->as_int() == 1);
+    const json::Value scene = file_json(plan, "unreal/Content/Maps/Drop.scene.json");
+
+    // Two enabled emitters: an entity each under the component's.
+    CHECK(*component(scene, "sparks", "Transform3D").find("children") ==
+          parse(R"(["sparks_burst", "sparks_smoke"])"));
+
+    // The GPU emitter: a one-shot burst of 40 with its system's seed, warmup and bounds, drawing
+    // camera-facing quads.
+    const json::Value& burst = component(scene, "sparks_burst", "GPUParticles3D");
+    CHECK(burst.find("amount")->as_int() == 40);
+    CHECK(burst.find("explosiveness")->as_double() == 1.0);
+    CHECK(burst.find("one_shot")->as_bool());
+    CHECK(burst.find("lifetime")->as_double() == 1.5);
+    CHECK(burst.find("seed")->as_int() == 42);
+    CHECK(burst.find("use_fixed_seed")->as_bool());
+    CHECK(burst.find("preprocess")->as_double() == 0.5);
+    CHECK(*burst.find("visibility_aabb_position") == parse("[-1.0, 0.0, -1.0]"));
+    CHECK(*burst.find("visibility_aabb_size") == parse("[2.0, 3.0, 2.0]"));
+    CHECK(component(scene, "sparks_burst", "StandardMaterial3D")
+              .find("billboard_mode")
+              ->as_string() == "particles");
+    (void)component(scene, "sparks_burst", "QuadMesh");
+    const std::string material = burst.find("process_material")->as_string();
+    CHECK(material == "unreal/Content/FX/NS_Sparks_burst.process_material.json");
+    const json::Value process = file_json(plan, material);
+    CHECK(process.find("lifetime_randomness")->as_double() == doctest::Approx(0.666667));
+    CHECK(*process.find("color") == parse("[1.0, 0.5, 0.1, 1.0]"));
+    CHECK(process.find("scale_min")->as_double() == doctest::Approx(0.08));
+    CHECK(process.find("initial_velocity_max")->as_double() == doctest::Approx(5.0));
+    // Unreal's z is the world's y; the cone's 60 degrees spread 30 each side.
+    CHECK(*process.find("direction") == parse("[0.0, 1.0, 0.0]"));
+    CHECK(process.find("spread")->as_double() == 30.0);
+    CHECK(*process.find("gravity") == parse("[0.0, -9.8, 0.0]"));
+    CHECK(process.find("emission_shape")->as_string() == "sphere");
+    CHECK(process.find("emission_sphere_radius")->as_double() == doctest::Approx(0.2));
+    CHECK(process.find("turbulence_enabled")->as_bool());
+
+    // The CPU emitter: a rate read from its user parameter, a random velocity as a cone, local
+    // space, a mesh and no gravity.
+    const json::Value& smoke = component(scene, "sparks_smoke", "CPUParticles3D");
+    CHECK(smoke.find("amount")->as_int() == 20);
+    CHECK(smoke.find("lifetime")->as_double() == 2.0);
+    CHECK(*smoke.find("direction") == parse("[0.0, 1.0, 0.0]"));
+    CHECK(smoke.find("initial_velocity_min")->as_double() == doctest::Approx(0.509902));
+    CHECK(smoke.find("initial_velocity_max")->as_double() == doctest::Approx(1.50333));
+    CHECK(smoke.find("spread")->as_double() == doctest::Approx(27.017123));
+    CHECK(*smoke.find("gravity") == parse("[0.0, 0.0, 0.0]"));
+    CHECK(smoke.find("local_coords")->as_bool());
+    CHECK(smoke.find("mesh")->as_string() == "unreal/Content/SM_Crate.glb");
+    CHECK(smoke.find("seed")->as_int() == 42);
+    CHECK(scene.find("entities")->find("sparks_off") == nullptr);
+
+    // A system an older editor couldn't read leaves its entity, and the export's report.
+    CHECK(scene.find("entities")->find("embers")->find("components")->find("CPUParticles3D") ==
+          nullptr);
+    const auto reported = [&](std::string_view what) {
+        for (const json::Value& entry : plan.report.find("unsupported")->as_array()) {
+            if (entry.find("what")->as_string() == what) {
+                return true;
+            }
+        }
+        return false;
+    };
+    CHECK(reported("Niagara emitters"));
+    CHECK(reported("Niagara module Scale Color"));
+    CHECK(reported("Niagara module Drag"));
+    CHECK_FALSE(reported("Niagara module Old Spin"));
+    CHECK_FALSE(reported("Niagara module Solve Forces and Velocity"));
+    CHECK(reported("Niagara curl noise force"));
+    CHECK(reported("Niagara random velocity"));
+    CHECK(reported("Niagara sprite material"));
+    CHECK(reported("Cascade particle system"));
+    CHECK_FALSE(reported("invalid value"));
+    CHECK(scene.find("entities")->find("torch_fire") == nullptr);
+    fs::remove_all(project);
+}
