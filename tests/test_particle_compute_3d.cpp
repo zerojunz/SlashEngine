@@ -517,6 +517,95 @@ TEST_CASE("every device pulls 3D particles with attractors as the CPU twin does"
     }
 }
 
+TEST_CASE("every device collides 3D particles with spheres and boxes as the CPU twin does") {
+    constexpr std::uint32_t kAmount = 100;
+    std::vector<render::ParticleCollider3D> colliders(3);
+    // A floor whose top is just below the emitter, so some particles start inside it.
+    colliders[0].shape = render::ColliderShape3D::Box;
+    colliders[0].transform = {1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0F, -1.05F, 0.0F};
+    colliders[0].extents = {3.0F, 1.0F, 3.0F};
+    // A ball above it and a turned crate beside it.
+    colliders[1].transform = {1, 0, 0, 0, 1, 0, 0, 0, 1, 0.6F, 1.0F, 0.0F};
+    colliders[1].extents = {0.5F, 0.5F, 0.5F};
+    colliders[2].shape = render::ColliderShape3D::Box;
+    colliders[2].transform = {0.8F, 0.6F, 0.0F, -0.6F, 0.8F, 0.0F,
+                              0.0F, 0.0F, 1.0F, -1.0F, 0.6F, 0.2F};
+    colliders[2].extents = {0.4F, 0.3F, 0.6F};
+    std::vector<ParticleStep3D> steps = run_steps(45, 0.02F, 0.6F);
+    for (std::size_t i = 0; i < steps.size(); ++i) {
+        steps[i].colliders = colliders;
+        steps[i].collision_size = 0.05F;
+        // The ball comes and goes, as colliders do.
+        if (i > 30) {
+            steps[i].colliders.erase(steps[i].colliders.begin() + 1);
+        }
+    }
+    ParticleProcess3D rigid = busy_process();
+    rigid.collision_mode = render::ParticleCollision::Rigid;
+    rigid.collision_bounce = 0.6F;
+    rigid.collision_friction = 0.2F;
+    ParticleProcess3D scaled = rigid;
+    scaled.collision_use_scale = true;
+    scaled.turbulence_enabled = true;
+    scaled.collision_bounce = 0.0F;
+    ParticleProcess3D hide = busy_process();
+    hide.collision_mode = render::ParticleCollision::HideOnContact;
+
+    // Collisions move the particles, keep them out of the floor and hide them, and do nothing
+    // where collision is disabled.
+    std::vector<ParticleStep3D> plain = steps;
+    for (ParticleStep3D& step : plain) {
+        step.colliders.clear();
+    }
+    std::vector<Particle3D> free(kAmount);
+    render::process_particles_3d(free, busy_process(), plain);
+    std::vector<Particle3D> ignored(kAmount);
+    render::process_particles_3d(ignored, busy_process(), steps);
+    std::vector<Particle3D> bounced(kAmount);
+    render::process_particles_3d(bounced, rigid, steps);
+    std::vector<Particle3D> hidden(kAmount);
+    render::process_particles_3d(hidden, hide, steps);
+    int moved = 0;
+    int free_live = 0;
+    int hidden_live = 0;
+    for (std::uint32_t i = 0; i < kAmount; ++i) {
+        CHECK(close(ignored[i], free[i]));
+        moved += close(bounced[i], free[i]) ? 0 : 1;
+        free_live += free[i].active() ? 1 : 0;
+        hidden_live += hidden[i].active() ? 1 : 0;
+        if (bounced[i].active()) {
+            CHECK(bounced[i].origin.y > -0.15F);
+        }
+    }
+    CHECK(moved > 20);
+    CHECK(hidden_live < free_live);
+
+    std::vector<std::unique_ptr<RenderDevice>> devices = slash::test::hardware_devices();
+    devices.push_back(render::create_software_device());
+    for (auto& device : devices) {
+        CAPTURE(render::backend_name(device->backend()));
+        int which = 0;
+        for (const ParticleProcess3D& rules : {rigid, scaled, hide}) {
+            const int index = which++;
+            CAPTURE(index);
+            std::vector<Particle3D> twin(kAmount);
+            render::process_particles_3d(twin, rules, steps);
+            auto system = device->create_particles_3d(kAmount);
+            REQUIRE_MESSAGE(system.ok(), error_of(system));
+            const auto ran = device->process_particles_3d(system.value(), rules, steps);
+            REQUIRE_MESSAGE(ran.ok(), error_of(ran));
+            auto read = device->read_particles_3d(system.value());
+            REQUIRE_MESSAGE(read.ok(), error_of(read));
+            REQUIRE(read.value().size() == kAmount);
+            for (std::uint32_t i = 0; i < kAmount; ++i) {
+                CHECK_MESSAGE(close(read.value()[i], twin[i]), "particle ", i, ": device ",
+                              describe(read.value()[i]), ", twin ", describe(twin[i]));
+            }
+            device->destroy_particles_3d(system.value());
+        }
+    }
+}
+
 TEST_CASE("every device places 3D particles' meshes as the software device does") {
     const auto software = render::create_software_device();
     const Image expected = draw_particles(*software, 128);
@@ -599,6 +688,13 @@ TEST_CASE("every device refuses the same 3D particle mistakes") {
         CHECK_FALSE(device->process_particles_3d(system.value(), {}, bad).ok());
         bad[1].attractors.back().field = std::make_shared<render::ParticleField3D>(
             render::ParticleField3D{.width = 2, .height = 2, .depth = 2, .texels = {{}}});
+        CHECK_FALSE(device->process_particles_3d(system.value(), {}, bad).ok());
+        // Too many colliders, and a collision size below 0.
+        bad = steps;
+        bad[1].colliders.resize(render::kMaxParticleColliders3D + 1);
+        CHECK_FALSE(device->process_particles_3d(system.value(), {}, bad).ok());
+        bad = steps;
+        bad[2].collision_size = -0.5F;
         CHECK_FALSE(device->process_particles_3d(system.value(), {}, bad).ok());
         CHECK_FALSE(device->process_particles_3d(render::Particles3DId{999}, {}, steps).ok());
         CHECK(device->process_particles_3d(system.value(), {}, steps).ok());

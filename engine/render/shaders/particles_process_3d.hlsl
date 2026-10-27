@@ -35,7 +35,7 @@ static const uint kGradientWords = 40u;
 static const uint kPointsAt = 589u;
 static const uint kPointWords = 3u;
 // A step's words.
-static const uint kStepWords = 7u;
+static const uint kStepWords = 8u;
 // The curves after the parameters': the velocity limit, alpha and emission curves, then the x, y
 // and z of the scale, orbit velocity, directional velocity and scale over velocity curves.
 static const uint kVelocityLimitCurve = 15u;
@@ -53,11 +53,18 @@ static const uint kDampingAsFriction = 8u;
 static const uint kTurbulence = 16u;
 static const uint kDirectionalGlobal = 32u;
 static const uint kAttractors = 64u;
+static const uint kCollisionUseScale = 128u;
+static const uint kCollisionRigid = 256u;
+static const uint kCollisionHide = 512u;
 // The attractor count's place in a step's flags, an attractor's words and AttractorShape3D.
 static const uint kStepAttractorShift = 8u;
 static const uint kAttractorWords = 5u;
 static const uint kAttractorSphere = 0u;
 static const uint kAttractorBox = 1u;
+// The collider count's place in a step's flags, a collider's words and ColliderShape3D.
+static const uint kStepColliderShift = 16u;
+static const uint kColliderWords = 4u;
+static const uint kColliderSphere = 0u;
 
 // EmissionShape and ParticleParam.
 static const uint kShapePoint = 0u;
@@ -102,6 +109,16 @@ struct Step {
     bool clear;
     uint attractor_count;
     uint attractors_at; // in words
+    uint collider_count;
+    uint colliders_at; // in words
+    float collision_size;
+};
+
+// Where a particle touches the step's colliders: the way out of them and how deep it is.
+struct Contact {
+    bool collided;
+    float3 normal;
+    float depth;
 };
 
 struct Display {
@@ -743,7 +760,102 @@ float3 attractor_force(Step step, float3 pos) {
     return force;
 }
 
-void process(inout Particle3D particle, Step step, uint number, float delta, inout bool active) {
+// GLSL's sign: 0 for 0.
+float3 sign_of(float3 v) {
+    return float3(v.x > 0.0 ? 1.0 : (v.x < 0.0 ? -1.0 : 0.0),
+                  v.y > 0.0 ? 1.0 : (v.y < 0.0 ? -1.0 : 0.0),
+                  v.z > 0.0 ? 1.0 : (v.z < 0.0 ? -1.0 : 0.0));
+}
+
+// How near a particle comes to a collider before it touches: collision_size, times the average
+// of its axes' lengths with collision_use_scale, as Godot's.
+float collision_size(Particle3D particle, Step step) {
+    if (!flag(kCollisionUseScale)) {
+        return step.collision_size;
+    }
+    float scale = length_of(particle.x.xyz) + length_of(particle.y.xyz) + length_of(particle.z.xyz);
+    return step.collision_size * (scale * 0.33333333333);
+}
+
+// particles.glsl's collider loop: each sphere and box the particle at pos of the given size
+// touches, their ways out added up so it leaves them all. The loop runs to its end, as
+// attractor_force's.
+Contact collider_contact(Step step, float3 pos, float size) {
+    // Particles just touching a collider count as touching it.
+    const float kEpsilon = 0.001;
+    Contact contact;
+    contact.collided = false;
+    contact.normal = float3(0.0, 0.0, 0.0);
+    contact.depth = 0.0;
+    for (uint i = 0u; i < step.collider_count; ++i) {
+        uint at = step.colliders_at + (i * kColliderWords);
+        float4 a = asfloat(data[at]);
+        float4 b = asfloat(data[at + 1u]);
+        float4 c = asfloat(data[at + 2u]);
+        Affine place;
+        place.x = a.xyz;
+        place.y = float3(a.w, b.xy);
+        place.z = float3(b.zw, c.x);
+        place.origin = c.yzw;
+        uint4 d = data[at + 3u];
+        float3 ext = asfloat(d.xyz);
+
+        float3 rel = pos - place.origin;
+        float3 normal = float3(0.0, 0.0, 0.0);
+        float depth = 0.0;
+        bool touches = false;
+        if (d.w == kColliderSphere) {
+            float dist = length_of(rel) - (size + ext.x);
+            if (dist <= kEpsilon) {
+                touches = true;
+                depth = -dist;
+                normal = unit(rel);
+            }
+        } else {
+            float3 local = float3(dot(rel, place.x), dot(rel, place.y), dot(rel, place.z));
+            float3 abs_pos = abs(local);
+            float3 sgn = sign_of(local);
+            if (abs_pos.x > ext.x || abs_pos.y > ext.y || abs_pos.z > ext.z) {
+                // Outside the box: from its nearest point.
+                float3 out_ = abs_pos - min(abs_pos, ext);
+                depth = length_of(out_) - size;
+                if (depth <= kEpsilon) {
+                    touches = true;
+                    normal = basis(place, unit(out_) * sgn);
+                    depth = -depth;
+                }
+            } else {
+                // Inside: out through the nearest face.
+                float3 axis_len = ext - abs_pos;
+                float3 axis = float3(0.0, 0.0, 1.0);
+                if (axis_len.x < axis_len.y && axis_len.x < axis_len.z) {
+                    axis = float3(1.0, 0.0, 0.0);
+                } else if (axis_len.y < axis_len.x && axis_len.y < axis_len.z) {
+                    axis = float3(0.0, 1.0, 0.0);
+                }
+                touches = true;
+                depth = dot(axis * axis_len, float3(1.0, 1.0, 1.0)) + size;
+                normal = basis(place, axis * sgn);
+            }
+        }
+        if (touches) {
+            if (!contact.collided) {
+                contact.collided = true;
+                contact.normal = normal;
+                contact.depth = depth;
+            } else {
+                float3 sum = contact.normal * contact.depth;
+                sum += normal * max(0.0, depth - dot(normal, sum));
+                contact.normal = unit(sum);
+                contact.depth = length_of(sum);
+            }
+        }
+    }
+    return contact;
+}
+
+void process(inout Particle3D particle, Step step, uint number, float delta, Contact contact,
+             inout bool active) {
     uint seed = hash(number + 1u + step.seed);
     Display display;
     Dynamics dynamics;
@@ -812,7 +924,22 @@ void process(inout Particle3D particle, Step step, uint number, float delta, ino
         velocity = v < 0.0 ? float3(0.0, 0.0, 0.0) : unit(velocity) * v;
     }
 
-    if (flag(kTurbulence)) {
+    bool bounced = contact.collided && flag(kCollisionRigid);
+    if (bounced) {
+        float friction = asfloat(word_uint(kGradientCountsAt, 2u));
+        float bounce = asfloat(word_uint(kGradientCountsAt, 3u));
+        float response = dot(contact.normal, velocity);
+        float bounces = abs(response) >= 2.0 / clamp(bounce + 1.0, 1.0, 2.0) ? 1.0 : 0.0;
+        origin += contact.normal * contact.depth;
+        velocity -= contact.normal * response;
+        velocity = mix(velocity, float3(0.0, 0.0, 0.0), clamp(friction, 0.0, 1.0));
+        velocity -= contact.normal * (response * (bounce * bounces));
+    } else if (contact.collided && flag(kCollisionHide)) {
+        active = false;
+    }
+
+    // Turbulence before limiting, but not in a bounce.
+    if (flag(kTurbulence) && !bounced) {
         float influence = sample_curve(kTurbulenceInfluence, life, 1.0);
         float3 direction = unit(noise_direction(step, origin));
         float amount = clamp(dynamics.turbulence_influence * influence, 0.0, 1.0) *
@@ -923,8 +1050,12 @@ Step read_step(uint at) {
     step.emitting = (g.z & 1u) != 0u;
     step.fractional_delta = (g.z & 2u) != 0u;
     step.clear = (g.z & 4u) != 0u;
-    step.attractor_count = g.z >> kStepAttractorShift;
+    step.attractor_count = (g.z >> kStepAttractorShift) & 0xFFu;
     step.attractors_at = g.w;
+    step.collider_count = g.z >> kStepColliderShift;
+    uint4 h = data[at + 7u];
+    step.colliders_at = h.x;
+    step.collision_size = asfloat(h.y);
     return step;
 }
 
@@ -993,8 +1124,15 @@ void step_particle(inout Particle3D particle, uint index, Step step) {
     if (restart && active) {
         start(particle, step, number, active);
     }
+    Contact contact;
+    contact.collided = false;
+    contact.normal = float3(0.0, 0.0, 0.0);
+    contact.depth = 0.0;
+    if (active && (flag(kCollisionRigid) || flag(kCollisionHide)) && step.collider_count > 0u) {
+        contact = collider_contact(step, particle.origin.xyz, collision_size(particle, step));
+    }
     if (active) {
-        process(particle, step, number, delta, active);
+        process(particle, step, number, delta, contact, active);
     }
     particle.flags &= ~kParticleActive;
     if (active) {

@@ -688,6 +688,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
     - [x] Attractors (sphere, box and vector field), paired with emitters as Godot's scene
           cull pairs them
     - [ ] Collision shapes (sphere, box, SDF, height field)
+      - [x] Spheres and boxes, with rigid and hide-on-contact collision and
+            `collision_base_size`
+      - [ ] Signed distance fields and height fields
     - [ ] Godot's `GPUParticles3D` nodes and 3D process materials imported
 - [x] Generated LODs with meshoptimizer and occlusion culling
   - [x] Generated LODs, as Godot 4.6's importer makes them with meshoptimizer and its renderers
@@ -960,7 +963,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Keyframe animation | Keyframe tracks on any reflected property | 5 | Done |
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Done |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Done |
-| Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials, particle graphs, turbulence, collision, sub-emitters and trails are done, `CPUParticles3D`, `GPUParticles3D` in compute shaders and its attractors; 3D collision in 7 |
+| Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials, particle graphs, turbulence, collision, sub-emitters and trails are done, `CPUParticles3D`, `GPUParticles3D` in compute shaders, its attractors and its sphere and box colliders; SDF and height field collision in 7 |
 | Soundtracks | Music planned in the storyboard, written as scores or generated, arranged into interactive music and checked by analysis, all through commands | 6 | Done |
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | Done |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |
