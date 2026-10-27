@@ -19,20 +19,21 @@
 // filtered stretch) and "fsr" (AMD's FidelityFX Super Resolution 1: shaders/fsr_easu.hlsl and
 // fsr_rcas.hlsl) are built in, drawn with the device's own calls, so they run on every backend
 // and the software device. A game adds others with add_upscaler, from an SDK package's glue code
-// for one that ships as a vendor's closed library. "fsr2" (FidelityFX Super Resolution 2) is the
-// 3D renderer's own instead: a Forward+ frame draws its 3D smaller and upscales it in the device
-// with the depth buffer and motion vectors, and the 2D draws over it at full size, as Godot's.
+// for one that ships as a vendor's closed library. "fsr2" (FidelityFX Super Resolution 2) and
+// "fsr3" (FSR 3.1's upscaler, which Godot doesn't have) are the 3D renderer's own instead: a
+// Forward+ frame draws its 3D smaller and upscales it in the device with the depth buffer and
+// motion vectors, and the 2D draws over it at full size, as Godot's.
 namespace slash::render {
 
 // How a frame's world is scaled, as Godot's rendering/scaling_3d settings (project.json's
 // rendering.scaling).
 struct Scaling {
-    // "bilinear", "fsr" or "fsr2", as Godot's scaling_3d/mode.
+    // "bilinear", "fsr", "fsr2" or "fsr3", as Godot's scaling_3d/mode.
     std::string mode = "bilinear";
     // The render size over the screen's, from 0.25 to 2: below 1 draws fewer pixels and scales
     // up, above 1 draws more and scales down (always bilinear, as FSR only scales up).
     float scale = 1.0F;
-    // FSR's and FSR 2's sharpening in stops: 0 is the sharpest, 2 the softest.
+    // FSR's, FSR 2's and FSR 3's sharpening in stops: 0 is the sharpest, 2 the softest.
     float fsr_sharpness = 0.2F;
     // An upscaler the game added with add_upscaler, used instead of mode where it runs; mode
     // otherwise. Empty for none.
@@ -55,14 +56,17 @@ inline constexpr float kMaxFsrSharpness = 2.0F;
 inline constexpr std::string_view kBilinear = "bilinear";
 inline constexpr std::string_view kFsr = "fsr";
 inline constexpr std::string_view kFsr2 = "fsr2";
+inline constexpr std::string_view kFsr3 = "fsr3";
 [[nodiscard]] std::vector<std::string_view> scaling_modes();
 // Why a mode isn't one, for project validation: unknown (with the closest name), or one of
 // Godot's that isn't built. Empty for a built-in mode.
 [[nodiscard]] std::string scaling_mode_problem(std::string_view mode);
 
-// Whether a frame with these settings upscales its 3D with FSR 2 on this device: in Forward+
+// Whether a frame with these settings upscales its 3D with FSR 2 or FSR 3 (mode fsr2 or fsr3) on
+// this device: in Forward+
 // (method), at a scale under 1, on a device that draws Forward+ (every one but OpenGL's), as
-// Godot runs it. The frame's Scene3D then takes the scale and sharpness (render::Fsr2Scaling) and
+// Godot runs it. The frame's Scene3D then takes the scale, sharpness and which FSR
+// (render::Fsr2Scaling) and
 // no upscaler scales the world; choose_upscaler's bilinear scaling stands in otherwise, as Godot
 // falls back to it.
 [[nodiscard]] bool uses_fsr2(const Scaling& scaling, RenderMethod method,
@@ -137,8 +141,8 @@ void clear_added_upscalers();
 
 // The upscaler a frame uses for these settings on this device, by name: the game's added one if
 // it runs here, else the mode's, bilinear when the scale is above 1 (FSR doesn't scale down), the
-// mode is unknown or it is fsr2 (in a frame uses_fsr2 turns down). Empty when nothing scales:
-// bilinear or fsr2 at a scale of 1.
+// mode is unknown or it is fsr2 or fsr3 (in a frame uses_fsr2 turns down). Empty when nothing
+// scales: bilinear, fsr2 or fsr3 at a scale of 1.
 [[nodiscard]] std::string choose_upscaler(const Scaling& scaling, const RenderDevice& device);
 
 } // namespace slash::render

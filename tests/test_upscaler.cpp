@@ -385,11 +385,12 @@ TEST_CASE("upscalers are built in or added by name, and temporal ones are refuse
     CHECK(slash::render::render_size(10000, 2.0F) == slash::render::kMaxTextureSize);
     CHECK(slash::render::scaling_mode_problem("fsr").empty());
     CHECK(slash::render::scaling_mode_problem("fsr2").empty());
+    CHECK(slash::render::scaling_mode_problem("fsr3").empty());
     CHECK(slash::render::scaling_mode_problem("fsr1") ==
-          "unknown scaling mode fsr1; expected bilinear, fsr or fsr2 (did you mean fsr?)");
+          "unknown scaling mode fsr1; expected bilinear, fsr, fsr2 or fsr3 (did you mean fsr?)");
     CHECK(slash::render::scaling_mode_problem("metalfx_temporal") ==
-          "metalfx_temporal needs Apple's MetalFX, which isn't built yet; use bilinear, fsr or "
-          "fsr2");
+          "metalfx_temporal needs Apple's MetalFX, which isn't built yet; use bilinear, fsr, "
+          "fsr2 or fsr3");
 
     // FSR 2 upscales a Forward+ frame's 3D in the device, at a scale under 1; bilinear scaling
     // stands in for it otherwise, as Godot's.

@@ -1,0 +1,9 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[77,28],[88,28],[62,45],[98,45]],"path":"shots/first.png"}}
+{"jsonrpc":"2.0","id":3,"method":"frame.capture","params":{"points":[[77,28],[88,28],[62,45],[98,45]],"path":"shots/rebuilt.png","frames":15}}
+{"jsonrpc":"2.0","id":4,"method":"component.set","params":{"id":"card","components":{"Transform3D":{"rotation":[0.0,0.0,0.6]}}}}
+{"jsonrpc":"2.0","id":5,"method":"frame.capture","params":{"points":[[77,28],[88,28],[62,45],[98,45]],"path":"shots/turned.png"}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[77,28],[88,28],[62,45],[98,45]],"frames":15,"path":"shots/settled.png"}}
+{"jsonrpc":"2.0","id":7,"method":"component.set","params":{"id":"card","components":{"StandardMaterial3D":{"albedo_color":[0.8,0.15,0.1,1.0]}}}}
+{"jsonrpc":"2.0","id":8,"method":"frame.capture","params":{"points":[[77,28],[88,28],[62,45],[98,45],[80,45]],"path":"shots/recolored.png"}}
+{"jsonrpc":"2.0","id":9,"method":"frame.capture","params":{"points":[[77,28],[88,28],[62,45],[98,45],[80,45]],"frames":31,"path":"shots/recolored_settled.png"}}

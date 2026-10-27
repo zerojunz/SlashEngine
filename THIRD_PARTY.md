@@ -68,6 +68,7 @@ file, as its license asks:
 | [webgl-noise](https://github.com/stegu/webgl-noise)'s classic Perlin noise, by Stefan Gustavson (2011-2016), as HTerrain's generator uses it | MIT | `terrain.generate`'s noise | `engine/scene3d/src/terrain.cpp` |
 | [FidelityFX Super Resolution 1](https://github.com/GPUOpen-Effects/FidelityFX-FSR) (`ffx_fsr1.h`), by Advanced Micro Devices (2021), as Godot uses it | MIT | The `fsr` render scale mode: EASU and RCAS | `engine/render/shaders/fsr_easu.hlsl` and `fsr_rcas.hlsl`, compiled into `engine/render/src/fsr_shaders.hpp` |
 | [FidelityFX Super Resolution 2.2](https://github.com/GPUOpen-Effects/FidelityFX-FSR2) (`ffx_fsr2_*.h`), by Advanced Micro Devices (2022-2023), as Godot 4.6 runs it | MIT | The `fsr2` render scale mode: its seven passes | `engine/render/shaders/fsr2.hlsl` and `fsr2_*.hlsl`, compiled into `engine/render/src/fsr2_*_shaders.hpp`, and their CPU twin in `engine/render/src/fsr2.cpp` |
+| [FidelityFX SDK 1.1.4](https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK) (`ffx_fsr3upscaler_*.h`), by Advanced Micro Devices (2024) | MIT | The `fsr3` render scale mode: FSR 3.1's upscaler passes | `engine/render/shaders/fsr3.hlsl` and `fsr3_*.hlsl`, compiled into `engine/render/src/fsr3_*_shaders.hpp`, and their CPU twin in `engine/render/src/fsr3.cpp` |
 
 The renderer's own shaders are compiled ahead of time with three command-line tools whose output
 is committed in `engine/render/src/*_shaders.hpp`, so building the engine needs none of them;

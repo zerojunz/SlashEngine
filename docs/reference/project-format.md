@@ -103,8 +103,8 @@ frame at the display's rate, and a frame cap sets how often it calls instead.
 
 `rendering.scaling` draws the world at a lower (or higher) resolution than the window and scales
 it to the window's size, as Godot's `rendering/scaling_3d` settings, which the Godot importer
-brings over. `bilinear` and `fsr` scale the whole world, 2D and 3D; `fsr2` scales only the 3D
-world, as Godot's does, and draws 2D at full size. Controls, and canvas layers above the world,
+brings over. `bilinear` and `fsr` scale the whole world, 2D and 3D; `fsr2` and `fsr3` scale only
+the 3D world, as Godot's `fsr2` does, and draw 2D at full size. Controls, and canvas layers above the world,
 draw at the window's own size on top, so the UI stays sharp while the world costs fewer pixels;
 canvas layers below the world are scaled with it.
 
@@ -114,9 +114,9 @@ canvas layers below the world are scaled with it.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `mode` | `bilinear` | `bilinear` stretches the world with filtering. `fsr` is AMD's FidelityFX Super Resolution 1: EASU scales up along the edges it finds, then RCAS sharpens. `fsr2` is FSR 2.2: the camera moves by less than a pixel each frame and the 3D world is rebuilt at the window's size from its frames, its depth and its motion vectors, then sharpened by RCAS. Godot's `metalfx_spatial` and `metalfx_temporal` need Apple's MetalFX, which isn't built yet, so `project validate` refuses them |
+| `mode` | `bilinear` | `bilinear` stretches the world with filtering. `fsr` is AMD's FidelityFX Super Resolution 1: EASU scales up along the edges it finds, then RCAS sharpens. `fsr2` is FSR 2.2: the camera moves by less than a pixel each frame and the 3D world is rebuilt at the window's size from its frames, its depth and its motion vectors, then sharpened by RCAS. `fsr3` is FSR 3.1's upscaler, which Godot doesn't have: it rebuilds the 3D world from the same inputs with AMD's later passes. Godot's `metalfx_spatial` and `metalfx_temporal` need Apple's MetalFX, which isn't built yet, so `project validate` refuses them |
 | `scale` | `1` | The world's size over the window's, 0.25 to 2, as Godot's `scaling_3d/scale`. At `1` with `bilinear` nothing is scaled. Above `1` the world draws larger and is averaged down, always with `bilinear`, as FSR only scales up |
-| `fsr_sharpness` | `0.2` | RCAS's sharpening in stops, 0 to 2, for `fsr` and `fsr2`: `0` is the sharpest, `2` the softest |
+| `fsr_sharpness` | `0.2` | RCAS's sharpening in stops, 0 to 2, for `fsr`, `fsr2` and `fsr3`: `0` is the sharpest, `2` the softest |
 | `upscaler` | | An upscaler the game adds with `render::add_upscaler` (from its own C++ or an [SDK package's](sdk-format.md) glue code), used instead of `mode` on the GPUs it supports. Lowercase letters, digits and underscores. Where it isn't added or doesn't run, the game logs a warning once and uses `mode` |
 
 The world draws at the window's size in pixels times `scale`, rounded down: a 2560x1440 window at
@@ -139,13 +139,26 @@ the meshes, with TAA too. It runs in Forward+ only, at a `scale` below
 Godot, it has no reactive mask, so transparent meshes, which write no depth, can trail for a frame
 or two.
 
+`fsr3` follows the upscaler of AMD's FidelityFX Super Resolution 3.1 (FidelityFX SDK 1.1.4, MIT)
+pass by pass, with the settings Godot gives FSR 2, and runs where `fsr2` runs, from the same
+jittered frame, motion vectors and depth. Its passes prepare the inputs (dilated depth and motion,
+the farthest depth and the luma), reconstruct the depth of the frame before, build a pyramid of
+how much the luma changed since the frame before at half the render size, work out the reactive
+masks (disocclusion, shading change and the frames each render pixel has gathered), find thin
+features to lock, measure the luma's instability over the last four frames, accumulate, and end
+with FSR 2's RCAS. Where it has gathered many frames it clamps the frames before to three times
+the spread of the colors around each pixel rather than to their range, which keeps detail
+steadier; a pixel whose shading changes everywhere around it takes the new color at once, while
+the edge of something that changed color fades over a few frames.
+[examples/fsr3-3d](../../examples/fsr3-3d/) rebuilds, turns and recolors a card.
+
 Upscalers a game adds are `render::Upscaler` classes (`slash/render/upscaler.hpp`): `input`
 gives the render target the world draws into, `upscale` runs the upscaler's passes and returns
 the texture and material the window's frame draws over the screen, and `release` frees what it
 made on the device. `render::UpscalerInfo::supports` says which devices one runs on, such as a
 vendor's on its own GPUs. One that is `temporal` (DLSS, XeSS, FSR 3 and later) needs depth,
 motion vectors and a jittered camera, so `add_upscaler` refuses it until those are passed to
-upscalers a game adds, as they are to the built-in `fsr2`.
+upscalers a game adds, as they are to the built-in `fsr2` and `fsr3`.
 
 ## Rendering methods
 

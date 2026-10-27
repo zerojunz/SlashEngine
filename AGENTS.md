@@ -915,6 +915,17 @@ size after. The prepass clears FSR 2's motion target to `kInvalidMotion`, and wh
 Godot's `derive_motion_vector`; the sky draws through TAA's or FSR 2's jitter, as Godot's.
 `examples/fsr2-3d` rebuilds a card at twice its render size.
 
+FSR 3 is the upscaler of AMD's FSR 3.1 (FidelityFX SDK 1.1.4), the scaling mode `fsr3`
+(`Fsr2Scaling::fsr3`, `uses_fsr3`), which Godot doesn't have. It runs where FSR 2 runs, from the
+same jittered frame, and ports AMD's passes as fragment passes and one compute pass:
+`fsr3_prepare`, `fsr3_reconstruct`, `fsr3_pyramid` and `fsr3_reduce` (the shading change pyramid,
+a level a pass, where AMD's downsampler makes them in one), `fsr3_shading_change`,
+`fsr3_reactivity`, `fsr3_lock` (a gather where AMD's scatters), `fsr3_instability` and
+`fsr3_accumulate`, then FSR 2's `fsr2_rcas`. `src/fsr3.hpp` holds the sizes, the uniforms (FSR 2's,
+then the frame before's jitter) and `run_fsr3`, the CPU twin, which `tests/test_fsr3.cpp` holds
+every device to; a change to one goes in both. `examples/fsr3-3d` rebuilds, turns and recolors a
+card.
+
 Decals are Godot 4.6's Forward+ `Decal` (`render::Decals3D`, `Scene3D::decals`; the `Decal`
 component, gathered by `scene3d::Renderer::add_decals`). `src/decal.hpp` holds what devices
 share: `pack_decal_atlas` packs a frame's textures as Godot's `update_decal_atlas` (skyline
