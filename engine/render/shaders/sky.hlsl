@@ -2,7 +2,8 @@
 // (drivers/gles3/shaders/sky.glsl): a ProceduralSkyMaterial, PhysicalSkyMaterial or
 // PanoramaSkyMaterial (scene/resources/3d/sky_material.cpp) worked out for each pixel's view
 // direction, or the background color when fog covers it, then fogged, exposed and tonemapped as
-// meshes are, or for Forward+ left linear for forward_post.hlsl. It draws one triangle over the
+// meshes are; or for Forward+ as its renderer draws it (servers/rendering/renderer_rd/shaders/
+// environment/sky.glsl), from linear colors and left linear for forward_post.hlsl. It draws one triangle over the
 // whole target, before the meshes. Keep it in step with shade_sky in src/sky.cpp, its CPU twin.
 
 #include "tonemap.hlsl"
@@ -24,13 +25,14 @@ static const uint kSkyPanorama = 4u;
 
 static const uint kSkyDeband = 1u;
 static const uint kSkyTexture = 2u;
+static const uint kSkyLinear = 4u;
 
 static const float kPi = 3.14159265359;
 
 // A DirectionalLight3D the sky shows, as Godot's DirectionalLightData.
 struct SkyLight {
     float4 direction_energy; // toward the light, in the world; its energy
-    float4 color_size;       // sRGB; the cosine of its angular radius
+    float4 color_size;       // sRGB (linear with kSkyLinear); the cosine of its angular radius
     float4 disk;             // the cosines of a physical sky's sun disk's radius and half that
 };
 
@@ -47,7 +49,7 @@ cbuffer Sky : register(b0, space3) {
     // The material's, by its kind: see sky_uniforms in src/sky.cpp.
     float4 params[6];
     SkyLight lights[4];
-    uint4 options; // the kind, how many lights, kSkyDeband | kSkyTexture
+    uint4 options; // the kind, how many lights, kSkyDeband | kSkyTexture | kSkyLinear
 };
 
 // Eberly's approximations, as Godot's sky.glsl takes them: acos for -1 to 1, and atan2.
@@ -173,6 +175,11 @@ float4 fs_main(float4 position : SV_Position) : SV_Target0 {
     coords /= float2(kPi * 2.0, kPi);
     // Sampled first, while control flow is uniform, as WGSL requires.
     float4 texel = sky_texture.SampleLevel(sky_sampler, coords, 0.0);
+    bool linear_sky = (options.z & kSkyLinear) != 0u;
+    if (linear_sky) {
+        // Forward+ samples a source_color texture as sRGB.
+        texel.rgb = srgb_to_linear(texel.rgb);
+    }
 
     uint kind = options.x;
     float3 color = (float3)0.0;
@@ -187,7 +194,11 @@ float4 fs_main(float4 position : SV_Position) : SV_Target0 {
         color = texel.rgb * params[0].x;
     }
     color *= pixel.z;
-    color = srgb_to_linear(color);
+    if (!linear_sky || kind == kSkyColor) {
+        // The Compatibility renderer makes its sky linear here; both make the background color
+        // fog covers linear.
+        color = srgb_to_linear(color);
+    }
 
     if (fog_color.w != 0.0) {
         float3 fogged = lerp(fog_color.rgb, color, fog.x);
@@ -196,7 +207,8 @@ float4 fs_main(float4 position : SV_Position) : SV_Target0 {
             for (uint i = 0u; i < count; ++i) {
                 SkyLight light = lights[i];
                 float3 light_color =
-                    srgb_to_linear(light.color_size.rgb) * light.direction_energy.w;
+                    (linear_sky ? light.color_size.rgb : srgb_to_linear(light.color_size.rgb)) *
+                    light.direction_energy.w;
                 float amount = pow(max(dot(eye, light.direction_energy.xyz), 0.0), 8.0) * kPi;
                 fogged += light_color * amount * fog.y;
             }

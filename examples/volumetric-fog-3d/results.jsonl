@@ -1,6 +1,6 @@
 {"id":1,"jsonrpc":"2.0","result":{"entities":7,"path":"main.scene.json"}}
-{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.533,0.525,0.502,1],[0.447,0.38,0.329,1],[0.871,0.569,0.373,1],[0.478,0.439,0.369,1]],"drawn":{"meshes":3},"height":90,"path":"shots/misty.png","width":160}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.541,0.525,0.502,1],[0.447,0.38,0.329,1],[0.871,0.569,0.373,1],[0.478,0.439,0.369,1]],"drawn":{"meshes":3},"height":90,"path":"shots/misty.png","width":160}}
 {"id":3,"jsonrpc":"2.0","result":{"changed":{"WorldEnvironment":{"volumetric_fog_albedo":[0.8,0.85,1.0,1.0],"volumetric_fog_density":0.2}},"id":"environment"}}
-{"id":4,"jsonrpc":"2.0","result":{"colors":[[0.455,0.455,0.467,1],[0.412,0.384,0.384,1],[0.886,0.604,0.439,1],[0.451,0.42,0.365,1]],"drawn":{"meshes":3},"height":90,"path":"shots/thick.png","width":160}}
+{"id":4,"jsonrpc":"2.0","result":{"colors":[[0.459,0.455,0.467,1],[0.412,0.384,0.384,1],[0.886,0.604,0.439,1],[0.451,0.42,0.365,1]],"drawn":{"meshes":3},"height":90,"path":"shots/thick.png","width":160}}
 {"id":5,"jsonrpc":"2.0","result":{"changed":{"WorldEnvironment":{"volumetric_fog_enabled":false}},"id":"environment"}}
-{"id":6,"jsonrpc":"2.0","result":{"colors":[[0.514,0.553,0.608,1],[0.4,0.278,0.227,1],[0.404,0.282,0.227,1],[0.486,0.447,0.373,1]],"drawn":{"meshes":3},"height":90,"path":"shots/clear.png","width":160}}
+{"id":6,"jsonrpc":"2.0","result":{"colors":[[0.533,0.565,0.612,1],[0.4,0.278,0.227,1],[0.404,0.282,0.227,1],[0.486,0.447,0.373,1]],"drawn":{"meshes":3},"height":90,"path":"shots/clear.png","width":160}}

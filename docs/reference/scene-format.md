@@ -1872,7 +1872,9 @@ worked out for each pixel's view direction as Godot's sky shaders do: a
 `ProceduralSkyMaterial`, a `PhysicalSkyMaterial` or a `PanoramaSkyMaterial`. An entity with none
 has Godot's default procedural sky; one with two is reported, and the first of those three
 draws. Colors are sRGB and textures project paths, and `background_energy_multiplier` brightens
-the sky.
+the sky. As in Godot, Forward+ works the sky out from its colors, textures and suns made linear,
+and leaves the result linear; `gl_compatibility` works it out in sRGB and makes the result
+linear, so the same material is darker and grayer there.
 
 The sky shows the sun of each `DirectionalLight3D` whose `sky_mode` isn't `"light_only"`, up to
 four in tree order, where the light shines from, in its `light_color` and `light_energy`, sized
