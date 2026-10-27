@@ -87,27 +87,41 @@ struct RayLighting {
     float sky_share = 1.0F;
 };
 
+// A path-traced frame's paths (Scene3D::path_trace), as trace_paths traces them: samples more a
+// pixel numbered from first, added to the sums target keeps, which start over at zero with
+// restart, then averaged with the background where they met nothing from the camera.
+struct RayPaths {
+    std::uint64_t target = 0;
+    bool restart = false;
+    std::uint32_t first = 0;
+    std::uint32_t samples = 0;
+    std::uint32_t bounces = 0;
+};
+
 // What a frame's rays trace: the shadows of lights with a ray slot, the ambient occlusion, and
-// the reflections and global illumination, which lighting lights.
+// the reflections, global illumination and paths, which lighting lights.
 struct RayWork {
     std::span<const RayShadowLight> lights;
     std::optional<RayOcclusion> occlusion;
     std::optional<RayReflection> reflection;
     std::optional<RayGI> gi;
-    const RayLighting* lighting = nullptr; // with reflection or gi
+    std::optional<RayPaths> paths;
+    const RayLighting* lighting = nullptr; // with reflection, gi or paths
 };
 
 // Where a frame's rays come from and go: the prepass's depth and normals, and six RGBA16F
 // textures, sampled and written by compute, at the frame's render size: the visibilities of
 // lights 0 to 3, then 4 to 7, then the ambient occlusion in red, then the reflections, then the
-// ambient light as traced and as smoothed. With reflections or global illumination, a white
-// texture and a cube (the sky's radiance, or any) they sample.
+// ambient light as traced and as smoothed; paths' averages go in the fourth. With reflections,
+// global illumination or paths, a white texture and a cube (the sky's radiance, or any) they
+// sample, and with paths the background, in RGBA16F at the frame's size.
 struct RayTargets {
     SDL_GPUTexture* depth = nullptr;
     SDL_GPUTexture* normals = nullptr;
     std::array<SDL_GPUTexture*, 6> outputs{};
     SDL_GPUTexture* white = nullptr;
     SDL_GPUTexture* environment = nullptr;
+    SDL_GPUTexture* background = nullptr;
 };
 
 // The GPU device's rays on Vulkan.
@@ -123,7 +137,8 @@ public:
     // Records the frame's rays into commands, between SDL's passes: the structures of draws, the
     // shader writing targets' visibilities of lights, as run_ray_shadows does on the CPU, and the
     // ambient occlusion, as run_ray_occlusion does, then the one writing the reflections, as
-    // run_ray_reflections does, and the ambient light, as run_ray_gi does.
+    // run_ray_reflections does, the ambient light, as run_ray_gi does, and the paths, as
+    // trace_paths does.
     virtual Result<void> trace(SDL_GPUCommandBuffer* commands, std::span<const RayDraw> draws,
                                const RayWork& work, const RayShadowFrame& frame,
                                const RayTargets& targets) = 0;

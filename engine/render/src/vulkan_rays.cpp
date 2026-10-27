@@ -40,8 +40,13 @@ constexpr std::size_t kSlots = 4;
 // occlusion.
 constexpr std::size_t kOutputs = 3;
 // The passes of the light's shader (ray_light.comp's kPass): the reflections, the global
-// illumination's rays and their smoothing.
-constexpr std::size_t kLightPasses = 3;
+// illumination's rays and their smoothing, the paths and their average.
+constexpr std::size_t kLightPasses = 5;
+constexpr std::size_t kTracePaths = 3;
+constexpr std::size_t kAveragePaths = 4;
+// The textures the light's shader writes: the reflections (or the paths' average), then the
+// ambient light as traced and as smoothed.
+constexpr std::size_t kLightOutputs = 3;
 // The most textures the light's shader samples (its textures array); the rest read white.
 constexpr std::uint32_t kRayTextures = 64;
 constexpr std::uint32_t kNoTexture = 0xFFFFFFFFU;
@@ -73,8 +78,9 @@ struct RayLightFrame {
     Float4 ambient{};
     std::array<Float4, 3> sky_rows{};
     std::array<std::uint32_t, 4> gi{};
+    std::array<std::uint32_t, 4> paths{}; // the first path's number, paths a pixel, bounces
 };
-static_assert(sizeof(RayLightFrame) == 64 + 48 + 16 + 16 + 48 + 16);
+static_assert(sizeof(RayLightFrame) == 64 + 48 + 16 + 16 + 48 + 16 + 16);
 
 // Its Draw and Light, in std430.
 struct RayDrawRecord {
@@ -120,6 +126,7 @@ struct Calls {
     PFN_vkCmdBuildAccelerationStructuresKHR build_structures = nullptr;
     PFN_vkCmdCopyBuffer copy_buffer = nullptr;
     PFN_vkCmdUpdateBuffer update_buffer = nullptr;
+    PFN_vkCmdFillBuffer fill_buffer = nullptr;
     PFN_vkCmdPipelineBarrier barrier = nullptr;
     PFN_vkCreateShaderModule create_shader = nullptr;
     PFN_vkDestroyShaderModule destroy_shader = nullptr;
@@ -186,6 +193,7 @@ bool load_calls(VkInstance instance, VkDevice device, Calls& calls) {
     from_device(calls.build_structures, "vkCmdBuildAccelerationStructuresKHR");
     from_device(calls.copy_buffer, "vkCmdCopyBuffer");
     from_device(calls.update_buffer, "vkCmdUpdateBuffer");
+    from_device(calls.fill_buffer, "vkCmdFillBuffer");
     from_device(calls.barrier, "vkCmdPipelineBarrier");
     from_device(calls.create_shader, "vkCreateShaderModule");
     from_device(calls.destroy_shader, "vkDestroyShaderModule");
@@ -308,11 +316,19 @@ public:
         if (pool_ != VK_NULL_HANDLE) {
             calls_.destroy_pool(device_, pool_, nullptr);
         }
-        for (VkPipeline pipeline :
-             {pipeline_, light_pipelines_[0], light_pipelines_[1], light_pipelines_[2]}) {
+        for (auto& [target, sums] : path_sums_) {
+            release(sums.buffer);
+        }
+        for (Buffer& buffer : retired_buffers_) {
+            release(buffer);
+        }
+        for (VkPipeline pipeline : light_pipelines_) {
             if (pipeline != VK_NULL_HANDLE) {
                 calls_.destroy_pipeline(device_, pipeline, nullptr);
             }
+        }
+        if (pipeline_ != VK_NULL_HANDLE) {
+            calls_.destroy_pipeline(device_, pipeline_, nullptr);
         }
         for (VkPipelineLayout layout : {pipeline_layout_, light_pipeline_layout_}) {
             if (layout != VK_NULL_HANDLE) {
@@ -394,7 +410,9 @@ public:
                                        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
                                        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kRayTextures},
                                        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1},
-                                       {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}},
+                                       {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1},
+                                       {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1},
+                                       {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1}},
                                       shaders::kRayLightSpirv, sizeof(shaders::kRayLightSpirv),
                                       light_set_layout_, light_pipeline_layout_, light_pipelines_,
                                       "ray light's");
@@ -404,10 +422,10 @@ public:
 
         std::array<VkDescriptorPoolSize, 5> sizes{{
             {VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 2 * kSlots},
-            {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (2 + 3 + kRayTextures) * kSlots},
+            {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (2 + 4 + kRayTextures) * kSlots},
             {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 6 * kSlots},
             {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2 * kSlots},
-            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 * kSlots},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4 * kSlots},
         }};
         VkDescriptorPoolCreateInfo pool{};
         pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -459,7 +477,7 @@ public:
                          "the frame's command buffer has no Vulkan command buffer"};
         }
         // Whether rays from the camera's side are traced, which shade what they meet.
-        const bool lit = (work.reflection || work.gi) && work.lighting != nullptr;
+        const bool lit = (work.reflection || work.gi || work.paths) && work.lighting != nullptr;
         ++frame_;
         Slot& slot = free_slot();
         release_unused();
@@ -767,6 +785,9 @@ private:
         uniforms.size = {frame.width, frame.height, work.reflection ? work.reflection->samples : 0,
                          static_cast<std::uint32_t>(light_records.size())};
         uniforms.gi = {work.gi ? work.gi->samples : 0, 0, 0, 0};
+        if (work.paths) {
+            uniforms.paths = {work.paths->first, work.paths->samples, work.paths->bounces, 0};
+        }
         uniforms.ambient = {lighting.ambient[0], lighting.ambient[1], lighting.ambient[2],
                             lighting.sky ? 1.0F : 0.0F};
         for (std::size_t row = 0; row < 3; ++row) {
@@ -777,9 +798,9 @@ private:
         uniforms.sky_rows[1][3] = lighting.sky_share;
         std::memcpy(slot.light_frame.mapped, &uniforms, sizeof(uniforms));
 
-        std::array<VkImageView, kLightPasses> outputs{};
-        std::array<VkImage, kLightPasses> output_images{};
-        for (std::size_t i = 0; i < kLightPasses; ++i) {
+        std::array<VkImageView, kLightOutputs> outputs{};
+        std::array<VkImage, kLightOutputs> output_images{};
+        for (std::size_t i = 0; i < kLightOutputs; ++i) {
             auto found = native_texture(targets.outputs.at(3 + i));
             if (!found) {
                 return found.error();
@@ -809,8 +830,43 @@ private:
             texture_infos.at(i).imageView = found.value().second;
             texture_infos.at(i).sampler = texture_samplers_.at(used[i].second);
         }
+        // A path-traced target's sums, kept from frame to frame, started over at zero when asked;
+        // other frames bind a buffer the shader leaves alone.
+        Buffer* sums = &slot.draw_records;
+        if (work.paths) {
+            const VkDeviceSize bytes = VkDeviceSize{frame.width} * frame.height * 16;
+            PathSums& kept = path_sums_[work.paths->target];
+            bool cleared = work.paths->restart;
+            if (kept.buffer.buffer == VK_NULL_HANDLE || kept.buffer.size != bytes) {
+                if (kept.buffer.buffer != VK_NULL_HANDLE) {
+                    retired_buffers_.push_back(kept.buffer);
+                }
+                auto made = make_buffer(
+                    bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                    false);
+                if (!made) {
+                    kept.buffer = Buffer{};
+                    return made.error();
+                }
+                kept.buffer = made.value();
+                cleared = true;
+            }
+            if (cleared) {
+                calls_.fill_buffer(native, kept.buffer.buffer, 0, VK_WHOLE_SIZE, 0);
+                memory_barrier(native, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+            }
+            kept.used = frame_;
+            sums = &kept.buffer;
+        }
+        auto background =
+            native_texture(targets.background != nullptr ? targets.background : targets.white);
+        if (!background) {
+            return background.error();
+        }
         write_light_descriptors(slot, depth, normals, outputs, environment.value().second,
-                                texture_infos);
+                                texture_infos, sums->buffer, background.value().second);
 
         image_barriers(native, output_images, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                        VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0,
@@ -832,6 +888,12 @@ private:
             memory_barrier(native, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
             run(2);
+        }
+        if (work.paths) {
+            run(kTracePaths);
+            memory_barrier(native, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+            run(kAveragePaths);
         }
         image_barriers(native, output_images, VK_IMAGE_LAYOUT_GENERAL,
                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -978,6 +1040,14 @@ private:
                 ++it;
             }
         }
+        for (auto it = path_sums_.begin(); it != path_sums_.end();) {
+            if (it->second.used + (2 * kSlots) < frame_) {
+                retired_buffers_.push_back(it->second.buffer);
+                it = path_sums_.erase(it);
+            } else {
+                ++it;
+            }
+        }
         bool idle = true;
         for (const Slot& slot : slots_) {
             idle =
@@ -988,6 +1058,10 @@ private:
                 release(mesh);
             }
             retired_.clear();
+            for (Buffer& buffer : retired_buffers_) {
+                release(buffer);
+            }
+            retired_buffers_.clear();
         }
     }
 
@@ -1330,14 +1404,15 @@ private:
     }
 
     void write_light_descriptors(Slot& slot, VkImageView depth, VkImageView normals,
-                                 const std::array<VkImageView, kLightPasses>& outputs,
+                                 const std::array<VkImageView, kLightOutputs>& outputs,
                                  VkImageView environment,
-                                 const std::array<VkDescriptorImageInfo, kRayTextures>& textures) {
+                                 const std::array<VkDescriptorImageInfo, kRayTextures>& textures,
+                                 VkBuffer sums, VkImageView background) {
         VkWriteDescriptorSetAccelerationStructureKHR structure{};
         structure.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
         structure.accelerationStructureCount = 1;
         structure.pAccelerationStructures = &slot.top.structure;
-        const std::array<VkDescriptorImageInfo, 6> images{{
+        const std::array<VkDescriptorImageInfo, 7> images{{
             {.sampler = sampler_,
              .imageView = depth,
              .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
@@ -1356,13 +1431,17 @@ private:
             {.sampler = VK_NULL_HANDLE,
              .imageView = outputs[2],
              .imageLayout = VK_IMAGE_LAYOUT_GENERAL},
+            {.sampler = sampler_,
+             .imageView = background,
+             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
         }};
-        const std::array<VkDescriptorBufferInfo, 3> buffers{{
+        const std::array<VkDescriptorBufferInfo, 4> buffers{{
             {.buffer = slot.light_frame.buffer, .offset = 0, .range = sizeof(RayLightFrame)},
             {.buffer = slot.draw_records.buffer, .offset = 0, .range = VK_WHOLE_SIZE},
             {.buffer = slot.light_records.buffer, .offset = 0, .range = VK_WHOLE_SIZE},
+            {.buffer = sums, .offset = 0, .range = VK_WHOLE_SIZE},
         }};
-        std::array<VkWriteDescriptorSet, 11> writes{};
+        std::array<VkWriteDescriptorSet, 13> writes{};
         for (std::uint32_t i = 0; i < writes.size(); ++i) {
             VkWriteDescriptorSet& write = writes.at(i);
             write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1393,6 +1472,10 @@ private:
             writes.at(i).descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
             writes.at(i).pImageInfo = &images.at(i - 5);
         }
+        writes[11].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[11].pBufferInfo = &buffers[3];
+        writes[12].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[12].pImageInfo = &images[6];
         calls_.update_sets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0,
                            nullptr);
     }
@@ -1482,6 +1565,13 @@ private:
     std::uint64_t frame_ = 0;
     std::map<MeshKey, MeshStructure> meshes_;
     std::vector<MeshStructure> retired_;
+    // Path-traced targets' sums, by RayPaths::target, and buffers frames in flight may still use.
+    struct PathSums {
+        Buffer buffer;
+        std::uint64_t used = 0;
+    };
+    std::map<std::uint64_t, PathSums> path_sums_;
+    std::vector<Buffer> retired_buffers_;
     Buffer mesh_scratch_;
 };
 
