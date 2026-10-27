@@ -273,7 +273,9 @@ for [`.theme.json` files](scene-format.md#themes), for
 for [`.score.json` files](scene-format.md#scores), for
 [`.navmesh.json` and `.navpoly.json` files](scene-format.md#navigation-meshes-and-polygons), for
 [`.meshlib.json` files](scene-format.md#mesh-libraries), for
-[`.lightmap.json` files](scene-format.md#baked-lightmaps), for [storyboard files](storyboard-format.md),
+[`.lightmap.json` files](scene-format.md#baked-lightmaps), for
+[`.voxelgi.json` files](scene-format.md#voxelgi), for
+[`.model.json` recipes](scene-format.md#model-recipes), for [storyboard files](storyboard-format.md),
 for [`project.json`](project-format.md), for [`export_presets.json`](project-format.md#export-presets),
 for [`sdk.json`](sdk-format.md), for [`providers.json`](providers.md) or for a
 [benchmark task's `task.json`](benchmark.md#tasks).
@@ -298,6 +300,8 @@ slash-cli schema navmesh
 slash-cli schema navpoly
 slash-cli schema meshlib
 slash-cli schema lightmap
+slash-cli schema voxel_gi
+slash-cli schema model
 slash-cli schema storyboard
 slash-cli schema project
 slash-cli schema presets
