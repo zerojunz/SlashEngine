@@ -956,6 +956,7 @@ checks a recipe and `slash-cli scene format` writes it in canonical form.
 | `parameters` | object | `{}` | Numbers by name, each a number or an expression over the others |
 | `materials` | object | `{}` | [`StandardMaterial3D`](#standardmaterial3d) fields by name; texture fields name images by project path |
 | `parts` | array | required | At least one part |
+| `points` | array | `[]` | Attachment points, as below |
 
 Every number in a part, and every parameter, can be a string starting with `=`: an expression in
 Godot's `Expression` syntax over the parameters (`"=width / 2"`, `"=sin(angle) * r"`). A name
@@ -994,6 +995,30 @@ of one surface per material, made as a CSG root's mesh. Models get [LODs](#mesh-
 A part the CSG can't make, such as a polygon with no area or a shape cut away to nothing, is
 reported at its pointer and left out. A recipe makes at most 4096 shapes in all.
 [examples/parametric-models](../../examples/parametric-models/) is a table and a vase.
+
+Parts move by their node names, as any model's nodes do: a `Skeleton3D`'s `bone_rotations` turns
+one about its own origin, so a door is a part placed at its hinge whose board is a child beside it.
+Points are where other things attach, as Godot's `Marker3D` in a scene: each becomes a node with
+no mesh, which a [`BoneAttachment3D`](#bone-attachments)'s `bone_name` follows and
+[`model.inspect`](commands.md#modelinspect)'s brief form lists.
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `name` | string | required | Its node name, which no part or other point has, and which can't hold `.`, `:`, `@`, `/`, `"` or `%` |
+| `part` | string | the model | A top-level part's node name (a copy's numbered one) to place it in and move with |
+| `position`, `rotation` | `[x, y, z]` | none | Placed in its part's space, or the model's |
+
+```json
+"parts": [
+  {"name": "door", "position": ["=-width / 2", "=height / 2", "=depth / 2"],
+   "children": [{"shape": "box", "size": ["=width", "=height", 0.02], "position": ["=width / 2", 0, 0.01]}]}
+],
+"points": [{"name": "handle", "part": "door", "position": ["=width - 0.07", 0, 0.075]},
+           {"name": "top", "position": [0, "=height", 0]}]
+```
+
+[examples/model-parts](../../examples/model-parts/) opens a cabinet's door and stands a lamp on
+its top point.
 
 #### Skeletons and model animations
 

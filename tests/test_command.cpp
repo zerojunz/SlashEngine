@@ -1770,6 +1770,22 @@ TEST_CASE("model.inspect returns a model's meshes, materials, images and parts")
         "meshes": [{"materials": [0], "name": "Quad", "triangles": 2, "vertices": 4}],
         "parts": [{"mesh": 0, "node": "Quad"}]})"));
 
+    // brief: a few numbers and names. The quad's empty child node is an attachment point,
+    // placed in the model's space.
+    slash::test::Gltf marked = slash::test::quad(0);
+    marked.document["materials"] = parse(R"([{"name": "Paint"}])");
+    marked.document["nodes"] = parse(R"([
+        {"name": "Quad", "mesh": 0, "translation": [0, 1, 0], "children": [1]},
+        {"name": "Hook", "translation": [0.5, 1, 0], "rotation": [0, 0.7071068, 0, 0.7071068]}])");
+    REQUIRE(slash::platform::write_file(root + "/models/marked.gltf", marked.gltf()).ok());
+    CHECK(engine.ok("model.inspect", R"({"path": "models/marked.gltf", "brief": true})") ==
+          parse(R"({"size": [2, 2, 0], "pivot": [0.5, 0, 0.5], "triangles": 2,
+                    "materials": ["Paint"],
+                    "parts": [{"name": "Quad", "center": [0, 1, 0], "size": [2, 2, 0],
+                               "materials": ["Paint"], "triangles": 2}],
+                    "points": [{"name": "Hook", "part": "Quad", "position": [0.5, 2, 0],
+                                "rotation": [0, 1.5708, 0]}]})"));
+
     auto reply = engine.fails("model.inspect", "{}", command::code::kInvalidParams);
     CHECK(contains(reply.message, "give id"));
     reply = engine.fails("model.inspect", R"({"path": "models/sign.dae"})",

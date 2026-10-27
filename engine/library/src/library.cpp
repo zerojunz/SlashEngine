@@ -105,14 +105,19 @@ Result<void> describe_recipe(std::string_view data, Record& record) {
     if (!model) {
         return model.error();
     }
-    const scene3d::Bounds box = scene3d::bounds(model.value());
+    const scene3d::ModelSummary summary = scene3d::summarize(model.value());
+    const scene3d::Bounds& box = summary.bounds;
     record.size = {rounded(box.max.x - box.min.x), rounded(box.max.y - box.min.y),
                    rounded(box.max.z - box.min.z)};
-    record.triangles = 0;
-    for (const scene3d::ModelMesh& mesh : model.value().meshes) {
-        for (const scene3d::ModelSurface& surface : mesh.surfaces) {
-            record.triangles += static_cast<std::int64_t>(surface.indices.size() / 3);
-        }
+    record.triangles = static_cast<std::int64_t>(summary.triangles);
+    record.pivot = {rounded(summary.pivot.x), rounded(summary.pivot.y), rounded(summary.pivot.z)};
+    record.parts.clear();
+    for (const scene3d::ModelSummary::Part& part : summary.parts) {
+        record.parts.push_back(part.name);
+    }
+    record.points.clear();
+    for (const scene3d::ModelSummary::Point& point : summary.points) {
+        record.points.push_back(point.name);
     }
     return {};
 }
@@ -189,6 +194,18 @@ json::Value to_json(const Record& record) {
     if (record.triangles > 0) {
         out["size"] = json::Array{record.size[0], record.size[1], record.size[2]};
         out["triangles"] = record.triangles;
+        out["pivot"] = json::Array{record.pivot[0], record.pivot[1], record.pivot[2]};
+        const auto names = [](const std::vector<std::string>& list) {
+            json::Array items;
+            for (const std::string& name : list) {
+                items.emplace_back(name);
+            }
+            return items;
+        };
+        out["parts"] = names(record.parts);
+        if (!record.points.empty()) {
+            out["points"] = names(record.points);
+        }
     }
     if (!record.description.empty()) {
         out["description"] = record.description;
@@ -296,6 +313,24 @@ Result<Record> record_from_json(const json::Value& value) {
         }
     }
     record.triangles = integer("triangles");
+    if (const json::Value* pivot = value.find("pivot");
+        pivot != nullptr && pivot->is_array() && pivot->as_array().size() == 3) {
+        for (std::size_t i = 0; i < 3; ++i) {
+            const json::Value& axis = pivot->as_array()[i];
+            record.pivot.at(i) = axis.is_number() ? axis.as_double() : 0.0;
+        }
+    }
+    const auto names = [&](std::string_view key, std::vector<std::string>& list) {
+        if (const json::Value* items = value.find(key); items != nullptr && items->is_array()) {
+            for (const json::Value& item : items->as_array()) {
+                if (item.is_string()) {
+                    list.push_back(item.as_string());
+                }
+            }
+        }
+    };
+    names("parts", record.parts);
+    names("points", record.points);
     record.description = text_of(value, "description");
     if (const json::Value* tags = value.find("tags"); tags != nullptr && tags->is_array()) {
         for (const json::Value& tag : tags->as_array()) {

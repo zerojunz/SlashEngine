@@ -231,8 +231,9 @@ of candidates and, with the storyboard's tone and palette, goes into later promp
 project, records feedback by itself: it opens each scene that draws a library file and checks
 what `canvas::summarize` sees with `SummaryOptions::contrast` (the edge contrast of each thing
 in the frame `canvas::capture` draws, `Shown::contrast`) and how small each file is drawn, from
-the texture paths on `FramePiece`s. Models are `.model.json` recipes kept with their `size` and
-`triangles` (`describe_recipe` in `src/library.cpp`, which refuses recipes naming texture files,
+the texture paths on `FramePiece`s. Models are `.model.json` recipes kept with their `size`,
+`triangles`, `pivot`, parts and points from `scene3d::summarize` (`describe_recipe` in
+`src/library.cpp`, which refuses recipes naming texture files,
 whose paths are a project's); `asset.refine` with `parameters` makes a version with new parameter
 values and no generator (`refine_model` in `src/commands.cpp`).
 
@@ -1059,7 +1060,13 @@ schema and the shapes' fields, and builds each top-level part as a CSG root thro
 fed in as `CSGMesh3D`s. `load_model` and `check_model` take recipes, so `MeshInstance3D`,
 `model.inspect`, LODs, hot reload and exports treat them as any model, and
 `validate_model_recipe` backs `scene validate` and `scene format`.
-`examples/parametric-models` is a table and a vase.
+`examples/parametric-models` is a table and a vase. A recipe's `points` become nodes with no
+mesh after the parts' nodes, under the part they name. `scene3d::summarize` (`model.cpp`)
+describes any model in a few numbers and names: its size, `pivot` (the origin's place in its
+bounds), triangles, each part's box and materials and its attachment points (nodes that place no
+mesh, have no children and are no joint, as Godot's `Marker3D`), which `model.inspect`'s `brief`
+returns and `BoneAttachment3D` follows by name; `examples/model-parts` opens a cabinet's door and
+stands a lamp on it.
 
 Models' surfaces get LODs when they load, as Godot 4.6's importer generates them
 (`engine/scene3d/src/lod.cpp`: `generate_lods`, ported from `ImporterMesh::generate_lods`, on
