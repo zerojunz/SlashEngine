@@ -5,6 +5,7 @@
 #include "slash/render/material.hpp"
 #include "slash/render/mesh.hpp"
 #include "slash/render/particles.hpp"
+#include "slash/render/particles3d.hpp"
 #include "slash/render/shader.hpp"
 
 #include <array>
@@ -495,6 +496,46 @@ public:
     // during a frame. The null device's are none live.
     [[nodiscard]] virtual Result<std::vector<Particle>> read_particles(ParticlesId particles) = 0;
 
+    // A 3D particle system (particles3d.hpp) of amount particles, from 1 to kMaxParticles3D, none
+    // of them live. Every device keeps and runs 3D systems on the CPU, with
+    // process_particles_3d and particle_mesh_vertices_3d; the null device keeps none.
+    // Defined here so RenderDevice still has no key function (see metalfx_spatial).
+    [[nodiscard]] virtual Result<Particles3DId> create_particles_3d(std::uint32_t amount) {
+        return particles_3d_.create(amount);
+    }
+    // A system in use by the frame being built goes once the frame is sent.
+    virtual void destroy_particles_3d(Particles3DId particles) { particles_3d_.destroy(particles); }
+    // Runs steps on a 3D system, in order after the steps before.
+    [[nodiscard]] virtual Result<void> process_particles_3d(Particles3DId particles,
+                                                            const ParticleProcess3D& process,
+                                                            std::span<const ParticleStep3D> steps) {
+        return particles_3d_.process(particles, process, steps);
+    }
+    // Fills mesh, made with the system's amount times source's vertices, with a copy of source
+    // at each particle as it is after the steps run so far (ParticleMeshDraw3D), as update_mesh
+    // does: not during a frame. The mesh's triangles must be source's, repeated per particle.
+    [[nodiscard]] virtual Result<void> fill_particle_mesh(Particles3DId particles, MeshId mesh,
+                                                          std::span<const Vertex3D> source,
+                                                          const ParticleMeshDraw3D& draw) {
+        auto live = particles_3d_.particles(particles);
+        if (!live) {
+            return live.error();
+        }
+        particle_vertices_.assign(live.value().size() * source.size(), Vertex3D{});
+        particle_mesh_vertices_3d(live.value(), source, draw, particle_vertices_);
+        return update_mesh(mesh, particle_vertices_);
+    }
+    // Returns a 3D system's particles as they are after the steps run so far; not during a
+    // frame. The null device's are none live.
+    [[nodiscard]] virtual Result<std::vector<Particle3D>>
+    read_particles_3d(Particles3DId particles) {
+        auto live = particles_3d_.particles(particles);
+        if (!live) {
+            return live.error();
+        }
+        return std::vector<Particle3D>(live.value().begin(), live.value().end());
+    }
+
     // A mesh of vertices, every three indices a triangle, each index below the vertex count, or
     // every three vertices a triangle when there are no indices. At most kMaxMeshVertices. lods
     // are coarser versions of its triangles over the same vertices, as a Godot mesh's surface
@@ -563,6 +604,10 @@ public:
                           "this device has no MetalFX scaler: only the GPU device on Metal does, "
                           "on macOS 13 and iOS 16 or later");
     }
+
+private:
+    detail::ParticleStore3D particles_3d_;
+    std::vector<Vertex3D> particle_vertices_;
 };
 
 struct DeviceOptions {

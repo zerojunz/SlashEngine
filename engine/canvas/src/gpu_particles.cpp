@@ -618,8 +618,9 @@ public:
         if (assets_ == nullptr || settings.process_material.empty()) {
             return std::nullopt;
         }
-        const auto process = assets_->load<render::ParticleProcess>(settings.process_material);
-        if (!process || process.value()->collision_mode == render::ParticleCollision::Disabled) {
+        const auto process = assets_->load<ProcessMaterial>(settings.process_material);
+        if (!process ||
+            process.value()->flat.collision_mode == render::ParticleCollision::Disabled) {
             return std::nullopt;
         }
         gather();
@@ -1234,11 +1235,13 @@ Result<std::vector<render::Particle>> gpu_particles(const world::World& world, e
         if (emitter.process_material.empty()) {
             return std::make_shared<const render::ParticleProcess>();
         }
-        auto loaded = assets.load<render::ParticleProcess>(emitter.process_material);
+        auto loaded = assets.load<ProcessMaterial>(emitter.process_material);
         if (!loaded) {
             return loaded.error();
         }
-        return loaded.value().share();
+        std::shared_ptr<const ProcessMaterial> material = loaded.value().share();
+        const render::ParticleProcess* flat = &material->flat;
+        return std::shared_ptr<const render::ParticleProcess>(std::move(material), flat);
     };
     const render::ParticleOrder order = particle_order(settings.draw_order);
     const double phase = kept->steps.back().system_phase;

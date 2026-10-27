@@ -398,7 +398,7 @@ private:
     std::map<std::pair<std::string, render::Filter>, Texture> textures_;
     std::map<std::string, MaterialEntry, std::less<>> materials_;
     std::map<std::string, asset::Handle<TileSet>, std::less<>> tile_sets_;
-    std::map<std::string, asset::Handle<render::ParticleProcess>, std::less<>> processes_;
+    std::map<std::string, asset::Handle<ProcessMaterial>, std::less<>> processes_;
     std::unordered_map<entt::entity, GpuSystem> gpu_systems_;
     std::unordered_map<entt::entity, LayerCells> layer_cells_;
     // Images read on the CPU: lights' textures, and those of the materials VoxelGIs plot.

@@ -1,0 +1,115 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 60.0
+        },
+        "Transform3D": {
+          "position": [0.0, 1.6, 6.0],
+          "rotation": [-0.15, 0.0, 0.0]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.4, 0.45, 0.6, 1.0],
+          "ambient_light_energy": 0.5,
+          "ambient_light_source": "color",
+          "background_color": [0.05, 0.07, 0.15, 1.0],
+          "background_mode": "color"
+        }
+      }
+    },
+    "ground": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [14.0, 14.0]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.2, 0.3, 0.2, 1.0]
+        },
+        "Transform3D": {}
+      }
+    },
+    "leaves": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.2, 0.02, 0.14]
+        },
+        "GPUParticles3D": {
+          "amount": 24,
+          "lifetime": 3.0,
+          "local_coords": true,
+          "preprocess": 3.0,
+          "process_material": "leaves.process_material.json"
+        },
+        "StandardMaterial3D": {
+          "vertex_color_use_as_albedo": true
+        },
+        "Transform3D": {
+          "position": [0.0, 0.5, -0.5]
+        }
+      }
+    },
+    "moon": {
+      "components": {
+        "DirectionalLight3D": {
+          "light_energy": 0.8
+        },
+        "Transform3D": {
+          "rotation": [-0.9, 0.4, 0.0]
+        }
+      }
+    },
+    "sparks": {
+      "components": {
+        "GPUParticles3D": {
+          "amount": 60,
+          "draw_order": "view_depth",
+          "lifetime": 1.2,
+          "preprocess": 1.2,
+          "process_material": "sparks.process_material.json"
+        },
+        "QuadMesh": {
+          "size": [0.12, 0.12]
+        },
+        "StandardMaterial3D": {
+          "billboard_keep_scale": true,
+          "billboard_mode": "particles",
+          "blend_mode": "add",
+          "shading_mode": "unshaded",
+          "transparency": "alpha",
+          "vertex_color_use_as_albedo": true
+        },
+        "Transform3D": {
+          "position": [-2.0, 0.2, 0.0]
+        }
+      }
+    },
+    "streaks": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.03, 0.2, 0.03]
+        },
+        "GPUParticles3D": {
+          "amount": 30,
+          "preprocess": 1.0,
+          "process_material": "streaks.process_material.json",
+          "transform_align": "y_to_velocity"
+        },
+        "StandardMaterial3D": {
+          "shading_mode": "unshaded",
+          "vertex_color_use_as_albedo": true
+        },
+        "Transform3D": {
+          "position": [2.2, 0.0, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}
