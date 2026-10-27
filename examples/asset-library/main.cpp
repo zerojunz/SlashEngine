@@ -152,5 +152,15 @@ int main() {
     call(sequel, "asset.search", R"({"type": "model"})");
     call(sequel, "asset.refine", R"({"id": "edc8a071", "parameters": {"length": 2.4},
         "prompt": "long enough for four", "path": "props/long_bench.model.json"})");
+    // The artist deepens the seat in the game's copy and adds it again: a new version of the
+    // bench, described and licensed as the first.
+    auto bench = slash::platform::read_file("game/props/bench.model.json");
+    std::string deeper = bench ? bench.value() : std::string();
+    const std::string_view depth = R"("depth": 0.35)";
+    if (const std::size_t at = deeper.find(depth); at != std::string::npos) {
+        deeper.replace(at, depth.size(), R"("depth": 0.45)");
+    }
+    (void)slash::platform::write_file("game/props/bench.model.json", deeper);
+    call(game, "asset.add", R"({"path": "props/bench.model.json"})");
     return 0;
 }

@@ -504,6 +504,36 @@ Result<std::string> copy_into_project(Session& session, const Library& library,
     return data;
 }
 
+// The library asset the project's library.json says a path was copied from, if it names one
+// this machine's library or the team's has.
+std::optional<Record> used_version(const Session& session, Libraries& libs,
+                                   const std::string& path) {
+    auto list_path = session.resolve_path(kProjectFile);
+    if (!list_path || !platform::exists(list_path.value())) {
+        return std::nullopt;
+    }
+    auto text = platform::read_file(list_path.value());
+    if (!text) {
+        return std::nullopt;
+    }
+    auto list = json::parse(text.value());
+    if (!list || !list.value().is_object()) {
+        return std::nullopt;
+    }
+    const json::Value* assets = list.value().find("assets");
+    const json::Value* entry =
+        assets != nullptr && assets->is_object() ? assets->find(path) : nullptr;
+    const json::Value* id = entry != nullptr && entry->is_object() ? entry->find("id") : nullptr;
+    if (id == nullptr || !id->is_string()) {
+        return std::nullopt;
+    }
+    auto record = find_asset(session, libs, id->as_string());
+    if (!record) {
+        return std::nullopt;
+    }
+    return std::move(record).value();
+}
+
 // A file's path without its extension, where its settings and stems go.
 std::string base_of(std::string_view path) {
     const std::size_t slash = path.rfind('/');
@@ -1326,6 +1356,12 @@ Reply asset_refine(Session& session, const json::Value& params) {
     if (!data) {
         return Reply::failure(data.error());
     }
+    if (parent.value().type == "model" && parent.value().format != "model.json") {
+        return invalid_at(params.find("parameters") != nullptr ? "/parameters" : "/id",
+                          "a ." + parent.value().format +
+                              " model has no parameters and no generator refines one yet; edit "
+                              "the file and asset.add it again, which keeps it as a new version");
+    }
     if (parent.value().type == "model") {
         return refine_model(session, libs.value(), parent.value(), data.value(), params);
     }
@@ -1512,6 +1548,28 @@ Reply asset_add(Session& session, const json::Value& params) {
     record.tags = strings(params, "tags");
     record.license = text(params, "license");
     record.author = text(params, "author");
+    // A file the project took from the library and changed since is a new version of that
+    // asset, with what it was said to be unless the call says otherwise.
+    if (std::optional<Record> earlier = used_version(session, libs.value(), path);
+        earlier && earlier->id != sha256_hex(data.value()) && earlier->type == record.type) {
+        record.parent = earlier->id;
+        if (record.description.empty()) {
+            record.description = earlier->description;
+        }
+        if (params.find("tags") == nullptr) {
+            record.tags = earlier->tags;
+        }
+        if (record.license.empty()) {
+            record.license = earlier->license;
+        }
+        if (record.author.empty()) {
+            record.author = earlier->author;
+        }
+    }
+    if (record.description.empty()) {
+        return invalid_at("/description", "say what it is in a sentence, for agents to read "
+                                          "instead of the file");
+    }
     json::Array notes;
     if (type == "music") {
         MusicFacts facts;
@@ -1595,6 +1653,9 @@ Reply asset_add(Session& session, const json::Value& params) {
     json::Value out = summary(stored.value());
     out.as_object().erase("description");
     out.as_object().erase("tags");
+    if (!stored.value().parent.empty()) {
+        out["parent"] = short_id(stored.value().parent);
+    }
     if (!notes.empty()) {
         out["problems"] = std::move(notes);
     }
@@ -2041,7 +2102,7 @@ void register_commands(command::Registry& registry) {
     registry.add({
         .name = "asset.search",
         .description = "Searches the machine's asset library (generated and added images, "
-                       "sounds, music and model recipes, shared by every project) by words, tags "
+                       "sounds, music and models, shared by every project) by words, tags "
                        "and type. "
                        "Returns IDs with descriptions, best first; music with its bpm and key. "
                        "Search before generating.",
@@ -2181,17 +2242,19 @@ void register_commands(command::Registry& registry) {
 
     registry.add({
         .name = "asset.add",
-        .description = "Adds a project's image, sound, music or model recipe to the asset "
-                       "library, with its author and license, so other projects find it. A "
-                       "composer's track comes with its stems; music is measured for bpm and key.",
+        .description = "Adds a project's image, sound, music or model to the asset library, "
+                       "with its author and license, so other projects find it. A file taken "
+                       "from the library and edited becomes a new version of it. A composer's "
+                       "track comes with its stems; music is measured for bpm and key.",
         .capabilities = {Capability::Read, Capability::Filesystem},
         .effect = command::Effect::Read,
         .params = params_schema(
             {
-                {"path", property("string", "A .png, .bmp, .wav, .ogg, .mp3 or .model.json "
-                                            "file; a track's full mix.")},
+                {"path", property("string", "A .png, .bmp, .wav, .ogg, .mp3, .model.json or "
+                                            ".glb file; a track's full mix.")},
                 {"description", property("string", "A sentence for agents to read instead of "
-                                                   "the file.")},
+                                                   "the file. Default for a new version: the "
+                                                   "last one's.")},
                 {"tags", string_array("Words to find it by.")},
                 {"license", property("string", "Its license, such as CC0-1.0.")},
                 {"author", property("string", "Who made it.")},
@@ -2202,7 +2265,7 @@ void register_commands(command::Registry& registry) {
                 {"beat_count", integer("Music: its length in beats.", 1, 100000)},
                 {"stems", stems_property()},
             },
-            {"path", "description"}),
+            {"path"}),
         .handler = asset_add,
     });
 }

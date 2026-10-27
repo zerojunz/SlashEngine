@@ -35,3 +35,5 @@ asset.search {"type":"model"}
 {"assets":[{"description":"Pine bench for one or two","id":"edc8a0716505","size":[1.2,0.45,0.35],"tags":["prop"],"triangles":36,"type":"model"}]}
 asset.refine {"id":"edc8a071","parameters":{"length":2.4},"path":"props/long_bench.model.json","prompt":"long enough for four"}
 {"id":"55d18dff10bf","parent":"edc8a0716505","path":"props/long_bench.model.json","size":[2.4,0.45,0.35],"triangles":36}
+asset.add {"path":"props/bench.model.json"}
+{"id":"193f1c58e2f7","parent":"edc8a0716505","size":[1.2,0.45,0.45],"triangles":36,"type":"model"}
