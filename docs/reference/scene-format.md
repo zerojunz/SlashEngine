@@ -379,7 +379,9 @@ A reference must name an entity that exists in the same scene.
 | | `focus_mode` | `std::string` | `""` | Whether clicks and the keyboard or a gamepad give it [focus](#buttons) (`all`), clicks only (`click`) or nothing (`none`); `""` takes its type's: `all` for buttons, `none` for the rest |
 | | `focus_neighbor_left`, `_top`, `_right`, `_bottom` | `entity` | `null` | The control `ui_left`, `ui_up`, `ui_right` or `ui_down` moves focus to; `null` finds the closest one that way |
 | | `focus_next`, `focus_previous` | `entity` | `null` | The control `ui_focus_next` (Tab) or `ui_focus_prev` (Shift+Tab) moves focus to; `null` takes the next or previous in the tree |
-| | `layout_direction` | `std::string` | `"inherited"` | Which way it [lays out](#right-to-left-layout): `ltr`, `rtl` (anchors, offsets, containers and alignment mirrored) or `inherited` from its parent, left to right at the root |
+| | `layout_direction` | `std::string` | `"inherited"` | Which way it [lays out](#right-to-left-layout): `ltr`, `rtl` (anchors, offsets, containers and alignment mirrored), `application_locale` or `system_locale` (right to left in Arabic, Hebrew, Persian and the rest), or `inherited` from its parent, at the root as project.json's `root_node_layout_direction` says |
+| | `auto_translate_mode` | `std::string` | `"inherit"` | Whether its text, placeholder and items show [translated](#translated-text): `always`, `disabled`, or `inherit` its parent's, always at the root |
+| | `tooltip_auto_translate_mode` | `std::string` | `"inherit"` | Whether its `tooltip_text` shows translated: `always`, `disabled`, or `inherit` the control's |
 | `DragAndDrop` | `drag_data` | `json` | `null` | What [dragging the control](#tooltips-and-drag-and-drop) carries; `null`: it can't be dragged |
 | | `can_drop` | `std::vector<json>` | `[]` | What it takes when dropped on it: data matching one of these, where an object needs only the members given and anything else must be equal |
 | | `drag_preview` | `entity` | `null` | A control with no parent shown at the pointer while a drag from it goes on, even if hidden |
@@ -396,7 +398,7 @@ A reference must name an entity that exists in the same scene.
 | | `visible_characters` | `int` | `-1` | Characters shown from the start, for typing effects; -1 for all |
 | | `visible_characters_behavior` | `std::string` | `"chars_before_shaping"` | `chars_before_shaping` lays out only the visible characters; `chars_after_shaping` lays out all of them and hides the rest, so lines don't move as more show |
 | | `text_direction` | `std::string` | `"auto"` | The text's base direction: `auto` (its first letter's: right to left for Arabic or Hebrew), `ltr`, `rtl`, or `inherited` from the control's `layout_direction` |
-| | `language` | `std::string` | `""` | The text's language as a BCP 47 tag, such as `"ar"`, `"ja"` or `"zh-Hant"`, which picks [fallback fonts](#fonts) and the glyphs a font has for it |
+| | `language` | `std::string` | `""` | The text's language as a BCP 47 tag, such as `"ar"`, `"ja"` or `"zh-Hant"`, which picks [fallback fonts](#fonts) and the glyphs a font has for it; `""` is the game's locale once the project has [translations](#translated-text) |
 | `ColorRect` | `color` | `Vec4` | `[1, 1, 1, 1]` | Fills the control's rect, as [r, g, b, a] from 0 to 1 |
 | `Panel` | | | | Draws the theme's `panel` style box in the control's rect |
 | `TextureRect` | `texture` | `std::string` | `""` | Project path of a PNG, BMP or KTX2 file drawn in the rect |
@@ -462,7 +464,7 @@ A reference must name an entity that exists in the same scene.
 | | `disabled` … `shortcut_feedback` | | | As `Button`'s |
 | `CheckBox` | `text` … `language` | | | As `Button`'s, but `toggle_mode` is `true` and `alignment` `"left"`: a [check box](#check-boxes) drawn with a box before its text, or a radio button in a `button_group` |
 | `CheckButton` | `text` … `language` | | | As `CheckBox`'s, drawn with a switch after its text |
-| `OptionButton` | `items` | `std::vector<OptionButtonItem>` | `[]` | The [drop-down list](#menus)'s options: `text`, `icon`, `id` (-1 for its index), `disabled`, `separator` and `tooltip` |
+| `OptionButton` | `items` | `std::vector<OptionButtonItem>` | `[]` | The [drop-down list](#menus)'s options: `text`, `icon`, `id` (-1 for its index), `disabled`, `separator`, `tooltip` and `auto_translate_mode` (`inherit` its button's, `always` or `disabled`) |
 | | `selected` | `int` | `-1` | The option shown, by index; -1 for none. Picking one sets it |
 | | `fit_to_longest_item` | `bool` | `true` | As wide as the widest option, not only the one shown |
 | | `allow_reselect` | `bool` | `false` | Picking the option already shown emits `item_selected` again |
@@ -470,13 +472,13 @@ A reference must name an entity that exists in the same scene.
 | `MenuButton` | `items` | `std::vector<PopupMenuItem>` | `[]` | The [menu](#menus) it opens: items as `PopupMenu`'s |
 | | `switch_on_hover` | `bool` | `false` | While another menu button's menu is open, moving onto this one opens its menu instead |
 | | `text` … `language` | | | As `Button`'s, but `flat` and `toggle_mode` are `true` and `action_mode` `"press"`; it takes no focus unless `focus_mode` says so |
-| `PopupMenu` | `items` | `std::vector<PopupMenuItem>` | `[]` | The [menu](#menus)'s items: `text`, `icon`, `checkable` (`none`, `check` or `radio`), `checked`, `id` (-1 for its index), `disabled`, `separator`, `indent` and `tooltip` (shown once the pointer rests on the item) |
+| `PopupMenu` | `items` | `std::vector<PopupMenuItem>` | `[]` | The [menu](#menus)'s items: `text`, `icon`, `checkable` (`none`, `check` or `radio`), `checked`, `id` (-1 for its index), `disabled`, `separator`, `indent`, `tooltip` (shown once the pointer rests on the item) and `auto_translate_mode` (`inherit` its owner's, `always` or `disabled`) |
 | | `position` | `Vec2` | `[0, 0]` | Its top left corner in the viewport; moved to fit inside it |
 | | `visible` | `bool` | `false` | Open: set it to open the menu; closing it clears it |
 | | `hide_on_item_selection`, `hide_on_checkable_item_selection` | `bool` | `true` | Close when an item, or a checkable item, is picked |
 | | `allow_search` | `bool` | `true` | Typing the start of an item's text moves to it |
 | | `theme` | `std::string` | `""` | Project path of a `.theme.json` file to take its theme items from first |
-| | `layout_direction` | `std::string` | `"inherited"` | `inherited` (left to right), `ltr` or `rtl` |
+| | `layout_direction` | `std::string` | `"inherited"` | `inherited` (as the project's root direction), `application_locale`, `system_locale`, `ltr` or `rtl` |
 | `LineEdit` | `text` | `std::string` | `""` | The [text field](#text-fields)'s one line; line breaks show as spaces |
 | | `placeholder_text` | `std::string` | `""` | Shown, dimmed, while the text is empty |
 | | `alignment` | `std::string` | `"left"` | The text's place across the field: `left`, `center`, `right` or `fill` (as `left`) |
@@ -4928,7 +4930,13 @@ A `Label` lays out its text as Godot's does:
 ### Right-to-left layout
 
 `layout_direction` `rtl` lays a control out as if its parent were mirrored, as Godot's
-`is_layout_rtl`; `inherited` (the default) takes the parent's, and left to right at the root.
+`is_layout_rtl`; `inherited` (the default) takes the parent's. `application_locale` goes right to
+left when the game's locale is written so (Arabic, Dhivehi, Hebrew, Persian, Fula, Kurdish and
+Urdu), and `system_locale` when the player's is. At the root, `inherited` follows project.json's
+[`root_node_layout_direction`](project-format.md#internationalization), the game's locale by
+default, so a menu turns round when the player switches to Arabic;
+`force_right_to_left_layout_direction` makes everything but `ltr` right to left, to check a
+layout before a translation exists.
 
 - Anchors and offsets count from the right edge, and `grow_horizontal` `end` grows to the left:
   `offset_left` 10 and `offset_right` 110 put a control 10 pixels from its parent's right edge.
@@ -4943,6 +4951,21 @@ A `Label` lays out its text as Godot's does:
   one. `ProgressBar`'s `begin_to_end` fills from the right.
 - [examples/text-languages](../../examples/text-languages/) is a menu in Arabic laid out right
   to left.
+
+### Translated text
+
+As Godot's controls, a `Label`'s and a button's text, a `LineEdit`'s and a `TextEdit`'s
+`placeholder_text`, a tooltip and the items of option buttons, menu buttons and popup menus
+show in the game's locale through the project's [translation
+files](project-format.md#internationalization), the text as written being the message looked up.
+`auto_translate_mode` `disabled` shows a control's text and its children's as written (version
+numbers, player names), and a child's `always` translates again; an item's own mode overrides
+its owner's, and `tooltip_auto_translate_mode` the control's for its tooltip. A message with no
+translation shows as written. A text field's own text never translates. Controls whose `language`
+is `""` shape in the game's locale once the project has translations, so fonts'
+`language_support` picks the right glyphs (Japanese forms of shared Chinese characters, say).
+`ui.layout` returns the lines as shown. [examples/localization](../../examples/localization/) is
+a title menu in four languages.
 
 ### Containers
 

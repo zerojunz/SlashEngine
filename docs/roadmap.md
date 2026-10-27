@@ -903,10 +903,10 @@ Exit: an agent builds a small 3D sample end to end.
 - [ ] Networking: ENet transport, replication driven by reflection, WebSocket for web
 - [ ] XR through OpenXR
 - [ ] Localization, following Godot ([design](design.md#languages))
-  - [ ] Translation tables as CSV or gettext `.po` files, with plural forms, placeholders and a
+  - [x] Translation tables as CSV or gettext `.po` files, with plural forms, placeholders and a
         fallback chain (`es-MX`, then `es`, then the source language)
-  - [ ] Any language as the source: a game can be written in Japanese and translated to English
-  - [ ] A language setting: the player's OS language by default, changeable in a game's options
+  - [x] Any language as the source: a game can be written in Japanese and translated to English
+  - [x] A language setting: the player's OS language by default, changeable in a game's options
         menu while it runs, with per-language fonts and right-to-left layout
   - [ ] `l10n.extract`: every player-facing string in scenes and C++ (`tr("...")`) collected
         into the tables, so no text is missed
@@ -915,7 +915,7 @@ Exit: an agent builds a small 3D sample end to end.
   - [ ] `l10n.check`: missing or stale keys, placeholders that don't match, text that overflows
         its UI box in a given font, and glyphs a font lacks; run by the headless test command
         and CI
-  - [ ] Pseudo-localization: a fake language with longer, accented text that shows untranslated
+  - [x] Pseudo-localization: a fake language with longer, accented text that shows untranslated
         or clipped strings before any real translation exists
 - [ ] Video playback with dav1d (AV1)
 - [ ] Accessibility through AccessKit
@@ -1014,7 +1014,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Level geometry | CSG and grid-based tile placement | 7 | In progress: CSG shapes, paths and `GridMap` done; heightmap terrain planned |
 | LOD and culling | Generated LODs with meshoptimizer, occlusion culling | 7 | Done, imported from Godot |
 | XR | OpenXR | 8 | Planned |
-| Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | Planned |
+| Localization | CSV and `.po` translation tables, any source language, a runtime language setting, and commands to extract, draft and check translations | 8 | In progress: translation tables, the language setting, auto-translated controls and pseudo-localization are done |
 | Video playback | AV1 through dav1d | 8 | Planned |
 | Accessibility | AccessKit | 8 | Planned |
 | Storyboard | Style, world, story, design rules and decisions as typed project files that agents query and checks enforce | 5, 6 | Done: files, commands and checks, palette, texture and triangle budget checks included, model review, the project map, and the style refined from accepted assets |

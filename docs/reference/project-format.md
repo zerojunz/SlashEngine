@@ -86,6 +86,7 @@ checks it.
 | `gameplay.sources` | No | | The game's own [C++ code](#gameplay-code): folders and files relative to the project, at least one |
 | `sdks` | No | | [SDK packages](sdk-format.md) exports link: folders relative to the project, each with an `sdk.json`. `slash-cli sdk add` adds one |
 | `services` | No | | [Ad placements, products, analytics, consent, achievements and leaderboards](#services) |
+| `internationalization` | No | | [Translation files, the fallback locale, pseudo-localization and layout direction](#internationalization) |
 | `threading.max_threads` | No | `-1` | Worker threads the [job system](../concepts.md#world-entities-and-components) runs threaded systems, particles and physics on beside the main thread, 0 to 63, as Godot's `threading/worker_pool/max_threads`. `-1` is one per CPU core; `0` runs everything on the main thread, as the web does. Every count gives the same results |
 | `input` | No | Godot's `ui_*` actions | [Input actions](#input-actions) by name, each with the events that press it |
 | `input_devices.pointing.emulate_mouse_from_touch` | No | `true` | A touch also clicks the left mouse button and dragging it moves the mouse, so mouse code works on phones, as Godot's setting of the same name |
@@ -565,6 +566,63 @@ name.
 `project validate` checks every binding, naming a misspelled key, button or axis with the closest
 one. Games read keys, the mouse, touches and gamepads from SDL; gamepads connect and disconnect as
 they are plugged in, numbered from 0. A window losing focus releases everything held.
+
+## Internationalization
+
+`internationalization` holds Godot's internationalization settings: the translation files games
+read and how their text and layout follow the locale (see [`l10n.state`](commands.md#l10nstate)
+and [Translated text](scene-format.md#translated-text)):
+
+```json
+"internationalization": {
+  "locale": {
+    "translations": ["translations/menu.csv", "translations/pl.po"],
+    "fallback": "en",
+    "test": ""
+  },
+  "pseudolocalization": {"use_pseudolocalization": false, "expansion_ratio": 0.3},
+  "rendering": {"root_node_layout_direction": "application_locale"}
+}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `locale.translations` | `[]` | Translation files by project path: `.csv`, `.po` or `.mo` |
+| `locale.fallback` | `en` | The locale whose translations answer where the game's locale has none; a message neither has shows as written, so a game can be written in any language |
+| `locale.test` | `""` | A locale to run in instead of the player's, to check a translation |
+| `pseudolocalization.use_pseudolocalization` | `false` | Every translated text as a fake translation that shows what isn't translated, what gets cut off and what can't go right to left |
+| `pseudolocalization.replace_with_accents` | `true` | Letters with accents: `Start` is `Ŝŧáŕŧ` |
+| `pseudolocalization.double_vowels` | `false` | Vowels doubled: `Start` is `Staart` |
+| `pseudolocalization.fake_bidi` | `false` | The text marked right to left |
+| `pseudolocalization.override` | `false` | Every character `*`, so text that isn't looked up stands out |
+| `pseudolocalization.expansion_ratio` | `0` | Underscores around the text adding this share of its length, 0 to 1 |
+| `pseudolocalization.prefix`, `suffix` | `[`, `]` | Around every text, so cut-off ends show |
+| `pseudolocalization.skip_placeholders` | `true` | `%s`, `%d` and the other placeholders kept as they are |
+| `rendering.root_node_layout_direction` | `application_locale` | Which way root controls that inherit their direction lay out: `application_locale` (the game's locale), `system_locale` (the player's), `ltr` or `rtl` |
+| `rendering.force_right_to_left_layout_direction` | `false` | Every control right to left but those set to `ltr` |
+
+A game starts in the player's locale (the system's first preferred language, as Godot's
+`OS.get_locale`) unless `test` names one, and `l10n::set_locale` changes it while it runs. A
+locale takes the translations of the locale that matches it best and has the message (`fr`
+answers `fr_CA`, `es` before `es_AR` for `es_MX`), as Godot's `TranslationServer`. Sessions start
+in `test` or else `fallback`, never the machine's language, so their replies repeat. Exports ship
+the files, and `project validate` and exports check each one loads.
+
+The files read as Godot reads them:
+
+- CSV, as its CSV translation importer: a header of `keys` then a locale per column (columns
+  starting with `_` are left out), then a row per message. A `?context` column tells apart
+  messages written the same; a `?plural` column gives a message's plural, with its other forms in
+  the rows after it whose key is empty; a `?pluralrule` row gives a column a gettext plural rule.
+  `"` quotes a field, `""` is a quote inside one, and `\n`, `\t`, `\"` and `\\` in translations
+  stand for what they mean. A column with no valid locale is an error.
+- gettext `.po` files, as its PO loader: `msgctxt`, `msgid`, `msgid_plural`, `msgstr` and
+  `msgstr[n]`, with the header's `Language` and `Plural-Forms`; fuzzy entries are left out, and
+  plural messages need `Plural-Forms`. `.mo` files are the same compiled by `msgfmt`.
+
+Plural forms follow the file's rule, else the locale's own (Godot's table of gettext rules, such
+as Polish's three forms), else English's. Placeholders such as `%d` stay in the translated text
+for the game's code to fill.
 
 ## Services
 

@@ -1875,6 +1875,30 @@ so the editor's `move_line_marks` keeps breakpoints and gutter entries on their 
 Godot's per-line data does. `examples/text-editor` writes a letter and `examples/code-editor`
 colors, numbers, searches and scrolls code.
 
+## Localization
+
+`engine/l10n` is Godot's TranslationServer. `project.json`'s `internationalization` lists CSV,
+`.po` and `.mo` translation files, the fallback locale, a `test` locale, pseudo-localization and
+the root layout direction (`l10n::Settings`). `src/translation.cpp` reads the files as Godot's
+CSV importer and `TranslationLoaderPO` do into `l10n::Translation`s (messages by context, plural
+forms), and `PluralRules` splits a gettext rule at its `?` and `:` into tests run as
+`slash::Expression`, as Godot's. `src/locale.cpp` ports `standardize_locale`, `compare_locales`
+and the locale tables (renames, default scripts, plural rules, right-to-left languages).
+`l10n::install` keeps a world's state in its context (behind a lock, since layouts and threaded
+systems look up), reading the files through assets so they reload: games start in the player's
+locale (`l10n::preferred_locale`, from SDL), sessions in `test` or the fallback, so replies
+repeat. `l10n::tr` and `tr_n` look up a message as Godot's `TranslationDomain` (the best-scoring
+translation that has it, then the fallback's, else the source text, so any language can be the
+source), `tr` pseudolocalizes as `TranslationDomain::pseudolocalize`, and `l10n::set_locale`
+emits `translation_changed`. `ui::layout` shows controls' text, placeholders, tooltips and items
+translated by `Control.auto_translate_mode` (Godot's `can_auto_translate`, items' modes as
+`PopupMenu::_atr`), lays out by `l10n::is_layout_rtl` (Godot's `is_layout_rtl`, with
+`application_locale` and `system_locale`) and shapes text whose `language` is `""` in the locale
+once the project localizes (`l10n::text_language`), so fonts' `language_support` picks glyphs.
+Exports ship the listed files and `project validate` checks them. `l10n.state` and
+`l10n.set_locale` (`engine/command/src/l10n.cpp`) read and switch it; `examples/localization`
+translates a title menu.
+
 ## Input
 
 `engine/input` is input, as Godot's InputEvent, InputMap and Input. Events (`input::Event`: key,
@@ -2104,7 +2128,8 @@ CI rejects unformatted code and any clang-tidy finding.
   files and folder listings, child processes), `render` (the render device over SDL3's GPU API and OpenGL 3.3 / OpenGL ES 3.0 / WebGL 2,
   the software and null devices, HLSL shaders, material programs, 2D light shading, particles and 3D meshes), `asset` (asset handles, loaders, hot reload),
   `world` (EnTT world, components, scenes and prefabs, 2D and 3D trees), `input` (input events, action maps,
-  the input state and reading SDL's events), `audio` (sound files and streams, the mixer, buses
+  the input state and reading SDL's events), `l10n` (translation files, locales, plural rules,
+  lookups and pseudo-localization), `audio` (sound files and streams, the mixer, buses
   and effects, players and SDL's audio output), `services` (ads, analytics, in-app
   purchases, achievements and leaderboards, their backends and the test backend), `canvas` (sprites, `.frames.json`
   animations, `.material.json` materials, `.tileset.json` tile maps, 2D lights and shadows, CPU
