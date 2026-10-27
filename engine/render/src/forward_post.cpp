@@ -446,7 +446,7 @@ void reduce_luminance(const ForwardPostUniforms& uniforms, float previous, Lumin
             const std::uint32_t inside_x = std::min(source_width - left, kLuminanceBlock);
             const std::uint32_t inside_y = std::min(source_height - top, kLuminanceBlock);
             float average = block[0] / static_cast<float>(inside_x * inside_y);
-            if (final && uniforms.options[1] != 0) {
+            if (uniforms.options[1] != 0 && uniforms.options[2] != 0) {
                 average = slash::exp(average);
             }
             if (final) {
@@ -714,7 +714,7 @@ std::vector<PostSize> luminance_plan(std::uint32_t width, std::uint32_t height) 
 }
 
 ForwardPostUniforms luminance_uniforms(const PostProcess& post, ForwardPass pass, PostSize source,
-                                       PostSize target) {
+                                       PostSize target, bool last) {
     ForwardPostUniforms out;
     const auto width = static_cast<float>(target.width);
     const auto height = static_cast<float>(target.height);
@@ -722,7 +722,8 @@ ForwardPostUniforms luminance_uniforms(const PostProcess& post, ForwardPass pass
     out.exposure = {post.auto_exposure_scale, post.auto_exposure_min, post.auto_exposure_max,
                     std::clamp(post.auto_exposure_adjust, 0.0F, 1.0F)};
     out.source = {static_cast<float>(source.width), static_cast<float>(source.height), 0.0F, 0.0F};
-    out.options = {static_cast<std::uint32_t>(pass), post.auto_exposure_log ? 1U : 0U, 0, 0};
+    out.options = {static_cast<std::uint32_t>(pass), post.auto_exposure_log ? 1U : 0U,
+                   last ? 1U : 0U, 0};
     return out;
 }
 
