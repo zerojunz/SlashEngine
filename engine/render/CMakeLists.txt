@@ -58,6 +58,7 @@ add_library(slash_render
     src/particles3d.cpp
     src/path_trace.cpp
     src/post.cpp
+    src/ray_shadows.cpp
     src/resize.cpp
     src/shader.cpp
     src/shader_vm.cpp
@@ -74,6 +75,9 @@ add_library(slash_render
     src/volumetric_fog.cpp
     src/voxel_gi.cpp)
 add_library(slash::render ALIAS slash_render)
+# Rays decide which triangles they meet, so their math is the same on every machine.
+set_source_files_properties(src/path_trace.cpp src/ray_shadows.cpp PROPERTIES
+    COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
 
 target_include_directories(slash_render PUBLIC include)
 target_link_libraries(slash_render

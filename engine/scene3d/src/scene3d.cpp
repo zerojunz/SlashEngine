@@ -197,12 +197,15 @@ void add_lights(const world::World& world, const world::Tree3D& tree,
             shone.shadow_fade_start = light.directional_shadow_fade_start;
             shone.shadow_max_distance = light.directional_shadow_max_distance;
             shone.shadow_pancake_size = light.directional_shadow_pancake_size;
+            shone.size = light.light_angular_distance;
         } else if constexpr (std::is_same_v<T, world::OmniLight3D>) {
             shone = light_base(light, render::LightType::Omni);
+            shone.size = light.light_size;
             shone.range = light.omni_range;
             shone.attenuation = light.omni_attenuation;
         } else {
             shone = light_base(light, render::LightType::Spot);
+            shone.size = light.light_size;
             shone.range = light.spot_range;
             shone.attenuation = light.spot_attenuation;
             shone.spot_angle = light.spot_angle;
@@ -2880,16 +2883,15 @@ void Renderer::trace_voxel_gis(const world::World& world, const world::Tree3D& t
     }
 }
 
-std::optional<Frame3D>
-Renderer::prepare(const world::World& world, float width, float height, double interpolation,
-                  render::Color clear, const render::ShadowSettings& shadows, double time,
-                  const render::DepthOfFieldSettings& depth_of_field,
-                  const render::SsaoSettings& ssao, const render::SsrSettings& ssr,
-                  const render::ReflectionAtlasSettings& reflection_atlas,
-                  render::RenderMethod method, bool voxel_gi_high_quality, bool use_taa,
-                  const std::optional<render::Fsr2Scaling>& fsr2, render::DecalFilter decal_filter,
-                  const render::VolumetricFogSettings& volumetric_fog, float mesh_lod_threshold,
-                  const render::OcclusionCulling& occlusion) {
+std::optional<Frame3D> Renderer::prepare(
+    const world::World& world, float width, float height, double interpolation, render::Color clear,
+    const render::ShadowSettings& shadows, double time,
+    const render::DepthOfFieldSettings& depth_of_field, const render::SsaoSettings& ssao,
+    const render::SsrSettings& ssr, const render::ReflectionAtlasSettings& reflection_atlas,
+    render::RenderMethod method, bool voxel_gi_high_quality, bool use_taa,
+    const std::optional<render::Fsr2Scaling>& fsr2, render::DecalFilter decal_filter,
+    const render::VolumetricFogSettings& volumetric_fog, float mesh_lod_threshold,
+    const render::OcclusionCulling& occlusion, const render::RayTracing3D& ray_tracing) {
     ++frame_;
     draws_.clear();
     problems_.clear();
@@ -3048,6 +3050,7 @@ Renderer::prepare(const world::World& world, float width, float height, double i
     frame.scene.shadows = shadows;
     frame.scene.voxel_gi_high_quality = voxel_gi_high_quality;
     frame.scene.use_taa = use_taa;
+    frame.scene.ray_tracing = ray_tracing;
     frame.scene.fsr2 = fsr2;
     lights_ = frame.scene.lights.size();
     capture_time_ = time;

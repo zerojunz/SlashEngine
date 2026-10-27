@@ -1178,7 +1178,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         settings(world).voxel_gi_high_quality, settings(world).use_taa && !traced, fsr2,
         settings(world).decal_filter, settings(world).volumetric_fog,
         traced ? 0.0F : settings(world).mesh_lod_threshold,
-        traced ? render::OcclusionCulling{} : settings(world).occlusion_culling);
+        traced ? render::OcclusionCulling{} : settings(world).occlusion_culling,
+        traced ? render::RayTracing3D{} : settings(world).ray_tracing);
     if (scene) {
         scene->scene.method = settings(world).rendering_method;
         scene->scene.path_trace = options.path_trace;

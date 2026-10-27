@@ -998,6 +998,19 @@ samples summed over frames match those traced at once. Each target keeps its sum
 forward_post runs over the result. `CanvasRenderer` turns off TAA, FSR 2, occlusion culling and
 LODs when tracing. `examples/path-tracing` traces the lightmaps room.
 
+Ray tracing is SlashEngine's own (Godot 4.6 has none): project.json's `rendering.ray_tracing`
+(`render::RayTracing3D`, `Scene3D::ray_tracing`) turns on ray-traced shadows in Forward+ on
+devices whose `RenderDevice::ray_tracing()` says so, which is only the software device for now.
+`ray_shadow_slots` (`src/shadow.cpp`) gives the first `kMaxRayShadowLights` (8) shadowed lights a
+slot (`MeshLightUniforms::shadow.w`, slot + 1). After the prepass, `run_ray_shadows`
+(`src/ray_shadows.cpp`, built with `-ffp-contract=off`) puts each pixel back in the world from its
+depth and normal and traces `shadow_samples` rays a light through the path tracer's hierarchy
+(`path_blocked`), spread over the light's disk by `Light3D::size`, into `MeshMaps::ray_shadows`, which
+`ray_shadow` in `src/mesh.cpp` reads in place of the shadow maps. `mesh.hlsl`'s `add_light` is its
+twin, reading them from the screen texture's layers 2 and 3 (four lights a layer) when `screen.z`
+is set, which hardware devices will write from native ray queries. `tests/test_ray_tracing.cpp`
+checks it and `examples/ray-traced-shadows-3d` traces an avenue.
+
 TAA is Godot 4.6's `use_taa` (project.json's `rendering.anti_aliasing.quality.use_taa`,
 `Scene3D::use_taa`), in Forward+ only. `src/taa.hpp` holds what devices share: the jitter
 (`taa_jitter`, Halton bases 2 and 3 over 16 frames, `jittered`), the mesh passes' camera with the
