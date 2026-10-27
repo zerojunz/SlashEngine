@@ -151,7 +151,7 @@ struct MeshSceneUniforms {
     // The target's width and height in pixels, then 1 when the screen texture's layers from 2 on
     // hold the frame's ray-traced shadows (a light's visibility a channel, four lights a layer),
     // then 1 when the frame's opaque pixels take their ambient light from MeshMaps::gi (the
-    // software device only, for now).
+    // screen texture's layer 4 on the GPU).
     Float4 screen{};
     // The camera's view-projection without TAA's jitter: its x, y and w rows, from which decals
     // work out how far their textures move across a pixel.
