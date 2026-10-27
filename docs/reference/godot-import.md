@@ -444,8 +444,7 @@ does. [examples/import-godot-3d](../../examples/import-godot-3d/) imports a cour
 - A `WorldEnvironment`'s `Environment` sets its `WorldEnvironment`'s fields of the same names,
   its `Sky`'s `radiance_size` is `sky_radiance_size` (`3` is `256`), and the sky's
   `ProceduralSkyMaterial`, `PhysicalSkyMaterial` or `PanoramaSkyMaterial` becomes the component
-  of the same name on its entity. Its `volumetric_fog_gi_inject` is reported, as VoxelGIs don't
-  light volumetric fog yet.
+  of the same name on its entity.
 - A `WorldEnvironment`'s `camera_attributes` and a `Camera3D`'s `attributes`, when they are a
   `CameraAttributesPractical`, become the component of the same name on its entity, depth of
   field included. A `CameraAttributesPhysical` is reported.

@@ -18,14 +18,16 @@
 #define SHADOW_UNIFORMS register(b1)
 #define LIGHTS_BUFFER register(t2)
 #define CLUSTERS_BUFFER register(t3)
-#define SOURCE_BUFFER register(t4)
-#define TARGET_BUFFER register(u5)
+#define ITEMS_BUFFER register(t4)
+#define SOURCE_BUFFER register(t5)
+#define TARGET_BUFFER register(u6)
 #else
 #define FOG_UNIFORMS register(b0, space2)
 #define SHADOW_UNIFORMS register(b1, space2)
-#define LIGHTS_BUFFER register(t3, space0)
-#define CLUSTERS_BUFFER register(t4, space0)
-#define SOURCE_BUFFER register(t5, space0)
+#define LIGHTS_BUFFER register(t4, space0)
+#define CLUSTERS_BUFFER register(t5, space0)
+#define ITEMS_BUFFER register(t6, space0)
+#define SOURCE_BUFFER register(t7, space0)
 #define TARGET_BUFFER register(u0, space1)
 #endif
 
@@ -39,9 +41,10 @@ struct Light {
     float4 shadow;    // its shadow slot or -1, 1 when baked, its volumetric fog energy
 };
 
-// A FogVolume (src/volumetric_fog.hpp's FogVolumeUniforms).
+// A FogVolume (src/volumetric_fog.hpp's FogVolumeUniforms), kFogVolumeItems float4s of the
+// frame's items.
 struct Volume {
-    float4x4 to_local; // the world to the volume's space
+    float4 to_local[4]; // the world to the volume's space, a column each
     float4 position;   // its place in the world, then its shape (Godot's RS::FogVolumeShape)
     float4 size;       // its size (twice the froxels for a world shape), then 1 for a FogMaterial
     int4 corner;       // the first froxel it fills
@@ -51,7 +54,8 @@ struct Volume {
     float4 fade;       // the edge fade
 };
 
-static const uint kMaxFogVolumes = 32u;
+static const uint kFogVolumeItems = 11u;
+static const uint kFogVoxelGIItems = 15u;
 
 static const uint kPassDensity = 0u;
 static const uint kPassFilterX = 1u;
@@ -73,8 +77,8 @@ cbuffer Fog : FOG_UNIFORMS {
     float4x4 to_previous; // the camera's space to the frame before's
     float4 sky_rows[3];   // the world to the sky's space, a row each
     Light lights[8];      // the directional lights
-    uint4 volume_count;   // how many fog volumes
-    Volume volumes[kMaxFogVolumes];
+    uint4 items;          // how many fog volumes, then VoxelGIs, fog_items holds
+    float4 voxel_gi;      // gi_inject
 };
 
 struct DirectionalShadow {
@@ -105,10 +109,16 @@ Texture2D<float4> positional_atlas : register(t1, space0);
 TextureCube<float4> radiance_map : register(t2, space0);
 SamplerState directional_sampler : register(s0, space0);
 SamplerState positional_sampler : register(s1, space0);
+Texture2D<float4> voxel_gi_atlas : register(t3, space0);
 SamplerState radiance_sampler : register(s2, space0);
+SamplerState voxel_gi_sampler : register(s3, space0);
 
 StructuredBuffer<Light> clustered_lights : LIGHTS_BUFFER;
 StructuredBuffer<uint> clusters : CLUSTERS_BUFFER;
+// The frame's fog volumes (kFogVolumeItems float4s each), then the VoxelGIs whose light it takes
+// (kFogVoxelGIItems each, as mesh.hlsl's VoxelGI: three rows from the world to its cells, its
+// size and levels, its energy and the rest, then each level's place in voxel_gi_atlas).
+StructuredBuffer<float4> fog_items : ITEMS_BUFFER;
 StructuredBuffer<float4> source : SOURCE_BUFFER;
 RWStructuredBuffer<float4> target : TARGET_BUFFER;
 
@@ -263,11 +273,82 @@ uint range_mask(uint word, uint first, uint end) {
 // What the fog volumes add to a froxel at id, whose point is world, as Godot's volumetric_fog.glsl
 // adds each into its density, light and emissive maps: the density in 1024ths, then the scattering
 // and emission, each a channel's units as Godot packs them into 11, 11 and 10 bits, held there.
+// The k-th float4 of the index-th VoxelGI in fog_items.
+float4 voxel_gi_item(uint index, uint k) {
+    return fog_items[(items.x * kFogVolumeItems) + (index * kFogVoxelGIItems) + k];
+}
+
+// A VoxelGI's texture at one level, as a linear sampler that clamps reads a 3D texture: bilinear
+// in the two slices around uvw, each read inside its own tile, then between them (mesh.hlsl's
+// voxel_gi_level).
+float4 voxel_gi_level(uint index, uint level, float3 uvw) {
+    float3 extent = max(floor(voxel_gi_item(index, 3u).xyz / (float)(1u << level)), 1.0);
+    float4 place = voxel_gi_item(index, 5u + level);
+    uint columns = (uint)place.z;
+    float x = clamp(uvw.x * extent.x, 0.5, extent.x - 0.5);
+    float y = clamp(uvw.y * extent.y, 0.5, extent.y - 0.5);
+    float z = clamp(uvw.z * extent.z - 0.5, 0.0, extent.z - 1.0);
+    float z0 = floor(z);
+    uint width;
+    uint height;
+    voxel_gi_atlas.GetDimensions(width, height);
+    float2 size = float2((float)width, (float)height);
+    uint low = (uint)z0;
+    uint high = (uint)min(z0 + 1.0, extent.z - 1.0);
+    float2 at_low = float2(place.x + (float)(low % columns) * extent.x + x,
+                           place.y + (float)(low / columns) * extent.y + y);
+    float2 at_high = float2(place.x + (float)(high % columns) * extent.x + x,
+                            place.y + (float)(high / columns) * extent.y + y);
+    float4 a = voxel_gi_atlas.SampleLevel(voxel_gi_sampler, at_low / size, 0.0);
+    float4 b = voxel_gi_atlas.SampleLevel(voxel_gi_sampler, at_high / size, 0.0);
+    return a + (b - a) * (z - z0);
+}
+
+// The light a VoxelGI gives the fog at a point, as volumetric_fog_process.glsl's gi_inject: every
+// level at the point, front to back, times the VoxelGI's energy; none outside its box.
+float3 fog_voxel_gi_light(uint index, float3 world) {
+    float4 row_x = voxel_gi_item(index, 0u);
+    float4 row_y = voxel_gi_item(index, 1u);
+    float4 row_z = voxel_gi_item(index, 2u);
+    float3 position = float3(dot(row_x.xyz, world) + row_x.w, dot(row_y.xyz, world) + row_y.w,
+                             dot(row_z.xyz, world) + row_z.w);
+    float4 size = voxel_gi_item(index, 3u);
+    float3 bounds = size.xyz;
+    if (any(position < 0.0) || any(position >= bounds)) {
+        return (float3)0.0;
+    }
+    float3 uvw = position / bounds;
+    float4 light = (float4)0.0;
+    uint levels = (uint)size.w;
+    for (uint level = 0u; level < levels; ++level) {
+        light += (1.0 - light.a) * voxel_gi_level(index, level, uvw);
+    }
+    return light.rgb * voxel_gi_item(index, 4u).x;
+}
+
 struct VolumeSums {
     int density;
     uint3 scattering;
     uint3 emission;
 };
+
+// The index-th fog volume in fog_items.
+Volume load_volume(uint index) {
+    uint at = index * kFogVolumeItems;
+    Volume v;
+    v.to_local[0] = fog_items[at];
+    v.to_local[1] = fog_items[at + 1u];
+    v.to_local[2] = fog_items[at + 2u];
+    v.to_local[3] = fog_items[at + 3u];
+    v.position = fog_items[at + 4u];
+    v.size = fog_items[at + 5u];
+    v.corner = asint(fog_items[at + 6u]);
+    v.corner_end = asint(fog_items[at + 7u]);
+    v.albedo = fog_items[at + 8u];
+    v.glow = fog_items[at + 9u];
+    v.fade = fog_items[at + 10u];
+    return v;
+}
 
 VolumeSums fog_volumes(uint3 id, float3 world) {
     VolumeSums sums;
@@ -276,15 +357,17 @@ VolumeSums fog_volumes(uint3 id, float3 world) {
     sums.emission = (uint3)0u;
     const uint3 limits = uint3(2047u, 2047u, 1023u);
     int3 at = (int3)id;
-    for (uint i = 0u; i < volume_count.x; ++i) {
-        if (any(at < volumes[i].corner.xyz) || any(at >= volumes[i].corner_end.xyz)) {
+    for (uint i = 0u; i < items.x; ++i) {
+        Volume volume = load_volume(i);
+        if (any(at < volume.corner.xyz) || any(at >= volume.corner_end.xyz)) {
             continue;
         }
-        float3 local_pos = mul(volumes[i].to_local, float4(world, 1.0)).xyz;
-        float3 full = volumes[i].size.xyz;
+        float3 local_pos = (volume.to_local[0] * world.x + volume.to_local[1] * world.y +
+                            volume.to_local[2] * world.z + volume.to_local[3]).xyz;
+        float3 full = volume.size.xyz;
         float3 half_size = full / 2.0;
-        uint shape = (uint)volumes[i].position.w;
-        bool material = volumes[i].size.w != 0.0;
+        uint shape = (uint)volume.position.w;
+        bool material = volume.size.w != 0.0;
         float sdf = -1.0;
         if (shape == 0u) {
             float k0 = length(local_pos / half_size);
@@ -317,12 +400,12 @@ VolumeSums fog_volumes(uint3 id, float3 world) {
         float3 albedo = (float3)1.0;
         float3 emission = (float3)0.0;
         if (material) {
-            float height = world.y - volumes[i].position.y;
-            density = volumes[i].albedo.w * clamp(exp2(-volumes[i].glow.w * height), 0.0, 1.0);
+            float height = world.y - volume.position.y;
+            density = volume.albedo.w * clamp(exp2(-volume.glow.w * height), 0.0, 1.0);
             float edge = clamp(-2.0 * sdf / min(min(full.x, full.y), full.z), 0.0, 1.0);
-            density *= edge > 0.0 ? pow(edge, volumes[i].fade.x) : 0.0;
-            albedo = volumes[i].albedo.rgb;
-            emission = volumes[i].glow.rgb;
+            density *= edge > 0.0 ? pow(edge, volume.fade.x) : 0.0;
+            albedo = volume.albedo.rgb;
+            emission = volume.glow.rgb;
         }
         density *= cull_mask;
         if (!(abs(density) > 0.001)) {
@@ -461,6 +544,11 @@ float4 density_pass(uint3 id) {
                 float phase = henyey_greenstein(dot(normalize(to_light), view_dir), g);
                 total_light += light.color.rgb * (attenuation * shadow * phase * energy);
             }
+        }
+
+        uint voxel_gi_count = min((uint)voxel_gi.x, 8u);
+        for (uint i = 0u; i < voxel_gi_count; ++i) {
+            total_light += fog_voxel_gi_light(i, world) * voxel_gi.x;
         }
     }
 
