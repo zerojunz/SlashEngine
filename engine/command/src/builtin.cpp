@@ -1941,20 +1941,66 @@ json::Value bounds_value(std::span<const Vec2> points) {
     return rounded(json::Array{low.x, low.y, high.x - low.x, high.y - low.y});
 }
 
-// particles.eval for a CPUParticles3D: its live particles in the world, in meters.
-Reply particles_eval_3d(const world::World& world, entt::entity entity,
-                        const world::CPUParticles3D& emitter, const json::Value& params) {
+// A GPUParticles3D's particles as particles.eval lists them: CUSTOM's age is a share of the
+// system's lifetime.
+std::vector<scene3d::Particle3D> eval_particles(std::span<const render::Particle3D> from,
+                                                float lifetime) {
+    std::vector<scene3d::Particle3D> out;
+    out.reserve(from.size());
+    for (const render::Particle3D& p : from) {
+        scene3d::Particle3D particle;
+        particle.transform = {.x = {p.x.x, p.x.y, p.x.z},
+                              .y = {p.y.x, p.y.y, p.y.z},
+                              .z = {p.z.x, p.z.y, p.z.z},
+                              .origin = {p.origin.x, p.origin.y, p.origin.z}};
+        particle.velocity = p.velocity;
+        particle.angle = p.custom.x;
+        particle.color = p.color;
+        particle.age = p.custom.y * lifetime;
+        particle.lifetime = p.custom.w * lifetime;
+        particle.frame = p.custom.z;
+        out.push_back(particle);
+    }
+    return out;
+}
+
+// particles.eval for a CPUParticles3D or GPUParticles3D: its live particles in the world, in
+// meters.
+Reply particles_eval_3d(Session& session, entt::entity entity, const json::Value& params) {
+    const world::World& world = session.world();
     const std::string id = text(params, "id");
     const world::Affine3D transform = world::Tree3D(world).global(entity);
     const json::Value* time = params.find("time");
     const json::Value* seconds = params.find("tick_seconds");
     const double tick_seconds = seconds != nullptr ? seconds->as_double() : kDefaultTickSeconds;
-    std::vector<scene3d::Particle3D> particles =
-        time != nullptr
-            ? scene3d::simulate(emitter, transform, scene3d::particle_seed(id, emitter.seed),
-                                time->as_double(), tick_seconds)
-            : scene3d::particles_3d(world, entity);
-    if (emitter.local_coords) {
+    std::vector<scene3d::Particle3D> particles;
+    bool local_coords = false;
+    if (const auto* emitter = world.ecs().try_get<world::CPUParticles3D>(entity)) {
+        local_coords = emitter->local_coords;
+        particles = time != nullptr ? scene3d::simulate(*emitter, transform,
+                                                        scene3d::particle_seed(id, emitter->seed),
+                                                        time->as_double(), tick_seconds)
+                                    : scene3d::particles_3d(world, entity);
+    } else {
+        const auto& gpu = world.ecs().get<world::GPUParticles3D>(entity);
+        local_coords = gpu.local_coords;
+        render::ParticleProcess3D process;
+        if (!gpu.process_material.empty()) {
+            auto loaded = session.assets().load<canvas::ProcessMaterial>(gpu.process_material);
+            if (!loaded) {
+                return param_error(code::kInvalidArgument, "/id",
+                                   quoted(id) + "'s process_material: " + loaded.error().message);
+            }
+            process = loaded.value()->space;
+        }
+        const float lifetime = std::max(gpu.lifetime, 0.001F);
+        particles =
+            eval_particles(time != nullptr ? scene3d::simulate_gpu(gpu, transform, process, id,
+                                                                   time->as_double(), tick_seconds)
+                                           : scene3d::gpu_particles_3d(world, entity, process),
+                           lifetime);
+    }
+    if (local_coords) {
         for (scene3d::Particle3D& particle : particles) {
             particle.transform = transform * particle.transform;
             particle.velocity = transform.basis(particle.velocity);
@@ -2010,11 +2056,12 @@ Reply particles_eval(Session& session, const json::Value& params) {
     const auto* emitter = world.ecs().try_get<world::CPUParticles2D>(entity);
     const auto* gpu = world.ecs().try_get<world::GPUParticles2D>(entity);
     if (emitter == nullptr && gpu == nullptr) {
-        if (const auto* emitter_3d = world.ecs().try_get<world::CPUParticles3D>(entity)) {
-            return particles_eval_3d(world, entity, *emitter_3d, params);
+        if (world.ecs().any_of<world::CPUParticles3D, world::GPUParticles3D>(entity)) {
+            return particles_eval_3d(session, entity, params);
         }
         return param_error(code::kInvalidParams, "/id",
-                           quoted(id) + " has no CPUParticles2D, GPUParticles2D or CPUParticles3D");
+                           quoted(id) + " has no CPUParticles2D, GPUParticles2D, CPUParticles3D or "
+                                        "GPUParticles3D");
     }
     // Where it is after its parents.
     const world::Transform2D transform = world::Tree2D(world).global(entity);
@@ -2047,11 +2094,11 @@ Reply particles_eval(Session& session, const json::Value& params) {
         if (time != nullptr) {
             render::ParticleProcess process;
             if (!gpu->process_material.empty()) {
-                auto loaded = session.assets().load<render::ParticleProcess>(gpu->process_material);
+                auto loaded = session.assets().load<canvas::ProcessMaterial>(gpu->process_material);
                 if (!loaded) {
                     return Reply::failure(code::kInvalidArgument, loaded.error().message);
                 }
-                process = *loaded.value();
+                process = loaded.value()->flat;
             }
             particles = canvas::simulate(*gpu, process, transform, id, time->as_double(),
                                          tick_seconds, want);
@@ -6957,7 +7004,8 @@ void register_builtin_commands(Registry& registry) {
     particles_tick["maximum"] = 1;
     registry.add({
         .name = "particles.eval",
-        .description = "Returns a CPUParticles2D's, GPUParticles2D's or CPUParticles3D's live "
+        .description = "Returns a CPUParticles2D's, GPUParticles2D's, CPUParticles3D's or "
+                       "GPUParticles3D's live "
                        "particles: how many, their bounds [x, y, w, h] in the world ([x, y, z, w, "
                        "h, d] in 3D; and their trails') and, with list, each one. A check without "
                        "a screenshot.",
@@ -6965,8 +7013,8 @@ void register_builtin_commands(Registry& registry) {
         .effect = Effect::Read,
         .params = params_schema(
             {
-                {"id", id_property("An entity with a CPUParticles2D, GPUParticles2D or "
-                                   "CPUParticles3D.")},
+                {"id", id_property("An entity with a CPUParticles2D, GPUParticles2D, "
+                                   "CPUParticles3D or GPUParticles3D.")},
                 {"time", std::move(particles_time)},
                 {"tick_seconds", std::move(particles_tick)},
                 {"list", property("boolean", "Also return each particle. Default false.")},

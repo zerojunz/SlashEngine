@@ -578,6 +578,62 @@ public:
         return std::vector<Particle>(std::size_t{it->second.amount} * it->second.trail);
     }
 
+    // 3D systems are checked as every device checks them, and run nothing.
+    Result<Particles3DId> create_particles_3d(std::uint32_t amount) override {
+        // The base device's store checks the amount as every device does.
+        auto made = RenderDevice::create_particles_3d(amount);
+        if (made) {
+            particles_3d_[made.value()] = amount;
+        }
+        return made;
+    }
+
+    void destroy_particles_3d(Particles3DId particles) override {
+        RenderDevice::destroy_particles_3d(particles);
+        particles_3d_.erase(particles);
+    }
+
+    Result<void> process_particles_3d(Particles3DId particles, const ParticleProcess3D& /*process*/,
+                                      std::span<const ParticleStep3D> /*steps*/) override {
+        if (!particles_3d_.contains(particles)) {
+            return make_error(ErrorCode::NotFound, "no such 3D particle system");
+        }
+        return {};
+    }
+
+    Result<void> fill_particle_mesh(Particles3DId particles, MeshId mesh,
+                                    std::span<const Vertex3D> source,
+                                    const ParticleMeshDraw3D& /*draw*/) override {
+        const auto it = particles_3d_.find(particles);
+        if (it == particles_3d_.end()) {
+            return make_error(ErrorCode::NotFound, "no such 3D particle system");
+        }
+        if (in_frame_) {
+            return detail::frame_in_progress("fill_particle_mesh");
+        }
+        const auto counts = meshes_.find(mesh);
+        if (counts == meshes_.end()) {
+            return detail::unknown_mesh(mesh);
+        }
+        if (counts->second.vertices != std::size_t{it->second} * source.size()) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a particle mesh needs the system's amount times the draw pass's "
+                              "vertices");
+        }
+        return {};
+    }
+
+    Result<std::vector<Particle3D>> read_particles_3d(Particles3DId particles) override {
+        if (in_frame_) {
+            return detail::frame_in_progress("read_particles_3d");
+        }
+        const auto it = particles_3d_.find(particles);
+        if (it == particles_3d_.end()) {
+            return make_error(ErrorCode::NotFound, "no such 3D particle system");
+        }
+        return std::vector<Particle3D>(it->second);
+    }
+
     Result<MeshId> create_mesh(std::span<const Vertex3D> vertices,
                                std::span<const std::uint32_t> indices,
                                std::span<const std::span<const std::uint32_t>> lods) override {
@@ -816,6 +872,7 @@ private:
     };
     std::unordered_map<ParticlesId, Shape> particles_;
     std::uint32_t next_particles_ = 1;
+    std::unordered_map<Particles3DId, std::uint32_t> particles_3d_; // amounts
     struct Counts {
         std::size_t vertices = 0;
         std::vector<std::size_t> triangles; // the mesh's, then each LOD's
