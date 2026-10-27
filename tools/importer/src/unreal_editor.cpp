@@ -278,17 +278,12 @@ std::string_view export_script() {
 
 std::vector<std::string> export_command(const Editor& editor, const fs::path& project,
                                         const fs::path& script) {
-    return {editor.program,
-            project.generic_string(),
-            "-run=pythonscript",
-            "-script=" + script.generic_string(),
-            "-EnablePlugins=PythonScriptPlugin,GLTFExporter",
-            "-unattended",
-            "-nosplash",
-            "-nopause",
-            "-nosound",
-            "-stdout",
-            "-FullStdOutLogOutput"};
+    return {editor.program, project.generic_string(), "-run=pythonscript",
+            "-script=" + script.generic_string(), "-EnablePlugins=PythonScriptPlugin,GLTFExporter",
+            // Commandlets start no renderer otherwise, and the glTF exporter bakes materials
+            // with one.
+            "-AllowCommandletRendering", "-unattended", "-nosplash", "-nopause", "-nosound",
+            "-stdout", "-FullStdOutLogOutput"};
 }
 
 Result<json::Value> run_export(const Editor& editor, const fs::path& project, const fs::path& work,
