@@ -601,8 +601,8 @@ public:
     // How many samples a pixel of the target has summed over its path-traced frames
     // (Scene3D::path_trace) since they started over; 0 on a device that doesn't trace paths.
     [[nodiscard]] virtual std::uint32_t path_samples(TextureId /*target*/) const { return 0; }
-    // Whether it traces rays for a frame's ray-traced effects (Scene3D::ray_tracing); one that
-    // doesn't draws them the raster way.
+    // Whether it traces rays for a frame's ray-traced effects (Scene3D::ray_tracing) and paths
+    // (Scene3D::path_trace); one that doesn't draws them the raster way.
     [[nodiscard]] virtual bool ray_tracing() const { return false; }
     // Scales source, a render target, over target, a larger one made scaled_into, with MetalFX's
     // spatial scaler, outside any frame. Its colors are taken as they are drawn, not linear.

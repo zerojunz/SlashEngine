@@ -39,6 +39,7 @@
 #include "particles_process_3d_shaders.hpp"
 #include "particles_process_shaders.hpp"
 #include "particles_sort_3d_shaders.hpp"
+#include "path_trace.hpp"
 #include "post_shaders.hpp"
 #include "post_shading.hpp"
 #include "radiance_shaders.hpp"
@@ -71,6 +72,7 @@
 #include <cstdint>
 #include <cstring>
 #include <initializer_list>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -1544,6 +1546,28 @@ public:
     }
 
     Result<bool> begin_frame(const Frame& frame) override {
+        if (!in_frame_ && rays_ != nullptr && frame.scene && frame.scene->path_trace &&
+            !frame.scene->capture) {
+            // A path-traced frame on a device that traces rays: its paths stand for its meshes
+            // and their effects, in Forward+, so its world goes through the post passes as the
+            // software device's does.
+            Frame traced = frame;
+            Scene3D& scene = *traced.scene;
+            scene.method = RenderMethod::ForwardPlus;
+            scene.ssao.enabled = false;
+            scene.ssr.enabled = false;
+            scene.volumetric_fog.enabled = false;
+            scene.ray_tracing = {};
+            scene.use_taa = false;
+            scene.fsr2.reset();
+            scene.post.dof_far = false;
+            scene.post.dof_near = false;
+            return begin_scene_frame(traced);
+        }
+        return begin_scene_frame(frame);
+    }
+
+    Result<bool> begin_scene_frame(const Frame& frame) {
         if (in_frame_) {
             return frame_in_progress("begin_frame");
         }
@@ -1637,6 +1661,7 @@ public:
         // The sky and meshes draw at FSR 2's render size, the post passes at the frame's.
         const auto [scene_width, scene_height] = scene_size(frame, width, height);
         traced_ = false;
+        path_traced_ = rays_ != nullptr && frame.scene && frame.scene->path_trace.has_value();
         if (frame.scene && frame.scene->method == RenderMethod::ForwardPlus) {
             if (auto ready =
                     prepare_forward(format, width, height, frame.scene->post.glow,
@@ -1653,7 +1678,7 @@ public:
                 }
             }
             traced_ = traces_rays(*frame.scene);
-            if (uses_prepass(*frame.scene) || traced_) {
+            if (uses_prepass(*frame.scene) || traced_ || path_traced_) {
                 if (auto ready = prepare_prepass(scene_width, scene_height); !ready) {
                     SDL_CancelGPUCommandBuffer(commands);
                     return ready.error();
@@ -1711,10 +1736,20 @@ public:
                     return ready.error();
                 }
             }
-            if (traced_) {
+            if (traced_ || path_traced_) {
                 if (auto ready = prepare_ray_shadows(scene_width, scene_height); !ready) {
                     SDL_CancelGPUCommandBuffer(commands);
                     return ready.error();
+                }
+            }
+            if (path_traced_) {
+                if (auto ready = prepare_path_background(scene_width, scene_height); !ready) {
+                    SDL_CancelGPUCommandBuffer(commands);
+                    return ready.error();
+                }
+                if (auto depth = depth_target(scene_width, scene_height); !depth) {
+                    SDL_CancelGPUCommandBuffer(commands);
+                    return depth.error();
                 }
             }
         } else if (frame.scene && post_processes(frame.scene->post)) {
@@ -2030,7 +2065,9 @@ public:
         const bool world = meshes || capture || (frame_.scene && sky_draws(*frame_.scene)) ||
                            (forward && (uses_dof(frame_.scene->post) || uses_fsr2(*frame_.scene)));
         const bool post = !forward && frame_.scene && post_processes(frame_.scene->post);
-        if (world) {
+        if (world && path_traced_) {
+            draw_paths(commands, *frame_.scene);
+        } else if (world) {
             draw_meshes(commands, *frame_.scene, meshes ? &*shadow_plan_ : nullptr);
         }
         // TAA blends frames that draw meshes; one without starts it again.
@@ -4203,6 +4240,216 @@ private:
         return {};
     }
 
+    [[nodiscard]] std::uint32_t path_samples(TextureId target) const override {
+        for (const PathState& state : path_states_) {
+            if (state.target == target) {
+                return state.samples;
+            }
+        }
+        return 0;
+    }
+
+    // The copy of a path-traced frame's sky (or clear color) its paths that meet nothing from the
+    // camera show, at width x height.
+    Result<void> prepare_path_background(std::uint32_t width, std::uint32_t height) {
+        if (path_background_.texture != nullptr && path_background_.width == width &&
+            path_background_.height == height) {
+            return {};
+        }
+        if (path_background_.texture != nullptr) {
+            pending_release_.push_back(std::exchange(path_background_.texture, nullptr));
+        }
+        auto texture = pass_texture(width, height, kHdrFormat, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET, 1,
+                                    "the paths' background");
+        if (!texture) {
+            return texture.error();
+        }
+        path_background_ = {.texture = texture.value(), .width = width, .height = height};
+        return {};
+    }
+
+    // A path-traced frame's world: the sky (or the clear color), then the paths traced through
+    // the frame's draws on top, their samples added to the target's since what they see last
+    // changed, as the software device's trace_paths adds them. Where the rays fail, the sky
+    // alone.
+    void draw_paths(SDL_GPUCommandBuffer* commands, const Scene3D& scene) {
+        if (radiance_draws_) {
+            draw_radiance(commands, scene);
+        }
+        SDL_GPUTexture* world = world_texture(scene);
+        SDL_GPUColorTargetInfo color{};
+        color.texture = world;
+        color.clear_color = world_clear(scene);
+        color.load_op = SDL_GPU_LOADOP_CLEAR;
+        color.store_op = SDL_GPU_STOREOP_STORE;
+        SDL_GPUDepthStencilTargetInfo depth{};
+        depth.texture = depth_;
+        depth.clear_depth = 0.0F;
+        depth.load_op = SDL_GPU_LOADOP_CLEAR;
+        depth.store_op = SDL_GPU_STOREOP_DONT_CARE;
+        depth.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
+        depth.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
+        depth.cycle = true;
+        SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(commands, &color, 1, &depth);
+        if (sky_draws(scene)) {
+            const SkyUniforms sky = sky_uniforms(scene, scene_width_, scene_height_, {});
+            SDL_PushGPUFragmentUniformData(commands, 0, &sky,
+                                           static_cast<std::uint32_t>(sizeof(sky)));
+            const SDL_GPUTextureSamplerBinding texture = binding(sky_texture(scene.sky), true);
+            SDL_BindGPUGraphicsPipeline(pass, sky_pipeline(world_format(scene, frame_format_)));
+            SDL_BindGPUFragmentSamplers(pass, 0, &texture, 1);
+            SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
+        }
+        SDL_EndGPURenderPass(pass);
+        if (mesh_draws_.empty()) {
+            return;
+        }
+        copy_texture(commands, world, path_background_.texture);
+
+        // What the paths see, which the target's sums are kept for.
+        const Float4 clear = forward_clear(frame_.clear);
+        const PathScene path = build_path_scene(scene, {}, scene_width_, scene_height_, clear);
+        std::uint64_t key = path_scene_key(path);
+        const auto hash = [&key](const auto& value) {
+            std::array<unsigned char, sizeof(value)> bytes{};
+            std::memcpy(bytes.data(), &value, sizeof(value));
+            for (const unsigned char byte : bytes) {
+                key ^= byte;
+                key *= 0x100000001B3ULL;
+            }
+        };
+        std::vector<RayDraw> draws = ray_draws(true);
+        for (const RayDraw& draw : draws) {
+            hash(draw.mesh);
+            hash(draw.version);
+            hash(draw.first_index);
+            hash(draw.index_count);
+            hash(draw.transform);
+            hash(draw.layers);
+            hash(draw.shadows);
+            hash(draw.cull);
+            hash(draw.surface);
+            for (const RayTexture& texture : draw.textures) {
+                hash(reinterpret_cast<std::uintptr_t>(texture.texture));
+                hash(texture.nearest);
+                hash(texture.repeat);
+            }
+        }
+        PathState* state = nullptr;
+        for (PathState& kept : path_states_) {
+            if (kept.target == frame_.target) {
+                state = &kept;
+            }
+        }
+        if (state == nullptr) {
+            state = &path_states_.emplace_back(PathState{.target = frame_.target});
+        }
+        const bool restart = state->key != key || state->samples == 0;
+        if (restart) {
+            state->key = key;
+            state->samples = 0;
+        }
+        const PathTrace3D settings = scene.path_trace.value_or(PathTrace3D{});
+        const std::uint32_t samples =
+            std::min(settings.samples, std::numeric_limits<std::uint32_t>::max() - state->samples);
+
+        const MeshSceneUniforms uniforms = mesh_scene_uniforms(scene);
+        const RayLighting lighting{.lights = path.lights,
+                                   .ambient = path.ambient,
+                                   .sky = path.environment_sky,
+                                   .to_sky = path.to_sky,
+                                   .sky_energy = uniforms.sky[2],
+                                   .sky_share = path.sky_share};
+        const RayWork work{.lights = {},
+                           .occlusion = std::nullopt,
+                           .reflection = std::nullopt,
+                           .gi = std::nullopt,
+                           .paths = RayPaths{.target = static_cast<std::uint64_t>(frame_.target),
+                                             .restart = restart,
+                                             .first = state->samples,
+                                             .samples = samples,
+                                             .bounces = path.bounces},
+                           .lighting = &lighting};
+        SDL_GPUTexture* environment = radiance_used(scene) ? radiance_.filtered : no_radiance_;
+        if (auto traced =
+                rays_->trace(commands, draws, work,
+                             ray_shadow_frame(scene, multiply(scene.projection, scene.camera),
+                                              scene_width_, scene_height_),
+                             {.depth = prepass_.depth,
+                              .normals = prepass_.normals,
+                              .outputs = ray_shadows_.textures,
+                              .white = white_,
+                              .environment = environment,
+                              .background = path_background_.texture});
+            !traced) {
+            if (!ray_failure_logged_) {
+                log::warn("tracing paths failed; the frame shows its sky",
+                          {{"error", traced.error().message}});
+                ray_failure_logged_ = true;
+            }
+            state->samples = 0;
+            return;
+        }
+        state->samples += samples;
+        copy_texture(commands, ray_shadows_.textures[3], world);
+    }
+
+    // Copies a texture's first level into another of its size and format, at the frame's size.
+    void copy_texture(SDL_GPUCommandBuffer* commands, SDL_GPUTexture* from_texture,
+                      SDL_GPUTexture* to_texture) const {
+        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+        const SDL_GPUTextureLocation from{
+            .texture = from_texture, .mip_level = 0, .layer = 0, .x = 0, .y = 0, .z = 0};
+        const SDL_GPUTextureLocation to{
+            .texture = to_texture, .mip_level = 0, .layer = 0, .x = 0, .y = 0, .z = 0};
+        SDL_CopyGPUTextureToTexture(copy, &from, &to, scene_width_, scene_height_, 1, false);
+        SDL_EndGPUCopyPass(copy);
+    }
+
+    // The frame's draws as rays meet them; shaded, with what shades what rays from the camera's
+    // side meet (their surfaces and textures).
+    std::vector<RayDraw> ray_draws(bool shaded) {
+        std::vector<RayDraw> draws;
+        draws.reserve(mesh_draws_.size());
+        for (std::size_t i = 0; i < mesh_draws_.size(); ++i) {
+            const MeshDraw& draw = mesh_draws_[i];
+            const MeshBatch& batch = mesh_batches_[i];
+            RayDraw& ray = draws.emplace_back();
+            ray = {.mesh = static_cast<std::uint64_t>(draw.mesh),
+                   .version = batch.version,
+                   .vertices = batch.vertices,
+                   .indices = batch.indices,
+                   .vertex_count = batch.vertex_count,
+                   .first_index = batch.range.first,
+                   .index_count = batch.range.count,
+                   .transform = draw.transform,
+                   .layers = draw.layers,
+                   .shadows = draw.shadows,
+                   .cull = draw.material.cull};
+            if (!shaded) {
+                continue;
+            }
+            ray.surface = mesh_surface_uniforms(draw.material, draw.layers);
+            const MeshInstanceUniforms instance =
+                mesh_instance_uniforms(draw.transform, draw.material);
+            ray.normal_model = instance.normal_model;
+            ray.uv1 = instance.uv1;
+            const std::array<MaterialTexture, kMeshTextures> slots =
+                mesh_texture_slots(draw.material);
+            for (std::size_t slot = 0; slot < ray.textures.size(); ++slot) {
+                const MaterialTexture& texture = slots.at(slot);
+                if (texture.texture == TextureId::None || !usable(texture.texture)) {
+                    continue;
+                }
+                const Texture& found = textures_.at(texture.texture);
+                ray.textures.at(slot) = {.texture = found.gpu,
+                                         .nearest = found.desc.filter == Filter::Nearest,
+                                         .repeat = texture.repeat};
+            }
+        }
+        return draws;
+    }
+
     // Whether a frame traces rays: on a device with rays, in Forward+ with ray-traced shadows and
     // a light that has a ray slot, with ray-traced ambient occlusion and SSAO, with ray-traced
     // reflections and SSR, or with ray-traced global illumination.
@@ -4257,7 +4504,8 @@ private:
         RayWork work{.lights = lights,
                      .occlusion = occlusion,
                      .reflection = ray_reflection(scene),
-                     .gi = ray_gi(scene)};
+                     .gi = ray_gi(scene),
+                     .paths = std::nullopt};
         RayLighting lighting;
         SDL_GPUTexture* environment = radiance_used(scene) ? radiance_.filtered : no_radiance_;
         if (environment == nullptr) {
@@ -4279,44 +4527,7 @@ private:
                         .sky_share = path.sky_share};
             work.lighting = &lighting;
         }
-        std::vector<RayDraw> draws;
-        draws.reserve(mesh_draws_.size());
-        for (std::size_t i = 0; i < mesh_draws_.size(); ++i) {
-            const MeshDraw& draw = mesh_draws_[i];
-            const MeshBatch& batch = mesh_batches_[i];
-            RayDraw& ray = draws.emplace_back();
-            ray = {.mesh = static_cast<std::uint64_t>(draw.mesh),
-                   .version = batch.version,
-                   .vertices = batch.vertices,
-                   .indices = batch.indices,
-                   .vertex_count = batch.vertex_count,
-                   .first_index = batch.range.first,
-                   .index_count = batch.range.count,
-                   .transform = draw.transform,
-                   .layers = draw.layers,
-                   .shadows = draw.shadows,
-                   .cull = draw.material.cull};
-            if (!work.reflection && !work.gi) {
-                continue;
-            }
-            ray.surface = mesh_surface_uniforms(draw.material, draw.layers);
-            const MeshInstanceUniforms instance =
-                mesh_instance_uniforms(draw.transform, draw.material);
-            ray.normal_model = instance.normal_model;
-            ray.uv1 = instance.uv1;
-            const std::array<MaterialTexture, kMeshTextures> slots =
-                mesh_texture_slots(draw.material);
-            for (std::size_t slot = 0; slot < ray.textures.size(); ++slot) {
-                const MaterialTexture& texture = slots.at(slot);
-                if (texture.texture == TextureId::None || !usable(texture.texture)) {
-                    continue;
-                }
-                const Texture& found = textures_.at(texture.texture);
-                ray.textures.at(slot) = {.texture = found.gpu,
-                                         .nearest = found.desc.filter == Filter::Nearest,
-                                         .repeat = texture.repeat};
-            }
-        }
+        const std::vector<RayDraw> draws = ray_draws(work.reflection || work.gi);
         if (auto traced =
                 rays_->trace(commands, draws, work,
                              ray_shadow_frame(scene, view_projection, scene_width_, scene_height_),
@@ -6651,6 +6862,16 @@ private:
     };
     RayShadowTextures ray_shadows_;
     bool traced_ = false;
+    // Whether this frame traces paths, the sky they show where they meet nothing, and each
+    // path-traced target's samples since what its paths see last changed.
+    bool path_traced_ = false;
+    Screen path_background_;
+    struct PathState {
+        TextureId target = TextureId::None;
+        std::uint64_t key = 0;
+        std::uint32_t samples = 0;
+    };
+    std::vector<PathState> path_states_;
     bool ray_failure_logged_ = false;
     std::uint64_t mesh_versions_ = 0;
     // A black atlas for frames with no probes, and the cube captures draw into, before their

@@ -28,7 +28,8 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
-// 0 the reflections, 1 the global illumination's rays, 2 their smoothing.
+// 0 the reflections, 1 the global illumination's rays, 2 their smoothing, 3 the paths, 4 their
+// average.
 layout(constant_id = 0) const uint kPass = 0u;
 
 // One instance a draw, its custom index the draw's place in draws: mask 1 for the draws rays
@@ -47,6 +48,7 @@ layout(set = 0, binding = 4, std140) uniform Frame {
     vec4 ambient;      // the ambient light, then 1 when the environment is the sky's radiance
     vec4 sky_rows[3];  // the world to the sky's space, a row each; w: the sky's scale, its share
     uvec4 gi;          // the global illumination's rays a pixel
+    uvec4 paths;       // the first path's number, the paths a pixel, the bounces
 };
 
 // A draw as rays meet it: RayDrawRecord in src/vulkan_rays.cpp.
@@ -88,6 +90,14 @@ layout(set = 0, binding = 8) uniform sampler2D textures[64];
 // The global illumination's ambient light: as traced, then smoothed.
 layout(set = 0, binding = 9, rgba16f) uniform image2D gi_traced;
 layout(set = 0, binding = 10, rgba16f) uniform writeonly image2D gi_image;
+// A path-traced target's sums: the light its paths brought back, then how many met nothing from
+// the camera, a pixel each in rows from the top.
+layout(set = 0, binding = 11, std430) buffer Sums {
+    vec4 sums[];
+};
+// What a path that meets nothing from the camera shows: the sky the frame drew, or the clear
+// color.
+layout(set = 0, binding = 12) uniform sampler2D background;
 
 // A mesh's vertices (Vertex3D, 15 words each) and triangles, by device address.
 layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer Words {
@@ -113,6 +123,8 @@ const int kSmoothRadius = 2;
 const int kNormalSquarings = 3;
 const float kPlaneShare = 0.02;
 const float kPlaneLeast = 0.01;
+// The bounce from which paths may end at random, by how much light they still carry.
+const uint kRouletteBounce = 3u;
 const float kReflectionCutoff = 0.7;
 const float kMinBounceRoughness = 0.03;
 const float kFar = 3.402823466e38;
@@ -361,8 +373,9 @@ vec3 light_compute(vec3 n, vec3 l, vec3 v, vec3 light_color, float attenuation, 
 
 // The light the lights send toward v from a surface point, through their shadows: direct_light
 // in src/path_trace.cpp.
+// Each shadow test takes a number from counter, as the paths' random numbers count them.
 vec3 direct_light(uint layers, vec3 point, vec3 face, vec3 n, vec3 v, vec3 f0, float roughness,
-                  float metallic, vec3 base) {
+                  float metallic, vec3 base, inout uint counter) {
     vec3 sum = vec3(0.0);
     for (uint k = 0u; k < size.w; ++k) {
         Light light = lights[k];
@@ -403,9 +416,11 @@ vec3 direct_light(uint layers, vec3 point, vec3 face, vec3 n, vec3 v, vec3 f0, f
             continue;
         }
         float visible = 1.0;
-        if (light.masks.z != 0u && light.shadow.x > 0.0 &&
-            blocked(offset(point, face, toward), toward, distance, light.masks.y)) {
-            visible = 1.0 - light.shadow.x;
+        if (light.masks.z != 0u && light.shadow.x > 0.0) {
+            ++counter;
+            if (blocked(offset(point, face, toward), toward, distance, light.masks.y)) {
+                visible = 1.0 - light.shadow.x;
+            }
         }
         if (visible <= 0.0) {
             continue;
@@ -416,20 +431,51 @@ vec3 direct_light(uint layers, vec3 point, vec3 face, vec3 n, vec3 v, vec3 f0, f
     return sum;
 }
 
-// The light a reflection ray from origin along direction brings back, with 1 in w, or nothing
-// where it meets nothing: path_reflection in src/path_trace.cpp.
-vec4 reflection(vec3 origin, vec3 direction, uint seed) {
+// What a ray from origin along direction meets first within limit, as meet in
+// src/path_trace.cpp finds it: its surface (normal turned toward the ray where it faced away),
+// the point, its face's normal on the ray's side, the way back along the ray, f0, and the light
+// the lights send back along the ray through their shadows. An unshaded surface is only its base
+// color. seed picks blended alpha; counter counts the shadow tests' random numbers.
+struct Met {
+    bool hit;
+    bool unshaded;
+    vec3 base;
+    vec3 normal;
+    float metallic;
+    float roughness;
+    vec3 emitted;
+    vec3 point;
+    vec3 face;
+    vec3 v;
+    vec3 f0;
+    vec3 direct;
+};
+Met meet(vec3 origin, vec3 direction, float limit, uint seed, inout uint counter) {
+    Met met;
+    met.hit = false;
+    met.unshaded = false;
+    met.base = vec3(0.0);
+    met.normal = vec3(0.0);
+    met.metallic = 0.0;
+    met.roughness = 0.0;
+    met.emitted = vec3(0.0);
+    met.point = vec3(0.0);
+    met.face = vec3(0.0);
+    met.v = vec3(0.0);
+    met.f0 = vec3(0.0);
+    met.direct = vec3(0.0);
     rayQueryEXT query;
     rayQueryInitializeEXT(query, scene, gl_RayFlagsNoneEXT, kSeeMask, origin, 0.0, direction,
-                          kFar);
+                          limit);
     while (rayQueryProceedEXT(query)) {
         if (keeps(query, direction, seed)) {
             rayQueryConfirmIntersectionEXT(query);
         }
     }
     if (rayQueryGetIntersectionTypeEXT(query, true) == gl_RayQueryCommittedIntersectionNoneEXT) {
-        return vec4(0.0);
+        return met;
     }
+    met.hit = true;
     uint index = uint(rayQueryGetIntersectionInstanceCustomIndexEXT(query, true));
     Draw draw = draws[index];
     Pixel pixel = pixel_at(draw, uint(rayQueryGetIntersectionPrimitiveIndexEXT(query, true)),
@@ -440,12 +486,14 @@ vec4 reflection(vec3 origin, vec3 direction, uint seed) {
 
     // surface_pixel in src/mesh.cpp.
     vec4 color = albedo_at(draw, pixel);
-    vec3 base = srgb_to_linear(color.rgb);
+    met.base = srgb_to_linear(color.rgb);
     if ((flags & kUnshaded) != 0u) {
-        return vec4(base, 1.0);
+        met.unshaded = true;
+        return met;
     }
-    float metallic = draw.surface.x * dot(texel(draw.textures.y, pixel.uv), draw.metallic_channel);
-    float roughness =
+    met.metallic =
+        draw.surface.x * dot(texel(draw.textures.y, pixel.uv), draw.metallic_channel);
+    met.roughness =
         draw.surface.y * dot(texel(draw.textures.z, pixel.uv), draw.roughness_channel);
     vec3 normal = pixel.normal;
     if ((flags & kSideCheck) != 0u && !front) {
@@ -464,25 +512,42 @@ vec4 reflection(vec3 origin, vec3 direction, uint seed) {
     if ((flags & kEmissionTexture) != 0u) {
         emitted += texel(draw.textures.w, pixel.uv).rgb;
     }
-    emitted = srgb_to_linear(emitted) * draw.emission.w;
+    met.emitted = srgb_to_linear(emitted) * draw.emission.w;
 
-    // meet in src/path_trace.cpp: the face and normal toward the ray, then f0.
-    vec3 v = -direction;
-    vec3 face = normalize(pixel.face);
-    if (dot(face, v) < 0.0) {
-        face = -face;
+    // The face and normal toward the ray, then f0.
+    met.v = -direction;
+    met.face = normalize(pixel.face);
+    if (dot(met.face, met.v) < 0.0) {
+        met.face = -met.face;
     }
-    if (dot(normal, v) <= 0.0) {
-        normal = face;
+    if (dot(normal, met.v) <= 0.0) {
+        normal = met.face;
     }
+    met.normal = normal;
+    met.point = pixel.world;
     float specular = draw.surface.z;
     float dielectric = 0.16 * specular * specular;
-    vec3 f0 = vec3(dielectric) + ((base - vec3(dielectric)) * metallic);
-    vec3 direct = direct_light(draw.options.z, pixel.world, face, normal, v, f0, roughness,
-                               metallic, base);
-    vec3 mirror = normalize((normal * (2.0 * dot(v, normal))) - v);
-    vec3 light = emitted + direct + (environment(normal) * base * (1.0 - metallic)) +
-                 (environment(mirror) * f0);
+    met.f0 = vec3(dielectric) + ((met.base - vec3(dielectric)) * met.metallic);
+    met.direct = direct_light(draw.options.z, met.point, met.face, normal, met.v, met.f0,
+                              met.roughness, met.metallic, met.base, counter);
+    return met;
+}
+
+// The light a reflection ray from origin along direction brings back, with 1 in w, or nothing
+// where it meets nothing: path_reflection in src/path_trace.cpp.
+vec4 reflection(vec3 origin, vec3 direction, uint seed) {
+    uint counter = 1u;
+    Met met = meet(origin, direction, kFar, seed, counter);
+    if (!met.hit) {
+        return vec4(0.0);
+    }
+    if (met.unshaded) {
+        return vec4(met.base, 1.0);
+    }
+    vec3 mirror = normalize((met.normal * (2.0 * dot(met.v, met.normal))) - met.v);
+    vec3 light = met.emitted + met.direct +
+                 (environment(met.normal) * met.base * (1.0 - met.metallic)) +
+                 (environment(mirror) * met.f0);
     return vec4(light, 1.0);
 }
 
@@ -620,6 +685,154 @@ vec3 smoothed_light(uvec2 pixel) {
     return sum / total;
 }
 
+// The paths' random numbers: Random in src/path_trace.cpp, from 0 up to but not including 1.
+float next_random(uint seed, inout uint counter) {
+    uint bits = mix_bits(seed ^ mix_bits(counter));
+    ++counter;
+    return unit_of(bits);
+}
+
+// GGX's distribution and Smith's masking for one direction, as the path tracer weighs bounces.
+float ggx(float cos_theta, float alpha) {
+    float a = cos_theta * alpha;
+    float k = alpha / (1.0 - (cos_theta * cos_theta) + (a * a));
+    return k * k / kPi;
+}
+float smith(float cos_theta, float alpha) {
+    float a2 = alpha * alpha;
+    return 2.0 * cos_theta / (cos_theta + sqrt(a2 + ((1.0 - a2) * cos_theta * cos_theta)));
+}
+
+bool finite(vec3 v) {
+    return !any(isnan(v)) && !any(isinf(v));
+}
+
+// The light one path through the target at x, y brings back, and 1 in w where it met nothing
+// from the camera, which the background shows: trace_path in src/path_trace.cpp.
+vec4 trace_path(float x, float y, uint seed, inout uint counter) {
+    vec2 ndc = vec2((x / float(size.x) * 2.0) - 1.0, 1.0 - (y / float(size.y) * 2.0));
+    vec4 near_clip = to_world * vec4(ndc, 1.0, 1.0);
+    vec4 far_clip = to_world * vec4(ndc, 0.0, 1.0);
+    vec3 origin = near_clip.xyz / near_clip.w;
+    vec3 direction = (far_clip.xyz / far_clip.w) - origin;
+    float limit = length(direction);
+    if (!(limit > 0.0) || isinf(limit) || isnan(limit)) {
+        vec4 half_clip = to_world * vec4(ndc, 0.5, 1.0);
+        direction = (half_clip.xyz / half_clip.w) - origin;
+        limit = kFar;
+    }
+    direction = normalize(direction);
+
+    vec3 light = vec3(0.0);
+    vec3 throughput = vec3(1.0);
+    for (uint bounce = 0u;; ++bounce) {
+        uint trace_seed = mix_bits(seed ^ mix_bits(counter));
+        ++counter;
+        Met met = meet(origin, direction, limit, trace_seed, counter);
+        if (!met.hit) {
+            if (bounce == 0u) {
+                return vec4(light, 1.0);
+            }
+            light += throughput * environment(direction);
+            break;
+        }
+        if (met.unshaded) {
+            light += throughput * met.base;
+            break;
+        }
+        light += throughput * (met.emitted + met.direct);
+        if (bounce >= paths.z) {
+            break;
+        }
+
+        // The next bounce: from the diffuse or the specular lobe, picked by how much light each
+        // reflects, and weighed by both lobes' chances of the direction picked.
+        vec3 n = met.normal;
+        float roughness = max(met.roughness, kMinBounceRoughness);
+        float alpha = roughness * roughness;
+        float n_dot_v = max(dot(n, met.v), 1e-4);
+        float diffuse_weight =
+            (1.0 - met.metallic) * dot(met.base, vec3(0.2126, 0.7152, 0.0722));
+        float fresnel = schlick_fresnel(n_dot_v);
+        float specular_weight =
+            ((met.f0.x + ((1.0 - met.f0.x) * fresnel)) + (met.f0.y + ((1.0 - met.f0.y) * fresnel)) +
+             (met.f0.z + ((1.0 - met.f0.z) * fresnel))) /
+            3.0;
+        float total = diffuse_weight + specular_weight;
+        if (!(total > 0.0)) {
+            break;
+        }
+        float specular_share = specular_weight / total;
+        if (diffuse_weight > 0.0) {
+            specular_share = clamp(specular_share, 0.1, 0.9);
+        }
+        float pick = next_random(seed, counter);
+        float u1 = next_random(seed, counter);
+        float u2 = next_random(seed, counter);
+        vec3 bounced;
+        if (pick < specular_share) {
+            vec3 h = sample_visible_normal(n, met.v, alpha, u1, u2);
+            bounced = (h * (2.0 * dot(met.v, h))) - met.v;
+        } else {
+            vec3 t;
+            vec3 b;
+            basis(n, t, b);
+            float r = sqrt(u1);
+            float turn = 2.0 * kPi * u2;
+            bounced = normalize((t * (r * cos(turn))) + (b * (r * sin(turn))) +
+                                (n * sqrt(max(0.0, 1.0 - u1))));
+        }
+        float n_dot_l = dot(n, bounced);
+        if (n_dot_l <= 0.0 || dot(met.face, bounced) <= 0.0) {
+            break;
+        }
+        vec3 h = normalize(met.v + bounced);
+        float specular_pdf =
+            ggx(clamp(dot(n, h), 0.0, 1.0), alpha) * smith(n_dot_v, alpha) / (4.0 * n_dot_v);
+        float pdf = (specular_share * specular_pdf) + ((1.0 - specular_share) * n_dot_l / kPi);
+        if (!(pdf > 0.0)) {
+            break;
+        }
+        vec3 reflected = light_compute(n, bounced, met.v, vec3(1.0), 1.0, met.f0, roughness,
+                                       met.metallic, 1.0, met.base);
+        throughput *= reflected / pdf;
+        if (bounce + 1u >= kRouletteBounce) {
+            float keep = min(max(throughput.x, max(throughput.y, throughput.z)), 0.95);
+            if (!(next_random(seed, counter) < keep)) {
+                break;
+            }
+            throughput /= keep;
+        }
+        if (!finite(throughput)) {
+            break;
+        }
+        origin = offset(met.point, met.face, bounced);
+        direction = bounced;
+        limit = kFar;
+    }
+    return vec4(light, 0.0);
+}
+
+// A pixel's paths, added to its sums: trace_paths in src/path_trace.cpp.
+void trace_paths(uvec2 pixel) {
+    uint at = (pixel.y * size.x) + pixel.x;
+    vec4 sum = sums[at];
+    for (uint s = paths.x; s < paths.x + paths.y; ++s) {
+        uint seed = mix_bits(mix_bits(mix_bits(pixel.x) ^ pixel.y) ^ s);
+        uint counter = 0u;
+        float jx = next_random(seed, counter);
+        float jy = next_random(seed, counter);
+        vec4 light = trace_path(float(pixel.x) + jx, float(pixel.y) + jy, seed, counter);
+        for (uint c = 0u; c < 3u; ++c) {
+            if (!isnan(light[c]) && !isinf(light[c])) {
+                sum[c] += light[c];
+            }
+        }
+        sum.w += light.w;
+    }
+    sums[at] = sum;
+}
+
 void main() {
     uvec2 pixel = gl_GlobalInvocationID.xy;
     if (pixel.x >= size.x || pixel.y >= size.y) {
@@ -629,7 +842,16 @@ void main() {
         imageStore(reflection_image, ivec2(pixel), reflections(pixel));
     } else if (kPass == 1u) {
         imageStore(gi_traced, ivec2(pixel), vec4(traced_light(pixel), 1.0));
-    } else {
+    } else if (kPass == 2u) {
         imageStore(gi_image, ivec2(pixel), vec4(smoothed_light(pixel), 1.0));
+    } else if (kPass == 3u) {
+        trace_paths(pixel);
+    } else {
+        // The paths' average, with the background where they met nothing.
+        uint at = (pixel.y * size.x) + pixel.x;
+        vec4 sum = sums[at];
+        vec3 seen = texelFetch(background, ivec2(pixel), 0).rgb;
+        float share = 1.0 / float(paths.x + paths.y);
+        imageStore(reflection_image, ivec2(pixel), vec4((sum.rgb + (seen * sum.w)) * share, 1.0));
     }
 }

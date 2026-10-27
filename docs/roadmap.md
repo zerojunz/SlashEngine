@@ -680,7 +680,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Progressive reference stills on the CPU: `frame.capture`'s `path_trace` traces paths
         through a bounding volume hierarchy of the frame's triangles, shaded as the live frame
         shades them, and adds samples up over captures
-  - [ ] The same tracer on the GPU, through the ray queries above
+  - [x] The same tracer on the GPU, through the ray queries above: Vulkan traces each frame's
+        paths with the software device's code and random numbers, and `display.set`'s
+        `path_trace` path traces a running game's window
   - [ ] Lightmaps baked on the GPU
 - [x] Procedural, physical and panorama skies and fog, and the sky's light on meshes (ambient
       light and reflections), as Godot's Compatibility renderer
@@ -1004,7 +1006,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | In progress: the library, search, refining, hosted and test generators, feedback, team sharing, ready-to-use texture forms, parametric model recipes, models' text descriptions and attachment points, imported .glb models and versions from edited files, scene assembly (`entity.place`) and complex assets (recipes built of other model files, kept in the library by their parts' IDs), variants and quality tiers, model checks, automatic review and models made from concept images done; the rest of 3D in 7 |
 | Global illumination | Baked lightmaps and probe-based GI | 7 | Done: reflection probes, baked lightmaps and their light probes, and VoxelGI with its dynamic objects, all imported from Godot |
 | Ray tracing | Acceleration structures and ray queries in the render device on Vulkan, Direct3D 12 and Metal: ray-traced shadows, reflections, AO and GI, with raster and probe fallbacks | 7 | In progress: ray-traced shadows, ambient occlusion, reflections and GI on the software device and Vulkan |
-| Path tracing | A GPU path tracer for baked lightmaps and progressive reference stills | 7 | Planned |
+| Path tracing | A GPU path tracer for baked lightmaps and progressive reference stills | 7 | In progress: progressive reference stills on the CPU and on Vulkan's ray queries |
 | Upscaling and frame generation | Render scale with FSR 1, FSR 2/3 and MetalFX built in, FSR 3 frame generation, DLSS, XeSS and FSR 4 as adapters outside the repo | 7 | Planned |
 | Sky and volumetrics | Physical sky, volumetric fog | 7 | Done: procedural, physical and panorama skies, their light on meshes, exponential, depth and height fog, and volumetric fog with fog volumes and VoxelGI's light |
 | Decals | Clustered decals | 7 | Done, imported from Godot |

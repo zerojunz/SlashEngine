@@ -4059,7 +4059,8 @@ post-processed as the live frame is, without TAA or FSR. The reply's `path_sampl
 many paths each pixel holds: captures at the same size of a world that looks the same add their
 samples up, so the noise fades call by call, and any change to the meshes, materials, lights,
 camera, environment or `path_trace` starts over. Paths are traced on the CPU's threads, and the
-pixels are the same on every machine and any number of threads.
+pixels are the same on every machine and any number of threads. A running game traces the same
+paths in its window on the GPU with `display.set`'s `path_trace`.
 [examples/path-tracing](../../examples/path-tracing/) calls it.
 
 ### frame.summary
@@ -4199,8 +4200,8 @@ Other sessions have no window or loop, so they leave them out.
 
 ### display.list
 
-Lists the displays, primary first, with the game's V-Sync mode, frame cap and render scale. A
-headless game has no displays.
+Lists the displays, primary first, with the game's V-Sync mode, frame cap, render scale and path
+tracing. A headless game has no displays.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -4212,7 +4213,11 @@ mode's `refresh_rate` and `pixel_density`, and `refresh_rates`: every rate its f
 offer, fastest first, for an options menu. A refresh rate of `0` means the system doesn't say.
 `scaling` is the render scale's settings, as `rendering.scaling` in
 [project-format.md](project-format.md#render-scale), with `in_effect`, the upscaler the game's last
-frame used (`none` when the world drew at full size), and its `render_size`. Needs: `read`. On SDL's offscreen video driver, which has one display and reports no refresh
+frame used (`none` when the world drew at full size), and its `render_size`. `path_trace` is
+`null` while the game draws its world live, and while `display.set` has it path traced, its
+`samples` and `bounces` with `path_samples`, the paths each pixel of the last frame held: `0` on
+a device that doesn't trace rays (`slash-cli run` leaves `path_trace` out of games that can't).
+Needs: `read`. On SDL's offscreen video driver, which has one display and reports no refresh
 rate:
 
 ```json
@@ -4220,19 +4225,20 @@ rate:
 ```
 
 ```json
-{"displays":[{"bounds":[0,0,1024,768],"id":1,"name":"1","pixel_density":1.0,"primary":true,"refresh_rate":0.0,"refresh_rates":[],"scale":1.0,"window":true}],"max_fps":120,"scaling":{"fsr_sharpness":0.2,"in_effect":"fsr","mode":"fsr","render_size":[512,384],"scale":0.5},"vsync_mode":"mailbox"}
+{"displays":[{"bounds":[0,0,1024,768],"id":1,"name":"1","pixel_density":1.0,"primary":true,"refresh_rate":0.0,"refresh_rates":[],"scale":1.0,"window":true}],"max_fps":120,"path_trace":null,"scaling":{"fsr_sharpness":0.2,"in_effect":"fsr","mode":"fsr","render_size":[512,384],"scale":0.5},"vsync_mode":"mailbox"}
 ```
 
 ### display.set
 
-Changes the V-Sync mode, the frame cap or the render scale from the next frame, as a game's
-options menu would, and returns the settings in effect.
+Changes the V-Sync mode, the frame cap, the render scale or path tracing from the next frame, as
+a game's options menu would, and returns the settings in effect.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `vsync_mode` | `"disabled"`, `"enabled"`, `"adaptive"` or `"mailbox"` | unchanged | How frames wait for the display; see [project-format.md](project-format.md) |
 | `max_fps` | integer, 0 to 1000 | unchanged | Frames per second at most; `0` means no cap |
 | `scaling` | object | unchanged | The render scale: any of `mode`, `scale`, `fsr_sharpness` and `upscaler`, as `rendering.scaling` in [project-format.md](project-format.md#render-scale); fields left out stay as they are |
+| `path_trace` | object or `null` | unchanged | Path trace the 3D world in the game's window: `samples` paths a pixel each frame (1 to 4096, default 16) and `bounces` (0 to 32, default 4), fields left out staying as they are; `null` draws it live again |
 
 A mode the GPU or window lacks falls back to `enabled`, which every GPU has, and the result
 shows the mode in effect. SDL's GPU API has no adaptive mode yet, so `adaptive` always falls back
@@ -4244,12 +4250,21 @@ Mesa's software Vulkan on an offscreen window has no mode that skips V-Sync:
 ```
 
 ```json
-{"max_fps":0,"scaling":{"fsr_sharpness":0.2,"mode":"bilinear","scale":1.0},"vsync_mode":"enabled"}
+{"max_fps":0,"path_trace":null,"scaling":{"fsr_sharpness":0.2,"mode":"bilinear","scale":1.0},"vsync_mode":"enabled"}
 ```
 
 A scaling `mode` that isn't `bilinear`, `fsr`, `fsr2`, `fsr3`, `metalfx_spatial` or
 `metalfx_temporal` is an error at `/scaling/mode`, and an `upscaler` the game hasn't added is a `-32001`
 error at `/scaling/upscaler` that lists the ones it has. Either way nothing changes.
+
+`path_trace` turns the game's frames into the progressive still `frame.capture`'s `path_trace`
+makes, traced on the GPU: each frame adds `samples` paths a pixel to the frames before it while
+the world looks the same, so a person watching the window, or an agent reading `path_samples`,
+sees the noise fade, and anything that moves starts it over. Devices that trace rays
+(`RenderDevice::ray_tracing`: Vulkan where the GPU has ray queries) trace the paths with the
+same code and random numbers as the software device, so the still matches `frame.capture`'s to a
+level or two; elsewhere the window keeps drawing the live frame and `path_samples` stays `0`. A
+game whose frames can't be path traced refuses it at `/path_trace`.
 [examples/render-scale](../../examples/render-scale/) changes the render scale while the game
 runs.
 

@@ -277,6 +277,11 @@ public:
         render::UpscaleSize size;
     };
     [[nodiscard]] const Scaled& scaled() const noexcept { return scaled_; }
+    // The paths each pixel of the last frame's path-traced world holds
+    // (RenderDevice::path_samples); 0 when it wasn't path traced or the device traces no paths.
+    [[nodiscard]] std::uint32_t path_samples() const {
+        return path_target_ ? device_->path_samples(*path_target_) : 0;
+    }
 
 private:
     struct Texture {
@@ -447,6 +452,8 @@ private:
     std::unique_ptr<render::Upscaler> upscaler_;
     std::string upscaler_name_;
     Scaled scaled_;
+    // What the last frame drew its path-traced world into, if it was path traced.
+    std::optional<render::TextureId> path_target_;
     // Fonts for worlds ui wasn't installed in.
     std::unique_ptr<text::Fonts> fonts_;
     // The glyph atlas pages on the GPU, the fonts they came from and the versions uploaded.

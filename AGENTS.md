@@ -996,7 +996,14 @@ pixel, the sample's number and the bounce, so a still is the same on any number 
 samples summed over frames match those traced at once. Each target keeps its sums
 (`path_samples`) while `path_scene_key` and its textures' write counts stay the same, and
 forward_post runs over the result. `CanvasRenderer` turns off TAA, FSR 2, occlusion culling and
-LODs when tracing. `examples/path-tracing` traces the lightmaps room.
+LODs when tracing. On Vulkan with ray queries (see Ray tracing below) the GPU device traces them
+too: `begin_frame` makes a path-traced frame Forward+ without its screen-space and ray-traced
+effects, `draw_paths` draws the sky into the world texture, copies it as the background, and runs
+`ray_light.comp`'s passes 3 and 4 (`trace_paths`' twin, its random numbers counted the same way,
+summing into a float4 storage buffer per target, then averaging over the background) before the
+post passes; it keys the sums by `path_scene_key` and a hash of the draws. `display.set`'s
+`path_trace` (`LiveGame::path_trace`) path traces a running game's window, and
+`CanvasRenderer::path_samples` reports its sums. `examples/path-tracing` traces the lightmaps room.
 
 Ray tracing is SlashEngine's own (Godot 4.6 has none): project.json's `rendering.ray_tracing`
 (`render::RayTracing3D`, `Scene3D::ray_tracing`) turns on ray-traced shadows in Forward+ on
