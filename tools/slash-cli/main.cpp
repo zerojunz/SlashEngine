@@ -361,6 +361,17 @@ bool parse_session_arg(const std::vector<std::string>& args, std::size_t& i, Ses
     return false;
 }
 
+// Opens --scene's file, or starts a new scene there when there is none, saying so: a command
+// that only reads would otherwise read an empty scene without a word.
+command::Reply open_scene_arg(command::Session& session, const std::string& path) {
+    const auto file = session.resolve_path(path);
+    if (file && !slash::platform::exists(file.value())) {
+        slash::log::warn("the scene file doesn't exist, so a new scene starts there",
+                         {{"path", path}});
+    }
+    return command::open_or_new_scene(session, path);
+}
+
 json::Value error_json(const command::Reply& reply) {
     json::Value error;
     error["code"] = reply.code;
@@ -769,6 +780,13 @@ int cmd_run(const std::vector<std::string>& args) {
 
     if (!save_path.empty()) {
         const std::string text = json::write(world::save_scene(game)) + "\n";
+        // Its folder is made as frame.capture makes its file's.
+        if (const std::string folder = std::filesystem::path(save_path).parent_path().string();
+            !folder.empty()) {
+            if (auto made = slash::platform::create_directories(folder); !made) {
+                return failure("could not save the scene", made.error());
+            }
+        }
         if (auto written = slash::platform::write_file(save_path, text); !written) {
             return failure("could not save the scene", written.error());
         }
@@ -1714,8 +1732,7 @@ int cmd_call(const std::vector<std::string>& args) {
     Engine engine(session_args.options);
     command::Session& session = *engine.session;
     if (!session_args.scene.empty()) {
-        if (const auto opened = command::open_or_new_scene(session, session_args.scene);
-            !opened.ok) {
+        if (const auto opened = open_scene_arg(session, session_args.scene); !opened.ok) {
             print(error_json(opened));
             return kExitFailure;
         }
@@ -1749,8 +1766,7 @@ int cmd_rpc(const std::vector<std::string>& args) {
     Engine engine(session_args.options);
     command::Session& session = *engine.session;
     if (!session_args.scene.empty()) {
-        if (const auto opened = command::open_or_new_scene(session, session_args.scene);
-            !opened.ok) {
+        if (const auto opened = open_scene_arg(session, session_args.scene); !opened.ok) {
             print(error_json(opened));
             return kExitFailure;
         }
@@ -1788,8 +1804,7 @@ int cmd_serve(const std::vector<std::string>& args) {
     Engine engine(session_args.options);
     command::Session& session = *engine.session;
     if (!session_args.scene.empty()) {
-        if (const auto opened = command::open_or_new_scene(session, session_args.scene);
-            !opened.ok) {
+        if (const auto opened = open_scene_arg(session, session_args.scene); !opened.ok) {
             print(error_json(opened));
             return kExitFailure;
         }
