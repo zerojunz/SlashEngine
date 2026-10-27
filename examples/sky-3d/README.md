@@ -32,8 +32,8 @@ frame.capture {"points":[[160,4],[20,76],[228,17],[150,92],[160,172]],"path":"sh
   into mist, the near ground and the foot of the rock too.
 - Swapping in a `PhysicalSkyMaterial` scatters the sun's light through the air, by Rayleigh and
   Mie scattering, instead of painting gradients. With the sun dropped to 7 degrees above the
-  horizon, the sky is dusk gray with a warm glow round the sun. `energy_multiplier` 6 brightens
-  it: like Godot's, a physical sky is dim in a renderer without HDR.
+  horizon, the sky is a pale dusk blue with a bright glow round the sun. `energy_multiplier` 6
+  brightens it: like Godot's, a physical sky is dim for a sun of energy 1.
 - A `PanoramaSkyMaterial` wraps an equirectangular image round the camera: here the day frame
   saved first, so blue sky shows overhead again.
 
