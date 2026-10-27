@@ -891,6 +891,11 @@ struct PathTrace3D {
 // each opaque pixel sends ambient_occlusion_samples rays over the half of the sphere its normal
 // faces, cosine weighted, up to the SSAO's radius, and the share nothing stops, to the SSAO's
 // power, is its occlusion, which lights it as SSAO's does.
+// With reflections, the environment's SSR (Ssr3D, which must be enabled) is traced instead: each
+// opaque pixel smoother than SSR's roughness cutoff sends reflection_samples rays, reflected about
+// GGX's microfacet normals for its roughness, through every mesh the frame draws; what each meets
+// is lit as a path tracer's bounce (what it gives off, the lights through ray-traced shadows and
+// the environment), and the share that meets something covers the sky's reflections as SSR's do.
 inline constexpr std::size_t kMaxRayShadowLights = 8;
 inline constexpr std::uint32_t kMaxRayShadowSamples = 64;
 struct RayTracing3D {
@@ -898,12 +903,14 @@ struct RayTracing3D {
     std::uint32_t shadow_samples = 1; // 1 to kMaxRayShadowSamples
     bool ambient_occlusion = false;
     std::uint32_t ambient_occlusion_samples = 4; // 1 to kMaxRayShadowSamples
+    bool reflections = false;
+    std::uint32_t reflection_samples = 1; // 1 to kMaxRayShadowSamples
 
     bool operator==(const RayTracing3D&) const = default;
 };
 // Reads project.json's rendering object's ray_tracing: shadows, shadow_samples,
-// ambient_occlusion and ambient_occlusion_samples. What is missing or of the wrong type keeps its
-// default, and samples are held to their range.
+// ambient_occlusion, ambient_occlusion_samples, reflections and reflection_samples. What is missing
+// or of the wrong type keeps its default, and samples are held to their range.
 [[nodiscard]] RayTracing3D ray_tracing(const json::Value& rendering);
 
 // What a frame's meshes are seen from and lit by. Matrices are column-major, as Mat4.
