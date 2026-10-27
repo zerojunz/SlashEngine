@@ -7,6 +7,7 @@ if(EMSCRIPTEN)
         test_decal.cpp
         test_forward_post.cpp
         test_fsr2.cpp
+        test_fsr3.cpp
         test_gpu_particles.cpp
         test_light.cpp
         test_mesh.cpp
@@ -70,6 +71,7 @@ add_executable(slash_tests
     test_fixed_step.cpp
     test_forward_post.cpp
     test_fsr2.cpp
+    test_fsr3.cpp
     test_frame_summary.cpp
     test_gameplay.cpp
     test_generators.cpp
@@ -239,7 +241,8 @@ endforeach()
 foreach(shader IN ITEMS sprite material mesh mesh_clustered mesh_normal mesh_motion shadow post
         forward_post ssao ssr ssr_trace sky radiance taa particles_process particles_emit
         particles_draw fsr2_luma fsr2_dilate fsr2_reconstruct fsr2_depth_clip fsr2_lock
-        fsr2_accumulate fsr2_rcas)
+        fsr2_accumulate fsr2_rcas fsr3_prepare fsr3_reconstruct fsr3_pyramid fsr3_reduce
+        fsr3_shading_change fsr3_reactivity fsr3_lock fsr3_instability fsr3_accumulate)
     add_test(NAME shaders_up_to_date_${shader}
         COMMAND ${CMAKE_COMMAND} -DSOURCE=${PROJECT_SOURCE_DIR}/engine/render/shaders/${shader}.hlsl
             -DOUTPUT=${PROJECT_SOURCE_DIR}/engine/render/src/${shader}_shaders.hpp -DCHECK=ON

@@ -1,0 +1,1 @@
+{"format": 1, "main_scene": "main.scene.json", "name": "FSR 3 3D", "rendering": {"scaling": {"mode": "fsr3", "scale": 0.5}}, "version": "1.0.0", "window": {"height": 90, "width": 160}}
