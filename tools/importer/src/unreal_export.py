@@ -10,14 +10,14 @@
 #                      preview mesh
 #   text/<path>.t3d    assets Unreal wrote as text (T3D) for what Python can't reach: materials'
 #                      nodes, to find those placed by world position (world_aligned_materials
-#                      in export.json)
+#                      in export.json), and Niagara systems' module stacks
 #   animations/<path>.glb  each animation sequence a skeletal mesh component or an Animation
 #                      Blueprint plays, with its skeletal mesh
 #   sounds/<path>.wav  each sound wave an ambient sound or audio component plays
-#   niagara_systems    in export.json, each Niagara system a level's components play: its emitters,
-#                      their modules' inputs as Unreal writes them as text, and their renderers,
-#                      read through Unreal 5.8's NiagaraExternalEditUtilities (earlier editors
-#                      give only the system's own settings)
+#   niagara_systems    in export.json, each Niagara system a level's components play: its own
+#                      settings, the text file it was written to (text/<path>.t3d), from which
+#                      the importer reads its emitters, and the display names of the enums its
+#                      modules' static switches use
 #   landscapes/<level>/<actor>.r16  each landscape's heights, its streaming proxies' too, as
 #                      Unreal's .r16 heightmaps are: 16-bit and little-endian, a row per vertex
 #                      along its y, 32768 at its own height and 128 a unit of its space
@@ -348,140 +348,38 @@ def use_sound(asset):
 # --- Niagara ---
 
 niagara_systems = {}
-NIAGARA_SCRIPTS = ('emitter_spawn_script', 'emitter_update_script', 'particle_spawn_script',
-                   'particle_update_script')
+enum_names_read = {}
 
 
-def text_of(value):
-    # A struct's value as Unreal writes it as text, (Name=Value,...); nested values are kept.
-    exported = call(None, value.export_text) if hasattr(value, 'export_text') else None
-    return exported if exported is not None else str(value)
-
-
-def edit_call(name, *args):
-    # One of NiagaraExternalEditUtilities' functions; its result, the last of its outputs when it
-    # has several. Its editing context is an argument where Python asks for one.
-    utilities = getattr(unreal, 'NiagaraExternalEditUtilities', None)
-    function = getattr(utilities, name, None) if utilities is not None else None
-    if function is None:
-        return None
-    tries = [args]
-    context = getattr(unreal, 'NiagaraExternalEditContext', None)
-    if context is not None:
-        tries.append(args + (context(),))
-    for arguments in tries:
-        try:
-            result = function(*arguments)
-        except TypeError:
-            continue
-        except Exception:
-            return None
-        if isinstance(result, tuple):
-            result = result[-1] if result else None
-        return result
-    return None
-
-
-def stack_reference(system, emitter='', script='', module='', renderer=-1, inputs=()):
-    ref = unreal.NiagaraExt_StackItemReference()
-    for key, value in (('system', system), ('emitter_name', emitter), ('script_name', script),
-                       ('module_name', module), ('renderer_index', renderer)):
-        if value not in ('', -1) or key == 'system':
-            call(None, ref.set_editor_property, key, value)
-    if inputs:
-        call(None, ref.set_editor_property, 'input_name_stack', [unreal.Name(i) for i in inputs])
-    return ref
-
-
-def json_of(data):
-    # A Niagara schema's JSON values (PropertyValues), or their text when they don't parse.
-    values = prop(data, 'property_values', '') if data is not None else ''
-    try:
-        return json.loads(str(values))
-    except ValueError:
-        return {'text': str(values)}
-
-
-def asset_paths(value, out):
-    # The asset paths in a renderer's values: /Game/... and StaticMesh'/Game/...' alike.
-    if isinstance(value, dict):
-        for item in value.values():
-            asset_paths(item, out)
-    elif isinstance(value, list):
-        for item in value:
-            asset_paths(item, out)
-    elif isinstance(value, str) and '/' in value:
-        path = value.split("'")[1] if value.count("'") >= 2 else value
-        if path.startswith('/') and path not in out:
-            out.append(path)
-
-
-def renderer_of(system, emitter, ref):
-    cls = prop(ref, 'renderer_class')
-    index = prop(ref, 'renderer_index', 0)
-    out = {'class': cls.get_name() if cls is not None else ''}
-    data = edit_call('get_renderer_data', stack_reference(system, emitter, renderer=index))
-    out['data'] = json_of(data)
-    meshes_used = []
-    paths = []
-    asset_paths(out['data'], paths)
-    for path in paths:
-        asset = call(None, unreal.load_asset, path)
-        if isinstance(asset, unreal.StaticMesh):
-            meshes_used.append(use_mesh(asset, False))
-    if meshes_used:
-        out['meshes'] = meshes_used
-    return out
-
-
-def module_of(system, emitter, script, module):
-    name = str(prop(module, 'module_name', ''))
-    out = {'module': name, 'enabled': bool(prop(module, 'enabled', True))}
-    asset = prop(module, 'module_script')
-    if asset is not None:
-        out['script'] = package_of(asset)
-    if prop(module, 'is_set_parameters_module', False):
-        out['set_parameters'] = True
-    values = edit_call('get_module_input_values',
-                       stack_reference(system, emitter, script, name))
-    inputs = {}
-    for entry in (prop(values, 'inputs', []) or []) if values is not None else []:
-        input_name = str(prop(entry, 'name', ''))
-        value = prop(entry, 'value')
-        found = {'value': text_of(value) if value is not None else ''}
-        chain = edit_call('get_dynamic_input_chain',
-                          stack_reference(system, emitter, script, name, inputs=(input_name,)))
-        if chain is not None and (prop(chain, 'inputs', []) or []):
-            found['chain'] = text_of(chain)
-        inputs[input_name] = found
-    out['inputs'] = inputs
-    return out
-
-
-def emitter_of(system, summary):
-    name = str(prop(summary, 'emitter_name', ''))
-    out = {'name': name, 'enabled': bool(prop(summary, 'enabled', True)),
-           'sim_target': enum_name(prop(summary, 'sim_target', 'cpu_sim'))}
-    out['data'] = json_of(edit_call('get_emitter_data', stack_reference(system, name)))
-    topology = edit_call('get_emitter_topology', stack_reference(system, name))
-    if topology is None:
-        problem('Niagara emitter the editor did not describe', package_of(system) + ': ' + name)
-        return out
-    scripts = {}
-    for key in NIAGARA_SCRIPTS:
-        stack = prop(topology, key)
-        if stack is None:
-            continue
-        script = str(prop(stack, 'script_name', ''))
-        scripts[script] = [module_of(system, name, script, module)
-                           for module in (prop(stack, 'modules', []) or [])]
-    out['scripts'] = scripts
-    out['renderers'] = [renderer_of(system, name, ref)
-                        for ref in (prop(topology, 'renderers', []) or [])]
-    return out
+def enum_names(path):
+    # A user-defined enum's display names by enumerator name ("NewEnumerator1": "Random"), as a
+    # Niagara module's static switches name their values.
+    if path in enum_names_read:
+        return enum_names_read[path]
+    names = {}
+    enum = call(None, unreal.load_asset, path)
+    helper = getattr(unreal, 'KismetNodeHelperLibrary', None)
+    if enum is not None and helper is not None:
+        for value in range(64):
+            name = str(call('', helper.get_enumerator_name, enum, value)).split('::')[-1]
+            if name in ('', 'None') or name.endswith('_MAX'):
+                continue
+            shown = call('', helper.get_enumerator_user_friendly_name, enum, value)
+            names[name] = str(shown) if shown else name
+    if not names and enum is not None:
+        text = text_export(enum, 'enums/' + package_of(enum).lstrip('/')) or ''
+        for name, shown in re.findall(
+                r'"?(NewEnumerator\d+)"?\s*,\s*(?:NSLOCTEXT|LOCTEXT|INVTEXT)\((?:"[^"]*"\s*,\s*)*"([^"]*)"\)',
+                text):
+            names[name] = shown
+    enum_names_read[path] = names
+    return names
 
 
 def use_niagara(system):
+    # A Niagara system's own settings, and the system as text: Python can't reach its emitters'
+    # module stacks, which the importer reads from the text. The enums its static switches use
+    # and the meshes its renderers draw are read here, as only the editor can load them.
     package = package_of(system)
     if not package or package in niagara_systems:
         return package
@@ -492,20 +390,18 @@ def use_niagara(system):
     if isinstance(bounds, unreal.Box) and bool(getattr(bounds, 'is_valid', False)):
         out['fixed_bounds'] = {'min': vector(bounds.min), 'max': vector(bounds.max)}
     niagara_systems[package] = out
-    summary = edit_call('get_system_summary', system)
-    if summary is None:
-        problem('Niagara emitters', package,
-                "reading a Niagara system's emitters needs Unreal Engine 5.8 or later")
+    name = package.lstrip('/')
+    text = text_export(system, name)
+    if text is None:
+        problem('Niagara emitters', package, 'the editor did not write the system as text')
         return package
-    out['user_variables'] = [text_of(v) for v in (prop(summary, 'user_variables', []) or [])]
-    emitters = []
-    for emitter in prop(summary, 'emitters', []) or []:
-        try:
-            emitters.append(emitter_of(system, emitter))
-        except Exception as error:
-            problem('Niagara emitter the export could not read',
-                    package + ': ' + str(prop(emitter, 'emitter_name', '')), str(error))
-    out['emitters'] = emitters
+    out['text'] = 'text/' + name + '.t3d'
+    out['enums'] = {path: enum_names(path)
+                    for path in sorted(set(re.findall(r"UserDefinedEnum'(/[^']+)'", text)))}
+    for path in sorted(set(re.findall(r"Meshes\(\d+\)=\(Mesh=\"[^']*'(/[^'.]+)", text))):
+        asset = call(None, unreal.load_asset, path)
+        if isinstance(asset, unreal.StaticMesh):
+            use_mesh(asset, False)
     return package
 
 
