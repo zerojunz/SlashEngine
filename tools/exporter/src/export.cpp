@@ -470,10 +470,11 @@ Result<bool> stage_texture_forms(std::string_view file, std::string_view bytes,
     return true;
 }
 
-// The splat and color maps the HTerrains in a project's scenes and prefabs name. They ship as
-// they are, as the HTerrain plugin keeps its maps: terrains read their pixels for holes, collision
-// and navigation, which a texture's compressed forms don't keep.
-std::set<std::string, std::less<>> terrain_maps(const fs::path& project_dir) {
+// The splat and color maps the HTerrains in a project's scenes and prefabs name, and the textures
+// of their vector field attractors. They ship as they are, as the HTerrain plugin keeps its maps:
+// terrains read their pixels for holes, collision and navigation and particles move by a field's,
+// which a texture's compressed forms don't keep the same on every GPU.
+std::set<std::string, std::less<>> exact_textures(const fs::path& project_dir) {
     std::set<std::string, std::less<>> maps;
     std::function<void(const json::Value&)> walk = [&](const json::Value& value) {
         if (value.is_array()) {
@@ -492,6 +493,12 @@ std::set<std::string, std::less<>> terrain_maps(const fs::path& project_dir) {
                         path != nullptr && path->is_string() && !path->as_string().empty()) {
                         maps.insert(path->as_string());
                     }
+                }
+            }
+            if (key == "GPUParticlesAttractorVectorField3D" && item.is_object()) {
+                if (const json::Value* path = item.find("texture");
+                    path != nullptr && path->is_string() && !path->as_string().empty()) {
+                    maps.insert(path->as_string());
                 }
             }
             walk(item);
@@ -596,7 +603,7 @@ bool stage_data(const fs::path& project_dir, const runtime::Project& project, co
     json::Array problems;
     bool found_main = false;
     FormCounts forms;
-    const std::set<std::string, std::less<>> raw_textures = terrain_maps(project_dir);
+    const std::set<std::string, std::less<>> raw_textures = exact_textures(project_dir);
     std::set<std::string, std::less<>> quality_tiers;
     bool quality_used = false;
     auto it = fs::recursive_directory_iterator(project_dir, error);

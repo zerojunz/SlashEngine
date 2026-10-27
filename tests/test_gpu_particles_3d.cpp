@@ -486,3 +486,141 @@ TEST_CASE("GPUParticles3D draw passes without a mesh are reported") {
     CHECK(problems[0].message.starts_with("has no mesh to draw at its particles"));
     CHECK(problems[1].path == "/components/GPUParticles3D/draw_pass_2");
 }
+
+TEST_CASE("GPUParticles3D pairs with the attractors its box touches, as Godot's scene cull") {
+    Scene scene;
+    scene.files["still.process_material.json"] =
+        R"({"format": 1, "gravity": [0, 0, 0], "emission_shape": "points",
+            "emission_points": [[1, 0, 0]]})";
+    const entt::entity emitter = scene.create("dust", R"({"Transform3D": {},
+        "GPUParticles3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
+                           "process_material": "still.process_material.json"},
+        "QuadMesh": {}})");
+    scene.create("pull", R"({"Transform3D": {}, "GPUParticlesAttractorSphere3D": {"radius": 2}})");
+    // Another layer, too far and hidden: none of these act on it.
+    scene.create("masked",
+                 R"({"Transform3D": {}, "GPUParticlesAttractorBox3D": {"cull_mask": 2}})");
+    scene.create(
+        "far", R"({"Transform3D": {"position": [20, 0, 0]}, "GPUParticlesAttractorSphere3D": {}})");
+    scene.create("hidden",
+                 R"({"Transform3D": {"visible": false}, "GPUParticlesAttractorBox3D": {}})");
+    // Scaled twice, its radius is twice as large; its bounds just reach into the box.
+    scene.create("scaled", R"({"Transform3D": {"position": [0, 5.5, 0], "scale": [2, 2, 2]},
+        "GPUParticlesAttractorSphere3D": {"strength": 0}})");
+    scene.step();
+    auto kept = scene3d::particle_steps_3d(scene.world, emitter);
+    REQUIRE(kept.has_value());
+    // In the order entities are stored; here by height.
+    std::vector<render::ParticleAttractor3D> attractors = kept->steps.back().attractors;
+    std::ranges::sort(attractors, {},
+                      [](const render::ParticleAttractor3D& a) { return a.transform[10]; });
+    REQUIRE(attractors.size() == 2);
+    CHECK(attractors[0].shape == render::AttractorShape3D::Sphere);
+    CHECK(attractors[0].extents.x == doctest::Approx(2.0));
+    CHECK(attractors[1].extents.x == doctest::Approx(2.0));
+    CHECK(attractors[1].transform[10] == doctest::Approx(5.5));
+    // Its basis is made orthonormal.
+    CHECK(attractors[1].transform[0] == doctest::Approx(1.0));
+
+    // The sphere pulls the particle in toward its center.
+    scene.step(30);
+    auto live = scene.live(emitter);
+    REQUIRE(live.size() == 1);
+    CHECK(live[0].velocity.x < -0.1F);
+    CHECK(live[0].origin.x < 1.0F);
+    CHECK(live[0].origin.y == doctest::Approx(0.0));
+
+    // With local_coords the attractors are in the emitter's space.
+    auto& settings = scene.world.ecs().get<world::GPUParticles3D>(emitter);
+    settings.local_coords = true;
+    scene.world.ecs().get<world::Transform3D>(emitter).position = {1.0F, 0.0F, 0.0F};
+    scene.step();
+    kept = scene3d::particle_steps_3d(scene.world, emitter);
+    REQUIRE(kept.has_value());
+    REQUIRE(kept->steps.back().attractors.size() == 2);
+    for (const render::ParticleAttractor3D& attractor : kept->steps.back().attractors) {
+        CHECK(attractor.transform[9] == doctest::Approx(-1.0));
+    }
+
+    // Without attractor_interaction_enabled the particles go on as they were.
+    scene.files["deaf.process_material.json"] =
+        R"({"format": 1, "gravity": [0, 0, 0], "emission_shape": "points",
+            "emission_points": [[1, 0, 0]], "attractor_interaction_enabled": false})";
+    const entt::entity deaf = scene.create("deaf", R"({"Transform3D": {},
+        "GPUParticles3D": {"amount": 1, "lifetime": 10, "explosiveness": 1,
+                           "process_material": "deaf.process_material.json"},
+        "QuadMesh": {}})");
+    scene.step(30);
+    live = scene.live(deaf);
+    REQUIRE(live.size() == 1);
+    CHECK(live[0].velocity.x == 0.0F);
+    CHECK(live[0].origin.x == doctest::Approx(1.0));
+}
+
+TEST_CASE("a vector field attractor cuts its texture into slices, as Godot's Texture3D importer") {
+    // Four 1x2 slices side by side, two across and two down, each texel its own red.
+    render::Image image;
+    image.width = 2;
+    image.height = 4;
+    for (std::uint8_t i = 0; i < 8; ++i) {
+        image.pixels.insert(image.pixels.end(), {static_cast<std::uint8_t>(i * 30), 128, 255, 255});
+    }
+    auto field = scene3d::particle_field(image, 2, 2);
+    REQUIRE(field.ok());
+    CHECK(field.value().width == 1);
+    CHECK(field.value().height == 2);
+    CHECK(field.value().depth == 4);
+    // Slice by slice: left then right, top then bottom.
+    const std::array<int, 8> reds{0, 60, 30, 90, 120, 180, 150, 210};
+    REQUIRE(field.value().texels.size() == reds.size());
+    for (std::size_t i = 0; i < reds.size(); ++i) {
+        CHECK(field.value().texels[i].x == doctest::Approx(reds.at(i) / 255.0));
+    }
+    CHECK(field.value().texels[0].z == 1.0F);
+    CHECK_FALSE(scene3d::particle_field(image, 3, 1).ok());
+    CHECK_FALSE(scene3d::particle_field(image, 0, 1).ok());
+
+    Scene scene;
+    auto png = render::encode_png(image);
+    REQUIRE(png.ok());
+    scene.files["wind.png"] = png.value();
+    scene.world.set_file_reader([&](std::string_view path) -> slash::Result<std::string> {
+        const auto found = scene.files.find(path);
+        if (found == scene.files.end()) {
+            return slash::make_error(slash::ErrorCode::NotFound, "no such file");
+        }
+        return found->second;
+    });
+    const entt::entity emitter =
+        scene.create("leaves", R"({"Transform3D": {}, "GPUParticles3D": {}, "QuadMesh": {}})");
+    scene.create("wind", R"({"Transform3D": {}, "GPUParticlesAttractorVectorField3D": {
+        "texture": "wind.png", "slices_horizontal": 2, "slices_vertical": 2}})");
+    // Without a texture, white.
+    scene.create("blank", R"({"Transform3D": {}, "GPUParticlesAttractorVectorField3D": {}})");
+    scene.step();
+    auto kept = scene3d::particle_steps_3d(scene.world, emitter);
+    REQUIRE(kept.has_value());
+    // The cut field, and white without a texture.
+    std::vector<render::ParticleAttractor3D> attractors = kept->steps.back().attractors;
+    REQUIRE(attractors.size() == 2);
+    REQUIRE(attractors[0].field != nullptr);
+    REQUIRE(attractors[1].field != nullptr);
+    if (attractors[0].field->depth == 1) {
+        std::swap(attractors[0], attractors[1]);
+    }
+    CHECK(*attractors[0].field == field.value());
+    CHECK(attractors[0].extents.x == doctest::Approx(1.0));
+    CHECK(attractors[1].field->texels == std::vector<Vec4>{{1.0F, 1.0F, 1.0F, 1.0F}});
+    CHECK(scene3d::check_meshes(scene.world).empty());
+
+    // A texture that can't be read or cut is reported.
+    scene.create("missing", R"({"Transform3D": {}, "GPUParticlesAttractorVectorField3D": {
+        "texture": "gone.png"}})");
+    scene.create("thin", R"({"Transform3D": {}, "GPUParticlesAttractorVectorField3D": {
+        "texture": "wind.png", "slices_horizontal": 3}})");
+    const auto problems = scene3d::check_meshes(scene.world);
+    REQUIRE(problems.size() == 2);
+    CHECK(problems[0].path == "/components/GPUParticlesAttractorVectorField3D/texture");
+    CHECK(problems[0].message.find("could not be read") != std::string::npos);
+    CHECK(problems[1].message.find("can't be cut into 3x8 slices") != std::string::npos);
+}

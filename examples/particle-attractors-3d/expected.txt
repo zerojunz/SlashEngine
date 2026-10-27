@@ -1,0 +1,22 @@
+wrote swirl.png: 8x8, 4 slices of 4x4
+scene.open {"path":"main.scene.json"}
+{"entities":6,"path":"main.scene.json"}
+particles.eval {"id":"dust","time":1}
+{"alive":64,"bounds":[-2.9161,-0.0944,-2.6904,5.9081,0.191,5.6746]}
+step {"ticks":60}
+{"tick":60,"ticks":60}
+particles.eval {"id":"dust"}
+{"alive":64,"bounds":[-2.9161,-0.0944,-2.6904,6.1619,1.3356,5.6746]}
+particles.eval {"id":"dust","list":true,"max_results":3}
+{"alive":64,"bounds":[-2.9161,-0.0944,-2.6904,6.1619,1.3356,5.6746],"particles":[{"age":1,"angle":0,"color":[0.8994,0.7994,0.6,1],"position":[-1.3409,-0.002,0.9157],"scale":[1,1,1],"velocity":[0,0,-0.1817]},{"age":1,"angle":0,"color":[0.8994,0.7994,0.6,1],"position":[-2.6199,0.0726,-0.1558],"scale":[1,1,1],"velocity":[0,0,-0.2603]},{"age":1,"angle":0,"color":[0.8994,0.7994,0.6,1],"position":[1.3049,0.0118,-1.8968],"scale":[1,1,1],"velocity":[0,0,0]}]}
+in the swirl: 4 particles, 4 of them turning round it
+component.set {"components":{"GPUParticlesAttractorSphere3D":{"cull_mask":2}},"id":"well"}
+{"changed":{"GPUParticlesAttractorSphere3D":{"cull_mask":2}},"id":"well"}
+step {"ticks":60}
+{"tick":120,"ticks":60}
+particles.eval {"id":"dust"}
+{"alive":64,"bounds":[-2.9161,-0.0944,-2.874,7.8977,3.1581,5.8583]}
+component.set {"components":{"GPUParticlesAttractorVectorField3D":{"slices_horizontal":16}},"id":"swirl"}
+{"changed":{"GPUParticlesAttractorVectorField3D":{"slices_horizontal":16}},"id":"swirl"}
+problems: 1
+  swirl/components/GPUParticlesAttractorVectorField3D/texture: "swirl.png": a 8x8 image can't be cut into 16x2 slices

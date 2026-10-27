@@ -2738,6 +2738,57 @@ SLASH_COMPONENT(GPUParticles3D, emitting, amount, amount_ratio, process_material
                 visibility_aabb_size, local_coords, draw_order, transform_align, draw_passes,
                 draw_pass_1, draw_pass_2, draw_pass_3, draw_pass_4, layers, cast_shadow)
 
+// Pulls the particles of GPUParticles3Ds inside a sphere toward its center (a negative strength
+// pushes them away), as Godot's GPUParticlesAttractorSphere3D. Each tick the gpu_particles_3d
+// system pairs it with the emitters whose visibility box its bounds touch and whose layers share
+// a bit with its cull_mask, at most 32 an emitter, when it is visible in the tree.
+struct GPUParticlesAttractorSphere3D {
+    float strength = 1.0F;
+    float attenuation = 1.0F;
+    float directionality = 0.0F;
+    std::uint32_t cull_mask = 0xFFFFFU; // every layer
+    float radius = 1.0F;
+
+    friend bool operator==(const GPUParticlesAttractorSphere3D&,
+                           const GPUParticlesAttractorSphere3D&) = default;
+};
+SLASH_COMPONENT(GPUParticlesAttractorSphere3D, strength, attenuation, directionality, cull_mask,
+                radius)
+
+// As GPUParticlesAttractorSphere3D, in a box, as Godot's GPUParticlesAttractorBox3D.
+struct GPUParticlesAttractorBox3D {
+    float strength = 1.0F;
+    float attenuation = 1.0F;
+    float directionality = 0.0F;
+    std::uint32_t cull_mask = 0xFFFFFU; // every layer
+    Vec3 size{2.0F, 2.0F, 2.0F};
+
+    friend bool operator==(const GPUParticlesAttractorBox3D&,
+                           const GPUParticlesAttractorBox3D&) = default;
+};
+SLASH_COMPONENT(GPUParticlesAttractorBox3D, strength, attenuation, directionality, cull_mask, size)
+
+// Pushes particles inside a box along a field of directions, as Godot's
+// GPUParticlesAttractorVectorField3D: texture is an image cut into slices_horizontal by
+// slices_vertical slices, left to right then top to bottom, stacked front to back as Godot's
+// Texture3D importer stacks them; each texel's color c pushes along c * 2 - 1, in the box's
+// space. Without a texture every texel is white.
+struct GPUParticlesAttractorVectorField3D {
+    std::string texture; // project path of a .png, .jpg or .bmp file; "" for none
+    float strength = 1.0F;
+    float attenuation = 1.0F;
+    float directionality = 0.0F;
+    std::uint32_t cull_mask = 0xFFFFFU; // every layer
+    Vec3 size{2.0F, 2.0F, 2.0F};
+    int slices_horizontal = 8;
+    int slices_vertical = 8;
+
+    friend bool operator==(const GPUParticlesAttractorVectorField3D&,
+                           const GPUParticlesAttractorVectorField3D&) = default;
+};
+SLASH_COMPONENT(GPUParticlesAttractorVectorField3D, strength, attenuation, directionality,
+                cull_mask, size, texture, slices_horizontal, slices_vertical)
+
 // ---- Audio, as Godot's AudioStreamPlayer nodes.
 
 // Plays a sound through a bus, as Godot's AudioStreamPlayer: the same wherever the entity is.
