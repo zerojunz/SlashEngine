@@ -332,6 +332,9 @@ void Problems::add(const std::string& what, const std::string& where, const std:
     if (entry.count++ == 0) {
         entry.where = where;
         entry.why = why;
+    } else if (where != entry.where && entry.also.size() < kAlso &&
+               std::ranges::find(entry.also, where) == entry.also.end()) {
+        entry.also.push_back(where);
     }
 }
 
@@ -349,6 +352,13 @@ json::Array Problems::to_json() const {
         item["what"] = what;
         item["count"] = entry->count;
         item["where"] = entry->where;
+        if (!entry->also.empty()) {
+            json::Array also;
+            for (const std::string& place : entry->also) {
+                also.emplace_back(place);
+            }
+            item["also"] = std::move(also);
+        }
         if (!entry->why.empty()) {
             item["why"] = entry->why;
         }

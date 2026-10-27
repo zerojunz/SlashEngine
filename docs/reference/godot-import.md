@@ -729,7 +729,8 @@ connections to its methods, by entity; and the project's autoloads and groups.
 
 ## Not converted yet
 
-The report lists each of these once per kind, with how many and where it was first seen.
+The report lists each of these once per kind, with how many, where it was first seen and up to
+eight other places (`also`).
 
 | What | Why, and when |
 | --- | --- |
