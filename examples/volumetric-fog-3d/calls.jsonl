@@ -1,0 +1,6 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"frame.capture","params":{"points":[[10,10],[45,25],[110,35],[80,85]],"frames":8,"path":"shots/misty.png"}}
+{"jsonrpc":"2.0","id":3,"method":"component.set","params":{"id":"environment","components":{"WorldEnvironment":{"volumetric_fog_density":0.2,"volumetric_fog_albedo":[0.8,0.85,1.0,1.0]}}}}
+{"jsonrpc":"2.0","id":4,"method":"frame.capture","params":{"points":[[10,10],[45,25],[110,35],[80,85]],"frames":8,"path":"shots/thick.png"}}
+{"jsonrpc":"2.0","id":5,"method":"component.set","params":{"id":"environment","components":{"WorldEnvironment":{"volumetric_fog_enabled":false}}}}
+{"jsonrpc":"2.0","id":6,"method":"frame.capture","params":{"points":[[10,10],[45,25],[110,35],[80,85]],"path":"shots/clear.png"}}

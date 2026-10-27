@@ -43,6 +43,9 @@
 #include "taa.hpp"
 #include "taa_shaders.hpp"
 #include "uniforms.hpp"
+#include "volumetric_fog.hpp"
+#include "volumetric_fog_shaders.hpp"
+#include "volumetric_fog_sky_shaders.hpp"
 
 #include "slash/core/log.hpp"
 #include "slash/render/image.hpp"
@@ -522,6 +525,15 @@ public:
             forget_fsr2_frames(fsr2_frames_.back().first);
         }
         release_fsr2_textures();
+        while (!fog_frames_.empty()) {
+            forget_fog_frames(fog_frames_.back().first);
+        }
+        if (fog_pipeline_ != nullptr) {
+            wgpuComputePipelineRelease(fog_pipeline_);
+        }
+        for (const auto& [format, pipeline] : fog_sky_pipelines_) {
+            wgpuRenderPipelineRelease(pipeline);
+        }
         release_pending();
         for (const GpuTexture& atlas :
              {shadow_atlases_[0].gpu, shadow_atlases_[1].gpu, no_shadows_}) {
@@ -555,7 +567,7 @@ public:
         for (WGPUBuffer buffer :
              {no_source_, no_target_, particle_data_, vertex_buffer_, uniform_buffer_,
               cluster_lights_.buffer, cluster_cells_.buffer, probe_buffer_.buffer,
-              decal_buffer_.buffer, decal_atlas_buffer_.buffer}) {
+              decal_buffer_.buffer, decal_atlas_buffer_.buffer, no_fog_}) {
             destroy_buffer(buffer);
         }
         release_uniform_groups();
@@ -596,7 +608,12 @@ public:
                                            fsr2_storage_layout_,
                                            fsr2_compute_textures_layout_,
                                            fsr2_compute_storage_layout_,
-                                           fsr2_compute_uniforms_layout_}) {
+                                           fsr2_compute_uniforms_layout_,
+                                           fog_textures_layout_,
+                                           fog_output_layout_,
+                                           fog_uniforms_layout_,
+                                           fog_sky_storage_layout_,
+                                           fog_sky_uniforms_layout_}) {
             if (layout != nullptr) {
                 wgpuBindGroupLayoutRelease(layout);
             }
@@ -771,6 +788,7 @@ public:
         forget_ssr_history(texture);
         forget_taa_history(texture);
         forget_fsr2_frames(texture);
+        forget_fog_frames(texture);
     }
 
     Result<ShaderId> create_shader(const CompiledShader& shader) override {
@@ -1165,6 +1183,9 @@ public:
         if (!frame.scene || !uses_fsr2(*frame.scene)) {
             forget_fsr2_frames(frame.target);
         }
+        if (!frame.scene || !uses_volumetric_fog(*frame.scene)) {
+            forget_fog_frames(frame.target);
+        }
         if (frame.target == TextureId::None) {
             int pixels_wide = 0;
             int pixels_high = 0;
@@ -1224,6 +1245,11 @@ public:
             }
             if (uses_fsr2(*frame.scene)) {
                 prepare_fsr2(frame.target, {scene_width_, scene_height_, width, height});
+            }
+            if (uses_volumetric_fog(*frame.scene)) {
+                prepare_volumetric_fog(frame.target,
+                                       fog_volume_size(frame.scene->volumetric_fog.settings,
+                                                       scene_width_, scene_height_));
             }
         } else if (frame.scene && post_processes(frame.scene->post)) {
             prepare_post(width, height);
@@ -1483,6 +1509,9 @@ public:
         }
         if (radiance_draws_) {
             encode_radiance(encoder, *frame_.scene, radiance_offsets);
+        }
+        if (mesh_uniforms.fog_frames != nullptr) {
+            encode_volumetric_fog(encoder, mesh_uniforms);
         }
         // The prepass draws the motion vectors into TAA's history's next texture, or FSR 2's own.
         WGPUTextureView velocity = nullptr;
@@ -1807,6 +1836,20 @@ private:
         std::uint64_t capacity = 0;
     };
 
+    // A target's volumetric fog: its clock and the froxel buffers its frames draw with. Frames
+    // take turns to write the density into one of two (last the one the last frame wrote, which
+    // the next reprojects; the blur writes into the other), then gather it into fog, which the
+    // meshes and the sky read. size is the volume's and bytes each buffer's.
+    struct FogFrames {
+        FogClock clock;
+        std::array<WGPUBuffer, 2> density{};
+        WGPUBuffer scratch = nullptr;
+        WGPUBuffer fog = nullptr;
+        std::uint64_t bytes = 0;
+        std::size_t last = 0;
+        std::array<std::uint32_t, 3> size{};
+    };
+
     // Where the frame's mesh uniforms are: the camera's, the scene's (and with SSR, the scene's
     // without it, for a target's first frame) and the shadows', each shadow pass's, then each
     // draw's instance and surface.
@@ -1815,6 +1858,10 @@ private:
         std::uint32_t scene = 0;
         std::uint32_t unreflected = 0;
         std::uint32_t shadows = 0;
+        // With volumetric fog, the target's and the uniforms of its passes and of its sky.
+        FogFrames* fog_frames = nullptr;
+        std::array<std::uint32_t, 4> fog{};
+        std::uint32_t fog_sky = 0;
         std::vector<std::uint32_t> passes;
         std::vector<std::pair<std::uint32_t, std::uint32_t>> draws;
     };
@@ -2175,7 +2222,8 @@ private:
                                        storage_entry(1, true, WGPUShaderStage_Fragment),
                                        storage_entry(2, true, WGPUShaderStage_Fragment),
                                        storage_entry(3, true, WGPUShaderStage_Fragment),
-                                       storage_entry(4, true, WGPUShaderStage_Fragment)};
+                                       storage_entry(4, true, WGPUShaderStage_Fragment),
+                                       storage_entry(5, true, WGPUShaderStage_Fragment)};
         mesh_clusters_layout_ = layout(mesh_clusters);
         const std::array shadow_vertex{
             uniform_entry(0, WGPUShaderStage_Vertex, sizeof(MeshShadowPassUniforms)),
@@ -2278,6 +2326,31 @@ private:
         const std::array fsr2_compute_entries{
             uniform_entry(0, WGPUShaderStage_Compute, sizeof(Fsr2Uniforms))};
         fsr2_compute_uniforms_layout_ = layout(fsr2_compute_entries);
+        // Volumetric fog's passes: the shadow atlases, which they load, the radiance and its
+        // sampler; the lights, the clusters and the source; the target; the fog's and the
+        // shadows' uniforms.
+        std::array<WGPUBindGroupLayoutEntry, 7> fog_inputs{
+            texture_entry(0),       texture_entry(1),
+            cube_entry(2),          sampler_entry(kSamplerBinding + 2),
+            storage_entry(3, true), storage_entry(4, true),
+            storage_entry(5, true)};
+        for (std::size_t slot = 0; slot < 4; ++slot) {
+            fog_inputs.at(slot).visibility = WGPUShaderStage_Compute;
+        }
+        fog_inputs[0].texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
+        fog_inputs[1].texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
+        fog_textures_layout_ = layout(fog_inputs);
+        const std::array fog_output{storage_entry(0, false)};
+        fog_output_layout_ = layout(fog_output);
+        const std::array fog_entries{
+            uniform_entry(0, WGPUShaderStage_Compute, sizeof(FogUniforms)),
+            uniform_entry(1, WGPUShaderStage_Compute, sizeof(MeshShadowUniforms))};
+        fog_uniforms_layout_ = layout(fog_entries);
+        const std::array fog_sky_storage{storage_entry(0, true, WGPUShaderStage_Fragment)};
+        fog_sky_storage_layout_ = layout(fog_sky_storage);
+        const std::array fog_sky_entries{
+            uniform_entry(0, WGPUShaderStage_Fragment, sizeof(FogSkyUniforms))};
+        fog_sky_uniforms_layout_ = layout(fog_sky_entries);
 
         const auto pipeline_layout = [&](std::initializer_list<WGPUBindGroupLayout> groups) {
             const std::vector<WGPUBindGroupLayout> list(groups);
@@ -2328,6 +2401,10 @@ private:
         pipeline_layouts_.at(kFsr2ReconstructLayout) =
             pipeline_layout({fsr2_compute_textures_layout_, fsr2_compute_storage_layout_,
                              fsr2_compute_uniforms_layout_});
+        pipeline_layouts_.at(kFogLayout) =
+            pipeline_layout({fog_textures_layout_, fog_output_layout_, fog_uniforms_layout_});
+        pipeline_layouts_.at(kFogSkyLayout) = pipeline_layout(
+            {fog_sky_storage_layout_, empty_layout_, empty_layout_, fog_sky_uniforms_layout_});
     }
 
     WGPUShaderModule create_module(std::string_view wgsl) {
@@ -2556,6 +2633,11 @@ private:
         const std::array fsr2{buffer_entry(0, uniform_buffer_, sizeof(Fsr2Uniforms))};
         fsr2_uniforms_group_ = bind_group(fsr2_uniforms_layout_, fsr2);
         fsr2_compute_uniforms_group_ = bind_group(fsr2_compute_uniforms_layout_, fsr2);
+        const std::array fog{buffer_entry(0, uniform_buffer_, sizeof(FogUniforms)),
+                             buffer_entry(1, uniform_buffer_, sizeof(MeshShadowUniforms))};
+        fog_uniforms_group_ = bind_group(fog_uniforms_layout_, fog);
+        const std::array fog_sky{buffer_entry(0, uniform_buffer_, sizeof(FogSkyUniforms))};
+        fog_sky_uniforms_group_ = bind_group(fog_sky_uniforms_layout_, fog_sky);
     }
 
     void release_uniform_groups() {
@@ -2565,7 +2647,7 @@ private:
               &shadow_fragment_group_, &post_uniforms_group_, &forward_uniforms_group_,
               &sky_uniforms_group_, &filter_uniforms_group_, &ssao_uniforms_group_,
               &ssr_uniforms_group_, &taa_uniforms_group_, &fsr2_uniforms_group_,
-              &fsr2_compute_uniforms_group_}) {
+              &fsr2_compute_uniforms_group_, &fog_uniforms_group_, &fog_sky_uniforms_group_}) {
             if (*group != nullptr) {
                 wgpuBindGroupRelease(*group);
                 *group = nullptr;
@@ -3405,9 +3487,29 @@ private:
         camera.previous_view_projection = transposed(camera.previous_view_projection);
         at.camera = uniforms_.add(camera);
         const auto lights = std::make_unique<MeshSceneUniforms>(mesh_scene_uniforms(scene));
+        FogFrames* fog = scene.method == RenderMethod::ForwardPlus && uses_volumetric_fog(scene)
+                             ? find_fog_frames(frame_.target)
+                             : nullptr;
         if (scene.method == RenderMethod::ForwardPlus) {
-            upload_clusters();
+            if (no_fog_ == nullptr) {
+                no_fog_ = create_buffer(WGPUBufferUsage_Storage, sizeof(Float4));
+            }
+            upload_clusters(fog != nullptr ? fog->fog : no_fog_);
             set_cluster_uniforms(*lights, clusters_, &decal_atlas_.atlas(), scene.decals.filter);
+        }
+        if (fog != nullptr) {
+            // Volumetric fog's passes, which take the pass from their uniforms, and its sky.
+            set_volumetric_fog(*lights, scene, fog->size);
+            FogUniforms uniforms =
+                volumetric_fog_uniforms(scene, *lights, scene_width_, scene_height_, fog->clock);
+            uniforms.view_to_world = transposed(uniforms.view_to_world);
+            uniforms.to_previous = transposed(uniforms.to_previous);
+            for (std::size_t pass = 0; pass < at.fog.size(); ++pass) {
+                uniforms.size[3] = static_cast<std::uint32_t>(pass);
+                at.fog.at(pass) = uniforms_.add(uniforms);
+            }
+            at.fog_sky = uniforms_.add(fog_sky_uniforms(*lights));
+            at.fog_frames = fog;
         }
         at.scene = uniforms_.add(*lights);
         if (uses_ssr(scene)) {
@@ -3450,7 +3552,7 @@ private:
     // Builds the frame's Forward+ clusters and copies them, the frame's reflection probes and
     // decals and, when it changes, the decals' atlas to the GPU, bound as a group made again when a
     // buffer grows.
-    void upload_clusters() {
+    void upload_clusters(WGPUBuffer fog) {
         decal_atlas_.update(frame_.scene->decals);
         const DecalAtlas& atlas = decal_atlas_.atlas();
         clusters_ = build_clusters(*frame_.scene, scene_width_, scene_height_, &atlas);
@@ -3478,24 +3580,24 @@ private:
             decal_atlas_uploaded_ = atlas.generation;
         }
         if (cluster_group_ != nullptr && !lights_grew && !cells_grew && !probes_grew &&
-            !decals_grew && !atlas_grew) {
+            !decals_grew && !atlas_grew && cluster_fog_ == fog) {
             return;
         }
         if (cluster_group_ != nullptr) {
             wgpuBindGroupRelease(cluster_group_);
         }
-        std::array<WGPUBindGroupEntry, 5> entries{};
-        for (std::uint32_t binding = 0; binding < entries.size(); ++binding) {
-            const std::array<const StorageBuffer*, 5> buffers{&cluster_lights_, &cluster_cells_,
-                                                              &probe_buffer_, &decal_buffer_,
-                                                              &decal_atlas_buffer_};
+        std::array<WGPUBindGroupEntry, 6> entries{};
+        const std::array<const StorageBuffer*, 5> buffers{&cluster_lights_, &cluster_cells_,
+                                                          &probe_buffer_, &decal_buffer_,
+                                                          &decal_atlas_buffer_};
+        for (std::uint32_t binding = 0; binding < buffers.size(); ++binding) {
             const StorageBuffer& storage = *buffers.at(binding);
-            entries.at(binding) = WGPU_BIND_GROUP_ENTRY_INIT;
-            entries.at(binding).binding = binding;
-            entries.at(binding).buffer = storage.buffer;
-            entries.at(binding).size = storage.capacity;
+            entries.at(binding) = buffer_entry(binding, storage.buffer, storage.capacity);
         }
+        // The volumetric fog, or a float4 in its place.
+        entries[5] = buffer_entry(5, fog);
         cluster_group_ = bind_group(mesh_clusters_layout_, entries);
+        cluster_fog_ = fog;
     }
 
     // Writes bytes to a storage buffer, growing it first if they don't fit; says if it grew.
@@ -3555,6 +3657,17 @@ private:
             wgpuRenderPassEncoderSetBindGroup(pass, 3, sky_uniforms_group_, 1, &*sky);
             wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
             wgpuBindGroupRelease(texture);
+            if (at.fog_frames != nullptr) {
+                // The sky seen through the fog.
+                const std::array froxels{buffer_entry(0, at.fog_frames->fog)};
+                WGPUBindGroup storage = bind_group(fog_sky_storage_layout_, froxels);
+                wgpuRenderPassEncoderSetPipeline(
+                    pass, fog_sky_pipeline_for(world_format(*frame_.scene, frame_format_)));
+                wgpuRenderPassEncoderSetBindGroup(pass, 0, storage, 0, nullptr);
+                wgpuRenderPassEncoderSetBindGroup(pass, 3, fog_sky_uniforms_group_, 1, &at.fog_sky);
+                wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+                wgpuBindGroupRelease(storage);
+            }
         }
         if (!mesh_draws_.empty() && frame_.scene->method == RenderMethod::ForwardPlus) {
             wgpuRenderPassEncoderSetBindGroup(pass, 0, cluster_group_, 0, nullptr);
@@ -4204,6 +4317,165 @@ private:
                 pass_texture(render_width, render_height, kFsr2DilateTargets[1]);
         }
         frames.sizes = sizes;
+    }
+
+    // target's froxel buffers for a volume of size, made at the start of a frame with
+    // volumetric fog.
+    void prepare_volumetric_fog(TextureId target, const std::array<std::uint32_t, 3>& size) {
+        FogFrames* found = find_fog_frames(target);
+        if (found == nullptr) {
+            found = &fog_frames_.emplace_back(target, FogFrames{}).second;
+        }
+        FogFrames& frames = *found;
+        if (frames.fog != nullptr && frames.size == size) {
+            return;
+        }
+        release_fog_frames(frames);
+        frames = FogFrames{};
+        frames.bytes = std::uint64_t{size[0]} * size[1] * size[2] * sizeof(Float4);
+        for (WGPUBuffer* slot :
+             {frames.density.data(), &frames.density[1], &frames.scratch, &frames.fog}) {
+            *slot = create_buffer(WGPUBufferUsage_Storage, frames.bytes);
+        }
+        frames.size = size;
+    }
+
+    // target's volumetric fog, or null when it has none.
+    FogFrames* find_fog_frames(TextureId target) {
+        for (auto& [id, frames] : fog_frames_) {
+            if (id == target) {
+                return &frames;
+            }
+        }
+        return nullptr;
+    }
+
+    void release_fog_frames(FogFrames& frames) {
+        for (WGPUBuffer* buffer :
+             {frames.density.data(), &frames.density[1], &frames.scratch, &frames.fog}) {
+            if (*buffer != nullptr) {
+                pending_buffers_.push_back(std::exchange(*buffer, nullptr));
+            }
+        }
+    }
+
+    void forget_fog_frames(TextureId target) {
+        const auto it = std::ranges::find_if(
+            fog_frames_, [&](const auto& entry) { return entry.first == target; });
+        if (it == fog_frames_.end()) {
+            return;
+        }
+        release_fog_frames(it->second);
+        fog_frames_.erase(it);
+    }
+
+    // Volumetric fog's pipeline, made the first time a frame needs it.
+    WGPUComputePipeline fog_pipeline() {
+        if (fog_pipeline_ == nullptr) {
+            WGPUComputePipelineDescriptor info = WGPU_COMPUTE_PIPELINE_DESCRIPTOR_INIT;
+            info.layout = pipeline_layouts_.at(kFogLayout);
+            info.compute.module = module(kFogModule, joined(shaders::kVolumetricFogComputeWgsl));
+            info.compute.entryPoint = text_view("cs_main");
+            fog_pipeline_ = wgpuDeviceCreateComputePipeline(device_, &info);
+        }
+        return fog_pipeline_;
+    }
+
+    // The pipeline drawing the sky through the fog over a target of format, blended ONE,
+    // SRC_ALPHA and keeping the target's alpha, made the first time a frame needs it.
+    WGPURenderPipeline fog_sky_pipeline_for(WGPUTextureFormat format) {
+        for (const auto& [made, pipeline] : fog_sky_pipelines_) {
+            if (made == format) {
+                return pipeline;
+            }
+        }
+        WGPUBlendState blend = WGPU_BLEND_STATE_INIT;
+        blend.color = {.operation = WGPUBlendOperation_Add,
+                       .srcFactor = WGPUBlendFactor_One,
+                       .dstFactor = WGPUBlendFactor_SrcAlpha};
+        blend.alpha = {.operation = WGPUBlendOperation_Add,
+                       .srcFactor = WGPUBlendFactor_Zero,
+                       .dstFactor = WGPUBlendFactor_One};
+        WGPUColorTargetState color = WGPU_COLOR_TARGET_STATE_INIT;
+        color.format = format;
+        color.blend = &blend;
+        WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
+        fragment.module = module(kFogSkyFragmentModule, shaders::kVolumetricFogSkyFragmentWgsl);
+        fragment.entryPoint = text_view("fs_main");
+        fragment.targetCount = 1;
+        fragment.targets = &color;
+        WGPUDepthStencilState depth = WGPU_DEPTH_STENCIL_STATE_INIT;
+        depth.format = kDepthFormat;
+        depth.depthWriteEnabled = WGPUOptionalBool_False;
+        depth.depthCompare = WGPUCompareFunction_Always;
+        WGPURenderPipelineDescriptor info = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
+        info.layout = pipeline_layouts_.at(kFogSkyLayout);
+        info.vertex.module = module(kFogSkyVertexModule, shaders::kVolumetricFogSkyVertexWgsl);
+        info.vertex.entryPoint = text_view("vs_main");
+        info.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        info.primitive.cullMode = WGPUCullMode_None;
+        info.depthStencil = &depth;
+        info.fragment = &fragment;
+        WGPURenderPipeline pipeline = wgpuDeviceCreateRenderPipeline(device_, &info);
+        fog_sky_pipelines_.emplace_back(format, pipeline);
+        return pipeline;
+    }
+
+    // Volumetric fog's passes, their uniforms at at.fog: the density, written over the frame
+    // before's, which it reprojects; the blur across, then down, into the other density buffer;
+    // the gathering into the fog.
+    void encode_volumetric_fog(WGPUCommandEncoder encoder, const MeshUniforms& at) {
+        FogFrames& frames = *at.fog_frames;
+        const Scene3D& scene = *frame_.scene;
+        const std::size_t last = frames.last;
+        const std::size_t next = 1 - last;
+        const auto pass = [&](FogPass which, WGPUBuffer source, WGPUBuffer target,
+                              std::uint32_t depth) {
+            std::array<WGPUBindGroupEntry, 7> entries{};
+            for (std::uint32_t slot = 0; slot < 3; ++slot) {
+                entries.at(slot) = WGPU_BIND_GROUP_ENTRY_INIT;
+                entries.at(slot).binding = slot;
+            }
+            entries[0].textureView = shadow_plan_->directional_size != 0
+                                         ? shadow_atlases_[0].gpu.view
+                                         : no_shadows_.view;
+            entries[1].textureView =
+                shadow_plan_->positional_size != 0 ? shadow_atlases_[1].gpu.view : no_shadows_.view;
+            entries[2].textureView =
+                radiance_used(scene) ? radiance_.filtered.view : no_radiance_.view;
+            entries[3] = WGPU_BIND_GROUP_ENTRY_INIT;
+            entries[3].binding = kSamplerBinding + 2;
+            entries[3].sampler = radiance_sampler_;
+            entries[4] = buffer_entry(3, cluster_lights_.buffer, cluster_lights_.capacity);
+            entries[5] = buffer_entry(4, cluster_cells_.buffer, cluster_cells_.capacity);
+            entries[6] = buffer_entry(5, source, frames.bytes);
+            WGPUBindGroup inputs = bind_group(fog_textures_layout_, entries);
+            const std::array output{buffer_entry(0, target, frames.bytes)};
+            WGPUBindGroup outputs = bind_group(fog_output_layout_, output);
+            const std::array offsets{at.fog.at(static_cast<std::size_t>(which)), at.shadows};
+            WGPUComputePassEncoder compute = wgpuCommandEncoderBeginComputePass(encoder, nullptr);
+            wgpuComputePassEncoderSetPipeline(compute, fog_pipeline());
+            wgpuComputePassEncoderSetBindGroup(compute, 0, inputs, 0, nullptr);
+            wgpuComputePassEncoderSetBindGroup(compute, 1, outputs, 0, nullptr);
+            wgpuComputePassEncoderSetBindGroup(compute, 2, fog_uniforms_group_, offsets.size(),
+                                               offsets.data());
+            wgpuComputePassEncoderDispatchWorkgroups(
+                compute, (frames.size[0] + kFogThreads - 1) / kFogThreads,
+                (frames.size[1] + kFogThreads - 1) / kFogThreads, depth);
+            wgpuComputePassEncoderEnd(compute);
+            wgpuComputePassEncoderRelease(compute);
+            wgpuBindGroupRelease(inputs);
+            wgpuBindGroupRelease(outputs);
+        };
+        pass(FogPass::Density, frames.density.at(last), frames.density.at(next), frames.size[2]);
+        WGPUBuffer gathered = frames.density.at(next);
+        if (scene.volumetric_fog.settings.use_filter) {
+            pass(FogPass::FilterX, frames.density.at(next), frames.scratch, frames.size[2]);
+            pass(FogPass::FilterY, frames.scratch, frames.density.at(last), frames.size[2]);
+            gathered = frames.density.at(last);
+        }
+        pass(FogPass::Integrate, gathered, frames.fog, 1);
+        frames.last = next;
     }
 
     // target's frames before for FSR 2, or null when it has none.
@@ -5142,6 +5414,9 @@ private:
     // FSR 2's passes' vertex and fragment modules in Fsr2Pass's order, then its reconstruct pass's.
     static constexpr std::size_t kFsr2Modules = 30;
     static constexpr std::size_t kFsr2ReconstructModule = kFsr2Modules + (2 * kFsr2Passes);
+    static constexpr std::size_t kFogModule = kFsr2ReconstructModule + 1;
+    static constexpr std::size_t kFogSkyVertexModule = kFogModule + 1;
+    static constexpr std::size_t kFogSkyFragmentModule = kFogModule + 2;
     static constexpr std::size_t kSpriteLayout = 0;
     static constexpr std::size_t kMaterialLayout = 1;
     static constexpr std::size_t kProcessLayout = 2;
@@ -5159,6 +5434,8 @@ private:
     static constexpr std::size_t kTaaLayout = 14;
     static constexpr std::size_t kFsr2Layout = 15; // one for each Fsr2Pass
     static constexpr std::size_t kFsr2ReconstructLayout = kFsr2Layout + kFsr2Passes;
+    static constexpr std::size_t kFogLayout = kFsr2ReconstructLayout + 1;
+    static constexpr std::size_t kFogSkyLayout = kFogLayout + 1;
 
     WGPUInstance instance_;
     WGPUDevice device_;
@@ -5171,7 +5448,7 @@ private:
     bool can_wait_ = false; // Asyncify lets read_texture wait for the GPU
     // Which formats the GPU samples, by TextureFormat.
     std::array<bool, 4> sampled_{true, false, false, true};
-    std::array<WGPUShaderModule, kFsr2ReconstructModule + 1> modules_{};
+    std::array<WGPUShaderModule, kFogSkyFragmentModule + 1> modules_{};
     std::vector<Pipeline> pipelines_;
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -5212,7 +5489,12 @@ private:
     WGPUBindGroupLayout fsr2_compute_textures_layout_ = nullptr;
     WGPUBindGroupLayout fsr2_compute_storage_layout_ = nullptr;
     WGPUBindGroupLayout fsr2_compute_uniforms_layout_ = nullptr;
-    std::array<WGPUPipelineLayout, kFsr2ReconstructLayout + 1> pipeline_layouts_{};
+    WGPUBindGroupLayout fog_textures_layout_ = nullptr;
+    WGPUBindGroupLayout fog_output_layout_ = nullptr;
+    WGPUBindGroupLayout fog_uniforms_layout_ = nullptr;
+    WGPUBindGroupLayout fog_sky_storage_layout_ = nullptr;
+    WGPUBindGroupLayout fog_sky_uniforms_layout_ = nullptr;
+    std::array<WGPUPipelineLayout, kFogSkyLayout + 1> pipeline_layouts_{};
     std::array<WGPUSampler, 4> samplers_{}; // by sampler_index
     GpuTexture white_;
     std::unordered_map<TextureId, Texture> textures_;
@@ -5242,6 +5524,8 @@ private:
     WGPUBindGroup taa_uniforms_group_ = nullptr;
     WGPUBindGroup fsr2_uniforms_group_ = nullptr;
     WGPUBindGroup fsr2_compute_uniforms_group_ = nullptr;
+    WGPUBindGroup fog_uniforms_group_ = nullptr;
+    WGPUBindGroup fog_sky_uniforms_group_ = nullptr;
     std::unordered_map<ParticlesId, ParticleSystem> particle_systems_;
     std::uint32_t next_particles_ = 1;
     std::vector<WGPUBuffer> pending_buffers_;
@@ -5268,6 +5552,7 @@ private:
     StorageBuffer decal_buffer_;
     StorageBuffer decal_atlas_buffer_;
     WGPUBindGroup cluster_group_ = nullptr;
+    WGPUBuffer cluster_fog_ = nullptr; // the fog buffer cluster_group_ binds
     GpuTexture depth_;
     std::uint32_t depth_width_ = 0;
     std::uint32_t depth_height_ = 0;
@@ -5340,6 +5625,12 @@ private:
     };
     std::array<WGPURenderPipeline, kFsr2Passes> fsr2_pipelines_{};
     WGPUComputePipeline fsr2_reconstruct_ = nullptr;
+    // Volumetric fog: each target's frames, the passes' pipeline, the sky's pipelines and the
+    // buffer the meshes bind in its place without it.
+    std::vector<std::pair<TextureId, FogFrames>> fog_frames_;
+    WGPUComputePipeline fog_pipeline_ = nullptr;
+    std::vector<std::pair<WGPUTextureFormat, WGPURenderPipeline>> fog_sky_pipelines_;
+    WGPUBuffer no_fog_ = nullptr;
     Fsr2Textures fsr2_textures_;
     std::vector<std::pair<TextureId, Fsr2Frames>> fsr2_frames_;
     // The radiance meshes are lit by: the raw cube the sky draws into and the one filtered from
