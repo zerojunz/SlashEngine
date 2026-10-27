@@ -47,6 +47,7 @@ add_library(slash_scene3d
     src/occlusion.cpp
     src/physical_bones.cpp
     src/primitive.cpp
+    src/recipe.cpp
     src/scene3d.cpp
     src/skeleton.cpp
     src/terrain.cpp

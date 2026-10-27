@@ -530,7 +530,7 @@ TEST_CASE("models that can't draw are reported, in the world and in scene files"
     REQUIRE(problems.size() == 3);
     CHECK(problems[0].path == "/components/MeshInstance3D/mesh");
     CHECK(problems[0].message == "draws a model, so its BoxMesh is left out: remove one of them");
-    CHECK(problems[1].message == "expected a .gltf, .glb, .obj, .fbx or .blend file");
+    CHECK(problems[1].message == "expected a .gltf, .glb, .obj, .fbx, .blend or .model.json file");
     CHECK(problems[2].message == "\"models/gone.glb\" could not be read: no such file");
 
     // Drawing reports them too, and draws nothing for them.
@@ -1428,6 +1428,21 @@ TEST_CASE("MeshInstance3D draws an FBX model as it draws the same OBJ one") {
     const render::Image& b = obj.value().image;
     REQUIRE(a.pixels.size() == b.pixels.size());
     CHECK(a.pixels == b.pixels);
+}
+
+TEST_CASE("MeshInstance3D draws a model recipe, built as it loads") {
+    Scene scene;
+    scene.files.files["props/crate.model.json"] = R"({"format": 1, "parameters": {"side": 1},
+        "materials": {"red": {"albedo_color": [1, 0, 0, 1], "shading_mode": "unshaded"}},
+        "parts": [{"shape": "box", "size": ["=side", "=side", "=side"], "material": "red"}]})";
+    scene.create("crate",
+                 R"({"Transform3D": {}, "MeshInstance3D": {"mesh": "props/crate.model.json"}})");
+    CHECK(scene3d::check_meshes(scene.world).empty());
+    const auto captured = canvas::capture(scene.world, scene.assets);
+    REQUIRE_MESSAGE(captured.ok(), error_of(captured));
+    CHECK(captured.value().meshes == 1);
+    CHECK(pixel(captured.value().image, 32, 32) == Rgba{255, 0, 0, 255});
+    CHECK(pixel(captured.value().image, 2, 2) == Rgba{0, 0, 255, 255});
 }
 
 TEST_CASE("glTF skins, bones and animations load as Godot's importer reads them") {

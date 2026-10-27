@@ -50,6 +50,7 @@
 #include "slash/scene3d/blend.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/lightmap.hpp"
+#include "slash/scene3d/recipe.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
 #include "slash/server/server.hpp"
@@ -1164,6 +1165,9 @@ int cmd_scene_format(const std::string& path, bool check) {
                 return {};
             };
         };
+        if (path.ends_with(slash::scene3d::kModelRecipeSuffix)) {
+            return format_checked(text.value(), checked_by(slash::scene3d::validate_model_recipe));
+        }
         if (path.ends_with(command::kReplaySuffix)) {
             return format_checked(text.value(), checked_by(command::validate_replay));
         }
@@ -1225,26 +1229,29 @@ int cmd_scene(const std::vector<std::string>& args) {
     if (path.empty()) {
         return usage_error("scene " + action + " needs a file path");
     }
-    if (action == "format" && slash::scene3d::is_model_path(path)) {
+    if (action == "format" && slash::scene3d::is_model_path(path) &&
+        !path.ends_with(slash::scene3d::kModelRecipeSuffix)) {
         return usage_error("scene format leaves models as the tools that made them wrote them");
     }
     return action == "validate" ? cmd_scene_validate(path) : cmd_scene_format(path, check);
 }
 
 int cmd_schema(const std::vector<std::string>& args) {
-    constexpr std::array<std::string_view, 25> kKinds = {
-        "scene",     "prefab",     "frames",  "material",  "process_material",
-        "animation", "animtree",   "tileset", "font",      "theme",
-        "audio",     "bus_layout", "navmesh", "navpoly",   "meshlib",
-        "lightmap",  "replay",     "test",    "score",     "storyboard",
-        "project",   "presets",    "sdk",     "providers", "bench"};
+    constexpr std::array<std::string_view, 27> kKinds = {
+        "scene",     "prefab",     "frames",  "material", "process_material",
+        "animation", "animtree",   "tileset", "font",     "theme",
+        "audio",     "bus_layout", "navmesh", "navpoly",  "meshlib",
+        "lightmap",  "voxel_gi",   "model",   "replay",   "test",
+        "score",     "storyboard", "project", "presets",  "sdk",
+        "providers", "bench"};
     if (args.size() != 1 || std::ranges::find(kKinds, args[0]) == kKinds.end()) {
-        return usage_error("schema takes one argument: scene, prefab, frames, material, "
-                           "process_material, animation, animtree, tileset, font, theme, audio, "
-                           "bus_layout, navmesh, navpoly, meshlib, lightmap, replay, test, "
-                           "score, "
-                           "storyboard, "
-                           "project, presets, sdk, providers or bench");
+        return usage_error(
+            "schema takes one argument: scene, prefab, frames, material, "
+            "process_material, animation, animtree, tileset, font, theme, audio, "
+            "bus_layout, navmesh, navpoly, meshlib, lightmap, voxel_gi, model, replay, test, "
+            "score, "
+            "storyboard, "
+            "project, presets, sdk, providers or bench");
     }
     json::Value schema;
     if (args[0] == "scene") {
@@ -1279,6 +1286,10 @@ int cmd_schema(const std::vector<std::string>& args) {
         schema = slash::scene3d::mesh_library_schema();
     } else if (args[0] == "lightmap") {
         schema = slash::scene3d::lightmap_schema();
+    } else if (args[0] == "voxel_gi") {
+        schema = slash::scene3d::voxel_gi_schema();
+    } else if (args[0] == "model") {
+        schema = slash::scene3d::model_recipe_schema();
     } else if (args[0] == "replay") {
         schema = command::replay_schema();
     } else if (args[0] == "test") {

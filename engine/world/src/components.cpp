@@ -2136,16 +2136,19 @@ void register_csg_components(ComponentRegistry& registry) {
             .describe("path_joined", {.doc = "Joins the end to the start instead of capping both."})
             .describe("smooth_faces", smooth_faces)
             .describe("flip_faces", flip_faces));
-    shape(registry.add<CSGMesh3D>()
-              .set_doc("A closed mesh as a CSG shape, as Godot's CSGMesh3D: a model's meshes, or "
-                       "the entity's primitive mesh.")
-              .describe("mesh",
-                        {.doc = "Project path of a .gltf, .glb, .obj, .fbx or .blend model, its "
-                                "meshes placed as its nodes place them at rest, with its "
-                                "materials unless the entity has a StandardMaterial3D; \"\" for "
-                                "the entity's BoxMesh, SphereMesh, CylinderMesh, CapsuleMesh, "
-                                "PrismMesh or TorusMesh."})
-              .describe("flip_faces", flip_faces));
+    shape(
+        registry.add<CSGMesh3D>()
+            .set_doc("A closed mesh as a CSG shape, as Godot's CSGMesh3D: a model's meshes, or "
+                     "the entity's primitive mesh.")
+            .describe(
+                "mesh",
+                {.doc =
+                     "Project path of a .gltf, .glb, .obj, .fbx, .blend or .model.json model, its "
+                     "meshes placed as its nodes place them at rest, with its "
+                     "materials unless the entity has a StandardMaterial3D; \"\" for "
+                     "the entity's BoxMesh, SphereMesh, CylinderMesh, CapsuleMesh, "
+                     "PrismMesh or TorusMesh."})
+            .describe("flip_faces", flip_faces));
 }
 
 void register_gridmap_components(ComponentRegistry& registry) {
@@ -2264,11 +2267,10 @@ void register_3d_components(ComponentRegistry& registry) {
         .set_doc("Draws the entity's primitive mesh (BoxMesh, SphereMesh, ...) at its "
                  "Transform3D, as Godot's MeshInstance3D, with its StandardMaterial3D if it has "
                  "one; or a model's meshes.")
-        .describe(
-            "mesh",
-            {.doc = "Project path of a .gltf, .glb, .obj, .fbx or .blend model drawn in place of a "
-                    "primitive mesh, with its materials unless the entity has a "
-                    "StandardMaterial3D; \"\" for none."})
+        .describe("mesh", {.doc = "Project path of a .gltf, .glb, .obj, .fbx, .blend or "
+                                  ".model.json model drawn in place of a "
+                                  "primitive mesh, with its materials unless the entity has a "
+                                  "StandardMaterial3D; \"\" for none."})
         .describe("layers", {.doc = "Render layers: cameras whose cull_mask and lights whose "
                                     "light_cull_mask share a bit see and light it."})
         .describe("cast_shadow",

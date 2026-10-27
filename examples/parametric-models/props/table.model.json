@@ -1,0 +1,59 @@
+{
+  "format": 1,
+  "materials": {
+    "iron": {
+      "albedo_color": [0.18, 0.18, 0.2, 1.0],
+      "metallic": 1.0,
+      "roughness": 0.4
+    },
+    "oak": {
+      "albedo_color": [0.55, 0.36, 0.2, 1.0],
+      "roughness": 0.7
+    }
+  },
+  "parameters": {
+    "depth": 0.8,
+    "height": 0.75,
+    "inset": 0.1,
+    "leg": 0.06,
+    "thickness": 0.05,
+    "width": 1.4
+  },
+  "parts": [
+    {
+      "bevel": 0.01,
+      "bevel_segments": 2,
+      "material": "oak",
+      "name": "top",
+      "position": [0, "=height - thickness / 2", 0],
+      "shape": "box",
+      "size": ["=width", "=thickness", "=depth"]
+    },
+    {
+      "children": [
+        {
+          "array": {
+            "count": 2,
+            "position": [0, 0, "=depth - inset * 2"]
+          },
+          "children": [
+            {
+              "array": {
+                "count": 2,
+                "position": ["=width - inset * 2", 0, 0]
+              },
+              "height": "=height - thickness",
+              "position": ["=-width / 2 + inset", "=(height - thickness) / 2", 0],
+              "radius": "=leg / 2",
+              "shape": "cylinder",
+              "sides": 12
+            }
+          ],
+          "position": [0, 0, "=-depth / 2 + inset"]
+        }
+      ],
+      "material": "iron",
+      "name": "legs"
+    }
+  ]
+}

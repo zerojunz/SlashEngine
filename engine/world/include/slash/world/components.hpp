@@ -55,9 +55,9 @@ SLASH_COMPONENT(Transform3D, position, rotation, scale, visible, top_level, chil
 // component (BoxMesh, SphereMesh and the rest), colored by its StandardMaterial3D, or Godot's
 // default material without one; or a model file, with its own materials.
 struct MeshInstance3D {
-    // A .gltf, .glb, .obj, .fbx or .blend file's meshes, placed as its nodes place them, in place
-    // of a primitive mesh component; "" for none. A StandardMaterial3D on the entity replaces the
-    // file's materials, as Godot's material_override.
+    // A .gltf, .glb, .obj, .fbx, .blend or .model.json file's meshes, placed as its nodes place
+    // them, in place of a primitive mesh component; "" for none. A StandardMaterial3D on the entity
+    // replaces the file's materials, as Godot's material_override.
     std::string mesh;
     // The render layers it is on: cameras whose cull_mask and lights whose light_cull_mask share
     // a bit with them see it and light it.
@@ -1165,7 +1165,8 @@ SLASH_COMPONENT(CSGPolygon3D, polygon, mode, depth, spin_degrees, spin_sides, pa
 
 // Godot's CSGMesh3D: a closed mesh as a shape, a model's meshes or the entity's primitive mesh.
 struct CSGMesh3D {
-    // A .gltf, .glb, .obj, .fbx or .blend file's meshes, placed as its nodes place them at rest;
+    // A .gltf, .glb, .obj, .fbx, .blend or .model.json file's meshes, placed as its nodes place
+    // them at rest;
     // "" for the entity's BoxMesh, SphereMesh, CylinderMesh, CapsuleMesh, PrismMesh or TorusMesh.
     std::string mesh;
     bool flip_faces = false;
