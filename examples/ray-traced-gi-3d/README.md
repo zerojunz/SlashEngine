@@ -32,5 +32,5 @@ frame.capture {"points":[[60,150],[175,100],[250,140],[160,40]],"path":"shots/ro
 - `component.set` paints the red wall blue: the floor beside it turns blue.
 - Turning the sun off leaves only the ambient light, which the rays still bring in over the walls.
 
-Run as a game (`slash-cli run`), GPUs light the room with the ambient light for now; tracing it
-on the GPU comes next.
+Run as a game (`slash-cli run`) on Vulkan, a GPU with ray queries traces the same light; other
+GPUs light the room with the ambient light.

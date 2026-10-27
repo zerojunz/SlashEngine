@@ -74,9 +74,10 @@ struct RayDraw {
     std::array<RayTexture, 5> textures{}; // albedo, metallic, roughness, emission, normal
 };
 
-// What lights the surfaces reflection rays meet: the frame's lights, and the environment's light,
-// the ambient light or with sky the sky's radiance cube (RayTargets::environment, sRGB as the
-// mesh pass samples it) times sky_energy, over the ambient light by sky_share.
+// What lights the surfaces reflection and light rays meet: the frame's lights, and the
+// environment's light, the ambient light or with sky the sky's radiance cube
+// (RayTargets::environment, sRGB as the mesh pass samples it) times sky_energy, over the ambient
+// light by sky_share.
 struct RayLighting {
     std::vector<PathLight> lights;
     Float3 ambient{};
@@ -86,23 +87,25 @@ struct RayLighting {
     float sky_share = 1.0F;
 };
 
-// What a frame's rays trace: the shadows of lights with a ray slot, the ambient occlusion and the
-// reflections, which lighting lights.
+// What a frame's rays trace: the shadows of lights with a ray slot, the ambient occlusion, and
+// the reflections and global illumination, which lighting lights.
 struct RayWork {
     std::span<const RayShadowLight> lights;
     std::optional<RayOcclusion> occlusion;
     std::optional<RayReflection> reflection;
-    const RayLighting* lighting = nullptr; // with reflection
+    std::optional<RayGI> gi;
+    const RayLighting* lighting = nullptr; // with reflection or gi
 };
 
-// Where a frame's rays come from and go: the prepass's depth and normals, and four RGBA16F
+// Where a frame's rays come from and go: the prepass's depth and normals, and six RGBA16F
 // textures, sampled and written by compute, at the frame's render size: the visibilities of
-// lights 0 to 3, then 4 to 7, then the ambient occlusion in red, then the reflections. With
-// reflections, a white texture and a cube (the sky's radiance, or any) they sample.
+// lights 0 to 3, then 4 to 7, then the ambient occlusion in red, then the reflections, then the
+// ambient light as traced and as smoothed. With reflections or global illumination, a white
+// texture and a cube (the sky's radiance, or any) they sample.
 struct RayTargets {
     SDL_GPUTexture* depth = nullptr;
     SDL_GPUTexture* normals = nullptr;
-    std::array<SDL_GPUTexture*, 4> outputs{};
+    std::array<SDL_GPUTexture*, 6> outputs{};
     SDL_GPUTexture* white = nullptr;
     SDL_GPUTexture* environment = nullptr;
 };
@@ -120,7 +123,7 @@ public:
     // Records the frame's rays into commands, between SDL's passes: the structures of draws, the
     // shader writing targets' visibilities of lights, as run_ray_shadows does on the CPU, and the
     // ambient occlusion, as run_ray_occlusion does, then the one writing the reflections, as
-    // run_ray_reflections does.
+    // run_ray_reflections does, and the ambient light, as run_ray_gi does.
     virtual Result<void> trace(SDL_GPUCommandBuffer* commands, std::span<const RayDraw> draws,
                                const RayWork& work, const RayShadowFrame& frame,
                                const RayTargets& targets) = 0;
