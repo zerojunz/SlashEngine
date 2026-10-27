@@ -266,7 +266,7 @@ foreach(entry IN LISTS slash_shaders)
 endforeach()
 # The GLSL compute shaders that trace rays, as glslang's HLSL has none; see
 # cmake/compile_ray_shaders.cmake.
-foreach(entry IN ITEMS ray_shadows:RayShadows ray_light:RayLight)
+foreach(entry IN ITEMS ray_shadows:RayShadows ray_light:RayLight lightmap_light:LightmapLight)
     string(REPLACE ":" ";" parts ${entry})
     list(GET parts 0 shader)
     list(GET parts 1 name)

@@ -3,6 +3,7 @@
 #include "ray_shadows.hpp"
 
 #include "slash/core/result.hpp"
+#include "slash/render/bake.hpp"
 #include "slash/render/mesh.hpp"
 
 #include <SDL3/SDL_gpu.h>
@@ -24,6 +25,8 @@
 // screen texture's layers 2 and 3, and shaders/ray_light.comp the reflections, shading what they
 // meet from the draws' materials, the copies of their vertices and their textures, into one the
 // GPU device copies into layer 1. The software device's twin is src/ray_shadows.cpp.
+// shaders/lightmap_light.comp traces a lightmap bake's light the same way, over one structure of
+// the bake's triangles; scene3d's lightmapper is its twin.
 namespace slash::render::detail {
 
 // What SDL_GPUVulkanOptions points at to make a device with ray queries: Vulkan 1.2's buffer
@@ -142,6 +145,12 @@ public:
     virtual Result<void> trace(SDL_GPUCommandBuffer* commands, std::span<const RayDraw> draws,
                                const RayWork& work, const RayShadowFrame& frame,
                                const RayTargets& targets) = 0;
+
+    // Traces a lightmap's direct light, bounces and light probes, as RenderDevice::trace_lightmap
+    // says, with shaders/lightmap_light.comp: submitted and waited for a dispatch at a time (a
+    // region of a slice, or a pass of a probe's rays), so no one runs long enough for the system
+    // to take the GPU back.
+    virtual Result<LightmapTraced> trace_lightmap(const LightmapTrace& trace) = 0;
 };
 
 // The rays of a device made with VulkanRayOptions, or null where it has no ray queries (another

@@ -271,7 +271,7 @@ foreach(shader IN ITEMS sprite material mesh mesh_clustered mesh_normal mesh_mot
             -DOUTPUT=${PROJECT_SOURCE_DIR}/engine/render/src/${shader}_shaders.hpp -DCHECK=ON
             -P ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake)
 endforeach()
-foreach(shader IN ITEMS ray_shadows ray_light)
+foreach(shader IN ITEMS ray_shadows ray_light lightmap_light)
     add_test(NAME shaders_up_to_date_${shader}
         COMMAND ${CMAKE_COMMAND} -DSOURCE=${PROJECT_SOURCE_DIR}/engine/render/shaders/${shader}.comp
             -DOUTPUT=${PROJECT_SOURCE_DIR}/engine/render/src/${shader}_shaders.hpp -DCHECK=ON
