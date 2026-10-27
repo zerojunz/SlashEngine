@@ -1572,7 +1572,8 @@ r.DefaultFeature.AutoExposure.Bias=2.0
     sky["transform"] = place;
     sky.find("components")->as_array()[0]["transform"] = place;
     actors.push_back(std::move(sky));
-    document["world_aligned_materials"] = json::Array{json::Value("/Game/M_Grid")};
+    document["world_aligned_materials"] =
+        json::Array{json::Value("/Game/M_Grid"), json::Value("/Game/M_Tiles")};
     REQUIRE(slash::platform::write_file(exported.string(), json::write(document)).ok());
 
     auto planned = importer::plan_import({.source = (project / "unreal").string(),
@@ -1612,8 +1613,11 @@ r.DefaultFeature.AutoExposure.Bias=2.0
 
     bool aligned = false;
     for (const json::Value& problem : planned.value().report.find("unsupported")->as_array()) {
+        // Each is named: the first as where, the others in also.
         aligned = aligned || (problem.find("what")->as_string() == "world-aligned material" &&
-                              problem.find("where")->as_string() == "/Game/M_Grid");
+                              problem.find("where")->as_string() == "/Game/M_Grid" &&
+                              problem.find("also") != nullptr &&
+                              json::write(*problem.find("also")) == R"(["/Game/M_Tiles"])");
     }
     CHECK(aligned);
     fs::remove_all(project);

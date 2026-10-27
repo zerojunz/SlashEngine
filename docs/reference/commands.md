@@ -4405,7 +4405,7 @@ importing again rewrites the converted files, keeps each task's status and leave
 that exist as they are. The result counts what converted, lists each script's task (and, for a
 skeleton, its `code` file and `component`; `module` is the game module it wrote, if any), and
 lists what didn't convert, once per kind with how
-many, the first place it was seen and why. The full report, with the values scripts need, is
+many, the first place it was seen, up to eight other places it was seen (`also`) and why. The full report, with the values scripts need, is
 written to `import/godot.json`, `import/unity.json` or `import/unreal.json`. The settings it writes to `project.json`
 (the window, physics, input and audio) apply to the session at the next command.
 

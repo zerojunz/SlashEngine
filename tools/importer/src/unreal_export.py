@@ -222,34 +222,129 @@ def text_export(obj, name):
         return text.read()
 
 
-# Nodes and functions that place a texture by where a pixel is in the world, not by the mesh's
-# texture coordinates, which a bake onto the mesh can't keep.
-WORLD_ALIGNED = ('MaterialExpressionWorldPosition', 'WorldAlignedTexture', 'WorldAlignedNormal',
-                 'WorldCoordinate3Way')
+# Functions that place a texture by where a pixel is in the world, not by the mesh's texture
+# coordinates, which a bake onto the mesh can't keep.
+WORLD_FUNCTIONS = ('WorldAlignedTexture', 'WorldAlignedNormal', 'WorldCoordinate3Way')
+# A material's inputs that a bake keeps; opacity masks and offsets placed by world position (a
+# fade near the camera, say) still bake.
+BAKED_INPUTS = ('BaseColor', 'EmissiveColor', 'Normal', 'Metallic', 'Roughness', 'Specular')
+GRAPH_REFERENCE = re.compile(r"'[^'\":]*:([A-Za-z0-9_]+)'")
+GRAPH_FUNCTION = re.compile(r"MaterialFunction'?\"?(/[^'\".]+)")
 
 
-def world_aligned(material, depth=0, seen=None):
-    # Whether a material (or the material functions it calls, two deep) places textures by
-    # world position, read from its text.
-    seen = set() if seen is None else seen
-    package = package_of(material)
-    if not package or package in seen:
-        return False
-    seen.add(package)
-    text = text_export(material, 'materials' + package)
-    if text is None:
-        return False
-    if any(word in text for word in WORLD_ALIGNED):
+def material_graph(text):
+    # A material's or function's nodes from its text, by name: each one's class and the lines
+    # of its properties (T3D writes each object twice, declared and then filled in).
+    nodes = {}
+    stack = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        begin = re.match(r'Begin Object (?:Class=(\S+) )?Name="([^"]+)"', stripped)
+        if begin:
+            node = nodes.setdefault(begin.group(2), {'class': '', 'lines': []})
+            if begin.group(1):
+                node['class'] = begin.group(1).rsplit('.', 1)[-1]
+            stack.append(begin.group(2))
+        elif stripped == 'End Object':
+            if stack:
+                stack.pop()
+        elif stack:
+            nodes[stack[-1]]['lines'].append(stripped)
+    return nodes
+
+
+def graph_inputs(nodes, keep):
+    # The nodes feeding the properties keep(node, key) picks.
+    found = []
+    for node in nodes.values():
+        for line in node['lines']:
+            if keep(node, line.split('=', 1)[0]):
+                found += GRAPH_REFERENCE.findall(line)
+    return found
+
+
+graph_texts = {}  # material function path: its text, or None
+
+
+def function_text(path):
+    if path not in graph_texts:
+        function = call(None, unreal.load_asset, path)
+        graph_texts[path] = text_export(function, 'materials' + path) if function else None
+    return graph_texts[path]
+
+
+def reaches_world(nodes, starts, depth, through_functions):
+    # Whether the nodes from starts back read where the pixel is in the world: a WorldPosition
+    # node, a world-aligned function, or (through_functions) a function whose outputs do.
+    seen = set()
+    todo = list(starts)
+    while todo:
+        name = todo.pop()
+        if name in seen or name not in nodes:
+            continue
+        seen.add(name)
+        node = nodes[name]
+        if node['class'] == 'MaterialExpressionWorldPosition':
+            return True
+        for line in node['lines']:
+            key = line.split('=', 1)[0]
+            if key in ('Material', 'Function', 'ExpressionGUID', 'MaterialExpressionGuid'):
+                continue
+            path = GRAPH_FUNCTION.search(line) if key == 'MaterialFunction' else None
+            if path is not None:
+                if any(word in path.group(1) for word in WORLD_FUNCTIONS):
+                    return True
+                if through_functions and depth < 2:
+                    text = function_text(path.group(1))
+                    inner = material_graph(text) if text else {}
+                    outputs = graph_inputs(inner, lambda n, k: n['class'].endswith(
+                        'FunctionOutput') and k == 'A')
+                    if reaches_world(inner, outputs, depth + 1, True):
+                        return True
+                continue
+            todo += GRAPH_REFERENCE.findall(line)
+    return False
+
+
+def samples_by_world(nodes, depth):
+    # Whether a graph samples a texture at coordinates made from where the pixel is in the world,
+    # or calls a function (two deep) that does.
+    coordinates = graph_inputs(nodes, lambda n, k: 'TextureSample' in n['class'] and
+                               k == 'Coordinates')
+    if reaches_world(nodes, coordinates, depth, True):
         return True
     if depth >= 2:
         return False
-    paths = {p for p in re.findall(r"MaterialFunction'?\"?(/[^'\".]+)", text)
-             if not p.startswith('/Script/')}
-    for path in sorted(paths)[:8]:
-        function = call(None, unreal.load_asset, path)
-        if function is not None and world_aligned(function, depth + 1, seen):
-            return True
+    for node in nodes.values():
+        for line in node['lines']:
+            path = GRAPH_FUNCTION.search(line) if line.startswith('MaterialFunction=') else None
+            if path is None:
+                continue
+            if any(word in path.group(1) for word in WORLD_FUNCTIONS):
+                return True
+            text = function_text(path.group(1))
+            if text and samples_by_world(material_graph(text), depth + 1):
+                return True
     return False
+
+
+def world_aligned(material):
+    # Whether a material places textures, or works out colors, by where a pixel is in the world,
+    # read from its text: a texture sampled at world coordinates, or a baked input made from the
+    # world position (a procedural grid). Others that read it (a fade near the camera, a mask)
+    # bake as they look on the mesh.
+    package = package_of(material)
+    if not package:
+        return False
+    text = text_export(material, 'materials' + package)
+    if text is None:
+        return False
+    nodes = material_graph(text)
+    if samples_by_world(nodes, 0):
+        return True
+    outputs = graph_inputs(nodes, lambda n, k: n['class'] == 'MaterialEditorOnlyData' and
+                           k in BAKED_INPUTS)
+    return reaches_world(nodes, outputs, 0, False)
 
 
 aligned = {}  # material package: whether it places textures by world position

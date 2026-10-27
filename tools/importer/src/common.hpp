@@ -109,7 +109,9 @@ private:
         int count = 0;
         std::string where;
         std::string why;
+        std::vector<std::string> also; // other places it was seen, up to kAlso
     };
+    static constexpr std::size_t kAlso = 8;
     std::map<std::string, Entry> entries_;
 };
 
