@@ -1,0 +1,28 @@
+msgid ""
+msgstr ""
+"Language: pl\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+msgid "Treasure Hunt"
+msgstr "Poszukiwanie skarbu"
+
+msgid "Start game"
+msgstr "Rozpocznij grę"
+
+msgid "Quit"
+msgstr "Wyjdź"
+
+msgid "%d coin"
+msgid_plural "%d coins"
+msgstr[0] "%d moneta"
+msgstr[1] "%d monety"
+msgstr[2] "%d monet"
+
+msgctxt "door"
+msgid "Open"
+msgstr "Otwórz"
+
+msgctxt "shop"
+msgid "Open"
+msgstr "Otwarte"

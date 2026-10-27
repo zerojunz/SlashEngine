@@ -477,8 +477,9 @@ TextArea::TextArea(text::Fonts& fonts, const TextEditView& view, Vec2 size,
                    const world::TextEdit& edit, std::vector<std::u32string> lines)
     : fonts_(&fonts), view_(&view), size_(size), editable_(edit.editable),
       wrapping_(edit.wrap_mode == "boundary"), autowrap_(autowrap_of(edit)),
-      direction_(direction_of(edit, view.rtl)), language_(edit.language),
-      placeholder_(to_utf32(edit.placeholder_text)), scroll_past_end_(edit.scroll_past_end_of_file),
+      direction_(direction_of(edit, view.rtl)), language_(view.language.value_or(edit.language)),
+      placeholder_(to_utf32(view.placeholder_text.value_or(edit.placeholder_text))),
+      scroll_past_end_(edit.scroll_past_end_of_file),
       fit_content_height_(edit.scroll_fit_content_height),
       fit_content_width_(edit.scroll_fit_content_width), font_(view.font),
       lines_(std::move(lines)) {

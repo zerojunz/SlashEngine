@@ -1033,10 +1033,23 @@ void register_ui_components(ComponentRegistry& registry) {
                           "buttons, none for the rest.",
                    .choices = {"", "none", "click", "all"}})
         .describe("layout_direction",
-                  {.doc = "Which way it lays out; rtl mirrors its anchors, offsets, grow "
-                          "directions, its children's order in containers and its text's "
-                          "alignment. inherited takes its parent's, left to right at the root.",
-                   .choices = {"inherited", "ltr", "rtl"}})
+                  {.doc = "Which way it lays out; right to left mirrors its anchors, offsets, "
+                          "grow directions, its children's order in containers and its text's "
+                          "alignment. inherited takes its parent's (at the root, as the "
+                          "project's internationalization.rendering.root_node_layout_direction "
+                          "says); application_locale and system_locale go by how the game's "
+                          "and the player's machine's locales write.",
+                   .choices = {"inherited", "application_locale", "ltr", "rtl", "system_locale"}})
+        .describe("auto_translate_mode",
+                  {.doc = "Whether its text (a Label's, a button's, a placeholder, a menu's "
+                          "items) shows translated into the game's locale through the "
+                          "project's translations: inherit does as its parent, translating at "
+                          "the root.",
+                   .choices = {"inherit", "always", "disabled"}})
+        .describe("tooltip_auto_translate_mode",
+                  {.doc = "Whether its tooltip_text shows translated; inherit does as "
+                          "auto_translate_mode.",
+                   .choices = {"inherit", "always", "disabled"}})
         .describe("focus_neighbor_left", focus_neighbor)
         .describe("focus_neighbor_top", focus_neighbor)
         .describe("focus_neighbor_right", focus_neighbor)
@@ -1316,7 +1329,8 @@ void register_ui_components(ComponentRegistry& registry) {
     const FieldMeta items{.doc = "The items, in order: {\"text\", \"icon\", \"checkable\": "
                                  "\"none\", \"check\" or \"radio\", \"checked\", \"id\" (-1 for "
                                  "its index), \"disabled\", \"separator\", \"indent\", "
-                                 "\"tooltip\"}."};
+                                 "\"tooltip\", \"auto_translate_mode\": \"inherit\" (as the "
+                                 "menu), \"always\" or \"disabled\"}."};
     registry.add<PopupMenu>()
         .set_doc("A list of items shown over everything at a point of the viewport while "
                  "visible, as Godot's PopupMenu: picked with a click, the arrow keys and "
@@ -1341,8 +1355,10 @@ void register_ui_components(ComponentRegistry& registry) {
         .describe("allow_search", {.doc = "Typing the start of an item's text moves to the item."})
         .describe("theme", {.doc = "Project path of a .theme.json file to take theme items "
                                    "from before the project's; \"\" for none."})
-        .describe("layout_direction", {.doc = "Which way it lays out; inherited is left to right.",
-                                       .choices = {"inherited", "ltr", "rtl"}});
+        .describe("layout_direction",
+                  {.doc = "Which way it lays out; inherited goes by the project's "
+                          "internationalization.rendering.root_node_layout_direction.",
+                   .choices = {"inherited", "application_locale", "ltr", "rtl", "system_locale"}});
     describe_button_look(registry.add<OptionButton>().set_doc(
                              "A button showing the option picked, which opens a list of its "
                              "options below it when pressed, as Godot's OptionButton. Picking "
@@ -1352,7 +1368,8 @@ void register_ui_components(ComponentRegistry& registry) {
                              "and PopupMenu's for the list."))
         .describe("items", {.doc = "The options, in order: {\"text\", \"icon\", \"id\" (-1 "
                                    "for its index), \"disabled\", \"separator\", "
-                                   "\"tooltip\"}."})
+                                   "\"tooltip\", \"auto_translate_mode\": \"inherit\" (as "
+                                   "the button), \"always\" or \"disabled\"}."})
         .describe("selected", {.doc = "The option shown, by index; -1 for none.", .min = -1})
         .describe("fit_to_longest_item",
                   {.doc = "Be as wide as the widest option, not only the one shown."})
