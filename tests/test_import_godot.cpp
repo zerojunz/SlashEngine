@@ -1828,6 +1828,9 @@ environment/ssao/fadeout_to=200.0
 environment/screen_space_reflection/half_size=false
 reflections/reflection_atlas/reflection_size=512
 reflections/reflection_atlas/reflection_count=16
+scaling_3d/mode=2
+scaling_3d/scale=0.67
+scaling_3d/fsr_sharpness=0.5
 )");
     write(folder / "level.tscn", R"([gd_scene load_steps=16 format=3]
 
@@ -2185,6 +2188,8 @@ TEST_CASE("importing a Godot 3D scene keeps its nodes, meshes, materials, lights
           parse(R"({"reflection_atlas": {"reflection_size": 512, "reflection_count": 16}})"));
     CHECK(*project_file.find("rendering")->find("anti_aliasing") ==
           parse(R"({"quality": {"use_taa": true}})"));
+    CHECK(*project_file.find("rendering")->find("scaling") ==
+          parse(R"({"mode": "fsr2", "scale": 0.67, "fsr_sharpness": 0.5})"));
 
     const json::Value& report = plan.report;
     const auto why = [&](std::string_view what) {

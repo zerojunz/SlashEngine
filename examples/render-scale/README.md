@@ -26,9 +26,10 @@ for a running game, and samples pixels across the planet's edge and the health b
   `perf.stats` return the settings.
 - A game adds its own upscaler with `render::add_upscaler`, here a nearest-neighbor one for pixel
   art, and names it in `scaling.upscaler`. Vendor upscalers (DLSS, XeSS) come the same way, from
-  an SDK package's glue code, where the vendor's GPU runs them. Temporal ones, and Godot's `fsr2`
-  and MetalFX modes, need the depth and motion vectors of the 3D renderer, so they are refused
-  until it exists.
+  an SDK package's glue code, where the vendor's GPU runs them. Temporal ones need the depth and
+  motion vectors of the 3D world, so they are refused for now, as Godot's MetalFX modes are.
+  Godot's `fsr2` scales only the 3D world, from jittered frames, as
+  [fsr2-3d](../fsr2-3d/) shows; a world with no 3D in it scales with `bilinear` instead.
 
 The planet's PNG is made by the program, so the example has no binary file, and every frame is
 drawn on the CPU, so the output is the same on every machine.

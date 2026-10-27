@@ -42,6 +42,7 @@ add_library(slash_render
     src/clusters.cpp
     src/device.cpp
     src/forward_post.cpp
+    src/fsr2.cpp
     src/gl_device.cpp
     src/gpu_device.cpp
     src/hlsl_compiler.cpp
@@ -95,9 +96,9 @@ endif()
 # The software device draws the same pixels, and particles and their graphs move the same, on
 # every platform: no fused multiply-adds, which arm64 compilers would otherwise emit and x86-64
 # ones not.
-set_source_files_properties(src/clusters.cpp src/device.cpp src/forward_post.cpp src/material.cpp
-    src/mesh.cpp src/particles.cpp src/post.cpp src/resize.cpp src/shader_vm.cpp src/shadow.cpp
-    src/reflection.cpp src/sky.cpp src/software_device.cpp src/ssao.cpp src/ssr.cpp
+set_source_files_properties(src/clusters.cpp src/device.cpp src/forward_post.cpp src/fsr2.cpp
+    src/material.cpp src/mesh.cpp src/particles.cpp src/post.cpp src/resize.cpp src/shader_vm.cpp
+    src/shadow.cpp src/reflection.cpp src/sky.cpp src/software_device.cpp src/ssao.cpp src/ssr.cpp
     src/taa.cpp src/upscaler.cpp src/voxel_gi.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>")
@@ -118,12 +119,17 @@ set(slash_shader_headers "")
 # prepass; motion is that prepass with TAA's motion vectors, whose vertex stage reads where each
 # vertex was in the frame before and whose varyings carry it. The SSAO and SSR passes (ssao) are post passes with twelve and eight textures whose
 # code comes in pieces; ssr_trace is the SSR trace's fragment stage, which draws with ssr's vertex
-# stage.
+# stage. FSR 2's passes (fsr2) share fsr2.hlsl and have no GLSL ES, as the OpenGL devices upscale
+# bilinearly instead; fsr2_storage is its depth clip pass, which reads a storage buffer, and
+# fsr2_compute its reconstruct pass.
 set(slash_shaders sprite:Sprite material:Material mesh:Mesh:3d
     mesh_clustered:MeshClustered:clustered mesh_normal:MeshNormal:normal
     mesh_motion:MeshMotion:motion shadow:Shadow:depth
     post:Post:post sky:Sky:post forward_post:ForwardPost:post16 ssao:Ssao:ssao ssr:Ssr:ssao
     ssr_trace:SsrTrace:ssr_trace radiance:Radiance:post taa:Taa:post
+    fsr2_luma:Fsr2Luma:fsr2 fsr2_dilate:Fsr2Dilate:fsr2
+    fsr2_reconstruct:Fsr2Reconstruct:fsr2_compute fsr2_depth_clip:Fsr2DepthClip:fsr2_storage
+    fsr2_lock:Fsr2Lock:fsr2 fsr2_accumulate:Fsr2Accumulate:fsr2 fsr2_rcas:Fsr2Rcas:fsr2
     particles_process:ParticlesProcess:compute
     particles_emit:ParticlesEmit:compute particles_draw:ParticlesDraw:compute)
 foreach(entry IN LISTS slash_shaders)
@@ -139,11 +145,21 @@ foreach(entry IN LISTS slash_shaders)
     set(sampler_shift 8)
     set(fragment_only OFF)
     set(storage_buffers OFF)
+    set(no_glsl OFF)
     if(count GREATER 2)
         list(GET parts 2 kind)
         if(kind STREQUAL "compute")
             set(compute ON)
             set(include particles)
+        elseif(kind MATCHES "^fsr2")
+            set(include fsr2)
+            set(interface v_uv)
+            set(no_glsl ON)
+            if(kind STREQUAL "fsr2_compute")
+                set(compute ON)
+            elseif(kind STREQUAL "fsr2_storage")
+                set(storage_buffers ON)
+            endif()
         elseif(kind STREQUAL "depth")
             set(include shadow)
             set(interface v_uv,v_color)
@@ -187,6 +203,7 @@ foreach(entry IN LISTS slash_shaders)
             -DNAME=${name} -DCOMPUTE=${compute} -DINTERFACE=${interface}
             -DFIXUP_CLIPSPACE=${fixup} -DPIECES=${pieces} -DSAMPLER_SHIFT=${sampler_shift}
             -DFRAGMENT_ONLY=${fragment_only} -DSTORAGE_BUFFERS=${storage_buffers}
+            -DNO_GLSL=${no_glsl}
             -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}/shaders
             -DGLSLANG=${SLASH_GLSLANG} -DSPIRV_CROSS=${SLASH_SPIRV_CROSS} -DTINT=${SLASH_TINT}
             -P ${PROJECT_SOURCE_DIR}/cmake/compile_shaders.cmake

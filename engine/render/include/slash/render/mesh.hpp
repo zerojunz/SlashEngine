@@ -622,6 +622,18 @@ inline constexpr std::array<std::string_view, 2> kRenderMethodNames{"forward_plu
 // A method by its Godot name, or nullopt.
 [[nodiscard]] std::optional<RenderMethod> parse_render_method(std::string_view name);
 
+// A frame's 3D drawn smaller and upscaled to the target with AMD's FidelityFX Super Resolution 2,
+// as Godot's scaling_3d mode "fsr2" (Forward+ only): the meshes are drawn at the target's size
+// times scale with the camera moved across a render pixel each frame, and FSR 2 rebuilds the
+// target's size from them and the target's frames before, before the post passes. sharpness is
+// Godot's fsr_sharpness: 0 is the sharpest and 2 turns sharpening off.
+struct Fsr2Scaling {
+    float scale = 0.77F;
+    float sharpness = 0.2F;
+
+    bool operator==(const Fsr2Scaling&) const = default;
+};
+
 // What a frame's meshes are seen from and lit by. Matrices are column-major, as Mat4.
 struct Scene3D {
     // The world to the camera's space: the inverse of the camera's transform.
@@ -653,6 +665,9 @@ struct Scene3D {
     // with the target's frames before it, moved by how far its opaque meshes moved (draw_mesh's
     // previous transform) and the camera turned. A target's first frame with it is drawn as it is.
     bool use_taa = false;
+    // FSR 2 upscaling, which takes TAA's place, as Godot turns TAA off with it. Only a scale under
+    // 1 upscales with it; the canvas renderer scales the frame bilinearly otherwise.
+    std::optional<Fsr2Scaling> fsr2{}; // NOLINT(readability-redundant-member-init)
     // Set for a frame that draws a face of a reflection probe (ProbeCapture).
     std::optional<ProbeCapture> capture{}; // NOLINT(readability-redundant-member-init)
 

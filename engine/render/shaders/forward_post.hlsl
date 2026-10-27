@@ -104,7 +104,9 @@ cbuffer ForwardPost : register(b0, space3) {
     float4 dof_blur;   // the blur's size in pixels of the pass, the physical far and near sizes,
                        // and the circle's step
     float4 dof_depth;  // the projection's entries [10], [11], [14] and [15]
-    float4 dof_jitter; // the jitter's seed
+    // The jitter's seed, then the depth buffer's width and height where it is not the frame's
+    // size (FSR 2's render size), or 0
+    float4 dof_jitter;
     uint4 dof_options; // the samples a side, then the kDof flags
 };
 
@@ -162,10 +164,20 @@ float hash12n(float2 p) {
     return frac(p.x * p.y * 95.4307);
 }
 
+// The depth buffer's pixel for one of the frame's: the same, or the one under its center where the
+// depth buffer is smaller.
+int2 dof_depth_pixel(int2 pixel) {
+    if (dof_jitter.z == 0.0) {
+        return pixel;
+    }
+    int2 at = (int2)(((float2)pixel + 0.5) * dof_jitter.zw * target.zw);
+    return min(at, (int2)dof_jitter.zw - 1);
+}
+
 // A pixel's blur size, as get_blur_size: from its distance from the camera along its view, which
 // comes from the depth buffer's value through the projection; negative for near blur.
 float dof_blur_size(int2 pixel) {
-    float depth = depth_buffer.Load(int3(pixel, 0)).r;
+    float depth = depth_buffer.Load(int3(dof_depth_pixel(pixel), 0)).r;
     float distance = (dof_depth.z - depth * dof_depth.w) / (dof_depth.x - depth * dof_depth.y);
     uint flags = dof_options.y;
     if ((flags & kDofNear) != 0u && distance < dof.z) {
