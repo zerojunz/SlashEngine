@@ -1,5 +1,6 @@
 {
   "format": 1,
+  "gameplay": {"sources": ["src"]},
   "gui": {"allow_system_fallback": false},
   "internationalization": {
     "locale": {"translations": ["translations/menu.csv", "translations/pl.po"]}
