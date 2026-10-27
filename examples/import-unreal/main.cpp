@@ -14,12 +14,13 @@
 // gives them, and a copy drawn with a component's override material), the hero's skeletal mesh
 // playing its animation sequence, the guard's Animation Blueprint's sequences as an AnimationTree's
 // states, the landscape as an HTerrain, lights, the sky, fog, the camera on the player's spring
-// arm, physics bodies, trigger and blocking volumes, and sounds; its settings and both input
-// systems become project.json; each C++ class becomes a C++ skeleton with its properties as a
-// component the level's actors fill in, as Unity's scripts do; and each Blueprint and C++ class
-// becomes a storyboard task to port it, since SlashEngine games are plain C++. The report lists
-// what didn't convert, and why. The glTF files, the landscape's heights and the sound are made in
-// code here, so the repository holds no binary files.
+// arm, physics bodies, trigger and blocking volumes, Niagara systems as Godot's particle
+// emitters, and sounds; its settings and both input systems become project.json; each C++ class
+// becomes a C++ skeleton with its properties as a component the level's actors fill in, as
+// Unity's scripts do; and each Blueprint and C++ class becomes a storyboard task to port it, since
+// SlashEngine games are plain C++. The report lists what didn't convert, and why. The glTF files,
+// the landscape's heights and the sound are made in code here, so the repository holds no binary
+// files.
 
 #include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"
@@ -283,6 +284,9 @@ int main() {
     agent.call("physics.raycast", R"({"from": [-6, 5, -3], "to": [-6, -5, -3]})");
     // The landscape is an HTerrain: a ray down onto its hill's top stops 20 meters up.
     agent.call("physics.raycast", R"({"from": [-64, 50, 0], "to": [-64, -50, 0]})");
+    // The embers' Niagara system runs on the CPU, so it is a CPUParticles3D: a second and a
+    // half in, its sparks rise in a cone and fall back.
+    agent.call("particles.eval", R"({"id": "embers", "list": true, "max_results": 1})");
     // The goal is a trigger box, an area the player can walk into.
     agent.call("physics.overlap", R"({"shape": {"shape": "sphere", "radius": 0.1},
                                       "position": [8, 0.5, 1], "collide_with_areas": true})");

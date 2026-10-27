@@ -11,6 +11,10 @@
 #   animations/<path>.glb  each animation sequence a skeletal mesh component or an Animation
 #                      Blueprint plays, with its skeletal mesh
 #   sounds/<path>.wav  each sound wave an ambient sound or audio component plays
+#   niagara_systems    in export.json, each Niagara system a level's components play: its emitters,
+#                      their modules' inputs as Unreal writes them as text, and their renderers,
+#                      read through Unreal 5.8's NiagaraExternalEditUtilities (earlier editors
+#                      give only the system's own settings)
 #   landscapes/<level>/<actor>.r16  each landscape's heights, its streaming proxies' too, as
 #                      Unreal's .r16 heightmaps are: 16-bit and little-endian, a row per vertex
 #                      along its y, 32768 at its own height and 128 a unit of its space
@@ -247,6 +251,178 @@ def use_sound(asset):
         entry['duration'] = float(duration)
     sounds[package] = entry
     return package
+
+
+# --- Niagara ---
+
+niagara_systems = {}
+NIAGARA_SCRIPTS = ('emitter_spawn_script', 'emitter_update_script', 'particle_spawn_script',
+                   'particle_update_script')
+
+
+def text_of(value):
+    # A struct's value as Unreal writes it as text, (Name=Value,...); nested values are kept.
+    exported = call(None, value.export_text) if hasattr(value, 'export_text') else None
+    return exported if exported is not None else str(value)
+
+
+def edit_call(name, *args):
+    # One of NiagaraExternalEditUtilities' functions; its result, the last of its outputs when it
+    # has several. Its editing context is an argument where Python asks for one.
+    utilities = getattr(unreal, 'NiagaraExternalEditUtilities', None)
+    function = getattr(utilities, name, None) if utilities is not None else None
+    if function is None:
+        return None
+    tries = [args]
+    context = getattr(unreal, 'NiagaraExternalEditContext', None)
+    if context is not None:
+        tries.append(args + (context(),))
+    for arguments in tries:
+        try:
+            result = function(*arguments)
+        except TypeError:
+            continue
+        except Exception:
+            return None
+        if isinstance(result, tuple):
+            result = result[-1] if result else None
+        return result
+    return None
+
+
+def stack_reference(system, emitter='', script='', module='', renderer=-1, inputs=()):
+    ref = unreal.NiagaraExt_StackItemReference()
+    for key, value in (('system', system), ('emitter_name', emitter), ('script_name', script),
+                       ('module_name', module), ('renderer_index', renderer)):
+        if value not in ('', -1) or key == 'system':
+            call(None, ref.set_editor_property, key, value)
+    if inputs:
+        call(None, ref.set_editor_property, 'input_name_stack', [unreal.Name(i) for i in inputs])
+    return ref
+
+
+def json_of(data):
+    # A Niagara schema's JSON values (PropertyValues), or their text when they don't parse.
+    values = prop(data, 'property_values', '') if data is not None else ''
+    try:
+        return json.loads(str(values))
+    except ValueError:
+        return {'text': str(values)}
+
+
+def asset_paths(value, out):
+    # The asset paths in a renderer's values: /Game/... and StaticMesh'/Game/...' alike.
+    if isinstance(value, dict):
+        for item in value.values():
+            asset_paths(item, out)
+    elif isinstance(value, list):
+        for item in value:
+            asset_paths(item, out)
+    elif isinstance(value, str) and '/' in value:
+        path = value.split("'")[1] if value.count("'") >= 2 else value
+        if path.startswith('/') and path not in out:
+            out.append(path)
+
+
+def renderer_of(system, emitter, ref):
+    cls = prop(ref, 'renderer_class')
+    index = prop(ref, 'renderer_index', 0)
+    out = {'class': cls.get_name() if cls is not None else ''}
+    data = edit_call('get_renderer_data', stack_reference(system, emitter, renderer=index))
+    out['data'] = json_of(data)
+    meshes_used = []
+    paths = []
+    asset_paths(out['data'], paths)
+    for path in paths:
+        asset = call(None, unreal.load_asset, path)
+        if isinstance(asset, unreal.StaticMesh):
+            meshes_used.append(use_mesh(asset, False))
+    if meshes_used:
+        out['meshes'] = meshes_used
+    return out
+
+
+def module_of(system, emitter, script, module):
+    name = str(prop(module, 'module_name', ''))
+    out = {'module': name, 'enabled': bool(prop(module, 'enabled', True))}
+    asset = prop(module, 'module_script')
+    if asset is not None:
+        out['script'] = package_of(asset)
+    if prop(module, 'is_set_parameters_module', False):
+        out['set_parameters'] = True
+    values = edit_call('get_module_input_values',
+                       stack_reference(system, emitter, script, name))
+    inputs = {}
+    for entry in (prop(values, 'inputs', []) or []) if values is not None else []:
+        input_name = str(prop(entry, 'name', ''))
+        value = prop(entry, 'value')
+        found = {'value': text_of(value) if value is not None else ''}
+        chain = edit_call('get_dynamic_input_chain',
+                          stack_reference(system, emitter, script, name, inputs=(input_name,)))
+        if chain is not None and (prop(chain, 'inputs', []) or []):
+            found['chain'] = text_of(chain)
+        inputs[input_name] = found
+    out['inputs'] = inputs
+    return out
+
+
+def emitter_of(system, summary):
+    name = str(prop(summary, 'emitter_name', ''))
+    out = {'name': name, 'enabled': bool(prop(summary, 'enabled', True)),
+           'sim_target': enum_name(prop(summary, 'sim_target', 'cpu_sim'))}
+    out['data'] = json_of(edit_call('get_emitter_data', stack_reference(system, name)))
+    topology = edit_call('get_emitter_topology', stack_reference(system, name))
+    if topology is None:
+        problem('Niagara emitter the editor did not describe', package_of(system) + ': ' + name)
+        return out
+    scripts = {}
+    for key in NIAGARA_SCRIPTS:
+        stack = prop(topology, key)
+        if stack is None:
+            continue
+        script = str(prop(stack, 'script_name', ''))
+        scripts[script] = [module_of(system, name, script, module)
+                           for module in (prop(stack, 'modules', []) or [])]
+    out['scripts'] = scripts
+    out['renderers'] = [renderer_of(system, name, ref)
+                        for ref in (prop(topology, 'renderers', []) or [])]
+    return out
+
+
+def use_niagara(system):
+    package = package_of(system)
+    if not package or package in niagara_systems:
+        return package
+    out = {'random_seed': int(prop(system, 'random_seed', 0)),
+           'determinism': bool(prop(system, 'determinism', False)),
+           'warmup_time': float(prop(system, 'warmup_time', 0.0))}
+    bounds = prop(system, 'fixed_bounds')
+    if isinstance(bounds, unreal.Box) and bool(getattr(bounds, 'is_valid', False)):
+        out['fixed_bounds'] = {'min': vector(bounds.min), 'max': vector(bounds.max)}
+    niagara_systems[package] = out
+    summary = edit_call('get_system_summary', system)
+    if summary is None:
+        problem('Niagara emitters', package,
+                "reading a Niagara system's emitters needs Unreal Engine 5.8 or later")
+        return package
+    out['user_variables'] = [text_of(v) for v in (prop(summary, 'user_variables', []) or [])]
+    emitters = []
+    for emitter in prop(summary, 'emitters', []) or []:
+        try:
+            emitters.append(emitter_of(system, emitter))
+        except Exception as error:
+            problem('Niagara emitter the export could not read',
+                    package + ': ' + str(prop(emitter, 'emitter_name', '')), str(error))
+    out['emitters'] = emitters
+    return package
+
+
+def niagara_of(comp):
+    out = {'auto_activate': bool(prop(comp, 'auto_activate', True))}
+    system = prop(comp, 'asset')
+    if system is not None:
+        out['system'] = use_niagara(system)
+    return out
 
 
 # --- Components ---
@@ -550,6 +726,8 @@ def component_of(actor, comp):
         out['spring_arm'] = {'length': float(prop(comp, 'target_arm_length', 300.0)),
                              'socket_offset': vector(prop(comp, 'socket_offset', unreal.Vector())),
                              'target_offset': vector(prop(comp, 'target_offset', unreal.Vector()))}
+    elif isinstance(comp, getattr(unreal, 'NiagaraComponent', ())):
+        out['niagara'] = niagara_of(comp)
     elif isinstance(comp, unreal.SkyAtmosphereComponent):
         out['sky_atmosphere'] = {}
     elif isinstance(comp, unreal.CharacterMovementComponent):
@@ -831,6 +1009,7 @@ def main():
     result['materials'] = materials
     result['animations'] = animations
     result['sounds'] = sounds
+    result['niagara_systems'] = niagara_systems
     result['problems'] = problems
     with open(os.path.join(OUT, 'export.json'), 'w', encoding='utf-8') as out:
         json.dump(result, out, indent=1, sort_keys=True)
