@@ -699,6 +699,7 @@ constexpr std::array kNodeTypes{
     NodeType{"LightmapGI", Family::Node3D, "LightmapGI", ""},
     NodeType{"LightmapProbe", Family::Node3D, "LightmapProbe", ""},
     NodeType{"VoxelGI", Family::Node3D, "VoxelGI", ""},
+    NodeType{"Decal", Family::Node3D, "Decal", ""},
     NodeType{"CollisionShape3D", Family::Node3D, "CollisionShape3D", ""},
     NodeType{"StaticBody3D", Family::Node3D, "StaticBody3D", ""},
     NodeType{"AnimatableBody3D", Family::Node3D, "AnimatableBody3D", ""},
@@ -1891,6 +1892,14 @@ private:
         if (const Value* quality = number("rendering", "global_illumination/voxel_gi/quality")) {
             project["rendering"]["global_illumination"]["voxel_gi"]["quality"] =
                 quality->number() >= 1.0 ? "high" : "low";
+        }
+        // Decals' filter, by Godot's DecalFilter.
+        if (const Value* filter = number("rendering", "textures/decals/filter")) {
+            const auto index = static_cast<std::int64_t>(filter->number());
+            if (index >= 0 && index < static_cast<std::int64_t>(render::kDecalFilterNames.size())) {
+                project["rendering"]["textures"]["decals"]["filter"] =
+                    std::string(render::kDecalFilterNames.at(static_cast<std::size_t>(index)));
+            }
         }
         if (const Value* taa = setting("rendering", "anti_aliasing/quality/use_taa");
             taa != nullptr && taa->kind == Value::Kind::Bool) {
@@ -4958,6 +4967,14 @@ private:
                               "Godot's baked lightmaps aren't read; bake again with lightmap.bake");
                 return true;
             }
+        }
+        // Godot 4.0's Decal took half its size.
+        if (name == "extents" && components.contains("Decal")) {
+            if (const auto extents = value.numbers(); extents && extents->size() == 3) {
+                components["Decal"]["size"] =
+                    json::Array{extents->at(0) * 2.0, extents->at(1) * 2.0, extents->at(2) * 2.0};
+            }
+            return true;
         }
         if (components.contains("VoxelGI")) {
             if (name == "camera_attributes") {

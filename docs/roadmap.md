@@ -645,7 +645,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
       compare the real-time frame with ground truth
 - [x] Procedural, physical and panorama skies and fog, and the sky's light on meshes (ambient
       light and reflections), as Godot's Compatibility renderer
-- [ ] Volumetric fog; clustered decals
+- [ ] Volumetric fog
+- [x] Clustered decals, as Godot 4.6's Forward+ `Decal`: albedo, normal, ORM and emission
+      textures in one atlas, fades, cull masks and the project's decal filter, imported from Godot
 - [ ] Generated LODs with meshoptimizer and occlusion culling
 - [x] 3D physics on Jolt: rigid bodies, joints, character controller, vehicles
   - [x] Static, animatable, rigid and character bodies, areas with gravity and damping
@@ -897,7 +899,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Path tracing | A GPU path tracer for baked lightmaps and progressive reference stills | 7 | Planned |
 | Upscaling and frame generation | Render scale with FSR 1, FSR 2/3 and MetalFX built in, FSR 3 frame generation, DLSS, XeSS and FSR 4 as adapters outside the repo | 7 | Planned |
 | Sky and volumetrics | Physical sky, volumetric fog | 7 | In progress: procedural, physical and panorama skies, their light on meshes, and exponential, depth and height fog done; volumetric fog planned |
-| Decals | Clustered decals | 7 | Planned |
+| Decals | Clustered decals | 7 | Done, imported from Godot |
 | Networking | ENet transport, replication driven by reflection, WebSocket for web | 8 | Planned |
 | Terrain | Heightmap terrain with splat materials and LOD | 7 | Planned |
 | Level geometry | CSG and grid-based tile placement | 7 | In progress: CSG shapes, paths and `GridMap` done; heightmap terrain planned |

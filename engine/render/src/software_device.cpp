@@ -7,6 +7,7 @@
 
 #include "checks.hpp"
 #include "cpu_particles.hpp"
+#include "decal.hpp"
 #include "forward_post.hpp"
 #include "fsr2.hpp"
 #include "mesh_shading.hpp"
@@ -1594,8 +1595,12 @@ private:
                              pass.positional ? plan.positional_size : plan.directional_size);
         }
         const bool clustered = scene.method == RenderMethod::ForwardPlus;
+        if (clustered) {
+            decal_atlas_.update(scene.decals);
+        }
+        const detail::DecalAtlas& decal_atlas = decal_atlas_.atlas();
         const detail::LightClusters clusters =
-            clustered ? detail::build_clusters(scene, target.width(), target.height())
+            clustered ? detail::build_clusters(scene, target.width(), target.height(), &decal_atlas)
                       : detail::LightClusters{};
         detail::MeshMaps maps{.uniforms = plan.uniforms.get(),
                               .directional = {.depths = directional, .size = plan.directional_size},
@@ -1606,7 +1611,8 @@ private:
                               .ssr = {},
                               .ao_width = 0,
                               .probes = {},
-                              .probe_cubes = nullptr};
+                              .probe_cubes = nullptr,
+                              .decal_atlas = clustered ? &decal_atlas : nullptr};
 
         std::vector<float> depth(std::size_t{target.width()} * target.height(), 0.0F);
         // TAA's frame: the next jitter, from the camera the target's frame before was seen from
@@ -1627,7 +1633,7 @@ private:
         const auto lights =
             std::make_unique<detail::MeshSceneUniforms>(detail::mesh_scene_uniforms(scene));
         if (clustered) {
-            lights->cluster = clusters.uniform();
+            detail::set_cluster_uniforms(*lights, clusters, &decal_atlas, scene.decals.filter);
         }
         // Forward+'s reflection probes, read from their atlas's cubes.
         const std::vector<detail::MeshProbeUniforms> probes =
@@ -2198,7 +2204,8 @@ private:
     std::vector<detail::MeshDraw> mesh_draws_;
     std::optional<detail::RadianceKey> radiance_key_;
     detail::CubeImage radiance_;
-    detail::CubeImage capture_raw_; // the faces captured so far
+    detail::CubeImage capture_raw_;       // the faces captured so far
+    detail::DecalAtlasCache decal_atlas_; // Forward+'s decals' textures
     // Each target's frame before, which SSR reflects.
     std::vector<std::pair<TextureId, SsrHistory>> ssr_histories_;
     std::vector<std::pair<TextureId, TaaHistory>> taa_histories_;

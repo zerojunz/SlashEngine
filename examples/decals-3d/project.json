@@ -1,0 +1,10 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "Decals 3D",
+  "version": "1.0.0",
+  "window": {
+    "height": 180,
+    "width": 320
+  }
+}

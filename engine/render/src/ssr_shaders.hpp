@@ -4174,7 +4174,8 @@ fn fs_main(@builtin(position) position : vec4<f32>) -> @location(0u) vec4<f32> {
 }
 )wgsl"};
 
-inline constexpr char kSsrHlsl[] = R"hlsl(// Screen-space reflections for a frame's 3D world, as Godot 4.6's Forward+ renderer makes them
+inline constexpr const char* kSsrHlsl[] = {
+R"hlsl(// Screen-space reflections for a frame's 3D world, as Godot 4.6's Forward+ renderer makes them
 // (servers/rendering/renderer_rd/shaders/effects/screen_space_reflection_downsample.glsl,
 // screen_space_reflection_hiz.glsl, screen_space_reflection.glsl,
 // screen_space_reflection_filter.glsl and screen_space_reflection_resolve.glsl): a pyramid of the
@@ -4461,7 +4462,7 @@ void trace_pass(int2 p, out float4 color, out float mip_level_out) {
     }
     float3 geom_normal = normalize(geometric_normal(p, screen_pos.z, pos));
     // A small bias towards the geometry's normal keeps the ray off its own surface.
-)hlsl"
+)hlsl",
 R"hlsl(    pos += geom_normal * (1.0 - power(saturate(dot(normal, geom_normal)), 8.0));
     screen_pos = screen_position(pos);
     bool orthogonal = (options.z & kOrthogonal) != 0u;
@@ -4739,7 +4740,7 @@ float4 fs_main(float4 position : SV_Position) : SV_Target0 {
         return texel(normals, int2((int)nearest.y, (int)nearest.z), (int2)frame.xy);
     }
     if (pass_kind == kCopyDepth) {
-)hlsl"
+)hlsl",
 R"hlsl(        return float4(depth_at(p), 0.0, 0.0, 1.0);
     }
     if (pass_kind == kHiz) {
@@ -4763,7 +4764,7 @@ R"hlsl(        return float4(depth_at(p), 0.0, 0.0, 1.0);
     return float4(0.0, 0.0, 0.0, 0.0);
 }
 #endif
-)hlsl";
+)hlsl"};
 
 } // namespace slash::render::shaders
 // clang-format on

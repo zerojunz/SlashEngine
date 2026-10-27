@@ -5,6 +5,7 @@
 #include "webgpu_device.hpp"
 
 #include "checks.hpp"
+#include "decal.hpp"
 #include "forward_post.hpp"
 #include "forward_post_shaders.hpp"
 #include "fsr2.hpp"
@@ -553,7 +554,8 @@ public:
         }
         for (WGPUBuffer buffer :
              {no_source_, no_target_, particle_data_, vertex_buffer_, uniform_buffer_,
-              cluster_lights_.buffer, cluster_cells_.buffer, probe_buffer_.buffer}) {
+              cluster_lights_.buffer, cluster_cells_.buffer, probe_buffer_.buffer,
+              decal_buffer_.buffer, decal_atlas_buffer_.buffer}) {
             destroy_buffer(buffer);
         }
         release_uniform_groups();
@@ -2167,10 +2169,13 @@ private:
             uniform_entry(1, WGPUShaderStage_Fragment, sizeof(MeshSceneUniforms)),
             uniform_entry(2, WGPUShaderStage_Fragment, sizeof(MeshShadowUniforms))};
         mesh_fragment_layout_ = layout(mesh_fragment);
-        // Forward+'s clusters: the lights, then each tile's words, then the reflection probes.
+        // Forward+'s clusters: the lights, then each tile's words, the reflection probes, the
+        // decals and the decals' atlas.
         const std::array mesh_clusters{storage_entry(0, true, WGPUShaderStage_Fragment),
                                        storage_entry(1, true, WGPUShaderStage_Fragment),
-                                       storage_entry(2, true, WGPUShaderStage_Fragment)};
+                                       storage_entry(2, true, WGPUShaderStage_Fragment),
+                                       storage_entry(3, true, WGPUShaderStage_Fragment),
+                                       storage_entry(4, true, WGPUShaderStage_Fragment)};
         mesh_clusters_layout_ = layout(mesh_clusters);
         const std::array shadow_vertex{
             uniform_entry(0, WGPUShaderStage_Vertex, sizeof(MeshShadowPassUniforms)),
@@ -3402,7 +3407,7 @@ private:
         const auto lights = std::make_unique<MeshSceneUniforms>(mesh_scene_uniforms(scene));
         if (scene.method == RenderMethod::ForwardPlus) {
             upload_clusters();
-            lights->cluster = clusters_.uniform();
+            set_cluster_uniforms(*lights, clusters_, &decal_atlas_.atlas(), scene.decals.filter);
         }
         at.scene = uniforms_.add(*lights);
         if (uses_ssr(scene)) {
@@ -3442,10 +3447,13 @@ private:
         return at;
     }
 
-    // Builds the frame's Forward+ clusters and copies them and the frame's reflection probes to
-    // the GPU, bound as a group made again when a buffer grows.
+    // Builds the frame's Forward+ clusters and copies them, the frame's reflection probes and
+    // decals and, when it changes, the decals' atlas to the GPU, bound as a group made again when a
+    // buffer grows.
     void upload_clusters() {
-        clusters_ = build_clusters(*frame_.scene, scene_width_, scene_height_);
+        decal_atlas_.update(frame_.scene->decals);
+        const DecalAtlas& atlas = decal_atlas_.atlas();
+        clusters_ = build_clusters(*frame_.scene, scene_width_, scene_height_, &atlas);
         if (clusters_.lights.empty()) {
             clusters_.lights.emplace_back(); // a storage buffer is never empty
         }
@@ -3458,16 +3466,29 @@ private:
             probes.emplace_back();
         }
         const bool probes_grew = upload_storage(probe_buffer_, std::as_bytes(std::span(probes)));
-        if (cluster_group_ != nullptr && !lights_grew && !cells_grew && !probes_grew) {
+        if (clusters_.decals.empty()) {
+            clusters_.decals.emplace_back();
+        }
+        const bool decals_grew =
+            upload_storage(decal_buffer_, std::as_bytes(std::span(clusters_.decals)));
+        bool atlas_grew = false;
+        if (atlas.generation != decal_atlas_uploaded_ || decal_atlas_buffer_.buffer == nullptr) {
+            atlas_grew =
+                upload_storage(decal_atlas_buffer_, std::as_bytes(std::span(atlas.texels)));
+            decal_atlas_uploaded_ = atlas.generation;
+        }
+        if (cluster_group_ != nullptr && !lights_grew && !cells_grew && !probes_grew &&
+            !decals_grew && !atlas_grew) {
             return;
         }
         if (cluster_group_ != nullptr) {
             wgpuBindGroupRelease(cluster_group_);
         }
-        std::array<WGPUBindGroupEntry, 3> entries{};
+        std::array<WGPUBindGroupEntry, 5> entries{};
         for (std::uint32_t binding = 0; binding < entries.size(); ++binding) {
-            const std::array<const StorageBuffer*, 3> buffers{&cluster_lights_, &cluster_cells_,
-                                                              &probe_buffer_};
+            const std::array<const StorageBuffer*, 5> buffers{&cluster_lights_, &cluster_cells_,
+                                                              &probe_buffer_, &decal_buffer_,
+                                                              &decal_atlas_buffer_};
             const StorageBuffer& storage = *buffers.at(binding);
             entries.at(binding) = WGPU_BIND_GROUP_ENTRY_INIT;
             entries.at(binding).binding = binding;
@@ -3483,7 +3504,9 @@ private:
         const bool grows = size > storage.capacity;
         if (grows) {
             destroy_buffer(storage.buffer);
-            storage.capacity = std::max({size, storage.capacity * 2, kMinVertexBytes});
+            storage.capacity =
+                std::max({size, std::min(storage.capacity * 2, std::uint64_t{kMaxStorageBytes}),
+                          kMinVertexBytes});
             storage.buffer =
                 create_buffer(WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst, storage.capacity);
         }
@@ -5238,6 +5261,12 @@ private:
     LightClusters clusters_;
     StorageBuffer cluster_lights_;
     StorageBuffer cluster_cells_;
+    // The decals' atlas, packed when their textures change, and written then; and the frame's
+    // decals.
+    DecalAtlasCache decal_atlas_;
+    std::uint64_t decal_atlas_uploaded_ = 0;
+    StorageBuffer decal_buffer_;
+    StorageBuffer decal_atlas_buffer_;
     WGPUBindGroup cluster_group_ = nullptr;
     GpuTexture depth_;
     std::uint32_t depth_width_ = 0;

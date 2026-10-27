@@ -9871,7 +9871,8 @@ fn fs_main(@builtin(position) position : vec4<f32>) -> @location(0u) vec4<f32> {
 }
 )wgsl"};
 
-inline constexpr char kSsaoHlsl[] = R"hlsl(// Screen-space ambient occlusion for a frame's 3D world, as Godot 4.6's Forward+ renderer does it
+inline constexpr const char* kSsaoHlsl[] = {
+R"hlsl(// Screen-space ambient occlusion for a frame's 3D world, as Godot 4.6's Forward+ renderer does it
 // with Intel's ASSAO (servers/rendering/renderer_rd/shaders/effects/ss_effects_downsample.glsl,
 // ssao.glsl, ssao_importance_map.glsl, ssao_blur.glsl and ssao_interleave.glsl): a prepass's depth
 // is made linear and split into four slices of every other pixel at up to four levels; each slice's
@@ -10147,7 +10148,7 @@ int sample_level(float lod) {
     if (!(lod > 0.0)) {
         return 0;
     }
-)hlsl"
+)hlsl",
 R"hlsl(    float level = ceil(lod + 0.5) - 1.0;
     return (int)min(level, (float)(sizes.w - 1u));
 }
@@ -10439,7 +10440,7 @@ float2 blur_pass(int2 p, uint pass_kind) {
     }
     bool wide = pass_kind == kBlurWide;
     int reach = wide ? 2 : 1;
-)hlsl"
+)hlsl",
 R"hlsl(    float packed = load_mirrored(slice0, p, size).g;
     float4 edges = unpack_edges(packed, sharpness);
     float center = load_mirrored(slice0, p, size).r;
@@ -10587,7 +10588,7 @@ float4 fs_main(float4 position : SV_Position) : SV_Target0 {
 #endif
     return float4(result, 0.0, 1.0);
 }
-)hlsl";
+)hlsl"};
 
 } // namespace slash::render::shaders
 // clang-format on

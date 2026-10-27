@@ -471,6 +471,8 @@ struct Settings {
     bool voxel_gi_high_quality = false;
     // rendering.anti_aliasing.quality.use_taa: temporal antialiasing of the 3D world.
     bool use_taa = false;
+    // rendering.textures.decals.filter: how decals' textures are sampled.
+    render::DecalFilter decal_filter = render::DecalFilter::LinearMipmaps;
 };
 void set_settings(world::World& world, const Settings& settings);
 // The settings given to the world, or the defaults.

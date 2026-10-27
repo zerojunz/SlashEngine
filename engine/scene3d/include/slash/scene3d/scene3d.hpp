@@ -229,6 +229,7 @@ public:
     // voxel_gi_high_quality is set. With use_taa, the frame is antialiased over time, as Godot's
     // use_taa, its meshes given the transforms they were drawn at in the last frame; so it is with
     // fsr2, which draws its 3D smaller and upscales it with FSR 2 (render::uses_fsr2 says when).
+    // Its Decals' textures are sampled with decal_filter.
     [[nodiscard]] std::optional<Frame3D>
     prepare(const world::World& world, float width, float height, double interpolation,
             render::Color clear, const render::ShadowSettings& shadows = {}, double time = 0.0,
@@ -237,7 +238,8 @@ public:
             const render::ReflectionAtlasSettings& reflection_atlas = {},
             render::RenderMethod method = render::RenderMethod::ForwardPlus,
             bool voxel_gi_high_quality = false, bool use_taa = false,
-            std::optional<render::Fsr2Scaling> fsr2 = std::nullopt);
+            std::optional<render::Fsr2Scaling> fsr2 = std::nullopt,
+            render::DecalFilter decal_filter = render::DecalFilter::LinearMipmaps);
     // Draws the meshes prepare found into the frame begun with its scene.
     [[nodiscard]] Result<void> draw();
 
@@ -398,6 +400,12 @@ private:
     // and finds each lit mesh's place and the probes, for a camera of this exposure.
     void find_lightmaps(const world::World& world, float exposure,
                         const std::function<world::Affine3D(entt::entity)>& global);
+    // The Decals the camera's cull_mask sees, in the order they were made, their textures read
+    // through the image source and their emission times exposure. Those a device would refuse
+    // are left out, as are those whose textures don't fit in the atlas with the ones before.
+    void add_decals(const world::World& world, const world::Tree3D& tree,
+                    const std::function<world::Affine3D(entt::entity)>& global,
+                    std::uint32_t cull_mask, float exposure, render::Decals3D& out);
     // The light probes' light for the entity's moving mesh, centered at center in the world:
     // set at once the first frame, then eased toward it; nothing where no probes hold it.
     render::LightmapCapture capture(entt::entity entity, const Vec3& center);
