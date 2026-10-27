@@ -32,9 +32,13 @@
 #include "metalfx.hpp"
 #include "native.hpp"
 #include "particle_layout.hpp"
+#include "particle_layout_3d.hpp"
 #include "particles_draw_shaders.hpp"
 #include "particles_emit_shaders.hpp"
+#include "particles_mesh_3d_shaders.hpp"
+#include "particles_process_3d_shaders.hpp"
 #include "particles_process_shaders.hpp"
+#include "particles_sort_3d_shaders.hpp"
 #include "post_shaders.hpp"
 #include "post_shading.hpp"
 #include "radiance_shaders.hpp"
@@ -235,8 +239,10 @@ constexpr std::uint32_t kFsr2Threads = 8;
 // The two shaders: plain sprites, and materials that run a program.
 enum class ShaderKind : std::uint8_t { Sprite, Material };
 // The compute shaders: running particle steps, turning particles into quads, and numbering what a
-// sub-emitter takes.
-enum class ComputeKind : std::uint8_t { Process, Draw, Emit };
+// sub-emitter takes; then running 3D particle steps, sorting a 3D system by view depth and
+// placing a draw pass's mesh at its particles.
+enum class ComputeKind : std::uint8_t { Process, Draw, Emit, Process3D, Sort3D, Mesh3D };
+constexpr std::size_t kComputeKinds = 6;
 
 struct ShaderCode {
     std::span<const unsigned char> vertex_spirv;
@@ -1171,37 +1177,216 @@ public:
             return unknown_particles(particles);
         }
         const std::uint32_t count = it->second.amount * it->second.trail;
-        const std::uint32_t size = count * static_cast<std::uint32_t>(sizeof(Particle));
-        const TransferBuffer transfer(device_, SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, size);
-        if (transfer.get() == nullptr) {
-            return sdl_error("making room to read the particles failed");
-        }
-        SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
-        if (commands == nullptr) {
-            return sdl_error("reading the particles failed");
-        }
-        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
-        const SDL_GPUBufferRegion source{.buffer = it->second.buffer, .offset = 0, .size = size};
-        const SDL_GPUTransferBufferLocation destination{.transfer_buffer = transfer.get(),
-                                                        .offset = 0};
-        SDL_DownloadFromGPUBuffer(copy, &source, &destination);
-        SDL_EndGPUCopyPass(copy);
-        SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commands);
-        if (fence == nullptr) {
-            return sdl_error("reading the particles failed");
-        }
-        const bool finished = SDL_WaitForGPUFences(device_, true, &fence, 1);
-        SDL_ReleaseGPUFence(device_, fence);
-        if (!finished) {
-            return sdl_error("waiting for the GPU failed");
-        }
-        const void* mapped = SDL_MapGPUTransferBuffer(device_, transfer.get(), false);
-        if (mapped == nullptr) {
-            return sdl_error("reading the particles failed");
-        }
         std::vector<Particle> out(count);
-        std::memcpy(out.data(), mapped, size);
-        SDL_UnmapGPUTransferBuffer(device_, transfer.get());
+        if (auto read = download(it->second.buffer, std::as_writable_bytes(std::span(out)),
+                                 "the particles");
+            !read) {
+            return read.error();
+        }
+        return out;
+    }
+
+    // 3D systems run on the GPU: process_particles_3d steps them with particles_process_3d.hlsl
+    // and fill_particle_mesh places a draw pass's mesh at them with particles_mesh_3d.hlsl,
+    // sorting them by view depth with particles_sort_3d.hlsl first when the pass asks.
+    Result<Particles3DId> create_particles_3d(std::uint32_t amount) override {
+        if (auto checked = check_particle_amount_3d(amount); !checked) {
+            return checked.error();
+        }
+        if (auto pipeline = compute_pipeline(ComputeKind::Process3D); !pipeline) {
+            return pipeline.error();
+        }
+        SDL_GPUBufferCreateInfo info{};
+        info.usage =
+            SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
+        info.size = amount * static_cast<std::uint32_t>(sizeof(Particle3D));
+        SDL_GPUBuffer* buffer = SDL_CreateGPUBuffer(device_, &info);
+        if (buffer == nullptr) {
+            return sdl_error("creating a system of " + std::to_string(amount) +
+                             " 3D particles failed");
+        }
+        // New GPU memory holds whatever was there before, so the system starts by clearing it.
+        if (auto queued = queue_particle_job({.kind = ComputeKind::Process3D,
+                                              .particles = buffer,
+                                              .amount = amount,
+                                              .reset = true});
+            !queued) {
+            SDL_ReleaseGPUBuffer(device_, buffer);
+            return queued.error();
+        }
+        const auto id = static_cast<Particles3DId>(next_particles_3d_++);
+        particle_systems_3d_[id] = {.buffer = buffer, .amount = amount};
+        return id;
+    }
+
+    void destroy_particles_3d(Particles3DId particles) override {
+        const auto it = particle_systems_3d_.find(particles);
+        if (it == particle_systems_3d_.end()) {
+            return;
+        }
+        // Jobs waiting for the frame may still use it, so it goes once they are sent.
+        for (SDL_GPUBuffer* buffer : {it->second.buffer, it->second.keys}) {
+            if (buffer == nullptr) {
+                continue;
+            }
+            if (particle_jobs_.empty()) {
+                SDL_ReleaseGPUBuffer(device_, buffer);
+            } else {
+                pending_buffers_.push_back(buffer);
+            }
+        }
+        particle_systems_3d_.erase(it);
+    }
+
+    Result<void> process_particles_3d(Particles3DId particles, const ParticleProcess3D& process,
+                                      std::span<const ParticleStep3D> steps) override {
+        const auto it = particle_systems_3d_.find(particles);
+        if (it == particle_systems_3d_.end()) {
+            return unknown_particles_3d();
+        }
+        if (auto checked = check_particle_process_3d(process, steps); !checked) {
+            return checked;
+        }
+        if (steps.empty()) {
+            return {};
+        }
+        ParticleJob job{.kind = ComputeKind::Process3D,
+                        .particles = it->second.buffer,
+                        .amount = it->second.amount};
+        job.material = material_words_3d(process);
+        job.steps = static_cast<std::uint32_t>(particle_words_.size());
+        job.step_count = static_cast<std::uint32_t>(steps.size());
+        pack_particle_steps_3d(steps, particle_words_);
+        return queue_particle_job(job);
+    }
+
+    Result<void> fill_particle_mesh(Particles3DId particles, MeshId mesh,
+                                    std::span<const Vertex3D> source,
+                                    const ParticleMeshDraw3D& draw) override {
+        if (in_frame_) {
+            return frame_in_progress("fill_particle_mesh");
+        }
+        const auto system = particle_systems_3d_.find(particles);
+        if (system == particle_systems_3d_.end()) {
+            return unknown_particles_3d();
+        }
+        const auto it = meshes_.find(mesh);
+        if (it == meshes_.end()) {
+            return unknown_mesh(mesh);
+        }
+        Mesh& found = it->second;
+        const std::uint32_t amount = system->second.amount;
+        if (auto checked = check_particle_mesh(amount, source.size(), found.vertex_count);
+            !checked) {
+            return checked;
+        }
+        if (!draw.has_box()) {
+            // Without a box to draw in, the vertices are placed on the CPU, which measures them.
+            auto live = read_particles_3d(particles);
+            if (!live) {
+                return live.error();
+            }
+            std::vector<Vertex3D> placed(found.vertex_count);
+            particle_mesh_vertices_3d(live.value(), source, draw, placed);
+            return update_mesh(mesh, placed);
+        }
+        const bool sorted = draw.order == ParticleOrder3D::ViewDepth;
+        for (const ComputeKind kind : {ComputeKind::Mesh3D, ComputeKind::Sort3D}) {
+            if (kind == ComputeKind::Sort3D && !sorted) {
+                continue;
+            }
+            if (auto pipeline = compute_pipeline(kind); !pipeline) {
+                return pipeline.error();
+            }
+        }
+        // The vertices are written where update_mesh writes them, into a buffer the shader can
+        // write, the ones drawn before kept for TAA as update_mesh keeps them.
+        const auto bytes = static_cast<std::uint32_t>(found.vertex_count * sizeof(Vertex3D));
+        if (!found.moved) {
+            if (found.previous == nullptr) {
+                found.previous = make_mesh_vertices(bytes);
+                found.previous_storage = true;
+                if (found.previous == nullptr) {
+                    return sdl_error("making room for a mesh's vertices failed");
+                }
+            }
+            std::swap(found.vertices, found.previous);
+            std::swap(found.storage, found.previous_storage);
+            found.moved = true;
+        }
+        if (!found.storage) {
+            SDL_GPUBuffer* writable = make_mesh_vertices(bytes);
+            if (writable == nullptr) {
+                return sdl_error("making room for a mesh's vertices failed");
+            }
+            // SDL releases the old buffer once the frames that read it are done.
+            SDL_ReleaseGPUBuffer(device_, found.vertices);
+            found.vertices = writable;
+            found.storage = true;
+        }
+        ParticleSystem3D& emitter = system->second;
+        SDL_GPUBuffer* keys = emitter.buffer; // bound, but unread, unless the pass is sorted
+        if (sorted) {
+            if (emitter.keys == nullptr) {
+                SDL_GPUBufferCreateInfo info{};
+                info.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ |
+                             SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
+                info.size =
+                    sort_size(amount) * 2 * static_cast<std::uint32_t>(sizeof(std::uint32_t));
+                emitter.keys = SDL_CreateGPUBuffer(device_, &info);
+                if (emitter.keys == nullptr) {
+                    return sdl_error("making room to sort " + std::to_string(amount) +
+                                     " particles failed");
+                }
+            }
+            keys = emitter.keys;
+            SortUniforms3D sort{.amount = amount, .size = sort_size(amount)};
+            sort.sort_direction = {draw.sort_direction.x, draw.sort_direction.y,
+                                   draw.sort_direction.z, 0.0F};
+            particle_jobs_.push_back({.kind = ComputeKind::Sort3D,
+                                      .particles = emitter.buffer,
+                                      .target = keys,
+                                      .sort = sort});
+            for (const auto& [j, k] : bitonic_steps(sort.size)) {
+                sort.j = j;
+                sort.k = k;
+                sort.stage = 1;
+                particle_jobs_.push_back({.kind = ComputeKind::Sort3D,
+                                          .particles = emitter.buffer,
+                                          .target = keys,
+                                          .sort = sort});
+            }
+        }
+        const auto source_at = static_cast<std::uint32_t>(particle_words_.size());
+        pack_particle_vertices_3d(source, particle_words_);
+        particle_jobs_.push_back(
+            {.kind = ComputeKind::Mesh3D,
+             .particles = emitter.buffer,
+             .source = keys,
+             .target = found.vertices,
+             .mesh = mesh_uniforms_3d(draw, amount, static_cast<std::uint32_t>(source.size()),
+                                      source_at)});
+        if (auto flushed = flush_particle_jobs(); !flushed) {
+            return flushed;
+        }
+        found.bounds = {.low = draw.box_low, .high = draw.box_high};
+        return {};
+    }
+
+    Result<std::vector<Particle3D>> read_particles_3d(Particles3DId particles) override {
+        if (in_frame_) {
+            return frame_in_progress("read_particles_3d");
+        }
+        const auto it = particle_systems_3d_.find(particles);
+        if (it == particle_systems_3d_.end()) {
+            return unknown_particles_3d();
+        }
+        std::vector<Particle3D> out(it->second.amount);
+        if (auto read = download(it->second.buffer, std::as_writable_bytes(std::span(out)),
+                                 "the 3D particles");
+            !read) {
+            return read.error();
+        }
         return out;
     }
 
@@ -1286,6 +1471,7 @@ public:
                 }
             }
             std::swap(found.vertices, found.previous);
+            std::swap(found.storage, found.previous_storage);
             found.moved = true;
         }
         const TransferBuffer transfer(device_, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, bytes);
@@ -1313,6 +1499,13 @@ public:
         }
         it->second.bounds = mesh_bounds(vertices);
         return {};
+    }
+
+    void set_mesh_bounds(MeshId mesh, std::array<float, 3> low,
+                         std::array<float, 3> high) override {
+        if (const auto it = meshes_.find(mesh); it != meshes_.end()) {
+            it->second.bounds = {.low = low, .high = high};
+        }
     }
 
     void destroy_mesh(MeshId mesh) override {
@@ -2054,6 +2247,10 @@ private:
         Bounds bounds;
         SDL_GPUBuffer* previous = nullptr;
         bool moved = false;
+        // Whether vertices and previous can be written by a compute shader, as
+        // fill_particle_mesh makes them.
+        bool storage = false;
+        bool previous_storage = false;
     };
 
     // What a mesh draw binds, found when it is made: its mesh may be destroyed before end_frame.
@@ -2107,8 +2304,16 @@ private:
         SDL_GPUBuffer* emissions = nullptr;
     };
 
+    struct ParticleSystem3D {
+        SDL_GPUBuffer* buffer = nullptr; // its particles
+        // Its slots' keys sorted by view depth, made when a pass is first drawn in that order.
+        SDL_GPUBuffer* keys = nullptr;
+        std::uint32_t amount = 0;
+    };
+
     // A compute pass for the GPU to run ahead of the frame's draws, in the order called: steps
-    // of a system, numbering what a sub-emitter takes, or a draw turning a system into quads.
+    // of a system, numbering what a sub-emitter takes, or a draw turning a system into quads;
+    // steps of a 3D system, a step of its sort, or a draw pass's mesh placed at it.
     struct ParticleJob {
         ComputeKind kind = ComputeKind::Process;
         SDL_GPUBuffer* particles = nullptr;
@@ -2125,7 +2330,9 @@ private:
         SDL_GPUBuffer* target = nullptr;
         std::uint32_t chain = 0; // kChainTakes and kChainEmits
         EmitUniforms emit{};
-        DrawUniforms look{}; // for a draw; its first vertex is in the particle quads
+        DrawUniforms look{};   // for a draw; its first vertex is in the particle quads
+        SortUniforms3D sort{}; // a sort's step, writing the keys in target
+        MeshUniforms3D mesh{}; // a mesh, written to target from the keys in source
     };
 
     static std::size_t shader_index(ShaderKind kind, SDL_GPUShaderStage stage) {
@@ -2266,6 +2473,30 @@ private:
             pieces = shaders::kParticlesEmitComputeMsl;
             hlsl = shaders::kParticlesEmitHlsl;
             break;
+        case ComputeKind::Process3D:
+            // The steps' words; the particles.
+            info.num_readonly_storage_buffers = 1;
+            info.num_readwrite_storage_buffers = 1;
+            spirv = shaders::kParticlesProcess3DComputeSpirv;
+            pieces = shaders::kParticlesProcess3DComputeMsl;
+            hlsl = shaders::kParticlesProcess3DHlsl;
+            break;
+        case ComputeKind::Sort3D:
+            // The particles; the keys.
+            info.num_readonly_storage_buffers = 1;
+            info.num_readwrite_storage_buffers = 1;
+            spirv = shaders::kParticlesSort3DComputeSpirv;
+            pieces = shaders::kParticlesSort3DComputeMsl;
+            hlsl = shaders::kParticlesSort3DHlsl;
+            break;
+        case ComputeKind::Mesh3D:
+            // The source vertices' words, the particles and the keys; the mesh's vertices.
+            info.num_readonly_storage_buffers = 3;
+            info.num_readwrite_storage_buffers = 1;
+            spirv = shaders::kParticlesMesh3DComputeSpirv;
+            pieces = shaders::kParticlesMesh3DComputeMsl;
+            hlsl = shaders::kParticlesMesh3DHlsl;
+            break;
         }
         auto made = create_compute_pipeline(info, spirv, pieces, hlsl, "particle");
         if (!made) {
@@ -2323,6 +2554,64 @@ private:
         const auto at = static_cast<std::uint32_t>(particle_words_.size());
         pack_particle_process(process, particle_words_);
         last_material_.emplace(process, at);
+        return at;
+    }
+
+    // Waits for the GPU, then copies the start of buffer into out, what naming it.
+    Result<void> download(SDL_GPUBuffer* buffer, std::span<std::byte> out, std::string_view what) {
+        const auto size = static_cast<std::uint32_t>(out.size());
+        const TransferBuffer transfer(device_, SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, size);
+        if (transfer.get() == nullptr) {
+            return sdl_error("making room to read " + std::string(what) + " failed");
+        }
+        SDL_GPUCommandBuffer* commands = SDL_AcquireGPUCommandBuffer(device_);
+        if (commands == nullptr) {
+            return sdl_error("reading " + std::string(what) + " failed");
+        }
+        SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(commands);
+        const SDL_GPUBufferRegion source{.buffer = buffer, .offset = 0, .size = size};
+        const SDL_GPUTransferBufferLocation destination{.transfer_buffer = transfer.get(),
+                                                        .offset = 0};
+        SDL_DownloadFromGPUBuffer(copy, &source, &destination);
+        SDL_EndGPUCopyPass(copy);
+        SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commands);
+        if (fence == nullptr) {
+            return sdl_error("reading " + std::string(what) + " failed");
+        }
+        const bool finished = SDL_WaitForGPUFences(device_, true, &fence, 1);
+        SDL_ReleaseGPUFence(device_, fence);
+        if (!finished) {
+            return sdl_error("waiting for the GPU failed");
+        }
+        const void* mapped = SDL_MapGPUTransferBuffer(device_, transfer.get(), false);
+        if (mapped == nullptr) {
+            return sdl_error("reading " + std::string(what) + " failed");
+        }
+        std::memcpy(out.data(), mapped, size);
+        SDL_UnmapGPUTransferBuffer(device_, transfer.get());
+        return {};
+    }
+
+    // A mesh's vertex buffer of bytes that compute shaders can write too.
+    SDL_GPUBuffer* make_mesh_vertices(std::uint32_t bytes) {
+        SDL_GPUBufferCreateInfo info{};
+        info.usage = SDL_GPU_BUFFERUSAGE_VERTEX | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
+        info.size = bytes;
+        return SDL_CreateGPUBuffer(device_, &info);
+    }
+
+    static Error unknown_particles_3d() {
+        return make_error(ErrorCode::NotFound, "no such 3D particle system");
+    }
+
+    // Where a 3D process material's words are, as material_words.
+    std::uint32_t material_words_3d(const ParticleProcess3D& process) {
+        if (last_material_3d_ && last_material_3d_->first == process) {
+            return last_material_3d_->second;
+        }
+        const auto at = static_cast<std::uint32_t>(particle_words_.size());
+        pack_particle_process_3d(process, particle_words_);
+        last_material_3d_.emplace(process, at);
         return at;
     }
 
@@ -2451,6 +2740,23 @@ private:
                 output_count = 2;
                 groups = 1;
                 break;
+            case ComputeKind::Process3D:
+                outputs[0].buffer = job.particles;
+                break;
+            case ComputeKind::Sort3D:
+                outputs[0].buffer = job.target;
+                groups = (job.sort.size + kParticleThreads - 1) / kParticleThreads;
+                break;
+            case ComputeKind::Mesh3D:
+                // Every vertex is written, so a frame sent before may keep reading the old ones.
+                outputs[0].buffer = job.target;
+                outputs[0].cycle = true;
+                break;
+            }
+            if (job.kind == ComputeKind::Process3D || job.kind == ComputeKind::Sort3D ||
+                job.kind == ComputeKind::Mesh3D) {
+                dispatch_3d(commands, job, outputs[0], groups);
+                continue;
             }
             SDL_GPUComputePass* pass =
                 SDL_BeginGPUComputePass(commands, nullptr, 0, outputs.data(), output_count);
@@ -2486,10 +2792,42 @@ private:
         }
     }
 
+    // Records a 3D particle job's compute pass, which writes output.
+    void dispatch_3d(SDL_GPUCommandBuffer* commands, const ParticleJob& job,
+                     const SDL_GPUStorageBufferReadWriteBinding& output, std::uint32_t groups) {
+        SDL_GPUComputePass* pass = SDL_BeginGPUComputePass(commands, nullptr, 0, &output, 1);
+        SDL_BindGPUComputePipeline(pass, compute_pipelines_.at(static_cast<std::size_t>(job.kind)));
+        std::array<std::uint32_t, 2> grid{groups, 1};
+        if (job.kind == ComputeKind::Process3D) {
+            SDL_BindGPUComputeStorageBuffers(pass, 0, &particle_data_, 1);
+            const ProcessUniforms3D uniforms{.amount = job.amount,
+                                             .material = job.material,
+                                             .steps = job.steps,
+                                             .step_count = job.step_count,
+                                             .reset = job.reset ? 1U : 0U,
+                                             .phase_step = particle_phase_step(job.amount)};
+            SDL_PushGPUComputeUniformData(commands, 0, &uniforms,
+                                          static_cast<std::uint32_t>(sizeof(uniforms)));
+        } else if (job.kind == ComputeKind::Sort3D) {
+            SDL_BindGPUComputeStorageBuffers(pass, 0, &job.particles, 1);
+            SDL_PushGPUComputeUniformData(commands, 0, &job.sort,
+                                          static_cast<std::uint32_t>(sizeof(job.sort)));
+        } else {
+            const std::array<SDL_GPUBuffer*, 3> inputs{particle_data_, job.particles, job.source};
+            SDL_BindGPUComputeStorageBuffers(pass, 0, inputs.data(), 3);
+            SDL_PushGPUComputeUniformData(commands, 0, &job.mesh,
+                                          static_cast<std::uint32_t>(sizeof(job.mesh)));
+            grid = mesh_groups(job.mesh.counts[0] * job.mesh.counts[1]);
+        }
+        SDL_DispatchGPUCompute(pass, grid[0], grid[1], 1);
+        SDL_EndGPUComputePass(pass);
+    }
+
     void clear_particle_jobs() {
         particle_jobs_.clear();
         particle_words_.clear();
         last_material_.reset();
+        last_material_3d_.reset();
     }
 
     void release_pending_buffers() {
@@ -6041,7 +6379,7 @@ private:
     std::unordered_map<ShaderId, GameShader> game_shaders_;
     std::uint32_t next_shader_ = 1;
     std::vector<SDL_GPUGraphicsPipeline*> pending_pipelines_;
-    std::array<SDL_GPUComputePipeline*, 3> compute_pipelines_{}; // by ComputeKind
+    std::array<SDL_GPUComputePipeline*, kComputeKinds> compute_pipelines_{}; // by ComputeKind
     std::unordered_map<ParticlesId, ParticleSystem> particle_systems_;
     std::uint32_t next_particles_ = 1;
     std::vector<SDL_GPUBuffer*> pending_buffers_;
@@ -6049,6 +6387,9 @@ private:
     std::vector<ParticleJob> particle_jobs_;
     std::vector<Word> particle_words_;
     std::optional<std::pair<ParticleProcess, std::uint32_t>> last_material_;
+    std::optional<std::pair<ParticleProcess3D, std::uint32_t>> last_material_3d_;
+    std::unordered_map<Particles3DId, ParticleSystem3D> particle_systems_3d_;
+    std::uint32_t next_particles_3d_ = 1;
     SDL_GPUBuffer* particle_data_ = nullptr;
     SDL_GPUTransferBuffer* particle_transfer_ = nullptr;
     std::uint32_t particle_capacity_ = 0;

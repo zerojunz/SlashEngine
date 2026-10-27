@@ -18,7 +18,10 @@
 #include "../engine/render/src/mesh_shaders.hpp"
 #include "../engine/render/src/particles_draw_shaders.hpp"
 #include "../engine/render/src/particles_emit_shaders.hpp"
+#include "../engine/render/src/particles_mesh_3d_shaders.hpp"
+#include "../engine/render/src/particles_process_3d_shaders.hpp"
 #include "../engine/render/src/particles_process_shaders.hpp"
+#include "../engine/render/src/particles_sort_3d_shaders.hpp"
 #include "../engine/render/src/post_shaders.hpp"
 #include "../engine/render/src/shader_code.hpp"
 #include "../engine/render/src/shadow_shaders.hpp"
@@ -784,9 +787,13 @@ TEST_CASE("every shader compiles with Windows' HLSL compiler") {
         slash::render::detail::joined(shaders::kMeshClusteredHlsl), "fs_main", "ps_5_1");
     CHECK_MESSAGE(clustered.ok(), "mesh_clustered fs_main: ",
                   (clustered.ok() ? std::string() : clustered.error().message));
-    for (const auto& [name, hlsl] : {std::pair{"particles_process", shaders::kParticlesProcessHlsl},
-                                     std::pair{"particles_emit", shaders::kParticlesEmitHlsl},
-                                     std::pair{"particles_draw", shaders::kParticlesDrawHlsl}}) {
+    for (const auto& [name, hlsl] :
+         {std::pair{"particles_process", shaders::kParticlesProcessHlsl},
+          std::pair{"particles_emit", shaders::kParticlesEmitHlsl},
+          std::pair{"particles_draw", shaders::kParticlesDrawHlsl},
+          std::pair{"particles_process_3d", shaders::kParticlesProcess3DHlsl},
+          std::pair{"particles_sort_3d", shaders::kParticlesSort3DHlsl},
+          std::pair{"particles_mesh_3d", shaders::kParticlesMesh3DHlsl}}) {
         const auto compiled = slash::render::detail::compile_hlsl(hlsl, "cs_main", "cs_5_1");
         CHECK_MESSAGE(compiled.ok(), name, ": ",
                       (compiled.ok() ? std::string() : compiled.error().message));
