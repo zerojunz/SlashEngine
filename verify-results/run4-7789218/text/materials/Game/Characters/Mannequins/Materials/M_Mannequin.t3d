@@ -1,0 +1,793 @@
+Begin Object Class=/Script/Engine.Material Name="M_Mannequin" ExportPath="/Script/Engine.Material'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin'"
+   Begin Object Class=/Script/Engine.MaterialEditorOnlyData Name="M_MannequinEditorOnlyData" ExportPath="/Script/Engine.MaterialEditorOnlyData'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:M_MannequinEditorOnlyData'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionAdd Name="MaterialExpressionAdd_0" ExportPath="/Script/Engine.MaterialExpressionAdd'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionAdd_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionAdd Name="MaterialExpressionAdd_1" ExportPath="/Script/Engine.MaterialExpressionAdd'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionAdd_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionAppendVector Name="MaterialExpressionAppendVector_0" ExportPath="/Script/Engine.MaterialExpressionAppendVector'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionAppendVector_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_0" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_1" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_10" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_10'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_2" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_3" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_4" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_5" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_5'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_6" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_6'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_7" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_7'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_8" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_8'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_9" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_9'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant Name="MaterialExpressionConstant_0" ExportPath="/Script/Engine.MaterialExpressionConstant'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionConstant_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant Name="MaterialExpressionConstant_1" ExportPath="/Script/Engine.MaterialExpressionConstant'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionConstant_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant Name="MaterialExpressionConstant_2" ExportPath="/Script/Engine.MaterialExpressionConstant'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionConstant_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFirstPersonOutput Name="MaterialExpressionFirstPersonOutput_0" ExportPath="/Script/Engine.MaterialExpressionFirstPersonOutput'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionFirstPersonOutput_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionIsFirstPerson Name="MaterialExpressionIsFirstPerson_0" ExportPath="/Script/Engine.MaterialExpressionIsFirstPerson'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionIsFirstPerson_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLength Name="MaterialExpressionLength_0" ExportPath="/Script/Engine.MaterialExpressionLength'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionLength_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_0" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionLinearInterpolate_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_3" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionLinearInterpolate_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_4" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionLinearInterpolate_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMaterialFunctionCall Name="MaterialExpressionMaterialFunctionCall_0" ExportPath="/Script/Engine.MaterialExpressionMaterialFunctionCall'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionMaterialFunctionCall_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMaterialFunctionCall Name="MaterialExpressionMaterialFunctionCall_1" ExportPath="/Script/Engine.MaterialExpressionMaterialFunctionCall'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionMaterialFunctionCall_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_0" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionMultiply_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_1" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionMultiply_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_3" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionMultiply_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_5" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionMultiply_5'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_6" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionMultiply_6'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNamedRerouteDeclaration Name="MaterialExpressionNamedRerouteDeclaration_1" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteDeclaration_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNamedRerouteDeclaration Name="MaterialExpressionNamedRerouteDeclaration_10" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteDeclaration_10'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNamedRerouteDeclaration Name="MaterialExpressionNamedRerouteDeclaration_3" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteDeclaration_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNamedRerouteDeclaration Name="MaterialExpressionNamedRerouteDeclaration_8" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteDeclaration_8'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNamedRerouteUsage Name="MaterialExpressionNamedRerouteUsage_0" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteUsage'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteUsage_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNamedRerouteUsage Name="MaterialExpressionNamedRerouteUsage_16" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteUsage'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteUsage_16'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNamedRerouteUsage Name="MaterialExpressionNamedRerouteUsage_17" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteUsage'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteUsage_17'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNamedRerouteUsage Name="MaterialExpressionNamedRerouteUsage_2" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteUsage'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteUsage_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNamedRerouteUsage Name="MaterialExpressionNamedRerouteUsage_3" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteUsage'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteUsage_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNamedRerouteUsage Name="MaterialExpressionNamedRerouteUsage_4" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteUsage'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteUsage_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionObjectPositionWS Name="MaterialExpressionObjectPositionWS_0" ExportPath="/Script/Engine.MaterialExpressionObjectPositionWS'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionObjectPositionWS_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionOneMinus Name="MaterialExpressionOneMinus_0" ExportPath="/Script/Engine.MaterialExpressionOneMinus'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionOneMinus_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionOneMinus Name="MaterialExpressionOneMinus_1" ExportPath="/Script/Engine.MaterialExpressionOneMinus'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionOneMinus_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSaturate Name="MaterialExpressionSaturate_0" ExportPath="/Script/Engine.MaterialExpressionSaturate'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionSaturate_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSaturate Name="MaterialExpressionSaturate_2" ExportPath="/Script/Engine.MaterialExpressionSaturate'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionSaturate_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_0" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionScalarParameter_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_1" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionScalarParameter_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_2" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionScalarParameter_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_3" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionScalarParameter_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_4" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionScalarParameter_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_5" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionScalarParameter_5'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_6" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionScalarParameter_6'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_7" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionScalarParameter_7'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSign Name="MaterialExpressionSign_0" ExportPath="/Script/Engine.MaterialExpressionSign'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionSign_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSphereMask Name="MaterialExpressionSphereMask_0" ExportPath="/Script/Engine.MaterialExpressionSphereMask'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionSphereMask_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionStaticSwitchParameter Name="MaterialExpressionStaticSwitchParameter_0" ExportPath="/Script/Engine.MaterialExpressionStaticSwitchParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionStaticSwitchParameter_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSubtract Name="MaterialExpressionSubtract_0" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionSubtract_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSubtract Name="MaterialExpressionSubtract_1" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionSubtract_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureCoordinate Name="MaterialExpressionTextureCoordinate_0" ExportPath="/Script/Engine.MaterialExpressionTextureCoordinate'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionTextureCoordinate_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSample Name="MaterialExpressionTextureSample_0" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionTextureSample_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSampleParameter2D Name="MaterialExpressionTextureSampleParameter2D_0" ExportPath="/Script/Engine.MaterialExpressionTextureSampleParameter2D'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionTextureSampleParameter2D_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSampleParameter2D Name="MaterialExpressionTextureSampleParameter2D_1" ExportPath="/Script/Engine.MaterialExpressionTextureSampleParameter2D'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionTextureSampleParameter2D_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSampleParameter2D Name="MaterialExpressionTextureSampleParameter2D_16" ExportPath="/Script/Engine.MaterialExpressionTextureSampleParameter2D'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionTextureSampleParameter2D_16'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionVectorParameter Name="MaterialExpressionVectorParameter_0" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionVectorParameter_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionVectorParameter Name="MaterialExpressionVectorParameter_1" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionVectorParameter_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionVectorParameter Name="MaterialExpressionVectorParameter_4" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionVectorParameter_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionWorldPosition Name="MaterialExpressionWorldPosition_0" ExportPath="/Script/Engine.MaterialExpressionWorldPosition'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionWorldPosition_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionWorldPosition Name="MaterialExpressionWorldPosition_1" ExportPath="/Script/Engine.MaterialExpressionWorldPosition'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionWorldPosition_1'"
+   End Object
+   Begin Object Class=/Script/UnrealEd.SceneThumbnailInfoWithPrimitive Name="SceneThumbnailInfoWithPrimitive_0" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:SceneThumbnailInfoWithPrimitive_0'"
+   End Object
+   Begin Object Name="M_MannequinEditorOnlyData" ExportPath="/Script/Engine.MaterialEditorOnlyData'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:M_MannequinEditorOnlyData'"
+      BaseColor=(Constant=(R=0.501961,G=0.501961,B=0.501961,A=1.000000),Expression="/Script/Engine.MaterialExpressionLinearInterpolate'M_Mannequin:MaterialExpressionLinearInterpolate_4'")
+      Metallic=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Mannequin:MaterialExpressionMultiply_5'")
+      Specular=(UseConstant=True)
+      Roughness=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'M_Mannequin:MaterialExpressionLinearInterpolate_3'")
+      Normal=(Constant=(X=0.000000,Y=0.000000,Z=0.000000),Expression="/Script/Engine.MaterialExpressionTextureSampleParameter2D'M_Mannequin:MaterialExpressionTextureSampleParameter2D_16'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      Tangent=(UseConstant=True)
+      EmissiveColor=(Expression="/Script/Engine.MaterialExpressionStaticSwitchParameter'M_Mannequin:MaterialExpressionStaticSwitchParameter_0'")
+      Opacity=(UseConstant=True)
+      OpacityMask=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'M_Mannequin:MaterialExpressionLinearInterpolate_0'")
+      SubsurfaceColor=(UseConstant=True)
+      ClearCoat=(UseConstant=True)
+      ClearCoatRoughness=(UseConstant=True)
+      AmbientOcclusion=(Constant=0.000000,Expression="/Script/Engine.MaterialExpressionNamedRerouteUsage'M_Mannequin:MaterialExpressionNamedRerouteUsage_4'")
+      Refraction=(UseConstant=True)
+      CustomizedUVs(0)=(UseConstant=True)
+      CustomizedUVs(1)=(UseConstant=True)
+      CustomizedUVs(2)=(UseConstant=True)
+      CustomizedUVs(3)=(UseConstant=True)
+      CustomizedUVs(4)=(UseConstant=True)
+      CustomizedUVs(5)=(UseConstant=True)
+      CustomizedUVs(6)=(UseConstant=True)
+      CustomizedUVs(7)=(UseConstant=True)
+      SurfaceThickness=(UseConstant=True)
+      ExpressionCollection=(Expressions=("/Script/Engine.MaterialExpressionLinearInterpolate'M_Mannequin:MaterialExpressionLinearInterpolate_4'","/Script/Engine.MaterialExpressionMultiply'M_Mannequin:MaterialExpressionMultiply_5'","/Script/Engine.MaterialExpressionLinearInterpolate'M_Mannequin:MaterialExpressionLinearInterpolate_3'","/Script/Engine.MaterialExpressionTextureSampleParameter2D'M_Mannequin:MaterialExpressionTextureSampleParameter2D_16'","/Script/Engine.MaterialExpressionStaticSwitchParameter'M_Mannequin:MaterialExpressionStaticSwitchParameter_0'","/Script/Engine.MaterialExpressionLinearInterpolate'M_Mannequin:MaterialExpressionLinearInterpolate_0'","/Script/Engine.MaterialExpressionNamedRerouteUsage'M_Mannequin:MaterialExpressionNamedRerouteUsage_4'","/Script/Engine.MaterialExpressionNamedRerouteDeclaration'M_Mannequin:MaterialExpressionNamedRerouteDeclaration_1'","/Script/Engine.MaterialExpressionTextureSampleParameter2D'M_Mannequin:MaterialExpressionTextureSampleParameter2D_0'","/Script/Engine.MaterialExpressionNamedRerouteDeclaration'M_Mannequin:MaterialExpressionNamedRerouteDeclaration_8'","/Script/Engine.MaterialExpressionNamedRerouteDeclaration'M_Mannequin:MaterialExpressionNamedRerouteDeclaration_10'","/Script/Engine.MaterialExpressionScalarParameter'M_Mannequin:MaterialExpressionScalarParameter_5'","/Script/Engine.MaterialExpressionVectorParameter'M_Mannequin:MaterialExpressionVectorParameter_4'","/Script/Engine.MaterialExpressionMultiply'M_Mannequin:MaterialExpressionMultiply_3'","/Script/Engine.MaterialExpressionScalarParameter'M_Mannequin:MaterialExpressionScalarParameter_4'","/Script/Engine.MaterialExpressionNamedRerouteUsage'M_Mannequin:MaterialExpressionNamedRerouteUsage_16'","/Script/Engine.MaterialExpressionNamedRerouteUsage'M_Mannequin:MaterialExpressionNamedRerouteUsage_17'","/Script/Engine.MaterialExpressionTextureSample'M_Mannequin:MaterialExpressionTextureSample_0'","/Script/Engine.MaterialExpressionNamedRerouteDeclaration'M_Mannequin:MaterialExpressionNamedRerouteDeclaration_3'","/Script/Engine.MaterialExpressionNamedRerouteUsage'M_Mannequin:MaterialExpressionNamedRerouteUsage_0'","/Script/Engine.MaterialExpressionMultiply'M_Mannequin:MaterialExpressionMultiply_1'","/Script/Engine.MaterialExpressionVectorParameter'M_Mannequin:MaterialExpressionVectorParameter_0'","/Script/Engine.MaterialExpressionTextureCoordinate'M_Mannequin:MaterialExpressionTextureCoordinate_0'","/Script/Engine.MaterialExpressionAppendVector'M_Mannequin:MaterialExpressionAppendVector_0'","/Script/Engine.MaterialExpressionScalarParameter'M_Mannequin:MaterialExpressionScalarParameter_0'","/Script/Engine.MaterialExpressionScalarParameter'M_Mannequin:MaterialExpressionScalarParameter_1'","/Script/Engine.MaterialExpressionScalarParameter'M_Mannequin:MaterialExpressionScalarParameter_2'","/Script/Engine.MaterialExpressionMaterialFunctionCall'M_Mannequin:MaterialExpressionMaterialFunctionCall_1'","/Script/Engine.MaterialExpressionConstant'M_Mannequin:MaterialExpressionConstant_0'","/Script/Engine.MaterialExpressionMultiply'M_Mannequin:MaterialExpressionMultiply_6'","/Script/Engine.MaterialExpressionScalarParameter'M_Mannequin:MaterialExpressionScalarParameter_6'","/Script/Engine.MaterialExpressionAdd'M_Mannequin:MaterialExpressionAdd_1'","/Script/Engine.MaterialExpressionTextureSampleParameter2D'M_Mannequin:MaterialExpressionTextureSampleParameter2D_1'","/Script/Engine.MaterialExpressionNamedRerouteUsage'M_Mannequin:MaterialExpressionNamedRerouteUsage_2'","/Script/Engine.MaterialExpressionNamedRerouteUsage'M_Mannequin:MaterialExpressionNamedRerouteUsage_3'","/Script/Engine.MaterialExpressionSphereMask'M_Mannequin:MaterialExpressionSphereMask_0'","/Script/Engine.MaterialExpressionWorldPosition'M_Mannequin:MaterialExpressionWorldPosition_0'","/Script/Engine.MaterialExpressionObjectPositionWS'M_Mannequin:MaterialExpressionObjectPositionWS_0'","/Script/Engine.MaterialExpressionScalarParameter'M_Mannequin:MaterialExpressionScalarParameter_3'","/Script/Engine.MaterialExpressionAdd'M_Mannequin:MaterialExpressionAdd_0'","/Script/Engine.MaterialExpressionVectorParameter'M_Mannequin:MaterialExpressionVectorParameter_1'","/Script/Engine.MaterialExpressionFirstPersonOutput'M_Mannequin:MaterialExpressionFirstPersonOutput_0'","/Script/Engine.MaterialExpressionOneMinus'M_Mannequin:MaterialExpressionOneMinus_0'","/Script/Engine.MaterialExpressionMaterialFunctionCall'M_Mannequin:MaterialExpressionMaterialFunctionCall_0'","/Script/Engine.MaterialExpressionConstant'M_Mannequin:MaterialExpressionConstant_1'","/Script/Engine.MaterialExpressionMultiply'M_Mannequin:MaterialExpressionMultiply_0'","/Script/Engine.MaterialExpressionConstant'M_Mannequin:MaterialExpressionConstant_2'","/Script/Engine.MaterialExpressionOneMinus'M_Mannequin:MaterialExpressionOneMinus_1'","/Script/Engine.MaterialExpressionIsFirstPerson'M_Mannequin:MaterialExpressionIsFirstPerson_0'","/Script/Engine.MaterialExpressionWorldPosition'M_Mannequin:MaterialExpressionWorldPosition_1'","/Script/Engine.MaterialExpressionLength'M_Mannequin:MaterialExpressionLength_0'","/Script/Engine.MaterialExpressionSubtract'M_Mannequin:MaterialExpressionSubtract_0'","/Script/Engine.MaterialExpressionSign'M_Mannequin:MaterialExpressionSign_0'","/Script/Engine.MaterialExpressionScalarParameter'M_Mannequin:MaterialExpressionScalarParameter_7'","/Script/Engine.MaterialExpressionSubtract'M_Mannequin:MaterialExpressionSubtract_1'","/Script/Engine.MaterialExpressionSaturate'M_Mannequin:MaterialExpressionSaturate_0'","/Script/Engine.MaterialExpressionSaturate'M_Mannequin:MaterialExpressionSaturate_2'"),EditorComments=("/Script/Engine.MaterialExpressionComment'M_Mannequin:MaterialExpressionComment_0'","/Script/Engine.MaterialExpressionComment'M_Mannequin:MaterialExpressionComment_1'","/Script/Engine.MaterialExpressionComment'M_Mannequin:MaterialExpressionComment_2'","/Script/Engine.MaterialExpressionComment'M_Mannequin:MaterialExpressionComment_3'","/Script/Engine.MaterialExpressionComment'M_Mannequin:MaterialExpressionComment_6'","/Script/Engine.MaterialExpressionComment'M_Mannequin:MaterialExpressionComment_7'","/Script/Engine.MaterialExpressionComment'M_Mannequin:MaterialExpressionComment_8'","/Script/Engine.MaterialExpressionComment'M_Mannequin:MaterialExpressionComment_9'","/Script/Engine.MaterialExpressionComment'M_Mannequin:MaterialExpressionComment_10'","/Script/Engine.MaterialExpressionComment'M_Mannequin:MaterialExpressionComment_4'","/Script/Engine.MaterialExpressionComment'M_Mannequin:MaterialExpressionComment_5'"))
+      ParameterGroupData(0)=(GroupName="02 - Textures")
+      ParameterGroupData(1)=(GroupName="01 - BaseColor")
+      ParameterGroupData(2)=(GroupName="None")
+   End Object
+   Begin Object Name="MaterialExpressionAdd_0" ExportPath="/Script/Engine.MaterialExpressionAdd'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionAdd_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionObjectPositionWS'M_Mannequin:MaterialExpressionObjectPositionWS_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionVectorParameter'M_Mannequin:MaterialExpressionVectorParameter_1'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      MaterialExpressionEditorX=3664
+      MaterialExpressionEditorY=-1440
+      MaterialExpressionGuid=BA30DE7449F68534AA74778813796B80
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionAdd_1" ExportPath="/Script/Engine.MaterialExpressionAdd'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionAdd_1'"
+      A=(Expression="/Script/Engine.MaterialExpressionTextureCoordinate'M_Mannequin:MaterialExpressionTextureCoordinate_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionAppendVector'M_Mannequin:MaterialExpressionAppendVector_0'")
+      MaterialExpressionEditorX=1186
+      MaterialExpressionEditorY=210
+      MaterialExpressionGuid=E6367E524660C94F9E109E890F8A062B
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionAppendVector_0" ExportPath="/Script/Engine.MaterialExpressionAppendVector'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionAppendVector_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_Mannequin:MaterialExpressionScalarParameter_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_Mannequin:MaterialExpressionScalarParameter_1'")
+      MaterialExpressionEditorX=1040
+      MaterialExpressionEditorY=288
+      MaterialExpressionGuid=58F8958F489EED9EB07F6EA907BB5ECD
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_0" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_0'"
+      SizeX=1072
+      SizeY=608
+      Text="Base Color"
+      CommentColor=(R=0.029167,G=0.029167,B=0.029167,A=1.000000)
+      MaterialExpressionEditorX=3008
+      MaterialExpressionEditorY=-832
+      MaterialExpressionGuid=CD498AD54DC76B2F1BAF1B8903DE3894
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_1" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_1'"
+      SizeX=407
+      SizeY=261
+      Text="Metallic"
+      CommentColor=(R=0.029167,G=0.029167,B=0.029167,A=1.000000)
+      MaterialExpressionEditorX=3008
+      MaterialExpressionEditorY=-208
+      MaterialExpressionGuid=4549E2CB46ED04C327D56A930A9E35A4
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_10" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_10'"
+      SizeX=166
+      SizeY=160
+      Text="AO"
+      CommentColor=(R=0.029167,G=0.029167,B=0.029167,A=1.000000)
+      MaterialExpressionEditorX=3712
+      MaterialExpressionEditorY=1808
+      MaterialExpressionGuid=24ADF0194F64082A3F275E8DA42AA471
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_2" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_2'"
+      SizeX=464
+      SizeY=416
+      Text="Roughness"
+      CommentColor=(R=0.029167,G=0.029167,B=0.029167,A=1.000000)
+      MaterialExpressionEditorX=2960
+      MaterialExpressionEditorY=80
+      MaterialExpressionGuid=18D4E8544FB1BE6247B403B570C46B9C
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_3" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_3'"
+      SizeX=304
+      SizeY=336
+      Text="Normal"
+      CommentColor=(R=0.029167,G=0.029167,B=0.029167,A=1.000000)
+      MaterialExpressionEditorX=3568
+      MaterialExpressionEditorY=1440
+      MaterialExpressionGuid=9D89EED04D163524558BD7A896BB3BFA
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_4" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_4'"
+      SizeX=769
+      SizeY=643
+      Text="Gradient to regular FOV and Scale keeps foot position correct."
+      CommentColor=(R=0.029167,G=0.029167,B=0.029167,A=1.000000)
+      MaterialExpressionEditorX=3296
+      MaterialExpressionEditorY=-1536
+      MaterialExpressionGuid=319484224744D4990D52DB908C0EF938
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_5" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_5'"
+      SizeX=1104
+      SizeY=432
+      Text="Assumes the camera position is the head"
+      CommentColor=(R=0.029167,G=0.029167,B=0.029167,A=1.000000)
+      MaterialExpressionEditorX=2771
+      MaterialExpressionEditorY=1002
+      MaterialExpressionGuid=C8E481A140452FE5A256CFBA81ED8855
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_6" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_6'"
+      SizeX=1056
+      SizeY=448
+      Text="Emissive"
+      CommentColor=(R=0.029167,G=0.029167,B=0.029167,A=1.000000)
+      MaterialExpressionEditorX=2800
+      MaterialExpressionEditorY=528
+      MaterialExpressionGuid=15BE70AC4E1205228DEDA9BA7C8B20A2
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_7" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_7'"
+      SizeX=1598
+      SizeY=601
+      Text="Emissive"
+      CommentColor=(R=0.029167,G=0.029167,B=0.029167,A=1.000000)
+      MaterialExpressionEditorX=656
+      MaterialExpressionEditorY=48
+      MaterialExpressionGuid=A03A359A42C4E41439F82EA4FDCD8553
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_8" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_8'"
+      SizeX=566
+      SizeY=361
+      Text="Masks"
+      CommentColor=(R=0.029167,G=0.029167,B=0.029167,A=1.000000)
+      MaterialExpressionEditorX=1698
+      MaterialExpressionEditorY=690
+      MaterialExpressionGuid=A47AA3594450B103B516AFB381971CC2
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_9" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionComment_9'"
+      SizeX=197
+      SizeY=160
+      Text="Masking Paint"
+      CommentColor=(R=0.029167,G=0.029167,B=0.029167,A=1.000000)
+      MaterialExpressionEditorX=3006
+      MaterialExpressionEditorY=318
+      MaterialExpressionGuid=6A391C6A4AFD35A633D72F84E62C5A9D
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant_0" ExportPath="/Script/Engine.MaterialExpressionConstant'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionConstant_0'"
+      MaterialExpressionEditorX=3635
+      MaterialExpressionEditorY=810
+      MaterialExpressionGuid=723ED7EC4B87ADC25F1DCDB8B884653E
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant_1" ExportPath="/Script/Engine.MaterialExpressionConstant'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionConstant_1'"
+      R=800.000000
+      MaterialExpressionEditorX=2867
+      MaterialExpressionEditorY=778
+      MaterialExpressionGuid=5BD0025E484EB7D0A5BE3992569648F6
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant_2" ExportPath="/Script/Engine.MaterialExpressionConstant'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionConstant_2'"
+      R=600.000000
+      MaterialExpressionEditorX=2867
+      MaterialExpressionEditorY=858
+      MaterialExpressionGuid=3018F83448030E26F6CB089B8DC1D01E
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionFirstPersonOutput_0" ExportPath="/Script/Engine.MaterialExpressionFirstPersonOutput'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionFirstPersonOutput_0'"
+      FirstPersonInterpolationAlpha=(Expression="/Script/Engine.MaterialExpressionOneMinus'M_Mannequin:MaterialExpressionOneMinus_0'")
+      ConstFirstPersonInterpolationAlpha=0.000000
+      MaterialExpressionEditorX=4208
+      MaterialExpressionEditorY=-1248
+      MaterialExpressionGuid=82419DAC41A8E381E3536C86D556A7C2
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionIsFirstPerson_0" ExportPath="/Script/Engine.MaterialExpressionIsFirstPerson'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionIsFirstPerson_0'"
+      MaterialExpressionEditorX=3347
+      MaterialExpressionEditorY=1306
+      MaterialExpressionGuid=F77509AF4D3F9AC4397440ADDE21676E
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionLength_0" ExportPath="/Script/Engine.MaterialExpressionLength'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionLength_0'"
+      Input=(Expression="/Script/Engine.MaterialExpressionWorldPosition'M_Mannequin:MaterialExpressionWorldPosition_1'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      MaterialExpressionEditorX=3123
+      MaterialExpressionEditorY=1095
+      MaterialExpressionGuid=C43606C3413B5563BDA9909FB491CA06
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_0" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionLinearInterpolate_0'"
+      B=(Expression="/Script/Engine.MaterialExpressionSign'M_Mannequin:MaterialExpressionSign_0'")
+      Alpha=(Expression="/Script/Engine.MaterialExpressionIsFirstPerson'M_Mannequin:MaterialExpressionIsFirstPerson_0'")
+      ConstA=1.000000
+      MaterialExpressionEditorX=3635
+      MaterialExpressionEditorY=1082
+      MaterialExpressionGuid=3DF21EE3458769552F9A70A05A431F28
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_3" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionLinearInterpolate_3'"
+      A=(Expression="/Script/Engine.MaterialExpressionNamedRerouteUsage'M_Mannequin:MaterialExpressionNamedRerouteUsage_3'")
+      B=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_Mannequin:MaterialExpressionScalarParameter_4'")
+      Alpha=(Expression="/Script/Engine.MaterialExpressionNamedRerouteUsage'M_Mannequin:MaterialExpressionNamedRerouteUsage_17'")
+      MaterialExpressionEditorX=3265
+      MaterialExpressionEditorY=163
+      MaterialExpressionGuid=D5D28B844C1F53007543548204085343
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_4" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionLinearInterpolate_4'"
+      A=(Expression="/Script/Engine.MaterialExpressionTextureSampleParameter2D'M_Mannequin:MaterialExpressionTextureSampleParameter2D_0'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      B=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Mannequin:MaterialExpressionMultiply_3'")
+      Alpha=(Expression="/Script/Engine.MaterialExpressionNamedRerouteUsage'M_Mannequin:MaterialExpressionNamedRerouteUsage_16'")
+      MaterialExpressionEditorX=3696
+      MaterialExpressionEditorY=-736
+      MaterialExpressionGuid=69D2F6A2451E0BAEC99E9AB3A7EDC80C
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionMaterialFunctionCall_0" ExportPath="/Script/Engine.MaterialExpressionMaterialFunctionCall'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionMaterialFunctionCall_0'"
+      MaterialFunction="/Script/Engine.MaterialFunction'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade'"
+      FunctionInputs(0)=(ExpressionInputId=79FFEA6C4F3A46F51F8E50A349E4BB4B,Input=(Expression="/Script/Engine.MaterialExpressionConstant'M_Mannequin:MaterialExpressionConstant_1'",InputName="Fade Length"))
+      FunctionInputs(1)=(ExpressionInputId=D5EC0E2F4DB888679BFC2A8B921262ED,Input=(Expression="/Script/Engine.MaterialExpressionConstant'M_Mannequin:MaterialExpressionConstant_2'",InputName="Fade Offset"))
+      FunctionInputs(2)=(ExpressionInputId=7B4195E6455691CA3782398687468578,Input=(OutputIndex=-1,InputName="For Vertex Shader"))
+      FunctionOutputs(0)=(ExpressionOutputId=160C00424E845E293F44DCBE13738CEE,Output=(OutputName="Result"))
+      MaterialExpressionEditorX=3043
+      MaterialExpressionEditorY=810
+      MaterialExpressionGuid=DBDB82CE45EEFBF68191C4957B624BC8
+      Material="/Script/Engine.Material'M_Mannequin'"
+      Outputs(0)=(OutputName="Result")
+   End Object
+   Begin Object Name="MaterialExpressionMaterialFunctionCall_1" ExportPath="/Script/Engine.MaterialExpressionMaterialFunctionCall'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionMaterialFunctionCall_1'"
+      MaterialFunction="/Script/Engine.MaterialFunction'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter'"
+      FunctionInputs(0)=(ExpressionInputId=395E1DA54D9791A8DB7094B52B0509C3,Input=(Expression="/Script/Engine.MaterialExpressionAdd'M_Mannequin:MaterialExpressionAdd_1'",InputName="UVs"))
+      FunctionInputs(1)=(ExpressionInputId=9E726E4E4FF0FCD65D606FB9CE123842,Input=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_Mannequin:MaterialExpressionScalarParameter_2'",InputName="Texture Scale"))
+      FunctionOutputs(0)=(ExpressionOutputId=94A339B248B805839CF8F28B335D4E1D,Output=(OutputName="UVs"))
+      FunctionOutputs(1)=(ExpressionOutputId=2DFD3EF340552A23494E8D987C76BC0D,Output=(OutputName="0-1 mask"))
+      MaterialExpressionEditorX=1346
+      MaterialExpressionEditorY=354
+      MaterialExpressionGuid=5F0DCA44448D8A2064FBC09CE046EE1D
+      Material="/Script/Engine.Material'M_Mannequin'"
+      Outputs(0)=(OutputName="UVs")
+      Outputs(1)=(OutputName="0-1 mask")
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_0" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionMultiply_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_Mannequin:MaterialExpressionScalarParameter_6'")
+      B=(Expression="/Script/Engine.MaterialExpressionSaturate'M_Mannequin:MaterialExpressionSaturate_2'")
+      MaterialExpressionEditorX=3411
+      MaterialExpressionEditorY=730
+      MaterialExpressionGuid=4FF3169C43DDA4815A915CA19E4245B0
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_1" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionMultiply_1'"
+      A=(Expression="/Script/Engine.MaterialExpressionVectorParameter'M_Mannequin:MaterialExpressionVectorParameter_0'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      B=(Expression="/Script/Engine.MaterialExpressionTextureSample'M_Mannequin:MaterialExpressionTextureSample_0'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      MaterialExpressionEditorX=1954
+      MaterialExpressionEditorY=226
+      MaterialExpressionGuid=C12951E44FFB30D12442588318E7D98A
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_3" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionMultiply_3'"
+      A=(Expression="/Script/Engine.MaterialExpressionTextureSampleParameter2D'M_Mannequin:MaterialExpressionTextureSampleParameter2D_0'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      B=(Expression="/Script/Engine.MaterialExpressionVectorParameter'M_Mannequin:MaterialExpressionVectorParameter_4'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      MaterialExpressionEditorX=3520
+      MaterialExpressionEditorY=-640
+      MaterialExpressionGuid=DA381D944E7BE05E02ACFEB596754019
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_5" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionMultiply_5'"
+      A=(Expression="/Script/Engine.MaterialExpressionNamedRerouteUsage'M_Mannequin:MaterialExpressionNamedRerouteUsage_2'")
+      B=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_Mannequin:MaterialExpressionScalarParameter_5'")
+      MaterialExpressionEditorX=3266
+      MaterialExpressionEditorY=-126
+      MaterialExpressionGuid=245DA856478A1AEE1341EF93F9C80E58
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_6" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionMultiply_6'"
+      A=(Expression="/Script/Engine.MaterialExpressionSaturate'M_Mannequin:MaterialExpressionSaturate_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Mannequin:MaterialExpressionMultiply_0'")
+      MaterialExpressionEditorX=3472
+      MaterialExpressionEditorY=608
+      MaterialExpressionGuid=CEA554AE430D78AE6404A394E4002203
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionNamedRerouteDeclaration_1" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteDeclaration_1'"
+      Input=(Expression="/Script/Engine.MaterialExpressionTextureSampleParameter2D'M_Mannequin:MaterialExpressionTextureSampleParameter2D_1'",OutputIndex=3,Mask=1,MaskB=1)
+      Name="AO"
+      NodeColor=(R=0.000000,G=0.000000,B=1.000000,A=1.000000)
+      VariableGuid=91B2C6B049B5671E63EAC8A1BA637282
+      MaterialExpressionEditorX=2116
+      MaterialExpressionEditorY=932
+      MaterialExpressionGuid=5E86154E48C23C50B4A8FCB065E5FD26
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionNamedRerouteDeclaration_10" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteDeclaration_10'"
+      Input=(Expression="/Script/Engine.MaterialExpressionTextureSampleParameter2D'M_Mannequin:MaterialExpressionTextureSampleParameter2D_1'",OutputIndex=1,Mask=1,MaskR=1)
+      Name="Metallic"
+      NodeColor=(R=0.000000,G=0.367187,B=1.000000,A=1.000000)
+      VariableGuid=3A6465314BE80FBF4FAE58AEF6F33353
+      MaterialExpressionEditorX=2100
+      MaterialExpressionEditorY=740
+      MaterialExpressionGuid=5DF4CC4C47BFA096946C8A99979304DA
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionNamedRerouteDeclaration_3" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteDeclaration_3'"
+      Input=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Mannequin:MaterialExpressionMultiply_1'")
+      Name="Logo"
+      NodeColor=(R=0.007812,G=1.000000,B=0.000000,A=1.000000)
+      VariableGuid=82219E5C4309D9FE0AFE8693F9EBF186
+      MaterialExpressionEditorX=2098
+      MaterialExpressionEditorY=226
+      MaterialExpressionGuid=C62EABC04E1299DC5BCEDEA025888B86
+      Material="/Script/Engine.Material'M_Mannequin'"
+      bCollapsed=False
+   End Object
+   Begin Object Name="MaterialExpressionNamedRerouteDeclaration_8" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteDeclaration_8'"
+      Input=(Expression="/Script/Engine.MaterialExpressionTextureSampleParameter2D'M_Mannequin:MaterialExpressionTextureSampleParameter2D_1'",OutputIndex=2,Mask=1,MaskG=1)
+      Name="Roughness"
+      NodeColor=(R=0.000000,G=1.000000,B=0.000000,A=1.000000)
+      VariableGuid=2005DCBD4A1EC374920EDBA34AB142A8
+      MaterialExpressionEditorX=2100
+      MaterialExpressionEditorY=852
+      MaterialExpressionGuid=5DF4CC4C47BFA096946C8A99979304DA
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionNamedRerouteUsage_0" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteUsage'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteUsage_0'"
+      Declaration="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'M_Mannequin:MaterialExpressionNamedRerouteDeclaration_3'"
+      DeclarationGuid=82219E5C4309D9FE0AFE8693F9EBF186
+      MaterialExpressionEditorX=3024
+      MaterialExpressionEditorY=576
+      MaterialExpressionGuid=522AB9D244B72E279A654AB0AB123215
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionNamedRerouteUsage_16" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteUsage'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteUsage_16'"
+      Declaration="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'M_Mannequin:MaterialExpressionNamedRerouteDeclaration_10'"
+      DeclarationGuid=3A6465314BE80FBF4FAE58AEF6F33353
+      MaterialExpressionEditorX=3520
+      MaterialExpressionEditorY=-528
+      MaterialExpressionGuid=0D91235D4AADC228EAA488918F66DEFE
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionNamedRerouteUsage_17" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteUsage'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteUsage_17'"
+      Declaration="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'M_Mannequin:MaterialExpressionNamedRerouteDeclaration_10'"
+      DeclarationGuid=3A6465314BE80FBF4FAE58AEF6F33353
+      MaterialExpressionEditorX=3056
+      MaterialExpressionEditorY=368
+      MaterialExpressionGuid=53AA8169404F6CF928010998167B9612
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionNamedRerouteUsage_2" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteUsage'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteUsage_2'"
+      Declaration="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'M_Mannequin:MaterialExpressionNamedRerouteDeclaration_10'"
+      DeclarationGuid=3A6465314BE80FBF4FAE58AEF6F33353
+      MaterialExpressionEditorX=3136
+      MaterialExpressionEditorY=-160
+      MaterialExpressionGuid=8519C04243984837B7F7DB8AEE36A5EF
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionNamedRerouteUsage_3" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteUsage'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteUsage_3'"
+      Declaration="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'M_Mannequin:MaterialExpressionNamedRerouteDeclaration_8'"
+      DeclarationGuid=2005DCBD4A1EC374920EDBA34AB142A8
+      MaterialExpressionEditorX=3072
+      MaterialExpressionEditorY=128
+      MaterialExpressionGuid=2044B375406D51DA4C8466B2952A6681
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionNamedRerouteUsage_4" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteUsage'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionNamedRerouteUsage_4'"
+      Declaration="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'M_Mannequin:MaterialExpressionNamedRerouteDeclaration_1'"
+      DeclarationGuid=91B2C6B049B5671E63EAC8A1BA637282
+      MaterialExpressionEditorX=3730
+      MaterialExpressionEditorY=1842
+      MaterialExpressionGuid=870DF72D43AE3133F23EE7A794C1C3AB
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionObjectPositionWS_0" ExportPath="/Script/Engine.MaterialExpressionObjectPositionWS'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionObjectPositionWS_0'"
+      MaterialExpressionEditorX=3360
+      MaterialExpressionEditorY=-1472
+      MaterialExpressionGuid=8A604EB947CA335F21B53583336D4F9E
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionOneMinus_0" ExportPath="/Script/Engine.MaterialExpressionOneMinus'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionOneMinus_0'"
+      Input=(Expression="/Script/Engine.MaterialExpressionSphereMask'M_Mannequin:MaterialExpressionSphereMask_0'")
+      MaterialExpressionEditorX=4080
+      MaterialExpressionEditorY=-1232
+      MaterialExpressionGuid=2A5A140F480F664326EF7C91C4931A0A
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionOneMinus_1" ExportPath="/Script/Engine.MaterialExpressionOneMinus'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionOneMinus_1'"
+      Input=(Expression="/Script/Engine.MaterialExpressionMaterialFunctionCall'M_Mannequin:MaterialExpressionMaterialFunctionCall_0'")
+      MaterialExpressionEditorX=3267
+      MaterialExpressionEditorY=810
+      MaterialExpressionGuid=589AFA984DF25F2F06DBEFA53C36F71D
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionSaturate_0" ExportPath="/Script/Engine.MaterialExpressionSaturate'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionSaturate_0'"
+      Input=(Expression="/Script/Engine.MaterialExpressionSubtract'M_Mannequin:MaterialExpressionSubtract_1'")
+      MaterialExpressionEditorX=3296
+      MaterialExpressionEditorY=576
+      MaterialExpressionGuid=B396FB624866491D76F78E9BE202FCC0
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionSaturate_2" ExportPath="/Script/Engine.MaterialExpressionSaturate'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionSaturate_2'"
+      Input=(Expression="/Script/Engine.MaterialExpressionOneMinus'M_Mannequin:MaterialExpressionOneMinus_1'")
+      MaterialExpressionEditorX=3360
+      MaterialExpressionEditorY=832
+      MaterialExpressionGuid=9379C27F4F7515FD5C2258B9C0CBC275
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_0" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionScalarParameter_0'"
+      ParameterName="LogoPosX"
+      ExpressionGUID=BC163DE242CF88CD956AA689BD89A455
+      MaterialExpressionEditorX=752
+      MaterialExpressionEditorY=256
+      MaterialExpressionGuid=1976BA91462D45B6BE983094760FE28A
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_1" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionScalarParameter_1'"
+      SliderMin=5.000000
+      ParameterName="LogoPosY"
+      ExpressionGUID=DDBBA6044075FEF699F7EE8269AD253C
+      MaterialExpressionEditorX=752
+      MaterialExpressionEditorY=336
+      MaterialExpressionGuid=B7B229F740FF7147308696B78B2DE936
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_2" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionScalarParameter_2'"
+      DefaultValue=0.500000
+      ParameterName="LogoScale"
+      ExpressionGUID=3F0BDB5A439A999550A6DEA87F463C58
+      MaterialExpressionEditorX=1106
+      MaterialExpressionEditorY=418
+      MaterialExpressionGuid=6DC5D9EC499230ACF376BF83F1E91446
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_3" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionScalarParameter_3'"
+      DefaultValue=99.141594
+      ParameterName="Scale"
+      ExpressionGUID=9761796143719F0D144DF2B2C91C5E21
+      MaterialExpressionEditorX=3392
+      MaterialExpressionEditorY=-1008
+      MaterialExpressionGuid=7E59B2484511B21EBED6F99D70A46454
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_4" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionScalarParameter_4'"
+      ParameterName="MetalPaintRoughness"
+      ExpressionGUID=FCC158A147F2293F66DBC7A3B34E8BC9
+      Group="01 - BaseColor"
+      MaterialExpressionEditorX=3008
+      MaterialExpressionEditorY=208
+      MaterialExpressionGuid=C5471BCB449F21286E1ED39D6620C993
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_5" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionScalarParameter_5'"
+      ParameterName="MetalPaintMetallic"
+      ExpressionGUID=6102A2DC41FAD59832EE1FBF850F3050
+      Group="01 - BaseColor"
+      MaterialExpressionEditorX=3058
+      MaterialExpressionEditorY=-78
+      MaterialExpressionGuid=6C0877E84594A60F0F2BC6AB5EE5A2D5
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_6" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionScalarParameter_6'"
+      ParameterName="EmissivePower"
+      ExpressionGUID=0B7FC5F7438CA43A0159DD8F86F18FAF
+      MaterialExpressionEditorX=3171
+      MaterialExpressionEditorY=714
+      MaterialExpressionGuid=31375C1D4F40A79C2E47F287F762239F
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_7" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionScalarParameter_7'"
+      DefaultValue=16.407043
+      ParameterName="Head Cutout"
+      ExpressionGUID=18BBB7254869F840EBD920AC0EF35EE8
+      MaterialExpressionEditorX=3187
+      MaterialExpressionEditorY=1210
+      MaterialExpressionGuid=3800800D4D9316791B07E3BC1929E072
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionSign_0" ExportPath="/Script/Engine.MaterialExpressionSign'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionSign_0'"
+      Input=(Expression="/Script/Engine.MaterialExpressionSubtract'M_Mannequin:MaterialExpressionSubtract_0'")
+      MaterialExpressionEditorX=3427
+      MaterialExpressionEditorY=1098
+      MaterialExpressionGuid=3DAD36234FA990D92F0FD4A21A133D98
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionSphereMask_0" ExportPath="/Script/Engine.MaterialExpressionSphereMask'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionSphereMask_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionAdd'M_Mannequin:MaterialExpressionAdd_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionWorldPosition'M_Mannequin:MaterialExpressionWorldPosition_0'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      Radius=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_Mannequin:MaterialExpressionScalarParameter_3'")
+      HardnessPercent=1.000000
+      MaterialExpressionEditorX=3872
+      MaterialExpressionEditorY=-1248
+      MaterialExpressionGuid=735E1F0A49AE9BCF849D7791C559BC1F
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionStaticSwitchParameter_0" ExportPath="/Script/Engine.MaterialExpressionStaticSwitchParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionStaticSwitchParameter_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionMultiply'M_Mannequin:MaterialExpressionMultiply_6'")
+      B=(Expression="/Script/Engine.MaterialExpressionConstant'M_Mannequin:MaterialExpressionConstant_0'")
+      ParameterName="Logo?"
+      ExpressionGUID=9E2FEC0843C7F9A2FB3A629A9E271CBA
+      Group="01 - BaseColor"
+      MaterialExpressionEditorX=3637
+      MaterialExpressionEditorY=668
+      MaterialExpressionGuid=3564E87547299FC010C1F790916BEE55
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionSubtract_0" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionSubtract_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionLength'M_Mannequin:MaterialExpressionLength_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_Mannequin:MaterialExpressionScalarParameter_7'")
+      MaterialExpressionEditorX=3283
+      MaterialExpressionEditorY=1098
+      MaterialExpressionGuid=FD2091314450D80CD8DFEF8A5C71579C
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionSubtract_1" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionSubtract_1'"
+      A=(Expression="/Script/Engine.MaterialExpressionNamedRerouteUsage'M_Mannequin:MaterialExpressionNamedRerouteUsage_0'")
+      ConstB=0.500000
+      MaterialExpressionEditorX=3152
+      MaterialExpressionEditorY=576
+      MaterialExpressionGuid=33CAB1D84D5626A9A92D80B880E44C59
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureCoordinate_0" ExportPath="/Script/Engine.MaterialExpressionTextureCoordinate'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionTextureCoordinate_0'"
+      MaterialExpressionEditorX=944
+      MaterialExpressionEditorY=112
+      MaterialExpressionGuid=D8AFB8B74EC7D4E215D646AD20F55EF2
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureSample_0" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionTextureSample_0'"
+      Coordinates=(Expression="/Script/Engine.MaterialExpressionMaterialFunctionCall'M_Mannequin:MaterialExpressionMaterialFunctionCall_1'")
+      SamplerSource=SSM_Clamp_WorldGroupSettings
+      Texture="/Script/Engine.Texture2D'/Game/Characters/Mannequins/Textures/Shared/T_UE_Logo_M.T_UE_Logo_M'"
+      SamplerType=SAMPLERTYPE_LinearGrayscale
+      MaterialExpressionEditorX=1618
+      MaterialExpressionEditorY=354
+      MaterialExpressionGuid=62D13BCA44D80CCC2F7D49803A5BC817
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureSampleParameter2D_0" ExportPath="/Script/Engine.MaterialExpressionTextureSampleParameter2D'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionTextureSampleParameter2D_0'"
+      ParameterName="Base Texture"
+      ExpressionGUID=C07A65644883D64F3A34E19676933CA9
+      Group="01 - BaseColor"
+      Texture="/Script/Engine.Texture2D'/Game/Characters/Mannequins/Textures/Manny/T_Manny_01_D.T_Manny_01_D'"
+      MaterialExpressionEditorX=3024
+      MaterialExpressionEditorY=-752
+      MaterialExpressionGuid=28F63C6C4219F0A0436D3DB8233DC846
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureSampleParameter2D_1" ExportPath="/Script/Engine.MaterialExpressionTextureSampleParameter2D'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionTextureSampleParameter2D_1'"
+      ParameterName="MRA"
+      ExpressionGUID=C65502E9416F2D1F2C4E70A93220FDC3
+      ChannelNames=(R=NSLOCTEXT("", "A20090BE4DDF8C3848C7DEB7E0F81934", "Metallic"),G=NSLOCTEXT("", "6708F7224359A743C07A28B8B7A91F48", "Roughness"),B=NSLOCTEXT("", "5C4867B64D435329D046C9B4FD8E27DF", "AO"))
+      Texture="/Script/Engine.Texture2D'/Game/Characters/Mannequins/Textures/Manny/T_Manny_01_MRA.T_Manny_01_MRA'"
+      SamplerType=SAMPLERTYPE_LinearColor
+      MaterialExpressionEditorX=1748
+      MaterialExpressionEditorY=756
+      MaterialExpressionGuid=74072FE4457D777B2C13B48ACA5F856E
+      Material="/Script/Engine.Material'M_Mannequin'"
+      Outputs(1)=(OutputName="Metallic")
+      Outputs(2)=(OutputName="Roughness")
+      Outputs(3)=(OutputName="AO")
+   End Object
+   Begin Object Name="MaterialExpressionTextureSampleParameter2D_16" ExportPath="/Script/Engine.MaterialExpressionTextureSampleParameter2D'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionTextureSampleParameter2D_16'"
+      ParameterName="BNormal"
+      ExpressionGUID=9CEF6BE745A73A2C0FE92085480CDB0B
+      Group="02 - Textures"
+      Texture="/Script/Engine.Texture2D'/Game/Characters/Mannequins/Textures/Manny/T_Manny_01_BN.T_Manny_01_BN'"
+      SamplerType=SAMPLERTYPE_Normal
+      MaterialExpressionEditorX=3599
+      MaterialExpressionEditorY=1484
+      MaterialExpressionGuid=7C6EF3584AE8F6642C0F828DCEA98F13
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionVectorParameter_0" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionVectorParameter_0'"
+      DefaultValue=(R=0.000000,G=1.000000,B=1.000000,A=1.000000)
+      ParameterName="LogoTint"
+      ExpressionGUID=1AA49B754EF0A970C9295192C73BE47B
+      Group="01 - BaseColor"
+      MaterialExpressionEditorX=1618
+      MaterialExpressionEditorY=114
+      MaterialExpressionGuid=2904C45D4D3DC9DB46DECEB33E4E43F7
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionVectorParameter_1" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionVectorParameter_1'"
+      DefaultValue=(R=0.000000,G=0.000000,B=-57.245098,A=0.000000)
+      ParameterName="Blend Offset"
+      ExpressionGUID=C8EF59064135A391A108D6BF53AD7294
+      MaterialExpressionEditorX=3424
+      MaterialExpressionEditorY=-1392
+      MaterialExpressionGuid=51D78BCA416EF66B5888DEA7AC48AAD6
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionVectorParameter_4" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionVectorParameter_4'"
+      DefaultValue=(R=1.000000,G=1.000000,B=1.000000,A=1.000000)
+      ParameterName="Paint Tint"
+      ExpressionGUID=EB081C6A45E638379D7BFEA63B5A9026
+      Group="01 - BaseColor"
+      MaterialExpressionEditorX=3040
+      MaterialExpressionEditorY=-496
+      MaterialExpressionGuid=F06F64A84E7723ECFEEBA68C01B93BCE
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionWorldPosition_0" ExportPath="/Script/Engine.MaterialExpressionWorldPosition'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionWorldPosition_0'"
+      MaterialExpressionEditorX=3392
+      MaterialExpressionEditorY=-1184
+      MaterialExpressionGuid=5F221B6B42E12336D3270C8FF0B52BA7
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="MaterialExpressionWorldPosition_1" ExportPath="/Script/Engine.MaterialExpressionWorldPosition'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:MaterialExpressionWorldPosition_1'"
+      WorldPositionShaderOffset=WPT_CameraRelative
+      MaterialExpressionEditorX=2835
+      MaterialExpressionEditorY=1082
+      MaterialExpressionGuid=38C896164B00F59EE46BC2A550DD7130
+      Material="/Script/Engine.Material'M_Mannequin'"
+   End Object
+   Begin Object Name="SceneThumbnailInfoWithPrimitive_0" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Game/Characters/Mannequins/Materials/M_Mannequin.M_Mannequin:SceneThumbnailInfoWithPrimitive_0'"
+   End Object
+   BlendMode=BLEND_Masked
+   NumCustomizedUVs=2
+   bUsedWithSkeletalMesh=True
+   bUsedWithMeshDeformer=True
+   EditorX=4496
+   EditorY=448
+   PixelDepthOffsetMode=PDOM_Legacy
+   StateId=2E35E6F54580A38A284877A2BB158B57
+   ReferencedTextureGuids(0)=C00CC8E841CB932D4B829C8A31E9C8D3
+   ReferencedTextureGuids(1)=9E10E22047455A145C1C7FB854698C17
+   ReferencedTextureGuids(2)=3AD76D4C493694ADE2ADDAA8607F1720
+   EditorOnlyData="/Script/Engine.MaterialEditorOnlyData'M_MannequinEditorOnlyData'"
+   TextureStreamingDataVersion=1
+   TextureStreamingData(0)=(SamplingScale=1.000000,UVChannelIndex=0,TextureName="T_Manny_01_BN",TextureReference="/Game/Characters/Mannequins/Textures/Manny/T_Manny_01_BN.T_Manny_01_BN")
+   TextureStreamingData(1)=(SamplingScale=1.000000,UVChannelIndex=0,TextureName="T_Manny_01_D",TextureReference="/Game/Characters/Mannequins/Textures/Manny/T_Manny_01_D.T_Manny_01_D")
+   TextureStreamingData(2)=(SamplingScale=1.000000,UVChannelIndex=0,TextureName="T_Manny_01_MRA",TextureReference="/Game/Characters/Mannequins/Textures/Manny/T_Manny_01_MRA.T_Manny_01_MRA")
+   ReferencedDefaultTextures(0)="/Script/Engine.Texture2D'/Game/Characters/Mannequins/Textures/Manny/T_Manny_01_BN.T_Manny_01_BN'"
+   ReferencedDefaultTextures(1)="/Script/Engine.Texture2D'/Game/Characters/Mannequins/Textures/Manny/T_Manny_01_D.T_Manny_01_D'"
+   ReferencedDefaultTextures(2)="/Script/Engine.Texture2D'/Game/Characters/Mannequins/Textures/Shared/T_UE_Logo_M.T_UE_Logo_M'"
+   ReferencedDefaultTextures(3)="/Script/Engine.Texture2D'/Game/Characters/Mannequins/Textures/Manny/T_Manny_01_MRA.T_Manny_01_MRA'"
+   ThumbnailInfo="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'SceneThumbnailInfoWithPrimitive_0'"
+   ParameterOverviewExpansion=(("-12Global", True),("-12Global Diffraction", True),("-12Global Logo", True),("-12Global BaseColor", True),("-12Global ClearCoat", True),("-12Global Normal", True),("-12Global Roughness", True),("-12Global Spec", True),("-12Global 01 - BaseColor", True),("-12Global 02 - Textures", True),("-12Global 03 - Logo", True),("-12Global 04 - Diffraction", True))
+   LightingGuid=6E2FCAC54514B524B99F8A8DCCE22B59
+End Object

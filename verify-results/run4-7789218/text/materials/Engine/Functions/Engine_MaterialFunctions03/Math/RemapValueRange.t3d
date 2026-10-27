@@ -1,0 +1,159 @@
+Begin Object Class=/Script/Engine.MaterialFunction Name="RemapValueRange" ExportPath="/Script/Engine.MaterialFunction'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange'"
+   Begin Object Class=/Script/Engine.MaterialFunctionEditorOnlyData Name="RemapValueRangeEditorOnlyData" ExportPath="/Script/Engine.MaterialFunctionEditorOnlyData'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:RemapValueRangeEditorOnlyData'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionAdd Name="MaterialExpressionAdd_0" ExportPath="/Script/Engine.MaterialExpressionAdd'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionAdd_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionDivide Name="MaterialExpressionDivide_0" ExportPath="/Script/Engine.MaterialExpressionDivide'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionDivide_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionInput Name="MaterialExpressionFunctionInput_0" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionFunctionInput_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionInput Name="MaterialExpressionFunctionInput_1" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionFunctionInput_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionInput Name="MaterialExpressionFunctionInput_2" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionFunctionInput_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionInput Name="MaterialExpressionFunctionInput_3" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionFunctionInput_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionInput Name="MaterialExpressionFunctionInput_4" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionFunctionInput_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionOutput Name="MaterialExpressionFunctionOutput_0" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionFunctionOutput_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_0" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionMultiply_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSubtract Name="MaterialExpressionSubtract_0" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionSubtract_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSubtract Name="MaterialExpressionSubtract_1" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionSubtract_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSubtract Name="MaterialExpressionSubtract_2" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionSubtract_2'"
+   End Object
+   Begin Object Class=/Script/UnrealEd.SceneThumbnailInfoWithPrimitive Name="SceneThumbnailInfoWithPrimitive_0" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:SceneThumbnailInfoWithPrimitive_0'"
+   End Object
+   Begin Object Name="RemapValueRangeEditorOnlyData" ExportPath="/Script/Engine.MaterialFunctionEditorOnlyData'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:RemapValueRangeEditorOnlyData'"
+      ExpressionCollection=(Expressions=("/Script/Engine.MaterialExpressionFunctionOutput'RemapValueRange:MaterialExpressionFunctionOutput_0'","/Script/Engine.MaterialExpressionFunctionInput'RemapValueRange:MaterialExpressionFunctionInput_0'","/Script/Engine.MaterialExpressionFunctionInput'RemapValueRange:MaterialExpressionFunctionInput_1'","/Script/Engine.MaterialExpressionFunctionInput'RemapValueRange:MaterialExpressionFunctionInput_2'","/Script/Engine.MaterialExpressionFunctionInput'RemapValueRange:MaterialExpressionFunctionInput_3'","/Script/Engine.MaterialExpressionFunctionInput'RemapValueRange:MaterialExpressionFunctionInput_4'","/Script/Engine.MaterialExpressionSubtract'RemapValueRange:MaterialExpressionSubtract_0'","/Script/Engine.MaterialExpressionDivide'RemapValueRange:MaterialExpressionDivide_0'","/Script/Engine.MaterialExpressionSubtract'RemapValueRange:MaterialExpressionSubtract_1'","/Script/Engine.MaterialExpressionMultiply'RemapValueRange:MaterialExpressionMultiply_0'","/Script/Engine.MaterialExpressionSubtract'RemapValueRange:MaterialExpressionSubtract_2'","/Script/Engine.MaterialExpressionAdd'RemapValueRange:MaterialExpressionAdd_0'"))
+   End Object
+   Begin Object Name="MaterialExpressionAdd_0" ExportPath="/Script/Engine.MaterialExpressionAdd'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionAdd_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionMultiply'RemapValueRange:MaterialExpressionMultiply_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionFunctionInput'RemapValueRange:MaterialExpressionFunctionInput_3'")
+      MaterialExpressionEditorY=704
+      MaterialExpressionGuid=8E34DB6F4AF448A3CA240B89F844635A
+      Function="/Script/Engine.MaterialFunction'RemapValueRange'"
+   End Object
+   Begin Object Name="MaterialExpressionDivide_0" ExportPath="/Script/Engine.MaterialExpressionDivide'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionDivide_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionSubtract'RemapValueRange:MaterialExpressionSubtract_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionSubtract'RemapValueRange:MaterialExpressionSubtract_1'")
+      MaterialExpressionEditorX=-224
+      MaterialExpressionEditorY=480
+      MaterialExpressionGuid=1A968E404475608867A062996726E0A3
+      Function="/Script/Engine.MaterialFunction'RemapValueRange'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionInput_0" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionFunctionInput_0'"
+      InputName="Input"
+      Id=7815F22649EAE745F122D186BF2036B1
+      InputType=FunctionInput_Scalar
+      MaterialExpressionEditorX=-557
+      MaterialExpressionEditorY=384
+      MaterialExpressionGuid=21B22ECB439AA0CB50F733A2911BF43A
+      Function="/Script/Engine.MaterialFunction'RemapValueRange'"
+      bCollapsed=True
+   End Object
+   Begin Object Name="MaterialExpressionFunctionInput_1" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionFunctionInput_1'"
+      InputName="Input Low"
+      Id=4FB7C1914447359787B142A38BD2115C
+      InputType=FunctionInput_Scalar
+      bUsePreviewValueAsDefault=True
+      SortPriority=1
+      MaterialExpressionEditorX=-585
+      MaterialExpressionEditorY=500
+      MaterialExpressionGuid=21B22ECB439AA0CB50F733A2911BF43A
+      Function="/Script/Engine.MaterialFunction'RemapValueRange'"
+      bCollapsed=True
+   End Object
+   Begin Object Name="MaterialExpressionFunctionInput_2" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionFunctionInput_2'"
+      InputName="Input High"
+      Id=BDC9833D47571DD88AE3B892BA913AC2
+      InputType=FunctionInput_Scalar
+      PreviewValue=(X=1.000000,Y=0.000000,Z=0.000000,W=1.000000)
+      bUsePreviewValueAsDefault=True
+      SortPriority=2
+      MaterialExpressionEditorX=-588
+      MaterialExpressionEditorY=616
+      MaterialExpressionGuid=21B22ECB439AA0CB50F733A2911BF43A
+      Function="/Script/Engine.MaterialFunction'RemapValueRange'"
+      bCollapsed=True
+   End Object
+   Begin Object Name="MaterialExpressionFunctionInput_3" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionFunctionInput_3'"
+      InputName="Target Low"
+      Id=E518DF3C4CEA08859BCB74A0D4227458
+      InputType=FunctionInput_Scalar
+      bUsePreviewValueAsDefault=True
+      SortPriority=3
+      MaterialExpressionEditorX=-592
+      MaterialExpressionEditorY=732
+      MaterialExpressionGuid=21B22ECB439AA0CB50F733A2911BF43A
+      Function="/Script/Engine.MaterialFunction'RemapValueRange'"
+      bCollapsed=True
+   End Object
+   Begin Object Name="MaterialExpressionFunctionInput_4" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionFunctionInput_4'"
+      InputName="Target High"
+      Id=997106CD4B88D3FF91277EAF5ECF8884
+      InputType=FunctionInput_Scalar
+      PreviewValue=(X=1.000000,Y=0.000000,Z=0.000000,W=1.000000)
+      bUsePreviewValueAsDefault=True
+      SortPriority=4
+      MaterialExpressionEditorX=-599
+      MaterialExpressionEditorY=848
+      MaterialExpressionGuid=21B22ECB439AA0CB50F733A2911BF43A
+      Function="/Script/Engine.MaterialFunction'RemapValueRange'"
+      bCollapsed=True
+   End Object
+   Begin Object Name="MaterialExpressionFunctionOutput_0" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionFunctionOutput_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionAdd'RemapValueRange:MaterialExpressionAdd_0'")
+      bLastPreviewed=True
+      Id=6ACB0DF34E8DA8673A435BA9BC99AB24
+      MaterialExpressionEditorX=96
+      MaterialExpressionEditorY=672
+      MaterialExpressionGuid=83A2ADFE409A8F470BCE4AAE21DEC9F5
+      Function="/Script/Engine.MaterialFunction'RemapValueRange'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_0" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionMultiply_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionDivide'RemapValueRange:MaterialExpressionDivide_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionSubtract'RemapValueRange:MaterialExpressionSubtract_2'")
+      MaterialExpressionEditorX=-128
+      MaterialExpressionEditorY=592
+      MaterialExpressionGuid=216F2AA042EC95168EC64E91B0A54BAE
+      Function="/Script/Engine.MaterialFunction'RemapValueRange'"
+   End Object
+   Begin Object Name="MaterialExpressionSubtract_0" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionSubtract_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionFunctionInput'RemapValueRange:MaterialExpressionFunctionInput_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionFunctionInput'RemapValueRange:MaterialExpressionFunctionInput_1'")
+      MaterialExpressionEditorX=-352
+      MaterialExpressionEditorY=416
+      MaterialExpressionGuid=17C3970040E70A3E79BD09A6EC7E90B0
+      Function="/Script/Engine.MaterialFunction'RemapValueRange'"
+   End Object
+   Begin Object Name="MaterialExpressionSubtract_1" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionSubtract_1'"
+      A=(Expression="/Script/Engine.MaterialExpressionFunctionInput'RemapValueRange:MaterialExpressionFunctionInput_2'")
+      B=(Expression="/Script/Engine.MaterialExpressionFunctionInput'RemapValueRange:MaterialExpressionFunctionInput_1'")
+      MaterialExpressionEditorX=-352
+      MaterialExpressionEditorY=544
+      MaterialExpressionGuid=17C3970040E70A3E79BD09A6EC7E90B0
+      Function="/Script/Engine.MaterialFunction'RemapValueRange'"
+   End Object
+   Begin Object Name="MaterialExpressionSubtract_2" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:MaterialExpressionSubtract_2'"
+      A=(Expression="/Script/Engine.MaterialExpressionFunctionInput'RemapValueRange:MaterialExpressionFunctionInput_4'")
+      B=(Expression="/Script/Engine.MaterialExpressionFunctionInput'RemapValueRange:MaterialExpressionFunctionInput_3'")
+      MaterialExpressionEditorX=-352
+      MaterialExpressionEditorY=784
+      MaterialExpressionGuid=AF28FFC847D1CC1FAE8B81903BA287E2
+      Function="/Script/Engine.MaterialFunction'RemapValueRange'"
+   End Object
+   Begin Object Name="SceneThumbnailInfoWithPrimitive_0" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Engine/Functions/Engine_MaterialFunctions03/Math/RemapValueRange.RemapValueRange:SceneThumbnailInfoWithPrimitive_0'"
+   End Object
+   Description="Generalized remapping function to explicitly remap an input range to an output range."
+   bExposeToLibrary=True
+   LibraryCategoriesText(0)=NSLOCTEXT("", "B0139B3342EACC31903386967BD011D0", "Math")
+   EditorOnlyData="/Script/Engine.MaterialFunctionEditorOnlyData'RemapValueRangeEditorOnlyData'"
+   StateId=F1A8C6A94D37E691BD78748598A34AB8
+   CombinedInputTypes=15
+   CombinedOutputTypes=15
+   ThumbnailInfo="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'SceneThumbnailInfoWithPrimitive_0'"
+End Object

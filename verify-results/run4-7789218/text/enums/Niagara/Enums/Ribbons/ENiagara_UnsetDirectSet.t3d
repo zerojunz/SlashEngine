@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagara_UnsetDirectSet" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/Ribbons/ENiagara_UnsetDirectSet.ENiagara_UnsetDirectSet'"
+   UniqueNameIndex=3
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[1A67A2BC49196D21B84C8EA4C8926FEC]", "3EED5FF04520B1C991701CBF8006258E", "Unset")),("NewEnumerator1", NSLOCTEXT("[1A67A2BC49196D21B84C8EA4C8926FEC]", "014604FE43AC34EEF070899398394D33", "Direct Set")))
+End Object

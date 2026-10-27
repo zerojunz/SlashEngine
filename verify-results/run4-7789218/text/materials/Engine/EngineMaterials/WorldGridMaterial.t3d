@@ -1,0 +1,482 @@
+Begin Object Class=/Script/Engine.Material Name="WorldGridMaterial" ExportPath="/Script/Engine.Material'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial'"
+   Begin Object Class=/Script/Engine.MaterialEditorOnlyData Name="WorldGridMaterialEditorOnlyData" ExportPath="/Script/Engine.MaterialEditorOnlyData'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:WorldGridMaterialEditorOnlyData'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionAdd Name="MaterialExpressionAdd_14" ExportPath="/Script/Engine.MaterialExpressionAdd'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionAdd_14'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionAdd Name="MaterialExpressionAdd_15" ExportPath="/Script/Engine.MaterialExpressionAdd'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionAdd_15'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionClamp Name="MaterialExpressionClamp_6" ExportPath="/Script/Engine.MaterialExpressionClamp'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionClamp_6'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_0" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionComment_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_1" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionComment_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_30" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionComment_30'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_31" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionComment_31'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_32" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionComment_32'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_33" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionComment_33'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_34" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionComment_34'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_9" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionComment_9'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComponentMask Name="MaterialExpressionComponentMask_6" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionComponentMask_6'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant Name="MaterialExpressionConstant_36" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionConstant_36'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant Name="MaterialExpressionConstant_37" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionConstant_37'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant Name="MaterialExpressionConstant_38" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionConstant_38'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant Name="MaterialExpressionConstant_39" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionConstant_39'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant Name="MaterialExpressionConstant_40" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionConstant_40'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant Name="MaterialExpressionConstant_41" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionConstant_41'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant3Vector Name="MaterialExpressionConstant3Vector_6" ExportPath="/Script/Engine.MaterialExpressionConstant3Vector'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionConstant3Vector_6'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionDivide Name="MaterialExpressionDivide_18" ExportPath="/Script/Engine.MaterialExpressionDivide'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionDivide_18'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionDivide Name="MaterialExpressionDivide_19" ExportPath="/Script/Engine.MaterialExpressionDivide'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionDivide_19'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionDivide Name="MaterialExpressionDivide_20" ExportPath="/Script/Engine.MaterialExpressionDivide'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionDivide_20'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_60" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_60'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_61" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_61'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_62" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_62'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_63" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_63'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_64" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_64'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_65" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_65'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_66" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_66'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_67" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_67'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_68" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_68'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_69" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_69'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMaterialFunctionCall Name="MaterialExpressionMaterialFunctionCall_8" ExportPath="/Script/Engine.MaterialExpressionMaterialFunctionCall'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionMaterialFunctionCall_8'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_30" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionMultiply_30'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_31" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionMultiply_31'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_32" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionMultiply_32'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_33" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionMultiply_33'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionOneMinus Name="MaterialExpressionOneMinus_6" ExportPath="/Script/Engine.MaterialExpressionOneMinus'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionOneMinus_6'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureCoordinate Name="MaterialExpressionTextureCoordinate_14" ExportPath="/Script/Engine.MaterialExpressionTextureCoordinate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionTextureCoordinate_14'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureCoordinate Name="MaterialExpressionTextureCoordinate_15" ExportPath="/Script/Engine.MaterialExpressionTextureCoordinate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionTextureCoordinate_15'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSample Name="MaterialExpressionTextureSample_26" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionTextureSample_26'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSample Name="MaterialExpressionTextureSample_27" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionTextureSample_27'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSample Name="MaterialExpressionTextureSample_28" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionTextureSample_28'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSample Name="MaterialExpressionTextureSample_29" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionTextureSample_29'"
+   End Object
+   Begin Object Class=/Script/UnrealEd.SceneThumbnailInfoWithPrimitive Name="SceneThumbnailInfoWithPrimitive_7" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:SceneThumbnailInfoWithPrimitive_7'"
+   End Object
+   Begin Object Name="WorldGridMaterialEditorOnlyData" ExportPath="/Script/Engine.MaterialEditorOnlyData'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:WorldGridMaterialEditorOnlyData'"
+      BaseColor=(Constant=(R=0.501961,G=0.501961,B=0.501961,A=1.000000),Expression="/Script/Engine.MaterialExpressionMultiply'WorldGridMaterial:MaterialExpressionMultiply_30'")
+      Roughness=(Constant=0.423800,Expression="/Script/Engine.MaterialExpressionClamp'WorldGridMaterial:MaterialExpressionClamp_6'")
+      Normal=(Constant=(X=0.000000,Y=0.000000,Z=0.000000),Expression="/Script/Engine.MaterialExpressionMultiply'WorldGridMaterial:MaterialExpressionMultiply_31'")
+      ExpressionCollection=(Expressions=("/Script/Engine.MaterialExpressionMultiply'WorldGridMaterial:MaterialExpressionMultiply_30'","/Script/Engine.MaterialExpressionClamp'WorldGridMaterial:MaterialExpressionClamp_6'","/Script/Engine.MaterialExpressionMultiply'WorldGridMaterial:MaterialExpressionMultiply_31'","/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_60'","/Script/Engine.MaterialExpressionMultiply'WorldGridMaterial:MaterialExpressionMultiply_32'","/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_61'","/Script/Engine.MaterialExpressionComponentMask'WorldGridMaterial:MaterialExpressionComponentMask_6'","/Script/Engine.MaterialExpressionTextureSample'WorldGridMaterial:MaterialExpressionTextureSample_26'","/Script/Engine.MaterialExpressionDivide'WorldGridMaterial:MaterialExpressionDivide_18'","/Script/Engine.MaterialExpressionTextureSample'WorldGridMaterial:MaterialExpressionTextureSample_27'","/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_62'","/Script/Engine.MaterialExpressionAdd'WorldGridMaterial:MaterialExpressionAdd_14'","/Script/Engine.MaterialExpressionTextureCoordinate'WorldGridMaterial:MaterialExpressionTextureCoordinate_14'","/Script/Engine.MaterialExpressionDivide'WorldGridMaterial:MaterialExpressionDivide_19'","/Script/Engine.MaterialExpressionTextureSample'WorldGridMaterial:MaterialExpressionTextureSample_28'","/Script/Engine.MaterialExpressionDivide'WorldGridMaterial:MaterialExpressionDivide_20'","/Script/Engine.MaterialExpressionMaterialFunctionCall'WorldGridMaterial:MaterialExpressionMaterialFunctionCall_8'","/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_63'","/Script/Engine.MaterialExpressionConstant'WorldGridMaterial:MaterialExpressionConstant_36'","/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_64'","/Script/Engine.MaterialExpressionConstant3Vector'WorldGridMaterial:MaterialExpressionConstant3Vector_6'","/Script/Engine.MaterialExpressionTextureSample'WorldGridMaterial:MaterialExpressionTextureSample_29'","/Script/Engine.MaterialExpressionTextureCoordinate'WorldGridMaterial:MaterialExpressionTextureCoordinate_15'","/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_65'","/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_66'","/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_67'","/Script/Engine.MaterialExpressionConstant'WorldGridMaterial:MaterialExpressionConstant_37'","/Script/Engine.MaterialExpressionOneMinus'WorldGridMaterial:MaterialExpressionOneMinus_6'","/Script/Engine.MaterialExpressionMultiply'WorldGridMaterial:MaterialExpressionMultiply_33'","/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_68'","/Script/Engine.MaterialExpressionConstant'WorldGridMaterial:MaterialExpressionConstant_38'","/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_69'","/Script/Engine.MaterialExpressionAdd'WorldGridMaterial:MaterialExpressionAdd_15'","/Script/Engine.MaterialExpressionConstant'WorldGridMaterial:MaterialExpressionConstant_39'","/Script/Engine.MaterialExpressionConstant'WorldGridMaterial:MaterialExpressionConstant_40'","/Script/Engine.MaterialExpressionConstant'WorldGridMaterial:MaterialExpressionConstant_41'"),EditorComments=("/Script/Engine.MaterialExpressionComment'WorldGridMaterial:MaterialExpressionComment_0'","/Script/Engine.MaterialExpressionComment'WorldGridMaterial:MaterialExpressionComment_1'","/Script/Engine.MaterialExpressionComment'WorldGridMaterial:MaterialExpressionComment_9'","/Script/Engine.MaterialExpressionComment'WorldGridMaterial:MaterialExpressionComment_30'","/Script/Engine.MaterialExpressionComment'WorldGridMaterial:MaterialExpressionComment_31'","/Script/Engine.MaterialExpressionComment'WorldGridMaterial:MaterialExpressionComment_32'","/Script/Engine.MaterialExpressionComment'WorldGridMaterial:MaterialExpressionComment_33'","/Script/Engine.MaterialExpressionComment'WorldGridMaterial:MaterialExpressionComment_34'"))
+   End Object
+   Begin Object Name="MaterialExpressionAdd_14" ExportPath="/Script/Engine.MaterialExpressionAdd'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionAdd_14'"
+      A=(Expression="/Script/Engine.MaterialExpressionTextureSample'WorldGridMaterial:MaterialExpressionTextureSample_27'",OutputIndex=2,Mask=1,MaskG=1)
+      B=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_63'")
+      ConstB=0.000000
+      MaterialExpressionEditorX=-860
+      MaterialExpressionEditorY=-420
+      MaterialExpressionGuid=19ECAB45443C186CB32579AD47A5C59C
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionAdd_15" ExportPath="/Script/Engine.MaterialExpressionAdd'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionAdd_15'"
+      A=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_69'")
+      B=(Expression="/Script/Engine.MaterialExpressionMultiply'WorldGridMaterial:MaterialExpressionMultiply_33'")
+      MaterialExpressionEditorX=480
+      MaterialExpressionEditorY=140
+      MaterialExpressionGuid=931C43C04907CD2B90FC46B68FECF767
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionClamp_6" ExportPath="/Script/Engine.MaterialExpressionClamp'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionClamp_6'"
+      Input=(Expression="/Script/Engine.MaterialExpressionAdd'WorldGridMaterial:MaterialExpressionAdd_15'")
+      MaterialExpressionEditorX=660
+      MaterialExpressionEditorY=140
+      MaterialExpressionGuid=7F3F72164E6FD6850026A3A150535BE4
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_0" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionComment_0'"
+      SizeX=3203
+      SizeY=1243
+      Text="Create Checkerboard"
+      MaterialExpressionEditorX=-12127
+      MaterialExpressionEditorY=-3633
+      MaterialExpressionGuid=05254CA447A71AC6512880B9451FAC12
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_1" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionComment_1'"
+      SizeX=2861
+      SizeY=2596
+      Text="Diffuse and Normal (Paper)"
+      MaterialExpressionEditorX=-13605
+      MaterialExpressionEditorY=-1638
+      MaterialExpressionGuid=F82F097C48C7D79AE0CB6AA7F5873EE5
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_30" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionComment_30'"
+      SizeX=1660
+      SizeY=840
+      Text="Checkerboard Subdivisions"
+      MaterialExpressionEditorX=-2660
+      MaterialExpressionEditorY=680
+      MaterialExpressionGuid=CA6647AC484422ADC5086FBBAA36ED2B
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_31" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionComment_31'"
+      SizeX=1140
+      SizeY=360
+      Text="Noise"
+      MaterialExpressionEditorX=-1900
+      MaterialExpressionEditorY=-1340
+      MaterialExpressionGuid=672A157B48B3F19FCF7D6B854A77C548
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_32" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionComment_32'"
+      SizeX=777
+      SizeY=555
+      Text="Normal"
+      MaterialExpressionEditorX=120
+      MaterialExpressionEditorY=900
+      MaterialExpressionGuid=A76F6BC543CAA639321DB6AC37F33033
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_33" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionComment_33'"
+      SizeX=1272
+      SizeY=775
+      Text="Roughness"
+      MaterialExpressionEditorX=-320
+      MaterialExpressionEditorY=-20
+      MaterialExpressionGuid=941828534D5409D5ACDC138C35C54721
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_34" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionComment_34'"
+      SizeX=1460
+      SizeY=660
+      Text="Create base color"
+      MaterialExpressionEditorX=-940
+      MaterialExpressionEditorY=-820
+      MaterialExpressionGuid=4CCA4B504340CC9D72DB42B8B8028E08
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_9" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionComment_9'"
+      SizeX=681
+      SizeY=533
+      Text="Master Grid Scale"
+      MaterialExpressionEditorX=-9525
+      MaterialExpressionEditorY=-1847
+      MaterialExpressionGuid=15F1EA5C467CB2A0E893A6B4972EBEF2
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionComponentMask_6" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionComponentMask_6'"
+      Input=(Expression="/Script/Engine.MaterialExpressionAdd'WorldGridMaterial:MaterialExpressionAdd_14'")
+      R=True
+      MaterialExpressionEditorX=-660
+      MaterialExpressionEditorY=-440
+      MaterialExpressionGuid=8A19922A4DE598ED7D46F3909BDB86CA
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant_36" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionConstant_36'"
+      R=1500.000000
+      MaterialExpressionEditorX=-2540
+      MaterialExpressionEditorY=1200
+      MaterialExpressionGuid=73AA05A243273828B43EB2930D135DB9
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant_37" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionConstant_37'"
+      R=0.500000
+      MaterialExpressionEditorX=-560
+      MaterialExpressionEditorY=-320
+      MaterialExpressionGuid=127BCCD8483861304E736599B832E95D
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant_38" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionConstant_38'"
+      R=1.000000
+      MaterialExpressionEditorX=-260
+      MaterialExpressionEditorY=520
+      MaterialExpressionGuid=6E2AACEB4E806D6A5298E6B4720CBB0E
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant_39" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionConstant_39'"
+      R=0.295000
+      MaterialExpressionEditorX=-380
+      MaterialExpressionEditorY=-680
+      MaterialExpressionGuid=2BA4838D44C4AE9FAD3599BCCA606732
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant_40" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionConstant_40'"
+      R=0.660000
+      MaterialExpressionEditorX=-360
+      MaterialExpressionEditorY=-580
+      MaterialExpressionGuid=2238C3BB4F1AA2390E9FFF8B9F7206E6
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant_41" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionConstant_41'"
+      R=0.500000
+      MaterialExpressionEditorY=-480
+      MaterialExpressionGuid=C22401B34527EEF57606718A9A7A6E02
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant3Vector_6" ExportPath="/Script/Engine.MaterialExpressionConstant3Vector'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionConstant3Vector_6'"
+      Constant=(R=0.300000,G=0.300000,B=1.000000,A=0.000000)
+      MaterialExpressionEditorX=460
+      MaterialExpressionEditorY=1220
+      MaterialExpressionGuid=709EDF034D1395265149CCAEB6A3BAB5
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionDivide_18" ExportPath="/Script/Engine.MaterialExpressionDivide'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionDivide_18'"
+      A=(Expression="/Script/Engine.MaterialExpressionDivide'WorldGridMaterial:MaterialExpressionDivide_19'")
+      ConstB=0.100000
+      MaterialExpressionEditorX=-2220
+      MaterialExpressionEditorY=780
+      MaterialExpressionGuid=109B9F5E4892A37B955764A905C35BE5
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionDivide_19" ExportPath="/Script/Engine.MaterialExpressionDivide'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionDivide_19'"
+      A=(Expression="/Script/Engine.MaterialExpressionTextureCoordinate'WorldGridMaterial:MaterialExpressionTextureCoordinate_14'")
+      MaterialExpressionEditorX=-2420
+      MaterialExpressionEditorY=120
+      MaterialExpressionGuid=800A118847028B8B5A1D73ACFB0D505C
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionDivide_20" ExportPath="/Script/Engine.MaterialExpressionDivide'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionDivide_20'"
+      A=(Expression="/Script/Engine.MaterialExpressionDivide'WorldGridMaterial:MaterialExpressionDivide_19'")
+      ConstB=0.050000
+      MaterialExpressionEditorX=200
+      MaterialExpressionEditorY=960
+      MaterialExpressionGuid=2227C6BC4D102973B6CB8787E5D8FD3D
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_60" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_60'"
+      A=(Expression="/Script/Engine.MaterialExpressionTextureSample'WorldGridMaterial:MaterialExpressionTextureSample_26'",OutputIndex=4,Mask=1,MaskA=1)
+      B=(Expression="/Script/Engine.MaterialExpressionTextureSample'WorldGridMaterial:MaterialExpressionTextureSample_27'",OutputIndex=4,Mask=1,MaskA=1)
+      Alpha=(Expression="/Script/Engine.MaterialExpressionMaterialFunctionCall'WorldGridMaterial:MaterialExpressionMaterialFunctionCall_8'")
+      MaterialExpressionEditorX=-1260
+      MaterialExpressionEditorY=1320
+      MaterialExpressionGuid=BC3FC55742AC9D2E1EC299964B4A8B06
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+      Desc="Uses Cavity mask near camera"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_61" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_61'"
+      A=(Expression="/Script/Engine.MaterialExpressionComponentMask'WorldGridMaterial:MaterialExpressionComponentMask_6'")
+      Alpha=(Expression="/Script/Engine.MaterialExpressionConstant'WorldGridMaterial:MaterialExpressionConstant_37'")
+      ConstB=0.500000
+      ConstAlpha=0.875000
+      MaterialExpressionEditorX=-420
+      MaterialExpressionEditorY=-440
+      MaterialExpressionGuid=EE5ED9B74DD6DCCA04CF328135B42246
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_62" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_62'"
+      A=(Expression="/Script/Engine.MaterialExpressionConstant'WorldGridMaterial:MaterialExpressionConstant_39'")
+      B=(Expression="/Script/Engine.MaterialExpressionConstant'WorldGridMaterial:MaterialExpressionConstant_40'")
+      Alpha=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_61'")
+      MaterialExpressionEditorX=-160
+      MaterialExpressionEditorY=-680
+      MaterialExpressionGuid=CA8DB78849AE812CA7F609B9A384BE3C
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_63" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_63'"
+      A=(Expression="/Script/Engine.MaterialExpressionTextureSample'WorldGridMaterial:MaterialExpressionTextureSample_26'",OutputIndex=2,Mask=1,MaskG=1)
+      Alpha=(Expression="/Script/Engine.MaterialExpressionMaterialFunctionCall'WorldGridMaterial:MaterialExpressionMaterialFunctionCall_8'")
+      ConstB=0.000000
+      MaterialExpressionEditorX=-1460
+      MaterialExpressionEditorY=1020
+      MaterialExpressionGuid=1EC50FC444668B205CC145B6DC160B02
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+      Desc="Add small tiles to basecolor near camera"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_64" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_64'"
+      A=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_68'")
+      B=(Expression="/Script/Engine.MaterialExpressionConstant'WorldGridMaterial:MaterialExpressionConstant_38'")
+      Alpha=(Expression="/Script/Engine.MaterialExpressionMaterialFunctionCall'WorldGridMaterial:MaterialExpressionMaterialFunctionCall_8'")
+      MaterialExpressionEditorX=-20
+      MaterialExpressionEditorY=320
+      MaterialExpressionGuid=C17635E24A9D8DF000E08E97083F3C9F
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_65" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_65'"
+      A=(Expression="/Script/Engine.MaterialExpressionTextureSample'WorldGridMaterial:MaterialExpressionTextureSample_26'",OutputIndex=2,Mask=1,MaskG=1)
+      Alpha=(Expression="/Script/Engine.MaterialExpressionMaterialFunctionCall'WorldGridMaterial:MaterialExpressionMaterialFunctionCall_8'")
+      MaterialExpressionEditorX=-1660
+      MaterialExpressionEditorY=820
+      MaterialExpressionGuid=3627435C49483D442B13D2A9283BE45D
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_66" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_66'"
+      A=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_67'")
+      B=(Expression="/Script/Engine.MaterialExpressionOneMinus'WorldGridMaterial:MaterialExpressionOneMinus_6'")
+      Alpha=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_65'")
+      MaterialExpressionEditorX=-960
+      MaterialExpressionEditorY=-1240
+      MaterialExpressionGuid=10B6910B4975FCF4491A9897607F8CDF
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_67" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_67'"
+      Alpha=(Expression="/Script/Engine.MaterialExpressionTextureSample'WorldGridMaterial:MaterialExpressionTextureSample_29'",OutputIndex=1,Mask=1,MaskR=1)
+      ConstA=0.400000
+      MaterialExpressionEditorX=-1380
+      MaterialExpressionEditorY=-1240
+      MaterialExpressionGuid=E6883E474EF3508E7D9B64B3AE024AC2
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_68" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_68'"
+      A=(OutputIndex=1,Mask=1,MaskR=1)
+      B=(OutputIndex=1,Mask=1,MaskR=1)
+      Alpha=(Expression="/Script/Engine.MaterialExpressionTextureSample'WorldGridMaterial:MaterialExpressionTextureSample_26'",OutputIndex=2,Mask=1,MaskG=1)
+      ConstA=0.700000
+      MaterialExpressionEditorX=-240
+      MaterialExpressionEditorY=260
+      MaterialExpressionGuid=F021B3D24F521E400A4836A92C50ACF0
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_69" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionLinearInterpolate_69'"
+      Alpha=(Expression="/Script/Engine.MaterialExpressionTextureSample'WorldGridMaterial:MaterialExpressionTextureSample_27'",OutputIndex=2,Mask=1,MaskG=1)
+      ConstB=0.500000
+      MaterialExpressionEditorX=220
+      MaterialExpressionEditorY=40
+      MaterialExpressionGuid=D9ED8E434E40D60888A8E6A13D15F114
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionMaterialFunctionCall_8" ExportPath="/Script/Engine.MaterialExpressionMaterialFunctionCall'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionMaterialFunctionCall_8'"
+      MaterialFunction="/Script/Engine.MaterialFunction'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade'"
+      FunctionInputs(0)=(ExpressionInputId=79FFEA6C4F3A46F51F8E50A349E4BB4B,Input=(Expression="/Script/Engine.MaterialExpressionConstant'WorldGridMaterial:MaterialExpressionConstant_36'",InputName="Fade Length"))
+      FunctionInputs(1)=(ExpressionInputId=D5EC0E2F4DB888679BFC2A8B921262ED,Input=(OutputIndex=-1,InputName="Fade Offset"))
+      FunctionInputs(2)=(ExpressionInputId=7B4195E6455691CA3782398687468578,Input=(OutputIndex=-1,InputName="For Vertex Shader"))
+      FunctionOutputs(0)=(ExpressionOutputId=160C00424E845E293F44DCBE13738CEE,Output=(OutputName="Result"))
+      MaterialExpressionEditorX=-2240
+      MaterialExpressionEditorY=1200
+      MaterialExpressionGuid=EC9864CF458C24B4A6AA6B9D807E91C6
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+      Outputs(0)=(OutputName="Result")
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_30" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionMultiply_30'"
+      A=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_66'")
+      B=(Expression="/Script/Engine.MaterialExpressionMultiply'WorldGridMaterial:MaterialExpressionMultiply_32'")
+      MaterialExpressionEditorX=380
+      MaterialExpressionEditorY=-680
+      MaterialExpressionGuid=EBB2EC0D4B68E3CA8CC5D880A2F0CBB2
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_31" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionMultiply_31'"
+      A=(Expression="/Script/Engine.MaterialExpressionTextureSample'WorldGridMaterial:MaterialExpressionTextureSample_28'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      B=(Expression="/Script/Engine.MaterialExpressionConstant3Vector'WorldGridMaterial:MaterialExpressionConstant3Vector_6'")
+      MaterialExpressionEditorX=720
+      MaterialExpressionEditorY=1060
+      MaterialExpressionGuid=22F1A7DD4D564D8EC7BA2DB1BCC95431
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_32" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionMultiply_32'"
+      A=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_62'")
+      B=(Expression="/Script/Engine.MaterialExpressionConstant'WorldGridMaterial:MaterialExpressionConstant_41'")
+      ConstB=0.500000
+      MaterialExpressionEditorX=120
+      MaterialExpressionEditorY=-600
+      MaterialExpressionGuid=840DB8E442AC340D66321C99E624A608
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_33" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionMultiply_33'"
+      A=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_64'")
+      ConstA=1.000000
+      MaterialExpressionEditorX=220
+      MaterialExpressionEditorY=340
+      MaterialExpressionGuid=EBB072D4426A8E252DB716AC32C90019
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionOneMinus_6" ExportPath="/Script/Engine.MaterialExpressionOneMinus'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionOneMinus_6'"
+      Input=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'WorldGridMaterial:MaterialExpressionLinearInterpolate_67'")
+      MaterialExpressionEditorX=-1160
+      MaterialExpressionEditorY=-1140
+      MaterialExpressionGuid=27881B654E2B22B056C6BE92A38D7493
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureCoordinate_14" ExportPath="/Script/Engine.MaterialExpressionTextureCoordinate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionTextureCoordinate_14'"
+      MaterialExpressionEditorX=-2680
+      MaterialExpressionEditorY=100
+      MaterialExpressionGuid=118DF9654B090F5D0406269E84CD8674
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureCoordinate_15" ExportPath="/Script/Engine.MaterialExpressionTextureCoordinate'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionTextureCoordinate_15'"
+      UTiling=20.000000
+      VTiling=20.000000
+      MaterialExpressionEditorX=-1840
+      MaterialExpressionEditorY=-1240
+      MaterialExpressionGuid=8594C0F74F5E98F88CEE8CABFAF23CC5
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureSample_26" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionTextureSample_26'"
+      Coordinates=(Expression="/Script/Engine.MaterialExpressionDivide'WorldGridMaterial:MaterialExpressionDivide_18'")
+      Texture="/Script/Engine.Texture2D'/Engine/EngineMaterials/T_Default_Material_Grid_M.T_Default_Material_Grid_M'"
+      SamplerType=SAMPLERTYPE_LinearColor
+      MaterialExpressionEditorX=-2020
+      MaterialExpressionEditorY=760
+      MaterialExpressionGuid=DD64B2D14A38A8C11C6FB9BDF63CBFB8
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureSample_27" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionTextureSample_27'"
+      Coordinates=(Expression="/Script/Engine.MaterialExpressionDivide'WorldGridMaterial:MaterialExpressionDivide_19'")
+      Texture="/Script/Engine.Texture2D'/Engine/EngineMaterials/T_Default_Material_Grid_M.T_Default_Material_Grid_M'"
+      SamplerType=SAMPLERTYPE_LinearColor
+      MaterialExpressionEditorX=-2060
+      MaterialExpressionEditorY=-80
+      MaterialExpressionGuid=B3F160B94F00ECAD20BF908022CD8A95
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureSample_28" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionTextureSample_28'"
+      Coordinates=(Expression="/Script/Engine.MaterialExpressionDivide'WorldGridMaterial:MaterialExpressionDivide_20'")
+      Texture="/Script/Engine.Texture2D'/Engine/EngineMaterials/T_Default_Material_Grid_N.T_Default_Material_Grid_N'"
+      SamplerType=SAMPLERTYPE_Normal
+      MaterialExpressionEditorX=440
+      MaterialExpressionEditorY=960
+      MaterialExpressionGuid=EE300F4D49A3BD49D7BEF58B8215FDC9
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureSample_29" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:MaterialExpressionTextureSample_29'"
+      Coordinates=(Expression="/Script/Engine.MaterialExpressionTextureCoordinate'WorldGridMaterial:MaterialExpressionTextureCoordinate_15'")
+      Texture="/Script/Engine.Texture2D'/Engine/EngineMaterials/T_Default_Material_Grid_M.T_Default_Material_Grid_M'"
+      SamplerType=SAMPLERTYPE_LinearColor
+      MaterialExpressionEditorX=-1600
+      MaterialExpressionEditorY=-1240
+      MaterialExpressionGuid=95561A95467DD6788E5EFE83EC97290A
+      Material="/Script/Engine.Material'WorldGridMaterial'"
+   End Object
+   Begin Object Name="SceneThumbnailInfoWithPrimitive_7" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Engine/EngineMaterials/WorldGridMaterial.WorldGridMaterial:SceneThumbnailInfoWithPrimitive_7'"
+   End Object
+   bUsedAsSpecialEngineMaterial=True
+   EditorX=992
+   EditorY=16
+   PixelDepthOffsetMode=PDOM_Legacy
+   StateId=DB6FCC63A5C44EA751315CBC3EF5DDED
+   ReferencedTextureGuids(0)=D5F387A5475254ABA526958619542C26
+   ReferencedTextureGuids(1)=6AFA58254991AEE3ECDD3B8BD5345888
+   EditorOnlyData="/Script/Engine.MaterialEditorOnlyData'WorldGridMaterialEditorOnlyData'"
+   ReferencedDefaultTextures(0)="/Script/Engine.Texture2D'/Engine/EngineMaterials/T_Default_Material_Grid_M.T_Default_Material_Grid_M'"
+   ReferencedDefaultTextures(1)="/Script/Engine.Texture2D'/Engine/EngineMaterials/T_Default_Material_Grid_N.T_Default_Material_Grid_N'"
+   ThumbnailInfo="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'SceneThumbnailInfoWithPrimitive_7'"
+   LightingGuid=3005B61A4F5FC68CF17F7493CEB69CE3
+End Object

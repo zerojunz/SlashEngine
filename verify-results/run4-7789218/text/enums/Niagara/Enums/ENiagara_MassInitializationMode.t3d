@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagara_MassInitializationMode" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/ENiagara_MassInitializationMode.ENiagara_MassInitializationMode'"
+   UniqueNameIndex=4
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[78483FCA4F8AC595EEA2278200168596]", "8D76E77A428B0AA5915C31B4E8F9D0AB", "Unset / (Mass of 1)")),("NewEnumerator1", NSLOCTEXT("[78483FCA4F8AC595EEA2278200168596]", "598490EC47408A97B6178899A9905581", "Direct Set")),("NewEnumerator3", NSLOCTEXT("[78483FCA4F8AC595EEA2278200168596]", "A94325E74889A6DA8240639BB9BF678B", "Random")))
+End Object

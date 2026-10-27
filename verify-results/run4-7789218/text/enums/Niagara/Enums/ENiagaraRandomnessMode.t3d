@@ -1,0 +1,5 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagaraRandomnessMode" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/ENiagaraRandomnessMode.ENiagaraRandomnessMode'"
+   UniqueNameIndex=3
+   EnumDescription=NSLOCTEXT("[1E109C5A419CD71B796CE28009E138A1]", "C3DF554547DD22A779FC20B3E16A766D", "Toggles the behavior of the random number generator.")
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[1E109C5A419CD71B796CE28009E138A1]", "D47EB1AC4E18283F01F95193A316F096", "Simulation Defaults")),("NewEnumerator1", NSLOCTEXT("[1E109C5A419CD71B796CE28009E138A1]", "355B90D54A8ACC8E298536855EA30D01", "Determinisitic")),("NewEnumerator2", NSLOCTEXT("[1E109C5A419CD71B796CE28009E138A1]", "FA31CB9A417E2921B67B6193734DCF56", "Non-Deterministic")))
+End Object

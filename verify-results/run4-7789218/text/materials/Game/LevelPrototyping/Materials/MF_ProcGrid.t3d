@@ -1,0 +1,824 @@
+Begin Object Class=/Script/Engine.MaterialFunction Name="MF_ProcGrid" ExportPath="/Script/Engine.MaterialFunction'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid'"
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSample Name="MaterialExpressionTextureSample_3" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionTextureSample_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSample Name="MaterialExpressionTextureSample_2" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionTextureSample_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSample Name="MaterialExpressionTextureSample_1" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionTextureSample_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSample Name="MaterialExpressionTextureSample_0" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionTextureSample_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSubtract Name="MaterialExpressionSubtract_1" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionSubtract_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionStaticSwitchParameter Name="MaterialExpressionStaticSwitchParameter_3" ExportPath="/Script/Engine.MaterialExpressionStaticSwitchParameter'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionStaticSwitchParameter_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionStaticSwitchParameter Name="MaterialExpressionStaticSwitchParameter_0" ExportPath="/Script/Engine.MaterialExpressionStaticSwitchParameter'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionStaticSwitchParameter_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionStaticSwitch Name="MaterialExpressionStaticSwitch_1" ExportPath="/Script/Engine.MaterialExpressionStaticSwitch'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionStaticSwitch_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionStaticSwitch Name="MaterialExpressionStaticSwitch_0" ExportPath="/Script/Engine.MaterialExpressionStaticSwitch'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionStaticSwitch_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionStaticBool Name="MaterialExpressionStaticBool_0" ExportPath="/Script/Engine.MaterialExpressionStaticBool'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionStaticBool_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionReroute Name="MaterialExpressionReroute_9" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_9'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionReroute Name="MaterialExpressionReroute_8" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_8'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionReroute Name="MaterialExpressionReroute_7" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_7'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionReroute Name="MaterialExpressionReroute_6" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_6'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionReroute Name="MaterialExpressionReroute_5" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_5'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionReroute Name="MaterialExpressionReroute_4" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionReroute Name="MaterialExpressionReroute_3" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionReroute Name="MaterialExpressionReroute_2" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionReroute Name="MaterialExpressionReroute_11" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_11'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionReroute Name="MaterialExpressionReroute_10" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_10'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionReroute Name="MaterialExpressionReroute_1" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionReroute Name="MaterialExpressionReroute_0" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionPreSkinnedNormal Name="MaterialExpressionPreSkinnedNormal_0" ExportPath="/Script/Engine.MaterialExpressionPreSkinnedNormal'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionPreSkinnedNormal_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNormalize Name="MaterialExpressionNormalize_2" ExportPath="/Script/Engine.MaterialExpressionNormalize'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionNormalize_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNormalize Name="MaterialExpressionNormalize_1" ExportPath="/Script/Engine.MaterialExpressionNormalize'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionNormalize_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNormalize Name="MaterialExpressionNormalize_0" ExportPath="/Script/Engine.MaterialExpressionNormalize'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionNormalize_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNamedRerouteUsage Name="MaterialExpressionNamedRerouteUsage_2" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteUsage'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionNamedRerouteUsage_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNamedRerouteUsage Name="MaterialExpressionNamedRerouteUsage_0" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteUsage'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionNamedRerouteUsage_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNamedRerouteDeclaration Name="MaterialExpressionNamedRerouteDeclaration_1" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionNamedRerouteDeclaration_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNamedRerouteDeclaration Name="MaterialExpressionNamedRerouteDeclaration_0" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionNamedRerouteDeclaration_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_0" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionMultiply_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMaterialFunctionCall Name="MaterialExpressionMaterialFunctionCall_5" ExportPath="/Script/Engine.MaterialExpressionMaterialFunctionCall'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionMaterialFunctionCall_5'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMaterialFunctionCall Name="MaterialExpressionMaterialFunctionCall_4" ExportPath="/Script/Engine.MaterialExpressionMaterialFunctionCall'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionMaterialFunctionCall_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMaterialFunctionCall Name="MaterialExpressionMaterialFunctionCall_3" ExportPath="/Script/Engine.MaterialExpressionMaterialFunctionCall'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionMaterialFunctionCall_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMaterialFunctionCall Name="MaterialExpressionMaterialFunctionCall_2" ExportPath="/Script/Engine.MaterialExpressionMaterialFunctionCall'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionMaterialFunctionCall_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_3" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionLinearInterpolate_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_2" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionLinearInterpolate_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_1" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionLinearInterpolate_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_0" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionLinearInterpolate_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionOutput Name="MaterialExpressionFunctionOutput_1" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionFunctionOutput_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionOutput Name="MaterialExpressionFunctionOutput_0" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionFunctionOutput_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionInput Name="MaterialExpressionFunctionInput_2" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionFunctionInput_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionInput Name="MaterialExpressionFunctionInput_12" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionFunctionInput_12'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionDotProduct Name="MaterialExpressionDotProduct_2" ExportPath="/Script/Engine.MaterialExpressionDotProduct'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionDotProduct_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionDotProduct Name="MaterialExpressionDotProduct_1" ExportPath="/Script/Engine.MaterialExpressionDotProduct'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionDotProduct_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionDotProduct Name="MaterialExpressionDotProduct_0" ExportPath="/Script/Engine.MaterialExpressionDotProduct'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionDotProduct_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionDivide Name="MaterialExpressionDivide_1" ExportPath="/Script/Engine.MaterialExpressionDivide'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionDivide_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant3Vector Name="MaterialExpressionConstant3Vector_3" ExportPath="/Script/Engine.MaterialExpressionConstant3Vector'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionConstant3Vector_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant3Vector Name="MaterialExpressionConstant3Vector_2" ExportPath="/Script/Engine.MaterialExpressionConstant3Vector'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionConstant3Vector_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant3Vector Name="MaterialExpressionConstant3Vector_1" ExportPath="/Script/Engine.MaterialExpressionConstant3Vector'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionConstant3Vector_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant Name="MaterialExpressionConstant_6" ExportPath="/Script/Engine.MaterialExpressionConstant'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionConstant_6'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant Name="MaterialExpressionConstant_19" ExportPath="/Script/Engine.MaterialExpressionConstant'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionConstant_19'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComponentMask Name="MaterialExpressionComponentMask_5" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComponentMask_5'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComponentMask Name="MaterialExpressionComponentMask_4" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComponentMask_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComponentMask Name="MaterialExpressionComponentMask_3" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComponentMask_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComponentMask Name="MaterialExpressionComponentMask_2" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComponentMask_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComponentMask Name="MaterialExpressionComponentMask_1" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComponentMask_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComponentMask Name="MaterialExpressionComponentMask_0" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComponentMask_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_7" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComment_7'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_6" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComment_6'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_4" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComment_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_3" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComment_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_2" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComment_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_1" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComment_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_0" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComment_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionActorPositionWS Name="MaterialExpressionActorPositionWS_1" ExportPath="/Script/Engine.MaterialExpressionActorPositionWS'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionActorPositionWS_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionAbs Name="MaterialExpressionAbs_5" ExportPath="/Script/Engine.MaterialExpressionAbs'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionAbs_5'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionAbs Name="MaterialExpressionAbs_4" ExportPath="/Script/Engine.MaterialExpressionAbs'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionAbs_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialFunctionEditorOnlyData Name="MF_ProcGridEditorOnlyData" ExportPath="/Script/Engine.MaterialFunctionEditorOnlyData'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MF_ProcGridEditorOnlyData'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSample Name="MaterialExpressionTextureSample_4" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionTextureSample_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureSample Name="MaterialExpressionTextureSample_5" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionTextureSample_5'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTransform Name="MaterialExpressionTransform_1" ExportPath="/Script/Engine.MaterialExpressionTransform'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionTransform_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTransform Name="MaterialExpressionTransform_2" ExportPath="/Script/Engine.MaterialExpressionTransform'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionTransform_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTransform Name="MaterialExpressionTransform_3" ExportPath="/Script/Engine.MaterialExpressionTransform'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionTransform_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionVertexInterpolator Name="MaterialExpressionVertexInterpolator_0" ExportPath="/Script/Engine.MaterialExpressionVertexInterpolator'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionVertexInterpolator_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionVertexNormalWS Name="MaterialExpressionVertexNormalWS_0" ExportPath="/Script/Engine.MaterialExpressionVertexNormalWS'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionVertexNormalWS_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionWorldPosition Name="MaterialExpressionWorldPosition_2" ExportPath="/Script/Engine.MaterialExpressionWorldPosition'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionWorldPosition_2'"
+   End Object
+   Begin Object Class=/Script/UnrealEd.SceneThumbnailInfoWithPrimitive Name="SceneThumbnailInfoWithPrimitive_0" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:SceneThumbnailInfoWithPrimitive_0'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureSample_3" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionTextureSample_3'"
+      Coordinates=(Expression="/Script/Engine.MaterialExpressionComponentMask'MF_ProcGrid:MaterialExpressionComponentMask_0'")
+      SamplerSource=SSM_Wrap_WorldGroupSettings
+      Texture="/Script/Engine.Texture2D'/Game/LevelPrototyping/Textures/T_GridChecker_A.T_GridChecker_A'"
+      SamplerType=SAMPLERTYPE_Masks
+      MaterialExpressionEditorX=-1840
+      MaterialExpressionEditorY=976
+      MaterialExpressionGuid=877B71604A43E0C1A7AE3B9FBEE3C02F
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureSample_2" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionTextureSample_2'"
+      Coordinates=(Expression="/Script/Engine.MaterialExpressionComponentMask'MF_ProcGrid:MaterialExpressionComponentMask_3'")
+      SamplerSource=SSM_Wrap_WorldGroupSettings
+      Texture="/Script/Engine.Texture2D'/Game/LevelPrototyping/Textures/T_GridChecker_A.T_GridChecker_A'"
+      SamplerType=SAMPLERTYPE_Masks
+      MaterialExpressionEditorX=-1824
+      MaterialExpressionEditorY=288
+      MaterialExpressionGuid=877B71604A43E0C1A7AE3B9FBEE3C02F
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureSample_1" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionTextureSample_1'"
+      Coordinates=(Expression="/Script/Engine.MaterialExpressionComponentMask'MF_ProcGrid:MaterialExpressionComponentMask_4'")
+      SamplerSource=SSM_Wrap_WorldGroupSettings
+      Texture="/Script/Engine.Texture2D'/Game/LevelPrototyping/Textures/T_GridChecker_A.T_GridChecker_A'"
+      SamplerType=SAMPLERTYPE_Masks
+      MaterialExpressionEditorX=-1824
+      MaterialExpressionEditorY=64
+      MaterialExpressionGuid=877B71604A43E0C1A7AE3B9FBEE3C02F
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureSample_0" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionTextureSample_0'"
+      Coordinates=(Expression="/Script/Engine.MaterialExpressionComponentMask'MF_ProcGrid:MaterialExpressionComponentMask_5'")
+      SamplerSource=SSM_Wrap_WorldGroupSettings
+      Texture="/Script/Engine.Texture2D'/Game/LevelPrototyping/Textures/T_GridChecker_A.T_GridChecker_A'"
+      SamplerType=SAMPLERTYPE_Masks
+      MaterialExpressionEditorX=-1824
+      MaterialExpressionEditorY=-160
+      MaterialExpressionGuid=877B71604A43E0C1A7AE3B9FBEE3C02F
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionSubtract_1" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionSubtract_1'"
+      A=(Expression="/Script/Engine.MaterialExpressionWorldPosition'MF_ProcGrid:MaterialExpressionWorldPosition_2'")
+      B=(Expression="/Script/Engine.MaterialExpressionActorPositionWS'MF_ProcGrid:MaterialExpressionActorPositionWS_1'")
+      MaterialExpressionEditorX=-4496
+      MaterialExpressionEditorY=560
+      MaterialExpressionGuid=D98006CA449749F676A0968D7573270E
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionStaticSwitchParameter_3" ExportPath="/Script/Engine.MaterialExpressionStaticSwitchParameter'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionStaticSwitchParameter_3'"
+      A=(Expression="/Script/Engine.MaterialExpressionMaterialFunctionCall'MF_ProcGrid:MaterialExpressionMaterialFunctionCall_2'")
+      B=(Expression="/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_6'")
+      ParameterName="ObjectAligned"
+      ExpressionGUID=F161485E458BEA8DA6D2EFAFD96B1FE4
+      Group="Grid Properties"
+      SortPriority=1
+      MaterialExpressionEditorX=-3440
+      MaterialExpressionEditorY=464
+      MaterialExpressionGuid=D695F3084FD8D55C6C71EFB7D93C57F2
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+      Desc="Object Aligned by default.\r\nTrue = Object Aligned\r\nFalse = World Aligned"
+      bCommentBubbleVisible=True
+   End Object
+   Begin Object Name="MaterialExpressionStaticSwitchParameter_0" ExportPath="/Script/Engine.MaterialExpressionStaticSwitchParameter'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionStaticSwitchParameter_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionVertexInterpolator'MF_ProcGrid:MaterialExpressionVertexInterpolator_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionVertexNormalWS'MF_ProcGrid:MaterialExpressionVertexNormalWS_0'")
+      ParameterName="ObjectAligned"
+      ExpressionGUID=EEA07F10431732F834ED12B521C9DA25
+      Group="Grid Properties"
+      SortPriority=1
+      MaterialExpressionEditorX=-4196
+      MaterialExpressionEditorY=1143
+      MaterialExpressionGuid=D695F3084FD8D55C6C71EFB7D93C57F2
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+      Desc="Object Aligned by default.\r\nTrue = Object Aligned\r\nFalse = World Aligned"
+      bCommentBubbleVisible=True
+   End Object
+   Begin Object Name="MaterialExpressionStaticSwitch_1" ExportPath="/Script/Engine.MaterialExpressionStaticSwitch'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionStaticSwitch_1'"
+      A=(Expression="/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_7'")
+      Value=(Expression="/Script/Engine.MaterialExpressionFunctionInput'MF_ProcGrid:MaterialExpressionFunctionInput_12'")
+      MaterialExpressionEditorX=-736
+      MaterialExpressionEditorY=704
+      MaterialExpressionGuid=72B12DBB40F6061DF95F19AE63F24502
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionStaticSwitch_0" ExportPath="/Script/Engine.MaterialExpressionStaticSwitch'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionStaticSwitch_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_1'")
+      B=(Expression="/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_5'")
+      Value=(Expression="/Script/Engine.MaterialExpressionFunctionInput'MF_ProcGrid:MaterialExpressionFunctionInput_12'")
+      MaterialExpressionEditorX=-750
+      MaterialExpressionEditorY=226
+      MaterialExpressionGuid=72B12DBB40F6061DF95F19AE63F24502
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionStaticBool_0" ExportPath="/Script/Engine.MaterialExpressionStaticBool'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionStaticBool_0'"
+      MaterialExpressionEditorX=-1104
+      MaterialExpressionEditorY=496
+      MaterialExpressionGuid=DB1236114537AA770BAF60B27FB724CB
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionReroute_9" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_9'"
+      Input=(Expression="/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_8'")
+      MaterialExpressionEditorX=-3856
+      MaterialExpressionEditorY=384
+      MaterialExpressionGuid=45396FD044F97B49F1AA9F8C1DE46979
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionReroute_8" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_8'"
+      Input=(Expression="/Script/Engine.MaterialExpressionSubtract'MF_ProcGrid:MaterialExpressionSubtract_1'")
+      MaterialExpressionEditorX=-4336
+      MaterialExpressionEditorY=384
+      MaterialExpressionGuid=EA438D12444BD74FDA0E008A2EBA58BA
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionReroute_7" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_7'"
+      Input=(Expression="/Script/Engine.MaterialExpressionTextureSample'MF_ProcGrid:MaterialExpressionTextureSample_3'",OutputIndex=2,Mask=1,MaskG=1)
+      MaterialExpressionEditorX=-880
+      MaterialExpressionEditorY=1088
+      MaterialExpressionGuid=F4F120834CDFA138D9480FA3AFF5C53D
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionReroute_6" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_6'"
+      Input=(Expression="/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_4'")
+      MaterialExpressionEditorX=-3520
+      MaterialExpressionEditorY=352
+      MaterialExpressionGuid=45B7EF644ED4EF80CA29C293E457779C
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionReroute_5" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_5'"
+      Input=(Expression="/Script/Engine.MaterialExpressionTextureSample'MF_ProcGrid:MaterialExpressionTextureSample_2'",OutputIndex=1,Mask=1,MaskR=1)
+      MaterialExpressionEditorX=-896
+      MaterialExpressionEditorY=400
+      MaterialExpressionGuid=CACDBA144AC4F879E74678B329656ED3
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionReroute_4" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_4'"
+      Input=(Expression="/Script/Engine.MaterialExpressionWorldPosition'MF_ProcGrid:MaterialExpressionWorldPosition_2'")
+      MaterialExpressionEditorX=-4384
+      MaterialExpressionEditorY=352
+      MaterialExpressionGuid=3B4651944F8BBBD3C2608EACCDC9BDC4
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionReroute_3" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_3'"
+      Input=(Expression="/Script/Engine.MaterialExpressionMultiply'MF_ProcGrid:MaterialExpressionMultiply_0'")
+      MaterialExpressionEditorX=-2256
+      MaterialExpressionEditorY=784
+      MaterialExpressionGuid=DB5DD7B34D8E9CB88978298723DCBF3C
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionReroute_2" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_2'"
+      Input=(Expression="/Script/Engine.MaterialExpressionDivide'MF_ProcGrid:MaterialExpressionDivide_1'")
+      MaterialExpressionEditorX=-2208
+      MaterialExpressionEditorY=96
+      MaterialExpressionGuid=81979D3C46C73764737BB4954F09D66E
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionReroute_11" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_11'"
+      Input=(Expression="/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_10'")
+      MaterialExpressionEditorX=-3808
+      MaterialExpressionEditorY=752
+      MaterialExpressionGuid=6C79444E4502DE47E3F1E79D3F05A455
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionReroute_10" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_10'"
+      Input=(Expression="/Script/Engine.MaterialExpressionSubtract'MF_ProcGrid:MaterialExpressionSubtract_1'")
+      MaterialExpressionEditorX=-4352
+      MaterialExpressionEditorY=752
+      MaterialExpressionGuid=7AED7DCB4C9F33586942959A7F4845A8
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionReroute_1" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_1'"
+      Input=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'MF_ProcGrid:MaterialExpressionLinearInterpolate_1'")
+      MaterialExpressionEditorX=-1198
+      MaterialExpressionEditorY=259
+      MaterialExpressionGuid=A287ADFC426EA621BAEFEABF6913F263
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionReroute_0" ExportPath="/Script/Engine.MaterialExpressionReroute'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionReroute_0'"
+      Input=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'MF_ProcGrid:MaterialExpressionLinearInterpolate_3'")
+      MaterialExpressionEditorX=-1184
+      MaterialExpressionEditorY=736
+      MaterialExpressionGuid=2E832D224D0BC4DBD3C15383164379B0
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionPreSkinnedNormal_0" ExportPath="/Script/Engine.MaterialExpressionPreSkinnedNormal'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionPreSkinnedNormal_0'"
+      MaterialExpressionEditorX=-4606
+      MaterialExpressionEditorY=1138
+      MaterialExpressionGuid=6271D5344BF245878986B58620BEF7EC
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionNormalize_2" ExportPath="/Script/Engine.MaterialExpressionNormalize'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionNormalize_2'"
+      VectorInput=(Expression="/Script/Engine.MaterialExpressionTransform'MF_ProcGrid:MaterialExpressionTransform_3'")
+      MaterialExpressionEditorX=-3888
+      MaterialExpressionEditorY=800
+      MaterialExpressionGuid=4E025AD54A90B9EC2A0A2BA012E8EFF5
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionNormalize_1" ExportPath="/Script/Engine.MaterialExpressionNormalize'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionNormalize_1'"
+      VectorInput=(Expression="/Script/Engine.MaterialExpressionTransform'MF_ProcGrid:MaterialExpressionTransform_2'")
+      MaterialExpressionEditorX=-3872
+      MaterialExpressionEditorY=608
+      MaterialExpressionGuid=4E025AD54A90B9EC2A0A2BA012E8EFF5
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionNormalize_0" ExportPath="/Script/Engine.MaterialExpressionNormalize'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionNormalize_0'"
+      VectorInput=(Expression="/Script/Engine.MaterialExpressionTransform'MF_ProcGrid:MaterialExpressionTransform_1'")
+      MaterialExpressionEditorX=-3904
+      MaterialExpressionEditorY=416
+      MaterialExpressionGuid=4E025AD54A90B9EC2A0A2BA012E8EFF5
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionNamedRerouteUsage_2" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteUsage'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionNamedRerouteUsage_2'"
+      Declaration="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'MF_ProcGrid:MaterialExpressionNamedRerouteDeclaration_1'"
+      DeclarationGuid=06973B384F2692E1745BB986A365F5F8
+      MaterialExpressionEditorX=-1584
+      MaterialExpressionEditorY=208
+      MaterialExpressionGuid=25987AB14B3B64A94E193CA655428C25
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionNamedRerouteUsage_0" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteUsage'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionNamedRerouteUsage_0'"
+      Declaration="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'MF_ProcGrid:MaterialExpressionNamedRerouteDeclaration_0'"
+      DeclarationGuid=1964945A49F21B4C29E47F93653A81F8
+      MaterialExpressionEditorX=-1600
+      MaterialExpressionEditorY=528
+      MaterialExpressionGuid=442718FB49D64195E842639C931385A7
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionNamedRerouteDeclaration_1" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionNamedRerouteDeclaration_1'"
+      Input=(Expression="/Script/Engine.MaterialExpressionMaterialFunctionCall'MF_ProcGrid:MaterialExpressionMaterialFunctionCall_4'")
+      Name="R Normal"
+      NodeColor=(R=1.000000,G=0.000000,B=0.890625,A=1.000000)
+      VariableGuid=06973B384F2692E1745BB986A365F5F8
+      MaterialExpressionEditorX=-3354
+      MaterialExpressionEditorY=1131
+      MaterialExpressionGuid=2B9922AD4C010212359C3F87A369E5C1
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionNamedRerouteDeclaration_0" ExportPath="/Script/Engine.MaterialExpressionNamedRerouteDeclaration'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionNamedRerouteDeclaration_0'"
+      Input=(Expression="/Script/Engine.MaterialExpressionMaterialFunctionCall'MF_ProcGrid:MaterialExpressionMaterialFunctionCall_5'")
+      Name="B Normal"
+      NodeColor=(R=0.000000,G=0.000000,B=1.000000,A=1.000000)
+      VariableGuid=1964945A49F21B4C29E47F93653A81F8
+      MaterialExpressionEditorX=-3354
+      MaterialExpressionEditorY=1211
+      MaterialExpressionGuid=5017F0204FAD3CB1672D92A44C15AB69
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_0" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionMultiply_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionDivide'MF_ProcGrid:MaterialExpressionDivide_1'")
+      ConstB=0.500000
+      MaterialExpressionEditorX=-2720
+      MaterialExpressionEditorY=576
+      MaterialExpressionGuid=0A988DB44B5FABD28189B4BA1C332D80
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionMaterialFunctionCall_5" ExportPath="/Script/Engine.MaterialExpressionMaterialFunctionCall'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionMaterialFunctionCall_5'"
+      MaterialFunction="/Script/Engine.MaterialFunction'/Engine/Functions/Engine_MaterialFunctions01/ImageAdjustment/CheapContrast.CheapContrast'"
+      FunctionInputs(0)=(ExpressionInputId=95C9DA0E48D34168E34AD3A607BAA34E,Input=(Expression="/Script/Engine.MaterialExpressionAbs'MF_ProcGrid:MaterialExpressionAbs_4'",InputName="In"))
+      FunctionInputs(1)=(ExpressionInputId=3C3E177E485D8FFFC35D1482F0A20020,Input=(Expression="/Script/Engine.MaterialExpressionConstant'MF_ProcGrid:MaterialExpressionConstant_19'",InputName="Contrast"))
+      FunctionOutputs(0)=(ExpressionOutputId=5067ED8C4A2EFE82DB33F99EBE37E80E,Output=(OutputName="Result"))
+      MaterialExpressionEditorX=-3616
+      MaterialExpressionEditorY=1216
+      MaterialExpressionGuid=615EF705413EFA189AAC28AFDAB19934
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+      Outputs(0)=(OutputName="Result")
+   End Object
+   Begin Object Name="MaterialExpressionMaterialFunctionCall_4" ExportPath="/Script/Engine.MaterialExpressionMaterialFunctionCall'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionMaterialFunctionCall_4'"
+      MaterialFunction="/Script/Engine.MaterialFunction'/Engine/Functions/Engine_MaterialFunctions01/ImageAdjustment/CheapContrast.CheapContrast'"
+      FunctionInputs(0)=(ExpressionInputId=95C9DA0E48D34168E34AD3A607BAA34E,Input=(Expression="/Script/Engine.MaterialExpressionAbs'MF_ProcGrid:MaterialExpressionAbs_5'",InputName="In"))
+      FunctionInputs(1)=(ExpressionInputId=3C3E177E485D8FFFC35D1482F0A20020,Input=(Expression="/Script/Engine.MaterialExpressionConstant'MF_ProcGrid:MaterialExpressionConstant_19'",InputName="Contrast"))
+      FunctionOutputs(0)=(ExpressionOutputId=5067ED8C4A2EFE82DB33F99EBE37E80E,Output=(OutputName="Result"))
+      MaterialExpressionEditorX=-3616
+      MaterialExpressionEditorY=1136
+      MaterialExpressionGuid=615EF705413EFA189AAC28AFDAB19934
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+      Outputs(0)=(OutputName="Result")
+   End Object
+   Begin Object Name="MaterialExpressionMaterialFunctionCall_3" ExportPath="/Script/Engine.MaterialExpressionMaterialFunctionCall'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionMaterialFunctionCall_3'"
+      MaterialFunction="/Script/Engine.MaterialFunction'/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat3Components.BreakOutFloat3Components'"
+      FunctionInputs(0)=(ExpressionInputId=0FC5C56B4335798F20CB928CF1C87421,Input=(Expression="/Script/Engine.MaterialExpressionStaticSwitchParameter'MF_ProcGrid:MaterialExpressionStaticSwitchParameter_0'",InputName="Float3"))
+      FunctionOutputs(0)=(ExpressionOutputId=6BC893C247FCFC567178CE944E213385,Output=(OutputName="R"))
+      FunctionOutputs(1)=(ExpressionOutputId=9720C81E449DF8E5514FCB8A80FD5FA3,Output=(OutputName="G"))
+      FunctionOutputs(2)=(ExpressionOutputId=17CE6E2C4E70841B48F3D1B73828AA03,Output=(OutputName="B"))
+      MaterialExpressionEditorX=-3968
+      MaterialExpressionEditorY=1152
+      MaterialExpressionGuid=59834BB046B1612A29DD40A12056B8D9
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+      Outputs(0)=(OutputName="R")
+      Outputs(1)=(OutputName="G")
+      Outputs(2)=(OutputName="B")
+   End Object
+   Begin Object Name="MaterialExpressionMaterialFunctionCall_2" ExportPath="/Script/Engine.MaterialExpressionMaterialFunctionCall'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionMaterialFunctionCall_2'"
+      MaterialFunction="/Script/Engine.MaterialFunction'/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3.MakeFloat3'"
+      FunctionInputs(0)=(ExpressionInputId=529C1D96441E07EB03A9E59B8A7F67B6,Input=(Expression="/Script/Engine.MaterialExpressionDotProduct'MF_ProcGrid:MaterialExpressionDotProduct_0'",InputName="X"))
+      FunctionInputs(1)=(ExpressionInputId=B5BD7D1B494F6928732CCDA1C63D8E15,Input=(Expression="/Script/Engine.MaterialExpressionDotProduct'MF_ProcGrid:MaterialExpressionDotProduct_1'",InputName="Y"))
+      FunctionInputs(2)=(ExpressionInputId=050F17B8471570B47A802CB7CAA5A201,Input=(Expression="/Script/Engine.MaterialExpressionDotProduct'MF_ProcGrid:MaterialExpressionDotProduct_2'",InputName="Z"))
+      FunctionOutputs(0)=(ExpressionOutputId=0DD6F9954C067C3E5DDBBBA0D6910DD2,Output=(OutputName="Result"))
+      MaterialExpressionEditorX=-3584
+      MaterialExpressionEditorY=544
+      MaterialExpressionGuid=FEBF44BD453A85ADD72C22938B2C3129
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+      Outputs(0)=(OutputName="Result")
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_3" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionLinearInterpolate_3'"
+      A=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'MF_ProcGrid:MaterialExpressionLinearInterpolate_2'")
+      B=(Expression="/Script/Engine.MaterialExpressionTextureSample'MF_ProcGrid:MaterialExpressionTextureSample_3'",OutputIndex=2,Mask=1,MaskG=1)
+      Alpha=(Expression="/Script/Engine.MaterialExpressionNamedRerouteUsage'MF_ProcGrid:MaterialExpressionNamedRerouteUsage_0'")
+      MaterialExpressionEditorX=-1440
+      MaterialExpressionEditorY=784
+      MaterialExpressionGuid=E3A361044834FCDCD0760D91BEE10904
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+      bRealtimePreview=True
+      bCollapsed=False
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_2" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionLinearInterpolate_2'"
+      A=(Expression="/Script/Engine.MaterialExpressionTextureSample'MF_ProcGrid:MaterialExpressionTextureSample_5'",OutputIndex=2,Mask=1,MaskG=1)
+      B=(Expression="/Script/Engine.MaterialExpressionTextureSample'MF_ProcGrid:MaterialExpressionTextureSample_4'",OutputIndex=2,Mask=1,MaskG=1)
+      Alpha=(Expression="/Script/Engine.MaterialExpressionNamedRerouteUsage'MF_ProcGrid:MaterialExpressionNamedRerouteUsage_2'")
+      MaterialExpressionEditorX=-1440
+      MaterialExpressionEditorY=656
+      MaterialExpressionGuid=E3A361044834FCDCD0760D91BEE10904
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_1" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionLinearInterpolate_1'"
+      A=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'MF_ProcGrid:MaterialExpressionLinearInterpolate_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionTextureSample'MF_ProcGrid:MaterialExpressionTextureSample_2'",OutputIndex=1,Mask=1,MaskR=1)
+      Alpha=(Expression="/Script/Engine.MaterialExpressionNamedRerouteUsage'MF_ProcGrid:MaterialExpressionNamedRerouteUsage_0'")
+      MaterialExpressionEditorX=-1424
+      MaterialExpressionEditorY=225
+      MaterialExpressionGuid=E3A361044834FCDCD0760D91BEE10904
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_0" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionLinearInterpolate_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionTextureSample'MF_ProcGrid:MaterialExpressionTextureSample_0'",OutputIndex=1,Mask=1,MaskR=1)
+      B=(Expression="/Script/Engine.MaterialExpressionTextureSample'MF_ProcGrid:MaterialExpressionTextureSample_1'",OutputIndex=1,Mask=1,MaskR=1)
+      Alpha=(Expression="/Script/Engine.MaterialExpressionNamedRerouteUsage'MF_ProcGrid:MaterialExpressionNamedRerouteUsage_2'")
+      MaterialExpressionEditorX=-1424
+      MaterialExpressionEditorY=97
+      MaterialExpressionGuid=E3A361044834FCDCD0760D91BEE10904
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionOutput_1" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionFunctionOutput_1'"
+      OutputName="Checker"
+      A=(Expression="/Script/Engine.MaterialExpressionStaticSwitch'MF_ProcGrid:MaterialExpressionStaticSwitch_1'")
+      Id=1DBA4B76473562F92DB9B4B1B5A374AF
+      MaterialExpressionEditorX=-544
+      MaterialExpressionEditorY=704
+      MaterialExpressionGuid=364497FD448F0BC1315B2BAD5A9F19C3
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionOutput_0" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionFunctionOutput_0'"
+      OutputName="Wire"
+      A=(Expression="/Script/Engine.MaterialExpressionStaticSwitch'MF_ProcGrid:MaterialExpressionStaticSwitch_0'")
+      bLastPreviewed=True
+      Id=AF46FCFC464D30C43EFBE79862D71872
+      MaterialExpressionEditorX=-510
+      MaterialExpressionEditorY=195
+      MaterialExpressionGuid=057A49D34B1C709F59107F9FF2BE386A
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionInput_2" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionFunctionInput_2'"
+      Preview=(Expression="/Script/Engine.MaterialExpressionConstant'MF_ProcGrid:MaterialExpressionConstant_6'")
+      InputName="TileSize"
+      Id=A75B89A04695934B3AA90CA561BD722B
+      InputType=FunctionInput_Scalar
+      bUsePreviewValueAsDefault=True
+      MaterialExpressionEditorX=-2974
+      MaterialExpressionEditorY=562
+      MaterialExpressionGuid=34BF0A2F47DF5D217CC1ECAE24C43312
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+      bCollapsed=True
+   End Object
+   Begin Object Name="MaterialExpressionFunctionInput_12" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionFunctionInput_12'"
+      Preview=(Expression="/Script/Engine.MaterialExpressionStaticBool'MF_ProcGrid:MaterialExpressionStaticBool_0'")
+      InputName="TriPlanar"
+      Description="False = UniPlanar"
+      Id=BE2806F5447C58A9052FCAB42D6C6103
+      InputType=FunctionInput_StaticBool
+      bUsePreviewValueAsDefault=True
+      MaterialExpressionEditorX=-928
+      MaterialExpressionEditorY=512
+      MaterialExpressionGuid=34BF0A2F47DF5D217CC1ECAE24C43312
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+      bCollapsed=True
+   End Object
+   Begin Object Name="MaterialExpressionDotProduct_2" ExportPath="/Script/Engine.MaterialExpressionDotProduct'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionDotProduct_2'"
+      A=(Expression="/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_11'")
+      B=(Expression="/Script/Engine.MaterialExpressionNormalize'MF_ProcGrid:MaterialExpressionNormalize_2'")
+      MaterialExpressionEditorX=-3728
+      MaterialExpressionEditorY=752
+      MaterialExpressionGuid=9AA4C41B40613C4C6CFA1384A8F1976B
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionDotProduct_1" ExportPath="/Script/Engine.MaterialExpressionDotProduct'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionDotProduct_1'"
+      A=(Expression="/Script/Engine.MaterialExpressionSubtract'MF_ProcGrid:MaterialExpressionSubtract_1'")
+      B=(Expression="/Script/Engine.MaterialExpressionNormalize'MF_ProcGrid:MaterialExpressionNormalize_1'")
+      MaterialExpressionEditorX=-3728
+      MaterialExpressionEditorY=560
+      MaterialExpressionGuid=9AA4C41B40613C4C6CFA1384A8F1976B
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionDotProduct_0" ExportPath="/Script/Engine.MaterialExpressionDotProduct'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionDotProduct_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_9'")
+      B=(Expression="/Script/Engine.MaterialExpressionNormalize'MF_ProcGrid:MaterialExpressionNormalize_0'")
+      MaterialExpressionEditorX=-3760
+      MaterialExpressionEditorY=384
+      MaterialExpressionGuid=9AA4C41B40613C4C6CFA1384A8F1976B
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionDivide_1" ExportPath="/Script/Engine.MaterialExpressionDivide'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionDivide_1'"
+      A=(Expression="/Script/Engine.MaterialExpressionStaticSwitchParameter'MF_ProcGrid:MaterialExpressionStaticSwitchParameter_3'")
+      B=(Expression="/Script/Engine.MaterialExpressionFunctionInput'MF_ProcGrid:MaterialExpressionFunctionInput_2'")
+      MaterialExpressionEditorX=-2670
+      MaterialExpressionEditorY=482
+      MaterialExpressionGuid=4ED9BCAF45E6E7C1D6EB039559EF7CDC
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant3Vector_3" ExportPath="/Script/Engine.MaterialExpressionConstant3Vector'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionConstant3Vector_3'"
+      Constant=(R=0.000000,G=0.000000,B=1.000000,A=0.000000)
+      MaterialExpressionEditorX=-4368
+      MaterialExpressionEditorY=800
+      MaterialExpressionGuid=C3AD80A9459237A3242800BEF7EA7590
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant3Vector_2" ExportPath="/Script/Engine.MaterialExpressionConstant3Vector'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionConstant3Vector_2'"
+      Constant=(R=0.000000,G=1.000000,B=0.000000,A=0.000000)
+      MaterialExpressionEditorX=-4352
+      MaterialExpressionEditorY=608
+      MaterialExpressionGuid=C3AD80A9459237A3242800BEF7EA7590
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant3Vector_1" ExportPath="/Script/Engine.MaterialExpressionConstant3Vector'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionConstant3Vector_1'"
+      Constant=(R=1.000000,G=0.000000,B=0.000000,A=0.000000)
+      MaterialExpressionEditorX=-4352
+      MaterialExpressionEditorY=432
+      MaterialExpressionGuid=C3AD80A9459237A3242800BEF7EA7590
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant_6" ExportPath="/Script/Engine.MaterialExpressionConstant'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionConstant_6'"
+      R=100.000000
+      MaterialExpressionEditorX=-3070
+      MaterialExpressionEditorY=562
+      MaterialExpressionGuid=9BF596CE44B3D23CD0FD41B414A5EF6E
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant_19" ExportPath="/Script/Engine.MaterialExpressionConstant'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionConstant_19'"
+      R=1.000000
+      MaterialExpressionEditorX=-3712
+      MaterialExpressionEditorY=1280
+      MaterialExpressionGuid=07A5041A4717D4378D3ADFB8D34993D2
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionComponentMask_5" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComponentMask_5'"
+      Input=(Expression="/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_2'")
+      R=True
+      B=True
+      MaterialExpressionEditorX=-2064
+      MaterialExpressionEditorY=-160
+      MaterialExpressionGuid=BA226C6341982A41E955E4B35B89EAC6
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionComponentMask_4" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComponentMask_4'"
+      Input=(Expression="/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_2'")
+      G=True
+      B=True
+      MaterialExpressionEditorX=-2064
+      MaterialExpressionEditorY=64
+      MaterialExpressionGuid=BA226C6341982A41E955E4B35B89EAC6
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionComponentMask_3" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComponentMask_3'"
+      Input=(Expression="/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_2'")
+      R=True
+      G=True
+      MaterialExpressionEditorX=-2336
+      MaterialExpressionEditorY=272
+      MaterialExpressionGuid=BA226C6341982A41E955E4B35B89EAC6
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionComponentMask_2" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComponentMask_2'"
+      Input=(Expression="/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_3'")
+      R=True
+      B=True
+      MaterialExpressionEditorX=-2032
+      MaterialExpressionEditorY=528
+      MaterialExpressionGuid=BA226C6341982A41E955E4B35B89EAC6
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionComponentMask_1" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComponentMask_1'"
+      Input=(Expression="/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_3'")
+      G=True
+      B=True
+      MaterialExpressionEditorX=-2032
+      MaterialExpressionEditorY=752
+      MaterialExpressionGuid=BA226C6341982A41E955E4B35B89EAC6
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionComponentMask_0" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComponentMask_0'"
+      Input=(Expression="/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_3'")
+      R=True
+      G=True
+      MaterialExpressionEditorX=-2048
+      MaterialExpressionEditorY=976
+      MaterialExpressionGuid=BA226C6341982A41E955E4B35B89EAC6
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_7" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComment_7'"
+      SizeX=1089
+      SizeY=1456
+      Text="World Space Texture Blending"
+      MaterialExpressionEditorX=-2306
+      MaterialExpressionEditorY=-210
+      MaterialExpressionGuid=19E4967049686947960843B51E559DD7
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_6" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComment_6'"
+      SizeX=1594
+      SizeY=684
+      Text="World Space or Local Space"
+      MaterialExpressionEditorX=-4802
+      MaterialExpressionEditorY=302
+      MaterialExpressionGuid=E664BC054FBC5252130A5899A8748593
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_4" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComment_4'"
+      SizeX=544
+      SizeY=176
+      Text="Switch between Tri-Planar and Top down only"
+      MaterialExpressionEditorX=-1152
+      MaterialExpressionEditorY=448
+      MaterialExpressionGuid=DE7A41144A0DBAEE55043195847608A7
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_3" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComment_3'"
+      SizeX=560
+      SizeY=288
+      Text="Scale"
+      MaterialExpressionEditorX=-3088
+      MaterialExpressionEditorY=400
+      MaterialExpressionGuid=D14EBB1149EA943696934295CF1F48D1
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_2" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComment_2'"
+      SizeX=1408
+      SizeY=416
+      Text="Vertex Normal Blending Mask"
+      MaterialExpressionEditorX=-4624
+      MaterialExpressionEditorY=1024
+      MaterialExpressionGuid=6E13D4E542F4960692B7FA844870045A
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_1" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComment_1'"
+      SizeX=592
+      SizeY=272
+      Text="Project Tri-Planar or Top down only"
+      MaterialExpressionEditorX=-1184
+      MaterialExpressionEditorY=656
+      MaterialExpressionGuid=162E46154CED32ED59DE84B5FA1BC0CF
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_0" ExportPath="/Script/Engine.MaterialExpressionComment'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionComment_0'"
+      SizeX=592
+      SizeY=256
+      Text="Project Tri-Planar or Top down only"
+      MaterialExpressionEditorX=-1200
+      MaterialExpressionEditorY=176
+      MaterialExpressionGuid=162E46154CED32ED59DE84B5FA1BC0CF
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionActorPositionWS_1" ExportPath="/Script/Engine.MaterialExpressionActorPositionWS'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionActorPositionWS_1'"
+      MaterialExpressionEditorX=-4688
+      MaterialExpressionEditorY=608
+      MaterialExpressionGuid=943B91C145F5CC6D0182139168B47986
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionAbs_5" ExportPath="/Script/Engine.MaterialExpressionAbs'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionAbs_5'"
+      Input=(Expression="/Script/Engine.MaterialExpressionMaterialFunctionCall'MF_ProcGrid:MaterialExpressionMaterialFunctionCall_3'")
+      MaterialExpressionEditorX=-3728
+      MaterialExpressionEditorY=1136
+      MaterialExpressionGuid=528B83174D2339A718B34994EEFA61C8
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionAbs_4" ExportPath="/Script/Engine.MaterialExpressionAbs'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionAbs_4'"
+      Input=(Expression="/Script/Engine.MaterialExpressionMaterialFunctionCall'MF_ProcGrid:MaterialExpressionMaterialFunctionCall_3'",OutputIndex=2)
+      MaterialExpressionEditorX=-3728
+      MaterialExpressionEditorY=1216
+      MaterialExpressionGuid=528B83174D2339A718B34994EEFA61C8
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MF_ProcGridEditorOnlyData" ExportPath="/Script/Engine.MaterialFunctionEditorOnlyData'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MF_ProcGridEditorOnlyData'"
+      ExpressionCollection=(Expressions=("/Script/Engine.MaterialExpressionFunctionOutput'MF_ProcGrid:MaterialExpressionFunctionOutput_0'","/Script/Engine.MaterialExpressionFunctionInput'MF_ProcGrid:MaterialExpressionFunctionInput_2'","/Script/Engine.MaterialExpressionConstant'MF_ProcGrid:MaterialExpressionConstant_6'","/Script/Engine.MaterialExpressionStaticSwitch'MF_ProcGrid:MaterialExpressionStaticSwitch_0'","/Script/Engine.MaterialExpressionLinearInterpolate'MF_ProcGrid:MaterialExpressionLinearInterpolate_0'","/Script/Engine.MaterialExpressionLinearInterpolate'MF_ProcGrid:MaterialExpressionLinearInterpolate_1'","/Script/Engine.MaterialExpressionFunctionInput'MF_ProcGrid:MaterialExpressionFunctionInput_12'","/Script/Engine.MaterialExpressionStaticBool'MF_ProcGrid:MaterialExpressionStaticBool_0'","/Script/Engine.MaterialExpressionVertexNormalWS'MF_ProcGrid:MaterialExpressionVertexNormalWS_0'","/Script/Engine.MaterialExpressionMaterialFunctionCall'MF_ProcGrid:MaterialExpressionMaterialFunctionCall_3'","/Script/Engine.MaterialExpressionAbs'MF_ProcGrid:MaterialExpressionAbs_4'","/Script/Engine.MaterialExpressionAbs'MF_ProcGrid:MaterialExpressionAbs_5'","/Script/Engine.MaterialExpressionMaterialFunctionCall'MF_ProcGrid:MaterialExpressionMaterialFunctionCall_4'","/Script/Engine.MaterialExpressionMaterialFunctionCall'MF_ProcGrid:MaterialExpressionMaterialFunctionCall_5'","/Script/Engine.MaterialExpressionConstant'MF_ProcGrid:MaterialExpressionConstant_19'","/Script/Engine.MaterialExpressionFunctionOutput'MF_ProcGrid:MaterialExpressionFunctionOutput_1'","/Script/Engine.MaterialExpressionStaticSwitch'MF_ProcGrid:MaterialExpressionStaticSwitch_1'","/Script/Engine.MaterialExpressionDivide'MF_ProcGrid:MaterialExpressionDivide_1'","/Script/Engine.MaterialExpressionComponentMask'MF_ProcGrid:MaterialExpressionComponentMask_0'","/Script/Engine.MaterialExpressionLinearInterpolate'MF_ProcGrid:MaterialExpressionLinearInterpolate_2'","/Script/Engine.MaterialExpressionLinearInterpolate'MF_ProcGrid:MaterialExpressionLinearInterpolate_3'","/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_0'","/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_1'","/Script/Engine.MaterialExpressionComponentMask'MF_ProcGrid:MaterialExpressionComponentMask_1'","/Script/Engine.MaterialExpressionComponentMask'MF_ProcGrid:MaterialExpressionComponentMask_2'","/Script/Engine.MaterialExpressionComponentMask'MF_ProcGrid:MaterialExpressionComponentMask_3'","/Script/Engine.MaterialExpressionComponentMask'MF_ProcGrid:MaterialExpressionComponentMask_4'","/Script/Engine.MaterialExpressionComponentMask'MF_ProcGrid:MaterialExpressionComponentMask_5'","/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_2'","/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_3'","/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_5'","/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_7'","/Script/Engine.MaterialExpressionTextureSample'MF_ProcGrid:MaterialExpressionTextureSample_0'","/Script/Engine.MaterialExpressionTextureSample'MF_ProcGrid:MaterialExpressionTextureSample_1'","/Script/Engine.MaterialExpressionTextureSample'MF_ProcGrid:MaterialExpressionTextureSample_2'","/Script/Engine.MaterialExpressionTextureSample'MF_ProcGrid:MaterialExpressionTextureSample_3'","/Script/Engine.MaterialExpressionTextureSample'MF_ProcGrid:MaterialExpressionTextureSample_4'","/Script/Engine.MaterialExpressionTextureSample'MF_ProcGrid:MaterialExpressionTextureSample_5'","/Script/Engine.MaterialExpressionMultiply'MF_ProcGrid:MaterialExpressionMultiply_0'","/Script/Engine.MaterialExpressionActorPositionWS'MF_ProcGrid:MaterialExpressionActorPositionWS_1'","/Script/Engine.MaterialExpressionWorldPosition'MF_ProcGrid:MaterialExpressionWorldPosition_2'","/Script/Engine.MaterialExpressionSubtract'MF_ProcGrid:MaterialExpressionSubtract_1'","/Script/Engine.MaterialExpressionConstant3Vector'MF_ProcGrid:MaterialExpressionConstant3Vector_1'","/Script/Engine.MaterialExpressionTransform'MF_ProcGrid:MaterialExpressionTransform_1'","/Script/Engine.MaterialExpressionNormalize'MF_ProcGrid:MaterialExpressionNormalize_0'","/Script/Engine.MaterialExpressionDotProduct'MF_ProcGrid:MaterialExpressionDotProduct_0'","/Script/Engine.MaterialExpressionMaterialFunctionCall'MF_ProcGrid:MaterialExpressionMaterialFunctionCall_2'","/Script/Engine.MaterialExpressionTransform'MF_ProcGrid:MaterialExpressionTransform_2'","/Script/Engine.MaterialExpressionNormalize'MF_ProcGrid:MaterialExpressionNormalize_1'","/Script/Engine.MaterialExpressionDotProduct'MF_ProcGrid:MaterialExpressionDotProduct_1'","/Script/Engine.MaterialExpressionConstant3Vector'MF_ProcGrid:MaterialExpressionConstant3Vector_2'","/Script/Engine.MaterialExpressionTransform'MF_ProcGrid:MaterialExpressionTransform_3'","/Script/Engine.MaterialExpressionNormalize'MF_ProcGrid:MaterialExpressionNormalize_2'","/Script/Engine.MaterialExpressionDotProduct'MF_ProcGrid:MaterialExpressionDotProduct_2'","/Script/Engine.MaterialExpressionConstant3Vector'MF_ProcGrid:MaterialExpressionConstant3Vector_3'","/Script/Engine.MaterialExpressionStaticSwitchParameter'MF_ProcGrid:MaterialExpressionStaticSwitchParameter_3'","/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_4'","/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_6'","/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_8'","/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_9'","/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_10'","/Script/Engine.MaterialExpressionReroute'MF_ProcGrid:MaterialExpressionReroute_11'","/Script/Engine.MaterialExpressionPreSkinnedNormal'MF_ProcGrid:MaterialExpressionPreSkinnedNormal_0'","/Script/Engine.MaterialExpressionStaticSwitchParameter'MF_ProcGrid:MaterialExpressionStaticSwitchParameter_0'","/Script/Engine.MaterialExpressionVertexInterpolator'MF_ProcGrid:MaterialExpressionVertexInterpolator_0'","/Script/Engine.MaterialExpressionNamedRerouteDeclaration'MF_ProcGrid:MaterialExpressionNamedRerouteDeclaration_0'","/Script/Engine.MaterialExpressionNamedRerouteUsage'MF_ProcGrid:MaterialExpressionNamedRerouteUsage_0'","/Script/Engine.MaterialExpressionNamedRerouteDeclaration'MF_ProcGrid:MaterialExpressionNamedRerouteDeclaration_1'","/Script/Engine.MaterialExpressionNamedRerouteUsage'MF_ProcGrid:MaterialExpressionNamedRerouteUsage_2'"),EditorComments=("/Script/Engine.MaterialExpressionComment'MF_ProcGrid:MaterialExpressionComment_0'","/Script/Engine.MaterialExpressionComment'MF_ProcGrid:MaterialExpressionComment_1'","/Script/Engine.MaterialExpressionComment'MF_ProcGrid:MaterialExpressionComment_2'","/Script/Engine.MaterialExpressionComment'MF_ProcGrid:MaterialExpressionComment_3'","/Script/Engine.MaterialExpressionComment'MF_ProcGrid:MaterialExpressionComment_4'","/Script/Engine.MaterialExpressionComment'MF_ProcGrid:MaterialExpressionComment_6'","/Script/Engine.MaterialExpressionComment'MF_ProcGrid:MaterialExpressionComment_7'"))
+   End Object
+   Begin Object Name="MaterialExpressionTextureSample_4" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionTextureSample_4'"
+      Coordinates=(Expression="/Script/Engine.MaterialExpressionComponentMask'MF_ProcGrid:MaterialExpressionComponentMask_1'")
+      SamplerSource=SSM_Wrap_WorldGroupSettings
+      Texture="/Script/Engine.Texture2D'/Game/LevelPrototyping/Textures/T_GridChecker_A.T_GridChecker_A'"
+      SamplerType=SAMPLERTYPE_Masks
+      MaterialExpressionEditorX=-1840
+      MaterialExpressionEditorY=752
+      MaterialExpressionGuid=877B71604A43E0C1A7AE3B9FBEE3C02F
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionTextureSample_5" ExportPath="/Script/Engine.MaterialExpressionTextureSample'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionTextureSample_5'"
+      Coordinates=(Expression="/Script/Engine.MaterialExpressionComponentMask'MF_ProcGrid:MaterialExpressionComponentMask_2'")
+      SamplerSource=SSM_Wrap_WorldGroupSettings
+      Texture="/Script/Engine.Texture2D'/Game/LevelPrototyping/Textures/T_GridChecker_A.T_GridChecker_A'"
+      SamplerType=SAMPLERTYPE_Masks
+      MaterialExpressionEditorX=-1840
+      MaterialExpressionEditorY=528
+      MaterialExpressionGuid=877B71604A43E0C1A7AE3B9FBEE3C02F
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionTransform_1" ExportPath="/Script/Engine.MaterialExpressionTransform'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionTransform_1'"
+      Input=(Expression="/Script/Engine.MaterialExpressionConstant3Vector'MF_ProcGrid:MaterialExpressionConstant3Vector_1'")
+      TransformSourceType=TRANSFORMSOURCE_Local
+      MaterialExpressionEditorX=-4128
+      MaterialExpressionEditorY=416
+      MaterialExpressionGuid=1CE71C5944C463877C977FB04AC08733
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionTransform_2" ExportPath="/Script/Engine.MaterialExpressionTransform'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionTransform_2'"
+      Input=(Expression="/Script/Engine.MaterialExpressionConstant3Vector'MF_ProcGrid:MaterialExpressionConstant3Vector_2'")
+      TransformSourceType=TRANSFORMSOURCE_Local
+      MaterialExpressionEditorX=-4096
+      MaterialExpressionEditorY=592
+      MaterialExpressionGuid=1CE71C5944C463877C977FB04AC08733
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionTransform_3" ExportPath="/Script/Engine.MaterialExpressionTransform'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionTransform_3'"
+      Input=(Expression="/Script/Engine.MaterialExpressionConstant3Vector'MF_ProcGrid:MaterialExpressionConstant3Vector_3'")
+      TransformSourceType=TRANSFORMSOURCE_Local
+      MaterialExpressionEditorX=-4112
+      MaterialExpressionEditorY=784
+      MaterialExpressionGuid=1CE71C5944C463877C977FB04AC08733
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionVertexInterpolator_0" ExportPath="/Script/Engine.MaterialExpressionVertexInterpolator'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionVertexInterpolator_0'"
+      Input=(Expression="/Script/Engine.MaterialExpressionPreSkinnedNormal'MF_ProcGrid:MaterialExpressionPreSkinnedNormal_0'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      MaterialExpressionEditorX=-4384
+      MaterialExpressionEditorY=1136
+      MaterialExpressionGuid=098996B548FD5790685E58A937D4AA81
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionVertexNormalWS_0" ExportPath="/Script/Engine.MaterialExpressionVertexNormalWS'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionVertexNormalWS_0'"
+      MaterialExpressionEditorX=-4384
+      MaterialExpressionEditorY=1216
+      MaterialExpressionGuid=800E787F40625621D4E4D8825BBFFA88
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="MaterialExpressionWorldPosition_2" ExportPath="/Script/Engine.MaterialExpressionWorldPosition'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:MaterialExpressionWorldPosition_2'"
+      MaterialExpressionEditorX=-4752
+      MaterialExpressionEditorY=512
+      MaterialExpressionGuid=A3CADD5C46FB8D90A7D41FBB92FC671B
+      Function="/Script/Engine.MaterialFunction'MF_ProcGrid'"
+   End Object
+   Begin Object Name="SceneThumbnailInfoWithPrimitive_0" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Game/LevelPrototyping/Materials/MF_ProcGrid.MF_ProcGrid:SceneThumbnailInfoWithPrimitive_0'"
+   End Object
+   DependentFunctionExpressionCandidates(0)="/Script/Engine.MaterialExpressionMaterialFunctionCall'MaterialExpressionMaterialFunctionCall_3'"
+   DependentFunctionExpressionCandidates(1)="/Script/Engine.MaterialExpressionMaterialFunctionCall'MaterialExpressionMaterialFunctionCall_4'"
+   DependentFunctionExpressionCandidates(2)="/Script/Engine.MaterialExpressionMaterialFunctionCall'MaterialExpressionMaterialFunctionCall_5'"
+   DependentFunctionExpressionCandidates(3)="/Script/Engine.MaterialExpressionMaterialFunctionCall'MaterialExpressionMaterialFunctionCall_2'"
+   EditorOnlyData="/Script/Engine.MaterialFunctionEditorOnlyData'MF_ProcGridEditorOnlyData'"
+   StateId=8C08CA0C4D5C955B0E9483A2D5232606
+   CombinedInputTypes=527
+   CombinedOutputTypes=15
+   ThumbnailInfo="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'SceneThumbnailInfoWithPrimitive_0'"
+End Object

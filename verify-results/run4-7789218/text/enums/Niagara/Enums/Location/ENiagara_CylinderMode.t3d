@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagara_CylinderMode" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/Location/ENiagara_CylinderMode.ENiagara_CylinderMode'"
+   UniqueNameIndex=3
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[DB8F6ECA4913997F243A8E8B7EB1E91B]", "59A6E47A4EC44A7A451612823F4AF3B8", "Random")),("NewEnumerator2", NSLOCTEXT("[DB8F6ECA4913997F243A8E8B7EB1E91B]", "449C095A4EE19F8477FB46BA9278CF3C", "Direct")))
+End Object

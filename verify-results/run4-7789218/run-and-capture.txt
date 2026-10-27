@@ -1,0 +1,14 @@
+## run --headless --ticks 60 --scene Content/Demo/DemoLevel.scene.json --save captures/DemoLevel.after60.scene.json
+{"level":"info","msg":"platform started","headless":true,"video_driver":"none","width":1280,"height":720}
+{"level":"info","msg":"run finished","ticks":60,"quit_requested":false,"headless":true}
+{"entities":25,"headless":true,"quit_requested":false,"renderer":"null","ticks":60}
+exit 0
+## call frame.capture --scene captures/DemoLevel.after60.scene.json {"path":"captures/DemoLevel_after60.png","points":[[640,40],[640,240],[640,620],[200,530],[477,400]]}
+{"colors":[[0.031,0.051,0.071,1],[0.008,0.008,0.008,1],[0.788,0.62,0.42,1],[0.035,0.039,0.043,1],[0.039,0.043,0.039,1]],"drawn":{"lods":5,"meshes":6},"height":720,"path":"captures/DemoLevel_after60.png","width":1280}
+exit 0
+## call frame.capture --scene Content/Demo/DemoLevel.scene.json {"path":"captures/DemoLevel.png","points":[[640,40],[640,240],[640,620],[200,530],[477,400]]}
+{"colors":[[0.035,0.051,0.071,1],[0.008,0.008,0.008,1],[0.792,0.624,0.424,1],[0.035,0.039,0.043,1],[0.094,0.094,0.094,1]],"drawn":{"lods":5,"meshes":6},"height":720,"path":"captures/DemoLevel.png","width":1280}
+exit 0
+## call frame.capture --scene captures/diag/no_autoexposure.scene.json {"path":"captures/diag/no_autoexposure.png","points":[[640,40],[640,240],[640,620],[200,530],[477,400]]}
+{"colors":[[0.525,0.604,0.671,1],[0.286,0.298,0.306,1],[1,0.996,0.973,1],[0.525,0.545,0.569,1],[0.733,0.741,0.733,1]],"drawn":{"lods":5,"meshes":6},"height":720,"path":"captures/diag/no_autoexposure.png","width":1280}
+exit 0

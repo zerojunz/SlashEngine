@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagaraRingDiscMode" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/Location/ENiagaraRingDiscMode.ENiagaraRingDiscMode'"
+   UniqueNameIndex=2
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[ABDC9AD74D75F490B091C9804CCA5C12]", "DAF092A246780F5ED62D748A891F1579", "Circle")),("NewEnumerator1", NSLOCTEXT("[ABDC9AD74D75F490B091C9804CCA5C12]", "41A42B204B7FA6DB38DFE99DB5909594", "Hexagon")))
+End Object

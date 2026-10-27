@@ -1,0 +1,319 @@
+{
+  "entities": {
+    "buoyancy_manager0": {
+      "components": {
+        "Transform3D": {}
+      }
+    },
+    "demo_camera": {
+      "components": {
+        "Transform3D": {
+          "children": ["demo_camera_camera_component"],
+          "position": [-7.0, 3.0, 0.0],
+          "rotation": [0.0, 0.0, -0.261799]
+        }
+      }
+    },
+    "demo_camera_camera_component": {
+      "components": {
+        "Camera3D": {
+          "fov": 90.0,
+          "keep_aspect": "width"
+        },
+        "Transform3D": {
+          "rotation": [0.0, -1.570796, 0.0]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "CameraAttributesPractical": {
+          "auto_exposure_enabled": true,
+          "auto_exposure_max_sensitivity": 32941986.0,
+          "auto_exposure_min_sensitivity": 0.03068
+        },
+        "PhysicalSkyMaterial": {
+          "energy_multiplier": 2.901642
+        },
+        "WorldEnvironment": {
+          "ambient_light_source": "sky",
+          "background_mode": "sky",
+          "fog_aerial_perspective": 1.0,
+          "fog_density": 0.002,
+          "fog_enabled": true,
+          "fog_height_density": 0.2,
+          "reflected_light_source": "sky",
+          "tonemap_mode": "aces",
+          "tonemap_white": 6.0
+        }
+      }
+    },
+    "floor": {
+      "components": {
+        "MeshInstance3D": {
+          "mesh": "Engine/Content/BasicShapes/Cube_MI_PrototypeGrid_Gray.glb"
+        },
+        "Transform3D": {
+          "position": [0.0, -0.05, 0.0],
+          "scale": [30.0, 0.1, 30.0]
+        }
+      }
+    },
+    "goal_trigger": {
+      "components": {
+        "Area3D": {},
+        "CollisionShape3D": {
+          "size": [2.0, 2.0, 2.0]
+        },
+        "Transform3D": {
+          "position": [3.0, 1.0, 0.0],
+          "visible": false
+        }
+      }
+    },
+    "height_fog": {
+      "components": {
+        "Transform3D": {}
+      }
+    },
+    "jump_pad_fx": {
+      "components": {
+        "Transform3D": {
+          "children": ["jump_pad_fx_glow_base", "jump_pad_fx_bands", "jump_pad_fx_spores"],
+          "position": [-2.0, 0.0, 2.5]
+        }
+      }
+    },
+    "jump_pad_fx_bands": {
+      "components": {
+        "CPUParticles3D": {
+          "amount": 4,
+          "color": [0.125, 0.430526, 1.0, 2.0],
+          "gravity": [0.0, 6.0, 0.0],
+          "lifetime": 0.75,
+          "mesh": "Content/LevelPrototyping/Interactable/JumpPad/Assets/Meshes/SM_CircularBand.glb",
+          "spread": 0.0
+        },
+        "StandardMaterial3D": {
+          "vertex_color_use_as_albedo": true
+        },
+        "Transform3D": {}
+      }
+    },
+    "jump_pad_fx_glow_base": {
+      "components": {
+        "CPUParticles3D": {
+          "amount": 1,
+          "color": [0.125, 0.430526, 1.0, 2.0],
+          "explosiveness": 1.0,
+          "gravity": [0.0, 0.0, 0.0],
+          "lifetime": 5.0,
+          "mesh": "Content/LevelPrototyping/Interactable/JumpPad/Assets/Meshes/SM_CircularGlow.glb",
+          "spread": 0.0
+        },
+        "StandardMaterial3D": {
+          "vertex_color_use_as_albedo": true
+        },
+        "Transform3D": {}
+      }
+    },
+    "jump_pad_fx_spores": {
+      "components": {
+        "GPUParticles3D": {
+          "amount": 80,
+          "lifetime": 0.8,
+          "process_material": "Content/LevelPrototyping/Interactable/JumpPad/Assets/NS_JumpPad_spores.process_material.json",
+          "visibility_aabb_position": [-1.0, -1.0, -1.0],
+          "visibility_aabb_size": [2.0, 2.0, 2.0]
+        },
+        "QuadMesh": {},
+        "StandardMaterial3D": {
+          "billboard_keep_scale": true,
+          "billboard_mode": "particles",
+          "shading_mode": "unshaded",
+          "transparency": "alpha",
+          "vertex_color_use_as_albedo": true
+        },
+        "Transform3D": {}
+      }
+    },
+    "mannequin": {
+      "components": {
+        "CharacterBody3D": {
+          "floor_max_angle": 0.781298
+        },
+        "CollisionShape3D": {
+          "height": 1.8,
+          "radius": 0.35,
+          "shape": "capsule"
+        },
+        "Transform3D": {
+          "children": ["mannequin_camera_boom", "mannequin_character_mesh0"],
+          "position": [-1.5, 1.0, -1.5],
+          "rotation": [0.0, -0.785398, 0.0]
+        }
+      }
+    },
+    "mannequin_camera_boom": {
+      "components": {
+        "Transform3D": {
+          "children": ["mannequin_follow_camera"],
+          "position": [0.0, 0.084923, 0.0]
+        }
+      }
+    },
+    "mannequin_character_mesh0": {
+      "components": {
+        "AnimationTree": {
+          "libraries": {
+            "": "Content/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed.anim.json"
+          },
+          "playing": [
+            {
+              "animation": "MM_Idle_0",
+              "time": 0.9833333333333347,
+              "weight": 1.0
+            }
+          ],
+          "state": {
+            "MM_Idle_0/current_delta": 0.016666666666666666,
+            "MM_Idle_0/current_length": 7.566666126251221,
+            "MM_Idle_0/current_position": 0.9833333333333347,
+            "current_delta": 0.016666666666666666,
+            "current_length": 7.566666126251221,
+            "current_position": 0.9833333333333347,
+            "playback": {
+              "current": "MM_Idle_0",
+              "playing": true
+            }
+          },
+          "tree_root": "Content/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed.animtree.json"
+        },
+        "MeshInstance3D": {
+          "mesh": "Content/Characters/Mannequins/Meshes/SKM_Quinn_Simple.glb"
+        },
+        "Transform3D": {
+          "position": [0.0, -0.89, 0.0],
+          "rotation": [0.0, 1.570796, 0.0]
+        }
+      }
+    },
+    "mannequin_follow_camera": {
+      "components": {
+        "Camera3D": {
+          "fov": 90.0,
+          "keep_aspect": "width"
+        },
+        "Transform3D": {
+          "position": [-4.0, 0.0, 0.0],
+          "rotation": [0.0, -1.570796, 0.0]
+        }
+      }
+    },
+    "player_start": {
+      "components": {
+        "Transform3D": {
+          "position": [-4.0, 1.0, 0.0],
+          "visible": false
+        }
+      }
+    },
+    "point_light": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.737255, 0.486275, 1.0],
+          "light_energy": 625.0,
+          "omni_range": 10.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [1.5, 2.0, -1.5]
+        }
+      }
+    },
+    "shape_cube": {
+      "components": {
+        "MeshInstance3D": {
+          "mesh": "Engine/Content/BasicShapes/Cube.glb"
+        },
+        "Transform3D": {
+          "position": [0.0, 0.5, -2.5]
+        }
+      }
+    },
+    "shape_cylinder": {
+      "components": {
+        "MeshInstance3D": {
+          "mesh": "Engine/Content/BasicShapes/Cylinder.glb"
+        },
+        "Transform3D": {
+          "position": [0.0, 0.5, 2.5],
+          "scale": [1.0, 2.0, 1.0]
+        }
+      }
+    },
+    "shape_sphere": {
+      "components": {
+        "MeshInstance3D": {
+          "mesh": "Engine/Content/BasicShapes/Sphere_MI_GlowNT.glb"
+        },
+        "Transform3D": {
+          "position": [0.0, 0.5, 0.0]
+        }
+      }
+    },
+    "sky_atmosphere": {
+      "components": {
+        "Transform3D": {}
+      }
+    },
+    "sky_light": {
+      "components": {
+        "Transform3D": {
+          "position": [0.0, 3.0, 0.0]
+        }
+      }
+    },
+    "spot_light": {
+      "components": {
+        "SpotLight3D": {
+          "light_color": [0.584314, 0.796078, 1.0, 1.0],
+          "light_energy": 2500.0,
+          "shadow_enabled": true,
+          "spot_angle": 44.0,
+          "spot_range": 10.0
+        },
+        "Transform3D": {
+          "position": [1.5, 4.0, 2.5],
+          "rotation": [-1.570796, -1.570796, 0.0]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {
+          "light_angular_distance": 0.5357,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [0.0, 5.0, 0.0],
+          "rotation": [-0.785398, -2.094395, 0.0],
+          "scale": [2.5, 2.5, 2.5]
+        }
+      }
+    },
+    "tone": {
+      "components": {
+        "AudioStreamPlayer": {
+          "autoplay": true,
+          "stream": "Engine/Content/EngineSounds/1kSineTonePing.wav"
+        },
+        "Transform3D": {
+          "position": [0.0, 1.5, 0.0],
+          "visible": false
+        }
+      }
+    }
+  },
+  "format": 1
+}

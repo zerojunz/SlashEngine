@@ -1,0 +1,85 @@
+Begin Object Class=/Script/Engine.MaterialFunction Name="MakeFloat3" ExportPath="/Script/Engine.MaterialFunction'/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3.MakeFloat3'"
+   Begin Object Class=/Script/Engine.MaterialFunctionEditorOnlyData Name="MakeFloat3EditorOnlyData" ExportPath="/Script/Engine.MaterialFunctionEditorOnlyData'/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3.MakeFloat3:MakeFloat3EditorOnlyData'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionAppendVector Name="MaterialExpressionAppendVector_24" ExportPath="/Script/Engine.MaterialExpressionAppendVector'/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3.MakeFloat3:MaterialExpressionAppendVector_24'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionAppendVector Name="MaterialExpressionAppendVector_25" ExportPath="/Script/Engine.MaterialExpressionAppendVector'/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3.MakeFloat3:MaterialExpressionAppendVector_25'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionInput Name="MaterialExpressionFunctionInput_29" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3.MakeFloat3:MaterialExpressionFunctionInput_29'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionInput Name="MaterialExpressionFunctionInput_31" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3.MakeFloat3:MaterialExpressionFunctionInput_31'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionInput Name="MaterialExpressionFunctionInput_34" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3.MakeFloat3:MaterialExpressionFunctionInput_34'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionOutput Name="MaterialExpressionFunctionOutput_12" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3.MakeFloat3:MaterialExpressionFunctionOutput_12'"
+   End Object
+   Begin Object Class=/Script/UnrealEd.SceneThumbnailInfoWithPrimitive Name="SceneThumbnailInfoWithPrimitive_9" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3.MakeFloat3:SceneThumbnailInfoWithPrimitive_9'"
+   End Object
+   Begin Object Name="MakeFloat3EditorOnlyData" ExportPath="/Script/Engine.MaterialFunctionEditorOnlyData'/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3.MakeFloat3:MakeFloat3EditorOnlyData'"
+      ExpressionCollection=(Expressions=("/Script/Engine.MaterialExpressionFunctionOutput'MakeFloat3:MaterialExpressionFunctionOutput_12'","/Script/Engine.MaterialExpressionAppendVector'MakeFloat3:MaterialExpressionAppendVector_24'","/Script/Engine.MaterialExpressionAppendVector'MakeFloat3:MaterialExpressionAppendVector_25'","/Script/Engine.MaterialExpressionFunctionInput'MakeFloat3:MaterialExpressionFunctionInput_29'","/Script/Engine.MaterialExpressionFunctionInput'MakeFloat3:MaterialExpressionFunctionInput_31'","/Script/Engine.MaterialExpressionFunctionInput'MakeFloat3:MaterialExpressionFunctionInput_34'"))
+   End Object
+   Begin Object Name="MaterialExpressionAppendVector_24" ExportPath="/Script/Engine.MaterialExpressionAppendVector'/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3.MakeFloat3:MaterialExpressionAppendVector_24'"
+      A=(Expression="/Script/Engine.MaterialExpressionFunctionInput'MakeFloat3:MaterialExpressionFunctionInput_29'")
+      B=(Expression="/Script/Engine.MaterialExpressionFunctionInput'MakeFloat3:MaterialExpressionFunctionInput_31'")
+      MaterialExpressionEditorX=-603
+      MaterialExpressionEditorY=411
+      MaterialExpressionGuid=5C7FADC54931B9F2427C438D2828F667
+      Function="/Script/Engine.MaterialFunction'MakeFloat3'"
+   End Object
+   Begin Object Name="MaterialExpressionAppendVector_25" ExportPath="/Script/Engine.MaterialExpressionAppendVector'/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3.MakeFloat3:MaterialExpressionAppendVector_25'"
+      A=(Expression="/Script/Engine.MaterialExpressionAppendVector'MakeFloat3:MaterialExpressionAppendVector_24'")
+      B=(Expression="/Script/Engine.MaterialExpressionFunctionInput'MakeFloat3:MaterialExpressionFunctionInput_34'")
+      MaterialExpressionEditorX=-450
+      MaterialExpressionEditorY=471
+      MaterialExpressionGuid=A48DE43F40A72667252245BF30F56580
+      Function="/Script/Engine.MaterialFunction'MakeFloat3'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionInput_29" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3.MakeFloat3:MaterialExpressionFunctionInput_29'"
+      InputName="X"
+      Id=529C1D96441E07EB03A9E59B8A7F67B6
+      InputType=FunctionInput_Scalar
+      bUsePreviewValueAsDefault=True
+      MaterialExpressionEditorX=-812
+      MaterialExpressionEditorY=318
+      MaterialExpressionGuid=1E4627E045395663AD0D458D99FC3FD4
+      Function="/Script/Engine.MaterialFunction'MakeFloat3'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionInput_31" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3.MakeFloat3:MaterialExpressionFunctionInput_31'"
+      InputName="Y"
+      Id=B5BD7D1B494F6928732CCDA1C63D8E15
+      InputType=FunctionInput_Scalar
+      bUsePreviewValueAsDefault=True
+      SortPriority=1
+      MaterialExpressionEditorX=-807
+      MaterialExpressionEditorY=486
+      MaterialExpressionGuid=9B31E4044FB76FE82B23D884DB7DBFDD
+      Function="/Script/Engine.MaterialFunction'MakeFloat3'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionInput_34" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3.MakeFloat3:MaterialExpressionFunctionInput_34'"
+      InputName="Z"
+      Id=050F17B8471570B47A802CB7CAA5A201
+      InputType=FunctionInput_Scalar
+      bUsePreviewValueAsDefault=True
+      SortPriority=2
+      MaterialExpressionEditorX=-811
+      MaterialExpressionEditorY=668
+      MaterialExpressionGuid=FD6D24C543EFDC7E7E03539351C1C412
+      Function="/Script/Engine.MaterialFunction'MakeFloat3'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionOutput_12" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3.MakeFloat3:MaterialExpressionFunctionOutput_12'"
+      A=(Expression="/Script/Engine.MaterialExpressionAppendVector'MakeFloat3:MaterialExpressionAppendVector_25'")
+      bLastPreviewed=True
+      Id=0DD6F9954C067C3E5DDBBBA0D6910DD2
+      MaterialExpressionEditorX=-246
+      MaterialExpressionEditorY=493
+      MaterialExpressionGuid=DF04516D4B39E30EBCB234B0736D4954
+      Function="/Script/Engine.MaterialFunction'MakeFloat3'"
+   End Object
+   Begin Object Name="SceneThumbnailInfoWithPrimitive_9" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Engine/Functions/Engine_MaterialFunctions02/Utility/MakeFloat3.MakeFloat3:SceneThumbnailInfoWithPrimitive_9'"
+   End Object
+   Description="Creates a float 3 vector from a series of scalar inputs."
+   EditorOnlyData="/Script/Engine.MaterialFunctionEditorOnlyData'MakeFloat3EditorOnlyData'"
+   StateId=D06BBF424563146FF50E1BA1A2663154
+   CombinedInputTypes=15
+   ThumbnailInfo="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'SceneThumbnailInfoWithPrimitive_9'"
+End Object

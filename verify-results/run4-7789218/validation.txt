@@ -1,0 +1,15 @@
+## slash-cli project validate
+{"valid":true}
+exit 0
+## slash-cli scene validate ./Content/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed.anim.json
+{"animations":20,"valid":true}
+exit 0
+## slash-cli scene validate ./Content/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed.animtree.json
+{"nodes":21,"valid":true}
+exit 0
+## slash-cli scene validate ./Content/Demo/DemoLevel.scene.json
+{"entities":25,"valid":true}
+exit 0
+## slash-cli scene validate ./Content/ThirdPerson/Lvl_ThirdPerson.scene.json
+{"entities":66,"valid":true}
+exit 0

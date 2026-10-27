@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagaraScaleColorMode" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/ENiagaraScaleColorMode.ENiagaraScaleColorMode'"
+   UniqueNameIndex=3
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[DCC15DCD48BAB8AB093EF49563C3B2BF]", "5CC6955C43D0A1A6B1431F87F2A5C4C6", "RGB and Alpha Separately")),("NewEnumerator1", NSLOCTEXT("[DCC15DCD48BAB8AB093EF49563C3B2BF]", "7E47B90F463C457225E4A69BA2905F62", "RGBA Together")),("NewEnumerator2", NSLOCTEXT("[DCC15DCD48BAB8AB093EF49563C3B2BF]", "89F307D940A6ADCA6A0102B5F287D250", "RGBA Linear Color Curve")))
+End Object

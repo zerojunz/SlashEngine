@@ -1,0 +1,194 @@
+Begin Object Class=/Script/Engine.MaterialFunction Name="ScaleUVsByCenter" ExportPath="/Script/Engine.MaterialFunction'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter'"
+   Begin Object Class=/Script/Engine.MaterialFunctionEditorOnlyData Name="ScaleUVsByCenterEditorOnlyData" ExportPath="/Script/Engine.MaterialFunctionEditorOnlyData'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:ScaleUVsByCenterEditorOnlyData'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionAdd Name="MaterialExpressionAdd_0" ExportPath="/Script/Engine.MaterialExpressionAdd'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionAdd_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant Name="MaterialExpressionConstant_0" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionConstant_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant Name="MaterialExpressionConstant_11" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionConstant_11'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant Name="MaterialExpressionConstant_7" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionConstant_7'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionDivide Name="MaterialExpressionDivide_4" ExportPath="/Script/Engine.MaterialExpressionDivide'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionDivide_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionDivide Name="MaterialExpressionDivide_5" ExportPath="/Script/Engine.MaterialExpressionDivide'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionDivide_5'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionInput Name="MaterialExpressionFunctionInput_1" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionFunctionInput_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionInput Name="MaterialExpressionFunctionInput_2" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionFunctionInput_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionOutput Name="MaterialExpressionFunctionOutput_0" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionFunctionOutput_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionOutput Name="MaterialExpressionFunctionOutput_6" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionFunctionOutput_6'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMaterialFunctionCall Name="MaterialExpressionMaterialFunctionCall_36" ExportPath="/Script/Engine.MaterialExpressionMaterialFunctionCall'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionMaterialFunctionCall_36'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_13" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionMultiply_13'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSphereMask Name="MaterialExpressionSphereMask_29" ExportPath="/Script/Engine.MaterialExpressionSphereMask'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionSphereMask_29'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSphereMask Name="MaterialExpressionSphereMask_30" ExportPath="/Script/Engine.MaterialExpressionSphereMask'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionSphereMask_30'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSubtract Name="MaterialExpressionSubtract_0" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionSubtract_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTextureCoordinate Name="MaterialExpressionTextureCoordinate_0" ExportPath="/Script/Engine.MaterialExpressionTextureCoordinate'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionTextureCoordinate_0'"
+   End Object
+   Begin Object Class=/Script/UnrealEd.SceneThumbnailInfoWithPrimitive Name="SceneThumbnailInfoWithPrimitive_4" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:SceneThumbnailInfoWithPrimitive_4'"
+   End Object
+   Begin Object Name="ScaleUVsByCenterEditorOnlyData" ExportPath="/Script/Engine.MaterialFunctionEditorOnlyData'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:ScaleUVsByCenterEditorOnlyData'"
+      ExpressionCollection=(Expressions=("/Script/Engine.MaterialExpressionFunctionOutput'ScaleUVsByCenter:MaterialExpressionFunctionOutput_0'","/Script/Engine.MaterialExpressionAdd'ScaleUVsByCenter:MaterialExpressionAdd_0'","/Script/Engine.MaterialExpressionTextureCoordinate'ScaleUVsByCenter:MaterialExpressionTextureCoordinate_0'","/Script/Engine.MaterialExpressionFunctionInput'ScaleUVsByCenter:MaterialExpressionFunctionInput_2'","/Script/Engine.MaterialExpressionConstant'ScaleUVsByCenter:MaterialExpressionConstant_7'","/Script/Engine.MaterialExpressionSubtract'ScaleUVsByCenter:MaterialExpressionSubtract_0'","/Script/Engine.MaterialExpressionDivide'ScaleUVsByCenter:MaterialExpressionDivide_4'","/Script/Engine.MaterialExpressionDivide'ScaleUVsByCenter:MaterialExpressionDivide_5'","/Script/Engine.MaterialExpressionConstant'ScaleUVsByCenter:MaterialExpressionConstant_0'","/Script/Engine.MaterialExpressionFunctionInput'ScaleUVsByCenter:MaterialExpressionFunctionInput_1'","/Script/Engine.MaterialExpressionMaterialFunctionCall'ScaleUVsByCenter:MaterialExpressionMaterialFunctionCall_36'","/Script/Engine.MaterialExpressionSphereMask'ScaleUVsByCenter:MaterialExpressionSphereMask_29'","/Script/Engine.MaterialExpressionConstant'ScaleUVsByCenter:MaterialExpressionConstant_11'","/Script/Engine.MaterialExpressionSphereMask'ScaleUVsByCenter:MaterialExpressionSphereMask_30'","/Script/Engine.MaterialExpressionMultiply'ScaleUVsByCenter:MaterialExpressionMultiply_13'","/Script/Engine.MaterialExpressionFunctionOutput'ScaleUVsByCenter:MaterialExpressionFunctionOutput_6'"))
+   End Object
+   Begin Object Name="MaterialExpressionAdd_0" ExportPath="/Script/Engine.MaterialExpressionAdd'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionAdd_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionDivide'ScaleUVsByCenter:MaterialExpressionDivide_4'")
+      B=(Expression="/Script/Engine.MaterialExpressionConstant'ScaleUVsByCenter:MaterialExpressionConstant_0'")
+      MaterialExpressionEditorX=-1093
+      MaterialExpressionEditorY=217
+      MaterialExpressionGuid=946CEE2A4328A7241D0E2FA63D6A02FD
+      Function="/Script/Engine.MaterialFunction'ScaleUVsByCenter'"
+      bCollapsed=False
+   End Object
+   Begin Object Name="MaterialExpressionConstant_0" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionConstant_0'"
+      R=0.500000
+      MaterialExpressionEditorX=-1616
+      MaterialExpressionEditorY=310
+      MaterialExpressionGuid=0A315A77412D6B644D47B1A4A26FD6CF
+      Function="/Script/Engine.MaterialFunction'ScaleUVsByCenter'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant_11" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionConstant_11'"
+      R=0.500000
+      MaterialExpressionEditorX=-464
+      MaterialExpressionEditorY=976
+      MaterialExpressionGuid=BEA3D36D4030DE868BB674AC1B924848
+      Function="/Script/Engine.MaterialFunction'ScaleUVsByCenter'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant_7" ExportPath="/Script/Engine.MaterialExpressionConstant'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionConstant_7'"
+      R=1.000000
+      MaterialExpressionEditorX=-2722
+      MaterialExpressionEditorY=190
+      MaterialExpressionGuid=168C988441A587702F27B7A14AD4D0B4
+      Function="/Script/Engine.MaterialFunction'ScaleUVsByCenter'"
+   End Object
+   Begin Object Name="MaterialExpressionDivide_4" ExportPath="/Script/Engine.MaterialExpressionDivide'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionDivide_4'"
+      A=(Expression="/Script/Engine.MaterialExpressionFunctionInput'ScaleUVsByCenter:MaterialExpressionFunctionInput_1'")
+      B=(Expression="/Script/Engine.MaterialExpressionFunctionInput'ScaleUVsByCenter:MaterialExpressionFunctionInput_2'")
+      MaterialExpressionEditorX=-1692
+      MaterialExpressionEditorY=110
+      MaterialExpressionGuid=897FB3B34D01D28802B220987A47F0E1
+      Function="/Script/Engine.MaterialFunction'ScaleUVsByCenter'"
+   End Object
+   Begin Object Name="MaterialExpressionDivide_5" ExportPath="/Script/Engine.MaterialExpressionDivide'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionDivide_5'"
+      A=(Expression="/Script/Engine.MaterialExpressionConstant'ScaleUVsByCenter:MaterialExpressionConstant_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionFunctionInput'ScaleUVsByCenter:MaterialExpressionFunctionInput_2'")
+      MaterialExpressionEditorX=-1143
+      MaterialExpressionEditorY=561
+      MaterialExpressionGuid=70CBD5A544964D888D543C91BA8EC11D
+      Function="/Script/Engine.MaterialFunction'ScaleUVsByCenter'"
+      Desc="Scale the center offset by the scaling factor"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionInput_1" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionFunctionInput_1'"
+      Preview=(Expression="/Script/Engine.MaterialExpressionTextureCoordinate'ScaleUVsByCenter:MaterialExpressionTextureCoordinate_0'")
+      InputName="UVs"
+      Description="UVs. Only need to plug in if you want a different UV channel."
+      Id=395E1DA54D9791A8DB7094B52B0509C3
+      InputType=FunctionInput_Vector2
+      bUsePreviewValueAsDefault=True
+      MaterialExpressionEditorX=-2160
+      MaterialExpressionEditorY=-96
+      MaterialExpressionGuid=3FC1851B4DDAC204255528B9C3809CD9
+      Function="/Script/Engine.MaterialFunction'ScaleUVsByCenter'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionInput_2" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionFunctionInput_2'"
+      Preview=(Expression="/Script/Engine.MaterialExpressionConstant'ScaleUVsByCenter:MaterialExpressionConstant_7'")
+      InputName="Texture Scale"
+      Description="Scale factor. Default = 1"
+      Id=9E726E4E4FF0FCD65D606FB9CE123842
+      InputType=FunctionInput_Vector2
+      bUsePreviewValueAsDefault=True
+      MaterialExpressionEditorX=-2160
+      MaterialExpressionEditorY=190
+      MaterialExpressionGuid=CC8074EB4E24A4E0F9FF52A77D67C558
+      Function="/Script/Engine.MaterialFunction'ScaleUVsByCenter'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionOutput_0" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionFunctionOutput_0'"
+      OutputName="UVs"
+      A=(Expression="/Script/Engine.MaterialExpressionSubtract'ScaleUVsByCenter:MaterialExpressionSubtract_0'")
+      bLastPreviewed=True
+      Id=94A339B248B805839CF8F28B335D4E1D
+      MaterialExpressionEditorX=32
+      MaterialExpressionEditorY=448
+      MaterialExpressionGuid=0B3FADA64F6ECBFF64FA3FB1EB93B609
+      Function="/Script/Engine.MaterialFunction'ScaleUVsByCenter'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionOutput_6" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionFunctionOutput_6'"
+      OutputName="0-1 mask"
+      SortPriority=1
+      A=(Expression="/Script/Engine.MaterialExpressionMultiply'ScaleUVsByCenter:MaterialExpressionMultiply_13'")
+      bLastPreviewed=True
+      Id=2DFD3EF340552A23494E8D987C76BC0D
+      MaterialExpressionEditorY=896
+      MaterialExpressionGuid=633314AA4F2978A3215E35857C34BB03
+      Function="/Script/Engine.MaterialFunction'ScaleUVsByCenter'"
+   End Object
+   Begin Object Name="MaterialExpressionMaterialFunctionCall_36" ExportPath="/Script/Engine.MaterialExpressionMaterialFunctionCall'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionMaterialFunctionCall_36'"
+      MaterialFunction="/Script/Engine.MaterialFunction'/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat2Components.BreakOutFloat2Components'"
+      FunctionInputs(0)=(ExpressionInputId=0FC5C56B4335798F20CB928CF1C87421,Input=(Expression="/Script/Engine.MaterialExpressionSubtract'ScaleUVsByCenter:MaterialExpressionSubtract_0'",InputName="Float2"))
+      FunctionOutputs(0)=(ExpressionOutputId=6BC893C247FCFC567178CE944E213385,Output=(OutputName="R"))
+      FunctionOutputs(1)=(ExpressionOutputId=9720C81E449DF8E5514FCB8A80FD5FA3,Output=(OutputName="G"))
+      MaterialExpressionEditorX=-592
+      MaterialExpressionEditorY=880
+      MaterialExpressionGuid=70AEDC32413A68FD465CEE8799A00A73
+      Function="/Script/Engine.MaterialFunction'ScaleUVsByCenter'"
+      Outputs(0)=(OutputName="R")
+      Outputs(1)=(OutputName="G")
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_13" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionMultiply_13'"
+      A=(Expression="/Script/Engine.MaterialExpressionSphereMask'ScaleUVsByCenter:MaterialExpressionSphereMask_30'")
+      B=(Expression="/Script/Engine.MaterialExpressionSphereMask'ScaleUVsByCenter:MaterialExpressionSphereMask_29'")
+      MaterialExpressionEditorX=-144
+      MaterialExpressionEditorY=896
+      MaterialExpressionGuid=A1982DC148BD038410DD89A983FC0783
+      Function="/Script/Engine.MaterialFunction'ScaleUVsByCenter'"
+   End Object
+   Begin Object Name="MaterialExpressionSphereMask_29" ExportPath="/Script/Engine.MaterialExpressionSphereMask'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionSphereMask_29'"
+      A=(Expression="/Script/Engine.MaterialExpressionMaterialFunctionCall'ScaleUVsByCenter:MaterialExpressionMaterialFunctionCall_36'",OutputIndex=1)
+      B=(Expression="/Script/Engine.MaterialExpressionConstant'ScaleUVsByCenter:MaterialExpressionConstant_11'")
+      AttenuationRadius=0.500000
+      MaterialExpressionEditorX=-320
+      MaterialExpressionEditorY=960
+      MaterialExpressionGuid=0B6F77CE43C3D226C7D0128FDC9718DF
+      Function="/Script/Engine.MaterialFunction'ScaleUVsByCenter'"
+   End Object
+   Begin Object Name="MaterialExpressionSphereMask_30" ExportPath="/Script/Engine.MaterialExpressionSphereMask'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionSphereMask_30'"
+      A=(Expression="/Script/Engine.MaterialExpressionConstant'ScaleUVsByCenter:MaterialExpressionConstant_11'")
+      B=(Expression="/Script/Engine.MaterialExpressionMaterialFunctionCall'ScaleUVsByCenter:MaterialExpressionMaterialFunctionCall_36'")
+      AttenuationRadius=0.500000
+      MaterialExpressionEditorX=-320
+      MaterialExpressionEditorY=800
+      MaterialExpressionGuid=0B6F77CE43C3D226C7D0128FDC9718DF
+      Function="/Script/Engine.MaterialFunction'ScaleUVsByCenter'"
+   End Object
+   Begin Object Name="MaterialExpressionSubtract_0" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionSubtract_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionAdd'ScaleUVsByCenter:MaterialExpressionAdd_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionDivide'ScaleUVsByCenter:MaterialExpressionDivide_5'")
+      MaterialExpressionEditorX=-683
+      MaterialExpressionEditorY=466
+      MaterialExpressionGuid=8AE30826444E8A46563D34BFC545A1B6
+      Function="/Script/Engine.MaterialFunction'ScaleUVsByCenter'"
+      Desc="Re offset to maintain center"
+   End Object
+   Begin Object Name="MaterialExpressionTextureCoordinate_0" ExportPath="/Script/Engine.MaterialExpressionTextureCoordinate'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:MaterialExpressionTextureCoordinate_0'"
+      MaterialExpressionEditorX=-2715
+      MaterialExpressionEditorY=-102
+      MaterialExpressionGuid=65E9B09F478766FE9903EE8798B17AA1
+      Function="/Script/Engine.MaterialFunction'ScaleUVsByCenter'"
+   End Object
+   Begin Object Name="SceneThumbnailInfoWithPrimitive_4" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Engine/Functions/Engine_MaterialFunctions01/Texturing/ScaleUVsByCenter.ScaleUVsByCenter:SceneThumbnailInfoWithPrimitive_4'"
+   End Object
+   bExposeToLibrary=True
+   DependentFunctionExpressionCandidates(0)="/Script/Engine.MaterialExpressionMaterialFunctionCall'MaterialExpressionMaterialFunctionCall_36'"
+   EditorOnlyData="/Script/Engine.MaterialFunctionEditorOnlyData'ScaleUVsByCenterEditorOnlyData'"
+   StateId=B2F4A5A74EDE33D8E70A4A83A28D1503
+   CombinedInputTypes=2
+   CombinedOutputTypes=15
+   ThumbnailInfo="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'SceneThumbnailInfoWithPrimitive_4'"
+End Object

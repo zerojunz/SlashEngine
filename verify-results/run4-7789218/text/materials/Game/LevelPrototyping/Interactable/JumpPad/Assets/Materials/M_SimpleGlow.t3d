@@ -1,0 +1,115 @@
+Begin Object Class=/Script/Engine.Material Name="M_SimpleGlow" ExportPath="/Script/Engine.Material'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_SimpleGlow.M_SimpleGlow'"
+   Begin Object Class=/Script/Engine.MaterialExpressionVectorParameter Name="MaterialExpressionVectorParameter_0" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_SimpleGlow.M_SimpleGlow:MaterialExpressionVectorParameter_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_0" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_SimpleGlow.M_SimpleGlow:MaterialExpressionScalarParameter_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionParticleColor Name="MaterialExpressionParticleColor_0" ExportPath="/Script/Engine.MaterialExpressionParticleColor'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_SimpleGlow.M_SimpleGlow:MaterialExpressionParticleColor_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_1" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_SimpleGlow.M_SimpleGlow:MaterialExpressionMultiply_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_0" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_SimpleGlow.M_SimpleGlow:MaterialExpressionMultiply_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_1" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_SimpleGlow.M_SimpleGlow:MaterialExpressionLinearInterpolate_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_0" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_SimpleGlow.M_SimpleGlow:MaterialExpressionLinearInterpolate_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialEditorOnlyData Name="M_SimpleGlowEditorOnlyData" ExportPath="/Script/Engine.MaterialEditorOnlyData'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_SimpleGlow.M_SimpleGlow:M_SimpleGlowEditorOnlyData'"
+   End Object
+   Begin Object Name="MaterialExpressionVectorParameter_0" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_SimpleGlow.M_SimpleGlow:MaterialExpressionVectorParameter_0'"
+      bUseCustomPrimitiveData=True
+      PrimitiveDataIndex=1
+      ParameterName="Color"
+      ExpressionGUID=82FF445548EA8C1956D7118370982842
+      MaterialExpressionEditorX=-768
+      MaterialExpressionEditorY=150
+      MaterialExpressionGuid=72CE605348579ED067736BA985C4EBE1
+      Material="/Script/Engine.Material'M_SimpleGlow'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_0" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_SimpleGlow.M_SimpleGlow:MaterialExpressionScalarParameter_0'"
+      bUseCustomPrimitiveData=True
+      ParameterName="Custom Prim Switch"
+      ExpressionGUID=70071B6742C679B3658069A0DFF367FA
+      MaterialExpressionEditorX=-304
+      MaterialExpressionEditorY=320
+      MaterialExpressionGuid=B6CDF9214D3703D1823CA0A562DFA328
+      Material="/Script/Engine.Material'M_SimpleGlow'"
+   End Object
+   Begin Object Name="MaterialExpressionParticleColor_0" ExportPath="/Script/Engine.MaterialExpressionParticleColor'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_SimpleGlow.M_SimpleGlow:MaterialExpressionParticleColor_0'"
+      MaterialExpressionEditorX=-736
+      MaterialExpressionEditorY=-90
+      MaterialExpressionGuid=01F6506941B9006B3E80F5B205655876
+      Material="/Script/Engine.Material'M_SimpleGlow'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_1" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_SimpleGlow.M_SimpleGlow:MaterialExpressionMultiply_1'"
+      A=(Expression="/Script/Engine.MaterialExpressionVectorParameter'M_SimpleGlow:MaterialExpressionVectorParameter_0'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      B=(Expression="/Script/Engine.MaterialExpressionVectorParameter'M_SimpleGlow:MaterialExpressionVectorParameter_0'",OutputIndex=4,Mask=1,MaskA=1)
+      MaterialExpressionEditorX=-528
+      MaterialExpressionEditorY=214
+      MaterialExpressionGuid=874FEE324D987BC1BE75ECBE646BAC39
+      Material="/Script/Engine.Material'M_SimpleGlow'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_0" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_SimpleGlow.M_SimpleGlow:MaterialExpressionMultiply_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionParticleColor'M_SimpleGlow:MaterialExpressionParticleColor_0'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      B=(Expression="/Script/Engine.MaterialExpressionParticleColor'M_SimpleGlow:MaterialExpressionParticleColor_0'",OutputIndex=4,Mask=1,MaskA=1)
+      MaterialExpressionEditorX=-544
+      MaterialExpressionEditorY=-32
+      MaterialExpressionGuid=B8DCF2934B330EDD4B42A5B8812556E7
+      Material="/Script/Engine.Material'M_SimpleGlow'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_1" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_SimpleGlow.M_SimpleGlow:MaterialExpressionLinearInterpolate_1'"
+      A=(Expression="/Script/Engine.MaterialExpressionParticleColor'M_SimpleGlow:MaterialExpressionParticleColor_0'",OutputIndex=4,Mask=1,MaskA=1)
+      B=(Expression="/Script/Engine.MaterialExpressionVectorParameter'M_SimpleGlow:MaterialExpressionVectorParameter_0'",OutputIndex=4,Mask=1,MaskA=1)
+      Alpha=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_SimpleGlow:MaterialExpressionScalarParameter_0'")
+      MaterialExpressionEditorX=-224
+      MaterialExpressionEditorY=192
+      MaterialExpressionGuid=F29C82534244B79662F03885E11A8D7A
+      Material="/Script/Engine.Material'M_SimpleGlow'"
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_0" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_SimpleGlow.M_SimpleGlow:MaterialExpressionLinearInterpolate_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionMultiply'M_SimpleGlow:MaterialExpressionMultiply_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionMultiply'M_SimpleGlow:MaterialExpressionMultiply_1'")
+      Alpha=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_SimpleGlow:MaterialExpressionScalarParameter_0'")
+      MaterialExpressionEditorX=-224
+      MaterialExpressionEditorY=-32
+      MaterialExpressionGuid=CEFEAFAB4B32AAB64FFAC58FB0443853
+      Material="/Script/Engine.Material'M_SimpleGlow'"
+   End Object
+   Begin Object Name="M_SimpleGlowEditorOnlyData" ExportPath="/Script/Engine.MaterialEditorOnlyData'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_SimpleGlow.M_SimpleGlow:M_SimpleGlowEditorOnlyData'"
+      BaseColor=(UseConstant=True,Constant=(R=0.500000,G=0.500000,B=0.500000,A=1.000000))
+      Metallic=(UseConstant=True)
+      Specular=(UseConstant=True)
+      Roughness=(UseConstant=True)
+      Normal=(UseConstant=True)
+      Tangent=(UseConstant=True)
+      EmissiveColor=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'M_SimpleGlow:MaterialExpressionLinearInterpolate_0'")
+      Opacity=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'M_SimpleGlow:MaterialExpressionLinearInterpolate_1'")
+      OpacityMask=(UseConstant=True)
+      SubsurfaceColor=(UseConstant=True)
+      ClearCoat=(UseConstant=True)
+      ClearCoatRoughness=(UseConstant=True)
+      AmbientOcclusion=(UseConstant=True)
+      Refraction=(UseConstant=True)
+      CustomizedUVs(0)=(UseConstant=True)
+      CustomizedUVs(1)=(UseConstant=True)
+      CustomizedUVs(2)=(UseConstant=True)
+      CustomizedUVs(3)=(UseConstant=True)
+      CustomizedUVs(4)=(UseConstant=True)
+      CustomizedUVs(5)=(UseConstant=True)
+      CustomizedUVs(6)=(UseConstant=True)
+      CustomizedUVs(7)=(UseConstant=True)
+      SurfaceThickness=(UseConstant=True)
+      ExpressionCollection=(Expressions=("/Script/Engine.MaterialExpressionMultiply'M_SimpleGlow:MaterialExpressionMultiply_0'","/Script/Engine.MaterialExpressionParticleColor'M_SimpleGlow:MaterialExpressionParticleColor_0'","/Script/Engine.MaterialExpressionVectorParameter'M_SimpleGlow:MaterialExpressionVectorParameter_0'","/Script/Engine.MaterialExpressionLinearInterpolate'M_SimpleGlow:MaterialExpressionLinearInterpolate_0'","/Script/Engine.MaterialExpressionMultiply'M_SimpleGlow:MaterialExpressionMultiply_1'","/Script/Engine.MaterialExpressionScalarParameter'M_SimpleGlow:MaterialExpressionScalarParameter_0'","/Script/Engine.MaterialExpressionLinearInterpolate'M_SimpleGlow:MaterialExpressionLinearInterpolate_1'"))
+      ParameterGroupData(0)=(GroupName="None")
+   End Object
+   BlendMode=BLEND_Translucent
+   ShadingModel=MSM_Unlit
+   ShadingModels=(ShadingModelField=1)
+   TwoSided=True
+   bUsedWithNiagaraMeshParticles=True
+   bUsedWithNanite=True
+   EditorY=2
+   bCanMaskedBeAssumedOpaque=True
+   StateId=63D6ED3840FD4A6489E30497FEF7012F
+   EditorOnlyData="/Script/Engine.MaterialEditorOnlyData'M_SimpleGlowEditorOnlyData'"
+   LightingGuid=50C6E52843E1E9719F2056AFEF1631AB
+End Object

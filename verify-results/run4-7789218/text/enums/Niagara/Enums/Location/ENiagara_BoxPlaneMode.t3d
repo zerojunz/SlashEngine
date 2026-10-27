@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagara_BoxPlaneMode" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/Location/ENiagara_BoxPlaneMode.ENiagara_BoxPlaneMode'"
+   UniqueNameIndex=2
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[A1F8A877427B9519EDCF94A1D864FCF9]", "B5B351A84B97A6626986E892A010B0E8", "Box")),("NewEnumerator1", NSLOCTEXT("[A1F8A877427B9519EDCF94A1D864FCF9]", "E5A1A18149C88911C19EE79F5FDD0B79", "Plane")))
+End Object

@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagara_ConeMode" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/Location/ENiagara_ConeMode.ENiagara_ConeMode'"
+   UniqueNameIndex=2
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[5387F72F4975C90438F986B1E4586ECE]", "18E053FD4CEA0B4A2CDB84A15396528F", "Spherical Cone")),("NewEnumerator1", NSLOCTEXT("[5387F72F4975C90438F986B1E4586ECE]", "1E392964443566A0CBB99C80D99535F1", "Spherical Wedge")))
+End Object

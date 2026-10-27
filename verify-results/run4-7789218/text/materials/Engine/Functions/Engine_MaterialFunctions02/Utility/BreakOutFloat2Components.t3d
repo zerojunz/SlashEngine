@@ -1,0 +1,73 @@
+Begin Object Class=/Script/Engine.MaterialFunction Name="BreakOutFloat2Components" ExportPath="/Script/Engine.MaterialFunction'/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat2Components.BreakOutFloat2Components'"
+   Begin Object Class=/Script/Engine.MaterialFunctionEditorOnlyData Name="BreakOutFloat2ComponentsEditorOnlyData" ExportPath="/Script/Engine.MaterialFunctionEditorOnlyData'/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat2Components.BreakOutFloat2Components:BreakOutFloat2ComponentsEditorOnlyData'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComponentMask Name="MaterialExpressionComponentMask_42" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat2Components.BreakOutFloat2Components:MaterialExpressionComponentMask_42'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComponentMask Name="MaterialExpressionComponentMask_43" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat2Components.BreakOutFloat2Components:MaterialExpressionComponentMask_43'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionInput Name="MaterialExpressionFunctionInput_11" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat2Components.BreakOutFloat2Components:MaterialExpressionFunctionInput_11'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionOutput Name="MaterialExpressionFunctionOutput_0" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat2Components.BreakOutFloat2Components:MaterialExpressionFunctionOutput_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionOutput Name="MaterialExpressionFunctionOutput_2" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat2Components.BreakOutFloat2Components:MaterialExpressionFunctionOutput_2'"
+   End Object
+   Begin Object Class=/Script/UnrealEd.SceneThumbnailInfoWithPrimitive Name="SceneThumbnailInfoWithPrimitive_17" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat2Components.BreakOutFloat2Components:SceneThumbnailInfoWithPrimitive_17'"
+   End Object
+   Begin Object Name="BreakOutFloat2ComponentsEditorOnlyData" ExportPath="/Script/Engine.MaterialFunctionEditorOnlyData'/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat2Components.BreakOutFloat2Components:BreakOutFloat2ComponentsEditorOnlyData'"
+      ExpressionCollection=(Expressions=("/Script/Engine.MaterialExpressionFunctionOutput'BreakOutFloat2Components:MaterialExpressionFunctionOutput_0'","/Script/Engine.MaterialExpressionFunctionInput'BreakOutFloat2Components:MaterialExpressionFunctionInput_11'","/Script/Engine.MaterialExpressionComponentMask'BreakOutFloat2Components:MaterialExpressionComponentMask_42'","/Script/Engine.MaterialExpressionComponentMask'BreakOutFloat2Components:MaterialExpressionComponentMask_43'","/Script/Engine.MaterialExpressionFunctionOutput'BreakOutFloat2Components:MaterialExpressionFunctionOutput_2'"))
+   End Object
+   Begin Object Name="MaterialExpressionComponentMask_42" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat2Components.BreakOutFloat2Components:MaterialExpressionComponentMask_42'"
+      Input=(Expression="/Script/Engine.MaterialExpressionFunctionInput'BreakOutFloat2Components:MaterialExpressionFunctionInput_11'")
+      R=True
+      MaterialExpressionEditorX=-452
+      MaterialExpressionEditorY=330
+      MaterialExpressionGuid=EAB237B349D959C3BB69C498085658CC
+      Function="/Script/Engine.MaterialFunction'BreakOutFloat2Components'"
+   End Object
+   Begin Object Name="MaterialExpressionComponentMask_43" ExportPath="/Script/Engine.MaterialExpressionComponentMask'/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat2Components.BreakOutFloat2Components:MaterialExpressionComponentMask_43'"
+      Input=(Expression="/Script/Engine.MaterialExpressionFunctionInput'BreakOutFloat2Components:MaterialExpressionFunctionInput_11'")
+      G=True
+      MaterialExpressionEditorX=-450
+      MaterialExpressionEditorY=397
+      MaterialExpressionGuid=7947CCD14E73765B5EDD359C5B70982F
+      Function="/Script/Engine.MaterialFunction'BreakOutFloat2Components'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionInput_11" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat2Components.BreakOutFloat2Components:MaterialExpressionFunctionInput_11'"
+      InputName="Float2"
+      Id=0FC5C56B4335798F20CB928CF1C87421
+      InputType=FunctionInput_Vector2
+      bUsePreviewValueAsDefault=True
+      MaterialExpressionEditorX=-651
+      MaterialExpressionEditorY=375
+      MaterialExpressionGuid=BAACE1E8433F763077596BBD7BF91A1A
+      Function="/Script/Engine.MaterialFunction'BreakOutFloat2Components'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionOutput_0" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat2Components.BreakOutFloat2Components:MaterialExpressionFunctionOutput_0'"
+      OutputName="R"
+      A=(Expression="/Script/Engine.MaterialExpressionComponentMask'BreakOutFloat2Components:MaterialExpressionComponentMask_42'")
+      bLastPreviewed=True
+      Id=6BC893C247FCFC567178CE944E213385
+      MaterialExpressionEditorX=-226
+      MaterialExpressionEditorY=295
+      MaterialExpressionGuid=5110AB184AF910CD76E5C2B9A4C30B97
+      Function="/Script/Engine.MaterialFunction'BreakOutFloat2Components'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionOutput_2" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat2Components.BreakOutFloat2Components:MaterialExpressionFunctionOutput_2'"
+      OutputName="G"
+      SortPriority=1
+      A=(Expression="/Script/Engine.MaterialExpressionComponentMask'BreakOutFloat2Components:MaterialExpressionComponentMask_43'")
+      bLastPreviewed=True
+      Id=9720C81E449DF8E5514FCB8A80FD5FA3
+      MaterialExpressionEditorX=-221
+      MaterialExpressionEditorY=453
+      MaterialExpressionGuid=9EF4218C434B4536891C458E88E19FA7
+      Function="/Script/Engine.MaterialFunction'BreakOutFloat2Components'"
+   End Object
+   Begin Object Name="SceneThumbnailInfoWithPrimitive_17" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Engine/Functions/Engine_MaterialFunctions02/Utility/BreakOutFloat2Components.BreakOutFloat2Components:SceneThumbnailInfoWithPrimitive_17'"
+   End Object
+   Description="Enter a float 2 vector into the function and retrieve individual channels back through the scalar outputs."
+   EditorOnlyData="/Script/Engine.MaterialFunctionEditorOnlyData'BreakOutFloat2ComponentsEditorOnlyData'"
+   StateId=22DADBDB40F87C735DFD43AD510A7E06
+   CombinedInputTypes=15
+   ThumbnailInfo="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'SceneThumbnailInfoWithPrimitive_17'"
+End Object

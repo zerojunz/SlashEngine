@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagara_TransformType" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/Transforms/ENiagara_TransformType.ENiagara_TransformType'"
+   UniqueNameIndex=2
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[49DED43844847133C2F137B793491BCD]", "4A47A9B042CA2719C66DBF99A7EDDEE0", "Default")),("NewEnumerator1", NSLOCTEXT("[49DED43844847133C2F137B793491BCD]", "2A05F7C841F27112128682A51BB8DDC7", "Custom Matrix")))
+End Object

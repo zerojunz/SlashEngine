@@ -1,0 +1,127 @@
+Begin Object Class=/Script/Engine.Material Name="M_GradientGlow" ExportPath="/Script/Engine.Material'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow.M_GradientGlow'"
+   Begin Object Class=/Script/Engine.MaterialEditorOnlyData Name="M_GradientGlowEditorOnlyData" ExportPath="/Script/Engine.MaterialEditorOnlyData'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow.M_GradientGlow:M_GradientGlowEditorOnlyData'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionLinearInterpolate Name="MaterialExpressionLinearInterpolate_0" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow.M_GradientGlow:MaterialExpressionLinearInterpolate_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMaterialFunctionCall Name="MaterialExpressionMaterialFunctionCall_0" ExportPath="/Script/Engine.MaterialExpressionMaterialFunctionCall'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow.M_GradientGlow:MaterialExpressionMaterialFunctionCall_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_0" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow.M_GradientGlow:MaterialExpressionMultiply_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_1" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow.M_GradientGlow:MaterialExpressionMultiply_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionParticleColor Name="MaterialExpressionParticleColor_0" ExportPath="/Script/Engine.MaterialExpressionParticleColor'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow.M_GradientGlow:MaterialExpressionParticleColor_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionPower Name="MaterialExpressionPower_0" ExportPath="/Script/Engine.MaterialExpressionPower'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow.M_GradientGlow:MaterialExpressionPower_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionScalarParameter Name="MaterialExpressionScalarParameter_1" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow.M_GradientGlow:MaterialExpressionScalarParameter_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionVectorParameter Name="MaterialExpressionVectorParameter_0" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow.M_GradientGlow:MaterialExpressionVectorParameter_0'"
+   End Object
+   Begin Object Name="M_GradientGlowEditorOnlyData" ExportPath="/Script/Engine.MaterialEditorOnlyData'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow.M_GradientGlow:M_GradientGlowEditorOnlyData'"
+      BaseColor=(UseConstant=True,Constant=(R=0.500000,G=0.500000,B=0.500000,A=1.000000))
+      Metallic=(UseConstant=True)
+      Specular=(UseConstant=True)
+      Roughness=(UseConstant=True)
+      Normal=(UseConstant=True)
+      Tangent=(UseConstant=True)
+      EmissiveColor=(Expression="/Script/Engine.MaterialExpressionMultiply'M_GradientGlow:MaterialExpressionMultiply_0'")
+      Opacity=(Expression="/Script/Engine.MaterialExpressionMultiply'M_GradientGlow:MaterialExpressionMultiply_1'")
+      OpacityMask=(UseConstant=True)
+      SubsurfaceColor=(UseConstant=True)
+      ClearCoat=(UseConstant=True)
+      ClearCoatRoughness=(UseConstant=True)
+      AmbientOcclusion=(UseConstant=True)
+      Refraction=(UseConstant=True)
+      CustomizedUVs(0)=(UseConstant=True)
+      CustomizedUVs(1)=(UseConstant=True)
+      CustomizedUVs(2)=(UseConstant=True)
+      CustomizedUVs(3)=(UseConstant=True)
+      CustomizedUVs(4)=(UseConstant=True)
+      CustomizedUVs(5)=(UseConstant=True)
+      CustomizedUVs(6)=(UseConstant=True)
+      CustomizedUVs(7)=(UseConstant=True)
+      SurfaceThickness=(UseConstant=True)
+      ExpressionCollection=(Expressions=("/Script/Engine.MaterialExpressionMultiply'M_GradientGlow:MaterialExpressionMultiply_0'","/Script/Engine.MaterialExpressionMultiply'M_GradientGlow:MaterialExpressionMultiply_1'","/Script/Engine.MaterialExpressionParticleColor'M_GradientGlow:MaterialExpressionParticleColor_0'","/Script/Engine.MaterialExpressionMaterialFunctionCall'M_GradientGlow:MaterialExpressionMaterialFunctionCall_0'","/Script/Engine.MaterialExpressionPower'M_GradientGlow:MaterialExpressionPower_0'","/Script/Engine.MaterialExpressionVectorParameter'M_GradientGlow:MaterialExpressionVectorParameter_0'","/Script/Engine.MaterialExpressionLinearInterpolate'M_GradientGlow:MaterialExpressionLinearInterpolate_0'","/Script/Engine.MaterialExpressionScalarParameter'M_GradientGlow:MaterialExpressionScalarParameter_1'"))
+      ParameterGroupData(0)=(GroupName="None")
+   End Object
+   Begin Object Name="MaterialExpressionLinearInterpolate_0" ExportPath="/Script/Engine.MaterialExpressionLinearInterpolate'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow.M_GradientGlow:MaterialExpressionLinearInterpolate_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionParticleColor'M_GradientGlow:MaterialExpressionParticleColor_0'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      B=(Expression="/Script/Engine.MaterialExpressionVectorParameter'M_GradientGlow:MaterialExpressionVectorParameter_0'",Mask=1,MaskR=1,MaskG=1,MaskB=1)
+      Alpha=(Expression="/Script/Engine.MaterialExpressionScalarParameter'M_GradientGlow:MaterialExpressionScalarParameter_1'")
+      MaterialExpressionEditorX=-640
+      MaterialExpressionEditorY=48
+      MaterialExpressionGuid=1C7E81244F2A6038E9B40FA0B6D8E43B
+      Material="/Script/Engine.Material'M_GradientGlow'"
+   End Object
+   Begin Object Name="MaterialExpressionMaterialFunctionCall_0" ExportPath="/Script/Engine.MaterialExpressionMaterialFunctionCall'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow.M_GradientGlow:MaterialExpressionMaterialFunctionCall_0'"
+      MaterialFunction="/Script/Engine.MaterialFunction'/Engine/Functions/Engine_MaterialFunctions01/Gradient/LinearGradient.LinearGradient'"
+      FunctionInputs(0)=(ExpressionInputId=956846354D2549E665DAC68533EC21EC,Input=(OutputIndex=-1,InputName="UV Channel"))
+      FunctionOutputs(0)=(ExpressionOutputId=0F11154B443B1137CC9914998FC01F5E,Output=(OutputName="UGradient"))
+      FunctionOutputs(1)=(ExpressionOutputId=D0E9AADC4F9EEDBBFD95F9B3A5165013,Output=(OutputName="VGradient"))
+      MaterialExpressionEditorX=-544
+      MaterialExpressionEditorY=368
+      MaterialExpressionGuid=56FFED194A1A017B36F956976B44A9A5
+      Material="/Script/Engine.Material'M_GradientGlow'"
+      Outputs(0)=(OutputName="UGradient")
+      Outputs(1)=(OutputName="VGradient")
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_0" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow.M_GradientGlow:MaterialExpressionMultiply_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionLinearInterpolate'M_GradientGlow:MaterialExpressionLinearInterpolate_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionParticleColor'M_GradientGlow:MaterialExpressionParticleColor_0'",OutputIndex=4,Mask=1,MaskA=1)
+      MaterialExpressionEditorX=-224
+      MaterialExpressionEditorY=64
+      MaterialExpressionGuid=F0A8B48644560E5A542D17B20D8595E8
+      Material="/Script/Engine.Material'M_GradientGlow'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_1" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow.M_GradientGlow:MaterialExpressionMultiply_1'"
+      A=(Expression="/Script/Engine.MaterialExpressionParticleColor'M_GradientGlow:MaterialExpressionParticleColor_0'",OutputIndex=4,Mask=1,MaskA=1)
+      B=(Expression="/Script/Engine.MaterialExpressionPower'M_GradientGlow:MaterialExpressionPower_0'")
+      MaterialExpressionEditorX=-224
+      MaterialExpressionEditorY=170
+      MaterialExpressionGuid=EB93628743B33D79F341C6B07D37557F
+      Material="/Script/Engine.Material'M_GradientGlow'"
+   End Object
+   Begin Object Name="MaterialExpressionParticleColor_0" ExportPath="/Script/Engine.MaterialExpressionParticleColor'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow.M_GradientGlow:MaterialExpressionParticleColor_0'"
+      MaterialExpressionEditorX=-896
+      MaterialExpressionEditorY=-208
+      MaterialExpressionGuid=B3F075114FAE459E26A34095103762EA
+      Material="/Script/Engine.Material'M_GradientGlow'"
+   End Object
+   Begin Object Name="MaterialExpressionPower_0" ExportPath="/Script/Engine.MaterialExpressionPower'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow.M_GradientGlow:MaterialExpressionPower_0'"
+      Base=(Expression="/Script/Engine.MaterialExpressionMaterialFunctionCall'M_GradientGlow:MaterialExpressionMaterialFunctionCall_0'",OutputIndex=1)
+      ConstExponent=3.000000
+      MaterialExpressionEditorX=-268
+      MaterialExpressionEditorY=396
+      MaterialExpressionGuid=A0EC814949EFD0DBA3D20E8C7D932E76
+      Material="/Script/Engine.Material'M_GradientGlow'"
+   End Object
+   Begin Object Name="MaterialExpressionScalarParameter_1" ExportPath="/Script/Engine.MaterialExpressionScalarParameter'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow.M_GradientGlow:MaterialExpressionScalarParameter_1'"
+      bUseCustomPrimitiveData=True
+      ParameterName="Blend"
+      ExpressionGUID=32A1CA3942F26F607CE859B2482EF8F4
+      MaterialExpressionEditorX=-896
+      MaterialExpressionEditorY=272
+      MaterialExpressionGuid=C349324A460F02C19B59A99C0A7F64F6
+      Material="/Script/Engine.Material'M_GradientGlow'"
+   End Object
+   Begin Object Name="MaterialExpressionVectorParameter_0" ExportPath="/Script/Engine.MaterialExpressionVectorParameter'/Game/LevelPrototyping/Interactable/JumpPad/Assets/Materials/M_GradientGlow.M_GradientGlow:MaterialExpressionVectorParameter_0'"
+      bUseCustomPrimitiveData=True
+      PrimitiveDataIndex=1
+      ParameterName="Col"
+      ExpressionGUID=746018C147EDC5FD0D4F8BA78A3214F0
+      MaterialExpressionEditorX=-912
+      MaterialExpressionEditorY=48
+      MaterialExpressionGuid=F1F071434862EE358F552996A2FBF552
+      Material="/Script/Engine.Material'M_GradientGlow'"
+   End Object
+   BlendMode=BLEND_Translucent
+   ShadingModel=MSM_Unlit
+   ShadingModels=(ShadingModelField=1)
+   TwoSided=True
+   bUsedWithNiagaraMeshParticles=True
+   EditorY=-14
+   bCanMaskedBeAssumedOpaque=True
+   StateId=A9B556E74F461B0793B60ABE9E552C5C
+   EditorOnlyData="/Script/Engine.MaterialEditorOnlyData'M_GradientGlowEditorOnlyData'"
+   LightingGuid=6341334746D3DE0669C5AB86F44F39A3
+End Object

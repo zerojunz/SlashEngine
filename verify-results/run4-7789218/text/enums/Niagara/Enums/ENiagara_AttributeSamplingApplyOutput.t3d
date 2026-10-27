@@ -1,0 +1,4 @@
+Begin Object Class=/Script/Engine.UserDefinedEnum Name="ENiagara_AttributeSamplingApplyOutput" ExportPath="/Script/Engine.UserDefinedEnum'/Niagara/Enums/ENiagara_AttributeSamplingApplyOutput.ENiagara_AttributeSamplingApplyOutput'"
+   UniqueNameIndex=3
+   DisplayNameMap=(("NewEnumerator0", NSLOCTEXT("[C5D8280E45B545742F0E2486EEB1732B]", "517D35A34E45E4CB03A510A55D8E4FF4", "Apply")),("NewEnumerator1", NSLOCTEXT("[C5D8280E45B545742F0E2486EEB1732B]", "2CAD43EA44FB5F94FBD8A58D288A0314", "Output")))
+End Object

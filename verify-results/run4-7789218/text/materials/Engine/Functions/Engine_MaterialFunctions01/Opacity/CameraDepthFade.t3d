@@ -1,0 +1,256 @@
+Begin Object Class=/Script/Engine.MaterialFunction Name="CameraDepthFade" ExportPath="/Script/Engine.MaterialFunction'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade'"
+   Begin Object Class=/Script/Engine.MaterialFunctionEditorOnlyData Name="CameraDepthFadeEditorOnlyData" ExportPath="/Script/Engine.MaterialFunctionEditorOnlyData'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:CameraDepthFadeEditorOnlyData'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionCameraPositionWS Name="MaterialExpressionCameraPositionWS_0" ExportPath="/Script/Engine.MaterialExpressionCameraPositionWS'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionCameraPositionWS_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionClamp Name="MaterialExpressionClamp_1" ExportPath="/Script/Engine.MaterialExpressionClamp'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionClamp_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_0" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionComment_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionComment Name="MaterialExpressionComment_1" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionComment_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionConstant3Vector Name="MaterialExpressionConstant3Vector_2" ExportPath="/Script/Engine.MaterialExpressionConstant3Vector'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionConstant3Vector_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionCustom Name="MaterialExpressionCustom_0" ExportPath="/Script/Engine.MaterialExpressionCustom'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionCustom_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionDivide Name="MaterialExpressionDivide_2" ExportPath="/Script/Engine.MaterialExpressionDivide'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionDivide_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionDivide Name="MaterialExpressionDivide_3" ExportPath="/Script/Engine.MaterialExpressionDivide'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionDivide_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionDotProduct Name="MaterialExpressionDotProduct_1" ExportPath="/Script/Engine.MaterialExpressionDotProduct'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionDotProduct_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionInput Name="MaterialExpressionFunctionInput_2" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionFunctionInput_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionInput Name="MaterialExpressionFunctionInput_5" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionFunctionInput_5'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionInput Name="MaterialExpressionFunctionInput_6" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionFunctionInput_6'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionFunctionOutput Name="MaterialExpressionFunctionOutput_0" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionFunctionOutput_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionMultiply Name="MaterialExpressionMultiply_0" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionMultiply_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionNormalize Name="MaterialExpressionNormalize_1" ExportPath="/Script/Engine.MaterialExpressionNormalize'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionNormalize_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionPixelDepth Name="MaterialExpressionPixelDepth_0" ExportPath="/Script/Engine.MaterialExpressionPixelDepth'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionPixelDepth_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionStaticBool Name="MaterialExpressionStaticBool_1" ExportPath="/Script/Engine.MaterialExpressionStaticBool'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionStaticBool_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionStaticSwitch Name="MaterialExpressionStaticSwitch_0" ExportPath="/Script/Engine.MaterialExpressionStaticSwitch'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionStaticSwitch_0'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSubtract Name="MaterialExpressionSubtract_1" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionSubtract_1'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSubtract Name="MaterialExpressionSubtract_3" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionSubtract_3'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionSubtract Name="MaterialExpressionSubtract_4" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionSubtract_4'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionTransform Name="MaterialExpressionTransform_2" ExportPath="/Script/Engine.MaterialExpressionTransform'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionTransform_2'"
+   End Object
+   Begin Object Class=/Script/Engine.MaterialExpressionWorldPosition Name="MaterialExpressionWorldPosition_0" ExportPath="/Script/Engine.MaterialExpressionWorldPosition'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionWorldPosition_0'"
+   End Object
+   Begin Object Class=/Script/UnrealEd.SceneThumbnailInfoWithPrimitive Name="SceneThumbnailInfoWithPrimitive_2" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:SceneThumbnailInfoWithPrimitive_2'"
+   End Object
+   Begin Object Name="CameraDepthFadeEditorOnlyData" ExportPath="/Script/Engine.MaterialFunctionEditorOnlyData'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:CameraDepthFadeEditorOnlyData'"
+      ExpressionCollection=(Expressions=("/Script/Engine.MaterialExpressionFunctionOutput'CameraDepthFade:MaterialExpressionFunctionOutput_0'","/Script/Engine.MaterialExpressionWorldPosition'CameraDepthFade:MaterialExpressionWorldPosition_0'","/Script/Engine.MaterialExpressionCameraPositionWS'CameraDepthFade:MaterialExpressionCameraPositionWS_0'","/Script/Engine.MaterialExpressionPixelDepth'CameraDepthFade:MaterialExpressionPixelDepth_0'","/Script/Engine.MaterialExpressionSubtract'CameraDepthFade:MaterialExpressionSubtract_3'","/Script/Engine.MaterialExpressionFunctionInput'CameraDepthFade:MaterialExpressionFunctionInput_2'","/Script/Engine.MaterialExpressionFunctionInput'CameraDepthFade:MaterialExpressionFunctionInput_5'","/Script/Engine.MaterialExpressionDivide'CameraDepthFade:MaterialExpressionDivide_2'","/Script/Engine.MaterialExpressionClamp'CameraDepthFade:MaterialExpressionClamp_1'","/Script/Engine.MaterialExpressionSubtract'CameraDepthFade:MaterialExpressionSubtract_1'","/Script/Engine.MaterialExpressionSubtract'CameraDepthFade:MaterialExpressionSubtract_4'","/Script/Engine.MaterialExpressionDivide'CameraDepthFade:MaterialExpressionDivide_3'","/Script/Engine.MaterialExpressionCustom'CameraDepthFade:MaterialExpressionCustom_0'","/Script/Engine.MaterialExpressionStaticSwitch'CameraDepthFade:MaterialExpressionStaticSwitch_0'","/Script/Engine.MaterialExpressionFunctionInput'CameraDepthFade:MaterialExpressionFunctionInput_6'","/Script/Engine.MaterialExpressionStaticBool'CameraDepthFade:MaterialExpressionStaticBool_1'","/Script/Engine.MaterialExpressionNormalize'CameraDepthFade:MaterialExpressionNormalize_1'","/Script/Engine.MaterialExpressionConstant3Vector'CameraDepthFade:MaterialExpressionConstant3Vector_2'","/Script/Engine.MaterialExpressionTransform'CameraDepthFade:MaterialExpressionTransform_2'","/Script/Engine.MaterialExpressionDotProduct'CameraDepthFade:MaterialExpressionDotProduct_1'","/Script/Engine.MaterialExpressionMultiply'CameraDepthFade:MaterialExpressionMultiply_0'"),EditorComments=("/Script/Engine.MaterialExpressionComment'CameraDepthFade:MaterialExpressionComment_0'","/Script/Engine.MaterialExpressionComment'CameraDepthFade:MaterialExpressionComment_1'"))
+   End Object
+   Begin Object Name="MaterialExpressionCameraPositionWS_0" ExportPath="/Script/Engine.MaterialExpressionCameraPositionWS'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionCameraPositionWS_0'"
+      MaterialExpressionEditorX=-2240
+      MaterialExpressionEditorY=-420
+      MaterialExpressionGuid=E3256DFB41EA68C023770C9A374850FC
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionClamp_1" ExportPath="/Script/Engine.MaterialExpressionClamp'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionClamp_1'"
+      Input=(Expression="/Script/Engine.MaterialExpressionStaticSwitch'CameraDepthFade:MaterialExpressionStaticSwitch_0'")
+      MaterialExpressionEditorX=-400
+      MaterialExpressionEditorY=560
+      MaterialExpressionGuid=991ED08540CD6E870C19EB89F47B52F6
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_0" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionComment_0'"
+      SizeX=817
+      SizeY=415
+      Text="Vertex Shader Version"
+      MaterialExpressionEditorX=-2322
+      MaterialExpressionEditorY=-482
+      MaterialExpressionGuid=A7710090437F8826BBB0C486C93B7541
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionComment_1" ExportPath="/Script/Engine.MaterialExpressionComment'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionComment_1'"
+      SizeX=1032
+      SizeY=355
+      Text="Z Vector"
+      MaterialExpressionEditorX=-2540
+      MaterialExpressionEditorY=20
+      MaterialExpressionGuid=D126F9C649C016C48E4722A2C18E3940
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionConstant3Vector_2" ExportPath="/Script/Engine.MaterialExpressionConstant3Vector'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionConstant3Vector_2'"
+      Constant=(R=0.000000,G=0.000000,B=-1.000000,A=0.000000)
+      MaterialExpressionEditorX=-2477
+      MaterialExpressionEditorY=142
+      MaterialExpressionGuid=630D5E904155015C9CADF18796B09942
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionCustom_0" ExportPath="/Script/Engine.MaterialExpressionCustom'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionCustom_0'"
+      Code="length(x)"
+      Inputs(0)=(InputName="x",Input=(Expression="/Script/Engine.MaterialExpressionSubtract'CameraDepthFade:MaterialExpressionSubtract_1'"))
+      MaterialExpressionEditorX=-1700
+      MaterialExpressionEditorY=-360
+      MaterialExpressionGuid=D67472FC483A9AA340936BB41E81AB71
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionDivide_2" ExportPath="/Script/Engine.MaterialExpressionDivide'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionDivide_2'"
+      A=(Expression="/Script/Engine.MaterialExpressionSubtract'CameraDepthFade:MaterialExpressionSubtract_3'")
+      B=(Expression="/Script/Engine.MaterialExpressionFunctionInput'CameraDepthFade:MaterialExpressionFunctionInput_2'")
+      MaterialExpressionEditorX=-1080
+      MaterialExpressionEditorY=860
+      MaterialExpressionGuid=53325ECD42210FA20F5EEFB6E6E60287
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionDivide_3" ExportPath="/Script/Engine.MaterialExpressionDivide'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionDivide_3'"
+      A=(Expression="/Script/Engine.MaterialExpressionSubtract'CameraDepthFade:MaterialExpressionSubtract_4'")
+      B=(Expression="/Script/Engine.MaterialExpressionFunctionInput'CameraDepthFade:MaterialExpressionFunctionInput_2'")
+      MaterialExpressionEditorX=-720
+      MaterialExpressionEditorY=260
+      MaterialExpressionGuid=414A3CC74C42BE43B55D71BD99DFF418
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionDotProduct_1" ExportPath="/Script/Engine.MaterialExpressionDotProduct'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionDotProduct_1'"
+      A=(Expression="/Script/Engine.MaterialExpressionNormalize'CameraDepthFade:MaterialExpressionNormalize_1'")
+      B=(Expression="/Script/Engine.MaterialExpressionTransform'CameraDepthFade:MaterialExpressionTransform_2'")
+      MaterialExpressionEditorX=-1657
+      MaterialExpressionEditorY=82
+      MaterialExpressionGuid=2B42DE784DBB459542801AB5B00B6D7B
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionInput_2" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionFunctionInput_2'"
+      InputName="Fade Length"
+      Description="How many units it takes to fade from 0 to 1"
+      Id=79FFEA6C4F3A46F51F8E50A349E4BB4B
+      InputType=FunctionInput_Scalar
+      PreviewValue=(X=512.000000,Y=0.000000,Z=0.000000,W=1.000000)
+      bUsePreviewValueAsDefault=True
+      MaterialExpressionEditorX=-2000
+      MaterialExpressionEditorY=1260
+      MaterialExpressionGuid=7AD059154E8DEDE0729ADF941B5885A4
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionInput_5" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionFunctionInput_5'"
+      InputName="Fade Offset"
+      Description="Offsets the fade"
+      Id=D5EC0E2F4DB888679BFC2A8B921262ED
+      InputType=FunctionInput_Scalar
+      PreviewValue=(X=24.000000,Y=0.000000,Z=0.000000,W=1.000000)
+      bUsePreviewValueAsDefault=True
+      SortPriority=1
+      MaterialExpressionEditorX=-2000
+      MaterialExpressionEditorY=980
+      MaterialExpressionGuid=AC414D8F4390859F50A1C8A3F12EC1C9
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionInput_6" ExportPath="/Script/Engine.MaterialExpressionFunctionInput'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionFunctionInput_6'"
+      Preview=(Expression="/Script/Engine.MaterialExpressionStaticBool'CameraDepthFade:MaterialExpressionStaticBool_1'")
+      InputName="For Vertex Shader"
+      Description="Default = False. Computes depth using CameraPos instead of PixelDepth so that it is usable with WorldPositionOffset shaders"
+      Id=7B4195E6455691CA3782398687468578
+      InputType=FunctionInput_StaticBool
+      PreviewValue=(X=64.000000,Y=0.000000,Z=0.000000,W=1.000000)
+      bUsePreviewValueAsDefault=True
+      SortPriority=2
+      MaterialExpressionEditorX=-2160
+      MaterialExpressionEditorY=460
+      MaterialExpressionGuid=9FE79E7D479F1DDB6EE63CB0EC881582
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionFunctionOutput_0" ExportPath="/Script/Engine.MaterialExpressionFunctionOutput'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionFunctionOutput_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionClamp'CameraDepthFade:MaterialExpressionClamp_1'")
+      bLastPreviewed=True
+      Id=160C00424E845E293F44DCBE13738CEE
+      MaterialExpressionEditorX=-40
+      MaterialExpressionEditorY=500
+      MaterialExpressionGuid=A7E23C4E411A1E0777327CA5E9806972
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionMultiply_0" ExportPath="/Script/Engine.MaterialExpressionMultiply'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionMultiply_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionCustom'CameraDepthFade:MaterialExpressionCustom_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionDotProduct'CameraDepthFade:MaterialExpressionDotProduct_1'")
+      MaterialExpressionEditorX=-1340
+      MaterialExpressionEditorY=20
+      MaterialExpressionGuid=32C1AD1E4154E15D8FB251AF9FE0ADBE
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionNormalize_1" ExportPath="/Script/Engine.MaterialExpressionNormalize'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionNormalize_1'"
+      VectorInput=(Expression="/Script/Engine.MaterialExpressionSubtract'CameraDepthFade:MaterialExpressionSubtract_1'")
+      MaterialExpressionEditorX=-1960
+      MaterialExpressionEditorY=-200
+      MaterialExpressionGuid=F59A5DC14244FA6773AC6E978143B58E
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionPixelDepth_0" ExportPath="/Script/Engine.MaterialExpressionPixelDepth'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionPixelDepth_0'"
+      MaterialExpressionEditorX=-1780
+      MaterialExpressionEditorY=700
+      MaterialExpressionGuid=4DA2663E444F01E7ADEF0B84306FF406
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionStaticBool_1" ExportPath="/Script/Engine.MaterialExpressionStaticBool'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionStaticBool_1'"
+      MaterialExpressionEditorX=-2520
+      MaterialExpressionEditorY=580
+      MaterialExpressionGuid=7BC899F64E0203BA4016A7BFA3D365C3
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionStaticSwitch_0" ExportPath="/Script/Engine.MaterialExpressionStaticSwitch'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionStaticSwitch_0'"
+      A=(Expression="/Script/Engine.MaterialExpressionDivide'CameraDepthFade:MaterialExpressionDivide_3'")
+      B=(Expression="/Script/Engine.MaterialExpressionDivide'CameraDepthFade:MaterialExpressionDivide_2'")
+      Value=(Expression="/Script/Engine.MaterialExpressionFunctionInput'CameraDepthFade:MaterialExpressionFunctionInput_6'")
+      MaterialExpressionEditorX=-680
+      MaterialExpressionEditorY=540
+      MaterialExpressionGuid=B4FF09B546D3D311244723A05FC48640
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionSubtract_1" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionSubtract_1'"
+      A=(Expression="/Script/Engine.MaterialExpressionCameraPositionWS'CameraDepthFade:MaterialExpressionCameraPositionWS_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionWorldPosition'CameraDepthFade:MaterialExpressionWorldPosition_0'")
+      MaterialExpressionEditorX=-1940
+      MaterialExpressionEditorY=-360
+      MaterialExpressionGuid=A2E94A9243E71711B2CEE1B215DE245F
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionSubtract_3" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionSubtract_3'"
+      A=(Expression="/Script/Engine.MaterialExpressionPixelDepth'CameraDepthFade:MaterialExpressionPixelDepth_0'",Mask=1,MaskR=1)
+      B=(Expression="/Script/Engine.MaterialExpressionFunctionInput'CameraDepthFade:MaterialExpressionFunctionInput_5'")
+      MaterialExpressionEditorX=-1420
+      MaterialExpressionEditorY=780
+      MaterialExpressionGuid=A41B6AB94EF4E0361F8EBABAD10028A8
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionSubtract_4" ExportPath="/Script/Engine.MaterialExpressionSubtract'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionSubtract_4'"
+      A=(Expression="/Script/Engine.MaterialExpressionMultiply'CameraDepthFade:MaterialExpressionMultiply_0'")
+      B=(Expression="/Script/Engine.MaterialExpressionFunctionInput'CameraDepthFade:MaterialExpressionFunctionInput_5'")
+      MaterialExpressionEditorX=-1060
+      MaterialExpressionEditorY=180
+      MaterialExpressionGuid=087CD20D466D21636BA88888408D8BC5
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionTransform_2" ExportPath="/Script/Engine.MaterialExpressionTransform'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionTransform_2'"
+      Input=(Expression="/Script/Engine.MaterialExpressionConstant3Vector'CameraDepthFade:MaterialExpressionConstant3Vector_2'")
+      TransformSourceType=TRANSFORMSOURCE_View
+      MaterialExpressionEditorX=-2097
+      MaterialExpressionEditorY=142
+      MaterialExpressionGuid=F0800ACE4E90B08BC8BABBAE6059E47C
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="MaterialExpressionWorldPosition_0" ExportPath="/Script/Engine.MaterialExpressionWorldPosition'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:MaterialExpressionWorldPosition_0'"
+      MaterialExpressionEditorX=-2260
+      MaterialExpressionEditorY=-320
+      MaterialExpressionGuid=E327B1DC497DB5C8C87B5C84499FEADA
+      Function="/Script/Engine.MaterialFunction'CameraDepthFade'"
+   End Object
+   Begin Object Name="SceneThumbnailInfoWithPrimitive_2" ExportPath="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade:SceneThumbnailInfoWithPrimitive_2'"
+   End Object
+   Description="Creates a gradient of 0 near the camera to white at Fade Length. Useful for preventing particles from camera clipping.0"
+   bExposeToLibrary=True
+   EditorOnlyData="/Script/Engine.MaterialFunctionEditorOnlyData'CameraDepthFadeEditorOnlyData'"
+   StateId=DB3E993F4E2E98B305AD13B92D8C5DA5
+   CombinedInputTypes=143
+   CombinedOutputTypes=15
+   ThumbnailInfo="/Script/UnrealEd.SceneThumbnailInfoWithPrimitive'SceneThumbnailInfoWithPrimitive_2'"
+End Object
