@@ -46,7 +46,7 @@ slash-cli run [options]
 | `--max-fps <n>` | Frames per second at most, 0 to 1000; `0` (default) means no cap |
 | `--driver <name>` | The render driver: `auto` (default), `vulkan`, `metal`, `d3d12`, `opengl`, `opengl_es`, `webgpu` (web exports only) or `null`, as [`rendering.driver`](project-format.md). A GPU driver falls back to `opengl` where its backend doesn't work, unless the project's [`rendering.fallback_to_opengl`](project-format.md) is `false` |
 | `--scene <file>` | Load a `.scene.json` file before the first tick |
-| `--save <file>` | Save the scene to this file after the last tick |
+| `--save <file>` | Save the scene to this file after the last tick, making its folder if needed |
 | `--record <file>` | Record the run to a [`.replay.json`](scene-format.md#replays) file inside the project, written when the game stops |
 | `--debug-overlay` | Show the [debug panel](#the-debug-overlay) from the start; F3 shows and hides it |
 | `--debug-collisions` | Draw every collision shape over the world, as Godot's `--debug-collisions` |
@@ -410,7 +410,7 @@ slash-cli call <command> [params] [options]
 
 | Flag | Meaning |
 | --- | --- |
-| `--scene <file>` | Open this scene first, or start a new one that will be saved there |
+| `--scene <file>` | Open this scene first, or start a new one that will be saved there (with a warning on stderr, in case the path is misspelled) |
 | `--save` | Save the scene after the command succeeds |
 | `--project <dir>` | Folder that scene paths are relative to (default `.`) |
 | `--allow <list>` | Capabilities: `read`, `edit`, `run`, `filesystem`, `build`, `network` or `all` (default `all`) |
