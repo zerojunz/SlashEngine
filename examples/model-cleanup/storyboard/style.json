@@ -1,0 +1,11 @@
+{
+  "entries": {
+    "budget/props": {
+      "links": ["props"],
+      "name": "Props",
+      "summary": "Small things the player walks past.",
+      "triangles": 600
+    }
+  },
+  "format": 1
+}

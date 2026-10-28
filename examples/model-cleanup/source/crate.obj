@@ -1,0 +1,16 @@
+# A crate from a CAD tool: millimeters, z up, no texture coordinates.
+o Crate
+v 0 0 0
+v 600 0 0
+v 600 400 0
+v 0 400 0
+v 0 0 450
+v 600 0 450
+v 600 400 450
+v 0 400 450
+f 1 4 3 2
+f 5 6 7 8
+f 1 2 6 5
+f 2 3 7 6
+f 3 4 8 7
+f 4 1 5 8

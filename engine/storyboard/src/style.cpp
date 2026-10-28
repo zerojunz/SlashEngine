@@ -352,6 +352,18 @@ void check_models(const json::Object& entries, const std::vector<std::string>& m
     }
 }
 
+std::optional<BudgetLimit> budget_for(const json::Object& entries, std::string_view path,
+                                      std::string_view field) {
+    std::optional<BudgetLimit> tightest;
+    for (const auto& [id, budget] : of_kind(entries, "budget")) {
+        const std::int64_t most = integer(*budget, field);
+        if (most > 0 && budget_covers(*budget, path) && (!tightest || most < tightest->most)) {
+            tightest = BudgetLimit{.id = id, .most = most};
+        }
+    }
+    return tightest;
+}
+
 json::Array style_edits(const json::Object& entries, const std::vector<Accepted>& accepted) {
     json::Array edits;
     std::set<std::string> taken;

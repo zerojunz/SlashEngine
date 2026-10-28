@@ -32,6 +32,7 @@ target_compile_options(slash_meshoptimizer PRIVATE
 add_library(slash_scene3d
     src/blend.cpp
     src/bone_attachment.cpp
+    src/cleanup.cpp
     src/csg.cpp
     src/fbx.cpp
     src/gltf_writer.cpp

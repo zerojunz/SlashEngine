@@ -11,6 +11,7 @@
 #include "slash/core/text.hpp"
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
+#include "slash/scene3d/cleanup.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/scene3d/skeleton.hpp"
@@ -21,6 +22,7 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -1964,4 +1966,79 @@ TEST_CASE("node tracks in animation files move the nodes of the model the entity
                         "tracks move the nodes of the model the entity draws, but it draws none: "
                         "give it a MeshInstance3D whose mesh is a model file",
                     });
+}
+
+TEST_CASE("cleanup_model stands a model up at its size and budget, and write_glb keeps it whole") {
+    // A lamp modeled with z up: a shade of some two thousand triangles on a post along z.
+    MemoryFiles files;
+    files.files["props/lamp.model.json"] = R"({"format": 1, "parts": [
+        {"name": "shade", "shape": "sphere", "radius": 0.2, "rings": 24, "radial_segments": 48},
+        {"name": "post", "shape": "box", "size": [0.1, 0.1, 1.0], "position": [0, 0, 0.5]}]})";
+    auto loaded = load(files, "props/lamp.model.json");
+    REQUIRE_MESSAGE(loaded.ok(), error_of(loaded));
+    scene3d::Model model = loaded.value();
+    const scene3d::Bounds before = scene3d::bounds(model);
+    CHECK(near(before.min.z, -0.2F));
+    CHECK(near(before.max.z, 1.0F));
+
+    auto report = scene3d::cleanup_model(
+        model, {.up = "z", .height = 2.4F, .pivot = Vec3{0.5F, 0.0F, 0.5F}, .triangles = 300});
+    REQUIRE_MESSAGE(report.ok(), error_of(report));
+    CHECK(report.value().triangles_before > 2000);
+    CHECK(report.value().triangles <= 300);
+    CHECK(report.value().triangles > 100);
+    // Up along y, twice as large, standing on the ground at the origin.
+    const scene3d::Bounds after = scene3d::bounds(model);
+    CHECK(std::abs(after.min.y) < 1e-4F);
+    CHECK(std::abs(after.max.y - 2.4F) < 1e-4F);
+    // The simplified shade is a little narrower than the sphere was.
+    CHECK(std::abs(after.max.x - 0.4F) < 0.01F);
+    CHECK(std::abs(after.min.x + 0.4F) < 0.01F);
+    CHECK(std::abs(after.max.z + after.min.z) < 1e-4F);
+    for (const scene3d::ModelMesh& mesh : model.meshes) {
+        for (const scene3d::ModelSurface& surface : mesh.surfaces) {
+            CHECK(clockwise(surface));
+        }
+    }
+
+    // A .glb file reads back as the same model.
+    auto glb = scene3d::write_glb(model, "props/lamp.glb", files.reader());
+    REQUIRE_MESSAGE(glb.ok(), error_of(glb));
+    CHECK(glb.value().starts_with("glTF"));
+    files.files["props/lamp.glb"] = glb.value();
+    auto back = load(files, "props/lamp.glb");
+    REQUIRE_MESSAGE(back.ok(), error_of(back));
+    CHECK(scene3d::summarize(back.value()).triangles == report.value().triangles);
+    const scene3d::Bounds read = scene3d::bounds(back.value());
+    CHECK(near(read.min, after.min));
+    CHECK(near(read.max, after.max));
+
+    // A surface with one texture coordinate everywhere is unwrapped; up it doesn't know, a
+    // budget it can't reach and skinned models are refused.
+    scene3d::Model plain;
+    plain.meshes.push_back({.name = "Card", .surfaces = {}});
+    scene3d::ModelSurface card;
+    for (const auto& [x, y] : std::array<std::array<float, 2>, 4>{
+             {{-1.0F, -1.0F}, {1.0F, -1.0F}, {1.0F, 1.0F}, {-1.0F, 1.0F}}}) {
+        render::Vertex3D vertex{};
+        vertex.position = {x, y, 0.0F};
+        vertex.normal = {0.0F, 0.0F, 1.0F};
+        card.vertices.push_back(vertex);
+    }
+    card.indices = {0, 2, 1, 0, 3, 2};
+    plain.meshes[0].surfaces.push_back(card);
+    plain.parts.push_back({.node = "Card", .mesh = 0, .transform = {}});
+    scene3d::Model unwrapped = plain;
+    auto uvs = scene3d::cleanup_model(unwrapped, {.uvs = true});
+    REQUIRE_MESSAGE(uvs.ok(), error_of(uvs));
+    CHECK(uvs.value().unwrapped == 1);
+    const auto& corners = unwrapped.meshes[0].surfaces[0].vertices;
+    CHECK(std::ranges::any_of(
+        corners, [&](const render::Vertex3D& v) { return v.uv != corners.front().uv; }));
+    scene3d::Model other = plain;
+    CHECK(error_of(scene3d::cleanup_model(other, {.up = "w"})).starts_with("up is"));
+    CHECK(error_of(scene3d::cleanup_model(other, {.up = "z", .height = 1.0F})).find("flat") !=
+          std::string::npos);
+    other.skins.emplace_back();
+    CHECK(error_of(scene3d::cleanup_model(other, {})).find("skins") != std::string::npos);
 }

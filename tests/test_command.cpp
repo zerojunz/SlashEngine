@@ -4165,3 +4165,62 @@ TEST_CASE("the session's revision counts the calls that may change the world") {
                                         {"command": "step"}]})");
     CHECK(engine.session->revision() == start + 5);
 }
+
+TEST_CASE("model.cleanup writes a model game-ready as a .glb file, under its storyboard budget") {
+    const std::string root = "command_cleanup_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root + "/source").ok());
+    REQUIRE(slash::platform::create_directories(root + "/storyboard").ok());
+    REQUIRE(slash::platform::write_file(root + "/source/lamp.model.json", R"({"format": 1,
+        "parts": [{"name": "shade", "shape": "sphere", "radius": 0.2, "rings": 24,
+                   "radial_segments": 48},
+                  {"name": "post", "shape": "box", "size": [0.1, 0.1, 1.0],
+                   "position": [0, 0, 0.5]}]})")
+                .ok());
+    REQUIRE(slash::platform::write_file(root + "/storyboard/style.json", R"({"format": 1,
+        "entries": {"budget/props": {"name": "Props", "triangles": 400,
+                                     "links": ["props"]}}})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+
+    const json::Value made = engine.ok("model.cleanup", R"({"path": "source/lamp.model.json",
+        "out": "props/lamp.glb", "up": "z", "height": 1.2, "pivot": [0.5, 0, 0.5]})");
+    CHECK(made.find("out")->as_string() == "props/lamp.glb");
+    CHECK(made.find("budget")->as_string() == "budget/props");
+    CHECK(made.find("triangles")->as_array()[0].as_int() > 2000);
+    CHECK(made.find("triangles")->as_array()[1].as_int() <= 400);
+    CHECK(made.find("size")->as_array()[1].as_double() == doctest::Approx(1.2));
+    CHECK(*made.find("pivot") == parse("[0.5, 0, 0.5]"));
+    CHECK(std::filesystem::exists(root + "/props/lamp.glb"));
+    // The file it wrote is a model like any other, and keeps to the budget.
+    const json::Value inspected = engine.ok("model.inspect", R"({"path": "props/lamp.glb"})");
+    CHECK(inspected.find("meshes")->size() == 2);
+    const json::Value checked = engine.ok("storyboard.check");
+    CHECK(checked.find("errors") == nullptr);
+    // The same call again changes nothing, and undo takes the file away.
+    CHECK(engine
+              .ok("model.cleanup", R"({"path": "source/lamp.model.json",
+        "out": "props/lamp.glb", "up": "z", "height": 1.2, "pivot": [0.5, 0, 0.5]})")
+              .find("unchanged")
+              ->as_bool());
+    engine.ok("undo");
+    CHECK_FALSE(std::filesystem::exists(root + "/props/lamp.glb"));
+
+    // Errors point at the value.
+    const command::Reply budget =
+        engine.fails("model.cleanup", R"({"path": "source/lamp.model.json", "triangles": 1})",
+                     command::code::kInvalidParams);
+    CHECK(budget.data.find("path")->as_string() == "/triangles");
+    const command::Reply both = engine.fails(
+        "model.cleanup", R"({"path": "source/lamp.model.json", "scale": 2, "height": 1})",
+        command::code::kInvalidParams);
+    CHECK(both.data.find("path")->as_string() == "/height");
+    const command::Reply out =
+        engine.fails("model.cleanup", R"({"path": "source/lamp.model.json", "out": "lamp.gltf"})",
+                     command::code::kInvalidParams);
+    CHECK(out.data.find("path")->as_string() == "/out");
+    engine.fails("model.cleanup", R"({"path": "props/lamp.png"})", command::code::kInvalidParams);
+    std::filesystem::remove_all(root);
+}
