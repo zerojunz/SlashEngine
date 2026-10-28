@@ -21,9 +21,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <httplib.h>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -1092,4 +1095,158 @@ TEST_CASE("a library model keeps its checks, every version passes them, and asse
         engine.call("asset.add", R"({"path": "props/sign.glb", "checks": {"nodes": ["Quad"]}})");
     CHECK(version["parent"] == added["id"]);
     CHECK(engine.call("test.run", "{}")["failed"].as_array().empty());
+}
+
+namespace {
+
+// An OpenAI-compatible chat server on the loopback interface that answers every request with
+// one reply, keeping each request's body.
+class FakeVisionModel {
+public:
+    explicit FakeVisionModel(std::string answer) : answer_(std::move(answer)) {
+        server_.Post("/v1/chat/completions", [this](const httplib::Request& request,
+                                                    httplib::Response& response) {
+            const std::scoped_lock lock(mutex_);
+            bodies_.push_back(parse(request.body));
+            json::Value reply;
+            reply["model"] = "vision-model";
+            json::Value choice;
+            choice["finish_reason"] = "stop";
+            choice["message"]["role"] = "assistant";
+            choice["message"]["content"] = answer_;
+            reply["choices"].push_back(std::move(choice));
+            reply["usage"]["prompt_tokens"] = 900;
+            reply["usage"]["completion_tokens"] = 40;
+            response.set_content(json::write(reply, json::Style::Compact), "application/json");
+        });
+        port_ = server_.bind_to_any_port("127.0.0.1");
+        thread_ = std::thread([this] { server_.listen_after_bind(); });
+        server_.wait_until_ready();
+    }
+
+    ~FakeVisionModel() {
+        server_.stop();
+        thread_.join();
+    }
+
+    FakeVisionModel(const FakeVisionModel&) = delete;
+    FakeVisionModel& operator=(const FakeVisionModel&) = delete;
+
+    [[nodiscard]] std::string url() const {
+        return "http://127.0.0.1:" + std::to_string(port_) + "/v1";
+    }
+
+    [[nodiscard]] std::vector<json::Value> bodies() {
+        const std::scoped_lock lock(mutex_);
+        return bodies_;
+    }
+
+private:
+    httplib::Server server_;
+    std::string answer_;
+    std::vector<json::Value> bodies_;
+    std::mutex mutex_;
+    int port_ = 0;
+    std::thread thread_;
+};
+
+// A box recipe with a lid one meter across, and a lid alone, which is open.
+constexpr std::string_view kChest = R"({"format": 1,
+    "materials": {"oak": {"albedo_color": [0.6, 0.4, 0.2, 1]}},
+    "parts": [{"name": "chest", "shape": "box", "material": "oak", "size": [1, 0.6, 0.6],
+               "position": [0, 0.3, 0]}]})";
+
+} // namespace
+
+TEST_CASE("asset.review checks a model, draws it round and records what a vision model saw") {
+    const fs::path root = fresh("library_review");
+    const fs::path project = root / "project";
+    write(project / "props" / "chest.model.json", kChest);
+    write(project / "props" / "sign.glb", slash::test::quad().glb());
+    write(project / "storyboard" / "style.json", R"({"format": 1, "entries": {
+        "budget/props": {"name": "Props", "triangles": 4, "links": ["props"]}
+    }})");
+    FakeVisionModel vision(R"({"matches": false, "problems": [
+        {"view": 2, "problem": "The lid has no hinges."},
+        {"view": 9, "problem": "No such view."}]})");
+    const Engine engine(root);
+    const std::string chest =
+        engine
+            .call("asset.add",
+                  R"({"path": "props/chest.model.json", "description": "An oak chest"})")["id"]
+            .as_string();
+
+    // No providers.json yet: the checks and the views, and no model asked. The chest's 12
+    // triangles break the budget where it will go, so it is rejected, and that is its feedback.
+    json::Value checked =
+        engine.call("asset.review",
+                    R"({"id": ")" + chest + R"(", "path": "props/chest2.model.json", "size": 64})");
+    CHECK(checked == parse(R"({"verdict": "rejected",
+        "errors": ["has 12 triangles; budget/props allows 4"],
+        "size": [1.0, 0.6, 0.6], "triangles": 12, "holes": 0, "views": 4,
+        "note": "no providers.json, so no model looked at the views", "recorded": true})"));
+    json::Value info = engine.call("asset.info", R"({"id": ")" + chest + R"("})");
+    CHECK(json::write(info["feedback"].as_array().back(), json::Style::Compact) ==
+          R"({"reason":"has 12 triangles; budget/props allows 4","source":"asset.review",)"
+          R"("verdict":"rejected"})");
+
+    // A project model is reviewed where it is, and its views written; the sign is a quad, open
+    // all round.
+    json::Value sign =
+        engine.call("asset.review",
+                    R"({"path": "props/sign.glb", "size": 64, "views": 2, "out": "review/sign"})");
+    CHECK(sign["warnings"] ==
+          parse(R"(["has 1 hole (4 open edges), which show unless it is open on purpose"])"));
+    CHECK(sign["views"] == parse(R"(["review/sign/view-1.png", "review/sign/view-2.png"])"));
+    const slash::render::Image view = decode(read(project / "review" / "sign" / "view-1.png"));
+    CHECK(view.width == 64);
+    CHECK(view.height == 64);
+    CHECK(sign.find("recorded") == nullptr);
+
+    // With a model to ask, it sees the views and the request, and problems it gives no real
+    // view for are left out.
+    write(project / "providers.json", R"({"providers": {"local": {"type": "openai",
+        "model": "vision-model", "url": ")" +
+                                          vision.url() + R"("}}})");
+    write(project / "storyboard" / "style.json", R"({"format": 1, "entries": {}})");
+    json::Value seen = engine.call("asset.review",
+                                   R"({"id": ")" + chest +
+                                       R"(", "request": "A chest with brass hinges", "size": 64})");
+    CHECK(seen["verdict"] == "rejected");
+    CHECK(seen["review"] == parse(R"({"matches": false, "problems": [
+        {"view": 2, "problem": "The lid has no hinges."}], "unverified": 1,
+        "model": "vision-model"})"));
+    const std::vector<json::Value> bodies = vision.bodies();
+    REQUIRE(bodies.size() == 1);
+    const json::Array& messages = bodies[0].find("messages")->as_array();
+    const json::Array& content = messages[1].find("content")->as_array();
+    CHECK(content.size() == 5); // the text and four views
+    const std::string& asked = content.back().find("text")->as_string();
+    CHECK(asked.find("Request: A chest with brass hinges") != std::string::npos);
+    CHECK(asked.find("1 x 0.6 x 0.6 m, 12 triangles") != std::string::npos);
+    CHECK(bodies[0].find("response_format") != nullptr);
+    info = engine.call("asset.info", R"({"id": ")" + chest + R"("})");
+    CHECK(info["feedback"].as_array().back()["reason"] == "The lid has no hinges.");
+
+    // The same views are the same pixels, so a second look is the same request.
+    engine.call("asset.review", R"({"id": ")" + chest +
+                                    R"(", "request": "A chest with brass hinges", "size": 64,
+                                    "record": false})");
+    const std::vector<json::Value> again = vision.bodies();
+    REQUIRE(again.size() == 2);
+    CHECK(again[0] == again[1]);
+
+    // What can't be reviewed.
+    CHECK(engine.fail("asset.review", "{}").message.find("give the library model") !=
+          std::string::npos);
+    CHECK(engine.fail("asset.review", R"({"path": "props/sign.glb", "record": true})").data ==
+          parse(R"({"path": "/record"})"));
+    CHECK(engine.fail("asset.review", R"({"path": "props/sign.glb"})").data ==
+          parse(R"({"path": "/request"})"));
+    CHECK(engine.fail("asset.review", R"({"path": "props/none.glb", "ask": false})").data ==
+          parse(R"({"path": "/path"})"));
+    CHECK(engine
+              .fail("asset.review", R"({"path": "props/sign.glb", "request": "A sign",
+                                         "role": "critic"})")
+              .data == parse(R"({"path": "/role"})"));
 }
