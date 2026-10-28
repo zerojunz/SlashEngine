@@ -262,15 +262,40 @@ ShapeKey shape_key_of(const entt::registry& registry, const world::Tree3D& tree,
     return key;
 }
 
+// As a body takes its children's CollisionShape3Ds, the collision of the models it and its
+// children with no body of their own draw.
+void add_model_shapes(const world::World& world, const world::Tree3D& tree, entt::entity entity,
+                      ShapeKey& key) {
+    const entt::registry& registry = world.ecs();
+    if (auto shapes = scene3d::model_shapes(world, entity); shapes != nullptr) {
+        key.models.push_back({.shapes = std::move(shapes), .local = {}});
+    }
+    const auto* transform = registry.try_get<Transform3D>(entity);
+    if (transform == nullptr) {
+        return;
+    }
+    for (const entt::entity child : transform->children) {
+        if (!registry.valid(child) || tree.transform_parent(child) != entity ||
+            kind_of(registry, child).has_value()) {
+            continue;
+        }
+        if (auto shapes = scene3d::model_shapes(world, child); shapes != nullptr) {
+            key.models.push_back({.shapes = std::move(shapes),
+                                  .local = world::affine(registry.get<Transform3D>(child))});
+        }
+    }
+}
+
 JPH::EAllowedDOFs dofs_of(const RigidBody3D& rigid, JPH::EMotionType motion) {
     using JPH::EAllowedDOFs;
     if (motion == JPH::EMotionType::Static) {
         return EAllowedDOFs::All;
     }
-    EAllowedDOFs dofs = EAllowedDOFs::All;
-    const auto lock = [&](bool locked, EAllowedDOFs axis) {
+    // Jolt's flags as bits, since most of their combinations name no enumerator.
+    auto dofs = static_cast<std::uint8_t>(EAllowedDOFs::All);
+    const auto lock = [&dofs](bool locked, EAllowedDOFs axis) {
         if (locked) {
-            dofs = dofs & ~axis;
+            dofs = static_cast<std::uint8_t>(dofs & ~static_cast<std::uint8_t>(axis));
         }
     };
     lock(rigid.axis_lock_linear_x, EAllowedDOFs::TranslationX);
@@ -280,7 +305,10 @@ JPH::EAllowedDOFs dofs_of(const RigidBody3D& rigid, JPH::EMotionType motion) {
     lock(rigid.axis_lock_angular_y || rigid.lock_rotation, EAllowedDOFs::RotationY);
     lock(rigid.axis_lock_angular_z || rigid.lock_rotation, EAllowedDOFs::RotationZ);
     // Jolt can't lock every axis; Godot unlocks them all, and says to freeze the body instead.
-    return dofs == EAllowedDOFs::None ? EAllowedDOFs::All : dofs;
+    if (dofs == 0) {
+        return EAllowedDOFs::All;
+    }
+    return static_cast<EAllowedDOFs>(dofs); // NOLINT(clang-analyzer-optin.core.EnumCastOutOfRange)
 }
 
 RigidKey rigid_key_of(const RigidBody3D& rigid) {
@@ -826,6 +854,26 @@ void Space::build_shape(const world::World& world, Body& body, const ShapeKey& k
             ++built;
         }
     }
+    // Models' collision, as the shapes of the static body Godot's importer adds, placed where
+    // the entities drawing them are.
+    for (const ShapeKey::Model& model : key.models) {
+        for (const world::CollisionShape3D& part : *model.shapes) {
+            const BuiltShape made = detail::build_shape(part);
+            if (!made.error.empty()) {
+                warn_shape(world, body.entity, made.error);
+            }
+            if (made.shape == nullptr) {
+                continue;
+            }
+            const Unscaled local = unscale(model.local);
+            const JPH::RefConst<JPH::Shape> shape = scaled(made.shape.GetPtr(), local.scale);
+            compound.AddShape(to_jolt(local.transform.origin), rotation_of(local.transform),
+                              shape.GetPtr());
+            single = shape;
+            single_transform = local.transform;
+            ++built;
+        }
+    }
     // An HTerrain's heights, as a height field.
     if (key.terrain != nullptr) {
         const BuiltShape made =
@@ -959,8 +1007,12 @@ void Space::sync_body(world::World& world, const world::Tree3D& tree, entt::enti
         shape_key.terrain = made_shape->terrain;
         shape_key.terrain_scale = made_shape->terrain_scale;
         shape_key.terrain_centered = made_shape->terrain_centered;
+        if (made_shape->model != nullptr) {
+            shape_key.models.push_back({.shapes = made_shape->model, .local = {}});
+        }
     } else {
         shape_key = shape_key_of(registry, tree, entity);
+        add_model_shapes(world, tree, entity, shape_key);
     }
     JPH::BodyInterface& interface = system_->GetBodyInterfaceNoLock();
     const JPH::BodyLockInterfaceNoLock& locks = system_->GetBodyLockInterfaceNoLock();
@@ -1153,8 +1205,19 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
                    return grid.entity == body.entity;
                });
     });
+    // MeshInstance3Ds whose models have collision, unless they are bodies or a body's children
+    // that it takes them from, or scene3d makes a body of them otherwise.
+    std::vector<scene3d::ModelBody> models = scene3d::model_bodies(world);
+    std::erase_if(models, [&](const scene3d::ModelBody& body) {
+        const entt::entity parent = tree.transform_parent(body.entity);
+        const auto same = [&](const auto& made) { return made.entity == body.entity; };
+        return kind_of(registry, body.entity).has_value() ||
+               (parent != entt::null && kind_of(registry, parent).has_value()) ||
+               std::ranges::any_of(csg, same) || std::ranges::any_of(grids, same) ||
+               std::ranges::any_of(terrains, same);
+    });
     if (system_ == nullptr) {
-        if (csg.empty() && grids.empty() && terrains.empty() &&
+        if (csg.empty() && grids.empty() && terrains.empty() && models.empty() &&
             !has_any<RigidBody3D, CharacterBody3D, AnimatableBody3D, StaticBody3D, Area3D,
                      PhysicalBone3D>(registry)) {
             return;
@@ -1168,7 +1231,7 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
         }
     }
     std::vector<entt::entity> made;
-    made.reserve(csg.size() + grids.size() + terrains.size());
+    made.reserve(csg.size() + grids.size() + terrains.size() + models.size());
     for (const scene3d::CsgBody& body : csg) {
         made.push_back(body.entity);
     }
@@ -1178,10 +1241,13 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
     for (const scene3d::TerrainBody& body : terrains) {
         made.push_back(body.entity);
     }
+    for (const scene3d::ModelBody& body : models) {
+        made.push_back(body.entity);
+    }
     remove_stale(world, made);
     // New bodies are made in the same order on every machine: by kind, then in each
     // component's storage order, then CSG roots in tree order, then GridMaps and HTerrains in
-    // the order they were made.
+    // the order they were made, then models in MeshInstance3D's storage order.
     const auto each = [&]<typename Component>(Kind kind) {
         for (const entt::entity entity : registry.view<Component>()) {
             if (kind_of(registry, entity) == kind) {
@@ -1205,7 +1271,8 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
                               .grid = nullptr,
                               .terrain = nullptr,
                               .terrain_scale = {1.0F, 1.0F, 1.0F},
-                              .terrain_centered = false};
+                              .terrain_centered = false,
+                              .model = nullptr};
         sync_body(world, tree, body.entity, Kind::Static, &shape);
     }
     for (scene3d::GridBody& body : grids) {
@@ -1217,7 +1284,8 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
                               .grid = std::move(body.shapes),
                               .terrain = nullptr,
                               .terrain_scale = {1.0F, 1.0F, 1.0F},
-                              .terrain_centered = false};
+                              .terrain_centered = false,
+                              .model = nullptr};
         sync_body(world, tree, body.entity, Kind::Static, &shape);
     }
     // An HTerrain collides as a static body of its heights, as HTerrainCollider's.
@@ -1230,7 +1298,23 @@ void Space::sync(world::World& world, const world::Tree3D& tree) {
                               .grid = nullptr,
                               .terrain = std::move(body.data),
                               .terrain_scale = body.map_scale,
-                              .terrain_centered = body.centered};
+                              .terrain_centered = body.centered,
+                              .model = nullptr};
+        sync_body(world, tree, body.entity, Kind::Static, &shape);
+    }
+    // A model's collision makes a static body with Godot's defaults, as its importer's
+    // StaticBody3D: layer and mask 1, friction 1, no bounce.
+    for (scene3d::ModelBody& body : models) {
+        const MadeShape shape{.layer = 1,
+                              .mask = 1,
+                              .friction = 1.0F,
+                              .bounce = 0.0F,
+                              .faces = nullptr,
+                              .grid = nullptr,
+                              .terrain = nullptr,
+                              .terrain_scale = {1.0F, 1.0F, 1.0F},
+                              .terrain_centered = false,
+                              .model = std::move(body.shapes)};
         sync_body(world, tree, body.entity, Kind::Static, &shape);
     }
     sync_joints(world, tree);

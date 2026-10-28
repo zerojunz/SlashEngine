@@ -4224,3 +4224,49 @@ TEST_CASE("model.cleanup writes a model game-ready as a .glb file, under its sto
     engine.fails("model.cleanup", R"({"path": "props/lamp.png"})", command::code::kInvalidParams);
     std::filesystem::remove_all(root);
 }
+
+TEST_CASE("model.cleanup gives a model collision, which model.inspect reports") {
+    const std::string root = "command_collision_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root + "/source").ok());
+    // An arch: two posts and a beam, which one convex hull would fill in.
+    REQUIRE(slash::platform::write_file(root + "/source/arch.model.json", R"({"format": 1,
+        "parts": [{"name": "left", "shape": "box", "size": [0.4, 2, 0.4],
+                   "position": [-1, 1, 0]},
+                  {"name": "right", "shape": "box", "size": [0.4, 2, 0.4],
+                   "position": [1, 1, 0]},
+                  {"name": "beam", "shape": "box", "size": [2.4, 0.4, 0.4],
+                   "position": [0, 2.2, 0]}]})")
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+
+    const json::Value made = engine.ok("model.cleanup", R"({"path": "source/arch.model.json",
+        "out": "props/arch.glb", "collision": "decompose", "max_hulls": 6})");
+    const std::int64_t hulls = made.find("collision")->find("convex")->as_int();
+    CHECK(hulls >= 2);
+    CHECK(hulls <= 6);
+    CHECK(made.find("collision")->find("trimesh") == nullptr);
+    // The file keeps them as Godot's collision hints, so it reads back with them.
+    const json::Value brief =
+        engine.ok("model.inspect", R"({"path": "props/arch.glb", "brief": true})");
+    const json::Value* collision = brief.find("collision");
+    REQUIRE(collision != nullptr);
+    CHECK(static_cast<std::int64_t>(collision->size()) == hulls);
+    CHECK(collision->as_array()[0].find("shape")->as_string() == "convex");
+
+    const json::Value trimesh = engine.ok("model.cleanup", R"({"path": "source/arch.model.json",
+        "out": "props/arch.glb", "collision": "trimesh"})");
+    CHECK(*trimesh.find("collision") == parse(R"({"trimesh": 1})"));
+
+    const command::Reply hull_count =
+        engine.fails("model.cleanup", R"({"path": "source/arch.model.json", "max_hulls": 4})",
+                     command::code::kInvalidParams);
+    CHECK(hull_count.data.find("path")->as_string() == "/max_hulls");
+    const command::Reply kind =
+        engine.fails("model.cleanup", R"({"path": "source/arch.model.json", "collision": "box"})",
+                     command::code::kInvalidParams);
+    CHECK(kind.message.find("collision") != std::string::npos);
+    std::filesystem::remove_all(root);
+}

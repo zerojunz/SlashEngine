@@ -12,6 +12,7 @@
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
 #include "slash/scene3d/cleanup.hpp"
+#include "slash/scene3d/collision.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/scene3d/skeleton.hpp"
@@ -2041,4 +2042,215 @@ TEST_CASE("cleanup_model stands a model up at its size and budget, and write_glb
           std::string::npos);
     other.skins.emplace_back();
     CHECK(error_of(scene3d::cleanup_model(other, {})).find("skins") != std::string::npos);
+}
+
+TEST_CASE("Godot's collision import hints give a model collision, which write_glb keeps") {
+    // A yard: a floor that only collides, a crate that collides as its convex hull and a post
+    // that only draws.
+    MemoryFiles files;
+    files.files["yard.obj"] = R"(o Floor-colonly
+v -2 0 -2
+v 2 0 -2
+v 2 0 2
+v -2 0 2
+f 1 4 3
+f 1 3 2
+o Crate_ConvCol
+v 0 0 0
+v 1 0 0
+v 1 1 0
+v 0 1 0
+v 0 0 1
+v 1 0 1
+v 1 1 1
+v 0 1 1
+f 5 7 6
+f 5 8 7
+f 9 10 11
+f 9 11 12
+f 5 6 10
+f 5 10 9
+f 8 12 11
+f 8 11 7
+f 5 9 12
+f 5 12 8
+f 6 7 11
+f 6 11 10
+o Post
+v 0 0 0
+v 0.1 0 0
+v 0 1 0
+f 13 14 15
+)";
+    const auto check = [](const scene3d::Model& model) {
+        std::vector<std::string> drawn;
+        for (const scene3d::ModelPart& part : model.parts) {
+            drawn.push_back(part.node);
+        }
+        CHECK(drawn == std::vector<std::string>{"Crate", "Post"});
+        CHECK(model.meshes.size() == 2);
+        REQUIRE(model.collision.size() == 2);
+        const auto named = [&](std::string_view name) -> const scene3d::ModelCollision& {
+            return model.collision[0].node == name ? model.collision[0] : model.collision[1];
+        };
+        const scene3d::ModelCollision& floor = named("Floor");
+        CHECK(floor.node == "Floor");
+        CHECK_FALSE(floor.convex);
+        CHECK(floor.indices.size() == 6);
+        const scene3d::ModelCollision& crate = named("Crate");
+        CHECK(crate.node == "Crate");
+        CHECK(crate.convex);
+        CHECK(crate.points.size() == 8);
+        CHECK(crate.indices.size() == 36);
+        // The hull's faces wind as Godot's, clockwise seen from outside.
+        for (std::size_t i = 0; i + 2 < crate.indices.size(); i += 3) {
+            const Vec3 a = crate.points[crate.indices[i]];
+            const Vec3 b = crate.points[crate.indices[i + 1]];
+            const Vec3 c = crate.points[crate.indices[i + 2]];
+            const Vec3 face = (a + b + c) * (1.0F / 3.0F);
+            CHECK(dot(cross(b - a, c - a), face - Vec3{0.5F, 0.5F, 0.5F}) < 0.0F);
+        }
+        const std::size_t first = &floor == model.collision.data() ? 0 : 1;
+        const std::vector<world::CollisionShape3D> shapes = scene3d::collision_shapes(model);
+        REQUIRE(shapes.size() == 2);
+        CHECK(shapes[first].shape == "concave_polygon");
+        CHECK(shapes[first].faces.size() == 6);
+        CHECK(shapes[1 - first].shape == "convex_polygon");
+        CHECK(shapes[1 - first].points.size() == 8);
+        const scene3d::ModelSummary summary = scene3d::summarize(model);
+        REQUIRE(summary.collision.size() == 2);
+        CHECK(summary.collision[1 - first].name == "Crate");
+        CHECK(summary.collision[1 - first].triangles == 12);
+        CHECK(summary.points.empty());
+    };
+    auto loaded = load(files, "yard.obj");
+    REQUIRE_MESSAGE(loaded.ok(), error_of(loaded));
+    check(loaded.value());
+
+    // Written out, the floor's node takes "-colonly" and the crate's "-convcol", so the model
+    // reads back the same.
+    auto glb = scene3d::write_glb(loaded.value(), "yard.glb", files.reader());
+    REQUIRE_MESSAGE(glb.ok(), error_of(glb));
+    files.files["yard.glb"] = glb.value();
+    auto back = load(files, "yard.glb");
+    REQUIRE_MESSAGE(back.ok(), error_of(back));
+    check(back.value());
+    CHECK(back.value().collision[0].node_index >= 0);
+    CHECK(back.value().collision[1].node_index >= 0);
+    // Written again, the collision goes back on the nodes it came from.
+    auto again = scene3d::write_glb(back.value(), "again.glb", files.reader());
+    REQUIRE_MESSAGE(again.ok(), error_of(again));
+    files.files["again.glb"] = again.value();
+    auto twice = load(files, "again.glb");
+    REQUIRE_MESSAGE(twice.ok(), error_of(twice));
+    check(twice.value());
+    CHECK(twice.value().nodes.size() == back.value().nodes.size());
+
+    // Hints in any case, after Blender's numbers, with "$" anywhere, and on nodes.
+    scene3d::Model hinted;
+    hinted.meshes.push_back(loaded.value().meshes[0]);
+    for (const std::string_view name :
+         {"Wall-COL.001", "Rock$colonly", "Fence_convcolonly", "Gate"}) {
+        hinted.parts.push_back({.node = std::string(name), .mesh = 0, .transform = {}});
+    }
+    scene3d::apply_import_hints(hinted);
+    std::vector<std::string> names;
+    for (const scene3d::ModelCollision& collision : hinted.collision) {
+        names.push_back(collision.node + (collision.convex ? " convex" : " trimesh"));
+    }
+    CHECK(names == std::vector<std::string>{"Wall_001 trimesh", "Rock trimesh", "Fence convex"});
+    CHECK(hinted.parts.size() == 2);
+}
+
+TEST_CASE("generate_collision makes a model's trimesh, convex hull or convex decomposition") {
+    // Two crates a little apart, and a flat card.
+    MemoryFiles files;
+    files.files["crates.model.json"] = R"({"format": 1, "parts": [
+        {"name": "left", "shape": "box", "size": [1, 1, 1]},
+        {"name": "right", "shape": "box", "size": [1, 2, 1], "position": [3, 0.5, 0]}]})";
+    auto loaded = load(files, "crates.model.json");
+    REQUIRE_MESSAGE(loaded.ok(), error_of(loaded));
+    const scene3d::Bounds box = scene3d::bounds(loaded.value());
+
+    scene3d::Model trimesh = loaded.value();
+    auto made = scene3d::generate_collision(trimesh, "trimesh");
+    REQUIRE_MESSAGE(made.ok(), error_of(made));
+    CHECK(made.value() == 1);
+    CHECK_FALSE(trimesh.collision[0].convex);
+    CHECK(trimesh.collision[0].indices.size() / 3 == scene3d::summarize(trimesh).triangles);
+
+    // One hull round both crates: the four corners of the floor they stand on, and the top
+    // corners of the left crate and the taller right one.
+    scene3d::Model convex = loaded.value();
+    made = scene3d::generate_collision(convex, "convex");
+    REQUIRE_MESSAGE(made.ok(), error_of(made));
+    REQUIRE(convex.collision.size() == 1);
+    CHECK(convex.collision[0].convex);
+    CHECK(convex.collision[0].node == "collision");
+    CHECK(convex.collision[0].points.size() == 10);
+
+    // V-HACD splits them apart, each hull small and inside the model, and the same every time.
+    scene3d::Model split = loaded.value();
+    made = scene3d::generate_collision(split, "decompose", {.max_hulls = 8});
+    REQUIRE_MESSAGE(made.ok(), error_of(made));
+    CHECK(made.value() >= 2);
+    CHECK(made.value() <= 8);
+    CHECK(split.collision[1].node == "collision2");
+    float left = 0.0F;
+    float right = 0.0F;
+    for (const scene3d::ModelCollision& hull : split.collision) {
+        CHECK(hull.convex);
+        CHECK(hull.points.size() <= 32);
+        float low = hull.points[0].x;
+        float high = low;
+        for (const Vec3 point : hull.points) {
+            CHECK(point.x >= box.min.x - 0.05F);
+            CHECK(point.x <= box.max.x + 0.05F);
+            CHECK(point.y >= box.min.y - 0.05F);
+            CHECK(point.y <= box.max.y + 0.05F);
+            low = std::min(low, point.x);
+            high = std::max(high, point.x);
+        }
+        // No hull spans the gap between the crates.
+        CHECK((high < 1.0F || low > 2.0F));
+        (high < 1.0F ? left : right) += 1.0F;
+    }
+    CHECK(left >= 1.0F);
+    CHECK(right >= 1.0F);
+    scene3d::Model repeat = loaded.value();
+    REQUIRE(scene3d::generate_collision(repeat, "decompose", {.max_hulls = 8}).ok());
+    REQUIRE(repeat.collision.size() == split.collision.size());
+    for (std::size_t i = 0; i < split.collision.size(); ++i) {
+        CHECK(repeat.collision[i].points == split.collision[i].points);
+        CHECK(repeat.collision[i].indices == split.collision[i].indices);
+    }
+
+    // cleanup_model makes it last, after sizing; collision it has moves with the model.
+    scene3d::Model sized = convex;
+    auto report = scene3d::cleanup_model(sized, {.scale = 2.0F});
+    REQUIRE_MESSAGE(report.ok(), error_of(report));
+    CHECK(near(sized.collision[0].points[0], convex.collision[0].points[0] * 2.0F));
+    scene3d::Model cleaned = loaded.value();
+    report = scene3d::cleanup_model(cleaned, {.scale = 2.0F, .collision = "convex"});
+    REQUIRE_MESSAGE(report.ok(), error_of(report));
+    CHECK(report.value().collision == 1);
+    CHECK(near(scene3d::bounds(cleaned).max.y, box.max.y * 2.0F));
+
+    // A flat card has no hull, and kinds it doesn't know are refused.
+    scene3d::Model card;
+    card.meshes.push_back({.name = "Card", .surfaces = {}});
+    scene3d::ModelSurface surface;
+    for (const auto& [x, y] : std::array<std::array<float, 2>, 4>{
+             {{-1.0F, -1.0F}, {1.0F, -1.0F}, {1.0F, 1.0F}, {-1.0F, 1.0F}}}) {
+        render::Vertex3D vertex{};
+        vertex.position = {x, y, 0.0F};
+        surface.vertices.push_back(vertex);
+    }
+    surface.indices = {0, 2, 1, 0, 3, 2};
+    card.meshes[0].surfaces.push_back(surface);
+    card.parts.push_back({.node = "Card", .mesh = 0, .transform = {}});
+    CHECK(error_of(scene3d::generate_collision(card, "convex")).find("no volume") !=
+          std::string::npos);
+    CHECK(scene3d::generate_collision(card, "trimesh").ok());
+    CHECK(error_of(scene3d::generate_collision(card, "box")).starts_with("collision is"));
 }

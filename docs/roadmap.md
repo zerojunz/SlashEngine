@@ -775,9 +775,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         with the image kept as the model's parent
   - [ ] Game-ready cleanup for every generated or imported mesh: real-world scale, pivot and up
         axis, a triangle budget with meshoptimizer, UVs with xatlas, PBR textures with baked-in
-        lighting removed, LODs and collision hulls with CoACD. Done: `model.cleanup` turns,
-        sizes, pivots, simplifies to the storyboard's budget, makes LODs, unwraps and writes a
-        `.glb` file; delighting textures and collision hulls are still to do
+        lighting removed, LODs and collision hulls. Done: `model.cleanup` turns, sizes, pivots,
+        simplifies to the storyboard's budget, makes LODs, unwraps, makes collision (trimesh,
+        convex hull or V-HACD convex decomposition, as Godot) and writes a `.glb` file, and
+        models collide by Godot's import hints; delighting textures is still to do
   - [ ] Automatic review: headless turntable renders, geometry checks (budget, scale, holes,
         texel density) and a vision-capable model comparing the views with the request, all
         recorded as feedback; failed checks retry within a call budget

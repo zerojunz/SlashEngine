@@ -1357,6 +1357,17 @@ void add_model(Model& into, const Model& from, int parent, const world::Affine3D
         part.transform = place * part.transform;
         into.parts.push_back(std::move(part));
     }
+    // What it collides as comes with it, where it is placed.
+    for (ModelCollision collision : from.collision) {
+        for (Vec3& point : collision.points) {
+            point = place.apply(point);
+        }
+        if (collision.node_index >= 0) {
+            collision.node_index += nodes;
+            collision.node = into.nodes[static_cast<std::size_t>(collision.node_index)].name;
+        }
+        into.collision.push_back(std::move(collision));
+    }
 }
 
 Model build(const Read& read, std::vector<json::ValidationError>* problems,
