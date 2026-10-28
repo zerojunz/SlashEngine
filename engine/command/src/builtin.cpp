@@ -19,6 +19,7 @@
 #include "slash/command/lightmap.hpp"
 #include "slash/command/navigation.hpp"
 #include "slash/command/perf.hpp"
+#include "slash/command/place.hpp"
 #include "slash/command/replay.hpp"
 #include "slash/command/services.hpp"
 #include "slash/command/session.hpp"
@@ -7721,6 +7722,7 @@ void register_builtin_commands(Registry& registry) {
     register_playtest_commands(registry);
     register_project_map(registry);
     register_navigation_commands(registry);
+    register_place_commands(registry);
     register_terrain_commands(registry);
     register_lightmap_commands(registry);
     register_services_commands(registry);
