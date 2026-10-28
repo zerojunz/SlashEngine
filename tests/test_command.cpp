@@ -1,5 +1,6 @@
 #include "fbx.hpp"
 #include "gltf.hpp"
+#include "humanoid.hpp"
 
 #include "slash/audio/audio.hpp"
 #include "slash/command/builtin.hpp"
@@ -13,7 +14,10 @@
 #include "slash/platform/run.hpp"
 #include "slash/render/device.hpp"
 #include "slash/render/image.hpp"
+#include "slash/scene3d/humanoid.hpp"
 #include "slash/scene3d/lightmap.hpp"
+#include "slash/scene3d/model.hpp"
+#include "slash/scene3d/skeleton.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
@@ -4335,5 +4339,66 @@ f 5/5/2 6/6/2 7/7/2 8/8/2
     INFO(missing.message);
     REQUIRE(missing.data.find("path") != nullptr);
     CHECK(missing.data.find("path")->as_string() == "/delight");
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("model.retarget renames a rigged humanoid's bones for Godot's humanoid skeleton") {
+    const std::string root = "command_retarget_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root + "/source").ok());
+    scene3d::Model hero = test_humanoid::make(test_humanoid::mixamo());
+    const scene3d::ModelReader none = [](std::string_view) -> slash::Result<std::string> {
+        return slash::make_error(slash::ErrorCode::NotFound, "no files");
+    };
+    REQUIRE(slash::platform::write_file(root + "/source/hero.glb",
+                                        scene3d::write_glb(hero, "source/hero.glb", none).value())
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+
+    const json::Value made =
+        engine.ok("model.retarget", R"({"path": "source/hero.glb", "out": "characters/hero.glb",
+        "bone_map": {"Chest": "", "UpperChest": "mixamorig_Spine1"}})");
+    CHECK(made.find("out")->as_string() == "characters/hero.glb");
+    const json::Value& map = *made.find("bone_map");
+    CHECK(map.find("LeftUpperArm")->as_string() == "mixamorig_LeftArm");
+    CHECK(map.find("UpperChest")->as_string() == "mixamorig_Spine1");
+    CHECK(map.find("Chest") == nullptr);
+    CHECK(made.find("missing") == nullptr);
+    CHECK(made.find("motion_scale")->as_double() == doctest::Approx(1.0));
+    const json::Value& unmapped = *made.find("unmapped");
+    CHECK(std::ranges::find(unmapped.as_array(), json::Value("mixamorig_Spine2")) !=
+          unmapped.as_array().end());
+
+    // The file it wrote has the profile's bone names.
+    const auto written =
+        scene3d::load_model(slash::platform::read_file(root + "/characters/hero.glb").value(),
+                            "characters/hero.glb", none);
+    REQUIRE(written.ok());
+    CHECK(scene3d::find_node(written.value(), "LeftUpperArm") >= 0);
+    CHECK(scene3d::motion_scale(written.value()) == doctest::Approx(1.0F));
+    engine.ok("undo");
+    CHECK_FALSE(std::filesystem::exists(root + "/characters/hero.glb"));
+
+    // Errors point at the value.
+    const command::Reply bone = engine.fails(
+        "model.retarget", R"({"path": "source/hero.glb", "bone_map": {"LeftUperArm": "x"}})",
+        command::code::kInvalidParams);
+    CHECK(bone.data.find("path")->as_string() == "/bone_map/LeftUperArm");
+    CHECK(bone.message.find("did you mean \"LeftUpperArm\"?") != std::string::npos);
+    const command::Reply node = engine.fails(
+        "model.retarget",
+        R"({"path": "source/hero.glb", "bone_map": {"LeftUpperArm": "mixamorig_LeftArn"}})",
+        command::code::kInvalidParams);
+    CHECK(node.data.find("path")->as_string() == "/bone_map/LeftUpperArm");
+    CHECK(node.message.find("did you mean \"mixamorig_LeftArm\"?") != std::string::npos);
+    const command::Reply twice =
+        engine.fails("model.retarget",
+                     R"({"path": "source/hero.glb", "bone_map": {"Chest": "mixamorig_Spine2"}})",
+                     command::code::kInvalidParams);
+    CHECK(twice.data.find("path")->as_string() == "/bone_map");
+    engine.fails("model.retarget", R"({"path": "source/hero.glb", "out": "hero.gltf"})",
+                 command::code::kInvalidParams);
     std::filesystem::remove_all(root);
 }

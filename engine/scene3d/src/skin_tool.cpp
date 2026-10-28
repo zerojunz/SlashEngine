@@ -1,4 +1,4 @@
-#include "godot_bones.hpp"
+#include "slash/scene3d/skin_tool.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-namespace slash::importer::godot {
+namespace slash::scene3d {
 
 namespace {
 
@@ -108,9 +108,9 @@ struct Skin {
 
 class Tool {
 public:
-    explicit Tool(const scene3d::Model& model) : nodes_(model.nodes.size()) {
+    explicit Tool(const Model& model) : nodes_(model.nodes.size()) {
         for (std::size_t i = 0; i < model.nodes.size(); ++i) {
-            const scene3d::ModelNode& in = model.nodes[i];
+            const ModelNode& in = model.nodes[i];
             Node& node = nodes_[i];
             node.parent = in.parent;
             node.key = in.file_index >= 0 ? in.file_index : static_cast<int>(i);
@@ -119,14 +119,14 @@ public:
                 node.height = nodes_[static_cast<std::size_t>(in.parent)].height + 1;
             }
         }
-        for (const scene3d::ModelPart& part : model.parts) {
+        for (const ModelPart& part : model.parts) {
             if (part.node_index >= 0) {
                 Node& node = nodes_[static_cast<std::size_t>(part.node_index)];
                 node.mesh = true;
                 node.skinned = node.skinned || part.skin >= 0;
             }
         }
-        for (const scene3d::ModelSkin& in : model.skins) {
+        for (const ModelSkin& in : model.skins) {
             Skin skin;
             skin.joints = in.joints;
             for (const std::size_t joint : in.joints) {
@@ -417,7 +417,7 @@ private:
 
 } // namespace
 
-std::vector<ModelSkeleton> model_skeletons(const scene3d::Model& model) {
+std::vector<ModelSkeleton> model_skeletons(const Model& model) {
     if (model.skins.empty()) {
         return {};
     }
@@ -474,4 +474,4 @@ std::vector<ModelSkeleton> model_skeletons(const scene3d::Model& model) {
     return out;
 }
 
-} // namespace slash::importer::godot
+} // namespace slash::scene3d

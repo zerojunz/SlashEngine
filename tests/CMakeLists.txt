@@ -121,6 +121,7 @@ add_executable(slash_tests
     test_render_scale.cpp
     test_replay.cpp
     test_result.cpp
+    test_retarget.cpp
     test_rpc.cpp
     test_runtime.cpp
     test_scene.cpp
