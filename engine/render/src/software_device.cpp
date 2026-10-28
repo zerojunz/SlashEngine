@@ -12,6 +12,7 @@
 #include "fsr2.hpp"
 #include "fsr3.hpp"
 #include "mesh_shading.hpp"
+#include "path_trace.hpp"
 #include "post_shading.hpp"
 #include "reflection.hpp"
 #include "sky_shading.hpp"
@@ -34,6 +35,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -59,6 +61,9 @@ struct Texture {
     Image image;
     std::vector<detail::CubeImage> cubes; // a reflection atlas's, which has no image
     detail::FloatImage floats;            // a half-float texture's texels, beside image's bytes
+    // When its texels were last written, counting every texture's writes: what a path-traced
+    // still sees changes with it.
+    std::uint64_t written = 0;
 };
 
 // A run of draws with the same texture and material, as the GPU device batches them.
@@ -224,6 +229,14 @@ struct FogState {
     std::vector<Float4> density;
 };
 
+// A target's path-traced frames: what their paths saw (path_scene_key and the textures'
+// writes), how many samples each pixel has summed, and the sums.
+struct PathState {
+    std::uint64_t key = 0;
+    std::uint32_t samples = 0;
+    std::vector<float> sums;
+};
+
 // A frame's camera with FSR 2, for draw_meshes: its jitter, the camera the frame before was seen
 // from without its jitter, and where the prepass's motion vectors go.
 struct Fsr2Camera {
@@ -274,6 +287,8 @@ Float4 blend(BlendMode mode, const Float4& src, const Float4& dst) {
 class SoftwareDevice final : public RenderDevice {
 public:
     using RenderDevice::draw;
+
+    explicit SoftwareDevice(jobs::Pool* pool) : pool_(pool) {}
 
     [[nodiscard]] Backend backend() const override { return Backend::Software; }
 
@@ -326,6 +341,7 @@ public:
         }
         it->second.image.pixels = std::move(pixels.value());
         keep_floats(it->second, texels);
+        it->second.written = ++writes_;
         if (radiance_key_ && radiance_key_->texture == texture) {
             radiance_key_.reset(); // drawn from the old texels
         }
@@ -364,6 +380,16 @@ public:
         forget_taa_history(texture);
         std::erase_if(fsr2_states_, [&](const auto& entry) { return entry.first == texture; });
         std::erase_if(fog_states_, [&](const auto& entry) { return entry.first == texture; });
+        std::erase_if(path_states_, [&](const auto& entry) { return entry.first == texture; });
+    }
+
+    [[nodiscard]] std::uint32_t path_samples(TextureId target) const override {
+        for (const auto& [id, state] : path_states_) {
+            if (id == target) {
+                return state.samples;
+            }
+        }
+        return 0;
     }
 
     Result<ShaderId> create_shader(const CompiledShader& shader) override {
@@ -666,13 +692,21 @@ public:
             return {};
         }
         ++stats_.frames;
-        Image& target = find(frame_.target)->image;
+        Texture& drawn = *find(frame_.target);
+        drawn.written = ++writes_;
+        Image& target = drawn.image;
         const std::array<std::uint8_t, 4> clear = detail::to_rgba8(frame_.clear);
         for (std::size_t i = 0; i < target.pixels.size(); i += 4) {
             std::copy(clear.begin(), clear.end(),
                       target.pixels.begin() + static_cast<std::ptrdiff_t>(i));
         }
-        if (frame_.scene && frame_.scene->method == RenderMethod::ForwardPlus) {
+        if (frame_.scene && frame_.scene->path_trace) {
+            // Paths traced through the sky and meshes give linear colors, which Forward+'s post
+            // passes draw over the target.
+            const detail::HdrImage world =
+                path_trace(*frame_.scene, frame_.target, target.width, target.height);
+            forward_post(frame_.scene->post, world, target);
+        } else if (frame_.scene && frame_.scene->method == RenderMethod::ForwardPlus) {
             // The sky and meshes draw linear colors into a texture of half floats cleared to the
             // clear color, and Forward+'s post passes draw that over the target. With FSR 2 they
             // draw at the render size, and FSR 2 upscales them to the target's.
@@ -1983,6 +2017,90 @@ private:
         return taa_histories_.emplace_back(target, TaaHistory{}).second;
     }
 
+    // The path tracer's textures: each draw's slots and the sky's, as the device binds them.
+    class PathBindings final : public detail::PathTextures {
+    public:
+        std::vector<std::array<Bound, detail::kMeshTextures>> slots;
+        Bound sky_texture;
+        Bound radiance_texture;
+
+        [[nodiscard]] Float4 sample(std::size_t draw, std::size_t slot,
+                                    std::array<float, 2> uv) const override {
+            return slots[draw].at(slot).sample(uv[0], uv[1]);
+        }
+        [[nodiscard]] Float4 sky(bool radiance, std::array<float, 2> coords) const override {
+            // The sky repeats around its panorama, as draw_sky samples it.
+            return (radiance ? radiance_texture : sky_texture).sample(coords[0], coords[1]);
+        }
+    };
+
+    // Traces a path-traced frame's paths into target's sums and returns their average, linear,
+    // as Forward+'s world texture holds it. The sums start over when what the paths see changes.
+    detail::HdrImage path_trace(const Scene3D& scene, TextureId target, std::uint32_t width,
+                                std::uint32_t height) {
+        std::vector<detail::PathMesh> meshes;
+        meshes.reserve(mesh_draws_.size());
+        for (const detail::MeshDraw& draw : mesh_draws_) {
+            const SoftwareMesh& mesh = find_mesh(draw.mesh);
+            meshes.push_back(
+                {.draw = &draw, .vertices = mesh.vertices, .triangles = mesh.triangles(draw.lod)});
+        }
+        const detail::PathScene paths = detail::build_path_scene(
+            scene, meshes, width, height, detail::forward_clear(frame_.clear));
+        PathBindings bindings;
+        std::uint64_t key = detail::path_scene_key(paths);
+        const auto mix_in = [&](TextureId id) {
+            const Texture* found = id == TextureId::None ? nullptr : find(id);
+            for (const std::uint64_t value :
+                 {static_cast<std::uint64_t>(id), found != nullptr ? found->written : 0}) {
+                key = (key ^ value) * 0x100000001B3ULL;
+            }
+        };
+        for (const detail::MeshDraw& draw : mesh_draws_) {
+            auto& slots = bindings.slots.emplace_back();
+            const std::array<MaterialTexture, detail::kMeshTextures> textures =
+                detail::mesh_texture_slots(draw.material);
+            for (std::size_t slot = 0; slot < detail::kMeshTextures; ++slot) {
+                slots.at(slot) = bound(textures.at(slot).texture, textures.at(slot).repeat);
+                mix_in(textures.at(slot).texture);
+            }
+        }
+        bindings.sky_texture = bound(detail::sky_texture(scene.sky), true);
+        bindings.radiance_texture = bound(detail::radiance_texture(scene), true);
+        mix_in(detail::sky_texture(scene.sky));
+        mix_in(detail::radiance_texture(scene));
+
+        PathState& state = path_state(target);
+        const std::size_t size = std::size_t{width} * height * 3;
+        if (state.key != key || state.sums.size() != size) {
+            state = PathState{.key = key, .samples = 0, .sums = std::vector<float>(size, 0.0F)};
+        }
+        const std::uint32_t samples = std::min(
+            scene.path_trace->samples, std::numeric_limits<std::uint32_t>::max() - state.samples);
+        detail::trace_paths(paths, bindings, state.samples, samples, state.sums, pool_);
+        state.samples += samples;
+
+        detail::HdrImage world{.width = width, .height = height, .pixels = {}};
+        world.pixels.resize(std::size_t{width} * height * 4);
+        const float share = state.samples > 0 ? 1.0F / static_cast<float>(state.samples) : 0.0F;
+        for (std::size_t i = 0; i < std::size_t{width} * height; ++i) {
+            for (std::size_t c = 0; c < 3; ++c) {
+                world.pixels[(i * 4) + c] = detail::round_half(state.sums[(i * 3) + c] * share);
+            }
+            world.pixels[(i * 4) + 3] = 1.0F;
+        }
+        return world;
+    }
+
+    PathState& path_state(TextureId target) {
+        for (auto& [id, state] : path_states_) {
+            if (id == target) {
+                return state;
+            }
+        }
+        return path_states_.emplace_back(target, PathState{}).second;
+    }
+
     // target's volumetric fog, made empty when it has none.
     FogState& fog_state(TextureId target) {
         for (auto& [id, state] : fog_states_) {
@@ -2379,6 +2497,9 @@ private:
     std::vector<std::pair<TextureId, TaaHistory>> taa_histories_;
     std::vector<std::pair<TextureId, Fsr2State>> fsr2_states_;
     std::vector<std::pair<TextureId, FogState>> fog_states_;
+    std::vector<std::pair<TextureId, PathState>> path_states_;
+    std::uint64_t writes_ = 0; // texture writes so far, for Texture::written
+    jobs::Pool* pool_ = nullptr;
     std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> shaders_;
     std::unordered_map<ShaderId, std::shared_ptr<SoftwareShader>> retired_shaders_;
     std::uint32_t next_shader_ = 1;
@@ -2404,8 +2525,8 @@ private:
 
 } // namespace
 
-std::unique_ptr<RenderDevice> create_software_device() {
-    return std::make_unique<SoftwareDevice>();
+std::unique_ptr<RenderDevice> create_software_device(jobs::Pool* pool) {
+    return std::make_unique<SoftwareDevice>(pool);
 }
 
 } // namespace slash::render

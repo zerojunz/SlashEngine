@@ -1,0 +1,7 @@
+{"id":1,"jsonrpc":"2.0","result":{"entities":7,"path":"main.scene.json"}}
+{"id":2,"jsonrpc":"2.0","result":{"colors":[[0.796,0.78,0.769,1],[0.243,0.227,0.192,1],[0.282,0.341,0.463,1],[0.765,0.753,0.745,1],[0.655,0.663,0.698,1]],"drawn":{"meshes":4},"height":90,"path":"shots/live.png","width":160}}
+{"id":3,"jsonrpc":"2.0","result":{"colors":[[0.851,0.784,0.757,1],[0.424,0.337,0.247,1],[0.475,0.302,0.353,1],[0.78,0.749,0.737,1],[0.804,0.773,0.765,1]],"drawn":{"meshes":4},"height":90,"path":"shots/traced.png","path_samples":32,"width":160}}
+{"id":4,"jsonrpc":"2.0","result":{"colors":[[0.847,0.78,0.757,1],[0.424,0.333,0.247,1],[0.435,0.31,0.384,1],[0.773,0.753,0.741,1],[0.804,0.78,0.776,1]],"drawn":{"meshes":4},"height":90,"path_samples":64,"width":160}}
+{"id":5,"jsonrpc":"2.0","result":{"colors":[[0.757,0.718,0.639,1],[0,0,0,1],[0.133,0.125,0.106,1],[0.722,0.686,0.612,1],[0.588,0.557,0.498,1]],"drawn":{"meshes":4},"height":90,"path":"shots/direct.png","path_samples":32,"width":160}}
+{"id":6,"jsonrpc":"2.0","result":{"changed":{"StandardMaterial3D":{"albedo_color":[0.1,0.3,0.9,1.0]}},"id":"wall"}}
+{"id":7,"jsonrpc":"2.0","result":{"colors":[[0.804,0.788,0.804,1],[0.416,0.337,0.251,1]],"drawn":{"meshes":4},"height":90,"path":"shots/blue.png","path_samples":32,"width":160}}

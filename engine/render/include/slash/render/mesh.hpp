@@ -852,6 +852,25 @@ struct Fsr2Scaling {
     bool operator==(const Fsr2Scaling&) const = default;
 };
 
+// A frame's 3D path traced instead of rasterized, for a reference still to compare the real-time
+// frame with (Scene3D::path_trace). Each pixel gets samples paths this frame, through random
+// points of it, each bouncing off what it meets up to bounces times (0 for direct light alone):
+// lit at each surface by every light, through ray-traced shadows, and by what the next bounce
+// meets, emitting surfaces and the environment. A target's frames add their samples up while
+// the frame's meshes, lights, sky and camera stay the same, so a still gets less noisy frame by
+// frame (RenderDevice::path_samples), and start over when anything changes. Path tracing stands in
+// for the meshes' lightmaps, light probes, VoxelGIs, reflection probes, SSAO, SSR and shadow maps,
+// leaves out fog, decals and depth of field, and is post-processed as Forward+ post-processes.
+// Only the software device traces paths for now; other devices draw the frame as usual.
+inline constexpr std::uint32_t kMaxPathSamples = 4096;
+inline constexpr std::uint32_t kMaxPathBounces = 32;
+struct PathTrace3D {
+    std::uint32_t samples = 16; // 1 to kMaxPathSamples
+    std::uint32_t bounces = 4;  // up to kMaxPathBounces
+
+    bool operator==(const PathTrace3D&) const = default;
+};
+
 // What a frame's meshes are seen from and lit by. Matrices are column-major, as Mat4.
 struct Scene3D {
     // The world to the camera's space: the inverse of the camera's transform.
@@ -890,6 +909,8 @@ struct Scene3D {
     std::optional<Fsr2Scaling> fsr2{}; // NOLINT(readability-redundant-member-init)
     // Set for a frame that draws a face of a reflection probe (ProbeCapture).
     std::optional<ProbeCapture> capture{}; // NOLINT(readability-redundant-member-init)
+    // Set for a frame whose 3D is path traced (PathTrace3D).
+    std::optional<PathTrace3D> path_trace{}; // NOLINT(readability-redundant-member-init)
 
     // Godot's default Camera3D: 75 degrees across a square target, from 0.05 to 4000.
     static std::array<float, 16> perspective_default();
