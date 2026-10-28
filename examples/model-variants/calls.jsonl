@@ -1,0 +1,6 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"model.inspect","params":{"id":"crate","brief":true}}
+{"jsonrpc":"2.0","id":3,"method":"model.inspect","params":{"id":"burnt","brief":true}}
+{"jsonrpc":"2.0","id":4,"method":"model.inspect","params":{"path":"props/crate.model.json::big","brief":true}}
+{"jsonrpc":"2.0","id":5,"method":"frame.capture","params":{"points":[[45,50],[80,50],[115,45]]}}
+{"jsonrpc":"2.0","id":6,"method":"model.inspect","params":{"path":"props/crate.model.json::brunt","brief":true}}

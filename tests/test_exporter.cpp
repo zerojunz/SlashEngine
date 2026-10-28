@@ -1209,6 +1209,78 @@ TEST_CASE("exports ship glTF models with their buffers and images, and check the
     std::filesystem::remove_all(folder);
 }
 
+TEST_CASE("a preset's model_quality ships model recipes as that tier makes them") {
+    const std::filesystem::path folder = "exporter_quality_project";
+    std::filesystem::remove_all(folder);
+    std::filesystem::create_directories(folder / "props");
+    const auto write = [&](const std::string& path, std::string_view text) {
+        REQUIRE(slash::platform::write_file((folder / path).string(), text).ok());
+    };
+#if defined(__APPLE__)
+    const std::string host = "macos";
+#elif defined(_WIN32)
+    const std::string host = "windows";
+#else
+    const std::string host = "linux";
+#endif
+    write("project.json", R"({"format": 1, "name": "Crates", "main_scene": "main.scene.json"})");
+    write("main.scene.json", R"({"format": 1, "entities": {"crate": {"components": {
+        "Transform3D": {}, "MeshInstance3D": {"mesh": "props/crate.model.json::burnt"}}}}})");
+    write("props/crate.model.json", R"({"format": 1, "parts": [
+        {"name": "box", "shape": "box",
+         "children": [{"name": "hole", "shape": "sphere", "operation": "subtraction",
+                       "radius": 0.2, "position": [0, 0, 0.5]}]},
+        {"name": "lid", "shape": "box", "size": [1, 0.05, 1], "position": [0, 0.5, 0]}],
+        "variants": {"burnt": {"parts": {"lid": null}}},
+        "quality": {"phone": {"parts": {"hole": null}}}})");
+    write("props/plain.model.json", R"({"format": 1, "parts": [{"shape": "box"}]})");
+    // A broken file stops the export once its data is staged.
+    write("props/broken.model.json", R"({"format": 1, "parts": []})");
+    const auto presets = [&](std::string_view tier) {
+        write("export_presets.json",
+              R"({"format": 1, "presets": {")" + host + R"(": {"platform": ")" + host +
+                  R"(", "model_quality": ")" + std::string(tier) + R"("}}})");
+    };
+    const auto problems_of = [](const exporter::ExportResult& result) {
+        std::vector<std::string> problems;
+        const json::Value* error = result.json.find("error");
+        REQUIRE(error != nullptr);
+        REQUIRE(error->find("errors") != nullptr);
+        for (const json::Value& problem : error->find("errors")->as_array()) {
+            problems.push_back(problem.find("file")->as_string() + " " +
+                               problem.find("path")->as_string() + " " +
+                               problem.find("message")->as_string());
+        }
+        return problems;
+    };
+    exporter::ExportOptions options;
+    options.target = host;
+    options.project = folder.string();
+
+    presets("phone");
+    auto problems = problems_of(exporter::export_game(options));
+    REQUIRE(problems.size() == 1);
+    CHECK(problems[0].starts_with("props/broken.model.json /parts "));
+    const std::filesystem::path data = folder / ".slash" / "export" / host / "data";
+    auto shipped = slash::platform::read_file((data / "props" / "crate.model.json").string());
+    REQUIRE(shipped.ok());
+    const json::Value crate = parse(shipped.value());
+    CHECK(crate.find("quality") == nullptr);
+    CHECK(crate.find("variants") != nullptr);
+    CHECK(crate.find("parts")->as_array()[0].find("children")->as_array().empty());
+    // A recipe without the tier ships as written.
+    CHECK(slash::platform::read_file((data / "props" / "plain.model.json").string()).value() ==
+          R"({"format": 1, "parts": [{"shape": "box"}]})");
+
+    presets("phnoe");
+    problems = problems_of(exporter::export_game(options));
+    REQUIRE(problems.size() == 2);
+    CHECK(problems[1] == "export_presets.json /presets/" + host +
+                             "/model_quality no model recipe has the quality tier \"phnoe\" "
+                             "(did you mean \"phone\"?)");
+    std::filesystem::remove_all(folder);
+}
+
 TEST_CASE("exports ship .blend models as the glTF Blender makes of them, and check them first") {
     const std::filesystem::path folder = "exporter_blend_project";
     std::filesystem::remove_all(folder);

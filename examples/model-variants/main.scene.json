@@ -1,0 +1,66 @@
+{
+  "entities": {
+    "big": {
+      "components": {
+        "MeshInstance3D": {
+          "mesh": "props/crate.model.json::big"
+        },
+        "Transform3D": {
+          "position": [1.0, 0.0, -0.3]
+        }
+      }
+    },
+    "burnt": {
+      "components": {
+        "MeshInstance3D": {
+          "mesh": "props/crate.model.json::burnt"
+        },
+        "Transform3D": {}
+      }
+    },
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 50.0
+        },
+        "Transform3D": {
+          "position": [0.0, 0.8, 2.6],
+          "rotation": [-0.2, 0.0, 0.0]
+        }
+      }
+    },
+    "crate": {
+      "components": {
+        "MeshInstance3D": {
+          "mesh": "props/crate.model.json"
+        },
+        "Transform3D": {
+          "position": [-0.9, 0.0, 0.0]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.55, 0.6, 0.7, 1.0],
+          "ambient_light_energy": 0.6,
+          "ambient_light_source": "color",
+          "background_color": [0.55, 0.7, 0.9, 1.0],
+          "background_mode": "color"
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {
+          "light_energy": 1.2
+        },
+        "Transform3D": {
+          "rotation": [-0.8, 0.6, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}

@@ -954,3 +954,32 @@ TEST_CASE("asset.check finds library images hard to see or drawn too small, and 
     CHECK(engine.fail("asset.check", R"({"scenes": ["../outside.scene.json"]})")
               .message.starts_with("/scenes/0: "));
 }
+
+TEST_CASE("a library recipe keeps the variants its model parts name") {
+    const fs::path root = fresh("library_variants");
+    const Engine engine(root);
+    const fs::path project = root / "project";
+    write(project / "props" / "crate.model.json",
+          R"({"format": 1, "parts": [{"name": "box", "shape": "box"},
+              {"name": "lid", "shape": "box", "size": [1, 0.1, 1], "position": [0, 0.55, 0]}],
+              "variants": {"open": {"parts": {"lid": null}}}})");
+    write(project / "props" / "pile.model.json", R"({"format": 1, "parts": [
+        {"name": "shut", "model": "props/crate.model.json"},
+        {"name": "open", "model": "props/crate.model.json::open", "position": [2, 0, 0]}]})");
+    json::Value added = engine.call(
+        "asset.add", R"({"path": "props/pile.model.json", "description": "Two crates."})");
+    const std::string crate = added["model_parts"]["props/crate.model.json"].as_string();
+    CHECK(added["model_parts"].as_object().size() == 1);
+    const library::Library kept((root / "library").string());
+    const library::Record crate_record = kept.get(crate).value();
+    const std::string in_library = kept.read(kept.get(added["id"].as_string()).value()).value();
+    CHECK(in_library.find("\"asset:" + crate_record.id + ".model.json::open\"") !=
+          std::string::npos);
+    json::Value info = engine.call("asset.info", R"({"id": ")" + added["id"].as_string() + R"("})");
+    CHECK(info["uses"] == parse(R"([")" + crate + R"("])"));
+
+    engine.call("asset.use",
+                R"({"id": ")" + added["id"].as_string() + R"(", "path": "yard/pile.model.json"})");
+    json::Value copied = parse(read(project / "yard" / "pile.model.json"));
+    CHECK(copied["parts"].as_array()[1]["model"] == "yard/parts/" + crate + ".model.json::open");
+}

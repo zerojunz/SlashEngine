@@ -957,6 +957,7 @@ checks a recipe and `slash-cli scene format` writes it in canonical form.
 | `materials` | object | `{}` | [`StandardMaterial3D`](#standardmaterial3d) fields by name; texture fields name images by project path |
 | `parts` | array | required | At least one part |
 | `points` | array | `[]` | Attachment points, as below |
+| `variants`, `quality` | object | `{}` | Named forms of the recipe, as [below](#variants-and-quality-tiers) |
 
 Every number in a part, and every parameter, can be a string starting with `=`: an expression in
 Godot's `Expression` syntax over the parameters (`"=width / 2"`, `"=sin(angle) * r"`). A name
@@ -1040,6 +1041,37 @@ one that takes in the recipe itself, and parts nest at most 8 files deep. The re
 when one of its files changes. A model part can't be a child of another part.
 [examples/composite-models](../../examples/composite-models/) builds a market stall of crates and
 a lantern.
+
+##### Variants and quality tiers
+
+A recipe's `variants` are named options of it, such as a damaged crate or a winter tree, and its
+`quality` holds tiers, such as `phone`, that an [export preset](project-format.md#export-presets)'s
+`model_quality` picks. Each form changes the recipe as Godot's inherited scenes override their
+nodes: `parameters` sets parameters the recipe has, `materials` sets fields of its materials (or
+adds one), and `parts` sets fields of every part of that name, top-level or a child, or removes
+it with `null`. A path picks a variant after `::`, wherever a model file goes:
+`MeshInstance3D`'s `mesh`, a model part's `model`, `model.inspect`'s `path`. A variant shares
+its file, so it reloads with it.
+
+```json
+"variants": {
+  "burnt": {"materials": {"pine": {"albedo_color": [0.1, 0.1, 0.1, 1]}},
+            "parts": {"lid": null, "hole": {"radius": 0.4}}},
+  "big": {"parameters": {"size": 2}}
+},
+"quality": {"phone": {"parameters": {"segments": 8}, "parts": {"bolts": null}}}
+```
+
+```json
+"MeshInstance3D": {"mesh": "props/crate.model.json::burnt"}
+```
+
+Each form is checked as the recipe it makes, its errors at the form (`/variants/burnt/parts/lid:
+the recipe has no part "lid"`), and so is a form that leaves no parts. An export whose preset
+names a tier ships each recipe that has it as the tier makes it, without its `quality` and with
+its variants applied after the tier; the rest ship as written. A tier no recipe has is reported
+with the closest one. Only recipes have variants: `::` after another model file is reported.
+[examples/model-variants](../../examples/model-variants/) burns a crate and ships it for phones.
 
 #### Skeletons and model animations
 

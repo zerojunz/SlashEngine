@@ -1,6 +1,7 @@
 #include "slash/library/commands.hpp"
 
 #include "slash/ai/config.hpp"
+#include "slash/asset/assets.hpp"
 #include "slash/canvas/canvas.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/sha256.hpp"
@@ -34,6 +35,11 @@
 
 namespace slash::library {
 namespace {
+
+// The "::variant" a model part's path ends with, or "".
+std::string variant_suffix(std::string_view path) {
+    return std::string(path.substr(asset::file_of(path).size()));
+}
 
 using command::Capability;
 using command::Reply;
@@ -557,7 +563,7 @@ Result<std::string> project_form(Session& session, Libraries& libs, const Record
             }
             parts.emplace_back(part_path);
         }
-        *model = part_path;
+        *model = part_path + variant_suffix(model->as_string());
     }
     return json::write(doc.value()) + "\n";
 }
@@ -1449,7 +1455,7 @@ Reply swap_parts(Session& session, Libraries& libs, const Record& parent, json::
         const std::string ref = asset_ref(new_part.value());
         for (json::Value* model : model_refs(recipe)) {
             if (ref_id_of(*model) == old_part.value().id) {
-                *model = ref;
+                *model = ref + variant_suffix(model->as_string());
             }
         }
         done[old_part.value().id] = new_part.value().id;
@@ -1848,12 +1854,13 @@ Result<std::string> library_form(Session& session, Libraries& libs, std::string 
         if (!model->is_string() || !ref_id_of(*model).empty()) {
             continue;
         }
-        auto ref = add_part(session, libs, model->as_string(), work);
+        const std::string suffix = variant_suffix(model->as_string());
+        auto ref = add_part(session, libs, std::string(asset::file_of(model->as_string())), work);
         if (!ref) {
             work.loading.pop_back();
             return ref.error();
         }
-        *model = std::move(ref).value();
+        *model = std::move(ref).value() + suffix;
     }
     work.loading.pop_back();
     return json::write(doc.value()) + "\n";
