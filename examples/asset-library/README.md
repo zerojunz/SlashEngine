@@ -39,5 +39,12 @@ library and calls the commands as an agent does over MCP (tools `asset_search`,
   the bench's seat in the game's copy, and `asset.add` with only the path keeps it with the
   first bench as its `parent`, described and licensed as that one was. `.glb` models go in the
   same way, when they hold their own buffers and images.
+- A recipe made of other model files goes in with them: the picnic set's benches are the
+  game's `props/bench.model.json`, so `asset.add` names that file's library model
+  (`"asset:<id>.model.json"`) in the kept recipe, adding the file first where the library lacks
+  it, and reports it in `model_parts`. `asset.use` copies the parts into a `parts/` folder
+  beside the recipe and points the copy at them. `asset.info` lists a recipe's `uses` and the
+  recipes that use an asset (`used_by`), and `asset.refine` with `parts` makes a version made
+  of other models: here the long benches, with no file edited.
 - The library is `~/.slash/library`, or `SLASH_LIBRARY_DIR`; this example keeps its own in
   `library/`.

@@ -11,6 +11,8 @@
 #include "slash/library/team.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
+#include "slash/scene3d/model.hpp"
+#include "slash/scene3d/recipe.hpp"
 #include "slash/storyboard/storyboard.hpp"
 #include "slash/world/scene.hpp"
 
@@ -48,6 +50,8 @@ constexpr std::size_t kMaxCandidates = 5;
 // how many reasons of each verdict go in.
 constexpr double kRelated = 0.5;
 constexpr std::size_t kMaxNotes = 3;
+// How deep a recipe's model parts can nest, as scene3d's kMaxModelDepth.
+constexpr int kMaxPartDepth = 8;
 constexpr std::string_view kStyleCheck = "storyboard.check";
 // asset.check: how the game shows the project's library assets.
 constexpr std::string_view kFrameCheck = "asset.check";
@@ -297,21 +301,30 @@ std::vector<Record> with_team(Libraries& libs, std::vector<Record> records, cons
     return records;
 }
 
-// Puts the machine's assets with these IDs, and the versions they were refined from, in the
-// team's library where it lacks them, each with the requests that made it. Returns the IDs put.
+// Puts the machine's assets with these IDs, the versions they were refined from and the models
+// recipes among them are made of, in the team's library where it lacks them, each with the requests
+// that made it. Returns the IDs put.
 Result<std::vector<std::string>> share_missing(const Libraries& libs, Team& team,
                                                const std::vector<std::string>& ids) {
+    // Each asset after the models it is made of, so the team can build a recipe it is sent.
     std::vector<std::string> wanted;
-    for (const std::string& id : ids) {
-        std::string at = id;
-        for (int depth = 0; !at.empty() && depth < 100; ++depth) {
-            if (std::ranges::find(wanted, at) != wanted.end()) {
-                break;
-            }
-            wanted.push_back(at);
-            auto record = libs.local().get(at);
-            at = record ? record.value().parent : std::string();
+    const auto want = [&](const auto& self, const std::string& id, int depth) -> void {
+        if (id.empty() || depth > 100 || std::ranges::find(wanted, id) != wanted.end()) {
+            return;
         }
+        auto record = libs.local().get(id);
+        if (record) {
+            for (const std::string& use : record.value().uses) {
+                self(self, use, depth + 1);
+            }
+        }
+        wanted.push_back(id);
+        if (record) {
+            self(self, record.value().parent, depth + 1);
+        }
+    };
+    for (const std::string& id : ids) {
+        want(want, id, 0);
     }
     std::vector<std::string> put;
     if (wanted.empty()) {
@@ -349,6 +362,12 @@ void share(Libraries& libs, const Record& record, std::string_view data, std::st
     std::vector<std::string> requests;
     if (!request.empty()) {
         requests.emplace_back(request);
+    }
+    if (!record.uses.empty()) {
+        if (auto shared = share_missing(libs, *team, record.uses); !shared) {
+            libs.fail(shared.error());
+            return;
+        }
     }
     if (auto stored = team->put(data, record, requests); !stored) {
         libs.fail(stored.error());
@@ -448,21 +467,8 @@ Result<void> check_path(std::string_view path, std::string_view format) {
     return {};
 }
 
-// Writes the asset into the project and records where it came from in library.json. Returns the
-// bytes written.
-Result<std::string> copy_into_project(Session& session, const Library& library,
-                                      const Record& record, const std::string& path) {
-    auto full = session.resolve_path(path);
-    if (!full) {
-        return full.error();
-    }
-    if (auto checked = check_path(path, record.format); !checked) {
-        return checked.error();
-    }
-    auto data = library.read(record);
-    if (!data) {
-        return data.error();
-    }
+// Records in library.json that the project's file at path came from the asset.
+Result<void> record_use(Session& session, const Record& record, const std::string& path) {
     auto list_path = session.resolve_path(kProjectFile);
     if (!list_path) {
         return list_path.error();
@@ -495,13 +501,154 @@ Result<std::string> copy_into_project(Session& session, const Library& library,
         entry["author"] = record.author;
     }
     list["assets"][path] = std::move(entry);
-    if (auto written = session.write_file(full.value(), data.value()); !written) {
-        return written.error();
+    return session.write_file(list_path.value(), json::write(list));
+}
+
+// The bytes of an asset from the machine's library, or else the team's.
+Result<std::string> read_asset(Libraries& libs, const Record& record) {
+    auto data = libs.local().read(record);
+    if (data || data.error().code != ErrorCode::NotFound) {
+        return data;
     }
-    if (auto written = session.write_file(list_path.value(), json::write(list)); !written) {
-        return written.error();
+    if (Team* team = libs.team(); team != nullptr) {
+        return team->read(record);
     }
     return data;
+}
+
+Result<std::string> copy_into_project(Session& session, Libraries& libs, const Record& record,
+                                      const std::string& path, json::Array* parts = nullptr,
+                                      int depth = 0);
+
+// A library recipe as its project copy at path is written: each model part's library reference
+// replaced by the path of the part copied into the parts folder beside it
+// (props/parts/3fa4c2e81b07.glb for props/stall.model.json), each listed in parts.
+Result<std::string> project_form(Session& session, Libraries& libs, const Record& record,
+                                 std::string data, const std::string& path, json::Array& parts,
+                                 int depth) {
+    if (record.uses.empty()) {
+        return data;
+    }
+    auto doc = json::parse(data);
+    if (!doc) {
+        return doc.error();
+    }
+    const std::size_t slash = path.rfind('/');
+    const std::string folder =
+        (slash == std::string::npos ? std::string() : path.substr(0, slash + 1)) + "parts/";
+    for (json::Value* model : model_refs(doc.value())) {
+        const std::string_view id = ref_id_of(*model);
+        if (id.empty()) {
+            continue;
+        }
+        auto part = find_asset(session, libs, id);
+        if (!part) {
+            return part.error();
+        }
+        const std::string part_path =
+            folder + short_id(part.value().id) + "." + part.value().format;
+        if (std::ranges::none_of(parts, [&](const json::Value& placed) {
+                return placed.as_string() == part_path;
+            })) {
+            if (auto copied =
+                    copy_into_project(session, libs, part.value(), part_path, &parts, depth + 1);
+                !copied) {
+                return copied.error();
+            }
+            parts.emplace_back(part_path);
+        }
+        *model = part_path;
+    }
+    return json::write(doc.value()) + "\n";
+}
+
+// Writes the asset into the project and records where it came from in library.json, with the
+// model files a recipe is made of copied beside it (listed in parts). Returns the bytes written.
+Result<std::string> copy_into_project(Session& session, Libraries& libs, const Record& record,
+                                      const std::string& path, json::Array* parts, int depth) {
+    auto full = session.resolve_path(path);
+    if (!full) {
+        return full.error();
+    }
+    if (auto checked = check_path(path, record.format); !checked) {
+        return checked.error();
+    }
+    if (depth > kMaxPartDepth) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "model parts nest more than " + std::to_string(kMaxPartDepth) + " deep");
+    }
+    auto data = read_asset(libs, record);
+    if (!data) {
+        return data.error();
+    }
+    json::Array placed;
+    auto written = project_form(session, libs, record, std::move(data).value(), path,
+                                parts != nullptr ? *parts : placed, depth);
+    if (!written) {
+        return written.error();
+    }
+    if (auto wrote = session.write_file(full.value(), written.value()); !wrote) {
+        return wrote.error();
+    }
+    if (auto recorded = record_use(session, record, path); !recorded) {
+        return recorded.error();
+    }
+    return written;
+}
+
+// A model file asset.add puts in the library with a recipe made of it.
+struct NewPart {
+    Record record;
+    std::string data;    // as the library keeps it
+    std::string path;    // where the project has it
+    bool stored = false; // the library has it already
+};
+
+// Reads library recipes' model parts from the parts being added, else from the libraries.
+scene3d::ModelReader parts_reader(Session& session, Libraries& libs,
+                                  const std::vector<NewPart>& added) {
+    return part_reader([&session, &libs, &added](std::string_view id) -> Result<std::string> {
+        for (const NewPart& part : added) {
+            if (part.record.id == id) {
+                return part.data;
+            }
+        }
+        auto record = find_asset(session, libs, id);
+        if (!record) {
+            return record.error();
+        }
+        return read_asset(libs, record.value());
+    });
+}
+
+bool is_model_file(std::string_view path) {
+    return path.ends_with(".glb") || path.ends_with(scene3d::kModelRecipeSuffix);
+}
+
+std::string stem_of(std::string_view path) {
+    const std::size_t slash = path.rfind('/');
+    std::string_view name = path.substr(slash == std::string_view::npos ? 0 : slash + 1);
+    for (const std::string_view suffix : {std::string_view(".glb"), scene3d::kModelRecipeSuffix}) {
+        if (name.ends_with(suffix)) {
+            name.remove_suffix(suffix.size());
+        }
+    }
+    return std::string(name);
+}
+
+// The short IDs of the machine's library's recipes made of the asset.
+json::Array used_by(const Library& library, std::string_view id) {
+    json::Array out;
+    auto records = library.all();
+    if (!records) {
+        return out;
+    }
+    for (const Record& other : records.value()) {
+        if (std::ranges::find(other.uses, id) != other.uses.end()) {
+            out.emplace_back(short_id(other.id));
+        }
+    }
+    return out;
 }
 
 // The library asset the project's library.json says a path was copied from, if it names one
@@ -607,7 +754,7 @@ Result<json::Array> place_music(Session& session, Libraries& libs, const Record&
         }
         const std::string file = base + "/" + stem.name + "." + part.value().format;
         const std::string file_settings = base + "/" + stem.name + ".audio.json";
-        if (auto copied = copy_into_project(session, libs.local(), part.value(), file); !copied) {
+        if (auto copied = copy_into_project(session, libs, part.value(), file); !copied) {
             return copied.error();
         }
         if (auto wrote = write_settings(session, part.value(), file, file_settings, loop); !wrote) {
@@ -757,7 +904,8 @@ Reply finish(Session& session, Libraries& libs, const Record& record, const Aske
         out["reused"] = true;
     }
     if (!asked.path.empty()) {
-        auto copied = copy_into_project(session, libs.local(), record, asked.path);
+        json::Array parts;
+        auto copied = copy_into_project(session, libs, record, asked.path, &parts);
         if (!copied) {
             Reply reply = failure_at(copied.error(), "/path");
             // The asset is in the library all the same; asset.use puts it somewhere else.
@@ -765,6 +913,9 @@ Reply finish(Session& session, Libraries& libs, const Record& record, const Aske
             return reply;
         }
         out["path"] = asked.path;
+        if (!parts.empty()) {
+            out["parts"] = std::move(parts);
+        }
         if (json::Array problems = check_style(session, libs, record, asked.path, copied.value());
             !problems.empty()) {
             out["problems"] = std::move(problems);
@@ -1263,6 +1414,49 @@ Reply asset_generate(Session& session, const json::Value& params) {
     return run_generator(session, params, std::move(asked), nullptr);
 }
 
+// Moves a recipe's model parts from the library models swaps names to the ones it maps them to,
+// filling done with the full IDs, for the request.
+Reply swap_parts(Session& session, Libraries& libs, const Record& parent, json::Value& recipe,
+                 const json::Value& swaps, json::Value& done) {
+    for (const auto& [from, to] : swaps.as_object()) {
+        const std::string at = "/parts/" + from;
+        auto old_part = find_asset(session, libs, from);
+        if (!old_part) {
+            return failure_at(old_part.error(), at);
+        }
+        if (std::ranges::find(parent.uses, old_part.value().id) == parent.uses.end()) {
+            std::string message = "the recipe isn't made of \"" + from + "\"";
+            if (parent.uses.empty()) {
+                message += "; it has no model parts";
+            } else {
+                std::vector<std::string> made_of;
+                made_of.reserve(parent.uses.size());
+                for (const std::string& use : parent.uses) {
+                    made_of.push_back("\"" + short_id(use) + "\"");
+                }
+                message += "; it is made of " + joined(made_of, ", ");
+            }
+            return invalid_at(at, message);
+        }
+        auto new_part = find_asset(session, libs, to.as_string());
+        if (!new_part) {
+            return failure_at(new_part.error(), at);
+        }
+        if (new_part.value().type != "model") {
+            return invalid_at(at, "a model part is a model; \"" + to.as_string() + "\" is " +
+                                      with_article(new_part.value().type));
+        }
+        const std::string ref = asset_ref(new_part.value());
+        for (json::Value* model : model_refs(recipe)) {
+            if (ref_id_of(*model) == old_part.value().id) {
+                *model = ref;
+            }
+        }
+        done[old_part.value().id] = new_part.value().id;
+    }
+    return Reply::success(json::Value());
+}
+
 // A model's next version: its recipe with the parameters given, kept as an asset of its own
 // linked to the one it came from. No generator is called, so refining a model is changing a
 // number.
@@ -1277,7 +1471,8 @@ Reply refine_model(Session& session, Libraries& libs, const Record& parent, std:
         }
     }
     const json::Value* given = params.find("parameters");
-    if (given == nullptr) {
+    const json::Value* swaps = params.find("parts");
+    if (given == nullptr && swaps == nullptr) {
         return invalid_at("/parameters", "a model changes by its parameters: give the ones to "
                                          "change, such as {\"width\": 1.6}");
     }
@@ -1286,6 +1481,16 @@ Reply refine_model(Session& session, Libraries& libs, const Record& parent, std:
         return Reply::failure(parsed.error());
     }
     json::Value recipe = std::move(parsed).value();
+    json::Value swapped;
+    if (swaps != nullptr) {
+        if (Reply moved = swap_parts(session, libs, parent, recipe, *swaps, swapped); !moved.ok) {
+            return moved;
+        }
+    }
+    const json::Value none = json::Object{};
+    if (given == nullptr) {
+        given = &none;
+    }
     std::vector<std::string> names;
     if (const json::Value* known = recipe.find("parameters");
         known != nullptr && known->is_object()) {
@@ -1308,8 +1513,12 @@ Reply refine_model(Session& session, Libraries& libs, const Record& parent, std:
     }
     const std::string bytes = json::write(recipe) + "\n";
     Record record;
-    if (auto described = describe_file(bytes, "version.model.json", record); !described) {
-        return invalid_at("/parameters", described.error().message);
+    const std::vector<NewPart> nothing_new;
+    if (auto described = describe_file(bytes, "version.model.json", record,
+                                       parts_reader(session, libs, nothing_new));
+        !described) {
+        return invalid_at(swaps != nullptr && given->as_object().empty() ? "/parts" : "/parameters",
+                          described.error().message);
     }
     const std::string prompt = text(params, "prompt");
     record.description = trimmed(text(params, "description"));
@@ -1325,7 +1534,12 @@ Reply refine_model(Session& session, Libraries& libs, const Record& parent, std:
     record.author = parent.author;
     record.parent = parent.id;
     record.request["parent"] = parent.id;
-    record.request["parameters"] = *given;
+    if (!given->as_object().empty()) {
+        record.request["parameters"] = *given;
+    }
+    if (!swapped.is_null()) {
+        record.request["parts"] = std::move(swapped);
+    }
     if (!prompt.empty()) {
         record.request["prompt"] = prompt;
     }
@@ -1365,9 +1579,12 @@ Reply asset_refine(Session& session, const json::Value& params) {
     if (parent.value().type == "model") {
         return refine_model(session, libs.value(), parent.value(), data.value(), params);
     }
-    if (params.find("parameters") != nullptr) {
-        return invalid_at("/parameters", "only a model takes parameters; the asset is " +
-                                             with_article(parent.value().type));
+    for (const std::string_view key : {"parameters", "parts"}) {
+        if (params.find(key) != nullptr) {
+            return invalid_at("/" + std::string(key), "only a model takes " + std::string(key) +
+                                                          "; the asset is " +
+                                                          with_article(parent.value().type));
+        }
     }
     if (params.find("prompt") == nullptr) {
         return invalid_at("/prompt", "say what to change");
@@ -1437,6 +1654,14 @@ Reply asset_info(Session& session, const json::Value& params) {
     if (!record.value().track.empty()) {
         out["track"] = short_id(record.value().track);
     }
+    if (json::Value* uses = out.find("uses"); uses != nullptr) {
+        for (json::Value& use : uses->as_array()) {
+            use = short_id(use.as_string());
+        }
+    }
+    if (json::Array users = used_by(library, record.value().id); !users.empty()) {
+        out["used_by"] = std::move(users);
+    }
     if (json::Value* request = out.find("request"); request != nullptr) {
         if (const json::Value* parent = request->find("parent"); parent != nullptr) {
             (*request)["parent"] = short_id(parent->as_string());
@@ -1491,12 +1716,16 @@ Reply asset_use(Session& session, const json::Value& params) {
         return invalid_at("/stems", "the music has no stems; asset.add takes them with the track");
     }
     const std::string path = text(params, "path");
-    auto copied = copy_into_project(session, libs.value().local(), record.value(), path);
+    json::Array parts;
+    auto copied = copy_into_project(session, libs.value(), record.value(), path, &parts);
     if (!copied) {
         return failure_at(copied.error(), "/path");
     }
     json::Value out;
     out["path"] = path;
+    if (!parts.empty()) {
+        out["parts"] = std::move(parts);
+    }
     if (json::Array problems =
             check_style(session, libs.value(), record.value(), path, copied.value());
         !problems.empty()) {
@@ -1514,6 +1743,122 @@ Reply asset_use(Session& session, const json::Value& params) {
     return libs.value().noted(Reply::success(std::move(out)));
 }
 
+struct PartWork {
+    const Record* recipe = nullptr; // what the parts' records take by default
+    std::vector<NewPart> added;
+    std::map<std::string, std::string> refs; // library references by project path
+    std::vector<std::string> loading;
+};
+
+Result<std::string> library_form(Session& session, Libraries& libs, std::string data,
+                                 const std::string& path, PartWork& work);
+
+// The library reference to the project's model file at path, put in the library (as
+// work.added) where it lacks it; a file the project took from the library and changed is a new
+// version of that.
+Result<std::string> add_part(Session& session, Libraries& libs, const std::string& path,
+                             PartWork& work) {
+    if (auto known = work.refs.find(path); known != work.refs.end()) {
+        return known->second;
+    }
+    const auto failed = [&path](const Error& error) {
+        return make_error(error.code, "the model part \"" + path + "\": " + error.message);
+    };
+    if (!is_model_file(path)) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "the model part \"" + path +
+                              "\": the library keeps model parts that are .glb or .model.json "
+                              "files");
+    }
+    auto bytes = platform::read_file_in(session.options().project_root, path);
+    if (!bytes) {
+        return failed(bytes.error());
+    }
+    auto form = library_form(session, libs, std::move(bytes).value(), path, work);
+    if (!form) {
+        return form.error();
+    }
+    NewPart part;
+    if (auto described =
+            describe_file(form.value(), path, part.record, parts_reader(session, libs, work.added));
+        !described) {
+        return failed(described.error());
+    }
+    part.record.id = sha256_hex(form.value());
+    std::string ref = asset_ref(part.record);
+    work.refs[path] = ref;
+    part.path = path;
+    const std::optional<Record> earlier = used_version(session, libs, path);
+    if (auto existing = libs.local().get(part.record.id); existing) {
+        part.record = std::move(existing).value();
+        part.stored = true;
+    } else if (earlier && earlier->id == part.record.id) {
+        part.record = *earlier;
+        part.stored = true;
+    } else {
+        const Record& recipe = *work.recipe;
+        part.record.description = trimmed(stem_of(path) + ", a part of: " + recipe.description);
+        part.record.tags = recipe.tags;
+        part.record.license = recipe.license;
+        part.record.author = recipe.author;
+        if (earlier && earlier->type == "model") {
+            part.record.parent = earlier->id;
+            part.record.description = earlier->description;
+            part.record.tags = earlier->tags;
+            if (part.record.license.empty()) {
+                part.record.license = earlier->license;
+            }
+            if (part.record.author.empty()) {
+                part.record.author = earlier->author;
+            }
+        }
+    }
+    part.data = std::move(form).value();
+    work.added.push_back(std::move(part));
+    return ref;
+}
+
+// A project's recipe as the library keeps it: each model part naming a project file names that
+// file's library model instead (add_part). Other files come back as they are.
+Result<std::string> library_form(Session& session, Libraries& libs, std::string data,
+                                 const std::string& path, PartWork& work) {
+    if (!path.ends_with(scene3d::kModelRecipeSuffix)) {
+        return data;
+    }
+    auto doc = json::parse(data);
+    if (!doc) {
+        return data; // describe_file says what is wrong with it
+    }
+    std::vector<json::Value*> models = model_refs(doc.value());
+    if (std::ranges::none_of(models, [](const json::Value* model) {
+            return model->is_string() && ref_id_of(*model).empty();
+        })) {
+        return data;
+    }
+    if (std::ranges::find(work.loading, path) != work.loading.end()) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "\"" + path + "\" takes in itself through its model parts");
+    }
+    if (work.loading.size() >= static_cast<std::size_t>(kMaxPartDepth)) {
+        return make_error(ErrorCode::InvalidArgument,
+                          "model parts nest more than " + std::to_string(kMaxPartDepth) + " deep");
+    }
+    work.loading.push_back(path);
+    for (json::Value* model : models) {
+        if (!model->is_string() || !ref_id_of(*model).empty()) {
+            continue;
+        }
+        auto ref = add_part(session, libs, model->as_string(), work);
+        if (!ref) {
+            work.loading.pop_back();
+            return ref.error();
+        }
+        *model = std::move(ref).value();
+    }
+    work.loading.pop_back();
+    return json::write(doc.value()) + "\n";
+}
+
 Reply asset_add(Session& session, const json::Value& params) {
     auto libs = open_libraries(session);
     if (!libs) {
@@ -1527,8 +1872,39 @@ Reply asset_add(Session& session, const json::Value& params) {
     if (!data) {
         return failure_at(data.error(), "/path");
     }
+    const std::optional<Record> earlier = used_version(session, libs.value(), path);
+    // What the call says it is; for a new version, what the last one was said to be.
+    Record given;
+    given.description = trimmed(text(params, "description"));
+    given.tags = strings(params, "tags");
+    given.license = text(params, "license");
+    given.author = text(params, "author");
+    if (earlier) {
+        if (given.description.empty()) {
+            given.description = earlier->description;
+        }
+        if (params.find("tags") == nullptr) {
+            given.tags = earlier->tags;
+        }
+        if (given.license.empty()) {
+            given.license = earlier->license;
+        }
+        if (given.author.empty()) {
+            given.author = earlier->author;
+        }
+    }
+    // A recipe made of the project's model files names their library models instead.
+    PartWork work;
+    work.recipe = &given;
+    auto form = library_form(session, libs.value(), data.value(), path, work);
+    if (!form) {
+        return failure_at(form.error(), "/path");
+    }
+    data.value() = std::move(form).value();
     Record record;
-    if (auto described = describe_file(data.value(), path, record); !described) {
+    if (auto described = describe_file(data.value(), path, record,
+                                       parts_reader(session, libs.value(), work.added));
+        !described) {
         return failure_at(described.error(), "/path");
     }
     const json::Value* stems = params.find("stems");
@@ -1548,23 +1924,16 @@ Reply asset_add(Session& session, const json::Value& params) {
     record.tags = strings(params, "tags");
     record.license = text(params, "license");
     record.author = text(params, "author");
-    // A file the project took from the library and changed since is a new version of that
-    // asset, with what it was said to be unless the call says otherwise.
-    if (std::optional<Record> earlier = used_version(session, libs.value(), path);
-        earlier && earlier->id != sha256_hex(data.value()) && earlier->type == record.type) {
-        record.parent = earlier->id;
-        if (record.description.empty()) {
-            record.description = earlier->description;
+    // A file the project took from the library is that asset, or once changed a new version of
+    // it, with what it was said to be unless the call says otherwise.
+    if (earlier && earlier->type == record.type) {
+        if (earlier->id != sha256_hex(data.value())) {
+            record.parent = earlier->id;
         }
-        if (params.find("tags") == nullptr) {
-            record.tags = earlier->tags;
-        }
-        if (record.license.empty()) {
-            record.license = earlier->license;
-        }
-        if (record.author.empty()) {
-            record.author = earlier->author;
-        }
+        record.description = given.description;
+        record.tags = given.tags;
+        record.license = given.license;
+        record.author = given.author;
     }
     if (record.description.empty()) {
         return invalid_at("/description", "say what it is in a sentence, for agents to read "
@@ -1632,19 +2001,33 @@ Reply asset_add(Session& session, const json::Value& params) {
             record.stems.push_back({.name = name, .id = stored_part.value().id});
             parts.emplace_back(std::move(stored_part).value(), std::move(stem_data).value());
             if (auto copied =
-                    copy_into_project(session, libs.value().local(), parts.back().first, stem_path);
+                    copy_into_project(session, libs.value(), parts.back().first, stem_path);
                 !copied) {
                 return failure_at(copied.error(), at);
             }
         }
     }
+    // The model files a recipe is made of go in before it, each recorded as the project's.
+    json::Value model_parts;
+    for (NewPart& part : work.added) {
+        if (!part.stored) {
+            auto stored_part = libs.value().local().put(part.data, part.record);
+            if (!stored_part) {
+                return Reply::failure(stored_part.error());
+            }
+            part.record = std::move(stored_part).value();
+        }
+        if (auto recorded = record_use(session, part.record, part.path); !recorded) {
+            return failure_at(recorded.error(), "/path");
+        }
+        model_parts[part.path] = short_id(part.record.id);
+    }
     auto stored = libs.value().local().put(data.value(), std::move(record));
     if (!stored) {
         return Reply::failure(stored.error());
     }
-    if (auto copied = copy_into_project(session, libs.value().local(), stored.value(), path);
-        !copied) {
-        return failure_at(copied.error(), "/path");
+    if (auto recorded = record_use(session, stored.value(), path); !recorded) {
+        return failure_at(recorded.error(), "/path");
     }
     for (const auto& [part, part_data] : parts) {
         share(libs.value(), part, part_data, {});
@@ -1655,6 +2038,14 @@ Reply asset_add(Session& session, const json::Value& params) {
     out.as_object().erase("tags");
     if (!stored.value().parent.empty()) {
         out["parent"] = short_id(stored.value().parent);
+        // The recipes still made of the version before, to move to this one with asset.refine.
+        if (json::Array users = used_by(libs.value().local(), stored.value().parent);
+            !users.empty()) {
+            out["used_by"] = std::move(users);
+        }
+    }
+    if (!model_parts.is_null()) {
+        out["model_parts"] = std::move(model_parts);
     }
     if (!notes.empty()) {
         out["problems"] = std::move(notes);
@@ -2152,6 +2543,12 @@ void register_commands(command::Registry& registry) {
     parameters["additionalProperties"]["type"] = json::Array{"number", "string"};
     parameters["minProperties"] = 1;
     refine.emplace("parameters", std::move(parameters));
+    json::Value swaps = property("object", "A recipe: library models to make its model parts of "
+                                           "instead, by the IDs of the ones they replace, such as "
+                                           "{\"3fa4c2\": \"9b01de\"}.");
+    swaps["additionalProperties"]["type"] = "string";
+    swaps["minProperties"] = 1;
+    refine.emplace("parts", std::move(swaps));
     registry.add({
         .name = "asset.refine",
         .description = "Makes a new version of a library asset, changed as the prompt (or a "
