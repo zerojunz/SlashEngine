@@ -178,6 +178,9 @@ struct CanvasOptions {
     // Draw every collision shape over the world, as Godot's Visible Collision Shapes
     // (debug_draw.hpp).
     bool collisions = false;
+    // Path trace the 3D world (render::Scene3D::path_trace), with every mesh at its own LOD,
+    // none hidden by occluders, and neither TAA nor FSR 2.
+    std::optional<render::PathTrace3D> path_trace{}; // NOLINT(readability-redundant-member-init)
     // Another world whose controls draw over everything, laid out in the same viewport with
     // this world's fonts, such as the debug overlay's.
     const world::World* overlay = nullptr;
@@ -502,6 +505,9 @@ struct CaptureOptions {
     // How many times to draw the frame, returning the last: temporal antialiasing builds up over
     // frames, and the captures of a world keep its history between them.
     std::uint32_t frames = 1;
+    // Path trace the 3D world (CanvasOptions::path_trace), each frame adding its samples to the
+    // samples of the captures before it while the world looks the same.
+    std::optional<render::PathTrace3D> path_trace{}; // NOLINT(readability-redundant-member-init)
 };
 
 struct Capture {
@@ -518,6 +524,8 @@ struct Capture {
     std::size_t occluded = 0; // 3D meshes occluders hid from the camera
     // How the settings' render scale scaled the world, if they did.
     CanvasRenderer::Scaled scaled;
+    // With path_trace, the samples each pixel's light is the average of.
+    std::uint32_t path_samples = 0;
 };
 
 // Draws the world as a window of ui::settings' viewport size would show it, with Settings'
