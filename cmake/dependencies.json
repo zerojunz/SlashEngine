@@ -266,6 +266,13 @@
       "repository": "https://github.com/ufbx/ufbx.git",
       "tag": "v0.23.1"
     },
+    "vhacd": {
+      "license": "BSD-3-Clause",
+      "license_file": "LICENSE",
+      "license_sha256": "245c933225f5bd28a10336137b26f1f86551b6b1d29f804253eb5e1d73744c2e",
+      "repository": "https://github.com/kmammou/v-hacd.git",
+      "tag": "v4.1.0"
+    },
     "wayland": {
       "license": "MIT",
       "license_file": "COPYING",

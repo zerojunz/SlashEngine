@@ -387,6 +387,42 @@ struct Writer {
         return out;
     }
 
+    // A collision shape's triangles as a mesh of positions only, placed by where, in glTF's
+    // counter-clockwise order, as Godot's importer reads them back by their node's hint.
+    int collision_mesh(const ModelCollision& collision, const world::Affine3D& where) {
+        std::vector<float> positions;
+        positions.reserve(collision.points.size() * 3);
+        std::array<float, 3> low{};
+        std::array<float, 3> high{};
+        for (std::size_t i = 0; i < collision.points.size(); ++i) {
+            const Vec3 p = where.apply(collision.points[i]);
+            const std::array<float, 3> v{p.x, p.y, p.z};
+            positions.insert(positions.end(), v.begin(), v.end());
+            for (std::size_t k = 0; k < 3; ++k) {
+                low.at(k) = i == 0 ? v.at(k) : std::min(low.at(k), v.at(k));
+                high.at(k) = i == 0 ? v.at(k) : std::max(high.at(k), v.at(k));
+            }
+        }
+        json::Value attributes = json::Object{};
+        const int position = accessor(positions, 3, kFloat, "VEC3", kArrayBuffer);
+        document["accessors"].as_array()[static_cast<std::size_t>(position)]["min"] =
+            json::Array{low[0], low[1], low[2]};
+        document["accessors"].as_array()[static_cast<std::size_t>(position)]["max"] =
+            json::Array{high[0], high[1], high[2]};
+        attributes["POSITION"] = position;
+        std::vector<std::uint32_t> indices = collision.indices;
+        for (std::size_t i = 0; i + 2 < indices.size(); i += 3) {
+            std::swap(indices[i + 1], indices[i + 2]);
+        }
+        json::Value primitive = json::Object{};
+        primitive["attributes"] = std::move(attributes);
+        primitive["indices"] = accessor(indices, 1, kUnsignedInt, "SCALAR", kElementArrayBuffer);
+        json::Value mesh = json::Object{};
+        mesh["name"] = collision.node;
+        mesh["primitives"] = json::Array{std::move(primitive)};
+        return add("meshes", std::move(mesh));
+    }
+
     // A surface as a primitive of triangles, its corners back in glTF's counter-clockwise order.
     json::Value primitive(const ModelSurface& surface) {
         const std::size_t count = surface.vertices.size();
@@ -453,6 +489,14 @@ json::Array numbers(const Vec3& v) {
     return {v.x, v.y, v.z};
 }
 
+// The import hint a written collision shape's node takes, by whether its node draws too.
+std::string hint_of(const ModelCollision& collision, bool drawn) {
+    if (drawn) {
+        return collision.convex ? "-convcol" : "-col";
+    }
+    return collision.convex ? "-convcolonly" : "-colonly";
+}
+
 // The glTF document of a model and its buffer's bytes, which a .gltf file holds in a data URI
 // and a .glb file after the document; with read, every image goes in the buffer.
 Result<std::pair<json::Value, std::string>> document_of(const Model& model, std::string_view path,
@@ -501,6 +545,8 @@ Result<std::pair<json::Value, std::string>> document_of(const Model& model, std:
         return part.mesh < meshes.size() ? meshes[part.mesh] : -1;
     };
     json::Array roots;
+    // Collision shapes that go on nodes of their own, as roots, in the model's space.
+    std::vector<const ModelCollision*> loose;
     if (!model.nodes.empty()) {
         // Each node, then a child for each part past its first, since a glTF node has one mesh.
         std::vector<json::Value> nodes(model.nodes.size(), json::Value(json::Object{}));
@@ -539,6 +585,30 @@ Result<std::pair<json::Value, std::string>> document_of(const Model& model, std:
                 static_cast<int>(model.nodes.size() + extra.size()));
             extra.push_back(std::move(more));
         }
+        // Collision from a node's hint goes back on its node as the hint: a node that draws
+        // takes "-col" or "-convcol" and makes it again of what it draws, and one that doesn't
+        // takes "-colonly" or "-convcolonly" and a mesh of the shape where the node is.
+        std::vector<world::Affine3D> globals;
+        std::vector<bool> hinted(model.nodes.size(), false);
+        for (const ModelCollision& collision : model.collision) {
+            if (collision.node_index < 0 ||
+                static_cast<std::size_t>(collision.node_index) >= nodes.size() ||
+                hinted[static_cast<std::size_t>(collision.node_index)]) {
+                loose.push_back(&collision);
+                continue;
+            }
+            const auto at = static_cast<std::size_t>(collision.node_index);
+            hinted[at] = true;
+            json::Value& node = nodes[at];
+            const bool drawn = node.find("mesh") != nullptr;
+            node["name"] = model.nodes[at].name + hint_of(collision, drawn);
+            if (!drawn) {
+                if (globals.empty()) {
+                    globals = node_globals(model, rest_pose(model));
+                }
+                node["mesh"] = writer.collision_mesh(collision, globals[at].inverse());
+            }
+        }
         for (std::size_t i = 0; i < model.nodes.size(); ++i) {
             const int parent = model.nodes[i].parent;
             if (parent >= 0 && static_cast<std::size_t>(parent) < model.nodes.size()) {
@@ -562,7 +632,9 @@ Result<std::pair<json::Value, std::string>> document_of(const Model& model, std:
             writer.add("nodes", std::move(more));
         }
     } else {
-        // A model without nodes, as an OBJ model: a node for each part, where it puts it.
+        // A model without nodes, as an OBJ model: a node for each part, where it puts it, with
+        // the hint of the collision its part made.
+        std::vector<bool> placed(model.collision.size(), false);
         for (const ModelPart& part : model.parts) {
             const int mesh = mesh_of(part);
             if (mesh < 0) {
@@ -570,6 +642,13 @@ Result<std::pair<json::Value, std::string>> document_of(const Model& model, std:
             }
             json::Value node = json::Object{};
             node["name"] = part.node;
+            for (std::size_t i = 0; i < model.collision.size(); ++i) {
+                if (!placed[i] && model.collision[i].node == part.node) {
+                    placed[i] = true;
+                    node["name"] = part.node + hint_of(model.collision[i], true);
+                    break;
+                }
+            }
             node["mesh"] = mesh;
             const NodePose pose = decompose(part.transform);
             if (pose.position != Vec3{}) {
@@ -584,6 +663,17 @@ Result<std::pair<json::Value, std::string>> document_of(const Model& model, std:
             }
             roots.emplace_back(writer.add("nodes", std::move(node)));
         }
+        for (std::size_t i = 0; i < model.collision.size(); ++i) {
+            if (!placed[i]) {
+                loose.push_back(&model.collision[i]);
+            }
+        }
+    }
+    for (const ModelCollision* collision : loose) {
+        json::Value node = json::Object{};
+        node["name"] = collision->node + hint_of(*collision, false);
+        node["mesh"] = writer.collision_mesh(*collision, {});
+        roots.emplace_back(writer.add("nodes", std::move(node)));
     }
     json::Value scene = json::Object{};
     scene["nodes"] = std::move(roots);

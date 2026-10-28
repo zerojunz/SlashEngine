@@ -30,6 +30,11 @@ struct CleanupOptions {
     // Gives each surface whose vertices all have one texture coordinate (none, in effect) its
     // own, unwrapped with xatlas as lightmap UVs are, so textures and painted detail can map.
     bool uvs = false;
+    // What it collides as, made last from its drawn triangles as generate_collision makes it:
+    // "trimesh", "convex" or "decompose" (into at most max_hulls convex hulls, 0 for
+    // DecomposeOptions' default); "" keeps the collision it has.
+    std::string collision{}; // NOLINT(readability-redundant-member-init)
+    std::size_t max_hulls = 0;
 };
 
 struct CleanupReport {
@@ -37,12 +42,14 @@ struct CleanupReport {
     std::size_t triangles = 0;
     Bounds bounds_before;
     std::size_t unwrapped = 0; // surfaces given texture coordinates
+    std::size_t collision = 0; // collision shapes made
 };
 
-// Cleans a model up in place: turned, simplified, sized, moved and unwrapped, in that order. A
-// model with skins or animations is refused for now, since write_glb leaves them out; so is a
-// triangle budget the simplifier can't get under, a height for a model flat along y, and an up it
-// doesn't know.
+// Cleans a model up in place: turned, simplified, sized, moved, unwrapped and given collision, in
+// that order; collision it already has is turned, sized and moved with it. A model with skins or
+// animations is refused for now, since write_glb leaves them out; so is a triangle budget the
+// simplifier can't get under, a height for a model flat along y, an up it doesn't know, and
+// collision it can't make.
 [[nodiscard]] Result<CleanupReport> cleanup_model(Model& model, const CleanupOptions& options);
 
 } // namespace slash::scene3d
