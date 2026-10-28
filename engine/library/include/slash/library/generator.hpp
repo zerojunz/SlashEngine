@@ -14,16 +14,17 @@
 #include <string>
 #include <string_view>
 
-// Image, sound and music generators behind one interface, as ai::Provider is for language models,
-// so no engine code outside the adapters names a vendor. providers.json's "generators" says which
-// a project can call: "openai-image", "gemini-image" and "automatic1111" (a Stable Diffusion web
-// UI) make and refine images, "openai-speech" speaks lines, "elevenlabs-sound" makes sound effects
-// and "elevenlabs-music" and "stability-audio" make music. The built-in "test" generator makes
-// placeholders on the machine, so agents and CI use the library with no model or key.
+// Image, sound, music and model generators behind one interface, as ai::Provider is for language
+// models, so no engine code outside the adapters names a vendor. providers.json's "generators" says
+// which a project can call: "openai-image", "gemini-image" and "automatic1111" (a Stable Diffusion
+// web UI) make and refine images, "openai-speech" speaks lines, "elevenlabs-sound" makes sound
+// effects and "elevenlabs-music" and "stability-audio" make music, and "stability-3d" makes a model
+// from a concept image. The built-in "test" generator makes placeholders on the machine, so agents
+// and CI use the library with no model or key.
 namespace slash::library {
 
 struct GenerateRequest {
-    std::string type; // "image", "sound" or "music"
+    std::string type; // "image", "sound", "music" or "model"
     std::string prompt;
     int width = 0; // images; 0 for the generator's default
     int height = 0;
@@ -38,11 +39,14 @@ struct GenerateRequest {
     // To refine an asset: its record and bytes; the prompt says what to change.
     const Record* parent = nullptr;
     std::string parent_data{}; // NOLINT(readability-redundant-member-init)
+    // A model: the concept image it is made from, its record and bytes.
+    const Record* image = nullptr;
+    std::string image_data{}; // NOLINT(readability-redundant-member-init)
 };
 
 struct Generated {
     std::string data;   // the file's bytes
-    std::string format; // its extension without the dot, such as "png" or "wav"
+    std::string format; // its extension without the dot, such as "png", "wav" or "glb"
     std::string model;  // the model that made it
     std::optional<std::int64_t> seed;
     // Music: the tempo and key the generator says it made, where it knows; 0 or "" otherwise.
@@ -58,6 +62,7 @@ struct GeneratorCapabilities {
     bool refines_sounds = false;
     bool music = false;
     bool refines_music = false;
+    bool models = false; // makes a model from a concept image
 };
 
 // Whether the generator makes assets of the type, and refines them.
@@ -78,9 +83,11 @@ public:
 // the prompt names (a circle for "ball", "coin" and the like, transparent where it says so),
 // tones whose pitch follows the prompt, and music: chords in the key asked for (C major, or A
 // minor for a dark or sad prompt), a beat at the tempo asked for (120 bpm) and whole bars that
-// loop cleanly. Refining recolors, mirrors, lightens or darkens an image, raises, lowers,
-// lengthens or shortens a sound, and makes music faster, slower, higher, lower, longer or
-// shorter, as the prompt says.
+// loop cleanly; and models: a concept image's shape in up to 24 cells a meter across, standing
+// on the ground and pushed back into a slab of each cell's color: one cell deep for a thin or
+// flat prompt, half its width for a thick or deep one, else a sixth. Refining recolors, mirrors,
+// lightens or darkens an image, raises, lowers, lengthens or shortens a sound, and makes music
+// faster, slower, higher, lower, longer or shorter, as the prompt says.
 [[nodiscard]] std::shared_ptr<Generator> test_generator();
 
 // How generators reach their services.

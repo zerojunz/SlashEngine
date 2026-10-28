@@ -17,6 +17,7 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -524,8 +525,9 @@ TEST_CASE("model recipes go into the library, and refining one changes its param
               .data["path"] == "/seed");
     CHECK(engine.fail("asset.use", R"({"id": ")" + first + R"(", "path": "props/crate.json"})")
               .message == "/path: the asset is a .model.json file; name the path so");
+    // A generated model is made from a concept image.
     CHECK(engine.fail("asset.generate", R"({"prompt": "a chair", "type": "model"})").data["path"] ==
-          "/type");
+          "/image");
     // Texture paths are a project's, so recipes that name them stay out of the library.
     write(root / "project" / "props" / "stone.model.json",
           R"({"format": 1, "materials": {"stone": {"albedo_texture": "stone.png"}},
@@ -1099,11 +1101,13 @@ TEST_CASE("a library model keeps its checks, every version passes them, and asse
 
 namespace {
 
-// An OpenAI-compatible chat server on the loopback interface that answers every request with
-// one reply, keeping each request's body.
+// An OpenAI-compatible chat server on the loopback interface that answers requests with its
+// replies in turn, the last again after the rest, keeping each request's body.
 class FakeVisionModel {
 public:
-    explicit FakeVisionModel(std::string answer) : answer_(std::move(answer)) {
+    explicit FakeVisionModel(std::string answer)
+        : FakeVisionModel(std::vector<std::string>{std::move(answer)}) {}
+    explicit FakeVisionModel(std::vector<std::string> answers) : answers_(std::move(answers)) {
         server_.Post("/v1/chat/completions", [this](const httplib::Request& request,
                                                     httplib::Response& response) {
             const std::scoped_lock lock(mutex_);
@@ -1113,7 +1117,8 @@ public:
             json::Value choice;
             choice["finish_reason"] = "stop";
             choice["message"]["role"] = "assistant";
-            choice["message"]["content"] = answer_;
+            choice["message"]["content"] =
+                answers_.at(std::min(bodies_.size(), answers_.size()) - 1);
             reply["choices"].push_back(std::move(choice));
             reply["usage"]["prompt_tokens"] = 900;
             reply["usage"]["completion_tokens"] = 40;
@@ -1143,7 +1148,7 @@ public:
 
 private:
     httplib::Server server_;
-    std::string answer_;
+    std::vector<std::string> answers_;
     std::vector<json::Value> bodies_;
     std::mutex mutex_;
     int port_ = 0;
@@ -1249,4 +1254,124 @@ TEST_CASE("asset.review checks a model, draws it round and records what a vision
               .fail("asset.review", R"({"path": "props/sign.glb", "request": "A sign",
                                          "role": "critic"})")
               .data == parse(R"({"path": "/role"})"));
+}
+
+TEST_CASE("asset.generate makes a model from a concept image, reviewed until it passes") {
+    const fs::path root = fresh("library_concept");
+    const fs::path project = root / "project";
+    write(project / "project.json", R"({"format": 1, "name": "Shelf"})");
+    const Engine engine(root);
+    const std::string concept_image =
+        engine
+            .call("asset.generate",
+                  R"({"prompt": "a red ball, transparent sprite", "generator": "test",
+                      "width": 32})")["id"]
+            .as_string();
+    const std::string beep =
+        engine
+            .call("asset.generate",
+                  R"({"prompt": "beep", "type": "sound", "generator": "test"})")["id"]
+            .as_string();
+
+    // The test generator stands the image's shape on the ground, a meter across and a sixth of
+    // that deep, the image kept as its parent; a repeat calls no generator.
+    const std::string asked = R"({"type": "model", "prompt": "a red ball", "image": ")" +
+                              concept_image + R"(", "generator": "test"})";
+    json::Value ball = engine.call("asset.generate", asked);
+    CHECK(ball["parent"] == concept_image);
+    CHECK(ball["size"] == parse("[0.875, 0.875, 0.167]"));
+    const std::string ball_id = ball["id"].as_string();
+    CHECK(engine.call("asset.generate", asked)["reused"] == true);
+    json::Value info = engine.call("asset.info", R"({"id": ")" + ball_id + R"("})");
+    CHECK(info["format"] == "glb");
+    CHECK(info["generator"] == "test");
+    CHECK(info["request"]["image"].as_string().starts_with(concept_image));
+
+    // The relief: the same image and prompt make the same bytes; thick is half its width deep,
+    // thin one cell; and an image with nothing on it makes nothing.
+    const std::shared_ptr<library::Generator> generator = library::test_generator();
+    auto png = generator->generate(image("red ball, transparent sprite", 32));
+    REQUIRE(png.ok());
+    library::GenerateRequest relief;
+    relief.type = "model";
+    relief.prompt = "a thick red ball";
+    relief.image_data = png.value().data;
+    auto thick = generator->generate(relief);
+    REQUIRE_MESSAGE(thick.ok(), thick.error().message);
+    CHECK(thick.value().format == "glb");
+    CHECK(generator->generate(relief).value().data == thick.value().data);
+    library::Record described;
+    REQUIRE(library::describe_file(thick.value().data, "ball.glb", described).ok());
+    CHECK(described.size[0] == doctest::Approx(0.875));
+    CHECK(described.size[2] == doctest::Approx(0.5));
+    relief.prompt = "a thin red ball";
+    REQUIRE(library::describe_file(generator->generate(relief).value().data, "ball.glb", described)
+                .ok());
+    CHECK(described.size[2] == doctest::Approx(0.042));
+    slash::render::Image blank;
+    blank.width = 4;
+    blank.height = 4;
+    blank.pixels.assign(64, 0);
+    relief.image_data = slash::render::encode_png(blank).value();
+    auto empty = generator->generate(relief);
+    REQUIRE_FALSE(empty.ok());
+    CHECK(empty.error().message.find("shows nothing to make a model of") != std::string::npos);
+
+    // Reviewed: the stand-in vision model finds the first too thin, so it is made again with
+    // that in the prompt, thick now, accepted and copied to path.
+    FakeVisionModel vision(std::vector<std::string>{
+        R"({"matches": false, "problems": [{"view": 1, "problem": "It is too thin; make it thick."}]})",
+        R"({"matches": true, "problems": []})",
+        R"({"matches": false, "problems": [{"view": 3, "problem": "It has no stem."}]})"});
+    write(project / "providers.json", R"({"providers": {"local": {"type": "openai",
+        "model": "vision-model", "url": ")" +
+                                          vision.url() + R"("}}})");
+    json::Value reviewed =
+        engine.call("asset.generate", R"({"type": "model", "prompt": "a red ball", "image": ")" +
+                                          concept_image + R"(", "generator": "test", "review": 3,
+                              "path": "props/ball.glb"})");
+    REQUIRE(reviewed["attempts"].as_array().size() == 2);
+    CHECK(reviewed["attempts"].as_array()[0] ==
+          parse(R"({"id": ")" + ball_id + R"(", "verdict": "rejected",
+        "reason": "It is too thin; make it thick"})"));
+    CHECK(reviewed["attempts"].as_array()[1]["verdict"] == "accepted");
+    CHECK(reviewed["id"] == reviewed["attempts"].as_array()[1]["id"]);
+    CHECK(reviewed["review"]["verdict"] == "accepted");
+    CHECK(reviewed["size"] == parse("[0.875, 0.875, 0.5]"));
+    CHECK(reviewed["path"] == "props/ball.glb");
+    CHECK(fs::exists(project / "props" / "ball.glb"));
+    info = engine.call("asset.info", R"({"id": ")" + reviewed["id"].as_string() + R"("})");
+    CHECK(info["request"]["prompt"] ==
+          "a red ball\n\nThe last model was rejected: It is too thin; make it thick.");
+    CHECK(info["feedback"].as_array().back()["verdict"] == "accepted");
+    CHECK(vision.bodies().size() == 2);
+
+    // None accepted: the last is returned and nothing is copied.
+    json::Value refused = engine.call(
+        "asset.generate", R"({"type": "model", "prompt": "a red mushroom", "image": ")" +
+                              concept_image + R"(", "generator": "test", "review": 1,
+                              "similar": false, "path": "props/mushroom.glb"})");
+    CHECK(refused["review"]["verdict"] == "rejected");
+    CHECK(refused.find("attempts") == nullptr);
+    CHECK(refused["note"] == "no model made was accepted, so none was copied to path");
+    CHECK_FALSE(fs::exists(project / "props" / "mushroom.glb"));
+
+    // What a model can't be made from.
+    CHECK(engine.fail("asset.generate", R"({"type": "model", "prompt": "a ball"})").data ==
+          parse(R"({"path": "/image"})"));
+    const command::Reply sound = engine.fail(
+        "asset.generate", R"({"type": "model", "prompt": "a ball", "image": ")" + beep + R"("})");
+    CHECK(sound.data == parse(R"({"path": "/image"})"));
+    CHECK(sound.message.find("is a sound") != std::string::npos);
+    CHECK(engine
+              .fail("asset.generate", R"({"type": "model", "prompt": "a ball", "width": 4,
+                                           "image": ")" +
+                                          concept_image + R"("})")
+              .data == parse(R"({"path": "/width"})"));
+    CHECK(engine.fail("asset.generate", R"({"prompt": "a ball", "review": 2})").data ==
+          parse(R"({"path": "/review"})"));
+    CHECK(engine
+              .fail("asset.generate", R"({"type": "model", "prompt": "a ball", "image": ")" +
+                                          concept_image + R"(", "path": "props/ball.png"})")
+              .data == parse(R"({"path": "/path"})"));
 }

@@ -4840,7 +4840,7 @@ names of its `stems`. Model results have their `size` (meters along x, y and z) 
 
 ### asset.generate
 
-Makes an image, a sound or music with a generator and keeps it. An exact repeat of an earlier request
+Makes an image, a sound, music or a model with a generator and keeps it. An exact repeat of an earlier request
 (the same generator, model and params, apart from `description`, `tags`, `path`, `similar` and
 `context`) returns the stored asset with `"reused": true` and calls no model. Otherwise, when the
 library has assets of the type that score at least 0.75 for the prompt and were not rejected
@@ -4861,7 +4861,7 @@ result is recorded as the asset's feedback (source `storyboard.check`).
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `prompt` | string | required | What to make |
-| `type` | string | `image` | `image`, `sound` or `music` |
+| `type` | string | `image` | `image`, `sound`, `music` or `model` |
 | `generator` | string | the one that makes the type | A generator in `providers.json`, or `test` |
 | `width`, `height` | integer | the generator's | An image's size, 1 to 4096 pixels; one alone makes a square. What a service makes at another size is fitted to it |
 | `seconds` | number | the generator's | A sound's or music's length, up to 600 |
@@ -4870,6 +4870,8 @@ result is recorded as the asset's feedback (source `storyboard.check`).
 | `bar_beats` | integer | 4 | Music: beats per bar, 2 to 32 |
 | `loop` | boolean | false | Music: ask for a loop, and loop it in the settings written beside `path` |
 | `theme` | string | | Music: a storyboard [theme](storyboard-format.md#music), such as `"theme/harbor"`: its `key`, `tempo` and `bar_beats` where these params give none, its `instruments` and `mood` added to the prompt, and its ID added to the tags |
+| `image` | string | | A model: the library image to make it from, required (see [models](#models-from-a-concept-image)) |
+| `review` | integer, 1 to 5 | | A model: review each one made and make it again with what was wrong, up to this many in all |
 | `seed` | integer | | For a repeatable result, where the generator takes one |
 | `description` | string | the prompt | A sentence for agents to read instead of the file |
 | `tags` | string[] | | Words to find it by |
@@ -4912,12 +4914,42 @@ Music in a storyboard theme (G major, 96 bpm, three beats to a bar):
 Music services take the tempo, meter, key and loop in words added to the prompt (see
 [generators](providers.md#generators)).
 
+#### Models from a concept image
+
+A model is made concept first, as organic shapes are best made: generate a cheap image, look at
+it (and record it with [`asset.feedback`](#assetfeedback)), then pass its ID as `image`. The
+model is made from the image, which stays in the library as its `parent`, and the request key
+holds the image, so the same image and prompt are a repeat. `width`, `height`, `seconds` and the
+music params don't apply. Run [`model.cleanup`](#modelcleanup) on a generated model to fit it to
+the game's scale and budgets.
+
+With `review`, each model made is reviewed as [`asset.review`](#assetreview) does, against the
+prompt and, with `path`, the budgets where it will go, and its verdict recorded. While it is
+rejected and tries are left, it is made again with "The last model was rejected: ..." and the
+reasons added to the prompt. The reply is the accepted model's, else the last one's, with its
+`review` and, after more than one try, the `attempts` (each `id`, `verdict` and first `reason`).
+It is copied to `path` only once accepted; otherwise a `note` says nothing was copied. From
+[examples/concept-models](../../examples/concept-models/), where a stand-in vision model wants a
+stool at least 30 cm deep:
+
+```json
+{"type": "model", "prompt": "a mushroom stool for a forest cafe", "image": "f07b29b24fe7", "generator": "test", "review": 3, "path": "props/stool.glb"}
+```
+
+```json
+{"attempts":[{"id":"06bcc43c0bf8","reason":"The stool is too thin to sit on; make it thick","verdict":"rejected"},{"id":"c8d7daf109f0","verdict":"accepted"}],"id":"c8d7daf109f0","parent":"f07b29b24fe7","path":"props/stool.glb","review":{"holes":0,"recorded":true,"review":{"matches":true,"model":"vision-model","problems":[]},"size":[0.8333,0.8333,0.5],"triangles":1488,"verdict":"accepted","views":4},"size":[0.833,0.833,0.5],"triangles":1488}
+```
+
 The `test` generator draws a box, or a circle or triangle when the prompt names something round
 or pointed, in the colors the prompt names, on a transparent background for a sprite, icon or
 cutout; its sounds are tones whose pitch, wave and sweep follow the prompt's words. Its music is a
 chord progression with a bass line, in the key asked for (A minor when the prompt has a word
 such as "dark", "sad", "tense" or "boss", C major otherwise), at the tempo asked for (120 bpm by
 default), in the whole bars nearest `seconds` (four by default), which loop on the beat. Its
+models are reliefs of the concept image: its shape in up to 24 cells a meter across (where
+pixels are opaque, or in an opaque image unlike its top left corner), standing on the ground
+around the origin and pushed back into a slab of each cell's color, one cell deep when the last
+word about depth is "thin" or "flat", half its width for "thick" or "deep", else a sixth. Its
 license is `CC0-1.0`.
 
 ### asset.refine

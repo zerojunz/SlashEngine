@@ -220,7 +220,7 @@ generator, model, seed, license, tags, a short description and the parent it was
 Files are written whole and moved into place (`platform::rename_file`), so agents can share a
 library. Generators are `library::Generator` adapters named in `providers.json`'s `generators`,
 as models are `ai::Provider`s: `openai-image`, `gemini-image`, `automatic1111`, `openai-speech`,
-`elevenlabs-sound`, `elevenlabs-music` and `stability-audio` (`src/adapters.cpp`, through `ai::post_with_retries`, with images fitted
+`elevenlabs-sound`, `elevenlabs-music`, `stability-audio` and `stability-3d` (`src/adapters.cpp`, through `ai::post_with_retries`, with images fitted
 to the size asked for by `fit_image`), and the built-in `test` generator, which draws
 placeholders with integer math only, so they are the same bytes everywhere. `asset.search`, `asset.generate` (an exact repeat
 calls no generator, close matches come back as candidates), `asset.refine`, `asset.info`,
@@ -253,7 +253,11 @@ another (`swap_parts`). `asset.review` (`src/review.cpp`) looks at a model befor
 it: `scene3d::check_geometry` (`src/geometry.cpp`: holes, triangles with no area, texel density)
 and the storyboard's budgets, then `review::turntable` draws it from four sides on the software
 device and `review::ask` sends the views to a vision model from `providers.json`, recording the
-verdict as feedback; `examples/model-review` rejects a chest with no hinges.
+verdict as feedback; `examples/model-review` rejects a chest with no hinges. Models are generated
+concept first: `asset.generate`'s `image` names a library image the model is made from and kept
+under as its parent (`generate_model` in `src/commands.cpp`; the test generator makes a relief of
+it, `make_model` in `src/generator.cpp`), and `review` reviews each and makes it again with the
+reasons added to the prompt until one is accepted; `examples/concept-models` makes a stool.
 
 `entity.place` (`engine/command/src/place.cpp`) assembles scenes of such assets by constraints:
 each entity goes to a point (`at`) or along a `Path3D` (`along`, turned to face it with
