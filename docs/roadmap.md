@@ -802,7 +802,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         are stored once and updating a part offers new versions of everything that uses it
   - [x] Variants: one asset with named options (clean or damaged, seasons, team colors) and
         quality tiers per export preset (phone, desktop), all built from the same source
-  - [ ] Checks for complex assets: scale, material slot names, rigs, animation clips and every
+  - [x] Checks for complex assets: scale, material slot names, rigs, animation clips and every
         part present, run before an asset is saved and again in CI
   - [x] Scene assembly: agents place library assets with constraints (on the ground, not
         overlapping, along a path) instead of generating a scene as one mesh
@@ -913,7 +913,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Navigation | Godot's navigation server, Recast baking, 2D and 3D, avoidance | 7 | Done |
 | Asset import | glTF 2.0, FBX, OBJ, PNG, JPG, KTX2, WAV, OGG, MP3, and `.blend` through the artist's own Blender | 7 | Done |
 | Profiling | Tracy, plus `perf.stats` over the command API | 5, 6 | Done: Tracy, and `perf.stats` reports frame pacing, tick and system times and memory by part of the engine |
-| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | In progress: the library, search, refining, hosted and test generators, feedback, team sharing, ready-to-use texture forms, parametric model recipes, models' text descriptions and attachment points, imported .glb models and versions from edited files, scene assembly (`entity.place`) and complex assets (recipes built of other model files, kept in the library by their parts' IDs) and variants and quality tiers done; the rest of 3D in 7 |
+| Asset generation and library | Generated assets saved once and shared by every project and teammate, searched before generating, ranked by agent feedback; 3D models as parametric recipes, cleaned-up generated meshes or imported files, combined into complex assets with variants, reviewed automatically | 6, 7 | In progress: the library, search, refining, hosted and test generators, feedback, team sharing, ready-to-use texture forms, parametric model recipes, models' text descriptions and attachment points, imported .glb models and versions from edited files, scene assembly (`entity.place`) and complex assets (recipes built of other model files, kept in the library by their parts' IDs), variants and quality tiers, and model checks done; the rest of 3D in 7 |
 | Global illumination | Baked lightmaps and probe-based GI | 7 | Done: reflection probes, baked lightmaps and their light probes, and VoxelGI with its dynamic objects, all imported from Godot |
 | Ray tracing | Acceleration structures and ray queries in the render device on Vulkan, Direct3D 12 and Metal: ray-traced shadows, reflections, AO and GI, with raster and probe fallbacks | 7 | Planned |
 | Path tracing | A GPU path tracer for baked lightmaps and progressive reference stills | 7 | Planned |

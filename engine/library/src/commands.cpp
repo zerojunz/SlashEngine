@@ -506,6 +506,10 @@ Result<void> record_use(Session& session, const Record& record, const std::strin
     if (!record.author.empty()) {
         entry["author"] = record.author;
     }
+    // Kept with the project, so asset.check checks the file again where there is no library.
+    if (record.checks.is_object()) {
+        entry["checks"] = record.checks;
+    }
     list["assets"][path] = std::move(entry);
     return session.write_file(list_path.value(), json::write(list));
 }
@@ -1519,6 +1523,7 @@ Reply refine_model(Session& session, Libraries& libs, const Record& parent, std:
     }
     const std::string bytes = json::write(recipe) + "\n";
     Record record;
+    record.checks = parent.checks; // a version passes the checks of the one it was made from
     const std::vector<NewPart> nothing_new;
     if (auto described = describe_file(bytes, "version.model.json", record,
                                        parts_reader(session, libs, nothing_new));
@@ -1909,9 +1914,30 @@ Reply asset_add(Session& session, const json::Value& params) {
     }
     data.value() = std::move(form).value();
     Record record;
+    // Checks the call gives, else the last version's, which a new version passes too.
+    const json::Value* checks = params.find("checks");
+    if (checks != nullptr) {
+        if (!is_model_file(path)) {
+            return invalid_at("/checks", "only a model (.model.json or .glb) has checks");
+        }
+        if (auto wrong = json::validate(*checks, scene3d::model_checks_schema()); !wrong.empty()) {
+            return invalid_at("/checks" + wrong.front().path, wrong.front().message);
+        }
+        record.checks = *checks;
+    } else if (earlier && is_model_file(path)) {
+        record.checks = earlier->checks;
+    }
     if (auto described = describe_file(data.value(), path, record,
                                        parts_reader(session, libs.value(), work.added));
         !described) {
+        const std::string& message = described.error().message;
+        if (message.starts_with("checks")) {
+            const std::size_t colon = message.find(": ");
+            if (checks != nullptr) {
+                return invalid_at("/" + message.substr(0, colon), message.substr(colon + 2));
+            }
+            return invalid_at("/path", "it fails the checks of the version before: " + message);
+        }
         return failure_at(described.error(), "/path");
     }
     const json::Value* stems = params.find("stems");
@@ -2122,6 +2148,65 @@ Result<std::map<std::string, std::string>> project_assets(Session& session) {
         }
     }
     return assets;
+}
+
+// The checks library.json keeps for the models the project took from the library, by project
+// path.
+std::map<std::string, json::Value> project_checks(Session& session) {
+    std::map<std::string, json::Value> out;
+    auto read = session.read_project_file(kProjectFile);
+    if (!read) {
+        return out;
+    }
+    const std::optional<std::string>& text = read.value();
+    if (!text) {
+        return out;
+    }
+    auto list = json::parse(*text);
+    const json::Value* entries = list ? list.value().find("assets") : nullptr;
+    if (entries == nullptr || !entries->is_object()) {
+        return out;
+    }
+    for (const auto& [path, entry] : entries->as_object()) {
+        if (const json::Value* checks = entry.is_object() ? entry.find("checks") : nullptr;
+            checks != nullptr && checks->is_object()) {
+            out.emplace(path, *checks);
+        }
+    }
+    return out;
+}
+
+// How the project's copy of a model fails the checks it was kept with, each at the JSON Pointer
+// of the check in library.json.
+std::vector<json::ValidationError> model_check_problems(Session& session, const std::string& path,
+                                                        const json::Value& checks) {
+    const std::string at = "/assets/" + json::pointer_escape(path) + "/checks";
+    if (auto wrong = json::validate(checks, scene3d::model_checks_schema()); !wrong.empty()) {
+        return {{at + wrong.front().path, wrong.front().message}};
+    }
+    const scene3d::ModelReader read = [&session](std::string_view name) -> Result<std::string> {
+        auto bytes = session.read_project_file(std::string(name));
+        if (!bytes) {
+            return bytes.error();
+        }
+        if (!bytes.value()) {
+            return make_error(ErrorCode::NotFound, "\"" + std::string(name) + "\" doesn't exist");
+        }
+        return std::move(*bytes.value());
+    };
+    auto bytes = read(path);
+    if (!bytes) {
+        return {{at, bytes.error().message}};
+    }
+    auto model = scene3d::load_model(bytes.value(), path, read);
+    if (!model) {
+        return {{at, model.error().message}};
+    }
+    std::vector<json::ValidationError> out;
+    for (const json::ValidationError& error : scene3d::check_model_against(model.value(), checks)) {
+        out.push_back({at + error.path, error.message});
+    }
+    return out;
 }
 
 // Each string in a JSON value that is one of the files.
@@ -2386,6 +2471,18 @@ Reply asset_check(Session& session, const json::Value& params) {
                                ? "shows clearly in " + clear.front()
                                : "shows clearly in " + std::to_string(clear.size()) + " scenes",
                  .source = std::string(kFrameCheck)});
+        }
+    }
+    // Models again against the checks they were kept with, which need no library.
+    for (const auto& [path, checks] : project_checks(session)) {
+        const auto id = assets.value().find(path);
+        if (id == assets.value().end() || !is_model_file(path)) {
+            continue;
+        }
+        for (const json::ValidationError& error : model_check_problems(session, path, checks)) {
+            json::Value item = problem_value(id->second, path, {"", "", error.message});
+            item["check"] = error.path;
+            problems.push_back(std::move(item));
         }
     }
     for (json::Value& failure : failures) {
@@ -2668,6 +2765,10 @@ void register_commands(command::Registry& registry) {
                 {"bar_beats", integer("Music: beats per bar.", 2, 32)},
                 {"beat_count", integer("Music: its length in beats.", 1, 100000)},
                 {"stems", stems_property()},
+                {"checks", property("object", "Model: what it and its versions must be, as a "
+                                              "recipe's checks: size, pivot, max_triangles, "
+                                              "materials, nodes, bones, animations. Default for "
+                                              "a new version: the last one's.")},
             },
             {"path"}),
         .handler = asset_add,
