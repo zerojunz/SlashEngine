@@ -53,6 +53,7 @@ add_library(slash_scene3d
     src/lightmap_probes.cpp
     src/lightmapper.cpp
     src/lod.cpp
+    src/material.cpp
     src/model.cpp
     src/model_checks.cpp
     src/model_tools.cpp

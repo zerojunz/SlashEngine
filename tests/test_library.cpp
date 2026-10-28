@@ -10,6 +10,7 @@
 #include "slash/library/commands.hpp"
 #include "slash/library/generator.hpp"
 #include "slash/library/library.hpp"
+#include "slash/library/material.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
 #include "slash/world/component_registry.hpp"
@@ -191,7 +192,7 @@ TEST_CASE("library stores each asset once by the hash of its bytes") {
     library::Record unknown;
     CHECK(library::describe_file("text", "notes.txt", unknown).error().message ==
           "\"notes.txt\" is not a file the library keeps: .png, .bmp, .wav, .ogg, .mp3, "
-          ".model.json or .glb");
+          ".model.json, .glb or .standard_material.json");
     CHECK_FALSE(library::describe_file("not a png", "broken.png", unknown).ok());
 
     // Requests remember what they made.
@@ -1374,4 +1375,113 @@ TEST_CASE("asset.generate makes a model from a concept image, reviewed until it 
               .fail("asset.generate", R"({"type": "model", "prompt": "a ball", "image": ")" +
                                           concept_image + R"(", "path": "props/ball.png"})")
               .data == parse(R"({"path": "/path"})"));
+}
+
+TEST_CASE("asset.generate makes a tileable material that library recipes share") {
+    const fs::path root = fresh("library_material");
+    const fs::path project = root / "project";
+    write(project / "project.json", R"({"format": 1, "name": "Yard"})");
+    const Engine engine(root);
+
+    // The test generator draws rows of stones that don't tile; the material makes them tile,
+    // with normal and roughness maps, each kept with the image as its parent.
+    json::Value cobble = engine.call(
+        "asset.generate", R"({"type": "material", "prompt": "grey cobblestones", "generator":
+                              "test", "width": 128, "tags": ["stone"],
+                              "path": "materials/cobble.standard_material.json"})");
+    CHECK(cobble["type"] == "material");
+    CHECK(cobble["image_seam"].as_double() > library::kSeamless);
+    CHECK(cobble["seam"].as_double() < 1.0);
+    CHECK(cobble["path"] == "materials/cobble.standard_material.json");
+    CHECK(cobble["parts"].size() == 3);
+    const std::string image_id = cobble["image"].as_string();
+    for (const std::string_view map : {"albedo", "normal", "roughness"}) {
+        json::Value info =
+            engine.call("asset.info", R"({"id": ")" + cobble["maps"][map].as_string() + R"("})");
+        CHECK(info["type"] == "image");
+        CHECK(info["parent"].as_string().starts_with(image_id));
+        CHECK(info["request"]["map"] == map);
+    }
+    json::Value made = engine.call("asset.info", R"({"id": ")" + image_id + R"("})");
+    CHECK(made["request"]["prompt"].as_string().starts_with(
+        "grey cobblestones, as a seamless tileable texture"));
+    CHECK(made["description"] == "grey cobblestones");
+    json::Value info =
+        engine.call("asset.info", R"({"id": ")" + cobble["id"].as_string() + R"("})");
+    CHECK(info["format"] == "standard_material.json");
+    CHECK(info["uses"].size() == 3);
+    CHECK(info["width"] == 128);
+    CHECK(engine.call("asset.search", R"({"type": "material"})")["assets"].size() == 1);
+
+    // The project's copy names its maps beside it.
+    json::Value file = parse(read(project / "materials/cobble.standard_material.json"));
+    CHECK(file["albedo_texture"] == "materials/cobble_albedo.png");
+    CHECK(file["normal_texture"] == "materials/cobble_normal.png");
+    CHECK(file["roughness_texture"] == "materials/cobble_roughness.png");
+    CHECK(file["normal_enabled"] == true);
+    CHECK(fs::exists(project / "materials/cobble_normal.png"));
+
+    // A recipe naming the material goes into the library with it; copied into another project
+    // path, it brings the material and its maps along.
+    write(project / "props/wall.model.json",
+          R"({"format": 1, "materials": {"cobble": {"extends":
+              "materials/cobble.standard_material.json", "uv1_scale": [2, 2, 2]}},
+              "parts": [{"name": "wall", "shape": "box", "size": [2, 1, 0.2],
+                         "material": "cobble"}]})");
+    write(project / "props/step.model.json",
+          R"({"format": 1, "materials": {"cobble": "materials/cobble.standard_material.json"},
+              "parts": [{"name": "step", "shape": "box", "size": [1, 0.2, 0.5],
+                         "material": "cobble"}]})");
+    json::Value wall = engine.call(
+        "asset.add", R"({"path": "props/wall.model.json", "description": "a cobble wall"})");
+    json::Value step = engine.call(
+        "asset.add", R"({"path": "props/step.model.json", "description": "a cobble step"})");
+    CHECK(wall["model_parts"]["materials/cobble.standard_material.json"] == cobble["id"]);
+    CHECK(step["model_parts"]["materials/cobble.standard_material.json"] == cobble["id"]);
+    json::Value shared =
+        engine.call("asset.info", R"({"id": ")" + cobble["id"].as_string() + R"("})");
+    CHECK(shared["used_by"].size() == 2);
+    json::Value copied = engine.call("asset.use", R"({"id": ")" + wall["id"].as_string() +
+                                                      R"(", "path": "town/wall.model.json"})");
+    CHECK(copied["parts"].size() == 4);
+    const std::string short_material = cobble["id"].as_string();
+    json::Value recipe = parse(read(project / "town/wall.model.json"));
+    CHECK(recipe["materials"]["cobble"]["extends"] ==
+          "town/parts/" + short_material + ".standard_material.json");
+    json::Value part_file =
+        parse(read(project / ("town/parts/" + short_material + ".standard_material.json")));
+    CHECK(part_file["albedo_texture"] == "town/parts/" + short_material + "_albedo.png");
+
+    // Made of a library image instead, the image is the albedo when it tiles already.
+    json::Value flat = engine.call(
+        "asset.generate", R"({"prompt": "plain green", "generator": "test", "width": 16})");
+    json::Value felt = engine.call("asset.generate", R"({"type": "material", "prompt": "felt",
+                                                         "image": ")" +
+                                                         flat["id"].as_string() + R"("})");
+    CHECK(felt.find("image_seam") == nullptr);
+    CHECK(felt["maps"]["albedo"] == flat["id"]);
+
+    // Mistakes.
+    CHECK(engine.fail("asset.generate", R"({"type": "material", "prompt": "x", "height": 32})")
+              .message == "/height: a material's image is square: give its width");
+    CHECK(engine
+              .fail("asset.generate", R"({"type": "material", "prompt": "x", "width": 32,
+                                          "image": ")" +
+                                          flat["id"].as_string() + R"("})")
+              .message == "/width: a material made of a library image keeps its size");
+    CHECK(engine
+              .fail("asset.generate", R"({"type": "material", "prompt": "x", "image": ")" +
+                                          cobble["id"].as_string() + R"("})")
+              .message ==
+          "/image: a material is made of an image; " + cobble["id"].as_string() + " is a material");
+    CHECK(engine
+              .fail("asset.generate", R"({"type": "material", "prompt": "x", "generator": "test",
+                                          "path": "materials/x.png"})")
+              .message == "/path: \"materials/x.png\" is not a material (.standard_material.json)");
+    CHECK(engine.fail("asset.generate", R"({"prompt": "x", "review": 2})").message ==
+          "/review: only a model takes review; asked for an image");
+    write(project / "materials/loose.standard_material.json",
+          R"({"format": 1, "albedo_texture": "nowhere.png"})");
+    CHECK(engine.fail("asset.add", R"({"path": "materials/loose.standard_material.json"})")
+              .message.starts_with("/path: the texture \"nowhere.png\": "));
 }

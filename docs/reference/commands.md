@@ -153,12 +153,13 @@ Returns a JSON Schema: for scene, prefab, [`.frames.json`](scene-format.md#sprit
 [`.bus_layout.json`](scene-format.md#bus-layouts), [`.replay.json`](scene-format.md#replays),
 [`.test.json`](scene-format.md#tests),
 [`.navmesh.json` or `.navpoly.json`](scene-format.md#navigation-meshes-and-polygons),
-[`.meshlib.json`](scene-format.md#mesh-libraries) or storyboard files, one component or one
-command.
+[`.meshlib.json`](scene-format.md#mesh-libraries), [`.model.json`](scene-format.md#model-recipes),
+[`.standard_material.json`](scene-format.md#material-files) or storyboard files, one component or
+one command.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
+| `kind` | `"scene"`, `"prefab"`, `"frames"`, `"material"`, `"animation"`, `"animtree"`, `"process_material"`, `"tileset"`, `"font"`, `"theme"`, `"audio"`, `"bus_layout"`, `"replay"`, `"test"`, `"navmesh"`, `"navpoly"`, `"meshlib"`, `"lightmap"`, `"voxel_gi"`, `"model"`, `"standard_material"`, `"storyboard"`, `"component"` or `"command"` | required | Which schema |
 | `name` | string | | Component or command name, for `component` and `command` |
 
 Needs: `read`.
@@ -4840,7 +4841,7 @@ names of its `stems`. Model results have their `size` (meters along x, y and z) 
 
 ### asset.generate
 
-Makes an image, a sound, music or a model with a generator and keeps it. An exact repeat of an earlier request
+Makes an image, a sound, music, a model or a material with a generator and keeps it. An exact repeat of an earlier request
 (the same generator, model and params, apart from `description`, `tags`, `path`, `similar` and
 `context`) returns the stored asset with `"reused": true` and calls no model. Otherwise, when the
 library has assets of the type that score at least 0.75 for the prompt and were not rejected
@@ -4861,7 +4862,7 @@ result is recorded as the asset's feedback (source `storyboard.check`).
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `prompt` | string | required | What to make |
-| `type` | string | `image` | `image`, `sound`, `music` or `model` |
+| `type` | string | `image` | `image`, `sound`, `music`, `model` or `material` |
 | `generator` | string | the one that makes the type | A generator in `providers.json`, or `test` |
 | `width`, `height` | integer | the generator's | An image's size, 1 to 4096 pixels; one alone makes a square. What a service makes at another size is fitted to it |
 | `seconds` | number | the generator's | A sound's or music's length, up to 600 |
@@ -4870,7 +4871,7 @@ result is recorded as the asset's feedback (source `storyboard.check`).
 | `bar_beats` | integer | 4 | Music: beats per bar, 2 to 32 |
 | `loop` | boolean | false | Music: ask for a loop, and loop it in the settings written beside `path` |
 | `theme` | string | | Music: a storyboard [theme](storyboard-format.md#music), such as `"theme/harbor"`: its `key`, `tempo` and `bar_beats` where these params give none, its `instruments` and `mood` added to the prompt, and its ID added to the tags |
-| `image` | string | | A model: the library image to make it from, required (see [models](#models-from-a-concept-image)) |
+| `image` | string | | A model: the library image to make it from, required (see [models](#models-from-a-concept-image)). A material: the library image to make it from instead of generating one (see [materials](#tileable-materials)) |
 | `review` | integer, 1 to 5 | | A model: review each one made and make it again with what was wrong, up to this many in all |
 | `seed` | integer | | For a repeatable result, where the generator takes one |
 | `description` | string | the prompt | A sentence for agents to read instead of the file |
@@ -4949,8 +4950,42 @@ default), in the whole bars nearest `seconds` (four by default), which loop on t
 models are reliefs of the concept image: its shape in up to 24 cells a meter across (where
 pixels are opaque, or in an opaque image unlike its top left corner), standing on the ground
 around the origin and pushed back into a slab of each cell's color, one cell deep when the last
-word about depth is "thin" or "flat", half its width for "thick" or "deep", else a sixth. Its
+word about depth is "thin" or "flat", half its width for "thick" or "deep", else a sixth. An
+image whose prompt asks for a texture ("texture", "tileable" or "seamless") is rows of stones of
+random shades in the prompt's color, lit from one corner, which doesn't tile as drawn. Its
 license is `CC0-1.0`.
+
+#### Tileable materials
+
+`"type": "material"` makes a Godot `StandardMaterial3D` that tiles, for walls, floors and roads,
+as a [material file](scene-format.md#material-files) that [model recipes](scene-format.md#model-recipes)
+share. Its image is generated with the prompt and words asking for a seamless texture, square at
+`width` (or taken from the library as `image`, which must be an image), then measured: how much
+the pixels on its opposite edges differ where it wraps, against how much neighbouring pixels
+inside it differ (`seam`, about 1 or less for an image that tiles without a seam). Above 1.5 it
+is made to tile, from four copies of it moved by half its width and height, blended so each
+counts for nothing at its own seams, and kept as a version of the image. A normal map (its
+brightness taken as height, OpenGL's convention as Godot's) and a roughness map (darker places
+rougher) are worked out from it, wrapping round its edges so they tile with it, with integer math
+only, so they are the same bytes everywhere. The material file names the three as
+`albedo_texture`, `normal_texture` and `roughness_texture`; the library keeps them as images whose
+`parent` is the source, and the material as an asset of type `material` whose textures are
+library references and whose `uses` lists them. `height`, `seconds`, `review` and the music params
+don't apply.
+
+The reply has the material's `id`, its `image`, the `seam` of its albedo and, when the image was
+made to tile, the `image_seam` it had; `maps` gives each texture's ID. With `path` (a
+`.standard_material.json` file) the textures are copied beside it as `<name>_albedo.png`,
+`<name>_normal.png` and `<name>_roughness.png`, listed in `parts`. From
+[examples/tileable-materials](../../examples/tileable-materials/):
+
+```json
+{"type": "material", "prompt": "grey cobblestones", "generator": "test", "width": 128, "tags": ["stone"], "path": "materials/cobble.standard_material.json"}
+```
+
+```json
+{"id":"f0c506382a8d","image":"29aede753ea5","image_seam":2.36,"maps":{"albedo":"5fa7a51ef047","normal":"6655fb14243d","roughness":"7f62f437bcd8"},"parts":["materials/cobble_albedo.png","materials/cobble_roughness.png","materials/cobble_normal.png"],"path":"materials/cobble.standard_material.json","seam":0.58,"type":"material"}
+```
 
 ### asset.refine
 
@@ -5037,8 +5072,9 @@ budgets that cover the path, as with `asset.generate`'s `path`, and the reply li
 `problems`. Music gets its settings beside it, and with `stems` its stems as layers (see
 [music](#music)). A recipe made of other models comes with them: each is copied into a `parts`
 folder beside it, named by its ID (`props/parts/193f1c58e2f7.model.json`), recorded in
-`library.json` and listed in the reply's `parts`, and the copy's model parts name those paths.
-Needs: `read`, `filesystem`.
+`library.json` and listed in the reply's `parts`, and the copy's model parts name those paths;
+the material files it names go in the same folder. A material comes with its textures, copied
+beside it as `<name>_albedo.png` and so on and listed in `parts`. Needs: `read`, `filesystem`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -5073,8 +5109,8 @@ Needs: `read`, `filesystem`.
 
 ### asset.add
 
-Adds a project's `.png`, `.bmp`, `.wav`, `.ogg`, `.mp3`, `.model.json` or `.glb` file to the
-library, with its `description`, `tags`, `license` and `author`, and records it in
+Adds a project's `.png`, `.bmp`, `.wav`, `.ogg`, `.mp3`, `.model.json`, `.glb` or
+`.standard_material.json` file to the library, with its `description`, `tags`, `license` and `author`, and records it in
 `library.json`. A [model recipe](scene-format.md#model-recipes) must build as written and name no
 texture files, whose paths are a project's, and a `.glb` model must hold its own buffers and
 images; models are kept with what [`model.inspect`](#modelinspect)'s brief form gives: `size`,
@@ -5089,7 +5125,9 @@ files ([model parts](scene-format.md#model-recipes)) goes in with them: each mus
 `library.json` says it came from, or described as a part of the recipe, with its tags, license
 and author); the library's copy of the recipe names each by its library ID
 (`"asset:<id>.glb"`), since the project's paths mean nothing elsewhere, and the reply's
-`model_parts` gives each file's ID. A model added with `checks` ([model
+`model_parts` gives each file's ID. The [material files](scene-format.md#material-files) a
+recipe names, and a material's textures (`.png`, `.bmp` or `.jpg`), go in the same way and are
+listed in `model_parts`. A model added with `checks` ([model
 checks](scene-format.md#model-checks): size, pivot, triangles, materials, nodes, bones,
 animations) must pass them, failing at `/checks/...`; the library keeps them, every new version
 must pass them unless the call gives new ones (`/path: it fails the checks of the version
