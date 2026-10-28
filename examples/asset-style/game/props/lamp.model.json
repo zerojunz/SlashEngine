@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "materials": {
+    "brass": {
+      "metallic": 1,
+      "roughness": 0.4
+    }
+  },
+  "parts": [
+    {
+      "material": "brass",
+      "name": "shade",
+      "position": [0, 0.2, 0],
+      "radial_segments": 48,
+      "radius": 0.2,
+      "rings": 24,
+      "shape": "sphere"
+    }
+  ]
+}

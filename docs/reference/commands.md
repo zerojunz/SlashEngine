@@ -92,7 +92,7 @@ as `entity.get`, reject it as an unknown param.
 | Export | [`export.run`](#exportrun), [`texture.forms`](#textureforms), [`sdk.check`](#sdkcheck), [`sdk.add`](#sdkadd), [`sdk.lock`](#sdklock) |
 | Gameplay code | [`gameplay.build`](#gameplaybuild), [`build.check`](#buildcheck), [`api.search`](#apisearch) |
 | AI | [`ai.providers`](#aiproviders), [`ai.complete`](#aicomplete) |
-| Asset library | [`asset.search`](#assetsearch), [`asset.generate`](#assetgenerate), [`asset.refine`](#assetrefine), [`asset.info`](#assetinfo), [`asset.use`](#assetuse), [`asset.add`](#assetadd), [`asset.feedback`](#assetfeedback), [`asset.check`](#assetcheck), [`asset.sync`](#assetsync) |
+| Asset library | [`asset.search`](#assetsearch), [`asset.generate`](#assetgenerate), [`asset.refine`](#assetrefine), [`asset.info`](#assetinfo), [`asset.use`](#assetuse), [`asset.add`](#assetadd), [`asset.feedback`](#assetfeedback), [`asset.check`](#assetcheck), [`asset.style`](#assetstyle), [`asset.sync`](#assetsync) |
 
 
 ## Describe
@@ -3045,10 +3045,11 @@ After another agent's edit:
 Checks the storyboard against itself and the project. Errors: a storyboard file that is invalid,
 a reference to an entry that does not exist or is of the wrong kind, a word a glossary `term`
 says to `avoid` (as a whole word, ignoring case), and a `StoryRef` ID in a scene or prefab that
-names no entry, and a texture (`.png` or `.bmp`) that breaks the style: larger on a side than a
-`budget`'s `texture_size`, or with pixels in colors a `palette` doesn't have (see the
-[storyboard format](storyboard-format.md#checks)). Every `.scene.json`, `.prefab.json` and
-texture file in the project is read, except those in `build/` and in folders whose names start
+names no entry, a texture (`.png` or `.bmp`) that breaks the style: larger on a side than a
+`budget`'s `texture_size`, or with pixels in colors a `palette` doesn't have, and a model with
+more triangles than a `budget`'s `triangles` or an image inside it larger than its
+`texture_size` (see the [storyboard format](storyboard-format.md#checks)). Every
+`.scene.json`, `.prefab.json`, texture and model file in the project is read, except those in `build/` and in folders whose names start
 with `.`; the open scene is checked as it is now. Warnings: a link to a file that does not exist,
 since open work can link files still to be made, and, once the storyboard has a `cue`, each scene
 no cue plays in and each story beat no cue plays during (see
@@ -4778,7 +4779,9 @@ to generate anyway. Needs: `read`, `filesystem`, `network`.
 
 The generator gets more than the prompt, so results fit the game: the
 [storyboard](storyboard-format.md)'s `tone` entries, `palette` colors (for images) and `reference`
-entries that cover `path` or every asset, and the reasons [feedback](#assetfeedback) gave for
+entries that cover `path` or every asset, up to three more `reference` entries that link assets
+of the same type (as [`asset.style`](#assetstyle) drafts them), and the reasons
+[feedback](#assetfeedback) gave for
 assets like this one (scoring at least 0.5) and for a refine's parent: "What worked before:
 ..." and "Avoid what was wrong before: ...". The record keeps what was added as
 `request.context`. An image copied into the project with `path` is checked against the palettes
@@ -5103,7 +5106,7 @@ checked:
   less memory and download.
 
 Images are also checked against the storyboard's palettes and budgets that cover their path,
-and models against the [checks](scene-format.md#model-checks) `library.json` keeps with them,
+models against the budgets that cover theirs, and models against the [checks](scene-format.md#model-checks) `library.json` keeps with them,
 which needs no library: such a problem has the `check`'s JSON Pointer into `library.json`
 (`/assets/props~1lamp.model.json/checks/nodes/0`), and `test.run` fails at it.
 An asset with a problem is recorded `rejected`, the reason its first problem and the scene, and
@@ -5124,6 +5127,34 @@ outline on a night level:
 
 ```json
 {"checked":3,"problems":[{"entity":"red_slime","id":"833c6cd1f6e5","message":"hard to see: its edge has 1.2:1 contrast with the darker colors around it","path":"art/slime_red.png","scene":"levels/night.scene.json"}],"scenes":1}
+```
+
+### asset.style
+
+Drafts edits that refine the storyboard's [style section](storyboard-format.md#refining-the-style-from-accepted-assets)
+from the library assets the project uses (those `library.json` lists, each asset once) that a
+person or agent last judged `accepted`; a check's verdict doesn't count. They are returned as
+`edits` that [`storyboard.edit`](#storyboardedit) takes as they are, with `accepted`, the count
+of assets read. Change what should differ before passing them on; nothing is written.
+
+- Palettes: a `palette` covering an accepted image gains the colors it uses that the palette
+  lacks (at most 16 a call), named in words; with no palette at all, `palette/main` takes the
+  colors of images drawn in at most 16 flat colors, with `tolerance` 8, linked to their folders.
+- Budgets: `triangles` and `texture_size` where no budget sets them for an accepted model or
+  image, the most an accepted one has rounded up (two significant digits, a power of two), on
+  the budget for everything, else a new `budget/assets`.
+- References: a `reference/<file name>` for each accepted asset with a reason that no reference
+  links, the description as its name and the reason as its summary.
+
+Takes no params. Needs: `read`, `filesystem`. From [examples/asset-style](../../examples/asset-style/),
+a cafe with a tone and nothing else, after a stool, a cup and a sign were accepted:
+
+```json
+{}
+```
+
+```json
+{"accepted":3,"edits":[{"id":"palette/main","set":{"colors":{"dark_green":"#2a3a30","light_orange":"#e8d8b0"},"links":["art"],"name":"Main palette","summary":"The colors of the accepted images.","tolerance":8},"version":null},{"id":"budget/assets","set":{"name":"Asset budgets","summary":"What the accepted assets need at most.","texture_size":32,"triangles":96},"version":null},{"id":"reference/sign","set":{"links":["art/sign.png"],"name":"A chalkboard sign","summary":"two flat colors, a thick frame"},"version":null},{"id":"reference/cup","set":{"links":["props/cup.model.json"],"name":"A cup","summary":"reads at a glance on the counter"},"version":null},{"id":"reference/stool","set":{"links":["props/stool.model.json"],"name":"A cafe stool","summary":"eight-sided parts, flat oak and steel"},"version":null}]}
 ```
 
 ### asset.sync
