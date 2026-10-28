@@ -187,6 +187,10 @@ storyboard after a task. It reports as errors:
 - a texture with pixels in a color no `palette` covering it has, naming the first few colors,
   where each first appears and the nearest palette color. Fully transparent pixels don't count,
   and `tolerance` lets each channel be that far off, for art that was filtered or compressed.
+- a model (`.gltf`, `.glb`, `.obj`, `.fbx`, `.model.json`, and `.blend` where Blender may run)
+  with more triangles than a `budget`'s `triangles`, or holding an image larger on a side than
+  its `texture_size` (an image in a file of its own is a texture, checked as above). Palettes
+  leave models alone, since lights change their colors.
 
 A link to a file that does not exist is a warning, since open work can link files still to be
 made. So, once the storyboard has a `cue`, is each scene no cue plays in and each story beat no
@@ -226,8 +230,27 @@ every texture to 256 pixels a side:
 {"errors":[{"file":"art/sprites/crate.png","message":"has 12 pixels in 1 color not in palette/pico: #ff0000 at (3, 4), nearest \"red\" #ff004d","path":""},{"file":"art/title.png","message":"is 512x128 pixels; budget/textures allows 256 on a side","path":""}],"valid":false}
 ```
 
-A `budget`'s `triangles` waits on meshes, which come with the 3D work
-([roadmap](../roadmap.md)).
+A `budget` covers models as it covers textures: by its links, or every model without them.
+
+### Refining the style from accepted assets
+
+The style section is meant to follow the art the game keeps, not only what was written first.
+[`asset.style`](commands.md#assetstyle) reads the library assets the project uses, takes those a
+person or agent last judged `accepted` with [`asset.feedback`](commands.md#assetfeedback) (a
+check's verdict doesn't count), and drafts edits for `storyboard.edit`:
+
+- a `palette` covering an accepted image gains the colors it uses that the palette lacks, named
+  in words (`dark_blue`, `light_gray`); with no palette at all, `palette/main` takes the colors of
+  the images drawn in at most 16 flat colors, with a `tolerance` of 8, linked to their folders;
+- a `budget` gains `triangles` and `texture_size` where no budget sets them for an accepted model
+  or image: the most an accepted one has, rounded up to two significant digits or a power of two,
+  on the budget with no links or refs, else on a new `budget/assets`;
+- each accepted asset given a reason that no `reference` links gets a `reference/<file name>`
+  linking it, its description as the name and the reason as the summary.
+
+The asset library sends the references with every request for an asset of the same type, so
+what worked before shapes what is made next, and `storyboard.check` holds new models to the
+budgets. [examples/asset-style](../../examples/asset-style/) drafts a cafe's style this way.
 
 ## Model review
 

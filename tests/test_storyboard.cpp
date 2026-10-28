@@ -537,6 +537,133 @@ TEST_CASE("textures keep to the palettes and budgets that cover them") {
     CHECK(errors[0].message.ends_with("; and 2 more"));
 }
 
+TEST_CASE("models keep to the triangles and texture sizes of the budgets that cover them") {
+    std::map<std::string, storyboard::ModelFacts, std::less<>> models;
+    models["models/tree.glb"].triangles = 800;
+    models["models/props/crate.glb"].triangles = 120;
+    models["models/props/crate.glb"].images = {{.width = 128, .height = 128},
+                                               {.width = 512, .height = 256}};
+    models["levels/rock.obj"].triangles = 900;
+    json::Object entries = cast();
+    entries["budget/models"] =
+        parse(R"({"name": "Models", "triangles": 500, "links": ["models"]})");
+    entries["budget/props"] =
+        parse(R"({"name": "Props", "triangles": 100, "links": ["models/props"]})");
+    entries["budget/textures"] = parse(R"({"name": "Textures", "texture_size": 256})");
+    // A palette checks textures, not models: their colors are lit.
+    entries["palette/wood"] =
+        parse(R"({"name": "Wood", "links": ["models"], "colors": {"oak": "#806040"}})");
+
+    std::vector<std::string> loaded;
+    const auto load = [&](std::string_view path) -> std::optional<storyboard::ModelFacts> {
+        loaded.emplace_back(path);
+        const auto found = models.find(path);
+        if (found == models.end()) {
+            return std::nullopt;
+        }
+        return found->second;
+    };
+    std::vector<storyboard::FileError> errors;
+    storyboard::check_models(
+        entries,
+        {"models/tree.glb", "models/props/crate.glb", "levels/rock.obj", "models/gone.glb"}, load,
+        errors);
+    std::vector<std::string> found;
+    found.reserve(errors.size());
+    for (const storyboard::FileError& error : errors) {
+        CHECK(error.path.empty());
+        found.push_back(error.file + " " + error.message);
+    }
+    CHECK(found == std::vector<std::string>{
+                       "models/tree.glb has 800 triangles; budget/models allows 500",
+                       "models/props/crate.glb has 120 triangles; budget/props allows 100",
+                       "models/props/crate.glb holds image 1, 512x256 pixels; budget/textures "
+                       "allows 256 on a side",
+                   });
+
+    // Only what a budget covers is read.
+    entries.erase("budget/textures");
+    loaded.clear();
+    errors.clear();
+    storyboard::check_models(entries, {"levels/rock.obj", "models/tree.glb"}, load, errors);
+    CHECK(loaded == std::vector<std::string>{"models/tree.glb"});
+    CHECK(errors.size() == 1);
+}
+
+TEST_CASE("style_edits refine palettes, budgets and references from accepted assets") {
+    const auto image = [](std::uint32_t width, std::uint32_t height,
+                          std::vector<std::uint8_t> pixels) {
+        return storyboard::Texture{.width = width, .height = height, .pixels = std::move(pixels)};
+    };
+    const auto asset = [](std::string path, std::string description, std::string reason) {
+        storyboard::Accepted out;
+        out.path = std::move(path);
+        out.description = std::move(description);
+        out.reason = std::move(reason);
+        return out;
+    };
+
+    // A palette gains the colors an accepted image under it uses, budgets what no budget limits,
+    // and references the reasons assets were accepted for.
+    json::Object entries = cast();
+    entries["palette/pico"] = parse(R"({"name": "PICO-8", "links": ["art/sprites"],
+        "colors": {"black": "#000000", "red": "#ff004d"}})");
+    entries["budget/ui"] = parse(R"({"name": "UI", "texture_size": 32, "links": ["ui"]})");
+    entries["reference/hero"] = parse(R"({"name": "Hero", "links": ["art/sprites/hero.png"]})");
+    entries["reference/tree"] = parse(R"({"name": "Oak", "links": ["art/oak.png"]})");
+    std::vector<storyboard::Accepted> accepted;
+    accepted.push_back(asset("art/sprites/hero.png", "The hero", "reads at small size"));
+    accepted.back().image =
+        image(2, 2, {0, 0, 0, 255, 255, 0, 77, 255, 0x12, 0x34, 0x56, 255, 0x12, 0x34, 0x56, 255});
+    accepted.push_back(asset("models/tree.glb", "A pine tree", "low poly reads well"));
+    accepted.back().triangles = 1234;
+    accepted.push_back(asset("art/title.png", "", ""));
+    accepted.back().image = image(300, 100, {});
+    accepted.push_back(asset("ui/icon.png", "", ""));
+    accepted.back().image = image(40, 40, {});
+    const std::string pico = storyboard::version(entries.at("palette/pico"));
+    CHECK(json::write(json::Value(storyboard::style_edits(entries, accepted)),
+                      json::Style::Compact) ==
+          R"([{"id":"palette/pico","set":{"colors":{"black":"#000000","dark_blue":"#123456",)"
+          R"("red":"#ff004d"}},"version":")" +
+              pico +
+              R"("},{"id":"budget/assets","set":{"name":"Asset budgets","summary":"What the )"
+              R"(accepted assets need at most.","texture_size":512,"triangles":1300},"version":)"
+              R"(null},{"id":"reference/tree_2","set":{"links":["models/tree.glb"],"name":"A )"
+              R"(pine tree","summary":"low poly reads well"},"version":null}])");
+
+    // With no palette, the colors of images drawn in a few flat ones make palette/main; the
+    // budget for everything gains what it lacks.
+    json::Object plain;
+    plain["budget/all"] = parse(R"({"name": "All", "triangles": 2000})");
+    std::vector<storyboard::Accepted> flat;
+    flat.push_back(asset("art/a.png", "", ""));
+    flat.back().image =
+        image(2, 2, {16, 32, 48, 255, 16, 32, 48, 255, 18, 30, 50, 255, 200, 100, 0, 255});
+    flat.push_back(asset("logo.png", "", ""));
+    flat.back().image = image(1, 1, {200, 104, 2, 255});
+    std::vector<std::uint8_t> painted;
+    for (std::uint8_t i = 0; i < 20; ++i) {
+        painted.insert(painted.end(), {static_cast<std::uint8_t>(i * 12), 0, 0, 255});
+    }
+    flat.push_back(asset("art/painted.png", "", ""));
+    flat.back().image = image(20, 1, painted);
+    const std::string all = storyboard::version(plain.at("budget/all"));
+    CHECK(json::write(json::Value(storyboard::style_edits(plain, flat)), json::Style::Compact) ==
+          R"([{"id":"palette/main","set":{"colors":{"dark_blue":"#102030","orange":"#c86400"},)"
+          R"("links":["logo.png","art"],"name":"Main palette","summary":"The colors of the )"
+          R"(accepted images.","tolerance":8},"version":null},{"id":"budget/all","set":{)"
+          R"("texture_size":32},"version":")" +
+              all + R"("}])");
+
+    // Accepted assets the style already fits need nothing.
+    plain["budget/all"]["texture_size"] = 64;
+    plain["palette/main"] = parse(R"({"name": "Main", "links": ["art", "logo.png"], "tolerance": 8,
+        "colors": {"a": "#102030", "b": "#c86400", "c": "#000000"}})");
+    flat.pop_back();
+    CHECK(storyboard::style_edits(plain, flat).empty());
+}
+
 TEST_CASE("changes_since reads the journal lines after a seq") {
     const std::string journal = R"({"changes":{"character/mira":"00000001"}}
 {"changes":{"character/mira":"00000002","place/docks":"0000000a"}}

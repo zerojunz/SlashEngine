@@ -790,9 +790,35 @@ Result<json::Array> place_music(Session& session, Libraries& libs, const Record&
     return written;
 }
 
+// What a storyboard budget limits in a model: its triangles and the images it holds.
+storyboard::ModelFacts model_facts(const scene3d::Model& model) {
+    storyboard::ModelFacts facts;
+    facts.triangles = scene3d::summarize(model).triangles;
+    for (const scene3d::ModelImage& image : model.images) {
+        if (image.path.empty()) {
+            facts.images.push_back({.width = image.image.width, .height = image.image.height});
+        }
+    }
+    return facts;
+}
+
+// Reads the files a project's model names from the project.
+scene3d::ModelReader project_reader(Session& session) {
+    return [&session](std::string_view name) -> Result<std::string> {
+        auto bytes = session.read_project_file(std::string(name));
+        if (!bytes) {
+            return bytes.error();
+        }
+        if (!bytes.value()) {
+            return make_error(ErrorCode::NotFound, "\"" + std::string(name) + "\" doesn't exist");
+        }
+        return std::move(*bytes.value());
+    };
+}
+
 // The problems the storyboard's palettes and budgets that cover a project path find in an image
-// there, or nullopt when none covers it: what an agent would otherwise find out later from
-// storyboard.check.
+// or model there, or nullopt when none covers it: what an agent would otherwise find out later
+// from storyboard.check.
 std::optional<std::vector<std::string>> style_problems(Session& session, const std::string& path,
                                                        std::string_view data) {
     const json::Object entries = storyboard_entries(session);
@@ -801,19 +827,33 @@ std::optional<std::vector<std::string>> style_problems(Session& session, const s
     }
     bool covered = false;
     std::vector<storyboard::FileError> errors;
-    storyboard::check_textures(
-        entries, {path},
-        [&](std::string_view /*path*/) -> std::optional<storyboard::Texture> {
-            covered = true;
-            auto image = render::decode_image(data);
-            if (!image) {
-                return std::nullopt;
-            }
-            return storyboard::Texture{.width = image.value().width,
-                                       .height = image.value().height,
-                                       .pixels = std::move(image.value().pixels)};
-        },
-        errors);
+    if (is_model_file(path)) {
+        storyboard::check_models(
+            entries, {path},
+            [&](std::string_view /*path*/) -> std::optional<storyboard::ModelFacts> {
+                covered = true;
+                auto model = scene3d::load_model(data, path, project_reader(session));
+                if (!model) {
+                    return std::nullopt;
+                }
+                return model_facts(model.value());
+            },
+            errors);
+    } else {
+        storyboard::check_textures(
+            entries, {path},
+            [&](std::string_view /*path*/) -> std::optional<storyboard::Texture> {
+                covered = true;
+                auto image = render::decode_image(data);
+                if (!image) {
+                    return std::nullopt;
+                }
+                return storyboard::Texture{.width = image.value().width,
+                                           .height = image.value().height,
+                                           .pixels = std::move(image.value().pixels)};
+            },
+            errors);
+    }
     if (!covered) {
         return std::nullopt;
     }
@@ -841,23 +881,28 @@ void record_check(const Session& session, Libraries& libs, Record record,
     }
 }
 
-// Checks an image put in the project against the storyboard's style, as style_problems, and
-// records the result as the asset's feedback. Returns the problems found.
+// What a style check that passes says of an asset of a type.
+std::string fits(std::string_view type) {
+    return type == "model" ? "fits the storyboard's budget"
+                           : "fits the storyboard's palette and budget";
+}
+
+// Checks an image or model put in the project against the storyboard's style, as
+// style_problems, and records the result as the asset's feedback. Returns the problems found.
 json::Array check_style(Session& session, Libraries& libs, const Record& record,
                         const std::string& path, std::string_view data) {
     json::Array problems;
-    if (record.type != "image") {
+    if (record.type != "image" && record.type != "model") {
         return problems;
     }
     const std::optional<std::vector<std::string>> found = style_problems(session, path, data);
     if (!found) {
         return problems;
     }
-    record_check(
-        session, libs, record,
-        {.verdict = found->empty() ? "accepted" : "rejected",
-         .reason = found->empty() ? "fits the storyboard's palette and budget" : found->front(),
-         .source = std::string(kStyleCheck)});
+    record_check(session, libs, record,
+                 {.verdict = found->empty() ? "accepted" : "rejected",
+                  .reason = found->empty() ? fits(record.type) : found->front(),
+                  .source = std::string(kStyleCheck)});
     for (const std::string& problem : *found) {
         problems.emplace_back(problem);
     }
@@ -954,8 +999,27 @@ std::string joined(const std::vector<std::string>& parts, std::string_view separ
     return out;
 }
 
+// The type of asset a project file is: "image", "model", "sound" (music too) or "".
+std::string_view type_of_file(std::string_view path) {
+    if (render::is_image_path(path)) {
+        return "image";
+    }
+    if (scene3d::is_model_path(path)) {
+        return "model";
+    }
+    if (path.ends_with(".wav") || path.ends_with(".ogg") || path.ends_with(".mp3")) {
+        return "sound";
+    }
+    return "";
+}
+
+std::string_view type_of_request(std::string_view type) {
+    return type == "music" ? "sound" : type;
+}
+
 // What goes along with a prompt so results fit the game: the storyboard's tone, palette and
-// references that cover the asset's path or every asset, and the reasons agents and checks gave
+// references that cover the asset's path or every asset, up to kMaxNotes references to other
+// assets of its type, and the reasons agents and checks gave
 // for accepting or rejecting the asset being refined and assets like the one asked for.
 std::string prompt_context(Session& session, std::span<const Record> records, const Asked& asked,
                            const Record* parent) {
@@ -968,7 +1032,9 @@ std::string prompt_context(Session& session, std::span<const Record> records, co
         std::vector<std::string> tones;
         std::vector<std::string> colors;
         std::vector<std::string> references;
+        std::set<std::string> briefed;
         for (const json::Value& item : storyboard::brief(entries, {}, paths).entries) {
+            briefed.insert(field_text(item, "id"));
             const storyboard::Kind* kind = storyboard::kind_of(field_text(item, "id"));
             const json::Value* fields = item.find("fields");
             if (kind == nullptr || fields == nullptr) {
@@ -987,6 +1053,29 @@ std::string prompt_context(Session& session, std::span<const Record> records, co
                 for (const auto& [name, color] : named->as_object()) {
                     colors.push_back(name + " " + (color.is_string() ? color.as_string() : ""));
                 }
+            }
+        }
+        // References to assets of the type asked for, wherever they are: what was accepted
+        // before, as asset.style drafts them.
+        std::size_t elsewhere = 0;
+        for (const auto& [id, entry] : entries) {
+            const storyboard::Kind* kind = storyboard::kind_of(id);
+            const json::Value* links = entry.find("links");
+            if (elsewhere == kMaxNotes || kind == nullptr || kind->name != "reference" ||
+                briefed.contains(id) || links == nullptr || !links->is_array() ||
+                std::ranges::none_of(links->as_array(), [&](const json::Value& link) {
+                    return link.is_string() &&
+                           type_of_file(link.as_string()) == type_of_request(asked.request.type);
+                })) {
+                continue;
+            }
+            std::string summary = field_text(entry, "summary");
+            if (summary.empty()) {
+                summary = field_text(entry, "name");
+            }
+            if (!summary.empty()) {
+                references.push_back(std::move(summary));
+                ++elsewhere;
             }
         }
         if (!tones.empty()) {
@@ -2184,16 +2273,7 @@ std::vector<json::ValidationError> model_check_problems(Session& session, const 
     if (auto wrong = json::validate(checks, scene3d::model_checks_schema()); !wrong.empty()) {
         return {{at + wrong.front().path, wrong.front().message}};
     }
-    const scene3d::ModelReader read = [&session](std::string_view name) -> Result<std::string> {
-        auto bytes = session.read_project_file(std::string(name));
-        if (!bytes) {
-            return bytes.error();
-        }
-        if (!bytes.value()) {
-            return make_error(ErrorCode::NotFound, "\"" + std::string(name) + "\" doesn't exist");
-        }
-        return std::move(*bytes.value());
-    };
+    const scene3d::ModelReader read = project_reader(session);
     auto bytes = read(path);
     if (!bytes) {
         return {{at, bytes.error().message}};
@@ -2426,7 +2506,7 @@ Reply asset_check(Session& session, const json::Value& params) {
             }
         }
         if (path.ends_with(".png") || path.ends_with(".bmp") || path.ends_with(".jpg") ||
-            path.ends_with(".jpeg")) {
+            path.ends_with(".jpeg") || is_model_file(path)) {
             if (auto data = session.read_project_file(path); data && data.value()) {
                 if (const auto style = style_problems(session, path, *data.value()); style) {
                     for (const std::string& message : *style) {
@@ -2436,7 +2516,7 @@ Reply asset_check(Session& session, const json::Value& params) {
                         record_check(session, libs.value(), *record,
                                      {.verdict = style->empty() ? "accepted" : "rejected",
                                       .reason = style->empty()
-                                                    ? "fits the storyboard's palette and budget"
+                                                    ? fits(is_model_file(path) ? "model" : "image")
                                                     : style->front(),
                                       .source = std::string(kStyleCheck)});
                         if (auto again = libs.value().local().get(id); again) {
@@ -2494,6 +2574,61 @@ Reply asset_check(Session& session, const json::Value& params) {
     out["problems"] = std::move(problems);
     return libs ? libs.value().noted(Reply::success(std::move(out)))
                 : Reply::success(std::move(out));
+}
+
+// The verdict and reason a person or agent last gave an asset, leaving out what checks said.
+const Feedback* last_judged(const Record& record) {
+    for (const Feedback& item : std::ranges::reverse_view(record.feedback)) {
+        if (item.source != kStyleCheck && item.source != kFrameCheck) {
+            return &item;
+        }
+    }
+    return nullptr;
+}
+
+Reply asset_style(Session& session, const json::Value& /*params*/) {
+    auto assets = project_assets(session);
+    if (!assets) {
+        return Reply::failure(assets.error());
+    }
+    auto libs = open_libraries(session);
+    if (!libs) {
+        return Reply::failure(libs.error());
+    }
+    std::vector<storyboard::Accepted> accepted;
+    std::set<std::string> seen; // an asset used in several places counts once
+    for (const auto& [path, id] : assets.value()) {
+        auto record = find_asset(session, libs.value(), id);
+        if (!record || !seen.insert(record.value().id).second) {
+            continue;
+        }
+        const Feedback* judged = last_judged(record.value());
+        if (judged == nullptr || judged->verdict != "accepted") {
+            continue;
+        }
+        storyboard::Accepted asset;
+        asset.path = path;
+        asset.description = record.value().description;
+        asset.reason = judged->reason;
+        if (record.value().type == "image") {
+            auto data = session.read_project_file(path);
+            const std::optional<std::string> bytes = data ? data.value() : std::nullopt;
+            if (bytes) {
+                if (auto image = render::decode_image(*bytes); image) {
+                    asset.image = storyboard::Texture{.width = image.value().width,
+                                                      .height = image.value().height,
+                                                      .pixels = std::move(image.value().pixels)};
+                }
+            }
+        } else if (record.value().type == "model") {
+            asset.triangles = static_cast<std::size_t>(record.value().triangles);
+        }
+        accepted.push_back(std::move(asset));
+    }
+    json::Value out;
+    out["accepted"] = static_cast<std::int64_t>(accepted.size());
+    out["edits"] = storyboard::style_edits(storyboard_entries(session), accepted);
+    return libs.value().noted(Reply::success(std::move(out)));
 }
 
 Reply asset_sync(Session& session, const json::Value& params) {
@@ -2711,6 +2846,18 @@ void register_commands(command::Registry& registry) {
             },
             {"id", "verdict"}),
         .handler = asset_feedback,
+    });
+
+    registry.add({
+        .name = "asset.style",
+        .description = "Drafts storyboard.edit edits that fit the storyboard's style to the "
+                       "library assets the project uses that were last judged accepted: their "
+                       "colors into palettes, budgets they fit, references with the reasons. "
+                       "Writes nothing.",
+        .capabilities = {Capability::Read, Capability::Filesystem},
+        .effect = command::Effect::Read,
+        .params = params_schema(json::Object{}),
+        .handler = asset_style,
     });
 
     json::Value scenes = string_array("Scenes to look at. Default: every scene that draws one.");

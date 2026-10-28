@@ -195,6 +195,45 @@ void check_textures(const json::Object& entries, const std::vector<std::string>&
                     const std::function<std::optional<Texture>(std::string_view path)>& load,
                     std::vector<FileError>& errors);
 
+// A model for check_models: its triangles, and the size of each image it holds inside it (images
+// in files of their own are textures, which check_textures checks).
+struct ModelImageSize {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+};
+struct ModelFacts {
+    std::size_t triangles = 0;
+    std::vector<ModelImageSize> images;
+};
+// An error for each model (by project path) with more triangles than a budget covering it
+// allows, or an image inside it larger on a side than the budget's texture_size. Budgets cover
+// models as check_textures says they cover textures; palettes leave models alone, whose textures
+// are lit. Only models a budget covers are loaded; load returns nothing for one it can't read.
+void check_models(const json::Object& entries, const std::vector<std::string>& models,
+                  const std::function<std::optional<ModelFacts>(std::string_view path)>& load,
+                  std::vector<FileError>& errors);
+
+// An asset agents accepted, for style_edits.
+struct Accepted {
+    std::string path;             // its project path
+    std::string description;      // what it is, or ""
+    std::string reason;           // why it was accepted, or ""
+    std::optional<Texture> image; // an image's pixels
+    std::size_t triangles = 0;    // a model's triangles, or 0
+};
+// Edits for storyboard.edit that refine the style section from assets agents accepted, so later
+// checks and generation requests follow them:
+// - a palette that covers an accepted image gains the colors it uses that the palette lacks;
+//   with no palette at all, palette/main takes the few colors images drawn in a few flat colors
+//   use, linked to their folders;
+// - a budget gains triangles and texture_size where no budget sets them for an accepted model
+//   or image: the most an accepted one has, rounded up (to two significant digits, a power of
+//   two), on the budget for everything, else a new budget/assets;
+// - a reference/<file name> links each accepted asset with a reason that no reference links,
+//   the reason as its summary.
+[[nodiscard]] json::Array style_edits(const json::Object& entries,
+                                      const std::vector<Accepted>& accepted);
+
 // Once the storyboard has a cue, a warning for each scene (by project path) no cue plays in and
 // each story beat no cue plays during: music the cue sheet has still to plan. A cue's scenes may
 // name folders, which cover every scene in them.
