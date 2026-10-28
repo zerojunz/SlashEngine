@@ -1,5 +1,6 @@
 // Making a model game-ready (cleanup.hpp): turning, scaling and moving it by its root, then
-// simplifying and unwrapping its surfaces, and making what it collides as.
+// taking the light out of its textures, simplifying and unwrapping its surfaces, and making what
+// it collides as.
 
 #include "slash/scene3d/cleanup.hpp"
 
@@ -183,6 +184,15 @@ Result<CleanupReport> cleanup_model(Model& model, const CleanupOptions& options)
     }
     if (turn.value() != Quat{}) {
         transform_root(model, turn.value(), 1.0F, {});
+    }
+    // The light comes out of its textures while it has all its detail to shade them with.
+    if (options.delight > 0.0F) {
+        auto delit = delight_textures(model, options.read, options.delight);
+        if (!delit) {
+            return delit.error();
+        }
+        report.delit = delit.value().textures;
+        report.light = delit.value().light;
     }
     // Simplified before it is measured, since simplifying moves its bounds a little.
     if (options.triangles > 0) {

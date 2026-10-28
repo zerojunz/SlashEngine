@@ -4270,3 +4270,70 @@ TEST_CASE("model.cleanup gives a model collision, which model.inspect reports") 
     CHECK(kind.message.find("collision") != std::string::npos);
     std::filesystem::remove_all(root);
 }
+
+TEST_CASE("model.cleanup takes the light baked into a model's textures out of them") {
+    const std::string root = "command_delight_project";
+    std::filesystem::remove_all(root);
+    REQUIRE(slash::platform::create_directories(root + "/source").ok());
+    // A card painted bright on its top and dark underneath, as a light above baked it.
+    REQUIRE(slash::platform::write_file(root + "/source/card.obj", R"(mtllib card.mtl
+usemtl Paint
+v -1 0 -1
+v 1 0 -1
+v 1 0 1
+v -1 0 1
+v -1 -0.01 -1
+v 1 -0.01 -1
+v 1 -0.01 1
+v -1 -0.01 1
+vt 0 1
+vt 0.5 1
+vt 0.5 0
+vt 0 0
+vt 0.5 1
+vt 1 1
+vt 1 0
+vt 0.5 0
+vn 0 1 0
+vn 0 -1 0
+f 1/1/1 4/4/1 3/3/1 2/2/1
+f 5/5/2 6/6/2 7/7/2 8/8/2
+)")
+                .ok());
+    REQUIRE(slash::platform::write_file(root + "/source/card.mtl", "newmtl Paint\nmap_Kd lit.png\n")
+                .ok());
+    render::Image lit;
+    lit.width = 32;
+    lit.height = 16;
+    lit.pixels.assign(static_cast<std::size_t>(32) * 16 * 4, 255);
+    for (std::size_t y = 0; y < 16; ++y) {
+        for (std::size_t x = 0; x < 32; ++x) {
+            const std::size_t at = ((y * 32) + x) * 4;
+            const std::uint8_t code = x < 16 ? 200 : 60;
+            lit.pixels[at] = lit.pixels[at + 1] = lit.pixels[at + 2] = code;
+        }
+    }
+    REQUIRE(slash::platform::write_file(root + "/source/lit.png", render::encode_png(lit).value())
+                .ok());
+    command::SessionOptions options;
+    options.project_root = root;
+    Engine engine(options);
+
+    const json::Value made = engine.ok("model.cleanup", R"({"path": "source/card.obj",
+        "out": "props/card.glb", "delight": 1})");
+    CHECK(made.find("delit")->as_int() == 1);
+    CHECK(*made.find("light") == parse("[0, 1, 0]"));
+    // Its sides come out alike, inside the .glb file.
+    const auto glb = slash::platform::read_file(root + "/props/card.glb");
+    REQUIRE(glb.ok());
+    CHECK(glb.value().find("lit.png") == std::string::npos);
+
+    std::filesystem::remove(root + "/source/lit.png");
+    const command::Reply missing = engine.fails(
+        "model.cleanup", R"({"path": "source/card.obj", "out": "props/other.glb", "delight": 1})",
+        command::code::kInvalidParams);
+    INFO(missing.message);
+    REQUIRE(missing.data.find("path") != nullptr);
+    CHECK(missing.data.find("path")->as_string() == "/delight");
+    std::filesystem::remove_all(root);
+}
