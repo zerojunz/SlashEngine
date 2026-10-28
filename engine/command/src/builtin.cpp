@@ -40,6 +40,7 @@
 #include "slash/render/image.hpp"
 #include "slash/render/light.hpp"
 #include "slash/scene3d/csg.hpp"
+#include "slash/scene3d/geometry.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/ik.hpp"
 #include "slash/scene3d/lightmap.hpp"
@@ -5264,14 +5265,28 @@ json::Array file_errors(const std::vector<storyboard::FileError>& errors) {
     return items;
 }
 
-// What a storyboard budget limits in a model: its triangles and the images it holds.
-storyboard::ModelFacts model_facts(const scene3d::Model& model) {
+// What a storyboard budget limits in a model: its triangles, the images it holds and its texel
+// density, with the textures it names read from the project.
+storyboard::ModelFacts model_facts(Session& session, const scene3d::Model& model) {
     storyboard::ModelFacts facts;
     facts.triangles = scene3d::summarize(model).triangles;
     for (const scene3d::ModelImage& image : model.images) {
         if (image.path.empty()) {
             facts.images.push_back({.width = image.image.width, .height = image.image.height});
         }
+    }
+    const auto read = [&session](std::string_view name) -> Result<std::string> {
+        auto bytes = session.read_project_file(std::string(name));
+        if (!bytes) {
+            return bytes.error();
+        }
+        if (!bytes.value()) {
+            return make_error(ErrorCode::NotFound, "\"" + std::string(name) + "\" doesn't exist");
+        }
+        return std::move(*bytes.value());
+    };
+    if (auto geometry = scene3d::check_geometry(model, read); geometry) {
+        facts.texel_density = geometry.value().texel_density;
     }
     return facts;
 }
@@ -5353,7 +5368,7 @@ Reply storyboard_check(Session& session, const json::Value& /*params*/) {
             if (!model) {
                 return std::nullopt;
             }
-            return model_facts(*model.value());
+            return model_facts(session, *model.value());
         },
         errors);
     // Scenes and story beats the cue sheet gives no music.

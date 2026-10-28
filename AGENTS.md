@@ -249,7 +249,11 @@ files in first; `library::part_reader` reads references back, and `describe_file
 check recipes with it), its record's `uses` listing them; `copy_into_project` copies a recipe's
 parts into a `parts/` folder beside it (`project_form`), `share` sends parts to the team first,
 `asset.info` gives `uses` and `used_by`, and `asset.refine`'s `parts` swaps one model for
-another (`swap_parts`).
+another (`swap_parts`). `asset.review` (`src/review.cpp`) looks at a model before a game takes
+it: `scene3d::check_geometry` (`src/geometry.cpp`: holes, triangles with no area, texel density)
+and the storyboard's budgets, then `review::turntable` draws it from four sides on the software
+device and `review::ask` sends the views to a vision model from `providers.json`, recording the
+verdict as feedback; `examples/model-review` rejects a chest with no hinges.
 
 `entity.place` (`engine/command/src/place.cpp`) assembles scenes of such assets by constraints:
 each entity goes to a point (`at`) or along a `Path3D` (`along`, turned to face it with

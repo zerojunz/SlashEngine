@@ -1,0 +1,16 @@
+asset.add {"description":"An oak chest","license":"CC0-1.0","path":"props/chest.model.json"}
+{"id":"ec2f563f549a","size":[1.04,0.64,0.64],"triangles":24,"type":"model"}
+asset.review {"id":"ec2f563f549a","out":"review/chest","request":"An oak chest with brass hinges on its lid"}
+the stand-in saw brass pixels: 0 in view 1 0 in view 2 0 in view 3 0 in view 4
+{"holes":0,"recorded":true,"review":{"matches":false,"model":"vision-model","problems":[{"problem":"The lid has no brass hinges; its back edge is plain wood.","view":2}]},"size":[1.04,0.64,0.64],"triangles":24,"verdict":"rejected","views":["review/chest/view-1.png","review/chest/view-2.png","review/chest/view-3.png","review/chest/view-4.png"]}
+edit game/props/chest.model.json
+edit game/props/chest.model.json
+asset.add {"path":"props/chest.model.json"}
+{"id":"2040adc81fba","parent":"ec2f563f549a","size":[1.04,0.64,0.665],"triangles":48,"type":"model"}
+asset.review {"id":"2040adc81fba","request":"An oak chest with brass hinges on its lid"}
+the stand-in saw brass pixels: 0 in view 1 658 in view 2 1093 in view 3 0 in view 4
+{"holes":0,"recorded":true,"review":{"matches":true,"model":"vision-model","problems":[]},"size":[1.04,0.64,0.665],"triangles":48,"verdict":"accepted","views":4}
+asset.info {"id":"2040adc81fba"}
+{"bytes":647,"description":"An oak chest","feedback":[{"reason":"matches the request","source":"asset.review","verdict":"accepted"}],"format":"model.json","id":"2040adc81fba","license":"CC0-1.0","parent":"ec2f563f549a","parts":["body","lid","hinge_left","hinge_right"],"pivot":[0.5,0.0,0.519],"size":[1.04,0.64,0.665],"triangles":48,"type":"model","versions":["ec2f563f549a"]}
+asset.review {"ask":false,"path":"props/sign.obj"}
+{"errors":["has 20 texels a meter; budget/props asks for 128, from 64 to 256"],"holes":1,"size":[1.0,0.5,0.05],"texel_density":20,"triangles":10,"verdict":"rejected","views":4,"warnings":["has 1 hole (4 open edges), which show unless it is open on purpose"]}

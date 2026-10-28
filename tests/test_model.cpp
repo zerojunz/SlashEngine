@@ -13,6 +13,7 @@
 #include "slash/render/image.hpp"
 #include "slash/scene3d/cleanup.hpp"
 #include "slash/scene3d/collision.hpp"
+#include "slash/scene3d/geometry.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/scene3d.hpp"
 #include "slash/scene3d/skeleton.hpp"
@@ -2538,4 +2539,60 @@ f 5/5/2 6/6/2 7/7/2 8/8/2
     };
     // The floor is the image's left half, the wall at its left edge.
     CHECK(at(1, 16) > at(30, 16) + 10);
+}
+
+TEST_CASE("check_geometry finds holes, triangles with no area and texel density") {
+    // A cube a meter across, as quads over shared corners, and the same with its top left off.
+    const std::string corners = "v -0.5 -0.5 -0.5\nv 0.5 -0.5 -0.5\nv 0.5 0.5 -0.5\n"
+                                "v -0.5 0.5 -0.5\nv -0.5 -0.5 0.5\nv 0.5 -0.5 0.5\n"
+                                "v 0.5 0.5 0.5\nv -0.5 0.5 0.5\n";
+    const std::string sides = "f 1 4 3 2\nf 5 6 7 8\nf 1 5 8 4\nf 2 3 7 6\nf 1 2 6 5\n";
+    MemoryFiles files;
+    files.files["closed.obj"] = corners + sides + "f 4 8 7 3\n";
+    files.files["open.obj"] = corners + sides;
+    // A face with a corner given twice draws nothing.
+    files.files["flat.obj"] = corners + sides + "f 4 8 7 3\nf 1 1 2\n";
+
+    auto closed = load(files, "closed.obj");
+    REQUIRE(closed.ok());
+    auto report = scene3d::check_geometry(closed.value(), files.reader());
+    REQUIRE(report.ok());
+    CHECK(report.value().holes == 0);
+    CHECK(report.value().open_edges == 0);
+    CHECK(report.value().degenerate == 0);
+    CHECK_FALSE(report.value().texel_density.has_value());
+
+    auto open = load(files, "open.obj");
+    REQUIRE(open.ok());
+    report = scene3d::check_geometry(open.value(), files.reader());
+    REQUIRE(report.ok());
+    CHECK(report.value().holes == 1);
+    CHECK(report.value().open_edges == 4);
+
+    auto flat = load(files, "flat.obj");
+    REQUIRE(flat.ok());
+    report = scene3d::check_geometry(flat.value(), files.reader());
+    REQUIRE(report.ok());
+    CHECK(report.value().degenerate == 1);
+    CHECK(report.value().holes == 0);
+
+    // Each face of the lit cube covers a sixth of a 96 by 64 texture: 1024 texels a square
+    // meter, 32 a meter, read from the file the model names.
+    const LitCube cube = lit_cube({0.0F, 1.0F, 0.0F});
+    files.files["props/cube.obj"] = cube.obj;
+    files.files["props/cube.mtl"] = cube.mtl;
+    files.files["props/paint.png"] = render::encode_png(cube.texture).value();
+    auto textured = load(files, "props/cube.obj");
+    REQUIRE(textured.ok());
+    report = scene3d::check_geometry(textured.value(), files.reader());
+    REQUIRE(report.ok());
+    REQUIRE(report.value().texel_density.has_value());
+    CHECK(*report.value().texel_density == doctest::Approx(32.0F).epsilon(0.01));
+    // The lit cube's faces have corners of their own, but they meet at the same places.
+    CHECK(report.value().holes == 0);
+
+    files.files.erase("props/paint.png");
+    const auto missing = scene3d::check_geometry(textured.value(), files.reader());
+    REQUIRE_FALSE(missing.ok());
+    CHECK(missing.error().message.starts_with("\"props/paint.png\""));
 }

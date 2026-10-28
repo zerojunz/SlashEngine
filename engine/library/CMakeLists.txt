@@ -19,12 +19,12 @@ slash_engine_target(slash_library)
 target_compile_options(slash_library PRIVATE $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)
 
 # asset.search, asset.generate and the rest.
-add_library(slash_library_commands src/commands.cpp)
+add_library(slash_library_commands src/commands.cpp src/review.cpp)
 add_library(slash::library_commands ALIAS slash_library_commands)
 
 target_include_directories(slash_library_commands PUBLIC include)
 target_link_libraries(slash_library_commands
     PUBLIC slash::command
     PRIVATE slash::canvas slash::library slash::platform slash::render slash::storyboard
-            slash::world)
+            slash::ui slash::world)
 slash_engine_target(slash_library_commands)
