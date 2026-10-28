@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -91,6 +92,8 @@ struct Record {
     std::string key; // such as "D minor"
     std::vector<Stem> stems;
     std::string track; // for a stem: the track it is part of
+    // A model recipe: the library models its parts are made of, in the order they appear.
+    std::vector<std::string> uses;
 };
 
 inline constexpr std::size_t kMaxFeedback = 20;
@@ -114,9 +117,30 @@ void add_feedback(Record& record, Feedback feedback);
 
 // Fills in a record's type, format, size, image size, sound length or model summary from the
 // file's bytes, and checks they are a file of that format; a .glb model must read nothing
-// outside itself. path names the file, for its extension.
-[[nodiscard]] Result<void> describe_file(std::string_view data, std::string_view path,
-                                         Record& record);
+// outside itself, and a recipe's model parts must be library references, which read reads
+// (part_reader). path names the file, for its extension.
+[[nodiscard]] Result<void>
+describe_file(std::string_view data, std::string_view path, Record& record,
+              const std::function<Result<std::string>(std::string_view path)>& read = {});
+
+// A library recipe names the models its parts are made of as "asset:<id>.<format>", such as
+// "asset:3fa4...9a.glb", since a project's paths mean nothing in another project.
+inline constexpr std::string_view kAssetRef = "asset:";
+
+// The reference to a library model that a recipe's part names.
+[[nodiscard]] std::string asset_ref(const Record& record);
+// The asset ID a part's model reference names, or "" when it isn't a library reference.
+[[nodiscard]] std::string_view ref_id(std::string_view model);
+// The same for a part's "model" value, which may not be a string.
+[[nodiscard]] std::string_view ref_id_of(const json::Value& model);
+// The "model" value of each of a recipe's top-level parts that has one, in order.
+[[nodiscard]] std::vector<json::Value*> model_refs(json::Value& recipe);
+
+// The bytes of the library asset with this ID.
+using AssetBytes = std::function<Result<std::string>(std::string_view id)>;
+// Reads the models a library recipe's parts name by their references, through get. A reference
+// whose bytes don't hash to its ID is an error.
+[[nodiscard]] std::function<Result<std::string>(std::string_view path)> part_reader(AssetBytes get);
 
 class Library {
 public:
@@ -147,6 +171,10 @@ private:
 
     std::string dir_;
 };
+
+// Reads a library recipe's part models from the library.
+[[nodiscard]] std::function<Result<std::string>(std::string_view path)>
+part_reader(const Library& library);
 
 // The key of a request to a generator: 64 hex digits hashing the generator's type, its model and
 // the request's canonical JSON.

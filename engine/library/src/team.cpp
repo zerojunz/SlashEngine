@@ -27,7 +27,7 @@ bool is_hex(std::string_view text) {
 }
 
 // Bytes and their record as a library server's put request carries them.
-Result<Record> describe_upload(std::string_view data, const Record& sent) {
+Result<Record> describe_upload(std::string_view data, const Record& sent, const Library& library) {
     Record record = sent;
     record.id.clear();
     if (type_of("." + record.format).empty()) {
@@ -35,7 +35,10 @@ Result<Record> describe_upload(std::string_view data, const Record& sent) {
                           "the library keeps .png, .bmp, .wav, .ogg and .mp3 files, not \"" +
                               record.format + "\"");
     }
-    if (auto described = describe_file(data, "upload." + record.format, record); !described) {
+    // A recipe's model parts are put in first, so they are here to build it with.
+    if (auto described =
+            describe_file(data, "upload." + record.format, record, part_reader(library));
+        !described) {
         return described.error();
     }
     return record;
@@ -83,7 +86,7 @@ public:
 
     Result<Record> put(std::string_view data, const Record& record,
                        std::span<const std::string> requests) override {
-        auto checked = describe_upload(data, record);
+        auto checked = describe_upload(data, record, library_);
         if (!checked) {
             return checked.error();
         }

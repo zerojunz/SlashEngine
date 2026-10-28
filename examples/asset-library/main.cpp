@@ -1,9 +1,10 @@
 // The asset library: images and sounds kept once on the machine and reused by every project.
 //
 // Two projects share one library. The first generates a sprite and a sound, refines the sprite
-// and adds an icon of its own; the second asks for the same sprite and gets the stored one with
-// no model call. The built-in "test" generator makes placeholders, so the example needs no model
-// or key; a project names real generators in providers.json and calls them the same way.
+// and adds an icon, a bench and a picnic set made of benches of its own; the second asks for
+// the same sprite and gets the stored one with no model call. The built-in "test" generator makes
+// placeholders, so the example needs no model or key; a project names real generators in
+// providers.json and calls them the same way.
 
 #include "slash/command/builtin.hpp"
 #include "slash/command/command.hpp"
@@ -162,5 +163,26 @@ int main() {
     }
     (void)slash::platform::write_file("game/props/bench.model.json", deeper);
     call(game, "asset.add", R"({"path": "props/bench.model.json"})");
+
+    // A recipe can be made of other model files: a picnic set of a table and two of the
+    // benches. It goes in with them, naming each by its library ID; the bench is the version
+    // already there. The sequel's copy brings the bench into a parts folder beside it.
+    (void)slash::platform::write_file("game/props/picnic.model.json", R"({"format": 1,
+        "materials": {"pine": {"albedo_color": [0.75, 0.6, 0.4, 1]}},
+        "parts": [
+            {"name": "table", "shape": "box", "material": "pine", "size": [1.2, 0.05, 0.8],
+             "position": [0, 0.725, 0]},
+            {"name": "near", "model": "props/bench.model.json", "position": [0, 0, 0.6]},
+            {"name": "far", "model": "props/bench.model.json", "position": [0, 0, -0.6],
+             "rotation": [0, 3.14159265, 0]}]})");
+    call(game, "asset.add", R"({"path": "props/picnic.model.json",
+        "description": "Pine picnic table with a bench on each side", "tags": ["prop"],
+        "license": "CC0-1.0"})");
+    call(sequel, "asset.use", R"({"id": "9552a4cb", "path": "props/picnic.model.json"})");
+    // The bench's asset.info says which recipes are made of it. A version of the set with the
+    // long benches swaps the part, with no file edited.
+    call(sequel, "asset.info", R"({"id": "193f1c58"})");
+    call(sequel, "asset.refine", R"({"id": "9552a4cb", "parts": {"193f1c58": "55d18dff"},
+        "description": "Pine picnic table with long benches"})");
     return 0;
 }

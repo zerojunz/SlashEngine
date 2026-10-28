@@ -239,7 +239,13 @@ naming texture files are refused,
 whose paths are a project's); `asset.refine` with `parameters` makes a version with new parameter
 values and no generator (`refine_model` in `src/commands.cpp`). `asset.add` of a file the
 project's `library.json` says came from an asset, changed since, keeps it as a new version of
-that asset (`used_version`).
+that asset (`used_version`). A recipe made of other model files (its model parts) is kept with
+each part as a library reference, `"asset:<id>.glb"` (`library_form` and `add_part` put the part
+files in first; `library::part_reader` reads references back, and `describe_file` and the team
+check recipes with it), its record's `uses` listing them; `copy_into_project` copies a recipe's
+parts into a `parts/` folder beside it (`project_form`), `share` sends parts to the team first,
+`asset.info` gives `uses` and `used_by`, and `asset.refine`'s `parts` swaps one model for
+another (`swap_parts`).
 
 `entity.place` (`engine/command/src/place.cpp`) assembles scenes of such assets by constraints:
 each entity goes to a point (`at`) or along a `Path3D` (`along`, turned to face it with

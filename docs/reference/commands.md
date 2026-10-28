@@ -4860,13 +4860,17 @@ prompt. A repeat is reused as with `asset.generate`. The parent's generator is u
 | `prompt` | string | required, but for a model | What to change |
 | `loop` | boolean | false | Music: loop it in the settings written beside `path` |
 | `parameters` | object | | A model: new values for its [recipe's](scene-format.md#model-recipes) parameters, numbers or expressions |
+| `parts` | object | | A recipe: library models to make its [model parts](scene-format.md#model-recipes) of instead, by the IDs (or starts of them) of the ones they replace |
 
 A [model recipe](scene-format.md#model-recipes) is refined by its `parameters` instead, and no
 generator is called: the new version is the recipe with those values, checked as it builds,
 with the parent's description (followed by `prompt` when there is one), tags, license and
 author. A name the recipe has no parameter for is reported with the closest one, and a value
 that makes the recipe fail to build is reported at `/parameters`. Only `description`, `tags`,
-`prompt` and `path` go with it. A `.glb` model has no parameters and no generator refines it yet:
+`prompt` and `path` go with it. A recipe made of other models takes `parts` too, or instead:
+each model it is made of that `parts` names becomes the model it maps to, kept in the
+request's `parts` by full IDs. Naming a model the recipe isn't made of, or something that isn't
+a model, is reported at `/parts/<id>`. A `.glb` model has no parameters and no generator refines it yet:
 edit the file and [`asset.add`](#assetadd) it again, which keeps it as a new version.
 
 ```json
@@ -4875,6 +4879,16 @@ edit the file and [`asset.add`](#assetadd) it again, which keeps it as a new ver
 
 ```json
 {"id":"55d18dff10bf","parent":"edc8a0716505","path":"props/long_bench.model.json","size":[2.4,0.45,0.35],"triangles":36}
+```
+
+The picnic set made of the bench's deeper version, made of the long bench instead:
+
+```json
+{"id": "9552a4cb", "parts": {"193f1c58": "55d18dff"}, "description": "Pine picnic table with long benches"}
+```
+
+```json
+{"id":"b74a378241a0","parent":"9552a4cbc07f","size":[2.4,0.75,1.55],"triangles":84}
 ```
 
 ```json
@@ -4896,9 +4910,10 @@ understands none of makes a variation.
 Returns an asset's whole record: `type`, `format`, `bytes`, size or length (`seconds`,
 `channels` and `sample_rate`; a model's `size`, `triangles`, `pivot` and the names of its `parts` and attachment `points`, as [`model.inspect`](#modelinspect)'s brief form gives them), `description`, `tags`, the `request` its generator was asked,
 `generator`, `model`, `seed`, `license`, `author` and `parent`; music's `bpm`, `beat_count`,
-`bar_beats` and `key`, a track's `stems` (`name` and `id` each) and a stem's `track`; then
-`versions`, every version before it, oldest first, and `children`, the versions made from it.
-Needs: `read`.
+`bar_beats` and `key`, a track's `stems` (`name` and `id` each) and a stem's `track`; a recipe's
+`uses`, the library models its parts are made of; then `versions`, every version before it,
+oldest first, `children`, the versions made from it, and `used_by`, the recipes on this machine
+made of it. Needs: `read`.
 
 ```json
 {"id": "833c6cd1"}
@@ -4914,7 +4929,10 @@ Copies an asset into the project and records it in `library.json`. The path keep
 format: a `.png` stays a `.png`. An image is checked against the storyboard's palettes and
 budgets that cover the path, as with `asset.generate`'s `path`, and the reply lists any
 `problems`. Music gets its settings beside it, and with `stems` its stems as layers (see
-[music](#music)). Needs: `read`, `filesystem`.
+[music](#music)). A recipe made of other models comes with them: each is copied into a `parts`
+folder beside it, named by its ID (`props/parts/193f1c58e2f7.model.json`), recorded in
+`library.json` and listed in the reply's `parts`, and the copy's model parts name those paths.
+Needs: `read`, `filesystem`.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -4939,6 +4957,14 @@ budgets that cover the path, as with `asset.generate`'s `path`, and the reply li
 {"files":["music/boss/drums.wav","music/boss/drums.audio.json","music/boss/pads.wav","music/boss/pads.audio.json","music/boss.audio.json"],"path":"music/boss.wav"}
 ```
 
+```json
+{"id": "9552a4cb", "path": "props/picnic.model.json"}
+```
+
+```json
+{"parts":["props/parts/193f1c58e2f7.model.json"],"path":"props/picnic.model.json"}
+```
+
 ### asset.add
 
 Adds a project's `.png`, `.bmp`, `.wav`, `.ogg`, `.mp3`, `.model.json` or `.glb` file to the
@@ -4950,7 +4976,14 @@ images; models are kept with what [`model.inspect`](#modelinspect)'s brief form 
 with the new tags added; a sound added again as music becomes music. A file the project took
 from the library (as `library.json` says) and changed since is a new version of that asset: its
 `parent` is the one it came from, and its description, tags, license and author are that one's
-unless the call gives them. Music is measured, keeping the facts its author gives (see
+unless the call gives them, and the reply's `used_by` lists the recipes made of the version
+before, which [`asset.refine`](#assetrefine)'s `parts` moves to it. A recipe made of other model
+files ([model parts](scene-format.md#model-recipes)) goes in with them: each must be a `.glb` or
+`.model.json` file, and goes in first where the library lacks it (as a new version of the asset
+`library.json` says it came from, or described as a part of the recipe, with its tags, license
+and author); the library's copy of the recipe names each by its library ID
+(`"asset:<id>.glb"`), since the project's paths mean nothing elsewhere, and the reply's
+`model_parts` gives each file's ID. Music is measured, keeping the facts its author gives (see
 [music](#music)), and a track comes with its stems. Needs: `read`, `filesystem`.
 
 | Param | Type | Default | Meaning |
@@ -4991,6 +5024,16 @@ The game's copy of a bench, its seat made deeper by hand:
 
 ```json
 {"id":"193f1c58e2f7","parent":"edc8a0716505","size":[1.2,0.45,0.45],"triangles":36,"type":"model"}
+```
+
+A picnic set made of that bench:
+
+```json
+{"path": "props/picnic.model.json", "description": "Pine picnic table with a bench on each side", "tags": ["prop"], "license": "CC0-1.0"}
+```
+
+```json
+{"id":"9552a4cbc07f","model_parts":{"props/bench.model.json":"193f1c58e2f7"},"size":[1.2,0.75,1.65],"triangles":84,"type":"model"}
 ```
 
 ### asset.feedback

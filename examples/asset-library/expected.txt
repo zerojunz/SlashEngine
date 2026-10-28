@@ -37,3 +37,11 @@ asset.refine {"id":"edc8a071","parameters":{"length":2.4},"path":"props/long_ben
 {"id":"55d18dff10bf","parent":"edc8a0716505","path":"props/long_bench.model.json","size":[2.4,0.45,0.35],"triangles":36}
 asset.add {"path":"props/bench.model.json"}
 {"id":"193f1c58e2f7","parent":"edc8a0716505","size":[1.2,0.45,0.45],"triangles":36,"type":"model"}
+asset.add {"description":"Pine picnic table with a bench on each side","license":"CC0-1.0","path":"props/picnic.model.json","tags":["prop"]}
+{"id":"9552a4cbc07f","model_parts":{"props/bench.model.json":"193f1c58e2f7"},"size":[1.2,0.75,1.65],"triangles":84,"type":"model"}
+asset.use {"id":"9552a4cb","path":"props/picnic.model.json"}
+{"parts":["props/parts/193f1c58e2f7.model.json"],"path":"props/picnic.model.json"}
+asset.info {"id":"193f1c58"}
+{"bytes":599,"description":"Pine bench for one or two","format":"model.json","id":"193f1c58e2f7","license":"CC0-1.0","parent":"edc8a0716505","parts":["seat","leg","leg2"],"pivot":[0.5,0.0,0.5],"size":[1.2,0.45,0.45],"tags":["prop"],"triangles":36,"type":"model","used_by":["9552a4cbc07f"],"versions":["edc8a0716505"]}
+asset.refine {"description":"Pine picnic table with long benches","id":"9552a4cb","parts":{"193f1c58":"55d18dff"}}
+{"id":"b74a378241a0","parent":"9552a4cbc07f","size":[2.4,0.75,1.55],"triangles":84}
