@@ -1,0 +1,17 @@
+# A crate from a CAD tool: centimeters, z up
+mtllib crate.mtl
+v -50 -50 0
+v 50 -50 0
+v 50 50 0
+v -50 50 0
+v -50 -50 80
+v 50 -50 80
+v 50 50 80
+v -50 50 80
+usemtl wood
+f 1 4 3 2
+f 5 6 7 8
+f 1 2 6 5
+f 2 3 7 6
+f 3 4 8 7
+f 4 1 5 8

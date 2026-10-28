@@ -1555,3 +1555,137 @@ TEST_CASE("asset.generate makes a tileable material that library recipes share")
     CHECK(engine.fail("asset.add", R"({"path": "materials/loose.standard_material.json"})")
               .message.starts_with("/path: the texture \"nowhere.png\": "));
 }
+
+namespace {
+
+// A box as an OBJ file, as CAD tools write one: in centimeters with z up, width wide and deep
+// around the origin and height tall above it.
+std::string obj_box(int width, int height) {
+    const std::string w = std::to_string(width / 2);
+    const std::string h = std::to_string(height);
+    std::string out = "# a crate\n";
+    for (const std::string& z : {std::string("0"), h}) {
+        out += "v -" + w + " -" + w + " " + z + "\n";
+        out += "v " + w + " -" + w + " " + z + "\n";
+        out += "v " + w + " " + w + " " + z + "\n";
+        out += "v -" + w + " " + w + " " + z + "\n";
+    }
+    return out + "f 1 4 3 2\nf 5 6 7 8\nf 1 2 6 5\nf 2 3 7 6\nf 3 4 8 7\nf 4 1 5 8\n";
+}
+
+} // namespace
+
+TEST_CASE("asset.add imports models from other tools as .glb files, and edits as new versions") {
+    const fs::path root = fresh("library_import");
+    Engine engine(root);
+    const fs::path project = root / "project";
+    write(project / "props" / "crate.obj", obj_box(100, 80));
+
+    // An OBJ file in centimeters with z up goes in cleaned up, as a .glb file.
+    json::Value crate =
+        engine.call("asset.add", R"({"path": "props/crate.obj", "description": "A wooden crate.",
+                         "tags": ["prop"], "author": "Ana",
+                         "cleanup": {"up": "z", "scale": 0.01, "pivot": [0.5, 0, 0.5],
+                                     "collision": "convex"}})");
+    CHECK(crate["type"] == "model");
+    CHECK(crate["source"] == "crate.obj");
+    CHECK(crate["size"] == parse("[1, 0.8, 1]"));
+    CHECK(crate["triangles"] == 12);
+    CHECK(crate["cleanup"]["triangles"] == parse("[12, 12]"));
+    CHECK(crate["cleanup"]["pivot"] == parse("[0.5, 0, 0.5]"));
+    CHECK(crate["cleanup"]["collision"] == parse(R"({"convex": 1})"));
+    REQUIRE(crate.find("problems") != nullptr);
+    CHECK(crate["problems"].as_array().at(0).as_string().starts_with("no license is recorded"));
+    const std::string first = crate["id"].as_string();
+    json::Value info = engine.call("asset.info", R"({"id": ")" + first + R"("})");
+    CHECK(info["format"] == "glb");
+    CHECK(info["source"] == "crate.obj");
+    CHECK(info["source_sha256"] == slash::sha256_hex(obj_box(100, 80)).substr(0, 12));
+    CHECK(info["cleanup"]["up"] == "z");
+    json::Value list = parse(read(project / "library.json"));
+    CHECK(list["assets"]["props/crate.obj"]["source_sha256"] ==
+          slash::sha256_hex(obj_box(100, 80)));
+    CHECK(engine.call("asset.check", "{}")["problems"] == parse("[]"));
+
+    // The artist makes it taller: asset.check sees the change, and adding it again keeps a new
+    // version, cleaned up as the last one was and reviewed.
+    write(project / "props" / "crate.obj", obj_box(100, 120));
+    json::Value checked = engine.call("asset.check", "{}");
+    REQUIRE(checked["problems"].as_array().size() == 1);
+    CHECK(checked["problems"].as_array().at(0)["path"] == "props/crate.obj");
+    CHECK(checked["problems"].as_array().at(0)["message"] ==
+          "changed since it was imported; asset.add it again to keep the change as a new version");
+    json::Value taller = engine.call(
+        "asset.add", R"({"path": "props/crate.obj", "license": "CC0-1.0", "review": true})");
+    CHECK(taller["parent"] == first);
+    CHECK(taller["size"] == parse("[1, 1.2, 1]"));
+    CHECK(taller["cleanup"]["collision"] == parse(R"({"convex": 1})"));
+    CHECK(taller.find("problems") == nullptr);
+    CHECK(taller["review"]["verdict"] == "accepted");
+    CHECK(taller["review"]["holes"] == 0);
+    info = engine.call("asset.info", R"({"id": ")" + taller["id"].as_string() + R"("})");
+    CHECK(info["description"] == "A wooden crate.");
+    CHECK(info["tags"] == parse(R"(["prop"])"));
+    CHECK(info["author"] == "Ana");
+    CHECK(info["license"] == "CC0-1.0");
+    CHECK(info["versions"] == parse(R"([")" + first + R"("])"));
+    CHECK(info["feedback"].as_array().at(0)["source"] == "asset.review");
+    CHECK(engine.call("asset.check", "{}")["problems"] == parse("[]"));
+
+    // Another project takes the .glb file, which isn't a source.
+    engine.call("asset.use",
+                R"({"id": ")" + taller["id"].as_string() + R"(", "path": "levels/crate.glb"})");
+    list = parse(read(project / "library.json"));
+    CHECK(list["assets"]["levels/crate.glb"].find("source_sha256") == nullptr);
+    auto model =
+        slash::scene3d::load_model(read(project / "levels" / "crate.glb"), "crate.glb", {});
+    REQUIRE(model.ok());
+    CHECK_FALSE(model.value().collision.empty());
+
+    // A .gltf file reading an image beside it goes in as a .glb file holding the image.
+    slash::test::Gltf painted = slash::test::quad(0);
+    painted.document["images"] = parse(R"([{"uri": "paint.png"}])");
+    painted.document["textures"] = parse(R"([{"source": 0}])");
+    painted.document["materials"] =
+        parse(R"([{"pbrMetallicRoughness": {"baseColorTexture": {"index": 0}}}])");
+    write(project / "props" / "sign.gltf", painted.gltf());
+    write(project / "props" / "paint.png", square(4, {200, 40, 40}));
+    json::Value sign = engine.call(
+        "asset.add",
+        R"({"path": "props/sign.gltf", "description": "A red sign.", "license": "CC0-1.0"})");
+    CHECK(sign["source"] == "sign.gltf");
+    CHECK(sign.find("cleanup") == nullptr);
+    info = engine.call("asset.info", R"({"id": ")" + sign["id"].as_string() + R"("})");
+    CHECK(info["format"] == "glb");
+    CHECK(info.find("cleanup") == nullptr);
+
+    // What can't be imported or cleaned up.
+    write(project / "art" / "dot.png", square(4, {0, 0, 0}));
+    CHECK(
+        engine
+            .fail("asset.add", R"({"path": "art/dot.png", "description": "A dot.", "cleanup": {}})")
+            .message == "/cleanup: only a model is cleaned up");
+    CHECK(engine
+              .fail("asset.add",
+                    R"({"path": "art/dot.png", "description": "A dot.", "review": true})")
+              .message == "/review: only a model is reviewed");
+    write(project / "props" / "ball.model.json",
+          R"({"format": 1, "parts": [{"shape": "sphere"}]})");
+    CHECK(engine
+              .fail("asset.add", R"({"path": "props/ball.model.json", "description": "A ball.",
+                                     "cleanup": {"scale": 2}})")
+              .data["path"] == "/cleanup");
+    write(project / "props" / "box.obj", obj_box(10, 10));
+    CHECK(engine
+              .fail("asset.add", R"({"path": "props/box.obj", "description": "A box.",
+                                     "cleanup": {"scale": 2, "height": 1}})")
+              .message == "/cleanup/height: give scale or height, not both");
+    CHECK(engine
+              .fail("asset.add", R"({"path": "props/box.obj", "description": "A box.",
+                                     "cleanup": {"shrink": 2}})")
+              .data["path"] == "/cleanup/shrink");
+    write(project / "props" / "broken.fbx", "not an fbx file");
+    CHECK(engine.fail("asset.add", R"({"path": "props/broken.fbx", "description": "Junk."})")
+              .data["path"] == "/path");
+    fs::remove_all(root);
+}
