@@ -1063,8 +1063,8 @@ the parts its scene's nodes place. `scene3d::add_asset_types` loads them as asse
 reload, and `check_model` backs `scene validate`, exports and `model.inspect`; a
 `StandardMaterial3D` on the entity is Godot's `material_override`. `write_gltf`
 (`src/gltf_writer.cpp`) writes a `Model` back out as a `.gltf` file that loads as written (its
-buffer embedded, images by their paths or embedded as PNGs), which importers use to pick one mesh
-out of a model, and `write_glb` as one `.glb` file holding everything. `model.cleanup`
+buffer embedded, images by their paths or embedded as PNGs, skins and animations kept), which
+importers use to pick one mesh out of a model, and `write_glb` as one `.glb` file holding everything. `model.cleanup`
 (`engine/command/src/model_cleanup.cpp`, on `scene3d::cleanup_model` in `src/cleanup.cpp`) makes a
 generated or imported model game-ready as a `.glb`: up turned to y, delit, simplified with
 meshoptimizer to the storyboard's triangle budget (`storyboard::budget_for`) with LODs made again,
@@ -1183,6 +1183,18 @@ from components every time, never kept. The animation module tells scene3d what 
 the CPU as Godot's skeleton shader does (`skin_vertices`) into a mesh per entity that
 `RenderDevice::update_mesh` refills, and blends poses between ticks. `skeleton.get` lists and
 poses bones; `examples/skinned-meshes` waves an arm.
+
+Retargeting follows Godot 4.6's importer (`slash/scene3d/humanoid.hpp`): `humanoid_profile` is
+its `SkeletonProfileHumanoid`, `auto_map_bones` its `BoneMapper::auto_mapping_process` (Godot's
+name patterns matched by a small backtracking matcher in `src/humanoid.cpp`), and
+`retarget_model` (`src/retarget.cpp`) its skeleton track organizer, renamer and rest fixer in the
+order the importer runs them, on the bones `model_skeletons` (`slash/scene3d/skin_tool.hpp`,
+Godot's `SkinTool`, shared with the Godot importer) names, fixing skins, nodes under bones, parts
+and collision so the model draws as it did. Godot divides position tracks by the skeleton's
+`motion_scale`, which glTF can't keep, so `blend_animation` scales another model's bone
+position tracks by the ratio of the two models' `motion_scale` (the hips' height) instead.
+`model.retarget` (in `engine/command/src/model_cleanup.cpp`) writes the result as a `.glb`;
+`examples/humanoid-retarget` plays a Mixamo hero's wave on a Blender knight.
 
 CSG shapes are Godot 4.6's CSG module (`engine/scene3d/src/csg.cpp`, after
 `modules/csg/csg_shape.cpp`): `CSGBox3D`, `CSGSphere3D`, `CSGCylinder3D`, `CSGTorus3D`,

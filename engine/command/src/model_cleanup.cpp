@@ -1,14 +1,19 @@
 #include "slash/command/model_cleanup.hpp"
 
 #include "slash/command/session.hpp"
+#include "slash/core/text.hpp"
 #include "slash/scene3d/cleanup.hpp"
+#include "slash/scene3d/humanoid.hpp"
 #include "slash/scene3d/model.hpp"
+#include "slash/scene3d/skeleton.hpp"
 #include "slash/storyboard/storyboard.hpp"
 
+#include <cmath>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace slash::command {
 namespace {
@@ -219,6 +224,139 @@ Reply model_cleanup(Session& session, const json::Value& params) {
     return Reply::success(std::move(result));
 }
 
+Reply model_retarget(Session& session, const json::Value& params) {
+    const std::string& path = params.find("path")->as_string();
+    if (!scene3d::is_model_path(path) || path.find("::") != std::string::npos) {
+        return param_error(code::kInvalidParams, "/path",
+                           quoted(path) +
+                               " isn't a model file: give a .gltf, .glb, .fbx or .blend file");
+    }
+    const json::Value* out_param = params.find("out");
+    const std::string out = out_param != nullptr ? out_param->as_string() : glb_path(path);
+    if (!out.ends_with(".glb")) {
+        return param_error(code::kInvalidParams, "/out",
+                           quoted(out) + " isn't a .glb file, which a retarget writes");
+    }
+    if (auto full = session.resolve_path(out); !full) {
+        return param_error(code::kInvalidParams, "/out", full.error().message);
+    }
+    auto loaded = session.assets().load<scene3d::Model>(path);
+    if (!loaded) {
+        return param_error(code::kInvalidParams, "/path", loaded.error().message);
+    }
+    scene3d::Model model = *loaded.value();
+    if (model.skins.empty()) {
+        return param_error(code::kInvalidParams, "/path",
+                           quoted(path) + " has no skin: only a rigged model can be retargeted");
+    }
+
+    // The guessed map, then the call's changes to it.
+    scene3d::RetargetOptions options;
+    options.bone_map = scene3d::auto_map_bones(model);
+    if (const json::Value* map = params.find("bone_map"); map != nullptr) {
+        std::vector<std::string_view> profile_names;
+        profile_names.reserve(scene3d::humanoid_profile().size());
+        for (const scene3d::ProfileBone& bone : scene3d::humanoid_profile()) {
+            profile_names.push_back(bone.name);
+        }
+        std::vector<std::string_view> node_names;
+        node_names.reserve(model.nodes.size());
+        for (const scene3d::ModelNode& node : model.nodes) {
+            node_names.push_back(node.name);
+        }
+        for (const auto& [profile_bone, value] : map->as_object()) {
+            const std::string at = "/bone_map/" + json::pointer_escape(profile_bone);
+            if (scene3d::find_profile_bone(profile_bone) < 0) {
+                std::string message =
+                    quoted(profile_bone) + " isn't a bone of the humanoid profile";
+                if (const std::string_view near = closest_match(profile_bone, profile_names);
+                    !near.empty()) {
+                    message += "; did you mean " + quoted(near) + "?";
+                }
+                return param_error(code::kInvalidParams, at, message);
+            }
+            const std::string& bone = value.as_string();
+            if (!bone.empty() && scene3d::find_node(model, bone) < 0) {
+                std::string message = quoted(path) + " has no bone " + quoted(bone);
+                if (const std::string_view near = closest_match(bone, node_names); !near.empty()) {
+                    message += "; did you mean " + quoted(near) + "?";
+                }
+                return param_error(code::kInvalidParams, at, message);
+            }
+            options.bone_map[profile_bone] = bone;
+        }
+        std::erase_if(options.bone_map, [](const auto& entry) { return entry.second.empty(); });
+    }
+    if (const json::Value* fix = params.find("fix_silhouette"); fix != nullptr) {
+        options.fix_silhouette = fix->as_bool();
+    }
+    const scene3d::BoneMap bone_map = options.bone_map;
+    auto report = scene3d::retarget_model(model, options);
+    if (!report) {
+        return param_error(code::kInvalidParams,
+                           params.find("bone_map") != nullptr ? "/bone_map" : "/path",
+                           report.error().message);
+    }
+    const scene3d::ModelReader read = [&session](std::string_view file) -> Result<std::string> {
+        auto bytes = session.read_project_file(file);
+        if (!bytes) {
+            return bytes.error();
+        }
+        if (!bytes.value()) {
+            return make_error(ErrorCode::NotFound, quoted(file) + " doesn't exist");
+        }
+        return std::move(*bytes.value());
+    };
+    auto glb = scene3d::write_glb(model, out, read);
+    if (!glb) {
+        return Reply::failure(glb.error());
+    }
+
+    json::Value result;
+    result["out"] = out;
+    json::Value bones = json::Object{};
+    for (const auto& [profile_bone, bone] : bone_map) {
+        bones[profile_bone] = bone;
+    }
+    result["bone_map"] = std::move(bones);
+    const auto names = [](const std::vector<std::string>& list) {
+        json::Array out_list;
+        for (const std::string& name : list) {
+            out_list.emplace_back(name);
+        }
+        return out_list;
+    };
+    if (!report.value().missing.empty()) {
+        result["missing"] = names(report.value().missing);
+    }
+    if (!report.value().unmapped.empty()) {
+        result["unmapped"] = names(report.value().unmapped);
+    }
+    if (!report.value().moved_aside.empty()) {
+        json::Value moved = json::Object{};
+        for (const auto& [now, was] : report.value().moved_aside) {
+            moved[now] = was;
+        }
+        result["moved_aside"] = std::move(moved);
+    }
+    result["motion_scale"] =
+        std::round(static_cast<double>(report.value().motion_scale) * 1e4) / 1e4;
+    auto before = session.read_project_file(out);
+    if (!before) {
+        return Reply::failure(before.error());
+    }
+    if (before.value() == glb.value()) {
+        session.mark_unchanged();
+        result["unchanged"] = true;
+        return Reply::success(std::move(result));
+    }
+    if (auto staged = session.stage_file(out, glb.value()); !staged) {
+        return Reply::failure(staged.error());
+    }
+    session.add_undo_file(out, std::move(before).value(), std::move(glb).value());
+    return Reply::success(std::move(result));
+}
+
 } // namespace
 
 void register_model_cleanup_commands(Registry& registry) {
@@ -282,6 +420,34 @@ void register_model_cleanup_commands(Registry& registry) {
                                  {"max_hulls", std::move(max_hulls)}},
                                 {"path"}),
         .handler = model_cleanup,
+    });
+
+    json::Value source = property("string", "The rigged model: .gltf, .glb, .fbx or .blend, "
+                                            "project path.");
+    source["minLength"] = 1;
+    json::Value target = property("string", "The .glb file to write. Default: path as a .glb.");
+    target["minLength"] = 1;
+    json::Value bone_map = property(
+        "object", "Changes to the guessed map: humanoid bone (\"LeftUpperArm\") to the model's "
+                  "bone, \"\" to leave one unmapped.");
+    bone_map["additionalProperties"]["type"] = "string";
+    json::Value fix_silhouette = property(
+        "boolean", "Turn bones that point over 15 degrees from the profile's toward it, as for "
+                   "an A-pose. Default false.");
+    registry.add({
+        .name = "model.retarget",
+        .description = "Retargets a rigged humanoid to Godot's humanoid skeleton as a .glb file: "
+                       "renames its bones (Hips, LeftUpperArm, ...) and turns their rests as "
+                       "Godot's importer does, so animations of every retargeted model play on "
+                       "it. Guesses the bone map; returns it, with bones missing or left over.",
+        .capabilities = {Capability::Edit, Capability::Filesystem},
+        .effect = Effect::Edit,
+        .params = params_schema({{"path", std::move(source)},
+                                 {"out", std::move(target)},
+                                 {"bone_map", std::move(bone_map)},
+                                 {"fix_silhouette", std::move(fix_silhouette)}},
+                                {"path"}),
+        .handler = model_retarget,
     });
 }
 
