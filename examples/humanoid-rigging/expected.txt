@@ -1,0 +1,14 @@
+asset.add {"description":"A boxy knight, arms at its sides.","path":"source/knight.glb","tags":["character"]}
+{"id":"4df1e210524b","size":[0.54,1.8,0.2],"triangles":72,"type":"model"}
+asset.refine {"generator":"test","id":"4df1e210524b","path":"characters/knight.glb","rig":"humanoid"}
+{"id":"0f00af4f49c0","parent":"4df1e210524b","path":"characters/knight.glb","rig":{"mapped":23,"missing":[],"motion_scale":0.954},"size":[1.72,1.811,0.2],"triangles":72}
+asset.info {"id":"0f00af4f49c0"}
+{"bytes":15972,"description":"A boxy knight, arms at its sides; rigged as a humanoid","format":"glb","generator":"test","id":"0f00af4f49c0","license":"CC0-1.0","model":"test","parent":"4df1e210524b","parts":["Body"],"pivot":[0.5,0.006,0.5],"request":{"parent":"4df1e210524b","rig":"humanoid","type":"model"},"seed":0,"size":[1.72,1.811,0.2],"tags":["character"],"triangles":72,"type":"model","versions":["4df1e210524b"]}
+model.retarget {"out":"characters/dancer.glb","path":"source/dancer.glb"}
+{"bone_map":{"Chest":"Chest","Head":"Head","Hips":"Hips","LeftFoot":"LeftFoot","LeftHand":"LeftHand","LeftLowerArm":"LeftLowerArm","LeftLowerLeg":"LeftLowerLeg","LeftShoulder":"LeftShoulder","LeftToes":"LeftToes","LeftUpperArm":"LeftUpperArm","LeftUpperLeg":"LeftUpperLeg","Neck":"Neck","RightFoot":"RightFoot","RightHand":"RightHand","RightLowerArm":"RightLowerArm","RightLowerLeg":"RightLowerLeg","RightShoulder":"RightShoulder","RightToes":"RightToes","RightUpperArm":"RightUpperArm","RightUpperLeg":"RightUpperLeg","Root":"Root","Spine":"Spine","UpperChest":"UpperChest"},"motion_scale":0.795,"out":"characters/dancer.glb"}
+entity.create {"components":{"AnimationPlayer":{"animation":"wave-loop","library":"characters/dancer.glb","playing":false,"time":0.5},"MeshInstance3D":{"mesh":"characters/knight.glb"},"Transform3D":{}},"id":"knight"}
+{"id":"knight"}
+skeleton.get {"bones":["Hips","LeftUpperArm","LeftHand"],"id":"knight"}
+{"bones":[{"name":"Hips","parent":"Root","position":[0,1.074,0],"rotation":[0,0,0],"scale":[1,1,1],"world_position":[0,1.074,0]},{"name":"LeftUpperArm","parent":"LeftShoulder","position":[0,0.162,0],"rotation":[-1.0472,3.1416,0],"scale":[1,1,1],"world_position":[0.198,1.578,0]},{"name":"LeftHand","parent":"LeftLowerArm","position":[0,0.2773,0],"rotation":[0,1.5708,0],"scale":[1,1,1],"world_position":[0.5061,2.1117,0]}],"clips":[{"animation":"wave-loop","model":"characters/dancer.glb","time":0.5}],"model":"characters/knight.glb"}
+asset.refine {"generator":"test","id":"0f00af4f49c0","rig":"humanoid"}
+"the model is rigged already"

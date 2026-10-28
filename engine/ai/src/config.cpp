@@ -90,16 +90,16 @@ constexpr std::string_view kSchema = R"({
         "required": ["type"],
         "properties": {
           "type": {
-            "description": "openai-image: OpenAI's Images API, or a server that copies it. gemini-image: Gemini image models. automatic1111: a Stable Diffusion web UI's API, on this machine by default. openai-speech: OpenAI's text to speech; the prompt is the line spoken. elevenlabs-sound: ElevenLabs sound effects. elevenlabs-music: ElevenLabs music. stability-audio: Stability AI's Stable Audio 2 and 2.5 music. stability-3d: Stability AI's models made from a concept image. test: placeholder images, tones, music and models made on the machine, for tests and CI.",
-            "enum": ["automatic1111", "elevenlabs-music", "elevenlabs-sound", "gemini-image", "openai-image", "openai-speech", "stability-3d", "stability-audio", "test"]
+            "description": "openai-image: OpenAI's Images API, or a server that copies it. gemini-image: Gemini image models. automatic1111: a Stable Diffusion web UI's API, on this machine by default. openai-speech: OpenAI's text to speech; the prompt is the line spoken. elevenlabs-sound: ElevenLabs sound effects. elevenlabs-music: ElevenLabs music. stability-audio: Stability AI's Stable Audio 2 and 2.5 music. stability-3d: Stability AI's models made from a concept image. meshy-rig: Meshy's rigging of a humanoid model. test: placeholder images, tones, music and models made on the machine, for tests and CI.",
+            "enum": ["automatic1111", "elevenlabs-music", "elevenlabs-sound", "gemini-image", "meshy-rig", "openai-image", "openai-speech", "stability-3d", "stability-audio", "test"]
           },
           "model": {"description": "The model's ID, as the service names it. Default: the generator's.", "type": "string", "minLength": 1},
           "url": {"description": "The API's base URL. Default: the vendor's.", "type": "string"},
           "api_key_env": {"description": "The environment variable holding the API key.", "type": "string", "minLength": 1},
           "headers": {"description": "Headers sent with every request. Never put a key here.", "type": "object", "additionalProperties": {"type": "string"}},
           "license": {"description": "The terms its outputs come under, recorded with each asset, such as the service's terms of use.", "type": "string"},
-          "options": {"description": "Merged into every request's body, as the service names them: quality or background for openai-image, voice or instructions for openai-speech, negative_prompt or steps for automatic1111, output_format or prompt_influence for elevenlabs-sound, output_format or force_instrumental for elevenlabs-music, steps or output_format for stability-audio, texture_resolution or remesh for stability-3d.", "type": "object"},
-          "timeout_seconds": {"description": "How long to wait for a result. Default: 600.", "type": "integer", "minimum": 1},
+          "options": {"description": "Merged into every request's body, as the service names them: quality or background for openai-image, voice or instructions for openai-speech, negative_prompt or steps for automatic1111, output_format or prompt_influence for elevenlabs-sound, output_format or force_instrumental for elevenlabs-music, steps or output_format for stability-audio, texture_resolution or remesh for stability-3d, height_meters for meshy-rig.", "type": "object"},
+          "timeout_seconds": {"description": "How long to wait for a result, a service's task included. Default: 600.", "type": "integer", "minimum": 1},
           "max_retries": {"description": "Retries after a rate limit or server error. Default: 2.", "type": "integer", "minimum": 0, "maximum": 10}
         }
       }

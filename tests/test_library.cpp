@@ -1,4 +1,5 @@
 #include "gltf.hpp"
+#include "humanoid.hpp"
 
 #include "slash/ai/commands.hpp"
 #include "slash/ai/config.hpp"
@@ -13,6 +14,9 @@
 #include "slash/library/material.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
+#include "slash/scene3d/humanoid.hpp"
+#include "slash/scene3d/model.hpp"
+#include "slash/scene3d/skeleton.hpp"
 #include "slash/world/component_registry.hpp"
 #include "slash/world/components.hpp"
 
@@ -591,6 +595,72 @@ TEST_CASE("model recipes go into the library, and refining one changes its param
     CHECK(engine.fail("asset.refine", R"({"id": ")" + icon + R"(", "parameters": {"width": 2}})")
               .message == "/parameters: only a model takes parameters; the asset is an image");
     CHECK(engine.fail("asset.refine", R"({"id": ")" + icon + R"("})").data["path"] == "/prompt");
+}
+
+TEST_CASE("asset.refine rigs a figure with a generator and retargets it to the humanoid profile") {
+    const fs::path root = fresh("library_rig");
+    const Engine engine(root);
+    auto glb = slash::scene3d::write_glb(test_humanoid::figure(true), "knight.glb", {});
+    REQUIRE(glb.ok());
+    write(root / "project" / "art" / "knight.glb", glb.value());
+    const std::string figure =
+        engine
+            .call("asset.add", R"({"path": "art/knight.glb", "description": "A boxy knight.",
+                                     "tags": ["character"]})")["id"]
+            .as_string();
+
+    // An added figure has no generator, so one that rigs is named.
+    CHECK(
+        engine.fail("asset.refine", R"({"id": ")" + figure + R"(", "rig": "humanoid"})").message ==
+        "providers.json names no generator that makes rigs; add one under \"generators\", or "
+        "pass generator \"test\" for placeholders");
+
+    json::Value rigged =
+        engine.call("asset.refine", R"({"id": ")" + figure +
+                                        R"(", "rig": "humanoid", "generator": "test",
+                                        "path": "characters/knight.glb"})");
+    CHECK(rigged["parent"] == figure);
+    CHECK(json::write(rigged["rig"], json::Style::Compact) ==
+          R"({"mapped":23,"missing":[],"motion_scale":0.954})");
+    auto model = slash::scene3d::load_model(read(root / "project" / "characters" / "knight.glb"),
+                                            "characters/knight.glb", {});
+    REQUIRE(model.ok());
+    REQUIRE(model.value().skins.size() == 1);
+    CHECK(slash::scene3d::find_node(model.value(), "LeftUpperArm") >= 0);
+    CHECK(slash::scene3d::motion_scale(model.value()) == doctest::Approx(0.954F));
+
+    json::Value info =
+        engine.call("asset.info", R"({"id": ")" + rigged["id"].as_string() + R"("})");
+    CHECK(info["description"] == "A boxy knight; rigged as a humanoid");
+    CHECK(info["tags"].as_array().at(0) == "character");
+    CHECK(info["request"]["rig"] == "humanoid");
+    CHECK(info["generator"] == "test");
+
+    // An exact repeat is the same asset, with no generator called.
+    json::Value again = engine.call(
+        "asset.refine", R"({"id": ")" + figure + R"(", "rig": "humanoid", "generator": "test"})");
+    CHECK(again["id"] == rigged["id"]);
+    CHECK(again["reused"] == true);
+
+    // Only .glb figures are rigged, as they are; a rigged one isn't rigged again.
+    CHECK(engine
+              .fail("asset.refine", R"({"id": ")" + figure +
+                                        R"(", "rig": "humanoid", "generator": "test",
+                                        "width": 2})")
+              .data["path"] == "/width");
+    const std::string icon =
+        engine
+            .call("asset.generate",
+                  R"({"prompt": "red gem", "generator": "test", "width": 8})")["id"]
+            .as_string();
+    CHECK(engine.fail("asset.refine", R"({"id": ")" + icon + R"(", "rig": "humanoid"})").message ==
+          "/rig: only a model is rigged; the asset is an image");
+    CHECK(engine
+              .fail("asset.refine", R"({"id": ")" + rigged["id"].as_string() +
+                                        R"(", "rig": "humanoid", "generator": "test"})")
+              .message.find("the model is rigged already") != std::string::npos);
+    CHECK(engine.fail("asset.refine", R"({"id": ")" + figure + R"(", "rig": "quadruped"})")
+              .data["path"] == "/rig");
 }
 
 TEST_CASE("a recipe made of other model files goes into the library with them, and out again") {

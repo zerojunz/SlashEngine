@@ -18,9 +18,10 @@
 // models, so no engine code outside the adapters names a vendor. providers.json's "generators" says
 // which a project can call: "openai-image", "gemini-image" and "automatic1111" (a Stable Diffusion
 // web UI) make and refine images, "openai-speech" speaks lines, "elevenlabs-sound" makes sound
-// effects and "elevenlabs-music" and "stability-audio" make music, and "stability-3d" makes a model
-// from a concept image. The built-in "test" generator makes placeholders on the machine, so agents
-// and CI use the library with no model or key.
+// effects and "elevenlabs-music" and "stability-audio" make music, "stability-3d" makes a model
+// from a concept image and "meshy-rig" rigs a model of a humanoid figure. The built-in "test"
+// generator makes placeholders on the machine, so agents and CI use the library with no model or
+// key.
 namespace slash::library {
 
 struct GenerateRequest {
@@ -42,6 +43,9 @@ struct GenerateRequest {
     // A model: the concept image it is made from, its record and bytes.
     const Record* image = nullptr;
     std::string image_data{}; // NOLINT(readability-redundant-member-init)
+    // To rig a model, the parent: the skeleton asked for, "humanoid". Its record's size says how
+    // tall the figure is.
+    std::string rig{}; // NOLINT(readability-redundant-member-init)
 };
 
 struct Generated {
@@ -63,9 +67,11 @@ struct GeneratorCapabilities {
     bool music = false;
     bool refines_music = false;
     bool models = false; // makes a model from a concept image
+    bool rigs = false;   // rigs a model of a humanoid figure (GenerateRequest::rig)
 };
 
-// Whether the generator makes assets of the type, and refines them.
+// Whether the generator makes assets of the type ("rig" for one that rigs models), and refines
+// them.
 [[nodiscard]] bool makes(const GeneratorCapabilities& can, std::string_view type) noexcept;
 [[nodiscard]] bool refines(const GeneratorCapabilities& can, std::string_view type) noexcept;
 
@@ -85,7 +91,8 @@ public:
 // minor for a dark or sad prompt), a beat at the tempo asked for (120 bpm) and whole bars that
 // loop cleanly; and models: a concept image's shape in up to 24 cells a meter across, standing
 // on the ground and pushed back into a slab of each cell's color: one cell deep for a thin or
-// flat prompt, half its width for a thick or deep one, else a sixth. Refining recolors, mirrors,
+// flat prompt, half its width for a thick or deep one, else a sixth; and rigs: a figure's
+// skeleton placed by average proportions (scene3d::rig_humanoid). Refining recolors, mirrors,
 // lightens or darkens an image, raises, lowers, lengthens or shortens a sound, and makes music
 // faster, slower, higher, lower, longer or shorter, as the prompt says.
 [[nodiscard]] std::shared_ptr<Generator> test_generator();

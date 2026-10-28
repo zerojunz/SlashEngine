@@ -354,3 +354,89 @@ TEST_CASE("write_glb keeps a retargeted model's skin and animations") {
     REQUIRE(ours.size() == theirs.size());
     check_close(ours, theirs, 1e-4F);
 }
+
+TEST_CASE("rig_humanoid places a skeleton in an unrigged figure and keeps it where it was") {
+    for (const bool t_pose : {true, false}) {
+        INFO("t_pose " << t_pose);
+        const scene3d::Model figure = test_humanoid::figure(t_pose);
+        auto rigged = scene3d::rig_humanoid(figure);
+        REQUIRE(rigged);
+        scene3d::Model& model = rigged.value();
+        REQUIRE(model.skins.size() == 1);
+        CHECK(model.skins[0].joints.size() == 23);
+        REQUIRE(model.parts.size() == 2);
+        CHECK(model.parts[1].node == "Helmet");
+        CHECK(model.parts[1].skin == 0);
+
+        const auto globals = scene3d::node_globals(model, scene3d::rest_pose(model));
+        CHECK(globals[node(model, "Hips")].origin.y == doctest::Approx(0.53F * 1.8F));
+        const Vec3 hand = globals[node(model, "LeftHand")].origin;
+        CHECK(hand.x > 0.0F); // the figure's left is +x, as it faces +z
+        if (t_pose) {
+            CHECK(hand.y == doctest::Approx(1.43F).epsilon(0.01));
+            CHECK(hand.x == doctest::Approx(0.8F - (0.04F * 1.8F)).epsilon(0.01));
+        } else {
+            CHECK(hand.y == doctest::Approx((0.81F - 0.34F) * 1.8F).epsilon(0.01));
+        }
+
+        // At rest, the skin puts every vertex where the figure had it: the helmet's moved into
+        // the model's space.
+        const auto joints = scene3d::joint_transforms(model.skins[0], globals);
+        for (std::size_t p = 0; p < figure.parts.size(); ++p) {
+            const scene3d::ModelSurface& before = figure.meshes[p].surfaces[0];
+            const scene3d::ModelSurface& after = model.meshes[p].surfaces[0];
+            std::vector<slash::render::Vertex3D> placed;
+            scene3d::skin_vertices(after, joints, placed);
+            REQUIRE(placed.size() == before.vertices.size());
+            for (std::size_t v = 0; v < placed.size(); ++v) {
+                const Vec3 was = figure.parts[p].transform.apply({before.vertices[v].position[0],
+                                                                  before.vertices[v].position[1],
+                                                                  before.vertices[v].position[2]});
+                CHECK(distance(was, {placed[v].position[0], placed[v].position[1],
+                                     placed[v].position[2]}) < 1e-4F);
+                const auto& weights = after.weights[v];
+                CHECK(weights.weights[0] + weights.weights[1] == doctest::Approx(1.0F));
+                // A vertex on the left of the figure follows no bone on its right.
+                if (was.x > 0.05F) {
+                    for (std::size_t w = 0; w < 2; ++w) {
+                        if (weights.weights.at(w) > 0.0F) {
+                            const std::string& bone =
+                                model.nodes[model.skins[0].joints[weights.joints.at(w)]].name;
+                            CHECK_FALSE(bone.starts_with("Right"));
+                        }
+                    }
+                }
+            }
+        }
+
+        // The hands' vertices follow the hands and forearms.
+        if (t_pose) {
+            const scene3d::ModelSurface& body = model.meshes[0].surfaces[0];
+            bool found = false;
+            for (std::size_t v = 0; v < body.vertices.size(); ++v) {
+                if (body.vertices[v].position[0] > 0.79F) {
+                    const std::string& bone =
+                        model.nodes[model.skins[0].joints[body.weights[v].joints[0]]].name;
+                    CHECK((bone == "LeftHand" || bone == "LeftLowerArm"));
+                    found = true;
+                }
+            }
+            CHECK(found);
+        }
+
+        // Its bones are the profile's, so it retargets by name with nothing required missing.
+        scene3d::RetargetOptions options;
+        for (const std::size_t joint : model.skins[0].joints) {
+            options.bone_map[model.nodes[joint].name] = model.nodes[joint].name;
+        }
+        auto report = scene3d::retarget_model(model, options);
+        REQUIRE(report);
+        CHECK(report.value().missing.empty());
+        CHECK(report.value().motion_scale == doctest::Approx(0.53F * 1.8F));
+    }
+
+    auto again = scene3d::rig_humanoid(scene3d::rig_humanoid(test_humanoid::figure(true)).value());
+    REQUIRE_FALSE(again);
+    CHECK(again.error().message == "the model is rigged already");
+    REQUIRE_FALSE(scene3d::rig_humanoid(scene3d::Model{}));
+}
