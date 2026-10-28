@@ -61,7 +61,7 @@ as `entity.get`, reject it as an unknown param.
 | Assets | [`asset.list`](#assetlist) |
 | Materials | [`material.eval`](#materialeval) |
 | Animations | [`animation.eval`](#animationeval) |
-| Models | [`model.inspect`](#modelinspect), [`skeleton.get`](#skeletonget), [`csg.get`](#csgget) |
+| Models | [`model.inspect`](#modelinspect), [`model.cleanup`](#modelcleanup), [`skeleton.get`](#skeletonget), [`csg.get`](#csgget) |
 | Paths | [`path.get`](#pathget) |
 | Grid maps | [`gridmap.set`](#gridmapset), [`gridmap.get`](#gridmapget) |
 | Terrains | [`terrain.generate`](#terraingenerate), [`terrain.brush`](#terrainbrush), [`terrain.get`](#terrainget) |
@@ -723,6 +723,49 @@ it, and things on it, without drawing it:
 
 A model that doesn't load is an error at `/path` (or `/id`) saying why, as
 [`scene validate`](cli.md#scene-validate) reports it.
+
+### model.cleanup
+
+Makes a generated or imported [model](scene-format.md#models) game-ready, as an artist's last
+pass before it goes into a game, and writes it as one `.glb` file holding its buffer and images, as
+Godot's glTF export writes one. The steps run in this order:
+
+1. `up` turns the axis the file calls up to y, Godot's up.
+2. `triangles` simplifies each surface to its share of the budget with meshoptimizer's
+   simplifier, as Godot's importer simplifies LODs, then makes the result's
+   [LODs](scene-format.md#mesh-lods).
+3. `scale`, or `height`, sizes it.
+4. `pivot` moves it so its origin is at that point of its box.
+5. With `uvs`, each surface whose vertices all share one texture coordinate (none, in effect) is
+   unwrapped with xatlas, as lightmap UVs are.
+
+| Param | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | | The model: a `.gltf`, `.glb`, `.obj`, `.fbx`, `.blend` or `.model.json` file |
+| `out` | string | `path` as `.glb` | The `.glb` file to write |
+| `up` | string | `"y"` | The axis up is along in the file: `"y"`, `"-y"`, `"x"`, `"-x"`, `"z"` (most CAD tools, and Blender without glTF's conversion) or `"-z"` |
+| `scale` | number | | Its size times this: `0.001` for a model in millimeters |
+| `height` | number | | Or make it this many meters tall, after `up`; not with `scale` |
+| `pivot` | array | | Where its origin goes in its box, 0 to 1 on each axis, as `model.inspect`'s brief `pivot`: `[0.5, 0, 0.5]` stands it on the ground, centered |
+| `triangles` | integer | the storyboard's | The most triangles it may have, 0 for no limit; left out, the tightest [budget](storyboard-format.md#checks) covering `out` that sets `triangles` |
+| `uvs` | boolean | `true` | Unwrap surfaces without texture coordinates |
+
+Needs: `edit`, `filesystem`. Undo takes the file back. Models with skins or animations are refused
+for now, as are a budget the simplifier can't get under (`/triangles`, or `/out` for the
+storyboard's) and a `height` for a model flat along y.
+
+```json
+{"path": "source/boulder.model.json", "out": "props/boulder.glb", "height": 0.8, "pivot": [0.5, 0, 0.5]}
+```
+
+```json
+{"budget":"budget/props","out":"props/boulder.glb","pivot":[0.5,0.0,0.5],"size":[1.3899,0.8,0.9976],"triangles":[3968,600]}
+```
+
+`triangles` are the model's before and after, counting each mesh once for every part that draws
+it; `budget` is the storyboard entry the limit came from; `size` and `pivot` are the result's, as
+`model.inspect`'s brief form gives them; `unwrapped` counts the surfaces given texture
+coordinates, when there are any; and `unchanged` is `true` when `out` already held the same bytes.
 
 ### skeleton.get
 

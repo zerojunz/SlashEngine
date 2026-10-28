@@ -1,0 +1,5 @@
+{"id":1,"jsonrpc":"2.0","result":{"budget":"budget/props","out":"props/crate.glb","pivot":[0.5,0.0,0.5],"size":[0.6,0.45,0.4],"triangles":[12,12],"unwrapped":1}}
+{"id":2,"jsonrpc":"2.0","result":{"budget":"budget/props","out":"props/boulder.glb","pivot":[0.5,0.0,0.5],"size":[1.3899,0.8,0.9976],"triangles":[3968,600]}}
+{"id":3,"jsonrpc":"2.0","result":{"materials":["granite"],"parts":[{"center":[0,0.4,0],"materials":["granite"],"name":"rock","size":[1.3899,0.8,0.9976],"triangles":600}],"pivot":[0.5,0,0.5],"size":[1.3899,0.8,0.9976],"triangles":600}}
+{"id":4,"jsonrpc":"2.0","result":{"valid":true}}
+{"error":{"code":-32602,"data":{"path":"/triangles"},"message":"/triangles: the simplifier gets it down to 132 triangles, not 2"},"id":5,"jsonrpc":"2.0"}
