@@ -25,6 +25,7 @@ namespace slash::library {
 namespace {
 
 constexpr std::string_view kTest = "test";
+constexpr std::string_view kBlender = "blender";
 constexpr int kDefaultImageSide = 64;
 constexpr int kSampleRate = 22050;
 constexpr double kDefaultSeconds = 0.5;
@@ -950,6 +951,9 @@ std::string plural(std::string_view type) {
     if (type == "rig") {
         return "rigs";
     }
+    if (type == "script") {
+        return "models from scripts";
+    }
     return type == "music" ? std::string(type) : std::string(type) + "s";
 }
 
@@ -958,11 +962,18 @@ Result<std::shared_ptr<Generator>> make_generator(const ai::GeneratorConfig& con
     if (config.type == kTest) {
         return test_generator();
     }
+    if (config.type == kBlender) {
+        const json::Value* program =
+            config.options.is_object() ? config.options.find("program") : nullptr;
+        return blender_generator(program != nullptr && program->is_string() ? program->as_string()
+                                                                            : std::string(),
+                                 config.timeout_seconds);
+    }
     if (std::ranges::find(detail::kHttpTypes, config.type) != detail::kHttpTypes.end()) {
         return detail::make_http_generator(config, options);
     }
     std::string message = "no generator of type \"" + config.type + "\"";
-    std::vector<std::string_view> types{kTest};
+    std::vector<std::string_view> types{kTest, kBlender};
     types.insert(types.end(), detail::kHttpTypes.begin(), detail::kHttpTypes.end());
     if (const std::string_view hint = closest_match(config.type, types); !hint.empty()) {
         message += "; did you mean \"" + std::string(hint) + "\"?";
@@ -976,6 +987,9 @@ bool makes(const GeneratorCapabilities& can, std::string_view type) noexcept {
     if (type == "rig") {
         return can.rigs;
     }
+    if (type == "script") {
+        return can.scripts;
+    }
     if (type == "image") {
         return can.images;
     }
@@ -986,6 +1000,9 @@ bool makes(const GeneratorCapabilities& can, std::string_view type) noexcept {
 }
 
 bool refines(const GeneratorCapabilities& can, std::string_view type) noexcept {
+    if (type == "script") {
+        return can.scripts;
+    }
     if (type == "image") {
         return can.refines_images;
     }
@@ -1010,6 +1027,9 @@ Result<OpenedGenerator> open_generator(const ai::Config& config, std::string_vie
                 candidates.push_back(generator_name);
             }
         }
+        if (candidates.empty() && type == "script") {
+            candidates.emplace_back(kBlender); // the built-in one
+        }
         if (candidates.empty()) {
             return make_error(ErrorCode::NotFound,
                               "providers.json names no generator that makes " + plural(type) +
@@ -1030,10 +1050,10 @@ Result<OpenedGenerator> open_generator(const ai::Config& config, std::string_vie
     ai::GeneratorConfig settings;
     if (const auto found = config.generators.find(chosen); found != config.generators.end()) {
         settings = found->second;
-    } else if (chosen == kTest) {
-        settings.type = std::string(kTest);
+    } else if (chosen == kTest || chosen == kBlender) {
+        settings.type = chosen;
     } else {
-        std::vector<std::string> names{std::string(kTest)};
+        std::vector<std::string> names{std::string(kTest), std::string(kBlender)};
         for (const auto& [generator_name, unused] : config.generators) {
             names.push_back(generator_name);
         }
@@ -1057,8 +1077,9 @@ Result<OpenedGenerator> open_generator(const ai::Config& config, std::string_vie
     opened.type = settings.type;
     opened.model = settings.model;
     if (opened.model.empty()) {
-        opened.model = settings.type == kTest ? std::string(kTest)
-                                              : std::string(detail::default_model(settings.type));
+        opened.model = settings.type == kTest || settings.type == kBlender
+                           ? settings.type
+                           : std::string(detail::default_model(settings.type));
     }
     opened.license = settings.license;
     if (opened.license.empty() && settings.type == kTest) {

@@ -1243,14 +1243,28 @@ Reply run_generator(Session& session, const json::Value& params, Asked asked,
         name = "test";
     }
     const bool rigging = !asked.request.rig.empty();
-    auto opened = open_generator(config.value(), name, rigging ? "rig" : asked.request.type);
+    const bool scripted = !asked.request.script.empty();
+    std::string_view kind = asked.request.type;
+    if (rigging) {
+        kind = "rig";
+    } else if (scripted) {
+        kind = "script";
+    }
+    auto opened = open_generator(config.value(), name, kind);
     if (!opened) {
         return params.find("generator") != nullptr ? failure_at(opened.error(), "/generator")
                                                    : Reply::failure(opened.error());
     }
     const OpenedGenerator& generator = opened.value();
     const GeneratorCapabilities& can = generator.generator->capabilities();
-    if (parent != nullptr && !rigging && !refines(can, asked.request.type)) {
+    if (scripted) {
+        auto folder = session.resolve_path(".slash/blender");
+        if (!folder) {
+            return Reply::failure(folder.error());
+        }
+        asked.request.folder = std::move(folder).value();
+    }
+    if (parent != nullptr && !rigging && !refines(can, kind)) {
         return Reply::failure(
             command::code::kInvalidArgument,
             "the generator \"" + generator.name + "\" can't refine " +
@@ -1296,7 +1310,7 @@ Reply run_generator(Session& session, const json::Value& params, Asked asked,
     const std::vector<Record> records =
         with_team(libs, std::move(local_records).value(), similar_query);
     const json::Value* similar = params.find("similar");
-    if (parent == nullptr && (similar == nullptr || similar->as_bool())) {
+    if (parent == nullptr && !scripted && (similar == nullptr || similar->as_bool())) {
         json::Array candidates;
         for (const Match& match : search(records, similar_query)) {
             // One agents rejected more than accepted is what they didn't want.
@@ -1315,11 +1329,18 @@ Reply run_generator(Session& session, const json::Value& params, Asked asked,
 
     std::string context;
     if (const json::Value* with = params.find("context");
-        !rigging && (with == nullptr || with->as_bool())) {
+        !rigging && !scripted && (with == nullptr || with->as_bool())) {
         context = prompt_context(session, records, asked, parent);
     }
     if (!context.empty()) {
         asked.request.prompt += "\n\n" + context;
+    }
+    // Blender is a program of the machine's, which only builds may run; a repeat needs none.
+    if (scripted && std::ranges::find(session.options().capabilities, Capability::Build) ==
+                        session.options().capabilities.end()) {
+        return Reply::failure(command::code::kPermissionDenied,
+                              "running a Blender script needs the build capability (--allow "
+                              "build)");
     }
     auto generated = generator.generator->generate(asked.request);
     if (!generated) {
@@ -1624,7 +1645,119 @@ std::vector<std::string> rejections(const json::Value& review) {
 // is reviewed (asset.review) and, while rejected, made again with what was wrong added to the
 // prompt, up to that many models in all; the accepted one, else the last, is returned, and copied
 // to path once accepted.
+// The Python a script param gives: a project .py file's text, or the text itself.
+Result<std::string> script_text(Session& session, const std::string& script) {
+    if (!script.ends_with(".py") || script.find('\n') != std::string::npos) {
+        return script;
+    }
+    auto bytes = session.read_project_file(script);
+    if (!bytes) {
+        return bytes.error();
+    }
+    std::optional<std::string>& text = bytes.value();
+    if (!text) {
+        return make_error(ErrorCode::NotFound, "\"" + script + "\" doesn't exist");
+    }
+    return std::move(*text);
+}
+
+// A model a script builds in Blender, from asset.generate or, with parent, asset.refine: kept
+// with the script and its parameters in its request, so it can be built again or changed.
+Reply generate_scripted(Session& session, const json::Value& params, Asked asked,
+                        const Record* parent, std::string script, json::Value parameters) {
+    for (const std::string_view key : {"width", "height", "seconds", "bpm", "key", "bar_beats",
+                                       "loop", "theme", "image", "parts"}) {
+        if (params.find(key) != nullptr) {
+            return invalid_at("/" + std::string(key),
+                              "a script builds the model; it takes no " + std::string(key));
+        }
+    }
+    if (params.find("review") != nullptr) {
+        return invalid_at("/review", "a script builds the same model each time; review it with "
+                                     "asset.review and change the script");
+    }
+    if (script.empty()) {
+        return invalid_at("/script", "give the Python that builds the model");
+    }
+    if (Reply shared = read_shared(params, asked); !shared.ok) {
+        return shared;
+    }
+    asked.request.script = script;
+    asked.keyed["script"] = std::move(script);
+    if (parameters.is_object() && !parameters.as_object().empty()) {
+        asked.request.parameters = parameters;
+        asked.keyed["parameters"] = std::move(parameters);
+    }
+    asked.keyed["prompt"] = asked.request.prompt;
+    if (asked.description.empty()) {
+        asked.description = parent != nullptr && !parent->description.empty()
+                                ? parent->description
+                                : asked.request.prompt;
+    }
+    if (parent != nullptr && params.find("tags") == nullptr) {
+        asked.tags = parent->tags;
+    }
+    return run_generator(session, params, std::move(asked), parent);
+}
+
+// A new version of a model a script built: its script, or a new one, with its parameters and
+// the ones given over them, built again. The same script and parameters give the same asset.
+Reply refine_scripted(Session& session, const Record& parent, const json::Value& params) {
+    const json::Value& made = parent.request;
+    const json::Value* new_script = params.find("script");
+    const json::Value* new_parameters = params.find("parameters");
+    if (new_script == nullptr && new_parameters == nullptr) {
+        return invalid_at(params.find("prompt") != nullptr ? "/prompt" : "/parameters",
+                          "a script built the model: give new parameters or a new script");
+    }
+    std::string script = made.find("script")->as_string();
+    if (new_script != nullptr) {
+        auto read = script_text(session, new_script->as_string());
+        if (!read) {
+            return failure_at(read.error(), "/script");
+        }
+        script = std::move(read).value();
+    }
+    json::Value parameters = json::Object{};
+    if (const json::Value* old = made.find("parameters"); old != nullptr && old->is_object()) {
+        parameters = *old;
+    }
+    if (new_parameters != nullptr) {
+        for (const auto& [name, value] : new_parameters->as_object()) {
+            parameters[name] = value;
+        }
+    }
+    Asked asked;
+    asked.request.type = "model";
+    asked.keyed["type"] = "model";
+    asked.request.prompt = text(params, "prompt");
+    if (asked.request.prompt.empty()) {
+        const json::Value* prompt = made.find("prompt");
+        asked.request.prompt = prompt != nullptr && prompt->is_string() ? prompt->as_string() : "";
+    }
+    if (const json::Value* seed = made.find("seed");
+        seed != nullptr && seed->is_number() && params.find("seed") == nullptr) {
+        asked.request.seed = seed->as_int();
+        asked.keyed["seed"] = seed->as_int();
+    }
+    return generate_scripted(session, params, std::move(asked), &parent, std::move(script),
+                             std::move(parameters));
+}
+
 Reply generate_model(Session& session, const json::Value& params, Asked asked) {
+    if (const json::Value* script = params.find("script"); script != nullptr) {
+        auto read = script_text(session, script->as_string());
+        if (!read) {
+            return failure_at(read.error(), "/script");
+        }
+        const json::Value* parameters = params.find("parameters");
+        return generate_scripted(session, params, std::move(asked), nullptr,
+                                 std::move(read).value(),
+                                 parameters != nullptr ? *parameters : json::Value());
+    }
+    if (params.find("parameters") != nullptr) {
+        return invalid_at("/parameters", "only a model a script builds takes parameters");
+    }
     for (const std::string_view key :
          {"width", "height", "seconds", "bpm", "key", "bar_beats", "loop", "theme"}) {
         if (params.find(key) != nullptr) {
@@ -2185,6 +2318,13 @@ Reply asset_refine(Session& session, const json::Value& params) {
     }
     if (params.find("rig") != nullptr) {
         return rig_asset(session, parent.value(), std::move(data).value(), params);
+    }
+    if (parent.value().type == "model" && parent.value().request.is_object() &&
+        parent.value().request.find("script") != nullptr) {
+        return refine_scripted(session, parent.value(), params);
+    }
+    if (params.find("script") != nullptr) {
+        return invalid_at("/script", "only a model a script built takes a new script");
     }
     if (parent.value().type == "model" && parent.value().format != "model.json") {
         return invalid_at(params.find("parameters") != nullptr ? "/parameters" : "/id",
@@ -3657,6 +3797,9 @@ json::Object shared_properties() {
                                     "against the storyboard's palette and budget.")},
         {"context", property("boolean", "false: send the prompt alone, without the "
                                         "storyboard's style and notes from earlier feedback.")},
+        {"script", property("string", "A model: Python that builds it in Blender (bpy) with "
+                                      "params and seed, or a project .py file; the generator "
+                                      "\"blender\" by default.")},
     };
 }
 
@@ -3699,12 +3842,17 @@ void register_commands(command::Registry& registry) {
                                                  "a concept generated and checked first. A "
                                                  "material: the image to make it of instead of "
                                                  "generating one."));
+    json::Value script_parameters = property("object", "A script's params, such as "
+                                                       "{\"width\": 1.2}.");
+    script_parameters["additionalProperties"]["type"] = json::Array{"number", "string", "boolean"};
+    generate.emplace("parameters", std::move(script_parameters));
     generate.emplace("review", integer("A model: review each one made (asset.review) and make "
                                        "it again with what was wrong, up to this many in all.",
                                        1, 5));
     registry.add({
         .name = "asset.generate",
-        .description = "Makes an image, sound, music, a model (from a concept image) or a "
+        .description = "Makes an image, sound, music, a model (from a concept image, or by a "
+                       "Blender script) or a "
                        "tileable material (an image made to tile, with normal and roughness "
                        "maps) with a generator and keeps it in the asset library; music comes "
                        "back with its measured bpm, beats and key. "
@@ -3721,9 +3869,9 @@ void register_commands(command::Registry& registry) {
     refine.emplace("prompt", property("string", "What to change."));
     refine.emplace("loop", property("boolean", "Music: loop it in its settings."));
     json::Value parameters = property("object", "A model: new values for its recipe's "
-                                                "parameters, such as {\"width\": 1.6}; no "
-                                                "generator is called.");
-    parameters["additionalProperties"]["type"] = json::Array{"number", "string"};
+                                                "parameters, such as {\"width\": 1.6}, or its "
+                                                "script's, built again.");
+    parameters["additionalProperties"]["type"] = json::Array{"number", "string", "boolean"};
     parameters["minProperties"] = 1;
     refine.emplace("parameters", std::move(parameters));
     json::Value swaps = property("object", "A recipe: library models to make its model parts of "

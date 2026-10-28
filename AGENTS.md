@@ -264,7 +264,14 @@ verdict as feedback; `examples/model-review` rejects a chest with no hinges. Mod
 concept first: `asset.generate`'s `image` names a library image the model is made from and kept
 under as its parent (`generate_model` in `src/commands.cpp`; the test generator makes a relief of
 it, `make_model` in `src/generator.cpp`), and `review` reviews each and makes it again with the
-reasons added to the prompt until one is accepted; `examples/concept-models` makes a stool.
+reasons added to the prompt until one is accepted; `examples/concept-models` makes a stool. Models
+can also be built by a Blender script: `asset.generate`'s `script` (a project `.py` file or its
+text) and `parameters` go to the built-in `blender` generator (`src/blender.cpp`), which runs the
+artist's Blender through `scene3d::run_blender_script` (`engine/scene3d/src/blend.cpp`: an empty
+scene, the script with `params` and `seed`, exported as `.blend` imports are) and only with the
+`build` capability; the record keeps the script's text, so `asset.refine` with new `parameters`
+builds it again (`generate_scripted` and `refine_scripted` in `src/commands.cpp`).
+`examples/blender-scripts` builds a bookshelf.
 
 Materials are `.standard_material.json` files (`$cli schema standard_material`;
 `slash/scene3d/material.hpp`), one `StandardMaterial3D` each as Godot's `.tres`, which a recipe's

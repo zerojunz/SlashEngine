@@ -1689,3 +1689,116 @@ TEST_CASE("asset.add imports models from other tools as .glb files, and edits as
               .data["path"] == "/path");
     fs::remove_all(root);
 }
+
+TEST_CASE("asset.generate builds models with Blender scripts, kept with the script to build "
+          "again") {
+    const fs::path root = fresh("library_blender");
+    const fs::path project = root / "project";
+    json::Value providers;
+    providers["generators"]["blender"]["type"] = "blender";
+    providers["generators"]["blender"]["options"]["program"] = SLASH_FAKE_BLENDER;
+    write(project / "providers.json", json::write(providers));
+    const std::string script = "import bpy\n"
+                               "bpy.ops.mesh.primitive_cube_add(size=1)\n"
+                               "box = bpy.context.object\n"
+                               "box.name = params['name']\n"
+                               "box.scale = (params['width'], params['depth'], params['height'])\n"
+                               "bpy.ops.object.transform_apply(scale=True)\n";
+    write(project / "tools" / "crate.py", script);
+    Engine engine(root);
+
+    // The script is a project file; Blender's stand-in builds a box as its params say.
+    json::Value crate =
+        engine.call("asset.generate", R"({"type": "model", "prompt": "a shipping crate",
+                              "script": "tools/crate.py", "tags": ["prop"],
+                              "parameters": {"name": "Crate", "width": 1.2, "depth": 0.8,
+                                             "height": 0.6},
+                              "path": "props/crate.glb"})");
+    CHECK(crate["size"] == parse("[1.2, 0.6, 0.8]"));
+    CHECK(crate["triangles"] == 12);
+    CHECK(crate["path"] == "props/crate.glb");
+    const std::string first = crate["id"].as_string();
+    json::Value info = engine.call("asset.info", R"({"id": ")" + first + R"("})");
+    CHECK(info["generator"] == "blender");
+    CHECK(info["model"] == "blender 4.2");
+    CHECK(info["request"]["script"] == script);
+    CHECK(info["request"]["parameters"]["width"] == 1.2);
+    CHECK(info["parts"] == parse(R"(["Crate"])"));
+    CHECK(info["description"] == "a shipping crate");
+
+    // The same script and parameters give the same asset, with no Blender run.
+    json::Value again =
+        engine.call("asset.generate", R"({"type": "model", "prompt": "a shipping crate",
+                              "script": "tools/crate.py",
+                              "parameters": {"name": "Crate", "width": 1.2, "depth": 0.8,
+                                             "height": 0.6}})");
+    CHECK(again["id"] == first);
+    CHECK(again["reused"] == true);
+
+    // A version with a parameter changed is built again with the script it was made with.
+    write(project / "tools" / "crate.py", "raise ValueError('edited since')\n");
+    json::Value taller =
+        engine.call("asset.refine", R"({"id": ")" + first + R"(", "parameters": {"height": 1.5}})");
+    CHECK(taller["parent"] == first);
+    CHECK(taller["size"] == parse("[1.2, 1.5, 0.8]"));
+    info = engine.call("asset.info", R"({"id": ")" + taller["id"].as_string() + R"("})");
+    CHECK(info["request"]["script"] == script);
+    CHECK(info["request"]["parameters"] == parse(R"({"depth": 0.8, "height": 1.5,
+                                                     "name": "Crate", "width": 1.2})"));
+    CHECK(info["tags"] == parse(R"(["prop"])"));
+    // Refining back to the first parameters is the first asset.
+    CHECK(engine.call("asset.refine", R"({"id": ")" + taller["id"].as_string() +
+                                          R"(", "parameters": {"height": 0.6}})")["id"] == first);
+
+    // A script that raises fails with Blender's last lines; the edited file now does.
+    command::Reply failed =
+        engine.fail("asset.refine", R"({"id": ")" + first + R"(", "script": "tools/crate.py"})");
+    CHECK(failed.message.starts_with("Blender couldn't run the script (exit code 1): "));
+    CHECK(failed.message.find("ValueError: the script raised") != std::string::npos);
+    CHECK(failed.message.find("; its log is build-") != std::string::npos);
+    CHECK(fs::exists(project / ".slash" / "blender"));
+
+    // What a script's model doesn't take, and who may run Blender.
+    CHECK(engine.fail("asset.refine", R"({"id": ")" + first + R"(", "prompt": "make it taller"})")
+              .message == "/prompt: a script built the model: give new parameters or a new script");
+    CHECK(engine
+              .fail("asset.generate", R"({"type": "model", "prompt": "a box",
+                                          "script": "import bpy", "image": "abc123"})")
+              .message == "/image: a script builds the model; it takes no image");
+    CHECK(engine
+              .fail("asset.generate", R"({"type": "model", "prompt": "a box",
+                                          "script": "import bpy", "review": 2})")
+              .data["path"] == "/review");
+    CHECK(engine
+              .fail("asset.generate", R"({"type": "model", "prompt": "a box",
+                                             "parameters": {"width": 1}})")
+              .message == "/parameters: only a model a script builds takes parameters");
+    CHECK(engine
+              .fail("asset.generate", R"({"type": "model", "prompt": "a box",
+                                             "script": "tools/missing.py"})")
+              .data["path"] == "/script");
+    CHECK(engine
+              .fail("asset.generate", R"({"type": "model", "prompt": "a box",
+                                             "script": "import bpy", "generator": "test"})")
+              .message == "/generator: the generator \"test\" makes no models from scripts");
+    {
+        Engine reading(root);
+        command::SessionOptions options = reading.session->options();
+        std::erase(options.capabilities, command::Capability::Build);
+        command::Session session(reading.components, reading.commands, options);
+        // A repeat needs no Blender; a new script does.
+        CHECK(session
+                  .call("asset.generate", parse(R"({"type": "model", "prompt": "a shipping crate",
+                              "script": )" + json::write(json::Value(script)) +
+                                                R"(, "parameters": {"name": "Crate", "width": 1.2,
+                              "depth": 0.8, "height": 0.6}})"))
+                  .value["id"] == first);
+        command::Reply refused =
+            session.call("asset.generate",
+                         parse(R"({"type": "model", "prompt": "a box", "script": "import bpy"})"));
+        CHECK(refused.code == command::code::kPermissionDenied);
+        CHECK(refused.message ==
+              "running a Blender script needs the build capability (--allow build)");
+    }
+    fs::remove_all(root);
+}
