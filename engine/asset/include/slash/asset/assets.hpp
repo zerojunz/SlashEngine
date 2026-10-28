@@ -3,6 +3,7 @@
 #include "slash/core/result.hpp"
 #include "slash/platform/file.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <entt/core/type_info.hpp>
@@ -26,6 +27,21 @@
 // Hot reload: poll() checks each loaded file and reloads the ones that changed, so the game picks
 // up an edit without restarting. A handle always gives the latest version.
 namespace slash::asset {
+
+// What separates a file from the form of it an asset path names, as Godot's "::".
+inline constexpr std::string_view kSubresource = "::";
+
+// The file an asset path reads: the path up to "::".
+[[nodiscard]] constexpr std::string_view file_of(std::string_view path) noexcept {
+    return path.substr(0, std::min(path.find(kSubresource), path.size()));
+}
+
+// What an asset path names after "::", or "".
+[[nodiscard]] constexpr std::string_view subresource_of(std::string_view path) noexcept {
+    const std::size_t at = path.find(kSubresource);
+    return at == std::string_view::npos ? std::string_view()
+                                        : path.substr(at + kSubresource.size());
+}
 
 using platform::FileStamp;
 
@@ -119,7 +135,9 @@ public:
     }
 
     // The asset at a project path, loaded on first use and shared by every handle after that.
-    // T must be the type its suffix loads as.
+    // T must be the type its suffix loads as. A path can name one form of its file after "::",
+    // as Godot names a file's sub-resources ("props/crate.model.json::damaged"): the file is read
+    // and watched as itself, and the loader gets the whole path.
     template <typename T>
     [[nodiscard]] Result<Handle<T>> load(std::string_view path) {
         auto record = load_record(path, entt::type_hash<T>::value());

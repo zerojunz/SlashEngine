@@ -1,0 +1,6 @@
+{
+  "format": 1,
+  "presets": {
+    "phone": {"model_quality": "phone", "platform": "android"}
+  }
+}

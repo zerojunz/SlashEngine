@@ -6,6 +6,7 @@
 #include "slash/scene3d/model.hpp"
 
 #include <functional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -19,6 +20,13 @@
 namespace slash::scene3d {
 
 inline constexpr std::string_view kModelRecipeSuffix = ".model.json";
+
+// A recipe's named forms: "variants" (a damaged crate, a winter tree), which a path picks with
+// "::" ("props/crate.model.json::damaged"), and "quality" tiers, which an export preset's
+// model_quality picks. Each form sets parameters, changes materials' fields and parts' fields by
+// name, or removes parts (null), as Godot's scene inheritance overrides an instance's nodes.
+inline constexpr std::string_view kVariants = "variants";
+inline constexpr std::string_view kQuality = "quality";
 
 // The JSON Schema of recipe files, for `slash-cli schema model`.
 [[nodiscard]] json::Value model_recipe_schema();
@@ -43,5 +51,15 @@ validate_model_recipe(const json::Value& doc, const ModelPartLoader& load = {});
 // can't make are left out, as validate_model_recipe reports them.
 [[nodiscard]] Result<Model> build_model_recipe(const json::Value& doc,
                                                const ModelPartLoader& load = {});
+
+// The names of a recipe's forms in group (kVariants or kQuality), in the file's order.
+[[nodiscard]] std::vector<std::string> recipe_forms(const json::Value& doc, std::string_view group);
+
+// The recipe as its form name in group makes it, without that group: its parameters set, its
+// materials' and parts' fields changed and parts removed. Fails, at the form's JSON Pointer, for
+// a form it doesn't have (with the closest name), a parameter or part it doesn't have, or a form
+// that leaves it no parts.
+[[nodiscard]] Result<json::Value> recipe_form(const json::Value& doc, std::string_view group,
+                                              std::string_view name);
 
 } // namespace slash::scene3d

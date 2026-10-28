@@ -356,3 +356,90 @@ TEST_CASE("a recipe's model parts place other model files' nodes under their own
     CHECK(alone.error().message.starts_with("/parts/1/model: a model part's file is read"));
     CHECK(errors_of(files["props/cabinet.model.json"]).empty());
 }
+
+TEST_CASE("a recipe's variants and quality tiers change its parameters, materials and parts") {
+    const std::string crate = R"({"format": 1,
+        "parameters": {"size": 1, "slats": 4},
+        "materials": {"wood": {"albedo_color": [0.6, 0.4, 0.2, 1], "roughness": 0.8}},
+        "parts": [
+          {"name": "box", "shape": "box", "material": "wood", "size": ["=size", "=size", "=size"],
+           "children": [{"name": "hole", "shape": "sphere", "operation": "subtraction",
+                         "radius": 0.2, "position": [0, 0, "=size / 2"]}]},
+          {"name": "lid", "shape": "box", "material": "wood", "size": ["=size", 0.05, "=size"],
+           "position": [0, "=size / 2", 0]}],
+        "variants": {
+          "big": {"parameters": {"size": 2}},
+          "burnt": {"materials": {"wood": {"albedo_color": [0.1, 0.1, 0.1, 1]}},
+                    "parts": {"lid": null, "hole": {"radius": 0.4}}}},
+        "quality": {"phone": {"parts": {"hole": null}}}})";
+    const json::Value doc = parse(crate);
+    CHECK(scene3d::recipe_forms(doc, scene3d::kVariants) ==
+          std::vector<std::string>{"big", "burnt"});
+    CHECK(scene3d::recipe_forms(doc, scene3d::kQuality) == std::vector<std::string>{"phone"});
+    CHECK(errors_of(crate).empty());
+
+    // The recipe as written builds without its forms.
+    const scene3d::Model plain = build(crate);
+    CHECK(plain.nodes.size() == 2);
+    CHECK(near(scene3d::bounds(plain).max.x, 0.5F));
+
+    auto big = scene3d::recipe_form(doc, scene3d::kVariants, "big");
+    REQUIRE(big.ok());
+    CHECK(big.value().find("variants") == nullptr);
+    CHECK(big.value().find("quality") != nullptr);
+    CHECK(near(scene3d::bounds(build(json::write(big.value()))).max.x, 1.0F));
+
+    // Materials change field by field, and parts by name, wherever they are; null removes one.
+    auto burnt = scene3d::recipe_form(doc, scene3d::kVariants, "burnt");
+    REQUIRE(burnt.ok());
+    const scene3d::Model charred = build(json::write(burnt.value()));
+    CHECK(charred.nodes.size() == 1);
+    REQUIRE(charred.materials.size() == 1);
+    CHECK(charred.materials[0].standard.albedo_color.x == doctest::Approx(0.1));
+    CHECK(charred.materials[0].standard.roughness == doctest::Approx(0.8));
+    CHECK(triangles(charred) != triangles(plain));
+    CHECK(burnt.value()["parts"].as_array()[0]["children"].as_array()[0]["radius"].as_double() ==
+          doctest::Approx(0.4));
+
+    auto phone = scene3d::recipe_form(doc, scene3d::kQuality, "phone");
+    REQUIRE(phone.ok());
+    CHECK(phone.value()["parts"].as_array()[0].find("children")->as_array().empty());
+    CHECK(triangles(build(json::write(phone.value()))) < triangles(plain));
+
+    // load_model builds the variant a path names after "::"; other model files have none.
+    const scene3d::ModelReader no_files =
+        [](std::string_view /*path*/) -> slash::Result<std::string> {
+        return slash::make_error(slash::ErrorCode::NotFound, "no such file");
+    };
+    CHECK(scene3d::is_model_path("props/crate.model.json::burnt"));
+    auto loaded = scene3d::load_model(crate, "props/crate.model.json::burnt", no_files);
+    REQUIRE(loaded.ok());
+    CHECK(loaded.value().nodes.size() == 1);
+    auto missing = scene3d::load_model(crate, "props/crate.model.json::brunt", no_files);
+    REQUIRE_FALSE(missing.ok());
+    CHECK(missing.error().message ==
+          "the recipe has no variant \"brunt\" (did you mean \"burnt\"?)");
+    CHECK(scene3d::check_model(crate, "props/crate.model.json::brunt", no_files).size() == 1);
+    CHECK(scene3d::check_model(crate, "props/crate.model.json::big", no_files).empty());
+    const std::string obj = "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
+    auto turned = scene3d::load_model(obj, "props/sign.obj::big", no_files);
+    REQUIRE_FALSE(turned.ok());
+    CHECK(turned.error().message ==
+          "only a model recipe (.model.json) has variants to pick after \"::\"");
+
+    // Each form is checked as the recipe it makes, at the form.
+    CHECK(first_error(R"({"format": 1, "parameters": {"size": 1},
+        "parts": [{"name": "box", "shape": "box"}],
+        "variants": {"wide": {"parameters": {"sise": 2}}}})") ==
+          "/variants/wide/parameters/sise: the recipe has no parameter \"sise\" (did you mean "
+          "\"size\"?)");
+    CHECK(first_error(R"({"format": 1, "parts": [{"name": "box", "shape": "box"}],
+        "variants": {"gone": {"parts": {"box": null}}}})") ==
+          "/variants/gone/parts: it leaves the recipe no parts");
+    CHECK(first_error(R"({"format": 1, "parts": [{"name": "box", "shape": "box"}],
+        "quality": {"low": {"parts": {"box": {"shape": "torus", "size": [1, 1, 1]}}}}})")
+              .starts_with("/quality/low: /parts/0/size: "));
+    CHECK(first_error(R"({"format": 1, "parts": [{"shape": "box"}],
+        "variants": {"odd": {"colour": 1}}})")
+              .starts_with("/variants/odd"));
+}
