@@ -1,0 +1,7 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"entity.place","params":{"entities":[{"id":"crate_a","at":[0,3,0]},{"id":"crate_b","at":[0,3,0]},{"id":"crate_c","at":[0,3,0]}]}}
+{"jsonrpc":"2.0","id":3,"method":"entity.place","params":{"entities":[{"id":"lamp","at":[4.5,5,-1]}]}}
+{"jsonrpc":"2.0","id":4,"method":"entity.place","params":{"entities":["post_1","post_2","post_3","post_4","post_5"],"along":{"path":"fence","rotate":true},"margin":0.2}}
+{"jsonrpc":"2.0","id":5,"method":"entity.place","params":{"entities":[{"id":"kite","at":[30,2,0]}],"dry_run":true}}
+{"jsonrpc":"2.0","id":6,"method":"entity.place","params":{"entities":[{"id":"crate_c","at":[4.5,4,-1]}],"on":["platform"],"margin":0.1}}
+{"jsonrpc":"2.0","id":7,"method":"frame.capture","params":{"points":[[80,44],[107,33],[113,36],[40,60]]}}

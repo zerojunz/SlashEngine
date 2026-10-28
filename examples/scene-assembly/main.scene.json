@@ -1,0 +1,231 @@
+{
+  "entities": {
+    "camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 60.0
+        },
+        "Transform3D": {
+          "position": [0.0, 7.0, 11.0],
+          "rotation": [-0.55, 0.0, 0.0]
+        }
+      }
+    },
+    "crate_a": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.8, 0.8, 0.8]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.75, 0.45, 0.2, 1.0]
+        },
+        "Transform3D": {
+          "position": [-8.0, -20.0, 0.0]
+        }
+      }
+    },
+    "crate_b": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.8, 0.8, 0.8]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.7, 0.3, 0.2, 1.0]
+        },
+        "Transform3D": {
+          "position": [-6.0, -20.0, 0.0]
+        }
+      }
+    },
+    "crate_c": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.8, 0.8, 0.8]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.8, 0.55, 0.25, 1.0]
+        },
+        "Transform3D": {
+          "position": [-4.0, -20.0, 0.0]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "WorldEnvironment": {
+          "ambient_light_color": [0.5, 0.6, 0.75, 1.0],
+          "ambient_light_energy": 0.5,
+          "ambient_light_source": "color",
+          "background_color": [0.55, 0.7, 0.9, 1.0],
+          "background_mode": "color"
+        }
+      }
+    },
+    "fence": {
+      "components": {
+        "Path3D": {
+          "points": [
+            {
+              "position": [-6.0, 0.0, 4.0]
+            },
+            {
+              "position": [-6.0, 0.0, -4.0]
+            },
+            {
+              "position": [0.0, 0.0, -4.0]
+            }
+          ]
+        },
+        "Transform3D": {}
+      }
+    },
+    "ground": {
+      "components": {
+        "MeshInstance3D": {},
+        "PlaneMesh": {
+          "size": [16.0, 12.0]
+        },
+        "StandardMaterial3D": {
+          "albedo_color": [0.35, 0.55, 0.3, 1.0]
+        },
+        "Transform3D": {}
+      }
+    },
+    "kite": {
+      "components": {
+        "BoxMesh": {
+          "size": [0.8, 0.8, 0.8]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.9, 0.2, 0.4, 1.0]
+        },
+        "Transform3D": {
+          "position": [-2.0, -20.0, 0.0]
+        }
+      }
+    },
+    "lamp": {
+      "components": {
+        "CapsuleMesh": {
+          "height": 1.4,
+          "radius": 0.2
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.95, 0.85, 0.4, 1.0]
+        },
+        "Transform3D": {
+          "position": [0.0, -20.0, 0.0]
+        }
+      }
+    },
+    "platform": {
+      "components": {
+        "BoxMesh": {
+          "size": [3.0, 1.0, 3.0]
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.6, 0.6, 0.62, 1.0]
+        },
+        "Transform3D": {
+          "position": [4.5, 0.5, -1.0]
+        }
+      }
+    },
+    "post_1": {
+      "components": {
+        "CylinderMesh": {
+          "bottom_radius": 0.08,
+          "height": 1.2,
+          "top_radius": 0.08
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.55, 0.4, 0.25, 1.0]
+        },
+        "Transform3D": {
+          "position": [2.0, -20.0, 0.0]
+        }
+      }
+    },
+    "post_2": {
+      "components": {
+        "CylinderMesh": {
+          "bottom_radius": 0.08,
+          "height": 1.2,
+          "top_radius": 0.08
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.55, 0.4, 0.25, 1.0]
+        },
+        "Transform3D": {
+          "position": [4.0, -20.0, 0.0]
+        }
+      }
+    },
+    "post_3": {
+      "components": {
+        "CylinderMesh": {
+          "bottom_radius": 0.08,
+          "height": 1.2,
+          "top_radius": 0.08
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.55, 0.4, 0.25, 1.0]
+        },
+        "Transform3D": {
+          "position": [6.0, -20.0, 0.0]
+        }
+      }
+    },
+    "post_4": {
+      "components": {
+        "CylinderMesh": {
+          "bottom_radius": 0.08,
+          "height": 1.2,
+          "top_radius": 0.08
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.55, 0.4, 0.25, 1.0]
+        },
+        "Transform3D": {
+          "position": [8.0, -20.0, 0.0]
+        }
+      }
+    },
+    "post_5": {
+      "components": {
+        "CylinderMesh": {
+          "bottom_radius": 0.08,
+          "height": 1.2,
+          "top_radius": 0.08
+        },
+        "MeshInstance3D": {},
+        "StandardMaterial3D": {
+          "albedo_color": [0.55, 0.4, 0.25, 1.0]
+        },
+        "Transform3D": {
+          "position": [10.0, -20.0, 0.0]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {},
+        "Transform3D": {
+          "rotation": [-0.9, 0.5, 0.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}
