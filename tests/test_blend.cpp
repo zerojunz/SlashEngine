@@ -294,6 +294,56 @@ TEST_CASE(".blend files Blender can't convert give its last lines and its log") 
     fs::remove_all(root);
 }
 
+TEST_CASE("a script builds a model in Blender, exported as .blend files are") {
+    const scene3d::Blender blender42{.program = "blender", .major = 4, .minor = 2};
+    const std::string script =
+        scene3d::blend_build_script(blender42, "import bpy\nbpy.ops.mesh.primitive_cube_add()\n",
+                                    R"({"width": 2})", 7, "build.part.glb");
+    CHECK(contains(script, R"('script': 'import bpy\nbpy.ops.mesh.primitive_cube_add()\n')"));
+    CHECK(contains(script, R"('params': '{"width": 2}')"));
+    CHECK(contains(script, "'seed': 7"));
+    // The same export options as an imported .blend file, from an empty scene.
+    CHECK(contains(script, "'filepath': 'build.part.glb'"));
+    CHECK(contains(script, "'export_apply': True"));
+    CHECK(contains(script, "bpy.ops.wm.read_factory_settings(use_empty=True)\n"));
+    CHECK(contains(script, "'params': json.loads(opts['params']), 'seed': opts['seed']}"));
+    CHECK(contains(script, "bpy.ops.export_scene.gltf(**opts['gltf_options'])\n"));
+
+    // Blender's stand-in builds a box as the params say.
+    const fs::path folder = fs::absolute("blend_build_folder");
+    fs::remove_all(folder);
+    Variable fail("FAKE_BLENDER_FAIL", "");
+    scene3d::BlenderScript job;
+    job.script = "import bpy\n";
+    job.params = R"({"width": 2, "height": 0.5, "depth": 1, "name": "Slab"})";
+    job.folder = folder.string();
+    job.blender = SLASH_FAKE_BLENDER;
+    job.timeout_seconds = 60;
+    auto built = scene3d::run_blender_script(job);
+    REQUIRE_MESSAGE(built.ok(), built.error().message);
+    CHECK(built.value().version == "4.2");
+    auto model = scene3d::load_model(built.value().glb, "build.glb", {});
+    REQUIRE(model.ok());
+    const scene3d::ModelSummary summary = scene3d::summarize(model.value());
+    CHECK(summary.bounds.max.x - summary.bounds.min.x == doctest::Approx(2.0));
+    CHECK(summary.bounds.max.y == doctest::Approx(0.5));
+    REQUIRE(summary.parts.size() == 1);
+    CHECK(summary.parts[0].name == "Slab");
+    // Only the log is left.
+    std::vector<std::string> left = files_in(folder);
+    REQUIRE(left.size() == 1);
+    CHECK(left[0] == "build.log");
+
+    job.script = "raise ValueError('no')\n";
+    built = scene3d::run_blender_script(job);
+    REQUIRE_FALSE(built.ok());
+    CHECK(built.error().message.starts_with("Blender couldn't run the script (exit code 1): "));
+    CHECK(contains(built.error().message, "ValueError: the script raised; its log is build.log"));
+    left = files_in(folder);
+    CHECK(left.size() == 1);
+    fs::remove_all(folder);
+}
+
 TEST_CASE("sessions read .blend files as glTF, running Blender only with the build capability") {
     const fs::path root = "blend_session_project";
     fs::remove_all(root);
