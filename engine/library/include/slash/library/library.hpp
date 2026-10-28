@@ -94,6 +94,9 @@ struct Record {
     std::string track; // for a stem: the track it is part of
     // A model recipe: the library models its parts are made of, in the order they appear.
     std::vector<std::string> uses;
+    // A model's checks (scene3d::model_checks_schema), which it and every version made of it
+    // pass; null for none.
+    json::Value checks;
 };
 
 inline constexpr std::size_t kMaxFeedback = 20;
@@ -118,7 +121,9 @@ void add_feedback(Record& record, Feedback feedback);
 // Fills in a record's type, format, size, image size, sound length or model summary from the
 // file's bytes, and checks they are a file of that format; a .glb model must read nothing
 // outside itself, and a recipe's model parts must be library references, which read reads
-// (part_reader). path names the file, for its extension.
+// (part_reader). A model must pass the record's checks; a failure's message starts with
+// "checks" and the JSON Pointer of the check in them ("checks/size/max/1: ..."). path names the
+// file, for its extension.
 [[nodiscard]] Result<void>
 describe_file(std::string_view data, std::string_view path, Record& record,
               const std::function<Result<std::string>(std::string_view path)>& read = {});

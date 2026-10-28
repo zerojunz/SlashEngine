@@ -958,6 +958,7 @@ checks a recipe and `slash-cli scene format` writes it in canonical form.
 | `parts` | array | required | At least one part |
 | `points` | array | `[]` | Attachment points, as below |
 | `variants`, `quality` | object | `{}` | Named forms of the recipe, as [below](#variants-and-quality-tiers) |
+| `checks` | object | `{}` | What the model must be: size, pivot, triangles and names, as [below](#model-checks) |
 
 Every number in a part, and every parameter, can be a string starting with `=`: an expression in
 Godot's `Expression` syntax over the parameters (`"=width / 2"`, `"=sin(angle) * r"`). A name
@@ -1072,6 +1073,39 @@ names a tier ships each recipe that has it as the tier makes it, without its `qu
 its variants applied after the tier; the rest ship as written. A tier no recipe has is reported
 with the closest one. Only recipes have variants: `::` after another model file is reported.
 [examples/model-variants](../../examples/model-variants/) burns a crate and ships it for phones.
+
+##### Model checks
+
+A recipe's `checks` say what the model must be for the files that count on it, and every
+validation holds it to them: `slash-cli scene validate`, `project validate`, exports, and the asset
+library before it keeps the recipe. Each failure is at the check's JSON Pointer.
+
+| Field | Checks |
+| --- | --- |
+| `size` | `min` and `max`, each `[x, y, z]` meters, bounding the box its vertices fill at rest |
+| `pivot` | `[x, y, z]`, where its origin is in that box, within 0.01 (0 the low side, 1 the high one; `[0.5, 0, 0.5]` stands on the ground, centered) |
+| `max_triangles` | The most triangles it may draw |
+| `materials` | Material names it must have |
+| `nodes` | Node names it must have: parts and attachment points |
+| `bones` | Bone names a skin of it must have; a node that is no skin's joint is reported so |
+| `animations` | Animation names it must have |
+
+```json
+"checks": {"size": {"max": [0.4, 0.6, 0.4]}, "pivot": [0.5, 0, 0.5], "max_triangles": 2000,
+           "materials": ["oak", "steel"], "nodes": ["seat", "post", "foot"]}
+```
+
+```text
+/checks/size/max/1: the model is 0.75 m along y, more than 0.6
+/checks/materials/0: the model has no material "oka" (did you mean "oak"?)
+```
+
+A variant or quality tier can have `checks` too, set over the recipe's field by field, so a crate
+whose `open` variant drops its lid can name the nodes it keeps. Any other model file, a `.glb`
+included, gets checks when it goes into the asset library (`asset.add`'s `checks`), which keeps
+them with every version and in the project's `library.json`, where `asset.check` and `test.run`
+check the project's copy again. [examples/model-checks](../../examples/model-checks/) breaks a
+stool and a lamp.
 
 #### Skeletons and model animations
 

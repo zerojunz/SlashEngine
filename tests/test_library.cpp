@@ -983,3 +983,50 @@ TEST_CASE("a library recipe keeps the variants its model parts name") {
     json::Value copied = parse(read(project / "yard" / "pile.model.json"));
     CHECK(copied["parts"].as_array()[1]["model"] == "yard/parts/" + crate + ".model.json::open");
 }
+
+TEST_CASE("a library model keeps its checks, every version passes them, and asset.check and "
+          "test.run check the project's copy again") {
+    const fs::path root = fresh("library_model_checks");
+    const Engine engine(root);
+    const fs::path project = root / "project";
+    slash::test::Gltf glb = slash::test::quad();
+    glb.document["nodes"] = parse(R"([{"name": "Quad", "mesh": 0, "children": [1]},
+                                      {"name": "Hook", "translation": [0, 1, 0]}])");
+    write(project / "props" / "sign.glb", glb.glb());
+    const std::string add = R"({"path": "props/sign.glb", "description": "A sign.", "checks": )";
+    CHECK(engine.fail("asset.add", add + R"({"nodes": ["Quad"], "max_triangles": 1}})").message ==
+          "/checks/max_triangles: the model has 2 triangles, more than 1");
+    CHECK(engine.fail("asset.add", add + R"({"nodes": "Quad"}})").data["path"] == "/checks/nodes");
+    write(project / "art" / "dot.png", square(4, {255, 255, 255}));
+    CHECK(
+        engine
+            .fail("asset.add", R"({"path": "art/dot.png", "description": "A dot.", "checks": {}})")
+            .message == "/checks: only a model (.model.json or .glb) has checks");
+
+    const std::string checks = R"({"size": {"max": [2, 2, 0.1]}, "nodes": ["Quad", "Hook"]})";
+    json::Value added = engine.call("asset.add", add + checks + "}");
+    CHECK(engine.call("asset.info", R"({"id": ")" + added["id"].as_string() + R"("})")["checks"] ==
+          parse(checks));
+    CHECK(parse(read(project / "library.json"))["assets"]["props/sign.glb"]["checks"] ==
+          parse(checks));
+    CHECK(engine.call("asset.check", "{}")["problems"].as_array().empty());
+
+    // The project's copy loses its hook: asset.check and test.run say so, and the library won't
+    // keep it as a version unless the call gives it checks it passes.
+    write(project / "props" / "sign.glb", slash::test::quad().glb());
+    json::Array problems = engine.call("asset.check", "{}")["problems"].as_array();
+    REQUIRE(problems.size() == 1);
+    CHECK(problems[0]["check"] == "/assets/props~1sign.glb/checks/nodes/1");
+    CHECK(problems[0]["message"] == "the model has no node \"Hook\"");
+    json::Value tested = engine.call("test.run", "{}");
+    CHECK(json::write(tested["failed"], json::Style::Compact) ==
+          R"([{"file":"library.json","message":"the model has no node \"Hook\"",)"
+          R"("path":"/assets/props~1sign.glb/checks/nodes/1"}])");
+    CHECK(engine.fail("asset.add", R"({"path": "props/sign.glb"})").message ==
+          "/path: it fails the checks of the version before: checks/nodes/1: the model has no node "
+          "\"Hook\"");
+    json::Value version =
+        engine.call("asset.add", R"({"path": "props/sign.glb", "checks": {"nodes": ["Quad"]}})");
+    CHECK(version["parent"] == added["id"]);
+    CHECK(engine.call("test.run", "{}")["failed"].as_array().empty());
+}

@@ -1,0 +1,51 @@
+{
+  "checks": {
+    "materials": ["oak", "steel"],
+    "max_triangles": 2000,
+    "nodes": ["seat", "post", "foot"],
+    "pivot": [0.5, 0, 0.5],
+    "size": {
+      "max": [0.4, 0.6, 0.4],
+      "min": [0.3, 0.4, 0.3]
+    }
+  },
+  "format": 1,
+  "materials": {
+    "oak": {
+      "albedo_color": [0.55, 0.38, 0.22, 1]
+    },
+    "steel": {
+      "metallic": 1,
+      "roughness": 0.3
+    }
+  },
+  "parameters": {
+    "height": 0.45
+  },
+  "parts": [
+    {
+      "height": 0.04,
+      "material": "oak",
+      "name": "seat",
+      "position": [0, "=height - 0.02", 0],
+      "radius": 0.18,
+      "shape": "cylinder"
+    },
+    {
+      "height": "=height - 0.06",
+      "material": "steel",
+      "name": "post",
+      "position": [0, "=(height - 0.04) / 2 + 0.01", 0],
+      "radius": 0.02,
+      "shape": "cylinder"
+    },
+    {
+      "height": 0.02,
+      "material": "steel",
+      "name": "foot",
+      "position": [0, 0.01, 0],
+      "radius": 0.14,
+      "shape": "cylinder"
+    }
+  ]
+}

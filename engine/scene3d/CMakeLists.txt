@@ -42,6 +42,7 @@ add_library(slash_scene3d
     src/lightmapper.cpp
     src/lod.cpp
     src/model.cpp
+    src/model_checks.cpp
     src/model_tools.cpp
     src/obj.cpp
     src/occlusion.cpp
