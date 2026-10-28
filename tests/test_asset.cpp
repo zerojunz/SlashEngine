@@ -191,3 +191,47 @@ TEST_CASE("registering an asset type again replaces it") {
     REQUIRE(level.ok());
     CHECK(*level.value() == 2);
 }
+
+TEST_CASE("an asset reloads when a file it read as it loaded changes") {
+    MemoryFiles files;
+    files.write("levels/one.level", "parts/a.txt parts/b.txt");
+    files.write("parts/a.txt", "aa");
+    files.write("parts/b.txt", "bbb");
+    asset::Assets assets(files.source());
+    // A level is the sizes of the files it names.
+    assets.add_type<int>(
+        "level", {".level"}, [&assets](std::string_view text, std::string_view /*path*/) {
+            int total = 0;
+            for (const std::string_view part : {text.substr(0, 11), text.substr(12)}) {
+                auto read = assets.read(part, "part");
+                if (!read) {
+                    return slash::Result<int>(read.error());
+                }
+                total += static_cast<int>(read.value().size());
+            }
+            return slash::Result<int>(total);
+        });
+    auto level = assets.load<int>("levels/one.level").value();
+    CHECK(*level == 5);
+    CHECK(assets.poll().empty());
+
+    files.write("parts/b.txt", "bbbbbb");
+    const auto changes = assets.poll();
+    REQUIRE(changes.size() == 2);
+    CHECK(changes[0].path == "levels/one.level");
+    CHECK(changes[0].version == 2);
+    CHECK(changes[1].path == "parts/b.txt");
+    CHECK(*level == 8);
+    // Read again as it reloaded, the parts still belong to it.
+    files.write("parts/a.txt", "a");
+    CHECK(assets.poll().size() == 2);
+    CHECK(*level == 7);
+    // A file read outside any load belongs to no asset.
+    REQUIRE(assets.read("parts/c.txt", "part").error().code == slash::ErrorCode::NotFound);
+    files.write("notes.txt", "x");
+    REQUIRE(assets.read("notes.txt", "note").ok());
+    files.write("notes.txt", "xy");
+    const auto notes = assets.poll();
+    REQUIRE(notes.size() == 1);
+    CHECK(notes[0].path == "notes.txt");
+}

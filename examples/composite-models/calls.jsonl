@@ -1,0 +1,5 @@
+{"jsonrpc":"2.0","id":1,"method":"scene.open","params":{"path":"main.scene.json"}}
+{"jsonrpc":"2.0","id":2,"method":"model.inspect","params":{"id":"stall","brief":true}}
+{"jsonrpc":"2.0","id":3,"method":"frame.capture","params":{"points":[[80,20],[80,26],[80,44],[80,60]]}}
+{"jsonrpc":"2.0","id":4,"method":"component.set","params":{"id":"stall","components":{"Skeleton3D":{"bone_rotations":{"lamp":[0,0,0.5]}}}}}
+{"jsonrpc":"2.0","id":5,"method":"skeleton.get","params":{"id":"stall","bones":["lamp","glass"]}}

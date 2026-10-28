@@ -1166,7 +1166,9 @@ int cmd_scene_format(const std::string& path, bool check) {
             };
         };
         if (path.ends_with(slash::scene3d::kModelRecipeSuffix)) {
-            return format_checked(text.value(), checked_by(slash::scene3d::validate_model_recipe));
+            return format_checked(text.value(), checked_by([](const json::Value& doc) {
+                                      return slash::scene3d::validate_model_recipe(doc);
+                                  }));
         }
         if (path.ends_with(command::kReplaySuffix)) {
             return format_checked(text.value(), checked_by(command::validate_replay));

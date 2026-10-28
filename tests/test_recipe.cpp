@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -267,4 +268,91 @@ TEST_CASE("model recipes load as models, LODs and all, and their textures are ch
     REQUIRE(errors.size() == 1);
     CHECK(errors[0].path == "/materials/stone/albedo_texture");
     CHECK(scene3d::check_model("{", "a.model.json", no_files).size() == 1);
+}
+
+TEST_CASE("a recipe's model parts place other model files' nodes under their own") {
+    std::map<std::string, std::string, std::less<>> files;
+    files["props/door.model.json"] = R"({"format": 1,
+        "materials": {"oak": {"albedo_color": [0.5, 0.3, 0.1, 1]}},
+        "parts": [{"name": "board", "shape": "box", "material": "oak", "size": [0.6, 1, 0.04],
+                   "position": [0.3, 0, 0]}],
+        "points": [{"name": "knob", "part": "board", "position": [0.25, 0, 0.03]}]})";
+    files["props/sign.obj"] = "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
+    files["props/cabinet.model.json"] = R"({"format": 1, "parts": [
+        {"name": "body", "shape": "box", "size": [1.2, 1, 0.5], "position": [0, 0.5, 0]},
+        {"model": "props/door.model.json", "position": [-0.6, 0.5, 0.25],
+         "array": {"count": 2, "position": [0.6, 0, 0]}},
+        {"model": "props/sign.obj", "position": [0, 1, 0]}],
+        "points": [{"name": "top", "part": "door2", "position": [0, 0.5, 0]}]})";
+    const scene3d::ModelReader read = [&](std::string_view path) -> slash::Result<std::string> {
+        const auto it = files.find(path);
+        if (it == files.end()) {
+            return slash::make_error(slash::ErrorCode::NotFound, "no such file");
+        }
+        return it->second;
+    };
+    auto loaded =
+        scene3d::load_model(files["props/cabinet.model.json"], "props/cabinet.model.json", read);
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? "" : loaded.error().message));
+    const scene3d::Model& model = loaded.value();
+    std::vector<std::string> names;
+    std::vector<int> parents;
+    for (const scene3d::ModelNode& node : model.nodes) {
+        names.push_back(node.name);
+        parents.push_back(node.parent);
+    }
+    // Each copy's nodes under its own, renamed where they would clash; the OBJ model's mesh
+    // given a node named as Godot names it; then the points.
+    CHECK(names == std::vector<std::string>{"body", "door", "board", "knob", "door2", "board2",
+                                            "knob2", "sign", "Mesh", "top"});
+    CHECK(parents == std::vector<int>{-1, -1, 1, 2, -1, 4, 5, -1, 7, 4});
+    REQUIRE(model.parts.size() == 4);
+    CHECK(model.parts[1].node == "board");
+    CHECK(model.parts[1].node_index == 2);
+    CHECK(model.parts[1].transform.origin.x == doctest::Approx(-0.3));
+    CHECK(model.parts[2].node == "board2");
+    CHECK(model.parts[2].transform.origin.x == doctest::Approx(0.3));
+    CHECK(model.parts[3].node == "Mesh");
+    CHECK(model.parts[3].transform.origin.y == doctest::Approx(1.0));
+    // The door's material comes along once, shared by both copies.
+    REQUIRE(model.materials.size() == 1);
+    CHECK(model.materials[0].name == "oak");
+    CHECK(model.meshes[model.parts[1].mesh].surfaces[0].material == 0);
+    CHECK(model.meshes[model.parts[2].mesh].surfaces[0].material == 0);
+
+    const scene3d::ModelSummary summary = scene3d::summarize(model);
+    REQUIRE(summary.points.size() == 3);
+    CHECK(summary.points[0].name == "knob");
+    CHECK(summary.points[0].part == "board");
+    CHECK(summary.points[0].position.x == doctest::Approx(-0.05));
+    CHECK(summary.points[2].name == "top");
+    CHECK(summary.points[2].position.y == doctest::Approx(1.0));
+    CHECK(scene3d::check_model(files["props/cabinet.model.json"], "props/cabinet.model.json", read)
+              .empty());
+
+    // A model part takes only its file and where it goes, at the top level.
+    CHECK(first_error(R"({"format": 1, "parts": [{"model": "a.glb", "shape": "box"}]})") ==
+          "/parts/0/shape: a model part takes only name, position, rotation, scale and array; "
+          "its model has its own shapes and materials");
+    CHECK(first_error(R"({"format": 1, "parts": [{"shape": "box",
+        "children": [{"model": "a.glb"}]}]})")
+              .starts_with("/parts/0/children/0/model: only a top-level part can be a model"));
+    // Its file must load, and not take in the recipe itself.
+    files["props/bad.model.json"] = R"({"format": 1, "parts": [{"model": "props/nope.glb"}]})";
+    auto errors = scene3d::check_model(files["props/bad.model.json"], "props/bad.model.json", read);
+    REQUIRE(errors.size() == 1);
+    CHECK(errors[0].path == "/parts/0/model");
+    CHECK(errors[0].message == "\"props/nope.glb\" didn't load: no such file");
+    files["props/loop.model.json"] =
+        R"({"format": 1, "parts": [{"model": "props/loop.model.json"}]})";
+    auto loop = scene3d::load_model(files["props/loop.model.json"], "props/loop.model.json", read);
+    REQUIRE_FALSE(loop.ok());
+    CHECK(loop.error().message ==
+          "/parts/0/model: \"props/loop.model.json\" didn't load: it takes in itself through its "
+          "model parts");
+    // Without files to read them from.
+    auto alone = scene3d::build_model_recipe(parse(files["props/cabinet.model.json"]));
+    REQUIRE_FALSE(alone.ok());
+    CHECK(alone.error().message.starts_with("/parts/1/model: a model part's file is read"));
+    CHECK(errors_of(files["props/cabinet.model.json"]).empty());
 }

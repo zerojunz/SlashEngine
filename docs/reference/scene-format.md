@@ -975,6 +975,7 @@ A part's fields:
 | `flip_faces` | bool | `false` | Turns its faces inside out (not on a combiner) |
 | `array` | object | none | `count` copies (1 to 1024), each placed by the array's `position`, `rotation` and `scale` after the one before, so a rotation turns them round the parent's origin |
 | `children` | array | `[]` | Parts combined with it in order, as a CSG shape's children |
+| `model` | string | none | A top-level part only: another model file whose nodes go under its node, as below |
 
 Shapes take the fields of Godot's CSG node of that shape (`CSGBox3D`'s `size`, `CSGSphere3D`'s
 `radius`, `radial_segments` and `rings`, `CSGCylinder3D`'s `radius`, `height`, `sides` and
@@ -1019,6 +1020,26 @@ no mesh, which a [`BoneAttachment3D`](#bone-attachments)'s `bone_name` follows a
 
 [examples/model-parts](../../examples/model-parts/) opens a cabinet's door and stands a lamp on
 its top point.
+
+A top-level part can instead be another model file, by project path: a recipe, glTF, OBJ, FBX or
+`.blend` file, as Godot instances a scene under a node. It takes only `name` (default the file's
+name without its folders and suffix), `position`, `rotation`, `scale` and `array`; its model
+brings its own shapes and materials.
+
+```json
+{"model": "props/crate.model.json", "position": [-0.7, 0.9, 0.3],
+ "array": {"count": 3, "position": [0.7, 0, 0]}}
+```
+
+The part's node (`crate`, `crate2`, `crate3`) holds the file's nodes, named as they are there
+unless the model already has the name, then numbered (`box2`); a model without nodes, as an OBJ
+model, gets one per mesh. Its materials and images come along, shared between copies, and its
+points, skins and bones too, so `Skeleton3D` and `BoneAttachment3D` reach them by name; its
+animations stay with the file. A file that doesn't load is reported at the part's `model`, as is
+one that takes in the recipe itself, and parts nest at most 8 files deep. The recipe reloads
+when one of its files changes. A model part can't be a child of another part.
+[examples/composite-models](../../examples/composite-models/) builds a market stall of crates and
+a lantern.
 
 #### Skeletons and model animations
 

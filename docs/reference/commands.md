@@ -3776,7 +3776,7 @@ events; when a queue is full the oldest event is dropped.
 | `entity.created` | An entity with an ID is created, by a command or a system | `id` |
 | `entity.destroyed` | An entity with an ID is destroyed | `id` |
 | `command` | A command changed the world, including `step`, `undo` and `redo`, or a prefab reload (`"command": "asset.reload"`) or new gameplay code (`"command": "gameplay.reload"`) did | `command`, and `changes` as [`world.diff`](#worlddiff) returns them |
-| `asset.reloaded` | A loaded asset or prefab file changed on disk | `data`: `path`, `type`, and `version`, or `error` if it no longer loads |
+| `asset.reloaded` | A loaded asset or prefab file changed on disk, or a file an asset read as it loaded did (both are reported) | `data`: `path`, `type`, and `version`, or `error` if it no longer loads |
 | `gameplay.reloaded` | The game's code was rebuilt and swapped in, or failed to load | `data` as [`gameplay.build`](#gameplaybuild)'s `reload` |
 | anything else | Gameplay code called `World::emit`, e.g. `"coin_collected"` | `id` and `data`, if the game gave them |
 

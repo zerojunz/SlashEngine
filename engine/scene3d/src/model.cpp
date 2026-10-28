@@ -887,6 +887,10 @@ void add_lods(Model& model) {
             }
         }
         for (ModelSurface& surface : model.meshes[m].surfaces) {
+            // A model part's surfaces came with theirs.
+            if (!surface.lods.empty()) {
+                continue;
+            }
             generate_lods(surface, bones);
         }
     }
@@ -896,23 +900,56 @@ void add_lods(Model& model) {
 
 namespace {
 
-// A model recipe's model (recipe.hpp).
-Result<Model> load_recipe(std::string_view bytes) {
+// How deep model parts may nest: a recipe whose part is a recipe whose part is ...
+constexpr std::size_t kMaxModelDepth = 8;
+
+// The model files loading on this thread, outermost first, so a recipe can't take itself in.
+thread_local std::vector<std::string> loading_models;
+
+// Loads the model files a recipe's model parts name, through read.
+ModelPartLoader part_loader(const ModelReader& read) {
+    return [&read](std::string_view path) -> Result<Model> {
+        if (std::ranges::find(loading_models, path) != loading_models.end()) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "it takes in itself through its model parts");
+        }
+        if (loading_models.size() >= kMaxModelDepth) {
+            return make_error(ErrorCode::InvalidArgument, "model parts nest more than " +
+                                                              std::to_string(kMaxModelDepth) +
+                                                              " deep");
+        }
+        auto bytes = read(path);
+        if (!bytes) {
+            return bytes.error();
+        }
+        return load_model(bytes.value(), path, read);
+    };
+}
+
+// A model recipe's model (recipe.hpp), its model parts read through read.
+Result<Model> load_recipe(std::string_view bytes, std::string_view path, const ModelReader& read) {
     auto doc = json::parse(bytes);
     if (!doc) {
         return doc.error();
     }
-    return build_model_recipe(doc.value());
+    loading_models.emplace_back(path);
+    Result<Model> model = build_model_recipe(doc.value(), part_loader(read));
+    loading_models.pop_back();
+    return model;
 }
 
 // A model recipe's errors, and each texture its materials name that can't be read or decoded,
 // at the material's field.
-std::vector<json::ValidationError> check_recipe(std::string_view bytes, const ModelReader& read) {
+std::vector<json::ValidationError> check_recipe(std::string_view bytes, std::string_view path,
+                                                const ModelReader& read) {
     auto doc = json::parse(bytes);
     if (!doc) {
         return {{"", doc.error().message}};
     }
-    std::vector<json::ValidationError> errors = validate_model_recipe(doc.value());
+    loading_models.emplace_back(path);
+    std::vector<json::ValidationError> errors =
+        validate_model_recipe(doc.value(), part_loader(read));
+    loading_models.pop_back();
     if (!errors.empty()) {
         return errors;
     }
@@ -948,7 +985,7 @@ std::vector<json::ValidationError> check_recipe(std::string_view bytes, const Mo
 Result<Model> load_model(std::string_view bytes, std::string_view path, const ModelReader& read) {
     Result<Model> model = make_error(ErrorCode::InvalidArgument, "");
     if (path.ends_with(kModelRecipeSuffix)) {
-        model = load_recipe(bytes);
+        model = load_recipe(bytes, path, read);
     } else if (path.ends_with(".obj")) {
         model = load_obj(bytes, path, read, nullptr);
     } else if (path.ends_with(".fbx")) {
@@ -965,7 +1002,7 @@ Result<Model> load_model(std::string_view bytes, std::string_view path, const Mo
 std::vector<json::ValidationError> check_model(std::string_view bytes, std::string_view path,
                                                const ModelReader& read) {
     if (path.ends_with(kModelRecipeSuffix)) {
-        return check_recipe(bytes, read);
+        return check_recipe(bytes, path, read);
     }
     const bool obj = path.ends_with(".obj");
     const bool fbx = path.ends_with(".fbx");

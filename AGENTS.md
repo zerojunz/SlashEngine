@@ -158,6 +158,7 @@ library and that its controls lay out as written.
 `text::add_asset_types` adds fonts (`.ttf`, `.otf`, `.font.json`), `audio::add_asset_types`
 adds sounds (`.wav`, `.ogg`, `.mp3`), `.audio.json` and `.bus_layout.json` files, and games add types
 with `add_type`. Sessions and games own an `asset::Assets`, and prefab files are read through it.
+An asset also reloads when a file its loader read changes, such as a recipe's model parts.
 `Session::poll_assets()` reloads changed files, updates prefab instances (keeping overrides) and
 applies a changed `project.json`'s settings again; every command polls first, and `slash-cli run`
 and `serve` poll between ticks. `asset.list` shows what is loaded and the bytes each holds
@@ -1071,7 +1072,12 @@ schema and the shapes' fields, and builds each top-level part as a CSG root thro
 fed in as `CSGMesh3D`s. `load_model` and `check_model` take recipes, so `MeshInstance3D`,
 `model.inspect`, LODs, hot reload and exports treat them as any model, and
 `validate_model_recipe` backs `scene validate` and `scene format`.
-`examples/parametric-models` is a table and a vase. A recipe's `points` become nodes with no
+A top-level part can be another model file (`"model": "props/crate.model.json"`), its nodes placed
+under the part's as Godot instances a scene (`add_model` in `recipe.cpp`), so big assets are built
+of small ones; the loader passed to `build_model_recipe` reads them, and a recipe reloads when one
+changes, since an asset reloads when any file it read as it loaded does (`Assets::read` while a
+loader runs). `examples/parametric-models` is a table and a vase, and `examples/composite-models`
+a market stall of crates and a lantern. A recipe's `points` become nodes with no
 mesh after the parts' nodes, under the part they name. `scene3d::summarize` (`model.cpp`)
 describes any model in a few numbers and names: its size, `pivot` (the origin's place in its
 bounds), triangles, each part's box and materials and its attachment points (nodes that place no
