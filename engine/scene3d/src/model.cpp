@@ -8,6 +8,7 @@
 #include "slash/scene3d/blend.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/lightmap.hpp"
+#include "slash/scene3d/material.hpp"
 #include "slash/scene3d/recipe.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/scene3d/terrain.hpp"
@@ -947,7 +948,7 @@ Result<Model> load_recipe(std::string_view bytes, std::string_view path, const M
         return form.error();
     }
     loading_models.emplace_back(asset::file_of(path));
-    Result<Model> model = build_model_recipe(form.value(), part_loader(read));
+    Result<Model> model = build_model_recipe(form.value(), part_loader(read), read);
     loading_models.pop_back();
     return model;
 }
@@ -962,7 +963,7 @@ std::vector<json::ValidationError> check_recipe(std::string_view bytes, std::str
     }
     loading_models.emplace_back(asset::file_of(path));
     std::vector<json::ValidationError> errors =
-        validate_model_recipe(doc.value(), part_loader(read));
+        validate_model_recipe(doc.value(), part_loader(read), read);
     loading_models.pop_back();
     if (!errors.empty()) {
         return errors;
@@ -975,24 +976,21 @@ std::vector<json::ValidationError> check_recipe(std::string_view bytes, std::str
         return errors;
     }
     for (const auto& [name, fields] : materials->as_object()) {
-        for (const std::string_view field :
-             {"albedo_texture", "metallic_texture", "roughness_texture", "normal_texture",
-              "emission_texture"}) {
-            const json::Value* file = fields.find(field);
-            if (file == nullptr || file->as_string().empty()) {
-                continue;
-            }
-            const std::string at =
-                "/materials/" + json::pointer_escape(name) + "/" + std::string(field);
-            auto text = read(file->as_string());
-            if (!text) {
-                errors.push_back({at, quoted(file->as_string()) +
-                                          " could not be read: " + text.error().message});
-            } else if (auto image = render::decode_image(text.value()); !image) {
-                errors.push_back(
-                    {at, quoted(file->as_string()) + " doesn't decode: " + image.error().message});
+        const std::string at = "/materials/" + json::pointer_escape(name);
+        std::vector<json::ValidationError> found = check_material_textures(fields, read, at);
+        // A material file's textures, which validating the recipe read it for.
+        const json::Value* extends = fields.is_object() ? fields.find("extends") : nullptr;
+        const json::Value* file = fields.is_string() ? &fields : extends;
+        if (file != nullptr) {
+            if (auto text = read(file->as_string()); text) {
+                for (const json::ValidationError& error :
+                     check_standard_material(text.value(), read)) {
+                    found.push_back({at, quoted(file->as_string()) + " at " + error.path + ": " +
+                                             error.message});
+                }
             }
         }
+        errors.insert(errors.end(), found.begin(), found.end());
     }
     return errors;
 }

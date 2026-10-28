@@ -794,8 +794,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] The storyboard's style section (palette, reference images, triangle and texel
         budgets), refined from accepted assets and sent with every request so a game's assets
         match
-  - [ ] Tileable PBR materials from the 2D generator, shared through the material graph instead
-        of a unique texture per model
+  - [x] Tileable PBR materials from the 2D generator, shared through the material graph instead
+        of a unique texture per model: `asset.generate`'s `material` type makes the image tile,
+        works out normal and roughness maps and writes a `.standard_material.json` file that
+        recipes name or `extends`
   - [ ] Imported assets: files from Blender and other tools, asset stores or a team's own
         artists go into the library like generated ones, with the same cleanup, text
         description, review, versions and a license the importer records; editing the source

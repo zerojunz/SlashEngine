@@ -135,7 +135,7 @@ body of their own (`shape_key_of` in `engine/physics2d/src/space.cpp`), as Godot
 `CollisionShape2D` nodes. `examples/parent-transforms` sails a boat.
 
 ```bash
-$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, meshlib, lightmap, voxel_gi, model, sdk)
+$cli schema scene                                   # JSON Schema for scene files (also: prefab, frames, material, animation, process_material, tileset, font, theme, audio, bus_layout, replay, test, score, navmesh, navpoly, meshlib, lightmap, voxel_gi, model, standard_material, sdk)
 $cli scene validate tests/data/basic.scene.json     # every error, with its JSON Pointer path
 $cli scene format level.scene.json                  # rewrite in canonical form
 $cli scene format --check level.scene.json          # exit 1 if not canonical
@@ -145,7 +145,7 @@ Validate after editing a scene or prefab by hand, and format before committing o
 commands take `.prefab.json`, `.frames.json`, `.material.json`, `.anim.json`,
 `.process_material.json`, `.tileset.json`,
 `.font.json`, `.theme.json`, `.audio.json`, `.bus_layout.json`, `.replay.json`, `.test.json`,
-`.score.json`, `.navmesh.json`, `.navpoly.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json` and `.model.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
+`.score.json`, `.navmesh.json`, `.navpoly.json`, `.meshlib.json`, `.lightmap.json`, `.voxelgi.json`, `.model.json` and `.standard_material.json` files too, and `scene validate` takes models (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend`, `.model.json`); validating a
 scene also checks each tile map layer against its tile set, each `AnimationPlayer` against its
 library and that its controls lay out as written.
 
@@ -258,6 +258,18 @@ concept first: `asset.generate`'s `image` names a library image the model is mad
 under as its parent (`generate_model` in `src/commands.cpp`; the test generator makes a relief of
 it, `make_model` in `src/generator.cpp`), and `review` reviews each and makes it again with the
 reasons added to the prompt until one is accepted; `examples/concept-models` makes a stool.
+
+Materials are `.standard_material.json` files (`$cli schema standard_material`;
+`slash/scene3d/material.hpp`), one `StandardMaterial3D` each as Godot's `.tres`, which a recipe's
+`materials` name by path or `extends` with fields over them (`resolve_materials` in
+`engine/scene3d/src/recipe.cpp`, reading through the same `ModelReader` as model parts).
+`asset.generate`'s `material` type (`generate_material` in `src/commands.cpp`) makes one that
+tiles from a generated or library image: `seam_ratio`, `make_seamless`, `normal_map` and
+`roughness_map` (`slash/library/material.hpp`, integer math only) make the albedo tile and its
+maps, kept as images and the material as type `material` naming them by `asset:` reference;
+`asset_refs` lists what a recipe or material names, which `library_form`, `project_form` and
+`describe_file` follow. `examples/tileable-materials` shares cobblestones between a wall and
+steps.
 
 `entity.place` (`engine/command/src/place.cpp`) assembles scenes of such assets by constraints:
 each entity goes to a point (`at`) or along a `Path3D` (`along`, turned to face it with
