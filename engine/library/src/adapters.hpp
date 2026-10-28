@@ -11,15 +11,16 @@
 
 // The generators that call a service over HTTP, one per API. Each builds its request from a
 // GenerateRequest and the options providers.json gives it, sends it through an ai::Transport with
-// retries and turns the reply into a file the library keeps.
+// retries and turns the reply into a file the library keeps; a service that works as a task
+// (meshy-rig) is asked how it is going every few seconds, then its file fetched.
 namespace slash::library::detail {
 
-inline constexpr std::array<std::string_view, 8> kHttpTypes = {
-    "automatic1111", "elevenlabs-music", "elevenlabs-sound", "gemini-image",
+inline constexpr std::array<std::string_view, 9> kHttpTypes = {
+    "automatic1111", "elevenlabs-music", "elevenlabs-sound", "gemini-image",   "meshy-rig",
     "openai-image",  "openai-speech",    "stability-3d",     "stability-audio"};
 
 // The model a type's requests name when providers.json names none: "" for automatic1111, which
-// draws with the checkpoint it has loaded.
+// draws with the checkpoint it has loaded, and for meshy-rig, whose rigging has one.
 [[nodiscard]] std::string_view default_model(std::string_view type) noexcept;
 
 // The generator for a providers.json entry of one of kHttpTypes. A key its api_key_env names but

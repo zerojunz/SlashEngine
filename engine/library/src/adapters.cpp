@@ -10,9 +10,11 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <string>
@@ -52,6 +54,9 @@ std::string_view default_url(std::string_view type) noexcept {
     }
     if (type == "stability-audio" || type == "stability-3d") {
         return "https://api.stability.ai";
+    }
+    if (type == "meshy-rig") {
+        return "https://api.meshy.ai";
     }
     return "http://127.0.0.1:7860"; // automatic1111
 }
@@ -988,6 +993,166 @@ protected:
     }
 };
 
+// How often a task is asked how it is going.
+constexpr std::chrono::seconds kPollInterval{5};
+
+// The string at a path of keys in a reply, or "".
+std::string text_at(const json::Value& value, std::initializer_list<std::string_view> path) {
+    const json::Value* at = &value;
+    for (const std::string_view key : path) {
+        at = at->is_object() ? at->find(key) : nullptr;
+        if (at == nullptr) {
+            return {};
+        }
+    }
+    return at->is_string() ? at->as_string() : std::string();
+}
+
+// Meshy's rigging: the model goes up as a data URI with the figure's height, Meshy rigs it as a
+// task, which is asked how it is going until it is done, and the rigged .glb comes back from
+// the URL the task names. Meshy rigs textured humanoid figures facing +z, as the profile does.
+class MeshyRig final : public Generator {
+public:
+    explicit MeshyRig(Service service)
+        : service_(std::move(service)), who_("the " + service_.type + " generator") {}
+
+    [[nodiscard]] const GeneratorCapabilities& capabilities() const override {
+        return capabilities_;
+    }
+
+    [[nodiscard]] Result<Generated> generate(const GenerateRequest& request,
+                                             const ai::CancelFlag* cancel) override {
+        if (!service_.missing_key.empty()) {
+            return make_error(ErrorCode::PermissionDenied, who_ + " reads its key from " +
+                                                               service_.missing_key +
+                                                               ", which is not set");
+        }
+        if (request.rig != "humanoid") {
+            return make_error(ErrorCode::InvalidArgument,
+                              who_ + " rigs humanoids, not \"" + request.rig + "\"");
+        }
+        if (!request.parent_data.starts_with("glTF")) {
+            return make_error(ErrorCode::InvalidArgument, who_ + " rigs a .glb model");
+        }
+        json::Value body;
+        body["model_url"] =
+            "data:application/octet-stream;base64," + base64_encode(request.parent_data);
+        if (request.parent != nullptr && request.parent->size[1] > 0.0) {
+            body["height_meters"] = request.parent->size[1];
+        }
+        merge(body, service_.options);
+        ai::HttpRequest start = authorized("/openapi/v1/rigging");
+        start.body = json::write(body, json::Style::Compact);
+        auto started = send(start, cancel);
+        if (!started) {
+            return started.error();
+        }
+        const json::Value* id = started.value().find("result");
+        if (id == nullptr || !id->is_string() || id->as_string().empty()) {
+            return make_error(ErrorCode::PlatformFailure, who_ + " started no task");
+        }
+        ai::HttpRequest status = authorized("/openapi/v1/rigging/" + id->as_string());
+        status.method = "GET";
+        const auto polls = std::max<std::int64_t>(
+            1, service_.timeout_seconds / static_cast<std::int64_t>(kPollInterval.count()));
+        for (std::int64_t poll = 0;; ++poll) {
+            auto task = send(status, cancel);
+            if (!task) {
+                return task.error();
+            }
+            const json::Value& reply = task.value();
+            const std::string state = text_at(reply, {"status"});
+            if (state == "SUCCEEDED") {
+                const std::string url = text_at(reply, {"result", "rigged_character_glb_url"});
+                if (url.empty()) {
+                    return make_error(ErrorCode::PlatformFailure,
+                                      who_ + " finished with no rigged .glb");
+                }
+                return fetch(url, cancel);
+            }
+            if (state == "FAILED" || state == "CANCELED") {
+                const std::string message = text_at(reply, {"task_error", "message"});
+                return make_error(
+                    ErrorCode::PlatformFailure,
+                    who_ + "'s task " +
+                        (state == "FAILED" ? std::string("failed") : std::string("was cancelled")) +
+                        (message.empty() ? std::string() : ": " + message));
+            }
+            if (poll + 1 >= polls) {
+                return make_error(ErrorCode::PlatformFailure,
+                                  who_ + "'s task was still " +
+                                      (state.empty() ? std::string("running") : state) + " after " +
+                                      std::to_string(service_.timeout_seconds) + " seconds");
+            }
+            if (cancel != nullptr && cancel->load()) {
+                return make_error(ErrorCode::PlatformFailure, "the request was cancelled");
+            }
+            service_.transport->later(kPollInterval, [] {});
+        }
+    }
+
+private:
+    [[nodiscard]] ai::HttpRequest authorized(std::string_view path) const {
+        ai::HttpRequest http;
+        http.url = service_.url + std::string(path);
+        http.timeout_seconds = service_.timeout_seconds;
+        http.headers = service_.headers;
+        if (!service_.api_key.empty()) {
+            http.headers.emplace_back("Authorization", "Bearer " + service_.api_key);
+        }
+        return http;
+    }
+
+    // The reply's JSON.
+    [[nodiscard]] Result<json::Value> send(const ai::HttpRequest& http,
+                                           const ai::CancelFlag* cancel) const {
+        auto reply =
+            ai::post_with_retries(*service_.transport, http, who_, service_.max_retries, cancel);
+        if (!reply) {
+            return reply.error();
+        }
+        auto parsed = json::parse(reply.value().body);
+        if (!parsed || !parsed.value().is_object()) {
+            return make_error(ErrorCode::PlatformFailure, who_ + " answered with something "
+                                                                 "other than a JSON object");
+        }
+        return parsed;
+    }
+
+    // The rigged file, from where the task left it: a signed URL, so no key goes with it.
+    [[nodiscard]] Result<Generated> fetch(const std::string& url,
+                                          const ai::CancelFlag* cancel) const {
+        ai::HttpRequest http;
+        http.url = url;
+        http.method = "GET";
+        http.timeout_seconds = service_.timeout_seconds;
+        auto reply =
+            ai::post_with_retries(*service_.transport, http, who_, service_.max_retries, cancel);
+        if (!reply) {
+            return reply.error();
+        }
+        if (!reply.value().body.starts_with("glTF")) {
+            return make_error(ErrorCode::PlatformFailure,
+                              who_ + " returned something other than a .glb model");
+        }
+        return Generated{.data = std::move(reply).value().body,
+                         .format = "glb",
+                         .model = service_.model,
+                         .seed = std::nullopt};
+    }
+
+    Service service_;
+    std::string who_;
+    GeneratorCapabilities capabilities_{.images = false,
+                                        .sounds = false,
+                                        .refines_images = false,
+                                        .refines_sounds = false,
+                                        .music = false,
+                                        .refines_music = false,
+                                        .models = false,
+                                        .rigs = true};
+};
+
 // Per output pixel along one axis, the source pixels it covers and by how much, in units of
 // 1/to of a source pixel: output o spans [o * from, (o + 1) * from).
 std::vector<std::vector<std::pair<std::uint32_t, std::uint64_t>>>
@@ -1130,6 +1295,9 @@ Result<std::shared_ptr<Generator>> make_http_generator(const ai::GeneratorConfig
     }
     if (config.type == "stability-3d") {
         return std::shared_ptr<Generator>(std::make_shared<StabilityModel>(std::move(service)));
+    }
+    if (config.type == "meshy-rig") {
+        return std::shared_ptr<Generator>(std::make_shared<MeshyRig>(std::move(service)));
     }
     return make_error(ErrorCode::InvalidArgument, "no generator of type \"" + config.type + "\"");
 }

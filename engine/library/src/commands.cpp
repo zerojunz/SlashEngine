@@ -16,6 +16,7 @@
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
 #include "slash/scene3d/geometry.hpp"
+#include "slash/scene3d/humanoid.hpp"
 #include "slash/scene3d/material.hpp"
 #include "slash/scene3d/model.hpp"
 #include "slash/scene3d/recipe.hpp"
@@ -1160,6 +1161,63 @@ std::string prompt_context(Session& session, std::span<const Record> records, co
 
 std::string with_article(std::string_view type);
 
+// A rigged model as the library keeps it: its skeleton retargeted to the humanoid profile with
+// the silhouette fixed, as model.retarget does, so the animations of every rig the library keeps
+// play on it. A skeleton already named as the profile's maps by name, else the map is guessed.
+struct Retargeted {
+    std::string glb;
+    json::Value rig;
+};
+
+Result<Retargeted> retarget_rig(std::string_view data) {
+    auto model = scene3d::load_model(data, "rigged.glb", [](std::string_view path) {
+        return Result<std::string>(
+            make_error(ErrorCode::NotFound, "it reads \"" + std::string(path) + "\""));
+    });
+    if (!model) {
+        return model.error();
+    }
+    scene3d::Model& rigged = model.value();
+    scene3d::RetargetOptions options;
+    options.fix_silhouette = true;
+    bool named = !rigged.skins.empty();
+    for (const scene3d::ModelSkin& skin : rigged.skins) {
+        for (const std::size_t joint : skin.joints) {
+            const std::string& name = rigged.nodes.at(joint).name;
+            named = named && scene3d::find_profile_bone(name) >= 0;
+            options.bone_map[name] = name;
+        }
+    }
+    if (!named) {
+        options.bone_map = scene3d::auto_map_bones(rigged);
+    }
+    auto report = scene3d::retarget_model(rigged, options);
+    if (!report) {
+        return report.error();
+    }
+    auto glb = scene3d::write_glb(rigged, "rigged.glb", {});
+    if (!glb) {
+        return glb.error();
+    }
+    Retargeted out;
+    out.glb = std::move(glb).value();
+    out.rig["mapped"] = static_cast<std::int64_t>(options.bone_map.size());
+    json::Array missing;
+    for (const std::string& name : report.value().missing) {
+        missing.emplace_back(name);
+    }
+    out.rig["missing"] = std::move(missing);
+    if (!report.value().unmapped.empty()) {
+        json::Array unmapped;
+        for (const std::string& name : report.value().unmapped) {
+            unmapped.emplace_back(name);
+        }
+        out.rig["unmapped"] = std::move(unmapped);
+    }
+    out.rig["motion_scale"] = std::round(report.value().motion_scale * 1e4) / 1e4;
+    return out;
+}
+
 Reply run_generator(Session& session, const json::Value& params, Asked asked,
                     const Record* parent) {
     auto opened_libs = open_libraries(session);
@@ -1178,14 +1236,15 @@ Reply run_generator(Session& session, const json::Value& params, Asked asked,
     if (name.empty() && parent != nullptr && parent->generator == "test") {
         name = "test";
     }
-    auto opened = open_generator(config.value(), name, asked.request.type);
+    const bool rigging = !asked.request.rig.empty();
+    auto opened = open_generator(config.value(), name, rigging ? "rig" : asked.request.type);
     if (!opened) {
         return params.find("generator") != nullptr ? failure_at(opened.error(), "/generator")
                                                    : Reply::failure(opened.error());
     }
     const OpenedGenerator& generator = opened.value();
     const GeneratorCapabilities& can = generator.generator->capabilities();
-    if (parent != nullptr && !refines(can, asked.request.type)) {
+    if (parent != nullptr && !rigging && !refines(can, asked.request.type)) {
         return Reply::failure(
             command::code::kInvalidArgument,
             "the generator \"" + generator.name + "\" can't refine " +
@@ -1249,7 +1308,8 @@ Reply run_generator(Session& session, const json::Value& params, Asked asked,
     }
 
     std::string context;
-    if (const json::Value* with = params.find("context"); with == nullptr || with->as_bool()) {
+    if (const json::Value* with = params.find("context");
+        !rigging && (with == nullptr || with->as_bool())) {
         context = prompt_context(session, records, asked, parent);
     }
     if (!context.empty()) {
@@ -1265,6 +1325,19 @@ Reply run_generator(Session& session, const json::Value& params, Asked asked,
     record.request = asked.keyed;
     if (!context.empty()) {
         record.request["context"] = context;
+    }
+    json::Value rig;
+    if (rigging) {
+        auto retargeted = retarget_rig(generated.value().data);
+        if (!retargeted) {
+            return Reply::failure(
+                command::code::kPlatformFailure,
+                "the generator \"" + generator.name +
+                    "\" returned a rig the library can't retarget: " + retargeted.error().message);
+        }
+        generated.value().data = std::move(retargeted.value().glb);
+        rig = std::move(retargeted.value().rig);
+        record.checks = parent->checks; // a version passes the checks of the one it was made from
     }
     record.generator = generator.type;
     record.model = generated.value().model.empty() ? generator.model : generated.value().model;
@@ -1321,6 +1394,9 @@ Reply run_generator(Session& session, const json::Value& params, Asked asked,
     }
     share(libs, stored.value(), data, key);
     Reply reply = finish(session, libs, stored.value(), asked, false);
+    if (reply.ok && rigging) {
+        reply.value["rig"] = std::move(rig);
+    }
     if (reply.ok && !notes.empty()) {
         json::Value& problems = reply.value["problems"];
         if (!problems.is_array()) {
@@ -2037,6 +2113,54 @@ Reply refine_model(Session& session, Libraries& libs, const Record& parent, std:
     return finish(session, libs, stored.value(), asked, reused);
 }
 
+// A rigged version of a figure: a generator that rigs makes its skeleton and skin, and the
+// library retargets it to the humanoid profile, so it plays the animations of every rig.
+Reply rig_asset(Session& session, const Record& parent, std::string data,
+                const json::Value& params) {
+    if (parent.type != "model") {
+        return invalid_at("/rig",
+                          "only a model is rigged; the asset is " + with_article(parent.type));
+    }
+    if (parent.format != "glb") {
+        return invalid_at("/rig", "a ." + parent.format +
+                                      " model isn't rigged; rigging takes a .glb figure");
+    }
+    for (const std::string_view key :
+         {"parameters", "parts", "loop", "width", "height", "seconds", "context"}) {
+        if (params.find(key) != nullptr) {
+            return invalid_at("/" + std::string(key), "rig takes the figure as it is; give " +
+                                                          std::string(key) + " without rig");
+        }
+    }
+    Asked asked;
+    asked.request.type = "model";
+    asked.request.rig = text(params, "rig");
+    asked.request.prompt = text(params, "prompt");
+    asked.request.parent = &parent;
+    asked.request.parent_data = std::move(data);
+    asked.keyed["type"] = "model";
+    asked.keyed["rig"] = asked.request.rig;
+    asked.keyed["parent"] = parent.id;
+    if (!asked.request.prompt.empty()) {
+        asked.keyed["prompt"] = asked.request.prompt;
+    }
+    if (Reply shared = read_shared(params, asked); !shared.ok) {
+        return shared;
+    }
+    if (asked.description.empty()) {
+        const std::string rigged = "rigged as a " + asked.request.rig;
+        std::string_view before = parent.description;
+        if (before.ends_with('.')) {
+            before.remove_suffix(1);
+        }
+        asked.description = before.empty() ? rigged : std::string(before) + "; " + rigged;
+    }
+    if (params.find("tags") == nullptr) {
+        asked.tags = parent.tags;
+    }
+    return run_generator(session, params, std::move(asked), &parent);
+}
+
 Reply asset_refine(Session& session, const json::Value& params) {
     auto libs = open_libraries(session);
     if (!libs) {
@@ -2053,11 +2177,15 @@ Reply asset_refine(Session& session, const json::Value& params) {
     if (!data) {
         return Reply::failure(data.error());
     }
+    if (params.find("rig") != nullptr) {
+        return rig_asset(session, parent.value(), std::move(data).value(), params);
+    }
     if (parent.value().type == "model" && parent.value().format != "model.json") {
         return invalid_at(params.find("parameters") != nullptr ? "/parameters" : "/id",
                           "a ." + parent.value().format +
                               " model has no parameters and no generator refines one yet; edit "
-                              "the file and asset.add it again, which keeps it as a new version");
+                              "the file and asset.add it again, which keeps it as a new version, "
+                              "or rig it with rig");
     }
     if (parent.value().type == "model") {
         return refine_model(session, libs.value(), parent.value(), data.value(), params);
@@ -3451,11 +3579,15 @@ void register_commands(command::Registry& registry) {
     swaps["additionalProperties"]["type"] = "string";
     swaps["minProperties"] = 1;
     refine.emplace("parts", std::move(swaps));
+    json::Value rig = property("string", "A .glb figure: rig it with a generator that rigs and "
+                                         "retarget it to Godot's humanoid skeleton.");
+    rig["enum"] = json::Array{"humanoid"};
+    refine.emplace("rig", std::move(rig));
     registry.add({
         .name = "asset.refine",
         .description = "Makes a new version of a library asset, changed as the prompt (or a "
-                       "model's parameters) says and linked to it, so earlier versions stay to "
-                       "compare and go back to.",
+                       "model's parameters, or rig) says and linked to it, so earlier versions "
+                       "stay to compare and go back to.",
         .capabilities = {Capability::Read, Capability::Filesystem, Capability::Network},
         .effect = command::Effect::Read,
         .params = params_schema(std::move(refine), {"id"}),

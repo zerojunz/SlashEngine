@@ -41,7 +41,8 @@
 // clang-format off
 EM_JS_DEPS(slash_ai_fetch, "$UTF8ToString");
 EM_JS(void, slash_ai_fetch,
-      (int id, const char* url, const char* headers, const char* body, int timeout_ms), {
+      (int id, const char* url, const char* method, const char* headers, const char* body,
+       int timeout_ms), {
           const controller = new AbortController();
           let timedOut = false;
           const timer = setTimeout(() => {
@@ -60,10 +61,11 @@ EM_JS(void, slash_ai_fetch,
               clearTimeout(timer);
               _slash_ai_fetch_end(id, message === null ? 0 : 1, message === null ? 0 : text(message));
           };
+          const verb = UTF8ToString(method);
           fetch(UTF8ToString(url), {
-              method : "POST",
+              method : verb,
               headers : JSON.parse(UTF8ToString(headers)),
-              body : UTF8ToString(body),
+              body : verb === "GET" ? undefined : UTF8ToString(body),
               signal : controller.signal,
           })
               .then(async (response) => {
@@ -365,7 +367,9 @@ public:
         for (const auto& [name, value] : request.headers) {
             headers[name] = value;
         }
-        headers["Content-Type"] = request.content_type;
+        if (request.method != "GET") {
+            headers["Content-Type"] = request.content_type;
+        }
         fetches()[id] = Fetch{.url = request.url,
                               .sink = std::move(sink),
                               .done = std::move(done),
@@ -373,8 +377,9 @@ public:
                               .response = {},
                               .stopped = false,
                               .buffer = {}};
-        slash_ai_fetch(id, request.url.c_str(), json::write(headers, json::Style::Compact).c_str(),
-                       request.body.c_str(), request.timeout_seconds * 1000);
+        slash_ai_fetch(id, request.url.c_str(), request.method.c_str(),
+                       json::write(headers, json::Style::Compact).c_str(), request.body.c_str(),
+                       request.timeout_seconds * 1000);
     }
 
     void later(std::chrono::milliseconds delay, std::function<void()> then) override {
@@ -545,13 +550,15 @@ public:
         }
 
         httplib::Request http;
-        http.method = "POST";
+        http.method = request.method;
         http.path = target.path.empty() ? "/" : target.path;
         for (const auto& [name, value] : request.headers) {
             http.set_header(name, value);
         }
-        http.set_header("Content-Type", request.content_type);
-        http.body = request.body;
+        if (request.method != "GET") {
+            http.set_header("Content-Type", request.content_type);
+            http.body = request.body;
+        }
 
         const auto cancelled = [cancel] { return cancel != nullptr && cancel->load(); };
         HttpResponse out;
@@ -685,7 +692,7 @@ Result<HttpResponse> post_with_retries(Transport& transport, const HttpRequest& 
             return sent.error();
         }
         HttpResponse& reply = sent.value();
-        if (reply.status == 200) {
+        if (reply.status >= 200 && reply.status < 300) {
             return std::move(reply);
         }
         if (!retryable(reply.status) || attempt >= max_retries) {
