@@ -647,7 +647,9 @@ count breaking ties) converts in 3D (`convert_object_3d`): mirrored in x into Go
 right-handed axes (`place_of`), cameras, lights and quads turned half a turn about y
 (`place_turned`), built-in meshes, model instances (`instantiate_model`), meshes picked out of
 models as glTF files of their own (`picked_mesh`), `.mat` files as `StandardMaterial3D`
-(`convert_surface`), 3D bodies and colliders, and `RenderSettings` as an `environment` entity. Each script's skeleton takes its serialized fields, which scenes
+(`convert_surface`), 3D bodies and colliders, particle systems as `CPUParticles3D`
+(`particles_3d`, gravity turned into the object's axes for local particles), and `RenderSettings`
+as an `environment` entity. Each script's skeleton takes its serialized fields, which scenes
 fill in; its trigger and collision messages make the importer set `contact_monitor` on the
 object's `RigidBody2D`, and UI events' persistent calls connect to its methods.
 Objects a prefab brings are written whole, so `format_scene` keeps only what differs.
