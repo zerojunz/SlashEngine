@@ -907,9 +907,9 @@ Exit: an agent builds a small 3D sample end to end.
       Godot's high-level multiplayer ([reference](reference/networking.md))
   - [x] Peers, as Godot's `MultiplayerPeer`: the ENet transport (`ENetMultiplayerPeer`) and an
         offline peer
-  - [ ] A world's multiplayer, as Godot's `SceneMultiplayer`: peers announced through the
+  - [x] A world's multiplayer, as Godot's `SceneMultiplayer`: peers announced through the
         server, relayed packets, authentication and raw packets
-  - [ ] Remote procedure calls on entities, with Godot's modes (authority or any peer, call
+  - [x] Remote procedure calls on entities, with Godot's modes (authority or any peer, call
         local, transfer mode and channel)
   - [ ] Replication driven by reflection: spawners and synchronizers of component fields, as
         Godot's `MultiplayerSpawner` and `MultiplayerSynchronizer`

@@ -1,0 +1,36 @@
+The server listens; alice and bob join:
+  server: peer_connected alice
+  server: peer_connected bob
+  alice: connected_to_server
+  alice: peer_connected bob
+  alice: peer_connected the server
+  bob: connected_to_server
+  bob: peer_connected alice
+  bob: peer_connected the server
+
+Each player answers to its client:
+  alice is the authority of alice: 1, of bob: 0, of the door: 0
+
+Alice chats; the server relays it to bob, and it runs on alice too:
+  server: alice says "hello!"
+  alice: alice says "hello!"
+  bob: alice says "hello!"
+
+Bob moves his player, then tries to move alice's:
+  server: bob moved to [120,64]
+  alice: bob moved to [120,64]
+  (the server and alice log an error for the second: bob isn't alice's authority)
+  bob's player is at 120, 64 on the server
+
+The door answers to the server, so only the server opens it everywhere:
+  server: the door opens for the server
+  alice: the door opens for the server
+  bob: the door opens for the server
+
+The server sends raw bytes to everyone:
+  alice got "round 2" from the server
+
+Bob leaves:
+  server: peer_disconnected bob
+  alice: peer_disconnected bob
+  bob: server_disconnected
