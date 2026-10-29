@@ -1586,18 +1586,20 @@ first error's JSON Pointer.
 ### particles.eval
 
 Returns a [`CPUParticles2D`](scene-format.md#particles)'s,
-[`GPUParticles2D`](scene-format.md#gpu-particles)'s or
-[`CPUParticles3D`](scene-format.md#3d-particles)'s live particles: how many, the box they fill
-in the world and, with `list`, each one. Without `time`, the particles the world has after its
-last tick; a `GPUParticles2D`'s are made by running the steps its emitter kept on the CPU, as
-every device runs them. With `time`, it runs the emitter's settings from the start for that many
-seconds, from where the entity is, apart from the world, which it leaves unchanged: what that
-many ticks would give, since the same seed, entity ID and ticks give the same particles. A
-`GPUParticles2D` whose process material doesn't load fails with the file's errors.
+[`GPUParticles2D`](scene-format.md#gpu-particles)'s,
+[`CPUParticles3D`](scene-format.md#3d-particles)'s or
+[`GPUParticles3D`](scene-format.md#gpu-particles-in-3d)'s live particles: how many, the box they
+fill in the world and, with `list`, each one. Without `time`, the particles the world has after its
+last tick; a `GPUParticles2D`'s or `GPUParticles3D`'s are made by running the steps its emitter kept
+on the CPU, as every device runs them. With `time`, it runs the emitter's settings from the start
+for that many seconds, from where the entity is, apart from the world, which it leaves unchanged:
+what that many ticks would give, since the same seed, entity ID and ticks give the same particles. A
+`GPUParticles2D` or `GPUParticles3D` whose process material doesn't load fails with the file's
+errors.
 
 | Param | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | required | An entity with a `CPUParticles2D`, `GPUParticles2D` or `CPUParticles3D` |
+| `id` | string | required | An entity with a `CPUParticles2D`, `GPUParticles2D`, `CPUParticles3D` or `GPUParticles3D` |
 | `time` | number | | Seconds to run the settings from the start, 0 to 3600; preprocess runs first |
 | `tick_seconds` | number | `1/60` | The tick length for `time`, above 0 and at most 1 |
 | `list` | boolean | `false` | Also return each particle |
@@ -1619,10 +1621,10 @@ alive. Each particle has its position in the world (particles in `local_coords` 
 the entity's `Transform2D`), its rotation in radians clockwise, its scale, its color as
 `[r, g, b, a]` and its age in seconds, in draw order. Numbers are rounded to four decimals.
 
-A `CPUParticles3D`'s `bounds` are `[x, y, z, width, height, depth]` in meters, and each particle
-has its `position` and `velocity` in the world, its `angle` in radians (the turn a `"particles"`
-billboard draws it at), its `scale` along each of its axes, its `color` and its `age`, in draw
-order (`view_depth` lists as `index`, since it needs a camera). The fountain of
+A `CPUParticles3D`'s or `GPUParticles3D`'s `bounds` are `[x, y, z, width, height, depth]` in meters,
+and each particle has its `position` and `velocity` in the world, its `angle` in radians (the turn a
+`"particles"` billboard draws it at), its `scale` along each of its axes, its `color` and its `age`,
+in draw order (`view_depth` lists as `index`, since it needs a camera). The fountain of
 [examples/particles-3d](../../examples/particles-3d/) after 40 ticks:
 
 ```json
@@ -4277,7 +4279,7 @@ to what the allocator handed out but not exactly it, and they vary by platform.
 | `assets` | Loaded assets (see `asset.list`'s `bytes`), one item per type |
 | `physics2d` | What Box2D allocated, and its bodies, shapes, contacts and joints |
 | `audio` | Each bus's last ten seconds for `audio.capture` (an item per bus) and the mixing buffers |
-| `cpu_particles_2d`, `cpu_particles_3d`, `gpu_particles_2d` | Each emitter's particles, or the steps GPU particles replay |
+| `cpu_particles_2d`, `cpu_particles_3d`, `gpu_particles_2d`, `gpu_particles_3d` | Each emitter's particles, or the steps GPU particles replay |
 | `text` | The glyph atlas pages text draws from |
 | `csg` | The meshes CSG roots keep (`meshes`) and their `triangles` |
 | `gridmap` | The octant meshes and shapes GridMaps keep (`gridmaps`, `octants`, `cells` and `triangles`) |

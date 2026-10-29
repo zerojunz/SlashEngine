@@ -1296,7 +1296,7 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     CHECK(*engine.ok("engine.describe").find("systems") ==
           parse(R"(["input", "gui", "services", "controls", "movement", "animation_player",
                     "animation_tree", "skeleton_modifiers", "path_follow", "physics2d", "physics3d", "navigation", "animated_sprite_2d",
-                    "camera_2d", "parallax_2d", "cpu_particles_2d", "cpu_particles_3d", "gpu_particles_2d", "ai", "audio"])"));
+                    "camera_2d", "parallax_2d", "cpu_particles_2d", "cpu_particles_3d", "gpu_particles_2d", "gpu_particles_3d", "ai", "audio"])"));
     CHECK(*engine.ok("engine.describe", R"({"full": true})").find("systems") == parse(R"([
         {"name": "input", "doc": "Applies the input events queued since the last tick.",
          "priority": -1000},
@@ -1348,6 +1348,9 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "reads": ["Transform2D", "LightOccluder2D", "TileMapLayer", "CanvasLayer", "Control",
                    "Camera2D"],
          "writes": ["GPUParticles2D", "assets"]},
+        {"name": "gpu_particles_3d",
+         "doc": "Steps each GPUParticles3D's emission for renderers to run.", "priority": 1110,
+         "threaded": true, "stage": 15, "reads": ["Transform3D"], "writes": ["GPUParticles3D"]},
         {"name": "ai",
          "doc": "Hands each finished reply from a language model to the game as an ai_reply or ai_failed event.",
          "priority": 1150},
@@ -2892,7 +2895,8 @@ TEST_CASE("particles.eval counts and lists particles, as they are or after a tim
         "/id: no entity has the id \"sparkle\"; did you mean \"sparkler\"?");
     engine.ok("entity.create", R"({"id": "rock", "components": {"Transform2D": {}}})");
     CHECK(engine.fails("particles.eval", R"({"id": "rock"})", command::code::kInvalidParams)
-              .message == "/id: \"rock\" has no CPUParticles2D, GPUParticles2D or CPUParticles3D");
+              .message ==
+          "/id: \"rock\" has no CPUParticles2D, GPUParticles2D, CPUParticles3D or GPUParticles3D");
     engine.fails("particles.eval", R"({"id": "sparkler", "time": -1})",
                  command::code::kInvalidParams);
 }
