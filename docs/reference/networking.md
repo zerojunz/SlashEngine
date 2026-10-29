@@ -158,3 +158,77 @@ for it (an error is logged if not).
 
 [`examples/multiplayer-rpc`](../../examples/multiplayer-rpc/) plays a game on three worlds in one
 program.
+
+## Replication
+
+Two components replicate a world, as Godot's `MultiplayerSpawner` and `MultiplayerSynchronizer`
+do a scene tree. Every peer loads the same scene with them; only entities with IDs take part.
+
+```json
+"spawner": {"components": {"MultiplayerSpawner": {
+  "spawnable_scenes": ["prefabs/bullet.prefab.json"], "spawn_path": "level"}}},
+```
+
+```json
+{
+  "components": {
+    "Transform2D": {},
+    "MultiplayerSynchronizer": {"properties": [
+      {"path": "Transform2D/position"},
+      {"path": "Sprite2D/modulate/a", "spawn": false, "replication_mode": "on_change"}
+    ]}
+  },
+  "format": 1
+}
+```
+
+**Spawning.** When the spawner's authority places an entity that extends one of
+`spawnable_scenes` among `spawn_path`'s `Transform2D` or `Transform3D` children, the entity is
+spawned on every peer that can see it, with the same ID and under the same parent, and
+despawned there when it is destroyed. Peers that join later are sent what was spawned before,
+and a peer that leaves (or a server that goes) takes what it spawned with it. Each peer hears a
+`spawned` or `despawned` world event, with the entity's ID and data `{"spawner": id}`.
+`spawn_limit` caps how many a spawner has out at once.
+
+A custom spawn is made by code on every peer, as Godot's `spawn_function`:
+
+```cpp
+net::Multiplayer& mp = net::multiplayer(world);
+mp.set_spawn_function("spawner", [](world::World& w, std::string_view id, const json::Value& data)
+                                     -> Result<entt::entity> { /* make the entity with this ID */ });
+mp.set_enter_function("spawner", [&](world::World& w, entt::entity entity) {
+    mp.set_authority(w.id_of(entity), /* the peer it answers to */ 2);
+});
+(void)mp.spawn("spawner", "p2", json::Array{100, 40}); // on the spawner's authority only
+```
+
+The enter function runs on a peer that receives a spawn, once the entity is placed and before
+its synchronizers start, as a spawned scene's `_enter_tree`: the place to give it to the peer
+that controls it.
+
+**Synchronizing.** A `MultiplayerSynchronizer` sends the properties of its root (its own entity,
+or `root_path`) from its authority to the peers that can see it. A property's `path` is
+`"Component/field"`, or part of one (`"Transform2D/position/x"`, `"Sprite2D/modulate/a"`):
+
+| Field | Means |
+| --- | --- |
+| `spawn` | Sent with the entity when a spawner spawns it, set before anything sees it (`true`) |
+| `replication_mode` | `"always"`: in every sync, unreliably, the newest kept. `"on_change"`: reliably, when it changes. `"never"`: only at spawn |
+| `replication_interval`, `delta_interval` | Seconds of world time between syncs and between looks for changes; 0 for every tick |
+
+Each sync and change that arrives is a `synchronized` or `delta_synchronized` world event with
+the synchronizer's ID. Data from a peer that isn't the synchronizer's authority is refused. The
+intervals count world time (the ticks the multiplayer system polls in), so runs repeat.
+`set_max_sync_packet_size` and `set_max_delta_packet_size` set the largest packets (1350 and
+65535 bytes).
+
+**Visibility.** A synchronizer with `public_visibility` is seen by every peer; without it, only
+by those `set_visibility_for(id, peer, true)` names. `add_visibility_filter(id, fn)` adds a test
+every peer must pass, checked again each tick before the game's systems (`visibility_update_mode`
+`"idle"`), after physics (`"physics"`, by the `multiplayer_visibility` system) or when
+`update_visibility(id)` is called (`"none"`). A spawned entity is spawned only on the peers one
+of its synchronizers is visible to, and despawned from those that stop seeing it, and remote
+calls on an entity with synchronizers go only to the peers that can see it.
+
+As in Godot, spawns and their synchronizers carry network IDs, and a synchronizer on an entity
+nothing spawned is named by the same short number remote calls use.

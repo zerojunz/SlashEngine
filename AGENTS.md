@@ -2057,9 +2057,16 @@ their IDs for paths: `net::install` gives a world its `Multiplayer` (in the worl
 the `multiplayer` system (priority -950) that polls it; peers join (through authentication when
 there is a callback), the server announces and relays, its signals are world events, and
 `add_rpc` and `rpc` call procedures on entities by name with Godot's modes, an RPC's ID being its
-index among the entity's procedures (those whose `component` it has) by name. Tests talk over
+index among the entity's procedures (those whose `component` it has) by name. It replicates as
+`SceneReplicationInterface` does, comparing the world with what it tracked at each poll in place
+of Godot's tree signals: a `MultiplayerSpawner`'s authority spawns the entities extending its
+`spawnable_scenes` placed under its `spawn_path` on each peer that can see them (`spawned` and
+`despawned` events; custom spawns through `set_spawn_function`), and a `MultiplayerSynchronizer`
+sends its root's properties, `"Component/field[/part]"` read and written through reflection, as
+syncs and reliable deltas whose intervals count world time. Tests talk over
 127.0.0.1 on ports the OS picks (`create_server(0)`, `local_port`). `examples/enet-peers` runs a
-server and three clients and `examples/multiplayer-rpc` three worlds' game.
+server and three clients, `examples/multiplayer-rpc` three worlds' game and
+`examples/multiplayer-replication` bullets and players replicated between them.
 
 ## AI providers
 
