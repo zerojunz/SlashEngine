@@ -244,6 +244,33 @@ slash_add_dependency(miniaudio DOWNLOAD_ONLY TRUE)
 # its one source file with the BSD queue.h it carries, the same on every platform.
 slash_add_dependency(libebur128 DOWNLOAD_ONLY TRUE)
 
+# Networking over reliable UDP, as Godot's ENetMultiplayerPeer: upstream ENet, built here from its
+# C files (engine/net). Browsers have no UDP sockets, so the web has none.
+if(NOT EMSCRIPTEN)
+    slash_add_dependency(enet DOWNLOAD_ONLY TRUE)
+    if(enet_ADDED)
+        set(_slash_enet_sources callbacks.c compress.c host.c list.c packet.c peer.c protocol.c)
+        if(WIN32)
+            list(APPEND _slash_enet_sources win32.c)
+        else()
+            list(APPEND _slash_enet_sources unix.c)
+        endif()
+        list(TRANSFORM _slash_enet_sources PREPEND ${enet_SOURCE_DIR}/)
+        add_library(slash_enet STATIC ${_slash_enet_sources})
+        target_include_directories(slash_enet SYSTEM PUBLIC ${enet_SOURCE_DIR}/include)
+        if(WIN32)
+            target_link_libraries(slash_enet PUBLIC ws2_32 winmm)
+            target_compile_definitions(slash_enet PRIVATE _WINSOCK_DEPRECATED_NO_WARNINGS
+                _CRT_SECURE_NO_WARNINGS)
+        elseif(NOT APPLE)
+            # What ENet's own build finds on Linux and Android; unix.c sets Apple's itself.
+            target_compile_definitions(slash_enet PRIVATE HAS_FCNTL=1 HAS_POLL=1
+                HAS_GETADDRINFO=1 HAS_GETNAMEINFO=1 HAS_INET_PTON=1 HAS_INET_NTOP=1
+                HAS_MSGHDR_FLAGS=1 HAS_SOCKLEN_T=1)
+        endif()
+    endif()
+endif()
+
 # 3D models, as Godot imports glTF 2.0: cgltf parses .gltf and .glb files and MikkTSpace makes
 # the tangents a model leaves out, as Godot's SurfaceTool does (engine/scene3d); stb_image decodes
 # the JPEG textures models carry, which SDL can't (engine/render, beside PNG and BMP).
