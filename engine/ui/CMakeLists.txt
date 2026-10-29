@@ -14,7 +14,8 @@ add_library(slash::ui ALIAS slash_ui)
 
 target_include_directories(slash_ui PUBLIC include)
 target_link_libraries(slash_ui
-    PUBLIC slash::asset slash::core slash::input slash::l10n slash::render slash::text slash::world)
+    PUBLIC slash::asset slash::core slash::input slash::l10n slash::render slash::text slash::video
+           slash::world)
 slash_engine_target(slash_ui)
 # Rounded style boxes and rotated controls come out the same on every platform: no fused
 # multiply-adds, which arm64 compilers would otherwise emit and x86-64 ones not.

@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "Video playback",
+  "rendering": {"clear_color": [0, 0, 0, 1]},
+  "version": "1.0.0",
+  "window": {"height": 90, "width": 160}
+}

@@ -105,6 +105,13 @@
       "repository": "https://github.com/jkuhlmann/cgltf.git",
       "tag": "v1.15"
     },
+    "dav1d": {
+      "license": "BSD-2-Clause",
+      "license_file": "COPYING",
+      "license_sha256": "dd92c3c2247c5651606fc23a5e2d6a1ebc5ace9a3e49cbde0e12f05ad1cb1ee5",
+      "repository": "https://github.com/videolan/dav1d.git",
+      "tag": "1.5.3"
+    },
     "dawn": {
       "license": "BSD-3-Clause",
       "license_file": "LICENSE",
