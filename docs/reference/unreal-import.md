@@ -3,8 +3,9 @@
 [`project.import`](commands.md#projectimport) and [`slash-cli import`](cli.md#import) convert an
 Unreal Engine 5 project's levels into a SlashEngine project in one pass: static meshes, lights,
 the sky and fog, cameras, physics bodies and collision, trigger and blocking volumes, sounds,
-both input systems and the project's settings. Blueprints and C++ classes don't convert, since
-SlashEngine games are plain C++: each becomes a storyboard task to port it.
+both input systems and the project's settings. Blueprints and C++ classes don't run, since
+SlashEngine games are plain C++: each becomes a storyboard task to port it, and each C++ class a
+C++ skeleton whose component the level's actors fill in.
 [examples/import-unreal](../../examples/import-unreal/) imports a small 3D game.
 
 ## How it reads the project
@@ -20,15 +21,19 @@ editor you installed. The editor runs `UnrealEditor-Cmd <project>.uproject -run=
 
 | File | What |
 | --- | --- |
-| `export.json` | Each level's actors and their components with their settings, the Blueprints, the Enhanced Input actions and mapping contexts, and each mesh's bounds and collision |
+| `export.json` | Each level's actors and their components with their settings and the values of their C++ classes' properties, the Blueprints, the Enhanced Input actions and mapping contexts, and each mesh's bounds and collision |
 | `meshes/<package>.glb` | Each static and skeletal mesh the levels place, as Unreal's glTF exporter writes it |
 | `materials/<package>.glb` | Each material a component overrides a mesh's slot with, on a preview mesh |
 | `animations/<package>.glb` | Each animation sequence a skeletal mesh component plays, on its skeleton |
 | `sounds/<package>.wav` | Each sound wave the levels play |
 | `unreal.log` | The editor's log; the end of it is in the error when the export fails |
 
-The importer then converts what the script wrote. It reads `Config/DefaultEngine.ini`,
-`DefaultGame.ini` and `DefaultInput.ini` and the C++ headers in `Source/` itself.
+The importer reads the C++ headers and sources in `Source/` itself first, and hands the script a
+`request.json` in the same folder naming each class's `EditAnywhere` and `EditInstanceOnly`
+properties, so it writes the values each actor and component of the class holds (a class the
+editor can't load, say because the project's code isn't built, is reported as "C++ class the
+editor did not load"). It then converts what the script wrote, and reads
+`Config/DefaultEngine.ini`, `DefaultGame.ini` and `DefaultInput.ini` itself.
 
 Which editor runs: the importer's `unreal_editor` option (`--unreal-editor` on the command
 line: an `UnrealEditor-Cmd` program or an engine folder such as `UE_5.4`), else
@@ -52,6 +57,8 @@ minutes and needs the session's `build` capability, and a running game refuses i
 | `<sequence>.glb` beside each animation sequence's `.uasset`, and `<sequence>.anim.json` for a looping one | The sequence (see [Animation](#animation)) |
 | `<sound>.wav` beside each sound's `.uasset`, and `<sound>.audio.json` for a looping one | The sound wave |
 | `project.json` | The project's name, version, main level, gravity and input, merged into the project's own if it has one |
+| `src/imported/<name>.cpp` | A C++ skeleton per C++ class, in the gameplay sources (see [Blueprints and C++](#blueprints-and-c)) |
+| `src/imported/scripts.cpp`, `src/game.cpp` | The file registering every skeleton, and a game module calling it when the project's code has none |
 | `storyboard/work.json` | A task per Blueprint and per C++ class, merged into the project's own tasks |
 | `import/unreal.json` | The full report: every actor's entity and class, the axes, kill height, game mode, character movement settings, and everything that didn't convert |
 
@@ -182,6 +189,42 @@ Each `UCLASS` in `Source/` becomes a task linking to its header, listing its `UP
 its `UFUNCTION`s and the entities of its actors. The report's `class` gives each actor's class,
 so the port knows which entities it runs on; actors' `tags` are kept there too.
 
+Each `UCLASS` also becomes a C++ skeleton for the agent to fill in, `src/imported/<name>.cpp` in
+`project.json`'s gameplay sources, laid out as [a Unity script's](unity-import.md#scripts) is:
+its `UENUM`s, its `static constexpr` members as constants, its member variables as a component
+named after the class without its `A` or `U` (`ACoinPickup` is `CoinPickup`), an
+`emit_<delegate>` helper per delegate it declares (`DECLARE_DYNAMIC_MULTICAST_DELEGATE_*`), a
+stub per function with its body from the `.cpp` file in comments, the system calling them and
+`imported::register_<name>`. The report's `classes` lists each one with its header, skeleton,
+component, task and how many entities have it.
+
+An actor of the class, of a Blueprint made from it, or holding a component of the class gets the
+component, with the values its `EditAnywhere` and `EditInstanceOnly` properties hold in the level;
+other properties are the component's state. `ClampMin` and `ClampMax` are a field's range and
+its comment its doc. Until the code is built the component is a stand-in that keeps the values,
+so the scenes open.
+
+| Unreal | C++ |
+| --- | --- |
+| `bool`, `int32` and smaller, `int64`, `float`, `double`, `FString`, `FName`, `FText` | `bool`, `int`, `std::int64_t`, `float`, `double`, `std::string` |
+| `FVector`, `FVector2D`, `FRotator`, `FQuat`, `FLinearColor`, `FColor` | `slash::Vec3` (in Unreal's axes and units, as written), `Vec2`, `Vec3` (pitch, yaw, roll), `Quat`, `Vec4` (`FColor` as 0 to 1) |
+| `AActor*` and other actors, `U...Component*` | `entt::entity`, the entity it became |
+| Assets (`UStaticMesh*`, `USoundBase*`, `TSoftObjectPtr`...), `TSubclassOf` | `std::string`, the asset's or class's path |
+| `TArray<T>`, `TSet<T>`, `TMap<FString, T>` | `std::vector`, `std::map<std::string, T>` |
+| Enums | `int`, the enum kept beside it |
+
+The system calls the stubs when Unreal would call the functions:
+
+| Function | When the system calls it |
+| --- | --- |
+| The constructor, `PostInitializeComponents`, `InitializeComponent`, `BeginPlay` | For each entity made since the last tick, in that order |
+| `Tick`, `TickComponent` | Once a tick, with the tick's seconds |
+| `NotifyActorBeginOverlap`, `NotifyActorEndOverlap` | On both entities when a body or area enters or leaves an `Area3D`, with the other entity |
+| `NotifyHit` | On both entities when a `RigidBody3D` touches another body, with the other entity |
+| `EndPlay`, `Destroyed` and Unreal's other overrides | Not yet; their stubs say so |
+
+Importing again leaves a skeleton that exists as it is and rewrites `scripts.cpp`.
+
 ## Not yet converted
 
 Landscapes, foliage, BSP brushes (convert them to static meshes in Unreal first), Niagara and
@@ -189,5 +232,5 @@ Cascade particles, material graphs (meshes draw with what the glTF exporter bake
 Animation Blueprints, montages and blend spaces, Nanite meshes without a fallback,
 movement components such as `RotatingMovementComponent`, light temperature and IES profiles,
 level streaming and World Partition data layers (a partitioned level's actors are loaded all at
-once), and Blueprint and C++ logic. What a project has of these is listed in the result's
+once), and Blueprint logic (C++ classes become skeletons to port). What a project has of these is listed in the result's
 `unsupported`, once per kind with where it was first seen and why.

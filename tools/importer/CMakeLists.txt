@@ -30,6 +30,7 @@ add_library(slash_importer
     src/unity_build.cpp
     src/unity_import.cpp
     src/unity_yaml.cpp
+    src/unreal_cpp.cpp
     src/unreal_editor.cpp
     src/unreal_import.cpp
     ${_slash_unreal_export_cpp})

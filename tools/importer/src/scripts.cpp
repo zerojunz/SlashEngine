@@ -1516,7 +1516,16 @@ Script read_gdscript(std::string_view path, std::string_view text, const Gdscrip
 }
 
 std::string_view engine_name(ScriptSource source) {
-    return source == ScriptSource::UnityCsharp ? "Unity" : "Godot";
+    switch (source) {
+    case ScriptSource::UnityCsharp:
+        return "Unity";
+    case ScriptSource::UnrealCpp:
+        return "Unreal";
+    case ScriptSource::Gdscript:
+    case ScriptSource::GodotCsharp:
+        break;
+    }
+    return "Godot";
 }
 
 namespace {
@@ -3201,7 +3210,7 @@ enum class Call : std::uint8_t {
     Input,
     Destroyed,
     Engine,
-    TriggerEntered, // Unity's messages as bodies touch
+    TriggerEntered, // Unity's messages and Unreal's notifications as bodies touch
     TriggerExited,
     CollisionEntered,
     CollisionExited,
@@ -3268,6 +3277,27 @@ constexpr std::array<Virtual, 37> kUnityMessages{{{"Awake", Call::Created},
                                                   {"OnRenderObject", Call::Engine},
                                                   {"OnPostRender", Call::Engine}}};
 
+// Unreal's calls to an actor's or an actor component's functions, in the order Unreal makes them.
+constexpr std::array<Virtual, 19> kUnrealCalls{{{"PostInitializeComponents", Call::Created},
+                                                {"InitializeComponent", Call::Created},
+                                                {"BeginPlay", Call::Created},
+                                                {"Tick", Call::Tick},
+                                                {"TickComponent", Call::Tick},
+                                                {"NotifyActorBeginOverlap", Call::TriggerEntered},
+                                                {"NotifyActorEndOverlap", Call::TriggerExited},
+                                                {"NotifyHit", Call::CollisionEntered},
+                                                {"EndPlay", Call::Destroyed},
+                                                {"Destroyed", Call::Destroyed},
+                                                {"OnConstruction", Call::Engine},
+                                                {"SetupPlayerInputComponent", Call::Engine},
+                                                {"PossessedBy", Call::Engine},
+                                                {"UnPossessed", Call::Engine},
+                                                {"TakeDamage", Call::Engine},
+                                                {"Landed", Call::Engine},
+                                                {"NotifyActorOnClicked", Call::Engine},
+                                                {"NotifyActorBeginCursorOver", Call::Engine},
+                                                {"NotifyActorEndCursorOver", Call::Engine}}};
+
 // When the engine calls a function of a script, and where in the order it calls them.
 std::pair<Call, int> call_and_order(const Script& script, const ScriptFunction& function) {
     if (function.is_static) {
@@ -3281,9 +3311,12 @@ std::pair<Call, int> call_and_order(const Script& script, const ScriptFunction& 
     if (script.source == ScriptSource::GodotCsharp && name.starts_with('_')) {
         name = "_" + snake_case(name); // _PhysicsProcess -> _physics_process
     }
-    const std::span<const Virtual> table = script.source == ScriptSource::UnityCsharp
-                                               ? std::span<const Virtual>(kUnityMessages)
-                                               : std::span<const Virtual>(kVirtuals);
+    std::span<const Virtual> table = kVirtuals;
+    if (script.source == ScriptSource::UnityCsharp) {
+        table = kUnityMessages;
+    } else if (script.source == ScriptSource::UnrealCpp) {
+        table = kUnrealCalls;
+    }
     for (std::size_t i = 0; i < table.size(); ++i) {
         if (table[i].name == name) {
             return {table[i].call, static_cast<int>(i)};
@@ -3321,6 +3354,14 @@ Words words_of(ScriptSource source) {
                 .language = "C#",
                 .exported = "serialized fields",
                 .node = "MonoBehaviour"};
+    case ScriptSource::UnrealCpp:
+        return {.variables = "properties",
+                .signals = "delegates",
+                .function = "function",
+                .functions = "functions",
+                .language = "C++",
+                .exported = "EditAnywhere properties",
+                .node = "actor"};
     case ScriptSource::Gdscript:
         break;
     }
@@ -3376,12 +3417,12 @@ public:
 
 private:
     [[nodiscard]] std::string header() const {
-        std::string text =
-            script_.component + ", from the " + std::string(engine_) + " script " + script_.path;
+        std::string text = script_.component + ", from the " + std::string(engine_) + " " +
+                           kind_word() + " " + script_.path;
         if (!script_.extends.empty()) {
             text += " (extends " + script_.extends + ")";
         }
-        text += ", for you to port to C++. ";
+        text += unreal() ? ", for you to port to SlashEngine. " : ", for you to port to C++. ";
         if (script_.node) {
             text += "Its " + std::string(words_.variables) + " are the " + script_.component +
                     " component, its " + std::string(words_.signals) + " world events, and the " +
@@ -3430,7 +3471,7 @@ private:
         if (uses("slash::world::to_json")) {
             engine.emplace_back("slash/world/serialize.hpp");
         }
-        if (uses("slash::world::Area2D")) {
+        if (uses("slash::world::Area2D") || uses("slash::world::Area3D")) {
             engine.emplace_back("slash/world/components.hpp");
         }
         engine.emplace_back("slash/world/world.hpp");
@@ -3679,8 +3720,7 @@ private:
         case Call::Input:
             return "run() calls it for each input event, as " + engine_ + " calls " + name + ".";
         case Call::Destroyed:
-            return engine_ + " calls " + name + " as the " +
-                   (script_.source == ScriptSource::UnityCsharp ? "object" : "node") +
+            return engine_ + " calls " + name + " as the " + object_word() +
                    " leaves; nothing calls this yet (see run()).";
         case Call::Engine:
             return engine_ + " calls " + name + " itself; nothing calls this yet.";
@@ -3688,13 +3728,16 @@ private:
         case Call::TriggerExited:
             return "run() calls it on both entities when a body or area " +
                    std::string(call_of(function) == Call::TriggerEntered ? "enters" : "leaves") +
-                   " an Area2D, as Unity calls " + name + unity_other;
+                   " an " + (unreal() ? "Area3D" : "Area2D") + ", as " + engine_ + " calls " +
+                   name + unity_other;
         case Call::CollisionEntered:
         case Call::CollisionExited:
-            return "run() calls it on both entities when a RigidBody2D with contact_monitor " +
+            return "run() calls it on both entities when a " +
+                   std::string(unreal() ? "RigidBody3D" : "RigidBody2D") +
+                   " with contact_monitor " +
                    std::string(call_of(function) == Call::CollisionEntered ? "touches"
                                                                            : "stops touching") +
-                   " another body, as Unity calls " + name + unity_other;
+                   " another body, as " + engine_ + " calls " + name + unity_other;
         case Call::None:
             break;
         }
@@ -3882,14 +3925,16 @@ private:
                     names.push_back(function->source_name);
                 }
             }
-            events += "        // " + join(names, " and ") + ", on both entities, as Unity calls " +
-                      (names.size() == 1 ? "it" : "them") + ".\n";
+            events += "        // " + join(names, " and ") + ", on both entities, as " + engine_ +
+                      " calls " + (names.size() == 1 ? "it" : "them") + ".\n";
             events += "        if (event.kind == \"body_" + ending;
             events += "\" || event.kind == \"area_" + ending + "\") {\n";
             events += "            const auto [first, second] = touching(world, event);\n";
             events += "            const bool trigger =\n";
             events += "                event.kind == \"area_" + ending;
-            events += "\" || ecs.all_of<slash::world::Area2D>(first);\n";
+            events +=
+                "\" || ecs.all_of<slash::world::" + std::string(unreal() ? "Area3D" : "Area2D") +
+                ">(first);\n";
             events += "            for (const auto& [entity, other] :\n";
             events += "                 {std::pair{first, second}, std::pair{second, first}}) {\n";
             const auto contact_call = [&](const ScriptFunction& function) {
@@ -3987,9 +4032,9 @@ private:
                "'s component and system; register_scripts calls "
                "it.\n";
         out += "void register_" + script_.ns + "(slash::world::GameModule& game) {\n";
-        const std::string doc = script_.doc.empty()
-                                    ? "What the " + engine_ + " script " + script_.path + " keeps."
-                                    : script_.doc;
+        const std::string doc = script_.doc.empty() ? "What the " + engine_ + " " + kind_word() +
+                                                          " " + script_.path + " keeps."
+                                                    : script_.doc;
         out += "    game.add_component<" + script_.ns + "::" + script_.component + ">()\n";
         const std::string set_doc = "        .set_doc(";
         out += set_doc + cpp_strings(doc, set_doc.size(), 2) + ")";
@@ -4023,6 +4068,25 @@ private:
                            28, 3) +
                "});\n";
         out += "}\n\n} // namespace imported\n";
+    }
+
+    [[nodiscard]] bool unreal() const { return script_.source == ScriptSource::UnrealCpp; }
+
+    // What the skeleton was read from: a script, or Unreal's C++ class.
+    [[nodiscard]] std::string kind_word() const { return unreal() ? "class" : "script"; }
+
+    // What a script goes on in its engine.
+    [[nodiscard]] std::string object_word() const {
+        switch (script_.source) {
+        case ScriptSource::UnityCsharp:
+            return "object";
+        case ScriptSource::UnrealCpp:
+            return "actor";
+        case ScriptSource::Gdscript:
+        case ScriptSource::GodotCsharp:
+            break;
+        }
+        return "node";
     }
 
     [[nodiscard]] Call call_of(const ScriptFunction& function) const {
