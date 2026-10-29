@@ -21,7 +21,9 @@ editor you installed. The editor runs `UnrealEditor-Cmd <project>.uproject -run=
 | File | What |
 | --- | --- |
 | `export.json` | Each level's actors and their components with their settings, the Blueprints, the Enhanced Input actions and mapping contexts, and each mesh's bounds and collision |
-| `meshes/<package>.glb` | Each static mesh the levels place, as Unreal's glTF exporter writes it |
+| `meshes/<package>.glb` | Each static and skeletal mesh the levels place, as Unreal's glTF exporter writes it |
+| `materials/<package>.glb` | Each material a component overrides a mesh's slot with, on a preview mesh |
+| `animations/<package>.glb` | Each animation sequence a skeletal mesh component plays, on its skeleton |
 | `sounds/<package>.wav` | Each sound wave the levels play |
 | `unreal.log` | The editor's log; the end of it is in the error when the export fails |
 
@@ -46,6 +48,8 @@ minutes and needs the session's `build` capability, and a running game refuses i
 | --- | --- |
 | `<level>.scene.json` beside each `<level>.umap` | The level's actors, as entities and components |
 | `<mesh>.glb` beside each static mesh's `.uasset` | The mesh, with the collision Unreal gives it (see [Collision](#collision)) |
+| `<mesh>_<materials>.glb` beside a mesh's `.glb` | The mesh drawn with a component's override materials (see [Materials](#materials)) |
+| `<sequence>.glb` beside each animation sequence's `.uasset`, and `<sequence>.anim.json` for a looping one | The sequence (see [Animation](#animation)) |
 | `<sound>.wav` beside each sound's `.uasset`, and `<sound>.audio.json` for a looping one | The sound wave |
 | `project.json` | The project's name, version, main level, gravity and input, merged into the project's own if it has one |
 | `storyboard/work.json` | A task per Blueprint and per C++ class, merged into the project's own tasks |
@@ -79,9 +83,9 @@ name to its entity.
 
 | Unreal | SlashEngine |
 | --- | --- |
-| `StaticMeshComponent` | `MeshInstance3D` naming the mesh's `.glb`; `bCastShadow` off is `cast_shadow: "off"` |
+| `StaticMeshComponent` | `MeshInstance3D` naming the mesh's `.glb`; `bCastShadow` off is `cast_shadow: "off"`. With `OverrideMaterials`, a copy of the mesh's `.glb` drawn with them (see [Materials](#materials)) |
 | `InstancedStaticMeshComponent`, `HierarchicalInstancedStaticMeshComponent` | A child `MeshInstance3D` entity per instance (up to 2048) |
-| `SkeletalMeshComponent` | `MeshInstance3D` in its bind pose (its animations don't convert yet) |
+| `SkeletalMeshComponent` | `MeshInstance3D`; one that plays an animation sequence ("Use Animation Asset") gets an `AnimationPlayer` playing it (see [Animation](#animation)), and one run by an Animation Blueprint stands in its bind pose until its task's `AnimationTree` plays it |
 | `CameraComponent`, `CameraActor` | `Camera3D`: the field of view across (`keep_aspect: "width"`), or `orthogonal` with its width; the camera of the pawn player 0 possesses is `current` |
 | `SpringArmComponent` | Its children placed at the end of the arm (`TargetArmLength` back, plus `SocketOffset`) |
 | `DirectionalLightComponent` | `DirectionalLight3D`: energy is lux / 10, so Unreal's default sun is 1; `LightSourceAngle` is `light_angular_distance` |
@@ -143,6 +147,31 @@ is flipped, since Unreal's points up); mouse movement is reported, since no bind
 | `DefaultEngine.ini` `GameDefaultMap`, else the first level | `main_scene` |
 | `DefaultGravityZ` | `physics_3d.gravity`, in meters |
 
+## Materials
+
+The export script writes each mesh with the materials its slots name, as the glTF exporter makes
+them, and each material a component overrides a slot with as a `.glb` of its own (the exporter
+writes it on a preview mesh). A component with `OverrideMaterials` draws a copy of its mesh's
+`.glb`, beside it, named after the mesh and the override materials
+(`SM_Crate_MI_CrateDark.glb`, or a hash when that would be long): each overridden slot's
+material, found by the slot's material's name or, failing that, by its place, is replaced by the
+override's, with its images, and the copy keeps the mesh's collision. Components with the same
+overrides share one copy. A Godot scene has no per-surface override that `MeshInstance3D` takes,
+so the copy stands for it. The result's `converted` counts the copies as `material_variants`.
+
+## Animation
+
+Each animation sequence a skeletal mesh component plays is exported on its skeleton as a `.glb`
+where Unreal keeps it (`/Game/Characters/A_Idle` is `Content/Characters/A_Idle.glb`), and the
+component's entity gets an `AnimationPlayer` that plays it on the mesh's bones by name: from where
+the component's `AnimationData` left it (`SavedPosition` is `time`), at its play rate
+(`speed_scale`), stopped when it isn't playing. A looping sequence plays through an `.anim.json`
+library beside it that takes the animation `from` the `.glb` with `loop: "linear"`; one that
+doesn't loop plays from the `.glb` itself. The report's `animations` maps each sequence to its
+file, and `converted` counts them. Animation Blueprints, montages and blend spaces aren't played:
+an Animation Blueprint's task is to rebuild it as an `AnimationTree`, and a sequence's file is
+there for it to use.
+
 ## Blueprints and C++
 
 Each Blueprint becomes a storyboard task (`task/port-<name>`) linking to its `.uasset` and the
@@ -156,8 +185,8 @@ so the port knows which entities it runs on; actors' `tags` are kept there too.
 ## Not yet converted
 
 Landscapes, foliage, BSP brushes (convert them to static meshes in Unreal first), Niagara and
-Cascade particles, materials (meshes draw with what the glTF exporter wrote; overrides are
-reported), skeletal animation and Animation Blueprints, Nanite meshes without a fallback,
+Cascade particles, material graphs (meshes draw with what the glTF exporter bakes them to),
+Animation Blueprints, montages and blend spaces, Nanite meshes without a fallback,
 movement components such as `RotatingMovementComponent`, light temperature and IES profiles,
 level streaming and World Partition data layers (a partitioned level's actors are loaded all at
 once), and Blueprint and C++ logic. What a project has of these is listed in the result's
