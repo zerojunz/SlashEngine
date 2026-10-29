@@ -498,12 +498,14 @@ when nothing else on it faces a way (its children turn back), else on a `camera`
 | `PhysicMaterial` | `friction` (its dynamic friction) and `bounce`; Unity's default friction is 0.6 |
 | `LODGroup` | Only its first level draws; renderers in the others are reported |
 | `Terrain` and `TerrainCollider` | `HTerrain` on a `terrain` child entity (see [terrains](#terrains)) |
+| `ParticleSystem` and `ParticleSystemRenderer` | `CPUParticles3D` with the mesh it draws at each particle and its `StandardMaterial3D` (see [particles](#particles)) |
 | The scene's `RenderSettings` and its main camera's clear flags | An `environment` entity: `WorldEnvironment` (see below) and the sky |
 
 A material's color, main texture (with its tiling and offset), metallic, smoothness (as 1 minus
 roughness), metallic map, normal map, HDR emission (its brightest channel past 1 as
 `emission_energy_multiplier`), transparency (URP's surface type and alpha clip, the Standard
-shader's rendering mode), culling and URP Unlit's unshaded mode convert; the main texture's import
+shader's rendering mode), culling and the unshaded mode of URP's Unlit and Particles/Unlit convert
+(URP's Particles/Lit and Simple Lit convert as Lit does); the main texture's import
 settings give `texture_filter` and `texture_repeat`. The specular workflow converts as metallic 0,
 and occlusion, height and detail maps are reported. A material of any other shader converts from
 the properties it shares with Standard's, and is reported.
@@ -626,6 +628,50 @@ its `Skeleton3D` pose, and objects holding only the model's own components (`Tra
 else, or holding objects the model hasn't, becomes a `BoneAttachment3D` as above. A node whose object the
 scene deleted is reported, since the model still draws it. A `SkinnedMeshRenderer` whose objects
 don't follow its model's nodes, or of a mesh that isn't a model's, is reported and doesn't draw.
+
+### Particles
+
+A `ParticleSystem` and its renderer become a `CPUParticles3D`, Godot's particles worked out on the
+CPU, on the object; when the object draws a mesh of its own they go on a `particles` child entity,
+hidden when the renderer is off. Godot emits `amount` particles over each `lifetime`, so a looping
+system's `amount` is its rate over time times its longest start lifetime, plus its bursts' counts,
+up to its max particles; a system that doesn't loop is `one_shot`, emitting its rate over its
+duration. Particles leave along the shape's +z, turned by the shape's rotation and mirrored in x
+with the scene.
+
+| Unity | CPUParticles3D |
+| --- | --- |
+| Start lifetime | `lifetime`, the longest; two constants make `lifetime_randomness` the share the shortest is short of it |
+| Start speed, size, rotation | `initial_velocity_min`/`_max`, `scale_amount_min`/`_max`, `angle_min`/`_max` in degrees |
+| Start color | `color`, or between two colors or a random color of a gradient, `color_initial_ramp` |
+| Gravity modifier and Force over Lifetime's constant force | `gravity`: the project's 3D gravity times the modifier, plus the force, mirrored in x; in the object's axes for local particles, since Godot's fall along them |
+| Looping, prewarm (its duration as `preprocess`), play on awake, simulation speed (`speed_scale`), a fixed random seed | `one_shot`, `preprocess`, `emitting`, `speed_scale`, `seed` |
+| Simulation space local, world | `local_coords` on, off |
+| Bursts with no rate over time | `explosiveness` 1 |
+| Shape: cone (a ring at its base, the angle as `spread`), sphere and hemisphere (`sphere`, or `sphere_surface` at radius thickness 0, `spread` 180 or 90), box and rectangle (`box`, extents half its scale), circle and donut (`ring`) | `emission_shape` and its fields, `direction`, `spread` |
+| Color over Lifetime | `color_ramp`: a point at each of the gradient's color and alpha keys, with both there |
+| Size over Lifetime | `scale_amount_curve`, or with separate axes `split_scale` and `scale_curve_x`/`_y`/`_z`: the curve's keys, with a point each sixteenth of a life where Unity's curve bends |
+| Rotation over Lifetime | `angular_velocity_min`/`_max` in degrees a second |
+| Texture Sheet Animation (grid) | The material's `particles_anim_h_frames`/`_v_frames`, `anim_speed_min`/`_max` its cycles (`particles_anim_loop` for more than one), or a held frame as `anim_offset_min`/`_max` |
+| Renderer: billboard, vertical billboard, horizontal billboard, mesh | A `QuadMesh` with the material's `billboard_mode` `"particles"` (keeping the particle's scale) or `"fixed_y"`, a `QuadMesh` facing up, or the mesh: a built-in one as its primitive, a model's as `mesh` |
+| Renderer: sort mode by distance, youngest in front; cast shadows; the object's layer | `draw_order` `"view_depth"`, `"lifetime"`; `cast_shadow`; `layers` |
+
+The renderer's first material converts as a mesh's does, with `vertex_color_use_as_albedo` so
+particles take their colors. Unity's Default-ParticleSystem and Default-Particle materials become
+an unshaded, alpha blended material with a soft white dot drawn by the import,
+`Assets/particles/Default-Particle.png`. A sphere's or circle's particles leave in any direction
+rather than outward from where they start, which is reported for circles and donuts.
+
+Reported: start values that change over the system's duration (each particle takes a value from
+the curve's range), per-axis start size and rotation, a gravity modifier or emission rate that
+varies (its highest value holds), emission by distance, start delays, bursts mixed with a steady
+rate, bursts after the start or repeated, a shape moved off the object, a turned box, a cone's
+volume, mesh, sprite and edge shapes, randomized directions, a texture sheet of sprites, its single
+row mode and start frame, stretched and world-aligned billboards, pivots, flips, oldest in front,
+several meshes, and the modules CPUParticles3D has nothing like: Velocity over Lifetime, Limit
+Velocity, Inherit Velocity, External Forces, Noise, Collision, Triggers, Sub Emitters, Lights,
+Trails and the by-speed modules. A system that draws nothing (no renderer, or render mode None)
+doesn't convert. In a 2D scene particle systems are reported.
 
 ### Terrains
 
@@ -775,8 +821,7 @@ build keeps as AAC (`.audioclip` files) are reported. A build whose asset bundle
 
 ## Not yet converted
 
-Particle systems convert in a later import; until then each is reported where it is used. TextMesh Pro text in the world (not under
-a canvas) is reported too.
+Particle systems in 2D scenes and TextMesh Pro text in the world (not under a canvas) are reported.
 A game's own shaders (materials of them convert from the properties they share with the Standard
 shader), the 3D parts listed under [3D scenes](#3d-scenes) and Timeline don't convert. Everything that didn't
 convert is in the report's `unsupported`, once per kind with how many and the first place it was
