@@ -2074,10 +2074,16 @@ of Godot's tree signals: a `MultiplayerSpawner`'s authority spawns the entities 
 `spawnable_scenes` placed under its `spawn_path` on each peer that can see them (`spawned` and
 `despawned` events; custom spawns through `set_spawn_function`), and a `MultiplayerSynchronizer`
 sends its root's properties, `"Component/field[/part]"` read and written through reflection, as
-syncs and reliable deltas whose intervals count world time. Tests talk over
+syncs and reliable deltas whose intervals count world time. `src/websocket.cpp` ports
+Godot's `WebSocketPeer` and `WebSocketMultiplayerPeer`: natively `WSLPeer` (the handshake, with
+Mbed TLS's SHA-1, and wslay's framing over TCP through ENet's socket calls, `TcpStream` and
+`TcpServer`; `ws://` only), on the web `EMWSPeer` (the browser's WebSocket through `EM_JS`, its
+events queued for `poll`). `tests/web/run.mjs` starts an echo server for the web build's test,
+`test_websocket_web.cpp`. Tests talk over
 127.0.0.1 on ports the OS picks (`create_server(0)`, `local_port`). `examples/enet-peers` runs a
-server and three clients, `examples/multiplayer-rpc` three worlds' game and
-`examples/multiplayer-replication` bullets and players replicated between them.
+server and three clients, `examples/multiplayer-rpc` three worlds' game,
+`examples/multiplayer-replication` bullets and players replicated between them and
+`examples/websocket-peers` the same game's calls over WebSocket.
 
 ## AI providers
 
