@@ -2448,6 +2448,39 @@ void register_csg_components(ComponentRegistry& registry) {
             .describe("flip_faces", flip_faces));
 }
 
+void register_network_components(ComponentRegistry& registry) {
+    registry.add<MultiplayerSpawner>()
+        .set_doc("Spawns, on every peer, the entities its multiplayer authority places under "
+                 "spawn_path that extend one of spawnable_scenes, and despawns them when they "
+                 "go, as Godot's MultiplayerSpawner.")
+        .describe("spawnable_scenes",
+                  {.doc = "Prefab or scene files whose instances it spawns, by index."})
+        .describe("spawn_path", {.doc = "ID of the entity whose Transform2D or Transform3D "
+                                        "children it spawns and despawns."})
+        .describe("spawn_limit",
+                  {.doc = "How many it may have spawned at once; 0 for no limit.", .min = 0});
+    registry.add<MultiplayerSynchronizer>()
+        .set_doc("Replicates its root entity's properties from its multiplayer authority to "
+                 "the peers it is visible to, as Godot's MultiplayerSynchronizer.")
+        .describe("root_path", {.doc = "ID of the entity it replicates; null for its own entity."})
+        .describe("replication_interval",
+                  {.doc = "Seconds of world time between syncs of the \"always\" properties; 0 "
+                          "for every tick.",
+                   .min = 0.0})
+        .describe("delta_interval", {.doc = "Seconds of world time between looks for changes "
+                                            "to the \"on_change\" properties; 0 for every tick.",
+                                     .min = 0.0})
+        .describe("public_visibility",
+                  {.doc = "Visible to every peer, not only those set visible in code."})
+        .describe("visibility_update_mode",
+                  {.doc = "When visibility filters are checked again: every tick before the "
+                          "game's systems, after physics, or only when asked.",
+                   .choices = {"idle", "physics", "none"}})
+        .describe("properties",
+                  {.doc = "What it replicates: each {\"path\": \"Component/field\", \"spawn\", "
+                          "\"replication_mode\": \"never\" | \"always\" | \"on_change\"}."});
+}
+
 void register_gridmap_components(ComponentRegistry& registry) {
     registry.add<GridMap>()
         .set_doc("Items of a .meshlib.json mesh library in a grid of cells in the entity's space, "
@@ -3730,6 +3763,7 @@ void register_builtin_components(ComponentRegistry& registry) {
     register_particle_components(registry);
     register_audio_components(registry);
     register_ui_components(registry);
+    register_network_components(registry);
 }
 
 } // namespace slash::world

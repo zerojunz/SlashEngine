@@ -41,6 +41,17 @@ struct RpcConfig {
 using RpcFunction =
     std::function<void(world::World& world, entt::entity entity, const json::Value& args)>;
 
+// Makes the entity a custom spawn becomes, with the ID given, from the data passed to
+// Multiplayer::spawn, on every peer, as a MultiplayerSpawner's spawn_function. The spawner then
+// places it under its spawn_path.
+using SpawnFunction = std::function<Result<entt::entity>(world::World& world, std::string_view id,
+                                                         const json::Value& data)>;
+// Runs on a peer that receives a spawn, once the entity is placed and before its synchronizers
+// start, as a spawned scene's _enter_tree: the place to set its multiplayer authority.
+using EnterFunction = std::function<void(world::World& world, entt::entity entity)>;
+// Whether a synchronizer is visible to a peer, as Godot's visibility filters.
+using VisibilityFilter = std::function<bool(int peer)>;
+
 // A raw packet a peer sent with send_bytes, as Godot's peer_packet signal.
 struct RawPacket {
     int peer = 0;
@@ -54,6 +65,12 @@ struct RawPacket {
 // with data {"peer": id}: peer_connected, peer_disconnected, connected_to_server,
 // connection_failed, server_disconnected, peer_authenticating, peer_authentication_failed and
 // peer_packet (data {"peer", "size"}). It starts offline: a server alone.
+//
+// It also replicates, as Godot's SceneReplicationInterface: each MultiplayerSpawner's authority
+// spawns the entities placed under its spawn_path on the peers (spawned and despawned events,
+// with the entity's ID and data {"spawner"}), and each MultiplayerSynchronizer's authority sends
+// its properties to the peers it is visible to (synchronized and delta_synchronized events, with
+// the synchronizer's ID). Only entities with IDs take part; a spawned entity keeps its ID.
 class Multiplayer {
 public:
     explicit Multiplayer(world::World& world);
@@ -66,9 +83,10 @@ public:
     Result<void> set_peer(std::shared_ptr<Peer> peer);
     [[nodiscard]] Peer& peer() const;
 
-    // Polls the peer and handles what arrived. The multiplayer system calls it at the start of
-    // each tick.
-    void poll();
+    // Polls the peer, handles what arrived and replicates. seconds is the world time since the
+    // last poll, which replication intervals count, so runs repeat. The multiplayer system calls
+    // it at the start of each tick.
+    void poll(double seconds = 0.0);
 
     [[nodiscard]] int unique_id() const;
     [[nodiscard]] bool is_server() const;
@@ -114,13 +132,35 @@ public:
     Result<void> rpc(std::string_view entity, std::string_view method, const json::Value& args = {},
                      int peer = kTargetPeerBroadcast);
 
+    // Spawns a custom entity under a spawner's spawn_path on every peer, made by the spawner's
+    // spawn function from data, as MultiplayerSpawner.spawn. Only the spawner's authority may.
+    Result<entt::entity> spawn(std::string_view spawner, std::string_view id,
+                               const json::Value& data = {});
+    void set_spawn_function(std::string_view spawner, SpawnFunction function);
+    void set_enter_function(std::string_view spawner, EnterFunction function);
+
+    // A synchronizer's visibility, as Godot's: public_visibility, else the peers set visible
+    // here, and every filter must agree.
+    void set_visibility_for(std::string_view synchronizer, int peer, bool visible);
+    [[nodiscard]] bool visibility_for(std::string_view synchronizer, int peer) const;
+    void add_visibility_filter(std::string_view synchronizer, VisibilityFilter filter);
+    void clear_visibility_filters(std::string_view synchronizer);
+    // Checks visibility again for a peer (0: every peer), as update_visibility.
+    void update_visibility(std::string_view synchronizer, int peer = 0);
+
+    // The largest sync packet (unreliable; 1350 bytes) and delta packet (reliable; 65535).
+    void set_max_sync_packet_size(int bytes);
+    void set_max_delta_packet_size(int bytes);
+
 private:
+    friend void install(world::World& world);
     struct State;
     std::unique_ptr<State> state_;
 };
 
-// Gives a world its multiplayer, offline, and the multiplayer system (priority -950, after
-// input) that polls it each tick.
+// Gives a world its multiplayer, offline, the multiplayer system (priority -950, after input)
+// that polls it each tick, and the multiplayer_visibility system (priority 955, after physics)
+// that updates the visibility of synchronizers whose visibility_update_mode is "physics".
 void install(world::World& world);
 // The world's multiplayer; install first.
 [[nodiscard]] Multiplayer& multiplayer(world::World& world);

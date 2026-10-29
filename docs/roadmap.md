@@ -911,7 +911,7 @@ Exit: an agent builds a small 3D sample end to end.
         server, relayed packets, authentication and raw packets
   - [x] Remote procedure calls on entities, with Godot's modes (authority or any peer, call
         local, transfer mode and channel)
-  - [ ] Replication driven by reflection: spawners and synchronizers of component fields, as
+  - [x] Replication driven by reflection: spawners and synchronizers of component fields, as
         Godot's `MultiplayerSpawner` and `MultiplayerSynchronizer`
   - [ ] WebSocket for the web, as Godot's `WebSocketMultiplayerPeer`
   - [ ] Commands that host, join and inspect a game's network, and examples that play a game on
