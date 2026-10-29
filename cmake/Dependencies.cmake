@@ -271,6 +271,34 @@ if(NOT EMSCRIPTEN)
     endif()
 endif()
 
+# WebSocket framing, as Godot's WSLPeer uses it (engine/net), over TCP sockets made with ENet's
+# socket calls; not on the web, where the browser's WebSocket connects. Its handshake hashes
+# with Mbed TLS's SHA-1.
+if(NOT EMSCRIPTEN)
+    slash_add_dependency(wslay DOWNLOAD_ONLY TRUE)
+    if(wslay_ADDED)
+        set(_slash_wslay_sources wslay_event.c wslay_frame.c wslay_net.c wslay_queue.c)
+        if(EXISTS ${wslay_SOURCE_DIR}/lib/wslay_stack.c)
+            list(APPEND _slash_wslay_sources wslay_stack.c)
+        endif()
+        list(TRANSFORM _slash_wslay_sources PREPEND ${wslay_SOURCE_DIR}/lib/)
+        add_library(slash_wslay STATIC ${_slash_wslay_sources})
+        target_include_directories(slash_wslay SYSTEM PUBLIC ${wslay_SOURCE_DIR}/lib/includes)
+        # The version its configure step would write into wslayver.h.
+        target_compile_definitions(slash_wslay PUBLIC WSLAY_VERSION="1.1.1")
+        if(WIN32)
+            target_compile_definitions(slash_wslay PRIVATE HAVE_WINSOCK2_H=1)
+            target_link_libraries(slash_wslay PUBLIC ws2_32)
+        else()
+            target_compile_definitions(slash_wslay PRIVATE HAVE_ARPA_INET_H=1 HAVE_NETINET_IN_H=1)
+        endif()
+        if(MSVC)
+            # MSVC has no ssize_t, which wslay's callbacks return.
+            target_compile_definitions(slash_wslay PUBLIC ssize_t=ptrdiff_t)
+        endif()
+    endif()
+endif()
+
 # 3D models, as Godot imports glTF 2.0: cgltf parses .gltf and .glb files and MikkTSpace makes
 # the tangents a model leaves out, as Godot's SurfaceTool does (engine/scene3d); stb_image decodes
 # the JPEG textures models carry, which SDL can't (engine/render, beside PNG and BMP).
