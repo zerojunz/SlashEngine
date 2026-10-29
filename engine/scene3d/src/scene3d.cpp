@@ -6,6 +6,7 @@
 #include "slash/core/text.hpp"
 #include "slash/scene3d/bone_attachment.hpp"
 #include "slash/scene3d/csg.hpp"
+#include "slash/scene3d/gpu_particles.hpp"
 #include "slash/scene3d/gridmap.hpp"
 #include "slash/scene3d/ik.hpp"
 #include "slash/scene3d/lightmap.hpp"
@@ -311,6 +312,9 @@ constexpr std::string_view kNoMesh =
 constexpr std::string_view kMeshField = "/components/MeshInstance3D/mesh";
 constexpr std::string_view kNoParticleMesh =
     "has no mesh to draw at its particles: set mesh to a model file, or add a QuadMesh or "
+    "another primitive mesh";
+constexpr std::string_view kNoDrawPassMesh =
+    "has no mesh to draw at its particles: set draw_pass_1 to a model file, or add a QuadMesh or "
     "another primitive mesh";
 
 // What's wrong with a MeshInstance3D's mesh path, without reading it; "" for nothing.
@@ -777,6 +781,40 @@ std::vector<Problem> check_meshes(const world::World& world) {
                  checked.error().message});
         }
     }
+    // A GPUParticles3D draws its draw passes' models, or for the first "" its primitive mesh.
+    for (const entt::entity entity : made<world::GPUParticles3D>(world)) {
+        const auto& emitter = world.ecs().get<const world::GPUParticles3D>(entity);
+        const std::array<const std::string*, 4> passes{&emitter.draw_pass_1, &emitter.draw_pass_2,
+                                                       &emitter.draw_pass_3, &emitter.draw_pass_4};
+        const auto count = static_cast<std::size_t>(std::clamp(emitter.draw_passes, 1, 4));
+        for (std::size_t pass = 0; pass < count; ++pass) {
+            const std::string field =
+                "/components/GPUParticles3D/draw_pass_" + std::to_string(pass + 1);
+            const std::string& path = *passes.at(pass);
+            if (!path.empty()) {
+                if (std::string problem = mesh_path_problem(world, entity, path);
+                    !problem.empty()) {
+                    problems.push_back({entity, field, std::move(problem)});
+                }
+                continue;
+            }
+            if (pass > 0) {
+                continue;
+            }
+            auto primitive = primitive_of(world, entity);
+            if (!primitive) {
+                continue; // reported with the other entities' primitive meshes below
+            }
+            if (!primitive.value()) {
+                problems.push_back({entity, field, std::string(kNoDrawPassMesh)});
+            } else if (auto checked = check_primitive(*primitive.value()); !checked) {
+                problems.push_back(
+                    {entity,
+                     "/components/" + std::string(kPrimitiveNames[primitive.value()->index()]),
+                     checked.error().message});
+            }
+        }
+    }
     for (ModifierProblem& problem : check_stray_modifiers(world)) {
         problems.push_back({problem.entity, std::move(problem.path), std::move(problem.message)});
     }
@@ -920,6 +958,9 @@ Renderer::~Renderer() {
     }
     for (const auto& [key, kept] : particle_meshes_) {
         device_->destroy_mesh(kept.id);
+    }
+    for (const auto& [entity, system] : gpu_particles_) {
+        device_->destroy_particles_3d(system.id);
     }
     for (const auto& [key, texture] : embedded_) {
         device_->destroy_texture(texture.id);
@@ -1642,55 +1683,38 @@ void Renderer::add_gridmap(const world::World& world, entt::entity entity,
     }
 }
 
-void Renderer::add_particles(const world::World& world, entt::entity entity,
-                             const world::Affine3D& place, const world::Affine3D& camera,
-                             std::uint32_t cull_mask, float interpolation) {
-    const auto& emitter = world.ecs().get<const world::CPUParticles3D>(entity);
-    render::ShadowCasting casting = casting_of(emitter.cast_shadow);
-    if ((emitter.layers & cull_mask) == 0) {
-        if (casting == render::ShadowCasting::Off) {
-            return;
-        }
-        casting = render::ShadowCasting::ShadowsOnly;
-    }
-    constexpr std::string_view kField = "/components/CPUParticles3D/mesh";
+bool Renderer::particle_pieces(const world::World& world, entt::entity entity,
+                               const std::string& path, std::string_view field,
+                               std::vector<ParticlePiece>& pieces,
+                               std::shared_ptr<const Model>& model, std::string_view no_mesh) {
     const auto* standard = world.ecs().try_get<const world::StandardMaterial3D>(entity);
     // The mesh drawn at each particle: its surfaces, each where its part puts it, with what it is
     // made of; the entity's StandardMaterial3D takes the place of a model's materials.
-    struct Piece {
-        const MeshData* mesh = nullptr;
-        const ModelSurface* surface = nullptr;
-        world::Affine3D place;
-        SurfaceMaterial material;
-    };
-    std::vector<Piece> pieces;
-    std::shared_ptr<const Model> model;
-    if (!emitter.mesh.empty()) {
-        if (std::string problem = mesh_path_problem(world, entity, emitter.mesh);
-            !problem.empty()) {
-            problems_.push_back({entity, std::string(kField), std::move(problem)});
-            return;
+    if (!path.empty()) {
+        if (std::string problem = mesh_path_problem(world, entity, path); !problem.empty()) {
+            problems_.push_back({entity, std::string(field), std::move(problem)});
+            return false;
         }
         if (!models_) {
-            problems_.push_back({entity, std::string(kField), "models can't load here"});
-            return;
+            problems_.push_back({entity, std::string(field), "models can't load here"});
+            return false;
         }
-        auto source = models_(emitter.mesh);
+        auto source = models_(path);
         if (!source) {
-            problems_.push_back({entity, std::string(kField), source.error().message});
-            return;
+            problems_.push_back({entity, std::string(field), source.error().message});
+            return false;
         }
         model = source.value().model;
         for (const ModelPart& part : model->parts) {
             for (const ModelSurface& surface : model->meshes[part.mesh].surfaces) {
-                Piece piece;
+                ParticlePiece piece;
                 piece.surface = &surface;
                 piece.place = part.transform;
                 if (standard != nullptr) {
                     piece.material.standard = *standard;
                 } else {
                     piece.material = {.standard = std::nullopt,
-                                      .model_path = emitter.mesh,
+                                      .model_path = path,
                                       .model = model,
                                       .model_material = surface.material,
                                       .entity = entity};
@@ -1702,19 +1726,19 @@ void Renderer::add_particles(const world::World& world, entt::entity entity,
         auto primitive = primitive_of(world, entity);
         if (!primitive) {
             problems_.push_back({entity, "/components", primitive.error().message});
-            return;
+            return false;
         }
         const auto& found = primitive.value();
         if (!found) {
-            problems_.push_back({entity, std::string(kField), std::string(kNoParticleMesh)});
-            return;
+            problems_.push_back({entity, std::string(field), std::string(no_mesh)});
+            return false;
         }
         const Primitive& shape = *found;
         if (auto checked = check_primitive(shape); !checked) {
             problems_.push_back({entity,
                                  "/components/" + std::string(kPrimitiveNames[shape.index()]),
                                  checked.error().message});
-            return;
+            return false;
         }
         const std::string key =
             std::string(kPrimitiveNames[shape.index()]) +
@@ -1730,12 +1754,12 @@ void Renderer::add_particles(const world::World& world, entt::entity entity,
                 problems_.push_back({entity,
                                      "/components/" + std::string(kPrimitiveNames[shape.index()]),
                                      made.error().message});
-                return;
+                return false;
             }
             kept = particle_shapes_.emplace(key, std::pair{std::move(made.value()), frame_}).first;
         }
         kept->second.second = frame_;
-        Piece piece;
+        ParticlePiece piece;
         piece.mesh = &kept->second.first;
         if (standard != nullptr) {
             piece.material.standard = *standard;
@@ -1743,6 +1767,26 @@ void Renderer::add_particles(const world::World& world, entt::entity entity,
         pieces.push_back(std::move(piece));
     }
 
+    return true;
+}
+
+void Renderer::add_particles(const world::World& world, entt::entity entity,
+                             const world::Affine3D& place, const world::Affine3D& camera,
+                             std::uint32_t cull_mask, float interpolation) {
+    const auto& emitter = world.ecs().get<const world::CPUParticles3D>(entity);
+    render::ShadowCasting casting = casting_of(emitter.cast_shadow);
+    if ((emitter.layers & cull_mask) == 0) {
+        if (casting == render::ShadowCasting::Off) {
+            return;
+        }
+        casting = render::ShadowCasting::ShadowsOnly;
+    }
+    constexpr std::string_view kField = "/components/CPUParticles3D/mesh";
+    std::vector<ParticlePiece> pieces;
+    std::shared_ptr<const Model> model;
+    if (!particle_pieces(world, entity, emitter.mesh, kField, pieces, model, kNoParticleMesh)) {
+        return;
+    }
     std::vector<Particle3D> particles = particles_3d(world, entity);
     const std::size_t amount = static_cast<std::size_t>(std::clamp(emitter.amount, 1, 65536));
     if (emitter.draw_order == "view_depth") {
@@ -1755,7 +1799,7 @@ void Renderer::add_particles(const world::World& world, entt::entity entity,
     }
     const std::string prefix = "particles:" + std::to_string(entt::to_integral(entity)) + "/";
     for (std::size_t i = 0; i < pieces.size(); ++i) {
-        const Piece& piece = pieces[i];
+        const ParticlePiece& piece = pieces[i];
         const std::vector<render::Vertex3D>& vertices =
             piece.mesh != nullptr ? piece.mesh->vertices : piece.surface->vertices;
         const std::vector<std::uint32_t>& indices =
@@ -1883,6 +1927,290 @@ void Renderer::add_particles(const world::World& world, entt::entity entity,
         draw.shadows = casting;
         draw.box = box;
         draws_.push_back(draw);
+    }
+}
+
+namespace {
+
+// Defined with the VoxelGIs' code below.
+Bounds placed_bounds(const Bounds& box, const std::array<float, 16>& m);
+
+// Whether a box in the world is out of a camera's view: all its corners beyond one side of the
+// view, or behind the camera, as Godot's frustum culling leaves out an instance's AABB.
+bool out_of_view(const Bounds& box, const CameraView& view) {
+    std::array<int, 5> beyond{};
+    for (int corner = 0; corner < 8; ++corner) {
+        const float x = (corner & 1) != 0 ? box.max.x : box.min.x;
+        const float y = (corner & 2) != 0 ? box.max.y : box.min.y;
+        const float z = (corner & 4) != 0 ? box.max.z : box.min.z;
+        const std::array<float, 16>& v = view.view;
+        const std::array<float, 4> eye{(v[0] * x) + (v[4] * y) + (v[8] * z) + v[12],
+                                       (v[1] * x) + (v[5] * y) + (v[9] * z) + v[13],
+                                       (v[2] * x) + (v[6] * y) + (v[10] * z) + v[14], 1.0F};
+        const std::array<float, 16>& p = view.projection;
+        std::array<float, 4> clip{};
+        for (std::size_t row = 0; row < 4; ++row) {
+            clip.at(row) = (p.at(row) * eye[0]) + (p.at(4 + row) * eye[1]) +
+                           (p.at(8 + row) * eye[2]) + (p.at(12 + row) * eye[3]);
+        }
+        beyond[0] += clip[0] < -clip[3] ? 1 : 0;
+        beyond[1] += clip[0] > clip[3] ? 1 : 0;
+        beyond[2] += clip[1] < -clip[3] ? 1 : 0;
+        beyond[3] += clip[1] > clip[3] ? 1 : 0;
+        beyond[4] += clip[3] <= 0.0F ? 1 : 0;
+    }
+    return std::ranges::any_of(beyond, [](int count) { return count == 8; });
+}
+
+} // namespace
+
+void Renderer::add_gpu_particles(const world::World& world, entt::entity entity,
+                                 const world::Affine3D& place, const CameraView& view,
+                                 std::uint32_t cull_mask, float interpolation) {
+    const auto& emitter = world.ecs().get<const world::GPUParticles3D>(entity);
+    render::ShadowCasting casting = casting_of(emitter.cast_shadow);
+    if ((emitter.layers & cull_mask) == 0) {
+        if (casting == render::ShadowCasting::Off) {
+            return;
+        }
+        casting = render::ShadowCasting::ShadowsOnly;
+    }
+    // The particles are drawn in the visibility box, in the entity's space.
+    const Vec3 corner = emitter.visibility_aabb_position;
+    const Vec3 size = emitter.visibility_aabb_size;
+    const Bounds box = placed_bounds({.min = corner, .max = corner + size}, place.matrix());
+    if (casting != render::ShadowCasting::ShadowsOnly && out_of_view(box, view)) {
+        return;
+    }
+    // Each draw pass's mesh, which a pass after the first draws only when it names one, as in
+    // Godot; problems show before the first tick too.
+    struct Pass {
+        std::vector<ParticlePiece> pieces;
+        std::shared_ptr<const Model> model;
+    };
+    std::vector<Pass> passes;
+    const std::array<const std::string*, 4> paths{&emitter.draw_pass_1, &emitter.draw_pass_2,
+                                                  &emitter.draw_pass_3, &emitter.draw_pass_4};
+    const auto pass_count = static_cast<std::size_t>(std::clamp(emitter.draw_passes, 1, 4));
+    for (std::size_t pass = 0; pass < pass_count; ++pass) {
+        Pass& made = passes.emplace_back();
+        if (pass > 0 && paths.at(pass)->empty()) {
+            continue;
+        }
+        const std::string field =
+            "/components/GPUParticles3D/draw_pass_" + std::to_string(pass + 1);
+        if (!particle_pieces(world, entity, *paths.at(pass), field, made.pieces, made.model,
+                             kNoDrawPassMesh)) {
+            made.pieces.clear();
+        }
+    }
+    const std::optional<ParticleSteps3D> kept = particle_steps_3d(world, entity);
+    if (!kept || kept->steps.empty()) {
+        return;
+    }
+    static const render::ParticleProcess3D kStill{};
+    std::shared_ptr<const render::ParticleProcess3D> process;
+    if (!emitter.process_material.empty()) {
+        constexpr std::string_view kProcessField = "/components/GPUParticles3D/process_material";
+        if (!processes_) {
+            problems_.push_back(
+                {entity, std::string(kProcessField), "process materials can't load here"});
+            return;
+        }
+        auto loaded = processes_(emitter.process_material);
+        if (!loaded) {
+            problems_.push_back({entity, std::string(kProcessField), loaded.error().message});
+            return;
+        }
+        process = std::move(loaded).value();
+    }
+    const render::ParticleProcess3D& rules = process ? *process : kStill;
+
+    // The system on the device runs the steps it hasn't, or all kept from a new one.
+    GpuParticles3D& system = gpu_particles_[entity];
+    system.used = frame_;
+    const std::uint64_t end = kept->first + kept->steps.size();
+    constexpr std::string_view kAmountField = "/components/GPUParticles3D/amount";
+    if (system.id == render::Particles3DId::None || system.serial != kept->serial ||
+        system.amount != kept->amount || system.next < kept->first) {
+        if (system.id != render::Particles3DId::None) {
+            device_->destroy_particles_3d(system.id);
+            system.id = render::Particles3DId::None;
+        }
+        auto made = device_->create_particles_3d(kept->amount);
+        if (!made) {
+            problems_.push_back({entity, std::string(kAmountField), made.error().message});
+            gpu_particles_.erase(entity);
+            return;
+        }
+        system.id = made.value();
+        system.serial = kept->serial;
+        system.amount = kept->amount;
+        std::vector<render::ParticleStep3D> steps(kept->steps.begin(), kept->steps.end());
+        steps.front().clear = true;
+        if (auto ran = device_->process_particles_3d(system.id, rules, steps); !ran) {
+            problems_.push_back({entity, std::string(kAmountField), ran.error().message});
+            return;
+        }
+    } else if (system.next < end) {
+        const auto from = static_cast<std::size_t>(system.next - kept->first);
+        if (auto ran = device_->process_particles_3d(system.id, rules, kept->steps.subspan(from));
+            !ran) {
+            problems_.push_back({entity, std::string(kAmountField), ran.error().message});
+            return;
+        }
+    }
+    system.next = end;
+
+    // How each particle places a draw pass's mesh.
+    render::ParticleMeshDraw3D look;
+    look.order = particle_order_3d(emitter.draw_order);
+    look.lifetime_split =
+        render::particle_lifetime_split(kept->amount, kept->steps.back().system_phase);
+    look.align = particle_align(emitter.transform_align);
+    if (emitter.local_coords) {
+        look.transform = particle_transform(place);
+    }
+    const world::Affine3D& camera = view.eye;
+    Vec3 sort = camera.z;
+    if (emitter.local_coords) {
+        sort = place.inverse().basis(sort);
+    }
+    look.sort_direction = normalized(sort);
+    look.align_up = normalized(camera.y);
+    look.camera = particle_transform(camera);
+    if (emitter.interpolate) {
+        // Drawn between ticks, as the rest of the world is: where they were that much before the
+        // tick ended.
+        const double behind = (1.0 - std::clamp(static_cast<double>(interpolation), 0.0, 1.0)) *
+                              tick_seconds_ * std::max(emitter.speed_scale, 0.0F);
+        look.remainder = kept->remainder - static_cast<float>(behind);
+    }
+
+    const std::size_t amount = kept->amount;
+    for (std::size_t pass = 0; pass < passes.size(); ++pass) {
+        const std::string field =
+            "/components/GPUParticles3D/draw_pass_" + std::to_string(pass + 1);
+        const std::vector<ParticlePiece>& pieces = passes[pass].pieces;
+        const std::shared_ptr<const Model>& model = passes[pass].model;
+        for (std::size_t i = 0; i < pieces.size(); ++i) {
+            const ParticlePiece& piece = pieces[i];
+            const std::vector<render::Vertex3D>& vertices =
+                piece.mesh != nullptr ? piece.mesh->vertices : piece.surface->vertices;
+            const std::vector<std::uint32_t>& indices =
+                piece.mesh != nullptr ? piece.mesh->indices : piece.surface->indices;
+            if (vertices.empty()) {
+                continue;
+            }
+            if (vertices.size() * amount > render::kMaxMeshVertices ||
+                (indices.empty() ? vertices.size() : indices.size()) * amount >
+                    render::kMaxMeshIndices) {
+                problems_.push_back({entity, std::string(kAmountField),
+                                     "its mesh has too many corners to draw " +
+                                         std::to_string(amount) + " of them"});
+                continue;
+            }
+            // A model's part places its surface before the particle does.
+            std::vector<render::Vertex3D> source(vertices.begin(), vertices.end());
+            if (piece.surface != nullptr) {
+                const world::Affine3D& at = piece.place;
+                const world::Affine3D inverse = at.inverse();
+                for (render::Vertex3D& v : source) {
+                    const Vec3 p = at.apply({v.position[0], v.position[1], v.position[2]});
+                    v.position = {p.x, p.y, p.z};
+                    const Vec3 n{v.normal[0], v.normal[1], v.normal[2]};
+                    const Vec3 turned =
+                        normalized(Vec3{dot(inverse.x, n), dot(inverse.y, n), dot(inverse.z, n)});
+                    v.normal = {turned.x, turned.y, turned.z};
+                    const Vec3 t = normalized(at.basis({v.tangent[0], v.tangent[1], v.tangent[2]}));
+                    v.tangent = {t.x, t.y, t.z, v.tangent[3]};
+                }
+            }
+            render::Material3D made = surface_material(piece.material, entity, field);
+            const world::StandardMaterial3D* standard = nullptr;
+            if (const auto& own = piece.material.standard; own.has_value()) {
+                standard = &*own;
+            }
+            if (standard == nullptr && model != nullptr && piece.surface->material >= 0) {
+                standard =
+                    &model->materials[static_cast<std::size_t>(piece.surface->material)].standard;
+            }
+            render::ParticleMeshDraw3D at = look;
+            if (standard != nullptr) {
+                switch (billboard_of(standard->billboard_mode)) {
+                case Billboard::Disabled:
+                    at.billboard = render::ParticleBillboard::Disabled;
+                    break;
+                case Billboard::Enabled:
+                    at.billboard = render::ParticleBillboard::Enabled;
+                    break;
+                case Billboard::FixedY:
+                    at.billboard = render::ParticleBillboard::FixedY;
+                    break;
+                case Billboard::Particles:
+                    at.billboard = render::ParticleBillboard::Particles;
+                    break;
+                }
+                at.keep_scale = standard->billboard_keep_scale;
+                at.h_frames =
+                    static_cast<std::uint32_t>(std::max(standard->particles_anim_h_frames, 1));
+                at.v_frames =
+                    static_cast<std::uint32_t>(std::max(standard->particles_anim_v_frames, 1));
+                at.anim_loop = standard->particles_anim_loop;
+            }
+            // The texture coordinates are moved as the vertices are made, so a particle's frame
+            // comes after uv1, as in Godot's shader.
+            at.uv_scale = made.uv1_scale;
+            at.uv_offset = made.uv1_offset;
+            made.uv1_scale = {1.0F, 1.0F};
+            made.uv1_offset = {0.0F, 0.0F};
+
+            const std::string key = "gpu_particles:" + std::to_string(entt::to_integral(entity)) +
+                                    "/" + std::to_string(pass) + "/" + std::to_string(i);
+            ParticleMesh& mesh = particle_meshes_[key];
+            mesh.used = frame_;
+            const std::size_t count = source.size() * amount;
+            if (mesh.id != render::MeshId::None && mesh.vertices != count) {
+                device_->destroy_mesh(mesh.id);
+                mesh.id = render::MeshId::None;
+            }
+            if (mesh.id == render::MeshId::None) {
+                // Each particle's triangles over its own corners.
+                std::vector<std::uint32_t> all;
+                const std::size_t corners = indices.empty() ? source.size() : indices.size();
+                all.reserve(corners * amount);
+                for (std::size_t n = 0; n < amount; ++n) {
+                    const auto base = static_cast<std::uint32_t>(n * source.size());
+                    for (std::size_t k = 0; k < corners; ++k) {
+                        all.push_back(
+                            base + (indices.empty() ? static_cast<std::uint32_t>(k) : indices[k]));
+                    }
+                }
+                particle_vertices_.assign(count, render::Vertex3D{});
+                auto created = device_->create_mesh(particle_vertices_, all);
+                if (!created) {
+                    problems_.push_back({entity, field, created.error().message});
+                    particle_meshes_.erase(key);
+                    continue;
+                }
+                mesh.id = created.value();
+                mesh.vertices = count;
+            }
+            if (auto filled = device_->fill_particle_mesh(system.id, mesh.id, source, at);
+                !filled) {
+                problems_.push_back({entity, field, filled.error().message});
+                continue;
+            }
+            Draw draw;
+            draw.mesh = mesh.id;
+            draw.entity = entity;
+            draw.transform = world::Affine3D{}.matrix();
+            draw.material = made;
+            draw.layers = emitter.layers;
+            draw.shadows = casting;
+            draw.box = box;
+            draws_.push_back(draw);
+        }
     }
 }
 
@@ -2551,6 +2879,10 @@ Renderer::prepare(const world::World& world, float width, float height, double i
         }
         particle_meshes_.clear();
         particle_shapes_.clear();
+        for (const auto& [entity, system] : gpu_particles_) {
+            device_->destroy_particles_3d(system.id);
+        }
+        gpu_particles_.clear();
         lit_.clear();
         destroy_lightmaps(false);
         probe_sources_.clear();
@@ -2766,6 +3098,12 @@ Renderer::prepare(const world::World& world, float width, float height, double i
             add_particles(world, entity, global(entity), global(camera), lens.cull_mask, t);
         }
     }
+    // GPUParticles3Ds run the steps their device hasn't, then draw their draw passes there.
+    for (const entt::entity entity : made<world::GPUParticles3D>(world)) {
+        if (tree.visible(entity)) {
+            add_gpu_particles(world, entity, global(entity), view, lens.cull_mask, t);
+        }
+    }
     // Terrains draw the chunks their quad trees settle on for the camera.
     for (const entt::entity entity : made<world::HTerrain>(world)) {
         if (tree.visible(entity)) {
@@ -2827,6 +3165,14 @@ Renderer::prepare(const world::World& world, float width, float height, double i
     }
     std::erase_if(particle_shapes_,
                   [&](const auto& entry) { return entry.second.second != frame_; });
+    for (auto it = gpu_particles_.begin(); it != gpu_particles_.end();) {
+        if (it->second.used != frame_) {
+            device_->destroy_particles_3d(it->second.id);
+            it = gpu_particles_.erase(it);
+        } else {
+            ++it;
+        }
+    }
     for (auto it = embedded_.begin(); it != embedded_.end();) {
         if (it->second.used != frame_) {
             device_->destroy_texture(it->second.id);

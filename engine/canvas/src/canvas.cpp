@@ -232,14 +232,14 @@ void add_asset_types(asset::Assets& assets) {
                                  [](std::string_view text, std::string_view /*path*/) {
                                      return Result<std::string>(std::string(text));
                                  });
-    assets.add_type<render::ParticleProcess>(
+    assets.add_type<ProcessMaterial>(
         "process_material", {std::string(kProcessMaterialSuffix)},
-        [](std::string_view text, std::string_view /*path*/) -> Result<render::ParticleProcess> {
+        [](std::string_view text, std::string_view /*path*/) -> Result<ProcessMaterial> {
             auto doc = json::parse(text);
             if (!doc) {
                 return doc.error();
             }
-            return parse_process_material(doc.value());
+            return parse_process_material_both(doc.value());
         });
     assets.add_type<TileSet>(
         "tile_set", {std::string(kTileSetSuffix)},
@@ -336,6 +336,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
     add_particles_system(world);
     add_gpu_particles_system(world, &assets);
     scene3d::add_particles_system(world);
+    scene3d::add_gpu_particles_system(world);
     // CSG roots and GridMaps keep their meshes, and models their collision shapes, until they
     // change, models and mesh libraries read through assets.
     const scene3d::ModelLoader models =

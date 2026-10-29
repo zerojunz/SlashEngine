@@ -103,12 +103,20 @@ json::Value numbers(std::size_t count, std::optional<double> minimum = std::null
     return schema;
 }
 
-json::Value vector(std::string_view description, Vec2 fallback,
+// A vector as [x, y], or [x, y, z]: 2D reads x and y, 3D takes z as 0 when it is left out.
+json::Value vector(std::string_view description, Vec3 fallback,
                    std::optional<double> minimum = std::nullopt) {
-    json::Value schema = numbers(2, minimum);
-    schema["default"] = json::Array{fallback.x, fallback.y};
+    json::Value schema = numbers(3, minimum);
+    schema["minItems"] = 2;
+    schema["default"] = fallback.z == 0.0F ? json::Array{fallback.x, fallback.y}
+                                           : json::Array{fallback.x, fallback.y, fallback.z};
     schema["description"] = description;
     return schema;
+}
+
+json::Value vector(std::string_view description, Vec2 fallback,
+                   std::optional<double> minimum = std::nullopt) {
+    return vector(description, Vec3{fallback.x, fallback.y, 0.0F}, minimum);
 }
 
 json::Value color_schema(std::string_view description) {
@@ -126,6 +134,22 @@ json::Value curve_schema(std::string_view description) {
     schema["type"] = "array";
     schema["maxItems"] = static_cast<std::int64_t>(render::kMaxParticleCurvePoints);
     schema["items"] = point;
+    schema["description"] = description;
+    return schema;
+}
+
+// A curve for each of x, y and z, as Godot's CurveXYZTexture, or one curve for all three, as its
+// CurveTexture.
+json::Value curve3_schema(std::string_view description) {
+    json::Value axes;
+    axes["type"] = "object";
+    axes["additionalProperties"] = false;
+    axes["required"] = json::Array{"x", "y", "z"};
+    for (const char* axis : {"x", "y", "z"}) {
+        axes["properties"][axis] = curve_schema("The curve along this axis.");
+    }
+    json::Value schema;
+    schema["anyOf"] = json::Array{curve_schema("One curve for x, y and z."), std::move(axes)};
     schema["description"] = description;
     return schema;
 }
@@ -150,6 +174,12 @@ Vec2 vec2(const json::Value& value) {
     return {static_cast<float>(items[0].as_double()), static_cast<float>(items[1].as_double())};
 }
 
+Vec3 vec3(const json::Value& value) {
+    const json::Array& items = value.as_array();
+    return {static_cast<float>(items[0].as_double()), static_cast<float>(items[1].as_double()),
+            items.size() > 2 ? static_cast<float>(items[2].as_double()) : 0.0F};
+}
+
 Vec4 vec4(const json::Value& value) {
     const json::Array& items = value.as_array();
     return {static_cast<float>(items[0].as_double()), static_cast<float>(items[1].as_double()),
@@ -163,6 +193,32 @@ std::string param_name(std::size_t param, std::string_view end) {
 std::string curve_name(std::size_t param) {
     const ParamInfo& info = kParams.at(param);
     return info.curve_name.empty() ? param_name(param, "_curve") : std::string(info.curve_name);
+}
+
+// Whether a param's curve may be a curve per axis, as Godot's CurveXYZTexture.
+bool xyz_curve(std::size_t param) {
+    return param == static_cast<std::size_t>(ParticleParam::Scale) ||
+           param == static_cast<std::size_t>(ParticleParam::OrbitVelocity);
+}
+
+// A curve as a document gives it: one curve, or {x, y, z} of them. 2D takes x's.
+render::ParticleCurve3 read_curve3(const json::Value& value) {
+    render::ParticleCurve3 out;
+    const auto read = [](const json::Value& points, render::ParticleCurve& curve) {
+        for (const json::Value& point : points.as_array()) {
+            curve.push_back(vec2(point));
+        }
+    };
+    if (value.is_array()) {
+        read(value, out.axes[0]);
+        out.axes[1] = out.axes[0];
+        out.axes[2] = out.axes[0];
+    } else {
+        read(*value.find("x"), out.axes[0]);
+        read(*value.find("y"), out.axes[1]);
+        read(*value.find("z"), out.axes[2]);
+    }
+    return out;
 }
 
 // The schema; list_ops lists the graphs' ops, which validation leaves to the compiler, so it can
@@ -194,8 +250,11 @@ json::Value schema(bool list_ops) {
     json::Value points;
     points["type"] = "array";
     points["maxItems"] = 65536;
-    points["items"] = numbers(2);
-    points["description"] = "Points particles start at, in pixels; each takes one at random.";
+    points["items"] = numbers(3);
+    points["items"]["minItems"] = 2;
+    points["description"] =
+        "Points particles start at, as [x, y] or [x, y, z], in pixels (meters in 3D); each takes "
+        "one at random.";
     json::Value normals = points;
     normals["description"] = "For directed_points, the direction each point emits along: none, "
                              "or one per point.";
@@ -208,9 +267,10 @@ json::Value schema(bool list_ops) {
     json::Value schema;
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema";
     schema["title"] = "SlashEngine particle process material";
-    schema["description"] = "How a GPUParticles2D's particles start and move: Godot's "
-                            "ParticleProcessMaterial in 2D, with its property names. Angles "
-                            "are in degrees.";
+    schema["description"] =
+        "How a GPUParticles2D's or GPUParticles3D's particles start and move: Godot's "
+        "ParticleProcessMaterial, with its property names. Angles are in degrees, lengths in "
+        "pixels in 2D and meters in 3D; vectors are [x, y] or [x, y, z], z only in 3D.";
     schema["type"] = "object";
     schema["additionalProperties"] = false;
     schema["required"] = json::Array{"format"};
@@ -224,6 +284,14 @@ json::Value schema(bool list_ops) {
     properties["particle_flag_align_y"]["default"] = false;
     properties["particle_flag_align_y"]["description"] =
         "Turn each particle so its y axis points along its velocity.";
+    properties["particle_flag_rotate_y"]["type"] = "boolean";
+    properties["particle_flag_rotate_y"]["default"] = false;
+    properties["particle_flag_rotate_y"]["description"] =
+        "3D: angle turns each particle about its y axis.";
+    properties["particle_flag_disable_z"]["type"] = "boolean";
+    properties["particle_flag_disable_z"]["default"] = false;
+    properties["particle_flag_disable_z"]["description"] =
+        "3D: keep particles moving and turning in the emitter's xy plane.";
     properties["particle_flag_damping_as_friction"]["type"] = "boolean";
     properties["particle_flag_damping_as_friction"]["default"] = false;
     properties["particle_flag_damping_as_friction"]["description"] =
@@ -236,10 +304,17 @@ json::Value schema(bool list_ops) {
     properties["emission_sphere_radius"] =
         number("The sphere's radius in pixels.", defaults.emission_sphere_radius, 0.0);
     properties["emission_box_extents"] =
-        vector("Half the box's width and height, in pixels.", defaults.emission_box_extents, 0.0);
+        vector("Half the box's size.", defaults.emission_box_extents, 0.0);
     properties["emission_points"] = std::move(points);
     properties["emission_normals"] = std::move(normals);
     properties["emission_colors"] = std::move(colors);
+    properties["emission_ring_axis"] = numbers(3);
+    properties["emission_ring_axis"]["default"] = json::Array{0, 0, 1};
+    properties["emission_ring_axis"]["description"] = "3D: the axis the ring goes round.";
+    properties["emission_ring_height"] =
+        number("3D: how tall the ring is along its axis.", 1.0, 0.0);
+    properties["emission_ring_cone_angle"] = number(
+        "3D: the ring's sides' angle in degrees; 90 is a cylinder, less a cone.", 90.0, 0.0, 90.0);
     properties["emission_ring_radius"] =
         number("The ring's outer radius in pixels.", defaults.emission_ring_radius, 0.0);
     properties["emission_ring_inner_radius"] =
@@ -250,7 +325,27 @@ json::Value schema(bool list_ops) {
         vector("What radial_velocity pushes away from, in pixels.", defaults.velocity_pivot);
     properties["direction"] = vector("Which way particles go, as [x, y].", defaults.direction);
     properties["spread"] = number("Degrees either side of direction.", defaults.spread, 0.0, 180.0);
-    properties["gravity"] = vector("In pixels per second squared, as [x, y].", defaults.gravity);
+    properties["flatness"] =
+        number("3D: 1 keeps the spread in the plane of direction and the x axis.", 0.0, 0.0, 1.0);
+    properties["directional_velocity_min"] =
+        number("3D: meters per second along directional_velocity_curve, at least.", 1.0);
+    properties["directional_velocity_max"] =
+        number("3D: meters per second along directional_velocity_curve, at most.", 1.0);
+    properties["directional_velocity_curve"] = curve3_schema(
+        "3D: the velocity over each particle's life, times directional_velocity, in the "
+        "particles' space; with no curve there is none.");
+    properties["directional_velocity_global"]["type"] = "boolean";
+    properties["directional_velocity_global"]["default"] = false;
+    properties["directional_velocity_global"]["description"] =
+        "3D: directional_velocity_curve is in the emitter's space.";
+    properties["scale_over_velocity_min"] = number(
+        "3D: the speed in meters per second where scale_over_velocity_curve starts.", 0.0, 0.0);
+    properties["scale_over_velocity_max"] = number(
+        "3D: the speed in meters per second where scale_over_velocity_curve ends.", 0.0, 0.0);
+    properties["scale_over_velocity_curve"] =
+        curve3_schema("3D: scales each axis by the particle's speed between "
+                      "scale_over_velocity_min and max.");
+    properties["gravity"] = vector("Pulls particles, per second squared.", defaults.gravity);
     for (std::size_t i = 0; i < kParams.size(); ++i) {
         const ParamInfo& info = kParams.at(i);
         const std::string what(info.what);
@@ -258,7 +353,12 @@ json::Value schema(bool list_ops) {
             number(what + ", at least.", defaults.param_min.at(i), info.min, info.max);
         properties[param_name(i, "_max")] =
             number(what + ", at most.", defaults.param_max.at(i), info.min, info.max);
-        if (info.curve) {
+        if (xyz_curve(i)) {
+            properties[curve_name(i)] = curve3_schema(
+                "Multiplies it over each particle's life: points [offset, value], joined by "
+                "straight lines, or {x, y, z} of them; 2D takes x's. None is 1, and in 3D, "
+                "particles orbit only with an orbit_velocity_curve.");
+        } else if (info.curve) {
             properties[curve_name(i)] =
                 curve_schema(i == static_cast<std::size_t>(ParticleParam::AnimOffset)
                                  ? "Adds to it over each particle's life: points [offset, value]."
@@ -360,15 +460,29 @@ std::vector<json::ValidationError> validate_process_material(const json::Value& 
         if (!curve && !gradient) {
             continue;
         }
-        const json::Array& points = value.as_array();
-        const auto offset = [&](std::size_t i) -> const json::Value& {
-            return curve ? points[i].as_array()[0] : *points[i].find("offset");
-        };
-        for (std::size_t i = 1; i < points.size(); ++i) {
-            if (offset(i).as_double() < offset(i - 1).as_double()) {
-                errors.push_back({"/" + name + "/" + std::to_string(i) + (curve ? "/0" : "/offset"),
-                                  "offsets go in order: " + json::write(offset(i)) +
-                                      " comes after " + json::write(offset(i - 1))});
+        std::vector<std::pair<std::string, const json::Array*>> lists;
+        if (value.is_array()) {
+            lists.emplace_back("/" + name, &value.as_array());
+        } else {
+            for (const auto& [axis, points] : value.as_object()) {
+                std::string where = "/";
+                where += name;
+                where += "/";
+                where += axis;
+                lists.emplace_back(std::move(where), &points.as_array());
+            }
+        }
+        for (const auto& [where, list] : lists) {
+            const json::Array& points = *list;
+            const auto offset = [&](std::size_t i) -> const json::Value& {
+                return curve ? points[i].as_array()[0] : *points[i].find("offset");
+            };
+            for (std::size_t i = 1; i < points.size(); ++i) {
+                if (offset(i).as_double() < offset(i - 1).as_double()) {
+                    errors.push_back({where + "/" + std::to_string(i) + (curve ? "/0" : "/offset"),
+                                      "offsets go in order: " + json::write(offset(i)) +
+                                          " comes after " + json::write(offset(i - 1))});
+                }
             }
         }
     }
@@ -467,7 +581,11 @@ Result<render::ParticleProcess> parse_process_material(const json::Value& doc) {
     for (std::size_t i = 0; i < kParams.size(); ++i) {
         real(param_name(i, "_min"), out.param_min.at(i));
         real(param_name(i, "_max"), out.param_max.at(i));
-        if (kParams.at(i).curve) {
+        if (xyz_curve(i)) {
+            if (const json::Value* value = doc.find(curve_name(i)); value != nullptr) {
+                out.param_curve.at(i) = read_curve3(*value).axes[0];
+            }
+        } else if (kParams.at(i).curve) {
             curve(curve_name(i), out.param_curve.at(i));
         }
     }
@@ -523,6 +641,139 @@ Result<render::ParticleProcess> parse_process_material(const json::Value& doc) {
     // Validated above, so the graphs compile.
     (void)detail::compile_particle_graphs(doc, &out.start_program, &out.process_program);
     return out;
+}
+
+Result<render::ParticleProcess3D> parse_process_material_3d(const json::Value& doc) {
+    if (const auto errors = validate_process_material(doc); !errors.empty()) {
+        const json::ValidationError& first = errors.front();
+        return make_error(ErrorCode::InvalidArgument,
+                          (first.path.empty() ? std::string("root") : first.path) + ": " +
+                              first.message);
+    }
+    render::ParticleProcess3D out;
+    const auto real = [&](std::string_view key, float& field) {
+        if (const json::Value* value = doc.find(key); value != nullptr) {
+            field = static_cast<float>(value->as_double());
+        }
+    };
+    // A vector given as [x, y] keeps the 3D default's z.
+    const auto triple = [&](std::string_view key, Vec3& field) {
+        if (const json::Value* value = doc.find(key); value != nullptr) {
+            const float z = field.z;
+            field = vec3(*value);
+            if (value->as_array().size() < 3) {
+                field.z = z;
+            }
+        }
+    };
+    const auto flag = [&](std::string_view key, bool& field) {
+        if (const json::Value* value = doc.find(key); value != nullptr) {
+            field = value->as_bool();
+        }
+    };
+    const auto curve = [&](std::string_view key, render::ParticleCurve& field) {
+        if (const json::Value* value = doc.find(key); value != nullptr) {
+            for (const json::Value& point : value->as_array()) {
+                field.push_back(vec2(point));
+            }
+        }
+    };
+    const auto curve3 = [&](std::string_view key, render::ParticleCurve3& field) {
+        if (const json::Value* value = doc.find(key); value != nullptr) {
+            field = read_curve3(*value);
+        }
+    };
+    const auto gradient = [&](std::string_view key, render::ParticleGradient& field) {
+        if (const json::Value* value = doc.find(key); value != nullptr) {
+            for (const json::Value& stop : value->as_array()) {
+                field.push_back({.offset = static_cast<float>(stop.find("offset")->as_double()),
+                                 .color = vec4(*stop.find("color"))});
+            }
+        }
+    };
+    if (const json::Value* shape = doc.find("emission_shape"); shape != nullptr) {
+        for (const auto& [name, value] : kShapes) {
+            if (shape->as_string() == name) {
+                out.emission_shape = value;
+            }
+        }
+    }
+    triple("emission_shape_offset", out.emission_shape_offset);
+    triple("emission_shape_scale", out.emission_shape_scale);
+    real("emission_sphere_radius", out.emission_sphere_radius);
+    triple("emission_box_extents", out.emission_box_extents);
+    for (const auto& [key, field] : {std::pair{"emission_points", &out.emission_points},
+                                     std::pair{"emission_normals", &out.emission_normals}}) {
+        if (const json::Value* list = doc.find(key); list != nullptr) {
+            for (const json::Value& point : list->as_array()) {
+                field->push_back(vec3(point));
+            }
+        }
+    }
+    if (const json::Value* list = doc.find("emission_colors"); list != nullptr) {
+        for (const json::Value& color : list->as_array()) {
+            out.emission_colors.push_back(vec4(color));
+        }
+    }
+    triple("emission_ring_axis", out.emission_ring_axis);
+    real("emission_ring_height", out.emission_ring_height);
+    real("emission_ring_radius", out.emission_ring_radius);
+    real("emission_ring_inner_radius", out.emission_ring_inner_radius);
+    real("emission_ring_cone_angle", out.emission_ring_cone_angle);
+    triple("direction", out.direction);
+    real("spread", out.spread);
+    real("flatness", out.flatness);
+    real("inherit_velocity_ratio", out.inherit_velocity_ratio);
+    triple("velocity_pivot", out.velocity_pivot);
+    triple("gravity", out.gravity);
+    for (std::size_t i = 0; i < kParams.size(); ++i) {
+        real(param_name(i, "_min"), out.param_min.at(i));
+        real(param_name(i, "_max"), out.param_max.at(i));
+        if (kParams.at(i).curve && !xyz_curve(i)) {
+            curve(curve_name(i), out.param_curve.at(i));
+        }
+    }
+    curve3(curve_name(static_cast<std::size_t>(ParticleParam::Scale)), out.scale_curve);
+    curve3(curve_name(static_cast<std::size_t>(ParticleParam::OrbitVelocity)),
+           out.orbit_velocity_curve);
+    real("directional_velocity_min", out.directional_velocity_min);
+    real("directional_velocity_max", out.directional_velocity_max);
+    curve3("directional_velocity_curve", out.directional_velocity_curve);
+    flag("directional_velocity_global", out.directional_velocity_global);
+    real("scale_over_velocity_min", out.scale_over_velocity_min);
+    real("scale_over_velocity_max", out.scale_over_velocity_max);
+    curve3("scale_over_velocity_curve", out.scale_over_velocity_curve);
+    curve("velocity_limit_curve", out.velocity_limit_curve);
+    curve("alpha_curve", out.alpha_curve);
+    curve("emission_curve", out.emission_curve);
+    if (const json::Value* color = doc.find("color"); color != nullptr) {
+        out.color = vec4(*color);
+    }
+    gradient("color_ramp", out.color_ramp);
+    gradient("color_initial_ramp", out.color_initial_ramp);
+    real("lifetime_randomness", out.lifetime_randomness);
+    flag("particle_flag_align_y", out.align_y);
+    flag("particle_flag_rotate_y", out.rotate_y);
+    flag("particle_flag_disable_z", out.disable_z);
+    flag("particle_flag_damping_as_friction", out.damping_as_friction);
+    flag("turbulence_enabled", out.turbulence_enabled);
+    real("turbulence_noise_strength", out.turbulence_noise_strength);
+    real("turbulence_noise_scale", out.turbulence_noise_scale);
+    triple("turbulence_noise_speed", out.turbulence_noise_speed);
+    real("turbulence_noise_speed_random", out.turbulence_noise_speed_random);
+    return out;
+}
+
+Result<ProcessMaterial> parse_process_material_both(const json::Value& doc) {
+    auto flat = parse_process_material(doc);
+    if (!flat) {
+        return flat.error();
+    }
+    auto space = parse_process_material_3d(doc);
+    if (!space) {
+        return space.error();
+    }
+    return ProcessMaterial{.flat = std::move(flat).value(), .space = std::move(space).value()};
 }
 
 } // namespace slash::canvas

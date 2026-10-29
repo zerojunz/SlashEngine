@@ -1595,6 +1595,19 @@ mesh at each live particle, turned by `billboard` where its `StandardMaterial3D`
 `MeshInstance3D`s) and colored by the particle. `particles.eval` lists them in 3D, and
 `examples/particles-3d` has a fountain, a fire and snow.
 
+`GPUParticles3D` is Godot 4.6's: `.process_material.json` files read in 3D too
+(`canvas::ProcessMaterial` holds both forms; `parse_process_material_3d` takes Godot's 3D fields
+and per-axis curves, a 2D file's two numbers keeping the 3D default's z) into a
+`render::ParticleProcess3D`. The `gpu_particles_3d` system (`engine/scene3d/src/gpu_particles.cpp`,
+priority 1110) steps each emitter as `gpu_particles_2d` does and keeps its
+`render::ParticleStep3D`s; `scene3d::Renderer::add_gpu_particles` runs the steps its device
+hasn't (`RenderDevice::process_particles_3d`) and has `fill_particle_mesh` write each draw pass's
+mesh at every live particle into a mesh of world-space corners, culled by the visibility box.
+`render::process_particles_3d` and `particle_mesh_vertices_3d` (`engine/render/src/particles3d.cpp`,
+built with `-ffp-contract=off`) are the CPU twin every device runs for now; the compute shaders
+come next, and a change to one goes in both. `particles.eval` runs the steps kept on the CPU;
+`examples/gpu-particles-3d` has sparks, leaves and streaks.
+
 ## Job system
 
 `engine/core`'s `jobs::Pool` (`slash/core/jobs.hpp`) is Godot's `WorkerThreadPool`: tasks, group

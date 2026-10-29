@@ -2687,6 +2687,57 @@ SLASH_COMPONENT(GPUParticles2D, emitting, amount, amount_ratio, sub_emitter, pro
                 trail_sections, trail_section_subdivisions, texture_filter, hframes, vframes,
                 anim_loop, z_index, z_as_relative, visible, material, material_params, light_mask)
 
+// Emits particles from the entity's Transform3D and moves them on the device, as Godot's
+// GPUParticles3D: process_material names a .process_material.json file (Godot's
+// ParticleProcessMaterial) that says how they start and move. The gpu_particles_3d system steps
+// each emitter's emission cycle every tick; renderers run the steps on their device and draw each
+// draw pass's mesh at every particle, the same on every device. The particles themselves are not
+// saved.
+struct GPUParticles3D {
+    // Fields are grouped by type so the struct packs tightly; SLASH_COMPONENT lists them as
+    // Godot groups them.
+    std::string process_material; // project path of a .process_material.json file
+    // The mesh each draw pass draws at every particle, in order: a .gltf, .glb, .obj, .fbx,
+    // .blend or .model.json file's meshes, or for draw_pass_1 "" the entity's primitive mesh.
+    std::string draw_pass_1;
+    std::string draw_pass_2;
+    std::string draw_pass_3;
+    std::string draw_pass_4;
+    std::string draw_order = "index"; // "index", "lifetime", "reverse_lifetime" or "view_depth"
+    // "disabled", "z_billboard", "y_to_velocity" or "z_billboard_y_to_velocity"
+    std::string transform_align = "disabled";
+    std::string cast_shadow = "on"; // as MeshInstance3D's
+    std::uint32_t layers = 1;       // as MeshInstance3D's
+    int amount = 8;
+    int draw_passes = 1; // 1 to 4
+    int seed = 0;
+    int fixed_fps = 30;
+    float amount_ratio = 1.0F;
+    float lifetime = 1.0F;
+    float interp_to_end = 0.0F;
+    float preprocess = 0.0F;
+    float speed_scale = 1.0F;
+    float explosiveness = 0.0F;
+    float randomness = 0.0F;
+    // The box particles are drawn in, in the entity's space: none is drawn when it is out of
+    // view, as Godot's culling.
+    Vec3 visibility_aabb_position{-4.0F, -4.0F, -4.0F};
+    Vec3 visibility_aabb_size{8.0F, 8.0F, 8.0F};
+    bool emitting = true;
+    bool one_shot = false;
+    bool use_fixed_seed = false;
+    bool interpolate = true;
+    bool fract_delta = true;
+    bool local_coords = false;
+
+    friend bool operator==(const GPUParticles3D&, const GPUParticles3D&) = default;
+};
+SLASH_COMPONENT(GPUParticles3D, emitting, amount, amount_ratio, process_material, lifetime,
+                interp_to_end, one_shot, preprocess, speed_scale, explosiveness, randomness,
+                use_fixed_seed, seed, fixed_fps, interpolate, fract_delta, visibility_aabb_position,
+                visibility_aabb_size, local_coords, draw_order, transform_align, draw_passes,
+                draw_pass_1, draw_pass_2, draw_pass_3, draw_pass_4, layers, cast_shadow)
+
 // ---- Audio, as Godot's AudioStreamPlayer nodes.
 
 // Plays a sound through a bus, as Godot's AudioStreamPlayer: the same wherever the entity is.

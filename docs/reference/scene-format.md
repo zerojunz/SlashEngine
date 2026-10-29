@@ -4292,7 +4292,8 @@ sparks and snow.
 A `.process_material.json` file is Godot's `ParticleProcessMaterial` in 2D, with its property
 names and Godot's defaults, except `gravity`: `[0, 98]`, as Godot gives a process material on a
 `GPUParticles2D`. `slash-cli schema process_material` prints its JSON Schema, and
-`slash-cli scene validate` and `scene format` take these files.
+`slash-cli scene validate` and `scene format` take these files. A `GPUParticles3D` reads the same
+files with Godot's 3D fields (see [GPU particles in 3D](#gpu-particles-in-3d)).
 
 ```json
 {
@@ -4544,7 +4545,79 @@ converted to a shader in Godot and then edited would.
 - Godot's particle shaders can also keep values of their own in `CUSTOM` and `USERDATA`, start
   particles in a sub-emitter with `emit_subparticle` and restart particles; graphs can't yet.
 
-## UI and text
+### GPU particles in 3D
+
+`GPUParticles3D` follows Godot 4.6's: [`GPUParticles2D`](#gpu-particles)'s emission and steps in
+meters and three dimensions, with a [process material](#process-materials) read with Godot's 3D
+fields. The `gpu_particles_3d` system (priority 1110) works out each emitter's steps each tick
+and keeps them, as the 2D system does; `scene3d::Renderer` runs the steps its device hasn't, then
+draws each draw pass's mesh at every live particle. For now every device runs the steps on the
+CPU (`render::process_particles_3d`, the same particles everywhere); compute shaders, attractors
+and collision are on the [roadmap](../roadmap.md).
+[examples/gpu-particles-3d](../../examples/gpu-particles-3d/) has sparks, leaves and streaks.
+
+```json
+"sparks": {
+  "components": {
+    "GPUParticles3D": {
+      "amount": 60,
+      "draw_order": "view_depth",
+      "lifetime": 1.2,
+      "process_material": "sparks.process_material.json"
+    },
+    "QuadMesh": {"size": [0.12, 0.12]},
+    "StandardMaterial3D": {
+      "billboard_mode": "particles",
+      "blend_mode": "add",
+      "shading_mode": "unshaded",
+      "transparency": "alpha",
+      "vertex_color_use_as_albedo": true
+    },
+    "Transform3D": {"position": [-2.0, 0.2, 0.0]}
+  }
+}
+```
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `emitting`, `amount`, `amount_ratio`, `lifetime`, `interp_to_end`, `one_shot`, `preprocess`, `speed_scale`, `explosiveness`, `randomness`, `seed`, `use_fixed_seed`, `fixed_fps`, `interpolate`, `fract_delta`, `local_coords` | | | As `GPUParticles2D`'s |
+| `process_material` | `std::string` | `""` | Project path of a [`.process_material.json`](#process-materials) file; `""` emits still particles at the emitter |
+| `draw_passes` | `int` | `1` | How many of the draw passes draw, 1 to 4 |
+| `draw_pass_1` to `draw_pass_4` | `std::string` | `""` | A model file (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend` or `.model.json`) each particle draws; a `draw_pass_1` of `""` draws the entity's primitive mesh component. The entity's `StandardMaterial3D` overrides the meshes' materials |
+| `draw_order` | `std::string` | `"index"` | `index`, `lifetime` (the oldest first), `reverse_lifetime` (the newest first) or `view_depth` (the farthest from the camera first) |
+| `transform_align` | `std::string` | `"disabled"` | `z_billboard` turns each particle's z toward the camera, `y_to_velocity` its y along its velocity, `z_billboard_y_to_velocity` both |
+| `visibility_aabb_position`, `visibility_aabb_size` | `Vec3` | `[-4, -4, -4]`, `[8, 8, 8]` | A box in the emitter's space, as Godot's `visibility_aabb`: the emitter isn't drawn when it is out of view |
+| `cast_shadow`, `layers` | | `"on"`, `1` | As `MeshInstance3D`'s |
+
+A process material's 3D fields, beside the [2D ones](#process-materials):
+
+| Field | Default | What |
+| --- | --- | --- |
+| `direction`, `gravity`, `emission_shape_offset`, `emission_shape_scale`, `emission_box_extents`, `velocity_pivot`, `emission_points`, `emission_normals` | `[1, 0, 0]`, `[0, -9.8, 0]`, ... | Three numbers in meters; two keep the 3D default's z, so a 2D file reads in 3D |
+| `emission_ring_axis` | `[0, 0, 1]` | The ring's axis |
+| `emission_ring_height`, `emission_ring_cone_angle` | `1`, `90` | The ring's height along its axis, and degrees between its side and its base |
+| `flatness` | `0` | Squashes the spread's cone toward the plane of `direction` and x, 0 to 1 |
+| `directional_velocity_min`, `_max`, `directional_velocity_curve` | `1`, `1`, `[]` | Meters per second along each axis over its life, from the curve, times a value between min and max |
+| `directional_velocity_global` | `false` | Directional velocity in the world's axes rather than the emitter's |
+| `scale_over_velocity_min`, `_max`, `scale_over_velocity_curve` | `0`, `0`, `[]` | Scales each axis by the particle's speed, the curve's offset going from min to max meters per second |
+| `particle_flag_rotate_y` | `false` | Turn each particle about its y axis by its angle |
+| `particle_flag_disable_z` | `false` | Keep particles in the xy plane |
+
+- `scale_curve`, `orbit_velocity_curve`, `directional_velocity_curve` and
+  `scale_over_velocity_curve` take one curve or one per axis, `{"x": [...], "y": [...], "z":
+  [...]}`, as Godot's `CurveXYZTexture`; one curve is used for every axis. A `GPUParticles2D`
+  reads only `x`. As Godot's, particles orbit in 3D only with `orbit_velocity_curve`, about the
+  axes it gives through `velocity_pivot`.
+- A particle's transform is placed through the entity's `Transform3D` unless `local_coords`, and
+  its mesh's material decides how it faces the camera, as [`CPUParticles3D`](#3d-particles)'s
+  (`billboard_mode` and particle frames).
+- Steps, the emission cycle, `one_shot` and its `finished` event, randomness and catching up
+  work as `GPUParticles2D`'s. An emitter with nothing to draw is a problem in `frame.summary` and
+  `scene validate`.
+- Particles are not saved: scenes, snapshots, [`undo`](commands.md#undo), dry runs and failed
+  commands leave them as they are. [`particles.eval`](commands.md#particleseval) runs the steps
+  kept on the CPU and returns them as a `CPUParticles3D`'s.
+
 ## UI and text
 
 UI follows Godot's `Control` nodes. A `Control` places a rect in its parent's rect, or a

@@ -726,7 +726,8 @@ The report lists each of these once per kind, with how many and where it was fir
 | `ShaderMaterial` on a 3D mesh or a sky | A game's own 3D shaders aren't supported yet |
 | `HeightMapShape3D` | Use an [`HTerrain`](scene-format.md#heightmap-terrains), whose height field collides |
 | The HTerrain plugin's detail layers (`HTerrainDetailLayer`), texture arrays, splat maps past the first, triplanar mapping and tile reduction | Grass and other details aren't supported yet; a terrain mixes four textures by one splat map |
-| `GPUParticles3D` and other 3D nodes with no SlashEngine component | Not supported yet; their entities keep their place in the tree |
+| `GPUParticles3D` | Not converted yet: the report asks for SlashEngine's `GPUParticles3D` component by hand |
+| Other 3D nodes with no SlashEngine component | Not supported yet; their entities keep their place in the tree |
 | Audio and animation tracks | Play the sound or the other animation from gameplay code, on an event track's event |
 | Bezier handles, the capture update mode, blend times and markers | A bezier track plays cubic through its keys, a capture track as continuous, and animations switch without blending |
 | Tracks on a control's `position` or `size` | Animate its offsets instead |
