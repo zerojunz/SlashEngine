@@ -1,8 +1,10 @@
 #include "unreal_import.hpp"
 
 #include "common.hpp"
+#include "skeletons.hpp"
 
 #include "slash/animation/animation.hpp"
+#include "slash/importer/scripts.hpp"
 #include "slash/importer/unreal.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/runtime/project.hpp"
@@ -425,6 +427,7 @@ struct NativeClass {
     std::string module; // "MyGame"
     std::vector<std::string> properties;
     std::vector<std::string> functions;
+    std::string source; // the source file defining its functions, or ""
 };
 
 bool is_word(char c) {
@@ -487,7 +490,8 @@ std::vector<NativeClass> native_classes(std::string_view source, const std::stri
                         .header = header,
                         .module = module,
                         .properties = {},
-                        .functions = {}};
+                        .functions = {},
+                        .source = {}};
         const std::string_view head = source.substr(keyword, body - keyword);
         const std::size_t colon = head.find(':');
         for (const auto& name : words) {
@@ -589,12 +593,15 @@ public:
 
     Result<ImportPlan> run(const Existing& existing) {
         read_configs();
+        native_ = read_classes();
+        skeletons_.emplace(existing);
+        read_skeletons();
         auto editor = unreal::find_editor(project_, editor_option_);
         if (!editor) {
             return editor.error();
         }
         editor_ = editor.value();
-        auto exported = unreal::run_export(editor_, project_, work_);
+        auto exported = unreal::run_export(editor_, project_, work_, property_request());
         if (!exported) {
             return exported.error();
         }
@@ -616,6 +623,7 @@ public:
         convert_input(project);
         write_project(std::move(project));
         write_tasks(existing.work);
+        write_skeletons();
         write_report();
         return std::move(plan_);
     }
@@ -1353,6 +1361,7 @@ private:
                 level.entities[parent_entity].children.push_back(entity_id);
             }
             convert_component(comp, actor, level, entity_id, where);
+            add_class_component(comp, false, level, entity_id);
         };
         if (components.contains(root)) {
             place(root);
@@ -1361,8 +1370,11 @@ private:
             place(comp_name);
         }
         for (const json::Value* comp : others) {
-            convert_other(*comp, actor, level, id, where);
+            if (!add_class_component(*comp, false, level, id)) {
+                convert_other(*comp, actor, level, id, where);
+            }
         }
+        add_class_component(actor, true, level, id);
         if (cls == "SkyAtmosphere" || cls == "SkyLight" || cls == "ExponentialHeightFog") {
             level.droppable.insert(id);
         }
@@ -2156,6 +2168,17 @@ private:
     }
 
     void write_project(json::Value project) {
+        // The classes' C++ skeletons are the game's code.
+        if (!skeletons().empty()) {
+            json::Value& gameplay = project["gameplay"];
+            json::Value* sources = gameplay.is_object() ? gameplay.find("sources") : nullptr;
+            if (sources == nullptr || !sources->is_array()) {
+                gameplay = json::Object{};
+                gameplay["sources"] = json::Array{skeletons().folder()};
+            } else if (!contains(sources->as_array(), json::Value(skeletons().folder()))) {
+                sources->as_array().emplace_back(skeletons().folder());
+            }
+        }
         for (int pass = 0; pass < 32; ++pass) {
             const auto errors = runtime::validate_project(project);
             if (errors.empty()) {
@@ -2175,6 +2198,208 @@ private:
             }
         }
         add_file("project.json", json::write(project) + "\n");
+    }
+
+    // --- C++ skeletons ---
+
+    Skeletons& skeletons() {
+        SLASH_ASSERT(skeletons_.has_value(), "the skeletons are made before they are used");
+        return *skeletons_;
+    }
+
+    [[nodiscard]] std::string skeleton_key(const NativeClass& cls) const {
+        return prefix_ + cls.header + ":" + cls.name;
+    }
+
+    // Each class's C++ skeleton, as Unity's scripts get theirs: read from its header and the
+    // source file defining its functions (the one named as the header, else the first).
+    void read_skeletons() {
+        std::map<std::string, std::string> texts;
+        const auto text_of = [&](const std::string& file) -> const std::string& {
+            auto [entry, made] = texts.try_emplace(file);
+            if (made) {
+                if (auto read = platform::read_file((root_ / file).string()); read) {
+                    entry->second = std::move(read.value());
+                }
+            }
+            return entry->second;
+        };
+        for (NativeClass& cls : native_) {
+            const std::string defines = cls.name + "::";
+            for (const bool by_name : {true, false}) {
+                for (const std::string& file : sources_) {
+                    if (cls.source.empty() &&
+                        (!by_name || file_stem(file) == file_stem(cls.header)) &&
+                        text_of(file).find(defines) != std::string::npos) {
+                        cls.source = file;
+                    }
+                }
+            }
+            Script script = read_unreal_class(
+                prefix_ + cls.header, text_of(cls.header),
+                cls.source.empty() ? std::string_view() : text_of(cls.source), cls.name);
+            const std::string key = skeleton_key(cls);
+            class_keys_[script_path(cls)] = key;
+            class_keys_[script_path(cls).substr(script_path(cls).rfind('.') + 1)] = key;
+            skeletons().add(key, std::move(script), components_);
+        }
+    }
+
+    // The properties the export reads of each actor and component of the classes: those levels
+    // set.
+    [[nodiscard]] json::Value property_request() {
+        json::Value classes = json::Object{};
+        for (const NativeClass& cls : native_) {
+            const Skeleton* skeleton = skeletons().find(skeleton_key(cls));
+            if (skeleton == nullptr || !skeleton->script.node) {
+                continue;
+            }
+            json::Array names;
+            for (const ScriptField& field : skeleton->script.fields) {
+                if (field.exported) {
+                    names.emplace_back(field.source_name);
+                }
+            }
+            classes[script_path(cls)] = std::move(names);
+        }
+        json::Value request;
+        request["properties"] = std::move(classes);
+        return request;
+    }
+
+    // The skeleton of an actor's or a component's class: the class the export says it is of,
+    // else its own class, or the C++ class a Blueprint actor's derives from.
+    [[nodiscard]] Skeleton* skeleton_of(const json::Value& object, bool actor) {
+        std::string path;
+        if (const json::Value* properties = member(object, "properties")) {
+            path = text(*properties, "class");
+        } else if (!actor) {
+            path = text(object, "class"); // its name: "HealthComponent"
+        } else {
+            path = text(object, "class_path");
+            for (const json::Value& blueprint : items(export_, "blueprints")) {
+                if (!path.starts_with(text(blueprint, "path") + ".")) {
+                    continue;
+                }
+                // "/Script/CoreUObject.Class'/Script/MyGame.MyCharacter'", or the path alone.
+                std::string parent = text(blueprint, "native_parent");
+                if (const std::size_t start = parent.find("/Script/", 1);
+                    start != std::string::npos) {
+                    parent = parent.substr(start);
+                }
+                path = parent.substr(0, parent.find_first_of("'\""));
+            }
+        }
+        const auto found = class_keys_.find(path);
+        Skeleton* skeleton = found != class_keys_.end() ? skeletons().find(found->second) : nullptr;
+        return skeleton != nullptr && skeleton->script.node ? skeleton : nullptr;
+    }
+
+    // Gives an actor's or a component's entity its class's component, with the values the
+    // level sets; false when its class has no skeleton.
+    bool add_class_component(const json::Value& object, bool actor, Level& level,
+                             const std::string& entity_id) {
+        Skeleton* skeleton = skeleton_of(object, actor);
+        if (skeleton == nullptr) {
+            return false;
+        }
+        json::Value component = json::Object{};
+        const json::Value* properties = member(object, "properties");
+        const json::Value* values = properties != nullptr ? member(*properties, "values") : nullptr;
+        for (const ScriptField& field : skeleton->script.fields) {
+            const json::Value* value =
+                values != nullptr ? values->find(field.source_name) : nullptr;
+            if (!field.exported || value == nullptr) {
+                continue;
+            }
+            json::Value converted = property_value(field.type, field.comment, *value, level);
+            if (!converted.is_null()) {
+                component[field.name] = std::move(converted);
+            }
+        }
+        level.entities[entity_id].components[skeleton->script.component] = std::move(component);
+        class_users_[skeleton->script.path + ":" + skeleton->script.class_name].push_back(
+            entity_id + " in " + level.scene);
+        return true;
+    }
+
+    // A property's value in a level as the JSON of the skeleton's field: actors and components
+    // as their entities' IDs, assets as their paths, FColors from 0 to 1 and the rest as Unreal
+    // keeps it.
+    json::Value property_value(const std::string& type, const std::string& comment,
+                               const json::Value& value, Level& level) {
+        if (value.is_null()) {
+            return {};
+        }
+        if (type.starts_with("std::vector<")) {
+            const std::string item = type.substr(12, type.size() - 13);
+            json::Array out;
+            for (const json::Value& entry : value.is_array() ? value.as_array() : json::Array{}) {
+                json::Value converted = property_value(item, comment, entry, level);
+                if (!converted.is_null() || item == "entt::entity") {
+                    out.push_back(std::move(converted));
+                }
+            }
+            return out;
+        }
+        if (type == "entt::entity") {
+            const std::string actor = text(value, "actor");
+            const auto placed = level.placed.find(actor);
+            if (const std::string comp = text(value, "component");
+                !comp.empty() && placed != level.placed.end()) {
+                const auto found = placed->second.find(comp);
+                return found != placed->second.end() ? json::Value(found->second) : json::Value();
+            }
+            const auto found = level.actor_ids.find(actor);
+            return found != level.actor_ids.end() ? json::Value(found->second) : json::Value();
+        }
+        if (type == "std::string") {
+            if (value.is_string()) {
+                return value;
+            }
+            if (member(value, "asset") != nullptr) {
+                return asset_path(text(value, "asset"));
+            }
+            return member(value, "class") != nullptr ? json::Value(text(value, "class"))
+                                                     : json::Value();
+        }
+        if (type == "slash::Vec4" && comment.starts_with("FColor") && value.is_array()) {
+            json::Array out;
+            for (const json::Value& channel : value.as_array()) {
+                out.emplace_back(tidy(channel.is_number() ? channel.as_double() / 255.0 : 0.0));
+            }
+            return out;
+        }
+        if (type == "bool") {
+            return value.is_bool() ? value : json::Value();
+        }
+        if (type == "int" || type == "std::int64_t") {
+            return value.is_number() ? json::Value(static_cast<std::int64_t>(value.as_double()))
+                                     : json::Value();
+        }
+        return value;
+    }
+
+    // Where an asset a property names went: the file it became, else its .uasset.
+    [[nodiscard]] std::string asset_path(const std::string& package) const {
+        if (const auto mesh = meshes_.find(package); mesh != meshes_.end()) {
+            return mesh->second.path;
+        }
+        if (const auto sound = sounds_.find(package); sound != sounds_.end()) {
+            return sound->second;
+        }
+        if (const auto animation = animations_.find(package); animation != animations_.end()) {
+            return animation->second.library;
+        }
+        return content_path(package, ".uasset");
+    }
+
+    void write_skeletons() {
+        module_ = skeletons().write(
+            [this](std::string path, std::string text) {
+                add_file(std::move(path), std::move(text));
+            },
+            problems_);
     }
 
     // --- Port tasks ---
@@ -2242,7 +2467,7 @@ private:
             tasks.push_back(std::move(task));
             ++blueprints_;
         }
-        for (const NativeClass& cls : read_classes()) {
+        for (const NativeClass& cls : native_) {
             PortTask task;
             task.link = prefix_ + cls.header;
             task.name = "Port the C++ class " + cls.name + " to SlashEngine";
@@ -2260,6 +2485,15 @@ private:
             if (!users.empty()) {
                 body += " Placed as " + join(users, ", ") + ".";
             }
+            if (const Skeleton* skeleton = skeletons().find(skeleton_key(cls));
+                skeleton != nullptr) {
+                const Script& code = skeleton->script;
+                body += " Its C++ skeleton is " + skeleton->code;
+                body += code.node ? ": the " + code.component + " component and the " +
+                                        code.system + " system."
+                                  : ": the " + code.component + " struct.";
+                task.links.push_back(skeleton->code);
+            }
             task.text = std::move(body);
             tasks.push_back(std::move(task));
             classes_.push_back(cls.name);
@@ -2270,6 +2504,13 @@ private:
             item["source"] = tasks[i].link;
             item["task"] = written.ids[i];
             task_list_.push_back(std::move(item));
+        }
+        const std::size_t first_class = tasks.size() - native_.size();
+        for (std::size_t i = 0; i < native_.size(); ++i) {
+            if (Skeleton* skeleton = skeletons().find(skeleton_key(native_[i]));
+                skeleton != nullptr) {
+                skeleton->script.task = written.ids[first_class + i];
+            }
         }
         if (!written.file.empty()) {
             add_file(storyboard::file_path("work"), std::move(written.file));
@@ -2305,6 +2546,9 @@ private:
             }
             if (copy_assets_) {
                 copy_source(file);
+            }
+            if (extension == ".cpp") {
+                sources_.push_back(file);
             }
             if (extension != ".h") {
                 continue;
@@ -2354,6 +2598,29 @@ private:
             report["animations"] = std::move(animations);
         }
         report["tasks"] = task_list_;
+        json::Array classes;
+        for (const NativeClass& cls : native_) {
+            const Skeleton* skeleton = skeletons().find(skeleton_key(cls));
+            if (skeleton == nullptr) {
+                continue;
+            }
+            json::Value item;
+            item["class"] = cls.name;
+            item["header"] = prefix_ + cls.header;
+            item["code"] = skeleton->code;
+            item["component"] = skeleton->script.component;
+            if (skeleton->kept) {
+                item["kept"] = true;
+            }
+            item["task"] = skeleton->script.task;
+            const auto users = class_users_.find(skeleton->script.path + ":" + cls.name);
+            item["entities"] =
+                static_cast<std::int64_t>(users != class_users_.end() ? users->second.size() : 0);
+            classes.push_back(std::move(item));
+        }
+        if (!classes.empty()) {
+            report["classes"] = classes;
+        }
         json::Array unsupported = problems_.to_json();
         report["unsupported"] = unsupported;
         add_file(std::string(kReportFile), json::write(report) + "\n");
@@ -2374,6 +2641,12 @@ private:
         out["converted"]["blueprints"] = blueprints_;
         out["converted"]["classes"] = static_cast<std::int64_t>(classes_.size());
         out["tasks"] = task_list_;
+        if (!classes.empty()) {
+            out["classes"] = std::move(classes);
+        }
+        if (!module_.empty()) {
+            out["module"] = module_;
+        }
         out["unsupported"] = std::move(unsupported);
         out["report"] = kReportFile;
     }
@@ -2402,6 +2675,12 @@ private:
     std::map<std::string, json::Value> levels_;
     std::vector<std::string> scenes_;
     std::vector<std::string> classes_;
+    std::vector<NativeClass> native_;
+    std::vector<std::string> sources_; // the project's .cpp files
+    std::optional<Skeletons> skeletons_;
+    std::map<std::string, std::string> class_keys_; // class path or name -> skeleton key
+    std::map<std::string, std::vector<std::string>> class_users_; // skeleton -> entities
+    std::string module_;
     json::Array task_list_;
     std::string project_name_;
     std::string main_scene_;

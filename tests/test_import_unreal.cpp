@@ -2,8 +2,10 @@
 #include "slash/command/command.hpp"
 #include "slash/command/session.hpp"
 #include "slash/core/json.hpp"
+#include "slash/gameplay/host.hpp"
 #include "slash/importer/commands.hpp"
 #include "slash/importer/import.hpp"
+#include "slash/importer/scripts.hpp"
 #include "slash/importer/unreal.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/render/mesh.hpp"
@@ -167,6 +169,13 @@ public:
     void DropNext();
 };
 )");
+    write(folder / "Source/BoxDrop/Dropper.cpp", R"(#include "Dropper.h"
+
+void ADropper::DropNext()
+{
+    GetWorld()->SpawnActor<AActor>(GetActorLocation(), FRotator::ZeroRotator);
+}
+)");
     write(folder / "Content/Blueprints/BP_Player.uasset", "stand-in");
     write_box(folder / "FakeExport/meshes/Game/SM_Floor.glb", {-500, -500, -10}, {500, 500, 0},
               axes);
@@ -234,6 +243,7 @@ public:
          "transform": {"location": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]}}]},
       {"name": "Dropper_0", "label": "Dropper", "class": "Dropper",
        "class_path": "/Script/BoxDrop.Dropper",
+       "properties": {"class": "/Script/BoxDrop.Dropper", "values": {"Interval": 3.5}},
        "transform": {"location": [0, 0, 500], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1]},
        "components": []}
     ]
@@ -445,6 +455,225 @@ TEST_CASE("an Unreal project imports through its editor into scenes, settings an
         tasks.push_back(task.find("task")->as_string());
     }
     CHECK(tasks == std::vector<std::string>{"task/port-bp-player", "task/port-dropper"});
+
+    // The C++ class is a skeleton, as Unity's scripts are: its component on its actor's entity
+    // with the interval the level sets, and a system calling its functions.
+    CHECK(component(scene, "dropper", "Dropper").find("interval")->as_double() == 3.5);
+    const json::Value& made = report.find("classes")->as_array().at(0);
+    CHECK(made.find("class")->as_string() == "ADropper");
+    CHECK(made.find("code")->as_string() == "src/imported/dropper.cpp");
+    CHECK(made.find("entities")->as_int() == 1);
+    CHECK(made.find("task")->as_string() == "task/port-dropper");
+    CHECK(report.find("module")->as_string() == "src/game.cpp");
+    std::string code;
+    for (const auto& [path, contents] : plan.files) {
+        if (path == "src/imported/dropper.cpp") {
+            code = contents;
+        }
+    }
+    CHECK(code.find("float interval = 2.0F; // Interval") != std::string::npos);
+    CHECK(code.find("void drop_next(World& /*world*/, entt::entity /*entity*/, Dropper& /*self*/) "
+                    "{\n    // GetWorld()->SpawnActor<AActor>(GetActorLocation(), "
+                    "FRotator::ZeroRotator);\n}") != std::string::npos);
+    CHECK(settings.find("gameplay")->find("sources")->as_array().at(0).as_string() == "src");
+}
+
+// A class of "Crate Run": properties levels set, a delegate it broadcasts, an enum, and the
+// functions Unreal calls, defined in its source file.
+constexpr std::string_view kCoinHeader = R"cpp(#pragma once
+
+#include "CoreMinimal.h"
+#include "GameFramework/Actor.h"
+#include "CoinPickup.generated.h"
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnCollected, AActor*, Collector, int32, Value);
+
+UENUM(BlueprintType)
+enum class ECoinKind : uint8 {
+    Copper UMETA(DisplayName = "Copper"),
+    Silver,
+    Gold = 5
+};
+
+/** A coin that spins and gives points when the hero touches it. */
+UCLASS()
+class CRATERUN_API ACoinPickup : public AActor {
+    GENERATED_BODY()
+
+public:
+    ACoinPickup();
+
+    /** Points it gives. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0", ClampMax = "100"))
+    int32 Points = 10;
+
+    UPROPERTY(EditAnywhere)
+    float SpinSpeed = 90.f;
+
+    UPROPERTY(EditInstanceOnly)
+    ECoinKind Kind = ECoinKind::Silver;
+
+    UPROPERTY(EditAnywhere)
+    AActor* Target = nullptr;
+
+    UPROPERTY(EditAnywhere)
+    TArray<AActor*> Friends;
+
+    UPROPERTY(EditAnywhere)
+    USoundBase* PickupSound;
+
+    UPROPERTY(VisibleAnywhere)
+    UStaticMeshComponent* Mesh;
+
+    UPROPERTY(VisibleAnywhere)
+    class USphereComponent* Trigger;
+
+    UPROPERTY(BlueprintAssignable)
+    FOnCollected OnCollected;
+
+    UPROPERTY(EditAnywhere)
+    bool bRespawns{true};
+
+    UPROPERTY(EditAnywhere)
+    FVector Bob = FVector(0, 0, 10);
+
+    static constexpr float MaxSpin = 360.f;
+
+protected:
+    virtual void BeginPlay() override;
+
+    virtual void NotifyActorBeginOverlap(AActor* OtherActor) override;
+
+    virtual void NotifyHit(UPrimitiveComponent* MyComp, AActor* Other, UPrimitiveComponent* OtherComp,
+                           bool bSelfMoved, FVector HitLocation, FVector HitNormal,
+                           FVector NormalImpulse, const FHitResult& Hit) override;
+
+public:
+    virtual void Tick(float DeltaTime) override;
+
+    UFUNCTION(BlueprintCallable)
+    int32 Collect(AActor* Collector, const FString& Reason);
+
+private:
+    float Elapsed = 0.0f;
+    int GetDouble() const { return Points * 2; }
+};
+)cpp";
+constexpr std::string_view kCoinSource = R"cpp(#include "CoinPickup.h"
+
+ACoinPickup::ACoinPickup()
+    : Super()
+{
+	PrimaryActorTick.bCanEverTick = true;
+	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
+}
+
+void ACoinPickup::BeginPlay()
+{
+    Super::BeginPlay();
+    Elapsed = 0.0f;
+}
+
+void ACoinPickup::Tick(float DeltaTime)
+{
+    Super::Tick(DeltaTime);
+    AddActorLocalRotation(FRotator(0, SpinSpeed * DeltaTime, 0)); // { not a brace
+}
+
+void ACoinPickup::NotifyActorBeginOverlap(AActor* OtherActor)
+{
+    Collect(OtherActor, TEXT("touched"));
+}
+
+void ACoinPickup::NotifyHit(UPrimitiveComponent* MyComp, AActor* Other, UPrimitiveComponent* OtherComp, bool bSelfMoved, FVector HitLocation, FVector HitNormal, FVector NormalImpulse, const FHitResult& Hit)
+{
+    Super::NotifyHit(MyComp, Other, OtherComp, bSelfMoved, HitLocation, HitNormal, NormalImpulse, Hit);
+}
+
+int32 ACoinPickup::Collect(AActor* Collector, const FString& Reason)
+{
+    OnCollected.Broadcast(Collector, Points);
+    Destroy();
+    return Points;
+}
+)cpp";
+
+TEST_CASE("an Unreal C++ class reads as a script's skeleton") {
+    const importer::Script script = importer::read_unreal_class(
+        "unreal/Source/CrateRun/CoinPickup.h", kCoinHeader, kCoinSource, "ACoinPickup");
+    CHECK(script.source == importer::ScriptSource::UnrealCpp);
+    CHECK(script.extends == "AActor");
+    CHECK(script.component == "CoinPickup");
+    CHECK(script.ns == "coin_pickup");
+    CHECK(script.node);
+    CHECK(script.doc == "A coin that spins and gives points when the hero touches it.");
+
+    // Its properties: those levels set, and its state.
+    std::map<std::string, const importer::ScriptField*> fields;
+    for (const importer::ScriptField& field : script.fields) {
+        fields[field.source_name] = &field;
+    }
+    const importer::ScriptField& points = *fields.at("Points");
+    CHECK(points.name == "points");
+    CHECK(points.type == "int");
+    CHECK(points.init == " = 10");
+    CHECK(points.exported);
+    CHECK(points.min == 0.0);
+    CHECK(points.max == 100.0);
+    CHECK(points.doc == "Points it gives.");
+    CHECK(fields.at("SpinSpeed")->init == " = 90.0F");
+    CHECK(fields.at("Kind")->type == "int");
+    CHECK(fields.at("Kind")->init == " = ECoinKind::kSilver");
+    CHECK(fields.at("Kind")->exported); // EditInstanceOnly
+    CHECK(fields.at("Target")->kind == importer::FieldKind::Entity);
+    CHECK(fields.at("Friends")->kind == importer::FieldKind::Entities);
+    CHECK(fields.at("PickupSound")->type == "std::string");
+    CHECK(fields.at("Mesh")->type == "entt::entity");
+    CHECK_FALSE(fields.at("Mesh")->exported);            // VisibleAnywhere
+    CHECK(fields.at("Trigger")->type == "entt::entity"); // "class USphereComponent*"
+    CHECK(fields.at("bRespawns")->name == "respawns");
+    CHECK(fields.at("bRespawns")->init == " = true");
+    CHECK(fields.at("Bob")->type == "slash::Vec3");
+    CHECK_FALSE(fields.at("Elapsed")->exported);
+    CHECK_FALSE(fields.contains("OnCollected"));
+    REQUIRE(script.signals.size() == 1);
+    CHECK(script.signals[0].name == "OnCollected");
+    CHECK(script.signals[0].params.at(0).type == "entt::entity");
+    CHECK(script.signals[0].params.at(1).name == "value");
+    REQUIRE(script.enums.size() == 1);
+    CHECK(script.enums[0].values == std::vector<std::string>{"kCopper", "kSilver", "kGold = 5"});
+    REQUIRE(script.constants.size() == 1);
+    CHECK(script.constants[0].name == "kMaxSpin");
+    CHECK(script.constants[0].value == "360.0F");
+
+    // Its functions, with the bodies its source file defines.
+    std::map<std::string, const importer::ScriptFunction*> functions;
+    for (const importer::ScriptFunction& function : script.functions) {
+        functions[function.source_name] = &function;
+    }
+    CHECK(functions.at("ACoinPickup")->name == "construct");
+    CHECK(functions.at("ACoinPickup")->body.at(0) == "PrimaryActorTick.bCanEverTick = true;");
+    CHECK(functions.at("Tick")->body.at(1) ==
+          "AddActorLocalRotation(FRotator(0, SpinSpeed * DeltaTime, 0)); // { not a brace");
+    CHECK(functions.at("NotifyHit")->params.size() == 1); // the other actor
+    CHECK(functions.at("NotifyHit")->params[0].name == "other");
+    CHECK(functions.at("Collect")->returns == "int");
+    CHECK(functions.at("Collect")->params.at(1).type == "const std::string&");
+    CHECK(functions.at("GetDouble")->body.at(0) == "return Points * 2;");
+
+    // The system calls them as Unreal does.
+    const std::string code = importer::skeleton(script);
+    CHECK(code.find("from the Unreal class unreal/Source/CrateRun/CoinPickup.h") !=
+          std::string::npos);
+    CHECK(code.find("                construct(world, entity, *self);\n"
+                    "                begin_play(world, entity, *self);\n") != std::string::npos);
+    CHECK(code.find("ecs.all_of<slash::world::Area3D>(first)") != std::string::npos);
+    CHECK(code.find("notify_actor_begin_overlap(world, entity, *self, other);") !=
+          std::string::npos);
+    CHECK(code.find("notify_hit(world, entity, *self, other);") != std::string::npos);
+    CHECK(code.find("tick(world, entity, self, tick_seconds);") != std::string::npos);
+    CHECK(code.find(".describe(\"points\", {.doc = \"Points it gives.\", .min = 0.0, .max = "
+                    "100.0})") != std::string::npos);
 }
 
 TEST_CASE("an Unreal import draws meshes' override materials and plays their animations") {
@@ -637,9 +866,12 @@ TEST_CASE("project.import runs Unreal's editor only where it may") {
     command::Registry commands;
     command::register_builtin_commands(commands);
     importer::register_import_commands(commands);
+    // The game's code, which the import writes: until it is built, its components are stand-ins.
+    slash::gameplay::Host code(components, slash::gameplay::library_path(project.string()));
     command::SessionOptions options;
     options.project_root = project.string();
     options.capture_logs = false;
+    options.gameplay = &code;
     options.capabilities = {command::Capability::Read, command::Capability::Filesystem};
     const json::Value params = parse(R"({"source": "unreal"})");
 

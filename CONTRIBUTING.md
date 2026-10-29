@@ -64,7 +64,7 @@ runs clang-tidy. Run the same checks locally first:
 ```bash
 cmake --preset ci && cmake --build --preset ci && ctest --preset ci
 find engine tools tests examples -name '*.cpp' -o -name '*.hpp' | xargs clang-format -i
-find engine tools examples -name '*.cpp' | xargs clang-tidy -p build/dev
+find engine tools examples -name '*.cpp' -not -path '*/unreal/Source/*' | xargs clang-tidy -p build/dev
 .github/scripts/check-libcxx.py   # changed files against libc++, as the web and Android builds
 ```
 

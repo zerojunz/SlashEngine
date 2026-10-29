@@ -614,10 +614,11 @@ jobs:
           restore-keys: clang-tidy-
 
       - name: Run clang-tidy
-        # One clang-tidy per core: run one after another, the files take over an hour.
+        # One clang-tidy per core: run one after another, the files take over an hour. An Unreal
+        # project's own C++ (examples/import-unreal) is the importer's input, built only by Unreal.
         run: |
           touch build/clang-tidy-start
-          find engine tools examples -name '*.cpp' \
+          find engine tools examples -name '*.cpp' -not -path '*/unreal/Source/*' \
             | xargs -P "$(nproc)" -n 8 python3 .github/scripts/clang-tidy-cached.py \
                 --cache .clang-tidy-cache -p build/ci --clang-tidy clang-tidy-18
 

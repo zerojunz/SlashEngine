@@ -20,9 +20,10 @@ enum class ScriptSource : std::uint8_t {
     Gdscript,    // Godot's GDScript
     GodotCsharp, // C# for Godot
     UnityCsharp, // C# for Unity: a MonoBehaviour's serialized fields and messages
+    UnrealCpp,   // an Unreal C++ class: its UPROPERTYs and the functions Unreal calls
 };
 
-// "Godot" or "Unity".
+// "Godot", "Unity" or "Unreal".
 [[nodiscard]] std::string_view engine_name(ScriptSource source);
 
 // How a scene's value for a script's variable converts to its field.
@@ -132,6 +133,16 @@ struct GdscriptOptions {
 // Godot's [Signal] delegates, constants, enums and methods. Unity's Update, FixedUpdate and
 // LateUpdate take the tick's seconds as delta.
 [[nodiscard]] Script read_csharp(std::string_view path, std::string_view text, ScriptSource source);
+
+// Reads an Unreal C++ class (a UCLASS) from its header and the source file defining its
+// functions: what it extends, its properties (EditAnywhere and EditInstanceOnly ones as levels set
+// them, with ClampMin and ClampMax as their range; other members as its state), the dynamic
+// multicast delegates it broadcasts as signals, the header's UENUMs, its constants and its
+// functions with the bodies the source defines. An actor's class, or an actor component's, goes
+// on entities, and its system calls BeginPlay, Tick and the overlap and hit notifications as
+// Unreal does. path is the header's path in the project the import writes.
+[[nodiscard]] Script read_unreal_class(std::string_view path, std::string_view header,
+                                       std::string_view source, std::string_view class_name);
 
 // The C++ file of a script: its component (or struct), a helper that emits each signal, a stub
 // per function with the script's code in comments, the system and imported::register_<ns>.

@@ -12,6 +12,10 @@
 #                      skeletal mesh
 #   sounds/<path>.wav  each sound wave an ambient sound or audio component plays
 #
+# The importer can leave a request.json there first: its "properties" name, by class path, the
+# properties of the project's C++ classes to read of each actor and component of those classes
+# (or of Blueprints derived from them), which levels set.
+#
 # It only reads the project: nothing is saved, and the editor quits when it is done. Everything
 # it can't read becomes an entry of "problems" rather than an error, so one odd asset can't stop
 # an import. Written for Unreal Engine 5.0 and later; calls that moved between versions are tried
@@ -292,6 +296,99 @@ def light_of(comp, kind):
     return light
 
 
+# The project's C++ classes whose properties the importer asks for: (class, path, names).
+requested = []
+MISSING = object()
+
+
+def read_request():
+    path = os.path.join(OUT, 'request.json')
+    if not os.path.exists(path):
+        return
+    with open(path, encoding='utf-8') as request:
+        asked = json.load(request)
+    for class_path, names in sorted((asked.get('properties') or {}).items()):
+        cls = call(None, unreal.load_class, None, class_path)
+        if cls is None:
+            problem('C++ class the editor did not load', class_path,
+                    "build the project's code for the editor; its actors keep the class's "
+                    'defaults')
+            continue
+        requested.append((cls, class_path, names))
+
+
+def python_name(name):
+    # A property's name as Unreal's Python names it (PyGenUtil::PythonizeName): bIsDead is
+    # is_dead, MaxHP is max_hp.
+    if len(name) > 1 and name[0] == 'b' and name[1].isupper():
+        name = name[1:]
+    out = ''
+    for i, c in enumerate(name):
+        if c.isupper() and i > 0 and (name[i - 1].islower() or name[i - 1].isdigit() or
+                                      (i + 1 < len(name) and name[i + 1].islower())):
+            out += '_'
+        out += c.lower()
+    return out
+
+
+def property_value(obj, name):
+    for key in (python_name(name), name):
+        try:
+            return obj.get_editor_property(key)
+        except Exception:
+            pass
+    return MISSING
+
+
+def value_of(v):
+    # A property's value as JSON: actors and components by name, assets by package, classes by
+    # path, and the rest as Unreal keeps it.
+    if v is None or isinstance(v, (bool, int, float, str)):
+        return v
+    if isinstance(v, (unreal.Name, unreal.Text)):
+        return str(v)
+    if isinstance(v, unreal.Vector):
+        return vector(v)
+    if isinstance(v, unreal.Vector2D):
+        return [float(v.x), float(v.y)]
+    if isinstance(v, unreal.Rotator):
+        return [float(v.pitch), float(v.yaw), float(v.roll)]
+    if isinstance(v, unreal.Quat):
+        return [float(v.x), float(v.y), float(v.z), float(v.w)]
+    if isinstance(v, (unreal.LinearColor, unreal.Color)):
+        return [float(v.r), float(v.g), float(v.b), float(v.a)]
+    if isinstance(v, unreal.EnumBase):
+        return int(v.value)
+    if isinstance(v, unreal.Actor):
+        return {'actor': v.get_name()}
+    if isinstance(v, unreal.ActorComponent):
+        owner = call(None, v.get_owner)
+        return {'actor': owner.get_name() if owner is not None else '', 'component': v.get_name()}
+    if isinstance(v, unreal.Class):
+        return {'class': v.get_path_name()}
+    if isinstance(v, unreal.Object):
+        return {'asset': package_of(v)}
+    if isinstance(v, (unreal.Map, dict)):
+        return {str(key): value_of(item) for key, item in v.items()}
+    if isinstance(v, (unreal.Array, unreal.Set, list, tuple, set)):
+        return [value_of(item) for item in v]
+    return None
+
+
+def properties_of(obj, out):
+    # The properties levels set of an actor or component of a requested class.
+    for cls, class_path, names in requested:
+        if not call(False, unreal.MathLibrary.class_is_child_of, obj.get_class(), cls):
+            continue
+        values = {}
+        for name in names:
+            value = property_value(obj, name)
+            if value is not MISSING:
+                values[name] = call(None, value_of, value)
+        out['properties'] = {'class': class_path, 'values': values}
+        return
+
+
 def overrides_of(comp, out):
     # The materials the component draws its mesh's slots with in place of the mesh's own; ''
     # keeps a slot's.
@@ -421,6 +518,7 @@ def component_of(actor, comp):
             if isinstance(comp, getattr(unreal, cls)):
                 out['light'] = light_of(comp, kind)
                 break
+    properties_of(comp, out)
     return out
 
 
@@ -458,6 +556,7 @@ def actor_of(actor):
             problem('component the export could not read',
                     actor.get_actor_label() + '.' + comp.get_name(), str(error))
     out['components'] = components
+    properties_of(actor, out)
     return out
 
 
@@ -554,6 +653,7 @@ def mappings_of(context):
 
 
 def main():
+    read_request()
     registry = unreal.AssetRegistryHelpers.get_asset_registry()
     assets = registry.get_assets_by_path('/Game', recursive=True)
     result = {'format': FORMAT, 'engine_version': call('', unreal.SystemLibrary.get_engine_version),
