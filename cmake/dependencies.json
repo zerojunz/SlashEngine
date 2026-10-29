@@ -126,6 +126,13 @@
       "repository": "https://github.com/doctest/doctest.git",
       "tag": "v2.5.2"
     },
+    "enet": {
+      "license": "MIT",
+      "license_file": "LICENSE",
+      "license_sha256": "a29cd246638974da7c6edf423a0a69d4a6f7d759940b7cfa9a2bc3442ac3834c",
+      "repository": "https://github.com/lsalzman/enet.git",
+      "tag": "v1.3.18"
+    },
     "expat": {
       "license": "MIT",
       "license_file": "expat/COPYING",
