@@ -1334,7 +1334,13 @@ public:
             found.storage = true;
         }
         ParticleSystem3D& emitter = system->second;
-        SDL_GPUBuffer* keys = emitter.buffer; // bound, but unread, unless the pass is sorted
+        // Bound, but unread, unless the pass is sorted. Never the particles' own buffer: SDL's
+        // Direct3D 12 device moves a buffer bound in two slots of a pass from its default
+        // state twice, a barrier that loses the device.
+        if (auto made = make_unbound_emissions(); !made) {
+            return made;
+        }
+        SDL_GPUBuffer* keys = no_source_;
         if (sorted) {
             if (emitter.keys == nullptr) {
                 SDL_GPUBufferCreateInfo info{};
