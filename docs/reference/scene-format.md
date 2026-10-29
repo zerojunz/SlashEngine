@@ -405,6 +405,14 @@ A reference must name an entity that exists in the same scene.
 | | `expand_mode` | `std::string` | `"keep_size"` | Its minimum size: `keep_size` (the texture's), `ignore_size` (none), `fit_width` (the rect's height as its width), `fit_height` (its width as its height), or `fit_width_proportional` / `fit_height_proportional`, keeping the texture's aspect |
 | | `stretch_mode` | `std::string` | `"scale"` | How the texture fills the rect: `scale`, `tile`, `keep` (its own size), `keep_centered`, `keep_aspect` (scaled to fit inside), `keep_aspect_centered` or `keep_aspect_covered` (scaled to cover it, cut to the rect) |
 | | `flip_h`, `flip_v` | `bool` | `false` | Draw it mirrored left to right, or upside down |
+| `VideoStreamPlayer` | `stream` | `std::string` | `""` | Project path of an `.ivf` file of AV1 video, played in the rect ([video](#video)) |
+| | `playing` | `bool` | `false` | Whether it plays: set it to start from `stream_position`; the video system clears it at the end and emits `finished` |
+| | `autoplay` | `bool` | `false` | Play from the start once the video system first sees it |
+| | `paused` | `bool` | `false` | Hold the video where it is |
+| | `loop` | `bool` | `false` | Start again from the beginning at the end |
+| | `expand` | `bool` | `false` | Stretch the video to the rect; else it is drawn at its own size, which is the control's minimum size |
+| | `speed_scale` | `float` | `1` | How fast it plays: 2 is twice as fast |
+| | `stream_position` | `double` | `0` | Seconds into the video |
 | `NinePatchRect` | `texture` | `std::string` | `""` | Project path of a PNG, BMP or KTX2 file, cut into nine parts |
 | | `region_rect` | `Vec4` | `[0, 0, 0, 0]` | The part of the texture to use, [x, y, width, height] in pixels; a zero size uses the whole texture |
 | | `patch_margin_left`, `_top`, `_right`, `_bottom` | `int` | `0` | Pixels of the texture on each side that keep their size; the sides stretch along, the middle both ways |
@@ -5751,6 +5759,43 @@ names one and says how it draws, as Godot's font import options (`slash-cli sche
 - A font that doesn't load is reported by `ui.layout` and `scene validate`, and the label draws
   with the built-in font.
 - Fonts reload when their files change, as every asset does.
+
+## Video
+
+`VideoStreamPlayer` is Godot's, with AV1 in place of Theora: its `stream` is an IVF file of AV1
+video (what `ffmpeg -c:v libaom-av1` or SVT-AV1 write as `.ivf`), which dav1d decodes, the same
+pixels on every machine, and turns into RGBA with integer math by the color matrix and range
+its sequence header gives (BT.709 when it gives none). The `video` system (priority 1140)
+plays each player as Godot's `NOTIFICATION_INTERNAL_PROCESS` does: `autoplay` starts it on the
+first tick it sees, the tick it starts shows the frame it starts at, and each tick after moves
+`stream_position` on by the tick's time times `speed_scale`. At the end it starts again with
+`loop`, or stops with `playing` false at the video's length and emits `finished`. Stopped or
+paused, it shows the frame at `stream_position`, so setting the position seeks; decoding goes
+on from the frame before, or from the key frame before when it seeks.
+
+```json
+"intro": {"components": {
+  "Control": {"anchor_right": 1, "anchor_bottom": 1},
+  "VideoStreamPlayer": {"stream": "video/intro.ivf", "autoplay": true, "expand": true}
+}}
+```
+
+The player is a control: it draws its frame in its rect, at the video's size (its minimum size)
+or stretched to the rect with `expand`. Anything else that names a texture can show the frame
+too, as Godot's `get_video_texture()`: the texture path `video:<id>` is the frame the player
+with that ID shows, so a `Sprite2D` or a material's texture can be a screen in the world.
+Nothing draws before the first frame is decoded. A stream that doesn't load is a `ui.layout`
+problem at `/components/VideoStreamPlayer/stream`, which `scene validate` reports.
+
+Frames must be key frames or follow one: a file whose first frame isn't a key frame doesn't
+load. The video system's players, their decoders and frames show in `perf.stats`'s memory as
+`video`. Sound in videos is not played yet.
+
+The engine also writes AV1 itself, for tests and placeholders: `video::encode_ivf` and
+`video::encode_frame` code every frame as a key frame, losslessly, each block drawn from
+palettes of up to 8 colors per plane (AV1's screen content tools), so flat art and screen
+recordings come out exactly and busier blocks are reduced to 8 colors. Frames must be a multiple
+of 8 pixels wide and high, up to 4096x2304.
 
 ## Audio
 

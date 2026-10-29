@@ -4,6 +4,7 @@
 #include "slash/core/log.hpp"
 #include "slash/core/profile.hpp"
 #include "slash/ui/ui.hpp"
+#include "slash/video/video.hpp"
 
 #include <algorithm>
 #include <array>
@@ -288,6 +289,19 @@ int z_index(int own, bool relative, const Inherited& from_parents) {
     constexpr int kZLimit = 4096;
     return std::clamp(relative ? own + from_parents.z_index : own, -kZLimit, kZLimit);
 }
+
+namespace {
+
+// Whether a texture is a video's frame that isn't decoded yet, which draws nothing until it is.
+bool awaits_video_frame(const world::World& world, std::string_view texture) {
+    if (!texture.starts_with(video::kTexturePrefix)) {
+        return false;
+    }
+    const video::Shown shown = video::shown(world, texture.substr(video::kTexturePrefix.size()));
+    return shown.player && shown.image == nullptr && shown.error.empty();
+}
+
+} // namespace
 
 double material_time(std::uint64_t tick, double tick_seconds, double interpolation) {
     return std::max(static_cast<double>(tick) - 1.0 + std::clamp(interpolation, 0.0, 1.0), 0.0) *
@@ -862,6 +876,23 @@ Result<const CanvasRenderer::Texture*> CanvasRenderer::texture(const std::string
                                                                render::Filter filter) {
     const auto key = std::make_pair(path, filter);
     auto it = textures_.find(key);
+    if (path.starts_with(video::kTexturePrefix)) {
+        // A VideoStreamPlayer's frame, made again whenever the video system decodes another.
+        const video::Shown shown =
+            world_ != nullptr
+                ? video::shown(*world_, std::string_view(path).substr(video::kTexturePrefix.size()))
+                : video::Shown{};
+        if (shown.image == nullptr) {
+            return make_error(ErrorCode::NotFound,
+                              shown.error.empty() ? "no video frame decoded yet" : shown.error);
+        }
+        if (it == textures_.end()) {
+            it = textures_.emplace(key, Texture{}).first;
+        }
+        it->second.builtin = shown.image;
+        it->second.path = path;
+        it->second.video_version = shown.version;
+    }
     if (it == textures_.end()) {
         Texture entry;
         if (path.starts_with(ui::kBuiltinPrefix)) {
@@ -876,6 +907,7 @@ Result<const CanvasRenderer::Texture*> CanvasRenderer::texture(const std::string
             }
             entry.image = std::move(image).value();
         }
+        entry.path = path;
         it = textures_.emplace(key, std::move(entry)).first;
     }
     Texture& entry = it->second;
@@ -1072,6 +1104,7 @@ struct CanvasRenderer::Submission {
 
 Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions& options) {
     SLASH_PROFILE_ZONE("CanvasRenderer::draw");
+    world_ = &world;
     std::vector<ParticleJob> particle_jobs;
     std::vector<Item> items;
     std::vector<render::Vertex2D> vertices;
@@ -1274,6 +1307,9 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
         const world::Sprite2D& sprite = tinted ? *tinted : own_sprite;
         const int z = z_index(sprite.z_index, sprite.z_as_relative, from_parents);
         const render::Filter filter = resolve_filter(sprite.texture_filter, options.texture_filter);
+        if (awaits_video_frame(world, sprite.texture)) {
+            continue;
+        }
         auto texture = this->texture(sprite.texture, filter);
         if (!texture) {
             warn_once(sprite.texture, texture.error().message, "texture");
@@ -1334,8 +1370,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                          .material = std::move(material),
                          .entity = entity,
                          .kind = FrameItem::Kind::Sprite,
-                         .image = &*texture.value()->image,
-                         .path = texture.value()->image.path(),
+                         .image = &texture.value()->pixels(),
+                         .path = texture.value()->path,
                          .drawn = 1,
                          .particles = render::ParticlesId::None,
                          .look = {}});
@@ -1374,8 +1410,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                 continue;
             }
             texture_id = texture.value()->id;
-            image = &*texture.value()->image;
-            path = texture.value()->image.path();
+            image = &texture.value()->pixels();
+            path = texture.value()->path;
             sheet_w = static_cast<float>(texture.value()->width);
             sheet_h = static_cast<float>(texture.value()->height);
             frame_w = sheet_w / static_cast<float>(hframes);
@@ -1558,8 +1594,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                 continue;
             }
             texture_id = texture.value()->id;
-            image = &*texture.value()->image;
-            path = texture.value()->image.path();
+            image = &texture.value()->pixels();
+            path = texture.value()->path;
             look.size = {
                 static_cast<float>(texture.value()->width) / static_cast<float>(look.hframes),
                 static_cast<float>(texture.value()->height) / static_cast<float>(look.vframes)};
@@ -1808,8 +1844,8 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                                  .material = material,
                                  .entity = entity,
                                  .kind = FrameItem::Kind::Tiles,
-                                 .image = &*texture.value()->image,
-                                 .path = texture.value()->image.path(),
+                                 .image = &texture.value()->pixels(),
+                                 .path = texture.value()->path,
                                  .drawn = 0,
                                  .particles = render::ParticlesId::None,
                                  .look = {}});
@@ -2022,7 +2058,7 @@ Result<void> CanvasRenderer::draw(const world::World& world, const CanvasOptions
                 piece.width = image.width;
                 piece.height = image.height;
                 if (made.value()->builtin == nullptr) {
-                    piece.texture = made.value()->image.path();
+                    piece.texture = made.value()->path;
                 }
             }
             return piece;

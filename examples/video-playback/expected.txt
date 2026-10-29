@@ -1,0 +1,24 @@
+clip.ivf: 4 frames of 64x32, 320 bytes
+before the first tick, nothing is decoded: tv (20, 16) 0 0 0
+tick 1: autoplay starts it on its first frame
+  position 0.00 s, playing
+  tv (20, 16): 200 41 41, bar in place 0
+  screen (120, 60): 200 41 41
+  tv's rect: [8,8,64,32]
+tick 6: a quarter second on, the second frame
+  position 0.25 s, playing
+  tv (20, 16): 39 160 59, bar in place 1
+  screen (120, 60): 39 160 59
+paused and seeked to 0.75 s: the last frame, held
+  position 0.75 s, playing
+  tv (20, 16): 230 190 40, bar in place 3
+  screen (120, 60): 230 190 40
+6 ticks later: past the end, it stops on the last frame
+  position 1.00 s, stopped
+  tv (20, 16): 230 190 40, bar in place 3
+  screen (120, 60): 230 190 40
+  events: [{"id":"tv","kind":"finished","seq":1,"tick":14}]
+looping from 0.5 s, 11 ticks later: round again to the first frame
+  position 0.00 s, playing
+  tv (20, 16): 200 41 41, bar in place 0
+  screen (120, 60): 200 41 41

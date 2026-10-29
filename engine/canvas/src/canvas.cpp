@@ -15,6 +15,7 @@
 #include "slash/scene3d/particles.hpp"
 #include "slash/scene3d/terrain.hpp"
 #include "slash/ui/ui.hpp"
+#include "slash/video/video.hpp"
 #include "slash/world/path.hpp"
 
 #include <algorithm>
@@ -392,6 +393,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
 void install(world::World& world, asset::Assets& assets) {
     add_asset_types(assets);
     add_systems(world, assets);
+    video::install(world, assets);
     ui::install(world, assets, ui::settings(world));
 }
 
