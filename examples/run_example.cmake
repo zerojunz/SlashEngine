@@ -1,7 +1,8 @@
 # Runs one example in a copy of its folder and checks its output exactly; see CMakeLists.txt.
 #
 #   cmake -DEXAMPLE=<folder> -DWORKDIR=<dir> -DCLI=<slash-cli> [-DPROGRAM=<exe>]
-#         [-DASSETRIPPER=<fake-assetripper>] [-DBLENDER=<fake-blender>] -P run_example.cmake
+#         [-DASSETRIPPER=<fake-assetripper>] [-DBLENDER=<fake-blender>] [-DUNREAL=<fake-unreal>]
+#         -P run_example.cmake
 
 set(update "$ENV{SLASH_UPDATE_EXAMPLES}")
 # Unpacking a Unity build runs AssetRipper's stand-in, which exports the example's ripped/ folder.
@@ -12,6 +13,11 @@ endif()
 # Converting a .blend file runs Blender's stand-in.
 if(BLENDER)
     set(ENV{SLASH_BLENDER_PATH} "${BLENDER}")
+endif()
+# Importing an Unreal project runs Unreal Editor's stand-in, which exports the project's
+# FakeExport/ folder.
+if(UNREAL)
+    set(ENV{SLASH_UNREAL_EDITOR} "${UNREAL}")
 endif()
 
 # Compares output with an expected file in the example's folder, or rewrites that file.

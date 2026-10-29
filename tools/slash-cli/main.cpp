@@ -191,11 +191,16 @@ Usage:
                                      (its .pck file or executable) is unpacked first, and so
                                      is a game built with Unity (its folder, .apk or .ipa),
                                      with AssetRipper (SLASH_ASSETRIPPER, else installed on
-                                     first use)
+                                     first use). An Unreal Engine 5 project (its .uproject
+                                     file or folder) is exported by its own Unreal Editor,
+                                     run in the background
       --project <dir>                Project folder to import into (default ".")
       --unpack-to <dir>              Also write the Godot or Unity project unpacked from a
                                      game to this folder of the project, and use its assets
                                      there
+      --unreal-editor <path>         The Unreal Editor to export with: its UnrealEditor-Cmd
+                                     or its engine folder (default SLASH_UNREAL_EDITOR, else
+                                     one the Epic Games Launcher installed)
       --dry-run                      Print the report and the files it would write; write
                                      nothing
   slash-cli build                    Compile the project's gameplay C++ (project.json
@@ -1822,6 +1827,8 @@ int cmd_import(const std::vector<std::string>& args) {
             options.destination = args[++i];
         } else if (arg == "--unpack-to" && i + 1 < args.size()) {
             options.unpack_to = args[++i];
+        } else if (arg == "--unreal-editor" && i + 1 < args.size()) {
+            options.unreal_editor = args[++i];
         } else if (options.source.empty() && !arg.starts_with("--")) {
             options.source = arg;
         } else {
@@ -1829,8 +1836,8 @@ int cmd_import(const std::vector<std::string>& args) {
         }
     }
     if (options.source.empty()) {
-        return usage_error("import needs the folder of a Godot 4 or Unity project, a game "
-                           "exported with Godot 4 or a game built with Unity");
+        return usage_error("import needs the folder of a Godot 4, Unity or Unreal project, a "
+                           "game exported with Godot 4 or a game built with Unity");
     }
     if (dry_run) {
         auto plan = slash::importer::plan_import(options);

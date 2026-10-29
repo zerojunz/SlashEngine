@@ -1,5 +1,18 @@
 # Converts games made with other engines into SlashEngine projects, and the project.import
 # command. Used by slash-cli and slash-mcp; games never link it.
+
+# The script Unreal's editor runs to export a project (cmake/embed.cmake).
+set(_slash_unreal_export_py ${CMAKE_CURRENT_SOURCE_DIR}/src/unreal_export.py)
+set(_slash_unreal_export_cpp ${CMAKE_CURRENT_BINARY_DIR}/unreal_export_py.cpp)
+add_custom_command(
+    OUTPUT ${_slash_unreal_export_cpp}
+    COMMAND ${CMAKE_COMMAND} -DINPUT=${_slash_unreal_export_py} -DOUTPUT=${_slash_unreal_export_cpp}
+            -DNAMESPACE=slash::importer::detail -DNAME=kUnrealExportPy
+            -P ${PROJECT_SOURCE_DIR}/cmake/embed.cmake
+    DEPENDS ${_slash_unreal_export_py} ${PROJECT_SOURCE_DIR}/cmake/embed.cmake
+    COMMENT "Building unreal_export.py into the importer"
+    VERBATIM)
+
 add_library(slash_importer
     src/commands.cpp
     src/common.cpp
@@ -16,7 +29,10 @@ add_library(slash_importer
     src/skeletons.cpp
     src/unity_build.cpp
     src/unity_import.cpp
-    src/unity_yaml.cpp)
+    src/unity_yaml.cpp
+    src/unreal_editor.cpp
+    src/unreal_import.cpp
+    ${_slash_unreal_export_cpp})
 add_library(slash::importer ALIAS slash_importer)
 
 target_include_directories(slash_importer PUBLIC include)

@@ -1,0 +1,1443 @@
+{
+ "blueprints": [
+  {
+   "kind": "Blueprint",
+   "native_parent": "/Script/Engine.Actor",
+   "parent": "/Script/Engine.Actor",
+   "path": "/Game/Blueprints/BP_Coin"
+  },
+  {
+   "kind": "Blueprint",
+   "native_parent": "/Script/Engine.GameModeBase",
+   "parent": "/Script/Engine.GameModeBase",
+   "path": "/Game/Blueprints/BP_CrateRunMode"
+  },
+  {
+   "kind": "Blueprint",
+   "native_parent": "/Script/Engine.Character",
+   "parent": "/Script/Engine.Character",
+   "path": "/Game/Blueprints/BP_Hero"
+  },
+  {
+   "kind": "WidgetBlueprint",
+   "native_parent": "/Script/UMG.UserWidget",
+   "parent": "/Script/UMG.UserWidget",
+   "path": "/Game/UI/WBP_Hud"
+  }
+ ],
+ "engine_version": "5.4.4-35576357+++UE5+Release-5.4",
+ "format": 1,
+ "input_actions": {
+  "/Game/Input/IA_Jump": "boolean",
+  "/Game/Input/IA_Look": "axis2d",
+  "/Game/Input/IA_Move": "axis2d"
+ },
+ "input_contexts": {
+  "/Game/Input/IMC_Default": [
+   {
+    "action": "/Game/Input/IA_Jump",
+    "key": "SpaceBar",
+    "modifiers": []
+   },
+   {
+    "action": "/Game/Input/IA_Jump",
+    "key": "Gamepad_FaceButton_Bottom",
+    "modifiers": []
+   },
+   {
+    "action": "/Game/Input/IA_Move",
+    "key": "D",
+    "modifiers": []
+   },
+   {
+    "action": "/Game/Input/IA_Move",
+    "key": "A",
+    "modifiers": [
+     {
+      "class": "InputModifierNegate",
+      "x": true,
+      "y": true,
+      "z": true
+     }
+    ]
+   },
+   {
+    "action": "/Game/Input/IA_Move",
+    "key": "W",
+    "modifiers": [
+     {
+      "class": "InputModifierSwizzleAxis",
+      "order": "yxz"
+     }
+    ]
+   },
+   {
+    "action": "/Game/Input/IA_Move",
+    "key": "S",
+    "modifiers": [
+     {
+      "class": "InputModifierSwizzleAxis",
+      "order": "yxz"
+     },
+     {
+      "class": "InputModifierNegate",
+      "x": true,
+      "y": true,
+      "z": true
+     }
+    ]
+   },
+   {
+    "action": "/Game/Input/IA_Move",
+    "key": "Gamepad_Left2D",
+    "modifiers": [
+     {
+      "class": "InputModifierDeadZone"
+     }
+    ]
+   },
+   {
+    "action": "/Game/Input/IA_Look",
+    "key": "Mouse2D",
+    "modifiers": []
+   }
+  ]
+ },
+ "levels": [
+  {
+   "actors": [
+    {
+     "class": "WorldSettings",
+     "class_path": "/Script/Engine.WorldSettings",
+     "components": [],
+     "label": "WorldSettings",
+     "name": "WorldSettings",
+     "root": "",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "Brush",
+     "class_path": "/Script/Engine.Brush",
+     "components": [],
+     "label": "Brush",
+     "name": "Brush_0",
+     "root": "BrushComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.01,
+       "mesh": "/Game/Props/SM_Floor",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "Floor",
+     "name": "StaticMeshActor_0",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.01,
+       "mass": 20.0,
+       "mesh": "/Game/Props/SM_Crate",
+       "mobility": "movable",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "profile": "PhysicsActor",
+       "simulate": true,
+       "transform": {
+        "location": [
+         200.0,
+         100.0,
+         50.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.7071068,
+         0.7071068
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "Crate",
+     "name": "StaticMeshActor_1",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       200.0,
+       100.0,
+       50.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.7071068,
+       0.7071068
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "StaticMeshActor",
+     "class_path": "/Script/Engine.StaticMeshActor",
+     "components": [
+      {
+       "angular_damping": 0.0,
+       "class": "StaticMeshComponent",
+       "collision": "query_and_physics",
+       "gravity": true,
+       "linear_damping": 0.01,
+       "mesh": "/Game/Props/SM_Crate",
+       "mobility": "static",
+       "name": "StaticMeshComponent0",
+       "overlaps": false,
+       "override_materials": [
+        "/Game/Props/MI_CrateDark"
+       ],
+       "profile": "BlockAll",
+       "simulate": false,
+       "transform": {
+        "location": [
+         -200.0,
+         -150.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         2.0
+        ]
+       }
+      }
+     ],
+     "label": "Crate Stack",
+     "name": "StaticMeshActor_2",
+     "root": "StaticMeshComponent0",
+     "transform": {
+      "location": [
+       -200.0,
+       -150.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       2.0
+      ]
+     }
+    },
+    {
+     "class": "DirectionalLight",
+     "class_path": "/Script/Engine.DirectionalLight",
+     "components": [
+      {
+       "class": "DirectionalLightComponent",
+       "light": {
+        "color": [
+         255.0,
+         240.0,
+         220.0
+        ],
+        "indirect_lighting_intensity": 1.0,
+        "intensity": 10.0,
+        "light_source_angle": 0.5357,
+        "mobility": "stationary",
+        "shadows": true,
+        "type": "directional",
+        "volumetric_scattering_intensity": 1.0
+       },
+       "mobility": "stationary",
+       "name": "LightComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         500.0
+        ],
+        "rotation": [
+         0.0,
+         0.3826834,
+         0.0,
+         0.9238795
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "Sun",
+     "name": "DirectionalLight_0",
+     "root": "LightComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       500.0
+      ],
+      "rotation": [
+       0.0,
+       0.3826834,
+       0.0,
+       0.9238795
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "PointLight",
+     "class_path": "/Script/Engine.PointLight",
+     "components": [
+      {
+       "class": "PointLightComponent",
+       "light": {
+        "attenuation_radius": 1000.0,
+        "color": [
+         255.0,
+         200.0,
+         150.0
+        ],
+        "indirect_lighting_intensity": 1.0,
+        "intensity": 16.0,
+        "mobility": "static",
+        "shadows": true,
+        "source_radius": 10.0,
+        "type": "point",
+        "units": "candelas",
+        "volumetric_scattering_intensity": 1.0
+       },
+       "mobility": "static",
+       "name": "LightComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         300.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "Lamp",
+     "name": "PointLight_0",
+     "root": "LightComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       300.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "SpotLight",
+     "class_path": "/Script/Engine.SpotLight",
+     "components": [
+      {
+       "class": "SpotLightComponent",
+       "light": {
+        "attenuation_radius": 800.0,
+        "color": [
+         255.0,
+         255.0,
+         255.0
+        ],
+        "inner_cone_angle": 0.0,
+        "intensity": 1000.0,
+        "mobility": "movable",
+        "outer_cone_angle": 30.0,
+        "shadows": false,
+        "source_radius": 0.0,
+        "temperature": 4000.0,
+        "type": "spot",
+        "units": "lumens"
+       },
+       "mobility": "movable",
+       "name": "LightComponent0",
+       "transform": {
+        "location": [
+         300.0,
+         0.0,
+         400.0
+        ],
+        "rotation": [
+         0.0,
+         0.7071068,
+         0.0,
+         0.7071068
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "Spot",
+     "name": "SpotLight_0",
+     "root": "LightComponent0",
+     "transform": {
+      "location": [
+       300.0,
+       0.0,
+       400.0
+      ],
+      "rotation": [
+       0.0,
+       0.7071068,
+       0.0,
+       0.7071068
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "PlayerStart",
+     "class_path": "/Script/Engine.PlayerStart",
+     "components": [
+      {
+       "class": "CapsuleComponent",
+       "collision": "query_only",
+       "mobility": "static",
+       "name": "CollisionCapsule",
+       "overlaps": false,
+       "profile": "Pawn",
+       "shape": {
+        "half_height": 92.0,
+        "radius": 40.0,
+        "type": "capsule"
+       },
+       "simulate": false,
+       "transform": {
+        "location": [
+         -400.0,
+         0.0,
+         92.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      },
+      {
+       "class": "BillboardComponent",
+       "mobility": "static",
+       "name": "Sprite",
+       "parent": "CollisionCapsule",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "PlayerStart",
+     "name": "PlayerStart_0",
+     "root": "CollisionCapsule",
+     "transform": {
+      "location": [
+       -400.0,
+       0.0,
+       92.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "TriggerBox",
+     "class_path": "/Script/Engine.TriggerBox",
+     "components": [
+      {
+       "class": "BoxComponent",
+       "collision": "query_only",
+       "mobility": "static",
+       "name": "CollisionComp",
+       "overlaps": true,
+       "profile": "Trigger",
+       "shape": {
+        "extent": [
+         100.0,
+         200.0,
+         100.0
+        ],
+        "type": "box"
+       },
+       "simulate": false,
+       "transform": {
+        "location": [
+         800.0,
+         0.0,
+         100.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "Goal",
+     "name": "TriggerBox_0",
+     "root": "CollisionComp",
+     "tags": [
+      "goal"
+     ],
+     "transform": {
+      "location": [
+       800.0,
+       0.0,
+       100.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "bounds": {
+      "extent": [
+       500.0,
+       10.0,
+       100.0
+      ],
+      "origin": [
+       0.0,
+       500.0,
+       100.0
+      ]
+     },
+     "class": "BlockingVolume",
+     "class_path": "/Script/Engine.BlockingVolume",
+     "components": [
+      {
+       "class": "BrushComponent",
+       "mobility": "static",
+       "name": "BrushComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         500.0,
+         100.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "Wall",
+     "name": "BlockingVolume_0",
+     "root": "BrushComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       500.0,
+       100.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "bounds": {
+      "extent": [
+       1000.0,
+       1000.0,
+       200.0
+      ],
+      "origin": [
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "class": "NavMeshBoundsVolume",
+     "class_path": "/Script/Engine.NavMeshBoundsVolume",
+     "components": [],
+     "label": "NavMeshBoundsVolume",
+     "name": "NavMeshBoundsVolume_0",
+     "root": "BrushComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "AmbientSound",
+     "class_path": "/Script/Engine.AmbientSound",
+     "components": [
+      {
+       "audio": {
+        "auto_activate": true,
+        "falloff_distance": 2000.0,
+        "inner_radius": 400.0,
+        "pitch": 1.0,
+        "sound": "/Game/Audio/Wind",
+        "volume": 0.5
+       },
+       "class": "AudioComponent",
+       "mobility": "movable",
+       "name": "AudioComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         -300.0,
+         100.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "Wind",
+     "name": "AmbientSound_0",
+     "root": "AudioComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       -300.0,
+       100.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "SkyLight",
+     "class_path": "/Script/Engine.SkyLight",
+     "components": [
+      {
+       "class": "SkyLightComponent",
+       "light": {
+        "color": [
+         255.0,
+         255.0,
+         255.0
+        ],
+        "intensity": 1.0,
+        "mobility": "movable",
+        "shadows": true,
+        "type": "sky"
+       },
+       "mobility": "movable",
+       "name": "SkyLightComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "SkyLight",
+     "name": "SkyLight_0",
+     "root": "SkyLightComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "SkyAtmosphere",
+     "class_path": "/Script/Engine.SkyAtmosphere",
+     "components": [
+      {
+       "class": "SkyAtmosphereComponent",
+       "mobility": "movable",
+       "name": "SkyAtmosphereComponent",
+       "sky_atmosphere": {},
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "SkyAtmosphere",
+     "name": "SkyAtmosphere_0",
+     "root": "SkyAtmosphereComponent",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "ExponentialHeightFog",
+     "class_path": "/Script/Engine.ExponentialHeightFog",
+     "components": [
+      {
+       "class": "ExponentialHeightFogComponent",
+       "fog": {
+        "color": [
+         0.447,
+         0.638,
+         1.0
+        ],
+        "density": 0.02,
+        "height_falloff": 0.2,
+        "start_distance": 0.0,
+        "volumetric": false
+       },
+       "mobility": "movable",
+       "name": "HeightFogComponent0",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         -100.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "ExponentialHeightFog",
+     "name": "ExponentialHeightFog_0",
+     "root": "HeightFogComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       -100.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "Landscape",
+     "class_path": "/Script/Engine.Landscape",
+     "components": [],
+     "label": "Landscape",
+     "name": "Landscape_0",
+     "root": "RootComponent0",
+     "transform": {
+      "location": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "BP_Coin_C",
+     "class_path": "/Game/Blueprints/BP_Coin.BP_Coin_C",
+     "components": [
+      {
+       "class": "SceneComponent",
+       "mobility": "movable",
+       "name": "DefaultSceneRoot",
+       "transform": {
+        "location": [
+         400.0,
+         0.0,
+         80.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      },
+      {
+       "angular_damping": 0.0,
+       "cast_shadow": false,
+       "class": "StaticMeshComponent",
+       "collision": "no_collision",
+       "gravity": true,
+       "linear_damping": 0.01,
+       "mesh": "/Game/Props/SM_Coin",
+       "mobility": "movable",
+       "name": "Mesh",
+       "overlaps": false,
+       "parent": "DefaultSceneRoot",
+       "profile": "NoCollision",
+       "simulate": false,
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         0.5,
+         0.5,
+         0.5
+        ]
+       }
+      },
+      {
+       "class": "RotatingMovementComponent",
+       "name": "RotatingMovement"
+      }
+     ],
+     "label": "Coin",
+     "name": "BP_Coin_C_0",
+     "root": "DefaultSceneRoot",
+     "transform": {
+      "location": [
+       400.0,
+       0.0,
+       80.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "CoinPickup",
+     "class_path": "/Script/CrateRun.CoinPickup",
+     "components": [
+      {
+       "class": "SphereComponent",
+       "collision": "query_only",
+       "mobility": "movable",
+       "name": "Trigger",
+       "overlaps": true,
+       "profile": "OverlapAllDynamic",
+       "shape": {
+        "radius": 50.0,
+        "type": "sphere"
+       },
+       "simulate": false,
+       "transform": {
+        "location": [
+         600.0,
+         200.0,
+         80.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "Bonus Coin",
+     "name": "CoinPickup_0",
+     "root": "Trigger",
+     "transform": {
+      "location": [
+       600.0,
+       200.0,
+       80.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "auto_possess": "player0",
+     "class": "BP_Hero_C",
+     "class_path": "/Game/Blueprints/BP_Hero.BP_Hero_C",
+     "components": [
+      {
+       "class": "CapsuleComponent",
+       "collision": "query_and_physics",
+       "mobility": "movable",
+       "name": "CollisionCylinder",
+       "overlaps": false,
+       "profile": "Pawn",
+       "shape": {
+        "half_height": 88.0,
+        "radius": 34.0,
+        "type": "capsule"
+       },
+       "simulate": false,
+       "transform": {
+        "location": [
+         -400.0,
+         0.0,
+         92.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      },
+      {
+       "class": "ArrowComponent",
+       "mobility": "movable",
+       "name": "Arrow",
+       "parent": "CollisionCylinder",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      },
+      {
+       "class": "SpringArmComponent",
+       "mobility": "movable",
+       "name": "CameraBoom",
+       "parent": "CollisionCylinder",
+       "spring_arm": {
+        "length": 400.0,
+        "socket_offset": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "target_offset": [
+         0.0,
+         0.0,
+         0.0
+        ]
+       },
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         60.0
+        ],
+        "rotation": [
+         0.0,
+         0.1736482,
+         0.0,
+         0.9848078
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      },
+      {
+       "camera": {
+        "aspect_ratio": 1.777778,
+        "constrain_aspect_ratio": false,
+        "fov": 90.0,
+        "ortho_width": 512.0,
+        "projection": "perspective"
+       },
+       "class": "CameraComponent",
+       "mobility": "movable",
+       "name": "FollowCamera",
+       "parent": "CameraBoom",
+       "transform": {
+        "location": [
+         0.0,
+         0.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      },
+      {
+       "character": {
+        "jump_z_velocity": 700.0,
+        "max_step_height": 45.0,
+        "max_walk_speed": 500.0,
+        "walkable_floor_angle": 44.765
+       },
+       "class": "CharacterMovementComponent",
+       "name": "CharMoveComp"
+      },
+      {
+       "class": "InputComponent",
+       "name": "PawnInputComponent0"
+      }
+     ],
+     "label": "Hero",
+     "name": "BP_Hero_C_0",
+     "root": "CollisionCylinder",
+     "transform": {
+      "location": [
+       -400.0,
+       0.0,
+       92.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    }
+   ],
+   "game_mode": "/Game/Blueprints/BP_CrateRunMode.BP_CrateRunMode_C",
+   "kill_z": -1000.0,
+   "path": "/Game/Maps/Main"
+  }
+ ],
+ "meshes": {
+  "/Game/Props/SM_Coin": {
+   "bounds": {
+    "extent": [
+     30.0,
+     5.0,
+     30.0
+    ],
+    "origin": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "collision_complexity": "ctf_use_default",
+   "convex_collision": 0,
+   "file": "meshes/Game/Props/SM_Coin.glb",
+   "materials": [
+    "/Game/Props/M_Gold"
+   ],
+   "simple_collision": 0,
+   "skeletal": false
+  },
+  "/Game/Props/SM_Crate": {
+   "bounds": {
+    "extent": [
+     50.0,
+     50.0,
+     50.0
+    ],
+    "origin": [
+     0.0,
+     0.0,
+     50.0
+    ]
+   },
+   "collision_complexity": "ctf_use_default",
+   "convex_collision": 0,
+   "file": "meshes/Game/Props/SM_Crate.glb",
+   "materials": [
+    "/Game/Props/M_Crate"
+   ],
+   "simple_collision": 1,
+   "skeletal": false
+  },
+  "/Game/Props/SM_Floor": {
+   "bounds": {
+    "extent": [
+     1000.0,
+     1000.0,
+     5.0
+    ],
+    "origin": [
+     0.0,
+     0.0,
+     -5.0
+    ]
+   },
+   "collision_complexity": "ctf_use_complex_as_simple",
+   "convex_collision": 0,
+   "file": "meshes/Game/Props/SM_Floor.glb",
+   "materials": [
+    "/Game/Props/M_Grass"
+   ],
+   "simple_collision": 0,
+   "skeletal": false
+  }
+ },
+ "problems": [
+  {
+   "what": "mesh the glTF exporter did not write",
+   "where": "/Game/Props/SM_Statue",
+   "why": "Nanite mesh with no fallback"
+  }
+ ],
+ "project": {
+  "name": "CrateRun"
+ },
+ "sounds": {
+  "/Game/Audio/Wind": {
+   "duration": 1.0,
+   "file": "sounds/Game/Audio/Wind.wav",
+   "looping": true
+  }
+ }
+}
