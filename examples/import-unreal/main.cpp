@@ -4,16 +4,18 @@
 // its settings and legacy input mappings, and a C++ class. Unreal's .umap and .uasset files are
 // binary and only Unreal reads them, so the import runs the project's own Unreal Editor in the
 // background (as Godot runs Blender for .blend files), with a Python script that exports each
-// level's actors and components, the Enhanced Input assets, the static meshes as glTF and the
-// sounds as WAV. This example runs a stand-in for the editor that copies unreal/FakeExport, which
-// holds what the script writes for this project, so it runs where Unreal isn't installed.
+// level's actors and components, the Enhanced Input assets, the meshes, override materials and
+// animation sequences as glTF and the sounds as WAV. This example runs a stand-in for the editor
+// that copies unreal/FakeExport, which holds what the script writes for this project, so it runs
+// where Unreal isn't installed.
 //
-// One call converts it. Its level becomes a .scene.json file beside the .umap, in Godot's axes
-// and meters: meshes as MeshInstance3D entities over the exported glTF files (with the collision
-// Unreal gives them), lights, the sky, fog, the camera on the player's spring arm, physics
-// bodies, trigger and blocking volumes, and sounds; its settings and both input systems become
-// project.json; and each Blueprint and C++ class becomes a storyboard task to port it to C++,
-// since SlashEngine games are plain C++. The report lists what didn't convert, and why. The
+// One call converts it. Its level becomes a .scene.json file beside the .umap, in Godot's axes and
+// meters: meshes as MeshInstance3D entities over the exported glTF files (with the collision Unreal
+// gives them, and a copy drawn with a component's override material), the hero's skeletal mesh
+// playing its animation sequence, lights, the sky, fog, the camera on the player's spring arm,
+// physics bodies, trigger and blocking volumes, and sounds; its settings and both input systems
+// become project.json; and each Blueprint and C++ class becomes a storyboard task to port it to
+// C++, since SlashEngine games are plain C++. The report lists what didn't convert, and why. The
 // glTF files and the sound are made in code here, so the repository holds no binary files.
 
 #include "slash/audio/audio.hpp"
@@ -87,20 +89,29 @@ scene3d::ModelSurface box(std::array<float, 3> low, std::array<float, 3> high) {
     return surface;
 }
 
-// Writes a static mesh as Unreal's glTF exporter does: a box in glTF's axes (Unreal's x, z and
-// y) and meters, from Unreal's bounds in centimeters.
-void write_mesh(const std::string& path, std::array<float, 3> low, std::array<float, 3> high) {
+// A static mesh as Unreal's glTF exporter writes it: a box in glTF's axes (Unreal's x, z and y)
+// and meters, from Unreal's bounds in centimeters, drawn with a material of a name and a color.
+scene3d::Model mesh_model(std::array<float, 3> low, std::array<float, 3> high,
+                          std::string_view material, std::array<float, 3> color) {
     scene3d::Model model;
     scene3d::ModelMesh mesh;
     mesh.name = "Mesh";
     mesh.surfaces.push_back(box({low[0] / 100.0F, low[2] / 100.0F, low[1] / 100.0F},
                                 {high[0] / 100.0F, high[2] / 100.0F, high[1] / 100.0F}));
+    mesh.surfaces[0].material = 0;
     model.meshes.push_back(mesh);
+    scene3d::ModelMaterial& paint = model.materials.emplace_back();
+    paint.name = material;
+    paint.standard.albedo_color = {color[0], color[1], color[2], 1.0F};
     scene3d::ModelNode node;
     node.name = "Mesh";
     model.nodes.push_back(node);
     model.parts.push_back(
         {.node = "Mesh", .mesh = 0, .transform = {}, .node_index = 0, .skin = -1});
+    return model;
+}
+
+void write_model(const std::string& path, const scene3d::Model& model) {
     const scene3d::ModelReader none = [](std::string_view) -> slash::Result<std::string> {
         return slash::make_error(slash::ErrorCode::NotFound, "no files");
     };
@@ -153,16 +164,45 @@ struct Agent {
 
 int main() {
     const std::string exported = "unreal/FakeExport/";
-    if (!slash::platform::create_directories(exported + "meshes/Game/Props").ok() ||
-        !slash::platform::create_directories(exported + "sounds/Game/Audio").ok()) {
-        return 1;
+    for (const char* folder :
+         {"meshes/Game/Props", "meshes/Game/Characters", "materials/Game/Props",
+          "animations/Game/Characters", "sounds/Game/Audio"}) {
+        if (!slash::platform::create_directories(exported + folder).ok()) {
+            return 1;
+        }
     }
-    write_mesh(exported + "meshes/Game/Props/SM_Crate.glb", {-50.0F, -50.0F, 0.0F},
-               {50.0F, 50.0F, 100.0F});
-    write_mesh(exported + "meshes/Game/Props/SM_Floor.glb", {-1000.0F, -1000.0F, -10.0F},
-               {1000.0F, 1000.0F, 0.0F});
-    write_mesh(exported + "meshes/Game/Props/SM_Coin.glb", {-30.0F, -5.0F, -30.0F},
-               {30.0F, 5.0F, 30.0F});
+    write_model(
+        exported + "meshes/Game/Props/SM_Crate.glb",
+        mesh_model({-50.0F, -50.0F, 0.0F}, {50.0F, 50.0F, 100.0F}, "M_Crate", {0.7F, 0.5F, 0.3F}));
+    write_model(exported + "meshes/Game/Props/SM_Floor.glb",
+                mesh_model({-1000.0F, -1000.0F, -10.0F}, {1000.0F, 1000.0F, 0.0F}, "M_Grass",
+                           {0.3F, 0.6F, 0.2F}));
+    write_model(
+        exported + "meshes/Game/Props/SM_Coin.glb",
+        mesh_model({-30.0F, -5.0F, -30.0F}, {30.0F, 5.0F, 30.0F}, "M_Gold", {1.0F, 0.8F, 0.2F}));
+    // The material the crate stack draws in M_Crate's place, which the exporter writes on a
+    // preview mesh of its own.
+    write_model(exported + "materials/Game/Props/MI_CrateDark.glb",
+                mesh_model({-50.0F, -50.0F, -50.0F}, {50.0F, 50.0F, 50.0F}, "MI_CrateDark",
+                           {0.3F, 0.2F, 0.1F}));
+    // The hero's skeletal mesh, and its idle sequence exported on its skeleton: a bob up and
+    // down every two seconds.
+    const scene3d::Model hero =
+        mesh_model({-20.0F, -20.0F, 0.0F}, {20.0F, 20.0F, 180.0F}, "M_Hero", {0.2F, 0.4F, 0.9F});
+    write_model(exported + "meshes/Game/Characters/SK_Hero.glb", hero);
+    scene3d::Model idle = hero;
+    scene3d::ModelAnimation& clip = idle.animations.emplace_back();
+    clip.name = "Idle";
+    clip.length = 2.0;
+    clip.tracks.push_back({.node = 0,
+                           .property = scene3d::NodeProperty::Position,
+                           .step = false,
+                           .loop_wrap = true,
+                           .times = {0.0F, 1.0F, 2.0F},
+                           .values = {{0.0F, 0.0F, 0.0F, 0.0F},
+                                      {0.0F, 0.05F, 0.0F, 0.0F},
+                                      {0.0F, 0.0F, 0.0F, 0.0F}}});
+    write_model(exported + "animations/Game/Characters/A_Idle.glb", idle);
     write_wind(exported + "sounds/Game/Audio/Wind.wav");
     // The Blueprints the import's tasks link to, which only Unreal reads: stand-ins here.
     if (!slash::platform::create_directories("unreal/Content/Blueprints").ok() ||
@@ -189,6 +229,9 @@ int main() {
     agent.call("scene.open", R"({"path": "unreal/Content/Maps/Main.scene.json"})");
     agent.call("step", R"({"ticks": 90})");
     agent.call("world.query", R"({"with": ["RigidBody3D"], "include": ["Transform3D"]})");
+    // The hero's mesh plays its idle sequence, as the component played it in Unreal: a second
+    // and a half in.
+    agent.call("world.query", R"({"with": ["AnimationPlayer"], "include": ["AnimationPlayer"]})");
     // The floor collides as Unreal's complex collision: a ray down stops on its top.
     agent.call("physics.raycast", R"({"from": [-6, 5, -3], "to": [-6, -5, -3]})");
     // The goal is a trigger box, an area the player can walk into.
