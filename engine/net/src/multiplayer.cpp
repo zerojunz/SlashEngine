@@ -160,6 +160,9 @@ struct Multiplayer::State {
     int last_send_cache_id = 1;
     std::size_t events_seen = 0; // of world.events(), for entities destroyed
 
+    // What it keeps outside components, for World::memory: caches, tracking and raw packets.
+    [[nodiscard]] world::MemoryPart memory() const;
+
     void emit(std::string_view kind, json::Value data = {}) {
         world.emit(std::string(kind), {}, std::move(data));
     }
@@ -2699,6 +2702,78 @@ void Multiplayer::set_max_delta_packet_size(int bytes) {
     state_->delta_mtu = bytes;
 }
 
+world::MemoryPart Multiplayer::State::memory() const {
+    world::MemoryPart part;
+    part.name = "multiplayer";
+    std::uint64_t bytes = sizeof(State);
+    for (const RawPacket& packet : packets) {
+        bytes += sizeof(RawPacket) + packet.bytes.capacity();
+    }
+    bytes += (authority.size() * world::kMapNodeBytes<decltype(authority)>)+(rpcs.size() * world::kMapNodeBytes<decltype(rpcs)>)+(
+        nodes_cache.size() *
+        world::kMapNodeBytes<
+            decltype(nodes_cache)>)+(peers_info.size() *
+                                     world::kMapNodeBytes<
+                                         decltype(peers_info)>)+(tracked_nodes.size() *
+                                                                 world::kMapNodeBytes<
+                                                                     decltype(tracked_nodes)>)+(sync_nodes
+                                                                                                    .size() *
+                                                                                                world::kMapNodeBytes<
+                                                                                                    decltype(sync_nodes)>)+(spawners
+                                                                                                                                .size() *
+                                                                                                                            world::kMapNodeBytes<
+                                                                                                                                decltype(spawners)>)+(rep_peers
+                                                                                                                                                          .size() *
+                                                                                                                                                      world::kMapNodeBytes<
+                                                                                                                                                          decltype(rep_peers)>);
+    for (const auto& [id, info] : peers_info) {
+        bytes += (info.recv_nodes.size() * world::kMapNodeBytes<decltype(info.recv_nodes)>)+(
+            info.sent_nodes.size() * world::kMapNodeBytes<decltype(info.sent_nodes)>);
+    }
+    part.bytes = bytes;
+    part.counts["peers"] = connected_peers.size();
+    part.counts["tracked"] = tracked_nodes.size();
+    part.counts["synchronizers"] = sync_nodes.size();
+    return part;
+}
+
+bool Multiplayer::has_rpc(std::string_view name) const {
+    return state_->rpcs.contains(name);
+}
+
+std::vector<std::pair<std::string, std::string>> Multiplayer::spawned() const {
+    std::vector<std::pair<std::string, std::string>> out;
+    for (const auto& [id, node] : state_->tracked_nodes) {
+        if (!node.spawner.empty()) {
+            out.emplace_back(id, node.spawner);
+        }
+    }
+    return out;
+}
+
+std::vector<std::string> Multiplayer::synchronizers() const {
+    std::vector<std::string> out;
+    out.reserve(state_->sync_nodes.size());
+    for (const auto& [id, sync] : state_->sync_nodes) {
+        out.push_back(id);
+    }
+    return out;
+}
+
+void Multiplayer::rebind() {
+    const world::World& world = state_->world;
+    for (auto& [id, node] : state_->tracked_nodes) {
+        if (const entt::entity entity = world.find(id); entity != entt::null) {
+            node.handle = entity;
+        }
+    }
+    for (auto& [id, sync] : state_->sync_nodes) {
+        if (const entt::entity entity = world.find(id); entity != entt::null) {
+            sync.handle = entity;
+        }
+    }
+}
+
 namespace {
 
 struct Handle {
@@ -2711,7 +2786,12 @@ void install(world::World& world) {
     if (world.ecs().ctx().contains<Handle>()) {
         return;
     }
-    world.ecs().ctx().emplace<Handle>(Handle{std::make_unique<Multiplayer>(world)});
+    const Multiplayer* owned = world.ecs()
+                                   .ctx()
+                                   .emplace<Handle>(Handle{std::make_unique<Multiplayer>(world)})
+                                   .multiplayer.get();
+    world.add_memory_source(
+        "multiplayer", [owned](const world::World& /*world*/) { return owned->state_->memory(); });
     world.add_system(
         "multiplayer",
         [](world::World& w, double tick_seconds) { multiplayer(w).poll(tick_seconds); },
