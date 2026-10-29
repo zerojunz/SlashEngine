@@ -11,6 +11,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace slash::world {
@@ -151,6 +152,18 @@ public:
     // The largest sync packet (unreliable; 1350 bytes) and delta packet (reliable; 65535).
     void set_max_sync_packet_size(int bytes);
     void set_max_delta_packet_size(int bytes);
+
+    // Whether a remote procedure of that name is registered.
+    [[nodiscard]] bool has_rpc(std::string_view name) const;
+    // The entities spawners spawned that this peer tracks, with each one's spawner, by ID.
+    [[nodiscard]] std::vector<std::pair<std::string, std::string>> spawned() const;
+    // The synchronizers that are replicating, by ID.
+    [[nodiscard]] std::vector<std::string> synchronizers() const;
+
+    // After the world's entities were put back from a copy (undo, or a session's failed
+    // command), points what it tracks at the entities that now have the same IDs, so they are
+    // not despawned and spawned again on the other peers.
+    void rebind();
 
 private:
     friend void install(world::World& world);

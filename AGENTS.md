@@ -2068,11 +2068,16 @@ Godot's `WebSocketPeer` and `WebSocketMultiplayerPeer`: natively `WSLPeer` (the 
 Mbed TLS's SHA-1, and wslay's framing over TCP through ENet's socket calls, `TcpStream` and
 `TcpServer`; `ws://` only), on the web `EMWSPeer` (the browser's WebSocket through `EM_JS`, its
 events queued for `poll`). `tests/web/run.mjs` starts an echo server for the web build's test,
-`test_websocket_web.cpp`. Tests talk over
+`test_websocket_web.cpp`. Sessions and `runtime::Game` install a multiplayer in every world,
+offline; `engine/command/src/net.cpp` is `net.host`, `net.join`, `net.state`, `net.rpc` and
+`net.close`, which keep the transport beside it in the world's context, and `Session::restore`
+calls `Multiplayer::rebind` so entities put back by undo or a failed command stay spawned on the
+other peers. Tests talk over
 127.0.0.1 on ports the OS picks (`create_server(0)`, `local_port`). `examples/enet-peers` runs a
 server and three clients, `examples/multiplayer-rpc` three worlds' game,
 `examples/multiplayer-replication` bullets and players replicated between them and
-`examples/websocket-peers` the same game's calls over WebSocket.
+`examples/websocket-peers` the same game's calls over WebSocket, and `examples/network-sessions`
+plays a game on three sessions through the commands.
 
 ## AI providers
 

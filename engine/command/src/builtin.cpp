@@ -23,6 +23,7 @@
 #include "slash/command/perf.hpp"
 #include "slash/command/place.hpp"
 #include "slash/command/replay.hpp"
+#include "slash/command/net.hpp"
 #include "slash/command/services.hpp"
 #include "slash/command/session.hpp"
 #include "slash/command/terrain.hpp"
@@ -7930,6 +7931,7 @@ void register_builtin_commands(Registry& registry) {
     register_model_cleanup_commands(registry);
     register_services_commands(registry);
     register_l10n_commands(registry);
+    register_net_commands(registry);
 }
 
 void register_run_commands(Registry& registry) {
