@@ -1777,6 +1777,114 @@ void register_particle_components(ComponentRegistry& registry) {
     range(type, "anim_offset", "The frame it starts on, as a fraction of the frames", 0, 1)
         .describe("anim_offset_curve", curve);
 
+    ComponentType& type3d =
+        registry.add<CPUParticles3D>()
+            .set_doc("Emits particles from the entity's Transform3D, moves them and draws its "
+                     "primitive mesh, or the model mesh names, at each, as Godot's "
+                     "CPUParticles3D; a StandardMaterial3D with billboard_mode \"particles\" "
+                     "faces them to the camera. Ranges and curves as CPUParticles2D's; lengths "
+                     "in meters. Emits finished when a one_shot's last particle dies.")
+            .describe("emitting", {.doc = "Emit new particles. Setting it again restarts a "
+                                          "one_shot."})
+            .describe("amount", {.doc = "Particles alive at most: one cycle emits this many, "
+                                        "spread over lifetime.",
+                                 .min = 1,
+                                 .max = 65536})
+            .describe("lifetime",
+                      {.doc = "Seconds each particle lives and each cycle lasts.", .min = 0.001})
+            .describe("one_shot", {.doc = "Emit one cycle, then stop."})
+            .describe("preprocess",
+                      {.doc = "Seconds it runs ahead when it starts, so it starts full.", .min = 0})
+            .describe("speed_scale", {.doc = "Multiplies time for its particles.", .min = 0})
+            .describe("explosiveness",
+                      {.doc = "0 spreads emission over the cycle; 1 emits all at once.",
+                       .min = 0,
+                       .max = 1})
+            .describe(
+                "randomness",
+                {.doc = "Randomizes when each particle is emitted, 0 to 1.", .min = 0, .max = 1})
+            .describe("lifetime_randomness",
+                      {.doc = "Shortens each particle's life by up to this fraction.",
+                       .min = 0,
+                       .max = 1})
+            .describe("seed", {.doc = "Varies the random values; the same seed and entity ID "
+                                      "always give the same particles."})
+            .describe("local_coords", {.doc = "Particles move with the entity; false leaves them "
+                                              "where they were emitted."})
+            .describe("draw_order",
+                      {.doc = "\"index\" draws in emission slots' order, \"lifetime\" the "
+                              "youngest last, \"view_depth\" the nearest the camera last.",
+                       .choices = {"index", "lifetime", "view_depth"}})
+            .describe("mesh", {.doc = "A model file drawn at each particle in place of the "
+                                      "entity's primitive mesh; \"\" for none."})
+            .describe("layers", {.doc = "As MeshInstance3D's.", .min = 0, .max = kMaxMask})
+            .describe("cast_shadow", {.doc = "As MeshInstance3D's.",
+                                      .choices = {"off", "on", "double_sided", "shadows_only"}})
+            .describe("emission_shape",
+                      {.doc = "Where particles start: at the entity, in a sphere, on its surface, "
+                              "in a box, at emission_points, or in a ring.",
+                       .choices = {"point", "sphere", "sphere_surface", "box", "points",
+                                   "directed_points", "ring"}})
+            .describe("emission_sphere_radius", {.doc = "In meters.", .min = 0})
+            .describe("emission_box_extents", {.doc = "Half the box's size, in meters.", .min = 0})
+            .describe("emission_points", {.doc = "Points particles start at, in meters from "
+                                                 "the entity; each takes one at random."})
+            .describe("emission_normals",
+                      {.doc = "For directed_points, the direction each point emits along, as its "
+                              "z axis."})
+            .describe("emission_colors", {.doc = "Colors multiplying each point's particles."})
+            .describe("emission_ring_axis", {.doc = "The ring's axis, as [x, y, z]."})
+            .describe("emission_ring_height", {.doc = "Meters along the axis.", .min = 0})
+            .describe("emission_ring_radius", {.doc = "In meters.", .min = 0})
+            .describe("emission_ring_inner_radius", {.doc = "In meters.", .min = 0})
+            .describe("emission_ring_cone_angle",
+                      {.doc = "Degrees its side leans from the axis; 90 is a cylinder.",
+                       .min = 0,
+                       .max = 90})
+            .describe("particle_flag_align_y",
+                      {.doc = "Turn each particle so its y axis points along its velocity."})
+            .describe("particle_flag_rotate_y", {.doc = "Turn each particle about y by its angle."})
+            .describe("particle_flag_disable_z",
+                      {.doc = "Keep particles in the xy plane, turning about z by their angle, "
+                              "as 2D particles; orbit_velocity needs it."})
+            .describe("direction", {.doc = "Which way particles go, as [x, y, z]."})
+            .describe("spread", {.doc = "Degrees either side of direction.", .min = 0, .max = 180})
+            .describe("flatness", {.doc = "1 keeps the spread in the plane across direction's y.",
+                                   .min = 0,
+                                   .max = 1})
+            .describe("gravity", {.doc = "In meters per second squared, as [x, y, z]."});
+    range(type3d, "initial_velocity", "Starting speed in meters per second");
+    range(type3d, "angular_velocity", "Degrees per second it turns")
+        .describe("angular_velocity_curve", curve);
+    range(type3d, "orbit_velocity", "Turns per second round the entity, with disable_z")
+        .describe("orbit_velocity_curve", curve);
+    range(type3d, "linear_accel", "Meters per second squared along its velocity")
+        .describe("linear_accel_curve", curve);
+    range(type3d, "radial_accel", "Meters per second squared away from the entity")
+        .describe("radial_accel_curve", curve);
+    range(type3d, "tangential_accel", "Meters per second squared round the entity, across gravity")
+        .describe("tangential_accel_curve", curve);
+    range(type3d, "damping", "Meters per second squared it slows by", 0)
+        .describe("damping_curve", curve);
+    range(type3d, "angle", "Starting rotation in degrees").describe("angle_curve", curve);
+    range(type3d, "scale_amount", "Size, times the mesh's").describe("scale_amount_curve", curve);
+    type3d.describe("split_scale", {.doc = "Scale each axis by its own curve."})
+        .describe("scale_curve_x", curve)
+        .describe("scale_curve_y", curve)
+        .describe("scale_curve_z", curve)
+        .describe("color", {.doc = "Each particle's color, as [r, g, b, a] from 0 to 1; its "
+                                   "material shows it with vertex_color_use_as_albedo."})
+        .describe("color_ramp", {.doc = "Colors over each particle's life, multiplying color: "
+                                        "points {offset, color}, blended between."})
+        .describe("color_initial_ramp", {.doc = "Each particle multiplies its color by one "
+                                                "picked at random from this gradient."});
+    range(type3d, "hue_variation", "Turns its hue, as a fraction of the color wheel", -1, 1)
+        .describe("hue_variation_curve", curve);
+    range(type3d, "anim_speed", "Times its material's frames play over its life", 0)
+        .describe("anim_speed_curve", curve);
+    range(type3d, "anim_offset", "The frame it starts on, as a fraction of the frames", 0, 1)
+        .describe("anim_offset_curve", curve);
+
     registry.add<GPUParticles2D>()
         .set_doc("Emits particles from the entity's Transform2D and moves them on the GPU, as "
                  "Godot's GPUParticles2D, as its process_material file says. Emits finished "
@@ -2411,7 +2519,21 @@ void register_3d_components(ComponentRegistry& registry) {
                    .choices = {"nearest", "linear", "nearest_with_mipmaps", "linear_with_mipmaps"}})
         .describe("texture_repeat", {.doc = "Textures tile past their edges; false stretches "
                                             "the edge pixels."})
-        .describe("disable_fog", {.doc = "The WorldEnvironment's fog leaves it alone."});
+        .describe("disable_fog", {.doc = "The WorldEnvironment's fog leaves it alone."})
+        .describe("billboard_mode",
+                  {.doc = "Turns it to face the camera: \"fixed_y\" about y only, "
+                          "\"particles\" each particle, rotated by its angle.",
+                   .choices = {"disabled", "enabled", "fixed_y", "particles"}})
+        .describe("billboard_keep_scale",
+                  {.doc = "A billboard keeps its scale, a particle its scale_amount."})
+        .describe(
+            "particles_anim_h_frames",
+            {.doc = "Columns of frames in albedo_texture, for particles.", .min = 1, .max = 128})
+        .describe("particles_anim_v_frames",
+                  {.doc = "Rows of frames in albedo_texture, for particles.", .min = 1, .max = 128})
+        .describe("particles_anim_loop",
+                  {.doc = "Frames past the last start again from the first; false stays on the "
+                          "last."});
 
     registry.add<Camera3D>()
         .set_doc("What the 3D world is seen through, as Godot's Camera3D, looking down the "

@@ -280,6 +280,7 @@ rendering on top.
       `LightOccluder2D`s and tile occluders, sub-emitters (chains of up to 8 emitters stepping
       together) and trails (Godot's ribbons through copies that follow each particle's path).
       Attractors come with the 3D particles in milestone 7, as Godot has them only in 3D
+      (`CPUParticles3D` is done)
 - [x] Text with FreeType, HarfBuzz and MSDF fonts, and Godot's `Control`, `Label` and
       `ColorRect`: anchors, offsets and grow directions, rotation, scale and modulate, labels
       that wrap, align, trim with an ellipsis and draw outlines and shadows, theme overrides and
@@ -668,6 +669,14 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] VoxelGI's light in the fog (`gi_inject`), as Godot's density pass takes it
 - [x] Clustered decals, as Godot 4.6's Forward+ `Decal`: albedo, normal, ORM and emission
       textures in one atlas, fades, cull masks and the project's decal filter, imported from Godot
+- [ ] 3D particles, as Godot 4.6's
+  - [x] `CPUParticles3D`: Godot's emission shapes (ball, box, points, ring with its cone), cone
+        spread with flatness, forces, damping, curves, color ramps and the align, rotate and
+        disable-z flags, drawn as the entity's mesh at each particle with `StandardMaterial3D`'s
+        billboard modes and particle frames, sorted by view depth; the same particles on every
+        platform and thread count, and `particles.eval` in 3D
+  - [ ] `GPUParticles3D` with process materials, attractors and collision shapes
+  - [ ] Godot's 3D particle nodes in `project.import`
 - [x] Generated LODs with meshoptimizer and occlusion culling
   - [x] Generated LODs, as Godot 4.6's importer makes them with meshoptimizer and its renderers
         pick them by distance, `lod_bias` and the project's threshold, imported from Godot
@@ -936,7 +945,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Keyframe animation | Keyframe tracks on any reflected property | 5 | Done |
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Done |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Done |
-| Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials, particle graphs, turbulence, collision, sub-emitters and trails are done; attractors with 3D in 7 |
+| Particles | CPU and GPU particles, particle graphs in text | 5 | In part: CPU particles and GPU particles with process materials, particle graphs, turbulence, collision, sub-emitters and trails are done, and `CPUParticles3D`; `GPUParticles3D` and attractors in 7 |
 | Soundtracks | Music planned in the storyboard, written as scores or generated, arranged into interactive music and checked by analysis, all through commands | 6 | Done |
 | Audio | miniaudio: buses, effects, 3D spatial audio | 5, 7 | Done |
 | Input | Rebindable action maps over SDL3, injectable by agents | 5 | Done |

@@ -385,6 +385,16 @@ private:
     // A GridMap's octants, drawn as Godot draws their MultiMeshes.
     void add_gridmap(const world::World& world, entt::entity entity, const world::Affine3D& place,
                      std::uint32_t cull_mask);
+    // Turns a draw placed at place to face the camera when standard is a billboard, as Godot's
+    // BaseMaterial3D's billboard_mode.
+    void face_camera(const world::StandardMaterial3D& standard, const world::Affine3D& place,
+                     Draw& draw) const;
+    // A CPUParticles3D's mesh at each of its particles, part of the way (interpolation) from
+    // where they were before the last tick, placed by place with local_coords and turned toward
+    // a camera at camera by a billboard material, as Godot draws its MultiMesh: one mesh per
+    // surface on the device, its vertices made again each frame.
+    void add_particles(const world::World& world, entt::entity entity, const world::Affine3D& place,
+                       const world::Affine3D& camera, std::uint32_t cull_mask, float interpolation);
     // An HTerrain's chunks for a camera at camera, as HTerrain draws them.
     void add_terrain(const world::World& world, entt::entity entity, const world::Affine3D& place,
                      const world::Affine3D& camera, const world::Camera3D& lens);
@@ -510,6 +520,17 @@ private:
     std::unordered_map<entt::entity, PoseKey> before_poses_;
     std::unordered_map<std::string, Skinned> skinned_;
     std::vector<render::Vertex3D> skinned_vertices_;
+    // A CPUParticles3D surface's mesh on the device, its vertex count and the last frame that drew
+    // it, by entity and surface; and the primitive meshes particles draw, by their settings.
+    struct ParticleMesh {
+        render::MeshId id = render::MeshId::None;
+        std::size_t vertices = 0;
+        std::uint64_t used = 0;
+    };
+    std::unordered_map<std::string, ParticleMesh> particle_meshes_;
+    world::Affine3D camera_place_; // where the current camera is, for billboards
+    std::unordered_map<std::string, std::pair<MeshData, std::uint64_t>> particle_shapes_;
+    std::vector<render::Vertex3D> particle_vertices_;
     std::unordered_map<entt::entity, Cached> cached_;
     std::unordered_map<std::string, Shared> shared_;
     std::vector<Draw> draws_;

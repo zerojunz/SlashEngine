@@ -1582,6 +1582,17 @@ same bits everywhere). `particles.eval` runs the steps kept on the CPU
 (`canvas::gpu_particles`); `examples/gpu-particles` has a fire, sparks, snow, smoke, rain,
 fireworks, comets with trails and fireflies that graphs move.
 
+`CPUParticles3D` is Godot 4.6's, in `engine/scene3d/src/particles.cpp`
+(`slash/scene3d/particles.hpp`): the `cpu_particles_3d` system (priority 1100, added by
+`canvas::install`) runs each emitter as `CPUParticles2D`'s are run, with the same timing and
+hashed random values, and Godot's 3D emission shapes, cone spread, basis flags and scale.
+`scene3d::Renderer::add_particles` draws each emitter's mesh (its `mesh` file or primitive mesh
+component) as one CPU mesh per surface, refilled each frame with `update_mesh`: a copy of the
+mesh at each live particle, turned by `billboard` where its `StandardMaterial3D` has a
+`billboard_mode` (as Godot's `BaseMaterial3D` vertex code, which `face_camera` also applies to
+`MeshInstance3D`s) and colored by the particle. `particles.eval` lists them in 3D, and
+`examples/particles-3d` has a fountain, a fire and snow.
+
 ## Job system
 
 `engine/core`'s `jobs::Pool` (`slash/core/jobs.hpp`) is Godot's `WorkerThreadPool`: tasks, group
