@@ -4,6 +4,7 @@
 #include "skeletons.hpp"
 
 #include "slash/animation/animation.hpp"
+#include "slash/animation/tree.hpp"
 #include "slash/importer/scripts.hpp"
 #include "slash/importer/unreal.hpp"
 #include "slash/platform/file.hpp"
@@ -19,6 +20,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -1659,9 +1661,20 @@ private:
         }
         const std::string mode = text(*animation, "mode");
         if (mode == "blueprint") {
+            const AnimTree* tree = anim_tree(text(*animation, "blueprint"));
+            if (tree == nullptr) {
+                problems_.add("Animation Blueprint", where,
+                              "the mesh stands in its bind pose until its task's AnimationTree "
+                              "plays it");
+                return;
+            }
             problems_.add("Animation Blueprint", where,
-                          "the mesh stands in its bind pose until its task's AnimationTree "
-                          "plays it");
+                          "its graph doesn't convert: an AnimationTree plays its sequences as a "
+                          "state machine's states with no transitions, which its task adds");
+            json::Value player;
+            player["tree_root"] = tree->tree;
+            player["libraries"][""] = tree->library;
+            entity.components["AnimationTree"] = std::move(player);
             return;
         }
         if (mode != "single_node") {
@@ -1703,6 +1716,90 @@ private:
             player["time"] = tidy(position);
         }
         entity.components["AnimationPlayer"] = std::move(player);
+    }
+
+    // What an Animation Blueprint becomes: a library of the sequences it plays, each looping as
+    // a state machine's sequence players loop, and a state machine with a state per sequence,
+    // starting at the first named idle (else the first) and with no transitions, for its task to
+    // join as the Blueprint's state machines do.
+    struct AnimTree {
+        std::string tree;    // the .animtree.json file
+        std::string library; // the .anim.json file
+        std::string start;   // the state it starts at
+    };
+
+    // The AnimationTree an Animation Blueprint's sequences make, written once, or nullptr when
+    // the export found none of them.
+    const AnimTree* anim_tree(const std::string& package) {
+        if (const auto found = anim_trees_.find(package); found != anim_trees_.end()) {
+            const std::optional<AnimTree>& known = found->second;
+            if (!known) {
+                return nullptr;
+            }
+            return &*known;
+        }
+        std::optional<AnimTree>& out = anim_trees_[package];
+        const json::Value* blueprint = nullptr;
+        for (const json::Value& entry : items(export_, "blueprints")) {
+            if (text(entry, "path") == package && text(entry, "kind") == "AnimBlueprint") {
+                blueprint = &entry;
+            }
+        }
+        if (blueprint == nullptr) {
+            return nullptr;
+        }
+        json::Value library;
+        library["format"] = 1;
+        json::Value machine;
+        machine["format"] = 1;
+        json::Value& root = machine["root"];
+        root["type"] = "StateMachine";
+        std::vector<std::string> names;
+        for (const json::Value& sequence : items(*blueprint, "animations")) {
+            const auto found = animations_.find(sequence.is_string() ? sequence.as_string() : "");
+            if (found == animations_.end()) {
+                continue; // reported when exported
+            }
+            std::string name = found->second.name;
+            for (int n = 2; contains(names, name); ++n) {
+                name = found->second.name + "_" + std::to_string(n);
+            }
+            json::Value& entry = library["animations"][name];
+            entry["from"]["model"] = found->second.library;
+            entry["from"]["animation"] = found->second.name;
+            entry["loop"] = "linear";
+            json::Value& state = root["states"][name];
+            state["node"]["type"] = "Animation";
+            state["node"]["animation"] = name;
+            state["position"] = json::Array{static_cast<double>(names.size()) * 200.0, 0.0};
+            names.push_back(name);
+        }
+        if (names.empty()) {
+            return nullptr;
+        }
+        AnimTree tree;
+        tree.start = names.front();
+        for (const std::string& name : names) {
+            std::string lower = name;
+            std::ranges::transform(lower, lower.begin(), [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+            if (lower.find("idle") != std::string::npos) {
+                tree.start = name;
+                break;
+            }
+        }
+        json::Value start;
+        start["from"] = "Start";
+        start["to"] = tree.start;
+        start["advance_mode"] = "auto";
+        root["transitions"] = json::Array{std::move(start)};
+        tree.library = content_path(package, std::string(animation::kAnimationSuffix));
+        tree.tree = content_path(package, std::string(animation::kTreeSuffix));
+        add_file(tree.library, json::write(library) + "\n");
+        add_file(tree.tree, json::write(machine) + "\n");
+        ++converted_anim_trees_;
+        return &out.emplace(std::move(tree));
     }
 
     void convert_component(const json::Value& comp, const json::Value& actor, Level& level,
@@ -2632,6 +2729,12 @@ private:
                 task.name = "Port the animation Blueprint " + package;
                 task.summary = "Animation Blueprint: rebuild it as an .animtree.json "
                                "AnimationTree.";
+                if (const auto found = anim_trees_.find(package);
+                    found != anim_trees_.end() && found->second) {
+                    task.summary = "Animation Blueprint: give " + found->second->tree +
+                                   " the transitions, blends and parameters of its graphs.";
+                    task.links.push_back(found->second->tree);
+                }
             } else {
                 task.name = "Port the Blueprint " + package + " to C++";
                 task.summary = "Unreal Blueprint: write what it does as C++ components and "
@@ -2835,6 +2938,7 @@ private:
         out["converted"]["animations"] = converted_animations_;
         out["converted"]["material_variants"] = converted_variants_;
         out["converted"]["landscapes"] = converted_landscapes_;
+        out["converted"]["animation_trees"] = converted_anim_trees_;
         out["converted"]["input_actions"] = input_actions_;
         out["converted"]["blueprints"] = blueprints_;
         out["converted"]["classes"] = static_cast<std::int64_t>(classes_.size());
@@ -2868,8 +2972,10 @@ private:
     std::map<std::string, scene3d::Model> materials_; // package -> a model drawing it
     std::map<std::string, std::string> variants_;     // mesh and overrides -> the .glb file
     std::set<std::string> variant_paths_;
-    std::map<std::string, AnimationOut> animations_; // package -> its file
-    std::set<std::string> looped_;                   // .anim.json files written
+    std::map<std::string, AnimationOut> animations_;            // package -> its file
+    std::map<std::string, std::optional<AnimTree>> anim_trees_; // Animation Blueprint -> its tree
+    int converted_anim_trees_ = 0;
+    std::set<std::string> looped_; // .anim.json files written
     std::map<std::string, json::Value> levels_;
     std::vector<std::string> scenes_;
     std::vector<std::string> classes_;
