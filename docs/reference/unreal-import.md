@@ -94,7 +94,7 @@ name to its entity.
 | --- | --- |
 | `StaticMeshComponent` | `MeshInstance3D` naming the mesh's `.glb`; `bCastShadow` off is `cast_shadow: "off"`. With `OverrideMaterials`, a copy of the mesh's `.glb` drawn with them (see [Materials](#materials)) |
 | `InstancedStaticMeshComponent`, `HierarchicalInstancedStaticMeshComponent` | A child `MeshInstance3D` entity per instance (up to 2048) |
-| `SkeletalMeshComponent` | `MeshInstance3D`; one that plays an animation sequence ("Use Animation Asset") gets an `AnimationPlayer` playing it (see [Animation](#animation)), and one run by an Animation Blueprint stands in its bind pose until its task's `AnimationTree` plays it |
+| `SkeletalMeshComponent` | `MeshInstance3D`; one that plays an animation sequence ("Use Animation Asset") gets an `AnimationPlayer` playing it (see [Animation](#animation)), and one run by an Animation Blueprint gets an `AnimationTree` of its sequences (see [Animation](#animation)) |
 | `CameraComponent`, `CameraActor` | `Camera3D`: the field of view across (`keep_aspect: "width"`), or `orthogonal` with its width; the camera of the pawn player 0 possesses is `current` |
 | `SpringArmComponent` | Its children placed at the end of the arm (`TargetArmLength` back, plus `SocketOffset`) |
 | `DirectionalLightComponent` | `DirectionalLight3D`: energy is lux / 10, so Unreal's default sun is 1; `LightSourceAngle` is `light_angular_distance` |
@@ -177,9 +177,17 @@ the component's `AnimationData` left it (`SavedPosition` is `time`), at its play
 (`speed_scale`), stopped when it isn't playing. A looping sequence plays through an `.anim.json`
 library beside it that takes the animation `from` the `.glb` with `loop: "linear"`; one that
 doesn't loop plays from the `.glb` itself. The report's `animations` maps each sequence to its
-file, and `converted` counts them. Animation Blueprints, montages and blend spaces aren't played:
-an Animation Blueprint's task is to rebuild it as an `AnimationTree`, and a sequence's file is
-there for it to use.
+file, and `converted` counts them.
+
+An Animation Blueprint's graphs don't convert, since Unreal's Python API doesn't read them, but
+what they play does: the export lists the sequences the Blueprint references (and those of the
+blend spaces, montages and composites it uses) and writes each as above. The importer makes them
+an `<blueprint>.anim.json` library, each looping, and an `<blueprint>.animtree.json` state
+machine with a state per sequence, starting at the first whose name holds "idle" (else the
+first) and with no other transitions, and a component the Blueprint runs gets an `AnimationTree`
+over the two, so the mesh idles rather than standing in its bind pose. The Blueprint's task links
+the tree, to add the transitions, blends and parameters its graphs have; `converted` counts
+`animation_trees`. Montages and blend spaces aren't played themselves.
 
 ## Landscapes
 
@@ -251,8 +259,9 @@ Importing again leaves a skeleton that exists as it is and rewrites `scripts.cpp
 
 Landscapes' materials and paint layers, foliage, BSP brushes (convert them to static meshes in
 Unreal first), Niagara and Cascade particles, material graphs (meshes draw with what the glTF
-exporter bakes them to), Animation Blueprints, montages and blend spaces, Nanite meshes without a
-fallback, movement components such as `RotatingMovementComponent`, light temperature and IES
-profiles, level streaming and World Partition data layers (a partitioned level's actors are loaded
-all at once), and Blueprint logic (C++ classes become skeletons to port). What a project has of
-these is listed in the result's `unsupported`, once per kind with where it was first seen and why.
+exporter bakes them to), Animation Blueprints' graphs, montages and blend spaces, Nanite meshes
+without a fallback, movement components such as `RotatingMovementComponent`, light temperature and
+IES profiles, level streaming and World Partition data layers (a partitioned level's actors are
+loaded all at once), and Blueprint logic (C++ classes become skeletons to port). What a project has
+of these is listed in the result's `unsupported`, once per kind with where it was first seen and
+why.

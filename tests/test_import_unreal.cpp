@@ -703,6 +703,10 @@ TEST_CASE("an Unreal import draws meshes' override materials and plays their ani
          .times = {0.0F, 1.0F},
          .values = {{0.0F, 0.0F, 0.0F, 1.0F}, {0.0F, 0.7071068F, 0.0F, 0.7071068F}}});
     write_model(exported / "animations/Game/A_Wave.glb", wave);
+    scene3d::Model idle = figure;
+    idle.animations.push_back(clip);
+    idle.animations.back().name = "Idle";
+    write_model(exported / "animations/Game/A_Idle.glb", idle);
 
     json::Value description =
         parse(slash::platform::read_file((exported / "export.json").string()).value());
@@ -714,7 +718,14 @@ TEST_CASE("an Unreal import draws meshes' override materials and plays their ani
     description["materials"] =
         parse(R"({"/Game/M_Red": {"class": "Material", "file": "materials/Game/M_Red.glb"}})");
     description["animations"] = parse(R"({"/Game/A_Wave": {"class": "AnimSequence",
-        "file": "animations/Game/A_Wave.glb", "length": 1.0}})");
+        "file": "animations/Game/A_Wave.glb", "length": 1.0},
+        "/Game/A_Idle": {"class": "AnimSequence", "file": "animations/Game/A_Idle.glb",
+        "length": 1.0}})");
+    // The statue's Animation Blueprint plays both sequences.
+    description["blueprints"].as_array().push_back(
+        parse(R"({"path": "/Game/ABP_Figure", "kind": "AnimBlueprint",
+        "parent": "/Script/Engine.AnimInstance", "native_parent": "/Script/Engine.AnimInstance",
+        "animations": ["/Game/A_Wave", "/Game/A_Idle"], "skeleton": "/Game/SKEL_Figure"})"));
     json::Array& actors = description["levels"].as_array().at(0)["actors"].as_array();
     actors.push_back(parse(R"({"name": "StaticMeshActor_2", "label": "Red Crate",
         "class": "StaticMeshActor", "class_path": "/Script/Engine.StaticMeshActor",
@@ -794,16 +805,31 @@ TEST_CASE("an Unreal import draws meshes' override materials and plays their ani
     CHECK(animation->find("from")->find("model")->as_string() == "unreal/Content/A_Wave.glb");
     CHECK(animation->find("loop")->as_string() == "linear");
     CHECK_FALSE(file("unreal/Content/A_Wave.glb").empty());
-    // An Animation Blueprint is left for its task.
-    CHECK(scene.find("entities")->find("statue")->find("components")->find("AnimationPlayer") ==
-          nullptr);
+    // An Animation Blueprint's sequences are an AnimationTree's states, starting at the idle, for
+    // its task to join.
+    const json::Value& tree = component(scene, "statue", "AnimationTree");
+    CHECK(tree.find("tree_root")->as_string() == "unreal/Content/ABP_Figure.animtree.json");
+    CHECK(tree.find("libraries")->find("")->as_string() == "unreal/Content/ABP_Figure.anim.json");
+    const json::Value machine = file_json(plan, "unreal/Content/ABP_Figure.animtree.json");
+    const json::Value& root = *machine.find("root");
+    CHECK(root.find("type")->as_string() == "StateMachine");
+    CHECK(root.find("states")->find("Wave") != nullptr);
+    CHECK(root.find("states")->find("Idle")->find("node")->find("animation")->as_string() ==
+          "Idle");
+    REQUIRE(root.find("transitions")->as_array().size() == 1);
+    CHECK(root.find("transitions")->as_array()[0].find("to")->as_string() == "Idle");
+    const json::Value sequences = file_json(plan, "unreal/Content/ABP_Figure.anim.json");
+    CHECK(sequences.find("animations")->find("Idle")->find("from")->find("model")->as_string() ==
+          "unreal/Content/A_Idle.glb");
+    CHECK(sequences.find("animations")->find("Wave")->find("loop")->as_string() == "linear");
     bool reported = false;
     for (const json::Value& problem : plan.report.find("unsupported")->as_array()) {
         reported = reported || problem.find("what")->as_string() == "Animation Blueprint";
     }
     CHECK(reported);
 
-    CHECK(plan.report.find("converted")->find("animations")->as_int() == 1);
+    CHECK(plan.report.find("converted")->find("animations")->as_int() == 2);
+    CHECK(plan.report.find("converted")->find("animation_trees")->as_int() == 1);
     CHECK(plan.report.find("converted")->find("material_variants")->as_int() == 1);
 }
 

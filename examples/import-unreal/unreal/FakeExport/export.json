@@ -4,6 +4,11 @@
    "class": "AnimSequence",
    "file": "animations/Game/Characters/A_Idle.glb",
    "length": 2.0
+  },
+  "/Game/Characters/A_Wave": {
+   "class": "AnimSequence",
+   "file": "animations/Game/Characters/A_Wave.glb",
+   "length": 1.0
   }
  },
  "blueprints": [
@@ -24,6 +29,17 @@
    "native_parent": "/Script/Engine.Character",
    "parent": "/Script/Engine.Character",
    "path": "/Game/Blueprints/BP_Hero"
+  },
+  {
+   "animations": [
+    "/Game/Characters/A_Wave",
+    "/Game/Characters/A_Idle"
+   ],
+   "kind": "AnimBlueprint",
+   "native_parent": "/Script/Engine.AnimInstance",
+   "parent": "/Script/Engine.AnimInstance",
+   "path": "/Game/Characters/ABP_Guard",
+   "skeleton": "/Game/Characters/SKEL_Hero"
   },
   {
    "kind": "WidgetBlueprint",
@@ -1398,6 +1414,65 @@
        -400.0,
        0.0,
        92.0
+      ],
+      "rotation": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ],
+      "scale": [
+       1.0,
+       1.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "class": "SkeletalMeshActor",
+     "class_path": "/Script/Engine.SkeletalMeshActor",
+     "components": [
+      {
+       "animation": {
+        "blueprint": "/Game/Characters/ABP_Guard",
+        "mode": "blueprint"
+       },
+       "cast_shadow": true,
+       "class": "SkeletalMeshComponent",
+       "collision": "no_collision",
+       "mesh": "/Game/Characters/SK_Hero",
+       "mobility": "movable",
+       "name": "SkeletalMeshComponent0",
+       "overlaps": false,
+       "simulate": false,
+       "transform": {
+        "location": [
+         600.0,
+         300.0,
+         0.0
+        ],
+        "rotation": [
+         0.0,
+         0.0,
+         0.0,
+         1.0
+        ],
+        "scale": [
+         1.0,
+         1.0,
+         1.0
+        ]
+       }
+      }
+     ],
+     "label": "Guard",
+     "name": "SkeletalMeshActor_0",
+     "root": "SkeletalMeshComponent0",
+     "transform": {
+      "location": [
+       600.0,
+       300.0,
+       0.0
       ],
       "rotation": [
        0.0,
