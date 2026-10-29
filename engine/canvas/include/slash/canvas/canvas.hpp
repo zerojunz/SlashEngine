@@ -287,6 +287,9 @@ private:
     struct Texture {
         asset::Handle<render::Image> image;
         const render::Image* builtin = nullptr; // a "builtin:" icon (ui.hpp) instead of a file
+        std::string path;                       // as drawing names it
+        // A "video:" frame (video.hpp) in builtin's place, and the frame's version.
+        std::uint64_t video_version = 0;
         render::TextureId id = render::TextureId::None;
         std::uint64_t version = 0;
         std::uint32_t width = 0;
@@ -297,6 +300,9 @@ private:
             return builtin != nullptr ? *builtin : *image;
         }
         [[nodiscard]] std::uint64_t image_version() const {
+            if (video_version != 0) {
+                return video_version;
+            }
             return builtin != nullptr ? 1 : image.version();
         }
     };
@@ -400,6 +406,7 @@ private:
 
     render::RenderDevice* device_;
     asset::Assets* assets_;
+    const world::World* world_ = nullptr; // the world draw() is drawing, for "video:" textures
     std::map<std::pair<std::string, render::Filter>, Texture> textures_;
     std::map<std::string, MaterialEntry, std::less<>> materials_;
     std::map<std::string, asset::Handle<TileSet>, std::less<>> tile_sets_;

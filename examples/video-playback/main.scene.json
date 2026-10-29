@@ -1,0 +1,17 @@
+{
+  "entities": {
+    "screen": {
+      "components": {
+        "Sprite2D": {"texture": "video:tv"},
+        "Transform2D": {"position": [120, 60], "scale": [0.5, 0.5]}
+      }
+    },
+    "tv": {
+      "components": {
+        "Control": {"offset_left": 8, "offset_top": 8},
+        "VideoStreamPlayer": {"autoplay": true, "stream": "clip.ivf"}
+      }
+    }
+  },
+  "format": 1
+}

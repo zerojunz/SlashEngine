@@ -6,6 +6,7 @@
 #include "slash/l10n/l10n.hpp"
 #include "slash/render/image.hpp"
 #include "slash/ui/ui.hpp"
+#include "slash/video/video.hpp"
 
 #include <algorithm>
 #include <array>
@@ -1089,6 +1090,9 @@ struct Node {
     std::optional<Vec2> texture_size; // TextureRect's, if it loads
     const world::NinePatchRect* nine_patch = nullptr;
     std::optional<Vec2> patch_texture_size;
+    const world::VideoStreamPlayer* video = nullptr;
+    std::optional<Vec2> video_size; // its stream's, if it loads
+    bool video_shown = false;       // the video system has decoded a frame to draw
     const world::ColorRect* color_rect = nullptr;
     std::optional<ButtonWork> button;
     // An OptionButton: its Button with the selected option's text and icon, and its arrow.
@@ -1402,6 +1406,19 @@ struct Builder {
             node.panel = resolver("Panel").style("panel");
         }
         node.color_rect = ecs.try_get<world::ColorRect>(entity);
+        if (const auto* video = ecs.try_get<world::VideoStreamPlayer>(entity); video != nullptr) {
+            node.video = video;
+            if (!video->stream.empty()) {
+                auto loaded = fonts.assets().load<video::VideoFile>(video->stream);
+                if (loaded) {
+                    node.video_size = Vec2{static_cast<float>(loaded.value()->width),
+                                           static_cast<float>(loaded.value()->height)};
+                } else {
+                    problem(entity, "/components/VideoStreamPlayer/stream", loaded.error().message);
+                }
+            }
+            node.video_shown = video::shown(world, world.id_of(entity)).image != nullptr;
+        }
         if (const auto* rect = ecs.try_get<world::TextureRect>(entity); rect != nullptr) {
             node.texture_rect = rect;
             if (!rect->texture.empty()) {
@@ -2175,6 +2192,10 @@ struct Builder {
                 bar = max(bar, {1.0F, 1.0F});
             }
             minimum = max(minimum, bar);
+        }
+        // VideoStreamPlayer::get_minimum_size: the video's size unless it expands.
+        if (node.video != nullptr && node.video_size && !node.video->expand) {
+            minimum = max(minimum, *node.video_size);
         }
         if (node.texture_rect != nullptr && node.texture_size) {
             const Vec2 texture = *node.texture_size;
@@ -3108,6 +3129,18 @@ struct Builder {
         }
         if (node.texture_rect != nullptr && node.texture_size) {
             boxes.push_back(texture_box(node, *node.texture_size, size));
+        }
+        // VideoStreamPlayer's NOTIFICATION_DRAW: its frame at the rect's size when it expands,
+        // else at its own.
+        if (node.video != nullptr && node.video_size && node.video_shown) {
+            Box box{.style = {},
+                    .position = {},
+                    .size = node.video->expand ? size : *node.video_size,
+                    .texture_size = *node.video_size};
+            box.style.type = StyleBox::Type::Texture;
+            box.style.texture =
+                std::string(video::kTexturePrefix) + std::string(world.id_of(node.entity));
+            boxes.push_back(box);
         }
         if (node.nine_patch != nullptr && node.patch_texture_size) {
             const world::NinePatchRect& patch = *node.nine_patch;
