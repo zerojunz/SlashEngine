@@ -2051,9 +2051,15 @@ transfer mode, and peers joining and leaving wait in `take_events` (Godot's sign
 peer 1; clients pick their IDs (`generate_unique_id`). `src/enet.cpp` ports
 `ENetMultiplayerPeer` and the parts of `ENetConnection` it uses onto upstream ENet (IPv4, as
 Godot without its fork), built from its C files in `cmake/Dependencies.cmake` everywhere but the
-web (`enet_supported`); `OfflinePeer` is `OfflineMultiplayerPeer`. Tests talk over 127.0.0.1 on
-ports the OS picks (`create_server(0)`, `local_port`). `examples/enet-peers` runs a server and
-three clients.
+web (`enet_supported`); `OfflinePeer` is `OfflineMultiplayerPeer`. `src/multiplayer.cpp` ports
+`SceneMultiplayer`, `SceneCacheInterface` and `SceneRPCInterface` with entities for nodes and
+their IDs for paths: `net::install` gives a world its `Multiplayer` (in the world's context) and
+the `multiplayer` system (priority -950) that polls it; peers join (through authentication when
+there is a callback), the server announces and relays, its signals are world events, and
+`add_rpc` and `rpc` call procedures on entities by name with Godot's modes, an RPC's ID being its
+index among the entity's procedures (those whose `component` it has) by name. Tests talk over
+127.0.0.1 on ports the OS picks (`create_server(0)`, `local_port`). `examples/enet-peers` runs a
+server and three clients and `examples/multiplayer-rpc` three worlds' game.
 
 ## AI providers
 
@@ -2162,7 +2168,7 @@ CI rejects unformatted code and any clang-tidy finding.
   (controls, containers and themes: layout, draw calls, buttons, focus and text fields), `animation` (`.anim.json` keyframe
   animations, `.animtree.json` animation trees and the systems that play them),
   `scene3d` (3D nodes: primitive meshes, glTF, OBJ, FBX and Blender models, CSG shapes, grid maps, materials, cameras, lights and environments,
-  and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `physics3d` (3D bodies, areas, character movement and queries on Jolt), `navigation` (navigation meshes, maps, paths and agents), `net` (multiplayer peers and the ENet transport), `library` (the asset library, its
+  and drawing them), `physics2d` (2D bodies, areas, joints and queries on Box2D), `physics3d` (3D bodies, areas, character movement and queries on Jolt), `navigation` (navigation meshes, maps, paths and agents), `net` (multiplayer peers, the ENet transport, a world's multiplayer and RPCs), `library` (the asset library, its
   generators and commands), `storyboard` (storyboard kinds, files, versions,
   queries, edits, briefs and checks), `soundtrack` (`.score.json` scores, MIDI files, rendering stems, drafting cue sheets and arranging them),
   `command` (commands, sessions with undo, JSON-RPC and MCP),

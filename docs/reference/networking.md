@@ -9,7 +9,10 @@ Transports are kinds of peer, so code written against `net::Peer` runs over any 
 | `net::ENetPeer` | `ENetMultiplayerPeer` | Reliable UDP over [ENet](https://github.com/lsalzman/enet): macOS, Windows, Linux, iOS and Android. Not on the web, whose browsers have no UDP sockets. IPv4 only |
 | `net::OfflinePeer` | `OfflineMultiplayerPeer` | A server with no one else, always connected: a game played alone runs the same code it runs online |
 
-Replication, remote procedure calls and WebSocket are next on the [roadmap](../roadmap.md).
+A world's multiplayer runs on a peer: it admits the peers that join, tells clients about each
+other through the server, relays their packets and calls remote procedures on entities, as
+Godot's `SceneMultiplayer`. Replication, WebSocket and commands are next on the
+[roadmap](../roadmap.md).
 
 ## Peers
 
@@ -77,3 +80,81 @@ the web.
 
 [`examples/enet-peers`](../../examples/enet-peers/) runs a server and three clients on one
 machine.
+
+## A world's multiplayer
+
+```cpp
+#include "slash/net/multiplayer.hpp"
+
+net::install(world); // the world's multiplayer, offline, and the system that polls it
+auto peer = std::make_shared<net::ENetPeer>();
+(void)peer->create_client("game.example.com", 7000);
+(void)net::multiplayer(world).set_peer(peer);
+```
+
+`net::install` gives a world its `net::Multiplayer` and the `multiplayer` system (priority -950,
+right after `input`), which polls it at the start of each tick, as Godot polls a scene tree's
+multiplayer before processing nodes. It starts on an `OfflinePeer`; `set_peer` takes a peer that
+is connecting or connected (null goes back offline) and forgets the peers and caches of the one
+before.
+
+Its events are world events (`World::events()`, `events.read`), each with data `{"peer": id}`:
+
+| Event | When |
+| --- | --- |
+| `peer_connected`, `peer_disconnected` | A peer joined or left. A client hears the server (peer 1) and, through it, every other client |
+| `connected_to_server` | A client joined its server |
+| `connection_failed` | A client's connection failed before it joined |
+| `server_disconnected` | The connection ended, by either side |
+| `peer_authenticating`, `peer_authentication_failed` | A joining peer waits for authentication, or left or timed out during it |
+| `peer_packet` | Raw bytes arrived (`{"peer", "size"}`); `take_packets()` returns them |
+
+`peer_ids()` lists the connected peers, `unique_id()` and `is_server()` describe this one, and
+`disconnect_peer(id)` drops a peer without reporting it. With `set_server_relay(false)` the
+server neither tells clients about each other nor relays their packets.
+
+**Authentication.** With `set_auth_callback(fn)`, a joining peer waits in
+`authenticating_peer_ids()` while the two sides exchange `send_auth(id, bytes)`, which reach the
+other side's callback, until each calls `complete_auth(id)`; one that doesn't finish within
+`set_auth_timeout(seconds)` (3 by default, 0 for none) is dropped. Both sides need a callback.
+
+**Raw packets.** `send_bytes(bytes, id = 0, mode = Reliable, channel = 0)` sends bytes to a peer,
+everyone (0) or all but one (minus an ID), relayed by the server between clients.
+
+## Remote procedure calls
+
+Every peer registers the same procedures, by name, with Godot's `@rpc` settings, and calls them
+on an entity by its ID, as Godot calls a method on a node by its path:
+
+```cpp
+net::Multiplayer& mp = net::multiplayer(world);
+mp.add_rpc("move",
+           {.mode = net::RpcMode::Authority, // only the entity's authority may call it
+            .transfer_mode = net::TransferMode::UnreliableOrdered,
+            .channel = 1,
+            .component = "Transform2D"}, // a procedure of entities with a Transform2D
+           [](world::World& world, entt::entity entity, const json::Value& args) {
+               // net::multiplayer(world).remote_sender_id() is the caller.
+           });
+(void)mp.rpc("player", "move", json::Array{120, 64});         // every peer
+(void)mp.rpc("player", "move", json::Array{120, 64}, 1);      // the server alone
+```
+
+| Setting | Means |
+| --- | --- |
+| `mode` | `Authority` (the default): only the peer the entity answers to may call it. `AnyPeer`: every peer. `Disabled`: no one. A call that isn't allowed is refused where it arrives, with an error logged |
+| `call_local` | The call also runs on the peer that makes it (`remote_sender_id()` is then its own ID). Without it, calling yourself is refused |
+| `transfer_mode`, `channel` | How the call travels |
+| `component` | The component an entity needs for the procedure to be its own, as a Godot method belongs to a node's script; `""` for every entity |
+
+The arguments are one JSON value (`null` for none), sent as compact JSON text. An entity answers
+to peer 1 unless `set_authority(id, peer)` says otherwise; by default that also sets the
+entities placed under it (`Transform2D` and `Transform3D` children) and those its instanced scene
+brought. Every peer sets the same authorities, as in Godot.
+
+As in Godot, the first call on an entity to a peer carries the entity's ID, and the peer answers
+with a short number used from then on, after checking that both sides have the same procedures
+for it (an error is logged if not).
+
+[`examples/multiplayer-rpc`](../../examples/multiplayer-rpc/) plays a game on three worlds in one
+program.
