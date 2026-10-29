@@ -1,0 +1,879 @@
+project.import {"dry_run":true,"source":"unreal"}
+{
+  "converted": {
+    "blueprints": 4,
+    "classes": 1,
+    "input_actions": 10,
+    "meshes": 3,
+    "scenes": 1,
+    "sounds": 1
+  },
+  "dry_run": true,
+  "engine": "unreal",
+  "engine_version": "5.4.4-35576357+++UE5+Release-5.4",
+  "files": ["unreal/Content/Props/SM_Coin.glb", "unreal/Content/Props/SM_Crate.glb", "unreal/Content/Props/SM_Floor.glb", "unreal/Content/Audio/Wind.wav", "unreal/Content/Audio/Wind.audio.json", "unreal/Content/Maps/Main.scene.json", "project.json", "storyboard/work.json", "import/unreal.json"],
+  "log": ".slash/import/unreal/unreal.log",
+  "main_scene": "unreal/Content/Maps/Main.scene.json",
+  "project": "Crate Run",
+  "report": "import/unreal.json",
+  "tasks": [
+    {
+      "source": "unreal/Content/Blueprints/BP_Coin.uasset",
+      "task": "task/port-bp-coin"
+    },
+    {
+      "source": "unreal/Content/Blueprints/BP_CrateRunMode.uasset",
+      "task": "task/port-bp-crate-run-mode"
+    },
+    {
+      "source": "unreal/Content/Blueprints/BP_Hero.uasset",
+      "task": "task/port-bp-hero"
+    },
+    {
+      "source": "unreal/Content/UI/WBP_Hud.uasset",
+      "task": "task/port-wbp-hud"
+    },
+    {
+      "source": "unreal/Source/CrateRun/CoinPickup.h",
+      "task": "task/port-coin-pickup"
+    }
+  ],
+  "unsupported": [
+    {
+      "count": 1,
+      "what": "CharacterMovementComponent",
+      "where": "/Game/Maps/Main: Hero",
+      "why": "a CharacterBody3D, moved by gameplay code; its speeds are in the report"
+    },
+    {
+      "count": 1,
+      "what": "NavMeshBoundsVolume",
+      "where": "/Game/Maps/Main: NavMeshBoundsVolume",
+      "why": "bake navigation with a NavigationRegion3D and navigation.bake"
+    },
+    {
+      "count": 1,
+      "what": "component RotatingMovementComponent",
+      "where": "/Game/Maps/Main: Coin",
+      "why": "it has no counterpart yet"
+    },
+    {
+      "count": 1,
+      "what": "exponential height fog",
+      "where": "/Game/Maps/Main: ExponentialHeightFog",
+      "why": "Godot's height fog stands for it: as thick, thinning upward by the same falloff"
+    },
+    {
+      "count": 1,
+      "what": "input key Mouse2D",
+      "where": "/Game/Input/IMC_Default",
+      "why": "no binding moves it"
+    },
+    {
+      "count": 1,
+      "what": "input key MouseX",
+      "where": "Config/DefaultInput.ini",
+      "why": "no binding moves it"
+    },
+    {
+      "count": 1,
+      "what": "landscape",
+      "where": "/Game/Maps/Main: Landscape",
+      "why": "landscapes don't convert yet"
+    },
+    {
+      "count": 1,
+      "what": "light temperature",
+      "where": "/Game/Maps/Main: Spot",
+      "why": "the light has its color alone"
+    },
+    {
+      "count": 1,
+      "what": "linear sound attenuation",
+      "where": "/Game/Maps/Main: Wind",
+      "why": "it fades as 1 / distance from its inner radius and stops at its falloff's end"
+    },
+    {
+      "count": 1,
+      "what": "material override",
+      "where": "/Game/Maps/Main: Crate Stack.StaticMeshComponent0",
+      "why": "the mesh draws with its own materials"
+    },
+    {
+      "count": 1,
+      "what": "mesh the glTF exporter did not write",
+      "where": "/Game/Props/SM_Statue",
+      "why": "Nanite mesh with no fallback"
+    },
+    {
+      "count": 1,
+      "what": "simple collision shape",
+      "where": "/Game/Props/SM_Crate",
+      "why": "the mesh's convex hull stands for it"
+    },
+    {
+      "count": 1,
+      "what": "spring arm",
+      "where": "/Game/Maps/Main: Hero",
+      "why": "what hangs from it stays at the end of its arm; it doesn't pull in at walls"
+    },
+    {
+      "count": 1,
+      "what": "static light",
+      "where": "/Game/Maps/Main: Lamp",
+      "why": "baked in Unreal; it lights the scene as it runs here, or bake it into a LightmapGI"
+    }
+  ]
+}
+project.import {"source":"unreal"}
+{
+  "converted": {
+    "blueprints": 4,
+    "classes": 1,
+    "input_actions": 10,
+    "meshes": 3,
+    "scenes": 1,
+    "sounds": 1
+  },
+  "engine": "unreal",
+  "engine_version": "5.4.4-35576357+++UE5+Release-5.4",
+  "files": 9,
+  "log": ".slash/import/unreal/unreal.log",
+  "main_scene": "unreal/Content/Maps/Main.scene.json",
+  "project": "Crate Run",
+  "report": "import/unreal.json",
+  "tasks": [
+    {
+      "source": "unreal/Content/Blueprints/BP_Coin.uasset",
+      "task": "task/port-bp-coin"
+    },
+    {
+      "source": "unreal/Content/Blueprints/BP_CrateRunMode.uasset",
+      "task": "task/port-bp-crate-run-mode"
+    },
+    {
+      "source": "unreal/Content/Blueprints/BP_Hero.uasset",
+      "task": "task/port-bp-hero"
+    },
+    {
+      "source": "unreal/Content/UI/WBP_Hud.uasset",
+      "task": "task/port-wbp-hud"
+    },
+    {
+      "source": "unreal/Source/CrateRun/CoinPickup.h",
+      "task": "task/port-coin-pickup"
+    }
+  ],
+  "unsupported": [
+    {
+      "count": 1,
+      "what": "CharacterMovementComponent",
+      "where": "/Game/Maps/Main: Hero",
+      "why": "a CharacterBody3D, moved by gameplay code; its speeds are in the report"
+    },
+    {
+      "count": 1,
+      "what": "NavMeshBoundsVolume",
+      "where": "/Game/Maps/Main: NavMeshBoundsVolume",
+      "why": "bake navigation with a NavigationRegion3D and navigation.bake"
+    },
+    {
+      "count": 1,
+      "what": "component RotatingMovementComponent",
+      "where": "/Game/Maps/Main: Coin",
+      "why": "it has no counterpart yet"
+    },
+    {
+      "count": 1,
+      "what": "exponential height fog",
+      "where": "/Game/Maps/Main: ExponentialHeightFog",
+      "why": "Godot's height fog stands for it: as thick, thinning upward by the same falloff"
+    },
+    {
+      "count": 1,
+      "what": "input key Mouse2D",
+      "where": "/Game/Input/IMC_Default",
+      "why": "no binding moves it"
+    },
+    {
+      "count": 1,
+      "what": "input key MouseX",
+      "where": "Config/DefaultInput.ini",
+      "why": "no binding moves it"
+    },
+    {
+      "count": 1,
+      "what": "landscape",
+      "where": "/Game/Maps/Main: Landscape",
+      "why": "landscapes don't convert yet"
+    },
+    {
+      "count": 1,
+      "what": "light temperature",
+      "where": "/Game/Maps/Main: Spot",
+      "why": "the light has its color alone"
+    },
+    {
+      "count": 1,
+      "what": "linear sound attenuation",
+      "where": "/Game/Maps/Main: Wind",
+      "why": "it fades as 1 / distance from its inner radius and stops at its falloff's end"
+    },
+    {
+      "count": 1,
+      "what": "material override",
+      "where": "/Game/Maps/Main: Crate Stack.StaticMeshComponent0",
+      "why": "the mesh draws with its own materials"
+    },
+    {
+      "count": 1,
+      "what": "mesh the glTF exporter did not write",
+      "where": "/Game/Props/SM_Statue",
+      "why": "Nanite mesh with no fallback"
+    },
+    {
+      "count": 1,
+      "what": "simple collision shape",
+      "where": "/Game/Props/SM_Crate",
+      "why": "the mesh's convex hull stands for it"
+    },
+    {
+      "count": 1,
+      "what": "spring arm",
+      "where": "/Game/Maps/Main: Hero",
+      "why": "what hangs from it stays at the end of its arm; it doesn't pull in at walls"
+    },
+    {
+      "count": 1,
+      "what": "static light",
+      "where": "/Game/Maps/Main: Lamp",
+      "why": "baked in Unreal; it lights the scene as it runs here, or bake it into a LightmapGI"
+    }
+  ]
+}
+--- unreal/Content/Maps/Main.scene.json
+{
+  "entities": {
+    "bonus_coin": {
+      "components": {
+        "Area3D": {},
+        "CollisionShape3D": {
+          "shape": "sphere"
+        },
+        "Transform3D": {
+          "position": [6.0, 0.8, 2.0]
+        }
+      }
+    },
+    "coin": {
+      "components": {
+        "Transform3D": {
+          "children": ["coin_mesh"],
+          "position": [4.0, 0.8, 0.0]
+        }
+      }
+    },
+    "coin_mesh": {
+      "components": {
+        "MeshInstance3D": {
+          "cast_shadow": "off",
+          "mesh": "unreal/Content/Props/SM_Coin.glb"
+        },
+        "Transform3D": {
+          "scale": [0.5, 0.5, 0.5]
+        }
+      }
+    },
+    "crate": {
+      "components": {
+        "MeshInstance3D": {
+          "mesh": "unreal/Content/Props/SM_Crate.glb"
+        },
+        "RigidBody3D": {
+          "angular_damp_mode": "replace",
+          "linear_damp": 0.01,
+          "linear_damp_mode": "replace",
+          "mass": 20.0
+        },
+        "Transform3D": {
+          "position": [2.0, 0.5, 1.0],
+          "rotation": [0.0, -1.570796, 0.0]
+        }
+      }
+    },
+    "crate_stack": {
+      "components": {
+        "MeshInstance3D": {
+          "mesh": "unreal/Content/Props/SM_Crate.glb"
+        },
+        "Transform3D": {
+          "position": [-2.0, 0.0, -1.5],
+          "scale": [1.0, 2.0, 1.0]
+        }
+      }
+    },
+    "environment": {
+      "components": {
+        "PhysicalSkyMaterial": {},
+        "WorldEnvironment": {
+          "ambient_light_source": "sky",
+          "background_mode": "sky",
+          "fog_density": 0.002,
+          "fog_enabled": true,
+          "fog_height": -1.0,
+          "fog_height_density": 0.2,
+          "fog_light_color": [0.447, 0.638, 1.0, 1.0],
+          "reflected_light_source": "sky"
+        }
+      }
+    },
+    "floor": {
+      "components": {
+        "MeshInstance3D": {
+          "mesh": "unreal/Content/Props/SM_Floor.glb"
+        },
+        "Transform3D": {}
+      }
+    },
+    "goal": {
+      "components": {
+        "Area3D": {},
+        "CollisionShape3D": {
+          "size": [2.0, 2.0, 4.0]
+        },
+        "Transform3D": {
+          "position": [8.0, 1.0, 0.0]
+        }
+      }
+    },
+    "hero": {
+      "components": {
+        "CharacterBody3D": {
+          "floor_max_angle": 0.781297
+        },
+        "CollisionShape3D": {
+          "height": 1.76,
+          "radius": 0.34,
+          "shape": "capsule"
+        },
+        "Transform3D": {
+          "children": ["hero_camera_boom"],
+          "position": [-4.0, 0.92, 0.0]
+        }
+      }
+    },
+    "hero_camera_boom": {
+      "components": {
+        "Transform3D": {
+          "children": ["hero_follow_camera"],
+          "position": [0.0, 0.6, 0.0],
+          "rotation": [0.0, 0.0, -0.349066]
+        }
+      }
+    },
+    "hero_follow_camera": {
+      "components": {
+        "Camera3D": {
+          "current": true,
+          "fov": 90.0,
+          "keep_aspect": "width"
+        },
+        "Transform3D": {
+          "position": [-4.0, 0.0, 0.0],
+          "rotation": [0.0, -1.570796, 0.0]
+        }
+      }
+    },
+    "lamp": {
+      "components": {
+        "OmniLight3D": {
+          "light_color": [1.0, 0.784314, 0.588235, 1.0],
+          "light_energy": 2.0,
+          "light_size": 0.1,
+          "omni_range": 10.0,
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [0.0, 3.0, 0.0]
+        }
+      }
+    },
+    "nav_mesh_bounds_volume": {
+      "components": {
+        "Transform3D": {}
+      }
+    },
+    "player_start": {
+      "components": {
+        "Transform3D": {
+          "position": [-4.0, 0.92, 0.0]
+        }
+      }
+    },
+    "spot": {
+      "components": {
+        "SpotLight3D": {
+          "light_energy": 9.947184,
+          "spot_angle": 30.0,
+          "spot_range": 8.0
+        },
+        "Transform3D": {
+          "position": [3.0, 4.0, 0.0],
+          "rotation": [-1.570796, -1.570796, 0.0]
+        }
+      }
+    },
+    "sun": {
+      "components": {
+        "DirectionalLight3D": {
+          "light_angular_distance": 0.5357,
+          "light_color": [1.0, 0.941176, 0.862745, 1.0],
+          "shadow_enabled": true
+        },
+        "Transform3D": {
+          "position": [0.0, 5.0, 0.0],
+          "rotation": [-0.785398, -1.570796, 0.0]
+        }
+      }
+    },
+    "wall": {
+      "components": {
+        "CollisionShape3D": {
+          "size": [10.0, 2.0, 0.2]
+        },
+        "StaticBody3D": {},
+        "Transform3D": {
+          "position": [0.0, 1.0, 5.0]
+        }
+      }
+    },
+    "wind": {
+      "components": {
+        "AudioStreamPlayer3D": {
+          "autoplay": true,
+          "max_distance": 24.0,
+          "stream": "unreal/Content/Audio/Wind.audio.json",
+          "unit_size": 4.0,
+          "volume_db": -6.0206
+        },
+        "Transform3D": {
+          "position": [0.0, 1.0, -3.0]
+        }
+      }
+    }
+  },
+  "format": 1
+}
+--- import/unreal.json
+{
+  "axes": "x = x, y = z, z = y",
+  "engine": "unreal",
+  "engine_version": "5.4.4-35576357+++UE5+Release-5.4",
+  "format": 1,
+  "levels": {
+    "/Game/Maps/Main": {
+      "actors": {
+        "bonus_coin": {
+          "class": "/Script/CrateRun.CoinPickup"
+        },
+        "coin": {
+          "class": "/Game/Blueprints/BP_Coin.BP_Coin_C"
+        },
+        "crate": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "crate_stack": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "floor": {
+          "class": "/Script/Engine.StaticMeshActor"
+        },
+        "goal": {
+          "class": "/Script/Engine.TriggerBox",
+          "tags": ["goal"]
+        },
+        "hero": {
+          "character_movement": {
+            "jump_velocity": 7.0,
+            "max_step_height": 0.45,
+            "max_walk_speed": 5.0
+          },
+          "class": "/Game/Blueprints/BP_Hero.BP_Hero_C"
+        },
+        "lamp": {
+          "class": "/Script/Engine.PointLight"
+        },
+        "nav_mesh_bounds_volume": {
+          "class": "/Script/Engine.NavMeshBoundsVolume"
+        },
+        "player_start": {
+          "class": "/Script/Engine.PlayerStart"
+        },
+        "spot": {
+          "class": "/Script/Engine.SpotLight"
+        },
+        "sun": {
+          "class": "/Script/Engine.DirectionalLight"
+        },
+        "wall": {
+          "class": "/Script/Engine.BlockingVolume"
+        },
+        "wind": {
+          "class": "/Script/Engine.AmbientSound"
+        }
+      },
+      "entities": {
+        "AmbientSound_0": "wind",
+        "BP_Coin_C_0": "coin",
+        "BP_Hero_C_0": "hero",
+        "BlockingVolume_0": "wall",
+        "CoinPickup_0": "bonus_coin",
+        "DirectionalLight_0": "sun",
+        "NavMeshBoundsVolume_0": "nav_mesh_bounds_volume",
+        "PlayerStart_0": "player_start",
+        "PointLight_0": "lamp",
+        "SpotLight_0": "spot",
+        "StaticMeshActor_0": "floor",
+        "StaticMeshActor_1": "crate",
+        "StaticMeshActor_2": "crate_stack",
+        "TriggerBox_0": "goal"
+      },
+      "game_mode": "/Game/Blueprints/BP_CrateRunMode.BP_CrateRunMode_C",
+      "kill_y": -10.0,
+      "scene": "unreal/Content/Maps/Main.scene.json"
+    }
+  },
+  "meshes": {
+    "/Game/Props/SM_Coin": "unreal/Content/Props/SM_Coin.glb",
+    "/Game/Props/SM_Crate": "unreal/Content/Props/SM_Crate.glb",
+    "/Game/Props/SM_Floor": "unreal/Content/Props/SM_Floor.glb"
+  },
+  "meters_per_unit": 0.01,
+  "sounds": {
+    "/Game/Audio/Wind": "unreal/Content/Audio/Wind.audio.json"
+  },
+  "tasks": [
+    {
+      "source": "unreal/Content/Blueprints/BP_Coin.uasset",
+      "task": "task/port-bp-coin"
+    },
+    {
+      "source": "unreal/Content/Blueprints/BP_CrateRunMode.uasset",
+      "task": "task/port-bp-crate-run-mode"
+    },
+    {
+      "source": "unreal/Content/Blueprints/BP_Hero.uasset",
+      "task": "task/port-bp-hero"
+    },
+    {
+      "source": "unreal/Content/UI/WBP_Hud.uasset",
+      "task": "task/port-wbp-hud"
+    },
+    {
+      "source": "unreal/Source/CrateRun/CoinPickup.h",
+      "task": "task/port-coin-pickup"
+    }
+  ],
+  "unsupported": [
+    {
+      "count": 1,
+      "what": "CharacterMovementComponent",
+      "where": "/Game/Maps/Main: Hero",
+      "why": "a CharacterBody3D, moved by gameplay code; its speeds are in the report"
+    },
+    {
+      "count": 1,
+      "what": "NavMeshBoundsVolume",
+      "where": "/Game/Maps/Main: NavMeshBoundsVolume",
+      "why": "bake navigation with a NavigationRegion3D and navigation.bake"
+    },
+    {
+      "count": 1,
+      "what": "component RotatingMovementComponent",
+      "where": "/Game/Maps/Main: Coin",
+      "why": "it has no counterpart yet"
+    },
+    {
+      "count": 1,
+      "what": "exponential height fog",
+      "where": "/Game/Maps/Main: ExponentialHeightFog",
+      "why": "Godot's height fog stands for it: as thick, thinning upward by the same falloff"
+    },
+    {
+      "count": 1,
+      "what": "input key Mouse2D",
+      "where": "/Game/Input/IMC_Default",
+      "why": "no binding moves it"
+    },
+    {
+      "count": 1,
+      "what": "input key MouseX",
+      "where": "Config/DefaultInput.ini",
+      "why": "no binding moves it"
+    },
+    {
+      "count": 1,
+      "what": "landscape",
+      "where": "/Game/Maps/Main: Landscape",
+      "why": "landscapes don't convert yet"
+    },
+    {
+      "count": 1,
+      "what": "light temperature",
+      "where": "/Game/Maps/Main: Spot",
+      "why": "the light has its color alone"
+    },
+    {
+      "count": 1,
+      "what": "linear sound attenuation",
+      "where": "/Game/Maps/Main: Wind",
+      "why": "it fades as 1 / distance from its inner radius and stops at its falloff's end"
+    },
+    {
+      "count": 1,
+      "what": "material override",
+      "where": "/Game/Maps/Main: Crate Stack.StaticMeshComponent0",
+      "why": "the mesh draws with its own materials"
+    },
+    {
+      "count": 1,
+      "what": "mesh the glTF exporter did not write",
+      "where": "/Game/Props/SM_Statue",
+      "why": "Nanite mesh with no fallback"
+    },
+    {
+      "count": 1,
+      "what": "simple collision shape",
+      "where": "/Game/Props/SM_Crate",
+      "why": "the mesh's convex hull stands for it"
+    },
+    {
+      "count": 1,
+      "what": "spring arm",
+      "where": "/Game/Maps/Main: Hero",
+      "why": "what hangs from it stays at the end of its arm; it doesn't pull in at walls"
+    },
+    {
+      "count": 1,
+      "what": "static light",
+      "where": "/Game/Maps/Main: Lamp",
+      "why": "baked in Unreal; it lights the scene as it runs here, or bake it into a LightmapGI"
+    }
+  ]
+}
+--- project.json
+{
+  "format": 1,
+  "input": {
+    "IA_Jump": {
+      "events": [
+        {
+          "key": "Space",
+          "type": "key"
+        },
+        {
+          "button": "a",
+          "type": "joypad_button"
+        }
+      ]
+    },
+    "IA_Move/down": {
+      "events": [
+        {
+          "key": "S",
+          "type": "key"
+        },
+        {
+          "axis": "left_y",
+          "axis_value": 1,
+          "type": "joypad_motion"
+        }
+      ]
+    },
+    "IA_Move/left": {
+      "events": [
+        {
+          "key": "A",
+          "type": "key"
+        },
+        {
+          "axis": "left_x",
+          "axis_value": -1,
+          "type": "joypad_motion"
+        }
+      ]
+    },
+    "IA_Move/right": {
+      "events": [
+        {
+          "key": "D",
+          "type": "key"
+        },
+        {
+          "axis": "left_x",
+          "axis_value": 1,
+          "type": "joypad_motion"
+        }
+      ]
+    },
+    "IA_Move/up": {
+      "events": [
+        {
+          "key": "W",
+          "type": "key"
+        },
+        {
+          "axis": "left_y",
+          "axis_value": -1,
+          "type": "joypad_motion"
+        }
+      ]
+    },
+    "Jump": {
+      "events": [
+        {
+          "key": "Space",
+          "type": "key"
+        },
+        {
+          "button": "a",
+          "type": "joypad_button"
+        }
+      ]
+    },
+    "LookUp/negative": {
+      "events": [
+        {
+          "axis": "right_y",
+          "axis_value": -1,
+          "type": "joypad_motion"
+        }
+      ]
+    },
+    "LookUp/positive": {
+      "events": [
+        {
+          "axis": "right_y",
+          "axis_value": 1,
+          "type": "joypad_motion"
+        }
+      ]
+    },
+    "Pause": {
+      "events": [
+        {
+          "key": "Escape",
+          "type": "key"
+        }
+      ]
+    },
+    "QuickSave": {
+      "events": [
+        {
+          "key": "F5",
+          "shift": true,
+          "type": "key"
+        }
+      ]
+    }
+  },
+  "main_scene": "unreal/Content/Maps/Main.scene.json",
+  "name": "Crate Run",
+  "physics_3d": {
+    "gravity": 4.9
+  },
+  "version": "1.2.0"
+}
+scene.open {"path":"unreal/Content/Maps/Main.scene.json"}
+{
+  "entities": 18,
+  "path": "unreal/Content/Maps/Main.scene.json"
+}
+step {"ticks":90}
+{
+  "tick": 90,
+  "ticks": 90
+}
+world.query {"include":["Transform3D"],"with":["RigidBody3D"]}
+{
+  "count": 1,
+  "entities": [
+    {
+      "components": {
+        "Transform3D": {
+          "children": [],
+          "position": [2.0000024, -0.013757408, 0.9999991],
+          "rotation": [0.0000010993647, -1.570796, 5.2903454e-7],
+          "scale": [1.0, 1.0, 1.0],
+          "top_level": false,
+          "visible": true
+        }
+      },
+      "id": "crate"
+    }
+  ],
+  "truncated": false
+}
+physics.raycast {"from":[-6,5,-3],"to":[-6,-5,-3]}
+{
+  "hit": {
+    "fraction": 0.5,
+    "id": "floor",
+    "normal": [0, 1, 0],
+    "point": [-6, 0, -3]
+  }
+}
+physics.overlap {"collide_with_areas":true,"position":[8,0.5,1],"shape":{"radius":0.1,"shape":"sphere"}}
+{
+  "ids": ["goal"]
+}
+storyboard.query {"kind":"task"}
+{
+  "entries": [
+    {
+      "fields": {
+        "name": "Port the Blueprint /Game/Blueprints/BP_Coin to C++",
+        "summary": "Unreal Blueprint: write what it does as C++ components and systems."
+      },
+      "id": "task/port-bp-coin",
+      "version": "89076e95"
+    },
+    {
+      "fields": {
+        "name": "Port the Blueprint /Game/Blueprints/BP_CrateRunMode to C++",
+        "summary": "Unreal Blueprint: write what it does as C++ components and systems."
+      },
+      "id": "task/port-bp-crate-run-mode",
+      "version": "8f840148"
+    },
+    {
+      "fields": {
+        "name": "Port the Blueprint /Game/Blueprints/BP_Hero to C++",
+        "summary": "Unreal Blueprint: write what it does as C++ components and systems."
+      },
+      "id": "task/port-bp-hero",
+      "version": "007db889"
+    },
+    {
+      "fields": {
+        "name": "Port the C++ class ACoinPickup to SlashEngine",
+        "summary": "Unreal C++: write what it does as SlashEngine components and systems."
+      },
+      "id": "task/port-coin-pickup",
+      "version": "2f5d26f7"
+    },
+    {
+      "fields": {
+        "name": "Port the widget /Game/UI/WBP_Hud to controls",
+        "summary": "UMG widget Blueprint: rebuild it as Control entities."
+      },
+      "id": "task/port-wbp-hud",
+      "version": "ff567513"
+    }
+  ],
+  "seq": 0
+}
+storyboard.check {}
+{
+  "valid": true
+}

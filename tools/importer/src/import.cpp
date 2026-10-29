@@ -3,9 +3,11 @@
 #include "common.hpp"
 #include "godot_import.hpp"
 #include "unity_import.hpp"
+#include "unreal_import.hpp"
 
 #include "slash/importer/godot_pack.hpp"
 #include "slash/importer/unity_build.hpp"
+#include "slash/importer/unreal.hpp"
 #include "slash/platform/file.hpp"
 #include "slash/runtime/project.hpp"
 #include "slash/storyboard/storyboard.hpp"
@@ -171,6 +173,28 @@ Result<ImportPlan> plan_unity_build(const unity::Build& build, const fs::path& d
     return plan;
 }
 
+// Exports an Unreal project with its editor into the destination's .slash/import/unreal/, then
+// plans importing what it wrote.
+Result<ImportPlan> plan_unreal_project(const fs::path& project, const fs::path& destination,
+                                       const ImportOptions& options) {
+    const fs::path folder = project.parent_path();
+    const fs::path relative = folder.lexically_relative(destination);
+    const std::string inside = relative.generic_string();
+    const bool contained = !relative.empty() && !inside.starts_with("..");
+    std::string prefix;
+    if (contained && inside != ".") {
+        prefix = inside + "/";
+    }
+    const fs::path work = destination / ".slash" / "import" / "unreal";
+    auto plan = plan_unreal(project, prefix, !contained, existing_of(destination), work,
+                            options.unreal_editor);
+    if (plan) {
+        plan.value().report["log"] =
+            (work / "unreal.log").lexically_relative(destination).generic_string();
+    }
+    return plan;
+}
+
 } // namespace
 
 Result<ImportPlan> plan_import(const ImportOptions& options) {
@@ -178,6 +202,10 @@ Result<ImportPlan> plan_import(const ImportOptions& options) {
     const fs::path source = fs::weakly_canonical(fs::absolute(options.source, error), error);
     const fs::path destination =
         fs::weakly_canonical(fs::absolute(options.destination, error), error);
+    if (!error && fs::is_regular_file(source, error) &&
+        lowercase(extension_of(source.generic_string())) == ".uproject") {
+        return plan_unreal_project(source, destination, options);
+    }
     if (!error && fs::is_regular_file(source, error)) {
         if (auto build = unity::find_build(source)) {
             return plan_unity_build(*build, destination, options);
@@ -192,6 +220,9 @@ Result<ImportPlan> plan_import(const ImportOptions& options) {
     const bool unity = !godot && fs::exists(source / "ProjectSettings/ProjectVersion.txt", error) &&
                        fs::is_directory(source / "Assets", error);
     if (!godot && !unity) {
+        if (const auto uproject = unreal::find_project(source)) {
+            return plan_unreal_project(*uproject, destination, options);
+        }
         if (auto build = unity::find_build(source)) {
             return plan_unity_build(*build, destination, options);
         }
@@ -199,8 +230,8 @@ Result<ImportPlan> plan_import(const ImportOptions& options) {
                      .message = "no Godot or Unity project or Unity build in " + options.source +
                                 ": a Godot 4 project has project.godot, a Unity project Assets/ "
                                 "and ProjectSettings/ProjectVersion.txt, a Unity build a "
-                                "Game_Data folder (or Build/*.data on the web) (Unreal is on the "
-                                "roadmap)"};
+                                "Game_Data folder (or Build/*.data on the web), an Unreal project "
+                                "a .uproject file"};
     }
     // A source inside the destination stays where it is and is used from there; any other is
     // copied in.
