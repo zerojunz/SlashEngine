@@ -674,9 +674,10 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         spread with flatness, forces, damping, curves, color ramps and the align, rotate and
         disable-z flags, drawn as the entity's mesh at each particle with `StandardMaterial3D`'s
         billboard modes and particle frames, sorted by view depth; the same particles on every
-        platform and thread count, and `particles.eval` in 3D
-  - [ ] `GPUParticles3D` with process materials, attractors and collision shapes
-  - [ ] Godot's 3D particle nodes in `project.import`
+        platform and thread count, `particles.eval` in 3D, and Godot's `CPUParticles3D` nodes
+        imported
+  - [ ] `GPUParticles3D` with process materials, attractors and collision shapes, and Godot's
+        imported
 - [x] Generated LODs with meshoptimizer and occlusion culling
   - [x] Generated LODs, as Godot 4.6's importer makes them with meshoptimizer and its renderers
         pick them by distance, `lod_bias` and the project's threshold, imported from Godot

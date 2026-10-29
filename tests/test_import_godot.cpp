@@ -5376,3 +5376,112 @@ TEST_CASE("project.import converts a Godot project in the session's project") {
     command::Session reader(components, commands, options);
     CHECK_FALSE(reader.call("project.import", parse(R"({"source": "godot"})")).ok);
 }
+
+TEST_CASE("importing Godot's CPUParticles3D keeps its settings, mesh and billboard material") {
+    const fs::path project = "import_godot_particles_3d";
+    const fs::path folder = project / "godot";
+    fs::remove_all(project);
+    write(folder / "project.godot", R"(config_version=5
+
+[application]
+
+config/name="Embers"
+run/main_scene="res://camp.tscn"
+)");
+    write(folder / "camp.tscn", R"([gd_scene load_steps=6 format=3]
+
+[sub_resource type="StandardMaterial3D" id="glow"]
+transparency = 1
+blend_mode = 1
+shading_mode = 0
+vertex_color_use_as_albedo = true
+billboard_mode = 3
+billboard_keep_scale = true
+particles_anim_h_frames = 4
+particles_anim_v_frames = 2
+particles_anim_loop = true
+
+[sub_resource type="QuadMesh" id="quad"]
+material = SubResource("glow")
+size = Vector2(0.4, 0.4)
+
+[sub_resource type="Curve" id="shrink"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.25), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="Gradient" id="fade"]
+colors = PackedColorArray(1, 0.8, 0.3, 1, 0.5, 0.1, 0, 0)
+
+[sub_resource type="BoxMesh" id="flake"]
+size = Vector3(0.05, 0.05, 0.05)
+
+[node name="Camp" type="Node3D"]
+
+[node name="Fire" type="CPUParticles3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0, 0)
+amount = 24
+lifetime = 0.8
+draw_order = 2
+visibility_aabb = AABB(-1, -1, -1, 2, 2, 2)
+mesh = SubResource("quad")
+emission_shape = 6
+emission_ring_axis = Vector3(0, 1, 0)
+emission_ring_radius = 0.3
+emission_ring_cone_angle = 60.0
+direction = Vector3(0, 1, 0)
+spread = 15.0
+flatness = 0.5
+gravity = Vector3(0, 1, 0)
+initial_velocity_min = 0.4
+initial_velocity_max = 0.9
+split_scale = true
+scale_curve_y = SubResource("shrink")
+color_ramp = SubResource("fade")
+
+[node name="Snow" type="CPUParticles3D" parent="."]
+cast_shadow = 0
+mesh = SubResource("flake")
+material_override = SubResource("glow")
+emission_shape = 3
+emission_box_extents = Vector3(4, 0.5, 4)
+particle_flag_rotate_y = true
+material_overlay = SubResource("glow")
+)");
+    const importer::ImportPlan plan = plan_inside(project);
+    const auto files = files_of(plan);
+    const std::string camp = "godot/camp.scene.json";
+    REQUIRE(files.contains(camp));
+
+    // Godot's enums by name, curves and gradients as points, the quad as the entity's QuadMesh
+    // and its material, a billboard of particles with frames, as the entity's own.
+    const json::Value fire = entity(files, camp, "fire");
+    CHECK(*fire.find("CPUParticles3D") == parse(R"({
+        "amount": 24, "lifetime": 0.8, "draw_order": "view_depth", "emission_shape": "ring",
+        "emission_ring_axis": [0.0, 1.0, 0.0], "emission_ring_radius": 0.3,
+        "emission_ring_cone_angle": 60.0, "direction": [0.0, 1.0, 0.0], "spread": 15.0,
+        "flatness": 0.5, "gravity": [0.0, 1.0, 0.0], "initial_velocity_min": 0.4,
+        "initial_velocity_max": 0.9, "split_scale": true,
+        "scale_curve_y": [[0.0, 1.0], [1.0, 0.25]],
+        "color_ramp": [{"color": [1.0, 0.8, 0.3, 1.0]},
+                       {"offset": 1.0, "color": [0.5, 0.1, 0.0, 0.0]}]})"));
+    CHECK(*fire.find("QuadMesh") == parse(R"({"size": [0.4, 0.4]})"));
+    const json::Value& glow = *fire.find("StandardMaterial3D");
+    CHECK(glow.find("billboard_mode")->as_string() == "particles");
+    CHECK(glow.find("billboard_keep_scale")->as_bool());
+    CHECK(glow.find("particles_anim_h_frames")->as_int() == 4);
+    CHECK(glow.find("particles_anim_v_frames")->as_int() == 2);
+    CHECK(glow.find("particles_anim_loop")->as_bool());
+    CHECK(glow.find("transparency")->as_string() == "alpha");
+    CHECK(*fire.find("Transform3D") == parse(R"({"position": [2.0, 0.0, 0.0]})"));
+
+    // material_override wins over the mesh's material; an overlay is reported.
+    const json::Value snow = entity(files, camp, "snow");
+    CHECK(*snow.find("CPUParticles3D") == parse(R"({
+        "cast_shadow": "off", "emission_shape": "box", "emission_box_extents": [4.0, 0.5, 4.0],
+        "particle_flag_rotate_y": true})"));
+    CHECK(*snow.find("BoxMesh") == parse(R"({"size": [0.05, 0.05, 0.05]})"));
+    CHECK(snow.find("StandardMaterial3D")->find("billboard_mode")->as_string() == "particles");
+    const json::Value overlay = unsupported(plan.report, "CPUParticles3D.material_overlay");
+    CHECK(overlay.find("where")->as_string() == "camp.tscn: Snow");
+    fs::remove_all(project);
+}
