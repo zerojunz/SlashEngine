@@ -46,6 +46,7 @@
 #include "slash/scene3d/lightmap.hpp"
 #include "slash/scene3d/material.hpp"
 #include "slash/scene3d/model.hpp"
+#include "slash/scene3d/particles.hpp"
 #include "slash/scene3d/recipe.hpp"
 #include "slash/scene3d/skeleton.hpp"
 #include "slash/scene3d/voxel_gi.hpp"
@@ -1940,6 +1941,65 @@ json::Value bounds_value(std::span<const Vec2> points) {
     return rounded(json::Array{low.x, low.y, high.x - low.x, high.y - low.y});
 }
 
+// particles.eval for a CPUParticles3D: its live particles in the world, in meters.
+Reply particles_eval_3d(const world::World& world, entt::entity entity,
+                        const world::CPUParticles3D& emitter, const json::Value& params) {
+    const std::string id = text(params, "id");
+    const world::Affine3D transform = world::Tree3D(world).global(entity);
+    const json::Value* time = params.find("time");
+    const json::Value* seconds = params.find("tick_seconds");
+    const double tick_seconds = seconds != nullptr ? seconds->as_double() : kDefaultTickSeconds;
+    std::vector<scene3d::Particle3D> particles =
+        time != nullptr
+            ? scene3d::simulate(emitter, transform, scene3d::particle_seed(id, emitter.seed),
+                                time->as_double(), tick_seconds)
+            : scene3d::particles_3d(world, entity);
+    if (emitter.local_coords) {
+        for (scene3d::Particle3D& particle : particles) {
+            particle.transform = transform * particle.transform;
+            particle.velocity = transform.basis(particle.velocity);
+        }
+    }
+    json::Value result;
+    result["alive"] = static_cast<std::int64_t>(particles.size());
+    if (particles.empty()) {
+        result["bounds"] = nullptr;
+    } else {
+        Vec3 low = particles.front().transform.origin;
+        Vec3 high = low;
+        for (const scene3d::Particle3D& particle : particles) {
+            const Vec3 p = particle.transform.origin;
+            low = {std::min(low.x, p.x), std::min(low.y, p.y), std::min(low.z, p.z)};
+            high = {std::max(high.x, p.x), std::max(high.y, p.y), std::max(high.z, p.z)};
+        }
+        result["bounds"] = rounded(
+            json::Array{low.x, low.y, low.z, high.x - low.x, high.y - low.y, high.z - low.z});
+    }
+    if (flag(params, "list")) {
+        const auto max_results = static_cast<std::size_t>(integer(params, "max_results", 32));
+        const auto length = [](Vec3 v) {
+            return std::sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
+        };
+        json::Array items;
+        for (std::size_t i = 0; i < particles.size() && i < max_results; ++i) {
+            const scene3d::Particle3D& particle = particles[i];
+            json::Value item;
+            item["position"] = point_value(particle.transform.origin);
+            item["velocity"] = point_value(particle.velocity);
+            item["angle"] = rounded(particle.angle);
+            item["scale"] =
+                point_value(Vec3{length(particle.transform.x), length(particle.transform.y),
+                                 length(particle.transform.z)});
+            item["color"] = rounded(json::Array{particle.color.x, particle.color.y,
+                                                particle.color.z, particle.color.w});
+            item["age"] = rounded(particle.age);
+            items.push_back(std::move(item));
+        }
+        result["particles"] = std::move(items);
+    }
+    return Reply::success(std::move(result));
+}
+
 Reply particles_eval(Session& session, const json::Value& params) {
     const world::World& world = session.world();
     const std::string id = text(params, "id");
@@ -1950,8 +2010,11 @@ Reply particles_eval(Session& session, const json::Value& params) {
     const auto* emitter = world.ecs().try_get<world::CPUParticles2D>(entity);
     const auto* gpu = world.ecs().try_get<world::GPUParticles2D>(entity);
     if (emitter == nullptr && gpu == nullptr) {
+        if (const auto* emitter_3d = world.ecs().try_get<world::CPUParticles3D>(entity)) {
+            return particles_eval_3d(world, entity, *emitter_3d, params);
+        }
         return param_error(code::kInvalidParams, "/id",
-                           quoted(id) + " has no CPUParticles2D or GPUParticles2D");
+                           quoted(id) + " has no CPUParticles2D, GPUParticles2D or CPUParticles3D");
     }
     // Where it is after its parents.
     const world::Transform2D transform = world::Tree2D(world).global(entity);
@@ -6894,14 +6957,16 @@ void register_builtin_commands(Registry& registry) {
     particles_tick["maximum"] = 1;
     registry.add({
         .name = "particles.eval",
-        .description = "Returns a CPUParticles2D's or GPUParticles2D's live particles: how many, "
-                       "their bounds [x, y, w, h] in the world (and their trails') and, with list, "
-                       "each one. A check without a screenshot.",
+        .description = "Returns a CPUParticles2D's, GPUParticles2D's or CPUParticles3D's live "
+                       "particles: how many, their bounds [x, y, w, h] in the world ([x, y, z, w, "
+                       "h, d] in 3D; and their trails') and, with list, each one. A check without "
+                       "a screenshot.",
         .capabilities = {Read},
         .effect = Effect::Read,
         .params = params_schema(
             {
-                {"id", id_property("An entity with a CPUParticles2D or GPUParticles2D.")},
+                {"id", id_property("An entity with a CPUParticles2D, GPUParticles2D or "
+                                   "CPUParticles3D.")},
                 {"time", std::move(particles_time)},
                 {"tick_seconds", std::move(particles_tick)},
                 {"list", property("boolean", "Also return each particle. Default false.")},

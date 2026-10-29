@@ -1661,6 +1661,8 @@ Godot's do in 3D, unless `texture_repeat` is off.
 | `cull_mode` | `"back"` | Faces not drawn: `"back"`, `"front"` or `"disabled"` (both sides drawn) |
 | `uv1_scale`, `uv1_offset` | `[1, 1, 1]`, `[0, 0, 0]` | Texture coordinates are scaled, then moved (x and y are used) |
 | `disable_fog` | `false` | The environment's fog leaves it alone |
+| `billboard_mode`, `billboard_keep_scale` | `"disabled"`, `false` | Face the camera: `"enabled"`, `"fixed_y"` (turned about y only) or `"particles"` (turned by each [3D particle](#3d-particles)'s angle); `billboard_keep_scale` keeps the mesh's scale, which billboards otherwise drop |
+| `particles_anim_h_frames`, `particles_anim_v_frames`, `particles_anim_loop` | `1`, `1`, `false` | With `"particles"`, the albedo texture's columns and rows of frames each particle steps through, and whether they start again after the last |
 | `texture_filter` | `"linear_with_mipmaps"` | `"nearest"` and `"nearest_with_mipmaps"` keep texels sharp |
 | `texture_repeat` | `true` | Textures tile past their edges; `false` stretches the edge texels, as a glTF sampler that clamps |
 
@@ -4153,6 +4155,85 @@ a fountain, a one-shot burst, smoke and a ring of orbiting particles.
 - Particles are not saved: scenes, snapshots, [`undo`](commands.md#undo), dry runs and failed
   commands leave them as they are. An emitter whose entity is destroyed or loses its
   `CPUParticles2D` loses its particles.
+
+### 3D particles
+
+`CPUParticles3D` follows Godot 4.6's: the same emission, curves, colors and randomness as
+`CPUParticles2D`'s, in meters and three dimensions. The `cpu_particles_3d` system (priority 1100)
+runs every emitter each tick, sharing them out on the job system's threads, and
+`scene3d::Renderer` draws the entity's mesh at each live particle, between ticks where it was and
+where it is. [examples/particles-3d](../../examples/particles-3d/) has a fountain, a fire and
+snow.
+
+```json
+"fire": {
+  "components": {
+    "CPUParticles3D": {
+      "amount": 40,
+      "angle_max": 360.0,
+      "direction": [0.0, 1.0, 0.0],
+      "draw_order": "view_depth",
+      "emission_shape": "sphere",
+      "emission_sphere_radius": 0.25,
+      "gravity": [0.0, 1.0, 0.0],
+      "initial_velocity_max": 0.9,
+      "initial_velocity_min": 0.4,
+      "lifetime": 0.9,
+      "spread": 20.0
+    },
+    "QuadMesh": {"size": [0.5, 0.5]},
+    "StandardMaterial3D": {
+      "billboard_mode": "particles",
+      "blend_mode": "add",
+      "shading_mode": "unshaded",
+      "transparency": "alpha",
+      "vertex_color_use_as_albedo": true
+    },
+    "Transform3D": {"position": [2.0, 0.3, 0.0]}
+  }
+}
+```
+
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `emitting`, `amount`, `lifetime`, `one_shot`, `preprocess`, `speed_scale`, `explosiveness`, `randomness`, `lifetime_randomness`, `seed`, `local_coords` | | | As `CPUParticles2D`'s |
+| `draw_order` | `std::string` | `"index"` | `index`, `lifetime` (the oldest first) or `view_depth` (the farthest from the camera first, for blended meshes) |
+| `mesh` | `std::string` | `""` | A model file (`.gltf`, `.glb`, `.obj`, `.fbx`, `.blend` or `.model.json`) each particle draws; `""` draws the entity's primitive mesh component (`QuadMesh`, `BoxMesh` and the rest). The entity's `StandardMaterial3D` overrides the mesh's materials |
+| `cast_shadow`, `layers` | | `"on"`, `1` | As `MeshInstance3D`'s |
+| `emission_shape` | `std::string` | `"point"` | `point`, `sphere` (in a ball), `sphere_surface` (on it), `box`, `points`, `directed_points` or `ring` |
+| `emission_sphere_radius` | `float` | `1` | The ball's radius, in meters |
+| `emission_box_extents` | `Vec3` | `[1, 1, 1]` | Half the box's size, in meters |
+| `emission_ring_axis` | `Vec3` | `[0, 0, 1]` | The ring's axis |
+| `emission_ring_radius`, `emission_ring_inner_radius`, `emission_ring_height` | `float` | `1`, `0`, `1` | The ring's outer and inner radius and its height along the axis, in meters |
+| `emission_ring_cone_angle` | `float` | `90` | Degrees between the ring's side and its base; under 90 narrows it toward the top |
+| `emission_points`, `emission_normals` | `std::vector<Vec3>` | `[]` | As `CPUParticles2D`'s, in 3D: a `directed_points` particle's velocity turns from `direction` to its point's normal |
+| `emission_colors` | `std::vector<Vec4>` | `[]` | Colors multiplying each point's particles |
+| `direction` | `Vec3` | `[1, 0, 0]` | Which way particles go |
+| `spread` | `float` | `45` | Degrees from `direction`, in a cone, 0 to 180 |
+| `flatness` | `float` | `0` | Squashes the cone toward the xz plane of `direction`, 0 to 1 |
+| `gravity` | `Vec3` | `[0, -9.8, 0]` | In meters per second squared |
+| `initial_velocity_min`, `_max`, `linear_accel_min`, `_max`, `radial_accel_min`, `_max`, `tangential_accel_min`, `_max`, `damping_min`, `_max` | `float` | `0` | As `CPUParticles2D`'s, in meters |
+| `angular_velocity_min`, `_max`, `angle_min`, `_max` | `float` | `0` | Degrees per second and degrees: the turn a `"particles"` billboard draws it at |
+| `orbit_velocity_min`, `_max` | `float` | `0` | Turns per second round the entity, only with `particle_flag_disable_z` |
+| `scale_amount_min`, `_max`, `hue_variation_min`, `_max`, `anim_speed_min`, `_max`, `anim_offset_min`, `_max`, `*_curve`, `color`, `color_ramp`, `color_initial_ramp` | | | As `CPUParticles2D`'s; the color multiplies the mesh's vertex colors, which show with `vertex_color_use_as_albedo` |
+| `split_scale`, `scale_curve_x`, `scale_curve_y`, `scale_curve_z` | | `false`, `[]` | With `split_scale`, three curves scale each axis instead of `scale_amount_curve` |
+| `particle_flag_align_y` | `bool` | `false` | Turn each particle so its y axis points along its velocity |
+| `particle_flag_rotate_y` | `bool` | `false` | Turn each particle about its y axis by its angle |
+| `particle_flag_disable_z` | `bool` | `false` | Keep particles in the xy plane, where orbits work |
+
+- Emission, timing, curves, colors, `one_shot`, `finished` events and randomness work as in
+  [Particles](#particles): the same scene makes the same particles on every platform and with
+  any number of threads.
+- A particle's transform is a basis turned by the flags and scaled by its scale, never less than
+  0.00001, as Godot's, then placed through the entity's `Transform3D` unless `local_coords` is set.
+- The mesh's material decides how it faces the camera: a `StandardMaterial3D` with
+  `billboard_mode` `"enabled"` faces it, `"fixed_y"` turns only about y toward it, and
+  `"particles"` faces it turned by each particle's angle and plays `particles_anim_h_frames` by
+  `particles_anim_v_frames` frames of its albedo texture over each particle's life
+  (`anim_speed`, `anim_offset`). Billboards apply to `MeshInstance3D`s too.
+- An emitter with no mesh to draw is a problem in `frame.summary` and `scene validate`.
+- Particles are not saved, as `CPUParticles2D`'s. [`particles.eval`](commands.md#particleseval)
+  returns them, with 3D positions, velocities and scales.
 
 ### GPU particles
 
