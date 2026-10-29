@@ -287,6 +287,13 @@
       "repository": "https://gitlab.freedesktop.org/wayland/wayland.git",
       "tag": "1.18.0"
     },
+    "wslay": {
+      "license": "MIT",
+      "license_file": "COPYING",
+      "license_sha256": "0e602a00db6ce15c1311a180b13563aa638918a77f813b24cd78c9fe5cab63d0",
+      "repository": "https://github.com/tatsuhiro-t/wslay.git",
+      "tag": "release-1.1.1"
+    },
     "xatlas": {
       "license": "MIT",
       "license_file": "LICENSE",

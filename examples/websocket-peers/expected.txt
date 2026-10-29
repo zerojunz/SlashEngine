@@ -1,0 +1,25 @@
+The server listens on a free port and speaks "chat".
+
+A client that speaks only "voice" is refused:
+  stranger: closed, close code -1
+
+A client that speaks "chat" joins and is given its ID:
+  guest: connecting
+  guest: open, subprotocol "chat", a 4-byte binary message: its ID, above 1: yes
+  server: peer_connected the guest
+  server: the guest asked for the path /lobby
+
+Text and bytes, each kept as what it was:
+  server: "hello" from the guest
+  guest: 7 bytes, as text
+  guest: 3 bytes, as binary
+
+The guest closes with a code and reason:
+  guest: closing
+  guest: closed, code 4000, reason "see you"
+  server: peer_disconnected the guest
+
+Three worlds play over WebSocket; alice's call reaches bob through the server:
+  alice and bob each know 2 peers: the server and the other client
+  bob heard "hi, bob" from a client
+  the server heard "hi, bob" from a client
