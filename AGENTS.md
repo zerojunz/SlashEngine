@@ -917,11 +917,16 @@ in `engine/scene3d/src/scene3d.cpp`, through the `ShaderMaterialSource` `CanvasR
 The compiler puts the game's code, as `game_surface`, before `shaders/mesh.hlsl` with
 `GAME_SHADER` defined, and compiles that file's Compatibility, Forward+ and prepass fragment
 stages with it (`ShaderType::Spatial`, `CompiledShader::clustered`, `normal_roughness` and
-`motion`); meshes keep the engine's vertex stage. Its uniforms (`render::SpatialUniforms`) are
-the fourth fragment uniform buffer and its textures take the material's first five slots. The
+`motion`). A `vertex()` becomes `game_vertex`, which the mesh, motion (with the frame before's
+model and time, `SpatialUniforms::previous_model` and the time constant's y) and shadow vertex
+stages call with `GAME_VERTEX` defined; `shaders/shadow.hlsl` takes `game_surface` too, to cut
+out by `ALPHA_SCISSOR_THRESHOLD` (`CompiledShader::shadows_used`, `shadow_spatial_uniforms` in
+`src/shadow.cpp`). Its uniforms (`render::SpatialUniforms`) are the fourth fragment uniform
+buffer (the third vertex one) and its textures take the material's first five slots. The
 software device runs `game_surface` with `ShaderVm` on 2x2 quads (`game_surfaces` in
-`software_device.cpp`), so derivatives work, and `shade_mesh` takes the surface
-(`MeshPixel::game`); a change to how `mesh.hlsl` uses the surface goes in both.
+`software_device.cpp`), so derivatives work, and `game_vertex` per corner (`game_corners`), and
+`shade_mesh` takes the surface (`MeshPixel::game`); a change to how `mesh.hlsl` or `shadow.hlsl`
+uses the shader goes in both.
 `tests/test_spatial_shader.cpp` holds every device to the software device's pixels;
 `examples/spatial-shaders` has a crystal, a fence and a glass ball.
 

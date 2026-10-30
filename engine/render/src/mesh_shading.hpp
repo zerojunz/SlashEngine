@@ -246,11 +246,16 @@ static_assert(sizeof(MeshShadowPassUniforms) == 144);
                                                           const Material3D& material);
 [[nodiscard]] MeshInstanceUniforms
 mesh_instance_uniforms(const Mat4& transform, const Material3D& material, const Mat4& previous);
-// A spatial shader's uniforms for a draw at transform with a material of a scene, onto a target
-// of width by height pixels.
-[[nodiscard]] SpatialUniforms spatial_uniforms(const Scene3D& scene, const Mat4& transform,
+// A spatial shader's uniforms for a draw at transform (and previous in the frame before) with a
+// material of a scene, onto a target of width by height pixels; or for a draw's instance seen
+// through a camera's view and projection, as a shadow pass's.
+[[nodiscard]] SpatialUniforms spatial_uniforms(const Mat4& view, const Mat4& projection,
+                                               const MeshInstanceUniforms& instance,
                                                const Material3D& material, std::uint32_t width,
                                                std::uint32_t height);
+[[nodiscard]] SpatialUniforms spatial_uniforms(const Scene3D& scene, const Mat4& transform,
+                                               const Material3D& material, std::uint32_t width,
+                                               std::uint32_t height, const Mat4& previous);
 [[nodiscard]] MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material,
                                                         std::uint32_t layers);
 // The scene's uniforms: in Compatibility its first kMaxLights3D lights, in Forward+ its
@@ -377,6 +382,11 @@ struct ShadowPlan {
 // vs_main in shaders/shadow.hlsl: where a corner lands in a shadow pass's clip space.
 [[nodiscard]] Float4 shadow_vertex(const MeshShadowPassUniforms& pass,
                                    const MeshInstanceUniforms& instance, const Vertex3D& vertex);
+// The same for a corner already in the world, as a spatial shader's vertex() puts it.
+[[nodiscard]] Float4 shadow_clip(const MeshShadowPassUniforms& pass, const Float4& world);
+// A spatial shader's uniforms in a shadow pass, which sees the draw from the light: its view,
+// projection and rect.
+[[nodiscard]] SpatialUniforms shadow_spatial_uniforms(const ShadowPass& pass, const MeshDraw& draw);
 
 // The order to draw a frame's meshes in, as Godot's: opaque and alpha scissor ones nearest
 // first, then alpha ones farthest first, each by how far its box's center is in front of the
@@ -450,6 +460,22 @@ struct MeshCorner {
 [[nodiscard]] MeshCorner mesh_vertex(const MeshCameraUniforms& camera,
                                      const MeshInstanceUniforms& instance, const Vertex3D& vertex,
                                      const Float3& previous);
+// A corner where a spatial shader's vertex() put it, as its CPU module writes it (cpu_spatial's
+// kCornerOut values), all in the world.
+struct GameCorner {
+    Float3 world{};
+    Float3 normal{};
+    Float3 tangent{};
+    Float3 binormal{};
+    std::array<float, 2> uv{};
+    std::array<float, 2> uv2{};
+    Float4 color{};
+};
+// vs_main in shaders/mesh.hlsl with GAME_VERTEX: the corner vertex() gave, which it put at
+// previous_world in the frame before.
+[[nodiscard]] MeshCorner mesh_vertex(const MeshCameraUniforms& camera,
+                                     const MeshInstanceUniforms& instance, const GameCorner& corner,
+                                     const Float3& previous_world);
 
 // The surface a spatial shader's game_surface gives a pixel (shaders/mesh.hlsl), as its CPU module
 // writes it (cpu_spatial): ALBEDO (linear) and ALPHA; METALLIC, ROUGHNESS, SPECULAR and AO;

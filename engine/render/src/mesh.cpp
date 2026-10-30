@@ -684,9 +684,9 @@ std::array<float, 2> mesh_texture_uv(const MeshSurfaceUniforms& surface, std::si
     return {uv[0] * tiles, uv[1] * tiles};
 }
 
-SpatialUniforms spatial_uniforms(const Scene3D& scene, const Mat4& transform,
-                                 const Material3D& material, std::uint32_t width,
-                                 std::uint32_t height) {
+SpatialUniforms spatial_uniforms(const Mat4& view, const Mat4& projection,
+                                 const MeshInstanceUniforms& instance, const Material3D& material,
+                                 std::uint32_t width, std::uint32_t height) {
     const auto to_floats = [](const std::array<double, 16>& m) {
         Mat4 out{};
         for (std::size_t i = 0; i < out.size(); ++i) {
@@ -696,13 +696,36 @@ SpatialUniforms spatial_uniforms(const Scene3D& scene, const Mat4& transform,
     };
     SpatialUniforms out;
     out.constants = material.shader_constants;
-    out.model = transform;
-    out.view = scene.camera;
-    out.inv_view = to_floats(inverse_matrix(scene.camera));
-    out.projection = scene.projection;
-    out.inv_projection = to_floats(inverse_matrix(scene.projection));
+    out.model = instance.model;
+    out.view = view;
+    out.inv_view = to_floats(inverse_matrix(view));
+    out.projection = projection;
+    out.inv_projection = to_floats(inverse_matrix(projection));
     out.viewport = {static_cast<float>(width), static_cast<float>(height), 0.0F, 0.0F};
+    // The instance's normal model is the cofactors, signed by the determinant; Godot's
+    // MODEL_NORMAL_MATRIX is the inverse transpose, the cofactors over the determinant.
+    const Mat4& m = instance.model;
+    const float determinant = (m[0] * ((m[5] * m[10]) - (m[9] * m[6]))) -
+                              (m[4] * ((m[1] * m[10]) - (m[9] * m[2]))) +
+                              (m[8] * ((m[1] * m[6]) - (m[5] * m[2])));
+    const float size = std::abs(determinant);
+    out.normal_model = instance.normal_model;
+    if (size > 0.0F) {
+        for (float& value : out.normal_model) {
+            value /= size;
+        }
+        out.normal_model[15] = 1.0F;
+    }
+    out.previous_model = instance.previous_model;
     return out;
+}
+
+SpatialUniforms spatial_uniforms(const Scene3D& scene, const Mat4& transform,
+                                 const Material3D& material, std::uint32_t width,
+                                 std::uint32_t height, const Mat4& previous) {
+    return spatial_uniforms(scene.camera, scene.projection,
+                            mesh_instance_uniforms(transform, material, previous), material, width,
+                            height);
 }
 
 MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material, std::uint32_t layers) {
@@ -756,8 +779,8 @@ MeshSurfaceUniforms mesh_surface_uniforms(const Material3D& material, std::uint3
             out.voxel_gis.at(i) = voxel_gi_uniforms(gi.probes.at(i));
         }
     }
-    // A game's spatial shader cuts its pixels by its own ALPHA_SCISSOR_THRESHOLD; the shadow
-    // passes don't run it, so they keep its whole shape.
+    // A game's spatial shader cuts its pixels by its own ALPHA_SCISSOR_THRESHOLD, in its shadows
+    // too (shadow.hlsl's GAME_SHADER), so the threshold here cuts nothing.
     float threshold = material.shader != ShaderId::None ? 0.0F : material.alpha_scissor_threshold;
     std::uint32_t terrain = 0;
     if (material.terrain.enabled) {
@@ -1133,6 +1156,27 @@ MeshCorner mesh_vertex(const MeshCameraUniforms& camera, const MeshInstanceUnifo
         static_cast<float>(vertex.rgba[2]) / kByte, static_cast<float>(vertex.rgba[3]) / kByte};
     out.uv2 = {(vertex.uv2[0] * instance.lightmap_uv[2]) + instance.lightmap_uv[0],
                (vertex.uv2[1] * instance.lightmap_uv[3]) + instance.lightmap_uv[1]};
+    return out;
+}
+
+MeshCorner mesh_vertex(const MeshCameraUniforms& camera, const MeshInstanceUniforms& instance,
+                       const GameCorner& corner, const Float3& previous_world) {
+    MeshCorner out;
+    const Float4 world{corner.world[0], corner.world[1], corner.world[2], 1.0F};
+    out.world = corner.world;
+    out.clip = transform(camera.view_projection, world);
+    out.motion_clip = out.clip;
+    out.motion_clip[0] -= camera.jitter[0] * out.clip[3];
+    out.motion_clip[1] -= camera.jitter[1] * out.clip[3];
+    out.previous_clip = transform(camera.previous_view_projection,
+                                  {previous_world[0], previous_world[1], previous_world[2], 1.0F});
+    out.normal = normalize(corner.normal);
+    out.tangent = normalize(corner.tangent);
+    out.binormal = normalize(corner.binormal);
+    out.uv = corner.uv;
+    out.color = corner.color;
+    out.uv2 = {(corner.uv2[0] * instance.lightmap_uv[2]) + instance.lightmap_uv[0],
+               (corner.uv2[1] * instance.lightmap_uv[3]) + instance.lightmap_uv[1]};
     return out;
 }
 

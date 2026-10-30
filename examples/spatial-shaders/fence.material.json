@@ -1,7 +1,8 @@
 {
   "format": 1,
   "params": {
-    "slats": {"type": "float", "value": 5.0}
+    "slats": {"type": "float", "value": 5.0},
+    "wind": {"type": "float", "value": 0.5}
   },
   "render_mode": ["cull_disabled"],
   "shader": "shaders/fence.hlsl",

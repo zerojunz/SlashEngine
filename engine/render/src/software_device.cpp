@@ -2300,17 +2300,27 @@ private:
         }
         if (material.shader != ShaderId::None) {
             shader.game = shaders_.at(material.shader).get();
-            shader.game_uniforms = detail::spatial_uniforms(*frame_.scene, draw.transform, material,
-                                                            target.width(), target.height());
+            shader.game_uniforms =
+                detail::spatial_uniforms(*frame_.scene, draw.transform, material, target.width(),
+                                         target.height(), draw.previous);
         }
         const detail::MeshInstanceUniforms instance =
             detail::mesh_instance_uniforms(draw.transform, material, draw.previous);
         corners.clear();
         const bool moved = mesh.moved && mesh.previous.size() == mesh.vertices.size();
+        const bool game_vertex = shader.game != nullptr && shader.game->vertex.has_value();
+        std::vector<detail::GameCorner> game_now;
+        std::vector<detail::Float3> game_before;
+        if (game_vertex) {
+            game_corners(shader, mesh, moved, game_now, game_before);
+        }
         for (std::size_t i = 0; i < mesh.vertices.size(); ++i) {
             const Vertex3D& vertex = mesh.vertices[i];
-            const detail::MeshCorner corner = detail::mesh_vertex(
-                camera, instance, vertex, moved ? mesh.previous[i].position : vertex.position);
+            const detail::MeshCorner corner =
+                game_vertex
+                    ? detail::mesh_vertex(camera, instance, game_now[i], game_before[i])
+                    : detail::mesh_vertex(camera, instance, vertex,
+                                          moved ? mesh.previous[i].position : vertex.position);
             ClipVertex& out = corners.emplace_back();
             out.clip = corner.clip;
             std::size_t at = 0;
@@ -2350,6 +2360,8 @@ private:
     void draw_shadow_pass(const detail::ShadowPass& pass, std::vector<float>& atlas,
                           std::uint32_t size) {
         std::vector<ClipVertex> corners;
+        std::vector<detail::GameCorner> game_now;
+        std::vector<detail::Float3> game_before;
         for (const detail::MeshDraw& draw : mesh_draws_) {
             const SoftwareMesh& mesh = find_mesh(draw.mesh);
             if (!detail::shadow_pass_draws(pass, draw, mesh.bounds)) {
@@ -2363,23 +2375,67 @@ private:
             const bool scissor = (surface.options[0] & detail::kMeshAlphaScissor) != 0;
             const MaterialTexture first = detail::mesh_texture_slots(material)[0];
             const Bound albedo = bound(first.texture, first.repeat);
-            corners.clear();
-            for (const Vertex3D& vertex : mesh.vertices) {
-                ClipVertex& out = corners.emplace_back();
-                out.clip = detail::shadow_vertex(pass.uniforms, instance, vertex);
-                out.varying[12] = (vertex.uv[0] * instance.uv1[0]) + instance.uv1[2];
-                out.varying[13] = (vertex.uv[1] * instance.uv1[1]) + instance.uv1[3];
-                for (std::size_t i = 0; i < 4; ++i) {
-                    out.varying.at(14 + i) = static_cast<float>(vertex.rgba.at(i)) / 255.0F;
+            // A game's spatial shader places the corners with its vertex() and cuts the holes
+            // with its fragment(), as shadow.hlsl's GAME_SHADER; its pixels are never turned.
+            Material3D unturned = material;
+            unturned.cull = CullMode::Back;
+            MeshShader shader{.material = &unturned, .surface = surface};
+            if (material.shader != ShaderId::None) {
+                shader.game = shaders_.at(material.shader).get();
+                shader.game_uniforms = detail::shadow_spatial_uniforms(pass, draw);
+                const std::array<MaterialTexture, detail::kMeshTextures> slots =
+                    detail::mesh_texture_slots(material);
+                for (std::size_t slot = 0; slot < kSpatialShaderTextures; ++slot) {
+                    shader.slots.at(slot) = bound(slots.at(slot).texture, slots.at(slot).repeat);
                 }
+            }
+            const bool game_vertex = shader.game != nullptr && shader.game->vertex.has_value();
+            if (game_vertex) {
+                game_corners(shader, mesh, false, game_now, game_before);
+            }
+            corners.clear();
+            for (std::size_t i = 0; i < mesh.vertices.size(); ++i) {
+                const Vertex3D& vertex = mesh.vertices[i];
+                ClipVertex& out = corners.emplace_back();
+                if (shader.game == nullptr) {
+                    out.clip = detail::shadow_vertex(pass.uniforms, instance, vertex);
+                    out.varying[12] = (vertex.uv[0] * instance.uv1[0]) + instance.uv1[2];
+                    out.varying[13] = (vertex.uv[1] * instance.uv1[1]) + instance.uv1[3];
+                    for (std::size_t k = 0; k < 4; ++k) {
+                        out.varying.at(14 + k) = static_cast<float>(vertex.rgba.at(k)) / 255.0F;
+                    }
+                    continue;
+                }
+                const detail::MeshCorner corner =
+                    game_vertex ? detail::mesh_vertex({}, instance, game_now[i], game_now[i].world)
+                                : detail::mesh_vertex({}, instance, vertex);
+                out.clip = detail::shadow_clip(
+                    pass.uniforms, {corner.world[0], corner.world[1], corner.world[2], 1.0F});
+                std::size_t at = 0;
+                const auto put = [&](std::span<const float> values) {
+                    for (const float value : values) {
+                        out.varying.at(at++) = value;
+                    }
+                };
+                put(corner.world);
+                put(corner.normal);
+                put(corner.tangent);
+                put(corner.binormal);
+                put(corner.uv);
+                put(corner.color);
+                put(corner.uv2);
             }
             const MeshRaster raster{.depth = atlas,
                                     .stride = size,
                                     .viewport = pass.rect,
-                                    .cull = detail::shadow_cull(pass, draw)};
+                                    .cull = detail::shadow_cull(pass, draw),
+                                    .game = shader.game != nullptr && scissor ? &shader : nullptr};
             const auto keep = [&](const MeshFragment& fragment, std::size_t /*at*/) {
                 if (!scissor) {
                     return true;
+                }
+                if (fragment.game) {
+                    return !(fragment.game->albedo[3] < fragment.game->normal[3]);
                 }
                 const float u = fragment.varying(12);
                 const float v = fragment.varying(13);
@@ -2598,6 +2654,104 @@ private:
         }
     }
 
+    // A game's spatial shader's texture params, its material's first slots.
+    // The functions hold the shader by address, so it must outlive them.
+    static ShaderVm::Textures game_textures(const MeshShader& shader) {
+        const auto slot = [slots = &shader.slots](std::uint32_t binding) -> const Bound& {
+            return slots->at(std::min<std::size_t>(binding, kSpatialShaderTextures - 1));
+        };
+        return ShaderVm::Textures{
+            .sample = [slot](std::uint32_t binding, float u,
+                             float v) { return slot(binding).sample(u, v); },
+            .fetch = [slot](std::uint32_t binding, std::int32_t x, std::int32_t y) -> Float4 {
+                const Image* image = slot(binding).image;
+                if (image == nullptr) {
+                    return {1.0F, 1.0F, 1.0F, 1.0F};
+                }
+                if (x < 0 || y < 0 || std::cmp_greater_equal(x, image->width) ||
+                    std::cmp_greater_equal(y, image->height)) {
+                    return {0.0F, 0.0F, 0.0F, 0.0F};
+                }
+                const std::size_t at =
+                    ((static_cast<std::size_t>(y) * image->width) + static_cast<std::size_t>(x)) *
+                    4;
+                const auto channel = [&](std::size_t i) {
+                    return static_cast<float>(image->pixels[at + i]) / 255.0F;
+                };
+                return {channel(0), channel(1), channel(2), channel(3)};
+            },
+            .size = [slot](std::uint32_t binding) -> std::array<std::uint32_t, 2> {
+                const Image* image = slot(binding).image;
+                if (image == nullptr) {
+                    return {1, 1};
+                }
+                return {image->width, image->height};
+            }};
+    }
+
+    // Runs a game's spatial shader's vertex() on each of a mesh's corners, four at a time, as
+    // mesh.hlsl's game_vertex: where it puts each in the world, and where it put it in the frame
+    // before (from the mesh's corners then, when it moved), with that frame's model and time.
+    static void game_corners(const MeshShader& shader, const SoftwareMesh& mesh, bool moved,
+                             std::vector<detail::GameCorner>& now,
+                             std::vector<detail::Float3>& before) {
+        std::optional<ShaderVm>& program = shader.game->vertex;
+        SLASH_ASSERT(program.has_value(), "the shader has a vertex()");
+        if (!program.has_value()) {
+            return;
+        }
+        ShaderVm& vm = *program;
+        const std::array<std::span<const std::byte>, 1> uniforms{
+            std::as_bytes(std::span(&shader.game_uniforms, 1))};
+        const ShaderVm::Textures textures = game_textures(shader);
+        const std::size_t count = mesh.vertices.size();
+        now.assign(count, {});
+        before.assign(count, {});
+        for (const bool previous : {false, true}) {
+            for (std::size_t first = 0; first < count; first += ShaderVm::kLanes) {
+                ShaderVm::Lanes lanes;
+                lanes.count = static_cast<std::uint32_t>(std::min(ShaderVm::kLanes, count - first));
+                for (std::size_t lane = 0; lane < lanes.count; ++lane) {
+                    const Vertex3D& vertex = mesh.vertices[first + lane];
+                    const std::array<float, 3>& p =
+                        previous && moved ? mesh.previous[first + lane].position : vertex.position;
+                    auto& in = lanes.inputs.at(lane);
+                    in.at(cpu_spatial::kCornerPosition) = {p[0], p[1], p[2],
+                                                           previous ? 1.0F : 0.0F};
+                    in.at(cpu_spatial::kCornerNormal) = {vertex.normal[0], vertex.normal[1],
+                                                         vertex.normal[2], 0.0F};
+                    in.at(cpu_spatial::kCornerTangent) = vertex.tangent;
+                    in.at(cpu_spatial::kCornerUv) = {vertex.uv[0], vertex.uv[1], vertex.uv2[0],
+                                                     vertex.uv2[1]};
+                    for (std::size_t k = 0; k < 4; ++k) {
+                        in.at(cpu_spatial::kCornerColor).at(k) =
+                            static_cast<float>(vertex.rgba.at(k)) / 255.0F;
+                    }
+                }
+                vm.run(lanes, uniforms, textures);
+                for (std::size_t lane = 0; lane < lanes.count; ++lane) {
+                    const auto& out = lanes.outputs.at(lane);
+                    const auto take3 = [&](std::uint32_t location) {
+                        const Float4& value = out.at(location);
+                        return detail::Float3{value[0], value[1], value[2]};
+                    };
+                    if (previous) {
+                        before[first + lane] = take3(cpu_spatial::kCornerOutWorld);
+                        continue;
+                    }
+                    const Float4& uv = out.at(cpu_spatial::kCornerOutUv);
+                    now[first + lane] = {.world = take3(cpu_spatial::kCornerOutWorld),
+                                         .normal = take3(cpu_spatial::kCornerOutNormal),
+                                         .tangent = take3(cpu_spatial::kCornerOutTangent),
+                                         .binormal = take3(cpu_spatial::kCornerOutBinormal),
+                                         .uv = {uv[0], uv[1]},
+                                         .uv2 = {uv[2], uv[3]},
+                                         .color = out.at(cpu_spatial::kCornerOutColor)};
+                }
+            }
+        }
+    }
+
     // Runs a game's spatial shader on a quad of a triangle's fragments, its top left pixel at qx,
     // qy, as mesh.hlsl's game_surface: each fragment gets the surface it gives, or none where it
     // discards.
@@ -2623,36 +2777,7 @@ private:
         }
         const std::array<std::span<const std::byte>, 1> uniforms{
             std::as_bytes(std::span(&shader.game_uniforms, 1))};
-        const auto slot = [&](std::uint32_t binding) -> const Bound& {
-            return shader.slots.at(std::min<std::size_t>(binding, kSpatialShaderTextures - 1));
-        };
-        const ShaderVm::Textures textures{
-            .sample = [&](std::uint32_t binding, float u,
-                          float v) { return slot(binding).sample(u, v); },
-            .fetch = [&](std::uint32_t binding, std::int32_t x, std::int32_t y) -> Float4 {
-                const Image* image = slot(binding).image;
-                if (image == nullptr) {
-                    return {1.0F, 1.0F, 1.0F, 1.0F};
-                }
-                if (x < 0 || y < 0 || std::cmp_greater_equal(x, image->width) ||
-                    std::cmp_greater_equal(y, image->height)) {
-                    return {0.0F, 0.0F, 0.0F, 0.0F};
-                }
-                const std::size_t at =
-                    ((static_cast<std::size_t>(y) * image->width) + static_cast<std::size_t>(x)) *
-                    4;
-                const auto channel = [&](std::size_t i) {
-                    return static_cast<float>(image->pixels[at + i]) / 255.0F;
-                };
-                return {channel(0), channel(1), channel(2), channel(3)};
-            },
-            .size = [&](std::uint32_t binding) -> std::array<std::uint32_t, 2> {
-                const Image* image = slot(binding).image;
-                if (image == nullptr) {
-                    return {1, 1};
-                }
-                return {image->width, image->height};
-            }};
+        const ShaderVm::Textures textures = game_textures(shader);
         shader.game->fragment.run(lanes, uniforms, textures);
         for (std::size_t lane = 0; lane < 4; ++lane) {
             if (lanes.discarded.at(lane)) {

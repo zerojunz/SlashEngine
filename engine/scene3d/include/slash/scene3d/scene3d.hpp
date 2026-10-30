@@ -645,6 +645,8 @@ private:
     // Where each entity's draws were drawn in the last frame with TAA, by the entity and the
     // draw's place among its draws.
     std::map<std::pair<entt::entity, std::size_t>, std::array<float, 16>> drawn_;
+    // The time of the frame drawn before, for spatial shaders' vertex() in the motion prepass.
+    std::optional<double> drawn_time_;
     std::vector<Problem> problems_;
     // The reflection probes' atlas, its cubes' size and count, and each probe's cube.
     render::TextureId atlas_ = render::TextureId::None;

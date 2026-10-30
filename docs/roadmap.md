@@ -595,7 +595,11 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         Vulkan, Metal, Direct3D 12, WebGPU and OpenGL and run by the software device on 2x2
         quads; `.material.json` files with `"shader_type": "spatial"` and Godot's render
         modes, drawn through `MeshInstance3D.material_override`
-  - [ ] `vertex()`, and the shadow pass reading the shader
+  - [x] `vertex()` moves a mesh's corners (Godot's built-ins in the mesh's space, or the
+        world's with `world_vertex_coords`), in the motion prepass with the frame before's
+        place and time, and the shadow pass reads the shader: its `vertex()`, and its
+        `fragment()` where it cuts out with `ALPHA_SCISSOR_THRESHOLD`
+  - [ ] `light()`
 - [x] Cascaded, omni and spot shadows
 - [x] Post-processing: tonemap, bloom, SSAO, SSR, depth of field, auto exposure, color grading
   - [x] Godot's Compatibility renderer's tonemappers (linear, Reinhard, filmic, ACES, AgX),
@@ -1082,7 +1086,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | 3D renderer | Clustered forward+ with PBR, plus a low-end path for web and mobile | 7 | Done |
 | Shadows | Cascaded, omni and spot shadow maps | 7 | Done |
 | Post-processing | Tonemap, bloom, SSAO, SSR, DoF, auto exposure, color grading | 7 | Done |
-| Materials and shaders | HLSL shaders plus a JSON material graph | 5, 7 | In part: canvas material graphs, a game's own HLSL canvas shaders, `StandardMaterial3D`'s inputs and material files, and spatial shaders' `fragment()` are done; spatial `vertex()` in 7 |
+| Materials and shaders | HLSL shaders plus a JSON material graph | 5, 7 | In part: canvas material graphs, a game's own HLSL canvas shaders, `StandardMaterial3D`'s inputs and material files, and spatial shaders' `fragment()` and `vertex()` are done; spatial `light()` in 7 |
 | Keyframe animation | Keyframe tracks on any reflected property | 5 | Done |
 | Skeletal animation | Skinned meshes, blending, root motion | 7 | Done |
 | Animation blending | Blend trees and state machines in text, two-bone and FABRIK IK | 7 | Done |

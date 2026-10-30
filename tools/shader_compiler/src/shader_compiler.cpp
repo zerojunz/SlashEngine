@@ -31,6 +31,8 @@ extern const unsigned char kMeshHlsl[];
 extern const std::size_t kMeshHlsl_size;
 extern const unsigned char kTonemapHlsl[];
 extern const std::size_t kTonemapHlsl_size;
+extern const unsigned char kShadowHlsl[];
+extern const std::size_t kShadowHlsl_size;
 } // namespace detail
 
 namespace {
@@ -298,17 +300,41 @@ Parts cpu_fragment_parts(const render::ShaderSource& source, const Scan& found) 
     return parts;
 }
 
-// A spatial shader's fragment stages: the Compatibility renderer's, then Forward+'s, lit by
-// clusters, and its prepass's without and with TAA's motion vectors (shaders/mesh_*.hlsl).
-enum class MeshStage : std::uint8_t { Compatibility, Clustered, NormalRoughness, Motion };
+// A spatial shader's stages: the Compatibility renderer's, then Forward+'s, lit by clusters, and
+// its prepass's without and with TAA's motion vectors (shaders/mesh_*.hlsl), and the shadow
+// passes' (shaders/shadow.hlsl).
+enum class MeshStage : std::uint8_t { Compatibility, Clustered, NormalRoughness, Motion, Shadow };
 
 // Which backend a stage's code is for, where mesh.hlsl declares storage buffers apart for it.
 enum class MeshTarget : std::uint8_t { Other, Msl, Wgsl };
 
-// The globals a spatial shader's wrappers declare before its code: the uniform buffer at
-// register, the texture params, Godot's built-ins and texture().
-std::string spatial_declarations(const render::ShaderSource& source, std::string_view reg) {
-    std::string out = "cbuffer GameMaterial : register(" + std::string(reg) +
+// Where a spatial shader's wrappers declare its uniform buffer and textures, as SDL binds them
+// for the stage: vertex stages read textures with SampleLevel, as they have no derivatives.
+struct SpatialBindings {
+    std::string_view uniforms;      // the uniform buffer's register
+    std::string_view texture_space; // the texture params' space
+    bool vertex = false;
+};
+
+constexpr SpatialBindings kVertexBindings{
+    .uniforms = "b2, space1", .texture_space = "space0", .vertex = true};
+// WebGPU's vertex stages read the texture params in the fragment stage's group, as the
+// WebGPU device lays its groups out (Forward+'s clusters take group 0).
+constexpr SpatialBindings kWgslVertexBindings{
+    .uniforms = "b2, space1", .texture_space = "space2", .vertex = true};
+constexpr SpatialBindings kMeshFragmentBindings{.uniforms = "b3, space3",
+                                                .texture_space = "space2"};
+constexpr SpatialBindings kShadowFragmentBindings{.uniforms = "b1, space3",
+                                                  .texture_space = "space2"};
+constexpr SpatialBindings kCpuFragmentBindings{.uniforms = "b0, space3", .texture_space = "space2"};
+constexpr SpatialBindings kCpuVertexBindings{
+    .uniforms = "b0, space3", .texture_space = "space2", .vertex = true};
+
+// The globals a spatial shader's wrappers declare before its code: the uniform buffer, the
+// texture params, Godot's built-ins and texture().
+std::string spatial_declarations(const render::ShaderSource& source,
+                                 const SpatialBindings& bindings) {
+    std::string out = "cbuffer GameMaterial : register(" + std::string(bindings.uniforms) +
                       ") {\n"
                       "    float4 game_constants[32];\n"
                       "    float4x4 game_model;\n"
@@ -317,6 +343,8 @@ std::string spatial_declarations(const render::ShaderSource& source, std::string
                       "    float4x4 game_projection;\n"
                       "    float4x4 game_inv_projection;\n"
                       "    float4 game_viewport;\n"
+                      "    float4x4 game_normal_model;\n"
+                      "    float4x4 game_previous_model;\n"
                       "};\n"
                       "float4 game_texel(float4 texel, bool srgb) {\n"
                       "    // Godot's approximation of sRGB to linear, as tonemap.hlsl's.\n"
@@ -327,9 +355,10 @@ std::string spatial_declarations(const render::ShaderSource& source, std::string
                       "}\n";
     for (const auto& param : source.params) {
         if (param.components == 0) {
-            const std::string slot = std::to_string(param.slot);
-            out += "Texture2D<float4> " + param.name + " : register(t" + slot + ", space2);\n";
-            out += "SamplerState " + param.name + "_sampler : register(s" + slot + ", space2);\n";
+            const std::string at =
+                std::to_string(param.slot) + ", " + std::string(bindings.texture_space);
+            out += "Texture2D<float4> " + param.name + " : register(t" + at + ");\n";
+            out += "SamplerState " + param.name + "_sampler : register(s" + at + ");\n";
             out += "static const bool " + param.name +
                    "_srgb = " + (param.source_color ? "true" : "false") + ";\n";
         } else {
@@ -349,12 +378,17 @@ std::string spatial_declarations(const render::ShaderSource& source, std::string
            "static bool FRONT_FACING;\n"
            "static float TIME;\n"
            "static float4x4 MODEL_MATRIX;\n"
+           "static float3x3 MODEL_NORMAL_MATRIX;\n"
            "static float4x4 VIEW_MATRIX;\n"
            "static float4x4 INV_VIEW_MATRIX;\n"
            "static float4x4 PROJECTION_MATRIX;\n"
            "static float4x4 INV_PROJECTION_MATRIX;\n"
+           "static float4x4 MODELVIEW_MATRIX;\n"
+           "static float3x3 MODELVIEW_NORMAL_MATRIX;\n"
            "static float3 CAMERA_POSITION_WORLD;\n"
            "static float3 CAMERA_DIRECTION_WORLD;\n"
+           "static float3 NODE_POSITION_WORLD;\n"
+           "static float3 NODE_POSITION_VIEW;\n"
            "static float2 VIEWPORT_SIZE;\n"
            "static float3 ALBEDO;\n"
            "static float ALPHA;\n"
@@ -370,8 +404,88 @@ std::string spatial_declarations(const render::ShaderSource& source, std::string
            "static float game_specular;\n"
            "static const float PI = 3.14159265358979323846;\n"
            "static const float TAU = 6.28318530717958647692;\n"
-           "static const float E = 2.71828182845904523536;\n"
-           "#define texture(t, uv) game_texel((t).Sample(t##_sampler, (uv)), t##_srgb)\n";
+           "static const float E = 2.71828182845904523536;\n";
+    out += bindings.vertex
+               ? "#define texture(t, uv) game_texel((t).SampleLevel(t##_sampler, (uv), 0.0), "
+                 "t##_srgb)\n"
+               : "#define texture(t, uv) game_texel((t).Sample(t##_sampler, (uv)), t##_srgb)\n";
+    return out;
+}
+
+// Sets Godot's matrices and the places they give for a draw with the model.
+std::string spatial_matrices(std::string_view model) {
+    return "    MODEL_MATRIX = " + std::string(model) +
+           ";\n"
+           "    MODEL_NORMAL_MATRIX = (float3x3)game_normal_model;\n"
+           "    VIEW_MATRIX = game_view;\n"
+           "    INV_VIEW_MATRIX = game_inv_view;\n"
+           "    PROJECTION_MATRIX = game_projection;\n"
+           "    INV_PROJECTION_MATRIX = game_inv_projection;\n"
+           "    MODELVIEW_MATRIX = mul(game_view, MODEL_MATRIX);\n"
+           "    MODELVIEW_NORMAL_MATRIX = mul((float3x3)game_view, MODEL_NORMAL_MATRIX);\n"
+           "    VIEWPORT_SIZE = game_viewport.xy;\n"
+           "    CAMERA_POSITION_WORLD = mul(game_inv_view, float4(0.0, 0.0, 0.0, 1.0)).xyz;\n"
+           "    CAMERA_DIRECTION_WORLD = normalize(mul((float3x3)game_inv_view, "
+           "float3(0.0, 0.0, -1.0)));\n"
+           "    NODE_POSITION_WORLD = mul(MODEL_MATRIX, float4(0.0, 0.0, 0.0, 1.0)).xyz;\n"
+           "    NODE_POSITION_VIEW = mul(game_view, float4(NODE_POSITION_WORLD, 1.0)).xyz;\n";
+}
+
+// game_vertex, which mesh.hlsl's and shadow.hlsl's vertex stages and the CPU's module call:
+// Godot's built-ins from a corner of the mesh, in its space (or the world's, with
+// world_vertex_coords), its vertex(), then the corner in the world. The frame before's model and
+// time place it where it was, for the motion prepass.
+std::string game_vertex(const render::ShaderSource& source) {
+    std::string out =
+        "\nstruct GameVertex {\n"
+        "    float3 world;\n"
+        "    float3 normal;\n"
+        "    float3 tangent;\n"
+        "    float3 binormal;\n"
+        "    float2 uv;\n"
+        "    float2 uv2;\n"
+        "    float4 color;\n"
+        "};\n\n"
+        "GameVertex game_vertex(float3 position, float3 normal, float4 tangent, float2 uv,\n"
+        "                       float2 uv2, float4 color, bool previous) {\n";
+    out += load_params(source, "game_constants", "");
+    out += "    if (previous) {\n"
+           "        TIME = game_constants[" +
+           std::to_string(render::kShaderTimeConstant) +
+           "].y;\n"
+           "    }\n";
+    out += spatial_matrices("previous ? game_previous_model : game_model");
+    out += "    VERTEX = position;\n"
+           "    NORMAL = normal;\n"
+           "    TANGENT = tangent.xyz;\n"
+           "    BINORMAL = normalize(cross(normal, tangent.xyz) * tangent.w);\n";
+    if (source.world_vertex_coords) {
+        out += "    VERTEX = mul(MODEL_MATRIX, float4(VERTEX, 1.0)).xyz;\n"
+               "    NORMAL = mul(MODEL_NORMAL_MATRIX, NORMAL);\n"
+               "    TANGENT = mul(MODEL_NORMAL_MATRIX, TANGENT);\n"
+               "    BINORMAL = mul(MODEL_NORMAL_MATRIX, BINORMAL);\n";
+    }
+    out += "    UV = uv;\n"
+           "    UV2 = uv2;\n"
+           "    COLOR = color;\n"
+           "    vertex();\n"
+           "    GameVertex corner;\n";
+    if (source.world_vertex_coords) {
+        out += "    corner.world = VERTEX;\n"
+               "    corner.normal = NORMAL;\n"
+               "    corner.tangent = TANGENT;\n"
+               "    corner.binormal = BINORMAL;\n";
+    } else {
+        out += "    corner.world = mul(MODEL_MATRIX, float4(VERTEX, 1.0)).xyz;\n"
+               "    corner.normal = mul(MODEL_NORMAL_MATRIX, NORMAL);\n"
+               "    corner.tangent = mul(MODEL_NORMAL_MATRIX, TANGENT);\n"
+               "    corner.binormal = mul(MODEL_NORMAL_MATRIX, BINORMAL);\n";
+    }
+    out += "    corner.uv = UV;\n"
+           "    corner.uv2 = UV2;\n"
+           "    corner.color = COLOR;\n"
+           "    return corner;\n"
+           "}\n";
     return out;
 }
 
@@ -390,16 +504,8 @@ std::string game_surface(const render::ShaderSource& source, const Scan& found) 
                       "float4 color,\n"
                       "                         float4 frag_coord, bool front, bool flip) {\n";
     out += load_params(source, "game_constants", "");
-    out += "    MODEL_MATRIX = game_model;\n"
-           "    VIEW_MATRIX = game_view;\n"
-           "    INV_VIEW_MATRIX = game_inv_view;\n"
-           "    PROJECTION_MATRIX = game_projection;\n"
-           "    INV_PROJECTION_MATRIX = game_inv_projection;\n"
-           "    VIEWPORT_SIZE = game_viewport.xy;\n"
-           "    CAMERA_POSITION_WORLD = mul(game_inv_view, float4(0.0, 0.0, 0.0, 1.0)).xyz;\n"
-           "    CAMERA_DIRECTION_WORLD = normalize(mul((float3x3)game_inv_view, "
-           "float3(0.0, 0.0, -1.0)));\n"
-           "    VERTEX = mul(game_view, float4(world, 1.0)).xyz;\n"
+    out += spatial_matrices("game_model");
+    out += "    VERTEX = mul(game_view, float4(world, 1.0)).xyz;\n"
            "    NORMAL = normalize(mul((float3x3)game_view, flip ? -normal : normal));\n"
            "    TANGENT = normalize(mul((float3x3)game_view, tangent));\n"
            "    BINORMAL = normalize(mul((float3x3)game_view, binormal));\n"
@@ -445,12 +551,22 @@ std::string game_surface(const render::ShaderSource& source, const Scan& found) 
     return out;
 }
 
+std::string_view shadow_hlsl() {
+    return {reinterpret_cast<const char*>(detail::kShadowHlsl), detail::kShadowHlsl_size};
+}
+
+// A stage's code around the shader's: for the vertex stage (bindings.vertex) or the fragment
+// stage of a mesh pass or a shadow pass.
 Parts spatial_parts(const render::ShaderSource& source, const Scan& found, MeshStage stage,
-                    MeshTarget target) {
+                    MeshTarget target, bool vertex) {
     Parts parts;
     parts.before = "#define GAME_SHADER\n";
+    if (found.vertex) {
+        parts.before += "#define GAME_VERTEX\n";
+    }
     switch (stage) {
     case MeshStage::Compatibility:
+    case MeshStage::Shadow:
         break;
     case MeshStage::Clustered:
         parts.before += "#define CLUSTERED\n";
@@ -468,14 +584,28 @@ Parts spatial_parts(const render::ShaderSource& source, const Scan& found, MeshS
         parts.before += "#define SLASH_WGSL\n";
     }
     parts.before += "\n// The game's shader, as a spatial material's (tools/shader_compiler).\n";
-    parts.before += spatial_declarations(source, "b3, space3");
-    parts.after = game_surface(source, found) + "\n" + mesh_hlsl();
+    const SpatialBindings* bindings = &kMeshFragmentBindings;
+    if (vertex) {
+        bindings = target == MeshTarget::Wgsl ? &kWgslVertexBindings : &kVertexBindings;
+    } else if (stage == MeshStage::Shadow) {
+        bindings = &kShadowFragmentBindings;
+    }
+    parts.before += spatial_declarations(source, *bindings);
+    if (found.vertex) {
+        parts.after = game_vertex(source);
+    }
+    parts.after += game_surface(source, found) + "\n";
+    if (stage == MeshStage::Shadow) {
+        parts.after += shadow_hlsl();
+    } else {
+        parts.after += mesh_hlsl();
+    }
     return parts;
 }
 
 Parts cpu_spatial_parts(const render::ShaderSource& source, const Scan& found) {
     Parts parts;
-    parts.before = spatial_declarations(source, "b0, space3");
+    parts.before = spatial_declarations(source, kCpuFragmentBindings);
     parts.after = game_surface(source, found);
     parts.after += "\nstruct CpuSurfaceInput {\n"
                    "    [[vk::location(0)]] float4 world : TEXCOORD0;\n"
@@ -503,6 +633,42 @@ Parts cpu_spatial_parts(const render::ShaderSource& source, const Scan& found) {
                    "    output.material = found.material;\n"
                    "    output.emission = found.emission;\n"
                    "    output.normal = found.normal;\n"
+                   "    return output;\n"
+                   "}\n";
+    return parts;
+}
+
+// The CPU's module for a spatial shader's vertex() (render::cpu_spatial's corners).
+Parts cpu_spatial_vertex_parts(const render::ShaderSource& source) {
+    Parts parts;
+    parts.before = spatial_declarations(source, kCpuVertexBindings);
+    parts.after = game_vertex(source);
+    parts.after += "\nstruct CpuCornerInput {\n"
+                   "    [[vk::location(0)]] float4 position : TEXCOORD0;\n"
+                   "    [[vk::location(1)]] float4 normal : TEXCOORD1;\n"
+                   "    [[vk::location(2)]] float4 tangent : TEXCOORD2;\n"
+                   "    [[vk::location(3)]] float4 uv : TEXCOORD3;\n"
+                   "    [[vk::location(4)]] float4 color : TEXCOORD4;\n"
+                   "};\n\n"
+                   "struct CpuCorner {\n"
+                   "    [[vk::location(0)]] float4 world : TEXCOORD0;\n"
+                   "    [[vk::location(1)]] float4 normal : TEXCOORD1;\n"
+                   "    [[vk::location(2)]] float4 tangent : TEXCOORD2;\n"
+                   "    [[vk::location(3)]] float4 binormal : TEXCOORD3;\n"
+                   "    [[vk::location(4)]] float4 uv : TEXCOORD4;\n"
+                   "    [[vk::location(5)]] float4 color : TEXCOORD5;\n"
+                   "};\n\n"
+                   "CpuCorner cpu_vertex(CpuCornerInput input) {\n"
+                   "    GameVertex moved = game_vertex(input.position.xyz, input.normal.xyz, "
+                   "input.tangent,\n"
+                   "        input.uv.xy, input.uv.zw, input.color, input.position.w != 0.0);\n"
+                   "    CpuCorner output;\n"
+                   "    output.world = float4(moved.world, 1.0);\n"
+                   "    output.normal = float4(moved.normal, 0.0);\n"
+                   "    output.tangent = float4(moved.tangent, 0.0);\n"
+                   "    output.binormal = float4(moved.binormal, 0.0);\n"
+                   "    output.uv = float4(moved.uv, moved.uv2);\n"
+                   "    output.color = moved.color;\n"
                    "    return output;\n"
                    "}\n";
     return parts;
@@ -640,13 +806,17 @@ constexpr std::array<std::string_view, 14> kMeshSamplerNames{
     "ground_normal_1",  "ground_normal_2",  "ground_normal_3",   "directional_atlas",
     "positional_atlas", "radiance_map"};
 
+// With fixup_clipspace, a vertex stage maps its depth from 0..1 to OpenGL's -1..1 at the end, as
+// the mesh shaders' committed GLSL does (compile_shaders.cmake's FIXUP_CLIPSPACE).
 std::string to_glsl(const std::vector<std::uint32_t>& spirv, bool vertex,
                     std::span<const std::string_view> varying_names = kCanvasVaryings,
-                    std::span<const std::string_view> sampler_names = kSamplerNames) {
+                    std::span<const std::string_view> sampler_names = kSamplerNames,
+                    bool fixup_clipspace = false) {
     spirv_cross::CompilerGLSL compiler(spirv);
     auto options = compiler.get_common_options();
     options.es = true;
     options.version = 300;
+    options.vertex.fixup_clipspace = vertex && fixup_clipspace;
     options.fragment.default_float_precision = spirv_cross::CompilerGLSL::Options::Highp;
     options.fragment.default_int_precision = spirv_cross::CompilerGLSL::Options::Highp;
     compiler.set_common_options(options);
@@ -713,26 +883,29 @@ Error compile_errors(const std::vector<std::string>& errors) {
 // The mesh shader's samplers sit 16 bindings after its textures in WGSL, as it has more than 8.
 constexpr std::uint32_t kMeshSamplerShift = 16;
 
-// A spatial shader's fragment stage for every backend but OpenGL's into stage, and with glsl
-// OpenGL's into it; nothing, with errors added, where it doesn't compile.
+// A spatial shader's stage for every backend into stage, OpenGL's only with glsl; nothing, with
+// errors added, where it doesn't compile.
 void compile_mesh_stage(const render::ShaderSource& source, const Scan& found, MeshStage which,
-                        render::ShaderStage& stage, std::string* glsl,
+                        bool vertex, render::ShaderStage& stage, bool glsl,
                         std::vector<std::string>& errors) {
-    const Parts parts = spatial_parts(source, found, which, MeshTarget::Other);
-    stage.spirv = to_spirv(parts, source, EShLangFragment, "fs_main", errors);
+    const EShLanguage language = vertex ? EShLangVertex : EShLangFragment;
+    const char* entry = vertex ? "vs_main" : "fs_main";
+    const Parts parts = spatial_parts(source, found, which, MeshTarget::Other, vertex);
+    stage.spirv = to_spirv(parts, source, language, entry, errors);
     if (!errors.empty()) {
         return;
     }
     // Forward+'s clustered stage reads storage buffers, which Metal and WebGPU number apart.
-    const bool apart = which == MeshStage::Clustered;
+    const bool apart = which == MeshStage::Clustered && !vertex;
     std::vector<std::uint32_t> msl_spirv;
     if (apart) {
-        msl_spirv = to_spirv(spatial_parts(source, found, which, MeshTarget::Msl), source,
-                             EShLangFragment, "fs_main", errors);
+        msl_spirv = to_spirv(spatial_parts(source, found, which, MeshTarget::Msl, vertex), source,
+                             language, entry, errors);
     }
     const std::vector<std::uint32_t> wgsl_spirv =
-        to_spirv(spatial_parts(source, found, which, apart ? MeshTarget::Wgsl : MeshTarget::Other),
-                 source, EShLangFragment, "fs_main", errors, Samplers::Apart, kMeshSamplerShift);
+        to_spirv(spatial_parts(source, found, which,
+                               apart || vertex ? MeshTarget::Wgsl : MeshTarget::Other, vertex),
+                 source, language, entry, errors, Samplers::Apart, kMeshSamplerShift);
     if (!errors.empty()) {
         return;
     }
@@ -742,8 +915,8 @@ void compile_mesh_stage(const render::ShaderSource& source, const Scan& found, M
     }
     try {
         stage.msl = to_msl(apart ? msl_spirv : stage.spirv);
-        if (glsl != nullptr) {
-            *glsl = to_glsl(stage.spirv, false, kMeshVaryings, kMeshSamplerNames);
+        if (glsl) {
+            stage.glsl = to_glsl(stage.spirv, vertex, kMeshVaryings, kMeshSamplerNames, true);
         }
     } catch (const std::exception& error) {
         errors.push_back(source.path + ": SPIRV-Cross can't translate it: " + error.what());
@@ -759,40 +932,57 @@ Result<render::CompiledShader> compile_spatial(const render::ShaderSource& sourc
     out.normal_map_used = found.normal_map;
     out.alpha_used = found.alpha;
     out.alpha_scissor_used = found.alpha_scissor;
+    out.vertex_used = found.vertex;
     std::vector<std::string> errors;
-    if (found.vertex) {
-        errors.push_back(source.path +
-                         ": spatial shaders take no vertex() yet; meshes' corners are placed as "
-                         "the mesh shader places them");
-        return compile_errors(errors);
-    }
+    const auto stage = [&](MeshStage which, bool vertex, render::ShaderStage& into, bool glsl) {
+        if (errors.empty()) {
+            compile_mesh_stage(source, found, which, vertex, into, glsl, errors);
+        }
+    };
     render::ShaderStage compatibility;
-    compile_mesh_stage(source, found, MeshStage::Compatibility, compatibility, &out.glsl_fragment,
-                       errors);
-    if (errors.empty()) {
-        compile_mesh_stage(source, found, MeshStage::Clustered, out.clustered, nullptr, errors);
+    stage(MeshStage::Compatibility, false, compatibility, true);
+    stage(MeshStage::Clustered, false, out.clustered, false);
+    stage(MeshStage::NormalRoughness, false, out.normal_roughness, false);
+    stage(MeshStage::Motion, false, out.motion, false);
+    render::ShaderStage vertex;
+    if (found.vertex) {
+        stage(MeshStage::Compatibility, true, vertex, true);
+        stage(MeshStage::Motion, true, out.motion_vertex, false);
     }
-    if (errors.empty()) {
-        compile_mesh_stage(source, found, MeshStage::NormalRoughness, out.normal_roughness, nullptr,
-                           errors);
-    }
-    if (errors.empty()) {
-        compile_mesh_stage(source, found, MeshStage::Motion, out.motion, nullptr, errors);
+    // Shadows run the shader where it moves the corners or cuts holes.
+    if (out.shadows_used()) {
+        stage(MeshStage::Shadow, true, out.shadow_vertex, true);
+        stage(MeshStage::Shadow, false, out.shadow, true);
     }
     if (errors.empty()) {
         out.cpu_fragment = to_spirv(cpu_spatial_parts(source, found), source, EShLangFragment,
                                     "cpu_fragment", errors);
+    }
+    if (errors.empty() && found.vertex) {
+        out.cpu_vertex =
+            to_spirv(cpu_spatial_vertex_parts(source), source, EShLangVertex, "cpu_vertex", errors);
     }
     if (!errors.empty()) {
         return compile_errors(errors);
     }
     out.spirv_fragment = std::move(compatibility.spirv);
     out.msl_fragment = std::move(compatibility.msl);
+    out.glsl_fragment = std::move(compatibility.glsl);
     out.wgsl_fragment = std::move(compatibility.wgsl);
     out.hlsl = std::move(compatibility.hlsl);
-    if (auto loaded = render::ShaderVm::load(out.cpu_fragment); !loaded) {
-        return make_error(ErrorCode::InvalidArgument,
-                          source.path + ": the CPU can't run it: " + loaded.error().message);
+    out.spirv_vertex = std::move(vertex.spirv);
+    out.msl_vertex = std::move(vertex.msl);
+    out.glsl_vertex = std::move(vertex.glsl);
+    out.wgsl_vertex = std::move(vertex.wgsl);
+    out.hlsl_vertex = std::move(vertex.hlsl);
+    for (const auto* module : {&out.cpu_vertex, &out.cpu_fragment}) {
+        if (module->empty()) {
+            continue;
+        }
+        if (auto loaded = render::ShaderVm::load(*module); !loaded) {
+            return make_error(ErrorCode::InvalidArgument,
+                              source.path + ": the CPU can't run it: " + loaded.error().message);
+        }
     }
     return out;
 }
@@ -804,7 +994,11 @@ Wrapped wrap(const render::ShaderSource& source) {
     const auto join = [&](const Parts& parts) { return joined(parts, source); };
     Wrapped out;
     if (source.type == render::ShaderType::Spatial) {
-        out.gpu = join(spatial_parts(source, found, MeshStage::Compatibility, MeshTarget::Other));
+        out.gpu =
+            join(spatial_parts(source, found, MeshStage::Compatibility, MeshTarget::Other, false));
+        if (found.vertex) {
+            out.cpu_vertex = join(cpu_spatial_vertex_parts(source));
+        }
         out.cpu_fragment = join(cpu_spatial_parts(source, found));
         return out;
     }

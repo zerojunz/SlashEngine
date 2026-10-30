@@ -52,8 +52,9 @@
 // compiled code into the file as "compiled", since games can't compile shaders.
 //
 // With "shader_type": "spatial", the file is a 3D material, Godot's ShaderMaterial for a mesh
-// (MeshInstance3D's material_override names it): its shader's fragment() gives each pixel's
-// ALBEDO, ROUGHNESS, NORMAL_MAP and the rest, and "render_mode" lists Godot's render modes:
+// (MeshInstance3D's material_override names it): its shader's vertex() moves the mesh's corners,
+// its fragment() gives each pixel's ALBEDO, ROUGHNESS, NORMAL_MAP and the rest, and
+// "render_mode" lists Godot's render modes:
 //
 //   {"format": 1, "shader_type": "spatial", "render_mode": ["cull_disabled"],
 //    "params": {"tint": {"type": "color", "value": [1, 0.5, 0.2, 1]}},
@@ -85,13 +86,15 @@ struct MaterialParam {
 
 // A spatial material's render modes, as Godot's render_mode line: how its meshes blend
 // (blend_mix, blend_add, blend_sub, blend_mul) and cull (cull_back, cull_front, cull_disabled),
-// and unshaded, fog_disabled and shadows_disabled.
+// and unshaded, fog_disabled, shadows_disabled and world_vertex_coords (its vertex() works in the
+// world rather than the mesh's space).
 struct SpatialModes {
     render::BlendMode blend = render::BlendMode::Mix;
     render::CullMode cull = render::CullMode::Back;
     bool unshaded = false;
     bool fog_disabled = false;
     bool shadows_disabled = false;
+    bool world_vertex_coords = false;
 
     bool operator==(const SpatialModes&) const = default;
 };

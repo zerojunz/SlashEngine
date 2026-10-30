@@ -336,9 +336,10 @@ float srgb_to_linear(float c) {
 }
 
 // The render modes a spatial material takes, as Godot's.
-constexpr std::array<std::string_view, 10> kRenderModes = {
-    "blend_mix",  "blend_add",     "blend_sub", "blend_mul",    "cull_back",
-    "cull_front", "cull_disabled", "unshaded",  "fog_disabled", "shadows_disabled"};
+constexpr std::array<std::string_view, 11> kRenderModes = {
+    "blend_mix",    "blend_add",        "blend_sub",          "blend_mul",
+    "cull_back",    "cull_front",       "cull_disabled",      "unshaded",
+    "fog_disabled", "shadows_disabled", "world_vertex_coords"};
 
 Kind param_kind(std::string_view type) {
     if (type == "float") {
@@ -577,7 +578,7 @@ json::Value schema(bool list_ops) {
     properties["render_mode"]["description"] =
         "A spatial material's render modes, as Godot's render_mode line: one blend_ mode (mix "
         "by default), one cull_ mode (back by default), unshaded, fog_disabled, "
-        "shadows_disabled.";
+        "shadows_disabled, world_vertex_coords.";
 
     json::Value compiled;
     compiled["type"] = "object";
@@ -589,11 +590,11 @@ json::Value schema(bool list_ops) {
         compiled["properties"][key] = text_schema("SPIR-V, in base64.");
     }
     for (const char* key : {"msl_vertex", "msl_fragment", "glsl_vertex", "glsl_fragment",
-                            "wgsl_vertex", "wgsl_fragment", "hlsl"}) {
+                            "wgsl_vertex", "wgsl_fragment", "hlsl", "hlsl_vertex"}) {
         compiled["properties"][key] = text_schema("Source code.");
     }
     for (const char* key :
-         {"normal_map_used", "specular_used", "alpha_used", "alpha_scissor_used"}) {
+         {"normal_map_used", "specular_used", "alpha_used", "alpha_scissor_used", "vertex_used"}) {
         compiled["properties"][key]["type"] = "boolean";
     }
     compiled["properties"]["type"]["enum"] = json::Array{"canvas_item", "spatial"};
@@ -601,10 +602,11 @@ json::Value schema(bool list_ops) {
     stage["type"] = "object";
     stage["additionalProperties"] = false;
     stage["properties"]["spirv"] = text_schema("SPIR-V, in base64.");
-    for (const char* key : {"msl", "wgsl", "hlsl"}) {
+    for (const char* key : {"msl", "wgsl", "hlsl", "glsl"}) {
         stage["properties"][key] = text_schema("Source code.");
     }
-    for (const char* key : {"clustered", "normal_roughness", "motion"}) {
+    for (const char* key :
+         {"clustered", "normal_roughness", "motion", "motion_vertex", "shadow_vertex", "shadow"}) {
         compiled["properties"][key] = stage;
     }
     properties["compiled"] = std::move(compiled);
@@ -810,6 +812,8 @@ public:
                 out.unshaded = true;
             } else if (mode == "fog_disabled") {
                 out.fog_disabled = true;
+            } else if (mode == "world_vertex_coords") {
+                out.world_vertex_coords = true;
             } else if (mode == "shadows_disabled") {
                 out.shadows_disabled = true;
             }
@@ -994,6 +998,8 @@ private:
         text("wgsl_vertex", shader->wgsl_vertex);
         text("wgsl_fragment", shader->wgsl_fragment);
         text("hlsl", shader->hlsl);
+        text("hlsl_vertex", shader->hlsl_vertex);
+        shader->vertex_used = flag("vertex_used");
         shader->normal_map_used = flag("normal_map_used");
         shader->specular_used = flag("specular_used");
         shader->alpha_used = flag("alpha_used");
@@ -1015,7 +1021,7 @@ private:
             }
             for (const auto& [name, field] :
                  {std::pair{"msl", &out.msl}, std::pair{"wgsl", &out.wgsl},
-                  std::pair{"hlsl", &out.hlsl}}) {
+                  std::pair{"hlsl", &out.hlsl}, std::pair{"glsl", &out.glsl}}) {
                 if (const json::Value* found = value->find(name); found != nullptr) {
                     *field = found->as_string();
                 }
@@ -1024,6 +1030,9 @@ private:
         stage("clustered", shader->clustered);
         stage("normal_roughness", shader->normal_roughness);
         stage("motion", shader->motion);
+        stage("motion_vertex", shader->motion_vertex);
+        stage("shadow_vertex", shader->shadow_vertex);
+        stage("shadow", shader->shadow);
         material_.compiled = std::move(shader);
     }
 
@@ -1755,7 +1764,8 @@ render::ShaderSource shader_source(const CanvasMaterial& material, std::string c
     render::ShaderSource source{.path = material.shader,
                                 .code = std::move(code),
                                 .type = material.shader_type,
-                                .params = {}};
+                                .params = {},
+                                .world_vertex_coords = material.modes.world_vertex_coords};
     for (const auto& [name, param] : material.params) {
         if (!param.slot) {
             continue;
@@ -1843,6 +1853,7 @@ json::Value compiled_shader_json(const render::CompiledShader& shader,
     }
     if (targets.hlsl) {
         text("hlsl", shader.hlsl);
+        text("hlsl_vertex", shader.hlsl_vertex);
     }
     words("cpu_vertex", shader.cpu_vertex);
     words("cpu_fragment", shader.cpu_fragment);
@@ -1856,7 +1867,8 @@ json::Value compiled_shader_json(const render::CompiledShader& shader,
             for (const auto& [name, text_code, wanted] :
                  {std::tuple{"msl", &code.msl, targets.msl},
                   std::tuple{"wgsl", &code.wgsl, targets.wgsl},
-                  std::tuple{"hlsl", &code.hlsl, targets.hlsl}}) {
+                  std::tuple{"hlsl", &code.hlsl, targets.hlsl},
+                  std::tuple{"glsl", &code.glsl, targets.glsl}}) {
                 if (wanted && !text_code->empty()) {
                     value[name] = *text_code;
                 }
@@ -1868,9 +1880,12 @@ json::Value compiled_shader_json(const render::CompiledShader& shader,
         stage("clustered", shader.clustered);
         stage("normal_roughness", shader.normal_roughness);
         stage("motion", shader.motion);
-        for (const auto& [key, used] :
-             {std::pair{"alpha_used", shader.alpha_used},
-              std::pair{"alpha_scissor_used", shader.alpha_scissor_used}}) {
+        stage("motion_vertex", shader.motion_vertex);
+        stage("shadow_vertex", shader.shadow_vertex);
+        stage("shadow", shader.shadow);
+        for (const auto& [key, used] : {std::pair{"alpha_used", shader.alpha_used},
+                                        std::pair{"alpha_scissor_used", shader.alpha_scissor_used},
+                                        std::pair{"vertex_used", shader.vertex_used}}) {
             if (used) {
                 out[key] = true;
             }

@@ -2,10 +2,10 @@
 # installs the compiler that render::compile_shader uses. Used by slash-cli, slash-mcp and exports;
 # games never link it.
 
-# The engine's shaders a game's are written into: canvas.hlsl for canvas shaders, mesh.hlsl and the
-# tonemap.hlsl it includes for spatial ones.
+# The engine's shaders a game's are written into: canvas.hlsl for canvas shaders, mesh.hlsl, the
+# tonemap.hlsl it includes and shadow.hlsl for spatial ones.
 set(_slash_embedded_hlsl "")
-foreach(entry IN ITEMS canvas:kCanvasHlsl mesh:kMeshHlsl tonemap:kTonemapHlsl)
+foreach(entry IN ITEMS canvas:kCanvasHlsl mesh:kMeshHlsl tonemap:kTonemapHlsl shadow:kShadowHlsl)
     string(REPLACE ":" ";" parts ${entry})
     list(GET parts 0 shader)
     list(GET parts 1 name)
