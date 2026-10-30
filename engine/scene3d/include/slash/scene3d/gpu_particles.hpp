@@ -1,6 +1,7 @@
 #pragma once
 
 #include "slash/core/result.hpp"
+#include "slash/render/image.hpp"
 #include "slash/render/particles3d.hpp"
 #include "slash/world/components.hpp"
 #include "slash/world/tree3d.hpp"
@@ -41,10 +42,30 @@ struct ParticleSteps3D {
     float remainder = 0.0F;
 };
 
+// Reads images by project path.
+using ImageLoader =
+    std::function<Result<std::shared_ptr<const render::Image>>(const std::string& path)>;
+
+// The most vector fields act on one emitter, as Godot's MAX_3D_TEXTURES.
+inline constexpr std::size_t kMaxParticleFields3D = 7;
+
 // Adds the "gpu_particles_3d" system, which steps every GPUParticles3D's emission each tick after
 // the CPU particles (priority 1110) and emits "finished" when a one_shot's cycle has had time to
-// end, as Godot's: lifetime times 2 - explosiveness after it started.
-void add_gpu_particles_system(world::World& world);
+// end, as Godot's: lifetime times 2 - explosiveness after it started. Each tick it pairs each
+// emitter with the GPUParticlesAttractor3Ds visible in the tree whose bounds touch its
+// visibility box and whose cull_mask shares a bit with its layers, as Godot's scene cull does,
+// in the order entities are stored, and gives its steps that tick's attractors in its particles'
+// space. images reads vector fields' textures (through assets in canvas::install); without it,
+// or for a texture that can't be read or cut, a field reads as white, as Godot's without one.
+// Called again, it reads textures with the new images.
+void add_gpu_particles_system(world::World& world, ImageLoader images = {});
+
+// A GPUParticlesAttractorVectorField3D's texels: image cut into slices_horizontal by
+// slices_vertical slices, each the image's size over the slices rounded down, left to right then
+// top to bottom, as Godot's Texture3D importer cuts them; each texel's channels over 255.
+// Refuses slices of no texels and fields of more than render::kMaxParticleFieldTexels3D.
+[[nodiscard]] Result<render::ParticleField3D>
+particle_field(const render::Image& image, int slices_horizontal, int slices_vertical);
 
 // The steps an entity's GPUParticles3D has kept; none if it has no GPUParticles3D, hasn't been
 // stepped or the world has no gpu_particles_3d system.

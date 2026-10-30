@@ -1291,8 +1291,9 @@ TEST_CASE("engine.describe lists systems in the order they run") {
     world.add_system("controls", [](world::World& /*w*/, double /*dt*/) {}, {.priority = -1});
     // Every session applies input and service events first and plays animations, steps 2D and
     // 3D physics and navigation, moves the camera and parallax, runs particles, hands over models'
-    // replies and plays sound with built-in systems that run late. The three particle systems are
-    // threaded and run at the same time.
+    // replies and plays sound with built-in systems that run late. The particle systems are
+    // threaded: the CPU ones and GPUParticles2D's run at the same time, and GPUParticles3D's,
+    // which loads vector fields' textures as GPUParticles2D's loads its own, runs after them.
     CHECK(*engine.ok("engine.describe").find("systems") ==
           parse(R"(["input", "gui", "services", "controls", "movement", "animation_player",
                     "animation_tree", "skeleton_modifiers", "path_follow", "physics2d", "physics3d", "navigation", "animated_sprite_2d",
@@ -1350,7 +1351,10 @@ TEST_CASE("engine.describe lists systems in the order they run") {
          "writes": ["GPUParticles2D", "assets"]},
         {"name": "gpu_particles_3d",
          "doc": "Steps each GPUParticles3D's emission for renderers to run.", "priority": 1110,
-         "threaded": true, "stage": 15, "reads": ["Transform3D"], "writes": ["GPUParticles3D"]},
+         "threaded": true, "stage": 16,
+         "reads": ["Transform3D", "GPUParticlesAttractorSphere3D", "GPUParticlesAttractorBox3D",
+                   "GPUParticlesAttractorVectorField3D"],
+         "writes": ["GPUParticles3D", "assets"]},
         {"name": "ai",
          "doc": "Hands each finished reply from a language model to the game as an ai_reply or ai_failed event.",
          "priority": 1150},

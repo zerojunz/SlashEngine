@@ -38,12 +38,19 @@ inline constexpr std::uint32_t kProcessDisableZ = 4U;
 inline constexpr std::uint32_t kProcessDampingAsFriction = 8U;
 inline constexpr std::uint32_t kProcessTurbulence = 16U;
 inline constexpr std::uint32_t kProcessDirectionalGlobal = 32U;
-// A step's words.
+inline constexpr std::uint32_t kProcessAttractors = 64U;
+// A step's words. Its last word holds the cycle, the seed, the flags (particle_layout.hpp's, with
+// the attractor count from bit kStepAttractorShift) and where its attractors' words are. Each
+// attractor is kAttractorWords3D words: its transform (3), {extents, strength} and {shape, where
+// its field is, attenuation, directionality}. A field is {width, height, depth, 0}, then a word a
+// texel.
 inline constexpr std::uint32_t kStepWords3D = 7;
+inline constexpr std::uint32_t kStepAttractorShift = 8;
+inline constexpr std::uint32_t kAttractorWords3D = 5;
 
 // Appends a 3D process material's words.
 void pack_particle_process_3d(const ParticleProcess3D& process, std::vector<Word>& out);
-// Appends 3D steps' words.
+// Appends 3D steps' words, then their attractors' and the fields those sample.
 void pack_particle_steps_3d(std::span<const ParticleStep3D> steps, std::vector<Word>& out);
 // Appends a draw pass's vertices, 15 words of 32 bits each as Vertex3D lays them out, four to a
 // word.

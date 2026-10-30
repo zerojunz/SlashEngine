@@ -148,11 +148,10 @@ terrain_chunk_vertices(const TerrainData& data, int chunk_size, const TerrainChu
 // out.
 [[nodiscard]] std::vector<Vec3> terrain_faces(const TerrainData& data);
 
-// Reads heightmaps and map images by project path.
+// Reads heightmaps by project path; map images are read with an ImageLoader
+// (gpu_particles.hpp).
 using HeightmapLoader =
     std::function<Result<std::shared_ptr<const render::Gray16>>(const std::string& path)>;
-using ImageLoader =
-    std::function<Result<std::shared_ptr<const render::Image>>(const std::string& path)>;
 
 // Keeps each HTerrain's data in the world until it changes, reading heightmaps with heightmaps
 // and the splat and color maps with images. Sessions and games call it through canvas::install.

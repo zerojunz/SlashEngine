@@ -484,6 +484,85 @@ Vec3 radial_displacement(const ParticleProcess3D& p, const Dynamics& dynamics, f
 }
 
 // The generated process(): one step of a live particle's life.
+// Godot's safe_normalize: zero below a length of 0.001.
+Vec3 safe_normalize(Vec3 v) {
+    return length(v) < 0.001F ? Vec3{} : normalize(v);
+}
+
+// A vector field's texel at uvw (each from 0 to 1), filtered as a linear sampler that clamps to
+// the edge filters a Texture3D's first level.
+Vec3 sample_field(const ParticleField3D& field, Vec3 uvw) {
+    const auto axis = [](float at, std::uint32_t size, std::uint32_t& low, std::uint32_t& high) {
+        const float texel =
+            std::clamp((at * static_cast<float>(size)) - 0.5F, 0.0F, static_cast<float>(size - 1U));
+        low = static_cast<std::uint32_t>(texel);
+        high = std::min(low + 1U, size - 1U);
+        return texel - static_cast<float>(low);
+    };
+    std::uint32_t x0 = 0;
+    std::uint32_t x1 = 0;
+    std::uint32_t y0 = 0;
+    std::uint32_t y1 = 0;
+    std::uint32_t z0 = 0;
+    std::uint32_t z1 = 0;
+    const float tx = axis(uvw.x, field.width, x0, x1);
+    const float ty = axis(uvw.y, field.height, y0, y1);
+    const float tz = axis(uvw.z, field.depth, z0, z1);
+    const auto at = [&](std::uint32_t x, std::uint32_t y, std::uint32_t z) {
+        return xyz(field.texels[(((z * field.height) + y) * field.width) + x]);
+    };
+    const Vec3 near =
+        mix(mix(at(x0, y0, z0), at(x1, y0, z0), tx), mix(at(x0, y1, z0), at(x1, y1, z0), tx), ty);
+    const Vec3 far =
+        mix(mix(at(x0, y0, z1), at(x1, y0, z1), tx), mix(at(x0, y1, z1), at(x1, y1, z1), tx), ty);
+    return mix(near, far, tz);
+}
+
+// What a step's attractors push a particle at pos with, as particles.glsl's attractor loop (its
+// mass is 1).
+Vec3 attractor_force(const ParticleStep3D& step, Vec3 pos) {
+    Vec3 force;
+    for (const ParticleAttractor3D& attractor : step.attractors) {
+        const Affine place = Affine::of(attractor.transform);
+        const Vec3 rel = pos - place.origin;
+        const Vec3 local{dot(rel, place.x), dot(rel, place.y), dot(rel, place.z)};
+        Vec3 dir;
+        float amount = 0.0F;
+        if (attractor.shape == AttractorShape3D::Sphere) {
+            dir = safe_normalize(rel);
+            const float d = length(local) / attractor.extents.x;
+            if (d > 1.0F) {
+                continue;
+            }
+            amount = std::max(0.0F, 1.0F - d);
+        } else if (attractor.shape == AttractorShape3D::Box) {
+            dir = safe_normalize(rel);
+            const float d = std::max(std::abs(local.x / attractor.extents.x),
+                                     std::max(std::abs(local.y / attractor.extents.y),
+                                              std::abs(local.z / attractor.extents.z)));
+            if (d > 1.0F) {
+                continue;
+            }
+            amount = std::max(0.0F, 1.0F - d);
+        } else {
+            const Vec3 uvw{((local.x / attractor.extents.x) + 1.0F) * 0.5F,
+                           ((local.y / attractor.extents.y) + 1.0F) * 0.5F,
+                           ((local.z / attractor.extents.z) + 1.0F) * 0.5F};
+            if (attractor.field == nullptr || uvw.x < 0.0F || uvw.y < 0.0F || uvw.z < 0.0F ||
+                uvw.x > 1.0F || uvw.y > 1.0F || uvw.z > 1.0F) {
+                continue;
+            }
+            const Vec3 s = (sample_field(*attractor.field, uvw) * -2.0F) + Vec3{1.0F, 1.0F, 1.0F};
+            dir = place.basis(safe_normalize(s));
+            amount = length(s);
+        }
+        amount = power(amount, attractor.attenuation);
+        dir = safe_normalize(mix(dir, place.z, attractor.directionality));
+        force = force - ((dir * amount) * attractor.strength);
+    }
+    return force;
+}
+
 void process(Particle3D& particle, const ParticleProcess3D& p, const ParticleStep3D& step,
              std::uint32_t number, float delta, bool& active) {
     std::uint32_t seed = hash(number + 1U + step.seed);
@@ -530,13 +609,18 @@ void process(Particle3D& particle, const ParticleProcess3D& p, const ParticleSte
         if (length(Vec3{diff.y, diff.x, 0.0F}) > 0.0F) {
             force = force + (normalize(Vec3{-diff.y, diff.x, 0.0F}) * physical.tangent_accel);
         }
-        force.z = 0.0F;
     } else {
         // Godot's normalize of a zero vector makes NaNs, which the length test then skips.
         const Vec3 across = cross(normalize(diff), normalize(p.gravity));
         if (length(across) > 0.0F) {
             force = force + (normalize(across) * physical.tangent_accel);
         }
+    }
+    if (p.attractor_interaction && !step.attractors.empty()) {
+        force = force + attractor_force(step, origin);
+    }
+    if (p.disable_z) {
+        force.z = 0.0F;
     }
     velocity = velocity + (force * delta);
     if (physical.damping > 0.0F) {

@@ -374,6 +374,25 @@ Result<void> check_particle_process_3d(const ParticleProcess3D& process,
             return make_error(ErrorCode::InvalidArgument,
                               "a particle step's lifetime is more than 0 and its delta 0 or more");
         }
+        if (step.attractors.size() > kMaxParticleAttractors3D) {
+            return make_error(ErrorCode::InvalidArgument,
+                              "a particle step has at most " +
+                                  std::to_string(kMaxParticleAttractors3D) + " attractors");
+        }
+        for (const ParticleAttractor3D& attractor : step.attractors) {
+            if (attractor.shape != AttractorShape3D::VectorField) {
+                continue;
+            }
+            const ParticleField3D* field = attractor.field.get();
+            if (field == nullptr || field->width == 0 || field->height == 0 || field->depth == 0 ||
+                field->texels.size() != std::size_t{field->width} * field->height * field->depth ||
+                field->texels.size() > kMaxParticleFieldTexels3D) {
+                return make_error(ErrorCode::InvalidArgument,
+                                  "a vector field attractor needs a field of width times height "
+                                  "times depth texels, at most " +
+                                      std::to_string(kMaxParticleFieldTexels3D));
+            }
+        }
     }
     return {};
 }

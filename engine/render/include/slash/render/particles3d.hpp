@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <span>
 #include <vector>
 
@@ -97,6 +98,8 @@ struct ParticleProcess3D {
     float turbulence_noise_scale = 9.0F;
     Vec3 turbulence_noise_speed;
     float turbulence_noise_speed_random = 0.2F;
+    // Attractors push the particles (Godot's attractor_interaction_enabled).
+    bool attractor_interaction = true;
 
     bool operator==(const ParticleProcess3D&) const = default;
 };
@@ -104,6 +107,41 @@ struct ParticleProcess3D {
 // An affine transform as 3D particles take one: its x, y and z axes, then its origin.
 using ParticleTransform = std::array<float, 12>;
 inline constexpr ParticleTransform kParticleIdentity{1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0};
+
+// A vector field's texels, as a GPUParticlesAttractorVectorField3D's Texture3D holds them: width by
+// height by depth, x fastest, then y, then z, each from 0 to 1 (RGBA8 texels over 255).
+struct ParticleField3D {
+    std::uint32_t width = 0;
+    std::uint32_t height = 0;
+    std::uint32_t depth = 0;
+    std::vector<Vec4> texels;
+
+    bool operator==(const ParticleField3D&) const = default;
+};
+
+// The shapes of Godot's GPUParticlesAttractor3D.
+enum class AttractorShape3D : std::uint8_t { Sphere, Box, VectorField };
+
+// An attractor a step's particles feel, as Godot's particles storage hands one to its particles
+// shader: its transform in the particles' space with its basis made orthonormal, the half size
+// of its box (or its radius, in x, y and z) scaled by its transform, and its settings. A vector
+// field's field is shared by every step that uses it.
+struct ParticleAttractor3D {
+    AttractorShape3D shape = AttractorShape3D::Sphere;
+    ParticleTransform transform = kParticleIdentity;
+    Vec3 extents{1.0F, 1.0F, 1.0F};
+    float strength = 1.0F;
+    float attenuation = 1.0F;
+    float directionality = 0.0F;
+    std::shared_ptr<const ParticleField3D> field; // VectorField only
+
+    bool operator==(const ParticleAttractor3D&) const = default;
+};
+
+// The most attractors one step takes, as Godot's MAX_ATTRACTORS.
+inline constexpr std::size_t kMaxParticleAttractors3D = 32;
+// The most texels a vector field holds.
+inline constexpr std::size_t kMaxParticleFieldTexels3D = std::size_t{1} << 18U;
 
 // One step of a 3D system, as ParticleStep is of a 2D one: each restarts the particles whose turn
 // comes between prev_system_phase and system_phase and moves every live particle on by delta.
@@ -126,6 +164,8 @@ struct ParticleStep3D {
     bool emitting = true;
     bool fractional_delta = true;
     bool clear = false;
+    // What pushes the particles in this step (Godot's FrameParams attractors).
+    std::vector<ParticleAttractor3D> attractors;
 
     bool operator==(const ParticleStep3D&) const = default;
 };

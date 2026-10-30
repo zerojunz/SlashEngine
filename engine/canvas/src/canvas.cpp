@@ -336,7 +336,16 @@ void add_systems(world::World& world, asset::Assets& assets) {
     add_particles_system(world);
     add_gpu_particles_system(world, &assets);
     scene3d::add_particles_system(world);
-    scene3d::add_gpu_particles_system(world);
+    // Vector field attractors' textures read through assets.
+    const scene3d::ImageLoader images =
+        [&assets](const std::string& path) -> Result<std::shared_ptr<const render::Image>> {
+        auto found = assets.load<render::Image>(path);
+        if (!found) {
+            return found.error();
+        }
+        return held(found.value());
+    };
+    scene3d::add_gpu_particles_system(world, images);
     // CSG roots and GridMaps keep their meshes, and models their collision shapes, until they
     // change, models and mesh libraries read through assets.
     const scene3d::ModelLoader models =
@@ -368,13 +377,7 @@ void add_systems(world::World& world, asset::Assets& assets) {
             }
             return held(found.value());
         },
-        [&assets](const std::string& path) -> Result<std::shared_ptr<const render::Image>> {
-            auto found = assets.load<render::Image>(path);
-            if (!found) {
-                return found.error();
-            }
-            return held(found.value());
-        });
+        images);
 }
 
 void install(world::World& world, asset::Assets& assets) {
