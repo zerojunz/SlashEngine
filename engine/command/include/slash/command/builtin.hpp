@@ -57,7 +57,8 @@ struct LiveGame {
 };
 
 // Adds display.list (displays and refresh rates), display.set (V-Sync, the frame cap, the
-// render scale and path tracing) and perf.stats (frame pacing) for a running game.
+// render scale, frame generation and path tracing) and perf.stats (frame pacing) for a running
+// game.
 void register_live_commands(Registry& registry, const LiveGame& game);
 
 // Opens a scene file if it exists, or else starts an empty scene that scene.save will write

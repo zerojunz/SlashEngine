@@ -621,6 +621,14 @@ json::Value project_schema() {
     rendering["properties"]["mesh_lod"] = mesh_lod_schema();
     rendering["properties"]["occlusion_culling"] = occlusion_culling_schema();
     rendering["properties"]["ray_tracing"] = ray_tracing_schema();
+    json::Value frame_generation;
+    frame_generation["type"] = "boolean";
+    frame_generation["default"] = false;
+    frame_generation["description"] =
+        "Show a frame made between each two drawn ones, as AMD's FSR 3 frame generation: from the "
+        "3D world's motion vectors and depth in Forward+ and the optical flow of the pictures. "
+        "The UI draws over both. Windowed games on the GPU devices; not on the web or OpenGL.";
+    rendering["properties"]["frame_generation"] = std::move(frame_generation);
     json::Value compress_mode;
     compress_mode["enum"] = json::Array{"lossless", "vram_compressed", "vram_uncompressed"};
     compress_mode["description"] =
@@ -1013,6 +1021,7 @@ Result<Project> parse_project(const json::Value& project) {
         }
         out.voxel_gi_high_quality = render::voxel_gi_high_quality(*rendering);
         out.use_taa = render::use_taa(*rendering);
+        out.frame_generation = render::frame_generation(*rendering);
         out.decal_filter = render::decal_filter(*rendering);
         out.mesh_lod_threshold = render::mesh_lod_threshold(*rendering);
         out.occlusion_culling = render::occlusion_culling(*rendering);

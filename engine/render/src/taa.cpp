@@ -15,6 +15,11 @@ bool use_taa(const json::Value& rendering) {
     return found != nullptr && found->is_bool() && found->as_bool();
 }
 
+bool frame_generation(const json::Value& rendering) {
+    const json::Value* found = rendering.is_object() ? rendering.find("frame_generation") : nullptr;
+    return found != nullptr && found->is_bool() && found->as_bool();
+}
+
 } // namespace slash::render
 
 // The CPU twin of shaders/taa.hlsl, as Godot 4.6's taa_resolve.glsl (MIT, Copyright (c) 2016-2022

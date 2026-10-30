@@ -302,6 +302,8 @@ TEST_CASE("Frame generation refuses what it can't generate from") {
     REQUIRE(device->end_frame().ok());
     // Devices that don't generate frames say so.
     const auto null = render::create_null_device();
+    CHECK_FALSE(null->generates_frames());
+    CHECK(device->generates_frames());
     CHECK_FALSE(null->generate_frame(TextureId{1}, TextureId{2}).ok());
 
     // Only Forward+ frames that aren't captures or path traced keep their prepass for it.

@@ -1260,8 +1260,15 @@ fields written by atomic max as atoms), in the order `frame_generation_prepare_p
 `frame_generation_plan` give, and `frame_generation_draw.hlsl` draws the result into `into`; a
 change to the twin goes in the shader too. `tests/test_frame_generation.cpp` moves a card, a
 picture and blocks, and holds every device to the software device's frames;
-`examples/frame-generation-3d` slides a card past a post. Presenting the generated frames in the
-game loop is still to come.
+`examples/frame-generation-3d` slides a card past a post. Games show the frames with
+project.json's `rendering.frame_generation` (`canvas::Settings::frame_generation`, `display.set`'s
+`frame_generation`): with `CanvasOptions::generate`, `CanvasRenderer` draws the world and the
+canvases below it into a target of its own (`scene3d::Renderer::set_frame_generation` gives its
+meshes their transforms from the frame before), generates from it, and draws the generated frame,
+then the drawn one, into the window with the controls, the canvases above and the overlay over
+both; `CanvasOptions::between_frames` paces them, which `runtime::Game` and `slash-cli run` do
+with `platform::Loop::wait_half_frame` where V-Sync doesn't. `tests/test_generated_frames.cpp`
+reads the frames shown.
 
 MetalFX is Godot's `metalfx_spatial` and `metalfx_temporal`, after its `metal_fx.mm`: Apple's
 scalers run in the GPU device on Metal (`src/metalfx.mm`, `metalfx_none.cpp` elsewhere), encoded

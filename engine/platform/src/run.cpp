@@ -98,6 +98,19 @@ void Loop::record_frame(double start, int ticks) {
     }
 }
 
+void Loop::wait_half_frame() {
+#ifndef __EMSCRIPTEN__
+    if (platform_->headless()) {
+        return;
+    }
+    const double period =
+        options_.max_fps > 0 ? 1.0 / options_.max_fps : frame_stats().frame_ms_avg / 1e3;
+    if (period > 0.0) {
+        SDL_DelayPrecise(static_cast<Uint64>(period * 0.5 * 1e9));
+    }
+#endif
+}
+
 FrameStats Loop::frame_stats() const {
     FrameStats stats;
     // The first frame has no frame before it to measure from.

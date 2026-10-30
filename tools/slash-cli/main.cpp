@@ -881,6 +881,15 @@ int cmd_run(const std::vector<std::string>& args) {
             canvas_options.collisions = overlay.collisions();
             canvas_options.overlay = overlay.world();
             canvas_options.path_trace = path_trace;
+            // A generated frame shows first, as in games (runtime::Game::draw).
+            canvas_options.generate = true;
+            canvas_options.between_frames = [&] {
+                const slash::render::VsyncMode mode = renderer->vsync();
+                if (mode == slash::render::VsyncMode::Disabled ||
+                    mode == slash::render::VsyncMode::Mailbox) {
+                    loop.value().wait_half_frame();
+                }
+            };
             auto drawn = canvas.draw(game, canvas_options);
             if (!drawn && !draw_failed) {
                 draw_failed = true;

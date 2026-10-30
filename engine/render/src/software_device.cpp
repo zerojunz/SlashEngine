@@ -403,6 +403,7 @@ public:
     }
 
     [[nodiscard]] bool ray_tracing() const override { return true; }
+    [[nodiscard]] bool generates_frames() const override { return true; }
     [[nodiscard]] std::uint32_t path_samples(TextureId target) const override {
         for (const auto& [id, state] : path_states_) {
             if (id == target) {

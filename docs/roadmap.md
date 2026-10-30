@@ -641,7 +641,7 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
         light from six sides each frame they move, lit by the same lights
   - [x] VoxelGIs imported from Godot scenes: their settings, camera attributes and baked cells
         (`.tscn`, `.tres` or `.res`) as `.voxelgi.json` files, and the cones setting
-- [ ] Render scale and upscalers, as Godot's `scaling_3d` setting: bilinear, FSR 1 and FSR 2/3
+- [x] Render scale and upscalers, as Godot's `scaling_3d` setting: bilinear, FSR 1 and FSR 2/3
       (AMD's FidelityFX code, MIT) on every backend and MetalFX on Apple, set in `project.json`
       and changeable while a game runs; a `render::Upscaler` interface lets a game add DLSS, XeSS
       or FSR 4 with its vendor's SDK, outside the repo, since those ship only as closed binaries
@@ -663,12 +663,12 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
   - [x] Temporal upscalers through `render::Upscaler`, on the depth, motion vectors and jittered
         camera that FSR 2 uses: a game's `render::TemporalUpscaler` runs in FSR 2's place with
         the native API's device, command buffer and textures
-  - [ ] FSR 3 frame generation, once the render device controls presenting frames
+  - [x] FSR 3 frame generation, once the render device controls presenting frames
     - [x] AMD's optical flow and frame interpolation as a CPU twin, and
           `RenderDevice::generate_frame` on the software device, from the prepass's depth and
           motion vectors (`Scene3D::frame_generation`)
     - [x] The GPU and WebGPU devices, held to the CPU twin
-    - [ ] Presenting and pacing generated frames between a running game's frames
+    - [x] Presenting and pacing generated frames between a running game's frames
 - [x] Hardware ray tracing: acceleration structures and ray queries in `render::RenderDevice`,
       native on Vulkan, Direct3D 12 and Metal beside SDL3's GPU API (which has none), with a CPU
       twin on the software device; ray-traced shadows, reflections, ambient occlusion and GI,
