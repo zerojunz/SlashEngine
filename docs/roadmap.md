@@ -649,6 +649,9 @@ Exit: an agent builds `samples/pong` end to end and exports it to all six platfo
       twin on the software device; ray-traced shadows, reflections, ambient occlusion and GI,
       falling back to the raster and probe paths where the hardware has none (the web, older
       phones)
+  - [x] DXC for Direct3D 12's ray tracing shaders (shader model 6.5): a CI workflow builds
+        Microsoft's DXC (NCSA) from pinned source and compiles their HLSL to signed DXIL, which
+        is committed, so no machine needs DXC and games ship none
 - [ ] Path tracing: a GPU path tracer that bakes the lightmaps above, as Godot's LightmapGI
       does, and renders progressive reference stills that `frame.capture` can return, so agents
       compare the real-time frame with ground truth

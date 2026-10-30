@@ -7,6 +7,13 @@
       "repository": "https://github.com/AngusJohnson/Clipper2.git",
       "tag": "Clipper2_1.5.4"
     },
+    "DirectXShaderCompiler": {
+      "license": "NCSA AND MIT",
+      "license_file": "LICENSE.TXT",
+      "license_sha256": "27a49e35d1da96eba18fba54bc882667ff0ff8c0254f16f2b6e165d605ba7df8",
+      "repository": "https://github.com/microsoft/DirectXShaderCompiler.git",
+      "tag": "v1.9.2609"
+    },
     "EnTT": {
       "license": "MIT",
       "license_file": "LICENSE",
