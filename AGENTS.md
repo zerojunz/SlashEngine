@@ -683,8 +683,15 @@ component is a C struct described by its fields (`SlashField`): `src/components.
 stores the structs as `Blob<N>` in an EnTT storage named by the type's hash, with
 `ComponentType::Ops` that save, assign, describe and rename them as reflected components are
 (the world's `Ops` take the type's hash for this). A plugin that registers anything wrong adds
-nothing. `examples/plugins` is a plugin in C, built by `examples/CMakeLists.txt` from
-`addons/<p>/<p>.c`, which `tests/test_plugin.cpp` also loads and links in.
+nothing. Exports ship them (`tools/exporter/src/plugins.cpp`: `plan_plugins`, then
+`plugins.cmake`'s `slash_game_plugin()` calls in `export/CMakeLists.txt`): a plugin file's
+`sources` are compiled into the game on every platform and entered through the
+`slash_game_plugins` function the export writes (`GameOptions::plugins`, `LoadOptions::linked`);
+otherwise its library ships in the data on Windows and Linux, in Frameworks on macOS and in
+`lib/<abi>/` on Android (found by name through `LoadOptions::library_folders`), or links in as a
+static library on iOS and the web. `examples/plugins` is a plugin in C, built by
+`examples/CMakeLists.txt` from `addons/<p>/<p>.c`, which `tests/test_plugin.cpp` also loads and
+links in, and CI's export jobs compile into the empty game.
 
 ## Importing games from other engines
 

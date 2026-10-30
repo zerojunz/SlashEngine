@@ -14,6 +14,8 @@ and turns round when `ui_accept` is pressed. [orbit.plugin.json](addons/orbit/or
 names its entry function and its library on each platform (`slash-cli schema plugin`), and
 [project.json](project.json) lists that file under `plugins`, so `slash-cli`, `slash-mcp` and
 the game load it before scenes open. The example's test builds `orbit.c` into `addons/orbit/bin/`.
+The file's `sources` name `orbit.c` too, so `slash-cli export` compiles it into the game for
+every platform, as CI's export jobs do, and the game enters it without loading a library.
 
 ```bash
 cc -shared -fPIC -I<engine>/engine/plugin/include addons/orbit/orbit.c -o addons/orbit/bin/orbit.so -lm

@@ -1016,7 +1016,7 @@ chose this split.
 ### Milestone 9: Launch (Planned)
 
 - [ ] Every Launch row of the [feature table](#features-by-area) done
-- [ ] Plugins with a stable C ABI, as Godot's GDExtension: libraries built apart from the engine,
+- [x] Plugins with a stable C ABI, as Godot's GDExtension: libraries built apart from the engine,
       in any language that calls C, that add components and systems to a game
   - [x] `slash_plugin.h`, a C interface that only grows: an entry function handed `get_proc`,
         components as C structs described by their fields (stored, saved, validated, undone and
@@ -1024,7 +1024,10 @@ chose this split.
         and input actions. `.plugin.json` files (`$cli schema plugin`) name the entry and the
         library per platform, project.json's `plugins` lists them, and slash-cli, slash-mcp and
         desktop games load them before scenes open (`examples/plugins`)
-  - [ ] Exports ship each platform's libraries, linking them into iOS and web games
+  - [x] Exports ship each platform's library (the data folder on Windows and Linux, the bundle's
+        Frameworks on macOS, `lib/<abi>/` on Android), link static ones into iOS and web games,
+        or compile a plugin's `sources` into the game on every platform; CI exports a game with
+        the example's plugin for all six
 - [ ] The engine and tools released for macOS
 - [ ] Exports for all six platforms
 - [ ] Reference docs generated from `engine.describe`
@@ -1061,7 +1064,7 @@ are in [design.md](design.md#feature-parity-with-godot-and-ue5).
 | Area | SlashEngine approach | Milestone | Status |
 | --- | --- | --- | --- |
 | Editor | No GUI editor: MCP and REST command API, debug overlay, frame capture | 3, 5 | Done |
-| Gameplay code | C++ with hot reload; plugins as C++ modules with a stable C ABI | 6 | In part: game code in C++ that hot reloads in the tools and links into exports is done, and plugins with a C ABI load in the tools and desktop games; shipping plugins in exports is next |
+| Gameplay code | C++ with hot reload; plugins as C++ modules with a stable C ABI | 6 | Done: game code in C++ that hot reloads in the tools and links into exports, and plugins with a stable C ABI that the tools load and exports ship for all six platforms |
 | Scenes and prefabs | JSON scenes, prefabs and instanced scenes with overrides, on EnTT | 2, 5 | Done |
 | 2D sprites and animation | Batched sprites, sprite sheets, flipbooks | 5 | Done |
 | Tilemaps | Tilemap layers with terrain autotiling, stored as text | 5 | In part: square, isometric and hexagonal tiles, alternatives, turned cells and collision are done; animated and multi-cell tiles in 5 |

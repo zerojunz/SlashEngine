@@ -18,6 +18,7 @@
 #include "slash/world/world.hpp"
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -48,6 +49,10 @@ struct GameOptions {
     // Sends analytics to project.json's services.analytics.endpoint, when it names one: main()
     // gives it engine/ai's HTTP client. Windowed games only, so test runs send nothing.
     services::HttpPoster analytics_post = nullptr;
+    // Plugins linked into the game, by entry function: those an export compiled from their
+    // sources, and iOS and web exports' libraries (the slash_game_plugins function it writes).
+    std::map<std::string, SlashPluginEntry, std::less<>>
+        plugins{}; // NOLINT(readability-redundant-member-init)
 };
 
 inline constexpr std::string_view kGameUsage =

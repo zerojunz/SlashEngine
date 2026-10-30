@@ -91,7 +91,7 @@ SLASH_PLUGIN_EXPORT int orbit_plugin_entry(SlashGetProc get_proc, SlashPlugin* p
     };
     static const SlashComponentInfo info = {
         "Orbit", "Moves the entity round a circle.", sizeof(Orbit),
-        _Alignof(Orbit), &defaults, fields, sizeof fields / sizeof fields[0]};
+        SLASH_ALIGNOF(Orbit), &defaults, fields, sizeof fields / sizeof fields[0]};
     SlashRegisterComponent register_component;
     SlashRegisterSystem register_system;
     SlashSystemInfo system = {"orbit", "Moves Orbit entities round their circles.", 100, run, NULL};

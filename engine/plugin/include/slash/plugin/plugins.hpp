@@ -34,13 +34,27 @@ struct PluginSystem {
 };
 
 // A .plugin.json file, as Godot's .gdextension: the entry function's name, the interface version
-// it was built for, and its library on each platform as "<os>.<arch>" or "<os>" ("linux.x86_64",
-// "macos", "windows.x86_64", "android.arm64", "ios", "web"), relative to the file.
+// it was built for, its library on each platform as "<os>.<arch>" or "<os>" ("linux.x86_64",
+// "macos", "windows.x86_64", "android.arm64", "ios", "web"), relative to the file, and the
+// sources exports compile into games instead.
 struct PluginFile {
     std::string path; // the file, as the project names it
     std::string entry;
     std::uint32_t abi = SLASH_PLUGIN_ABI_VERSION;
     std::map<std::string, std::string, std::less<>> libraries;
+    // C, C++ and Objective-C files and folders, relative to the file.
+    std::vector<std::string> sources;
+};
+
+// How Plugins::load_project finds plugins in a game an export made.
+struct LoadOptions {
+    // Entry functions linked into the program, by name: a plugin whose entry is here is entered
+    // without loading a library (exports compile sources in, and link iOS and web libraries).
+    std::map<std::string, SlashPluginEntry, std::less<>> linked;
+    // Where to look for a library's file name when it isn't where its file names it, as exports
+    // install them: the app bundle's Frameworks on macOS, or "" for the loader's own search, as
+    // on Android, where libraries are in the APK's lib/<abi>/.
+    std::vector<std::string> library_folders;
 };
 
 // $cli schema plugin.
@@ -80,8 +94,9 @@ public:
     Result<void> load_linked(SlashPluginEntry entry, std::string name);
     // Loads the plugin files a project lists, for this platform, and returns each one's error
     // (also logged), by file.
-    std::map<std::string, std::string, std::less<>>
-    load_project(const std::string& root, std::span<const std::string> files);
+    std::map<std::string, std::string, std::less<>> load_project(const std::string& root,
+                                                                 std::span<const std::string> files,
+                                                                 const LoadOptions& options = {});
 
     // Adds the plugins' systems to a world, and to plugins loaded later; detach takes them out.
     void attach(world::World& world);

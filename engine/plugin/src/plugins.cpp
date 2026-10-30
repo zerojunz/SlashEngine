@@ -45,7 +45,7 @@ json::Value plugin_file_schema() {
         "description": "A plugin library built against slash/plugin/slash_plugin.h, as Godot's .gdextension file.",
         "type": "object",
         "additionalProperties": false,
-        "required": ["entry", "libraries"],
+        "required": ["entry"],
         "properties": {
             "entry": {"type": "string", "minLength": 1,
                       "description": "The C name of the plugin's entry function, unique among the plugins a game links."},
@@ -53,7 +53,9 @@ json::Value plugin_file_schema() {
                     "description": "The SLASH_PLUGIN_ABI_VERSION the plugin was built against."},
             "libraries": {"type": "object", "minProperties": 1,
                           "additionalProperties": {"type": "string", "minLength": 1},
-                          "description": "The library for each platform, by \"<os>.<arch>\" or \"<os>\" (android, ios, linux, macos, web, windows; arm64, wasm32, x86_64), relative to this file: a shared library, or a static one on iOS and the web."}
+                          "description": "The library for each platform, by \"<os>.<arch>\" or \"<os>\" (android, ios, linux, macos, web, windows; arm64, wasm32, x86_64), relative to this file: a shared library, or a static one on iOS and the web."},
+            "sources": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1},
+                        "description": "C, C++ and Objective-C files and folders, relative to this file, that exports compile into the game for every platform in place of its libraries. The tools still load the library for the machine they run on."}
         }
     })");
     return std::move(schema).value();
@@ -72,7 +74,12 @@ std::vector<json::ValidationError> validate_plugin_file(const json::Value& file)
     if (!c_name) {
         errors.push_back({"/entry", "expected a C function's name"});
     }
-    for (const auto& [key, path] : file.find("libraries")->as_object()) {
+    const json::Value* libraries = file.find("libraries");
+    if (libraries == nullptr && file.find("sources") == nullptr) {
+        errors.push_back({"", R"(expected "libraries", "sources" or both)"});
+    }
+    const json::Object none;
+    for (const auto& [key, path] : libraries != nullptr ? libraries->as_object() : none) {
         if (!known_key(key)) {
             errors.push_back({"/libraries/" + json::pointer_escape(key),
                               "expected \"<os>\" or \"<os>.<arch>\": os one of android, ios, "
@@ -99,8 +106,15 @@ Result<PluginFile> parse_plugin_file(const json::Value& file, std::string path) 
     if (const json::Value* abi = file.find("abi"); abi != nullptr) {
         out.abi = static_cast<std::uint32_t>(abi->as_int());
     }
-    for (const auto& [key, library] : file.find("libraries")->as_object()) {
-        out.libraries.emplace(key, library.as_string());
+    if (const json::Value* libraries = file.find("libraries"); libraries != nullptr) {
+        for (const auto& [key, library] : libraries->as_object()) {
+            out.libraries.emplace(key, library.as_string());
+        }
+    }
+    if (const json::Value* sources = file.find("sources"); sources != nullptr) {
+        for (const json::Value& source : sources->as_array()) {
+            out.sources.push_back(source.as_string());
+        }
     }
     return out;
 }
@@ -218,7 +232,8 @@ Result<void> Plugins::enter(SlashPluginEntry entry, std::string name) {
 }
 
 std::map<std::string, std::string, std::less<>>
-Plugins::load_project(const std::string& root, std::span<const std::string> files) {
+Plugins::load_project(const std::string& root, std::span<const std::string> files,
+                      const LoadOptions& options) {
     std::map<std::string, std::string, std::less<>> errors;
     for (const std::string& path : files) {
         const auto fail = [&](std::string message) {
@@ -240,15 +255,36 @@ Plugins::load_project(const std::string& root, std::span<const std::string> file
             fail(file.error().message);
             continue;
         }
+        const std::string name = std::filesystem::path(path).filename().string();
+        const std::string plugin = name.substr(0, name.find('.'));
+        if (const auto linked = options.linked.find(file.value().entry);
+            linked != options.linked.end()) {
+            if (auto loaded = load_linked(linked->second, plugin); !loaded) {
+                fail(loaded.error().message);
+            }
+            continue;
+        }
         const std::string library = library_for(file.value(), platform::os_name(), cpu_name());
         if (library.empty()) {
             fail("it names no library for " + std::string(platform::os_name()) + "." +
                  std::string(cpu_name()));
             continue;
         }
-        const std::string name = std::filesystem::path(path).filename().string();
-        const std::string full = (std::filesystem::path(root) / library).string();
-        if (auto loaded = load(full, file.value().entry, name.substr(0, name.find('.'))); !loaded) {
+        std::string full = (std::filesystem::path(root) / library).string();
+        if (!platform::exists(full)) {
+            // Where an export installed it: by its file name in the folders given.
+            const std::string file_name = std::filesystem::path(library).filename().string();
+            for (const std::string& folder : options.library_folders) {
+                const std::string candidate =
+                    folder.empty() ? file_name
+                                   : (std::filesystem::path(folder) / file_name).string();
+                if (folder.empty() || platform::exists(candidate)) {
+                    full = candidate;
+                    break;
+                }
+            }
+        }
+        if (auto loaded = load(full, file.value().entry, plugin); !loaded) {
             fail(loaded.error().message);
         }
     }

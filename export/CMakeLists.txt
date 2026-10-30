@@ -19,6 +19,9 @@
 #                       links, and slash_game_sdk_register() for the C++ file that registers
 #                       their services backends, written per build by slash-cli export
 #                       (tools/exporter/src/sdk.cpp)
+#   SLASH_GAME_PLUGINS  a CMake file of slash_game_plugin() calls for the project's plugins, and
+#                       slash_game_plugins_register() for the C++ file naming the linked ones'
+#                       entry functions (tools/exporter/src/plugins.cpp)
 #   SLASH_GAME_ICONS    the folder of icons slash-cli export made for the platform: AppIcon.icns
 #                       on macOS, icon.ico on Windows, favicon.png and apple-touch-icon.png on
 #                       the web (tools/exporter/src/icons.cpp); Android's and iOS's it adds itself
@@ -291,6 +294,35 @@ function(slash_game_sdk_register file)
 endfunction()
 if(SLASH_GAME_SDKS)
     include("${SLASH_GAME_SDKS}")
+endif()
+
+# A plugin (slash/plugin/plugins.hpp): its SOURCES compiled into the game, a STATIC library linked
+# into an iOS or web game, or a SHARED library installed where the game looks for it by name: the
+# bundle's Frameworks on macOS and lib/<abi>/ on Android. On Windows and Linux slash-cli export
+# stages shared libraries in the data folder, at the path the plugin file names.
+function(slash_game_plugin name)
+    cmake_parse_arguments(PARSE_ARGV 1 plugin "" "" "SOURCES;STATIC;SHARED")
+    target_sources(game PRIVATE ${plugin_SOURCES})
+    foreach(source IN LISTS plugin_SOURCES)
+        if(source MATCHES "\\.mm?$")
+            set_source_files_properties("${source}" PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+        endif()
+    endforeach()
+    target_link_libraries(game PRIVATE ${plugin_STATIC})
+    if(plugin_SHARED AND ANDROID)
+        install(FILES ${plugin_SHARED} DESTINATION lib/${ANDROID_ABI} COMPONENT game)
+    elseif(plugin_SHARED AND APPLE)
+        install(FILES ${plugin_SHARED} DESTINATION ${SLASH_GAME_BINARY}.app/Contents/Frameworks
+            COMPONENT game)
+    endif()
+endfunction()
+# The C++ file defining slash_game_plugins(), which main() calls for the linked plugins' entries.
+function(slash_game_plugins_register file)
+    target_sources(game PRIVATE "${file}")
+    target_compile_definitions(game PRIVATE SLASH_GAME_PLUGINS)
+endfunction()
+if(SLASH_GAME_PLUGINS)
+    include("${SLASH_GAME_PLUGINS}")
 endif()
 
 if(EMSCRIPTEN)
