@@ -841,3 +841,163 @@ if((SLASH_BUILD_TOOLS OR SLASH_BUILD_TESTS) AND NOT WIN32 AND NOT EMSCRIPTEN)
         target_compile_options(slash_wayland_scanner PRIVATE -w)
     endif()
 endif()
+
+# AccessKit, which hands the controls' accessibility tree to the system's screen reader
+# (engine/accessibility) as Godot's AccessibilityDriverAccessKit does: accesskit-c's Rust crates,
+# built by cargo from its Cargo.lock into a static library for Windows, macOS and Linux. Games
+# and tools leave it out where cargo, or Rust's standard library for the target, isn't installed
+# (`rustup target add <triple>` adds one); Android and iOS come later. The crates' licenses are
+# checked by the crate_licenses test.
+option(SLASH_ACCESSKIT "Build AccessKit's screen reader adapters where cargo is installed" ON)
+# accesskit-c's rust-version: its crates are Rust 2024.
+set(SLASH_RUST_MINIMUM 1.87)
+if(SLASH_ACCESSKIT AND NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS AND
+   (WIN32 OR APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
+    set(_slash_cargo_hints "$ENV{CARGO_HOME}/bin" "$ENV{HOME}/.cargo/bin"
+        "$ENV{USERPROFILE}/.cargo/bin")
+    find_program(SLASH_CARGO cargo HINTS ${_slash_cargo_hints})
+    find_program(SLASH_RUSTC rustc HINTS ${_slash_cargo_hints})
+    set(_slash_accesskit_skip "")
+    if(NOT SLASH_CARGO OR NOT SLASH_RUSTC)
+        set(_slash_accesskit_skip "cargo isn't installed (https://rustup.rs)")
+    else()
+        execute_process(COMMAND ${SLASH_RUSTC} --version OUTPUT_VARIABLE _slash_rustc_version
+            OUTPUT_STRIP_TRAILING_WHITESPACE RESULT_VARIABLE _slash_rustc_failed)
+        string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" _slash_rustc_version
+            "${_slash_rustc_version}")
+        if(_slash_rustc_failed OR _slash_rustc_version VERSION_LESS SLASH_RUST_MINIMUM)
+            set(_slash_accesskit_skip
+                "Rust ${SLASH_RUST_MINIMUM} or later is needed (rustc ${_slash_rustc_version})")
+        endif()
+    endif()
+    # Rust's names for the CPUs and system this build makes code for: two for a universal Mac.
+    set(_slash_rust_targets "")
+    if(APPLE)
+        set(_slash_rust_arches ${CMAKE_OSX_ARCHITECTURES})
+        if(NOT _slash_rust_arches)
+            set(_slash_rust_arches ${CMAKE_SYSTEM_PROCESSOR})
+        endif()
+    else()
+        set(_slash_rust_arches ${CMAKE_SYSTEM_PROCESSOR})
+        if(MSVC AND CMAKE_GENERATOR_PLATFORM)
+            set(_slash_rust_arches ${CMAKE_GENERATOR_PLATFORM})
+        endif()
+    endif()
+    foreach(_slash_arch IN LISTS _slash_rust_arches)
+        string(TOLOWER "${_slash_arch}" _slash_arch)
+        if(_slash_arch MATCHES "^(x86_64|amd64|x64)$")
+            set(_slash_arch x86_64)
+        elseif(_slash_arch MATCHES "^(arm64|aarch64)$")
+            set(_slash_arch aarch64)
+        else()
+            set(_slash_accesskit_skip "Rust targets for ${_slash_arch} aren't set up")
+            break()
+        endif()
+        if(APPLE)
+            list(APPEND _slash_rust_targets ${_slash_arch}-apple-darwin)
+        elseif(MSVC)
+            list(APPEND _slash_rust_targets ${_slash_arch}-pc-windows-msvc)
+        elseif(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            # llvm-mingw.
+            list(APPEND _slash_rust_targets ${_slash_arch}-pc-windows-gnullvm)
+        elseif(WIN32)
+            list(APPEND _slash_rust_targets ${_slash_arch}-pc-windows-gnu)
+        else()
+            list(APPEND _slash_rust_targets ${_slash_arch}-unknown-linux-gnu)
+        endif()
+    endforeach()
+    if(NOT _slash_accesskit_skip)
+        foreach(_slash_target IN LISTS _slash_rust_targets)
+            execute_process(COMMAND ${SLASH_RUSTC} --print target-libdir --target ${_slash_target}
+                OUTPUT_VARIABLE _slash_libdir OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+            file(GLOB _slash_std "${_slash_libdir}/libstd-*.rlib")
+            if(NOT _slash_std)
+                set(_slash_accesskit_skip "Rust's standard library for ${_slash_target} isn't "
+                    "installed (rustup target add ${_slash_target})")
+                string(CONCAT _slash_accesskit_skip ${_slash_accesskit_skip})
+                break()
+            endif()
+        endforeach()
+    endif()
+    if(_slash_accesskit_skip)
+        message(STATUS "AccessKit is left out, so games serve no screen reader: "
+            "${_slash_accesskit_skip}")
+    else()
+        slash_add_dependency(accesskit-c DOWNLOAD_ONLY TRUE)
+    endif()
+    if(accesskit-c_ADDED)
+        set(_slash_accesskit ${accesskit-c_SOURCE_DIR})
+        set(_slash_accesskit_out ${CMAKE_BINARY_DIR}/accesskit)
+        file(GLOB _slash_accesskit_rust CONFIGURE_DEPENDS ${_slash_accesskit}/src/*.rs)
+        # Only the static library: a cdylib would need a linker for the target. Without debug
+        # information, which makes it ten times the size; panics abort, as its profile says.
+        set(_slash_cargo_env CARGO_TARGET_DIR=${_slash_accesskit_out}
+            CARGO_PROFILE_RELEASE_DEBUG=false)
+        if(APPLE AND CMAKE_OSX_DEPLOYMENT_TARGET)
+            list(APPEND _slash_cargo_env MACOSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET})
+        endif()
+        if(MSVC AND NOT CMAKE_MSVC_RUNTIME_LIBRARY MATCHES "DLL$" AND
+           DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
+            # Exports link the C runtime statically, so Rust's standard library does too.
+            list(APPEND _slash_cargo_env "RUSTFLAGS=-Ctarget-feature=+crt-static")
+        endif()
+        if(MSVC OR CMAKE_SYSTEM_NAME STREQUAL "Windows" AND NOT MINGW AND
+           CMAKE_C_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+            set(_slash_accesskit_name accesskit.lib)
+        else()
+            set(_slash_accesskit_name libaccesskit.a)
+        endif()
+        set(_slash_accesskit_libs "")
+        foreach(_slash_target IN LISTS _slash_rust_targets)
+            set(_slash_lib ${_slash_accesskit_out}/${_slash_target}/release/${_slash_accesskit_name})
+            add_custom_command(OUTPUT ${_slash_lib}
+                COMMAND ${CMAKE_COMMAND} -E env ${_slash_cargo_env}
+                    ${SLASH_CARGO} rustc --locked --release --lib --crate-type staticlib
+                    --target ${_slash_target} --manifest-path ${_slash_accesskit}/Cargo.toml
+                DEPENDS ${_slash_accesskit}/Cargo.toml ${_slash_accesskit}/Cargo.lock
+                    ${_slash_accesskit_rust}
+                COMMENT "Building AccessKit for ${_slash_target} with cargo"
+                VERBATIM)
+            list(APPEND _slash_accesskit_libs ${_slash_lib})
+        endforeach()
+        list(LENGTH _slash_accesskit_libs _slash_accesskit_count)
+        if(_slash_accesskit_count GREATER 1)
+            # One library for every CPU of a universal Mac.
+            set(_slash_accesskit_lib ${_slash_accesskit_out}/universal/libaccesskit.a)
+            add_custom_command(OUTPUT ${_slash_accesskit_lib}
+                COMMAND ${CMAKE_COMMAND} -E make_directory ${_slash_accesskit_out}/universal
+                COMMAND lipo -create ${_slash_accesskit_libs} -output ${_slash_accesskit_lib}
+                DEPENDS ${_slash_accesskit_libs}
+                VERBATIM)
+        else()
+            set(_slash_accesskit_lib ${_slash_accesskit_libs})
+        endif()
+        add_custom_target(slash_accesskit_build DEPENDS ${_slash_accesskit_lib})
+        add_library(slash_accesskit INTERFACE)
+        add_dependencies(slash_accesskit slash_accesskit_build)
+        target_include_directories(slash_accesskit SYSTEM INTERFACE ${_slash_accesskit}/include)
+        target_link_libraries(slash_accesskit INTERFACE ${_slash_accesskit_lib})
+        # What Rust's standard library and AccessKit's crates link to (rustc
+        # --print native-static-libs). The windows crates name their DLLs' functions themselves.
+        if(WIN32)
+            target_link_libraries(slash_accesskit INTERFACE kernel32 ntdll userenv ws2_32 dbghelp)
+            if(MINGW AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+                target_link_libraries(slash_accesskit INTERFACE unwind)
+            endif()
+            if(MSVC)
+                # Rust's standard library asks for the release C runtime; debug builds have
+                # their own.
+                target_link_options(slash_accesskit INTERFACE
+                    "$<$<CONFIG:Debug>:/NODEFAULTLIB:libcmt.lib;/NODEFAULTLIB:msvcrt.lib>")
+            endif()
+        elseif(APPLE)
+            target_link_libraries(slash_accesskit INTERFACE "-framework AppKit"
+                "-framework Foundation" objc)
+        else()
+            find_package(Threads REQUIRED)
+            # libgcc_s, for unwinding, comes with every C++ link.
+            target_link_libraries(slash_accesskit INTERFACE Threads::Threads ${CMAKE_DL_LIBS} m
+                rt util)
+        endif()
+    endif()
+endif()
