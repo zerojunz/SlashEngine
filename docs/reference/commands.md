@@ -3494,8 +3494,8 @@ headset's runtime delivers them; a failed command or a dry run puts the headset 
 
 ### xr.state
 
-Returns the interfaces (each one's capabilities, play area and blend mode when it is
-initialized), the world scale, origin and reference frame when they aren't the defaults, the
+Returns the interfaces (each one's capabilities, play area, blend mode, `view_count` and
+`render_target_size` when it is initialized), the world scale, origin and reference frame when they aren't the defaults, the
 trackers with their poses (position, and rotation when it turns; `tracking` only when lost) and
 inputs, the XR nodes with their tracker and whether they are tracked, the test headset's last
 haptic pulses and the XR nodes' problems.
@@ -3533,6 +3533,8 @@ anchor the headset found. Returns the tick the server has the changes at.
 | `play_area_mode` | `"sitting"`, `"roomscale"` or `"stage"` | | |
 | `play_area_size` | `[x, z]` | `[2, 2]` | Meters |
 | `environment_blend_mode` | `"opaque"`, `"additive"` or `"alpha"` | | |
+| `ipd` | number, 0 to 0.2 | `0.064` | Meters between the eyes |
+| `render_target_size` | `[width, height]`, 1 to 4096 | `[1024, 1024]` | Each view's image, in pixels |
 | `center_on_hmd` | `"reset_full_rotation"`, `"reset_but_keep_tilt"` or `"dont_reset_rotation"` | | Makes where the head is now the play space's center, as Godot's `center_on_hmd`; nothing on a stage |
 | `keep_height` | boolean | `true` | With `center_on_hmd`: leaves the head's height alone |
 
@@ -3551,7 +3553,8 @@ Needs: `run`.
 ```
 
 [`examples/xr-tracking`](../../examples/xr-tracking/) raises a sword, loses a hand and centers
-the play space.
+the play space, and [`examples/xr-stereo-views`](../../examples/xr-stereo-views/) draws what
+each eye sees.
 
 ## Storyboard
 
@@ -4466,6 +4469,7 @@ no GPU. Nothing changes. [examples/frame-capture](../../examples/frame-capture/)
 | `collisions` | boolean | `false` | Draw every `CollisionShape2D` and `CollisionPolygon2D` over the world, as Godot's Visible Collision Shapes |
 | `frames` | integer, 1 to 120 | `1` | Draw the frame this many times and return the last, for [temporal antialiasing](project-format.md#temporal-antialiasing), which builds up over frames |
 | `path_trace` | object | | Path trace the 3D world instead of drawing it live: `samples` paths a pixel (1 to 4096, default 16) and `bounces` after the first surface (0 to 32, default 4) |
+| `xr_view` | integer | | Draw what this view of the [XR](scene-format.md#xr) headset sees instead (`0` the left eye, `1` the right), at its render target size, as Godot draws an `XRCamera3D`'s views; points and the region are that image's pixels |
 
 Needs: `read`, and `filesystem` with `path`. A HUD with a health bar at 75%:
 

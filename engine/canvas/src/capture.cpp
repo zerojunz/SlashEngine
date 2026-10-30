@@ -36,7 +36,7 @@ Settings settings(const world::World& world) {
 
 Result<Capture> capture(world::World& world, asset::Assets& assets, const CaptureOptions& options) {
     const Settings frame = settings(world);
-    const Vec2 viewport = ui::settings(world).viewport;
+    const Vec2 viewport = options.viewport.value_or(ui::settings(world).viewport);
     const double wide = std::round(static_cast<double>(viewport.x) * options.scale);
     const double high = std::round(static_cast<double>(viewport.y) * options.scale);
     if (!(options.scale > 0.0F) || !(wide >= 1.0) || !(high >= 1.0) ||
@@ -88,6 +88,7 @@ Result<Capture> capture(world::World& world, asset::Assets& assets, const Captur
         options.time >= 0.0 ? options.time : material_time(world.tick(), frame.tick_seconds, 1.0);
     draw.collisions = options.collisions;
     draw.path_trace = options.path_trace;
+    draw.view3d = options.view3d;
     for (std::uint32_t frame_index = 0; frame_index < std::max(options.frames, 1U); ++frame_index) {
         if (auto drawn = capturer.renderer->draw(world, draw); !drawn) {
             return drawn.error();

@@ -1,0 +1,7 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "XR Stereo Views",
+  "version": "0.1.0",
+  "xr": {"openxr": {"enabled": true}}
+}

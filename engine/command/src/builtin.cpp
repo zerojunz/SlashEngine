@@ -42,6 +42,7 @@
 #include "slash/platform/file.hpp"
 #include "slash/render/image.hpp"
 #include "slash/render/light.hpp"
+#include "slash/render/mesh.hpp"
 #include "slash/scene3d/csg.hpp"
 #include "slash/scene3d/geometry.hpp"
 #include "slash/scene3d/gridmap.hpp"
@@ -66,6 +67,7 @@
 #include "slash/world/tree2d.hpp"
 #include "slash/world/tree3d.hpp"
 #include "slash/world/world.hpp"
+#include "slash/xr/xr.hpp"
 
 #include <algorithm>
 #include <array>
@@ -4951,7 +4953,42 @@ Reply frame_capture(Session& session, const json::Value& params) {
     const double scale = scale_param != nullptr ? scale_param->as_double() : 1.0;
     const json::Value* time = params.find("time");
     world::World& world = session.world();
-    const Vec2 viewport = ui::settings(world).viewport;
+    Vec2 viewport = ui::settings(world).viewport;
+    // A headset's view, as an XRCamera3D draws it: the view's place and field of view, the
+    // current camera's near and far, at the view's render target size.
+    std::optional<scene3d::CameraView> view3d;
+    if (const json::Value* given = params.find("xr_view"); given != nullptr) {
+        const std::vector<xr::View> views = xr::views(world);
+        const std::int64_t index = given->as_int();
+        if (views.empty()) {
+            return param_error(code::kInvalidArgument, "/xr_view",
+                               "no XR interface is initialized; start one with xr.set's "
+                               "\"initialize\"");
+        }
+        if (index < 0 || std::cmp_greater_equal(index, views.size())) {
+            return param_error(code::kInvalidArgument, "/xr_view",
+                               "the headset has " + std::to_string(views.size()) + " views");
+        }
+        const xr::View& view = views[static_cast<std::size_t>(index)];
+        float near = 0.05F;
+        float far = 4000.0F;
+        const world::Tree3D tree(world);
+        if (const entt::entity camera = world::current_camera(world, tree); camera != entt::null) {
+            const auto& lens = world.ecs().get<const world::Camera3D>(camera);
+            near = lens.near;
+            far = lens.far;
+        }
+        scene3d::CameraView place;
+        place.eye = world::orthonormalized(view.transform);
+        place.view = place.eye.inverse().matrix();
+        place.projection =
+            render::frustum(view.fov.left, view.fov.right, view.fov.down, view.fov.up, near, far);
+        view3d = place;
+        if (const Vec2i target = xr::primary_interface(world)->render_target_size();
+            target.x > 0 && target.y > 0) {
+            viewport = {static_cast<float>(target.x), static_cast<float>(target.y)};
+        }
+    }
     const std::string size_text = std::to_string(static_cast<int>(viewport.x)) + "x" +
                                   std::to_string(static_cast<int>(viewport.y));
 
@@ -4997,7 +5034,9 @@ Reply frame_capture(Session& session, const json::Value& params) {
          .time = time != nullptr ? time->as_double() : -1.0,
          .collisions = collisions != nullptr && collisions->as_bool(),
          .frames = frames != nullptr ? static_cast<std::uint32_t>(frames->as_int()) : 1U,
-         .path_trace = path_trace});
+         .path_trace = path_trace,
+         .viewport = view3d ? std::optional<Vec2>(viewport) : std::nullopt,
+         .view3d = view3d});
     if (!captured) {
         return param_error(captured.error(), scale_param != nullptr ? "/scale" : "");
     }
@@ -7039,6 +7078,9 @@ void register_builtin_commands(Registry& registry) {
             {"region", std::move(capture_region)},
             {"scale", std::move(capture_scale)},
             {"time", std::move(capture_time)},
+            {"xr_view",
+             property("integer", "Draw what this view of the XR headset sees (0 the left eye, "
+                                 "1 the right), at its render target size.")},
         }),
         .handler = frame_capture,
     });
