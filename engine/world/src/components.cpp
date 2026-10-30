@@ -2814,6 +2814,35 @@ void register_3d_components(ComponentRegistry& registry) {
                           "listener: \"idle_step\" and \"physics_step\" both measure it each "
                           "tick.",
                    .choices = {"disabled", "idle_step", "physics_step"}});
+    registry.add<XROrigin3D>()
+        .set_doc("Where the player's play space is in the world, as Godot's XROrigin3D: XR "
+                 "nodes under it follow their trackers in its space. The current one is the "
+                 "first with current set, else the first.")
+        .describe("world_scale",
+                  {.doc = "World units per meter of the play space: 2 makes the player a giant.",
+                   .min = 0.001})
+        .describe("current", {.doc = "Makes it the play space the headset is placed in."});
+    const FieldMeta xr_tracker{.doc = "The tracker it follows: \"head\", \"left_hand\", "
+                                      "\"right_hand\" or one an interface added."};
+    const FieldMeta xr_pose{.doc = "Which of the tracker's poses: \"default\", \"aim\", "
+                                   "\"grip\" or \"palm\" on controllers."};
+    const FieldMeta xr_show{.doc = "Hides it while its pose isn't tracked."};
+    registry.add<XRController3D>()
+        .set_doc("A hand controller, as Godot's XRController3D: placed by its tracker's pose "
+                 "under its XROrigin3D, it emits button_pressed, button_released, "
+                 "input_float_changed and input_vector2_changed.")
+        .describe("tracker", xr_tracker)
+        .describe("pose", xr_pose)
+        .describe("show_when_tracked", xr_show);
+    registry.add<XRAnchor3D>()
+        .set_doc("Something the headset found in the room, as Godot's XRAnchor3D: placed by "
+                 "its tracker's pose under its XROrigin3D.")
+        .describe("tracker", xr_tracker)
+        .describe("pose", xr_pose)
+        .describe("show_when_tracked", xr_show);
+    registry.add<XRCamera3D>().set_doc(
+        "The headset, as Godot's XRCamera3D: the entity's Camera3D follows the \"head\" "
+        "tracker under its XROrigin3D.");
 
     // Baking into a LightmapGI, as Godot's Light3D.
     const FieldMeta indirect_energy{
