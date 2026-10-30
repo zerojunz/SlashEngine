@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "main_scene": "main.scene.json",
+  "name": "Ray-traced shadows 3D",
+  "rendering": {
+    "clear_color": [0.0, 0.0, 0.0, 1.0],
+    "ray_tracing": {
+      "shadow_samples": 16,
+      "shadows": true
+    }
+  },
+  "version": "1.0.0",
+  "window": {
+    "height": 90,
+    "width": 160
+  }
+}

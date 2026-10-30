@@ -487,6 +487,22 @@ std::vector<int> shadow_slots(const Scene3D& scene) {
     return slots;
 }
 
+std::vector<int> ray_shadow_slots(const Scene3D& scene) {
+    std::vector<int> slots(scene.lights.size(), -1);
+    if (scene.method != RenderMethod::ForwardPlus || !scene.ray_tracing.shadows) {
+        return slots;
+    }
+    int next = 0;
+    for (std::size_t i = 0; i < lights_drawn(scene); ++i) {
+        const Light3D& light = scene.lights[i];
+        if (light.shadow && light.shadow_opacity > 0.0F &&
+            next < static_cast<int>(kMaxRayShadowLights)) {
+            slots.at(i) = next++;
+        }
+    }
+    return slots;
+}
+
 ShadowPlan plan_shadows(const Scene3D& scene, std::uint32_t max_size) {
     ShadowPlan plan;
     MeshShadowUniforms& uniforms = *plan.uniforms;

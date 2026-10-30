@@ -35,7 +35,7 @@ jobs:
       matrix:
         include:
           - name: macOS
-            os: macos-14
+            os: macos-15
           - name: Linux
             os: ubuntu-24.04
           - name: Windows
@@ -136,7 +136,7 @@ jobs:
       matrix:
         include:
           - platform: macos
-            os: macos-14
+            os: macos-15
           - platform: linux
             os: ubuntu-24.04
           - platform: windows
@@ -146,7 +146,7 @@ jobs:
           - platform: android
             os: ubuntu-24.04
           - platform: ios
-            os: macos-14
+            os: macos-15
     env:
       HELLO_APP_ID: ci # the key examples/sdk-package's stand-in SDK reads
     steps:
@@ -419,7 +419,7 @@ jobs:
   # for those platforms then run them.
   cross-export:
     name: Cross-export from macOS
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       HELLO_APP_ID: ci
     steps:
@@ -429,13 +429,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .cpm-cache
-          key: cpm-macos-14-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/dependencies.json') }}
+          key: cpm-macos-15-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/dependencies.json') }}
 
       - name: Cache downloaded toolchains
         uses: actions/cache@v4
         with:
           path: ~/.slash/toolchains
-          key: toolchains-macos-14-${{ hashFiles('tools/exporter/src/toolchains.cpp') }}
+          key: toolchains-macos-15-${{ hashFiles('tools/exporter/src/toolchains.cpp') }}
 
       # pkg-config finds the sysroot's Wayland, PulseAudio and PipeWire for Linux games.
       - name: Install tools
@@ -444,7 +444,7 @@ jobs:
       - name: Cache compiled objects
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: release-macos-14
+          key: release-macos-15
           max-size: ${{ env.CCACHE_MAX_SIZE }}
           save: false
 

@@ -325,7 +325,7 @@ jobs:
       matrix:
         include:
           - platform: macos
-            os: macos-14
+            os: macos-15
           - platform: windows
             os: windows-2022
           - platform: linux
@@ -335,7 +335,7 @@ jobs:
           - platform: android
             os: ubuntu-24.04
           - platform: ios
-            os: macos-14
+            os: macos-15
     steps:
       - uses: actions/checkout@v4
         with:

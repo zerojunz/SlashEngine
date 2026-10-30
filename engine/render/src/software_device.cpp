@@ -14,6 +14,7 @@
 #include "mesh_shading.hpp"
 #include "path_trace.hpp"
 #include "post_shading.hpp"
+#include "ray_shadows.hpp"
 #include "reflection.hpp"
 #include "sky_shading.hpp"
 #include "ssao.hpp"
@@ -383,6 +384,7 @@ public:
         std::erase_if(path_states_, [&](const auto& entry) { return entry.first == texture; });
     }
 
+    [[nodiscard]] bool ray_tracing() const override { return true; }
     [[nodiscard]] std::uint32_t path_samples(TextureId target) const override {
         for (const auto& [id, state] : path_states_) {
             if (id == target) {
@@ -1702,7 +1704,8 @@ private:
                               .probes = {},
                               .probe_cubes = nullptr,
                               .decal_atlas = clustered ? &decal_atlas : nullptr,
-                              .fog = {}};
+                              .fog = {},
+                              .ray_shadows = {}};
 
         std::vector<float> depth(std::size_t{target.width()} * target.height(), 0.0F);
         // TAA's frame: the next jitter, from the camera the target's frame before was seen from
@@ -1811,7 +1814,10 @@ private:
         const std::size_t pixels = std::size_t{target.width()} * target.height();
         std::vector<float> prepass_depth;
         std::vector<float> velocity;
-        if (lights->ssao[0] != 0.0F || ssr || motion) {
+        std::vector<float> ray_shadows;
+        const std::vector<detail::RayShadowLight> traced =
+            clustered ? detail::ray_shadow_lights(scene) : std::vector<detail::RayShadowLight>{};
+        if (lights->ssao[0] != 0.0F || ssr || motion || !traced.empty()) {
             prepass_depth.assign(pixels, 0.0F);
             if (motion) {
                 // FSR 2 works the sky's motion vectors out from the depth, as Godot's.
@@ -1852,6 +1858,23 @@ private:
                          }
                          return true;
                      });
+            if (!traced.empty()) {
+                // Rays from each pixel the prepass drew, through every mesh the frame draws.
+                const std::vector<detail::PathMesh> meshes = path_meshes();
+                const detail::PathScene paths =
+                    detail::build_path_scene(scene, meshes, target.width(), target.height(),
+                                             detail::forward_clear(frame_.clear));
+                PathBindings bindings;
+                bind_path_textures(scene, bindings);
+                ray_shadows = detail::run_ray_shadows(
+                    paths, &bindings, traced,
+                    detail::ray_shadow_frame(scene, camera.view_projection, target.width(),
+                                             target.height()),
+                    prepass_depth, normals.values, pool_);
+                maps.ray_shadows = ray_shadows;
+                maps.ao_width = target.width();
+                lights->screen[2] = 1.0F;
+            }
             if (lights->ssao[0] != 0.0F) {
                 ao = detail::run_ssao(scene.ssao, scene.projection, target.width(), target.height(),
                                       {.depth = prepass_depth, .normals = &normals});
@@ -2042,10 +2065,8 @@ private:
         }
     };
 
-    // Traces a path-traced frame's paths into target's sums and returns their average, linear,
-    // as Forward+'s world texture holds it. The sums start over when what the paths see changes.
-    detail::HdrImage path_trace(const Scene3D& scene, TextureId target, std::uint32_t width,
-                                std::uint32_t height) {
+    // The frame's meshes as rays meet them: each draw's vertices and the triangles of its LOD.
+    std::vector<detail::PathMesh> path_meshes() {
         std::vector<detail::PathMesh> meshes;
         meshes.reserve(mesh_draws_.size());
         for (const detail::MeshDraw& draw : mesh_draws_) {
@@ -2053,15 +2074,21 @@ private:
             meshes.push_back(
                 {.draw = &draw, .vertices = mesh.vertices, .triangles = mesh.triangles(draw.lod)});
         }
-        const detail::PathScene paths = detail::build_path_scene(
-            scene, meshes, width, height, detail::forward_clear(frame_.clear));
-        PathBindings bindings;
-        std::uint64_t key = detail::path_scene_key(paths);
+        return meshes;
+    }
+
+    // The frame's draws' textures and the sky's, as rays sample them, with key (when given)
+    // changed by which textures they are and how often each was written.
+    void bind_path_textures(const Scene3D& scene, PathBindings& bindings,
+                            std::uint64_t* key = nullptr) {
         const auto mix_in = [&](TextureId id) {
+            if (key == nullptr) {
+                return;
+            }
             const Texture* found = id == TextureId::None ? nullptr : find(id);
             for (const std::uint64_t value :
                  {static_cast<std::uint64_t>(id), found != nullptr ? found->written : 0}) {
-                key = (key ^ value) * 0x100000001B3ULL;
+                *key = (*key ^ value) * 0x100000001B3ULL;
             }
         };
         for (const detail::MeshDraw& draw : mesh_draws_) {
@@ -2077,14 +2104,27 @@ private:
         bindings.radiance_texture = bound(detail::radiance_texture(scene), true);
         mix_in(detail::sky_texture(scene.sky));
         mix_in(detail::radiance_texture(scene));
+    }
+
+    // Traces a path-traced frame's paths into target's sums and returns their average, linear,
+    // as Forward+'s world texture holds it. The sums start over when what the paths see changes.
+    detail::HdrImage path_trace(const Scene3D& scene, TextureId target, std::uint32_t width,
+                                std::uint32_t height) {
+        const std::vector<detail::PathMesh> meshes = path_meshes();
+        const detail::PathScene paths = detail::build_path_scene(
+            scene, meshes, width, height, detail::forward_clear(frame_.clear));
+        PathBindings bindings;
+        std::uint64_t key = detail::path_scene_key(paths);
+        bind_path_textures(scene, bindings, &key);
 
         PathState& state = path_state(target);
         const std::size_t size = std::size_t{width} * height * 3;
         if (state.key != key || state.sums.size() != size) {
             state = PathState{.key = key, .samples = 0, .sums = std::vector<float>(size, 0.0F)};
         }
-        const std::uint32_t samples = std::min(
-            scene.path_trace->samples, std::numeric_limits<std::uint32_t>::max() - state.samples);
+        const std::uint32_t samples =
+            std::min(scene.path_trace.value_or(PathTrace3D{}).samples,
+                     std::numeric_limits<std::uint32_t>::max() - state.samples);
         detail::trace_paths(paths, bindings, state.samples, samples, state.sums, pool_);
         state.samples += samples;
 
